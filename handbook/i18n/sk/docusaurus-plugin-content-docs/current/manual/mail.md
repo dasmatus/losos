@@ -37,7 +37,9 @@ schránku, takže Pošta vás požiada o prihlásenie vlastným účtom.
 ## Čítanie a písanie \{#reading-and-writing}
 
 - **Priečinky**: Doručená pošta, Koncepty, Odoslaná pošta, Archív,
-  Nevyžiadaná pošta a Kôš, pri každom s počtom neprečítaných správ.
+  Nevyžiadaná pošta a Kôš, vedľa nich vaše vlastné priečinky a pri každom
+  počet neprečítaných správ. Na širokej obrazovke sú ako strom naľavo od
+  zoznamu, na užšej ako riadok nad ním.
 - **Hľadanie** prehľadá otvorený priečinok: odosielateľov, predmety a text.
 - **Napísať** otvorí novú správu. Polia **Komu** a **Kópia** ponúkajú vaše
   [kontakty](contacts) a ostatných ľudí na zariadení. **Odpovedať**, **Odpovedať všetkým** a **Preposlať** správu
@@ -54,6 +56,46 @@ schránku, takže Pošta vás požiada o prihlásenie vlastným účtom.
 - Kliknite pravým tlačidlom na správu v zozname a odpovedzte na ňu,
   označte, archivujte alebo presuňte ju bez otvorenia; pozrite
   [ponuku pravého tlačidla](admin-pages#the-right-click-menu).
+
+## Vlastné priečinky \{#your-own-folders}
+
+Vytvárajte si vlastné priečinky vedľa priečinkov Pošty aj v nich, do
+ľubovoľnej hĺbky.
+
+- **Nový priečinok** (ikona priečinka hore nad stromom) sa spýta na názov
+  a na to, kam ho dať. Názov nemôže obsahovať lomku a dva priečinky na
+  rovnakom mieste nemôžu mať rovnaký názov.
+- Kliknite pravým tlačidlom na priečinok a otvorte ho, vytvorte v ňom
+  priečinok, premenujte ho, presuňte do iného priečinka alebo na najvyššiu
+  úroveň, alebo ho odstráňte. Priečinky Pošty sa dajú len otvoriť a
+  vytvoriť v nich priečinok.
+- Pretiahnite správu na priečinok a presuniete ju tam. Pretiahnite svoj
+  priečinok na iný a vložíte ho doň, alebo na prázdne miesto pod stromom a
+  dostanete ho na najvyššiu úroveň.
+- Pri odstránení priečinka sa jeho správy najprv presunú do koša, takže
+  omylom sa nič nestratí. Priečinok, v ktorom sú ďalšie priečinky, sa
+  neodstráni, kým ich nepresuniete alebo neodstránite.
+
+## Filtre \{#filters}
+
+Filtre triedia novú poštu hneď, ako príde. Uchováva a spúšťa ich poštový
+server, takže fungujú, aj keď je Pošta zatvorená a nikto nie je
+prihlásený.
+
+- **Filtre** vedľa tlačidla **Napísať** ich zobrazia v poradí, v akom sa
+  spúšťajú. O správe rozhodne prvý filter, ktorý sa s ňou zhoduje.
+- Filter sa pozrie, od koho správa je, komu je (Komu alebo Kópia) alebo na
+  jej predmet, a hľadá v nich text. Na veľkosti písmen nezáleží. Môže
+  žiadať, aby platili všetky podmienky, alebo stačí ktorákoľvek z nich.
+- Potom správu presunie do priečinka (aj do koša, a tak filter maže),
+  označí ju ako prečítanú, označí ju, alebo urobí viac z toho naraz.
+- Prepínač pri filtri ho vypne bez toho, aby sa stratil, a šípky menia
+  poradie.
+- Kliknite pravým tlačidlom na správu a vyberte **Filtrovať podobnú
+  poštu…**, čím začnete filter pre jej odosielateľa.
+- Filtre pracujú s poštou, ktorá príde po ich uložení; pošta, ktorá už je
+  v priečinku, tam zostane. Odstránenie priečinka vypne filter, ktorý doň
+  len presúval poštu.
 
 ## Čo Pošta zatiaľ nerobí \{#what-mail-does-not-do-yet}
 

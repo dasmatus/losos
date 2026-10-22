@@ -308,6 +308,13 @@
             # The fscrypt policy on the shared data domain, locked and unlocked
             # off losos.sharingMyStorage.
             ./modules/fscrypt.nix
+            # The credential manager: every secret of the box sealed with
+            # systemd-creds in /etc/credstore.encrypted and handed to the
+            # services that read it by LoadCredentialEncrypted=, so a copy of
+            # /persist that leaves the machine carries ciphertext. Next to
+            # fscrypt.nix because the two use the same sealing mechanism and
+            # cover different halves of the same problem.
+            ./modules/credentials.nix
             ./modules/daemon.nix
             ./modules/identity.nix
             # LosOS Chat: Dendrite as the shared user while the box shares
@@ -333,6 +340,11 @@
             # LosOS Cloud (backend/src/cloud/): files, calendars, contacts and
             # boards at /cloud/, and to the Nextcloud desktop and phone apps.
             ./modules/cloud.nix
+            # Its files in Windows' Network view, as an SMB share.
+            ./modules/windows.nix
+            # Office documents in the browser: Collabora Online and its WOPI
+            # host (backend/src/office/).
+            ./modules/office.nix
             # LosOS Lab's guests under libvirt on the box (losos.lab.libvirt,
             # off by default): the `losos-registrar lab` helper lososd relays
             # /api/lab to.
@@ -484,6 +496,7 @@
         # Two boxes sharing a note and editing it together, apart and
         # together again (nix/tests/mesh-collab.nix).
         losos-mesh-collab = import ./nix/tests/mesh-collab.nix { inherit pkgs; };
+        losos-windows = import ./nix/tests/windows.nix { inherit pkgs; };
         # Apps run as notshared on rootless Podman, with no cluster: the
         # box's own, one in the LosOS app format and a chart from the
         # search (nix/tests/podman-apps.nix).
@@ -506,12 +519,22 @@
         # with a type the Advanced pane has no editor for.
         losos-options-doc =
           self.nixosConfigurations.install.config.environment.etc."losos/options.json".source;
+        losos-credentials = import ./nix/tests/credentials.nix { inherit pkgs; };
         losos-erase = import ./nix/tests/erase.nix { inherit pkgs impermanence; };
         losos-console = import ./nix/tests/console.nix { inherit pkgs; };
         # The text search behind the admin palette: the cloud index pass in
         # its sandbox, PDFs, a changed file, the Git search and who may ask
         # (nix/tests/search.nix).
         losos-search = import ./nix/tests/search.nix { inherit pkgs; };
+        # Collabora Online behind the front vhost over the folder host: open,
+        # type, save, save as PDF, two people in one document, the token
+        # rules and what nginx refuses (nix/tests/office.nix).
+        losos-office = import ./nix/tests/office.nix { inherit pkgs; };
+        # Office over LosOS Cloud's own files: discovery saved for a cloud
+        # with no network, coolwsd through nginx's loopback bridge to the
+        # cloud's socket, a save landing in the person's cloud
+        # (nix/tests/office-cloud.nix).
+        losos-office-cloud = import ./nix/tests/office-cloud.nix { inherit pkgs; };
         # The box half of models split across boxes: the RPC server as
         # `shared`, its memory cap, the lend file, the loopback owner rule
         # and the `:llm` tunnel service (nix/tests/inference-lend.nix).

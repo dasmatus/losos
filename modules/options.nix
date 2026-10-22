@@ -718,6 +718,126 @@ in
       description = "OCI image running Forgejo in container mode.";
     };
 
+    # ── The credential manager (modules/credentials.nix) ────────────────────
+    # Every secret the box keeps, one systemd-creds file each in
+    # /etc/credstore.encrypted, sealed to the TPM or the host key, opened by
+    # PID 1 into the credential directory of each unit that reads it. Modules
+    # declare their own; the Credentials pane (backend/src/credentials.rs)
+    # lists them and makes new values. Kept off the Advanced pane
+    # (nix/options-doc.nix): these are wiring, not settings.
+    credentials.entries = lib.mkOption {
+      default = { };
+      description = ''
+        The box's credentials, by name. The name is the systemd credential
+        name: the file in /etc/credstore.encrypted, the name sealed into it,
+        and the file in each reader's credential directory.
+      '';
+      type = lib.types.attrsOf (
+        lib.types.submodule {
+          options = {
+            app = lib.mkOption {
+              type = lib.types.str;
+              description = "What it belongs to, for the pane's groups: login, mail, admin, backup, cloud, ...";
+            };
+            description = lib.mkOption {
+              type = lib.types.str;
+              description = "One sentence on what it is for.";
+            };
+            format = lib.mkOption {
+              type = lib.types.nullOr (
+                lib.types.enum [
+                  "hex-32"
+                  "hex-64"
+                  "base64-24"
+                  "rsa-2048"
+                ]
+              );
+              default = null;
+              description = ''
+                How the box makes a value: 32 or 64 random bytes in hex, 24 in
+                base64, or an RSA private key in PEM. Null for a value the owner gives, which lososd
+                seals when they save the pane that asks for it (`pane`).
+              '';
+            };
+            services = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = [ ];
+              description = "Units that read it; each gets `LoadCredentialEncrypted=<name>`.";
+            };
+            restart = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = [ ];
+              description = "Units restarted after a new value, when not just `services`.";
+            };
+            rotate = lib.mkOption {
+              type = lib.types.bool;
+              default = false;
+              description = "Whether a person may make a new value from the Credentials pane.";
+            };
+            pane = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              description = "Where the owner sets a value they give, as a path of the admin pages.";
+            };
+            legacy = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = [ ];
+              description = ''
+                Plaintext files an older build kept the value in. The first one
+                found is adopted when nothing is sealed yet; every one is then
+                overwritten and deleted.
+              '';
+            };
+            legacySealed = lib.mkOption {
+              type = lib.types.nullOr (
+                lib.types.submodule {
+                  options = {
+                    path = lib.mkOption { type = lib.types.str; };
+                    name = lib.mkOption { type = lib.types.str; };
+                  };
+                }
+              );
+              default = null;
+              description = "A systemd-creds file an older build sealed under another name, adopted the same way.";
+            };
+            file = lib.mkOption {
+              default = null;
+              description = ''
+                For a reader that can only take a path: the value is opened at
+                boot into /run/losos-credentials (tmpfs) and `path` becomes a
+                link to it.
+              '';
+              type = lib.types.nullOr (
+                lib.types.submodule {
+                  options = {
+                    path = lib.mkOption { type = lib.types.str; };
+                    owner = lib.mkOption {
+                      type = lib.types.str;
+                      default = "0";
+                      description = "uid (and gid) of the opened file.";
+                    };
+                    mode = lib.mkOption {
+                      type = lib.types.str;
+                      default = "0600";
+                    };
+                    readers = lib.mkOption {
+                      type = lib.types.listOf lib.types.str;
+                      default = [ ];
+                      description = ''
+                        Units ordered after the link is in place. Ordering only
+                        (systemd ignores a unit that does not exist), so one list
+                        can name the readers of every mode.
+                      '';
+                    };
+                  };
+                }
+              );
+            };
+          };
+        }
+      );
+    };
+
     # ── The shared data domain (fscrypt) ────────────────────────────────────
     shared.fscrypt.enable = lib.mkOption {
       type = lib.types.bool;
@@ -846,6 +966,22 @@ in
       '';
     };
 
+    cloud.windows.enable = lib.mkOption {
+      type = lib.types.bool;
+      # On wherever LosOS Cloud is (modules/windows.nix asks for both), and
+      # declared so here rather than in defaults.nix: the Network pane draws
+      # this default as the switch's state when overrides.nix has no line.
+      default = true;
+      description = ''
+        Show the box under Network in Windows' File Explorer, and in Finder
+        and Linux file managers, with each person's LosOS Cloud files as a
+        network share they open with their LosOS name and password. Only on
+        the local network, never through the edge. Windows takes a person's
+        password once the box has seen it: when it is set, at a sign-in to
+        the share from a file manager, or typed once on the Account page.
+      '';
+    };
+
     cloud.trashDays = lib.mkOption {
       type = lib.types.ints.between 1 365;
       default = 30;
@@ -869,7 +1005,8 @@ in
 
     cloud.mesh.name = lib.mkOption {
       type = lib.types.str;
-      default = if config.losos.proxy.enable then config.losos.proxy.hostname else "${config.losos.hostName}.local";
+      default =
+        if config.losos.proxy.enable then config.losos.proxy.hostname else "${config.losos.hostName}.local";
       defaultText = lib.literalExpression ''if config.losos.proxy.enable then config.losos.proxy.hostname else "''${config.losos.hostName}.local"'';
       description = ''
         The name other boxes reach this one by, the part after the @ in
@@ -901,6 +1038,44 @@ in
         repository in LosOS Git. The index is a copy of the files' text and
         never leaves the box; turning this off stops the updates, and a
         factory erase deletes it.
+      '';
+    };
+
+    # ── Office documents (modules/office.nix) ───────────────────────────
+    office.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Open, edit and co-edit Word, Excel, PowerPoint and OpenDocument
+        files in the browser with Collabora Online, a LibreOffice that runs
+        on the box. Documents never leave the box: the editor reads and
+        saves them through LosOS cloud. It runs while the box is up and
+        uses about 550 MB of memory with no document open.
+      '';
+    };
+
+    office.port = lib.mkOption {
+      type = lib.types.port;
+      default = 9980;
+      description = "Loopback port Collabora Online listens on. nginx serves it at /browser/ and /cool/.";
+    };
+
+    office.wopiPort = lib.mkOption {
+      type = lib.types.port;
+      default = 8093;
+      description = ''
+        Loopback port of the server Collabora Online reads documents from
+        and saves them to (the WOPI host): LosOS cloud, or the folder below.
+      '';
+    };
+
+    office.folder = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "/var/lib/losos-office/files";
+      description = ''
+        Edit the documents in this folder instead of LosOS cloud's, with a
+        small host of its own (losos-office). For a box without LosOS cloud.
       '';
     };
 
@@ -1408,8 +1583,10 @@ in
       type = secretPath;
       default = "/var/secrets/losos-admin-token";
       description = ''
-        Bearer token for the admin API; created randomly with mode 0600 by
-        lososd on first start if absent. Persisted via /var.
+        Where an older build kept the Bearer token for the admin API. The
+        token is now the `admin-token` credential (modules/credentials.nix):
+        made at first boot, sealed in /etc/credstore.encrypted, and adopted
+        from this file, which is then deleted, on a box that had one.
       '';
     };
 

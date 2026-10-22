@@ -349,15 +349,29 @@ let
   ];
 
   # One map per header: value on the admin surface, empty (header omitted) on
-  # the proxied Git route, the handbook's and the lab's own values
+  # the proxied Git route and on LosOS Login under /auth/, which sends its
+  # own (the admin `base-uri 'none'` drops its `<base href>`, and every page
+  # below /auth/ then loads its scripts from the wrong folder and stays
+  # blank), the handbook's and the lab's own values
   # (or the admin value, for the headers they share) under /handbook/,
   # /lab/ and /chat/ (and chat's for the guest call page, /calls/guest/),
   # the widget frame's own value (or nothing) under /widget-frame/, and a
   # mail message's under its HTML route.
+  #
+  # Collabora Online's two prefixes (modules/office.nix) get nothing either,
+  # only while it is on: coolwsd sends its own policy, whose frame-ancestors
+  # lets the box's own pages frame the editor. Off, the arms are gone, so the
+  # SPA fallback under those paths keeps the strict policy.
+  officeArms = lib.optionalString config.losos.office.enable ''
+    ~^/browser/      "";
+        ~^/cool/         "";
+  '';
   adminHeaderMap = variable: value: handbookValue: labValue: chatValue: frameValue: mailValue: ''
     map $uri ${variable} {
         default          "${value}";
         ~^/forgejo       "";
+        ~^/auth/         "";
+        ${officeArms}
         ~^/handbook/     "${handbookValue}";
         ~^/lab/          "${labValue}";
         ~^/chat/         "${chatValue}";

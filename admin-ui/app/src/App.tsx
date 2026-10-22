@@ -39,6 +39,7 @@ import {
   makeFirstAccount,
   signIn,
   signInPageReady,
+  sentToSignIn,
   signInUrl,
   signOut,
   subscribeAuth,
@@ -68,6 +69,9 @@ import { chatDocument } from "@/chat/document";
 const Wizard = React.lazy(() => import("@/screens/Wizard"));
 const Home = React.lazy(() => import("@/screens/Home"));
 const Settings = React.lazy(() => import("@/screens/Settings"));
+/* Documents (losos.office.folder) and the editor, on boxes that edit a
+ * folder of documents. */
+const Office = React.lazy(() => import("@/screens/Office"));
 /* The first-run tour (src/tour/): its own chunk, fetched only when it opens,
  * which on most visits is never. */
 const Tour = React.lazy(() => import("@/tour/tour"));
@@ -187,6 +191,7 @@ function CallsHolder({ children }: { children: React.ReactNode }) {
 function Shell() {
   const gate = useGate();
   const t = useT();
+  const location = useLocation();
 
   /* The look — the wallpaper and the hand-written widgets — follows the
    * token: loaded on sign-in, dropped on sign-out. Once, for the page. */
@@ -307,11 +312,23 @@ function Shell() {
     );
   }
 
+  /* An open document takes the whole width under the top bar: the editor
+   * has toolbars and a sidebar of its own, and its own <main>. */
+  const editing =
+    signedIn && !held && location.pathname.startsWith("/office") && location.hash.length > 1;
+
   return (
-    <div className="losos-shell min-h-dvh text-ink">
+    <div className={cn("losos-shell min-h-dvh text-ink", editing && "flex h-dvh flex-col")}>
       <TopBar signedIn={signedIn} />
       <ContextMenuHost page={pageMenu} search={searchable ? (text) => openPalette(text) : undefined} />
 
+      {editing ? (
+        <div className="min-h-0 flex-1">
+          <React.Suspense fallback={<ScreenFallback />}>
+            <Office hash={location.hash} />
+          </React.Suspense>
+        </div>
+      ) : (
       <SidebarProvider
         className={cn(
           "mx-auto flex w-full max-w-6xl px-4 pt-5 pb-12 sm:px-6",
@@ -344,6 +361,7 @@ function Shell() {
             <Route path="/mesh" element={<SettingsRoute pane="mesh" />} />
             <Route path="/machines" element={<SettingsRoute pane="machines" />} />
             <Route path="/apps" element={<SettingsRoute pane="apps" />} />
+            <Route path="/office" element={<Office hash={location.hash} />} />
             {/* nginx answers /mail with 404 off the shared side
                 (modules/containers.nix); the screen says so too if the box
                 leaves it while the page is open. */}
@@ -362,6 +380,7 @@ function Shell() {
           </React.Suspense>
         </main>
       </SidebarProvider>
+      )}
 
       <SignInDialog open={!signedIn} />
       {signedIn && paletteLoaded && (
@@ -502,7 +521,7 @@ function SignInDialog({ open }: { open: boolean }) {
    * anyone to an error page, and goes on by itself once it is up. */
   const [portal, setPortal] = React.useState<"checking" | "starting" | "ready">("checking");
   const game = useWaitGame(open && mode === "signin" && portal === "starting");
-  const [wanted, setWanted] = React.useState(false);
+  const [wanted, setWanted] = React.useState(sentToSignIn);
   const [fact, setFact] = React.useState(0);
   React.useEffect(() => {
     if (!open || mode !== "signin" || portal === "ready") return;

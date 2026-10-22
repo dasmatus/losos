@@ -84,6 +84,9 @@ let
   user = "authelia-losos";
   dir = "/var/lib/losos-identity";
   peopleFile = "${dir}/users.yml";
+  # Where an older build kept Authelia's secrets as plaintext; the
+  # credential store adopts them from here (modules/credentials.nix). Only
+  # the digest of lososd's client secret stays: it is a hash, not a secret.
   secretsDir = "/var/secrets/losos-identity";
   runDir = "/run/losos-identity";
   sessionFile = "${runDir}/session.yml";
@@ -131,22 +134,26 @@ let
   '';
   signInPages = pkgs.runCommand "losos-sign-in-pages" { } ''
     mkdir -p $out
-    cp ${pkgs.writeText "waiting.html" (
-      page "waiting" "LosOS Login is starting" ''
-        <h1>LosOS Login is starting</h1>
-        <p>The box has just started. This page tries again by itself in a few seconds.</p>
-        <p lang="sk">LosOS Login sa spúšťa. Stránka to o chvíľu skúsi znova sama.</p>
-        <p lang="de">LosOS Login startet. Die Seite versucht es gleich von selbst erneut.</p>
-      ''
-    )} $out/waiting.html
-    cp ${pkgs.writeText "held.html" (
-      page "held" "Finish your account first" ''
-        <h1>Finish your account first</h1>
-        <p>This box asks something of your account before you can use LosOS Cloud and LosOS Git: a second step at sign-in, or a new password. Open <a href="/settings/account">Your account</a> in the box's admin pages, on the box's own network.</p>
-        <p lang="sk">Toto zariadenie od vášho účtu najprv niečo žiada: druhý krok pri prihlásení alebo nové heslo. Otvorte Váš účet na stránkach správy zariadenia, v jeho sieti.</p>
-        <p lang="de">Diese Box verlangt zuerst etwas von deinem Konto: einen zweiten Schritt bei der Anmeldung oder ein neues Passwort. Öffne Dein Konto auf den Verwaltungsseiten der Box, in ihrem eigenen Netz.</p>
-      ''
-    )} $out/held.html
+    cp ${
+      pkgs.writeText "waiting.html" (
+        page "waiting" "LosOS Login is starting" ''
+          <h1>LosOS Login is starting</h1>
+          <p>The box has just started. This page tries again by itself in a few seconds.</p>
+          <p lang="sk">LosOS Login sa spúšťa. Stránka to o chvíľu skúsi znova sama.</p>
+          <p lang="de">LosOS Login startet. Die Seite versucht es gleich von selbst erneut.</p>
+        ''
+      )
+    } $out/waiting.html
+    cp ${
+      pkgs.writeText "held.html" (
+        page "held" "Finish your account first" ''
+          <h1>Finish your account first</h1>
+          <p>This box asks something of your account before you can use LosOS Cloud and LosOS Git: a second step at sign-in, or a new password. Open <a href="/settings/account">Your account</a> in the box's admin pages, on the box's own network.</p>
+          <p lang="sk">Toto zariadenie od vášho účtu najprv niečo žiada: druhý krok pri prihlásení alebo nové heslo. Otvorte Váš účet na stránkach správy zariadenia, v jeho sieti.</p>
+          <p lang="de">Diese Box verlangt zuerst etwas von deinem Konto: einen zweiten Schritt bei der Anmeldung oder ein neues Passwort. Öffne Dein Konto auf den Verwaltungsseiten der Box, in ihrem eigenen Netz.</p>
+        ''
+      )
+    } $out/held.html
   '';
   # For the two apps: where their sign-in page sends a person back to, and
   # the person's account in them, the owner's own for the person who
@@ -315,18 +322,35 @@ let
   };
 in
 {
+  # The credential store every secret here lives in.
+  imports = [ ./credentials.nix ];
+
   config = lib.mkIf enabled {
     services.authelia.instances.losos = {
       enable = true;
       inherit package;
-      secrets = {
-        jwtSecretFile = "${secretsDir}/jwt";
-        sessionSecretFile = "${secretsDir}/session";
-        storageEncryptionKeyFile = "${secretsDir}/storage";
-        oidcHmacSecretFile = "${secretsDir}/oidc-hmac";
-        oidcIssuerPrivateKeyFile = "${secretsDir}/oidc-jwks.pem";
+      # Every secret is a credential (below): systemd opens them into the
+      # unit's credential directory, and Authelia reads them from there
+      # through its `_FILE` variables and, for the signing key, a template.
+      secrets.manual = true;
+      environmentVariables = {
+        AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE = "%d/authelia-jwt";
+        AUTHELIA_SESSION_SECRET_FILE = "%d/authelia-session";
+        AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE = "%d/authelia-storage";
+        AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET_FILE = "%d/authelia-oidc-hmac";
+        X_AUTHELIA_CONFIG_FILTERS = "template";
       };
-      settingsFiles = [ sessionFile ];
+      settingsFiles = [
+        sessionFile
+        # The signing key, from the credential directory. secrets.manual
+        # drops the module's own copy of this file.
+        (pkgs.writeText "oidc-jwks.yaml" ''
+          identity_providers:
+            oidc:
+              jwks:
+                - key: {{ mustEnv "CREDENTIALS_DIRECTORY" | printf "%s/authelia-oidc-jwks" | secret | mindent 10 "|" | msquote }}
+        '')
+      ];
       settings = {
         theme = "auto";
         server = {
@@ -470,10 +494,18 @@ in
     };
 
     systemd.services.losos-identity-setup = {
-      description = "Prepare sign-in: Authelia's secrets and session domains";
+      description = "Prepare sign-in: the session domains";
       wantedBy = [ "multi-user.target" ];
-      before = [ "authelia-losos.service" ];
-      after = [ "network.target" ];
+      # lososd too: it reads the client secret this unit may make again.
+      before = [
+        "authelia-losos.service"
+        "lososd.service"
+      ];
+      after = [
+        "network.target"
+        "losos-credentials.service"
+      ];
+      wants = [ "losos-credentials.service" ];
       serviceConfig = {
         Type = "oneshot";
         UMask = "0077";
@@ -481,31 +513,31 @@ in
       path = [
         pkgs.coreutils
         pkgs.gnused
-        pkgs.openssl
         package
       ];
       script = ''
         install -d -m 0700 ${secretsDir}
-        for s in jwt session storage oidc-hmac; do
-          if [ ! -s ${secretsDir}/$s ]; then
-            openssl rand -hex 64 > ${secretsDir}/$s.tmp
-            mv ${secretsDir}/$s.tmp ${secretsDir}/$s
-          fi
-        done
-        if [ ! -s ${secretsDir}/oidc-jwks.pem ]; then
-          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
-            -out ${secretsDir}/oidc-jwks.pem.tmp
-          mv ${secretsDir}/oidc-jwks.pem.tmp ${secretsDir}/oidc-jwks.pem
-        fi
-        # Made together, so the secret is never on a command line.
-        if [ ! -s ${lososdSecret} ] || [ ! -s ${lososdDigest} ]; then
+        # lososd's client secret is a credential, the digest LosOS Login
+        # checks it by a file beside the old secrets. They are made together,
+        # so the secret is never on a command line. Whenever the sealed
+        # secret is missing or newer than the digest (the store made or
+        # adopted it at boot), both are made again here and the secret is
+        # sealed in place; lososd, ordered after this unit, reads the new one.
+        blob=/etc/credstore.encrypted/oidc-lososd
+        if [ ! -s ${lososdDigest} ] || [ ! -s "$blob" ] || [ "$blob" -nt ${lososdDigest} ]; then
           made=$(authelia crypto hash generate pbkdf2 --variant sha512 \
             --random --random.length 64)
-          printf '%s' "$made" | sed -n 's/^Random Password: //p' | tr -d '\n' > ${lososdSecret}.tmp
+          printf '%s' "$made" | sed -n 's/^Random Password: //p' | tr -d '\n' \
+            | systemd-creds --no-ask-password --with-key="$(cat /run/losos-credentials/key)" \
+              --tpm2-pcrs= --name=oidc-lososd encrypt - "$blob.new"
           printf '%s' "$made" | sed -n 's/^Digest: //p' | tr -d '\n' > ${lososdDigest}.tmp
-          [ -s ${lososdSecret}.tmp ] && [ -s ${lososdDigest}.tmp ]
-          mv ${lososdSecret}.tmp ${lososdSecret}
-          mv ${lososdDigest}.tmp ${lososdDigest}
+          [ -s "$blob.new" ] && [ -s ${lososdDigest}.tmp ]
+          chmod 0600 "$blob.new"
+          mv -f "$blob.new" "$blob"
+          mv -f ${lososdDigest}.tmp ${lososdDigest}
+          if systemctl -q is-active lososd.service; then
+            systemctl --no-block try-restart lososd.service authelia-losos.service
+          fi
         fi
         # lososd writes the people file here; Authelia reads it.
         install -d -m 0750 -o root -g ${user} ${dir}
@@ -529,6 +561,59 @@ in
       timerConfig = {
         OnUnitActiveSec = "2min";
         OnBootSec = "2min";
+      };
+    };
+
+    losos.credentials.entries = {
+      authelia-jwt = {
+        app = "login";
+        description = "Signs the links LosOS Login sends to confirm who someone is.";
+        format = "hex-64";
+        services = [ "authelia-losos" ];
+        rotate = true;
+        legacy = [ "${secretsDir}/jwt" ];
+      };
+      authelia-session = {
+        app = "login";
+        description = "Protects the sessions of LosOS Login. A new one signs everyone out.";
+        format = "hex-64";
+        services = [ "authelia-losos" ];
+        rotate = true;
+        legacy = [ "${secretsDir}/session" ];
+      };
+      # Not rotatable from the pane: Authelia encrypts its database with it,
+      # and a new key without `authelia storage encryption change-key` is a
+      # database it can no longer open.
+      authelia-storage = {
+        app = "login";
+        description = "Encrypts what LosOS Login stores: second factors and passkeys.";
+        format = "hex-64";
+        services = [ "authelia-losos" ];
+        legacy = [ "${secretsDir}/storage" ];
+      };
+      # Signs the companion's tokens; a new one would sign every companion
+      # out, so the pane leaves both alone.
+      authelia-oidc-hmac = {
+        app = "login";
+        description = "Signs the tokens LosOS Login gives the AI agent companion.";
+        format = "hex-64";
+        services = [ "authelia-losos" ];
+        legacy = [ "${secretsDir}/oidc-hmac" ];
+      };
+      authelia-oidc-jwks = {
+        app = "login";
+        description = "The private key LosOS Login signs its identity tokens with.";
+        format = "rsa-2048";
+        services = [ "authelia-losos" ];
+        legacy = [ "${secretsDir}/oidc-jwks.pem" ];
+      };
+      # Made again with its digest by losos-identity-setup above.
+      oidc-lososd = {
+        app = "login";
+        description = "lososd's own secret for asking LosOS Login about a companion token.";
+        format = "hex-64";
+        services = [ "lososd" ];
+        legacy = [ lososdSecret ];
       };
     };
 
@@ -562,7 +647,7 @@ in
       LOSOS_AUTHELIA_NOTES = "/var/lib/authelia-losos/notifications.txt";
       # How lososd asks LosOS Login about a companion token.
       LOSOS_LOGIN_ADDR = "127.0.0.1:${toString port}";
-      LOSOS_OIDC_SECRET_FILE = lososdSecret;
+      LOSOS_OIDC_SECRET_FILE = "%d/oidc-lososd";
     };
 
     # The scheme the person's browser used. The edge ends TLS and sends the

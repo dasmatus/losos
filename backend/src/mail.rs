@@ -274,6 +274,9 @@ pub struct Mailbox {
     pub name: String,
     /// `inbox`, `drafts`, `sent`, `junk`, `trash`, `archive`, or `null`.
     pub role: Option<String>,
+    /// The folder it sits in, or `null` at the top. A person's own
+    /// folders nest (backend/plugins/mail); LosOS Mail's stay at the top.
+    pub parent_id: Option<String>,
     pub total: u64,
     pub unread: u64,
 }
@@ -630,6 +633,10 @@ pub fn parse_mailboxes(resp: &Value) -> Result<Vec<Mailbox>, Refused> {
                 id: m.get("id")?.as_str()?.to_string(),
                 name: m.get("name")?.as_str()?.to_string(),
                 role: m.get("role").and_then(Value::as_str).map(str::to_string),
+                parent_id: m
+                    .get("parentId")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
                 total: m.get("totalEmails").and_then(Value::as_u64).unwrap_or(0),
                 unread: m.get("unreadEmails").and_then(Value::as_u64).unwrap_or(0),
             })
@@ -766,7 +773,10 @@ pub fn parse_list(resp: &Value, position: usize) -> Result<Page, Refused> {
 }
 
 /// Open message `id`: read it with its bodies, and mark it read.
-pub fn message_calls(account: &str, id: &str) -> Vec<Value> {
+/// The calls that open message `id`: its parts, and with `mark_read`, the
+/// `$seen` keyword. The LosOS companion opens without marking, so a message
+/// an AI tool read still waits for its person.
+pub fn message_calls(account: &str, id: &str, mark_read: bool) -> Vec<Value> {
     let mut props: Vec<&str> = SUMMARY_PROPS.to_vec();
     props.extend([
         "cc",
@@ -776,19 +786,20 @@ pub fn message_calls(account: &str, id: &str) -> Vec<Value> {
         "attachments",
         "bodyValues",
     ]);
-    vec![
-        json!(["Email/get", {
-            "accountId": account,
-            "ids": [id],
-            "properties": props,
-            "fetchTextBodyValues": true,
-            "maxBodyValueBytes": MAX_BODY,
-        }, "g"]),
-        json!(["Email/set", {
+    let mut calls = vec![json!(["Email/get", {
+        "accountId": account,
+        "ids": [id],
+        "properties": props,
+        "fetchTextBodyValues": true,
+        "maxBodyValueBytes": MAX_BODY,
+    }, "g"])];
+    if mark_read {
+        calls.push(json!(["Email/set", {
             "accountId": account,
             "update": { id: { "keywords/$seen": true } },
-        }, "s"]),
-    ]
+        }, "s"]));
+    }
+    calls
 }
 
 /// Read only the mailbox membership needed to decide how to delete a message.
@@ -834,7 +845,7 @@ fn joined(m: &Value, key: &str) -> String {
         .unwrap_or_default()
 }
 
-pub fn parse_message(resp: &Value) -> Result<Message, Refused> {
+pub fn parse_message(resp: &Value, marked_read: bool) -> Result<Message, Refused> {
     let m = answer(resp, "Email/get", "g")?
         .get("list")
         .and_then(Value::as_array)
@@ -844,8 +855,8 @@ pub fn parse_message(resp: &Value) -> Result<Message, Refused> {
             message: "no such message".into(),
         })?;
     let mut summary = summary(m).ok_or_else(|| odd("Email/get item"))?;
-    // It was opened: the second call marked it read.
-    summary.seen = true;
+    // Opened by its person: the second call marked it read.
+    summary.seen |= marked_read;
     let has_html = m
         .get("htmlBody")
         .and_then(Value::as_array)
@@ -1288,10 +1299,15 @@ impl Mail {
         parse_list(&resp, position)
     }
 
-    pub fn message(&self, person: &crate::people::Person, id: &str) -> Result<Message, Refused> {
+    pub fn message(
+        &self,
+        person: &crate::people::Person,
+        id: &str,
+        mark_read: bool,
+    ) -> Result<Message, Refused> {
         check_id(id)?;
-        let (_, resp) = self.jmap(person, |a| message_calls(a, id))?;
-        parse_message(&resp)
+        let (_, resp) = self.jmap(person, |a| message_calls(a, id, mark_read))?;
+        parse_message(&resp, mark_read)
     }
 
     pub fn html(&self, person: &crate::people::Person, id: &str) -> Result<String, Refused> {
@@ -1567,6 +1583,7 @@ mod tests {
             { "id": "c", "name": "Junk Mail", "role": "junk", "totalEmails": 0, "unreadEmails": 0 },
             { "id": "b", "name": "Deleted Items", "role": "trash", "totalEmails": 1, "unreadEmails": 0 },
             { "id": "z", "name": "Receipts", "role": null, "totalEmails": 2, "unreadEmails": 1 },
+            { "id": "y", "name": "2026", "role": null, "parentId": "z", "totalEmails": 0, "unreadEmails": 0 },
             { "id": "d", "name": "Drafts", "role": "drafts", "totalEmails": 0, "unreadEmails": 0 },
             { "id": "e", "name": "Sent Items", "role": "sent", "totalEmails": 3, "unreadEmails": 0 },
             { "id": "a", "name": "Inbox", "role": "inbox", "totalEmails": 5, "unreadEmails": 2 },
@@ -1598,12 +1615,20 @@ mod tests {
                 "Inbox",
                 "Drafts",
                 "Sent Items",
+                "2026",
                 "Receipts",
                 "Junk Mail",
                 "Deleted Items"
             ]
         );
         assert_eq!(boxes[0].unread, 2);
+        // The page draws the tree from each folder's parent.
+        assert_eq!(boxes[3].parent_id.as_deref(), Some("z"));
+        assert_eq!(boxes[4].parent_id, None);
+        assert_eq!(
+            serde_json::to_value(&boxes[3]).unwrap()["parentId"],
+            json!("z")
+        );
         assert_eq!(with_role(&boxes, "sent"), Some("e"));
     }
 
@@ -1648,7 +1673,7 @@ mod tests {
 
     #[test]
     fn opening_a_message_marks_it_read_and_reads_its_parts() {
-        let calls = message_calls("c", "m1");
+        let calls = message_calls("c", "m1", true);
         assert_eq!(
             calls[1],
             json!(["Email/set", { "accountId": "c", "update": { "m1": { "keywords/$seen": true } } }, "s"])
@@ -1666,7 +1691,7 @@ mod tests {
             }]}, "g"],
             ["Email/set", { "updated": { "m1": null } }, "s"],
         ]});
-        let m = parse_message(&resp).unwrap();
+        let m = parse_message(&resp, true).unwrap();
         assert!(m.summary.seen);
         assert_eq!(m.text, "line one\nline two");
         assert!(m.has_html);
@@ -1677,7 +1702,21 @@ mod tests {
 
         let missing =
             json!({ "methodResponses": [["Email/get", { "list": [], "notFound": ["m9"] }, "g"]] });
-        assert_eq!(parse_message(&missing).unwrap_err().status, 404);
+        assert_eq!(parse_message(&missing, true).unwrap_err().status, 404);
+    }
+
+    #[test]
+    fn the_companion_opens_a_message_and_leaves_it_unread() {
+        let calls = message_calls("c", "m1", false);
+        assert_eq!(calls.len(), 1, "{calls:?}");
+        assert_eq!(calls[0][0], "Email/get");
+        let resp = json!({ "methodResponses": [["Email/get", { "list": [{
+            "id": "m1", "threadId": "t", "subject": "S", "from": [], "to": [],
+            "receivedAt": "2026-10-21T10:00:00Z", "preview": "", "keywords": {},
+            "hasAttachment": false, "mailboxIds": { "a": true },
+            "textBody": [], "htmlBody": [], "attachments": [], "bodyValues": {},
+        }] }, "g"]] });
+        assert!(!parse_message(&resp, false).unwrap().summary.seen);
     }
 
     #[test]
@@ -1860,7 +1899,7 @@ mod tests {
         let mail = Mail::new(Some(config(&dir)), Box::new(fake));
         let boxes = mail.mailboxes(&person("eva")).unwrap();
         // Stalwart had no Archive; there is one now, after Sent.
-        assert_eq!(boxes.len(), 7);
+        assert_eq!(boxes.len(), 8);
         assert_eq!(boxes[3].role.as_deref(), Some("archive"));
         mail.mailboxes(&person("eva")).unwrap();
 
@@ -1909,7 +1948,7 @@ mod tests {
         let seen = fake.seen.clone();
         let mail = Mail::new(Some(config(&dir)), Box::new(fake));
         assert_eq!(
-            mail.message(&person("eva"), "../../api")
+            mail.message(&person("eva"), "../../api", true)
                 .unwrap_err()
                 .status,
             400

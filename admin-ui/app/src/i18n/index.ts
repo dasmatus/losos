@@ -12,6 +12,7 @@ import calls from "./calls";
 import chat from "./chat";
 import cloud from "./cloud";
 import cloudApps from "./cloud-apps";
+import credentials from "./credentials";
 import collab from "./collab";
 import contacts from "./contacts";
 import games from "./games";
@@ -25,6 +26,7 @@ import machines from "./machines";
 import manage from "./manage";
 import menu from "./menu";
 import notes from "./notes";
+import office from "./office";
 import palette from "./palette";
 import panes from "./panes";
 import pins from "./pins";
@@ -57,6 +59,7 @@ export const MESSAGES = {
   ...machines,
   ...advanced,
   ...access,
+  ...credentials,
   ...users,
   ...account,
   ...profile,
@@ -67,6 +70,7 @@ export const MESSAGES = {
   ...calls,
   ...manage,
   ...chat,
+  ...office,
   ...mail,
   ...contacts,
   ...menu,

@@ -6,8 +6,9 @@
  * lososd binds 127.0.0.1:8082; the front Nginx vhost proxies /api/* to it, so
  * from the browser everything is same-origin and relative. Every route except
  * /api/health wants `Authorization: Bearer <token>`, where the token is 64
- * lowercase hex characters lososd minted into /var/secrets/losos-admin-token
- * on first start. The user reads it off the box and pastes it in.
+ * lowercase hex characters the box made at first boot and keeps sealed as its
+ * `admin-token` credential (modules/credentials.nix). The owner is shown it
+ * once, at the claim, and pastes it in.
  *
  * Token storage is sessionStorage under 'losos-token' — the same key the old
  * plain-JS admin pages used, so a token pasted before an upgrade still works
@@ -106,17 +107,25 @@ export class ApiError extends Error {
   /** The box refused a market action because no edge in reach is one LosOS
    *  runs: a 409 with `officialEdgeRequired: true`. */
   readonly officialEdgeRequired: boolean;
+  /** A word for the refusal, where the route gives one (`code` in the
+   *  body), so the page can say it in the reader's language. */
+  readonly code: string | null;
 
   constructor(
     status: number,
     message: string,
-    { edgeRequired = false, officialEdgeRequired = false } = {},
+    {
+      edgeRequired = false,
+      officialEdgeRequired = false,
+      code = null,
+    }: { edgeRequired?: boolean; officialEdgeRequired?: boolean; code?: string | null } = {},
   ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.edgeRequired = edgeRequired;
     this.officialEdgeRequired = officialEdgeRequired;
+    this.code = code;
   }
 
   /** The token this tab holds is not the one lososd minted. Re-prompt. */
@@ -284,14 +293,44 @@ export function useMe(): Me | null {
 }
 
 /** The https address of this page, which Authelia sends the browser back to.
- *  Authelia works over https only; the box serves both. */
+ *  Authelia works over https only; the box serves both. The fragment goes
+ *  too: it names the open document in Documents. */
 function httpsHere(): string {
-  const { host, pathname, search } = window.location;
-  return `https://${host}${pathname}${search}`;
+  const { host, pathname, search, hash } = window.location;
+  return `https://${host}${pathname}${search}${hash}`;
 }
 
-/** Authelia's sign-in page, coming back here afterwards. */
+/* The session cookie is https only, so a page on plain http cannot tell a
+ * signed-in person from a stranger. Sending them straight to Authelia would
+ * show someone who already has a session its second-factor page, so the
+ * plain page goes to its own https address first, marked `?signin`; there
+ * the dialog goes on to Authelia by itself only if nobody is signed in. */
+const SIGN_IN_MARK = "signin";
+
+function takeSignInMark(): boolean {
+  if (typeof window === "undefined") return false;
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has(SIGN_IN_MARK)) return false;
+  url.searchParams.delete(SIGN_IN_MARK);
+  window.history.replaceState(window.history.state, "", url);
+  return true;
+}
+
+const cameToSignIn = takeSignInMark();
+
+/** Whether this page was opened from the plain http address to sign in. */
+export function sentToSignIn(): boolean {
+  return cameToSignIn;
+}
+
+/** Authelia's sign-in page, coming back here afterwards; from plain http,
+ *  this page's https address first. */
 export function signInUrl(): string {
+  if (window.location.protocol === "http:") {
+    const url = new URL(httpsHere());
+    url.searchParams.set(SIGN_IN_MARK, "");
+    return url.toString();
+  }
   return `https://${window.location.host}/auth/?rd=${encodeURIComponent(httpsHere())}`;
 }
 
@@ -409,8 +448,8 @@ async function call<T>(path: string, options: CallOptions = {}): Promise<T> {
   }
 
   if (!response.ok) {
-    const { message, edgeRequired, officialEdgeRequired } = await errorBody(response);
-    throw new ApiError(response.status, message, { edgeRequired, officialEdgeRequired });
+    const { message, ...rest } = await errorBody(response);
+    throw new ApiError(response.status, message, rest);
   }
 
   return (await response.json()) as T;
@@ -420,6 +459,7 @@ interface ErrorBody {
   message: string;
   edgeRequired: boolean;
   officialEdgeRequired: boolean;
+  code: string | null;
 }
 
 async function errorBody(response: Response): Promise<ErrorBody> {
@@ -428,10 +468,12 @@ async function errorBody(response: Response): Promise<ErrorBody> {
       error?: unknown;
       edgeRequired?: unknown;
       officialEdgeRequired?: unknown;
+      code?: unknown;
     };
     const flags = {
       edgeRequired: body.edgeRequired === true,
       officialEdgeRequired: body.officialEdgeRequired === true,
+      code: typeof body.code === "string" ? body.code : null,
     };
     if (typeof body.error === "string" && body.error.length > 0) {
       return { message: body.error, ...flags };
@@ -440,7 +482,7 @@ async function errorBody(response: Response): Promise<ErrorBody> {
   } catch {
     /* lososd restarting mid-rebuild answers through nginx, not as JSON */
   }
-  return { message: `HTTP ${response.status}`, edgeRequired: false, officialEdgeRequired: false };
+  return { message: `HTTP ${response.status}`, edgeRequired: false, officialEdgeRequired: false, code: null };
 }
 
 // ── Routes ────────────────────────────────────────────────────────────────
@@ -1967,6 +2009,62 @@ export function postAccessRevoke(
   });
 }
 
+// ── Credentials (the Credentials pane) ───────────────────────────────────
+
+/** What every credential on the box is sealed to: the TPM, or the host key
+ *  on a box without one. */
+export type CredentialKey = "tpm2" | "host";
+
+/** A credential as lososd lists it (backend/src/credentials.rs). Never its
+ *  value: the API has no route that returns one. */
+export interface Credential {
+  name: string;
+  /** What it belongs to: "login", "mail", "admin", "backup", "cloud", … */
+  app: string;
+  /** lososd's English sentence, for a name this page has no words for. */
+  description: string;
+  /** "box" for one the box makes itself, "owner" for one a person types. */
+  source: "box" | "owner";
+  /** Whether the sealed file is there. */
+  set: boolean;
+  /** Unix seconds of the last change, or null when it is not set. */
+  updated: number | null;
+  sealedWith: CredentialKey;
+  /** The units that read it. */
+  services: string[];
+  /** Whether a new value can be made from here. */
+  rotate: boolean;
+  /** For one the owner gives: the admin page where they set it. */
+  pane: string | null;
+  /** At boot the old file would not open, so the box made a new value. */
+  remade: boolean;
+  /** At boot the box sealed a value an older version kept as a plain file. */
+  adopted: boolean;
+}
+
+export interface CredentialsResponse {
+  /** null on a build without a credential store. */
+  key: CredentialKey | null;
+  credentials: Credential[];
+}
+
+/** GET /api/credentials — every credential, without a value. */
+export function getCredentials(options: RequestOptions = {}): Promise<CredentialsResponse> {
+  return call<CredentialsResponse>("/api/credentials", options);
+}
+
+/** POST /api/credentials/{name}/rotate — make a new value. 409 for one the
+ *  box does not make itself. The answer is the row, never the value. */
+export function postCredentialRotate(
+  name: string,
+  options: RequestOptions = {},
+): Promise<{ credential: Credential }> {
+  return call<{ credential: Credential }>(`/api/credentials/${encodeURIComponent(name)}/rotate`, {
+    ...options,
+    method: "POST",
+  });
+}
+
 // ── People (the Users pane) ───────────────────────────────────────────────
 
 /** Someone who may sign in to this box, as GET /api/people lists them. */
@@ -2104,6 +2202,34 @@ export function postAccount(
  *  them, behind their password. 403 `wrongPassword`, 404 `noCode`. */
 export function postAccountCode(password: string, options: RequestOptions = {}): Promise<{ code: string }> {
   return postJson("/api/account/code", { password }, options);
+}
+
+// ── Windows network share ─────────────────────────────────────────────────
+
+/* Each person's LosOS Cloud files as `\\<box>\<share>` in Windows'
+ * Network view, Finder and Linux file managers (backend/src/windows.rs,
+ * modules/windows.nix). Windows signs in with the LosOS password once the
+ * box has seen it in the clear. */
+export type WindowsShare =
+  | { on: false }
+  | {
+      on: true;
+      /** Windows takes the caller's LosOS password now. */
+      ready: boolean;
+      /** The share's name under `\\<host>\`. */
+      share: string;
+      host: string;
+    };
+
+/** GET /api/windows — the caller's share and whether it is ready. */
+export function getWindowsShare(options: RequestOptions = {}): Promise<WindowsShare> {
+  return call<WindowsShare>("/api/windows", options);
+}
+
+/** POST /api/windows — hand the box the caller's password once, so Windows
+ *  takes it. 403 for a wrong password. */
+export function postWindowsShare(password: string, options: RequestOptions = {}): Promise<WindowsShare> {
+  return postJson("/api/windows", { password }, options);
 }
 
 // ── Profiles ──────────────────────────────────────────────────────────────
@@ -2863,6 +2989,8 @@ export interface MailFolder {
   id: string;
   name: string;
   role: MailRole | null;
+  /** The folder it sits in; null at the top. */
+  parentId: string | null;
   total: number;
   unread: number;
 }
@@ -3143,4 +3271,62 @@ export async function suggestContacts(
     if (error instanceof ApiError && (error.status === 404 || error.status === 403)) return [];
     throw error;
   }
+}
+
+/* A person's own folders and filters: the mail plugin
+ * (backend/plugins/mail). LosOS Mail's own folders, the ones with a role,
+ * keep their names and places. */
+
+/** POST /api/mail/folders — a folder of one's own, at the top or inside one. */
+export function createMailFolder(name: string, parentId: string | null): Promise<{ id: string }> {
+  return call<{ id: string }>("/api/mail/folders", {
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify({ name, parentId }),
+  });
+}
+
+/** PUT /api/mail/folders/{id} — rename it, or move it (`parentId: null` is the top). */
+export function updateMailFolder(
+  id: string,
+  change: { name?: string; parentId?: string | null },
+): Promise<{ ok: true }> {
+  return call<{ ok: true }>(`/api/mail/folders/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    contentType: "application/json",
+    body: JSON.stringify(change),
+  });
+}
+
+/** DELETE /api/mail/folders/{id} — its mail goes to the bin first. */
+export function deleteMailFolder(id: string): Promise<{ moved: number }> {
+  return call<{ moved: number }>(`/api/mail/folders/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export type MailFilterField = "from" | "to" | "subject";
+
+export interface MailFilter {
+  name: string;
+  enabled: boolean;
+  /** Every condition must hold, or one is enough. */
+  match: "all" | "any";
+  conditions: { field: MailFilterField; value: string }[];
+  /** The folder it files into, the bin included; null leaves it in the inbox. */
+  moveTo: string | null;
+  markRead: boolean;
+  flag: boolean;
+}
+
+/** GET /api/mail/filters — in the order they run. */
+export function getMailFilters(options: RequestOptions = {}): Promise<{ filters: MailFilter[] }> {
+  return call<{ filters: MailFilter[] }>("/api/mail/filters", options);
+}
+
+/** PUT /api/mail/filters — the whole list, which the mail server runs as mail arrives. */
+export function putMailFilters(filters: MailFilter[]): Promise<{ filters: MailFilter[] }> {
+  return call<{ filters: MailFilter[] }>("/api/mail/filters", {
+    method: "PUT",
+    contentType: "application/json",
+    body: JSON.stringify({ filters }),
+  });
 }

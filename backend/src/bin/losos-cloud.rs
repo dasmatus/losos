@@ -6,6 +6,9 @@
 
 use clap::{Parser, Subcommand};
 use losos_ctl::cloud::{self, server, Cloud, Config};
+use losos_ctl::office::actix::Sessions;
+use losos_ctl::office::discovery::Coolwsd;
+use losos_ctl::office::{TokenKey, Wopi};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -61,6 +64,20 @@ enum Cmd {
         /// as `<name>=<url>`. For a developer's machine.
         #[arg(long, value_name = "NAME=URL")]
         mesh_peer: Vec<String>,
+        /// Watch the files on disk and bring changes made behind the
+        /// service's back into the table as they happen (the Windows share).
+        #[arg(long)]
+        watch: bool,
+        /// Open Office documents in Collabora: the address coolwsd reaches
+        /// this cloud's `/wopi/files/` at, e.g. `http://127.0.0.1:8093`. On
+        /// the box nginx listens there on loopback and relays to the socket;
+        /// the access token is the whole authentication on that path.
+        #[arg(long, value_name = "URL")]
+        office_wopi: Option<String>,
+        /// Collabora's discovery document: coolwsd's address, or the path
+        /// of a saved copy (the box's cloud has no network to ask it on).
+        #[arg(long, default_value = "http://127.0.0.1:9980")]
+        coolwsd: String,
     },
     /// Bring the table in line with the files on disk, for one person or all.
     Scan {
@@ -119,6 +136,9 @@ fn main() -> anyhow::Result<()> {
             mesh,
             mesh_self_signed,
             mesh_peer,
+            watch,
+            office_wopi,
+            coolwsd,
         } => {
             let cloud = Arc::new(Cloud::open(
                 &cli.root,
@@ -128,6 +148,9 @@ fn main() -> anyhow::Result<()> {
                     knowledge_bases,
                 },
             )?);
+            if watch {
+                cloud::watch::spawn(cloud.clone())?;
+            }
             let listen = match (socket, listen) {
                 (Some(s), _) => server::Listen::Unix(s),
                 (None, Some(l)) => server::Listen::Tcp(l),
@@ -135,6 +158,17 @@ fn main() -> anyhow::Result<()> {
             };
             // A dot first: no login starts with one, so no home can take the name.
             let mesh_dir = cli.root.join(".mesh");
+            if let Some(url) = office_wopi {
+                // A dot first, like .mesh: no home can take the name.
+                let key = TokenKey::load_or_create(&cli.root.join(".office-token.key"))?;
+                let files = Arc::new(cloud::office::CloudFiles {
+                    cloud: cloud.clone(),
+                });
+                let _ = cloud.office.set(Arc::new(Sessions {
+                    wopi: Arc::new(Wopi::new(files, key, &url)),
+                    coolwsd: Coolwsd::new(&coolwsd),
+                }));
+            }
             actix_web::rt::System::new().block_on(async move {
                 cloud::mesh::start(
                     &cloud,

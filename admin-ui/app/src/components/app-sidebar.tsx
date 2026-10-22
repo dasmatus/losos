@@ -4,6 +4,7 @@ import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
   ArrowRight01Icon,
   BubbleChatIcon,
+  Doc01Icon,
   HardDriveIcon,
   Home01Icon,
   LayoutGridIcon,
@@ -45,6 +46,7 @@ import { openInNewTab, usePinItems } from "@/components/pin-menu";
 import { PinsDialog, usePins, useSavePins } from "@/components/pins-dialog";
 import { pinKey, viewPin, type PinView } from "@/lib/pins";
 import { contextMenu } from "@/lib/context-menu";
+import { useOfficeFolder } from "@/lib/office-folder";
 
 /* The one panel: every destination on this page in a single sidebar, in the
  * shape of shadcn's Sidebar ("collapses to icons"), inside the recessed box.
@@ -55,6 +57,7 @@ import { contextMenu } from "@/lib/context-menu";
  *
  *   Overview
  *   Apps
+ *   Documents               (a box that edits a folder of documents)
  *   Storage
  *   Mesh                ▾   (the link opens Mesh; the chevron folds)
  *     Market                selling storage and compute, and disk sharing
@@ -128,6 +131,7 @@ const TREE: readonly Entry[] = [
     icon: Home01Icon,
   },
   { kind: "link", key: "apps", to: "/apps", label: "shell.nav.apps", icon: LayoutGridIcon, pane: "apps" },
+  { kind: "link", key: "documents", to: "/office/", label: "office.files.title", icon: Doc01Icon },
   { kind: "link", key: "storage", to: "/storage", label: "shell.nav.storage", icon: HardDriveIcon, pane: "storage" },
   {
     kind: "link",
@@ -178,7 +182,7 @@ const TREE: readonly Entry[] = [
     icon: Settings01Icon,
     railTo: "/settings",
     children: (
-      ["network", "look", "hardware", "security", "account", "users", "access", "advanced", "history", "backup", "about", "reset"] as const
+      ["network", "look", "hardware", "security", "account", "users", "access", "credentials", "advanced", "history", "backup", "about", "reset"] as const
     ).map(
       settingsLeaf,
     ),
@@ -189,22 +193,23 @@ const TREE: readonly Entry[] = [
  * anyone else the panes of their sections (GET /api/me). A hidden link's
  * own children that stay visible move up a level, so someone in the market
  * section sees Market without Mesh. A fold left empty goes. */
-function allowed(entry: LinkEntry): boolean {
+function allowed(entry: LinkEntry, office: boolean): boolean {
   if (entry.pane !== undefined) return paneOpen(entry.pane);
   if (entry.key === "lab") return canUse("lab");
+  if (entry.key === "documents") return office;
   // There only while lososd lists the app in /api/me's `shared`: mail and
   // chat while the box shares its storage, contacts with LosOS Cloud.
   if (entry.shared !== undefined) return sharedApp(entry.shared);
   return true;
 }
 
-function visible(entries: readonly Entry[]): Entry[] {
+function visible(entries: readonly Entry[], office: boolean): Entry[] {
   const out: Entry[] = [];
   for (const entry of entries) {
-    const children = visible(entry.children ?? []);
+    const children = visible(entry.children ?? [], office);
     if (entry.kind === "fold") {
       if (children.length > 0) out.push({ ...entry, children });
-    } else if (allowed(entry)) {
+    } else if (allowed(entry, office)) {
       out.push(entry.children === undefined ? entry : { ...entry, children });
     } else {
       out.push(...children);
@@ -215,6 +220,7 @@ function visible(entries: readonly Entry[]): Entry[] {
 
 function isCurrent(entry: LinkEntry, pathname: string): boolean {
   if (entry.pane !== undefined) return paneFromPath(pathname) === entry.pane;
+  if (entry.key === "documents") return pathname === "/office" || pathname === "/office/";
   return pathname === entry.to;
 }
 
@@ -231,10 +237,11 @@ export function AppSidebar() {
   const { state, isMobile, setOpenMobile } = useSidebar();
   const rail = !isMobile && state === "collapsed";
   const me = useMe();
+  const office = useOfficeFolder();
   // Someone a rule of LosOS Login holds gets their account, at the top.
   const tree = React.useMemo(
-    () => ((me?.locked?.length ?? 0) > 0 ? [settingsLeaf("account")] : visible(TREE)),
-    [me],
+    () => ((me?.locked?.length ?? 0) > 0 ? [settingsLeaf("account")] : visible(TREE, office)),
+    [me, office],
   );
 
   // Which folds are open. One that holds the current page opens by itself.

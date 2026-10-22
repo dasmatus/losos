@@ -157,9 +157,11 @@ pkgs.testers.nixosTest {
     machine.succeed(
         "install -d -m 0755 /var/lib/losos",
         "echo '{\"mode\":\"local\"}' > /var/lib/losos/state.json",
-        "install -d -m 0700 /var/secrets",
-        "head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \\n' > /var/secrets/losos-admin-token",
-        "chmod 0600 /var/secrets/losos-admin-token",
+        # The credential store (modules/credentials.nix) is under /etc, so
+        # only its own line brings it back. A file in it stands in for a
+        # sealed credential; nothing here needs to open it.
+        "head -c 64 /dev/urandom | base64 -w0 > /etc/credstore.encrypted/admin-token",
+        "chmod 0600 /etc/credstore.encrypted/admin-token",
         "install -d /var/lib/losos-cloud /var/lib/forgejo",
         "echo cloud-state > /var/lib/losos-cloud/marker",
         "echo forgejo-state > /var/lib/forgejo/marker",
@@ -191,7 +193,7 @@ pkgs.testers.nixosTest {
         "echo ephemeral > /etc/losos-scratch",
     )
 
-    token = machine.succeed("cat /var/secrets/losos-admin-token").strip()
+    token = machine.succeed("cat /etc/credstore.encrypted/admin-token").strip()
     machine_id = machine.succeed("cat /etc/machine-id").strip()
     assert len(machine_id) == 32, f"unexpected machine-id: {machine_id!r}"
 
@@ -208,8 +210,8 @@ pkgs.testers.nixosTest {
         assert machine.succeed("cat /var/lib/forgejo/marker").strip() == "forgejo-state"
         assert machine.succeed("cat /home/notshared/data/marker").strip() == "notshared-doc"
         assert machine.succeed("cat /home/shared/data/marker").strip() == "shared-doc"
-        assert machine.succeed("cat /var/secrets/losos-admin-token").strip() == token, \
-            "the admin token changed across the reboot"
+        assert machine.succeed("cat /etc/credstore.encrypted/admin-token").strip() == token, \
+            "the credential store did not survive the reboot"
         assert machine.succeed("cat /etc/ssh/marker").strip() == "host-key"
         assert machine.succeed("cat /etc/keys/marker").strip() == "luks-keyfile"
         assert machine.succeed("cat /etc/rancher/node/marker").strip() == "node-password", \
@@ -223,8 +225,8 @@ pkgs.testers.nixosTest {
             machine.fail(f"test -e {path}")
 
     with subtest("permissions survive too"):
-        mode = machine.succeed("stat -c %a /var/secrets/losos-admin-token").strip()
-        assert mode == "600", f"admin token is mode {mode}, expected 600"
+        mode = machine.succeed("stat -c %a /etc/credstore.encrypted").strip()
+        assert mode == "700", f"the credential store is mode {mode}, expected 700"
         for home in ("/home/notshared", "/home/shared"):
             mode = machine.succeed(f"stat -c %a {home}").strip()
             assert mode == "700", f"{home} is mode {mode}, expected 700"
