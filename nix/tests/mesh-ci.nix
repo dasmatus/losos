@@ -431,7 +431,9 @@ let
                     "waitFor": {"text": "services"},
                     "steps": [
                         {"click": {"text": "services"}},
-                        {"waitText": "web is healthy"},
+                        # A step that passed stays folded, as on GitHub.
+                        {"click": {"text": "Run curl -fsS http://web:7000/ | grep pong"}},
+                        {"waitFor": {"selector": "li:has-text('pong')"}},
                         {"sleep": 1500},
                     ],
                 },
@@ -441,7 +443,8 @@ let
                     "waitFor": {"text": "recipe"},
                     "steps": [
                         {"click": {"text": "recipe"}},
-                        {"waitFor": {"text": "losos-project/pm@v0"}},
+                        {"click": {"text": "Run losos-project/pm@v0"}},
+                        {"waitFor": {"selector": "li:has-text('building hello version 0.1.0')"}},
                         {"sleep": 1500},
                     ],
                 },
