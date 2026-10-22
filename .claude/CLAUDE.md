@@ -205,6 +205,17 @@ and is never served or built by nix.
   changed is re-read); Git is `git grep` per query as `forgejo`. Both answer
   on Accept=yes sockets under `/run/losos-search` that only root (lososd's
   `/api/{cloud,git}/text`) can open. `nix/tests/search.nix` boots it.
+- `windows.nix` + `backend/src/windows.rs` + `backend/src/cloud/watch.rs`
+  (`losos.cloud.windows.enable`, on by default): the box under Network in
+  File Explorer (wsdd, LLMNR) and each person's LosOS Cloud files as
+  `\\<box>\<name>` over Samba, SMB2 and up, LAN only; ksmbd stays
+  blocked. NTLM needs the NT hash, so lososd makes one whenever a LosOS
+  password passes through it in the clear (`People` add, set, check) and
+  writes Samba's `smbpasswd`, shares and name map, and the
+  `losos-win-<name>` accounts as userdb records on /run. Samba writes as
+  `losos-cloud`; `losos-cloud serve --watch` scans what changed so ids and
+  ETags follow. While on, `_smb._tcp` replaces the WebDAV mDNS entry so
+  Finder and GNOME list the box once. `nix/tests/windows.nix` boots it.
 - `admin-ui/themes/`: the SPA's `tokens.css` is shipped byte for byte as
   `losos-tokens.css` into Forgejo's custom CSS and LosOS Login's page;
   LosOS Cloud is part of the SPA's own build, so one colour change moves

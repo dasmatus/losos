@@ -2158,6 +2158,34 @@ export function postAccountCode(password: string, options: RequestOptions = {}):
   return postJson("/api/account/code", { password }, options);
 }
 
+// ── Windows network share ─────────────────────────────────────────────────
+
+/* Each person's LosOS Cloud files as `\\<box>\<share>` in Windows'
+ * Network view, Finder and Linux file managers (backend/src/windows.rs,
+ * modules/windows.nix). Windows signs in with the LosOS password once the
+ * box has seen it in the clear. */
+export type WindowsShare =
+  | { on: false }
+  | {
+      on: true;
+      /** Windows takes the caller's LosOS password now. */
+      ready: boolean;
+      /** The share's name under `\\<host>\`. */
+      share: string;
+      host: string;
+    };
+
+/** GET /api/windows — the caller's share and whether it is ready. */
+export function getWindowsShare(options: RequestOptions = {}): Promise<WindowsShare> {
+  return call<WindowsShare>("/api/windows", options);
+}
+
+/** POST /api/windows — hand the box the caller's password once, so Windows
+ *  takes it. 403 for a wrong password. */
+export function postWindowsShare(password: string, options: RequestOptions = {}): Promise<WindowsShare> {
+  return postJson("/api/windows", { password }, options);
+}
+
 // ── Profiles ──────────────────────────────────────────────────────────────
 
 /* A person's picture, banner, colour, pronouns and a line about them

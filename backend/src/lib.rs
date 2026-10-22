@@ -73,4 +73,5 @@ pub mod site;
 pub mod supervisor;
 pub mod textsearch;
 pub mod vm_upload;
+pub mod windows;
 pub mod zcash_key;
