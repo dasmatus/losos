@@ -11,10 +11,13 @@ import { applyStoredTheme } from "@/lib/theme";
 import "sonner/dist/styles.css";
 import "@/styles/index.css";
 import { CloudRoot } from "./app";
+import { CloudTogether } from "./together";
 // A .canvas file's name opens it in Diagrams, and a Markdown file's as a note.
 import "./open-diagrams";
 import "./notes/opener";
 import "./collab/opener";
+// Office once the box says which types its Collabora opens.
+import "./office/opener";
 
 applyStoredTheme();
 applyFavicon();
@@ -25,5 +28,6 @@ if (container === null) throw new Error("#cloud is missing from cloud/index.html
 createRoot(container).render(
   <StrictMode>
     <CloudRoot />
+    <CloudTogether />
   </StrictMode>,
 );

@@ -37,7 +37,9 @@ schránku, takže Pošta vás požiada o prihlásenie vlastným účtom.
 ## Čítanie a písanie \{#reading-and-writing}
 
 - **Priečinky**: Doručená pošta, Koncepty, Odoslaná pošta, Archív,
-  Nevyžiadaná pošta a Kôš, pri každom s počtom neprečítaných správ.
+  Nevyžiadaná pošta a Kôš, vedľa nich vaše vlastné priečinky a pri každom
+  počet neprečítaných správ. Na širokej obrazovke sú ako strom naľavo od
+  zoznamu, na užšej ako riadok nad ním.
 - **Hľadanie** prehľadá otvorený priečinok: odosielateľov, predmety a text.
 - **Napísať** otvorí novú správu. Pole **Komu** ponúka ostatných ľudí na
   zariadení. **Odpovedať**, **Odpovedať všetkým** a **Preposlať** správu
@@ -50,7 +52,74 @@ schránku, takže Pošta vás požiada o prihlásenie vlastným účtom.
   formulárov a bez obrázkov zvonka zariadenia, takže odosielateľ nezistí,
   že ste správu otvorili. Správa bez obyčajného textu sa v tomto rámci
   otvorí hneď.
-- Prílohy sa stiahnu do počítača. Nikdy sa neotvoria priamo na stránke.
+- Prílohy sa stiahnu do počítača a nikdy sa neotvoria priamo na stránke.
+  Čo ďalej s nimi môžete robiť, opisuje
+  [Súbory a LosOS Cloud](#files-and-losos-cloud).
+- Keď je odosielateľ na tomto zariadení a zariadenie má Chat, tlačidlá
+  **Chat** a **Zavolať** v paneli správy s ním začnú rozhovor.
+- Kliknite pravým tlačidlom na správu v zozname a odpovedzte na ňu,
+  označte, archivujte alebo presuňte ju bez otvorenia; pozrite
+  [ponuku pravého tlačidla](admin-pages#the-right-click-menu).
+
+## Vlastné priečinky \{#your-own-folders}
+
+Vytvárajte si vlastné priečinky vedľa priečinkov Pošty aj v nich, do
+ľubovoľnej hĺbky.
+
+- **Nový priečinok** (ikona priečinka hore nad stromom) sa spýta na názov
+  a na to, kam ho dať. Názov nemôže obsahovať lomku a dva priečinky na
+  rovnakom mieste nemôžu mať rovnaký názov.
+- Kliknite pravým tlačidlom na priečinok a otvorte ho, vytvorte v ňom
+  priečinok, premenujte ho, presuňte do iného priečinka alebo na najvyššiu
+  úroveň, alebo ho odstráňte. Priečinky Pošty sa dajú len otvoriť a
+  vytvoriť v nich priečinok.
+- Pretiahnite správu na priečinok a presuniete ju tam. Pretiahnite svoj
+  priečinok na iný a vložíte ho doň, alebo na prázdne miesto pod stromom a
+  dostanete ho na najvyššiu úroveň.
+- Pri odstránení priečinka sa jeho správy najprv presunú do koša, takže
+  omylom sa nič nestratí. Priečinok, v ktorom sú ďalšie priečinky, sa
+  neodstráni, kým ich nepresuniete alebo neodstránite.
+
+## Filtre \{#filters}
+
+Filtre triedia novú poštu hneď, ako príde. Uchováva a spúšťa ich poštový
+server, takže fungujú, aj keď je Pošta zatvorená a nikto nie je
+prihlásený.
+
+- **Filtre** vedľa tlačidla **Napísať** ich zobrazia v poradí, v akom sa
+  spúšťajú. O správe rozhodne prvý filter, ktorý sa s ňou zhoduje.
+- Filter sa pozrie, od koho správa je, komu je (Komu alebo Kópia) alebo na
+  jej predmet, a hľadá v nich text. Na veľkosti písmen nezáleží. Môže
+  žiadať, aby platili všetky podmienky, alebo stačí ktorákoľvek z nich.
+- Potom správu presunie do priečinka (aj do koša, a tak filter maže),
+  označí ju ako prečítanú, označí ju, alebo urobí viac z toho naraz.
+- Prepínač pri filtri ho vypne bez toho, aby sa stratil, a šípky menia
+  poradie.
+- Kliknite pravým tlačidlom na správu a vyberte **Filtrovať podobnú
+  poštu…**, čím začnete filter pre jej odosielateľa.
+- Filtre pracujú s poštou, ktorá príde po ich uložení; pošta, ktorá už je
+  v priečinku, tam zostane. Odstránenie priečinka vypne filter, ktorý doň
+  len presúval poštu.
+
+## Súbory a LosOS Cloud \{#files-and-losos-cloud}
+
+- **Uložiť do LosOS Cloud** vedľa prílohy ju uloží do priečinka **Mail**
+  vo vašom LosOS Cloud. **Otvoriť** ju potom otvorí v aplikácii, ktorá ju
+  upravuje: Markdown v Poznámkach, iné textové súbory v spoločnom editore.
+- Pri písaní pridáte súbory tlačidlami **Priložiť z tohto počítača** a
+  **Priložiť z LosOS Cloud**, spolu najviac 20 MB. **Preposlať** ponechá
+  prílohy správy.
+- V LosOS Cloud kliknite pravým tlačidlom na súbor a vyberte **Poslať
+  e-mailom**. Otvorí sa nová správa so súborom v prílohe.
+
+## Opýtať sa AI zariadenia \{#ask-the-boxs-ai}
+
+Na zariadení, ktoré má jazykový model pre **Vytvoriť s AI**, sa tlačidlom
+**Zhrnúť** v paneli správy opýtate AI na otvorenú správu. Model beží na
+zariadení, takže správa aj odpoveď zostávajú na ňom, a číta len správu, na
+ktorú ste sa pýtali. Odpovedá na jednu otázku naraz, na malom zariadení môže
+odpoveď trvať aj niekoľko minút. Text v správe, ktorý AI prikazuje niečo
+urobiť, sa berie ako časť správy, nie ako vaša požiadavka.
 
 ## Čo Pošta zatiaľ nerobí \{#what-mail-does-not-do-yet}
 

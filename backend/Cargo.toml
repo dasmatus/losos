@@ -95,7 +95,7 @@ oxc = { version = "0.155", default-features = false, features = ["transformer", 
 # among them) is ever stored. PNG, JPEG, GIF and WebP in; PNG and JPEG out.
 # The `image` dependency itself is declared once, below with LosOS Cloud's
 # thumbnails, whose decoders are a superset of these.
-# Live editing in LosOS cloud (src/cloud/collab/): yrs is the Rust port of
+# Live editing in LosOS Cloud (src/cloud/collab/): yrs is the Rust port of
 # Yjs, the CRDT the editor runs in the browser, and speaks its binary
 # format and sync protocol. similar diffs a file written outside the editor
 # into line edits.
@@ -198,6 +198,10 @@ path = "src/bin/losos-cloud.rs"
 [[bin]]
 name = "losos-search"
 path = "src/bin/losos-search.rs"
+
+[[bin]]
+name = "losos-office"
+path = "src/bin/losos-office.rs"
 
 [[bin]]
 name = "losos-git"

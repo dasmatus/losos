@@ -119,9 +119,9 @@ export default defineMessages({
     de: "Das ganze System ist in Nix beschrieben. Jede übernommene Einstellung ist ein Commit im eigenen Git-Repository der Box.",
   },
   "shell.facts.7": {
-    en: "These pages, LosOS cloud, LosOS Git and LosOS Login all take their colours from one file.",
-    sk: "Tieto stránky, LosOS cloud, LosOS Git aj LosOS Login berú farby z jedného súboru.",
-    de: "Diese Seiten, LosOS cloud, LosOS Git und LosOS Login nehmen ihre Farben aus einer einzigen Datei.",
+    en: "These pages, LosOS Cloud, LosOS Git and LosOS Login all take their colours from one file.",
+    sk: "Tieto stránky, LosOS Cloud, LosOS Git aj LosOS Login berú farby z jedného súboru.",
+    de: "Diese Seiten, LosOS Cloud, LosOS Git und LosOS Login nehmen ihre Farben aus einer einzigen Datei.",
   },
   "shell.facts.8": {
     en: "LosOS Diagrams draws your network with Bevy, a game engine, compiled to WebAssembly.",

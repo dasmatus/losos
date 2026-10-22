@@ -1066,6 +1066,44 @@ in
       '';
     };
 
+    # ── Office documents (modules/office.nix) ───────────────────────────
+    office.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Open, edit and co-edit Word, Excel, PowerPoint and OpenDocument
+        files in the browser with Collabora Online, a LibreOffice that runs
+        on the box. Documents never leave the box: the editor reads and
+        saves them through LosOS Cloud. It runs while the box is up and
+        uses about 550 MB of memory with no document open.
+      '';
+    };
+
+    office.port = lib.mkOption {
+      type = lib.types.port;
+      default = 9980;
+      description = "Loopback port Collabora Online listens on. nginx serves it at /browser/ and /cool/.";
+    };
+
+    office.wopiPort = lib.mkOption {
+      type = lib.types.port;
+      default = 8093;
+      description = ''
+        Loopback port of the server Collabora Online reads documents from
+        and saves them to (the WOPI host): LosOS Cloud, or the folder below.
+      '';
+    };
+
+    office.folder = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "/var/lib/losos-office/files";
+      description = ''
+        Edit the documents in this folder instead of LosOS Cloud's, with a
+        small host of its own (losos-office). For a box without LosOS Cloud.
+      '';
+    };
+
     startupSound.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
@@ -1109,7 +1147,7 @@ in
       description = ''
         The Ollama model the builder asks. The default, Qwen2.5-Coder 1.5B
         (Apache License 2.0), fits the smallest box LosOS runs on: 4 GiB of
-        memory and two processor cores, beside LosOS cloud and LosOS Git.
+        memory and two processor cores, beside LosOS Cloud and LosOS Git.
         The prompts are written for it. A larger Qwen2.5-Coder such as
         `qwen2.5-coder:7b` writes better apps on a box with 8 GiB or more
         to spare, and takes several times as long.
@@ -1138,7 +1176,7 @@ in
         only by the edge through this box's tunnel; buyers pay the edge per
         token. It runs as the `shared` user, away from the owner's data, and
         cannot take more than `inference.lend.memoryMiB`: a request for more
-        stops the lending server, never LosOS cloud. Needs the edge proxy
+        stops the lending server, never LosOS Cloud. Needs the edge proxy
         (losos.proxy.enable).
       '';
     };
@@ -1150,7 +1188,7 @@ in
         The memory this box lends, in MiB. The edge never gives the box a
         larger share of a model than this, and the lending server is
         stopped if it grows past it. The default leaves a 4 GiB box room
-        for LosOS cloud and LosOS Git; raise it on a box with more.
+        for LosOS Cloud and LosOS Git; raise it on a box with more.
       '';
     };
 

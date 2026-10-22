@@ -55,7 +55,7 @@ pub const TYPES: &[TypeInfo] = &[
         ports: ETH0,
         endpoint: true,
         emulate: Some("box"),
-        blurb: "A mini-PC running LosOS: LosOS cloud and LosOS Git, the admin UI on :80.",
+        blurb: "A mini-PC running LosOS: LosOS Cloud and LosOS Git, the admin UI on :80.",
     },
     TypeInfo {
         key: "edge-local",

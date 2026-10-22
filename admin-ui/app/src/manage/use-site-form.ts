@@ -15,7 +15,7 @@ import { fits, type Misfit } from "@/lib/option-value";
 import type { ApplyBarForm } from "@/screens/settings/apply-bar";
 import type { SiteForm } from "@/screens/settings/site-settings";
 
-/* The settings of LosOS cloud and LosOS Git on a company edge's page for a
+/* The settings of LosOS Cloud and LosOS Git on a company edge's page for a
  * box: the same rows as the box's Apps pane (SiteSettings) and the same bar
  * (ApplyBar), over GET and POST /api/site instead of the box's whole
  * settings form, which a managing edge may not read or write. A change is

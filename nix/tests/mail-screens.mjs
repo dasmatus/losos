@@ -6,6 +6,9 @@
 //   mail-screens sidebar NN slug "title" none|mail   the admin sidebar
 //   mail-screens mail NN                             inbox, a message, a reply
 //                                                    typed word by word, Sent
+//   mail-screens folders NN                          the folder tree, a folder a
+//                                                    filter filed into, a folder's
+//                                                    menu, a new folder, the filters
 //   mail-screens manifest <test-name>                steps.jsonl -> manifest.json
 //
 // Every shot is 1280 x 900 CSS px at device scale 2, dark, en-US, reduced
@@ -168,6 +171,63 @@ async function mail(first) {
   await context.close();
 }
 
+async function folders(first) {
+  let n = Number(first);
+  const name = (slug) => `${String(n++).padStart(2, '0')}-${slug}.png`;
+  const context = await browser();
+  const page = await signedIn(context);
+  await page.goto(`${BASE}/mail`);
+  // The tree is the wide screen's; the row of folders is hidden at this size.
+  const tree = page.getByRole('navigation', { name: 'Folders' }).filter({ has: page.getByRole('heading') });
+  const losos = tree.locator('[data-folder="LosOS box"]');
+  await losos.waitFor({ timeout: 120_000 });
+  await page.getByRole('button', { name: /Photos from the lake/ }).waitFor();
+  await shot(page, name('folder-tree'), 'the folders as a tree: LosOS box inside Projects', { kind: 'click', target: 'folder' }, {
+    folder: await target(losos),
+  });
+
+  await losos.click();
+  const filed = page.getByRole('button', { name: /Backup log: Sunday/ });
+  await filed.waitFor({ timeout: 60_000 });
+  await shot(page, name('filed'), "Peter's backup log, filed here by a filter, read and flagged", { kind: 'none' }, {
+    message: await target(filed),
+  });
+
+  await losos.click({ button: 'right' });
+  const menu = page.locator('[data-slot="context-menu"]').first();
+  await menu.waitFor();
+  await shot(page, name('folder-menu'), 'a right click on a folder of your own', { kind: 'none' }, { menu: await target(menu) });
+  await page.keyboard.press('Escape');
+  await menu.waitFor({ state: 'detached' });
+
+  await tree.getByRole('button', { name: 'New folder' }).click();
+  const dialog = page.getByRole('dialog');
+  const field = dialog.getByLabel('Name');
+  await field.waitFor();
+  await field.pressSequentially('Receipts');
+  const create = dialog.getByRole('button', { name: 'Create' });
+  await shot(page, name('new-folder'), 'a new folder, named', { kind: 'click', target: 'create' }, { create: await target(create) });
+  await create.click();
+  await dialog.waitFor({ state: 'detached' });
+  await noToasts(page);
+  await page.getByRole('heading', { level: 2, name: 'Receipts' }).waitFor();
+  await shot(page, name('new-folder-open'), 'the new folder, open and empty');
+
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
+  const filters = page.getByRole('dialog');
+  const backups = filters.locator('[data-filter="Backup reports"]');
+  await backups.waitFor();
+  await shot(page, name('filters'), 'the filters, in the order they run', { kind: 'click', target: 'edit' }, {
+    edit: await target(backups.getByRole('button', { name: 'Edit' })),
+  });
+  await backups.getByRole('button', { name: 'Edit' }).click();
+  const editor = page.getByRole('dialog');
+  await editor.getByLabel('Name').waitFor();
+  await shot(page, name('filter'), "a filter: Peter's backup mail goes to LosOS box, read and flagged");
+  await editor.getByRole('button', { name: 'Cancel' }).click();
+  await context.close();
+}
+
 function manifest(test) {
   const steps = readFileSync(`${OUT}/steps.jsonl`, 'utf8')
     .split('\n')
@@ -189,6 +249,7 @@ function manifest(test) {
 const [verb, ...rest] = process.argv.slice(2);
 if (verb === 'sidebar') await sidebar(...rest);
 else if (verb === 'mail') await mail(...rest);
+else if (verb === 'folders') await folders(...rest);
 else if (verb === 'manifest') manifest(...rest);
 else {
   console.error(`unknown verb ${verb}`);

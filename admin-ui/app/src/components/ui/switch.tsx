@@ -59,10 +59,16 @@ export function Switch({ className, size = "default", children, ...props }: Swit
             aria-hidden="true"
             className={cn(
               "pointer-events-none block rounded-full bg-surface shadow-sm",
-              "transition-transform duration-200 ease-out",
+              "transition-[translate,width] duration-200 ease-snap",
               "group-data-[size=default]/switch:size-5 group-data-[size=sm]/switch:size-4",
               "group-data-[size=default]/switch:data-selected:translate-x-5",
               "group-data-[size=sm]/switch:data-selected:translate-x-4",
+              // Held down, the thumb stretches toward where it is going, the
+              // way a finger squashes it; on release it settles in place.
+              "group-data-pressed/switch:group-data-[size=default]/switch:w-6",
+              "group-data-pressed/switch:group-data-[size=default]/switch:data-selected:translate-x-4",
+              "group-data-pressed/switch:group-data-[size=sm]/switch:w-5",
+              "group-data-pressed/switch:group-data-[size=sm]/switch:data-selected:translate-x-3",
             )}
           />
           {children}

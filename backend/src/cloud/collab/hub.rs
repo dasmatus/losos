@@ -545,6 +545,16 @@ mod tests {
         settle().await;
         drop(doc);
         settle().await;
+        // The close is a timer and a write on a blocking thread, so a busy
+        // runner can still hold the room here; reopening it then would read
+        // the room, not the file written below.
+        for _ in 0..40 {
+            if h.get(&DocKey::File(id)).is_none() {
+                break;
+            }
+            settle().await;
+        }
+        assert!(h.get(&DocKey::File(id)).is_none(), "closed when idle");
         // Typed while the file was edited elsewhere and nobody had it open.
         let mut text = std::fs::read(dir.join(format!("f{id}.ydoc"))).unwrap();
         let typed = Room::from_state(&text).unwrap();

@@ -274,13 +274,15 @@ let
   # build a set with the probe in it.
   # backend/plugins' vendored crates: lososd's plugins and Mesh CI's pm
   # plugin are built from the one workspace.
-  pluginsCargoHash = "sha256-Xgiz1gNTzroUyvjbf/jdMlOJ0geZKjmH8oFrYqCGO8A=";
+  pluginsCargoHash = "sha256-KfPuzfODxOgD0a1zjrob4bsYM56pwi8k3Jar5vs4+R8=";
   lososPlugins =
     {
       pname ? "losos-plugins",
       names ? [
+        "assistant"
         "look"
         "pins"
+        "mail"
         "ci"
       ],
     }:
@@ -436,8 +438,10 @@ images
   losos-plugins-probe = lososPlugins {
     pname = "losos-plugins-probe";
     names = [
+      "assistant"
       "look"
       "pins"
+      "mail"
       "probe"
     ];
   };

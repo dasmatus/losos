@@ -24,7 +24,7 @@ else
 fi
 mkdir -p /tmp/www
 case "$ROLE" in
-  box) printf '<h1>LosOS cloud on %s.local</h1>\n' "$HOST" > /tmp/www/index.html ;;
+  box) printf '<h1>LosOS Cloud on %s.local</h1>\n' "$HOST" > /tmp/www/index.html ;;
   *) printf '{"status":"ok","edge":"%s","role":"%s"}\n' "$HOST" "$ROLE" > /tmp/www/health ;;
 esac
 httpd -p 80 -h /tmp/www

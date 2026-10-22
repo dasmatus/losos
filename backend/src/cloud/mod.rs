@@ -23,6 +23,7 @@ pub mod import;
 pub mod mesh;
 pub mod nc;
 pub mod notes;
+pub mod office;
 pub mod photos;
 pub mod pim;
 pub mod preview;
@@ -78,6 +79,9 @@ pub struct Cloud {
     /// Sharing with people on other boxes and editing together, once
     /// [`mesh::start`] has run.
     pub mesh: std::sync::OnceLock<std::sync::Arc<mesh::Mesh>>,
+    /// Office documents through Collabora, when the box runs it
+    /// (`losos-cloud serve --office-wopi`, [`office`]).
+    pub office: std::sync::OnceLock<std::sync::Arc<crate::office::actix::Sessions>>,
 }
 
 impl Cloud {
@@ -97,6 +101,7 @@ impl Cloud {
             notes: notes::Cache::default(),
             changes,
             mesh: std::sync::OnceLock::new(),
+            office: std::sync::OnceLock::new(),
         })
     }
 

@@ -54,7 +54,7 @@ struct HeartbeatReq<'a> {
     idle: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     relay_pass: Option<&'a str>,
-    /// The owner lets this edge manage the box's LosOS cloud, LosOS Git and
+    /// The owner lets this edge manage the box's LosOS Cloud, LosOS Git and
     /// apps (`crate::server::manage`). Only lets the edge's page list it:
     /// the box decides what the edge may do on every call it makes.
     #[serde(skip_serializing_if = "std::ops::Not::not")]

@@ -15,7 +15,7 @@
 # tabs say the model is still downloading.
 #
 # Ollama runs on the processor. The default, Qwen2.5-Coder 1.5B, is sized
-# for the smallest box LosOS supports (4 GiB, two cores, LosOS cloud and
+# for the smallest box LosOS supports (4 GiB, two cores, LosOS Cloud and
 # LosOS Git running beside it): it takes about 1.5 GiB of memory while it
 # writes and gives it back five minutes after the last build.
 { config, lib, ... }:

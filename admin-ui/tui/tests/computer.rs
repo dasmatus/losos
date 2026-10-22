@@ -169,7 +169,7 @@ fn a_wrong_password_sets_up_nothing() {
     let r = s.client.run(&["cloud", "setup"], "not-the-password");
     assert_eq!(r.code, 1);
     assert!(
-        r.err.contains("not the password of LosOS cloud"),
+        r.err.contains("not the password of LosOS Cloud"),
         "{}",
         r.err
     );
