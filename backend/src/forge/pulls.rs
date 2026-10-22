@@ -199,6 +199,11 @@ fn repo_dir(state: &State, repo: &Repo) -> PathBuf {
 /// pull request was opened, synchronised, reviewed, closed, reopened or
 /// merged.
 pub fn notify(state: &State, action: &str, repo: &Repo, pr: &Issue) {
+    notify_by(state, action, repo, pr, "");
+}
+
+/// [`notify`], naming who did it (`actor`; empty when a push did).
+pub fn notify_by(state: &State, action: &str, repo: &Repo, pr: &Issue, actor: &str) {
     let head_sha = match pr.head_sha.clone() {
         Some(sha) => sha,
         None => pr
@@ -229,6 +234,7 @@ pub fn notify(state: &State, action: &str, repo: &Repo, pr: &Issue) {
                 pr.base_branch.as_deref().unwrap_or_default()
             ),
             author: pr.poster.clone(),
+            actor: actor.to_string(),
         },
     );
 }
@@ -573,7 +579,7 @@ async fn create_pull(
         &body.body,
         Some((&body.head, &body.base)),
     )?;
-    notify(&state, "opened", &repo, &pr);
+    notify_by(&state, "opened", &repo, &pr, &user.login);
     Ok(HttpResponse::Created().json(pull_json(&state, &repo, &pr, p)?))
 }
 
@@ -646,7 +652,7 @@ async fn edit_pull(
                 _ => None,
             };
             state.store.set_closed(pr.id, true, shas)?;
-            notify(&state, "closed", &repo, &pr);
+            notify_by(&state, "closed", &repo, &pr, &user.login);
         }
         Some("open") if pr.closed => {
             let head_there = match pr.head_branch.as_deref() {
@@ -657,7 +663,7 @@ async fn edit_pull(
                 return Err(Fail::bad("The branch it came from is gone."));
             }
             state.store.set_closed(pr.id, false, None)?;
-            notify(&state, "reopened", &repo, &pr);
+            notify_by(&state, "reopened", &repo, &pr, &user.login);
         }
         Some("open" | "closed") => {}
         Some(other) => return Err(Fail::bad(format!("\"{other}\" is not open or closed."))),
@@ -864,7 +870,7 @@ async fn create_review(
         state
             .store
             .create_review(pr.id, user.id, review_state, &body.body, &head, &lines)?;
-    notify(&state, "reviewed", &repo, &pr);
+    notify_by(&state, "reviewed", &repo, &pr, &user.login);
     Ok(HttpResponse::Created().json(review_json(&review)))
 }
 
@@ -1079,6 +1085,7 @@ async fn merge_pull(
 ) -> Answer {
     let (repo, pr, c, p) = find_pull(&req, &state, &path.0, &path.1, path.2, true)?;
     let user = need_person(&c)?.clone();
+    let actor = user.login.clone();
     if p < Permission::Write || c.repo_access(&state.store, &repo)? < Permission::Write {
         return Err(Fail::forbidden("Only people who may push can merge."));
     }
@@ -1127,7 +1134,7 @@ async fn merge_pull(
         .store
         .issue(repo.id, pr.number)?
         .ok_or_else(|| Fail::not_found("pull request"))?;
-    notify(&state, "merged", &repo, &pr);
+    notify_by(&state, "merged", &repo, &pr, &actor);
     let mut doc = pull_json(&state, &repo, &pr, p)?;
     doc["sha"] = json!(merged);
     Ok(HttpResponse::Ok().json(doc))
@@ -1277,6 +1284,18 @@ async fn create_comment(
     }
     text("comment", &body.body, BODY_MAX)?;
     let comment = state.store.add_comment(issue.id, user.id, &body.body)?;
+    if issue.is_pull {
+        notify_by(&state, "commented", &repo, &issue, &user.login);
+    } else {
+        super::events::issue(
+            "commented",
+            &repo,
+            issue.number,
+            None,
+            &issue.title,
+            &user.login,
+        );
+    }
     Ok(HttpResponse::Created().json(json!({
         "id": comment.id,
         "user": { "login": comment.poster },

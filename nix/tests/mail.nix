@@ -166,6 +166,8 @@ pkgs.testers.nixosTest {
         "style-src 'unsafe-inline'; img-src data:; font-src data:; frame-ancestors 'self'; "
         "base-uri 'none'; form-action 'none'"
     )
+    # The same, while the message's pictures are hidden (backend/src/pictures.rs).
+    CSP_NO_PICTURES = CSP.replace("img-src data:", "img-src 'none'")
 
     start_all()
     box.wait_for_unit("lososd.service")
@@ -392,7 +394,14 @@ pkgs.testers.nixosTest {
         sale = wait_for(eva, inbox, "Autumn sale")
         msg = ok(f"/api/mail/messages/{sale['id']}", eva)
         assert msg["hasHtml"] is True, msg
+        # Pictures are hidden until the person shows them: lososd's policy
+        # then lets no picture load, and the browser keeps to the stricter of
+        # its and nginx's.
         head = curl(f"-D - -o /tmp/frame.html -H 'Cookie: {eva}' https://{BOX}/api/mail/messages/{sale['id']}/html")
+        csp = re.findall(r"(?im)^content-security-policy: (.*?)\r?$", head)
+        assert CSP_NO_PICTURES in csp and set(csp) <= {CSP, CSP_NO_PICTURES}, (csp, head)
+        assert "img{color:transparent" in laptop.succeed("cat /tmp/frame.html")
+        head = curl(f"-D - -o /tmp/frame.html -H 'Cookie: {eva}' 'https://{BOX}/api/mail/messages/{sale['id']}/html?pictures=1'")
         csp = re.findall(r"(?im)^content-security-policy: (.*?)\r?$", head)
         # lososd and nginx both send it, the same text: either alone holds.
         assert csp and all(c == CSP for c in csp), (csp, head)
