@@ -74,6 +74,14 @@ let
         chat: join(root, "chat/index.html"),
         manage: join(root, "manage/index.html"),
       };
+      // Diagrams is a lazy screen of the SPA now; its WebAssembly packages
+      // stand in as empty modules, since the test never opens it.
+      config.plugins.push({
+        name: "chat-test-no-lab",
+        enforce: "pre",
+        resolveId: (id: string) => (/(core|virt|render)-pkg\//.test(id) ? "\0lab-stub" : null),
+        load: (id: string) => (id === "\0lab-stub" ? "export default async function init() {}; export const Lab = class {};" : null),
+      });
       export default config;
       EOF
     '';
