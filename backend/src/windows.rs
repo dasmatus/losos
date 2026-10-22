@@ -634,7 +634,7 @@ mod tests {
         assert!(
             passwd.starts_with("losos-win-matus:")
                 && passwd.contains(":8846F7EAEE8FB117AD06BDD830B7586C:[U          ]:"),
-            "{passwd}"
+            "the owner's smbpasswd line"
         );
         assert_eq!(passwd.lines().count(), 1);
         assert_eq!(
@@ -689,7 +689,10 @@ mod tests {
             .lines()
             .map(|l| l.split(':').nth(1).unwrap().parse().unwrap())
             .collect();
-        assert!(uids[0] != uids[1] && !uids.contains(&cloud_uid), "{passwd}");
+        assert!(
+            uids[0] != uids[1] && !uids.contains(&cloud_uid),
+            "uids {uids:?}, the cloud's {cloud_uid}"
+        );
     }
 
     #[test]
