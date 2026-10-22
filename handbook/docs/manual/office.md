@@ -71,6 +71,40 @@ copy. Each sees the other's cursor and name, and each change shows up on
 the other screen as it is made. Nobody waits for anyone to finish, and one
 save keeps everyone's changes.
 
+## Markdown documents and presentations
+
+**New document** and **New presentation** in LosOS Cloud's files bar make
+a Markdown file in the folder you are in, named *Untitled document* or
+*Untitled presentation*, and open it in LosOS Office. Click the name at the
+top to change it. Markdown files are LosOS's own, so they open whether
+Collabora is on or not, and any `.md` file offers **Open in LosOS Office**
+in its right-click menu.
+
+The bar above the text has a button for everything Markdown can write, in
+the form GitHub and Obsidian both read: headings, bold, italic,
+strikethrough, highlight, code, subscript and superscript, keys, hidden
+comments, bulleted, numbered and task lists, quotes, code blocks, formulas
+in a line or on their own, tables, folded sections, lines across, callouts,
+links, pictures, links to notes and embeds, tags, block link targets,
+footnotes and properties. Select some text first and the button marks it;
+press it again and the mark comes off. **Ctrl B**, **Ctrl I**, **Ctrl K**
+and **Ctrl E** work too.
+
+A document is written on the left and read on the right, drawn as Notes
+draws it. **Write** and **Read** give either side the whole width. Links to
+other notes and pictures are found in the same folder, or in the Obsidian
+vault the file is in. Typing is shared like any LosOS Cloud text file:
+everyone in the file types together and the box saves a moment after the
+typing stops.
+
+A presentation is a Markdown file with `slides: true` in its properties.
+Each line of `---` starts a new slide. Every slide is laid out the same
+way: the text in the middle, centred, and the pictures on the right. The
+slides are listed on the left, and the slide the cursor is in is shown on
+the right as it will look. **Present** plays it full screen; the arrow
+keys, Space and Page Down move through it and Escape ends it. The PDF
+button prints a document as pages, or a presentation one slide a page.
+
 ## What stays private
 
 The editor runs on the box and reads the document straight from the box's

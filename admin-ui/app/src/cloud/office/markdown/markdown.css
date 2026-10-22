@@ -1,0 +1,151 @@
+/* Markdown documents and slides in LosOS Office (src/cloud/office/markdown/),
+ * on the LosOS palette in both themes. Bundled, so the page's
+ * `style-src 'self'` allows it; the slide HTML carries classes only.
+ * Element styles inside a slide are the notes stylesheet's (note.css); here
+ * only what makes a slide a slide. */
+
+/* The slide is its own size container: everything in it is measured in
+ * its width, so a slide in the strip is the projector's slide made small. */
+.md-slide {
+  container-type: inline-size;
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  overflow: hidden;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.md-slide-inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 5cqw;
+  height: 100%;
+  padding: 6cqw 7cqw;
+  font-size: 2.7cqw;
+  line-height: 1.45;
+}
+.md-slide-inner[data-pictures] {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+/* The text: in the middle of its column, each block centred on the same
+ * axis; a list keeps its bullets aligned on the left inside that. */
+.md-slide-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  overflow: hidden;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.md-slide-text > * {
+  max-width: 100%;
+}
+.md-slide-text.note-body :is(h1, h2, h3, h4, h5, h6) {
+  margin: 0 0 0.45em;
+  border: 0;
+  padding: 0;
+}
+.md-slide-text.note-body h1 {
+  font-size: 2.3em;
+  line-height: 1.12;
+}
+.md-slide-text.note-body h2 {
+  font-size: 1.7em;
+  line-height: 1.15;
+}
+.md-slide-text.note-body h3 {
+  font-size: 1.3em;
+}
+.md-slide-text.note-body :is(p, ul, ol, pre, table, blockquote, .callout, .math-block, details) {
+  margin: 0 0 0.7em;
+}
+.md-slide-text.note-body > :last-child {
+  margin-bottom: 0;
+}
+.md-slide-text.note-body :is(ul, ol, .callout, pre, blockquote, table, details) {
+  text-align: left;
+}
+.md-slide-text.note-body :is(p, li, td, th) {
+  color: var(--ink);
+}
+.md-slide-text.note-body h1 + p {
+  color: var(--muted);
+}
+
+/* The pictures: their own column on the right, as large as it allows. */
+.md-slide-pictures {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2cqw;
+  min-height: 0;
+}
+.md-slide-pictures > * {
+  display: flex;
+  min-height: 0;
+  max-width: 100%;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+}
+.md-slide-pictures img {
+  max-width: 100%;
+  max-height: 100%;
+  min-height: 0;
+  object-fit: contain;
+  border-radius: 1cqw;
+}
+
+/* The strip on the left of the slide editor. */
+.md-strip .md-slide {
+  border-radius: 6px;
+}
+
+/* Full screen: the slide as large as the screen allows at 16:9. */
+.md-present-stage {
+  display: block;
+  width: min(100vw, calc(100vh * 16 / 9));
+  cursor: default;
+}
+.md-present .md-slide {
+  background: var(--surface);
+}
+
+/* Printing, and so the PDF: only the copy made for it, on white. */
+.md-print {
+  display: none;
+}
+
+@page md-deck {
+  size: 297mm 167.0625mm;
+  margin: 0;
+}
+
+@media print {
+  body:has(> .md-print) > :not(.md-print) {
+    display: none !important;
+  }
+  .md-print {
+    display: block;
+    background: #fff;
+  }
+  .md-print .note {
+    font-size: 11pt;
+  }
+  .md-print-deck {
+    page: md-deck;
+  }
+  .md-print-deck .md-slide {
+    break-after: page;
+    width: 297mm;
+    height: 167.0625mm;
+    aspect-ratio: auto;
+  }
+  .md-print :is(pre, table, img, .callout) {
+    break-inside: avoid;
+  }
+}
