@@ -10,6 +10,7 @@ import advanced from "./advanced";
 import apps from "./apps";
 import cloud from "./cloud";
 import cloudApps from "./cloud-apps";
+import credentials from "./credentials";
 import collab from "./collab";
 import games from "./games";
 import git from "./git";
@@ -56,6 +57,7 @@ export const MESSAGES = {
   ...machines,
   ...advanced,
   ...access,
+  ...credentials,
   ...users,
   ...account,
   ...profile,

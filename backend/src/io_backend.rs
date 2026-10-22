@@ -1303,10 +1303,10 @@ pub fn write_state(path: &Path, s: &State) -> anyhow::Result<()> {
 /// `modules/backup.nix` gives lososd, with the appliance defaults.
 #[derive(Debug, Clone)]
 pub struct BackupFiles {
-    /// The bucket, as JSON, 0600.
+    /// The bucket, as JSON, 0600, without its secret key: that is in the
+    /// credential store as [`crate::backup::CREDENTIAL`], with the rest of
+    /// what the units read.
     pub target: PathBuf,
-    /// The same bucket as the units' `EnvironmentFile=`, 0600.
-    pub env: PathBuf,
     /// The scripts' working directory: the log, the report, the staged
     /// settings of a restore.
     pub dir: PathBuf,
@@ -1330,10 +1330,6 @@ impl BackupFiles {
             target: PathBuf::from(env_or(
                 "LOSOS_BACKUP_TARGET_FILE",
                 "/var/secrets/losos-backup.json",
-            )),
-            env: PathBuf::from(env_or(
-                "LOSOS_BACKUP_ENV_FILE",
-                "/var/secrets/losos-backup.env",
             )),
             dir: PathBuf::from(env_or("LOSOS_BACKUP_DIR", "/var/lib/losos-backup")),
             recovery_code: crate::recovery::code_file(),
@@ -1369,11 +1365,46 @@ impl BackupFiles {
     }
 }
 
+/// Rewrite an older build's bucket file without its secret key, once the
+/// keys are sealed in the credential store. Called at start as well, so the
+/// plaintext goes on the first boot of a new build and not on the next visit
+/// to the Backups pane.
+pub fn scrub_backup_target(path: &Path, target: &crate::backup::Target) -> anyhow::Result<()> {
+    let creds = crate::credentials::Credentials::from_env();
+    if creds.registry()?.is_none() || creds.get(crate::backup::CREDENTIAL)?.is_none() {
+        return Ok(());
+    }
+    let mut public = target.clone();
+    public.secret_access_key.clear();
+    atomic_write_secret(path, &serde_json::to_vec_pretty(&public)?)?;
+    tracing::info!(path = %path.display(), "removed the plaintext secret key from the bucket file");
+    Ok(())
+}
+
+/// [`scrub_backup_target`] for whatever bucket file is there.
+pub fn scrub_backup_target_at_start() {
+    let path = BackupFiles::from_env().target;
+    let Ok(Some(text)) = read_if_present(&path, "reading the backup target") else {
+        return;
+    };
+    let Ok(target) = serde_json::from_str::<crate::backup::Target>(&text) else {
+        return;
+    };
+    if target.secret_access_key.is_empty() {
+        return;
+    }
+    if let Err(e) = scrub_backup_target(&path, &target) {
+        tracing::warn!(error = %e, "could not take the secret key out of the bucket file");
+    }
+}
+
 /// The `systemd-run` arguments for one backup or restore job.
 ///
-/// The bucket's keys arrive through `EnvironmentFile=`, the password through
-/// `RESTIC_PASSWORD_FILE`: neither is ever an argument here, so `ps` and the
-/// journal never show them. The script carries its own PATH (it is a
+/// The bucket's keys arrive as the encrypted credential
+/// [`crate::backup::CREDENTIAL`], which systemd opens into the unit's own
+/// credential directory, and the password through `RESTIC_PASSWORD_FILE`:
+/// neither is ever an argument here, so `ps` and the journal never show
+/// them. The script carries its own PATH (it is a
 /// `writeShellApplication`), so unlike a rebuild nothing of lososd's is
 /// passed on.
 pub fn backup_launch_args(
@@ -1390,7 +1421,10 @@ pub fn backup_launch_args(
     vec![
         format!("--unit={}", kind.unit(job)),
         format!("--description=losos {} {job}", kind.as_str()),
-        format!("--property=EnvironmentFile={}", files.env.display()),
+        format!(
+            "--property=LoadCredentialEncrypted={}",
+            crate::backup::CREDENTIAL
+        ),
         format!("--property=StandardOutput=append:{log}"),
         format!("--property=StandardError=append:{log}"),
         format!("--setenv=LOSOS_BACKUP_DIR={}", files.dir.display()),
@@ -2512,8 +2546,25 @@ impl Losos for IoLosos {
         let path = BackupFiles::from_env().target;
         // A file that no longer parses is no target: the owner sets it
         // again, rather than the pane failing to load.
-        Ok(read_if_present(&path, "reading the backup target")?
-            .and_then(|text| serde_json::from_str(&text).ok()))
+        let Some(mut target) = read_if_present(&path, "reading the backup target")?
+            .and_then(|text| serde_json::from_str::<crate::backup::Target>(&text).ok())
+        else {
+            return Ok(None);
+        };
+        // The secret key is sealed; the file only says which bucket. One
+        // written by an older build still carries it: once the boot unit
+        // has sealed the keys, the file loses its copy.
+        if !target.secret_access_key.is_empty() {
+            scrub_backup_target(&path, &target)?;
+        } else {
+            let creds = crate::credentials::Credentials::from_env();
+            if let Some(env) = creds.get(crate::backup::CREDENTIAL)? {
+                target.secret_access_key =
+                    crate::backup::secret_from_env(&String::from_utf8_lossy(&env))
+                        .unwrap_or_default();
+            }
+        }
+        Ok(Some(target))
     }
 
     fn write_backup_target(
@@ -2523,11 +2574,16 @@ impl Losos for IoLosos {
         let files = BackupFiles::from_env();
         match target {
             Some(t) => {
-                atomic_write_secret(&files.env, t.env_file().as_bytes())?;
-                atomic_write_secret(&files.target, &serde_json::to_vec_pretty(t)?)
+                let creds = crate::credentials::Credentials::from_env();
+                creds
+                    .put(crate::backup::CREDENTIAL, t.env_file().as_bytes())?
+                    .map_err(anyhow::Error::new)?;
+                let mut public = t.clone();
+                public.secret_access_key.clear();
+                atomic_write_secret(&files.target, &serde_json::to_vec_pretty(&public)?)
             }
             None => {
-                remove_if_present(&files.env)?;
+                crate::credentials::Credentials::from_env().remove(crate::backup::CREDENTIAL)?;
                 remove_if_present(&files.target)
             }
         }
