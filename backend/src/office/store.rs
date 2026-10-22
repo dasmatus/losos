@@ -155,11 +155,23 @@ impl DirStore {
     }
 
     fn path(&self, id: &str) -> Result<PathBuf, StoreError> {
-        let path = self.root.join(Self::relative(id)?);
-        // A symlink could point anywhere; the folder holds plain files only.
-        let meta = std::fs::symlink_metadata(&path)?;
-        if !meta.is_file() {
-            return Err(StoreError::NotFound);
+        let relative = Self::relative(id)?;
+        // A symlink could point anywhere, a folder on the way as much as the
+        // file itself: every step must be a real folder, the last a plain
+        // file, as [`Self::list`] sees them.
+        let mut path = self.root.clone();
+        let mut parts = relative.components().peekable();
+        while let Some(part) = parts.next() {
+            path.push(part);
+            let kind = std::fs::symlink_metadata(&path)?.file_type();
+            let fits = if parts.peek().is_some() {
+                kind.is_dir()
+            } else {
+                kind.is_file()
+            };
+            if !fits {
+                return Err(StoreError::NotFound);
+            }
         }
         Ok(path)
     }
@@ -415,6 +427,26 @@ mod tests {
             s.read("u", &DirStore::id_for("Work/link.docx")),
             Err(StoreError::NotFound)
         );
+    }
+
+    #[test]
+    fn a_symlinked_folder_out_of_the_folder_is_not_a_way_in() {
+        let (dir, s) = store();
+        let outside = assert_fs::TempDir::new().unwrap();
+        std::fs::write(outside.path().join("secret.docx"), b"no").unwrap();
+        std::os::unix::fs::symlink(outside.path(), dir.path().join("Out")).unwrap();
+        let id = DirStore::id_for("Out/secret.docx");
+        assert_eq!(s.read("u", &id), Err(StoreError::NotFound));
+        assert_eq!(s.write("u", &id, b"x"), Err(StoreError::NotFound));
+        assert_eq!(
+            s.create("u", &id, "new.docx", b"x", CreateMode::Unique),
+            Err(StoreError::NotFound)
+        );
+        assert_eq!(
+            std::fs::read(outside.path().join("secret.docx")).unwrap(),
+            b"no"
+        );
+        assert!(!outside.path().join("new.docx").exists());
     }
 
     #[test]

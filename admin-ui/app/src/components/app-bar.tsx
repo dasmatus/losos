@@ -29,9 +29,9 @@ import { cn } from "@/lib/utils";
  * this bar with `onSignOut`; the menu shows the keys.
  *
  * `width="page"` keeps the bar on the content column (max-w-6xl) for apps
- * laid out as pages under a sidebar, `width="wide"` on the wider column a
- * canvas page takes (LosOS Diagrams), and `width="full"` runs it edge to edge
- * for apps laid out as panes (Chat, an editor). */
+ * laid out as pages under a sidebar, `width="wide"` on the wider column
+ * (max-w-[96rem]) of a canvas such as Diagrams; `width="full"` runs it edge
+ * to edge for apps laid out as panes (Chat, an editor). */
 
 export interface AppBarPerson {
   /** What the bar shows: the person's name, or "Spare admin key". */
