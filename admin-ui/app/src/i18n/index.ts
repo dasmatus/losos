@@ -31,8 +31,10 @@ import notes from "./notes";
 import office from "./office";
 import palette from "./palette";
 import panes from "./panes";
+import pictures from "./pictures";
 import pins from "./pins";
 import profile from "./profile";
+import report from "./report";
 import settings from "./settings";
 import shell from "./shell";
 import together from "./together";
@@ -58,6 +60,8 @@ export const MESSAGES = {
   ...notes,
   ...install,
   ...look,
+  ...pictures,
+  ...report,
   ...machines,
   ...advanced,
   ...access,

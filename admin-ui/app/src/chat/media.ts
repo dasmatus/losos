@@ -9,6 +9,7 @@
  * the box stores only ciphertext. */
 
 import type { MatrixClient } from "matrix-js-sdk";
+import { ofFile as blurHashOf } from "@/lib/blurhash";
 import { sendContent } from "./model";
 
 /** The spec's EncryptedFile. */
@@ -179,6 +180,10 @@ export async function sendFile(
   if (msgtype === "m.image") {
     const size = await imageSize(file);
     if (size !== null) Object.assign(info, size);
+    // Its colours, so a receiver who keeps pictures blurred sees more than
+    // a grey box (MSC2448). Inside `info`, so encrypted with the event.
+    const hash = await blurHashOf(file);
+    if (hash !== null) info["xyz.amorgan.blurhash"] = hash;
   }
   if (options.durationMs !== undefined) info["duration"] = Math.round(options.durationMs);
   const encrypted = client.getCrypto() !== undefined && (await client.getCrypto()?.isEncryptionEnabledInRoom(roomId)) === true;
