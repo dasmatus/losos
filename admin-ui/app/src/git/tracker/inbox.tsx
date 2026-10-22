@@ -108,8 +108,8 @@ export function InboxScreen() {
                       </span>
                       <span className="flex items-center gap-1.5 pl-4 text-[12.5px] text-muted">
                         <StateIcon category={item.issue.state.category} />
-                        <span className="font-mono">{item.issue.key}</span>
-                        <span className="truncate">
+                        <span className="shrink-0 font-mono whitespace-nowrap">{item.issue.key}</span>
+                        <span className="min-w-0 truncate">
                           {t(KIND[item.kind], { who: home?.people.find((p) => p.login === item.actor)?.fullName || item.actor })}
                         </span>
                       </span>
