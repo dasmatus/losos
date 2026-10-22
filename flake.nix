@@ -512,6 +512,9 @@
           screens = true;
         };
         losos-cloud = import ./nix/tests/cloud.nix { inherit pkgs; };
+        # How fast LosOS Cloud and LosOS Git take files in on a two-core,
+        # 4 GiB box, as numbers to compare trees by (nix/tests/upload-speed.nix).
+        losos-upload-speed = import ./nix/tests/upload-speed.nix { inherit pkgs; };
         # The right-click menu on the admin page and in LosOS Cloud, with
         # the pull request's pictures (nix/tests/context-menu.nix).
         losos-context-menu = import ./nix/tests/context-menu.nix { inherit pkgs; };
@@ -586,6 +589,9 @@
         # Its pages in Chromium: code, a pull request reviewed and merged, the
         # worktrees (nix/tests/git-pages.nix).
         losos-git-pages = import ./nix/tests/git-pages.nix { inherit pkgs; };
+        # People of another box in LosOS Git by their chat address, and a
+        # repository's chat room between two boxes (nix/tests/git-federation.nix).
+        losos-git-federation = import ./nix/tests/git-federation.nix { inherit pkgs; };
         # A Forgejo box's switch: everything it held, carried into LosOS Git.
         losos-git-forgejo = import ./nix/tests/git-forgejo.nix { inherit pkgs; };
         # Mesh CI: a push to LosOS Git runs its GitHub Actions workflows on

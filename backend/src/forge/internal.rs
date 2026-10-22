@@ -77,6 +77,7 @@ async fn post_status(
         return Err(Fail::bad(why));
     }
     statuses::set(&state.store, repo.id, &sha, &body, "LosOS CI")?;
+    super::events::status(&repo, &sha, &body.context, &body.state, &body.description);
     Ok(HttpResponse::NoContent().finish())
 }
 

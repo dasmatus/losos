@@ -172,6 +172,40 @@ function segmenterFiles(): Plugin {
   };
 }
 
+/* The nudity warning (src/lib/nudity.ts) runs ONNX Runtime's WebAssembly
+ * build on a ViT-Tiny from LOSOS_NUDITY_MODEL, which nix/packages.nix pins
+ * to one download. Both land under nudity/, outside assets/, so the 14 MB
+ * runtime and the 22 MB model load only on a page whose owner turned the
+ * warning on. A build without the model still builds; the warning then
+ * finds no model and lets every picture through as it was before. */
+function nudityFiles(): Plugin {
+  const ort = "node_modules/onnxruntime-web/dist";
+  const files = (): [string, string][] => {
+    const list: [string, string][] = [
+      ["ort-wasm-simd-threaded.mjs", join(ort, "ort-wasm-simd-threaded.mjs")],
+      ["ort-wasm-simd-threaded.wasm", join(ort, "ort-wasm-simd-threaded.wasm")],
+    ];
+    const model = process.env["LOSOS_NUDITY_MODEL"];
+    if (model) list.push(["model.onnx", model]);
+    return list;
+  };
+  return {
+    name: "losos:nudity-files",
+    configureServer(server) {
+      for (const [name, src] of files()) {
+        server.middlewares.use(`/nudity/${name}`, (_req, res) => {
+          res.end(readFileSync(src));
+        });
+      }
+    },
+    buildStart() {
+      for (const [name, src] of files()) {
+        this.emitFile({ type: "asset", fileName: `nudity/${name}`, source: readFileSync(src) });
+      }
+    },
+  };
+}
+
 function labMeme(): Plugin {
   const dir = process.env["LOSOS_LAB_MEME"] || "";
   const files = { "meme-no.jpg": "no.jpg", "meme-yes.jpg": "yes.jpg" } as const;
@@ -199,7 +233,7 @@ function labMeme(): Plugin {
 const root = fileURLToPath(new URL(".", import.meta.url));
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), themeBoot(), appFrame(), labMeme(), segmenterFiles(), segmenterQuiet()],
+  plugins: [react(), tailwindcss(), themeBoot(), appFrame(), labMeme(), segmenterFiles(), nudityFiles(), segmenterQuiet()],
   // Served from the vhost root by nginx.
   base: "/",
   resolve: {
