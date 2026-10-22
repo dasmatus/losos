@@ -23,9 +23,15 @@
 #
 # Dendrite answers on loopback only, and only root, nginx and `shared` may
 # open that port (the same owner rule identity.nix puts on the apps). The
-# client API is LAN-only, like the admin pages. Federation is off unless
-# losos.chat.federation.enable, which needs a server name other servers can
-# reach; then only the federation and key APIs answer from anywhere.
+# client API is LAN-only, like the admin pages. With
+# losos.chat.federation.enable (on by default) the federation and key APIs
+# answer other servers too: from the LAN alone while the server name is a
+# .local one, so boxes on one network talk to each other and nothing else
+# reaches them; from anywhere for a name other servers can reach.
+#
+# LosOS Git rooms (backend/src/git_rooms.rs): lososd takes LosOS Git's
+# events on a socket in /run/losos-git-chat, a directory only LosOS Git's
+# group may enter, and posts those of a repository with a room into it.
 #
 # Dendrite has no thread list. nginx sends
 # /_matrix/client/v1/rooms/{room}/threads to lososd, which reads Dendrite's
@@ -54,6 +60,10 @@ let
   asTokenFile = "${secretsDir}/as_token";
   serverName = cfg.serverName;
   federation = cfg.federation.enable;
+  # A .local name is this network's: federate with the boxes on it alone.
+  lanName = lib.hasSuffix ".local" serverName;
+  gitEvents = config.losos.git.enable;
+  gitEventsDir = "/run/losos-git-chat";
   identityPort = config.losos.identity.port;
   lanOnly = import ./lan-only.nix;
 
@@ -101,8 +111,9 @@ let
       database = db "federationapi";
       send_max_retries = 16;
       # Only matrix.org's keys are trusted for other servers' keys, and only
-      # when this box federates at all.
-      key_perspectives = lib.optionals federation [
+      # when this box federates beyond its LAN: the boxes of a LAN hand out
+      # their own keys.
+      key_perspectives = lib.optionals (federation && !lanName) [
         {
           server_name = "matrix.org";
           keys = [
@@ -117,20 +128,27 @@ let
           ];
         }
       ];
-      # Never fetch from this box's own networks on another server's say:
-      # a remote server must not make Dendrite call the LAN or loopback.
+      # Never fetch from this box itself on another server's say. A box
+      # with a public name keeps out of the LAN too: a remote server must
+      # not make Dendrite call it. A box with a .local name federates with
+      # the LAN and nothing else (nginx answers the LAN alone).
       deny_networks = [
         "127.0.0.1/8"
+        "169.254.0.0/16"
+        "::1/128"
+        "fe80::/64"
+      ]
+      ++ lib.optionals (!lanName) [
         "10.0.0.0/8"
         "172.16.0.0/12"
         "192.168.0.0/16"
         "100.64.0.0/10"
-        "169.254.0.0/16"
-        "::1/128"
-        "fe80::/64"
         "fc00::/7"
       ];
-      allow_networks = [ "0.0.0.0/0" ];
+      allow_networks = [ "0.0.0.0/0" ] ++ lib.optional lanName "::/0";
+      # The other boxes of a LAN answer with certificates they made
+      # themselves; who each is rests on its server key either way.
+      disable_tls_validation = config.losos.cloud.mesh.selfSigned;
     };
     key_server.database = db "keyserver";
     media_api = {
@@ -296,13 +314,6 @@ in
               assertion = pkg != null;
               message = "losos.chat needs lososd (losos.backend.package): it signs everyone in.";
             }
-            {
-              assertion = federation -> !lib.hasSuffix ".local" serverName;
-              message = ''
-                losos.chat.federation.enable needs a losos.chat.serverName other
-                servers can reach; ${serverName} is a name of this LAN only.
-              '';
-            }
           ];
 
           systemd.services.losos-chat-setup = {
@@ -440,10 +451,19 @@ in
               LOSOS_CHAT_THREADS_SOCKET = threadsSocket;
               LOSOS_CHAT_LOGIN = "127.0.0.1:${toString identityPort}";
               LOSOS_CHAT_FEDERATION = if federation then "1" else "0";
+            }
+            // lib.optionalAttrs gitEvents {
+              LOSOS_GIT_CHAT_EVENTS_SOCKET = "${gitEventsDir}/events.sock";
             };
             after = [ "losos-chat-setup.service" ];
             wants = [ "losos-chat-setup.service" ];
           };
+
+          # LosOS Git's events reach lososd's socket in here, and nobody
+          # else's do (backend/src/git_rooms.rs).
+          systemd.tmpfiles.rules = lib.mkIf gitEvents [
+            "d ${gitEventsDir} 0750 root losos-git -"
+          ];
 
           networking.firewall = lib.mkIf config.networking.firewall.enable {
             extraCommands = ''
@@ -530,11 +550,15 @@ in
             '';
           }
           // lib.optionalAttrs federation {
-            "= /.well-known/matrix/server".extraConfig = json { "m.server" = "${serverName}:443"; };
+            "= /.well-known/matrix/server".extraConfig = ''
+              ${lib.optionalString lanName lanOnly}
+              ${json { "m.server" = "${serverName}:443"; }}
+            '';
             "/_matrix/federation/" = {
               proxyPass = "http://127.0.0.1:${toString port}";
               recommendedProxySettings = false;
               extraConfig = ''
+                ${lib.optionalString lanName lanOnly}
                 ${toDendrite}
                 client_max_body_size ${toString cfg.maxUploadMiB}m;
               '';
@@ -542,7 +566,10 @@ in
             "/_matrix/key/" = {
               proxyPass = "http://127.0.0.1:${toString port}";
               recommendedProxySettings = false;
-              extraConfig = toDendrite;
+              extraConfig = ''
+                ${lib.optionalString lanName lanOnly}
+                ${toDendrite}
+              '';
             };
           };
         }
