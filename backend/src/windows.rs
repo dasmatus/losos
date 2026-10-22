@@ -689,10 +689,7 @@ mod tests {
             .lines()
             .map(|l| l.split(':').nth(1).unwrap().parse().unwrap())
             .collect();
-        assert!(
-            uids[0] != uids[1] && !uids.contains(&cloud_uid),
-            "uids {uids:?}, the cloud's {cloud_uid}"
-        );
+        assert!(uids[0] != uids[1] && !uids.contains(&cloud_uid));
     }
 
     #[test]
@@ -706,7 +703,7 @@ mod tests {
         // when the lock lifts.
         let locked = account("eva", "$argon-2", &[LOCKED]);
         b.w.sync(std::slice::from_ref(&locked));
-        assert_eq!(read(b.root.join("windows/smbpasswd")), "");
+        assert!(read(b.root.join("windows/smbpasswd")).is_empty());
         assert!(!b.root.join("userdb/losos-win-eva.user").exists());
         b.w.sync(std::slice::from_ref(&eva));
         assert!(b.w.status(&eva).ready);
@@ -716,7 +713,7 @@ mod tests {
         let changed = account("eva", "$argon-3", &[]);
         b.w.sync(std::slice::from_ref(&changed));
         assert!(!b.w.status(&changed).ready);
-        assert_eq!(read(b.root.join("windows/smbpasswd")), "");
+        assert!(read(b.root.join("windows/smbpasswd")).is_empty());
 
         b.w.learn(
             &changed,
