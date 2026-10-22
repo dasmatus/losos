@@ -24,14 +24,6 @@ let
   lososPkgs = import ../packages.nix { inherit pkgs; };
   screens = import ./screens { inherit pkgs; };
 
-  stubOcc = pkgs.writeShellScriptBin "nextcloud-occ" ''
-    case "$1" in
-      status) echo '{"installed":true,"maintenance":false,"needsDbUpgrade":false}' ;;
-      user:resetpassword) echo "Successfully reset password for $2" ;;
-      *) echo "stub occ: $*" >&2; exit 1 ;;
-    esac
-  '';
-
   plan = name: shots: pkgs.writeText "windows-${name}.json" (builtins.toJSON {
     width = 1280;
     height = 860;
@@ -69,20 +61,20 @@ pkgs.testers.nixosTest {
         ../../modules/identity.nix
         ../../modules/cloud.nix
         ../../modules/windows.nix
+        # The option document, which draws the switch on the Network pane.
+        ../../modules/config-repo.nix
       ];
       networking.hostName = "mattbox";
       losos = {
         hostName = "mattbox";
         backend.package = lososPkgs.losos-ctl;
         admin.ui = lososPkgs.losos-admin-ui;
-        nextcloud.mode = "native";
         cloud.enable = true;
         cloud.windows.enable = true;
         forgejo.enable = false;
+        configRepo.enable = false;
         mdns.enable = true;
       };
-      systemd.services.lososd.path = lib.mkBefore [ stubOcc ];
-      systemd.services.lososd.environment.LOSOS_NEXTCLOUD_MODE = lib.mkForce "native";
       # The same box with the share off.
       specialisation.off.configuration.losos.cloud.windows.enable = lib.mkForce false;
       environment.systemPackages = [
