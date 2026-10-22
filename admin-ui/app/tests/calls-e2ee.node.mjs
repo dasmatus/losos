@@ -177,6 +177,21 @@ await test('old keys are wiped as the index moves on', async () => {
   assert.equal(ring.has(4), false);
 });
 
+await test('a frame under a rotated key that has not arrived meets a guess, not a forgery', async () => {
+  const ring = new e.ReceiveRing();
+  ring.set(0, e.randomKey());
+  // The sender rotated to a fresh key at index 1; the receiver ratchets.
+  const fresh = new e.SendKey(e.randomKey(), 1);
+  const frame = await fresh.seal('video', new Uint8Array(64).fill(7));
+  const guess = await ring.get(1);
+  assert.equal(ring.guessed(1), true);
+  assert.equal(await e.decryptFrame(guess.video, frame, e.receivedClearBytes('video', frame)), null);
+  // Once the key is handed over it is no guess, and opens the frame.
+  ring.set(1, fresh.key);
+  assert.equal(ring.guessed(1), false);
+  assert.notEqual(await e.decryptFrame((await ring.get(1)).video, frame, e.receivedClearBytes('video', frame)), null);
+});
+
 await test('base64 round trip', () => {
   const k = e.randomKey();
   assert.deepEqual(e.fromBase64(e.toBase64(k)), k);

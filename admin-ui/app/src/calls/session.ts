@@ -80,7 +80,7 @@ export interface CallOptions {
 
 /* A fresh key is announced, then used this much later, so the members
  * have it before the first frame sealed with it arrives. */
-const ROTATE_AFTER_MS = 1500;
+const ROTATE_AFTER_MS = 3000;
 /* Every sender ratchets this often, so a key taken from a running call
  * opens no more than the last few minutes. */
 export const RATCHET_EVERY_MS = 5 * 60_000;

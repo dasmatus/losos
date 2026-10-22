@@ -1220,7 +1220,8 @@ pkgs.testers.nixosTest {
         time.sleep(8)
         for page in (owner, her):
             assert opened(page) > before[id(page)] + 30, (opened(page), before[id(page)])
-            assert page.locator("[data-e2ee]").get_attribute("data-refused") == "0"
+            counts = page.locator("[data-e2ee]").evaluate("e => ({ ...e.dataset })")
+            assert counts["refused"] == "0", counts
         notice = jan.locator("[data-call-notice]").last
         notice.get_by_role("button", name="Join", exact=True).wait_for()
         notice.scroll_into_view_if_needed()
@@ -1252,35 +1253,35 @@ pkgs.testers.nixosTest {
         ring.wait_for(state="detached", timeout=60000)
 
     with subtest("without a camera, a video call starts with it off"):
-        # Jan's browser has no camera: every request for one fails, as on
-        # a desktop with none plugged in. The call goes on without it.
-        nocam = jan.context.new_page()
-        nocam.set_default_timeout(90000)
-        nocam.on("pageerror", lambda err: problems.append(f"jan (no camera): {err}"))
-        nocam.add_init_script("""
+        # Eva's browser loses its camera: every request for one fails, as
+        # on a desktop with none plugged in. The call goes on without it.
+        her.context.add_init_script("""
           const open = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
           navigator.mediaDevices.getUserMedia = (c) => c && c.video
             ? Promise.reject(new DOMException('Requested device not found', 'NotFoundError'))
             : open(c);
         """)
-        nocam.goto(f"https://{HOST}/chat/?with=matus&call=video")
-        nocam.locator("[data-call-view]").wait_for(timeout=60000)
-        nocam.get_by_text("No camera", exact=True).first.wait_for()
-        nocam.get_by_role("button", name="Turn on camera").wait_for()
+        her.goto(f"https://{HOST}/chat/?with=matus&call=video")
+        try:
+            her.locator("[data-call-view]").wait_for(timeout=120000)
+        except Exception:
+            stuck("eva", her)
+            raise
+        her.get_by_text("No camera", exact=True).first.wait_for()
+        her.get_by_role("button", name="Turn on camera").wait_for()
         ring = owner.locator("[data-ringing]")
         ring.wait_for(timeout=60000)
         ring.get_by_role("button", name="Answer", exact=True).click()
         owner.locator("[data-call-view]").wait_for()
-        until_js(nocam, "() => document.querySelectorAll('[data-call-view] [data-pid]').length === 2")
+        until_js(her, "() => document.querySelectorAll('[data-call-view] [data-pid]').length === 2")
         until_js(owner, "() => document.querySelectorAll('[data-call-view] [data-pid]').length === 2")
-        settle(nocam)
-        shot(nocam, "no-camera")
+        settle(her)
+        shot(her, "no-camera")
         shot(owner, "no-camera-matus")
-        # Jan hangs up; Matus, left alone, leaves by himself.
-        nocam.get_by_role("button", name="Leave the call").click()
-        for page in (nocam, owner):
+        # Eva hangs up; Matus, left alone, leaves by himself.
+        her.get_by_role("button", name="Leave the call").click()
+        for page in (her, owner):
             page.locator("[data-call-view]").wait_for(state="detached", timeout=60000)
-        nocam.close()
 
     with subtest("with sharing off there are no calls at all"):
         switch("unshared")

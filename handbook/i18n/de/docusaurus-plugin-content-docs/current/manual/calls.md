@@ -52,8 +52,8 @@ den Anruf. Die Kamera auszuschalten hält sie an, ihr Licht geht aus, und
 bis du sie wieder einschaltest, wird nichts gesendet.
 
 Deine Stimme geht mit 128 kb/s über den ganzen hörbaren Bereich hinaus,
-mit Echo- und Rauschunterdrückung des Browsers. Deine Kamera sendet bis zu
-720p mit 30 Bildern pro Sekunde. Reicht die Verbindung nicht, senkt sie
+mit Echo- und Rauschunterdrückung des Browsers. Deine Kamera sendet
+gleichmäßig 30 Bilder pro Sekunde. Reicht die Verbindung nicht, senkt sie
 zuerst die Schärfe und hält die Bewegung flüssig; ein geteilter Bildschirm
 macht es umgekehrt und hält seinen Text scharf.
 

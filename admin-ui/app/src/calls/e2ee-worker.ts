@@ -69,14 +69,19 @@ async function open(kind: Kind, sender: string, frame: EncodedFrame): Promise<bo
   // An empty frame (a paused track) carries nothing to decrypt.
   if (bytes.length === 0) return true;
   const t = readTrailer(bytes);
-  const keys = t ? await rings.get(sender)?.get(t.index) : null;
+  const ring = rings.get(sender);
+  const keys = t ? await ring?.get(t.index) : null;
   if (!keys) {
     stats.withoutKey++;
     return false;
   }
   const plain = await decryptFrame(keys[kind], bytes, receivedClearBytes(kind, bytes));
   if (!plain) {
-    stats.refused++;
+    // A frame under a rotated key that is still on its way meets this
+    // ring's own ratchet; only a key that was handed over and fails
+    // means the frame was changed.
+    if (t && ring?.guessed(t.index)) stats.withoutKey++;
+    else stats.refused++;
     return false;
   }
   frame.data = plain.buffer as ArrayBuffer;
