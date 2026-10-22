@@ -43,7 +43,7 @@ export function TableBody({ className, ...props }: React.ComponentPropsWithoutRe
   );
 }
 
-export function TableRow({ className, ...props }: React.ComponentPropsWithoutRef<"tr">) {
+export function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
   return (
     <tr
       data-slot="table-row"

@@ -495,10 +495,16 @@
           screens = true;
         };
         losos-cloud = import ./nix/tests/cloud.nix { inherit pkgs; };
+        # The right-click menu on the admin page and in LosOS Cloud, with
+        # the pull request's pictures (nix/tests/context-menu.nix).
+        losos-context-menu = import ./nix/tests/context-menu.nix { inherit pkgs; };
         losos-cloud-from-nextcloud = import ./nix/tests/cloud-from-nextcloud.nix { inherit pkgs; };
         # Notes on a kitchen garden vault, and the folder published as a
         # knowledge base, on and off the mesh (nix/tests/notes.nix).
         losos-notes = import ./nix/tests/notes.nix { inherit pkgs; };
+        # One file through Mail, LosOS Cloud, Notes and the box's AI on one
+        # box, with the pull request's pictures (nix/tests/apps-together.nix).
+        losos-apps-together = import ./nix/tests/apps-together.nix { inherit pkgs; };
         # Two boxes sharing a note and editing it together, apart and
         # together again (nix/tests/mesh-collab.nix).
         losos-mesh-collab = import ./nix/tests/mesh-collab.nix { inherit pkgs; };

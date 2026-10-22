@@ -41,6 +41,14 @@ eingerichtet hat, bekommt die des Besitzers.
 - **Notizen** liest einen Ordner mit Markdown-Notizen wie Obsidian, mit
   Links, Tags und einem Graphen, und kann ihn als Wissensbasis
   veröffentlichen. Siehe [Notizen und Wissensbasen](notes-and-knowledge-bases).
+- Ein Rechtsklick auf eine Datei, einen Ordner oder die Fläche darum zeigt,
+  was du dort tun kannst; siehe
+  [das Rechtsklick-Menü](admin-pages#the-right-click-menu).
+- Das Rechtsklick-Menü einer Datei gibt sie auch an die anderen Apps
+  weiter: **Per Mail senden** und **Im Chat senden**, solange die Box Mail
+  und Chat hat, und **Die KI dazu fragen** bei einer Textdatei auf einer Box
+  mit Sprachmodell. Die KI läuft auf der Box und liest nur die gewählte
+  Datei.
 
 ## Apps für Computer und Telefon \{#desktop-and-phone-apps}
 

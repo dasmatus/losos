@@ -26,6 +26,7 @@ import mail from "./mail";
 import mention from "./mention";
 import machines from "./machines";
 import manage from "./manage";
+import menu from "./menu";
 import notes from "./notes";
 import office from "./office";
 import palette from "./palette";
@@ -34,6 +35,7 @@ import pins from "./pins";
 import profile from "./profile";
 import settings from "./settings";
 import shell from "./shell";
+import together from "./together";
 import tour from "./tour";
 import userApps from "./user-apps";
 import users from "./users";
@@ -75,9 +77,11 @@ export const MESSAGES = {
   ...manage,
   ...office,
   ...mail,
+  ...menu,
   ...ci,
   ...mention,
   ...games,
+  ...together,
 };
 
 export type MessageKey = keyof typeof MESSAGES;
