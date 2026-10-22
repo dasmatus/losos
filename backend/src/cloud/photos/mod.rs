@@ -290,6 +290,8 @@ pub fn name_person(store: &Store, owner: &str, id: i64, name: &str) -> Result<i6
             )
             .optional()?
         };
+        // A name someone already has joins the two, under the name as it
+        // was first written.
         let kept = match same {
             Some(other) => {
                 tx.execute(
@@ -300,12 +302,14 @@ pub fn name_person(store: &Store, owner: &str, id: i64, name: &str) -> Result<i6
                 index::recentre(&tx, other)?;
                 other
             }
-            None => id,
+            None => {
+                tx.execute(
+                    "UPDATE photo_people SET name = ?1 WHERE id = ?2",
+                    params![name, id],
+                )?;
+                id
+            }
         };
-        tx.execute(
-            "UPDATE photo_people SET name = ?1 WHERE id = ?2",
-            params![name, kept],
-        )?;
         tx.commit()?;
         Ok(kept)
     })
@@ -428,7 +432,7 @@ mod tests {
         let a = person(&s, "ana", "", &[1.0, 0.0], 1);
         let b = person(&s, "ana", "Bea", &[0.0, 1.0], 2);
         assert_eq!(name_person(&s, "ana", a, "  bea ").unwrap(), b);
-        let (people, on_b): (i64, i64) = s
+        let (people, on_b, name): (i64, i64, String) = s
             .with_db(|db| {
                 Ok((
                     db.query_row("SELECT COUNT(*) FROM photo_people", [], |r| r.get(0))?,
@@ -437,10 +441,13 @@ mod tests {
                         [b],
                         |r| r.get(0),
                     )?,
+                    db.query_row("SELECT name FROM photo_people WHERE id = ?1", [b], |r| {
+                        r.get(0)
+                    })?,
                 ))
             })
             .unwrap();
-        assert_eq!((people, on_b), (1, 2));
+        assert_eq!((people, on_b, name.as_str()), (1, 2, "Bea"));
     }
 
     #[test]

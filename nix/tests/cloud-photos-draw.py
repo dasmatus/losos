@@ -41,7 +41,7 @@ def dms(value):
     return (rational(d), rational(m), rational(round(s, 2), 100))
 
 
-def draw(palette, seed, w=1600, h=1067):
+def draw(palette, seed, w=960, h=640):
     top, bottom, near, far = PALETTES[palette]
     rnd = random.Random(seed)
     img = Image.new("RGB", (w, h))
