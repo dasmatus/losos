@@ -13,8 +13,9 @@
 #                   10 MiB per container, in both clusters and on the edge.
 #   nginx           /var/log/nginx/*.log, rotated by nixpkgs' own rule
 #                   weekly; this adds a size bound for a busy week.
-#   lososd          audit.log (one line per admin call) and rebuild.log
-#                   (every Apply appends a whole nixos-rebuild) are lososd's
+#   lososd          audit.log (one line per admin call), moderation.log
+#                   and rebuild.log (every Apply appends a whole
+#                   nixos-rebuild) are lososd's
 #                   own; rotated at 10 MiB, three kept.
 #   nix             A compressed build log per derivation built on the
 #                   machine, under /nix/var/log/nix/drvs. The garbage
@@ -63,6 +64,16 @@ in
     # when it is missing, so a plain rename is enough and no line is lost.
     losos-audit = lib.mkIf (config.losos.backend.package != null) {
       files = "/var/lib/losos/audit.log";
+      size = "10M";
+      rotate = 3;
+      compress = true;
+      delaycompress = true;
+    };
+
+    # The moderators' log (backend/src/moderation.rs) is opened per line
+    # too, created 0600; the Moderation pane reads the current file only.
+    losos-moderation = lib.mkIf (config.losos.backend.package != null) {
+      files = "/var/lib/losos/moderation.log";
       size = "10M";
       rotate = 3;
       compress = true;

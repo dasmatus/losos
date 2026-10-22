@@ -33,6 +33,7 @@ import mention from "./mention";
 import machines from "./machines";
 import manage from "./manage";
 import menu from "./menu";
+import moderation from "./moderation";
 import notes from "./notes";
 import office from "./office";
 import palette from "./palette";
@@ -80,6 +81,7 @@ export const MESSAGES = {
   ...access,
   ...credentials,
   ...users,
+  ...moderation,
   ...account,
   ...profile,
   ...lab,

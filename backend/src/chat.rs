@@ -541,6 +541,40 @@ impl Chat {
         Ok(session)
     }
 
+    /// Hide a message a moderator acted on: redact it as the person who
+    /// sent it, which the homeserver always allows, through the
+    /// application service. Its text and media are gone from every device
+    /// that syncs; the room keeps a "message deleted" in its place.
+    pub fn redact(
+        &self,
+        sender: &str,
+        room: &str,
+        event: &str,
+        reason: &str,
+    ) -> Result<(), ChatError> {
+        let inner = self.inner()?;
+        let token = inner.as_token()?;
+        let hs = &*inner.homeserver;
+        let user_id = self.user_id(sender)?;
+        // One transaction per event, so a second try is the same redaction.
+        let txn = format!("losos-moderation-{}", encode(event).replace('%', ""));
+        let path = format!(
+            "/_matrix/client/v3/rooms/{}/redact/{}/{}?user_id={}",
+            encode(room),
+            encode(event),
+            txn,
+            encode(&user_id)
+        );
+        let out = hs.call("PUT", &path, &token, Some(&json!({ "reason": reason })))?;
+        if out.status != 200 {
+            return Err(ChatError::Homeserver {
+                status: out.status,
+                errcode: out.errcode(),
+            });
+        }
+        Ok(())
+    }
+
     /// Sign every device of a person out of the homeserver: they were
     /// removed from LosOS Login. An account that never used chat has
     /// nothing to sign out.
@@ -587,12 +621,15 @@ impl Chat {
     }
 
     /// `/internal/chat/authz`: may this request reach the homeserver?
-    /// `token` is the Matrix token it carries, if any.
+    /// `token` is the Matrix token it carries, if any. `muted` says whether
+    /// a moderator has muted someone (`crate::moderation`): they keep
+    /// reading, and nothing they would say reaches a room.
     pub fn authorize(
         &self,
         people: &crate::people::People,
         asked: &Asked,
         token: Option<&str>,
+        muted: &dyn Fn(&str) -> bool,
     ) -> Result<Verdict, ChatError> {
         let inner = self.inner()?;
         let url = &asked.original_url;
@@ -617,6 +654,10 @@ impl Chat {
             .chain(groups.iter())
             .any(|g| g == crate::people::LOCKED)
         {
+            return Ok(Verdict::Refuse);
+        }
+        if muted(&person.name) && speaks(&asked.original_method, url) {
+            tracing::info!(%url, name = %person.name, "chat: muted");
             return Ok(Verdict::Refuse);
         }
         let Some(token) = token.filter(|t| !t.is_empty()) else {
@@ -1058,6 +1099,29 @@ fn clean_device_name(n: &str) -> String {
 
 /// Percent-encode one path segment or query value.
 #[must_use]
+/// Whether a request to the homeserver says something others see: a
+/// message, a reaction, an edit or a redaction, a room's state, a new room,
+/// an invite, a profile change or an upload. A muted person's are refused.
+pub fn speaks(method: &str, url: &str) -> bool {
+    if method.eq_ignore_ascii_case("GET") || method.eq_ignore_ascii_case("HEAD") {
+        return false;
+    }
+    let path = url.split('?').next().unwrap_or(url);
+    ["/send/", "/state/", "/redact/", "/invite", "/profile/"]
+        .iter()
+        .any(|p| path.contains(p))
+        || path.ends_with("/createRoom")
+        || (path.contains("/media/") && path.contains("/upload"))
+}
+
+/// A chat report's `ref`: `<room ID>/<event ID>`. Room IDs and event IDs
+/// never hold a slash, so the first one splits them.
+pub fn event_ref(reference: &str) -> Option<(&str, &str)> {
+    let (room, event) = reference.split_once('/')?;
+    (room.starts_with('!') && room.contains(':') && event.starts_with('$') && !event.contains('/'))
+        .then_some((room, event))
+}
+
 pub fn encode(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for b in s.bytes() {
@@ -1728,13 +1792,13 @@ mod tests {
         no_cookie.cookie = None;
         assert_eq!(
             r.chat
-                .authorize(&r.people, &no_cookie, Some(&eva.access_token))
+                .authorize(&r.people, &no_cookie, Some(&eva.access_token), &|_| false)
                 .unwrap(),
             Verdict::SignIn
         );
         assert_eq!(
             r.chat
-                .authorize(&r.people, &asked(), Some(&eva.access_token))
+                .authorize(&r.people, &asked(), Some(&eva.access_token), &|_| false)
                 .unwrap(),
             Verdict::SignIn
         );
@@ -1742,26 +1806,53 @@ mod tests {
         *r.gate.0.lock().unwrap() = Some(("eva".into(), vec![]));
         assert_eq!(
             r.chat
-                .authorize(&r.people, &asked(), Some(&eva.access_token))
+                .authorize(&r.people, &asked(), Some(&eva.access_token), &|_| false)
                 .unwrap(),
             Verdict::Allow
         );
         // No token at all (the versions, a login flow): the sign-in is enough.
         assert_eq!(
-            r.chat.authorize(&r.people, &asked(), None).unwrap(),
+            r.chat
+                .authorize(&r.people, &asked(), None, &|_| false)
+                .unwrap(),
             Verdict::Allow
         );
         // Someone else's token in Eva's browser.
         assert_eq!(
             r.chat
-                .authorize(&r.people, &asked(), Some(&matus.access_token))
+                .authorize(&r.people, &asked(), Some(&matus.access_token), &|_| false)
                 .unwrap(),
             Verdict::Refuse
         );
         // A token the homeserver forgot goes on, so it can say so itself.
         assert_eq!(
             r.chat
-                .authorize(&r.people, &asked(), Some("stale"))
+                .authorize(&r.people, &asked(), Some("stale"), &|_| false)
+                .unwrap(),
+            Verdict::Allow
+        );
+
+        // Muted: she keeps reading, and nothing she says reaches a room.
+        let mut say = asked();
+        say.original_method = "PUT".into();
+        say.original_url =
+            "https://mattbox.local/_matrix/client/v3/rooms/!r:mattbox/send/m.room.message/1".into();
+        let muted = |name: &str| name == "eva";
+        assert_eq!(
+            r.chat
+                .authorize(&r.people, &asked(), Some(&eva.access_token), &muted)
+                .unwrap(),
+            Verdict::Allow
+        );
+        assert_eq!(
+            r.chat
+                .authorize(&r.people, &say, Some(&eva.access_token), &muted)
+                .unwrap(),
+            Verdict::Refuse
+        );
+        assert_eq!(
+            r.chat
+                .authorize(&r.people, &say, Some(&eva.access_token), &|_| false)
                 .unwrap(),
             Verdict::Allow
         );
@@ -1770,7 +1861,7 @@ mod tests {
         *r.gate.0.lock().unwrap() = Some(("eva".into(), vec![crate::people::LOCKED.into()]));
         assert_eq!(
             r.chat
-                .authorize(&r.people, &asked(), Some(&eva.access_token))
+                .authorize(&r.people, &asked(), Some(&eva.access_token), &|_| false)
                 .unwrap(),
             Verdict::Refuse
         );
@@ -1780,10 +1871,56 @@ mod tests {
         r.people.remove("eva", Some("matus")).unwrap();
         assert_eq!(
             r.chat
-                .authorize(&r.people, &asked(), Some(&eva.access_token))
+                .authorize(&r.people, &asked(), Some(&eva.access_token), &|_| false)
                 .unwrap(),
             Verdict::SignIn
         );
+    }
+
+    #[test]
+    fn what_a_muted_person_may_not_send() {
+        let base = "/_matrix/client/v3/rooms/!r:mattbox";
+        for (method, url) in [
+            ("PUT", format!("{base}/send/m.room.message/7")),
+            ("PUT", format!("{base}/send/m.reaction/8")),
+            ("PUT", format!("{base}/state/m.room.topic/")),
+            ("PUT", format!("{base}/redact/$e/9")),
+            ("POST", format!("{base}/invite")),
+            ("POST", "/_matrix/client/v3/createRoom".to_string()),
+            (
+                "PUT",
+                "/_matrix/client/v3/profile/@eva:mattbox/displayname".to_string(),
+            ),
+            (
+                "POST",
+                "/_matrix/media/v3/upload?filename=a.png".to_string(),
+            ),
+        ] {
+            assert!(speaks(method, &url), "{method} {url}");
+        }
+        for (method, url) in [
+            ("GET", format!("{base}/messages")),
+            ("GET", "/_matrix/client/v3/sync".to_string()),
+            ("POST", format!("{base}/receipt/m.read/$e")),
+            ("POST", format!("{base}/read_markers")),
+            ("PUT", format!("{base}/typing/@eva:mattbox")),
+            ("POST", "/_matrix/client/v3/keys/upload".to_string()),
+        ] {
+            // Key uploads keep encryption working; typing says nothing.
+            assert!(!speaks(method, &url), "{method} {url}");
+        }
+    }
+
+    #[test]
+    fn a_chat_report_names_its_room_and_event() {
+        assert_eq!(
+            event_ref("!abc:mattbox/$ev_1-x"),
+            Some(("!abc:mattbox", "$ev_1-x"))
+        );
+        assert_eq!(event_ref("$ev"), None);
+        assert_eq!(event_ref("!abc:mattbox/ev"), None);
+        assert_eq!(event_ref("abc/$ev"), None);
+        assert_eq!(event_ref("!abc:mattbox/$a/b"), None);
     }
 
     #[test]

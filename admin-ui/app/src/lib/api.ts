@@ -217,7 +217,96 @@ export interface Me {
    *  they run only while the box shares its storage, and their menu
    *  entries are drawn only when listed here. */
   shared?: string[];
+  /** Their role (backend/src/roles.rs); missing on an older lososd. */
+  role?: Role;
+  /** The custom role they hold, by its name. */
+  roleName?: string | null;
+  /** Reports waiting for a moderator, for someone who can act on them. */
+  reports?: number;
 }
+
+/** What a person is on this box, in rank order (backend/src/roles.rs). */
+export type Role = "guest" | "member" | "moderator" | "admin" | "owner";
+
+/** A role an administrator saved under a name of their own. */
+export interface CustomRole {
+  id: string;
+  name: string;
+  /** Section names, without the `losos-` prefix. */
+  sections: string[];
+}
+
+/** A mute or a suspension (backend/src/moderation.rs, `Hold`). */
+export interface Hold {
+  at: number;
+  by: string;
+  /** When it ends by itself, in seconds since 1970; null until lifted. */
+  until: number | null;
+  reason: string;
+}
+
+/** Why a reported thing troubles someone. */
+export type ReportReason = "spam" | "abuse" | "sexual" | "child" | "other";
+
+/** The apps a report can come from. */
+export type ReportApp =
+  | "mail"
+  | "chat"
+  | "profile"
+  | "cloud"
+  | "git"
+  | "notes"
+  | "diagrams"
+  | "office"
+  | "calls";
+
+export type ReportState = "open" | "hidden" | "dismissed" | "resolved";
+
+/** One report. Never the thing itself: a reference inside its app. */
+export interface Report {
+  id: string;
+  at: number;
+  by: string;
+  app: ReportApp;
+  about: string | null;
+  ref: string;
+  reason: ReportReason;
+  note: string;
+  state: ReportState;
+  handledBy: string | null;
+  handledAt: number | null;
+}
+
+export interface ModerationPerson extends Profile {
+  role: Role;
+  roleName: string | null;
+  muted: Hold | null;
+  suspended: Hold | null;
+  disabled: boolean;
+  /** Whether the caller may mute or suspend them. */
+  actionable: boolean;
+}
+
+export interface ModerationLogEntry {
+  at: number;
+  by: string;
+  action: string;
+  about: string | null;
+  detail: string;
+}
+
+export interface ModerationView {
+  standalone: boolean;
+  you: string | null;
+  admin: boolean;
+  /** The apps a report can be hidden in from the queue. */
+  hides: ReportApp[];
+  reports: Report[];
+  people: ModerationPerson[];
+  log: ModerationLogEntry[];
+}
+
+export type ReportAction = "hide" | "release" | "dismiss" | "resolve";
 
 /** Why a rule holds someone to their own account. */
 export type LoginReason = "twoFactor" | "password";
@@ -2248,6 +2337,10 @@ export interface PersonEntry {
   picture?: string | null;
   banner?: string | null;
   accent?: Accent;
+  role?: Role;
+  roleName?: string | null;
+  muted?: Hold | null;
+  suspended?: Hold | null;
   /** Marked as an adult or a child (`GET /api/pictures`), or null. */
   age?: AgeMark | null;
 }
@@ -2261,6 +2354,8 @@ export interface PeopleResponse {
   sections: string[];
   /** LosOS Login's rules; missing on a lososd that predates them. */
   rules?: LoginRules;
+  /** Roles saved under a name; missing on an older lososd. */
+  roles?: CustomRole[];
   people: PersonEntry[];
 }
 
@@ -2418,6 +2513,9 @@ export interface Profile {
   picture: string | null;
   /** `/api/profiles/<name>/banner?v=N`, or null. */
   banner: string | null;
+  /** Their role; missing on an older lososd. */
+  role?: Role;
+  roleName?: string | null;
 }
 
 export type ProfileImage = "picture" | "banner";
@@ -2468,6 +2566,39 @@ export function clearPersonImage(
   options: RequestOptions = {},
 ): Promise<{ name: string; kind: ProfileImage; cleared: boolean }> {
   return postJson("/api/people/profile/clear", { name, kind }, options);
+}
+
+/** POST /api/roles — save a custom role. */
+export function postRole(
+  role: { id?: string; name: string; sections: string[] },
+  options: RequestOptions = {},
+): Promise<{ id: string; roles: CustomRole[] }> {
+  return postJson("/api/roles", role, options);
+}
+
+/** POST /api/roles/remove — forget a custom role. */
+export function postRoleRemove(id: string, options: RequestOptions = {}): Promise<{ roles: CustomRole[] }> {
+  return postJson("/api/roles/remove", { id }, options);
+}
+
+/** GET /api/moderation — the queue, everyone's holds, the log. */
+export function getModeration(options: RequestOptions = {}): Promise<ModerationView> {
+  return call<ModerationView>("/api/moderation", options);
+}
+
+/** POST /api/moderation/reports/{id} */
+export function postReportAction(id: string, action: ReportAction, options: RequestOptions = {}): Promise<Report> {
+  return postJson(`/api/moderation/reports/${encodeURIComponent(id)}`, { action }, options);
+}
+
+/** POST /api/moderation/{mute,unmute,suspend,unsuspend}. `minutes` null:
+ *  until lifted. */
+export function postHold(
+  kind: "mute" | "unmute" | "suspend" | "unsuspend",
+  body: { name: string; minutes?: number | null; reason?: string },
+  options: RequestOptions = {},
+): Promise<{ name: string }> {
+  return postJson(`/api/moderation/${kind}`, body, options);
 }
 
 /** LosOS Login's own page for adding an authenticator app or a passkey. */
@@ -3919,10 +4050,8 @@ export function postPersonAge(
  * carries a reference to what is reported, never the thing itself. A box
  * without moderation answers 404. */
 
-export type ReportReason = "child" | "sexual" | "abuse" | "spam" | "other";
-
 export interface ReportTarget {
-  app: "chat" | "mail" | "cloud" | "git" | "profile";
+  app: ReportApp;
   /** The sign-in name of the person reported, when they are on this box. */
   about: string | null;
   /** A chat event ID, a mail message's ID, a path. */
