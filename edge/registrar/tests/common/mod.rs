@@ -496,6 +496,32 @@ impl Edge {
         .await
     }
 
+    /// As [`Edge::start_custom`], on a listener the caller bound first, so
+    /// the options can name the edge's own URL (a gateway's
+    /// `--secondary-self-url`).
+    pub async fn start_custom_on(
+        tag: &str,
+        tenants: &[TenantSpec],
+        listener: tokio::net::TcpListener,
+        tweak: impl FnOnce(&mut ServeOpts, &TempDir) + Send + 'static,
+    ) -> Self {
+        Self::start_general(
+            tag,
+            tenants,
+            MeshFixture::default(),
+            None,
+            None,
+            &[],
+            None,
+            None,
+            Some(listener),
+            None,
+            None,
+            Some(Box::new(tweak)),
+        )
+        .await
+    }
+
     /// As [`Edge::start_with_market`] with no one enrolled, and a
     /// last-minute change to the options.
     pub async fn start_market_custom(
@@ -706,6 +732,7 @@ impl Edge {
             }),
             enrol_dir: None,
             uplink: None,
+            secondary: None,
             routes: None,
             operator: None,
             manage: None,
@@ -847,6 +874,22 @@ impl Edge {
 
     /// Poll `check` until it holds or the deadline passes. Returns whether it
     /// held, so the caller can assert with a message carrying the final state.
+    /// As [`Edge::wait_for`], for a check that has to ask over HTTP.
+    pub async fn wait_for_async<F, Fut>(&self, mut check: F) -> bool
+    where
+        F: FnMut() -> Fut,
+        Fut: std::future::Future<Output = bool>,
+    {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            if check().await {
+                return true;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        check().await
+    }
+
     pub async fn wait_for<F: FnMut() -> bool>(&self, mut check: F) -> bool {
         let deadline = Instant::now() + Duration::from_secs(5);
         while Instant::now() < deadline {
