@@ -825,7 +825,7 @@ pub struct EventView {
     #[serde(skip_serializing_if = "String::is_empty")]
     pub url: String,
     pub read_only: bool,
-    #[serde(skip)]
+    /// The stored object's ETag, which a change sends back as `If-Match`.
     pub etag: String,
 }
 
