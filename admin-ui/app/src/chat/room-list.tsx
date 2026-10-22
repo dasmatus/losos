@@ -2,6 +2,7 @@ import * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Add01Icon, UserAdd01Icon, UserGroupIcon } from "@hugeicons/core-free-icons";
 import { KnownMembership, type MatrixClient, type Room } from "matrix-js-sdk";
+import { Masked } from "@/components/details";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
@@ -53,7 +54,7 @@ function RoomRow({ client, room, current, onOpen, invite }: { client: MatrixClie
         <Avatar client={client} id={room.roomId} name={roomName(room)} mxc={room.getMxcAvatarUrl()} size={32} />
         <span className="min-w-0 flex-1">
           <span className={cn("block truncate text-[13.5px]", counts.total > 0 ? "font-semibold" : "font-medium")}>{roomName(room)}</span>
-          {line !== "" && <span className="block truncate text-[12px] text-muted">{line}</span>}
+          {line !== "" && <span className="block truncate text-[12px] text-muted"><Masked text={line} still /></span>}
         </span>
         {counts.total > 0 && (
           <span
