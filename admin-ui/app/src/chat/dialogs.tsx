@@ -19,6 +19,7 @@ import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { Avatar } from "./avatar";
 import { directPartner, directRooms, isSpace, localpart, maySend, roomName } from "./model";
+import { suggestContacts } from "@/lib/api";
 import { boxPeople } from "./session";
 
 const ENCRYPTION = { type: EventType.RoomEncryption, state_key: "", content: { algorithm: "m.megolm.v1.aes-sha2" as const } };
@@ -155,9 +156,19 @@ function PeoplePicker({ client, onPick, exclude, busy }: { client: MatrixClient;
   const [onBox, setOnBox] = React.useState<Found[]>([]);
   React.useEffect(() => {
     let live = true;
-    boxPeople()
-      .then((people) => live && setOnBox(people.map((p) => ({ user_id: p.userId, display_name: p.displayName }))))
-      .catch(() => undefined);
+    // The person's contacts with a chat address come after the people on
+    // this box (LosOS Contacts, src/contacts/).
+    const contacts = suggestContacts("", "matrix", { limit: 50 }).catch(() => []);
+    void Promise.all([boxPeople().catch(() => []), contacts]).then(([people, book]) => {
+      if (!live) return;
+      const list: Found[] = people.map((p) => ({ user_id: p.userId, display_name: p.displayName }));
+      for (const c of book) {
+        if (c.source === "contact" && c.matrixId !== undefined && !list.some((p) => p.user_id === c.matrixId)) {
+          list.push({ user_id: c.matrixId, display_name: c.name });
+        }
+      }
+      setOnBox(list);
+    });
     return () => {
       live = false;
     };

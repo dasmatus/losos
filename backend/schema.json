@@ -1613,7 +1613,7 @@
       },
       "GET /api/me": {
         "auth": true,
-        "out": "{\"name\": \"...\"|null, \"displayName\": \"...\"|null, \"groups\": [\"...\"], \"admin\": bool, \"spareKey\": bool, \"sections\": [\"...\"], \"standalone\": bool, \"edge\": bool, \"locked\": [\"twoFactor\"|\"password\"], \"shared\": [\"chat\"]}",
+        "out": "{\"name\": \"...\"|null, \"displayName\": \"...\"|null, \"groups\": [\"...\"], \"admin\": bool, \"spareKey\": bool, \"sections\": [\"...\"], \"standalone\": bool, \"edge\": bool, \"locked\": [\"twoFactor\"|\"password\"], \"shared\": [\"mail\", \"chat\", \"contacts\"]}",
         "note": "Who is calling (backend/src/http.rs, get_me). A person signed in at the box's sign-in page (Authelia at /auth/) arrives as the Remote-User nginx sets from Authelia's answer; lososd looks them up in the people file it writes (backend/src/people.rs) and answers with their name, groups and the sections of backend/sections.json those groups open. `standalone` is true when this box signs people in itself (LOSOS_IDENTITY=authelia), which is when the Users pane is shown. The spare key answers with name null, admin true and spareKey true. The admin pages show the panes `sections` names and hide the rest. 401 signed out; 403 with noAccount:true for a Remote-User the people file does not hold (removed since they signed in). A company edge the owner lets manage the box (POST /api/edge/manage) answers with edge true, name null, admin false and the sections it may use. `locked` lists what a rule of LosOS Login holds the person to their own account for (backend/src/login.rs); while it is not empty, `sections` is [\"account\"], `admin` is false, and every other route but the signed-in ones answers 403 with locked:true. `shared` (a person's only) names the apps that run as the `shared` user and are live on this box now, which is only while it shares its storage: the page draws their entries only when they are named here."
       },
       "GET /api/chat": {
@@ -1625,6 +1625,11 @@
         "auth": true,
         "out": "{\"people\": [{\"userId\": \"@<name>:<serverName>\", \"displayName\": \"...\"}]}",
         "note": "Everyone in LosOS Login who may chat, so the page can offer them before they have ever signed in: Dendrite's user directory lists only people who share a room. Makes each one's account through the application service on first sight, keeping the display name in step; a disabled person or one a rule of LosOS Login holds is left out. 403 for the spare key and the edge; 503 while the homeserver starts; 404 when chat is not live."
+      },
+      "GET /api/contacts/suggest": {
+        "auth": true,
+        "out": "{\"contacts\": [{\"key\": \"contact:<id>\"|\"box:<name>\", \"source\": \"contact\"|\"box\", \"name\", \"picture\"?, \"emails\": [\"...\"], \"matrixId\"?, \"meshAddress\"?, \"contactId\"?}]}",
+        "note": "People pickers (Mail's To and Cc, starting a chat, the Contacts book's On this box, mesh sharing, @-mentions): ?q=&want=any|email|matrix|mesh|box&limit=8 (1 to 50). The caller's contacts, from LosOS Cloud's address books (GET /cloud/api/contacts/suggest as the caller, backend/src/cloud/contacts.rs, which also keeps the book itself under /cloud/api/contacts/), and the people on this box, best match first, accents ignored. A box person who is a contact by Matrix ID shows once, as the contact; want=mesh offers contacts only; want=box offers everyone on this box but the caller, contacts or not, and no contacts. Box people carry a matrixId only where chat runs and an address only where mail does; without LosOS Cloud there are no contacts. 403 for the spare key and the edge."
       },
       "POST /api/chat/session": {
         "auth": true,

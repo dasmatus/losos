@@ -40,8 +40,8 @@ Mail asks you to sign in with your own account.
   folders beside them and the unread count beside each. On a wide screen
   they are a tree on the left of the list; narrower, a row above it.
 - **Search** looks through the open folder: senders, subjects and text.
-- **Write** opens a new message. The **To** field suggests the other people
-  on the box. **Reply**, **Reply all** and **Forward** quote the message.
+- **Write** opens a new message. The **To** and **Cc** fields suggest your
+  [contacts](contacts) and the other people on the box. **Reply**, **Reply all** and **Forward** quote the message.
 - **Flag**, **Mark as unread**, **Archive** and **Move to** work on the open
   message. **Delete** moves it to the bin, and deleting it from the bin
   removes it for good.

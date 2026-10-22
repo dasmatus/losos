@@ -82,6 +82,9 @@ struct Api {
     share: crate::cloud_share::Share,
     /// LosOS Chat's homeserver, as far as lososd runs it (`crate::chat`).
     chat: crate::chat::Chat,
+    /// LosOS Cloud runs here, and with it LosOS Contacts' address books
+    /// (`LOSOS_CLOUD_CONTACTS`, `modules/cloud.nix`).
+    contacts: bool,
     /// LosOS Mail (`crate::mail`).
     mail: crate::mail::Mail,
     /// The box's credential store (`crate::credentials`).
@@ -620,6 +623,12 @@ fn shared_apps(api: &Api) -> Vec<&'static str> {
     }
     if api.chat.live() {
         apps.push("chat");
+    }
+    // Not a shared-side app: LosOS Contacts is LosOS Cloud's address books,
+    // on every box that runs LosOS Cloud. Listed here because the sidebar
+    // draws the app entries this list names.
+    if api.contacts {
+        apps.push("contacts");
     }
     // modules/ci.nix names the socket only while Mesh CI runs.
     if std::env::var_os("LOSOS_CI_SOCKET").is_some() {
@@ -1885,6 +1894,92 @@ async fn get_chat_threads(
             HttpResponse::build(StatusCode::from_u16(e.status()).unwrap_or(StatusCode::BAD_GATEWAY))
                 .json(serde_json::json!({ "errcode": "M_UNKNOWN", "error": e.to_string() }))
         }
+        Err(_) => HttpResponse::ServiceUnavailable().finish(),
+    }
+}
+
+// ── LosOS Contacts' people pickers (crate::contacts) ──────────────────────
+//
+// The book is LosOS Cloud's (`/cloud/api/contacts/`, crate::cloud::contacts);
+// lososd answers only the pickers, which also offer the people on the box.
+// `signed-in` in sections.json: the spare key and the edge have no book.
+
+/// Everyone on this box, as people pickers offer them: their chat ID where
+/// chat runs, their address where mail does.
+fn contacts_neighbours(api: &Api) -> Vec<crate::contacts::Neighbour> {
+    let Ok(everyone) = api.people.list() else {
+        return Vec::new();
+    };
+    let chat = api.chat.live();
+    everyone
+        .into_iter()
+        .filter(|p| !p.disabled && !p.groups.iter().any(|g| g == crate::people::LOCKED))
+        .map(|p| {
+            let shown = crate::profiles::render(&p, &api.profiles.get(&p.name).unwrap_or_default());
+            crate::contacts::Neighbour {
+                email: api.mail.address(&p.name),
+                picture: shown["picture"].as_str().map(str::to_string),
+                matrix_id: chat.then(|| api.chat.user_id(&p.name).ok()).flatten(),
+                display_name: p.display_name,
+                name: p.name,
+            }
+        })
+        .collect()
+}
+
+/// `GET /api/contacts/suggest?q=&want=any|email|matrix|mesh|box&limit=8`:
+/// the people a picker offers, the caller's contacts (from LosOS Cloud)
+/// and the people on this box, best match first. `{"contacts": [...]}`.
+async fn get_contacts_suggest(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    let mut person = None;
+    let refused = guarded_as(
+        &api,
+        &req,
+        "/api/contacts/suggest",
+        false,
+        |who| match who.person() {
+            Some(p) => {
+                person = Some(p.clone());
+                HttpResponse::Ok().finish()
+            }
+            None => err(
+                StatusCode::FORBIDDEN,
+                "sign in with LosOS Login to use your contacts",
+            ),
+        },
+    );
+    let Some(person) = person else {
+        return refused;
+    };
+    let q = query_map(&req);
+    let text = q.get("q").cloned().unwrap_or_default();
+    let want = crate::cloud::contacts::Want::parse(q.get("want").map_or("", String::as_str));
+    let limit = q
+        .get("limit")
+        .and_then(|l| l.parse::<usize>().ok())
+        .unwrap_or(8);
+    let worker = api.clone();
+    let found = web::block(move || {
+        let book = if worker.contacts {
+            // The owner's LosOS Cloud account is the owner's own
+            // (`modules/app-sign-in.nix`); everyone else's is their name.
+            let login = if person.groups.iter().any(|g| g == crate::people::OWNER) {
+                crate::app_names::OWNER_ACCOUNT.to_string()
+            } else {
+                person.name.clone()
+            };
+            crate::contacts::book_matches(&mut worker.backend.clone(), &login, &text, want)
+        } else {
+            crate::cloud::contacts::Matches::default()
+        };
+        let neighbours = contacts_neighbours(&worker);
+        crate::contacts::suggest(book, &neighbours, &person.name, &text, want, limit)
+    })
+    .await;
+    match found {
+        Ok(found) => HttpResponse::Ok()
+            .insert_header(("Cache-Control", "no-store"))
+            .json(serde_json::json!({ "contacts": found })),
         Err(_) => HttpResponse::ServiceUnavailable().finish(),
     }
 }
@@ -4685,6 +4780,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
             login,
             share: crate::cloud_share::Share::default(),
             chat: crate::chat::Chat::from_env(),
+            contacts: std::env::var("LOSOS_CLOUD_CONTACTS").is_ok_and(|v| v == "1"),
             mail: crate::mail::Mail::from_env(),
             credentials: crate::credentials::Credentials::from_env(),
             profiles: crate::profiles::Profiles::from_env(),
@@ -4915,6 +5011,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/chat", web::get().to(get_chat))
                 .route("/api/chat/session", web::post().to(post_chat_session))
                 .route("/api/chat/people", web::get().to(get_chat_people))
+                .route("/api/contacts/suggest", web::get().to(get_contacts_suggest))
                 .route("/internal/chat/authz", web::get().to(get_chat_authz))
                 .route(
                     "/internal/chat/threads/{room}",

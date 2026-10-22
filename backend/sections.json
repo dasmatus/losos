@@ -26,6 +26,7 @@
     "GET /api/chat": "signed-in",
     "POST /api/chat/session": "signed-in",
     "GET /api/chat/people": "signed-in",
+    "GET /api/contacts/suggest": "signed-in",
     "GET /api/windows": "signed-in",
     "POST /api/windows": "signed-in",
 
