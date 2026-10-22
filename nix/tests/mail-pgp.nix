@@ -29,10 +29,17 @@
 #     once Matus opens their mail.
 #
 # The run keeps the screenshots and the film's stills under mail-pgp-shots/.
-{ pkgs }:
+# With `beforeUi` (the admin pages from before this, built by the caller)
+# the specialisation `before` serves them on the same box and mail, for the
+# pull request's "before" pictures; the flake's check leaves it out.
+{
+  pkgs,
+  beforeUi ? null,
+}:
 
 let
   lososPkgs = import ../packages.nix { inherit pkgs; };
+  withoutLab = import ./admin-ui-without-lab.nix;
 
   # The outside world's certificates and keys, made once at build time.
   fixture =
@@ -102,12 +109,17 @@ pkgs.testers.nixosTest {
         losos = {
           hostName = "mattbox";
           backend.package = lososPkgs.losos-ctl;
-          admin.ui = lososPkgs.losos-admin-ui;
+          # The mail plugin answers the folder and filter routes.
+          backend.plugins = lososPkgs.losos-plugins;
+          admin.ui = withoutLab lososPkgs.losos-admin-ui;
           git.enable = false;
           sharingMyStorage = true;
           cluster.enable = true;
           shared.fscrypt.enable = false;
           mail.keyserver = "https://keys.example.net";
+        };
+        specialisation = lib.optionalAttrs (beforeUi != null) {
+          before.configuration.losos.admin.ui = lib.mkForce (withoutLab beforeUi);
         };
         users.groups.shared.gid = 1001;
         users.users.shared = {
@@ -209,6 +221,7 @@ pkgs.testers.nixosTest {
     EVA_PASS = "blue heron by the lake"
     DOMAIN = "mattbox.home.arpa"
     SECRET = "The spare key is under the blue pot by the door."
+    BEFORE = ${if beforeUi != null then "True" else "False"}
     FIXTURE = "${fixture}"
 
     # Three VMs under TCG can miss the driver's wait for a shell when they
@@ -443,6 +456,18 @@ pkgs.testers.nixosTest {
     with subtest("Eva opens it in her browser, and Matus reads his copy"):
         screens("read", EVA_PASSWORD, EVA_PASS, "08")
         screens("sent", PASSWORD, MATUS_PASS)
+
+    if BEFORE:
+        with subtest("the same screens on the pages from before OpenPGP"):
+            box.succeed("/run/current-system/specialisation/before/bin/switch-to-configuration test")
+            box.wait_for_unit("nginx.service")
+            box.wait_for_unit("lososd.service")
+            screens("before", EVA_PASSWORD, PASSWORD)
+            box.succeed("/run/booted-system/bin/switch-to-configuration test")
+            box.wait_for_unit("nginx.service")
+            box.wait_for_unit("lososd.service")
+            laptop.succeed("rm -rf /tmp/shared/mail-pgp-before")
+            laptop.copy_from_machine("/tmp/shots-before", "mail-pgp-before")
 
     with subtest("a GnuPG-signed PGP/MIME part reaches Stalwart byte for byte"):
         part = (

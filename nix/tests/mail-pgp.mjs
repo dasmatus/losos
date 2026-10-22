@@ -8,6 +8,7 @@
 //   mail-pgp outside <password> <NN|->                      keys from WKD and a keyserver
 //   mail-pgp read <password> <passphrase> <NN|->            Eva opens it
 //   mail-pgp sent <password> <passphrase>                   Matus reads his own copy
+//   mail-pgp before <eva-password> <matus-password>         the same screens, older pages
 //   mail-pgp manifest <test-name>
 //
 // Shots (NN, or - for none) follow nix/tests/mail-screens.mjs: 1280 x 900 CSS
@@ -272,6 +273,39 @@ async function sent(password, passphrase) {
   await context.close();
 }
 
+/* The pull request's "before" pictures, on the admin pages from before
+ * OpenPGP: Eva's inbox and the message, and Matus writing to her. Same
+ * window and state as 08-eva-inbox, 11-opened and 06-compose. */
+async function before(evaPassword, matusPassword) {
+  const dir = `${OUT}-before`;
+  mkdirSync(dir, { recursive: true });
+  const shot = async (page, slug) => {
+    await settle(page);
+    await page.screenshot({ path: `${dir}/${slug}.png`, timeout: 300_000 });
+    console.log('before', slug);
+  };
+  const eva = await browser('eva-before');
+  let page = await signedIn(eva, 'eva', evaPassword);
+  await page.goto(`${BASE}/mail`);
+  const row = page.getByRole('button', { name: /The spare key/ });
+  await row.waitFor({ timeout: 120_000 });
+  await shot(page, 'eva-inbox');
+  await row.click();
+  await page.getByRole('button', { name: 'Reply', exact: true }).waitFor({ timeout: 60_000 });
+  await shot(page, 'opened');
+  await eva.close();
+
+  const matus = await browser('matus-before');
+  page = await signedIn(matus, 'matus', matusPassword);
+  await page.goto(`${BASE}/mail`);
+  await page.getByRole('navigation', { name: 'Folders' }).first().waitFor({ timeout: 120_000 });
+  const dialog = await compose(page, `eva@${DOMAIN}`);
+  await dialog.getByLabel('Subject').fill('The spare key');
+  await dialog.locator('textarea').fill(SECRET);
+  await shot(page, 'compose');
+  await matus.close();
+}
+
 function manifest(test) {
   const steps = readFileSync(`${OUT}/steps.jsonl`, 'utf8')
     .split('\n')
@@ -286,7 +320,7 @@ function manifest(test) {
 }
 
 const [verb, ...rest] = process.argv.slice(2);
-const verbs = { key, send, outside, read, sent, manifest };
+const verbs = { key, send, outside, read, sent, before, manifest };
 if (!(verb in verbs)) {
   console.error(`unknown verb ${verb}`);
   process.exit(2);
