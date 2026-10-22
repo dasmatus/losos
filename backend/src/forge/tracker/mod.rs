@@ -279,6 +279,31 @@ pub fn valid_project_key(k: &str) -> bool {
             .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
 }
 
+/// A colour for a label made without one: the usual names get the usual
+/// colours, anything else one of the same eight, the same every time.
+pub fn label_color(name: &str) -> &'static str {
+    const COLORS: [&str; 8] = [
+        "#d1453b", "#8b5cf6", "#2f7de1", "#c9861a", "#3a9a5b", "#d0508f", "#1c9aa6", "#6b7280",
+    ];
+    let n = name.to_lowercase();
+    let i = match n.as_str() {
+        "bug" | "defect" | "regression" | "broken" => 0,
+        "feature" | "enhancement" | "improvement" => 1,
+        "docs" | "documentation" => 2,
+        "question" | "help" | "help wanted" => 3,
+        "good first issue" | "easy" => 4,
+        "security" => 5,
+        "performance" | "speed" => 6,
+        "chore" | "wontfix" | "duplicate" => 7,
+        _ => {
+            n.bytes()
+                .fold(7u32, |h, b| h.wrapping_mul(31).wrapping_add(b as u32)) as usize
+                % COLORS.len()
+        }
+    };
+    COLORS[i]
+}
+
 /// A key for a project of this name: the initials of its words when it
 /// has two or more, its first three letters otherwise, upper case. The
 /// caller makes it unique.

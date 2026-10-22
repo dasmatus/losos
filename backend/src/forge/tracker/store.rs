@@ -861,6 +861,11 @@ impl Store {
 
     /// The label of this name in a project, made if missing.
     pub fn ensure_label(&self, project_id: i64, name: &str, color: &str) -> anyhow::Result<i64> {
+        let color = if color.is_empty() {
+            super::label_color(name)
+        } else {
+            color
+        };
         let conn = self.conn();
         conn.execute(
             "INSERT INTO project_labels (project_id, name, color) VALUES (?1, ?2, ?3)

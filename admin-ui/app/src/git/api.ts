@@ -263,7 +263,7 @@ export function whenSignedOut(f: () => void): void {
   onSignedOut = f;
 }
 
-async function call<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+export async function call<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const init: RequestInit = { method, credentials: "same-origin" };
   if (signal !== undefined) init.signal = signal;
   if (body !== undefined) {

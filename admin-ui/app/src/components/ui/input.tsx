@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 /* shadcn/ui Input, on the palette. The select lives in native-select.tsx and
  * the error line in field.tsx now (shadcn's file layout); FieldError is
  * re-exported from here so its callers keep compiling. */
-export function Input({ className, ...props }: React.ComponentPropsWithoutRef<"input">) {
+export function Input({ className, ...props }: React.ComponentProps<"input">) {
   return (
     <input
       data-slot="input"

@@ -15,6 +15,7 @@ import credentials from "./credentials";
 import collab from "./collab";
 import games from "./games";
 import git from "./git";
+import tracker from "./tracker";
 import gitReview from "./git-review";
 import home from "./home";
 import inference from "./inference";
@@ -56,6 +57,7 @@ export const MESSAGES = {
   ...collab,
   ...notes,
   ...git,
+  ...tracker,
   ...gitReview,
   ...install,
   ...look,

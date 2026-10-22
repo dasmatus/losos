@@ -1,9 +1,15 @@
 import * as React from "react";
-import { BrowserRouter, Link, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
+  Add01Icon,
   Book02Icon,
+  Bookmark01Icon,
   CodeIcon,
+  Folder01Icon,
+  InboxIcon,
+  Task01Icon,
+  UserCircleIcon,
   GitBranchIcon,
   GitCommitIcon,
   GitPullRequestIcon,
@@ -35,7 +41,7 @@ import { useT } from "@/lib/i18n-react";
 import { logoFor } from "@/lib/logo";
 import { cn } from "@/lib/utils";
 import { git, GitError, whenSignedOut, type User } from "./api";
-import { NotFound } from "./parts";
+import { ErrorAlert, Loading, NotFound } from "./parts";
 import { BranchesView, CommitsView } from "./history";
 import { CodeView } from "./code";
 import { CompareView } from "./compare";
@@ -44,11 +50,15 @@ import { PullsView } from "./pulls";
 import { RepoList } from "./repos";
 import { FacesProvider, MeContext, useFaceBook, useFaces, useLoad, useVisitor, VisitorContext } from "./store";
 import { SettingsView } from "./settings";
+import { tracker } from "./tracker/api";
+import { IssuesRoot, TrackerProvider } from "./tracker/screen";
+import { useTracker } from "./tracker/store";
 import { WorktreesView } from "./worktrees";
 
 /* LosOS Git at /git/: the person's repositories in the browser. The list
  * of repositories, and per repository its code, pull requests with their
- * review, history, branches and the worktrees that push to it. Its data is
+ * review, history, branches and the worktrees that push to it, and the
+ * issues of every repository and project at /git/issues (tracker/). Its data is
  * LosOS Git's own API at /git/api/v1/, which nginx names the person to
  * when they are signed in to LosOS Login (modules/containers.nix). Someone
  * who is not is a visitor: they read the public repositories and get a
@@ -88,21 +98,27 @@ function Shell() {
     return () => controller.abort();
   }, []);
   const faces = useFaceBook(me);
+  // The issues lay a list and an issue side by side, as Mail does: they
+  // take the width of the screen.
+  const wide = useLocation().pathname.startsWith("/issues");
 
   return (
     <MeContext.Provider value={me}>
       <VisitorContext.Provider value={visitor}>
         <FacesProvider value={faces}>
+          <TrackerProvider>
           <div className="losos-shell min-h-dvh text-ink">
             <TopBar />
             {signedOut ? (
               <SignedOut />
             ) : (
-              <SidebarProvider className={cn("mx-auto flex w-full max-w-6xl px-4 pt-5 pb-12 sm:px-6", "max-md:flex-col max-md:gap-3 md:gap-6")}>
+              <SidebarProvider className={cn("mx-auto flex w-full px-4 pt-5 pb-12 sm:px-6", wide ? "max-w-[100rem]" : "max-w-6xl", "max-md:flex-col max-md:gap-3 md:gap-6")}>
                 <Places />
                 <main className="min-w-0 flex-1">
                   <Routes>
                     <Route path="/" element={<RepoList />} />
+                    <Route path="/issues/*" element={<IssuesRoot />} />
+                    <Route path="/:owner/:repo/issues" element={<RepoIssues />} />
                     <Route path="/:owner/:repo" element={<CodeView />} />
                     <Route path="/:owner/:repo/tree/*" element={<CodeView />} />
                     <Route path="/:owner/:repo/blob/*" element={<CodeView file />} />
@@ -121,6 +137,7 @@ function Shell() {
               </SidebarProvider>
             )}
           </div>
+          </TrackerProvider>
         </FacesProvider>
       </VisitorContext.Provider>
     </MeContext.Provider>
@@ -192,6 +209,7 @@ interface Place {
 function repoPlaces(base: string, admin: boolean): Place[] {
   const places: Place[] = [
     { to: base, label: "git.nav.code", icon: CodeIcon, also: [`${base}/tree`, `${base}/blob`] },
+    { to: `${base}/issues`, label: "git.nav.issues", icon: Task01Icon },
     { to: `${base}/pulls`, label: "git.nav.pulls", icon: GitPullRequestIcon, also: [`${base}/compare`] },
     { to: `${base}/commits`, label: "git.nav.commits", icon: GitCommitIcon },
     { to: `${base}/branches`, label: "git.nav.branches", icon: GitBranchIcon },
@@ -203,11 +221,13 @@ function repoPlaces(base: string, admin: boolean): Place[] {
 
 function Places() {
   const t = useT();
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
+  const visitor = useVisitor();
   const { state, isMobile, setOpenMobile } = useSidebar();
   const rail = !isMobile && state === "collapsed";
   const parts = pathname.split("/").filter((p) => p !== "");
-  const inRepo = parts.length >= 2;
+  const inIssues = parts[0] === "issues";
+  const inRepo = parts.length >= 2 && !inIssues;
   const base = inRepo ? `/${parts[0]}/${parts[1]}` : null;
   const repo = useLoad(
     (signal) => (inRepo ? git.repo(parts[0] ?? "", parts[1] ?? "", signal).catch(() => null) : Promise.resolve(null)),
@@ -222,13 +242,18 @@ function Places() {
 
   React.useEffect(() => setOpenMobile(false), [pathname, setOpenMobile]);
 
-  const item = (to: string, label: string, icon: IconSvgElement, active: boolean) => (
+  const item: PlaceItem = (to, label, icon, active, count) => (
     <SidebarMenuItem key={to}>
       <SidebarMenuButton isActive={active} tooltip={label} render={<Link to={to} aria-current={active ? "page" : undefined} />}>
         <SidebarMenuIcon active={active}>
           <HugeiconsIcon icon={icon} size={13} strokeWidth={1.5} color="currentColor" />
         </SidebarMenuIcon>
-        <span className={cn(rail && "sr-only")}>{label}</span>
+        <span className={cn("min-w-0 flex-1 truncate", rail && "sr-only")}>{label}</span>
+        {count !== undefined && count > 0 && !rail && (
+          <span className="rounded-full bg-accent px-1.5 text-[11px] leading-4 font-medium text-surface tabular-nums" data-count>
+            {count}
+          </span>
+        )}
       </SidebarMenuButton>
     </SidebarMenuItem>
   );
@@ -248,7 +273,11 @@ function Places() {
           {!isMobile && <SidebarTrigger label={t(rail ? "git.nav.expand" : "git.nav.collapse")} />}
         </SidebarHeader>
         <SidebarContent>
-          <SidebarMenu>{item("/", t("git.nav.repos"), Book02Icon, pathname === "/")}</SidebarMenu>
+          <SidebarMenu>
+            {item("/", t("git.nav.repos"), Book02Icon, pathname === "/")}
+            {visitor ? null : item("/issues", t("git.nav.issues"), Task01Icon, false)}
+          </SidebarMenu>
+          {inIssues && <IssuePlaces pathname={pathname} search={search} rail={rail} item={item} />}
           {base !== null && (
             <SidebarGroup>
               {!rail && <SidebarGroupLabel className="truncate">{parts[1]}</SidebarGroupLabel>}
@@ -259,6 +288,69 @@ function Places() {
       </Sidebar>
     </>
   );
+}
+
+type PlaceItem = (to: string, label: string, icon: IconSvgElement, active: boolean, count?: number) => React.ReactNode;
+
+/** Under Issues: the inbox, mine, all, each project and each saved view. */
+function IssuePlaces({ pathname, search, rail, item }: { pathname: string; search: string; rail: boolean; item: PlaceItem }) {
+  const t = useT();
+  const { home } = useTracker();
+  const open = new URLSearchParams(search).get("open");
+  const inProject = (key: string) => pathname.startsWith(`/issues/p/${key}`) || (open?.startsWith(`${key}-`) ?? false);
+  return (
+    <>
+      <SidebarGroup>
+        {!rail && <SidebarGroupLabel>{t("git.nav.issues")}</SidebarGroupLabel>}
+        <SidebarMenu>
+          {item("/issues/inbox", t("tracker.nav.inbox"), InboxIcon, pathname === "/issues/inbox", home?.unread)}
+          {item("/issues", t("tracker.nav.mine"), UserCircleIcon, pathname === "/issues" && open === null, home?.assigned)}
+          {item("/issues/all", t("tracker.nav.all"), Task01Icon, pathname === "/issues/all")}
+        </SidebarMenu>
+      </SidebarGroup>
+      <SidebarGroup>
+        {!rail && <SidebarGroupLabel>{t("tracker.nav.projects")}</SidebarGroupLabel>}
+        <SidebarMenu>
+          {(home?.projects ?? [])
+            .filter((p) => !p.archived)
+            .map((p) => item(`/issues/p/${p.key}`, p.name, Folder01Icon, inProject(p.key), p.counts?.open))}
+          {item("/issues/new-project", t("tracker.project.new"), Add01Icon, pathname === "/issues/new-project")}
+        </SidebarMenu>
+      </SidebarGroup>
+      {(home?.views.length ?? 0) > 0 && (
+        <SidebarGroup>
+          {!rail && <SidebarGroupLabel>{t("tracker.nav.views")}</SidebarGroupLabel>}
+          <SidebarMenu>{(home?.views ?? []).map((v) => item(`/issues/views/${v.id}`, v.name, Bookmark01Icon, pathname === `/issues/views/${v.id}`))}</SidebarMenu>
+        </SidebarGroup>
+      )}
+    </>
+  );
+}
+
+/** A repository's issues are its project's: found, or made on first ask
+ *  by someone who may write the repository. */
+function RepoIssues() {
+  const t = useT();
+  const { owner = "", repo = "" } = useParams();
+  const { reloadHome } = useTracker();
+  const project = useLoad((signal) => tracker.repoProject(owner, repo, signal), [owner, repo]);
+  React.useEffect(() => {
+    if (project.data !== null) reloadHome();
+  }, [project.data, reloadHome]);
+  if (project.data !== null) return <Navigate to={`/issues/p/${project.data.key}`} replace />;
+  if (project.error !== null) {
+    return project.error instanceof GitError && project.error.status === 404 ? (
+      <Empty className="mt-10">
+        <EmptyHeader>
+          <EmptyTitle>{t("tracker.repo.none")}</EmptyTitle>
+          <EmptyDescription>{t("tracker.repo.noneBody")}</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    ) : (
+      <ErrorAlert error={project.error} />
+    );
+  }
+  return <Loading rows={4} />;
 }
 
 function SignedOut() {
