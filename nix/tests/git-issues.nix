@@ -335,8 +335,8 @@ pkgs.testers.nixosTest {
             " | jq -e '.state.category == \"done\"'",
             timeout=60,
         )
-        three = issue("BT-4", owner)
-        assert [(l["kind"], l["closes"]) for l in three["links"]] == [("commit", True)], three
+        four = issue("BT-4", owner)
+        assert [(l["kind"], l["closes"]) for l in four["links"]] == [("commit", True)], four
 
     with subtest("Eva's pull request puts BT-6 in review and the merge closes it"):
         laptop.succeed(
@@ -363,8 +363,8 @@ pkgs.testers.nixosTest {
             " | jq -e '.state.category == \"done\"'",
             timeout=60,
         )
-        five = issue("BT-6", owner)
-        assert any(l["kind"] == "pull" and l["closes"] for l in five["links"]), five
+        six = issue("BT-6", owner)
+        assert any(l["kind"] == "pull" and l["closes"] for l in six["links"]), six
 
     def issue_shots(phase, folder):
         try:
