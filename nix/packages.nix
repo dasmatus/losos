@@ -354,7 +354,7 @@ images
     #
     # nix/tests/admin-ui.nix carries the SAME hash over the SAME lock file: two
     # derivations, one dependency set. Change both together.
-    npmDepsHash = "sha256-+RP46Gutn7cNbCyBatNNtXpE4XK/qy0dL20yG2Sb6wY=";
+    npmDepsHash = "sha256-ZimG01qBX7S7emmGa3GU7mrEjk71/cL9MUDsggyYAUE=";
 
     # No postinstall scripts. playwright is a devDependency (nix/tests/admin-ui.nix
     # drives the browser check with it) and its postinstall downloads browsers:
@@ -371,6 +371,15 @@ images
     env.LOSOS_SEGMENTER_MODEL = "${pkgs.fetchurl {
       url = "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/1/selfie_segmenter.tflite";
       hash = "sha256-GRrJUprlBu4L7vprLJRaFy2rnQfR6AKikKTkA4ImZYs=";
+    }}";
+    # The nudity warning (src/lib/nudity.ts): Marqo's nsfw-image-detection-384
+    # (Apache-2.0), exported to ONNX at a fixed revision. Its safetensors in
+    # that repository are Marqo's own, byte for byte; the export's report
+    # gives the largest logit difference against PyTorch as 7e-7. Copied to
+    # nudity/model.onnx and only fetched by a page that turned the warning on.
+    env.LOSOS_NUDITY_MODEL = "${pkgs.fetchurl {
+      url = "https://huggingface.co/KanariKanaru/nsfw-image-detection-384-onnx/resolve/8edc47eedf74b30fd379673bc202fe3b754b1538/model.onnx";
+      hash = "sha256-6TUOV2YIr+S1egif/rDrr6E4nNzqSILdYd8oxF8cJNI=";
     }}";
     # LosOS Lab (lab/index.html, the second Vite entry) imports the Rust core,
     # the GPU canvas and, for guests on the relay path, the libvirt client.
