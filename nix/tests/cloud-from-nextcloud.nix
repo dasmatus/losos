@@ -56,7 +56,7 @@ pkgs.testers.nixosTest {
       admin.ui = lososPkgs.losos-admin-ui;
       nextcloud.mode = "native";
       cloud.enable = false;
-      forgejo.enable = false;
+      git.enable = false;
     };
 
     # Nextcloud as the boxes ran it: the same folders, the same database.

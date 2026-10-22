@@ -362,7 +362,7 @@ pkgs.testers.nixosTest {
         backend.package = lososPkgs.losos-ctl;
         backend.plugins = lososPkgs.losos-plugins;
         admin.ui = ui;
-        forgejo.enable = false;
+        git.enable = false;
       }
       // (if after then { cloud.enable = true; } else { nextcloud.mode = "native"; });
       systemd.services.lososd = lib.mkIf (!after) {

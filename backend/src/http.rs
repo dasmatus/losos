@@ -190,6 +190,10 @@ fn error_response(e: anyhow::Error) -> HttpResponse {
                 .map(ToString::to_string)
         })
         .or_else(|| {
+            e.downcast_ref::<crate::user_apps::Invalid>()
+                .map(ToString::to_string)
+        })
+        .or_else(|| {
             e.downcast_ref::<crate::backup::Invalid>()
                 .map(ToString::to_string)
         })
@@ -604,13 +608,17 @@ fn gate_at(
 }
 
 /// The apps on the shared side that are live on this box now, by name:
-/// mail and chat run only while the box shares its storage, and the admin
+/// mail, chat and Mesh CI run only while the box shares its storage, and the admin
 /// UI draws their entries only when they are listed here. The spare key
 /// and an edge are nobody, so they get none.
 fn shared_apps(api: &Api) -> Vec<&'static str> {
     let mut apps = Vec::new();
     if api.mail.open().is_some() {
         apps.push("mail");
+    }
+    // modules/ci.nix names the socket only while Mesh CI runs.
+    if std::env::var_os("LOSOS_CI_SOCKET").is_some() {
+        apps.push("ci");
     }
     apps
 }
@@ -2287,7 +2295,10 @@ fn post_device_inner(api: &Api, kind: &str, client: &str, body: &[u8]) -> HttpRe
     if password_ok {
         api.passwords.record_success(client);
     } else {
-        api.passwords.record_failure(client, now);
+        // Counted from when the answer is known: the argon2 check takes a
+        // while, and a window started before it could end before the reply.
+        api.passwords
+            .record_failure(client, std::time::Instant::now());
     }
     let result = match kind {
         "cloud" => api
@@ -2295,7 +2306,7 @@ fn post_device_inner(api: &Api, kind: &str, client: &str, body: &[u8]) -> HttpRe
             .serialized(|l| crate::losos::cmd_device_cloud(l, password_ok, device)),
         _ => api
             .backend
-            .serialized(|l| crate::losos::cmd_device_git(l, password, password_ok, device)),
+            .serialized(|l| crate::losos::cmd_device_git(l, password_ok, device)),
     };
     match result {
         Ok(v) => HttpResponse::Ok().json(v),
@@ -3109,9 +3120,10 @@ fn builder_refused(r: &crate::builder::Refused) -> HttpResponse {
     )
 }
 
-/// `POST /api/builder/builds` `{"prompt": ..., "base"?: [files], "lang"?: ...}`
-/// — start a build. `base` is the widget to change, as the files the editor
-/// holds; a single string is read as its `index.html`.
+/// `POST /api/builder/builds` `{"prompt": ..., "kind"?: "widget"|"app",
+/// "base"?: ..., "lang"?: ...}` — start a build. `base` is the widget to
+/// change, as the files the editor holds (a single string is read as its
+/// `index.html`), or the source of the app to change.
 async fn post_builder_start(
     api: web::Data<Api>,
     req: HttpRequest,
@@ -3136,6 +3148,25 @@ async fn get_builder_build(
         match api.builder.build(&path) {
             Some(build) => HttpResponse::Ok().json(build),
             None => err(StatusCode::NOT_FOUND, "no such build"),
+        }
+    })
+}
+
+/// `POST /api/builder/builds/{id}/tried` — what the page found when it
+/// tried the app the build asked it to (`crate::builder::TryReport`).
+async fn post_builder_tried(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    path: web::Path<String>,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded(&api, &req, "/api/builder/builds", true, || {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        match crate::builder::parse_report(&doc)
+            .and_then(|(trial, report)| api.builder.tried(&path, &trial, report))
+        {
+            Ok(v) => HttpResponse::Ok().json(v),
+            Err(r) => builder_refused(&r),
         }
     })
 }
@@ -3803,6 +3834,142 @@ async fn plugin_route(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -
     )
 }
 
+// ── The owner's own apps ──────────────────────────────────────────────────
+// Apps the builder wrote or the owner typed (`crate::user_apps`), and the
+// data each one keeps. Making and changing them is the apps section's;
+// opening one and its data is anyone's who is signed in, since the people
+// on a box share its apps the way a family shares a list.
+
+fn user_app_missing() -> HttpResponse {
+    err(
+        StatusCode::NOT_FOUND,
+        "there is no app with that id on this box",
+    )
+}
+
+/// `GET /api/user-apps`.
+async fn get_user_apps(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/user-apps", false, || {
+        run(&api, crate::user_apps::cmd_list)
+    })
+}
+
+/// `GET /api/user-apps/{id}` — one app, with its source and its script.
+async fn get_user_app(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    id: web::Path<String>,
+) -> HttpResponse {
+    guarded(&api, &req, "/api/user-apps", false, || {
+        match api
+            .backend
+            .serialized(|b| crate::user_apps::cmd_get(b, &id))
+        {
+            Ok(Some(v)) => HttpResponse::Ok().json(v),
+            Ok(None) => user_app_missing(),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// `POST /api/user-apps` `{"id"?, "name", "summary"?, "prompt"?, "source"}`
+/// — add an app, or save a new version of one.
+async fn post_user_app(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    guarded(&api, &req, "/api/user-apps", true, || {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        match crate::user_apps::parse_draft(&doc) {
+            Some(draft) => run(&api, |b| {
+                let saved = crate::user_apps::cmd_put(b, &draft);
+                if saved.is_ok() {
+                    crate::config_repo::nudge();
+                }
+                saved
+            }),
+            None => err(
+                StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"id": "..." (optional), "name": "...", "source": "..."}"#,
+            ),
+        }
+    })
+}
+
+/// `POST /api/user-apps/check` `{"source"}` — check and compile, saving
+/// nothing: the code editor's preview.
+async fn post_user_app_check(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded(&api, &req, "/api/user-apps/check", false, || {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        match doc.get("source").and_then(serde_json::Value::as_str) {
+            Some(source) => match crate::user_apps::cmd_check(source) {
+                Ok(v) => HttpResponse::Ok().json(v),
+                Err(e) => error_response(e),
+            },
+            None => err(
+                StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"source": "..."}"#,
+            ),
+        }
+    })
+}
+
+/// `DELETE /api/user-apps/{id}` — the app and its data.
+async fn delete_user_app(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    id: web::Path<String>,
+) -> HttpResponse {
+    guarded(&api, &req, "/api/user-apps", true, || {
+        run(&api, |b| crate::user_apps::cmd_delete(b, &id))
+    })
+}
+
+/// `GET /api/user-apps/{id}/data` — what the app keeps.
+async fn get_user_app_data(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    id: web::Path<String>,
+) -> HttpResponse {
+    guarded(&api, &req, "/api/user-apps/data", false, || {
+        match api
+            .backend
+            .serialized(|b| crate::user_apps::cmd_data(b, &id))
+        {
+            Ok(Some(v)) => HttpResponse::Ok().json(v),
+            Ok(None) => user_app_missing(),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// `POST /api/user-apps/{id}/data` `{"op": ...}` — one write to it.
+async fn post_user_app_data(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    id: web::Path<String>,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded(&api, &req, "/api/user-apps/data", true, || {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        let Some(op) = crate::user_apps::parse_op(&doc) else {
+            return err(
+                StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"op": "add"|"update"|"remove"|"replace"|"set", ...}"#,
+            );
+        };
+        match api
+            .backend
+            .serialized(|b| crate::user_apps::cmd_data_op(b, &id, &op))
+        {
+            Ok(Some(v)) => HttpResponse::Ok().json(v),
+            Ok(None) => user_app_missing(),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
 // ── The pin picker ────────────────────────────────────────────────────────
 // The two lists the sidebar's picker pins from, LosOS Cloud's files and
 // LosOS Git's repositories (`crate::pins`). The pins themselves are the
@@ -3857,7 +4024,7 @@ async fn get_site(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
 }
 
 /// `POST /api/site` — `{"set": {"cloud.trashDays": "30",
-/// "forgejo.site.landingPage": null}}`: each value a Nix literal, or null to
+/// "git.site.pushCreate": null}}`: each value a Nix literal, or null to
 /// go back to the default. Only those lines of `overrides.nix` change; the
 /// rest is an apply.
 async fn post_site(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
@@ -4443,6 +4610,16 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                     web::post().to(post_market_coin_pay),
                 )
                 .route("/api/market/rpc", web::post().to(post_market_rpc))
+                .route("/api/user-apps", web::get().to(get_user_apps))
+                .route("/api/user-apps", web::post().to(post_user_app))
+                .route("/api/user-apps/check", web::post().to(post_user_app_check))
+                .route("/api/user-apps/{id}", web::get().to(get_user_app))
+                .route("/api/user-apps/{id}", web::delete().to(delete_user_app))
+                .route("/api/user-apps/{id}/data", web::get().to(get_user_app_data))
+                .route(
+                    "/api/user-apps/{id}/data",
+                    web::post().to(post_user_app_data),
+                )
                 .route("/api/market/onramp", web::post().to(post_market_onramp))
                 .route(
                     "/api/market/onramp/status",
@@ -4468,6 +4645,10 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route(
                     "/api/builder/builds/{id}",
                     web::delete().to(delete_builder_build),
+                )
+                .route(
+                    "/api/builder/builds/{id}/tried",
+                    web::post().to(post_builder_tried),
                 )
                 .route("/api/vms", web::get().to(get_vms))
                 .route("/api/vms/orders", web::post().to(post_vm_order))

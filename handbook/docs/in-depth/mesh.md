@@ -19,7 +19,7 @@ Each box runs two Kubernetes instances:
 
 |                     | Local (k3s)                 | Mesh (rke2 agent)                |
 | ------------------- | --------------------------- | -------------------------------- |
-| Runs                | this box's Forgejo, apps installed as shared | Longhorn storage, shared compute |
+| Runs                | apps installed as shared    | Longhorn storage, shared compute |
 | Server              | this box                    | the edge VPS                     |
 | Needs the network   | no                          | yes                              |
 

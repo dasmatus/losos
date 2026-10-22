@@ -20,13 +20,6 @@ export default defineMessages({
   "apps.code.note": { en: "Your repositories", sk: "Vaše repozitáre", de: "Deine Repositorys" },
   "apps.settings.note": { en: "Run this box", sk: "Správa tohto zariadenia", de: "Diese Box verwalten" },
 
-  // ── Why the grid is short ───────────────────────────────────────────────
-  "apps.notice.code": {
-    en: "Your code is served under this box's own name, not from this page.",
-    sk: "Váš kód sa poskytuje pod vlastným názvom tohto zariadenia, nie z tejto stránky.",
-    de: "Dein Code wird unter dem eigenen Namen dieser Box ausgeliefert, nicht von dieser Seite.",
-  },
-
   // ── Figures ─────────────────────────────────────────────────────────────
   "apps.format.unknown": { en: "unknown", sk: "neznáme", de: "unbekannt" },
   "apps.format.bytes": {

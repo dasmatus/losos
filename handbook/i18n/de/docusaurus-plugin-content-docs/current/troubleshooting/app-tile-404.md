@@ -33,11 +33,3 @@ Lesezeichen auf die eigenen Seiten von Nextcloud, etwa
 hat kein Nextcloud. Öffne stattdessen `https://<name>.local/cloud/`. Die
 Apps für Computer und Telefon betrifft das nicht, LosOS Cloud antwortet
 ihnen weiter unter der Adresse `/nextcloud`, mit der sie eingerichtet sind.
-
-## Links in LosOS Git zeigen den falschen Namen \{#losos-git-links-show-the-wrong-name}
-
-LosOS Git zeigt Clone-URLs mit dem `.local`-Namen der Box an, auch wenn du
-sie über die Adresse erreicht hast. Die Seiten funktionieren so oder so.
-Für `git clone` setzt du die Adresse an die Stelle des Namens, oder du
-trägst den Namen in deine hosts-Datei ein, wie es
-[Der Name wird nicht aufgelöst](name-does-not-resolve) beschreibt.

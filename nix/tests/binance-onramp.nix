@@ -245,13 +245,6 @@ let
         ThreadingHTTPServer(("127.0.0.1", 9100), Binance).serve_forever()
       '';
 
-  standIn =
-    name:
-    pkgs.hello
-    // {
-      imageName = name;
-      imageTag = "test";
-    };
   browsers = pkgs.playwright-driver.browsers.override {
     withFirefox = false;
     withWebkit = false;
@@ -396,13 +389,11 @@ pkgs.testers.nixosTest {
           ../../modules/tls.nix
           ../../modules/daemon.nix
           ../../modules/identity.nix
-          ../../modules/workloads.nix
         ];
         losos = {
           hostName = "mattbox";
           backend.package = lososPkgs.losos-ctl;
           admin.ui = lososPkgs.losos-admin-ui;
-          workloads.forgejoImage = standIn "losos-forgejo-stand-in";
           proxy = {
             enable = true;
             inherit registrarUrl;

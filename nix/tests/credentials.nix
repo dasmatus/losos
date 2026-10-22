@@ -193,7 +193,6 @@ pkgs.testers.nixosTest {
           ../../modules/tls.nix
           ../../modules/daemon.nix
           ../../modules/identity.nix
-          ../../modules/workloads.nix
           ../../modules/fscrypt.nix
           ../../modules/backup.nix
         ];
@@ -204,7 +203,7 @@ pkgs.testers.nixosTest {
           backend.package = lososPkgs.losos-ctl;
           backend.plugins = lososPkgs.losos-plugins;
           admin.ui = ui;
-          forgejo.enable = false;
+          git.enable = false;
         };
         # systemd-creds and systemctl on it as on a real box, where NixOS
         # appends systemd to every unit's path; mkForce drops that default.
