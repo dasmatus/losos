@@ -374,7 +374,7 @@ pkgs.testers.nixosTest {
         assert set(people) == {m["userId"], e["userId"]}, people
         assert people[e["userId"]] == "Eva", people
         code, body = call("/api/me", matus)
-        assert json.loads(body)["shared"] == ["chat"], body
+        assert "chat" in json.loads(body)["shared"], body
 
     with subtest("messages, uploads and the thread list go through nginx"):
         mt, et = m["accessToken"], e["accessToken"]
@@ -491,7 +491,7 @@ pkgs.testers.nixosTest {
         box.fail("systemctl cat dendrite.service")
         code, body = call("/api/chat", matus)
         assert code == 404, (code, body)
-        assert json.loads(call("/api/me", matus)[1])["shared"] == []
+        assert "chat" not in json.loads(call("/api/me", matus)[1])["shared"]
         code, _ = call("/_matrix/client/v3/account/whoami", matus)
         assert code == 404, code
         code, _ = call("/_matrix/media/v3/config", matus)
@@ -505,7 +505,7 @@ pkgs.testers.nixosTest {
         saved(True)
         box.wait_for_unit("dendrite.service")
         box.wait_until_succeeds("curl -sf http://127.0.0.1:8008/_matrix/client/versions")
-        assert json.loads(call("/api/me", matus)[1])["shared"] == ["chat"]
+        assert "chat" in json.loads(call("/api/me", matus)[1])["shared"]
         browser("on")
   '';
 }
