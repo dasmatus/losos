@@ -27,6 +27,11 @@ Open a room or a direct message. The header has two buttons, **Voice call**
 and **Video call**. Your browser asks once for the microphone, and for the
 camera when you start with video.
 
+A call does not need a camera. If the browser opens none, because there is
+none or because you did not allow it, you join with your camera off and a
+message says so; the others hear you as usual. Without a microphone you
+join listening only, and the microphone button asks for it again.
+
 Everyone in the room gets a card in the corner of their chat page that
 rings for a minute. **Answer** joins the way the call was started. On a
 video call, **Answer without video** joins with the microphone only.
@@ -44,6 +49,12 @@ your camera off and on, share your screen, switch your background, invite
 a guest, open podcast mode, and leave the call. Turning the camera off
 stops it, so its light goes out, and sends nothing until you turn it on
 again.
+
+Your voice goes out at 128 kb/s over the full range of hearing, with the
+browser's echo cancellation and noise suppression on. Your camera sends up
+to 720p at 30 frames a second. When the connection is short, it lowers the
+sharpness first and keeps the movement smooth; a shared screen does the
+opposite and keeps its text sharp.
 
 The **End-to-end encrypted** label at the top says how many frames your
 browser has sent encrypted, and how many it has received and opened.
