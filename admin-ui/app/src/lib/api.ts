@@ -2338,6 +2338,8 @@ export interface PersonEntry {
   roleName?: string | null;
   muted?: Hold | null;
   suspended?: Hold | null;
+  /** Marked as an adult or a child (`GET /api/pictures`), or null. */
+  age?: AgeMark | null;
 }
 
 export interface PeopleResponse {
@@ -2574,14 +2576,6 @@ export function postRole(
 /** POST /api/roles/remove — forget a custom role. */
 export function postRoleRemove(id: string, options: RequestOptions = {}): Promise<{ roles: CustomRole[] }> {
   return postJson("/api/roles/remove", { id }, options);
-}
-
-/** POST /api/reports — report something to the box's moderators. */
-export function postReport(
-  report: { app: ReportApp; ref: string; reason: ReportReason; about?: string; note?: string },
-  options: RequestOptions = {},
-): Promise<{ id: string }> {
-  return postJson("/api/reports", report, options);
 }
 
 /** GET /api/moderation — the queue, everyone's holds, the log. */
@@ -3413,9 +3407,11 @@ export function getMailMessage(id: string, options: RequestOptions = {}): Promis
   return call<MailMessage>(`/api/mail/messages/${encodeURIComponent(id)}`, options);
 }
 
-/** Where the message's HTML is served, for the sandboxed frame. */
-export function mailHtmlUrl(id: string): string {
-  return apiPath(`/api/mail/messages/${encodeURIComponent(id)}/html`);
+/** Where the message's HTML is served, for the sandboxed frame. Its
+ *  pictures load only with `pictures` (lososd's MAIL_FRAME_CSP_NO_PICTURES
+ *  holds them back otherwise). */
+export function mailHtmlUrl(id: string, pictures = false): string {
+  return apiPath(`/api/mail/messages/${encodeURIComponent(id)}/html${pictures ? "?pictures=1" : ""}`);
 }
 
 /** Where an attachment downloads from. */
@@ -3711,6 +3707,99 @@ export function putMailFilters(filters: MailFilter[]): Promise<{ filters: MailFi
     contentType: "application/json",
     body: JSON.stringify({ filters }),
   });
+}
+
+/* ── Pictures in Chat and Mail (backend/src/pictures.rs) ──────────────────
+ * Which pictures arrive blurred, whom the person trusts, the nudity warning
+ * and the adult or child mark. The box never looks at a picture: the blur
+ * and the warning are drawn in this page. */
+
+/** Which pictures arrive blurred: every one but those from trusted
+ *  senders, only those from strangers, or none (adults only). */
+export type PictureBlur = "everyone" | "strangers" | "nobody";
+
+export interface AgeMark {
+  age: "adult" | "child";
+  /** A finished Binance purchase, or an administrator in People. */
+  by: "binance" | "admin";
+  /** Seconds since 1970. */
+  since: number;
+}
+
+export interface PictureSettings {
+  blur: PictureBlur;
+  /** Chat IDs and mail addresses, in lower case. */
+  trusted: string[];
+  nudityCheck: boolean;
+  /** Private details blacked out and asked about (components/details.tsx). */
+  detailsCheck: boolean;
+  age: AgeMark | null;
+  /** Marked as a child: the warning stays on and `nobody` is refused. */
+  child: boolean;
+  /** Marked as an adult: `nobody` may be chosen. */
+  mayShowAll: boolean;
+}
+
+export interface PictureSender {
+  shown: boolean;
+  because: "trusted" | "known" | "setting" | null;
+  nudityCheck: boolean;
+}
+
+/** GET /api/pictures — the caller's own settings. */
+export function getPictures(options: RequestOptions = {}): Promise<PictureSettings> {
+  return call<PictureSettings>("/api/pictures", options);
+}
+
+/** POST /api/pictures — 403 with code `adultRequired` or `childAccount`
+ *  when the mark does not allow the change. */
+export function postPictures(
+  change: { blur?: PictureBlur; nudityCheck?: boolean; detailsCheck?: boolean },
+  options: RequestOptions = {},
+): Promise<PictureSettings> {
+  return postJson("/api/pictures", change, options);
+}
+
+/** POST /api/pictures/trust — always show (or stop showing) one sender's
+ *  pictures at once. */
+export function postPictureTrust(id: string, trusted: boolean, options: RequestOptions = {}): Promise<PictureSettings> {
+  return postJson("/api/pictures/trust", { id, trusted }, options);
+}
+
+/** GET /api/pictures/sender?id= — whether this chat ID or address's
+ *  pictures show at once. */
+export function getPictureSender(id: string, options: RequestOptions = {}): Promise<PictureSender> {
+  return call<PictureSender>(`/api/pictures/sender?id=${encodeURIComponent(id)}`, options);
+}
+
+/** POST /api/people/age — an administrator's mark. */
+export function postPersonAge(
+  name: string,
+  age: AgeMark["age"] | null,
+  options: RequestOptions = {},
+): Promise<{ name: string; age: AgeMark | null }> {
+  return postJson("/api/people/age", { name, age }, options);
+}
+
+/* ── Reports to the box's moderators ──────────────────────────────────────
+ * `POST /api/reports` belongs to moderation (Settings › Moderation). It
+ * carries a reference to what is reported, never the thing itself. A box
+ * without moderation answers 404. */
+
+export interface ReportTarget {
+  app: ReportApp;
+  /** The sign-in name of the person reported, when they are on this box. */
+  about: string | null;
+  /** A chat event ID, a mail message's ID, a path. */
+  ref: string;
+}
+
+/** POST /api/reports — `{"id"}`. */
+export function postReport(
+  report: ReportTarget & { reason: ReportReason; note: string },
+  options: RequestOptions = {},
+): Promise<{ id: string }> {
+  return postJson("/api/reports", report, options);
 }
 
 // ── Mesh CI (backend/src/ci/, through lososd's ci plugin) ───────────────
