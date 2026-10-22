@@ -35,6 +35,7 @@ export function useMentions(
   const [looking, setLooking] = React.useState(false);
   const [box, setBox] = React.useState<DOMRect | null>(null);
   const listId = React.useId();
+  const pending = React.useRef<{ text: string; at: number } | null>(null);
 
   const sync = React.useCallback(() => {
     const el = ref.current;
@@ -75,16 +76,23 @@ export function useMentions(
       const caret = el.selectionStart ?? el.value.length;
       const insert = `${mentionText(m)} `;
       const text = el.value.slice(0, query.start) + insert + el.value.slice(caret);
-      const at = query.start + insert.length;
+      pending.current = { text, at: query.start + insert.length };
       setText(text);
       setQuery(null);
-      requestAnimationFrame(() => {
-        el.focus();
-        el.setSelectionRange(at, at);
-      });
     },
     [ref, query, setText],
   );
+
+  // The caret goes after the mention in the same commit that writes it, not
+  // a frame later: a key typed in between would land where the caret was.
+  React.useLayoutEffect(() => {
+    const el = ref.current;
+    const want = pending.current;
+    if (el === null || want === null || el.value !== want.text) return;
+    pending.current = null;
+    el.focus();
+    el.setSelectionRange(want.at, want.at);
+  });
 
   const open = query !== null && (items.length > 0 || !looking);
 
