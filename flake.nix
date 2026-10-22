@@ -490,6 +490,10 @@
           inherit pkgs;
           screens = true;
         };
+        # OpenPGP in Mail: keys made in the browser, encrypted mail between
+        # two people, the box's WKD, keys from an outside WKD, a keyserver and
+        # Autocrypt (nix/tests/mail-pgp.nix).
+        losos-mail-pgp = import ./nix/tests/mail-pgp.nix { inherit pkgs; };
         losos-cloud = import ./nix/tests/cloud.nix { inherit pkgs; };
         losos-cloud-from-nextcloud = import ./nix/tests/cloud-from-nextcloud.nix { inherit pkgs; };
         # Notes on a kitchen garden vault, and the folder published as a
