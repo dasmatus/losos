@@ -328,10 +328,20 @@ let
   # (or the admin value, for the headers they share) under /handbook/ and
   # /lab/, the widget frame's own value (or nothing) under /widget-frame/,
   # and a mail message's under its HTML route.
+  #
+  # Collabora Online's two prefixes (modules/office.nix) get nothing either,
+  # only while it is on: coolwsd sends its own policy, whose frame-ancestors
+  # lets the box's own pages frame the editor. Off, the arms are gone, so the
+  # SPA fallback under those paths keeps the strict policy.
+  officeArms = lib.optionalString config.losos.office.enable ''
+    ~^/browser/      "";
+        ~^/cool/         "";
+  '';
   adminHeaderMap = variable: value: handbookValue: labValue: frameValue: mailValue: ''
     map $uri ${variable} {
         default          "${value}";
         ~^/forgejo       "";
+        ${officeArms}
         ~^/handbook/     "${handbookValue}";
         ~^/lab/          "${labValue}";
         ~^/widget-frame/ "${frameValue}";
