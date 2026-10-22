@@ -11,8 +11,9 @@
  * message held, a mute typed in and given, and the log. `before` is a box
  * without roles: the Users pane and Access as they were, at the same size
  * and in the same state, for a pull request's Before column. `handbook`
- * takes the handbook's pictures in light, 800 CSS pixels wide, in the
- * given language, without changing anything on the box. */
+ * takes the handbook's pictures in light, the panes 800 CSS pixels wide and
+ * the role table 1280, in the given language, without changing anything on
+ * the box. */
 
 import { Shots } from './screens.mjs';
 
@@ -58,17 +59,20 @@ const page = await shots.open();
 await shots.signIn(page, 'matus', PASSWORD);
 
 if (handbook) {
-  // The handbook's pictures: the Users pane, the role table on its own and
-  // the Moderation pane, whole pages at 800 CSS pixels.
+  // The handbook's pictures: the Users pane and the Moderation pane, whole
+  // pages at 800 CSS pixels, and the role table on its own.
   const suffix = { 'en-US': '', 'sk-SK': '-sk', 'de-DE': '-de' }[ARG];
   await page.setViewportSize({ width: 800, height: 900 });
   await users(page);
   await shots.settle(page);
   await page.screenshot({ path: `${OUT}/settings-users${suffix}.png`, fullPage: true });
+  // The table needs the width of a laptop to show all five roles at once.
+  await page.setViewportSize({ width: 1280, height: 900 });
   const table = page.getByTestId('users-role-table');
   await table.scrollIntoViewIfNeeded();
   await shots.settle(page);
   await table.screenshot({ path: `${OUT}/settings-roles${suffix}.png` });
+  await page.setViewportSize({ width: 800, height: 900 });
   await moderation(page);
   await shots.settle(page);
   await page.screenshot({ path: `${OUT}/settings-moderation${suffix}.png`, fullPage: true });
