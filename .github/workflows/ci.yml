@@ -672,12 +672,27 @@ jobs:
 
           source_version=$(sed -n 's/^"\(.*\)"$/\1/p' nix/version.nix | head -n 1)
           roots_json=$(printf '%s\n' "${roots[@]}" | jq -R . | jq -s .)
-          jq -n \
-            --argjson version "$GITHUB_RUN_NUMBER" \
-            --arg sourceVersion "$source_version" \
-            --arg commit "$GITHUB_SHA" \
-            --argjson storePaths "$roots_json" \
-            '{format:1, version:$version, sourceVersion:$sourceVersion, commit:$commit, storePaths:$storePaths}' \
+          metadata_file="$RUNNER_TEMP/losos-sysupdate-metadata.json"
+          jq -n \\
+            --argjson version "$GITHUB_RUN_NUMBER" \\
+            --arg sourceVersion "$source_version" \\
+            --arg commit "$GITHUB_SHA" \\
+            --argjson storePaths "$roots_json" \\
+            '{format:1, version:$version, sourceVersion:$sourceVersion, commit:$commit, storePaths:$storePaths}' \\
+            > "$metadata_file"
+          # This signed Nix-store metadata binds the release version and root
+          # list. Nix signature verification then prevents a mirror from
+          # relabeling an old but valid package cache as a newer release.
+          metadata_root=$(nix store add-file --name losos-sysupdate-metadata.json "$metadata_file")
+          nix store sign --recursive --key-file "$key" "$metadata_root"
+          nix copy --to "file://$PWD/bundle/cache" --recursive "$metadata_root"
+          jq -n \\
+            --argjson version "$GITHUB_RUN_NUMBER" \\
+            --arg sourceVersion "$source_version" \\
+            --arg commit "$GITHUB_SHA" \\
+            --argjson storePaths "$roots_json" \\
+            --arg signedManifestStorePath "$metadata_root" \\
+            '{format:1, version:$version, sourceVersion:$sourceVersion, commit:$commit, storePaths:$storePaths, signedManifestStorePath:$signedManifestStorePath}' \\
             > bundle/manifest.json
 
           archive="losos-components_${GITHUB_RUN_NUMBER}.tar.xz"
