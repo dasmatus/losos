@@ -1,19 +1,21 @@
-# QEMU integration test for systemd-sysupdate's persistent target.
+# QEMU integration test for persistent systemd-sysupdate downloads and extraction.
 #
-# The test uses a virtual machine's disk-backed root and a local fixture server
-# to exercise the real url-tar extraction path without relying on the public
-# update endpoint. It verifies the extracted file survives a reboot and its
-# target filesystem is not tmpfs. The signed-cache importer and proxy policy
-# have stdlib unit coverage in tools/test_losos_sysupdate.py.
+# The guest's virtual-disk root is the target filesystem. A local fixture server
+# avoids network/release dependencies while exercising the real systemd-sysupdate
+# url-file download/checksum path and LosOS's safe extractor after reboot.
 { pkgs }:
 
 let
   fixture = pkgs.runCommand "losos-sysupdate-fixture" {
     nativeBuildInputs = [ pkgs.coreutils pkgs.gnutar pkgs.xz ];
   } ''
-    mkdir -p "$out" payload
-    printf '%s\n' persistent-update-payload > payload/marker.txt
-    tar -C payload -cJf "$out/losos-components_42.tar.xz" marker.txt
+    mkdir -p "$out" payload/cache
+    printf '%s\n' persistent-update-payload > payload/cache/marker.txt
+    printf 'StoreDir: /nix/store\nWantMassQuery: 1\nPriority: 50\n' > payload/cache/nix-cache-info
+    printf 'StorePath: /nix/store/%s-losOS-test\n' "$(printf 'a%.0s' $(seq 1 32))" > "payload/cache/$(printf 'a%.0s' $(seq 1 32)).narinfo"
+    printf '%s\n' '{"format":1,"version":42,"sourceVersion":"v-test","commit":"0123456789abcdef","storePaths":[]}' > payload/manifest.json
+    tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
+      -C payload -cf - manifest.json cache | xz -T0 -6 > "$out/losos-components_42.tar.xz"
     (cd "$out" && sha256sum losos-components_42.tar.xz > SHA256SUMS)
   '';
 in
@@ -23,24 +25,21 @@ pkgs.testers.nixosTest {
   nodes.machine = { lib, pkgs, ... }: {
     imports = [ ../../modules/sysupdate.nix ];
 
-    # Use a fixed local HTTP origin in this test so the actual systemd
-    # url-tar reader/extractor can be tested without depending on Internet or
-    # the production proxy's HTTPS endpoint.
+    # Replace only the source URL; the production url-file source and
+    # regular-file target remain the same and write into persistent /var.
     systemd.sysupdate.transfers."50-losos-components".Source = lib.mkForce {
-      Type = "url-tar";
+      Type = "url-file";
       Path = "http://127.0.0.1:18991/";
       MatchPattern = "losos-components_@v.tar.xz";
     };
 
     systemd.services.losos-sysupdate-proxy.enable = lib.mkForce false;
-    systemd.services.systemd-sysupdate = {
-      wants = lib.mkForce [ ];
-      after = lib.mkForce [ "network.target" ];
-      # This fixture tests extraction to disk, not importing an intentionally
-      # unsigned fake Nix cache. That import gate has separate unit tests.
-      serviceConfig.ExecStartPost = lib.mkForce [ ];
-    };
-    systemd.timers.systemd-sysupdate.enable = lib.mkForce false;
+    systemd.services.systemd-sysupdate-update.serviceConfig.ExecStartPost = lib.mkForce [ ];
+    systemd.timers.systemd-sysupdate-update.enable = lib.mkForce false;
+
+    # The test exercises extraction separately from importing the intentionally
+    # unsigned dummy cache, which cannot satisfy production Nix signatures.
+    environment.etc."losos-sysupdate-apply.py".source = ../../tools/losos-sysupdate-apply.py;
 
     systemd.services.sysupdate-test-httpd = {
       description = "Local immutable sysupdate fixture";
@@ -63,20 +62,21 @@ pkgs.testers.nixosTest {
     machine.wait_for_unit("multi-user.target")
     machine.wait_for_open_port(18991)
 
-    # This command parses the same SHA256SUMS manifest and uses the same
-    # url-tar implementation as a real component download.
     machine.succeed("systemd-sysupdate list")
     machine.succeed("systemd-sysupdate update")
-    machine.succeed("grep -Fx persistent-update-payload /var/lib/losos-sysupdate/slots/losos-components_42/marker.txt")
+    machine.succeed("test -s /var/lib/losos-sysupdate/archives/losos-components_42.tar.xz")
+    machine.succeed("python3 /etc/losos-sysupdate-apply.py --extract-only")
+    machine.succeed("grep -Fx persistent-update-payload /var/lib/losos-sysupdate/slots/losos-components_42/cache/marker.txt")
 
-    # The payload is extracted beneath /var/lib, on the VM's disk-backed
-    # root, not into /tmp, /run or another tmpfs.
+    # Both the downloaded archive and extracted bundle must live on the VM's
+    # disk-backed filesystem, never on /tmp, /run, or another tmpfs.
+    machine.succeed("test \"$(findmnt -n -o FSTYPE --target /var/lib/losos-sysupdate/archives)\" != tmpfs")
     machine.succeed("test \"$(findmnt -n -o FSTYPE --target /var/lib/losos-sysupdate/slots)\" != tmpfs")
-    machine.succeed("test ! -e /tmp/losos-components_42/marker.txt")
+    machine.succeed("test ! -e /tmp/losos-components_42.tar.xz")
 
     machine.reboot()
     machine.wait_for_unit("multi-user.target")
-    machine.succeed("grep -Fx persistent-update-payload /var/lib/losos-sysupdate/slots/losos-components_42/marker.txt")
+    machine.succeed("grep -Fx persistent-update-payload /var/lib/losos-sysupdate/slots/losos-components_42/cache/marker.txt")
     machine.succeed("test \"$(findmnt -n -o FSTYPE --target /var/lib/losos-sysupdate/slots)\" != tmpfs")
   '';
 }
