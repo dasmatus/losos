@@ -624,6 +624,110 @@ jobs:
   # store. Then the pseudo-terminal test (tests/terminal.rs) drives that very
   # binary against the mock box: raw-mode keys on the login screen, the
   # hidden prompt, the full-screen view and the exit statuses.
+  # Publish the separately versioned component bundle consumed by
+  # systemd-sysupdate. It is intentionally a Pages artifact, not part of the
+  # installer ISO or GitHub release media. The device verifies all bundled Nix
+  # signatures before importing anything from the extracted archive.
+  publish-sysupdate:
+    name: "systemd-sysupdate: publish signed XZ component bundle"
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && !inputs.release_tags
+    needs: [publish-cache]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-nix
+      - name: Build the reusable LosOS component outputs
+        env:
+          NIX_CACHE_SIGNING_KEY: ${{ secrets.NIX_CACHE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$NIX_CACHE_SIGNING_KEY" ]; then
+            echo "NIX_CACHE_SIGNING_KEY is required to sign update components" >&2
+            exit 1
+          fi
+          umask 077
+          key="$RUNNER_TEMP/losos-cache.sec"
+          printf '%s' "$NIX_CACHE_SIGNING_KEY" > "$key"
+          outputs=$(nix build \
+            .#losos-ctl .#losos-registrar .#losos-admin-ui .#losos-handbook .#losos-image-pause \
+            --no-link --print-out-paths -L)
+          mapfile -t roots <<< "$outputs"
+          if [ "${#roots[@]}" -ne 5 ]; then
+            echo "expected five component roots, got ${#roots[@]}" >&2
+            exit 1
+          fi
+
+          # Sign the entire closure, then export it as a self-contained Nix
+          # binary cache. Nix verifies those signatures on the appliance; the
+          # outer archive only transports files and never executes payload code.
+          nix store sign --recursive --key-file "$key" "${roots[@]}"
+          mkdir -p bundle/cache sysupdate
+          nix copy --to "file://$PWD/bundle/cache" --recursive "${roots[@]}"
+          if [ ! -f bundle/cache/nix-cache-info ]; then
+            printf 'StoreDir: /nix/store\nWantMassQuery: 1\nPriority: 50\n' > bundle/cache/nix-cache-info
+          fi
+
+          source_version=$(sed -n 's/^"\(.*\)"$/\1/p' nix/version.nix | head -n 1)
+          roots_json=$(printf '%s\n' "${roots[@]}" | jq -R . | jq -s .)
+          jq -n \
+            --argjson version "$GITHUB_RUN_NUMBER" \
+            --arg sourceVersion "$source_version" \
+            --arg commit "$GITHUB_SHA" \
+            --argjson storePaths "$roots_json" \
+            '{format:1, version:$version, sourceVersion:$sourceVersion, commit:$commit, storePaths:$storePaths}' \
+            > bundle/manifest.json
+
+          archive="losos-components_${GITHUB_RUN_NUMBER}.tar.xz"
+          tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
+            -C bundle -cf - manifest.json cache | xz -T0 -6 > "sysupdate/$archive"
+          (cd sysupdate && sha256sum "$archive" > SHA256SUMS)
+          test -s "sysupdate/$archive"
+          test -s sysupdate/SHA256SUMS
+          du -sh "sysupdate/$archive" bundle/cache
+      - name: Publish the sysupdate endpoint artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: losos-pages-sysupdate
+          path: sysupdate/*
+          if-no-files-found: error
+          retention-days: 7
+
+  # The Determinate-installed Nix job boots real NixOS test VMs under QEMU,
+  # with a virtual disk as the target. The sysupdate VM fetches an XZ bundle,
+  # asserts extraction is disk-backed (not tmpfs), reboots, and checks that
+  # the files survive. This exercises the full install test alongside that
+  # update-specific persistent-storage test.
+  sysupdate-install-qemu:
+    name: "nix: sysupdate persistence + installer QEMU tests (Determinate)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    if: ${{ !inputs.release_tags }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: DeterminateSystems/determinate-nix-action@v3.22.2
+        with:
+          github-token: ${{ github.token }}
+          kvm: true
+          extra-conf: |
+            extra-substituters = https://losos.dasmat.us/proxy
+            extra-trusted-public-keys = losos-1:35OIuYFMKDrlC6yTzqivDPqNqZTMjM0l2MB89bRRreg=
+            connect-timeout = 5
+            fallback = true
+      - name: Test proxy and signed-import edge cases
+        run: python3 tools/test_losos_sysupdate.py
+      - name: Assert the production transfer extracts beneath persistent var
+        run: |
+          set -euo pipefail
+          nix eval --json .#nixosConfigurations.install.config.systemd.sysupdate.transfers \
+            | jq -e '."50-losos-components".Source.Type == "url-tar" and ."50-losos-components".Target.Path == "/var/lib/losos-sysupdate/slots"'
+      - name: Install and reboot the test appliance on QEMU virtual disks
+        run: nix build .#checks.x86_64-linux.losos-install .#checks.x86_64-linux.losos-sysupdate-persistent -L
+
   tui:
     name: "losos terminal client"
     if: ${{ !inputs.release_tags }}
