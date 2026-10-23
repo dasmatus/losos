@@ -1,5 +1,6 @@
 /* The open message's ties to the other apps: a chat or a call with the
- * sender when they are on this box, and the box's AI on the message.
+ * sender when they are on this box, the box's AI on the message, and an
+ * issue in LosOS Git's tracker made of it.
  *
  * Kept in its own block of the reader's toolbar, so Mail's own buttons and
  * these grow apart. Each one is drawn only while the app it leads to is
@@ -7,13 +8,13 @@
  * to, and a button there could only fail. */
 
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
-import { BubbleChatIcon, Call02Icon } from "@hugeicons/core-free-icons";
+import { BubbleChatIcon, Call02Icon, TaskAdd01Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AskAiButton } from "@/components/ask-ai";
 import type { MailHome, MailMessage } from "@/lib/api";
 import { useT } from "@/lib/i18n-react";
-import { canHandTo, chatWithHref } from "@/lib/intents";
+import { canHandTo, canMakeIssue, chatWithHref, newIssueHref, quotedFrom } from "@/lib/intents";
 
 /** The sign-in name behind an address on this box, or null for anyone else. */
 export function localName(address: string, home: Pick<MailHome, "address">): string | null {
@@ -48,7 +49,7 @@ export function PersonLinks({ message: m, home }: { message: MailMessage; home: 
             size="icon-sm"
             aria-label={label}
             data-action={action}
-            onClick={() => window.location.assign(href)}
+            onClick={() => (action === "make-issue" ? window.open(href, "_blank", "noopener") : window.location.assign(href))}
           />
         }
       >
@@ -74,6 +75,16 @@ export function PersonLinks({ message: m, home }: { message: MailMessage; home: 
           {link(Call02Icon, t("together.mail.call"), chatWithHref(sender, { call: "voice" }), "call-sender")}
         </>
       )}
+      {canMakeIssue() &&
+        link(
+          TaskAdd01Icon,
+          t("together.issue.make"),
+          newIssueHref({
+            title: m.subject,
+            body: quotedFrom(m.text || m.preview, t("together.issue.fromMail", { name: m.from[0]?.name || m.from[0]?.email || "", subject: m.subject })),
+          }),
+          "make-issue",
+        )}
     </>
   );
 }

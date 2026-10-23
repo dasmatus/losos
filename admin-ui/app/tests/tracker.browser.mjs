@@ -5,7 +5,9 @@
  * Enter, s and a state, s on a row with nothing open), the board and a
  * card dragged to another column, the palette, a new issue with c, the
  * inbox, a reader who gets no property chips, a description whose Markdown
- * carries script, German, and the phone layout. nix/tests/git-issues.nix
+ * carries script, German, the phone layout, the pins on the admin page's
+ * sidebar, a row's right-click menu and a new issue another app links to
+ * (?new=1&title=…). nix/tests/git-issues.nix
  * runs the same pages against a real box. */
 
 import assert from 'node:assert';
@@ -119,6 +121,8 @@ function matches(i, q) {
   if (cat.includes('active') && ['done', 'canceled'].includes(i.state.category)) return false;
   const assignee = list('assignee');
   if (assignee.includes('me') && i.assignee !== 'notshared') return false;
+  const keys = list('key');
+  if (keys.length > 0 && !keys.includes(i.key)) return false;
   const text = q.get('q');
   if (text && !i.title.toLowerCase().includes(text.toLowerCase())) return false;
   return true;
@@ -131,8 +135,10 @@ function apply(m, i, body) {
   if (body.assignee !== undefined) i.assignee = body.assignee;
 }
 
-async function open(path, { permission = 'admin', locale = 'en-US', viewport = { width: 1280, height: 900 } } = {}) {
+async function open(path, { permission = 'admin', locale = 'en-US', viewport = { width: 1280, height: 900 }, pins = null } = {}) {
   const m = model(permission);
+  m.pins = pins === null ? null : [...pins];
+  m.puts = [];
   const page = await browser.newPage({ viewport, locale });
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
@@ -148,6 +154,18 @@ async function open(path, { permission = 'admin', locale = 'en-US', viewport = {
       ],
     }),
   );
+  // An administrator signed in through LosOS Login, whose sidebar pins the
+  // box keeps (GET/PUT /api/pins); without `pins` the page has neither.
+  if (m.pins !== null) {
+    await page.route('**/api/me', (route) => json(route, 200, { name: 'notshared', admin: true, sections: [], shared: [] }));
+    await page.route('**/api/pins', (route) => {
+      if (route.request().method() === 'PUT') {
+        m.pins = route.request().postDataJSON().pins;
+        m.puts.push(m.pins);
+      }
+      return json(route, 200, { pins: m.pins, limit: 24 });
+    });
+  }
   const api = '/git/api/v1';
   await page.route(`**${api}/**`, (route) => {
     const req = route.request();
@@ -313,6 +331,88 @@ await check('a reader sees the issue and its description as text, with no proper
   const dialog = page.getByRole('dialog');
   await dialog.waitFor();
   assert.equal(await dialog.locator('[data-prop]').count(), 0, 'a reader cannot set properties on a new issue');
+  await settle();
+  await page.close();
+});
+
+await check("the pin in an issue's top bar and a project's header put them on the sidebar", async () => {
+  const { page, m, settle } = await open('/issues/p/BT?open=BT-1', { pins: [] });
+  const pin = page.locator('[data-pin="issue:BT-1"]');
+  await pin.waitFor();
+  assert.equal(await pin.getAttribute('aria-pressed'), 'false');
+  await pin.click();
+  await page.locator('[data-pin="issue:BT-1"][aria-pressed="true"]').waitFor();
+  assert.deepEqual(m.puts.at(-1), [{ kind: 'issue', key: 'BT-1' }]);
+  await page.locator('[data-pin="project:BT"]').click();
+  await page.locator('[data-pin="project:BT"][aria-pressed="true"]').waitFor();
+  assert.deepEqual(m.puts.at(-1), [
+    { kind: 'issue', key: 'BT-1' },
+    { kind: 'project', key: 'BT' },
+  ]);
+  await settle();
+  await page.close();
+});
+
+await check('without a sign-in that may change the pins, there is no pin button', async () => {
+  const { page, settle } = await open('/issues/p/BT?open=BT-1');
+  await page.locator('[data-reader="BT-1"]').waitFor();
+  await page.waitForTimeout(300);
+  assert.equal(await page.locator('[data-pin]').count(), 0);
+  await settle();
+  await page.close();
+});
+
+await check('right-clicking a row or a card offers open, copy and pin', async () => {
+  const { page, m, settle } = await open('/issues/p/BT', { pins: [] });
+  const row = page.locator('[data-issue-list] [data-issue-key="BT-2"]');
+  await row.waitFor();
+  // The pins have answered once the project's own pin button is drawn.
+  await page.locator('[data-pin="project:BT"]').waitFor();
+  await row.click({ button: 'right' });
+  const menu = page.locator('[data-slot="context-menu"]');
+  await menu.waitFor();
+  assert.deepEqual(await menu.getByRole('menuitem').allInnerTexts(), [
+    'Open',
+    'Open in new tab',
+    'Copy link',
+    'Copy key and title',
+    'Pin to sidebar',
+  ]);
+  await menu.getByRole('menuitem', { name: 'Pin to sidebar' }).click();
+  await menu.waitFor({ state: 'detached' });
+  assert.deepEqual(m.puts.at(-1), [{ kind: 'issue', key: 'BT-2' }]);
+  await row.click({ button: 'right' });
+  await menu.getByRole('menuitem', { name: 'Open', exact: true }).click();
+  await page.waitForURL(/open=BT-2/);
+
+  await page.goto(`${origin}/git/issues/p/BT?layout=board`, { waitUntil: 'networkidle' });
+  await page.locator('[data-pin="project:BT"]').waitFor();
+  const card = page.locator('[data-card][data-issue-key="BT-3"]');
+  await card.click({ button: 'right' });
+  await menu.getByRole('menuitem', { name: 'Pin to sidebar' }).click();
+  await menu.waitFor({ state: 'detached' });
+  assert.deepEqual(m.puts.at(-1), [
+    { kind: 'issue', key: 'BT-2' },
+    { kind: 'issue', key: 'BT-3' },
+  ]);
+  await page.close();
+});
+
+await check('a link from another app opens a new issue already filled in, in the project it names', async () => {
+  const words = new URLSearchParams({ new: '1', into: 'bt', title: 'The backup mail bounced', body: '> It bounced twice.\n\nFrom Mail' });
+  const { page, m, settle } = await open(`/issues?${words}`);
+  const dialog = page.locator('[data-create-issue]');
+  await dialog.waitFor();
+  assert.equal(await dialog.getByRole('textbox', { name: 'Title' }).inputValue(), 'The backup mail bounced');
+  assert.equal(await dialog.getByRole('textbox', { name: 'Description' }).inputValue(), '> It bounced twice.\n\nFrom Mail');
+  // A reload does not open it again.
+  assert.equal(new URL(page.url()).searchParams.get('new'), null);
+  await dialog.getByRole('textbox', { name: 'Title' }).click();
+  await page.keyboard.press('Control+Enter');
+  await page.getByText('The backup mail bounced').first().waitFor();
+  const post = m.calls.find((c) => c.method === 'POST' && c.path === '/tracker/issues');
+  assert.equal(post.body.project, 'BT');
+  assert.equal(post.body.body, '> It bounced twice.\n\nFrom Mail');
   await settle();
   await page.close();
 });

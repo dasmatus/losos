@@ -6,6 +6,8 @@ slug: /manual/pictures
 
 # Pictures and reporting
 
+![Settings, Look.](../img/settings-look.png)
+
 Pictures that other people send you in [Chat](chat) and [Mail](mail) are
 hidden until you press them. You decide which senders get past that, and
 you can turn on a nudity warning that runs on your own device. Card and
@@ -91,8 +93,7 @@ opens two things.
 
 The first explains how to reach the police or a hotline. The second sends a
 report to the box's moderators. Moderators get a reference to the message,
-never its text or pictures, and can hide it or stop the sender. A box
-without moderation yet says so, and the links still work.
+never its text or pictures, and can hide it or stop the sender.
 
 LosOS never reports anything by itself. Nothing on the box looks inside
 your messages or your pictures.
@@ -116,4 +117,5 @@ your messages or your pictures.
   child helpline in every EU country.
 
 Then report the message to the box's moderators so they can hide it for
-everyone and stop the sender.
+everyone and stop the sender. See
+[what moderators do with it](moderation.md#a-report-about-a-child).

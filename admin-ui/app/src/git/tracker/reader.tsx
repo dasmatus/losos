@@ -56,7 +56,8 @@ import {
   cycleName,
   EstimateMenu,
 } from "./parts";
-import { canHandTo } from "./screen";
+import { canHandTo, contactHref } from "@/lib/intents";
+import { issueHandOvers, issueLink, PinButton } from "./pin";
 import { useIssueKeys, useNameOf, useTracker } from "./store";
 
 /* The open issue: its title and description, everything one can set on it
@@ -195,9 +196,8 @@ function Open({
   });
 
   const menuProps = (m: MenuName) => ({ open: menu === m, onOpenChange: (o: boolean) => onMenu(o ? m : null) });
-  const link = `${window.location.origin}/git/issues/${issue.key}`;
-  const mailHref = `/mail?${new URLSearchParams({ subject: `${issue.key} ${issue.title}`, body: `${issue.title}\n${link}\n` }).toString()}`;
-  const chatHref = `/chat/?${new URLSearchParams({ text: `${issue.key} ${issue.title} ${link}` }).toString()}`;
+  const link = issueLink(issue.key);
+  const { mail: mailHref, chat: chatHref } = issueHandOvers(issue);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-reader={issue.key}>
@@ -232,6 +232,7 @@ function Open({
         >
           <HugeiconsIcon icon={issue.subscribed ? Notification01Icon : NotificationOff01Icon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
         </Button>
+        <PinButton pin={{ kind: "issue", key: issue.key }} name={issue.title} />
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -260,7 +261,7 @@ function Open({
               </DropdownMenuItem>
             )}
             {issue.assignee !== null && canHandTo("contacts") && (
-              <DropdownMenuItem render={<a href={`/contacts?person=${encodeURIComponent(issue.assignee)}`} />} data-hand="contacts">
+              <DropdownMenuItem render={<a href={contactHref({ person: issue.assignee })} />} data-hand="contacts">
                 <HugeiconsIcon icon={UserCircleIcon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
                 {t("tracker.hand.contact")}
               </DropdownMenuItem>

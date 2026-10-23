@@ -1162,6 +1162,7 @@ await check('the homepage has a tile for each page of LosOS Cloud, LosOS Git and
     ['Files', '/cloud/files'],
     ['Photos', '/cloud/photos'],
     ['Code', '/git/'],
+    ['Issues', '/git/issues'],
     ['Settings', '/settings'],
   ]);
   assert.deepEqual(errors, []);

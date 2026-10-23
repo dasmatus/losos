@@ -3,14 +3,18 @@ import { isAbort, isUnauthorized } from "@/lib/api";
 import { searchCatalogue, type CatalogueApp } from "@/screens/settings/catalogue";
 import { authedGet, isRecord, nonEmptyString, notPresent } from "@/screens/settings/http";
 
+export { issueHref, searchIssues, type TrackerIssue } from "@/lib/issues";
+
 /* What the palette asks the box for while the owner types: files in LosOS
- * cloud, repositories in LosOS Git, text inside the files of both, and apps
- * to install.
+ * cloud, repositories and issues in LosOS Git, text inside the files of
+ * both, and apps to install.
  *
- * Every one of them goes through lososd. The page is served under
+ * All but one go through lososd. The page is served under
  * `connect-src 'self'`, and the two apps' own APIs want credentials this
  * page does not hold, so the box looks things up and the palette lists
- * what it found. A route the box does not serve (404) hides its group for
+ * what it found. Issues are the exception (lib/issues.ts): LosOS Git's
+ * tracker is asked directly, as the person signed in through LosOS Login,
+ * since it alone knows which projects they may read. A route the box does not serve (404) hides its group for
  * the rest of the visit rather than painting an error under every key. */
 
 export interface CloudFile {

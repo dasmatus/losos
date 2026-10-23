@@ -1,6 +1,6 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { File02Icon, Folder01Icon } from "@hugeicons/core-free-icons";
+import { File02Icon, Folder01Icon, TaskDone01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { PersonAvatar } from "@/components/person";
 import { useT } from "@/lib/i18n-react";
@@ -140,6 +140,7 @@ export function useMentions(
     const left = Math.max(8, Math.min(box.left, window.innerWidth - 328));
     const people = items.filter((m) => m.kind === "person");
     const files = items.filter((m) => m.kind === "file");
+    const issues = items.filter((m) => m.kind === "issue");
     const row = (m: Mention) => {
       const index = items.indexOf(m);
       return (
@@ -161,7 +162,7 @@ export function useMentions(
             <PersonAvatar person={m.person} size="xs" />
           ) : (
             <span className="flex size-6 shrink-0 items-center justify-center rounded-control border border-line bg-sunk text-muted">
-              <HugeiconsIcon icon={m.dir ? Folder01Icon : File02Icon} size={13} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+              <HugeiconsIcon icon={m.kind === "issue" ? TaskDone01Icon : m.dir ? Folder01Icon : File02Icon} size={13} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
             </span>
           )}
           <span className="min-w-0 flex-1">
@@ -208,6 +209,7 @@ export function useMentions(
           <>
             {group(t("mention.people"), people)}
             {group(t("mention.files"), files)}
+            {group(t("mention.issues"), issues)}
           </>
         )}
       </div>,

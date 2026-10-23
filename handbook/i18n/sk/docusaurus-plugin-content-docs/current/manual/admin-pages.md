@@ -32,7 +32,7 @@ zúži na pás ikon. Na telefóne sa otvára ako vysúvací panel.
 ## Vyhľadávanie \{#search}
 
 Lupa v hornej časti bočného panela otvorí jeden zoznam, ktorý nájde stránky,
-aplikácie, súbory aj repozitáre. Na ktorejkoľvek správcovskej stránke ho
+aplikácie, súbory, repozitáre aj úlohy. Na ktorejkoľvek správcovskej stránke ho
 otvorí aj Ctrl+Shift+P (na Macu Cmd+Shift+P) a tiež dvojbodka napísaná
 kdekoľvek mimo textového poľa. Nájde:
 
@@ -41,6 +41,8 @@ kdekoľvek mimo textového poľa. Nájde:
 - aplikácie v LosOS Cloud a LosOS Git
 - súbory a priečinky v LosOS Cloud, podľa mena
 - repozitáre v LosOS Git
+- úlohy v LosOS Git, podľa slov alebo kľúča ako `BT-12`; keď nič
+  nenapíšete, otvorené úlohy pridelené vám
 - text vnútri súborov, keď napíšete tri písmená: vo vašich súboroch v LosOS
   Cloud a na hlavnej vetve každého repozitára v LosOS Git
 - vaše pripnuté položky
@@ -136,10 +138,10 @@ zmizne aj vtedy, keď začnete písať cez výber.
 
 ## Pripnuté položky \{#pins}
 
-Pripnite si aplikácie, súbory a repozitáre, ktoré otvárate najčastejšie, a
+Pripnite si aplikácie, súbory, repozitáre a úlohy, ktoré otvárate najčastejšie, a
 budú v bočnom paneli pod **Pripnuté**. Pripnutá položka sa otvára vo
 vlastnej aplikácii: súbor alebo priečinok v LosOS Cloud, repozitár v LosOS
-Git, aplikácia na Prehľade alebo aplikácia nainštalovaná z vyhľadávania na
+Git, úloha alebo projekt v [úlohách](./issues.md) LosOS Git, aplikácia na Prehľade alebo aplikácia nainštalovaná z vyhľadávania na
 vlastnom porte. Zoznam drží zariadenie, takže každý prehliadač, z ktorého sa
 prihlásite, ukazuje tie isté pripnuté položky.
 
@@ -147,13 +149,16 @@ prihlásite, ukazuje tie isté pripnuté položky.
   rohu. Pripnutá dlaždica si špendlík nechá, farebný.
 - Na stránke Aplikácie je pri každej nainštalovanej aplikácii **Pripnúť**.
 - Ceruzka pri **Pripnuté** otvorí celý zoznam. Tam pripnutú položku posuniete
-  vyššie alebo nižšie, odopnete ju a pripínate z troch kariet: **Aplikácie**,
-  **Súbory**, ktorá prechádza priečinkami LosOS Cloud, a **Repozitáre**.
+  vyššie alebo nižšie, odopnete ju a pripínate zo štyroch kariet: **Aplikácie**,
+  **Súbory**, ktorá prechádza priečinkami LosOS Cloud, **Repozitáre** a
+  **Úlohy**, ktorá nájde úlohu podľa slov alebo kľúča.
+- Na úlohe alebo projekte v LosOS Git ju pripne špendlík navrchu. Úloha je
+  v bočnom paneli pod svojím názvom.
 - Ukážte na pripnutú položku v bočnom paneli a kliknutím na prečiarknutý
   špendlík ju odopnete. Pripnuté položky nájde aj
   [vyhľadávanie](#search).
-- Kliknite pravým tlačidlom na súbor, priečinok alebo repozitár vo
-  vyhľadávaní, na dlaždicu aplikácie na Prehľade alebo na pripnutú položku
+- Kliknite pravým tlačidlom na súbor, priečinok, repozitár alebo úlohu vo
+  vyhľadávaní, na úlohu v zozname alebo na nástenke LosOS Git, na dlaždicu aplikácie na Prehľade alebo na pripnutú položku
   v bočnom paneli a vyberte **Pripnúť na bočný panel** alebo **Odopnúť
   z bočného panela**. Na dotykovej obrazovke na položke podržte prst.
 

@@ -6,6 +6,8 @@ slug: /manual/ai-agents
 
 # AI tools on your computer
 
+![The LosOS companion approved in a tool.](../img/ai-companion.png)
+
 The terminal client can find the AI tools on your computer and put the
 **LosOS companion** in them. The companion lets a tool look through your
 files in LosOS Cloud and your repositories in LosOS Git, so you can ask it

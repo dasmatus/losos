@@ -7,6 +7,8 @@ mdx:
 
 # Install in depth
 
+![Settings, Network.](../img/settings-network.png)
+
 ## Get the installer
 
 Download the ISO and its `.sha256` from the

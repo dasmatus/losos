@@ -21,6 +21,7 @@ import {
   Copy01Icon,
   File02Icon,
   Folder01Icon,
+  TaskDone01Icon,
   HighlighterIcon,
   Link01Icon,
   Link04Icon,
@@ -304,13 +305,13 @@ export function EditorQuickActions({
         suggest: async (q, signal) => {
           const list = await searchMentions(q, signal);
           picks.current = new Map(list.map((m) => [m.id, m]));
-          return list.map((m) => ({ id: m.id, label: m.label, detail: m.detail, icon: m.kind === "person" ? UserIcon : m.dir ? Folder01Icon : File02Icon }));
+          return list.map((m) => ({ id: m.id, label: m.label, detail: m.detail, icon: m.kind === "person" ? UserIcon : m.kind === "issue" ? TaskDone01Icon : m.dir ? Folder01Icon : File02Icon }));
         },
         onSubmit: (_value, picked) => {
           const m = picked === undefined ? undefined : picks.current.get(picked.id);
           if (m === undefined) return;
-          // A file links the words; a person is named after them.
-          replace(m.kind === "file" ? `[${text}](${m.href})` : `${text} ${mentionText(m)}`);
+          // A file or an issue links the words; a person is named after them.
+          replace(m.kind === "person" ? `${text} ${mentionText(m)}` : `[${text}](${m.href})`);
         },
       },
     ],
