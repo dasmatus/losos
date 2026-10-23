@@ -724,7 +724,7 @@ jobs:
         run: |
           set -euo pipefail
           nix eval --json .#nixosConfigurations.install.config.systemd.sysupdate.transfers \
-            | jq -e '."50-losos-components".Source.Type == "url-tar" and ."50-losos-components".Target.Path == "/var/lib/losos-sysupdate/slots"'
+            | jq -e '."50-losos-components".Source.Type == "url-file" and ."50-losos-components".Target.Path == "/var/lib/losos-sysupdate/archives"'
       - name: Install and reboot the test appliance on QEMU virtual disks
         run: nix build .#checks.x86_64-linux.losos-install .#checks.x86_64-linux.losos-sysupdate-persistent -L
 
