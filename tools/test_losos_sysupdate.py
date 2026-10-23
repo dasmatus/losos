@@ -7,6 +7,7 @@ import importlib.util
 import io
 import json
 import os
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
