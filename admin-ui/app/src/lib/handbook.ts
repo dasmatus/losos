@@ -48,6 +48,7 @@ export const HANDBOOK_ENTRIES = {
   machines: "manual/machines/",
   "custom-domain": "types/official-edge/",
   "edge-manages-box": "types/company-edge/",
+  "edge-tiers": "in-depth/edge-federation/",
   tpm: "reference/tpm/",
   credentials: "reference/credentials/",
 } as const;

@@ -429,6 +429,32 @@ const EDGE_BOTH = {
     { name: 'losos-edge.dasmat.us', url: 'https://losos-edge.dasmat.us', source: 'configured', official: true },
   ],
 };
+/* Two secondary clusters on the LAN and the official edge over the
+ * internet: the box is in office and uses its gateway gw-a (secondary). */
+const gwEdge = (cluster, member) => ({
+  name: member, url: `http://${member}.local:8443`, source: 'lan', official: false,
+  tier: 'secondary', cluster, member,
+});
+const EDGE_CLUSTERS = {
+  ...EDGE_FOUND,
+  official: true,
+  edges: [
+    gwEdge('office', 'gw-a'),
+    gwEdge('office', 'gw-b'),
+    gwEdge('lab', 'gw-z'),
+    { name: 'losos-edge.dasmat.us', url: 'https://losos-edge.dasmat.us', source: 'configured', official: true, tier: 'tertiary' },
+  ],
+  path: { name: 'gw-a', url: 'http://gw-a.local:8443', source: 'lan', rathole: 'gw-a.local:2333', tier: 'secondary', cluster: 'office', member: 'gw-a' },
+  clusters: [{ name: 'lab', gateways: ['gw-z'] }, { name: 'office', gateways: ['gw-a', 'gw-b'] }],
+  cluster: 'office',
+};
+/* No gateway of office answers: the box went straight to the official edge. */
+const EDGE_TERTIARY = {
+  ...EDGE_CLUSTERS,
+  edges: [EDGE_CLUSTERS.edges[2], EDGE_CLUSTERS.edges[3]],
+  path: { name: 'losos-edge.dasmat.us', url: 'https://losos-edge.dasmat.us', source: 'configured', rathole: 'edge.losos.cfd:2333', tier: 'tertiary' },
+  clusters: [{ name: 'lab', gateways: ['gw-z'] }],
+};
 const EDGE_NONE = {
   reachable: false,
   official: false,
@@ -1823,6 +1849,47 @@ await check('each edge in reach gets a row; a company edge wears a warning sign 
   assert.equal(await alone.page.locator('[data-edge-sign="official"]').count(), 0);
   assert.deepEqual(alone.errors, []);
   await alone.page.close();
+});
+
+await check('the Mesh pane says which tier the box\'s link is, and the owner moves it to another secondary cluster', async () => {
+  const { page, errors } = await open({ path: '/mesh', stored: true, edge: EDGE_CLUSTERS, settings: JOINABLE });
+  const link = page.locator('[data-link-tier]');
+  await link.waitFor();
+  assert.equal(await link.getAttribute('data-link-tier'), 'secondary');
+  assert.match(await link.innerText(), /Secondary connection through gw-a/);
+  assert.match(await link.innerText(), /A local gateway of the cluster office/);
+  const inUse = page.locator('[data-edge-in-use="yes"]');
+  assert.equal(await inUse.count(), 1);
+  assert.match(await inUse.innerText(), /Secondary, in use/);
+  assert.match(await inUse.innerText(), /cluster office/);
+  assert.match(await page.locator('[data-edge-tier="tertiary"]').innerText(), /Tertiary/);
+  const office = page.locator('[data-cluster="office"]');
+  assert.equal(await office.getAttribute('data-cluster-mine'), 'yes');
+  assert.match(await office.innerText(), /Gateways: gw-a, gw-b/);
+  assert.match(await office.innerText(), /This box's cluster/);
+
+  const posts = [];
+  await page.route('**/api/edge/cluster', (route) => {
+    posts.push(route.request().postDataJSON());
+    return json(route, 200, { cluster: 'lab', path: { ...EDGE_CLUSTERS.path, name: 'gw-z', member: 'gw-z', cluster: 'lab' } });
+  });
+  await page.locator('[data-cluster="lab"]').getByRole('button', { name: 'Move here' }).click();
+  await page.locator('[data-toast]').filter({ hasText: /in the cluster lab now/ }).waitFor({ timeout: 5000 });
+  assert.deepEqual(posts, [{ cluster: 'lab' }]);
+  assert.deepEqual(errors, []);
+  await page.close();
+
+  // Its cluster's gateways are gone: tertiary, and the box is still in office.
+  const away = await open({ path: '/mesh', stored: true, edge: EDGE_TERTIARY, settings: JOINABLE });
+  const tertiary = away.page.locator('[data-link-tier="tertiary"]');
+  await tertiary.waitFor();
+  assert.match(await tertiary.innerText(), /Tertiary connection to losos-edge\.dasmat\.us/);
+  assert.match(await tertiary.innerText(), /no gateway of the cluster office answers/);
+  const gone = away.page.locator('[data-cluster="office"]');
+  assert.match(await gone.innerText(), /None of its gateways answers right now/);
+  assert.equal(await gone.getAttribute('data-cluster-mine'), 'yes');
+  assert.deepEqual(away.errors, []);
+  await away.page.close();
 });
 
 await check('with no edge proxy in reach the Mesh pane says so and the join switch is greyed with the reason', async () => {
