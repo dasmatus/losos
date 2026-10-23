@@ -222,10 +222,6 @@ pub struct ServeOpts {
     /// The uplink to a hub (`crate::relay`). `None` and this edge relays
     /// nothing anywhere.
     pub uplink: Option<crate::relay::UplinkOpts>,
-    /// The secondary cluster this gateway may belong to
-    /// (`crate::secondary`), from `--secondary-file`. `None` and the edge
-    /// never syncs with a peer.
-    pub secondary: Option<crate::secondary::SecondaryOpts>,
     /// The route table for boxes behind a local edge (`crate::routes`).
     /// `None` unless `--relay-routes` was given, which needs `--dns-zone`:
     /// only an edge that routes domains keeps the table.
@@ -555,19 +551,6 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                     ui_dir: arg(&rest, "--manage-ui").map(str::to_string),
                 }),
                 calls_relay: parse_calls_relay(&rest)?,
-                secondary: match arg(&rest, "--secondary-file") {
-                    None => None,
-                    Some(file) => Some(crate::secondary::SecondaryOpts {
-                        file: file.to_string(),
-                        self_url: req(&rest, "--secondary-self-url")?
-                            .trim_end_matches('/')
-                            .to_string(),
-                        self_tunnel: req(&rest, "--secondary-self-tunnel")?.to_string(),
-                        interval: parse_dur(
-                            arg(&rest, "--secondary-interval").unwrap_or("10s"),
-                        )?,
-                    }),
-                },
                 uplink: match arg(&rest, "--uplink-file") {
                     None => None,
                     Some(file) => Some(crate::relay::UplinkOpts {

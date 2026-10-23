@@ -85,11 +85,8 @@ use crate::market::{
 use crate::onramp::{Onramp, OnrampError, OrderView};
 use crate::opts::ServeOpts;
 use crate::registry::{Registry, Shared};
-use crate::relay::{
-    self, Enrolment, MainMember, RelayRefused, RelayReq, RelayResp, RelayRoute, UplinkFile,
-};
+use crate::relay::{self, Enrolment, RelayRefused, RelayReq, RelayResp, RelayRoute, UplinkFile};
 use crate::routes::{self, Bindings, PassKey, PlanInput, RouteRow, TableFile};
-use crate::secondary::{self, ClusterFile, Peers, SyncMsg};
 use crate::stripe_gate::{GATE_TIMEOUT, MAX_GATE_CALLS_PER_REQUEST};
 use crate::window::{self, valid_hhmm, valid_tz, ComputeWindow};
 use crate::zone::{self, ZoneNames};
@@ -272,29 +269,6 @@ struct AppState {
     calls_relay: Option<Arc<crate::calls_relay::Relay>>,
     /// Mesh CI's queue (`crate::ci`); `None` without `--ci-dir`.
     ci: Option<Arc<crate::ci::Ci>>,
-    /// The secondary cluster's peer table (`crate::secondary`); `None`
-    /// without `--secondary-file`.
-    secondary: Option<Arc<Secondary>>,
-    /// The main cluster as this edge sees it from `/relay`: every gateway
-    /// that relays through it, by (site, gateway). Live state.
-    main: Arc<std::sync::Mutex<BTreeMap<(String, String), MainRow>>>,
-}
-
-/// A gateway of this gateway's secondary cluster, and the ids it was warned
-/// about once.
-struct Secondary {
-    opts: secondary::SecondaryOpts,
-    peers: Peers,
-    /// Boxes a peer listed with a token other than ours: logged once each.
-    conflicts: std::sync::Mutex<HashSet<String>>,
-}
-
-/// One gateway in [`AppState::main`].
-#[derive(Debug, Clone)]
-struct MainRow {
-    cluster: Option<String>,
-    boxes: usize,
-    last: std::time::Instant,
 }
 
 #[derive(Debug, Deserialize)]
@@ -418,13 +392,6 @@ where
         .uplink
         .is_some()
         .then(|| tokio::spawn(uplink_loop(app.state.clone())));
-    // The secondary cluster's sync talks to the LAN's other gateways; like
-    // the uplink it must never hold up the local reconcile.
-    let sync = app
-        .state
-        .secondary
-        .is_some()
-        .then(|| tokio::spawn(secondary_loop(app.state.clone())));
     // The calls relay authenticates a box exactly as /register does.
     let calls = app.state.calls_relay.clone().map(|relay| {
         let st = app.state.clone();
@@ -457,10 +424,6 @@ where
     if let Some(uplink) = uplink {
         uplink.abort();
         let _ = uplink.await;
-    }
-    if let Some(sync) = sync {
-        sync.abort();
-        let _ = sync.await;
     }
     Ok(())
 }
@@ -665,7 +628,6 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         )),
     };
 
-    let opts_secondary = opts.secondary.clone();
     let state = AppState {
         reg,
         opts: Arc::new(opts),
@@ -696,14 +658,6 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         manage,
         calls_relay,
         ci,
-        secondary: opts_secondary.map(|opts| {
-            Arc::new(Secondary {
-                opts,
-                peers: Peers::default(),
-                conflicts: std::sync::Mutex::new(HashSet::new()),
-            })
-        }),
-        main: Arc::new(std::sync::Mutex::new(BTreeMap::new())),
     };
 
     // Generate config from whatever we just loaded, so the box is serving
@@ -734,10 +688,6 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         .route("/cluster/join", post(cluster_join))
         // Federation (crate::relay): a spoke lists the boxes it serves.
         .route("/relay", post(relay_route))
-        // Secondary clusters (crate::secondary): what a box reads to learn
-        // which tier its link to this edge is, and the gateways' sync.
-        .route("/cluster/secondary", get(secondary_info))
-        .route(secondary::SYNC_ROUTE, post(secondary_sync))
         // The optional Stripe Connect market. Every route answers 503 unless
         // the edge was started with `--market-gate-socket`. Browsing is
         // anonymous and shows no seller identity; everything else takes the
@@ -1308,7 +1258,7 @@ async fn cluster_join(
     Json(req): Json<ClusterJoinReq>,
 ) -> Result<Json<ClusterJoinResp>, ApiError> {
     let tenant = authenticate(&st, &req.appliance_id, &req.token).await?;
-    if !tenant.cluster && !secondary_member(&st, &tenant).await {
+    if !tenant.cluster {
         return Err(ApiError::ClusterForbidden);
     }
     if req.node_name != req.appliance_id {
@@ -1385,19 +1335,6 @@ async fn cluster_join(
     }))
 }
 
-/// Whether `tenant` is a box of this gateway's secondary cluster: enrolled
-/// here (or at a peer and synced here) on a gateway that belongs to one.
-/// Such a box may join the cluster's mesh, which is what a secondary cluster
-/// is for. An enrolled box on a gateway in no cluster stays proxy-only, as
-/// open enrolment always was, and a whitelist row keeps its own `cluster` bit.
-async fn secondary_member(st: &AppState, tenant: &TenantEntry) -> bool {
-    let (Some(sec), Some(enrolment)) = (&st.secondary, &st.enrolment) else {
-        return false;
-    };
-    enrolment.owns(Path::new(&tenant.token_file))
-        && read_cluster_file(&sec.opts.file).await.is_some()
-}
-
 /// `POST /relay`: a spoke replaces the list of boxes it relays through this
 /// hub. Authenticated as the spoke's own tenant, which must carry a
 /// `relay_zone`; every listed box is then checked against that zone
@@ -1467,10 +1404,7 @@ async fn relay_route(
             r.reason,
         );
     }
-    let relayed = st
-        .reg
-        .relay(&req.appliance_id, req.gateway.as_deref(), &accepted)
-        .await?;
+    let relayed = st.reg.relay(&req.appliance_id, &accepted).await?;
     let routes = match &st.routes {
         None => Vec::new(),
         Some(rt) => {
@@ -1519,95 +1453,12 @@ async fn relay_route(
         relayed.len(),
         refused.len(),
     );
-    let members = record_main_member(&st, &req, relayed.len()).await;
     st.notify.notify_one();
     Ok(Json(RelayResp {
         accepted: relayed,
         refused,
         routes,
-        members,
     }))
-}
-
-/// Note a gateway's `/relay` in the main cluster's member table, drop the
-/// gateways that went quiet for a heartbeat TTL, keep `main-cluster.json`
-/// beside the registry for the operator, and answer with the site's own
-/// gateways: a site sees its primary links, never another site's.
-async fn record_main_member(st: &AppState, req: &RelayReq, boxes: usize) -> Vec<MainMember> {
-    let now = std::time::Instant::now();
-    let ttl = st.opts.heartbeat_ttl;
-    let (site_rows, all_rows) = {
-        let mut main = st
-            .main
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        main.insert(
-            (
-                req.appliance_id.clone(),
-                req.gateway.clone().unwrap_or_default(),
-            ),
-            MainRow {
-                cluster: req.cluster.clone(),
-                boxes,
-                last: now,
-            },
-        );
-        main.retain(|_, row| now.duration_since(row.last) < ttl);
-        let member = |(site, gateway): &(String, String), row: &MainRow| MainMember {
-            site: site.clone(),
-            gateway: gateway.clone(),
-            cluster: row.cluster.clone(),
-            boxes: row.boxes,
-            seen_ago_secs: now.duration_since(row.last).as_secs(),
-        };
-        let site: Vec<MainMember> = main
-            .iter()
-            .filter(|((site, _), _)| *site == req.appliance_id)
-            .map(|(k, v)| member(k, v))
-            .collect();
-        // The file leaves the ages out, so it changes when the cluster does
-        // and not on every call.
-        let all: Vec<MainMember> = main
-            .iter()
-            .map(|(k, v)| MainMember {
-                seen_ago_secs: 0,
-                ..member(k, v)
-            })
-            .collect();
-        (site, all)
-    };
-    write_main_cluster(st, &all_rows).await;
-    site_rows
-}
-
-/// `main-cluster.json` beside the registry: the gateways of the main cluster
-/// as this edge knows them, every link in it primary. On a hub that is every
-/// site's gateways; on a gateway, its own site's, as the hub answered.
-async fn write_main_cluster(st: &AppState, members: &[MainMember]) {
-    let path = Path::new(&st.opts.registry_path).with_file_name("main-cluster.json");
-    let rows: Vec<serde_json::Value> = members
-        .iter()
-        .map(|m| {
-            serde_json::json!({
-                "site": m.site,
-                "gateway": m.gateway,
-                "cluster": m.cluster,
-                "boxes": m.boxes,
-                "tier": secondary::Tier::Primary,
-            })
-        })
-        .collect();
-    let mut text = serde_json::to_string_pretty(&rows).expect("members serialize");
-    text.push('\n');
-    match write_if_changed(&path, &text, TRAEFIK_FILE_MODE).await {
-        Ok(true) => tracing::info!(
-            target: Action::Relay.target(),
-            "main cluster: {} gateway(s) on primary links",
-            rows.len(),
-        ),
-        Ok(false) => {}
-        Err(e) => tracing::warn!(target: Action::Relay.target(), "{}: {e}", path.display()),
-    }
 }
 
 /// Body of every authenticated market route; the route-specific fields sit
@@ -3784,298 +3635,6 @@ async fn all_tenants(st: &AppState) -> Result<Arc<HashMap<String, TenantEntry>>>
     Ok(Arc::new(merged))
 }
 
-/// The secondary cluster this gateway belongs to, from the runtime file
-/// `losos-edge cluster create|join` writes. `None` when there is no file,
-/// and also when it does not parse or fails [`ClusterFile::fault`], which is
-/// logged: a broken file must not sync with anyone.
-async fn read_cluster_file(path: &str) -> Option<ClusterFile> {
-    let bytes = match tokio::fs::read(path).await {
-        Ok(b) => b,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
-        Err(e) => {
-            tracing::warn!(target: Action::Secondary.target(), "read {path}: {e}");
-            return None;
-        }
-    };
-    match serde_json::from_slice::<ClusterFile>(&bytes) {
-        Ok(file) => match file.fault() {
-            None => Some(file),
-            Some(fault) => {
-                tracing::warn!(target: Action::Secondary.target(), "{path}: {fault}; not syncing");
-                None
-            }
-        },
-        Err(e) => {
-            tracing::warn!(target: Action::Secondary.target(), "{path}: {e}; not syncing");
-            None
-        }
-    }
-}
-
-/// This gateway's side of a sync: every box enrolled here with its token,
-/// every box live here with how long ago it was heard, and the peers this
-/// gateway knows.
-async fn own_sync_msg(st: &AppState, sec: &Secondary, file: &ClusterFile) -> Result<SyncMsg> {
-    let ages = st.reg.export().await.tenants;
-    let tenants = all_tenants(st).await?;
-    let mut boxes: Vec<secondary::SyncBox> = Vec::new();
-    for (id, entry) in tenants.iter() {
-        let seen_ago_secs = ages
-            .get(id)
-            .filter(|t| t.via.is_none())
-            .map(|t| t.seen_ago_secs);
-        let token = match &st.enrolment {
-            Some(e) if e.owns(Path::new(&entry.token_file)) => {
-                e.token(id).await.into_diagnostic()?.unwrap_or_default()
-            }
-            _ => String::new(),
-        };
-        if token.is_empty() && seen_ago_secs.is_none() {
-            continue;
-        }
-        boxes.push(secondary::SyncBox {
-            id: id.clone(),
-            hostname: entry.hostname.trim().to_string(),
-            token,
-            seen_ago_secs,
-        });
-    }
-    boxes.sort_by(|a, b| a.id.cmp(&b.id));
-    boxes.truncate(relay::MAX_RELAYED);
-    Ok(SyncMsg {
-        cluster: file.name.clone(),
-        member: file.member.clone(),
-        url: sec.opts.self_url.clone(),
-        tunnel: sec.opts.self_tunnel.clone(),
-        at: crate::market::now_secs(),
-        boxes,
-        peers: sec.peers.urls(file, &sec.opts.self_url),
-    })
-}
-
-/// Take a peer's message: note when it heard which box, learn the peers it
-/// knows, and enrol here every box it enrolled that this gateway does not
-/// know yet, with the box's own token. A box this gateway enrolled with a
-/// different token keeps ours, and the clash is logged once.
-async fn take_peer_msg(st: &AppState, sec: &Secondary, msg: &SyncMsg) {
-    sec.peers
-        .record(msg, &sec.opts.self_url, std::time::Instant::now());
-    let Some(enrolment) = &st.enrolment else {
-        return;
-    };
-    let Ok(tenants) = st.tenants.load(&st.opts.tenants_file).await else {
-        return;
-    };
-    for b in msg.boxes.iter().filter(|b| secondary::enrollable(b)) {
-        let token = b.token.trim();
-        if token_fault(token).is_some() {
-            continue;
-        }
-        let known = match lookup_tenant(st, &tenants, &b.id).await {
-            Ok(known) => known,
-            Err(e) => {
-                tracing::warn!(target: Action::Secondary.target(), "look up {}: {e}", b.id);
-                continue;
-            }
-        };
-        match known {
-            None => {
-                if let Err(e) = enrolment.adopt(&b.id, &b.hostname, token, &msg.member).await {
-                    tracing::warn!(target: Action::Secondary.target(), "enrol {} from {}: {e}", b.id, msg.member);
-                }
-            }
-            Some(entry) if enrolment.owns(Path::new(&entry.token_file)) => {
-                let ours = enrolment.token(&b.id).await.ok().flatten().unwrap_or_default();
-                if !ct_eq(&ours, token)
-                    && sec
-                        .conflicts
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner)
-                        .insert(b.id.clone())
-                {
-                    tracing::warn!(
-                        target: Action::Secondary.target(),
-                        "{} enrolled {} with another token than this gateway did; keeping this gateway's (losos-edge forget {} on one of them)",
-                        msg.member,
-                        b.id,
-                        b.id,
-                    );
-                }
-            }
-            // A whitelist row is the operator's, never the cluster's.
-            Some(_) => {}
-        }
-    }
-}
-
-/// `GET /cluster/secondary`: what this edge is to a box (a gateway or a hub,
-/// and so which tier the box's link is), the secondary cluster it belongs
-/// to and its gateways that answer, and whether it holds a primary link.
-/// Public: names and URLs a LAN advert already shows, nothing else.
-async fn secondary_info(State(st): State<AppState>) -> Json<secondary::Info> {
-    let file = match &st.secondary {
-        Some(sec) => read_cluster_file(&sec.opts.file).await,
-        None => None,
-    };
-    let role = if st.enrolment.is_some() || file.is_some() {
-        secondary::Role::Gateway
-    } else {
-        secondary::Role::Hub
-    };
-    let main = match &st.opts.uplink {
-        Some(up) => tokio::fs::metadata(&up.file).await.is_ok(),
-        None => false,
-    };
-    let mut info = secondary::Info {
-        role,
-        tier: Some(role.box_tier()),
-        main,
-        ..secondary::Info::default()
-    };
-    if let (Some(sec), Some(file)) = (&st.secondary, file) {
-        info.gateways.push(secondary::GatewayView {
-            member: file.member.clone(),
-            url: sec.opts.self_url.clone(),
-            tunnel: sec.opts.self_tunnel.clone(),
-        });
-        info.gateways.extend(
-            sec.peers
-                .alive(sec.opts.interval * 3, std::time::Instant::now()),
-        );
-        info.cluster = Some(file.name);
-        info.member = Some(file.member);
-    }
-    Json(info)
-}
-
-/// `POST /cluster/secondary/sync`: a peer gateway's half of a sync. The MAC
-/// over the body under the cluster secret is the authentication; the answer
-/// is this gateway's half, signed the same way.
-async fn secondary_sync(State(st): State<AppState>, headers: HeaderMap, body: Bytes) -> Response {
-    let Some(sec) = st.secondary.clone() else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
-    let Some(file) = read_cluster_file(&sec.opts.file).await else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
-    let mac = headers
-        .get(secondary::MAC_HEADER)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or_default();
-    if !secondary::verify_mac(&file.secret, &body, mac) {
-        tracing::warn!(target: Action::Secondary.target(), "refused a sync that is not signed with this cluster's secret");
-        return StatusCode::UNAUTHORIZED.into_response();
-    }
-    let msg: SyncMsg = match serde_json::from_slice(&body) {
-        Ok(m) => m,
-        Err(e) => return (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
-    };
-    if let Some(fault) = msg.fault(&file, crate::market::now_secs()) {
-        tracing::warn!(target: Action::Secondary.target(), "refused a sync from {}: {fault}", msg.member);
-        return (StatusCode::BAD_REQUEST, fault).into_response();
-    }
-    take_peer_msg(&st, &sec, &msg).await;
-    let answer = match own_sync_msg(&st, &sec, &file).await {
-        Ok(a) => a,
-        Err(e) => {
-            tracing::warn!(target: Action::Secondary.target(), "answer {}: {e}", msg.member);
-            return StatusCode::SERVICE_UNAVAILABLE.into_response();
-        }
-    };
-    let bytes = serde_json::to_vec(&answer).expect("sync message serializes");
-    (
-        [
-            (
-                secondary::MAC_HEADER,
-                secondary::mac(&file.secret, &bytes),
-            ),
-            ("content-type", "application/json".to_string()),
-        ],
-        bytes,
-    )
-        .into_response()
-}
-
-/// The secondary cluster's sync: every `interval`, read the cluster file and
-/// exchange a [`SyncMsg`] with each peer. A peer that does not answer is
-/// tried again next pass; its last word stands until then, so the boxes it
-/// held stay its own until one of them is heard here instead.
-async fn secondary_loop(st: AppState) {
-    let Some(sec) = st.secondary.clone() else {
-        return;
-    };
-    let client = match reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .connect_timeout(Duration::from_secs(3))
-        .user_agent(concat!("losos-registrar/", env!("CARGO_PKG_VERSION")))
-        .build()
-    {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::error!(target: Action::Secondary.target(), "cannot build the sync client: {e}");
-            return;
-        }
-    };
-    loop {
-        if let Err(e) = secondary_once(&st, &sec, &client).await {
-            tracing::warn!(target: Action::Secondary.target(), "sync pass failed: {e}");
-        }
-        tokio::time::sleep(sec.opts.interval).await;
-    }
-}
-
-async fn secondary_once(st: &AppState, sec: &Secondary, client: &reqwest::Client) -> Result<()> {
-    let Some(file) = read_cluster_file(&sec.opts.file).await else {
-        sec.peers.clear();
-        return Ok(());
-    };
-    let own = own_sync_msg(st, sec, &file).await?;
-    let body = serde_json::to_vec(&own).into_diagnostic()?;
-    let mac = secondary::mac(&file.secret, &body);
-    for url in &own.peers {
-        let target = format!("{}{}", url.trim_end_matches('/'), secondary::SYNC_ROUTE);
-        let reply = client
-            .post(&target)
-            .header(secondary::MAC_HEADER, &mac)
-            .header("content-type", "application/json")
-            .body(body.clone())
-            .send()
-            .await;
-        let reply = match reply {
-            Ok(r) if r.status().is_success() => r,
-            Ok(r) => {
-                tracing::info!(target: Action::Secondary.target(), "peer {url} answered {}", r.status());
-                continue;
-            }
-            Err(e) => {
-                tracing::debug!(target: Action::Secondary.target(), "peer {url}: {e}");
-                continue;
-            }
-        };
-        let their_mac = reply
-            .headers()
-            .get(secondary::MAC_HEADER)
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or_default()
-            .to_string();
-        let Ok(bytes) = reply.bytes().await else {
-            continue;
-        };
-        if !secondary::verify_mac(&file.secret, &bytes, &their_mac) {
-            tracing::warn!(target: Action::Secondary.target(), "peer {url} answered without this cluster's secret");
-            continue;
-        }
-        match serde_json::from_slice::<SyncMsg>(&bytes) {
-            Ok(msg) => match msg.fault(&file, crate::market::now_secs()) {
-                None => take_peer_msg(st, sec, &msg).await,
-                Some(fault) => tracing::warn!(target: Action::Secondary.target(), "peer {url}: {fault}"),
-            },
-            Err(e) => tracing::warn!(target: Action::Secondary.target(), "peer {url}: {e}"),
-        }
-    }
-    Ok(())
-}
-
 /// The spoke's uplink (crate::relay): every `interval`, and whenever the
 /// reconciler was kicked, read the uplink file, tell the hub which boxes are
 /// live here, and rewrite the uplink rathole client config.
@@ -4170,33 +3729,12 @@ async fn uplink_once(
     // whitelist (or the enrolled file), the same authority the local Traefik
     // router uses, so the hub sees the names this edge actually serves.
     let tenants = all_tenants(st).await?;
-    // With other gateways of the same secondary cluster on the LAN, only the
-    // boxes this one heard last are its to relay (`secondary::Peers::holds`);
-    // the rest are a peer's, and listing them too would have the hub's route
-    // for a box flip between the two uplinks.
-    let cluster = match &st.secondary {
-        Some(sec) => read_cluster_file(&sec.opts.file)
-            .await
-            .map(|file| (Arc::clone(sec), file)),
-        None => None,
-    };
-    let ages = st.reg.export().await.tenants;
-    let now = std::time::Instant::now();
     let mut listed: Vec<relay::RelayTenant> = Vec::new();
     let mut services: Vec<UplinkService> = Vec::new();
     for v in st.reg.views().await {
         let Some(entry) = tenants.get(&v.id) else {
             continue;
         };
-        if let Some((sec, file)) = &cluster {
-            let ago = ages.get(&v.id).map_or(0, |t| t.seen_ago_secs);
-            let mine = now
-                .checked_sub(Duration::from_secs(ago))
-                .unwrap_or(now);
-            if !sec.peers.holds(&file.member, &v.id, mine) {
-                continue;
-            }
-        }
         let pass = st
             .passes
             .lock()
@@ -4228,8 +3766,6 @@ async fn uplink_once(
         appliance_id: target.id.clone(),
         token: token.clone(),
         tenants: listed,
-        gateway: cluster.as_ref().map(|(_, file)| file.member.clone()),
-        cluster: cluster.as_ref().map(|(_, file)| file.name.clone()),
     };
     let accepted: HashSet<String> = match client.post(&url).json(&body).send().await {
         Ok(r) if r.status().is_success() => {
@@ -4243,7 +3779,6 @@ async fn uplink_once(
                 );
             }
             record_hub_routes(st, &resp.routes).await;
-            write_main_cluster(st, &resp.members).await;
             resp.accepted.into_iter().map(|a| a.id).collect()
         }
         Ok(r) => {

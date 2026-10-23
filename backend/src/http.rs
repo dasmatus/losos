@@ -294,17 +294,6 @@ fn error_response(e: anyhow::Error) -> HttpResponse {
             "officialEdgeRequired": true,
         }));
     }
-    // A move to a secondary cluster with no gateway in reach, or one a
-    // custom domain holds the box against.
-    if let Some(why) = e.downcast_ref::<crate::edge::ClusterNotInReach>() {
-        return err(StatusCode::CONFLICT, &why.to_string());
-    }
-    if let Some(why) = e.downcast_ref::<crate::edge::HeldByDomain>() {
-        return HttpResponse::build(StatusCode::CONFLICT).json(serde_json::json!({
-            "error": why.to_string(),
-            "heldByDomain": true,
-        }));
-    }
     // Management switched on with no company edge in use (`crate::edge::
     // manageable`): the sentence, as a 409.
     if let Some(why) = e.downcast_ref::<crate::edge::NotManageable>() {
@@ -3063,31 +3052,6 @@ async fn post_edge_manage(api: web::Data<Api>, req: HttpRequest, body: web::Byte
         let resp = run(&api, |l| crate::losos::cmd_edge_manage(l, enabled));
         api.backend.publish_managed();
         resp
-    })
-}
-
-/// The owner moves the box to a secondary cluster in reach, or lets it settle
-/// anew: `{"cluster": "office"}` or `{"cluster": null}`.
-async fn post_edge_cluster(
-    api: web::Data<Api>,
-    req: HttpRequest,
-    body: web::Bytes,
-) -> HttpResponse {
-    guarded(&api, &req, "/api/edge/cluster", true, || {
-        let parsed = serde_json::from_slice::<serde_json::Value>(&body).ok();
-        let cluster = match parsed.as_ref().and_then(|v| v.get("cluster")) {
-            Some(serde_json::Value::Null) => None,
-            Some(serde_json::Value::String(c)) if crate::edge::cluster_name(c) => Some(c.clone()),
-            _ => {
-                return err(
-                    StatusCode::BAD_REQUEST,
-                    r#"body must be JSON: {"cluster": "<name>"|null}"#,
-                )
-            }
-        };
-        run(&api, |l| {
-            crate::losos::cmd_edge_cluster(l, cluster.as_deref())
-        })
     })
 }
 
@@ -6011,7 +5975,6 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/status", web::get().to(get_status))
                 .route("/api/edge", web::get().to(get_edge))
                 .route("/api/edge/manage", web::post().to(post_edge_manage))
-                .route("/api/edge/cluster", web::post().to(post_edge_cluster))
                 .route("/api/change", web::post().to(post_change))
                 .route("/api/apply", web::post().to(post_apply))
                 .route("/api/factory-reset", web::post().to(post_factory_reset))
