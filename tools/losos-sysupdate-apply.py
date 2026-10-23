@@ -127,8 +127,6 @@ def safe_member_path(name: str) -> tuple[str, ...]:
         raise ValueError(f"unexpected top-level archive entry: {parts[0]!r}")
     if parts[0] == "manifest.json" and len(parts) != 1:
         raise ValueError("manifest.json must be a top-level file")
-    if parts[0] == "cache" and len(parts) == 1 and not name.endswith("/"):
-        raise ValueError("cache entry must be a directory")
     return tuple(parts)
 
 
@@ -169,7 +167,7 @@ def extract_archive(version: int, archive: Path) -> Path:
                     destination = staging.joinpath(*parts)
                     destination.mkdir(mode=0o750, parents=True, exist_ok=True)
                     continue
-                if not member.isfile() or member.issym() or member.islnk() or member.sparse:
+                if normalized == "cache" or not member.isfile() or member.issym() or member.islnk() or member.sparse:
                     raise ValueError(f"unsupported non-regular archive entry: {normalized!r}")
                 if member.size < 0:
                     raise ValueError(f"negative size for archive member {normalized!r}")
