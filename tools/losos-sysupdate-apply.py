@@ -32,7 +32,7 @@ ARCHIVES_DIR = STATE_DIR / "archives"
 SLOTS_DIR = STATE_DIR / "slots"
 ACTIVE_FILE = STATE_DIR / "active.json"
 GCROOTS_DIR = Path("/nix/var/nix/gcroots/auto")
-ARCHIVE_PATTERN = re.compile(r"losos-components_([0-9]+)\.tar\.xz\Z")
+ARCHIVE_PATTERN = re.compile(r"losos-components_([0-9]+)\.tar\Z")
 SLOT_PATTERN = re.compile(r"losos-components_([0-9]+)\Z")
 # Nix's canonical base32 alphabet excludes e, o, t and u.
 STORE_PATH_PATTERN = re.compile(r"/nix/store/[0-9a-df-np-sv-z]{32}-[A-Za-z0-9+._?=-]+\Z")
