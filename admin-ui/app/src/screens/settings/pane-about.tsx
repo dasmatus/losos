@@ -1,9 +1,11 @@
+import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useT } from "@/lib/i18n-react";
 import { openTour } from "@/tour/store";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue } from "./rows";
 import { describeWindow } from "./window";
+import { getUpdates, postUpdates, type UpdatesResponse } from "@/lib/api";
 import type { SettingsForm } from "./use-settings-form";
 
 /* What this box IS, as opposed to what it is about to become.
@@ -18,6 +20,38 @@ import type { SettingsForm } from "./use-settings-form";
 export function AboutPane({ form }: { form: SettingsForm }) {
   const t = useT();
   const saved = form.saved;
+  const [updates, setUpdates] = useState<UpdatesResponse | null>(null);
+  const [updatesError, setUpdatesError] = useState<string | null>(null);
+  const [updatesBusy, setUpdatesBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getUpdates()
+      .then((result) => {
+        if (!cancelled) {
+          setUpdates(result);
+          setUpdatesError(null);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setUpdatesError(error instanceof Error ? error.message : String(error));
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  async function downloadUpdates() {
+    setUpdatesBusy(true);
+    setUpdatesError(null);
+    try {
+      await postUpdates();
+      const result = await getUpdates();
+      setUpdates(result);
+    } catch (error) {
+      setUpdatesError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setUpdatesBusy(false);
+    }
+  }
 
   /* Two addresses, and the order matters. `here` is the one this browser is
    * using right now, read off the address bar, so it is true by construction
@@ -156,14 +190,35 @@ export function AboutPane({ form }: { form: SettingsForm }) {
         <Group>
           <Row>
             <RowText title={t("panes.about.updates")} />
-            <RowValue>{t("panes.about.everyNightAt", { time: "03:00" })}</RowValue>
+            <RowValue className="text-ink">
+              <button
+                type="button"
+                onClick={() => void downloadUpdates()}
+                disabled={updatesBusy}
+                className="text-accent underline-offset-2 hover:underline disabled:opacity-50"
+              >
+                {updatesBusy ? t("panes.about.downloadingUpdates") : t("panes.about.checkUpdates")}
+              </button>
+            </RowValue>
+          </Row>
+          <Row>
+            <RowText title={t("panes.about.componentStatus")} />
+            <RowValue className="text-ink">
+              {updatesError ?? updates?.output ?? t("panes.about.checkingUpdates")}
+            </RowValue>
           </Row>
           <Row last>
             <RowText title={t("panes.about.restarts")} />
             <RowValue>{t("panes.about.everyNightAt", { time: "00:07" })}</RowValue>
           </Row>
         </Group>
-        <GroupCaption>{t("panes.about.caption")}</GroupCaption>
+        <GroupCaption>
+          {updatesError
+            ? t("panes.about.updateErrorCaption", { message: updatesError })
+            : t("panes.about.caption")}
+          {" "}
+          {t("panes.about.updateStorageCaption")}
+        </GroupCaption>
       </PaneSection>
     </>
   );
