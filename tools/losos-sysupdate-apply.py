@@ -15,6 +15,7 @@ import os
 import re
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 
 STATE_DIR = Path("/var/lib/losos-sysupdate")
@@ -28,15 +29,17 @@ MAX_STORE_PATHS = 10000
 def read_active_version() -> int:
     try:
         document = json.loads(ACTIVE_FILE.read_text(encoding="utf-8"))
+        if not isinstance(document, dict):
+            return 0
         version = document.get("version")
-        return version if isinstance(version, int) and version >= 0 else 0
+        return version if isinstance(version, int) and not isinstance(version, bool) and version >= 0 else 0
     except (OSError, ValueError, TypeError):
         return 0
 
 
 def atomic_json_write(path: Path, value: object) -> None:
     # Same-filesystem atomic replacement under /var/lib: no tmpfs staging.
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.new")
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.new")
     descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as output:
@@ -75,6 +78,8 @@ def candidates() -> list[tuple[int, Path]]:
 def import_bundle(version: int, directory: Path) -> dict[str, object]:
     manifest_path = directory / "manifest.json"
     cache = directory / "cache"
+    if manifest_path.is_symlink() or not manifest_path.is_file():
+        raise ValueError("manifest.json must be a regular file in the versioned slot")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
     if not isinstance(manifest, dict) or manifest.get("format") != 1:
