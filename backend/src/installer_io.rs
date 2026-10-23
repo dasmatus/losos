@@ -205,11 +205,6 @@ fn run_live(exe: &str, args: &[&str]) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Run a command with inherited stdio, also mirroring its live output to tty2.
-fn run_inherit(exe: &str, args: &[&str]) -> anyhow::Result<()> {
-    run_live(exe, args)
-}
-
 /// Run a command quietly, surfacing stderr only if it fails.
 fn run_quiet(exe: &str, args: &[&str]) -> anyhow::Result<()> {
     let out = Command::new(exe)
