@@ -172,7 +172,11 @@ def extract_archive(version: int, archive: Path) -> Path:
                     destination = staging.joinpath(*parts)
                     destination.mkdir(mode=0o750, parents=True, exist_ok=True)
                     continue
-                if normalized == "cache" or not member.isfile() or member.issym() or member.islnk() or member.sparse:
+                if normalized == "cache":
+                    if not member.isdir():
+                        raise ValueError("cache archive entry must be a directory")
+                    continue
+                if not member.isfile() or member.issym() or member.islnk() or member.sparse:
                     raise ValueError(f"unsupported non-regular archive entry: {normalized!r}")
                 if member.size < 0:
                     raise ValueError(f"negative size for archive member {normalized!r}")
