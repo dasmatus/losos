@@ -245,7 +245,8 @@ def selected_file(name: str) -> tuple[Path, str] | None:
         match = SUM.fullmatch(row)
         if not match:
             return None
-        bundle_name = match.group(2)
+        verified_name = match.group(2)
+        path = directory / verified_name
         if bundle_name != name:
             return None
         bundle_path = directory / bundle_name
