@@ -33,7 +33,7 @@ dem Handy öffnet sie sich als Overlay.
 ## Suche \{#search}
 
 Die Lupe oben in der Seitenleiste öffnet eine Liste, die Seiten, Apps,
-Dateien und Repositorys findet. Strg+Umschalt+P öffnet sie auf jeder
+Dateien, Repositorys und Issues findet. Strg+Umschalt+P öffnet sie auf jeder
 Admin-Seite ebenfalls (Cmd+Umschalt+P auf einem Mac), und genauso ein
 Doppelpunkt, den du irgendwo außerhalb eines Textfelds tippst. Sie findet:
 
@@ -42,6 +42,8 @@ Doppelpunkt, den du irgendwo außerhalb eines Textfelds tippst. Sie findet:
 - die Apps in LosOS Cloud und LosOS Git
 - Dateien und Ordner in LosOS Cloud, nach Namen
 - Repositorys in LosOS Git
+- Issues in LosOS Git, nach ihren Wörtern oder ihrem Kürzel wie `BT-12`;
+  tippst du nichts, die offenen Issues, die dir zugewiesen sind
 - Text in Dateien, sobald du drei Buchstaben tippst: in deinen Dateien in
   LosOS Cloud und im Hauptzweig jedes Repositorys in LosOS Git
 - deine angehefteten Einträge
@@ -143,10 +145,11 @@ auch.
 
 ## Angeheftete Einträge \{#pins}
 
-Hefte die Apps, Dateien und Repositorys an, die du am häufigsten öffnest,
+Hefte die Apps, Dateien, Repositorys und Issues an, die du am häufigsten öffnest,
 und sie stehen unter **Angeheftet** in der Seitenleiste. Ein angehefteter
 Eintrag öffnet sich in seiner eigenen App: eine Datei oder ein Ordner in
-LosOS Cloud, ein Repository in LosOS Git, eine App auf der Übersicht oder
+LosOS Cloud, ein Repository in LosOS Git, ein Issue oder ein Projekt in den
+[Issues](./issues.md) von LosOS Git, eine App auf der Übersicht oder
 eine App, die du über die Suche installiert hast, auf ihrem eigenen Port.
 Die Box speichert die Liste, sodass jeder Browser, mit dem du dich
 anmeldest, dieselben Einträge zeigt.
@@ -155,14 +158,18 @@ anmeldest, dieselben Einträge zeigt.
   in ihrer Ecke. Eine angeheftete Kachel behält die Nadel, in Farbe.
 - Auf der Seite Apps steht **Anheften** neben jeder installierten App.
 - Der Stift neben **Angeheftet** öffnet die ganze Liste. Dort schiebst du
-  einen Eintrag nach oben oder unten, löst ihn und heftest aus drei Tabs an:
-  **Apps**, **Dateien**, das durch die Ordner von LosOS Cloud führt, und
-  **Repositorys**.
+  einen Eintrag nach oben oder unten, löst ihn und heftest aus vier Tabs an:
+  **Apps**, **Dateien**, das durch die Ordner von LosOS Cloud führt,
+  **Repositorys** und **Issues**, das ein Issue nach Wörtern oder Kürzel
+  findet.
+- An einem Issue oder einem Projekt in LosOS Git heftet die Nadel oben es
+  an. Ein Issue steht mit seinem Titel in der Seitenleiste.
 - Zeige in der Seitenleiste auf einen Eintrag und klicke auf die
   durchgestrichene Nadel, um ihn zu lösen. Die [Suche](#search) findet
   angeheftete Einträge ebenfalls.
-- Klicke mit der rechten Maustaste auf eine Datei, einen Ordner oder ein
-  Repository in der Suche, auf eine App-Kachel in der Übersicht oder auf
+- Klicke mit der rechten Maustaste auf eine Datei, einen Ordner, ein
+  Repository oder ein Issue in der Suche, auf ein Issue in einer Liste oder
+  auf einem Board von LosOS Git, auf eine App-Kachel in der Übersicht oder auf
   einen Eintrag in der Seitenleiste und wähle **An die Seitenleiste
   anheften** oder **Von der Seitenleiste lösen**. Auf einem Touchscreen
   hältst du stattdessen den Finger darauf.

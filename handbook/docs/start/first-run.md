@@ -113,6 +113,10 @@ profile pictures. A box with none of these sees the six steps.
 **Skip the tour** closes it, and that browser does not open it by
 itself again. **Take the tour** under Settings, About brings it back.
 
-![The tour's first step over the overview: a picture of the page with LosOS Cloud's six apps, "1 of 6", and Skip the tour and Next.](../img/tour.png)
+![The tour's first step over the overview: a picture of the page with LosOS Cloud's six apps, "1 of 6", and Skip the tour and Next.](../img/tour-1.png)
+
+![The tour's second step.](../img/tour-2.png)
+
+![The tour's third step.](../img/tour-3.png)
 
 ![Step 3: You are signed in. That was the last step.](../img/wizard-step3-sign-in.png)

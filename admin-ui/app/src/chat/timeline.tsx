@@ -3,6 +3,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import {
   ArrowTurnBackwardIcon,
   CloudUploadIcon,
+  TaskAdd01Icon,
   Comment01Icon,
   Copy01Icon,
   Delete02Icon,
@@ -37,6 +38,7 @@ import { callable, callEnded, callEvent, useCalls } from "./calls";
 import { saveAttachment, useCloud } from "./cloud";
 import { carriesFile, fileNameOf, infoOf, MessageBody, sourceOf } from "./message-body";
 import { buildItems, continues, type Item, type Message, memberName, plainBody, shownName, useEmitted } from "./model";
+import { canMakeIssue, issueTitleFrom, newIssueHref, quotedFrom } from "@/lib/intents";
 
 export const QUICK_REACTIONS = ["👍", "❤️", "😂", "🎉", "😮", "😢", "🙏", "👀"] as const;
 
@@ -266,6 +268,14 @@ function messageMenu(
           },
           { id: "copy", label: t("menu.copy"), icon: Copy01Icon, hidden: text === "", onSelect: () => void copied() },
           { id: "save", label: t("together.save.action"), icon: CloudUploadIcon, hidden: !file, onSelect: () => save(t) },
+          {
+            id: "make-issue",
+            label: t("together.issue.make"),
+            icon: TaskAdd01Icon,
+            hidden: text === "" || !canMakeIssue(),
+            onSelect: () =>
+              window.open(newIssueHref({ title: issueTitleFrom(text), body: quotedFrom(text, t("together.issue.fromChat", { name: sender })) }), "_blank", "noopener"),
+          },
         ],
         [
           { id: "edit", label: t("chat.message.edit"), icon: PencilEdit01Icon, hidden: !(mine && isText), onSelect: () => actions.onEdit(ev) },

@@ -6,6 +6,11 @@ slug: /manual/issues
 
 # Issues in LosOS Git
 
+
+![My issues in LosOS Git.](../img/issues-list.png)
+
+![An issue.](../img/issue-detail.png)
+
 LosOS Git keeps the box's issues: bugs, tasks and ideas, for code and for
 anything else. They live at **Issues** in LosOS Git's sidebar, at
 `https://<box>.local/git/issues`, in one list for every project on the box.
@@ -126,6 +131,26 @@ From the **⋯** menu at the top of an issue:
 - **Share in chat** opens LosOS Chat with it;
 - **Add the due day to a calendar** gives the due date as a calendar file;
 - **Assignee's contact card** opens the person it is given to in Contacts.
+
+Right-click an issue in a list or on the board for **Open in new tab**,
+**Copy link**, **Copy key and title**, **Pin to sidebar** and the same Mail
+and Chat items.
+
+**Make an issue** starts an issue from another app. It opens a new tab with
+the title and the words already filled in, to change before you make it:
+
+- in LosOS Mail, the button at the top of a message quotes the message;
+- in LosOS Chat, the menu of a message quotes it;
+- in LosOS Cloud, the right-click menu of a file links to the file;
+- in Office and Notes, the bar over picked words quotes them.
+
+An administrator can pin an issue or a project to the admin pages' sidebar
+with the pin at its top, and the [search](./admin-pages.md#search) on the
+admin pages finds issues by their words or their key. The **Issues** tile
+on the Overview counts the open issues given to you. Typing `@` in a
+description, a comment or a card in LosOS Diagrams offers issues next to
+people and files, and so does the link button over picked words in Office
+and Notes.
 
 Mail, Chat and Contacts are there when the box shares and is in a mesh.
 Every issue with a due date that is given to you is also in a calendar

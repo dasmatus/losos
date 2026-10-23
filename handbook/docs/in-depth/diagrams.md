@@ -7,6 +7,8 @@ mdx:
 
 # Diagrams
 
+![Diagrams.](../img/diagrams-cloud.png)
+
 LosOS Diagrams is a diagram editor: flowcharts, plans, mind maps, boards
 and network drawings, written as cards on a canvas. Its files are JSON
 Canvas, the format Obsidian Canvas uses, so a `.canvas` file moves between

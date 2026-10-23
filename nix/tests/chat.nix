@@ -16,6 +16,8 @@
 #     and only root, nginx and `shared` may open its port;
 #   * messages, uploads and the thread list (which lososd answers, because
 #     Dendrite has none) work through nginx;
+#   * a moderator's hide redacts a reported message as its sender, and a
+#     muted person reads on but sends nothing until unmuted;
 #   * the chat page itself: two people in two browsers, an end-to-end
 #     encrypted conversation, a reply, a reaction, a thread, a picture and an
 #     edit, and a recovery key that lets a second device read the past;
@@ -415,6 +417,34 @@ pkgs.testers.nixosTest {
         code, body = call(f"/_matrix/client/v1/media/download/{server}/{media}", token=et)
         assert code == 401, (code, body)
         assert box.succeed("find /home/shared/data/chat/media -type f | wc -l").strip() != "0"
+
+    with subtest("a moderator hides a reported message and mutes someone in chat"):
+        code, body = call(f"/_matrix/client/v3/rooms/{q}/send/m.room.message/t3", eva, method="PUT",
+                          token=et, data={"msgtype": "m.text", "body": "Buy cheap watches here."})
+        assert code == 200, (code, body)
+        spam = json.loads(body)["event_id"]
+        code, body = call("/api/reports", matus, method="POST", data={
+            "app": "chat", "ref": f"{room}/{spam}", "reason": "spam", "about": "eva"})
+        assert code == 200, (code, body)
+        report = json.loads(body)["id"]
+        code, body = call("/api/moderation", matus)
+        assert "chat" in json.loads(body)["hides"], body
+        code, body = call(f"/api/moderation/reports/{report}", matus, method="POST", data={"action": "hide"})
+        assert code == 200, (code, body)
+        # Redacted as its sender: the text is gone for everyone in the room.
+        code, body = call(f"/_matrix/client/v3/rooms/{q}/event/{urllib.parse.quote(spam)}", matus, token=mt)
+        assert code == 200 and "cheap watches" not in body and "redacted_because" in body, (code, body)
+        code, body = call("/api/moderation/mute", matus, method="POST", data={"name": "eva", "minutes": 60})
+        assert code == 200, (code, body)
+        code, body = call(f"/_matrix/client/v3/rooms/{q}/send/m.room.message/t4", eva, method="PUT",
+                          token=et, data={"msgtype": "m.text", "body": "Still here."})
+        assert code == 403, (code, body)
+        # Reading goes on.
+        assert call(f"/_matrix/client/v3/rooms/{q}/messages?dir=b&limit=10", eva, token=et)[0] == 200
+        assert call("/api/moderation/unmute", matus, method="POST", data={"name": "eva"})[0] == 200
+        code, body = call(f"/_matrix/client/v3/rooms/{q}/send/m.room.message/t5", eva, method="PUT",
+                          token=et, data={"msgtype": "m.text", "body": "Sorry about that."})
+        assert code == 200, (code, body)
 
     with subtest("signing out of LosOS Login ends chat at the next request"):
         gone = sign_in("matus", PASSWORD)

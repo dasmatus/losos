@@ -9,6 +9,7 @@ import {
   PackageIcon,
   Search01Icon,
   SourceCodeIcon,
+  TaskDone01Icon,
 } from "@hugeicons/core-free-icons";
 import { openInNewTab, usePinItems } from "@/components/pin-menu";
 import { contextMenu } from "@/lib/context-menu";
@@ -25,11 +26,13 @@ import {
   cloudTextHref,
   fileHref,
   gitTextHref,
+  issueHref,
   repoHref,
   searchApps,
   searchCloudText,
   searchFiles,
   searchGitText,
+  searchIssues,
   searchRepos,
   useRemote,
   type Remote,
@@ -63,21 +66,22 @@ const GROUP_TITLE: Record<GroupId, MessageKey> = {
   apps: "palette.group.apps",
   files: "palette.group.files",
   repos: "palette.group.repos",
+  issues: "palette.group.issues",
   text: "palette.group.text",
   install: "palette.group.install",
   actions: "palette.group.actions",
 };
 
 /** How many rows a group shows. The palette is for jumping, not browsing. */
-const LIMIT: Record<GroupId, number> = { pins: 8, pages: 8, apps: 6, files: 8, repos: 6, text: 8, install: 5, actions: 8 };
+const LIMIT: Record<GroupId, number> = { pins: 8, pages: 8, apps: 6, files: 8, repos: 6, issues: 6, text: 8, install: 5, actions: 8 };
 
 /** Letters typed before the box is asked what is inside the files: fewer
  *  match nearly every document. */
 const TEXT_MIN = 3;
 
 /** Before anything is typed: the pins, where to go, a few repositories,
- *  what to do. */
-const IDLE_GROUPS: readonly GroupId[] = ["pins", "pages", "repos", "actions"];
+ *  the open issues given to the person, what to do. */
+const IDLE_GROUPS: readonly GroupId[] = ["pins", "pages", "repos", "issues", "actions"];
 
 interface Group {
   id: GroupId;
@@ -142,13 +146,14 @@ function PaletteBody({ initial }: { initial: string }) {
 
   const files = useRemote(true, query, 2, searchFiles);
   const repos = useRemote(true, query, 0, searchRepos);
+  const issues = useRemote(true, query, 0, searchIssues);
   const install = useRemote(true, query, 2, searchApps);
   const cloudText = useRemote(true, query, TEXT_MIN, searchCloudText);
   const gitText = useRemote(true, query, TEXT_MIN, searchGitText);
   const pins = React.useSyncExternalStore(subscribePins, getPinsState, getServerPinsState);
   const pinned = pinItems(
     pins.pins.flatMap((pin) => {
-      const view = viewPin(pin, pins.installed);
+      const view = viewPin(pin, pins.installed, pins.names);
       return view === null ? [] : [{ pin, view }];
     }),
   );
@@ -200,6 +205,20 @@ function PaletteBody({ initial }: { initial: string }) {
       notUp: "palette.repos.notUp",
       failed: "palette.repos.failed",
     }, t),
+  );
+  push(
+    "issues",
+    remoteItems(issues, query, (issue) => ({
+      id: `issue-${issue.key}`,
+      group: "issues",
+      title: issue.title,
+      detail: issue.state === "" ? issue.key : `${issue.key} · ${issue.state}`,
+      words: issue.key,
+      icon: TaskDone01Icon,
+      target: { kind: "href", href: issueHref(issue) },
+      pin: { kind: "issue", key: issue.key },
+    })),
+    remoteNote(issues, { busy: "palette.issues.looking", failed: "palette.issues.failed" }, t),
   );
   push(
     "text",
@@ -404,7 +423,7 @@ function Option({
               { id: "open", label: t("menu.open"), keys: ["Enter"], onSelect: () => onChoose(false) },
               { ...items.newTab(() => newTab?.()), keys: ["Mod", "Enter"], hidden: newTab === undefined },
             ],
-            [items.pin(item.pin ?? null)],
+            [items.pin(item.pin ?? null, item.group === "issues" ? item.title : undefined)],
           ],
         }))}
         id={id}

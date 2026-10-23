@@ -1613,8 +1613,8 @@
       },
       "GET /api/me": {
         "auth": true,
-        "out": "{\"name\": \"...\"|null, \"displayName\": \"...\"|null, \"groups\": [\"...\"], \"admin\": bool, \"spareKey\": bool, \"sections\": [\"...\"], \"standalone\": bool, \"edge\": bool, \"locked\": [\"twoFactor\"|\"password\"], \"shared\": [\"mail\", \"chat\", \"contacts\"]}",
-        "note": "Who is calling (backend/src/http.rs, get_me). A person signed in at the box's sign-in page (Authelia at /auth/) arrives as the Remote-User nginx sets from Authelia's answer; lososd looks them up in the people file it writes (backend/src/people.rs) and answers with their name, groups and the sections of backend/sections.json those groups open. `standalone` is true when this box signs people in itself (LOSOS_IDENTITY=authelia), which is when the Users pane is shown. The spare key answers with name null, admin true and spareKey true. The admin pages show the panes `sections` names and hide the rest. 401 signed out; 403 with noAccount:true for a Remote-User the people file does not hold (removed since they signed in). A company edge the owner lets manage the box (POST /api/edge/manage) answers with edge true, name null, admin false and the sections it may use. `locked` lists what a rule of LosOS Login holds the person to their own account for (backend/src/login.rs); while it is not empty, `sections` is [\"account\"], `admin` is false, and every other route but the signed-in ones answers 403 with locked:true. `shared` (a person's only) names the apps that run as the `shared` user and are live on this box now, which is only while it shares its storage: the page draws their entries only when they are named here."
+        "out": "{\"name\": \"...\"|null, \"displayName\": \"...\"|null, \"groups\": [\"...\"], \"admin\": bool, \"spareKey\": bool, \"sections\": [\"...\"], \"standalone\": bool, \"edge\": bool, \"locked\": [\"twoFactor\"|\"password\"], \"shared\": [\"mail\", \"chat\", \"contacts\"], \"role\": \"owner\"|\"admin\"|\"moderator\"|\"member\"|\"guest\", \"roleName\": \"...\"|null, \"reports\": n (moderators only)}",
+        "note": "Who is calling (backend/src/http.rs, get_me). A person signed in at the box's sign-in page (Authelia at /auth/) arrives as the Remote-User nginx sets from Authelia's answer; lososd looks them up in the people file it writes (backend/src/people.rs) and answers with their name, groups and the sections of backend/sections.json those groups open. `standalone` is true when this box signs people in itself (LOSOS_IDENTITY=authelia), which is when the Users pane is shown. The spare key answers with name null, admin true and spareKey true. The admin pages show the panes `sections` names and hide the rest. 401 signed out; 403 with noAccount:true for a Remote-User the people file does not hold (removed since they signed in). A company edge the owner lets manage the box (POST /api/edge/manage) answers with edge true, name null, admin false and the sections it may use. `locked` lists what a rule of LosOS Login holds the person to their own account for (backend/src/login.rs); while it is not empty, `sections` is [\"account\"], `admin` is false, and every other route but the signed-in ones answers 403 with locked:true. `shared` (a person's only) names the apps that run as the `shared` user and are live on this box now, which is only while it shares its storage: the page draws their entries only when they are named here. `role` is the caller's role, a layer over their groups (backend/src/roles.rs), and `roleName` the name of a role of the box's own when they hold one. `reports` counts the open reports for anyone who can open the Moderation pane."
       },
       "GET /api/chat": {
         "auth": true,
@@ -1650,8 +1650,8 @@
       },
       "GET /api/people": {
         "auth": true,
-        "out": "{\"standalone\": bool, \"you\": \"...\"|null, \"sections\": [\"...\"], \"rules\": {\"twoFactor\": bool, \"passwordDays\": n}, \"people\": [{\"name\": \"...\", \"displayName\": \"...\", \"email\": \"...\", \"groups\": [\"...\"], \"disabled\": bool, \"twoFactor\": bool, \"passwordSetAt\": seconds, \"locked\": [\"twoFactor\"|\"password\"]}]}",
-        "note": "Everyone in the people file (backend/src/people.rs), never a password hash, for the Users pane. `you` is the caller's name, null for the spare key. `sections` are the parts of backend/sections.json a person can be given one by one. On a box that does not sign people in itself `standalone` is false and `people` is empty. Administrators only."
+        "out": "{\"standalone\": bool, \"you\": \"...\"|null, \"sections\": [\"...\"], \"rules\": {\"twoFactor\": bool, \"passwordDays\": n}, \"people\": [{\"name\": \"...\", \"displayName\": \"...\", \"email\": \"...\", \"groups\": [\"...\"], \"disabled\": bool, \"twoFactor\": bool, \"passwordSetAt\": seconds, \"locked\": [\"twoFactor\"|\"password\"], \"role\": \"...\", \"roleName\": \"...\"|null, \"muted\": hold|null, \"suspended\": hold|null}], \"roles\": [{\"id\": \"...\", \"name\": \"...\", \"sections\": [\"...\"]}]}",
+        "note": "Everyone in the people file (backend/src/people.rs), never a password hash, for the Users pane. `you` is the caller's name, null for the spare key. `sections` are the parts of backend/sections.json a person can be given one by one. On a box that does not sign people in itself `standalone` is false and `people` is empty. Administrators only. `roles` are the box's own roles (roles.json); a hold is {at, by, until: seconds|null, reason}."
       },
       "POST /api/people": {
         "auth": true,
@@ -1663,7 +1663,7 @@
         "auth": true,
         "in": "{\"name\":\"...\",\"groups\":[\"...\"]}",
         "out": "{\"name\": \"...\", \"groups\": [\"...\"]}",
-        "note": "Replace someone's access groups (the same set as POST /api/people). Other groups, such as losos-owner, stay. 404 for nobody by that name; 409 for the caller's own account, the owner's, or a change that would leave no administrator. Administrators only."
+        "note": "Replace someone's access groups (the same set as POST /api/people). Other groups, such as losos-owner, stay. 404 for nobody by that name; 409 for the caller's own account, the owner's, or a change that would leave no administrator. Administrators only. A role goes out as its groups: losos-admins; losos-moderation (the moderator); losos-guests with losos-account; losos-role-<id> for a role of the box's own, which lososd fills in with that role's sections; or losos-<section> one by one for a member. Moderation is never given as a part on its own."
       },
       "POST /api/people/password": {
         "auth": true,
@@ -1688,6 +1688,59 @@
         "in": "{\"name\":\"...\"}",
         "out": "{\"name\": \"...\", \"reset\": true}",
         "note": "Remove someone's authenticator app and passkeys from LosOS Login, for a lost phone or key. 404 for nobody by that name. Administrators only."
+      },
+      "POST /api/roles": {
+        "auth": true,
+        "in": "{\"id\": \"...\" (optional, to change one), \"name\": \"...\", \"sections\": [\"...\"]}",
+        "out": "{\"id\": \"...\", \"roles\": [{\"id\": \"...\", \"name\": \"...\", \"sections\": [\"...\"]}]}",
+        "note": "Save a role of the box's own in /var/lib/losos/roles.json (backend/src/roles.rs): a name of 1 to 40 characters and the sections it opens. At most 16; a name taken twice is a 409. Everyone holding it gets the new sections at once. Administrators only."
+      },
+      "POST /api/roles/remove": {
+        "auth": true,
+        "in": "{\"id\": \"...\"}",
+        "out": "{\"roles\": [...]}",
+        "note": "Remove a role of the box's own. Whoever held it becomes a member with their own account and nothing more. Administrators only."
+      },
+      "POST /api/reports": {
+        "auth": true,
+        "in": "{\"app\": \"mail\"|\"chat\"|\"profile\"|\"cloud\"|\"git\"|\"notes\"|\"diagrams\"|\"office\"|\"calls\", \"ref\": \"...\", \"reason\": \"spam\"|\"abuse\"|\"sexual\"|\"child\"|\"other\", \"about\": \"...\" (optional), \"note\": \"...\" (optional)}",
+        "out": "{\"id\": \"...\"}",
+        "note": "Report something to the box's moderators (backend/src/moderation.rs). `ref` names the thing in its app (a mail id, <room ID>/<event ID> in chat, picture or banner) and is never its content. A report about a child keeps no note. The same report twice is one report; 20 open from one person is a 429. Anyone signed in, guests too."
+      },
+      "GET /api/moderation": {
+        "auth": true,
+        "out": "{\"standalone\": bool, \"you\": \"...\"|null, \"admin\": bool, \"hides\": [\"mail\", \"chat\" (while chat is live), \"profile\"], \"reports\": [{\"id\", \"at\", \"by\", \"app\", \"about\", \"ref\", \"reason\", \"note\", \"state\": \"open\"|\"hidden\"|\"dismissed\"|\"resolved\", \"handledBy\", \"handledAt\"}], \"people\": [profile + {\"role\", \"roleName\", \"muted\": hold|null, \"suspended\": hold|null, \"disabled\": bool, \"actionable\": bool}], \"log\": [{\"at\", \"by\", \"action\", \"about\", \"detail\"}]}",
+        "note": "The Moderation pane: the queue (open first, child reports first, newest first), everyone with what the caller may do to them, and the latest lines of /var/lib/losos/moderation.log. `hides` are the apps the queue can hide a thing in. Moderators and administrators; viewers do not read it."
+      },
+      "POST /api/moderation/reports/{id}": {
+        "auth": true,
+        "in": "{\"action\": \"hide\"|\"release\"|\"dismiss\"|\"resolve\"}",
+        "out": "the report as it now stands: {\"id\", ..., \"state\", \"handledBy\", \"handledAt\"}",
+        "note": "Act on a report. hide moves a mail into the reporter's Quarantine mailbox (no page lists it and lososd refuses to open it), redacts a chat message as its sender (a chat report's ref is <room ID>/<event ID>), or takes a profile picture or banner down; release lets held mail go; a report about a child can only be hidden, or resolved where the box cannot hide it, never dismissed or released. 409 for a closed report. Moderators and administrators."
+      },
+      "POST /api/moderation/mute": {
+        "auth": true,
+        "in": "{\"name\": \"...\", \"minutes\": 1..527040|null, \"reason\": \"...\" (optional)}",
+        "out": "{\"name\": \"...\", \"muted\": hold}",
+        "note": "Stop someone sending mail, writing in chat and changing their profile (the `speech` routes of backend/sections.json answer 403 with muted, and /internal/chat/authz refuses what they would say in a room) for `minutes`, or until unmuted when null. Administrators may hold anyone but the owner; moderators members and guests; nobody themselves. Moderators and administrators."
+      },
+      "POST /api/moderation/unmute": {
+        "auth": true,
+        "in": "{\"name\": \"...\"}",
+        "out": "{\"name\": \"...\", \"muted\": null}",
+        "note": "Lift a mute. Moderators and administrators."
+      },
+      "POST /api/moderation/suspend": {
+        "auth": true,
+        "in": "{\"name\": \"...\", \"minutes\": 1..527040|null, \"reason\": \"...\" (optional)}",
+        "out": "{\"name\": \"...\", \"suspended\": hold}",
+        "note": "Keep someone out: their people-file record is disabled, so LosOS Login refuses their next request and their next sign-in, and lososd answers 403 with suspended. A timed suspension lifts itself. Same rank rules as mute. Moderators and administrators."
+      },
+      "POST /api/moderation/unsuspend": {
+        "auth": true,
+        "in": "{\"name\": \"...\"}",
+        "out": "{\"name\": \"...\", \"suspended\": null}",
+        "note": "Let someone back in. Moderators and administrators."
       },
       "GET /api/account": {
         "auth": true,

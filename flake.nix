@@ -529,6 +529,13 @@
           inherit pkgs;
           screens = true;
         };
+        # Roles and moderation: reports, held mail, mutes and suspensions
+        # across LosOS Login, lososd and Stalwart (nix/tests/moderation.nix).
+        losos-moderation = import ./nix/tests/moderation.nix { inherit pkgs; };
+        losos-moderation-screens = import ./nix/tests/moderation.nix {
+          inherit pkgs;
+          screens = true;
+        };
         losos-cloud = import ./nix/tests/cloud.nix { inherit pkgs; };
         # How fast LosOS Cloud and LosOS Git take files in on a two-core,
         # 4 GiB box, as numbers to compare trees by (nix/tests/upload-speed.nix).

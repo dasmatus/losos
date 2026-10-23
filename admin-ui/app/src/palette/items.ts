@@ -37,7 +37,7 @@ export type Target =
   | { kind: "href"; href: string; newTab?: boolean }
   | { kind: "run"; run: () => void };
 
-export type GroupId = "pins" | "pages" | "apps" | "files" | "repos" | "text" | "install" | "actions";
+export type GroupId = "pins" | "pages" | "apps" | "files" | "repos" | "issues" | "text" | "install" | "actions";
 
 export interface Item {
   /** Unique across the whole list; also the option's DOM id suffix. */

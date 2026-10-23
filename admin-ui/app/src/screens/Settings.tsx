@@ -10,6 +10,7 @@ import { AccessPane } from "./settings/pane-access";
 import { CredentialsPane } from "./settings/pane-credentials";
 import { AccountPane } from "./settings/pane-account";
 import { UsersPane } from "./settings/pane-users";
+import { ModerationPane } from "./settings/pane-moderation";
 import { AdvancedPane } from "./settings/pane-advanced";
 import { AppsPane } from "./settings/pane-apps";
 import { BackupPane } from "./settings/pane-backup";
@@ -127,6 +128,9 @@ function Pane({
     case "users":
       // No draft, no Apply bar: every person is their own request.
       return <UsersPane locked={form.locked} />;
+    case "moderation":
+      // No draft, no Apply bar: every action is its own request.
+      return <ModerationPane locked={form.locked} />;
     case "access":
       // No draft, no Apply bar: every token is its own request.
       return <AccessPane locked={form.locked} />;

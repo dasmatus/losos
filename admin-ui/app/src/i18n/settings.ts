@@ -147,6 +147,17 @@ export default defineMessages({
     sk: "používateľ používatelia ľudia osoba účet účty člen rodina tím pridať prihlásenie heslo správca oprávnenia skupiny",
     de: "Benutzer Nutzer Personen Person Konto Konten Mitglied Familie Team hinzufügen Anmeldung Passwort Administrator Rechte Gruppen",
   },
+  "settings.panes.moderation.label": { en: "Moderation", sk: "Moderovanie", de: "Moderation" },
+  "settings.panes.moderation.summary": {
+    en: "Reports from people on this box, who is muted or suspended, and what moderators did.",
+    sk: "Nahlásenia od ľudí na tomto zariadení, kto je stíšený alebo pozastavený a čo urobili moderátori.",
+    de: "Meldungen von Personen auf dieser Box, wer stumm oder gesperrt ist und was Moderatoren getan haben.",
+  },
+  "settings.panes.moderation.keywords": {
+    en: "",
+    sk: "nahlásenie nahlásenia spam urážky stíšiť pozastaviť zablokovať karanténa záznam moderátor",
+    de: "Meldung Meldungen Spam Beleidigung stummschalten sperren blockieren Quarantäne Protokoll Moderator",
+  },
   "settings.panes.account.label": { en: "Your account", sk: "Váš účet", de: "Dein Konto" },
   "settings.panes.account.summary": {
     en: "Your name, email address, password and two-factor sign-in on LosOS Login.",

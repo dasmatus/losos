@@ -2,6 +2,7 @@ import type { IconSvgElement } from "@hugeicons/react";
 import {
   ArrowReloadHorizontalIcon,
   ChartLineData01Icon,
+  Flag02Icon,
   CloudUploadIcon,
   ComputerCloudIcon,
   CpuIcon,
@@ -58,6 +59,7 @@ export type SettingsPaneId =
   | "credentials"
   | "account"
   | "users"
+  | "moderation"
   | "access"
   | "advanced"
   | "history"
@@ -293,6 +295,25 @@ export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
     "permissions",
     "groups",
   ]),
+  /* Moderation right after Users: who may sign in, then what to do about
+   * someone who misbehaves. Shown to administrators and moderators on a
+   * box that signs people in itself (`paneOpen`). */
+  pane("moderation", Flag02Icon, [
+    "report",
+    "reports",
+    "abuse",
+    "spam",
+    "mute",
+    "suspend",
+    "ban",
+    "block",
+    "quarantine",
+    "moderator",
+    "moderators",
+    "log",
+    "audit",
+    "harassment",
+  ]),
   /* Access tokens sit right after Security: they are the other way into
    * the box, and an owner who is thinking about one is thinking about the
    * other. */
@@ -405,6 +426,7 @@ const PANE_SECTION: Record<SettingsPaneId, string> = {
   credentials: "admin",
   account: "account",
   users: "admin",
+  moderation: "moderation",
   access: "access",
   advanced: "admin",
   history: "admin",
@@ -423,7 +445,7 @@ export function paneSection(id: SettingsPaneId): string {
  *  account is a person's, so the spare key does not see it. Someone a rule
  *  of LosOS Login holds sees Your account and nothing else. */
 export function paneOpen(id: SettingsPaneId): boolean {
-  if ((id === "users" || id === "account") && !runsOwnSignIn()) return false;
+  if ((id === "users" || id === "account" || id === "moderation") && !runsOwnSignIn()) return false;
   if (id === "account") return getMe()?.spareKey !== true && canUse("account");
   if (heldBy().length > 0) return false;
   return canUse(paneSection(id));
