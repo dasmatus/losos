@@ -452,7 +452,7 @@ let
       wait_route() {
         local provider=$1 port=$2 i
         [[ "$port" =~ ^[0-9]+$ ]] || return 0
-        for i in $(seq 1 60); do
+        for _ in $(seq 1 60); do
           if curl -fsS -o /dev/null "${traefikApi}/api/http/routers/app-$release@$provider"; then
             return 0
           fi
