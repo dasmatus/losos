@@ -1475,25 +1475,23 @@ in
       type = lib.types.str;
       default = "git+file:///etc/nixos#install";
       description = ''
-        Flake URI system.autoUpgrade rebuilds from. The fragment is mandatory:
-        without one `nixos-rebuild --flake` looks for
+        Flake URI the nightly systemd-sysupdate activation rebuilds from. The
+        fragment is mandatory: without one `nixos-rebuild --flake` looks for
         nixosConfigurations.<hostname>, and this flake only exports `iso` and
-        `install` — so every unfragmented run dies with "flake does not provide
-        attribute". lososd uses the same `#install` ref (backend/src/io_backend.rs).
+        `install`. lososd uses the same `#install` ref for settings changes.
+
         New versions arrive through losos.configRepo.upstream, which moves
-        /etc/nixos itself before the rebuild, so an Apply and the nightly
-        update build the same tree. A github: URI (still with `#install`)
-        also works, but an Apply then rebuilds from the older tree in
-        /etc/nixos and undoes the update until the next night.
+        /etc/nixos before the rebuild, so an Apply and a nightly update build
+        the same tree. A remote URI also works, but an Apply then rebuilds from
+        the older local tree in /etc/nixos until the upstream sync catches up.
 
         A remote URI evaluates the published tree, which has neither
         modules/install-target.nix (this box's drive list, firmware mode and
         unlock mode, written by the installer) nor this box's
         modules/overrides.nix (the settings the admin UI writes). flake.nix
-        therefore reads both from /etc/nixos when the evaluation is impure,
-        and the nightly upgrade (updates.nix) and lososd both pass --impure.
-        Evaluate the flake purely against a remote URI and the defaults
-        apply instead: TPM2 unlock, /dev/sda, UEFI, every setting reset.
+        reads both from /etc/nixos under --impure. The updater deliberately
+        passes --impure so it cannot flip this box's disk-unlock mode or reset
+        its settings while bringing in a remote version.
       '';
     };
 
