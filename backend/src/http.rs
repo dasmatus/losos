@@ -3059,18 +3059,18 @@ async fn get_updates(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
 async fn post_updates(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     guarded(&api, &req, "/api/updates", true, || {
         match std::process::Command::new("systemctl")
-            .args(["start", "--no-block", "systemd-sysupdate.service"])
+            .args(["start", "--no-block", "systemd-sysupdate-update.service"])
             .output()
         {
             Ok(output) if output.status.success() => HttpResponse::Accepted()
                 .insert_header(("Cache-Control", "no-store"))
                 .json(serde_json::json!({ "started": true })),
             Ok(output) => error_response(anyhow::anyhow!(
-                "could not start systemd-sysupdate.service: {}",
+                "could not start systemd-sysupdate-update.service: {}",
                 String::from_utf8_lossy(&output.stderr).trim()
             )),
             Err(error) => error_response(anyhow::Error::new(error)
-                .context("starting systemd-sysupdate.service")),
+                .context("starting systemd-sysupdate-update.service")),
         }
     })
 }
