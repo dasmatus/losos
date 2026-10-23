@@ -333,7 +333,10 @@ const listen = (sink) => {
   };
   const onError = (e) => sink(String(e));
   const onResponse = (r) => {
-    if (r.status() >= 400) sink(`${r.status()} ${r.request().method()} ${new URL(r.url()).pathname}`);
+    // The box is offline, so the palette's app catalogue search (Artifact
+    // Hub) cannot answer; that 500 says nothing about the issue pages.
+    if (r.status() >= 400 && new URL(r.url()).pathname !== "/api/apps/search")
+      sink(`${r.status()} ${r.request().method()} ${new URL(r.url()).pathname}`);
   };
   page.on("console", onConsole);
   page.on("pageerror", onError);
