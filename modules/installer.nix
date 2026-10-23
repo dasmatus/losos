@@ -20,7 +20,7 @@
 # boot screen draws (modules/splash.nix), the installer runs under it and
 # shows its menu, its steps and how it ended on the screen's panel
 # (backend/src/install_screen.rs). Elsewhere it prints them on tty1 as text.
-# tty2 to tty6 log root in to a shell.
+# tty2 is reserved for live command logs; tty3 to tty6 log root in to a shell.
 {
   pkgs,
   lib,
@@ -80,6 +80,12 @@ let
   # shell under it.
   losos-install-tty1 = pkgs.writeShellScriptBin "losos-install-tty1" ''
     trap : INT
+    # tty2 is a dedicated live log console during the destructive install.
+    # Keep tty1 for the Plymouth progress panel and its final error/shell.
+    if [ -w /dev/tty2 ]; then
+      printf '\033c' > /dev/tty2
+      printf 'LosOS installer live log (tty1 has the progress screen)\n\n' > /dev/tty2
+    fi
     export LOSOS_INSTALLER_ISO=1
     if command -v plymouth >/dev/null && plymouth --ping 2>/dev/null; then
       if [ "$(kbdinfo -C /dev/tty1 getmode 2>/dev/null)" = graphics ]; then
@@ -132,6 +138,10 @@ in
     # modules/console.nix uses on the installed box.
     systemd.services."getty@tty1".enable = lib.mkIf autorun false;
     systemd.services."autovt@tty1".enable = lib.mkIf autorun false;
+    # Reserve tty2 for the installer's live command output; the next VT
+    # remains available as a root shell if Wi-Fi or recovery work is needed.
+    systemd.services."getty@tty2".enable = lib.mkIf autorun false;
+    systemd.services."autovt@tty2".enable = lib.mkIf autorun false;
 
     systemd.services.losos-installer = lib.mkIf autorun {
       description = "The LosOS installer on tty1";
@@ -139,8 +149,10 @@ in
       after = [
         "systemd-user-sessions.service"
         "systemd-vconsole-setup.service"
+        "losos-ghcr-cache.service"
       ]
       ++ lib.optional plymouth "plymouth-start.service";
+      wants = [ "losos-ghcr-cache.service" ];
       conflicts = [
         "getty@tty1.service"
         "autovt@tty1.service"

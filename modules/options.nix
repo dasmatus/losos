@@ -195,39 +195,27 @@ in
     # ── Binary cache ────────────────────────────────────────────────────────
     cache.substituters = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      # The LosOS cache proxy: the `losos-cache-proxy` Vercel project in front
-      # of the GHCR-hosted cache CI pushes to. CI reads the same URL from the
-      # `LOSOS_PROXY_URL` repository variable; the two must name one host or
-      # the appliance substitutes from a cache nothing fills. The second is
-      # the same Vercel project under its own vercel.app name, for when the
-      # custom domain does not resolve. The third is the static copy the
-      # GitHub Pages site serves (.github/scripts/pages-cache.sh), signed
-      # with the same key, which nix asks only for what the proxy and
-      # cache.nixos.org did not answer.
+      # The local cache server fetches signed per-store-path OCI artifacts
+      # from GHCR with oras. GitHub Pages is a static fallback if GHCR is
+      # unreachable. Neither the installer nor the installed appliance needs
+      # a hosted cache proxy.
       default = [
-        "https://proxy.losos.dasmat.us"
-        "https://losos-cache-proxy.vercel.app"
+        "http://127.0.0.1:8787"
         "https://losos.dasmat.us/proxy"
       ];
       description = ''
         Extra Nix substituters, added to the appliance *and* to the installer
-        medium. The default is the LosOS cache proxy's public URL
-        (`https://proxy.losos.dasmat.us`), then the same proxy under
-        Vercel's own name (`https://losos-cache-proxy.vercel.app`), then the
-        copy of the newest build's paths on the GitHub Pages site
-        (`https://losos.dasmat.us/proxy`); `trustedPublicKeys` carries the
-        key all three are signed with. Set it to `[ ]` to use cache.nixos.org
-        alone.
+        medium. The local `http://127.0.0.1:8787` service pulls signed
+        per-store-path artifacts from GHCR with `oras`; the static copy of the
+        newest build on GitHub Pages (`https://losos.dasmat.us/proxy`) is a
+        remote fallback. `trustedPublicKeys` carries the key used to sign
+        those paths. Set this to `[ ]` to use cache.nixos.org alone.
 
         This exists because `losos-ctl install` runs a bare `nixos-install`
         with no substituter flags, and the install closure carries the
         workload images and the LosOS packages, none of which cache.nixos.org
-        has. Without a cache that serves them, a fresh install *builds* them
-        on a repurposed mini-PC.
-
-        The installer medium matters as much as the installed system: a
-        substituter the target only learns about after it is installed does not
-        make installing it any faster.
+        has. The local server lets Nix pull those artifacts directly from GHCR
+        without depending on a separately hosted cache proxy.
       '';
     };
 

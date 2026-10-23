@@ -57,6 +57,6 @@ at home.
 | `<name>.<edge domain>`      | The box through its edge, for LosOS Cloud and LosOS Git  |
 | `losos-edge.dasmat.us`      | The LosOS edge's control plane and the "find my box" page |
 | `proxy.losos.dasmat.us`     | The binary cache the box updates from                    |
-| `losos-cache-proxy.vercel.app` | The same cache under Vercel's own name                 |
+| `127.0.0.1:8787`            | Local GHCR-backed Nix cache, on the box and installer |
 | `losos.dasmat.us/proxy`     | A copy of that cache, used when the first does not answer |
 | `losos.dasmat.us`           | This handbook on the web                                 |
