@@ -34,6 +34,7 @@ class FakeResponse(io.BytesIO):
     def __init__(self, body: bytes):
         super().__init__(body)
         self.status = 200
+        self.headers = {"Content-Length": str(len(body))}
 
     def __enter__(self):
         return self
