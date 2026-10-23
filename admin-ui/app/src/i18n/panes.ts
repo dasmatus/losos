@@ -121,6 +121,11 @@ export default defineMessages({
     sk: "každú noc o {time}",
     de: "jede Nacht um {time}",
   },
+  "panes.about.manualUpdate": {
+    en: "Manual update",
+    sk: "Manuálna aktualizácia",
+    de: "Manuelles Update",
+  },
   "panes.about.checkForUpdates": {
     en: "Run update now",
     sk: "Aktualizovať teraz",
