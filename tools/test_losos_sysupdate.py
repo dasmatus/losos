@@ -136,6 +136,63 @@ class ApplyTests(unittest.TestCase):
             self.assertNotIn("--no-check-sigs", args)
             self.assertIn(store_path, args)
 
+    def test_archive_extracts_under_persistent_slots_and_rejects_traversal(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archives = root / "archives"
+            slots = root / "slots"
+            archives.mkdir()
+            archive = archives / "losos-components_42.tar.xz"
+            manifest = {
+                "format": 1,
+                "version": 42,
+                "sourceVersion": "v-test",
+                "commit": "0123456789abcdef",
+                "storePaths": ["/nix/store/" + "a" * 32 + "-losos-ctl"],
+            }
+            with tarfile.open(archive, "w:xz") as bundle:
+                manifest_bytes = json.dumps(manifest).encode()
+                info = tarfile.TarInfo("manifest.json")
+                info.size = len(manifest_bytes)
+                bundle.addfile(info, io.BytesIO(manifest_bytes))
+                for name, data in (
+                    ("cache", None),
+                    ("cache/nix-cache-info", b"StoreDir: /nix/store\\n"),
+                    ("cache/" + "a" * 32 + ".narinfo", b"StorePath: /nix/store/example\\n"),
+                    ("cache/marker.txt", b"persistent-update-payload\\n"),
+                ):
+                    info = tarfile.TarInfo(name + "/" if data is None else name)
+                    if data is None:
+                        info.type = tarfile.DIRTYPE
+                        bundle.addfile(info)
+                    else:
+                        info.size = len(data)
+                        bundle.addfile(info, io.BytesIO(data))
+            with (
+                patch.object(apply, "ARCHIVES_DIR", archives),
+                patch.object(apply, "SLOTS_DIR", slots),
+            ):
+                extracted = apply.extract_archive(42, archive)
+            self.assertEqual(
+                (extracted / "cache/marker.txt").read_text(),
+                "persistent-update-payload\\n",
+            )
+            self.assertEqual(extracted.parent, slots)
+
+            malicious = archives / "losos-components_43.tar.xz"
+            with tarfile.open(malicious, "w:xz") as bundle:
+                data = b"do-not-write"
+                info = tarfile.TarInfo("../../outside")
+                info.size = len(data)
+                bundle.addfile(info, io.BytesIO(data))
+            with (
+                patch.object(apply, "ARCHIVES_DIR", archives),
+                patch.object(apply, "SLOTS_DIR", slots),
+            ):
+                with self.assertRaisesRegex(ValueError, "unsafe archive member path"):
+                    apply.extract_archive(43, malicious)
+            self.assertFalse((root / "outside").exists())
+
     def test_malformed_store_path_is_refused_before_nix_is_called(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary) / "losos-components_9"
