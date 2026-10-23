@@ -2215,7 +2215,7 @@
       "POST /api/updates": {
         "auth": true,
         "out": "updatesActionResponse",
-        "note": "Start systemd-sysupdate.service to download and extract components beneath persistent /var/lib/losos-sysupdate. This stages signed Nix store objects only; the local machine configuration activates through the regular nightly NixOS rebuild. Audited. Section admin."
+        "note": "Start systemd-sysupdate-update.service to download and extract components beneath persistent /var/lib/losos-sysupdate. This stages signed Nix store objects only; the local machine configuration activates through the regular nightly NixOS rebuild. Audited. Section admin."
       }
     }
   },
