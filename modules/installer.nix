@@ -139,8 +139,10 @@ in
       after = [
         "systemd-user-sessions.service"
         "systemd-vconsole-setup.service"
+        "losos-ghcr-cache.service"
       ]
       ++ lib.optional plymouth "plymouth-start.service";
+      wants = [ "losos-ghcr-cache.service" ];
       conflicts = [
         "getty@tty1.service"
         "autovt@tty1.service"
