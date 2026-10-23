@@ -50,12 +50,13 @@ on:
 # survive that, but paying it in a double-digit job count to run commands that
 # do not need it is still waste.
 #
-# The nixos-test VMs stay local-only — they need /dev/kvm, which GitHub's
-# hosted runners do not provide:
+# A targeted installer/sysupdate QEMU lane below uses Determinate's Nix
+# installer and its KVM setup when the hosted runner exposes /dev/kvm. The
+# broader local VM suite remains available via:
 #   devenv shell vm-tests
-# Neither this file nor devenv.nix names those VMs: `vm-tests` reads the list
-# out of `.#checks.x86_64-linux`, because the hand-kept version of it had
-# drifted to four names against six checks. Do not reintroduce a literal list.
+# Neither this file nor devenv.nix needs to enumerate that full suite:
+# `vm-tests` reads the checks from `.#checks.x86_64-linux`, preventing its
+# hand-kept list from drifting away from the flake.
 #
 # The substituters are written to /etc/nix/nix.conf before the daemon starts,
 # not passed as NIX_CONFIG: a multi-user daemon discards cache settings from an
