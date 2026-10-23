@@ -73,7 +73,9 @@ pkgs.buildNpmPackage {
   # against), and esbuild's binary arrives through its platform package.
   npmFlags = [ "--ignore-scripts" ];
   # tests/calls.browser.mjs decodes the SFU's tap with ffmpeg.
-  nativeBuildInputs = [ pkgs.ffmpeg-headless ];
+  # The calls browser test starts the SFU with its edge client; curl is a
+  # runtime dependency of that client and must exist in the sandbox.
+  nativeBuildInputs = [ pkgs.ffmpeg-headless pkgs.curl ];
   preBuild = labCorePkg + labVirtPkg + labRenderPkg;
 
   env = {

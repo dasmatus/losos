@@ -944,7 +944,7 @@ jobs:
       # KVM: hosted Linux runners expose /dev/kvm but only to root until a
       # udev rule opens it. Without it the script falls back to TCG, which
       # still works, about ten times slower.
-      - name: boot the ISO under UEFI, BIOS and Secure Boot
+      - name: test installer ISO boots under UEFI, BIOS and Secure Boot
         env:
           SIGNED: ${{ steps.sign.outputs.signed }}
         run: |
@@ -1022,7 +1022,8 @@ jobs:
           compression-level: 0
 
   discovery:
-    name: "discovery: ${{ matrix.os }}"
+    # Use GitHub default matrix job labels: the custom name was shown
+    # literally as `${{ matrix.os }}` in the Actions UI.
     needs: discovery-box
     runs-on: ${{ matrix.runner }}
     # KVM on Linux. The macOS and Windows runners are virtual machines with
