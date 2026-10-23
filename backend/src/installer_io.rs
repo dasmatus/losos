@@ -46,6 +46,27 @@ pub struct IoInstall {
     screen: Option<(Splash, Progress)>,
 }
 
+impl IoInstall {
+    fn set_activity(&mut self, activity: Option<&str>) {
+        if let Some((splash, progress)) = self.screen.as_mut() {
+            progress.activity = activity.map(str::to_owned);
+            splash.show(&install_screen::progress(progress));
+        }
+    }
+
+    fn run_with_activity(
+        &mut self,
+        activity: &str,
+        exe: &str,
+        args: &[&str],
+    ) -> anyhow::Result<()> {
+        self.set_activity(Some(activity));
+        let result = run_live(exe, args);
+        self.set_activity(None);
+        result
+    }
+}
+
 /// The installer medium's boot screen, when it is the one on tty1.
 ///
 /// modules/installer.nix sets `LOSOS_SPLASH` when Plymouth is drawing in
@@ -135,19 +156,46 @@ impl Splash {
     }
 }
 
-/// Run a command with inherited stdio, failing on a non-zero exit.
-fn run_inherit(exe: &str, args: &[&str]) -> anyhow::Result<()> {
-    let status = Command::new(exe)
-        .args(args)
-        .status()
-        .with_context(|| format!("could not start {exe}"))?;
+/// Quote one argument for the shell used by util-linux `script`.
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+/// Run a command in a pseudo-terminal and mirror its live output to tty2.
+///
+/// Keeping a PTY matters: disko and nixos-install must still see a terminal,
+/// and any interactive prompt must still receive keyboard input. `script`
+/// forwards the PTY to tty1 while recording the same stream on tty2. Outside
+/// the installer ISO (where tty2 may not exist), use ordinary inherited stdio.
+fn run_live(exe: &str, args: &[&str]) -> anyhow::Result<()> {
+    let status = if Path::new("/dev/tty2").exists() {
+        let command = std::iter::once(exe)
+            .chain(args.iter().copied())
+            .map(shell_quote)
+            .collect::<Vec<_>>()
+            .join(" ");
+        Command::new("script")
+            .args(["-q", "-f", "-e", "-c", &command, "/dev/tty2"])
+            .status()
+            .with_context(|| format!("could not start {exe} through script"))?
+    } else {
+        Command::new(exe)
+            .args(args)
+            .status()
+            .with_context(|| format!("could not start {exe}"))?
+    };
     if !status.success() {
         bail!(
-            "{exe} {} failed ({status}); see the output above",
+            "{exe} {} failed ({status}); see tty2 for the live command log",
             args.join(" ")
         );
     }
     Ok(())
+}
+
+/// Run a command with inherited stdio, also mirroring its live output to tty2.
+fn run_inherit(exe: &str, args: &[&str]) -> anyhow::Result<()> {
+    run_live(exe, args)
 }
 
 /// Run a command quietly, surfacing stderr only if it fails.
@@ -230,7 +278,7 @@ impl Install for IoInstall {
     }
 
     fn run_disko_script(&mut self, path: &Path) -> anyhow::Result<()> {
-        run_inherit(&path.to_string_lossy(), &[])
+        self.run_with_activity("Partitioning and formatting disks", &path.to_string_lossy(), &[])
     }
 
     /// Clone the flake, then drop the clone's `.git`.
@@ -251,6 +299,7 @@ impl Install for IoInstall {
     /// couple of times for a flaky first connection. Nothing destructive has
     /// run by this point, so waiting is always safe.
     fn clone_flake(&mut self, url: &str, work: &Path) -> anyhow::Result<()> {
+        self.set_activity(Some("Checking network connection"));
         if let Some(host) = flake_host(url) {
             let secs = std::env::var("LOSOS_NETWORK_TIMEOUT")
                 .ok()
@@ -270,15 +319,16 @@ impl Install for IoInstall {
             }
             waited?;
         }
+        self.set_activity(Some("Downloading repository"));
         let mut attempt = 1;
         loop {
             if work.exists() {
                 std::fs::remove_dir_all(work)
                     .with_context(|| format!("clearing {}", work.display()))?;
             }
-            match run_quiet(
+            match run_live(
                 "git",
-                &["clone", "--depth", "1", url, &work.to_string_lossy()],
+                &["clone", "--progress", "--depth", "1", url, &work.to_string_lossy()],
             ) {
                 Ok(()) => break,
                 Err(e) if attempt < CLONE_ATTEMPTS => {
@@ -289,11 +339,13 @@ impl Install for IoInstall {
                 Err(e) => return Err(e),
             }
         }
+        self.set_activity(Some("Preparing downloaded repository"));
         let git_dir = work.join(".git");
         if git_dir.exists() {
             std::fs::remove_dir_all(&git_dir)
                 .with_context(|| format!("removing {}", git_dir.display()))?;
         }
+        self.set_activity(None);
         Ok(())
     }
 
@@ -305,7 +357,8 @@ impl Install for IoInstall {
     /// confirmation is answered up front.
     fn run_disko(&mut self, work: &Path) -> anyhow::Result<()> {
         let flake = format!("{}#install", work.to_string_lossy());
-        run_inherit(
+        self.run_with_activity(
+            "Partitioning, encrypting and mounting disks",
             "disko",
             &[
                 "--mode",
@@ -330,7 +383,11 @@ impl Install for IoInstall {
 
     fn run_nixos_install(&mut self, work: &Path) -> anyhow::Result<()> {
         let flake = format!("{}#install", work.to_string_lossy());
-        run_inherit("nixos-install", &["--flake", &flake, "--no-root-passwd"])
+        self.run_with_activity(
+            "Building and copying the NixOS system",
+            "nixos-install",
+            &["--flake", &flake, "--no-root-passwd"],
+        )
     }
 
     /// Copy the flake to `/persist/etc/nixos` and make it a git repo, so the
@@ -392,7 +449,8 @@ impl Install for IoInstall {
     /// the installer console.
     fn enroll_tpm(&mut self, device: &Path, keyfile: &Path) -> anyhow::Result<()> {
         let unlock = format!("--unlock-key-file={}", keyfile.display());
-        run_inherit(
+        self.run_with_activity(
+            "Sealing the disk key to the TPM",
             "systemd-cryptenroll",
             &[
                 "--tpm2-device=auto",
@@ -675,6 +733,7 @@ pub fn run_install(opts: &Options, splash: Option<Splash>) -> anyhow::Result<()>
         drives: resolve_drives(opts, &devs).map_err(|e| anyhow::anyhow!(e))?,
         tpm: opts.tpm,
         network_wait: None,
+        activity: Some("Preparing installer".into()),
     };
     splash.show(&install_screen::progress(&progress));
     let mut io = IoInstall {
