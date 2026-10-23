@@ -62,6 +62,16 @@ export interface StatusResponse {
   job?: string;
 }
 
+/** GET /api/updates — systemd-sysupdate's configured LosOS transfer listing. */
+export interface UpdatesResponse {
+  output: string;
+}
+
+/** POST /api/updates — a transfer run was queued with systemd. */
+export interface UpdatesActionResponse {
+  started: boolean;
+}
+
 export interface ChangeResponse {
   job: string;
 }
@@ -663,6 +673,16 @@ export function getSettings(options: RequestOptions = {}): Promise<SettingsRespo
 /** GET /api/status — rebuild progress. Poll it with {@link createStatusPoller}. */
 export function getStatus(options: RequestOptions = {}): Promise<StatusResponse> {
   return call<StatusResponse>("/api/status", options);
+}
+
+/** GET /api/updates — available and installed component versions. */
+export function getUpdates(options: RequestOptions = {}): Promise<UpdatesResponse> {
+  return call<UpdatesResponse>("/api/updates", options);
+}
+
+/** POST /api/updates — download/extract bundles now, without applying a generic toplevel. */
+export function postUpdates(options: RequestOptions = {}): Promise<UpdatesActionResponse> {
+  return call<UpdatesActionResponse>("/api/updates", { ...options, method: "POST" });
 }
 
 /** GET /api/statistics — what Traefik counted for the apps' LAN ports
