@@ -14,7 +14,7 @@ use crate::installer::{
 };
 use crate::io_backend::{atomic_write, env_or};
 use anyhow::{bail, Context};
-use std::io::Read;
+use std::io::{Read, Write};
 use std::net::ToSocketAddrs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -156,6 +156,16 @@ impl Splash {
     }
 }
 
+/// Write an installer message to tty1 and, on the installer ISO, tty2.
+fn log_line(message: &str) {
+    println!("{message}");
+    if std::env::var_os("LOSOS_INSTALLER_ISO").is_some() {
+        if let Ok(mut tty) = std::fs::OpenOptions::new().write(true).open("/dev/tty2") {
+            let _ = writeln!(tty, "{message}");
+        }
+    }
+}
+
 /// Quote one argument for the shell used by util-linux `script`.
 fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
@@ -267,7 +277,7 @@ impl Install for IoInstall {
         if path.exists() {
             return Ok(());
         }
-        println!("losos-install: generating {}", path.display());
+        log_line(&format!("losos-install: generating {}", path.display()));
         if let Some(dir) = path.parent() {
             owner_only_dir(dir)?;
         }
@@ -334,7 +344,7 @@ impl Install for IoInstall {
             ) {
                 Ok(()) => break,
                 Err(e) if attempt < CLONE_ATTEMPTS => {
-                    println!("losos-install: clone attempt {attempt} of {CLONE_ATTEMPTS} failed, retrying: {e:#}");
+                    log_line(&format!("losos-install: clone attempt {attempt} of {CLONE_ATTEMPTS} failed, retrying: {e:#}"));
                     std::thread::sleep(Duration::from_secs(5 * u64::from(attempt)));
                     attempt += 1;
                 }
@@ -464,7 +474,7 @@ impl Install for IoInstall {
     }
 
     fn log_info(&mut self, msg: &str) {
-        println!("{msg}");
+        log_line(msg);
     }
 }
 
@@ -516,7 +526,7 @@ fn wait_for_host(
             .is_ok_and(|mut a| a.next().is_some())
         {
             if announced {
-                println!("losos-install: network is up, {host} resolves");
+                log_line(&format!("losos-install: network is up, {host} resolves"));
             }
             return Ok(());
         }
@@ -529,11 +539,11 @@ fn wait_for_host(
             );
         }
         if !announced || waited.as_secs() % 30 < 2 {
-            println!(
+            log_line(&format!(
                 "losos-install: waiting for network ({host} does not resolve yet, {}s so far). \
                  Plug in a cable; for Wi-Fi press Ctrl-C, run nmtui, then run losos-install",
                 waited.as_secs()
-            );
+            ));
             announced = true;
         }
         on_wait(waited.as_secs());
