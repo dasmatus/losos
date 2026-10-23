@@ -180,7 +180,7 @@ export function AboutPane({ form }: { form: SettingsForm }) {
             <RowValue>{t("panes.about.everyNightAt", { time: "00:07" })}</RowValue>
           </Row>
           <Row last>
-            <RowText title={t("panes.about.updates")} />
+            <RowText title={t("panes.about.manualUpdate")} />
             <RowValue>
               <button
                 type="button"
