@@ -73,6 +73,11 @@ pub const PATH_UNITS: [&str; 2] = [
     "losos-registrar-announce.service",
 ];
 
+/// The mesh units modules/cluster.nix runs, restarted in this order when the
+/// box moves to another secondary cluster: the join that fetches the new
+/// cluster's token, then the agent that dials it.
+pub const MESH_UNITS: [&str; 2] = ["losos-mesh-join.service", "rke2-agent.service"];
+
 /// Ceiling for one whole LAN browse, resolving included: what a resolved
 /// that accepts the call and then never answers can cost a scan.
 pub const BROWSE_TIMEOUT_SECS: u64 = 10;
@@ -128,6 +133,106 @@ pub struct Edge {
     /// but not tunnelled to.
     #[serde(default)]
     pub rathole: Option<String>,
+    /// The tier a link from this box to this edge would be ([`Tier`]):
+    /// secondary to a local gateway, tertiary to an official edge (any edge
+    /// that does not say it is a gateway).
+    #[serde(default = "Tier::secondary")]
+    pub tier: Tier,
+    /// The secondary cluster the edge belongs to, as it said
+    /// (`GET /cluster/secondary`), when it is a gateway in one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cluster: Option<String>,
+    /// The edge's name in that cluster.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub member: Option<String>,
+}
+
+/// The tier of a connection (handbook/docs/in-depth/edge-federation.md,
+/// "Three tiers"). A box's own link is secondary or tertiary; primary links
+/// join edges to edges, and a box only ever sees them reported.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Tier {
+    /// Edge to edge: the main cluster.
+    Primary,
+    /// Box to a local gateway: a secondary cluster.
+    Secondary,
+    /// Box straight to an official edge.
+    Tertiary,
+}
+
+impl Tier {
+    fn secondary() -> Self {
+        Tier::Secondary
+    }
+
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Tier::Primary => "primary",
+            Tier::Secondary => "secondary",
+            Tier::Tertiary => "tertiary",
+        }
+    }
+}
+
+/// What an edge says about itself at `GET /cluster/secondary`
+/// (`edge/registrar/src/secondary.rs`, `Info`), the part the box reads.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Described {
+    /// It says it is a local gateway.
+    pub gateway: bool,
+    pub cluster: Option<String>,
+    pub member: Option<String>,
+}
+
+/// Read an edge's `GET /cluster/secondary` answer. `None` for anything that
+/// is not the shape the registrar writes, which leaves the edge classified
+/// by where it was found. Names are kept only when they are DNS labels: they
+/// go into an env file and onto the admin page.
+#[must_use]
+pub fn parse_described(body: &str) -> Option<Described> {
+    let v: Value = serde_json::from_str(body).ok()?;
+    let role = v.get("role")?.as_str()?;
+    let label = |key: &str| {
+        v.get(key)
+            .and_then(Value::as_str)
+            .filter(|s| dns_label(s))
+            .map(str::to_string)
+    };
+    Some(Described {
+        gateway: role == "gateway",
+        cluster: label("cluster"),
+        member: label("member"),
+    })
+}
+
+/// 1 to 63 lowercase letters, digits and inner hyphens.
+#[must_use]
+pub fn dns_label(s: &str) -> bool {
+    (1..=63).contains(&s.len())
+        && !s.starts_with('-')
+        && !s.ends_with('-')
+        && s.bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+
+/// A name [`cluster_key`] can give: a DNS label, or the host of a gateway
+/// that names no cluster (`gw.local`, `[fe80::1]`). What the owner may send
+/// to `POST /api/edge/cluster`; the move is then checked against the scan.
+#[must_use]
+pub fn cluster_name(s: &str) -> bool {
+    (1..=253).contains(&s.len())
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b':' | b'[' | b']'))
+}
+
+/// One secondary cluster in reach, as the Mesh pane lists them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterView {
+    pub name: String,
+    /// Its gateways that answered, by name.
+    pub gateways: Vec<String>,
 }
 
 /// The edge this box uses, out of everything the scan found: the path
@@ -142,6 +247,15 @@ pub struct EdgePath {
     /// `host:port` the tunnel dials. Always present: an edge with no
     /// endpoint is never chosen as the path.
     pub rathole: String,
+    /// Secondary through a gateway of the box's cluster, tertiary straight
+    /// to an official edge.
+    pub tier: Tier,
+    /// The secondary cluster the path runs through; `None` on a tertiary one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cluster: Option<String>,
+    /// The gateway's name in it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub member: Option<String>,
 }
 
 /// What the last scan found. The JSON shape is the `GET /api/edge` contract.
@@ -169,27 +283,168 @@ pub struct EdgeStatus {
     /// The edge the box uses, derived from `edges` by [`choose_path`].
     #[serde(default)]
     pub path: Option<EdgePath>,
+    /// The secondary clusters in reach.
+    #[serde(default)]
+    pub clusters: Vec<ClusterView>,
+    /// The secondary cluster this box belongs to: the one its owner chose,
+    /// or the one it settled in first. Kept while none of its gateways
+    /// answers, so a box never moves its own membership.
+    #[serde(default)]
+    pub cluster: Option<String>,
+    /// The registrar URL a live custom domain holds this box to, if any. A
+    /// box with a domain sticks to the edge that serves it and never fails
+    /// over on its own, to another gateway or tier alike.
+    #[serde(default)]
+    pub held: Option<String>,
 }
 
-/// The path rule: the first LAN edge that answered
-/// and can be tunnelled to, else the configured edge, else none. `edges` is
-/// LAN first as [`assemble`] builds it, so the first edge with an endpoint
-/// in list order is the answer.
+/// The cluster an edge is counted in: the one it named, or for a gateway
+/// that names none (one from before secondary clusters), a cluster of its
+/// own named by its host.
 #[must_use]
-pub fn choose_path(edges: &[Edge]) -> Option<EdgePath> {
-    let pick = |source: Source| {
-        edges
+pub fn cluster_key(edge: &Edge) -> String {
+    match &edge.cluster {
+        Some(c) => c.clone(),
+        None => bracketed_host(&edge.url),
+    }
+}
+
+/// The secondary clusters among `edges`, by name, each with its gateways.
+#[must_use]
+pub fn clusters(edges: &[Edge]) -> Vec<ClusterView> {
+    let mut out: Vec<ClusterView> = Vec::new();
+    for e in edges.iter().filter(|e| e.tier == Tier::Secondary) {
+        let key = cluster_key(e);
+        let name = e.member.clone().unwrap_or_else(|| e.name.clone());
+        match out.iter_mut().find(|c| c.name == key) {
+            Some(c) => c.gateways.push(name),
+            None => out.push(ClusterView {
+                name: key,
+                gateways: vec![name],
+            }),
+        }
+    }
+    for c in &mut out {
+        c.gateways.sort();
+    }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    out
+}
+
+/// The path rule (handbook/docs/in-depth/edge-federation.md, "The box"):
+///
+/// 1. **secondary**, through a gateway of the box's own cluster (`member_of`,
+///    the one its owner chose or it settled in). With no cluster yet, the
+///    cluster in reach with the most gateways, ties by name, and that becomes
+///    the box's cluster. Inside the cluster the box stays on the gateway it
+///    uses now (`current`, its registrar URL) while that one answers, else
+///    the first by name: a failover moves to another gateway of the same
+///    cluster, where the box is already known.
+/// 2. **tertiary**, straight to an official edge, when no gateway of the
+///    box's cluster answers. Another cluster's gateway is never taken on the
+///    box's own: membership moves only when the owner moves it.
+/// 3. none.
+///
+/// Above all three: a box with a live custom domain is held to `hold`, the
+/// path it had when the domain went live. It stays on that edge while it
+/// answers, and keeps dialling it while it does not, rather than move: the
+/// domain's route and every connection over it run through that one edge,
+/// and a box that wandered off on its own would break them.
+///
+/// Returns the path and the cluster the box belongs to afterwards.
+#[must_use]
+pub fn choose_path(
+    edges: &[Edge],
+    member_of: Option<&str>,
+    current: Option<&str>,
+    hold: Option<&EdgePath>,
+) -> (Option<EdgePath>, Option<String>) {
+    if let Some(held) = hold {
+        let path = edges
             .iter()
-            .find(|e| e.source == source && e.rathole.is_some())
+            .find(|e| e.url == held.url && e.rathole.is_some())
+            .map_or_else(
+                || held.clone(),
+                |e| EdgePath {
+                    name: e.name.clone(),
+                    url: e.url.clone(),
+                    source: e.source,
+                    rathole: e.rathole.clone().unwrap_or_default(),
+                    tier: e.tier,
+                    cluster: (e.tier == Tier::Secondary).then(|| cluster_key(e)),
+                    member: e.member.clone(),
+                },
+            );
+        let membership = member_of
+            .map(str::to_string)
+            .or_else(|| path.cluster.clone());
+        return (Some(path), membership);
+    }
+    let usable = |e: &&Edge| e.rathole.is_some();
+    let secondary: Vec<&Edge> = edges
+        .iter()
+        .filter(usable)
+        .filter(|e| e.tier == Tier::Secondary)
+        .collect();
+    let membership = match member_of {
+        Some(c) => Some(c.to_string()),
+        None => clusters(edges)
+            .into_iter()
+            .filter(|c| secondary.iter().any(|e| cluster_key(e) == c.name))
+            .max_by(|a, b| {
+                a.gateways
+                    .len()
+                    .cmp(&b.gateways.len())
+                    .then_with(|| b.name.cmp(&a.name))
+            })
+            .map(|c| c.name),
     };
-    pick(Source::Lan)
-        .or_else(|| pick(Source::Configured))
-        .map(|e| EdgePath {
-            name: e.name.clone(),
-            url: e.url.clone(),
-            source: e.source,
-            rathole: e.rathole.clone().unwrap_or_default(),
+    let pick = |candidates: Vec<&Edge>| -> Option<EdgePath> {
+        let chosen = candidates
+            .iter()
+            .find(|e| Some(e.url.as_str()) == current)
+            .or_else(|| {
+                candidates
+                    .iter()
+                    .min_by_key(|e| e.member.clone().unwrap_or_else(|| e.name.clone()))
+            })?;
+        Some(EdgePath {
+            name: chosen.name.clone(),
+            url: chosen.url.clone(),
+            source: chosen.source,
+            rathole: chosen.rathole.clone().unwrap_or_default(),
+            tier: chosen.tier,
+            cluster: (chosen.tier == Tier::Secondary).then(|| cluster_key(chosen)),
+            member: chosen.member.clone(),
         })
+    };
+    if let Some(m) = &membership {
+        let mine: Vec<&Edge> = secondary
+            .iter()
+            .copied()
+            .filter(|e| cluster_key(e) == *m)
+            .collect();
+        if let Some(path) = pick(mine) {
+            return (Some(path), membership);
+        }
+    }
+    // Tertiary: the configured edge first, as it always was.
+    let tertiary: Vec<&Edge> = edges
+        .iter()
+        .filter(usable)
+        .filter(|e| e.tier == Tier::Tertiary)
+        .collect();
+    let configured: Vec<&Edge> = tertiary
+        .iter()
+        .copied()
+        .filter(|e| e.source == Source::Configured)
+        .collect();
+    let path = if configured.is_empty() {
+        pick(tertiary)
+    } else {
+        pick(configured)
+    };
+    (path, membership)
 }
 
 impl EdgeStatus {
@@ -204,6 +459,9 @@ impl EdgeStatus {
             configured_url: None,
             checked_at: None,
             path: None,
+            clusters: Vec::new(),
+            cluster: None,
+            held: None,
         }
     }
 
@@ -211,15 +469,34 @@ impl EdgeStatus {
     /// from the list, so the two cannot disagree.
     #[must_use]
     pub fn found(edges: Vec<Edge>, lan_searched: bool, configured_url: Option<String>) -> Self {
+        let (path, cluster) = choose_path(&edges, None, None, None);
         EdgeStatus {
             reachable: !edges.is_empty(),
             official: edges.iter().any(|e| e.official),
-            path: choose_path(&edges),
+            path,
+            clusters: clusters(&edges),
+            cluster,
+            held: None,
             edges,
             lan_searched,
             configured_url,
             checked_at: None,
         }
+    }
+
+    /// Choose the path again for a box that belongs to `member_of`, uses
+    /// the edge at `current` now, and is held to `hold` by a custom domain
+    /// ([`choose_path`]).
+    pub fn route(
+        &mut self,
+        member_of: Option<&str>,
+        current: Option<&str>,
+        hold: Option<&EdgePath>,
+    ) {
+        let (path, cluster) = choose_path(&self.edges, member_of, current, hold);
+        self.path = path;
+        self.cluster = cluster;
+        self.held = hold.map(|h| h.url.clone());
     }
 
     #[must_use]
@@ -232,6 +509,9 @@ impl EdgeStatus {
             "configuredUrl": self.configured_url,
             "checkedAt": self.checked_at,
             "path": self.path,
+            "clusters": self.clusters,
+            "cluster": self.cluster,
+            "held": self.held,
         })
     }
 }
@@ -667,6 +947,9 @@ pub fn candidates(adverts: &[Advert]) -> Vec<Edge> {
             source: Source::Lan,
             official: false,
             rathole: Some(rathole),
+            tier: Tier::Secondary,
+            cluster: None,
+            member: None,
         });
     }
     out
@@ -728,17 +1011,31 @@ pub fn assemble(
     prove: impl Fn(&str, &str) -> Option<String>,
     now: u64,
 ) -> EdgeStatus {
-    assemble_with(browse, configured_url, None, answered, trust, prove, now)
+    assemble_with(
+        browse,
+        configured_url,
+        None,
+        answered,
+        |_| None,
+        trust,
+        prove,
+        now,
+    )
 }
 
 /// [`assemble`] with the configured edge's tunnel endpoint
 /// (`losos.proxy.edgeRatholeEndpoint`), which is what lets that edge be the
-/// path when the LAN has none.
+/// path when the LAN has none, and `describe`, each answering edge's word on
+/// what it is (`GET /cluster/secondary`, [`parse_described`]). An edge that
+/// says nothing is a gateway when it was found on the LAN and an official
+/// edge when it is the configured one; an official edge is never a gateway.
+#[allow(clippy::too_many_arguments)]
 pub fn assemble_with(
     browse: Option<&[Advert]>,
     configured_url: Option<&str>,
     configured_rathole: Option<&str>,
     answered: impl Fn(&str) -> bool,
+    describe: impl Fn(&str) -> Option<Described>,
     trust: &Trust<'_>,
     prove: impl Fn(&str, &str) -> Option<String>,
     now: u64,
@@ -765,7 +1062,21 @@ pub fn assemble_with(
                     .map(str::trim)
                     .filter(|r| plain_endpoint(r))
                     .map(str::to_string),
+                tier: Tier::Tertiary,
+                cluster: None,
+                member: None,
             });
+        }
+    }
+    for edge in &mut edges {
+        if let Some(d) = describe(&edge.url) {
+            edge.tier = if d.gateway {
+                Tier::Secondary
+            } else {
+                Tier::Tertiary
+            };
+            edge.cluster = d.cluster;
+            edge.member = d.member;
         }
     }
     // Every edge that answered is asked who it is. With no root key there
@@ -774,6 +1085,11 @@ pub fn assemble_with(
         for edge in &mut edges {
             edge.official = prove(&edge.url, trust.nonce)
                 .is_some_and(|body| verify_answer(trust, &body, &edge.url, now).is_ok());
+            if edge.official {
+                edge.tier = Tier::Tertiary;
+                edge.cluster = None;
+                edge.member = None;
+            }
         }
     }
     let mut status = EdgeStatus::found(edges, browse.is_some(), configured_url);
@@ -795,18 +1111,77 @@ pub fn assemble_with(
 #[must_use]
 pub fn path_env(path: &EdgePath, noise_pin: Option<&str>) -> String {
     let mut out = format!(
-        "LOSOS_EDGE_PATH_URL={}\nLOSOS_EDGE_PATH_RATHOLE={}\nLOSOS_EDGE_PATH_SOURCE={}\n",
+        "LOSOS_EDGE_PATH_URL={}\nLOSOS_EDGE_PATH_RATHOLE={}\nLOSOS_EDGE_PATH_SOURCE={}\nLOSOS_EDGE_PATH_TIER={}\n",
         path.url,
         path.rathole,
         match path.source {
             Source::Lan => "lan",
             Source::Configured => "configured",
-        }
+        },
+        path.tier.as_str(),
     );
+    // A DNS label, checked when it was read off the edge.
+    if let Some(cluster) = &path.cluster {
+        out.push_str(&format!("LOSOS_EDGE_PATH_CLUSTER={cluster}\n"));
+    }
     if let Some(pin) = noise_pin {
         out.push_str(&format!("LOSOS_EDGE_PATH_NOISE_PUB={pin}\n"));
     }
     out
+}
+
+/// The path an env file [`path_env`] wrote describes, as far as it says:
+/// what a box held by a custom domain keeps dialling. `None` for a file
+/// without a URL and a tunnel endpoint.
+#[must_use]
+pub fn path_from_env(env: &str) -> Option<EdgePath> {
+    let url = env_value(env, "LOSOS_EDGE_PATH_URL")?.to_string();
+    let rathole = env_value(env, "LOSOS_EDGE_PATH_RATHOLE")?.to_string();
+    if url.is_empty() || !plain_endpoint(&rathole) {
+        return None;
+    }
+    let source = match env_value(env, "LOSOS_EDGE_PATH_SOURCE") {
+        Some("configured") => Source::Configured,
+        _ => Source::Lan,
+    };
+    let tier = match env_value(env, "LOSOS_EDGE_PATH_TIER") {
+        Some("tertiary") => Tier::Tertiary,
+        Some("secondary") => Tier::Secondary,
+        _ if source == Source::Configured => Tier::Tertiary,
+        _ => Tier::Secondary,
+    };
+    Some(EdgePath {
+        name: bracketed_host(&url),
+        cluster: env_value(env, "LOSOS_EDGE_PATH_CLUSTER")
+            .filter(|c| cluster_name(c))
+            .map(str::to_string),
+        member: None,
+        url,
+        source,
+        rathole,
+        tier,
+    })
+}
+
+/// One variable out of an env file [`path_env`] wrote.
+#[must_use]
+pub fn env_value<'a>(env: &'a str, key: &str) -> Option<&'a str> {
+    env.lines()
+        .filter_map(|l| l.split_once('='))
+        .find(|(k, _)| *k == key)
+        .map(|(_, v)| v)
+}
+
+/// Whether a new path moves the box to another secondary cluster: both the
+/// old and the new path run through one, and not the same. That is when the
+/// mesh join runs again (the box joins the new cluster's control plane); a
+/// failover inside a cluster, or out to an official edge and back, is not.
+#[must_use]
+pub fn moved_cluster(prev_env: Option<&str>, next_env: Option<&str>) -> bool {
+    fn cluster(env: Option<&str>) -> Option<&str> {
+        env.and_then(|e| env_value(e, "LOSOS_EDGE_PATH_CLUSTER"))
+    }
+    matches!((cluster(prev_env), cluster(next_env)), (Some(a), Some(b)) if a != b)
 }
 
 /// The file name a LAN edge's Noise key is pinned under: its registrar's
@@ -826,6 +1201,33 @@ pub fn pin_file_name(url: &str) -> String {
         })
         .collect();
     format!("{}.pub", safe.trim_matches('_'))
+}
+
+/// Refused: the owner asked to move the box to a secondary cluster none of
+/// whose gateways is in reach.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("no gateway of the cluster {0} answers on this network, so the box cannot move there")]
+pub struct ClusterNotInReach(pub String);
+
+/// Refused: a live custom domain holds the box to the edge that serves it.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("this box has a custom domain served through {0}, so it stays on that edge; remove the domain first to move the box")]
+pub struct HeldByDomain(pub String);
+
+/// Check a move to `cluster` against the last scan.
+///
+/// # Errors
+/// [`HeldByDomain`] while a custom domain holds the box, and
+/// [`ClusterNotInReach`] when no gateway of `cluster` answered.
+pub fn check_cluster_move(status: &EdgeStatus, cluster: &str) -> anyhow::Result<()> {
+    if let Some(url) = &status.held {
+        return Err(HeldByDomain(url.clone()).into());
+    }
+    if status.clusters.iter().any(|c| c.name == cluster) {
+        Ok(())
+    } else {
+        Err(ClusterNotInReach(cluster.to_string()).into())
+    }
 }
 
 /// What to do to the tunnel units after a scan.
@@ -1077,6 +1479,9 @@ mod tests {
             source: Source::Lan,
             official,
             rathole: Some("192.168.1.2:2333".into()),
+            tier: Tier::Secondary,
+            cluster: None,
+            member: None,
         }
     }
 
@@ -1536,6 +1941,9 @@ mod tests {
                 source: Source::Lan,
                 official: false,
                 rathole: Some("edge.local:2333".into()),
+                tier: Tier::Secondary,
+                cluster: None,
+                member: None,
             }],
             true,
             None,
@@ -1822,6 +2230,7 @@ mod tests {
             Some("https://losos-edge.example"),
             Some("edge.losos.cfd:2333"),
             |_| true,
+            |_| None,
             &NO_TRUST,
             |_, _| None,
             1,
@@ -1837,6 +2246,7 @@ mod tests {
             Some("https://losos-edge.example"),
             Some("edge.losos.cfd:2333"),
             |url| url.starts_with("https://"),
+            |_| None,
             &NO_TRUST,
             |_, _| None,
             1,
@@ -1863,6 +2273,264 @@ mod tests {
         assert_eq!(none.to_json()["path"], Value::Null);
     }
 
+    fn gw(cluster: &str, member: &str) -> Edge {
+        Edge {
+            name: member.into(),
+            url: format!("http://{member}.local:8443"),
+            source: Source::Lan,
+            official: false,
+            rathole: Some(format!("{member}.local:2333")),
+            tier: Tier::Secondary,
+            cluster: Some(cluster.into()),
+            member: Some(member.into()),
+        }
+    }
+
+    fn official_edge() -> Edge {
+        Edge {
+            name: "edge".into(),
+            url: "https://edge.losos.cfd".into(),
+            source: Source::Configured,
+            official: true,
+            rathole: Some("edge.losos.cfd:2333".into()),
+            tier: Tier::Tertiary,
+            cluster: None,
+            member: None,
+        }
+    }
+
+    #[test]
+    fn an_edge_says_what_it_is() {
+        let d = parse_described(
+            r#"{"role":"gateway","tier":"secondary","cluster":"office","member":"gw-a","gateways":[],"main":true}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            d,
+            Described {
+                gateway: true,
+                cluster: Some("office".into()),
+                member: Some("gw-a".into()),
+            }
+        );
+        let hub = parse_described(r#"{"role":"hub","tier":"tertiary"}"#).unwrap();
+        assert!(!hub.gateway);
+        // A name that is not a DNS label is dropped, not written to the env
+        // file.
+        let odd = parse_described(r#"{"role":"gateway","cluster":"a\nB=1"}"#).unwrap();
+        assert_eq!(odd.cluster, None);
+        assert_eq!(parse_described("<html>"), None);
+        assert_eq!(parse_described("{}"), None);
+        assert!(cluster_name("office"));
+        assert!(cluster_name("gw.local"));
+        assert!(cluster_name("[fe80::1]"));
+        assert!(!cluster_name(""));
+        assert!(!cluster_name("a b"));
+        assert!(!cluster_name("a\nb"));
+    }
+
+    #[test]
+    fn the_configured_edge_is_tertiary_and_a_gateway_that_says_so_is_secondary() {
+        let status = assemble_with(
+            Some(&gateway("gw.local:2333")),
+            Some("https://losos-edge.example"),
+            Some("edge.losos.cfd:2333"),
+            |_| true,
+            |url| {
+                url.contains("gw.local").then(|| Described {
+                    gateway: true,
+                    cluster: Some("office".into()),
+                    member: Some("gw-a".into()),
+                })
+            },
+            &NO_TRUST,
+            |_, _| None,
+            1,
+        );
+        let lan = status
+            .edges
+            .iter()
+            .find(|e| e.source == Source::Lan)
+            .unwrap();
+        assert_eq!(lan.tier, Tier::Secondary);
+        assert_eq!(lan.cluster.as_deref(), Some("office"));
+        let configured = status
+            .edges
+            .iter()
+            .find(|e| e.source == Source::Configured)
+            .unwrap();
+        assert_eq!(configured.tier, Tier::Tertiary);
+        let path = status.path.unwrap();
+        assert_eq!(path.tier, Tier::Secondary);
+        assert_eq!(path.cluster.as_deref(), Some("office"));
+        assert_eq!(path.member.as_deref(), Some("gw-a"));
+        assert_eq!(status.cluster.as_deref(), Some("office"));
+        assert_eq!(
+            status.clusters,
+            vec![ClusterView {
+                name: "office".into(),
+                gateways: vec!["gw-a".into()],
+            }]
+        );
+        let json = EdgeStatus::found(status.edges.clone(), true, None).to_json();
+        assert_eq!(json["path"]["tier"], "secondary");
+        assert_eq!(json["edges"][1]["tier"], "tertiary");
+    }
+
+    #[test]
+    fn a_box_settles_in_the_biggest_cluster_and_stays_on_its_gateway() {
+        let edges = vec![
+            gw("lab", "gw-z"),
+            gw("office", "gw-b"),
+            gw("office", "gw-a"),
+            official_edge(),
+        ];
+        // No cluster yet: the one with the most gateways, the first gateway.
+        let (path, cluster) = choose_path(&edges, None, None, None);
+        let path = path.unwrap();
+        assert_eq!(cluster.as_deref(), Some("office"));
+        assert_eq!(path.member.as_deref(), Some("gw-a"));
+        assert_eq!(path.tier, Tier::Secondary);
+        // On gw-b now: stays there while it answers.
+        let (path, _) = choose_path(&edges, Some("office"), Some("http://gw-b.local:8443"), None);
+        assert_eq!(path.unwrap().member.as_deref(), Some("gw-b"));
+        // The owner put it in lab: lab, even though office is bigger.
+        let (path, cluster) =
+            choose_path(&edges, Some("lab"), Some("http://gw-b.local:8443"), None);
+        assert_eq!(path.unwrap().member.as_deref(), Some("gw-z"));
+        assert_eq!(cluster.as_deref(), Some("lab"));
+        // A tie goes by name.
+        let tie = vec![gw("b-site", "gw-1"), gw("a-site", "gw-2")];
+        assert_eq!(
+            choose_path(&tie, None, None, None).1.as_deref(),
+            Some("a-site")
+        );
+    }
+
+    #[test]
+    fn a_failover_stays_in_the_cluster_and_then_goes_tertiary() {
+        // gw-a went quiet: the box moves to gw-b of the same cluster.
+        let edges = vec![gw("office", "gw-b"), gw("lab", "gw-z"), official_edge()];
+        let (path, cluster) =
+            choose_path(&edges, Some("office"), Some("http://gw-a.local:8443"), None);
+        let path = path.unwrap();
+        assert_eq!(path.member.as_deref(), Some("gw-b"));
+        assert_eq!(cluster.as_deref(), Some("office"));
+        // No gateway of office answers: straight to the official edge, never
+        // to lab's gateway, and the box is still in office.
+        let edges = vec![gw("lab", "gw-z"), official_edge()];
+        let (path, cluster) =
+            choose_path(&edges, Some("office"), Some("http://gw-b.local:8443"), None);
+        let path = path.unwrap();
+        assert_eq!(path.tier, Tier::Tertiary);
+        assert_eq!(path.url, "https://edge.losos.cfd");
+        assert_eq!(path.cluster, None);
+        assert_eq!(cluster.as_deref(), Some("office"));
+        // Nothing at all.
+        let (path, cluster) = choose_path(&[gw("lab", "gw-z")], Some("office"), None, None);
+        assert_eq!(path, None);
+        assert_eq!(cluster.as_deref(), Some("office"));
+        // Back in reach: back to secondary.
+        let (path, _) = choose_path(
+            &[gw("office", "gw-a"), official_edge()],
+            Some("office"),
+            Some("https://edge.losos.cfd"),
+            None,
+        );
+        assert_eq!(path.unwrap().tier, Tier::Secondary);
+    }
+
+    #[test]
+    fn a_custom_domain_holds_the_box_to_its_edge() {
+        let edges = vec![gw("office", "gw-a"), gw("office", "gw-b"), official_edge()];
+        // The domain went live while the box used gw-b.
+        let (on_b, _) = choose_path(&edges, Some("office"), Some("http://gw-b.local:8443"), None);
+        let held = path_from_env(&path_env(&on_b.unwrap(), None)).unwrap();
+        assert_eq!(held.url, "http://gw-b.local:8443");
+        assert_eq!(held.rathole, "gw-b.local:2333");
+        assert_eq!(held.tier, Tier::Secondary);
+        assert_eq!(held.cluster.as_deref(), Some("office"));
+        // While gw-b answers: gw-b, even with gw-a first by name.
+        let (path, cluster) = choose_path(&edges, Some("office"), None, Some(&held));
+        assert_eq!(path.unwrap().member.as_deref(), Some("gw-b"));
+        assert_eq!(cluster.as_deref(), Some("office"));
+        // gw-b is gone: no failover to gw-a, no tertiary; it keeps dialling gw-b.
+        let without_b = vec![gw("office", "gw-a"), official_edge()];
+        let (path, _) = choose_path(
+            &without_b,
+            Some("office"),
+            Some("http://gw-b.local:8443"),
+            Some(&held),
+        );
+        assert_eq!(path.unwrap().url, "http://gw-b.local:8443");
+        // Held to the official edge (a tertiary path): a gateway coming up
+        // on the LAN does not pull the box off it.
+        let tertiary = path_from_env(
+            "LOSOS_EDGE_PATH_URL=https://edge.losos.cfd\n\
+             LOSOS_EDGE_PATH_RATHOLE=edge.losos.cfd:2333\n\
+             LOSOS_EDGE_PATH_SOURCE=configured\n",
+        )
+        .unwrap();
+        assert_eq!(tertiary.tier, Tier::Tertiary);
+        let (path, _) = choose_path(&edges, None, None, Some(&tertiary));
+        assert_eq!(path.unwrap().tier, Tier::Tertiary);
+        let mut status = EdgeStatus::found(edges, true, None);
+        status.route(Some("office"), None, Some(&held));
+        assert_eq!(status.held.as_deref(), Some("http://gw-b.local:8443"));
+        assert!(check_cluster_move(&status, "office")
+            .unwrap_err()
+            .downcast_ref::<HeldByDomain>()
+            .is_some());
+        assert_eq!(status.to_json()["held"], "http://gw-b.local:8443");
+        assert_eq!(path_from_env("LOSOS_EDGE_PATH_URL=x\n"), None);
+    }
+
+    #[test]
+    fn only_a_move_between_clusters_runs_the_mesh_join_again() {
+        let env = |cluster: Option<&str>, url: &str| {
+            path_env(
+                &EdgePath {
+                    name: "gw".into(),
+                    url: url.into(),
+                    source: Source::Lan,
+                    rathole: "gw.local:2333".into(),
+                    tier: if cluster.is_some() {
+                        Tier::Secondary
+                    } else {
+                        Tier::Tertiary
+                    },
+                    cluster: cluster.map(str::to_string),
+                    member: None,
+                },
+                None,
+            )
+        };
+        let a = env(Some("office"), "http://gw-a.local:8443");
+        let b = env(Some("office"), "http://gw-b.local:8443");
+        let lab = env(Some("lab"), "http://gw-z.local:8443");
+        let hub = env(None, "https://edge.losos.cfd");
+        assert!(a.contains("LOSOS_EDGE_PATH_CLUSTER=office\n"));
+        assert_eq!(env_value(&a, "LOSOS_EDGE_PATH_TIER"), Some("secondary"));
+        assert_eq!(env_value(&hub, "LOSOS_EDGE_PATH_TIER"), Some("tertiary"));
+        assert!(!moved_cluster(Some(&a), Some(&b)), "failover inside office");
+        assert!(!moved_cluster(Some(&a), Some(&hub)), "out to tertiary");
+        assert!(!moved_cluster(Some(&hub), Some(&a)), "back from tertiary");
+        assert!(!moved_cluster(None, Some(&a)), "first path after boot");
+        assert!(moved_cluster(Some(&a), Some(&lab)), "the owner moved it");
+    }
+
+    #[test]
+    fn a_move_needs_a_gateway_of_that_cluster_in_reach() {
+        let status = EdgeStatus::found(vec![gw("office", "gw-a"), official_edge()], true, None);
+        assert!(check_cluster_move(&status, "office").is_ok());
+        assert_eq!(
+            check_cluster_move(&status, "lab")
+                .unwrap_err()
+                .downcast_ref::<ClusterNotInReach>(),
+            Some(&ClusterNotInReach("lab".into()))
+        );
+    }
+
     #[test]
     fn the_env_file_and_the_drive_decision() {
         let path = EdgePath {
@@ -1870,6 +2538,9 @@ mod tests {
             url: "http://gw.local:8443".into(),
             source: Source::Lan,
             rathole: "gw.local:2333".into(),
+            tier: Tier::Secondary,
+            cluster: None,
+            member: None,
         };
         let env = path_env(
             &path,
@@ -1880,6 +2551,7 @@ mod tests {
             "LOSOS_EDGE_PATH_URL=http://gw.local:8443\n\
              LOSOS_EDGE_PATH_RATHOLE=gw.local:2333\n\
              LOSOS_EDGE_PATH_SOURCE=lan\n\
+             LOSOS_EDGE_PATH_TIER=secondary\n\
              LOSOS_EDGE_PATH_NOISE_PUB=/var/secrets/losos-edge-pins/gw.local_8443.pub\n"
         );
         assert!(!path_env(&path, None).contains("NOISE"));
