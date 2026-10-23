@@ -84,6 +84,7 @@ in
   systemd.services.nix-daemon.environment.TMPDIR = "/persist/var/tmp/losos-nix-build";
 
   systemd.tmpfiles.rules = [
+    "d /persist/var/tmp 1777 root root -"
     "d /persist/var/tmp/losos-nix-build 1777 root root -"
     "d ${exports} 0700 root root -"
     "d ${stateRoot} 0700 root root -"
