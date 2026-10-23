@@ -462,6 +462,7 @@
       # builds.
       checks.${system} = {
         losos-install = import ./nix/tests/install.nix { inherit pkgs disko; };
+        losos-sysupdate-persistent = import ./nix/tests/sysupdate-vm.nix { inherit pkgs; };
         losos-tpm-unlock = import ./nix/tests/tpm.nix { inherit pkgs disko; };
         losos-admin-daemon = import ./nix/tests/admin-vm.nix { inherit pkgs; };
         losos-edge-proxy = import ./nix/tests/edge-vm.nix { inherit pkgs; };
