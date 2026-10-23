@@ -272,10 +272,27 @@ def get_manifest(force: bool = False) -> tuple[bytes, dict[str, str], str]:
                 if error.code != 404:
                     raise
                 # A manually published older tag may own GitHub's "latest"
-                # alias but predate the sysupdate runtime. Fall back only for
-                # a missing asset, then select a release with both signed files.
-                base = fetch_fallback_release_base()
-                manifest, signature = fetch_manifest_pair(base)
+                # alias but predate the sysupdate runtime. Prefer the previous
+                # valid bundle release before querying the API again; this
+                # avoids exhausting the anonymous GitHub API limit on boxes
+                # that refresh the manifest regularly.
+                cached_base = base_path.read_text().strip() if base_path.is_file() else ""
+                cached_pattern = (
+                    r"https://github\\.com/" + re.escape(REPOSITORY)
+                    + r"/releases/download/[A-Za-z0-9._+-]+"
+                )
+                if re.fullmatch(cached_pattern, cached_base):
+                    try:
+                        manifest, signature = fetch_manifest_pair(cached_base)
+                        base = cached_base
+                    except urllib.error.HTTPError as cached_error:
+                        if cached_error.code != 404:
+                            raise
+                        base = fetch_fallback_release_base()
+                        manifest, signature = fetch_manifest_pair(base)
+                else:
+                    base = fetch_fallback_release_base()
+                    manifest, signature = fetch_manifest_pair(base)
             entries = verify_manifest(manifest, signature)
             atomic_write(base_path, (base + "\n").encode())
             atomic_write(stamp_path, (str(time.time()) + "\n").encode())
