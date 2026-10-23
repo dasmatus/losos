@@ -56,7 +56,6 @@ in
       RestartSec = "5s";
       StateDirectory = "losos-sysupdate";
       StateDirectoryMode = "0750";
-      PrivateTmp = true;
       ProtectSystem = "strict";
       ProtectHome = true;
       ReadWritePaths = [ stateDir ];
