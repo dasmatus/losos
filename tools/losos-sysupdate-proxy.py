@@ -297,7 +297,12 @@ class Handler(BaseHTTPRequestHandler):
             return
         file_path, content_type = selected
         try:
-            size = file_path.stat().st_size
+            base_dir = refresh().resolve()
+            resolved_file_path = file_path.resolve()
+            if resolved_file_path != base_dir and base_dir not in resolved_file_path.parents:
+                self.respond_error(404, "not found")
+                return
+            size = resolved_file_path.stat().st_size
             start, end, status = 0, size - 1, 200
             range_header = self.headers.get("Range")
             if range_header:
@@ -334,7 +339,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             if self.command == "HEAD":
                 return
-            with file_path.open("rb") as source:
+            with resolved_file_path.open("rb") as source:
                 source.seek(start)
                 remaining = length
                 while remaining:
