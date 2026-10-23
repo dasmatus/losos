@@ -9,6 +9,7 @@ configured /var/lib path, which is persisted by LosOS impermanence.
 
 from __future__ import annotations
 
+import http.client
 import os
 import re
 import shutil
@@ -118,7 +119,7 @@ def download(name: str, destination: Path) -> Path:
                 if ALLOWED_BUNDLE.fullmatch(name):
                     prune_bundle_cache(protect=destination)
                 return destination
-            except (OSError, urllib.error.URLError, TimeoutError) as error:
+            except (OSError, urllib.error.URLError, TimeoutError, http.client.HTTPException) as error:
                 last_error = error
                 try:
                     part.unlink(missing_ok=True)
@@ -160,7 +161,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 if send_body:
                     shutil.copyfileobj(source, self.wfile, length=1024 * 1024)
-        except (OSError, urllib.error.URLError) as error:
+        except (OSError, urllib.error.URLError, http.client.HTTPException) as error:
             # Keep implementation details in the journal, not in the HTTP body.
             self.log_error("update download failed for %s: %s", name, error)
             try:
