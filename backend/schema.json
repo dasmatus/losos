@@ -2210,7 +2210,7 @@
       "GET /api/updates": {
         "auth": true,
         "out": "updatesResponse",
-        "note": "List the versioned LosOS component bundles known to systemd-sysupdate. Section admin."
+        "note": "List the versioned LosOS component bundles known to systemd-sysupdate. Section signed-in."
       },
       "POST /api/updates": {
         "auth": true,
