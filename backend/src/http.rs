@@ -3031,6 +3031,29 @@ async fn get_status(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     guarded(&api, &req, "/api/status", false, || run(&api, cmd_status))
 }
 
+/// Queue the coordinated systemd-sysupdate + local NixOS rebuild. The route is
+/// admin-only in sections.json; systemctl's output stays in the journal.
+async fn post_updates(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/updates", true, || {
+        let result = std::process::Command::new("/run/current-system/sw/bin/systemctl")
+            .args(["start", "--no-block", "losos-sysupdate.service"])
+            .output();
+        match result {
+            Ok(output) if output.status.success() => {
+                HttpResponse::Accepted().json(serde_json::json!({ "started": true }))
+            }
+            Ok(output) => {
+                tracing::error!(status = ?output.status, "could not start losos-sysupdate.service");
+                err(StatusCode::SERVICE_UNAVAILABLE, "the system update could not be started")
+            }
+            Err(error) => {
+                tracing::error!(error = ?error, "could not invoke systemctl for a system update");
+                err(StatusCode::SERVICE_UNAVAILABLE, "the system update could not be started")
+            }
+        }
+    })
+}
+
 /// What the daemon found when it last looked for an edge proxy.
 async fn get_edge(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     guarded(&api, &req, "/api/edge", false, || run(&api, cmd_edge))
@@ -5973,6 +5996,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/state", web::get().to(get_state))
                 .route("/api/settings", web::get().to(get_settings))
                 .route("/api/status", web::get().to(get_status))
+                .route("/api/updates", web::post().to(post_updates))
                 .route("/api/edge", web::get().to(get_edge))
                 .route("/api/edge/manage", web::post().to(post_edge_manage))
                 .route("/api/change", web::post().to(post_change))
