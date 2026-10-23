@@ -73,6 +73,53 @@ class BundleValidationTests(unittest.TestCase):
         finally:
             proxy.refresh = old_refresh
 
+
+    def test_refresh_keeps_the_last_verified_generation_on_pull_failure(self) -> None:
+        # Simulate an OCI tag that moves to a new descriptor while the large
+        # layer download fails halfway through. The previously verified cache
+        # must stay current and available to sysupdate.
+        cache = self.root / "persistent-cache"
+        versions = cache / "versions"
+        old_digest = "a" * 64
+        old = versions / old_digest
+        old.mkdir(parents=True)
+        (old / self.bundle_name).write_bytes(self.payload)
+        (old / "SHA256SUMS").write_text(
+            (self.root / "SHA256SUMS").read_text(encoding="ascii"), encoding="ascii"
+        )
+        (cache / "current").write_text(old_digest + "\\n", encoding="ascii")
+
+        previous = {
+            name: getattr(proxy, name)
+            for name in ("ROOT", "VERSIONS", "TEMP", "CURRENT", "LAST_CHECK")
+        }
+        proxy.ROOT = cache
+        proxy.VERSIONS = versions
+        proxy.TEMP = cache / "tmp"
+        proxy.CURRENT = cache / "current"
+        proxy.LAST_CHECK = cache / "last-check"
+
+        def fake_oras(args, timeout):
+            if args[:2] == ["manifest", "fetch"]:
+                import json
+                return proxy.subprocess.CompletedProcess(
+                    args, 0, stdout=json.dumps({"digest": "sha256:" + "b" * 64}), stderr=""
+                )
+            return proxy.subprocess.CompletedProcess(
+                args, 1, stdout="", stderr="simulated interrupted pull"
+            )
+
+        old_run_oras = proxy.run_oras
+        try:
+            proxy.run_oras = fake_oras
+            self.assertEqual(proxy.refresh(force=True), old)
+            self.assertEqual((cache / "current").read_text(encoding="ascii").strip(), old_digest)
+            self.assertTrue((old / self.bundle_name).is_file())
+        finally:
+            proxy.run_oras = old_run_oras
+            for name, value in previous.items():
+                setattr(proxy, name, value)
+
     def test_serves_exact_manifest_bundle_and_byte_ranges(self) -> None:
         old_refresh = proxy.refresh
         proxy.refresh = lambda: self.root
