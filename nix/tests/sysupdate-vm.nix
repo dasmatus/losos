@@ -30,7 +30,7 @@ pkgs.testers.nixosTest {
     systemd.sysupdate.transfers."50-losos-components".Source = lib.mkForce {
       Type = "url-file";
       Path = "http://127.0.0.1:18991/";
-      MatchPattern = "losos-components_@v.tar";
+      MatchPattern = "losos-components_@v.tar.xz";
     };
 
     systemd.services.losos-sysupdate-proxy.enable = lib.mkForce false;
