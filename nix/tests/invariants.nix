@@ -62,6 +62,9 @@ assert must
     && config.systemd.services.losos-sysupdate-proxy.environment.TMPDIR == "/persist/var/cache/losos-sysupdate-proxy/tmp"
     && config.systemd.services.losos-sysupdate.serviceConfig.PrivateTmp == false)
   "sysupdate or the OCI proxy may stage data in a private tmpfs instead of persistent storage";
+assert must
+  (config.systemd.services.nix-daemon.environment.TMPDIR == "/persist/var/tmp/losos-nix-build")
+  "Nix daemon still creates build scratch under /tmp, a tmpfs mount on the installed appliance";
 assert must (lib.hasSuffix "#install" config.losos.upgradeFlakeUri)
   "losos.upgradeFlakeUri has no #install fragment (${config.losos.upgradeFlakeUri}); nixos-rebuild would look for nixosConfigurations.<hostname>, which this flake does not export";
 assert must
