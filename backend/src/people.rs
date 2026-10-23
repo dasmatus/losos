@@ -503,6 +503,31 @@ impl People {
         self.write(&doc)
     }
 
+    /// Disable or enable `name`'s account: LosOS Login, which reads the
+    /// file on every request, stops letting them in at once. Same refusals
+    /// as [`People::remove`] when `by` names who asked.
+    pub fn set_disabled(&self, name: &str, disabled: bool, by: Option<&str>) -> anyhow::Result<()> {
+        let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+        let mut doc = self.read()?;
+        let Some(record) = doc.users.get_mut(name) else {
+            return Err(Refused::Unknown(name.to_string()).into());
+        };
+        if by == Some(name) {
+            return Err(Refused::Yourself.into());
+        }
+        if record.groups.iter().any(|g| g == OWNER) {
+            return Err(Refused::Owner(name.to_string()).into());
+        }
+        if record.disabled == disabled {
+            return Ok(());
+        }
+        record.disabled = disabled;
+        if !any_admin(&doc) {
+            return Err(Refused::LastAdmin.into());
+        }
+        self.write(&doc)
+    }
+
     /// The person signed in as `name`, unless they are unknown or disabled.
     pub fn get(&self, name: &str) -> anyhow::Result<Option<Person>> {
         let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
@@ -690,6 +715,33 @@ mod tests {
         let dir = assert_fs::TempDir::new().unwrap();
         let p = People::new(dir.path().join("users.yml"), None);
         (dir, p)
+    }
+
+    #[test]
+    fn a_disabled_person_is_nobody_until_enabled() {
+        let (_d, p) = people();
+        let pw = Secret::new("Correct-Horse-Battery-9");
+        p.add("ada", "Ada", "", &pw, &[ADMINS, OWNER]).unwrap();
+        p.add("bob", "Bob", "", &pw, &[ADMINS]).unwrap();
+        p.add("eva", "Eva", "", &pw, &["losos-account"]).unwrap();
+        p.set_disabled("eva", true, Some("bob")).unwrap();
+        assert!(p.get("eva").unwrap().is_none());
+        assert!(!p.check_password("eva", &pw).unwrap());
+        p.set_disabled("eva", false, None).unwrap();
+        assert!(p.get("eva").unwrap().is_some());
+        let refused = |r: anyhow::Result<()>| r.unwrap_err().downcast::<Refused>().unwrap();
+        assert_eq!(
+            refused(p.set_disabled("ada", true, Some("bob"))),
+            Refused::Owner("ada".into())
+        );
+        assert_eq!(
+            refused(p.set_disabled("bob", true, Some("bob"))),
+            Refused::Yourself
+        );
+        assert_eq!(
+            refused(p.set_disabled("zed", true, None)),
+            Refused::Unknown("zed".into())
+        );
     }
 
     #[test]

@@ -6,14 +6,14 @@ import { defineMessages } from "./define";
 export default defineMessages({
   "palette.title": { en: "Search", sk: "Hľadať", de: "Suchen" },
   "palette.label": {
-    en: "Search pages, apps, files and repositories",
-    sk: "Hľadať stránky, aplikácie, súbory a repozitáre",
-    de: "Seiten, Apps, Dateien und Repositorys durchsuchen",
+    en: "Search pages, apps, files, repositories and issues",
+    sk: "Hľadať stránky, aplikácie, súbory, repozitáre a úlohy",
+    de: "Seiten, Apps, Dateien, Repositorys und Issues durchsuchen",
   },
   "palette.placeholder": {
-    en: "Search pages, apps, files and repositories",
-    sk: "Hľadať stránky, aplikácie, súbory a repozitáre",
-    de: "Seiten, Apps, Dateien und Repositorys suchen",
+    en: "Search pages, apps, files, repositories and issues",
+    sk: "Hľadať stránky, aplikácie, súbory, repozitáre a úlohy",
+    de: "Seiten, Apps, Dateien, Repositorys und Issues suchen",
   },
   "palette.open": {
     en: "Search or jump to ({shortcut})",
@@ -36,6 +36,7 @@ export default defineMessages({
     sk: "Repozitáre v LosOS Git",
     de: "Repositorys in LosOS Git",
   },
+  "palette.group.issues": { en: "Issues in LosOS Git", sk: "Úlohy v LosOS Git", de: "Issues in LosOS Git" },
   "palette.group.text": { en: "Text in files", sk: "Text v súboroch", de: "Text in Dateien" },
   "palette.group.install": { en: "Apps to install", sk: "Aplikácie na inštaláciu", de: "Apps zum Installieren" },
   "palette.group.actions": { en: "Actions", sk: "Akcie", de: "Aktionen" },
@@ -58,6 +59,12 @@ export default defineMessages({
     en: "LosOS Cloud did not answer.",
     sk: "LosOS Cloud neodpovedal.",
     de: "LosOS Cloud hat nicht geantwortet.",
+  },
+  "palette.issues.looking": { en: "Looking for issues", sk: "Hľadám úlohy", de: "Suche nach Issues" },
+  "palette.issues.failed": {
+    en: "LosOS Git could not search its issues.",
+    sk: "LosOS Git nemohol prehľadať úlohy.",
+    de: "LosOS Git konnte seine Issues nicht durchsuchen.",
   },
   "palette.repos.looking": { en: "Looking in LosOS Git", sk: "Hľadám v LosOS Git", de: "Suche in LosOS Git" },
   "palette.repos.notUp": { en: "LosOS Git is not running.", sk: "LosOS Git nebeží.", de: "LosOS Git läuft nicht." },

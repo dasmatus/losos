@@ -9,13 +9,20 @@
  *   app    an app from the Apps search      the port the box opened for it
  *   file   a file or folder in LosOS Cloud  /cloud/files?fileid=<id>
  *   repo   a repository on LosOS Git        /git/<owner>/<name>
+ *   issue  an issue of LosOS Git's tracker  /git/issues/<key>
+ *   project a project of the tracker        /git/issues/p/<key>
+ *
+ * An issue's title and a project's name are not stored with the pin: the
+ * store asks LosOS Git for them as the person who opened the page, so a
+ * renamed issue shows its new title and an issue they may not read shows
+ * only its key.
  *
  * The store has the shape of lib/look.ts: loaded once a tab holds a token,
  * dropped with it, and every change written to the box first and shown
  * second, so the sidebar never shows a pin the box refused. */
 
 import type { IconSvgElement } from "@hugeicons/react";
-import { File01Icon, Folder01Icon, GitBranchIcon, PackageIcon } from "@hugeicons/core-free-icons";
+import { File01Icon, Folder01Icon, GitBranchIcon, PackageIcon, TaskDaily01Icon, TaskDone01Icon } from "@hugeicons/core-free-icons";
 import {
   getApps,
   getPins,
@@ -45,6 +52,10 @@ export function pinKey(pin: Pin): string {
       return `file:${String(pin.id)}`;
     case "repo":
       return `repo:${pin.owner}/${pin.name}`;
+    case "issue":
+      return `issue:${pin.key}`;
+    case "project":
+      return `project:${pin.key}`;
   }
 }
 
@@ -95,8 +106,13 @@ export function appHref(record: InstalledApp | undefined, hostname = window.loca
 }
 
 /** Where a pin opens and how it is drawn, or null for a pin that names
- *  nothing this page knows (a tile id from a newer catalogue). */
-export function viewPin(pin: Pin, installed: readonly InstalledApp[] = []): PinView | null {
+ *  nothing this page knows (a tile id from a newer catalogue). `names` are
+ *  the titles of issue and project pins, by {@link pinKey}. */
+export function viewPin(
+  pin: Pin,
+  installed: readonly InstalledApp[] = [],
+  names: ReadonlyMap<string, string> = NO_NAMES,
+): PinView | null {
   const key = pinKey(pin);
   switch (pin.kind) {
     case "tile": {
@@ -151,8 +167,24 @@ export function viewPin(pin: Pin, installed: readonly InstalledApp[] = []): PinV
         inApp: false,
         newTab: false,
       };
+    case "issue":
+    case "project": {
+      const name = names.get(key);
+      return {
+        key,
+        label: name ?? pin.key,
+        labelKey: null,
+        detail: name === undefined ? null : pin.key,
+        icon: pin.kind === "issue" ? TaskDone01Icon : TaskDaily01Icon,
+        href: `${CODE_BASE}/issues/${pin.kind === "project" ? "p/" : ""}${encodeURIComponent(pin.key)}`,
+        inApp: false,
+        newTab: false,
+      };
+    }
   }
 }
+
+const NO_NAMES: ReadonlyMap<string, string> = new Map();
 
 // ── The store ─────────────────────────────────────────────────────────────
 
@@ -164,9 +196,11 @@ export interface PinsState {
   readonly limit: number;
   /** The installed apps, for the address of an app pin. */
   readonly installed: readonly InstalledApp[];
+  /** Issue titles and project names, by {@link pinKey}. */
+  readonly names: ReadonlyMap<string, string>;
 }
 
-const EMPTY: PinsState = { status: "idle", pins: [], limit: DEFAULT_LIMIT, installed: [] };
+const EMPTY: PinsState = { status: "idle", pins: [], limit: DEFAULT_LIMIT, installed: [], names: NO_NAMES };
 
 let state: PinsState = EMPTY;
 const listeners = new Set<() => void>();
@@ -202,6 +236,37 @@ async function installedFor(pins: readonly Pin[]): Promise<readonly InstalledApp
   }
 }
 
+/* An issue's title and a project's name, from LosOS Git's tracker as the
+ * person on the page. Asked only when there is such a pin; a box without
+ * LosOS Git, or an issue they cannot read, leaves the key alone. */
+async function namesFor(pins: readonly Pin[]): Promise<ReadonlyMap<string, string>> {
+  const issues = pins.flatMap((pin) => (pin.kind === "issue" ? [pin.key] : []));
+  const projects = pins.some((pin) => pin.kind === "project");
+  if (issues.length === 0 && !projects) return NO_NAMES;
+  const names = new Map<string, string>();
+  const ask = async (path: string): Promise<Record<string, unknown> | null> => {
+    try {
+      const res = await fetch(`${CODE_BASE}/api/v1${path}`, { credentials: "same-origin", headers: { Accept: "application/json" } });
+      return res.ok ? ((await res.json()) as Record<string, unknown>) : null;
+    } catch {
+      return null;
+    }
+  };
+  const [found, home] = await Promise.all([
+    issues.length > 0 ? ask(`/tracker/issues?key=${encodeURIComponent(issues.join(","))}`) : null,
+    projects ? ask("/tracker") : null,
+  ]);
+  for (const row of Array.isArray(found?.["issues"]) ? (found["issues"] as unknown[]) : []) {
+    const r = row as Record<string, unknown>;
+    if (typeof r["key"] === "string" && typeof r["title"] === "string") names.set(`issue:${r["key"]}`, r["title"]);
+  }
+  for (const row of Array.isArray(home?.["projects"]) ? (home["projects"] as unknown[]) : []) {
+    const r = row as Record<string, unknown>;
+    if (typeof r["key"] === "string" && typeof r["name"] === "string") names.set(`project:${r["key"]}`, r["name"]);
+  }
+  return names;
+}
+
 /* What the box sent, kept to the pins this page can read: an older box,
  * or a document from a newer one, is a shorter list rather than a broken
  * sidebar. */
@@ -220,6 +285,9 @@ function revive(doc: unknown): { pins: Pin[]; limit: number } {
         return typeof p["id"] === "number" && typeof p["path"] === "string" && typeof p["folder"] === "boolean";
       case "repo":
         return typeof p["owner"] === "string" && typeof p["name"] === "string";
+      case "issue":
+      case "project":
+        return typeof p["key"] === "string";
       default:
         return false;
     }
@@ -239,8 +307,8 @@ export function loadPins(): Promise<void> {
   inFlight = (async () => {
     try {
       const doc = revive(await getPins());
-      const installed = await installedFor(doc.pins);
-      set({ status: "ready", pins: doc.pins, limit: doc.limit, installed });
+      const [installed, names] = await Promise.all([installedFor(doc.pins), namesFor(doc.pins)]);
+      set({ status: "ready", pins: doc.pins, limit: doc.limit, installed, names });
     } catch (error) {
       set(isUnauthorized(error) ? EMPTY : { ...state, status: "failed" });
     } finally {
@@ -262,14 +330,18 @@ export function followPins(): void {
   void loadPins();
 }
 
-/** Replace the list on the box, then here. Throws the box's refusal. */
-export async function savePins(next: readonly Pin[]): Promise<void> {
+/** Replace the list on the box, then here. Throws the box's refusal.
+ *  `known` names an issue or project pin the caller has the title of. */
+export async function savePins(next: readonly Pin[], known?: ReadonlyMap<string, string>): Promise<void> {
+  if (known !== undefined && known.size > 0) set({ ...state, names: new Map([...state.names, ...known]) });
   const doc = revive(await putPins(next));
   const installed =
     doc.pins.some((pin) => pin.kind === "app") && state.installed.length === 0
       ? await installedFor(doc.pins)
       : state.installed;
-  set({ status: "ready", pins: doc.pins, limit: doc.limit, installed });
+  const named = doc.pins.every((pin) => (pin.kind !== "issue" && pin.kind !== "project") || state.names.has(pinKey(pin)));
+  const names = named ? state.names : await namesFor(doc.pins);
+  set({ status: "ready", pins: doc.pins, limit: doc.limit, installed, names });
 }
 
 export function isPinned(pins: readonly Pin[], pin: Pin): boolean {
@@ -294,6 +366,6 @@ export function moved(pins: readonly Pin[], key: string, delta: number): Pin[] {
   return next;
 }
 
-export function togglePin(pin: Pin): Promise<void> {
-  return savePins(toggled(state.pins, pin));
+export function togglePin(pin: Pin, name?: string): Promise<void> {
+  return savePins(toggled(state.pins, pin), name === undefined ? undefined : new Map([[pinKey(pin), name]]));
 }

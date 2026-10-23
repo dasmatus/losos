@@ -6,6 +6,7 @@ export default defineMessages({
   "mention.label": { en: "People and files", sk: "Ľudia a súbory", de: "Personen und Dateien" },
   "mention.people": { en: "People", sk: "Ľudia", de: "Personen" },
   "mention.files": { en: "Files", sk: "Súbory", de: "Dateien" },
+  "mention.issues": { en: "Issues", sk: "Úlohy", de: "Issues" },
   "mention.start": {
     en: "Type a name or a file name",
     sk: "Napíšte meno alebo názov súboru",

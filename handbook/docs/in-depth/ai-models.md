@@ -7,6 +7,8 @@ mdx:
 
 # AI models
 
+![AI models on the Market pane.](../img/ai-models.png)
+
 Boxes on the mesh can lend memory to language models that are too large for
 any one of them. The edge puts lending boxes together into a group until a
 model fits, runs the model across the group, and sells its answers by the

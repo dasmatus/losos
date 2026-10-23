@@ -1,8 +1,26 @@
 {
-  "about": "Who may call each lososd route. Read by lososd (src/sections.rs) and by modules/identity.nix. Keys are METHOD and the route as http.rs registers it. 'public' needs no sign-in, 'internal' is asked by nginx alone and never served to a client, 'signed-in' needs any person, 'admin' needs losos-admins or the spare key, and a named section needs losos-<name>, losos-admins or (for GET) losos-viewers. A route missing here is admin. 'edge' lists the sections a company edge may use on a box whose owner let it manage the box, besides reading the 'signed-in' routes.",
+  "about": "Who may call each lososd route. Read by lososd (src/sections.rs) and by modules/identity.nix. Keys are METHOD and the route as http.rs registers it. 'public' needs no sign-in, 'internal' is asked by nginx alone and never served to a client, 'signed-in' needs any person, 'admin' needs losos-admins or the spare key, and a named section needs losos-<name>, losos-admins or (for GET) losos-viewers. A route missing here is admin. 'private' lists the sections losos-viewers do not read. A person in losos-guests may call a 'signed-in' route that changes something only when 'guests' lists it, and a person a moderator muted may not call a route 'speech' lists. 'edge' lists the sections a company edge may use on a box whose owner let it manage the box, besides reading the 'signed-in' routes.",
   "admins": "losos-admins",
   "viewers": "losos-viewers",
-  "sections": ["storage", "backup", "apps", "market", "network", "look", "lab", "access", "account"],
+  "sections": ["storage", "backup", "apps", "market", "network", "look", "lab", "access", "account", "moderation"],
+  "private": ["moderation"],
+  "guests": [
+    "POST /api/set-password",
+    "POST /api/windows",
+    "POST /api/mail/send",
+    "POST /api/mail/messages/{id}",
+    "DELETE /api/mail/messages/{id}",
+    "POST /api/user-apps/{id}/data",
+    "POST /api/pictures",
+    "POST /api/pictures/trust",
+    "POST /api/reports"
+  ],
+  "speech": [
+    "POST /api/mail/send",
+    "POST /api/account/profile",
+    "PUT /api/account/picture",
+    "PUT /api/account/banner"
+  ],
   "edge": ["apps"],
   "routes": {
     "GET /api/health": "public",
@@ -163,6 +181,16 @@
     "GET /api/profiles/{name}": "signed-in",
     "GET /api/profiles/{name}/{kind}": "signed-in",
     "POST /api/people/profile/clear": "admin",
+    "POST /api/roles": "admin",
+    "POST /api/roles/remove": "admin",
+
+    "POST /api/reports": "signed-in",
+    "GET /api/moderation": "moderation",
+    "POST /api/moderation/reports/{id}": "moderation",
+    "POST /api/moderation/mute": "moderation",
+    "POST /api/moderation/unmute": "moderation",
+    "POST /api/moderation/suspend": "moderation",
+    "POST /api/moderation/unsuspend": "moderation",
 
     "POST /api/apply": "admin",
     "POST /api/factory-reset": "admin",

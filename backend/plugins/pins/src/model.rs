@@ -3,7 +3,8 @@
 //! A pin is a reference, never a link: an app tile of the Overview by its
 //! id in the page's catalogue, an app installed from the Apps search by its
 //! release name, a file or folder in LosOS Cloud by its file id and path,
-//! or a repository on LosOS Git by owner and name. The page turns each one
+//! a repository on LosOS Git by owner and name, or an issue or a project
+//! of LosOS Git's tracker by its key. The page turns each one
 //! into an address (`admin-ui/app/src/lib/pins.ts`), so nothing stored here
 //! can send a click anywhere but this box. The list is ordered, and the
 //! order is the owner's: `PUT /api/pins` replaces it whole, which is also
@@ -36,6 +37,10 @@ pub enum Pin {
     File { id: u64, path: String, folder: bool },
     /// A repository on LosOS Git.
     Repo { owner: String, name: String },
+    /// An issue of LosOS Git's tracker, by its key (`LOS-12`).
+    Issue { key: String },
+    /// A project of LosOS Git's tracker, by its key (`LOS`).
+    Project { key: String },
 }
 
 impl Pin {
@@ -46,6 +51,8 @@ impl Pin {
             Pin::App { release } => format!("app:{release}"),
             Pin::File { id, .. } => format!("file:{id}"),
             Pin::Repo { owner, name } => format!("repo:{owner}/{name}"),
+            Pin::Issue { key } => format!("issue:{key}"),
+            Pin::Project { key } => format!("project:{key}"),
         }
     }
 }
@@ -129,8 +136,35 @@ pub fn validate_pin(pin: &Pin) -> anyhow::Result<()> {
                 return invalid("That is not a repository on LosOS Git.");
             }
         }
+        Pin::Issue { key } => {
+            let ok = key
+                .split_once('-')
+                .is_some_and(|(project, n)| project_key(project) && issue_number(n));
+            if !ok {
+                return invalid("That is not an issue on LosOS Git.");
+            }
+        }
+        Pin::Project { key } => {
+            if !project_key(key) {
+                return invalid("That is not a project on LosOS Git.");
+            }
+        }
     }
     Ok(())
+}
+
+/// A tracker project's key: two to six capitals or digits, a capital
+/// first, as LosOS Git makes them (`forge::tracker::valid_project_key`).
+fn project_key(k: &str) -> bool {
+    (2..=6).contains(&k.len())
+        && k.starts_with(|c: char| c.is_ascii_uppercase())
+        && k.chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+}
+
+/// An issue's number in its project: no sign, no leading zero.
+fn issue_number(n: &str) -> bool {
+    (1..=9).contains(&n.len()) && !n.starts_with('0') && n.chars().all(|c| c.is_ascii_digit())
 }
 
 /// A path inside LosOS Cloud: from the top (`/`), no empty, `.` or `..`
@@ -208,6 +242,10 @@ mod tests {
             Pin::App {
                 release: "jellyfin".into(),
             },
+            Pin::Issue {
+                key: "LOS-12".into(),
+            },
+            Pin::Project { key: "LOS".into() },
         ];
         let out = cmd_put_pins(&mut s, &pins).unwrap();
         assert_eq!(out["limit"], MAX_PINS);
@@ -216,6 +254,8 @@ mod tests {
             out["pins"][2],
             json!({"kind":"file","id":42,"path":"/Documents/plan.pdf","folder":false})
         );
+        assert_eq!(out["pins"][4], json!({"kind":"issue","key":"LOS-12"}));
+        assert_eq!(out["pins"][5], json!({"kind":"project","key":"LOS"}));
         assert_eq!(cmd_pins(&mut s), out);
         assert_eq!(parse_pins(&out).unwrap(), pins);
     }
@@ -257,6 +297,24 @@ mod tests {
                 name: "x".into(),
             }],
         );
+        let issue = |key: &str| Pin::Issue { key: key.into() };
+        for bad in [
+            "LOS",
+            "LOS-0",
+            "LOS-012",
+            "los-1",
+            "L-1",
+            "LOSOSOS-1",
+            "LOS-1-2",
+            "LOS-+1",
+            "-1",
+        ] {
+            refuse(&mut s, &[issue(bad)]);
+        }
+        refuse(&mut s, &[issue("LOS-1"), issue("LOS-1")]);
+        for bad in ["L", "los", "1OS", "LOS-1", "LOSOSOS"] {
+            refuse(&mut s, &[Pin::Project { key: bad.into() }]);
+        }
         let many: Vec<Pin> = (1..=(MAX_PINS as u64 + 1)).map(|i| file(i, "/a")).collect();
         refuse(&mut s, &many);
         assert!(cmd_pins(&mut s)["pins"].as_array().unwrap().is_empty());
