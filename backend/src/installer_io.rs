@@ -4,9 +4,9 @@
 //! string, so there is no quoting to get wrong on a path that formats disks.
 //!
 //! Long-running commands (`disko`, `nixos-install`, a prebuilt disko script)
-//! run with **inherited stdio**. Capturing them would leave the installer
-//! console frozen for the entire install and would swallow the LUKS passphrase
-//! prompt in TPM mode.
+//! run in a pseudo-terminal whose live output is mirrored to tty2. That keeps
+//! terminal-sensitive output and prompts working on tty1 while tty2 remains a
+//! readable command log. Outside the installer ISO, stdio is inherited normally.
 
 use crate::install_screen::{self, Progress, Row};
 use crate::installer::{
