@@ -6,6 +6,8 @@ slug: /manual/calls
 
 # Calls
 
+![A call in LosOS Chat.](../img/call-two.png)
+
 People on the box can call each other from LosOS chat, by voice or with
 video, in a direct message or in a room of up to eight people. The call
 goes through the box, and the box cannot see or hear it. Every frame of

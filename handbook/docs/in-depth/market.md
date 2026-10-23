@@ -7,6 +7,11 @@ mdx:
 
 # Market
 
+
+![The Market pane when an official edge is in reach.](../img/market-open.png)
+
+![A seller's listings and sales on the Market pane.](../img/market-slots.png)
+
 An optional marketplace where one box sells spare storage or compute and
 another buys it. Buyers pay by card through **Stripe Connect** where the edge
 takes cards, or in USDC on Solana, Base, Arbitrum or OP. The edge holds each

@@ -1,5 +1,5 @@
-/* Pins on the sidebar: apps, LosOS Cloud files and LosOS Git repositories
- * the owner pins, kept on the box (backend/src/pins.rs).
+/* Pins on the sidebar: apps, LosOS Cloud files, LosOS Git repositories
+ * and the tracker's issues and projects the owner pins, kept on the box (backend/src/pins.rs).
  *
  * Same arrangement as the other files: the real dist/ bundle, the API
  * stubbed with page.route(), the stub enforcing the Bearer token. The stub
@@ -80,6 +80,14 @@ const REPOS = {
   ],
 };
 
+// LosOS Git's tracker, which the page asks as the person signed in, not
+// through lososd: names for issue and project pins, and the issue search.
+const ISSUES = [
+  { key: 'WEB-12', title: 'Dark mode for the photo grid', state: { name: 'In progress', category: 'started' } },
+  { key: 'WEB-7', title: 'Share links expire', state: { name: 'Todo', category: 'unstarted' } },
+];
+const PROJECTS = [{ key: 'WEB', name: 'Website' }];
+
 const json = (route, status, body) =>
   route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
@@ -90,6 +98,7 @@ async function open({
   viewport = { width: 1280, height: 900 },
   colorScheme = 'light',
   csp = null,
+  tracker = false,
 } = {}) {
   const page = await browser.newPage({ viewport, locale: 'en-US', colorScheme });
   const errors = [];
@@ -101,7 +110,7 @@ async function open({
     });
   }
   const authed = (route) => route.request().headers()['authorization'] === `Bearer ${TOKEN}`;
-  const box = { pins: [...pins], puts: [], fileAsks: [] };
+  const box = { pins: [...pins], puts: [], fileAsks: [], trackerAsks: [] };
 
   await page.route('**/api/**', (route) => json(route, 200, {}));
   await page.route('**/api/setup/claim', (route) => json(route, 200, { claimed: true }));
@@ -140,6 +149,20 @@ async function open({
   // The apps the Overview probes, answering as on a box that is set up.
   await page.route('**/status.php', (route) => json(route, 200, { installed: true }));
   await page.route('**/git/api/v1/version', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '' }));
+  if (tracker) {
+    await page.route('**/git/api/v1/tracker**', (route) => {
+      const url = new URL(route.request().url());
+      box.trackerAsks.push(url.pathname + url.search);
+      if (url.pathname.endsWith('/tracker')) return json(route, 200, { assigned: 1, projects: PROJECTS });
+      const keys = url.searchParams.get('key');
+      const q = (url.searchParams.get('q') ?? '').toLowerCase();
+      let issues = ISSUES;
+      if (keys !== null) issues = issues.filter((i) => keys.split(',').includes(i.key));
+      else if (q !== '') issues = issues.filter((i) => `${i.key} ${i.title}`.toLowerCase().includes(q));
+      else issues = issues.slice(0, 1);
+      return json(route, 200, { issues });
+    });
+  }
   await page.addInitScript((t) => window.sessionStorage.setItem('losos-token', t), TOKEN);
   await page.goto((csp ?? origin) + path, { waitUntil: 'networkidle' });
   return { page, errors, box };
@@ -176,7 +199,7 @@ await check('unpinning from the sidebar writes the list without it', async () =>
 
 await check('an Overview tile pins its app, and says so once it is pinned', async () => {
   const { page, box } = await open({ pins: [] });
-  await pinned(page).getByRole('button', { name: 'Pin apps, files and repositories here.' }).waitFor();
+  await pinned(page).getByRole('button', { name: 'Pin apps, files, repositories and issues here.' }).waitFor();
   const grid = page.getByRole('list', { name: /apps/i }).first();
   await grid.getByRole('link', { name: 'Code' }).hover();
   const pin = page.getByRole('button', { name: 'Pin Code' });
@@ -279,7 +302,7 @@ const menu = (page) => page.locator('[data-slot="context-menu"]');
 
 await check('right-clicking a file or a repository in the palette pins it, and the palette stays open', async () => {
   const { page, box } = await open({ pins: [] });
-  await pinned(page).getByRole('button', { name: 'Pin apps, files and repositories here.' }).waitFor();
+  await pinned(page).getByRole('button', { name: 'Pin apps, files, repositories and issues here.' }).waitFor();
   await page.keyboard.press('Control+Shift+P');
   const field = page.getByRole('combobox', { name: /^Search pages/ });
   await field.fill('notes');
@@ -345,6 +368,83 @@ await check('on the rail each pin is an icon that names itself', async () => {
   await page.waitForTimeout(300);
   await pinned(page).getByRole('link', { name: 'site' }).hover();
   await page.locator('[data-slot="tooltip-content"]').filter({ hasText: /^site$/ }).waitFor({ timeout: 2000 });
+  await page.close();
+});
+
+await check('an issue and a project pin take their names from LosOS Git and open in the tracker', async () => {
+  const { page, errors, box } = await open({
+    pins: [
+      { kind: 'issue', key: 'WEB-12' },
+      { kind: 'project', key: 'WEB' },
+    ],
+    tracker: true,
+  });
+  const group = pinned(page);
+  await group.getByRole('link', { name: 'Dark mode for the photo grid' }).waitFor();
+  assert.deepEqual(await group.getByRole('link').allInnerTexts(), ['Dark mode for the photo grid', 'Website']);
+  const href = (name) => group.getByRole('link', { name, exact: true }).getAttribute('href');
+  assert.equal(await href('Dark mode for the photo grid'), '/git/issues/WEB-12');
+  assert.equal(await href('Website'), '/git/issues/p/WEB');
+  assert.ok(box.trackerAsks.includes('/git/api/v1/tracker/issues?key=WEB-12'), box.trackerAsks.join(' '));
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('a pin to an issue LosOS Git does not answer for keeps its key', async () => {
+  const { page } = await open({ pins: [{ kind: 'issue', key: 'OPS-3' }] });
+  await pinned(page).getByRole('link', { name: 'OPS-3' }).waitFor();
+  assert.equal(await pinned(page).getByRole('link', { name: 'OPS-3' }).getAttribute('href'), '/git/issues/OPS-3');
+  await page.close();
+});
+
+await check("the dialog's Issues tab finds an issue by its words and pins it under its title", async () => {
+  const { page, box } = await open({ pins: [], tracker: true });
+  await pinned(page).getByRole('button', { name: 'Pin apps, files, repositories and issues here.' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Pins' });
+  await dialog.getByRole('tab', { name: 'Issues' }).click();
+  // Nothing typed: the issues given to the person.
+  await dialog.getByText('Dark mode for the photo grid').waitFor();
+  await dialog.getByRole('searchbox', { name: 'Find an issue by its words or key' }).fill('share');
+  await dialog.getByText('Share links expire').waitFor();
+  assert.equal(await dialog.getByText('Dark mode for the photo grid').count(), 0);
+  await dialog.getByRole('button', { name: 'Pin Share links expire' }).click();
+  await pinned(page).getByRole('link', { name: 'Share links expire' }).waitFor();
+  assert.deepEqual(box.puts.at(-1), [{ kind: 'issue', key: 'WEB-7' }]);
+  await page.close();
+});
+
+await check('the palette offers the issues given to the person, finds one by key, and pins it from its menu', async () => {
+  const { page, box } = await open({ pins: [], tracker: true });
+  await pinned(page).getByRole('button', { name: 'Pin apps, files, repositories and issues here.' }).waitFor();
+  await page.keyboard.press('Control+Shift+P');
+  const field = page.getByRole('combobox', { name: /^Search pages/ });
+  const palette = page.locator('dialog[open]');
+  const issues = palette.getByRole('group', { name: 'Issues in LosOS Git', exact: true }).getByRole('option');
+  await issues.filter({ hasText: 'Dark mode for the photo grid' }).waitFor();
+  assert.ok(box.trackerAsks.some((a) => a.includes('assignee=me')), box.trackerAsks.join(' '));
+  await field.fill('WEB-7');
+  const hit = issues.filter({ hasText: 'Share links expire' });
+  await hit.waitFor();
+  assert.match(await hit.innerText(), /WEB-7 · Todo/);
+  await hit.click({ button: 'right' });
+  await menu(page).getByRole('menuitem', { name: 'Pin to sidebar' }).click();
+  await pinned(page).getByRole('link', { name: 'Share links expire' }).waitFor();
+  assert.deepEqual(box.puts.at(-1), [{ kind: 'issue', key: 'WEB-7' }]);
+  await hit.click();
+  await page.waitForURL(origin + '/git/issues/WEB-7');
+  await page.close();
+});
+
+await check('without LosOS Git the palette shows no issues group at all', async () => {
+  const { page } = await open({ pins: [] });
+  await page.route('**/git/api/v1/tracker**', (route) => json(route, 404, { error: 'not found' }));
+  await page.keyboard.press('Control+Shift+P');
+  const field = page.getByRole('combobox', { name: /^Search pages/ });
+  await field.fill('storage');
+  const palette = page.locator('dialog[open]');
+  await palette.getByRole('option').first().waitFor();
+  await page.waitForTimeout(400);
+  assert.equal(await palette.getByRole('group', { name: 'Issues in LosOS Git', exact: true }).count(), 0);
   await page.close();
 });
 

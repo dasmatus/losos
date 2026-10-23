@@ -40,12 +40,13 @@ import {
   GitBranchIcon,
   Image02Icon,
   Settings01Icon,
+  TaskDone01Icon,
 } from "@hugeicons/core-free-icons";
 import { formatNumber, t, type MessageKey } from "@/lib/i18n";
 
 // ── Catalogue ─────────────────────────────────────────────────────────────
 
-export type AppId = "files" | "photos" | "code" | "settings";
+export type AppId = "files" | "photos" | "code" | "issues" | "settings";
 
 /** What has to be answering for an app to exist at all. */
 export type Provider =
@@ -85,7 +86,7 @@ export const SETTINGS_ROUTE = "/settings";
 
 /* Display order, and it is deliberate: Files first because it is the box's
  * reason to exist, Photos next as the other page of LosOS Cloud, the code
- * host after that, and Settings last because it is the one tile that is
+ * host after that with its issues beside it, and Settings last because it is the one tile that is
  * always present and the only one the owner should never need. */
 export const CATALOGUE: readonly AppDefinition[] = [
   {
@@ -111,6 +112,14 @@ export const CATALOGUE: readonly AppDefinition[] = [
     path: "/",
     provider: "code",
     note: "apps.code.note",
+  },
+  {
+    id: "issues",
+    name: "apps.issues.name",
+    icon: TaskDone01Icon,
+    path: "/issues",
+    provider: "code",
+    note: "apps.issues.note",
   },
   {
     id: "settings",

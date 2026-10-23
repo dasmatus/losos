@@ -96,9 +96,10 @@ assert must
 assert must
   (lib.all (rule: config.services.logrotate.settings.${rule}.enable or false) [
     "losos-audit"
+    "losos-moderation"
     "losos-rebuild"
   ])
-  "lososd's audit.log or rebuild.log has no logrotate rule: both are appended to for the life of the box (modules/logs.nix)";
+  "lososd's audit.log, moderation.log or rebuild.log has no logrotate rule: each is appended to for the life of the box (modules/logs.nix)";
 assert must
   (
     config.services.k3s.extraKubeletConfig.containerLogMaxSize or null == "10Mi"

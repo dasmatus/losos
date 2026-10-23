@@ -21,6 +21,9 @@ export interface Draft {
   project: string;
   state?: number;
   parent?: string;
+  /** Words another app handed over (`newIssueHref` in lib/intents.ts). */
+  title?: string;
+  body?: string;
 }
 
 export function CreateIssue({ draft, onClose, onCreated }: { draft: Draft; onClose: () => void; onCreated: (issue: IssueDetail, more: boolean) => void }) {
@@ -32,8 +35,8 @@ export function CreateIssue({ draft, onClose, onCreated }: { draft: Draft; onClo
   const projects = (home?.projects ?? []).filter((p) => !p.archived && (p.permission === "write" || p.permission === "admin" || p.repos.length > 0));
   const [projectKey, setProjectKey] = React.useState(draft.project !== "" ? draft.project : (projects[0]?.key ?? ""));
   const project = projects.find((p) => p.key === projectKey) ?? projects[0];
-  const [title, setTitle] = React.useState("");
-  const [body, setBody] = React.useState("");
+  const [title, setTitle] = React.useState(draft.title ?? "");
+  const [body, setBody] = React.useState(draft.body ?? "");
   const [state, setState] = React.useState<number | undefined>(draft.state);
   const [priority, setPriority] = React.useState<Priority>(0);
   const [assignee, setAssignee] = React.useState<string | null>(null);

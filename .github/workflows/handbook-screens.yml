@@ -1,0 +1,147 @@
+name: handbook-screens
+
+# Regenerates the handbook's UI screenshots when the admin UI changes.
+#
+# On pull requests: builds the UI, takes the shots, and posts a comment with
+# before/after for any that differ from main.
+# On main: takes the shots and commits any that changed, so the handbook
+# stays in step with the UI.
+#
+# The shots come from admin-ui/app/tests/handbook-screens.mjs (stubbed lososd,
+# no box required). A change to a shot's name, path or fixture in that file,
+# or to the admin UI it photographs, is what this watches.
+
+on:
+  pull_request:
+    paths:
+      - "admin-ui/app/**"
+      - "admin-ui/app/tests/handbook-screens.mjs"
+      - ".github/workflows/handbook-screens.yml"
+  push:
+    branches: [main]
+    paths:
+      - "admin-ui/app/**"
+      - "admin-ui/app/tests/handbook-screens.mjs"
+      - ".github/workflows/handbook-screens.yml"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: handbook-screens-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  screens:
+    name: "handbook screenshots"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: admin-ui/app/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: install wasm-bindgen-cli
+        run: cargo install wasm-bindgen-cli --version 0.2.127
+
+      - name: build lab packages
+        working-directory: admin-ui/app
+        run: |
+          npm ci --no-audit --no-fund
+          npm run lab:core
+          npm run lab:virt
+          # render is large and only needed for the Lab page; stub it for screens
+          mkdir -p src/lab/render-pkg/webgl2 src/lab/render-pkg/webgpu
+          echo "export default {};" > src/lab/render-pkg/webgl2/losos_lab_render.js
+          echo "export default {};" > src/lab/render-pkg/webgpu/losos_lab_render.js
+          echo "export {};" > src/lab/render-pkg/webgl2/losos_lab_render.d.ts
+          echo "export {};" > src/lab/render-pkg/webgpu/losos_lab_render.d.ts
+          touch src/lab/render-pkg/webgl2/losos_lab_render_bg.wasm
+          touch src/lab/render-pkg/webgpu/losos_lab_render_bg.wasm
+
+      - name: build admin UI
+        working-directory: admin-ui/app
+        run: npx vite build
+
+      - name: install Playwright Chromium
+        working-directory: admin-ui/app
+        run: npx playwright install chromium --with-deps
+
+      - name: take screenshots
+        working-directory: admin-ui/app
+        run: node tests/handbook-screens.mjs /tmp/handbook-screens
+
+      - name: collect changed shots
+        id: changes
+        run: |
+          mkdir -p /tmp/before /tmp/after
+          # Current images on the branch (before the new shots)
+          if [ -d handbook/docs/img ]; then
+            cp handbook/docs/img/*.png /tmp/before/ 2>/dev/null || true
+          fi
+          cp /tmp/handbook-screens/*.png /tmp/after/
+          # Diff
+          changed=""
+          for f in /tmp/after/*.png; do
+            base=$(basename "$f")
+            if [ ! -f "/tmp/before/$base" ] || ! cmp -s "$f" "/tmp/before/$base"; then
+              changed="$changed $base"
+            fi
+          done
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+          echo "Changed: $changed"
+
+      - name: upload screenshots
+        if: steps.changes.outputs.changed != ''
+        uses: actions/upload-artifact@v5
+        with:
+          name: handbook-screens
+          path: /tmp/handbook-screens/*.png
+          retention-days: 7
+
+      - name: comment on PR (before/after)
+        if: github.event_name == 'pull_request' && steps.changes.outputs.changed != ''
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const changed = `${{ steps.changes.outputs.changed }}`.trim().split(/\s+/).filter(Boolean);
+            const body = [
+              '### Handbook screenshots',
+              '',
+              'These shots differ from the ones currently in `handbook/docs/img`:',
+              '',
+              ...changed.map(f => `- \`${f}\``),
+              '',
+              'The full set is in the `handbook-screens` artifact. On merge to main this workflow will commit the updated images.',
+            ].join('\n');
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+
+      - name: commit updated screenshots on main
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changes.outputs.changed != ''
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp /tmp/handbook-screens/*.png handbook/docs/img/
+          git add handbook/docs/img
+          if git diff --cached --quiet; then
+            echo "no changes"
+            exit 0
+          fi
+          git commit -m "handbook: update UI screenshots"
+          git push
