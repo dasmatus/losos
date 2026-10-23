@@ -81,6 +81,19 @@ class ProxyTests(unittest.TestCase):
                 )
                 urlopen.assert_called_once()
 
+    def test_proxy_retains_two_newest_bundles_and_protects_in_flight_response(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            cache = Path(temporary)
+            for version in (1, 2, 3, 4):
+                (cache / f"losos-components_{version}.tar.xz").write_bytes(b"x")
+            old_response = cache / "losos-components_1.tar.xz"
+            with patch.object(proxy, "CACHE_DIR", cache):
+                proxy.prune_bundle_cache(protect=old_response)
+            self.assertTrue(old_response.exists())
+            self.assertTrue((cache / "losos-components_4.tar.xz").exists())
+            self.assertTrue((cache / "losos-components_3.tar.xz").exists())
+            self.assertFalse((cache / "losos-components_2.tar.xz").exists())
+
     def test_manifest_cache_expires_but_versioned_bundle_does_not(self):
         with tempfile.TemporaryDirectory() as temporary:
             manifest = Path(temporary) / "SHA256SUMS"
