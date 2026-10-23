@@ -377,6 +377,7 @@
             ./modules/config-repo.nix
             # modules/overrides.nix is imported through onBox below, never here.
             ./modules/updates.nix
+            ./modules/sysupdate.nix
             ./modules/logs.nix
             ./modules/defaults.nix
             ./modules/proxy.nix
