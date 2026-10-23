@@ -121,6 +121,26 @@ export default defineMessages({
     sk: "každú noc o {time}",
     de: "jede Nacht um {time}",
   },
+  "panes.about.checkForUpdates": {
+    en: "Run update now",
+    sk: "Aktualizovať teraz",
+    de: "Jetzt aktualisieren",
+  },
+  "panes.about.startingUpdate": {
+    en: "Starting update…",
+    sk: "Spúšťa sa aktualizácia…",
+    de: "Update wird gestartet…",
+  },
+  "panes.about.updateQueued": {
+    en: "Update queued. The box may restart if the kernel or initrd changes.",
+    sk: "Aktualizácia je zaradená. Zariadenie sa môže reštartovať pri zmene jadra alebo initrd.",
+    de: "Update vorgemerkt. Die Box startet möglicherweise neu, wenn sich Kernel oder initrd ändern.",
+  },
+  "panes.about.updateFailed": {
+    en: "The update could not be started.",
+    sk: "Aktualizáciu sa nepodarilo spustiť.",
+    de: "Das Update konnte nicht gestartet werden.",
+  },
   "panes.about.handbook": {
     en: "Handbook",
     sk: "Príručka",
