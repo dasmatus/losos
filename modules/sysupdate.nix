@@ -45,6 +45,7 @@ in
     requiresMountsFor = [ cache ];
     path = [ pkgs.openssl ];
     environment = {
+      LOSOS_SYSUPDATE_CONFIG_SYNC = if config.losos.configRepo.upstream.enable then "1" else "0";
       LOSOS_SYSUPDATE_CACHE_DIR = cache;
       LOSOS_SYSUPDATE_CERT = toString certificate;
       LOSOS_SYSUPDATE_REPOSITORY = "dasmatus/losos";
@@ -54,6 +55,7 @@ in
     serviceConfig = {
       Type = "simple";
       ExecStart = "${pkgs.python3}/bin/python3 ${../tools/losos-sysupdate-proxy.py}";
+      ExecStartPost = "${pkgs.curl}/bin/curl --fail --retry 15 --retry-connrefused --retry-delay 1 --max-time 2 http://127.0.0.1:8788/health";
       Restart = "on-failure";
       RestartSec = "5s";
       UMask = "0022";
