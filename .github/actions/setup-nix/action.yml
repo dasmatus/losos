@@ -21,7 +21,7 @@
 #
 # The caller MUST run actions/checkout before using this action.
 name: "Set up Nix"
-description: "Install Nix with the losos binary cache trusted in /etc/nix/nix.conf."
+description: "Install Nix with a local GHCR-backed cache trusted in /etc/nix/nix.conf."
 
 inputs:
   github-token:
@@ -31,56 +31,16 @@ inputs:
       every other job on these runners is also drawing on.
     required: false
     default: ${{ github.token }}
-  cache-url:
-    description: "LOSOS_PROXY_URL from the calling workflow."
-    required: false
-    default: ""
-  public-key:
-    description: "NIX_CACHE_PUBLIC_KEY from the calling workflow."
-    required: false
-    default: ""
-
 runs:
   using: composite
   steps:
-    - name: Check proxy settings
-      shell: bash
-      env:
-        CACHE_URL: ${{ inputs.cache-url }}
-        PUBLIC_KEY: ${{ inputs.public-key }}
-      run: |
-        if { [ -n "$CACHE_URL" ] && [ -z "$PUBLIC_KEY" ]; } ||
-           { [ -z "$CACHE_URL" ] && [ -n "$PUBLIC_KEY" ]; }; then
-          echo "Set both LOSOS_PROXY_URL and NIX_CACHE_PUBLIC_KEY, or neither" >&2
-          exit 1
-        fi
-        # A cache URL that answers nothing is worse than none: nix only warns
-        # ("does not appear to be a binary cache"), deep in every job's log,
-        # and builds from source. LOSOS_PROXY_URL pointed at a hostname with
-        # no Vercel deployment behind it for a week without anyone noticing.
-        # Surface it as an annotation on the run instead. Still not a gate
-        # (see the note on the config step below): an outage must slow the
-        # build, not fail it.
-        if [ -n "$CACHE_URL" ]; then
-          info=$(curl -fsS --max-time 15 "$CACHE_URL/nix-cache-info" 2>/dev/null || true)
-          case "$info" in
-            *StoreDir:*) echo "LosOS cache answers at $CACHE_URL" ;;
-            *)
-              msg="LOSOS_PROXY_URL ($CACHE_URL) did not answer /nix-cache-info with a StoreDir line, so every job in this run builds this project's own paths from source. Point the variable at the host the losos-cache-proxy Vercel project serves (https://proxy.losos.dasmat.us), or unset both cache variables."
-              echo "::warning title=LosOS binary cache not answering::$msg"
-              printf '> **LosOS binary cache not answering.** %s\n' "$msg" >> "$GITHUB_STEP_SUMMARY"
-              ;;
-          esac
-        fi
     - uses: cachix/install-nix-action@v31
       with:
         github_access_token: ${{ inputs.github-token }}
         # `extra-substituters`, never plain `substituters` — replacing the list
         # would drop cache.nixos.org, which serves the overwhelming majority of
-        # any closure here, and trade a small win for a very large loss. Same
-        # reasoning, and the same key, as modules/cache.nix on the appliance; if
-        # they ever disagree the appliance's copy is the one that matters and
-        # this is the stale one.
+        # any closure here, and trade a small win for a very large loss. The
+        # local server and signing key match modules/cache.nix on the appliance.
         #
         # This is also the pull half of the cache, and it is worth as much as
         # the push half in .github/actions/proxy-push: without it every job
@@ -88,10 +48,35 @@ runs:
         # pushed an identical one, which for losos-ctl alone is ~9 minutes.
         extra_nix_config: |
           experimental-features = nix-command flakes
-          extra-substituters = ${{ inputs.cache-url }}
-          extra-trusted-public-keys = ${{ inputs.public-key }}
+          extra-substituters = http://127.0.0.1:8787 https://losos.dasmat.us/proxy
+          extra-trusted-public-keys = losos-1:35OIuYFMKDrlC6yTzqivDPqNqZTMjM0l2MB89bRRreg=
           connect-timeout = 5
           fallback = true
+    - name: Start the local GHCR cache
+      shell: bash
+      run: |
+        set -euo pipefail
+        oras=$(nix build nixpkgs#oras --no-link --print-out-paths)
+        echo "$oras/bin" >> "$GITHUB_PATH"
+        cache_script=tools/losos-ghcr-cache.py
+        if [ ! -f "$cache_script" ]; then
+          cache_script=.ci/tools/losos-ghcr-cache.py
+        fi
+        test -f "$cache_script"
+        nohup env PATH="$oras/bin:$PATH" \
+          LOSOS_GHCR_CACHE_DIR="$RUNNER_TEMP/losos-ghcr-cache" \
+          python3 "$cache_script" \
+          > "$RUNNER_TEMP/losos-ghcr-cache.log" 2>&1 &
+        echo "$!" > "$RUNNER_TEMP/losos-ghcr-cache.pid"
+        for _ in $(seq 1 30); do
+          if curl -fsS http://127.0.0.1:8787/nix-cache-info >/dev/null; then
+            echo "Local GHCR cache is ready"
+            exit 0
+          fi
+          sleep 1
+        done
+        cat "$RUNNER_TEMP/losos-ghcr-cache.log" >&2
+        exit 1
     # Answer "was the cache used, and for how much?" per nix invocation.
     # Nix prints `copying path '…' from '<substituter>'…` and
     # `building '…drv'…` once per path on a non-tty stderr, and nothing else
@@ -106,7 +91,7 @@ runs:
     - name: install the nix cache-use shim
       shell: bash
       env:
-        CACHE_URL: ${{ inputs.cache-url }}
+        CACHE_URL: http://127.0.0.1:8787
       run: |
         real="$(command -v nix)"
         dir="$RUNNER_TEMP/losos-nix-shim"
