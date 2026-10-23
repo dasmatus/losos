@@ -234,19 +234,22 @@ def refresh(force: bool = False) -> Path:
 
 
 def selected_file(name: str) -> tuple[Path, str] | None:
-    directory = refresh()
+    directory = refresh().resolve()
+    sums_path = directory / "SHA256SUMS"
     if name == "SHA256SUMS":
-        path = directory / "SHA256SUMS"
-        return (path, "text/plain; charset=utf-8") if path.is_file() else None
+        return (sums_path, "text/plain; charset=utf-8") if sums_path.is_file() else None
     if not BUNDLE.fullmatch(name):
         return None
     try:
-        row = (directory / "SHA256SUMS").read_text(encoding="ascii").strip()
+        row = sums_path.read_text(encoding="ascii").strip()
         match = SUM.fullmatch(row)
-        if not match or match.group(2) != name:
+        if not match:
             return None
-        path = directory / name
-        return (path, "application/octet-stream") if path.is_file() else None
+        bundle_name = match.group(2)
+        if bundle_name != name:
+            return None
+        bundle_path = directory / bundle_name
+        return (bundle_path, "application/octet-stream") if bundle_path.is_file() else None
     except OSError:
         return None
 
