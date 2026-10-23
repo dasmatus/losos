@@ -144,7 +144,7 @@ class ApplyTests(unittest.TestCase):
             archives = root / "archives"
             slots = root / "slots"
             archives.mkdir()
-            archive = archives / "losos-components_42.tar.xz"
+            archive = archives / "losos-components_42.tar"
             manifest = {
                 "format": 1,
                 "version": 42,
@@ -152,7 +152,7 @@ class ApplyTests(unittest.TestCase):
                 "commit": "0123456789abcdef",
                 "storePaths": ["/nix/store/" + "a" * 32 + "-losos-ctl"],
             }
-            with tarfile.open(archive, "w:xz") as bundle:
+            with tarfile.open(archive, "w") as bundle:
                 manifest_bytes = json.dumps(manifest).encode()
                 info = tarfile.TarInfo("manifest.json")
                 info.size = len(manifest_bytes)
@@ -181,8 +181,8 @@ class ApplyTests(unittest.TestCase):
             )
             self.assertEqual(extracted.parent, slots)
 
-            malicious = archives / "losos-components_43.tar.xz"
-            with tarfile.open(malicious, "w:xz") as bundle:
+            malicious = archives / "losos-components_43.tar"
+            with tarfile.open(malicious, "w") as bundle:
                 data = b"do-not-write"
                 info = tarfile.TarInfo("../../outside")
                 info.size = len(data)
