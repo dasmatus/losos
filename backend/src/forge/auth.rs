@@ -99,11 +99,29 @@ impl Caller {
         Ok(match &self.who {
             Who::Admin => Permission::Admin,
             Who::Nobody => read_if(repo.visibility == Visibility::Public),
+            // A person from another box: what the owner gave them, and
+            // public repositories. "Internal" means the people of this box.
+            Who::Person(u) if u.is_remote() => store
+                .collaborator(repo.id, u.id)?
+                .max(read_if(repo.visibility == Visibility::Public)),
             Who::Person(u) if u.id == repo.owner_id || u.is_admin => Permission::Admin,
             Who::Person(u) => store
                 .collaborator(repo.id, u.id)?
                 .max(read_if(repo.visibility != Visibility::Private)),
         })
+    }
+
+    /// The branches a person from another box may push to in a repository
+    /// they may only read: `refs/heads/<their login>/`, where they keep
+    /// what their pull requests ask for. `None` for everyone else.
+    pub fn own_branches(&self, store: &Store, repo: &Repo) -> anyhow::Result<Option<String>> {
+        let Some(u) = self.user().filter(|u| u.is_remote()) else {
+            return Ok(None);
+        };
+        Ok(
+            (self.permission(store, repo)? == Permission::Read && self.allows("repository", true))
+                .then(|| format!("refs/heads/{}/", u.login)),
+        )
     }
 
     /// What this caller may do in `repo` with the code (clone, push,

@@ -6,6 +6,9 @@ slug: /manual/losos-cloud
 
 # LosOS Cloud
 
+
+![LosOS Cloud's files.](../img/cloud-files.png)
+
 LosOS Cloud is the box's own file service: your files in a browser, a
 network folder for the file manager, a server the Nextcloud desktop and
 phone apps sync with, and your calendars and contacts for any calendar app.
@@ -68,6 +71,9 @@ Sign in with your LosOS Login name and an app password from the desktop or
 phone app's sign-in, or, on the box's network, with your LosOS Login
 password. A calendar app that asks for the full address takes
 `https://<name>.local/remote.php/dav/`.
+
+In the browser, the same calendars are in [Calendar](calendar), and the
+address books in [Contacts](contacts).
 
 ## In the file manager
 

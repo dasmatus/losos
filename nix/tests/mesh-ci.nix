@@ -561,13 +561,22 @@ let
         }
         laptop.succeed(f"cat > /tmp/plan-film.json <<'EOF'\n{json.dumps(film_plan)}\nEOF")
         capture("film", "/tmp/plan-film.json", timeout=5400)
-        laptop.succeed(
-            "cd /tmp/screens/film && for f in *-clip-000.png; do n=''${f%-clip-000.png};"
-            " ffmpeg -loglevel error -framerate 60 -i \"$n-clip-%03d.png\""
-            " -c:v libx264 -crf 16 -pix_fmt yuv420p \"$n.mp4\" && rm \"$n\"-clip-*.png; done",
-            timeout=1800,
-        )
         laptop.copy_from_machine("/tmp/screens", "")
+        # The clips' frames become MP4s here, beside the driver: an encoder
+        # on the emulated laptop is slow, and ffmpeg there reads the test
+        # shell's input as its own.
+        film_dir = driver.out_dir / "screens" / "film"
+        for first in sorted(film_dir.glob("*-clip-000.png")):
+            n = first.name.removesuffix("-clip-000.png")
+            subprocess.run(
+                ["${pkgs.ffmpeg-headless}/bin/ffmpeg", "-nostdin", "-v", "error",
+                 "-framerate", "60", "-i", str(film_dir / f"{n}-clip-%03d.png"),
+                 "-c:v", "libx264", "-crf", "16", "-pix_fmt", "yuv420p",
+                 "-movflags", "+faststart", "-y", str(film_dir / f"{n}.mp4")],
+                check=True,
+            )
+            for frame in film_dir.glob(f"{n}-clip-*.png"):
+                frame.unlink()
   '';
 
   mainScript = ''
@@ -768,6 +777,10 @@ pkgs.testers.nixosTest {
     else
       "losos-mesh-ci";
 
+  # Under emulation the film's twenty states at twice the pixels take most
+  # of an hour on their own, after the hour the jobs and pictures take.
+  globalTimeout = if screens then 4 * 3600 else 3600;
+
   nodes = {
     boxa = boxNode {
       id = "boxa";
@@ -788,8 +801,6 @@ pkgs.testers.nixosTest {
       environment.systemPackages = [
         pkgs.curl
         pkgs.jq
-        # The film's clips, from their frames.
-        pkgs.ffmpeg-headless
       ];
       environment.etc."losos-test/plan-pages.json".source = plan;
       virtualisation.vlans = [ 1 ];
@@ -799,6 +810,7 @@ pkgs.testers.nixosTest {
   testScript = ''
     import json
     import re
+    import subprocess
 
   ''
   + shootDefs

@@ -63,6 +63,39 @@ const THREADS_DEFAULT: u32 = 25;
 /// The longest device name a page may give.
 const DEVICE_NAME_MAX: usize = 64;
 
+/// LosOS Git's account in chat, which posts into repository rooms.
+pub const GIT_BOT: &str = "losos-git";
+/// Its display name.
+const GIT_BOT_NAME: &str = "LosOS Git";
+/// Notices sent since start, for their transaction IDs.
+static NOTICES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// A repository a room is made for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RepoRoom {
+    /// The room's name.
+    pub name: String,
+    /// The repository's page, for the topic.
+    pub url: String,
+    /// Anyone may join, from any box.
+    pub public: bool,
+}
+
+/// One notice into a room: plain text and the same as HTML.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Notice {
+    pub text: String,
+    pub html: String,
+}
+
+/// What a person is called in chat: their display name, or their name.
+fn shown_name(person: &crate::people::Person) -> String {
+    match person.display_name.trim() {
+        "" => person.name.clone(),
+        shown => shown.to_string(),
+    }
+}
+
 /// Why chat could not do what was asked.
 #[derive(Debug, thiserror::Error)]
 pub enum ChatError {
@@ -333,6 +366,12 @@ impl Chat {
         self.inner.as_ref().ok_or(ChatError::Off)
     }
 
+    /// The part after the colon in every user ID here, when chat runs.
+    #[must_use]
+    pub fn server_name(&self) -> Option<&str> {
+        self.inner.as_ref().map(|i| i.config.server_name.as_str())
+    }
+
     /// The Matrix user ID of a LosOS Login name on this box.
     pub fn user_id(&self, name: &str) -> Result<String, ChatError> {
         Ok(format!("@{name}:{}", self.inner()?.config.server_name))
@@ -502,6 +541,40 @@ impl Chat {
         Ok(session)
     }
 
+    /// Hide a message a moderator acted on: redact it as the person who
+    /// sent it, which the homeserver always allows, through the
+    /// application service. Its text and media are gone from every device
+    /// that syncs; the room keeps a "message deleted" in its place.
+    pub fn redact(
+        &self,
+        sender: &str,
+        room: &str,
+        event: &str,
+        reason: &str,
+    ) -> Result<(), ChatError> {
+        let inner = self.inner()?;
+        let token = inner.as_token()?;
+        let hs = &*inner.homeserver;
+        let user_id = self.user_id(sender)?;
+        // One transaction per event, so a second try is the same redaction.
+        let txn = format!("losos-moderation-{}", encode(event).replace('%', ""));
+        let path = format!(
+            "/_matrix/client/v3/rooms/{}/redact/{}/{}?user_id={}",
+            encode(room),
+            encode(event),
+            txn,
+            encode(&user_id)
+        );
+        let out = hs.call("PUT", &path, &token, Some(&json!({ "reason": reason })))?;
+        if out.status != 200 {
+            return Err(ChatError::Homeserver {
+                status: out.status,
+                errcode: out.errcode(),
+            });
+        }
+        Ok(())
+    }
+
     /// Sign every device of a person out of the homeserver: they were
     /// removed from LosOS Login. An account that never used chat has
     /// nothing to sign out.
@@ -548,12 +621,15 @@ impl Chat {
     }
 
     /// `/internal/chat/authz`: may this request reach the homeserver?
-    /// `token` is the Matrix token it carries, if any.
+    /// `token` is the Matrix token it carries, if any. `muted` says whether
+    /// a moderator has muted someone (`crate::moderation`): they keep
+    /// reading, and nothing they would say reaches a room.
     pub fn authorize(
         &self,
         people: &crate::people::People,
         asked: &Asked,
         token: Option<&str>,
+        muted: &dyn Fn(&str) -> bool,
     ) -> Result<Verdict, ChatError> {
         let inner = self.inner()?;
         let url = &asked.original_url;
@@ -580,6 +656,10 @@ impl Chat {
         {
             return Ok(Verdict::Refuse);
         }
+        if muted(&person.name) && speaks(&asked.original_method, url) {
+            tracing::info!(%url, name = %person.name, "chat: muted");
+            return Ok(Verdict::Refuse);
+        }
         let Some(token) = token.filter(|t| !t.is_empty()) else {
             return Ok(Verdict::Allow);
         };
@@ -593,6 +673,152 @@ impl Chat {
             // so, in its own words, so the page signs the device in again.
             None => Ok(Verdict::Allow),
         }
+    }
+
+    /// `POST /api/chat/openid`: a Matrix OpenID token for the person. Another
+    /// box checks it at this one's federation API
+    /// (`/_matrix/federation/v1/openid/userinfo`) and learns their chat
+    /// address and nothing else; LosOS Git signs people of other boxes in
+    /// that way (`crate::forge::matrix`). It lasts as long as Dendrite says,
+    /// an hour.
+    pub fn openid(&self, person: &crate::people::Person) -> Result<Value, ChatError> {
+        let inner = self.inner()?;
+        if person.groups.iter().any(|g| g == crate::people::LOCKED) {
+            return Err(ChatError::NotForYou(
+                "finish what LosOS Login asks of your account first".to_string(),
+            ));
+        }
+        let token = inner.as_token()?;
+        let user_id = self.account(&token, &person.name, &person.display_name)?;
+        let answer = inner.homeserver.call(
+            "POST",
+            &format!(
+                "/_matrix/client/v3/user/{}/openid/request_token?user_id={}",
+                encode(&user_id),
+                encode(&user_id)
+            ),
+            &token,
+            Some(&json!({})),
+        )?;
+        let access_token = answer
+            .body
+            .get("access_token")
+            .and_then(Value::as_str)
+            .filter(|_| answer.status == 200);
+        let Some(access_token) = access_token else {
+            return Err(ChatError::Homeserver {
+                status: answer.status,
+                errcode: answer.errcode(),
+            });
+        };
+        Ok(json!({
+            "access_token": access_token,
+            "token_type": "Bearer",
+            "matrix_server_name": inner.config.server_name,
+            "expires_in": answer.body.get("expires_in").cloned().unwrap_or(json!(3600)),
+            "user_id": user_id,
+            "display_name": shown_name(person),
+        }))
+    }
+
+    /// The account LosOS Git's notices come from, made the first time.
+    fn git_bot(&self, token: &str) -> Result<String, ChatError> {
+        self.account(token, GIT_BOT, GIT_BOT_NAME)
+    }
+
+    /// Make a room for a repository, as `person` (its administrator; the
+    /// caller checked), with LosOS Git's account in it to post what happens.
+    /// Anyone may join the room of a public repository, from any box; the
+    /// room of any other is by invitation.
+    pub fn git_room(
+        &self,
+        person: &crate::people::Person,
+        repo: &RepoRoom,
+    ) -> Result<String, ChatError> {
+        let inner = self.inner()?;
+        let token = inner.as_token()?;
+        let hs = &*inner.homeserver;
+        let user_id = self.account(&token, &person.name, &person.display_name)?;
+        let bot = self.git_bot(&token)?;
+        let made = hs.call(
+            "POST",
+            &format!("/_matrix/client/v3/createRoom?user_id={}", encode(&user_id)),
+            &token,
+            Some(&json!({
+                "name": repo.name,
+                "topic": format!("LosOS Git: {}", repo.url),
+                "preset": if repo.public { "public_chat" } else { "private_chat" },
+                "visibility": "private",
+                "invite": [bot],
+            })),
+        )?;
+        let room = made
+            .body
+            .get("room_id")
+            .and_then(Value::as_str)
+            .filter(|_| made.status == 200)
+            .map(str::to_string);
+        let Some(room) = room else {
+            return Err(ChatError::Homeserver {
+                status: made.status,
+                errcode: made.errcode(),
+            });
+        };
+        let joined = hs.call(
+            "POST",
+            &format!(
+                "/_matrix/client/v3/rooms/{}/join?user_id={}",
+                encode(&room),
+                encode(&bot)
+            ),
+            &token,
+            Some(&json!({})),
+        )?;
+        if joined.status != 200 {
+            return Err(ChatError::Homeserver {
+                status: joined.status,
+                errcode: joined.errcode(),
+            });
+        }
+        Ok(room)
+    }
+
+    /// Post a notice into `room` as LosOS Git's account.
+    pub fn git_notice(&self, room: &str, notice: &Notice) -> Result<(), ChatError> {
+        let inner = self.inner()?;
+        let token = inner.as_token()?;
+        let bot = self.git_bot(&token)?;
+        let txn = format!(
+            "losos-git-{}-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0),
+            NOTICES.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        );
+        let sent = inner.homeserver.call(
+            "PUT",
+            &format!(
+                "/_matrix/client/v3/rooms/{}/send/m.room.message/{}?user_id={}",
+                encode(room),
+                encode(&txn),
+                encode(&bot)
+            ),
+            &token,
+            Some(&json!({
+                "msgtype": "m.notice",
+                "body": notice.text,
+                "format": "org.matrix.custom.html",
+                "formatted_body": notice.html,
+            })),
+        )?;
+        if sent.status != 200 {
+            return Err(ChatError::Homeserver {
+                status: sent.status,
+                errcode: sent.errcode(),
+            });
+        }
+        Ok(())
     }
 
     /// `GET /_matrix/client/v1/rooms/{room}/threads`, which Dendrite lacks:
@@ -873,6 +1099,29 @@ fn clean_device_name(n: &str) -> String {
 
 /// Percent-encode one path segment or query value.
 #[must_use]
+/// Whether a request to the homeserver says something others see: a
+/// message, a reaction, an edit or a redaction, a room's state, a new room,
+/// an invite, a profile change or an upload. A muted person's are refused.
+pub fn speaks(method: &str, url: &str) -> bool {
+    if method.eq_ignore_ascii_case("GET") || method.eq_ignore_ascii_case("HEAD") {
+        return false;
+    }
+    let path = url.split('?').next().unwrap_or(url);
+    ["/send/", "/state/", "/redact/", "/invite", "/profile/"]
+        .iter()
+        .any(|p| path.contains(p))
+        || path.ends_with("/createRoom")
+        || (path.contains("/media/") && path.contains("/upload"))
+}
+
+/// A chat report's `ref`: `<room ID>/<event ID>`. Room IDs and event IDs
+/// never hold a slash, so the first one splits them.
+pub fn event_ref(reference: &str) -> Option<(&str, &str)> {
+    let (room, event) = reference.split_once('/')?;
+    (room.starts_with('!') && room.contains(':') && event.starts_with('$') && !event.contains('/'))
+        .then_some((room, event))
+}
+
 pub fn encode(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for b in s.bytes() {
@@ -1154,6 +1403,35 @@ mod tests {
                         )
                     }
                 }
+                ("POST", p) if p.ends_with("/openid/request_token") => {
+                    assert_eq!(token, AS);
+                    let user = path
+                        .split("user_id=")
+                        .nth(1)
+                        .unwrap()
+                        .replace("%40", "@")
+                        .replace("%3A", ":");
+                    assert!(p.contains(&user.replace('@', "%40").replace(':', "%3A")));
+                    ok(
+                        json!({ "access_token": format!("openid-{user}"), "token_type": "Bearer",
+                               "matrix_server_name": SERVER, "expires_in": 3600 }),
+                    )
+                }
+                ("POST", "/_matrix/client/v3/createRoom") => {
+                    assert_eq!(token, AS);
+                    s.next += 1;
+                    let room = format!("!room{}:{SERVER}", s.next);
+                    s.events
+                        .insert(room.clone(), json!({ "as": path, "body": body }));
+                    ok(json!({ "room_id": room }))
+                }
+                ("POST", p) if p.ends_with("/join") => ok(json!({ "joined": path })),
+                ("PUT", p) if p.contains("/send/m.room.message/") => {
+                    let n = s.calls.len();
+                    s.events
+                        .insert(format!("sent{n}"), json!({ "path": path, "body": body }));
+                    ok(json!({ "event_id": "$sent" }))
+                }
                 ("GET", p) if p.contains("/event/") => {
                     if !s.tokens.contains_key(token) {
                         return no(401, "M_UNKNOWN_TOKEN");
@@ -1304,6 +1582,80 @@ mod tests {
     }
 
     #[test]
+    fn an_openid_token_names_the_person_and_a_held_person_gets_none() {
+        let r = rig();
+        let t = r.chat.openid(&person("eva", "Eva", &[])).unwrap();
+        assert_eq!(t["access_token"], "openid-@eva:mattbox.local");
+        assert_eq!(t["matrix_server_name"], SERVER);
+        assert_eq!(t["user_id"], "@eva:mattbox.local");
+        assert_eq!(t["display_name"], "Eva");
+        assert!(matches!(
+            r.chat.openid(&person("held", "", &[crate::people::LOCKED])),
+            Err(ChatError::NotForYou(_))
+        ));
+        assert!(matches!(
+            Chat::off().openid(&person("eva", "", &[])),
+            Err(ChatError::Off)
+        ));
+    }
+
+    #[test]
+    fn a_repository_room_is_made_as_its_owner_with_the_git_account_in_it() {
+        let r = rig();
+        let room = r
+            .chat
+            .git_room(
+                &person("matus", "Matúš", &["losos-admins"]),
+                &RepoRoom {
+                    name: "site".into(),
+                    url: "https://mattbox.local/git/notshared/site".into(),
+                    public: true,
+                },
+            )
+            .unwrap();
+        let s = r.hs.state.lock().unwrap();
+        let made = &s.events[&room];
+        assert!(made["as"]
+            .as_str()
+            .unwrap()
+            .ends_with("user_id=%40matus%3Amattbox.local"));
+        assert_eq!(made["body"]["preset"], "public_chat");
+        assert_eq!(made["body"]["invite"], json!(["@losos-git:mattbox.local"]));
+        assert_eq!(
+            s.accounts.get("losos-git").map(String::as_str),
+            Some("LosOS Git")
+        );
+        assert!(s
+            .calls
+            .iter()
+            .any(|c| c.starts_with("POST /_matrix/client/v3/rooms/")
+                && c.ends_with("/join?user_id=%40losos-git%3Amattbox.local")));
+        drop(s);
+
+        r.chat
+            .git_notice(
+                &room,
+                &Notice {
+                    text: "hello".into(),
+                    html: "<b>hello</b>".into(),
+                },
+            )
+            .unwrap();
+        let s = r.hs.state.lock().unwrap();
+        let sent = s
+            .events
+            .iter()
+            .find(|(k, _)| k.starts_with("sent"))
+            .map(|(_, v)| v)
+            .expect("a notice");
+        assert_eq!(sent["body"]["msgtype"], "m.notice");
+        assert!(sent["path"]
+            .as_str()
+            .unwrap()
+            .ends_with("user_id=%40losos-git%3Amattbox.local"));
+    }
+
+    #[test]
     fn a_first_session_makes_the_account_names_it_and_signs_a_device_in() {
         let r = rig();
         let s = r
@@ -1440,13 +1792,13 @@ mod tests {
         no_cookie.cookie = None;
         assert_eq!(
             r.chat
-                .authorize(&r.people, &no_cookie, Some(&eva.access_token))
+                .authorize(&r.people, &no_cookie, Some(&eva.access_token), &|_| false)
                 .unwrap(),
             Verdict::SignIn
         );
         assert_eq!(
             r.chat
-                .authorize(&r.people, &asked(), Some(&eva.access_token))
+                .authorize(&r.people, &asked(), Some(&eva.access_token), &|_| false)
                 .unwrap(),
             Verdict::SignIn
         );
@@ -1454,26 +1806,53 @@ mod tests {
         *r.gate.0.lock().unwrap() = Some(("eva".into(), vec![]));
         assert_eq!(
             r.chat
-                .authorize(&r.people, &asked(), Some(&eva.access_token))
+                .authorize(&r.people, &asked(), Some(&eva.access_token), &|_| false)
                 .unwrap(),
             Verdict::Allow
         );
         // No token at all (the versions, a login flow): the sign-in is enough.
         assert_eq!(
-            r.chat.authorize(&r.people, &asked(), None).unwrap(),
+            r.chat
+                .authorize(&r.people, &asked(), None, &|_| false)
+                .unwrap(),
             Verdict::Allow
         );
         // Someone else's token in Eva's browser.
         assert_eq!(
             r.chat
-                .authorize(&r.people, &asked(), Some(&matus.access_token))
+                .authorize(&r.people, &asked(), Some(&matus.access_token), &|_| false)
                 .unwrap(),
             Verdict::Refuse
         );
         // A token the homeserver forgot goes on, so it can say so itself.
         assert_eq!(
             r.chat
-                .authorize(&r.people, &asked(), Some("stale"))
+                .authorize(&r.people, &asked(), Some("stale"), &|_| false)
+                .unwrap(),
+            Verdict::Allow
+        );
+
+        // Muted: she keeps reading, and nothing she says reaches a room.
+        let mut say = asked();
+        say.original_method = "PUT".into();
+        say.original_url =
+            "https://mattbox.local/_matrix/client/v3/rooms/!r:mattbox/send/m.room.message/1".into();
+        let muted = |name: &str| name == "eva";
+        assert_eq!(
+            r.chat
+                .authorize(&r.people, &asked(), Some(&eva.access_token), &muted)
+                .unwrap(),
+            Verdict::Allow
+        );
+        assert_eq!(
+            r.chat
+                .authorize(&r.people, &say, Some(&eva.access_token), &muted)
+                .unwrap(),
+            Verdict::Refuse
+        );
+        assert_eq!(
+            r.chat
+                .authorize(&r.people, &say, Some(&eva.access_token), &|_| false)
                 .unwrap(),
             Verdict::Allow
         );
@@ -1482,7 +1861,7 @@ mod tests {
         *r.gate.0.lock().unwrap() = Some(("eva".into(), vec![crate::people::LOCKED.into()]));
         assert_eq!(
             r.chat
-                .authorize(&r.people, &asked(), Some(&eva.access_token))
+                .authorize(&r.people, &asked(), Some(&eva.access_token), &|_| false)
                 .unwrap(),
             Verdict::Refuse
         );
@@ -1492,10 +1871,56 @@ mod tests {
         r.people.remove("eva", Some("matus")).unwrap();
         assert_eq!(
             r.chat
-                .authorize(&r.people, &asked(), Some(&eva.access_token))
+                .authorize(&r.people, &asked(), Some(&eva.access_token), &|_| false)
                 .unwrap(),
             Verdict::SignIn
         );
+    }
+
+    #[test]
+    fn what_a_muted_person_may_not_send() {
+        let base = "/_matrix/client/v3/rooms/!r:mattbox";
+        for (method, url) in [
+            ("PUT", format!("{base}/send/m.room.message/7")),
+            ("PUT", format!("{base}/send/m.reaction/8")),
+            ("PUT", format!("{base}/state/m.room.topic/")),
+            ("PUT", format!("{base}/redact/$e/9")),
+            ("POST", format!("{base}/invite")),
+            ("POST", "/_matrix/client/v3/createRoom".to_string()),
+            (
+                "PUT",
+                "/_matrix/client/v3/profile/@eva:mattbox/displayname".to_string(),
+            ),
+            (
+                "POST",
+                "/_matrix/media/v3/upload?filename=a.png".to_string(),
+            ),
+        ] {
+            assert!(speaks(method, &url), "{method} {url}");
+        }
+        for (method, url) in [
+            ("GET", format!("{base}/messages")),
+            ("GET", "/_matrix/client/v3/sync".to_string()),
+            ("POST", format!("{base}/receipt/m.read/$e")),
+            ("POST", format!("{base}/read_markers")),
+            ("PUT", format!("{base}/typing/@eva:mattbox")),
+            ("POST", "/_matrix/client/v3/keys/upload".to_string()),
+        ] {
+            // Key uploads keep encryption working; typing says nothing.
+            assert!(!speaks(method, &url), "{method} {url}");
+        }
+    }
+
+    #[test]
+    fn a_chat_report_names_its_room_and_event() {
+        assert_eq!(
+            event_ref("!abc:mattbox/$ev_1-x"),
+            Some(("!abc:mattbox", "$ev_1-x"))
+        );
+        assert_eq!(event_ref("$ev"), None);
+        assert_eq!(event_ref("!abc:mattbox/ev"), None);
+        assert_eq!(event_ref("abc/$ev"), None);
+        assert_eq!(event_ref("!abc:mattbox/$a/b"), None);
     }
 
     #[test]

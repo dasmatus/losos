@@ -7,6 +7,8 @@ mdx:
 
 # Build with AI
 
+![The widget editor.](../img/widget-editor.png)
+
 You describe a widget or an app in plain words and a language model on the
 box writes it. Two places have a **Build with AI** tab:
 

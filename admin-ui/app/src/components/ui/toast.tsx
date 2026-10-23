@@ -1,7 +1,7 @@
 import { toast as sonner } from "sonner";
 import { Toaster as StatusStack } from "./sonner";
 import { Confirmations } from "./toaster";
-import { confirm, dismissAllConfirmations } from "./use-toast";
+import { confirm, dismissAllConfirmations, type ToastAction } from "./use-toast";
 import type { HandbookEntry } from "@/lib/handbook";
 
 /* Status updates and confirmations, in the shape of a macOS notification.
@@ -45,6 +45,8 @@ export interface ConfirmOptions {
   duration?: number;
   /** The id of the status this confirmation answers; it is dismissed first. */
   settles?: string;
+  /** A button on it, for the one thing to do next. */
+  action?: ToastAction;
 }
 
 export interface ErrorOptions extends ConfirmOptions {
@@ -84,6 +86,7 @@ function settle(
     title,
     ...(description !== undefined && description.length > 0 ? { description } : {}),
     ...(options.help !== undefined ? { help: options.help } : {}),
+    ...(options.action !== undefined ? { action: options.action } : {}),
     duration: options.duration ?? CONFIRM_MS[tone],
   });
 }

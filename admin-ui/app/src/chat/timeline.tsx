@@ -3,6 +3,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import {
   ArrowTurnBackwardIcon,
   CloudUploadIcon,
+  TaskAdd01Icon,
   Comment01Icon,
   Copy01Icon,
   Delete02Icon,
@@ -23,6 +24,7 @@ import {
   RoomEvent,
   RoomMemberEvent,
 } from "matrix-js-sdk";
+import { Masked } from "@/components/details";
 import { openReport } from "@/components/report-dialog";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -36,6 +38,7 @@ import { callable, callEnded, callEvent, useCalls } from "./calls";
 import { saveAttachment, useCloud } from "./cloud";
 import { carriesFile, fileNameOf, infoOf, MessageBody, sourceOf } from "./message-body";
 import { buildItems, continues, type Item, type Message, memberName, plainBody, shownName, useEmitted } from "./model";
+import { canMakeIssue, issueTitleFrom, newIssueHref, quotedFrom } from "@/lib/intents";
 
 export const QUICK_REACTIONS = ["👍", "❤️", "😂", "🎉", "😮", "😢", "🙏", "👀"] as const;
 
@@ -107,7 +110,7 @@ function ReplyQuote({ client, room, id }: { client: MatrixClient; room: Room; id
   return (
     <div className="mb-1 max-w-md border-l-2 border-accent pl-2 text-[12.5px] leading-snug text-muted">
       {who !== null && <span className="font-medium text-ink">{who} </span>}
-      <span className="line-clamp-2">{text}</span>
+      <span className="line-clamp-2"><Masked text={text} /></span>
     </div>
   );
 }
@@ -265,6 +268,14 @@ function messageMenu(
           },
           { id: "copy", label: t("menu.copy"), icon: Copy01Icon, hidden: text === "", onSelect: () => void copied() },
           { id: "save", label: t("together.save.action"), icon: CloudUploadIcon, hidden: !file, onSelect: () => save(t) },
+          {
+            id: "make-issue",
+            label: t("together.issue.make"),
+            icon: TaskAdd01Icon,
+            hidden: text === "" || !canMakeIssue(),
+            onSelect: () =>
+              window.open(newIssueHref({ title: issueTitleFrom(text), body: quotedFrom(text, t("together.issue.fromChat", { name: sender })) }), "_blank", "noopener"),
+          },
         ],
         [
           { id: "edit", label: t("chat.message.edit"), icon: PencilEdit01Icon, hidden: !(mine && isText), onSelect: () => actions.onEdit(ev) },

@@ -217,7 +217,96 @@ export interface Me {
    *  they run only while the box shares its storage, and their menu
    *  entries are drawn only when listed here. */
   shared?: string[];
+  /** Their role (backend/src/roles.rs); missing on an older lososd. */
+  role?: Role;
+  /** The custom role they hold, by its name. */
+  roleName?: string | null;
+  /** Reports waiting for a moderator, for someone who can act on them. */
+  reports?: number;
 }
+
+/** What a person is on this box, in rank order (backend/src/roles.rs). */
+export type Role = "guest" | "member" | "moderator" | "admin" | "owner";
+
+/** A role an administrator saved under a name of their own. */
+export interface CustomRole {
+  id: string;
+  name: string;
+  /** Section names, without the `losos-` prefix. */
+  sections: string[];
+}
+
+/** A mute or a suspension (backend/src/moderation.rs, `Hold`). */
+export interface Hold {
+  at: number;
+  by: string;
+  /** When it ends by itself, in seconds since 1970; null until lifted. */
+  until: number | null;
+  reason: string;
+}
+
+/** Why a reported thing troubles someone. */
+export type ReportReason = "spam" | "abuse" | "sexual" | "child" | "other";
+
+/** The apps a report can come from. */
+export type ReportApp =
+  | "mail"
+  | "chat"
+  | "profile"
+  | "cloud"
+  | "git"
+  | "notes"
+  | "diagrams"
+  | "office"
+  | "calls";
+
+export type ReportState = "open" | "hidden" | "dismissed" | "resolved";
+
+/** One report. Never the thing itself: a reference inside its app. */
+export interface Report {
+  id: string;
+  at: number;
+  by: string;
+  app: ReportApp;
+  about: string | null;
+  ref: string;
+  reason: ReportReason;
+  note: string;
+  state: ReportState;
+  handledBy: string | null;
+  handledAt: number | null;
+}
+
+export interface ModerationPerson extends Profile {
+  role: Role;
+  roleName: string | null;
+  muted: Hold | null;
+  suspended: Hold | null;
+  disabled: boolean;
+  /** Whether the caller may mute or suspend them. */
+  actionable: boolean;
+}
+
+export interface ModerationLogEntry {
+  at: number;
+  by: string;
+  action: string;
+  about: string | null;
+  detail: string;
+}
+
+export interface ModerationView {
+  standalone: boolean;
+  you: string | null;
+  admin: boolean;
+  /** The apps a report can be hidden in from the queue. */
+  hides: ReportApp[];
+  reports: Report[];
+  people: ModerationPerson[];
+  log: ModerationLogEntry[];
+}
+
+export type ReportAction = "hide" | "release" | "dismiss" | "resolve";
 
 /** Why a rule holds someone to their own account. */
 export type LoginReason = "twoFactor" | "password";
@@ -402,6 +491,8 @@ interface CallOptions extends RequestOptions {
   contentType?: string;
   /** /api/health is the one route that takes no token. */
   anonymous?: boolean;
+  /** The ETag the change was made against (LosOS Calendar's events). */
+  ifMatch?: string;
 }
 
 /* The edge's manage page (src/manage/) shows one box's panes from the
@@ -423,11 +514,12 @@ export function apiPath(path: string): string {
 }
 
 async function call<T>(path: string, options: CallOptions = {}): Promise<T> {
-  const { method = "GET", body, contentType, signal, token, anonymous } = options;
+  const { method = "GET", body, contentType, signal, token, anonymous, ifMatch } = options;
   path = apiPath(path);
 
   const headers: Record<string, string> = {};
   if (contentType !== undefined) headers["Content-Type"] = contentType;
+  if (ifMatch !== undefined) headers["If-Match"] = ifMatch;
   const bearer = anonymous === true ? null : (token ?? getToken());
   if (bearer !== null) headers["Authorization"] = `Bearer ${bearer}`;
 
@@ -2245,6 +2337,10 @@ export interface PersonEntry {
   picture?: string | null;
   banner?: string | null;
   accent?: Accent;
+  role?: Role;
+  roleName?: string | null;
+  muted?: Hold | null;
+  suspended?: Hold | null;
   /** Marked as an adult or a child (`GET /api/pictures`), or null. */
   age?: AgeMark | null;
 }
@@ -2258,6 +2354,8 @@ export interface PeopleResponse {
   sections: string[];
   /** LosOS Login's rules; missing on a lososd that predates them. */
   rules?: LoginRules;
+  /** Roles saved under a name; missing on an older lososd. */
+  roles?: CustomRole[];
   people: PersonEntry[];
 }
 
@@ -2436,6 +2534,9 @@ export interface Profile {
   picture: string | null;
   /** `/api/profiles/<name>/banner?v=N`, or null. */
   banner: string | null;
+  /** Their role; missing on an older lososd. */
+  role?: Role;
+  roleName?: string | null;
 }
 
 export type ProfileImage = "picture" | "banner";
@@ -2486,6 +2587,39 @@ export function clearPersonImage(
   options: RequestOptions = {},
 ): Promise<{ name: string; kind: ProfileImage; cleared: boolean }> {
   return postJson("/api/people/profile/clear", { name, kind }, options);
+}
+
+/** POST /api/roles — save a custom role. */
+export function postRole(
+  role: { id?: string; name: string; sections: string[] },
+  options: RequestOptions = {},
+): Promise<{ id: string; roles: CustomRole[] }> {
+  return postJson("/api/roles", role, options);
+}
+
+/** POST /api/roles/remove — forget a custom role. */
+export function postRoleRemove(id: string, options: RequestOptions = {}): Promise<{ roles: CustomRole[] }> {
+  return postJson("/api/roles/remove", { id }, options);
+}
+
+/** GET /api/moderation — the queue, everyone's holds, the log. */
+export function getModeration(options: RequestOptions = {}): Promise<ModerationView> {
+  return call<ModerationView>("/api/moderation", options);
+}
+
+/** POST /api/moderation/reports/{id} */
+export function postReportAction(id: string, action: ReportAction, options: RequestOptions = {}): Promise<Report> {
+  return postJson(`/api/moderation/reports/${encodeURIComponent(id)}`, { action }, options);
+}
+
+/** POST /api/moderation/{mute,unmute,suspend,unsuspend}. `minutes` null:
+ *  until lifted. */
+export function postHold(
+  kind: "mute" | "unmute" | "suspend" | "unsuspend",
+  body: { name: string; minutes?: number | null; reason?: string },
+  options: RequestOptions = {},
+): Promise<{ name: string }> {
+  return postJson(`/api/moderation/${kind}`, body, options);
 }
 
 /** LosOS Login's own page for adding an authenticator app or a passkey. */
@@ -3090,7 +3224,11 @@ export type Pin =
   /** A file or folder in LosOS Cloud. */
   | { kind: "file"; id: number; path: string; folder: boolean }
   /** A repository on LosOS Git. */
-  | { kind: "repo"; owner: string; name: string };
+  | { kind: "repo"; owner: string; name: string }
+  /** An issue of LosOS Git's tracker, by its key (`LOS-12`). */
+  | { kind: "issue"; key: string }
+  /** A project of LosOS Git's tracker, by its key (`LOS`). */
+  | { kind: "project"; key: string };
 
 export interface PinsResponse {
   pins: Pin[];
@@ -3332,6 +3470,267 @@ export function sendMail(draft: MailDraft): Promise<{ ok: true }> {
     contentType: "application/json",
     body: JSON.stringify(draft),
   });
+}
+
+// ── LosOS Calendar ─────────────────────────────────────────────────────────
+// The person's calendars in LosOS Cloud (backend/src/cloud/calendar.rs),
+// under /cloud/api/calendar/, the same ones phones sync over CalDAV, plus
+// subscriptions to other calendars' addresses and calendars published as
+// a feed. Signed in by LosOS Login's cookie, like Contacts.
+
+export interface CalendarFeed {
+  url: string;
+  /** Seconds between reads. */
+  refresh: number;
+  /** The last read, and the last good one, in milliseconds since the epoch. */
+  fetched?: number;
+  ok?: number;
+  /** Why the last read failed; empty when it did not. */
+  error: string;
+}
+
+export interface CalendarInfo {
+  uri: string;
+  name: string;
+  color?: string;
+  count: number;
+  /** A subscription: its events change only in the feed. */
+  readOnly: boolean;
+  feed?: CalendarFeed;
+  /** `/cloud/feed/<token>.ics` while the calendar is published. */
+  published?: string;
+}
+
+export interface CalendarPerson {
+  email: string;
+  name?: string;
+  /** NEEDS-ACTION, ACCEPTED, DECLINED, TENTATIVE. */
+  status?: string;
+  /** Their Matrix ID, for a chat or a call with them. */
+  matrix?: string;
+}
+
+export type CalendarFreq = "daily" | "weekly" | "monthly" | "yearly";
+
+export interface CalendarRepeat {
+  freq: CalendarFreq;
+  interval?: number;
+  /** The last day, `2026-12-31`. */
+  until?: string;
+  count?: number;
+  /** MO, TU, …, for a weekly repeat. */
+  days?: string[];
+  /** The zone's offset on the last day, minutes east: UNTIL is UTC. */
+  offset?: number;
+}
+
+export interface CalendarEvent {
+  id: string;
+  calendar: string;
+  uid: string;
+  summary: string;
+  location?: string;
+  description?: string;
+  /** `2026-10-22` (all day) or `2026-10-22T08:00:00`, in `zone`. */
+  start: string;
+  end: string;
+  /** `UTC`, an IANA zone, or none: the reader's own. */
+  zone?: string;
+  allDay: boolean;
+  repeat?: CalendarRepeat;
+  /** It repeats, perhaps in a way the editor cannot show. */
+  repeats: boolean;
+  /** This occurrence's start, for a repeat. */
+  occurrence?: string;
+  status?: string;
+  organizer?: CalendarPerson;
+  attendees: CalendarPerson[];
+  /** Reminders, minutes before the start. */
+  alarms: number[];
+  /** `video`, `voice` or none: the event is a call in LosOS Chat. */
+  call?: string;
+  url?: string;
+  readOnly: boolean;
+  etag: string;
+}
+
+export interface CalendarEventFields {
+  calendar: string;
+  summary: string;
+  location: string;
+  description: string;
+  start: string;
+  end: string;
+  zone?: string;
+  repeat?: CalendarRepeat;
+  organizer?: CalendarPerson;
+  attendees: CalendarPerson[];
+  alarms: number[];
+  call: string;
+}
+
+export interface CalendarReport {
+  added: number;
+  updated: number;
+  removed: number;
+  skipped: number;
+  leftOut: number;
+}
+
+export interface CalendarInvitation {
+  /** REQUEST, REPLY, CANCEL, PUBLISH. */
+  method: string;
+  summary: string;
+  start: string;
+  end: string;
+  zone?: string;
+  allDay: boolean;
+  repeats: boolean;
+  location?: string;
+  organizer?: CalendarPerson;
+  attendees: CalendarPerson[];
+  /** The event already in one of the person's calendars. */
+  stored?: CalendarEvent;
+  /** The person's answer so far. */
+  status?: string;
+}
+
+export interface CalendarAnswered {
+  /** The METHOD:REPLY to mail the organizer. */
+  reply: string;
+  to: string;
+  subject: string;
+  event?: CalendarEvent;
+}
+
+const CALENDAR = "/cloud/api/calendar";
+
+function calendarCall<T>(path: string, options: CallOptions = {}): Promise<T> {
+  return call<T>(`${CALENDAR}${path}`, { ...options, anonymous: true });
+}
+
+function json(body: unknown): Pick<CallOptions, "contentType" | "body"> {
+  return { contentType: "application/json", body: JSON.stringify(body) };
+}
+
+/** GET /cloud/api/calendar/calendars. */
+export async function getCalendars(options: RequestOptions = {}): Promise<CalendarInfo[]> {
+  return (await calendarCall<{ calendars?: CalendarInfo[] }>("/calendars", options)).calendars ?? [];
+}
+
+/** POST /cloud/api/calendar/calendars — a new calendar of the person's own. */
+export function createCalendar(fields: { name: string; color?: string }): Promise<CalendarInfo> {
+  return calendarCall<CalendarInfo>("/calendars", { method: "POST", ...json(fields) });
+}
+
+/** PUT /cloud/api/calendar/calendars/{uri} — name, colour, or how often a
+ *  subscription is read. */
+export function changeCalendar(uri: string, fields: { name?: string; color?: string; refresh?: number }): Promise<CalendarInfo> {
+  return calendarCall<CalendarInfo>(`/calendars/${encodeURIComponent(uri)}`, { method: "PUT", ...json(fields) });
+}
+
+/** DELETE /cloud/api/calendar/calendars/{uri}. */
+export function deleteCalendar(uri: string): Promise<{ removed: string }> {
+  return calendarCall<{ removed: string }>(`/calendars/${encodeURIComponent(uri)}`, { method: "DELETE" });
+}
+
+/** POST or DELETE /cloud/api/calendar/calendars/{uri}/publish. */
+export function publishCalendar(uri: string, on: boolean): Promise<CalendarInfo> {
+  return calendarCall<CalendarInfo>(`/calendars/${encodeURIComponent(uri)}/publish`, { method: on ? "POST" : "DELETE" });
+}
+
+/** POST /cloud/api/calendar/calendars/{uri}/refresh — read a subscription now. */
+export function refreshCalendar(uri: string): Promise<{ calendar: CalendarInfo; report: CalendarReport }> {
+  return calendarCall(`/calendars/${encodeURIComponent(uri)}/refresh`, { method: "POST" });
+}
+
+/** POST /cloud/api/calendar/subscriptions — subscribe to a webcal:// or
+ *  https address; the box reads it once before keeping it. */
+export function subscribeCalendar(sub: {
+  url: string;
+  name?: string;
+  color?: string;
+  refresh?: number;
+}): Promise<{ calendar: CalendarInfo; report: CalendarReport }> {
+  return calendarCall("/subscriptions", { method: "POST", ...json(sub) });
+}
+
+/** POST /cloud/api/calendar/import — an .ics file into a calendar, or a new one. */
+export function importCalendar(file: Blob, calendar?: string, name?: string): Promise<{ calendar: CalendarInfo; report: CalendarReport }> {
+  const q =
+    calendar !== undefined && calendar !== ""
+      ? `?calendar=${encodeURIComponent(calendar)}`
+      : name
+        ? `?name=${encodeURIComponent(name)}`
+        : "";
+  return calendarCall(`/import${q}`, { method: "POST", contentType: "text/calendar", body: file });
+}
+
+/** GET /cloud/api/calendar/events — every occurrence in [from, to), days,
+ *  give or take a day the page trims. */
+export async function getCalendarEvents(from: string, to: string, options: RequestOptions = {}): Promise<CalendarEvent[]> {
+  const q = new URLSearchParams({ from, to });
+  return (await calendarCall<{ events?: CalendarEvent[] }>(`/events?${q.toString()}`, options)).events ?? [];
+}
+
+/** GET /cloud/api/calendar/events/{id} — one event as it repeats. */
+export function getCalendarEvent(id: string): Promise<CalendarEvent> {
+  return calendarCall<CalendarEvent>(`/events/${encodeURIComponent(id)}`);
+}
+
+/** POST or PUT /cloud/api/calendar/events — 412 when a phone changed the
+ *  event since it was read. */
+export function saveCalendarEvent(id: string | null, fields: CalendarEventFields, etag?: string): Promise<CalendarEvent> {
+  return calendarCall<CalendarEvent>(id === null ? "/events" : `/events/${encodeURIComponent(id)}`, {
+    method: id === null ? "POST" : "PUT",
+    ...json(fields),
+    ...(etag !== undefined ? { ifMatch: etag } : {}),
+  });
+}
+
+/** DELETE /cloud/api/calendar/events/{id}, or one occurrence of a repeat. */
+export function deleteCalendarEvent(id: string, occurrence?: string): Promise<{ removed: string }> {
+  const q = occurrence !== undefined ? `?occurrence=${encodeURIComponent(occurrence)}` : "";
+  return calendarCall(`/events/${encodeURIComponent(id)}${q}`, { method: "DELETE" });
+}
+
+/** GET /cloud/api/calendar/events/{id}/invite — the METHOD:REQUEST to mail. */
+export async function calendarInvite(id: string): Promise<string> {
+  const response = await fetch(`${CALENDAR}/events/${encodeURIComponent(id)}/invite`, { cache: "no-store" });
+  if (!response.ok) {
+    const { message, ...rest } = await errorBody(response);
+    throw new ApiError(response.status, message, rest);
+  }
+  return response.text();
+}
+
+/** POST /cloud/api/calendar/invitations/read — what an .ics in a message asks. */
+export function readInvitation(ics: string, email: string): Promise<CalendarInvitation> {
+  return calendarCall(`/invitations/read?email=${encodeURIComponent(email)}`, {
+    method: "POST",
+    contentType: "text/calendar",
+    body: ics,
+  });
+}
+
+/** POST /cloud/api/calendar/invitations/answer — yes, maybe or no: the event
+ *  lands in the person's calendar and the reply comes back to mail. */
+export function answerInvitation(body: { ics: string; email: string; status: string; calendar?: string }): Promise<CalendarAnswered> {
+  return calendarCall("/invitations/answer", { method: "POST", ...json(body) });
+}
+
+/** POST /cloud/api/calendar/invitations/apply — a guest's reply or an
+ *  organizer's cancellation, onto the person's own copy. */
+export function applyInvitation(ics: string): Promise<CalendarEvent> {
+  return calendarCall("/invitations/apply", { method: "POST", contentType: "text/calendar", body: ics });
+}
+
+/** A text as an attachment for /api/mail/send. */
+export function mailTextFile(name: string, type: string, text: string): MailFile {
+  const bytes = new TextEncoder().encode(text);
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return { name, type, data: btoa(binary) };
 }
 
 // ── LosOS Contacts ─────────────────────────────────────────────────────────
@@ -3676,10 +4075,8 @@ export function postPersonAge(
  * carries a reference to what is reported, never the thing itself. A box
  * without moderation answers 404. */
 
-export type ReportReason = "child" | "sexual" | "abuse" | "spam" | "other";
-
 export interface ReportTarget {
-  app: "chat" | "mail" | "cloud" | "git" | "profile";
+  app: ReportApp;
   /** The sign-in name of the person reported, when they are on this box. */
   about: string | null;
   /** A chat event ID, a mail message's ID, a path. */

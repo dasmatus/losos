@@ -651,9 +651,14 @@ function Person({
 
   const action = (icon: IconSvgElement, label: string, run: (() => void) | undefined) =>
     run !== undefined && (
-      <Button variant="secondary" onClick={run} className="flex-1 flex-col gap-1 py-2 sm:flex-none sm:px-5" key={label}>
-        <HugeiconsIcon icon={icon} size={18} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
-        <span className="text-[12px]">{label}</span>
+      <Button
+        variant="secondary"
+        onClick={run}
+        className="h-auto min-h-16 flex-1 flex-col gap-1.5 py-3 sm:min-w-24 sm:flex-none sm:px-6"
+        key={label}
+      >
+        <HugeiconsIcon icon={icon} size={22} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+        <span className="text-[13px]">{label}</span>
       </Button>
     );
 
@@ -687,7 +692,7 @@ function Person({
           <h2 className="mt-1 text-[19px] leading-tight font-semibold tracking-tight break-words">{nameOf(someone)}</h2>
           {c?.nickname !== undefined && c.nickname !== "" && <p className="text-sm text-muted">“{c.nickname}”</p>}
           {subtitle !== "" && <p className="text-[13px] text-muted">{subtitle}</p>}
-          <div className="mt-3 flex w-full max-w-md gap-2 sm:w-auto">
+          <div className="mt-4 flex w-full max-w-lg gap-2.5 sm:w-auto">
             {action(Mail01Icon, t("contacts.act.mail"), reach.mail)}
             {action(BubbleChatIcon, t("contacts.act.chat"), reach.chat)}
             {action(Call02Icon, t("contacts.act.call"), reach.call)}

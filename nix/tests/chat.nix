@@ -16,6 +16,8 @@
 #     and only root, nginx and `shared` may open its port;
 #   * messages, uploads and the thread list (which lososd answers, because
 #     Dendrite has none) work through nginx;
+#   * a moderator's hide redacts a reported message as its sender, and a
+#     muted person reads on but sends nothing until unmuted;
 #   * the chat page itself: two people in two browsers, an end-to-end
 #     encrypted conversation, a reply, a reaction, a thread, a picture and an
 #     edit, and a recovery key that lets a second device read the past;
@@ -287,7 +289,7 @@ pkgs.testers.nixosTest {
         ])
         box.succeed(f"mkdir -p /etc/nixos/modules && cat > /etc/nixos/modules/overrides.nix <<'EOF'\n{content}\nEOF")
 
-    with subtest("the claim makes Matus, and an administrator adds Eva"):
+    with subtest("the claim makes Matus, and an administrator adds Eva, who may open her own account"):
         code, body = call(
             "/api/setup/claim",
             method="POST",
@@ -307,7 +309,7 @@ pkgs.testers.nixosTest {
             matus,
             method="POST",
             data={"name": "eva", "displayName": "Eva", "email": "eva@mattbox.local",
-                  "password": EVA_PASSWORD, "groups": []},
+                  "password": EVA_PASSWORD, "groups": ["losos-account"]},
         )
         assert code == 200, (code, body)
         box.wait_until_succeeds(f"grep -q eva {PEOPLE}")
@@ -374,7 +376,7 @@ pkgs.testers.nixosTest {
         assert set(people) == {m["userId"], e["userId"]}, people
         assert people[e["userId"]] == "Eva", people
         code, body = call("/api/me", matus)
-        assert json.loads(body)["shared"] == ["chat"], body
+        assert "chat" in json.loads(body)["shared"], body
 
     with subtest("messages, uploads and the thread list go through nginx"):
         mt, et = m["accessToken"], e["accessToken"]
@@ -415,6 +417,34 @@ pkgs.testers.nixosTest {
         code, body = call(f"/_matrix/client/v1/media/download/{server}/{media}", token=et)
         assert code == 401, (code, body)
         assert box.succeed("find /home/shared/data/chat/media -type f | wc -l").strip() != "0"
+
+    with subtest("a moderator hides a reported message and mutes someone in chat"):
+        code, body = call(f"/_matrix/client/v3/rooms/{q}/send/m.room.message/t3", eva, method="PUT",
+                          token=et, data={"msgtype": "m.text", "body": "Buy cheap watches here."})
+        assert code == 200, (code, body)
+        spam = json.loads(body)["event_id"]
+        code, body = call("/api/reports", matus, method="POST", data={
+            "app": "chat", "ref": f"{room}/{spam}", "reason": "spam", "about": "eva"})
+        assert code == 200, (code, body)
+        report = json.loads(body)["id"]
+        code, body = call("/api/moderation", matus)
+        assert "chat" in json.loads(body)["hides"], body
+        code, body = call(f"/api/moderation/reports/{report}", matus, method="POST", data={"action": "hide"})
+        assert code == 200, (code, body)
+        # Redacted as its sender: the text is gone for everyone in the room.
+        code, body = call(f"/_matrix/client/v3/rooms/{q}/event/{urllib.parse.quote(spam)}", matus, token=mt)
+        assert code == 200 and "cheap watches" not in body and "redacted_because" in body, (code, body)
+        code, body = call("/api/moderation/mute", matus, method="POST", data={"name": "eva", "minutes": 60})
+        assert code == 200, (code, body)
+        code, body = call(f"/_matrix/client/v3/rooms/{q}/send/m.room.message/t4", eva, method="PUT",
+                          token=et, data={"msgtype": "m.text", "body": "Still here."})
+        assert code == 403, (code, body)
+        # Reading goes on.
+        assert call(f"/_matrix/client/v3/rooms/{q}/messages?dir=b&limit=10", eva, token=et)[0] == 200
+        assert call("/api/moderation/unmute", matus, method="POST", data={"name": "eva"})[0] == 200
+        code, body = call(f"/_matrix/client/v3/rooms/{q}/send/m.room.message/t5", eva, method="PUT",
+                          token=et, data={"msgtype": "m.text", "body": "Sorry about that."})
+        assert code == 200, (code, body)
 
     with subtest("signing out of LosOS Login ends chat at the next request"):
         gone = sign_in("matus", PASSWORD)
@@ -491,7 +521,7 @@ pkgs.testers.nixosTest {
         box.fail("systemctl cat dendrite.service")
         code, body = call("/api/chat", matus)
         assert code == 404, (code, body)
-        assert json.loads(call("/api/me", matus)[1])["shared"] == []
+        assert "chat" not in json.loads(call("/api/me", matus)[1])["shared"]
         code, _ = call("/_matrix/client/v3/account/whoami", matus)
         assert code == 404, code
         code, _ = call("/_matrix/media/v3/config", matus)
@@ -505,7 +535,7 @@ pkgs.testers.nixosTest {
         saved(True)
         box.wait_for_unit("dendrite.service")
         box.wait_until_succeeds("curl -sf http://127.0.0.1:8008/_matrix/client/versions")
-        assert json.loads(call("/api/me", matus)[1])["shared"] == ["chat"]
+        assert "chat" in json.loads(call("/api/me", matus)[1])["shared"]
         browser("on")
   '';
 }

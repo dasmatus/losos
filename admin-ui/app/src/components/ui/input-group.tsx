@@ -136,7 +136,7 @@ export function InputGroupButton({
 
 /** The input itself, stripped of its own border and ring: the group draws
  *  both. */
-export function InputGroupInput({ className, ...props }: React.ComponentPropsWithoutRef<"input">) {
+export function InputGroupInput({ className, ...props }: React.ComponentProps<"input">) {
   return (
     <Input
       data-slot="input-group-control"

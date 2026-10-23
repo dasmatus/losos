@@ -1013,6 +1013,160 @@ jobs:
           path: iso-boot/*.png
           if-no-files-found: ignore
 
+  # Does a computer find the box on its own network, and open its files?
+  # nix/tests/discovery/check.py boots the box of nix/tests/discovery/box.nix
+  # in QEMU on a link shared with a Linux, a macOS and a Windows runner,
+  # claims it, and asks each system with its own tools: Avahi, Bonjour and
+  # File Explorer's Network view must list it once; the owner's SMB share
+  # must mount with their LosOS name and password and carry a file both ways;
+  # LosOS Cloud's WebDAV address the same; and with the share switched off,
+  # the SMB entry must go and LosOS Cloud's WebDAV entry take its place.
+  #
+  # The box is kernel + initrd with the store inside (netboot), so none of
+  # the three runners needs Nix. It is built once here, on the sibling
+  # jobs' exports of losos-ctl and the admin UI, like the ISO.
+  discovery-box:
+    name: "nix: build the discovery test box"
+    if: ${{ !inputs.release_tags }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: [losos-ctl, registrar-and-ui]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-nix
+        with:
+          cache-url: ${{ vars.LOSOS_PROXY_URL }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: losos-ctl-store
+          path: ctl-cache
+      - uses: actions/download-artifact@v8
+        with:
+          name: losos-admin-ui-store
+          path: ui-cache
+      # By path, never `--all`; see the iso job.
+      - name: import the sibling jobs' store exports
+        run: |
+          xargs -r nix copy --from "file://$PWD/ctl-cache" --no-check-sigs < ctl-cache/store-paths
+          xargs -r nix copy --from "file://$PWD/ui-cache" --no-check-sigs < ui-cache/store-paths
+      - run: nix build .#losos-disk-discovery-box -L
+      - run: |
+          mkdir discovery-box
+          cp -L result/* discovery-box/
+          ls -la discovery-box
+      - uses: actions/upload-artifact@v7
+        with:
+          name: losos-discovery-box
+          path: discovery-box
+          retention-days: 1
+          # The initrd is zstd already.
+          compression-level: 0
+
+  discovery:
+    name: "discovery: ${{ matrix.os }}"
+    needs: discovery-box
+    runs-on: ${{ matrix.runner }}
+    # KVM on Linux. The macOS and Windows runners are virtual machines with
+    # no nested virtualisation, so the box runs under TCG there, about ten
+    # times slower.
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            runner: ubuntu-latest
+          # Intel, so QEMU translates x86 on x86.
+          - os: macos
+            runner: macos-15-intel
+          - os: windows
+            runner: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: losos-discovery-box
+          path: discovery-box
+
+      # A tap is the box's LAN; Avahi and nss-mdns are what a Linux desktop
+      # finds and names it with, wsdd's client sends the probe File Explorer
+      # sends, and cifs and davfs2 are the kernel's SMB and a WebDAV mount.
+      - name: Linux, the box on a tap
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -q
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
+            qemu-system-x86 avahi-daemon avahi-utils libnss-mdns wsdd socat cifs-utils davfs2
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo ip tuntap add dev tap0 mode tap user "$USER"
+          sudo ip addr add 192.168.77.1/24 dev tap0
+          sudo ip link set tap0 up
+          # The runner is the client here, not a second WS-Discovery host.
+          sudo systemctl stop wsdd.service || true
+          sudo systemctl restart avahi-daemon.service
+          grep '^hosts:' /etc/nsswitch.conf
+      - name: Linux, check
+        if: runner.os == 'Linux'
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: >-
+          python3 nix/tests/discovery/check.py --os linux --box discovery-box --kvm
+          --netdev tap,id=lan,ifname=tap0,script=no,downscript=no
+
+      # vmnet-host is a host-only link with the Mac on 192.168.77.1; QEMU
+      # needs root to open it.
+      - name: macOS, QEMU
+        if: runner.os == 'macOS'
+        run: brew install qemu
+      - name: macOS, check
+        if: runner.os == 'macOS'
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: >-
+          python3 nix/tests/discovery/check.py --os macos --box discovery-box --sudo
+          --qemu "$(brew --prefix)/bin/qemu-system-x86_64"
+          --netdev vmnet-host,id=lan,start-address=192.168.77.1,end-address=192.168.77.254,subnet-mask=255.255.255.0
+
+      # A TAP adapter (OpenVPN's tap-windows6) is the box's LAN, on
+      # 192.168.77.1. Network discovery is what turns File Explorer's
+      # Network view on, and the WebDAV redirector is a Windows Server
+      # feature: when it needs a restart, check.py checks WebDAV over HTTP
+      # and says so.
+      - name: Windows, the box on a TAP adapter
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install qemu openvpn -y --no-progress
+          & "$env:ProgramFiles\OpenVPN\bin\tapctl.exe" create --hwid root\tap0901 --name losos-lan
+          if ($LASTEXITCODE -ne 0) { throw "tapctl failed" }
+          New-NetIPAddress -InterfaceAlias losos-lan -IPAddress 192.168.77.1 -PrefixLength 24 | Out-Null
+          Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled False
+          foreach ($s in 'fdPHost', 'FDResPub', 'SSDPSRV', 'upnphost') {
+            Set-Service $s -StartupType Automatic -ErrorAction SilentlyContinue
+            Start-Service $s -ErrorAction SilentlyContinue
+          }
+          Install-WindowsFeature WebDAV-Redirector -ErrorAction SilentlyContinue | Format-List
+          Get-Service fdPHost, FDResPub, WebClient -ErrorAction SilentlyContinue | Format-Table Name, Status
+      - name: Windows, check
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: >-
+          python nix/tests/discovery/check.py --os windows --box discovery-box
+          --qemu "$env:ProgramFiles\qemu\qemu-system-x86_64.exe"
+          --netdev tap,id=lan,ifname=losos-lan
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: discovery-${{ matrix.os }}-console
+          path: ${{ runner.temp }}/losos-discovery-*/qemu.log
+          if-no-files-found: ignore
+
   # Which tags release-media builds. A tag push builds that tag. A manual run
   # with `release_tags` builds the tags it names, or with "missing" every
   # published release that carries no installer ISO. Tags from before the

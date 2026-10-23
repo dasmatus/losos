@@ -11,9 +11,11 @@ import {
   PackageIcon,
   PinIcon,
   PinOffIcon,
+  TaskDone01Icon,
 } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/components/ui/toast";
@@ -27,6 +29,7 @@ import {
   type InstalledApp,
 } from "@/lib/api";
 import { CATALOGUE, formatBytes } from "@/lib/apps";
+import { searchIssues, type TrackerIssue } from "@/lib/issues";
 import { useT } from "@/lib/i18n-react";
 import {
   getPinsState,
@@ -56,14 +59,17 @@ export function usePins() {
 }
 
 /** Write a change to the box; a refusal is a toast with the box's words. */
-export function useSavePins(): { busy: boolean; save: (next: readonly Pin[]) => Promise<void> } {
+export function useSavePins(): {
+  busy: boolean;
+  save: (next: readonly Pin[], known?: ReadonlyMap<string, string>) => Promise<void>;
+} {
   const t = useT();
   const [busy, setBusy] = React.useState(false);
   const save = React.useCallback(
-    async (next: readonly Pin[]) => {
+    async (next: readonly Pin[], known?: ReadonlyMap<string, string>) => {
       setBusy(true);
       try {
-        await savePins(next);
+        await savePins(next, known);
       } catch (error) {
         toast.error(t("pins.failed"), error instanceof Error ? error.message : undefined, { help: "index" });
       } finally {
@@ -86,9 +92,9 @@ export function PinsDialog({ open, onOpenChange }: { open: boolean; onOpenChange
   const [tab, setTab] = React.useState("apps");
   const full = state.pins.length >= state.limit;
 
-  const toggle = (pin: Pin): void => {
+  const toggle = (pin: Pin, name?: string): void => {
     if (!isPinned(state.pins, pin) && full) return;
-    void save(toggled(state.pins, pin));
+    void save(toggled(state.pins, pin), name === undefined ? undefined : new Map([[pinKey(pin), name]]));
   };
 
   return (
@@ -115,7 +121,7 @@ export function PinsDialog({ open, onOpenChange }: { open: boolean; onOpenChange
           ) : (
             <ol className="m-0 flex list-none flex-col divide-y divide-hair rounded-card border border-line p-0" data-pins-list>
               {state.pins.map((pin, index) => {
-                const view = viewPin(pin, state.installed);
+                const view = viewPin(pin, state.installed, state.names);
                 if (view === null) return null;
                 const name = view.labelKey !== null ? t(view.labelKey) : view.label;
                 return (
@@ -166,6 +172,7 @@ export function PinsDialog({ open, onOpenChange }: { open: boolean; onOpenChange
               <TabsTrigger value="apps">{t("pins.tab.apps")}</TabsTrigger>
               <TabsTrigger value="files">{t("pins.tab.files")}</TabsTrigger>
               <TabsTrigger value="repos">{t("pins.tab.repos")}</TabsTrigger>
+              <TabsTrigger value="issues">{t("pins.tab.issues")}</TabsTrigger>
             </TabsList>
             <TabsContent value="apps">
               <AppsPicker open={open} pins={state.pins} busy={busy} full={full} onToggle={toggle} />
@@ -175,6 +182,9 @@ export function PinsDialog({ open, onOpenChange }: { open: boolean; onOpenChange
             </TabsContent>
             <TabsContent value="repos">
               <ReposPicker open={open} pins={state.pins} busy={busy} full={full} onToggle={toggle} />
+            </TabsContent>
+            <TabsContent value="issues">
+              <IssuesPicker open={open && tab === "issues"} pins={state.pins} busy={busy} full={full} onToggle={toggle} />
             </TabsContent>
           </Tabs>
         </section>
@@ -219,7 +229,7 @@ interface PickerProps {
   pins: readonly Pin[];
   busy: boolean;
   full: boolean;
-  onToggle: (pin: Pin) => void;
+  onToggle: (pin: Pin, name?: string) => void;
 }
 
 /** The pin toggle at the end of a picker row. */
@@ -532,6 +542,71 @@ function ReposPicker({ open, pins, busy, full, onToggle }: PickerProps) {
         );
       })}
     </Rows>
+  );
+}
+
+/* Issues of LosOS Git's tracker: the open ones given to the person, or the
+ * ones whose words or key match what they type (palette/sources.ts asks
+ * LosOS Git as them). */
+function IssuesPicker({ open, pins, busy, full, onToggle }: PickerProps) {
+  const t = useT();
+  const [query, setQuery] = React.useState("");
+  const [load, setLoad] = React.useState<Load<{ issues: readonly TrackerIssue[]; blocked: boolean }>>({ kind: "loading" });
+  React.useEffect(() => {
+    if (!open) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(
+      () => {
+        void searchIssues(query.trim(), controller.signal).then(
+          (answer) => setLoad({ kind: "ready", reply: "blocked" in answer ? { issues: [], blocked: true } : { issues: answer.items, blocked: false } }),
+          (error: unknown) => {
+            if (!isAbort(error) && !controller.signal.aborted) setLoad({ kind: "failed" });
+          },
+        );
+      },
+      query === "" ? 0 : 250,
+    );
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [open, query]);
+
+  let body: React.ReactNode;
+  if (load.kind === "loading") body = <Loading />;
+  else if (load.kind === "failed") body = <Note tone="warn">{t("pins.noAnswer")}</Note>;
+  else if (load.reply.blocked) body = <Note tone="warn">{t("pins.issues.noGit")}</Note>;
+  else if (load.reply.issues.length === 0) body = <Note>{t(query.trim() === "" ? "pins.issues.none" : "pins.issues.noMatch")}</Note>;
+  else
+    body = (
+      <Rows label={t("pins.tab.issues")}>
+        {load.reply.issues.map((issue) => (
+          <Row key={issue.key}>
+            <Glyph icon={TaskDone01Icon} />
+            <PinText name={issue.title} detail={issue.state === "" ? issue.key : `${issue.key} · ${issue.state}`} />
+            <PinToggle
+              pin={{ kind: "issue", key: issue.key }}
+              pins={pins}
+              name={issue.title}
+              busy={busy}
+              full={full}
+              onToggle={(pin) => onToggle(pin, issue.title)}
+            />
+          </Row>
+        ))}
+      </Rows>
+    );
+  return (
+    <div className="flex flex-col gap-2">
+      <Input
+        type="search"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder={t("pins.issues.search")}
+        aria-label={t("pins.issues.search")}
+      />
+      {body}
+    </div>
   );
 }
 

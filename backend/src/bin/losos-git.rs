@@ -2,13 +2,15 @@
 //!
 //! `serve`, run by `losos-git.service`, `import-forgejo`, run once by
 //! `losos-git-forgejo-import.service` on a box that ran Forgejo
-//! (`modules/git.nix`), and `review-diff`, which reviews a diff the way the
+//! (`modules/git.nix`), `import-boards`, run once by
+//! `losos-git-boards-import.service` to take LosOS Cloud's boards into the
+//! issue tracker, and `review-diff`, which reviews a diff the way the
 //! reviewer reviews a pull request and prints the review.
 //! Everything it does is described in [`losos_ctl::forge`].
 
 use clap::{Parser, Subcommand};
 use losos_ctl::forge::reviewer::{model, patch, review};
-use losos_ctl::forge::{db::Store, import, server, Config};
+use losos_ctl::forge::{db::Store, import, server, tracker, Config};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -56,6 +58,16 @@ enum Cmd {
         /// Tell this socket about pushes and pull requests (Mesh CI's).
         #[arg(long)]
         events_socket: Vec<PathBuf>,
+        /// Take other boxes' self-signed certificates when asking their
+        /// chat servers who someone is, keeping each one's key.
+        #[arg(long)]
+        matrix_self_signed: bool,
+        /// Reach a chat server at a fixed address, `name=url` (tests).
+        #[arg(long, hide = true)]
+        matrix_server_url: Vec<String>,
+        /// This box's own chat server name, which nobody signs in through.
+        #[arg(long)]
+        matrix_server_name: Option<String>,
     },
     /// Carry Forgejo's records into LosOS Git from the export in `--from`
     /// (`<from>/tables/*.json`), and write `<from>/import.json`.
@@ -64,6 +76,18 @@ enum Cmd {
         state_dir: PathBuf,
         #[arg(long)]
         from: PathBuf,
+    },
+    /// Take LosOS Cloud's boards into the issue tracker from a copy of the
+    /// cloud's database, and write `<report>`.
+    ImportBoards {
+        #[arg(long, default_value = "/var/lib/losos-git")]
+        state_dir: PathBuf,
+        /// A copy of `/var/lib/losos-cloud/cloud.db`.
+        #[arg(long)]
+        from: PathBuf,
+        /// Where to write what came over, as JSON.
+        #[arg(long)]
+        report: PathBuf,
     },
     /// Review the `git diff` on stdin with the box's code model, as LosOS
     /// Reviewer would review a pull request, and print the review. The
@@ -123,10 +147,36 @@ fn main() -> anyhow::Result<()> {
                 "notImported": report.not_imported,
             }))?;
             std::fs::write(from.join("import.json"), text + "\n")?;
+            // What Forgejo had as issues is the tracker's now.
+            tracker::adopt::adopt_repo_issues(&store)?;
             for line in &report.not_imported {
                 println!("not imported: {line}");
             }
             println!("imported: {}", serde_json::to_string(&report.imported)?);
+            Ok(())
+        }
+        Cmd::ImportBoards {
+            state_dir,
+            from,
+            report,
+        } => {
+            let store = Store::open(&state_dir.join("git.db"))?;
+            tracker::adopt::adopt_repo_issues(&store)?;
+            let done = tracker::boards::import(&store, &from)?;
+            let text = serde_json::to_string_pretty(&serde_json::json!({
+                "complete": true,
+                "when": losos_ctl::forge::now(),
+                "report": done,
+            }))?;
+            std::fs::write(&report, text + "\n")?;
+            println!(
+                "boards: {}, cards: {}, linked: {}, comments: {}, projects: {}",
+                done.boards,
+                done.cards,
+                done.linked,
+                done.comments,
+                done.projects.join(" ")
+            );
             Ok(())
         }
         Cmd::ReviewDiff { title, record } => {
@@ -163,6 +213,9 @@ fn main() -> anyhow::Result<()> {
             base_path,
             internal_socket,
             events_socket,
+            matrix_self_signed,
+            matrix_server_url,
+            matrix_server_name,
         } => {
             for path in events_socket {
                 losos_ctl::forge::events::deliver_to(path);
@@ -175,6 +228,15 @@ fn main() -> anyhow::Result<()> {
                     default_private: !public_by_default,
                     push_create,
                     base_path,
+                    matrix: losos_ctl::forge::matrix::MatrixConfig {
+                        self_signed: matrix_self_signed,
+                        urls: matrix_server_url
+                            .iter()
+                            .filter_map(|s| s.split_once('='))
+                            .map(|(n, u)| (n.to_string(), u.to_string()))
+                            .collect(),
+                        own: matrix_server_name,
+                    },
                 },
                 server::Listen {
                     socket,
