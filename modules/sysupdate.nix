@@ -20,20 +20,22 @@ in
 
   systemd.sysupdate.transfers."50-losos-components" = {
     Source = {
-      Type = "url-tar";
+      Type = "url-file";
       Path = "http://127.0.0.1:8789/";
       MatchPattern = "losos-components_@v.tar.xz";
     };
     Target = {
-      Type = "directory";
-      Path = "${stateDir}/slots";
-      MatchPattern = "losos-components_@v";
+      Type = "regular-file";
+      Path = "${stateDir}/archives";
+      MatchPattern = "losos-components_@v.tar.xz";
+      Mode = "0600";
       InstancesMax = 2;
     };
-    # The manifest is integrity-checked by systemd-sysupdate. Its signature
-    # is not a code trust boundary: the apply helper imports every Nix root
-    # with Nix signature checking enabled against losos.cache.trustedPublicKeys.
-    Transfer.Verify = false;
+    # Transported files are checksummed by systemd-sysupdate. Verify is
+    # disabled only because the repo does not yet ship a GPG keypair; the
+    # downloaded tar is not extracted by the privileged systemd code. Our
+    # stage helper rejects links/traversal/non-regular entries, and Nix
+    # verifies the signature on every imported store object.
   };
 
   systemd.services.losos-sysupdate-proxy = {
@@ -62,13 +64,14 @@ in
     };
   };
 
-  # Staging runs in the same unit as the transfer, after the bundle is
-  # extracted. The helper verifies the manifest and asks Nix to verify every
-  # imported path's signature before recording the version as staged.
-  systemd.services.systemd-sysupdate = {
+  # The upstream auto-update unit is systemd-sysupdate-update.service (not
+  # the D-Bus-backed systemd-sysupdate.service). It downloads archives to
+  # /var/lib/losos-sysupdate/archives; only then does our helper validate and
+  # extract into a staging directory on the same persistent filesystem.
+  systemd.services.systemd-sysupdate-update = {
     wants = [ "losos-sysupdate-proxy.service" ];
     after = [ "losos-sysupdate-proxy.service" ];
-    path = [ pkgs.nix pkgs.coreutils ];
+    path = [ pkgs.nix pkgs.coreutils pkgs.python3 ];
     serviceConfig.ExecStartPost = [
       "${pkgs.python3}/bin/python3 ${../tools/losos-sysupdate-apply.py}"
     ];
