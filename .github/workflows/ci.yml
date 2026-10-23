@@ -140,9 +140,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
-        with:
-          cache-url: ${{ vars.LOSOS_PROXY_URL }}
-          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # The compiler caches that devShells.ci carries (nix/fast-build.nix):
       # sccache in front of rustc, ccache in front of gcc. Both write to
       # ~/.cache on the runner, which is a fresh VM every run, so without
@@ -214,9 +211,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
-        with:
-          cache-url: ${{ vars.LOSOS_PROXY_URL }}
-          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       - run: |
           nix develop .#ci -c bash -euo pipefail -c '
             echo "── backend/plugins (wasm32)"
@@ -260,9 +254,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
-        with:
-          cache-url: ${{ vars.LOSOS_PROXY_URL }}
-          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # Same as in the clippy job, under its own key: the test profile
       # compiles every crate differently (linked test binaries, dev
       # dependencies), so the two jobs' caches share nothing worth sharing.
@@ -313,9 +304,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
-        with:
-          cache-url: ${{ vars.LOSOS_PROXY_URL }}
-          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       - uses: actions/cache@v6
         with:
           path: |
@@ -352,9 +340,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
-        with:
-          cache-url: ${{ vars.LOSOS_PROXY_URL }}
-          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       - uses: actions/cache@v6
         with:
           path: |
@@ -375,9 +360,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
-        with:
-          cache-url: ${{ vars.LOSOS_PROXY_URL }}
-          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # Mirrors devenv.nix's `check-flake`. Evaluates every output — every VM
       # test derivation, every nixosConfiguration and every package, the three
       # OCI images among them; builds nothing. Which is the limit of it: an
@@ -413,9 +395,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
-        with:
-          cache-url: ${{ vars.LOSOS_PROXY_URL }}
-          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # Compiles the shipping binaries only — doCheck is off, and the suite runs
       # in the test job instead (see nix/packages.nix for why). Even so this
       # is the longest job here; re-time it before adding any heavy dependency
@@ -457,9 +436,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
-        with:
-          cache-url: ${{ vars.LOSOS_PROXY_URL }}
-          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # Compiles only; the registrar's tests run in the test job.
       # losos-admin-ui is a buildNpmPackage: `npm ci` from the committed
       # package-lock.json, then `tsc --noEmit && vite build`. So this step is
@@ -538,9 +514,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
-        with:
-          cache-url: ${{ vars.LOSOS_PROXY_URL }}
-          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # What devenv.nix's `build-images` builds.
       #
       # These are the images modules/defaults.nix wires into losos.workloads.*,
@@ -557,12 +530,12 @@ jobs:
       # handful of paths.
       - run: nix build .#losos-image-pause -L
       - name: export images for the publisher
-        if: github.event_name != 'pull_request' && vars.LOSOS_PROXY_URL != ''
+        if: github.event_name != 'pull_request'
         run: |
           nix copy --to "file://$PWD/images-cache" --no-check-sigs .#losos-image-pause
           nix path-info .#losos-image-pause > images-cache/store-paths
       - uses: actions/upload-artifact@v7
-        if: github.event_name != 'pull_request' && vars.LOSOS_PROXY_URL != ''
+        if: github.event_name != 'pull_request'
         with:
           name: losos-images-store
           path: images-cache
@@ -570,10 +543,10 @@ jobs:
           include-hidden-files: true
 
   publish-cache:
-    name: "nix: publish built paths to proxy"
+    name: "nix: publish built paths to GHCR"
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    if: github.event_name != 'pull_request' && vars.LOSOS_PROXY_URL != '' && !inputs.release_tags
+    if: github.event_name != 'pull_request' && !inputs.release_tags
     needs: [losos-ctl, registrar-and-ui, images]
     permissions:
       contents: read
@@ -581,9 +554,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
-        with:
-          cache-url: ${{ vars.LOSOS_PROXY_URL }}
-          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       - uses: actions/download-artifact@v8
         with:
           name: losos-ctl-store
@@ -662,9 +632,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
-        with:
-          cache-url: ${{ vars.LOSOS_PROXY_URL }}
-          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # `losos --version` says nix/version.nix. On a tag the file can
       # still name the previous release (version.yml commits the new one to
       # main afterwards), so the tag is written over it and staged, as the
@@ -814,9 +781,6 @@ jobs:
           # in the log — which is what the Forgejo copy's `git remote set-url`
           # dance is working around.
       - uses: ./.github/actions/setup-nix
-        with:
-          cache-url: ${{ vars.LOSOS_PROXY_URL }}
-          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # Same toolchain as the clippy job and as buildRustPackage — devShells.ci
       # from this flake's pinned nixpkgs. Formatting with a different rustfmt
       # than CI checks with is how you get a bot that fights its own linter.
@@ -877,9 +841,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
-        with:
-          cache-url: ${{ vars.LOSOS_PROXY_URL }}
-          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       - uses: actions/download-artifact@v8
         with:
           name: losos-ctl-store
@@ -1034,9 +995,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
-        with:
-          cache-url: ${{ vars.LOSOS_PROXY_URL }}
-          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       - uses: actions/download-artifact@v8
         with:
           name: losos-ctl-store
@@ -1248,9 +1206,6 @@ jobs:
         with:
           path: .ci
       - uses: ./.ci/.github/actions/setup-nix
-        with:
-          cache-url: ${{ vars.LOSOS_PROXY_URL }}
-          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       - name: free runner disk for media builds
         run: |
           set -euo pipefail
