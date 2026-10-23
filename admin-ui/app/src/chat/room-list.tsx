@@ -31,7 +31,8 @@ function preview(room: Room, attachment: string): string {
   const content = last.getContent();
   const text = typeof content["msgtype"] !== "string" || TEXT_TYPES.has(content["msgtype"]);
   const body = last.isRedacted() ? "" : text ? plainBody(content) : attachment;
-  const who = last.getSender() === room.client.getUserId() ? "" : `${room.getMember(last.getSender() ?? "")?.name ?? ""}: `;
+  const sender = last.getSender() ?? "";
+  const who = sender === "" || sender === room.client.getUserId() ? "" : `${memberName(room, sender)}: `;
   return body === "" ? "" : `${who}${body}`;
 }
 

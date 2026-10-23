@@ -99,8 +99,7 @@ Mail-Lesers, öffnet zwei Dinge.
 Das erste erklärt, wie du die Polizei oder eine Meldestelle erreichst. Das
 zweite schickt eine Meldung an die Moderatoren der Box. Sie bekommen einen
 Verweis auf die Nachricht, nie ihren Text oder ihre Bilder, und können sie
-verbergen oder den Absender stoppen. Eine Box ohne Moderation sagt das, und
-die Links funktionieren trotzdem.
+verbergen oder den Absender stoppen.
 
 LosOS meldet nie etwas von selbst. Nichts auf der Box schaut in deine
 Nachrichten oder Bilder.
@@ -125,4 +124,5 @@ Nachrichten oder Bilder.
   sprechen, der Kindernotrufnummer in jedem EU-Land.
 
 Melde die Nachricht danach den Moderatoren der Box, damit sie sie für alle
-verbergen und den Absender stoppen können.
+verbergen und den Absender stoppen können. Lies auch,
+[was die Moderatoren damit tun](moderation.md#a-report-about-a-child).

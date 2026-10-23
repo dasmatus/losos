@@ -1,5 +1,5 @@
 import * as React from "react";
-import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
+import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
   Add01Icon,
@@ -42,6 +42,7 @@ import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { Toaster } from "@/components/ui/toast";
 import { t as translate, type MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
+import { ContextMenuHost, usePageMenu } from "@/components/context-menu";
 import { logoFor } from "@/lib/logo";
 import { cn } from "@/lib/utils";
 import { chatServerOf, chatToken, dropChatToken, git, GitError, matrixSignIn, whenSignedOut, type User } from "./api";
@@ -121,6 +122,9 @@ function Shell() {
   // The issues lay a list and an issue side by side, as Mail does: they
   // take the width of the screen.
   const wide = useLocation().pathname.startsWith("/issues");
+  // The right-click menu every LosOS page has; picked text searches the issues.
+  const pageMenu = usePageMenu();
+  const navigate = useNavigate();
 
   return (
     <MeContext.Provider value={me}>
@@ -129,6 +133,7 @@ function Shell() {
           <TrackerProvider>
           <div className="losos-shell min-h-dvh text-ink">
             <TopBar />
+            <ContextMenuHost page={pageMenu} search={signedOut ? undefined : (text) => navigate(`/issues/all?q=${encodeURIComponent(text)}`)} />
             {signedOut ? (
               <SignedOut />
             ) : (

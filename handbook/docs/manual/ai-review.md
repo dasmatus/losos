@@ -6,6 +6,8 @@ slug: /manual/ai-review
 
 # AI review in LosOS Git
 
+![AI review on a pull request.](../img/ai-review-pull.png)
+
 LosOS Reviewer reads the pull requests of a repository in LosOS Git and
 leaves a review, the way a code review bot does on a hosted forge. It runs
 on the box, with the same language model as Build with AI, so the code

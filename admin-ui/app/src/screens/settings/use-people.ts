@@ -9,6 +9,8 @@ import {
   postPersonPassword,
   postPersonRemove,
   postPeopleRules,
+  postRole,
+  postRoleRemove,
   postPersonFactorsReset,
   clearPersonImage,
   type LoginRules,
@@ -48,6 +50,9 @@ export interface PeopleData {
   resetFactors: (name: string) => Promise<boolean>;
   /** Take a picture or banner off someone's profile. */
   takeDown: (name: string, kind: ProfileImage) => Promise<boolean>;
+  /** Save a role of the box's own; `id` changes one already saved. */
+  saveRole: (role: { id?: string; name: string; sections: string[] }) => Promise<Outcome>;
+  removeRole: (id: string, name: string) => Promise<boolean>;
   /** Mark someone as an adult or a child for pictures, or neither. */
   setAge: (name: string, age: AgeMark["age"] | null) => Promise<boolean>;
 }
@@ -58,6 +63,7 @@ function viewOf(reply: Partial<PeopleResponse>): PeopleResponse {
     you: typeof reply.you === "string" ? reply.you : null,
     sections: Array.isArray(reply.sections) ? reply.sections : [],
     ...(reply.rules !== undefined ? { rules: reply.rules } : {}),
+    ...(Array.isArray(reply.roles) ? { roles: reply.roles } : {}),
     people: Array.isArray(reply.people) ? reply.people : [],
   };
 }
@@ -185,6 +191,26 @@ export function usePeople(enabled: boolean): PeopleData {
     [attempt],
   );
 
+  const saveRole = React.useCallback(
+    async (role: { id?: string; name: string; sections: string[] }) => {
+      const outcome = await attempt(() => postRole(role), t("roles.custom.failed"));
+      if (outcome.ok) toast.done(t("roles.custom.saved", { name: role.name.trim() }));
+      return outcome;
+    },
+    [attempt],
+  );
+
+  const removeRole = React.useCallback(
+    async (id: string, name: string) => {
+      const outcome = await attempt(() => postRoleRemove(id), t("roles.custom.failed"));
+      if (outcome.ok) toast.done(t("roles.custom.removed", { name }));
+      else if (outcome.message.length > 0)
+        toast.error(t("roles.custom.failed"), outcome.message, { help: "sign-in-and-spare-key" });
+      return outcome.ok;
+    },
+    [attempt],
+  );
+
   const setAge = React.useCallback(
     async (name: string, age: AgeMark["age"] | null) => {
       const outcome = await attempt(() => postPersonAge(name, age), t("pictures.age.failed"));
@@ -194,5 +220,19 @@ export function usePeople(enabled: boolean): PeopleData {
     [attempt],
   );
 
-  return { state, busy, refresh, add, setAccess, setPassword, remove, setRules, resetFactors, takeDown, setAge };
+  return {
+    state,
+    busy,
+    refresh,
+    add,
+    setAccess,
+    setPassword,
+    remove,
+    setRules,
+    resetFactors,
+    takeDown,
+    saveRole,
+    removeRole,
+    setAge,
+  };
 }

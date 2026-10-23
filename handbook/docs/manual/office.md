@@ -6,6 +6,8 @@ slug: /manual/office
 
 # Office documents
 
+![LosOS Office.](../img/office-docs.png)
+
 LosOS Office opens text documents, spreadsheets and presentations in the browser
 and saves them back on the box. Several people can work in one document at
 the same time, and each sees where the others are typing. The editor is

@@ -31,7 +31,8 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/in
 import { SwitchRow } from "@/screens/settings/rows";
 import { toast } from "@/components/ui/toast";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { sharedApp, loadMe } from "@/lib/api";
+import { loadMe } from "@/lib/api";
+import { followPins } from "@/lib/pins";
 import type { MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
@@ -44,6 +45,7 @@ import { InboxScreen } from "./inbox";
 import { IssueList, grouped } from "./list";
 import { Palette } from "./palette";
 import { AssigneeMenu, CATEGORY_NAME, LabelMenu, PRIORITIES, PRIORITY_NAME, PriorityIcon, StateIcon, StateMenu, currentCycle } from "./parts";
+import { PinButton } from "./pin";
 import { CyclesView, NewProject, ProjectTabs } from "./projects";
 import { Reader } from "./reader";
 import { Shortcuts } from "./shortcuts";
@@ -64,9 +66,13 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
   const me = useMe();
   const visitor = useVisitor();
   const home = useLoad((signal) => (me === null ? Promise.resolve(null) : tracker.home(signal)), [me?.login]);
-  // Which of Mail, Chat and Contacts this person has, for the hand-overs.
+  // Which of Mail, Chat and Contacts this person has, for the hand-overs,
+  // and the sidebar's pins, which an administrator may add issues to.
   React.useEffect(() => {
-    if (me !== null && !visitor) void loadMe().catch(() => null);
+    if (me !== null && !visitor)
+      void loadMe()
+        .then(() => followPins())
+        .catch(() => null);
   }, [me, visitor]);
   const value = React.useMemo(() => ({ home: home.data, reloadHome: home.reload }), [home.data, home.reload]);
   return <TrackerContext.Provider value={value}>{children}</TrackerContext.Provider>;
@@ -231,6 +237,17 @@ function ScopeScreen({ scope }: { scope: Scope }) {
     [setParams],
   );
 
+  // Another app's "Make an issue" (newIssueHref in lib/intents.ts): the new
+  // issue, filled in, once; the address then forgets it, so a reload does
+  // not start a second one.
+  React.useEffect(() => {
+    if (params.get("new") === null || home === null) return;
+    const into = (params.get("into") ?? "").toUpperCase();
+    const target = home.projects.find((p) => p.key === into && !p.archived)?.key ?? project?.key ?? home.projects.find((p) => !p.archived)?.key ?? "";
+    setCreating({ project: target, title: params.get("title") ?? "", body: params.get("body") ?? "" });
+    set({ new: null, into: null, title: null, body: null });
+  }, [params, home, project, set]);
+
   const order = React.useMemo(() => grouped(shown, groupBy, home).flatMap((g) => g.issues.map((i) => i.key)), [shown, groupBy, home]);
   const openIssue = (k: string | null) => {
     set({ open: k });
@@ -373,6 +390,7 @@ function ScopeScreen({ scope }: { scope: Scope }) {
             <ProjectTabs project={project} tab={scope.kind === "project" && scope.backlog ? "backlog" : "issues"} cycle={cycle?.id} />
           )}
         </div>
+        {project !== undefined && <PinButton pin={{ kind: "project", key: project.key }} name={project.name} />}
         <Button variant="ghost" size="icon-sm" onClick={() => setHelp(true)} aria-label={t("tracker.shortcuts.title")} title={t("tracker.shortcuts.title")}>
           <HugeiconsIcon icon={KeyboardIcon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
         </Button>
@@ -1018,8 +1036,3 @@ function SaveView({
   );
 }
 
-/** Whether Mail, Chat or Contacts may be handed something: those run only
- *  where the box shares, and a link that leads to a 404 is not drawn. */
-export function canHandTo(app: "mail" | "chat" | "contacts"): boolean {
-  return sharedApp(app);
-}

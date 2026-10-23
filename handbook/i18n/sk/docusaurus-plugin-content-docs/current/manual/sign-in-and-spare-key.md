@@ -94,7 +94,7 @@ Správcovské stránky sú rozdelené na časti: úložisko, záloha, aplikácie
 prístupové tokeny. Správca môže používať všetky. Iba správca môže použiť
 nastavenia, otvoriť Mesh, Hardvér, Zabezpečenie, Používatelia, Rozšírené, História,
 O zariadení a Reset, zmazať alebo obnoviť zariadenie a pozrieť si kód na
-obnovenie. Kto nie je správca, dostane časti, ktoré mu boli pridelené, alebo
+obnovenie. Moderátori otvárajú aj Moderovanie. Kto nie je správca, dostane časti, ktoré mu boli pridelené, alebo
 číta všetky časti bez možnosti niečo zmeniť. Prehľad vidí každý prihlásený.
 Správcovské stránky skryjú panely, ktoré daný človek nemôže použiť.
 
@@ -111,25 +111,32 @@ prihlasuje ľudí samo cez LosOS Login. Zariadenie, ktorého prihlasovanie bež�
 inde, panel Používatelia nemá.
 
 Nového človeka pridáte vyplnením **Pridať človeka**: prihlasovacie meno,
-celé meno, heslo podľa rovnakých pravidiel ako to vaše a prístup.
+celé meno, heslo podľa rovnakých pravidiel ako to vaše a rolu.
 
-- **Vybrané časti**: vidí a mení iba zapnuté časti, napríklad Úložisko a
-  Záloha.
-- **Vidí všetko**: vidí každý panel a mení iba zapnuté časti.
+- **Člen**: vidí a mení iba zapnuté časti, napríklad Úložisko a Záloha.
+  **Vidí všetky časti** mu dovolí pozrieť si aj každý panel.
+- **Moderátor**: člen, ktorý navyše vybavuje nahlásenia a stíši alebo
+  pozastaví členov a hostí.
+- **Hosť**: vlastný účet, pošta a profil, žiadna časť zariadenia.
 - **Správca**: môže meniť všetko vrátane toho, kto sa môže prihlásiť.
 
-![Panel Používatelia: traja ľudia s ich prístupom a pod nimi formulár Pridať človeka.](@site/docs/img/settings-users-sk.png)
+V tom istom zozname je aj rola zariadenia vytvorená vo **Vlastné roly**.
+Tabuľku toho, čo môže každá rola, nájdete v časti
+[Roly a moderovanie](moderation).
+
+![Panel Používatelia: všetci so svojou rolou, tabuľka toho, čo môže každá rola, a úplne dole formulár Pridať človeka.](@site/docs/img/settings-users-sk.png)
 
 Nový človek má **Vlastný účet** zapnutý. Meno a heslo mu odovzdajte sami. Prihlási sa cez LosOS Login. LosOS Cloud aj
 LosOS Git mu pri prvom otvorení vytvoria vlastný účet.
 
-Kto má overovaciu aplikáciu alebo prístupový kľúč, má štítok
-**Dvojstupňové**. Koho zadržiava pravidlo prihlásenia, má štítok
-**Zadržaný** a pod menom dôvod.
+Každý človek má štítok so svojou rolou. Kto má overovaciu aplikáciu alebo
+prístupový kľúč, má štítok **Dvojstupňové**. Koho zadržiava pravidlo
+prihlásenia, má štítok **Zadržaný** a pod menom dôvod. Stíšený alebo
+pozastavený človek má štítok **Stíšený** alebo **Pozastavený**.
 
 Každý človek v zozname má tieto tlačidlá:
 
-- **Prístup** mení, čo môže robiť. Platí od jeho ďalšieho kliknutia, bez
+- **Prístup** mení jeho rolu a časti. Platí od jeho ďalšieho kliknutia, bez
   nového prihlásenia.
 - **Nové heslo** je pre toho, kto svoje stratil. Staré prestane platiť hneď.
 - **Obnoviť dvojstupňové** mu odstráni overovaciu aplikáciu a prístupové

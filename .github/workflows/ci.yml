@@ -1111,6 +1111,8 @@ jobs:
           grep '^hosts:' /etc/nsswitch.conf
       - name: Linux, check
         if: runner.os == 'Linux'
+        env:
+          TMPDIR: ${{ runner.temp }}
         run: >-
           python3 nix/tests/discovery/check.py --os linux --box discovery-box --kvm
           --netdev tap,id=lan,ifname=tap0,script=no,downscript=no
@@ -1122,6 +1124,8 @@ jobs:
         run: brew install qemu
       - name: macOS, check
         if: runner.os == 'macOS'
+        env:
+          TMPDIR: ${{ runner.temp }}
         run: >-
           python3 nix/tests/discovery/check.py --os macos --box discovery-box --sudo
           --qemu "$(brew --prefix)/bin/qemu-system-x86_64"
@@ -1150,10 +1154,18 @@ jobs:
       - name: Windows, check
         if: runner.os == 'Windows'
         shell: pwsh
+        env:
+          TMPDIR: ${{ runner.temp }}
         run: >-
           python nix/tests/discovery/check.py --os windows --box discovery-box
           --qemu "$env:ProgramFiles\qemu\qemu-system-x86_64.exe"
           --netdev tap,id=lan,ifname=losos-lan
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: discovery-${{ matrix.os }}-console
+          path: ${{ runner.temp }}/losos-discovery-*/qemu.log
+          if-no-files-found: ignore
 
   # Which tags release-media builds. A tag push builds that tag. A manual run
   # with `release_tags` builds the tags it names, or with "missing" every
