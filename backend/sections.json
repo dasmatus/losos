@@ -36,6 +36,8 @@
     "GET /api/state": "signed-in",
     "GET /api/settings": "signed-in",
     "GET /api/status": "signed-in",
+    "GET /api/updates": "admin",
+    "POST /api/updates": "admin",
     "GET /api/edge": "signed-in",
     "POST /api/edge/manage": "admin",
     "GET /api/look": "signed-in",
