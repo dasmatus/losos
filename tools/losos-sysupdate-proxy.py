@@ -221,8 +221,15 @@ def refresh(force: bool = False) -> Path:
             for path in old:
                 shutil.rmtree(path, ignore_errors=True)
             return destination
-        except Exception:
+        except Exception as exc:
             shutil.rmtree(staging, ignore_errors=True)
+            if cached:
+                print(
+                    f"sysupdate proxy: new artifact failed validation ({exc}); "
+                    "serving the previous verified generation",
+                    flush=True,
+                )
+                return cached
             raise
 
 
