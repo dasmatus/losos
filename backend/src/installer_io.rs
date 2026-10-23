@@ -178,24 +178,23 @@ fn shell_quote(value: &str) -> String {
 /// forwards the PTY to tty1 while recording the same stream on tty2. Outside
 /// the installer ISO (where tty2 may not exist), use ordinary inherited stdio.
 fn run_live(exe: &str, args: &[&str]) -> anyhow::Result<()> {
-    let status = if std::env::var_os("LOSOS_INSTALLER_ISO").is_some()
-        && Path::new("/dev/tty2").exists()
-    {
-        let command = std::iter::once(exe)
-            .chain(args.iter().copied())
-            .map(shell_quote)
-            .collect::<Vec<_>>()
-            .join(" ");
-        Command::new("script")
-            .args(["-q", "-f", "-e", "-c", &command, "/dev/tty2"])
-            .status()
-            .with_context(|| format!("could not start {exe} through script"))?
-    } else {
-        Command::new(exe)
-            .args(args)
-            .status()
-            .with_context(|| format!("could not start {exe}"))?
-    };
+    let status =
+        if std::env::var_os("LOSOS_INSTALLER_ISO").is_some() && Path::new("/dev/tty2").exists() {
+            let command = std::iter::once(exe)
+                .chain(args.iter().copied())
+                .map(shell_quote)
+                .collect::<Vec<_>>()
+                .join(" ");
+            Command::new("script")
+                .args(["-q", "-f", "-e", "-c", &command, "/dev/tty2"])
+                .status()
+                .with_context(|| format!("could not start {exe} through script"))?
+        } else {
+            Command::new(exe)
+                .args(args)
+                .status()
+                .with_context(|| format!("could not start {exe}"))?
+        };
     if !status.success() {
         bail!(
             "{exe} {} failed ({status}); see tty2 for the live command log",
@@ -285,7 +284,11 @@ impl Install for IoInstall {
     }
 
     fn run_disko_script(&mut self, path: &Path) -> anyhow::Result<()> {
-        self.run_with_activity("Partitioning and formatting disks", &path.to_string_lossy(), &[])
+        self.run_with_activity(
+            "Partitioning and formatting disks",
+            &path.to_string_lossy(),
+            &[],
+        )
     }
 
     /// Clone the flake, then drop the clone's `.git`.
@@ -335,7 +338,14 @@ impl Install for IoInstall {
             }
             match run_live(
                 "git",
-                &["clone", "--progress", "--depth", "1", url, &work.to_string_lossy()],
+                &[
+                    "clone",
+                    "--progress",
+                    "--depth",
+                    "1",
+                    url,
+                    &work.to_string_lossy(),
+                ],
             ) {
                 Ok(()) => break,
                 Err(e) if attempt < CLONE_ATTEMPTS => {
