@@ -61,7 +61,7 @@ assert must
   (lib.hasInfix "/persist/var/lib/losos-sysupdate/versions" config.environment.etc."sysupdate.d/50-losos.transfer".text)
   "the sysupdate target no longer extracts the versioned update bundle below /persist";
 assert must
-  (lib.hasInfix "--impure" (builtins.readFile ../tools/losos-sysupdate-apply.sh))
+  (lib.hasInfix "--impure" (builtins.readFile ../../tools/losos-sysupdate-apply.sh))
   "sysupdate activation stopped passing --impure and may discard the box's install-target.nix or overrides.nix";
 assert must (!config.losos.bios && config.boot.loader.systemd-boot.enable)
   "the published flake is not on the UEFI/systemd-boot path; the README tells owners to boot the installer in UEFI mode";
