@@ -665,6 +665,12 @@ export function getStatus(options: RequestOptions = {}): Promise<StatusResponse>
   return call<StatusResponse>("/api/status", options);
 }
 
+/** GET /api/statistics — what Traefik counted for the apps' LAN ports
+ *  (lososd's statistics plugin). Read with readStatistics (src/statistics). */
+export function getStatistics(options: RequestOptions = {}): Promise<unknown> {
+  return call<unknown>("/api/statistics", options);
+}
+
 export function getStorage(options: RequestOptions = {}): Promise<StorageResponse> {
   return call<StorageResponse>("/api/storage", options);
 }

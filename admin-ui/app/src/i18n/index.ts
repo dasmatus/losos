@@ -44,6 +44,7 @@ import profile from "./profile";
 import quick from "./quick";
 import report from "./report";
 import settings from "./settings";
+import statistics from "./statistics";
 import shell from "./shell";
 import together from "./together";
 import tour from "./tour";
@@ -102,6 +103,7 @@ export const MESSAGES = {
   ...games,
   ...together,
   ...quick,
+  ...statistics,
 };
 
 export type MessageKey = keyof typeof MESSAGES;

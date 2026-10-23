@@ -655,6 +655,16 @@ in
       description = "Last port of the range in losos.apps.ports.from.";
     };
 
+    apps.traefikPort = lib.mkOption {
+      type = lib.types.port;
+      default = 8089;
+      description = ''
+        Loopback port of the Traefik that opens the installed apps on their
+        LAN ports: its API and metrics, read by the install job and by the
+        Statistics page. Never reachable from the LAN.
+      '';
+    };
+
     cluster.idleLoadThreshold = lib.mkOption {
       type = lib.types.float;
       default = 0.25;

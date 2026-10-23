@@ -90,7 +90,9 @@ and is never served or built by nix.
   manifest. lososd loads them only from `losos.backend.plugins` in the
   read-only store and refuses to start on anything else. New lososd routes
   go in a plugin, each with its `sections.json` line; sign-in, sections and
-  D-Bus stay in the host. The look and the pins are plugins so far;
+  D-Bus stay in the host. The look, the pins and the statistics
+  (`/api/statistics`, Traefik's metrics, a minute ring in its cache) are
+  plugins so far;
   `nix/tests/plugins.nix` boots them with a browser that takes the PR's screenshots
   (`nix/tests/screens/`, reusable by any VM test).
 - `admin-ui/app`: React 19 + Vite + Tailwind SPA on real paths. Its `dist/`
@@ -210,8 +212,8 @@ and is never served or built by nix.
   `nix/tests/cloud-from-nextcloud.nix` boots a real Nextcloud and checks it.
 - `containers.nix`, `cluster.nix`: the box's own k3s server runs only the
   apps of its shared side (sharing on and in a mesh); `services.rke2`
-  (agent) joins the edge's mesh. Nginx is the only public listener:
-  `/cloud/`, `/git/`, admin SPA on `/`.
+  (agent) joins the edge's mesh. nginx holds 80 and 443: `/cloud/`,
+  `/git/`, admin SPA on `/`. Traefik holds `losos.apps.ports` (apps.nix).
 - `git.nix` + `backend/src/forge/` (`losos-git`, a second binary of the
   backend crate): LosOS Git, the box's Git server in place of Forgejo.
   Smart HTTP (`git upload-pack`/`receive-pack --stateless-rpc`, protocol
@@ -252,8 +254,17 @@ and is never served or built by nix.
   only where that cluster runs. `losos-app-<name>` transient units do the
   work; the `losos-shape` rules (`losos-app-shape`) put every pod on the
   host network without root, turn claims into folders in that user's data
-  domain and refuse a chart that needs more; nginx forwards a port of
-  `losos.apps.ports` to it, LAN only. `nix/tests/podman-apps.nix` boots it.
+  domain and refuse a chart that needs more. `losos-traefik` (its own
+  user) holds `losos.apps.ports`, an entrypoint `port-<n>` each, LAN only
+  through the `lan-only@file` ipAllowList (RFC 1918 minus 10.42/16). Routes
+  are labels `compose.rs` writes on every service (`app-<name>`, dropping an
+  app's own `traefik.*`/`losos.*`), read through `losos-podman-api`, a
+  socket-activated Podman API of `notshared` only Traefik's group opens; a
+  `shared` app gets a route file in `/var/lib/losos-apps/traefik/`. No
+  nginx forward, no reload. API and metrics on `127.0.0.1:8089`
+  (`losos.apps.traefikPort`), the job waits on it. Settings › Statistics and
+  the Overview's Statistics tile draw `src/statistics/` (shared with the
+  edge's manage page). `nix/tests/podman-apps.nix` boots it.
 - `chat.nix` + `backend/src/chat.rs` + `admin-ui/app/src/chat/` (LosOS
   Chat, `/chat/`, its own Vite page of the admin UI): Dendrite as `shared` in
   `/home/shared/data/chat`, only while `lososInternal.sharedSide`
@@ -750,8 +761,8 @@ quotes (it used to cut inside them, which mangled the default
 `modules/cluster.nix` + `modules/cloud.nix` + `modules/git.nix`):
 systemd-nspawn is gone, and so are Nextcloud and Forgejo. LosOS Cloud and
 LosOS Git are host services of their own on Unix sockets, and the box's own
-k3s cluster runs only the apps of its shared side. Nginx is the only thing
-holding public ports: path-based routing on the appliance's mDNS name
+k3s cluster runs only the apps of its shared side. Nginx holds the web ports
+(Traefik holds only the installed apps' LAN range): path-based routing on the appliance's mDNS name
 (`/cloud/` plus the Nextcloud client addresses, `/git/`) and the admin SPA on
 the same vhost. `admin-ui/design-system/` (`tokens.css` + `losos.css`, plus
 a `react/` wrapper package for claude.ai/design) is **dev-machine-only and no

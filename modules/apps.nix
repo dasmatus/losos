@@ -36,11 +36,20 @@
 #                     the files it ships, or for a chart the Compose file
 #                     the box made of it), one commit per install, update
 #                     and removal. The job writes it as `notshared`.
-#   the forwards      nginx includes one file per installed app from
-#                     forwardDir, forwarding a port of losos.apps.ports to
-#                     the app, LAN only. The job writes the file and reloads
-#                     nginx. The box's own apps get a path on the front door
-#                     instead.
+#   losos-traefik     Traefik, which holds losos.apps.ports: one
+#                     entrypoint per port, LAN only. It reads its routes off
+#                     the apps' containers, whose labels the shaping writes
+#                     (backend/src/compose.rs `route`), through
+#                     losos-podman-api, a socket-activated Podman API of
+#                     `notshared` that only Traefik's group may open. A
+#                     `shared` app, a Helm release with no container labels,
+#                     gets a route file in traefikDir from the job instead.
+#                     Nothing reloads: an app's port opens when its
+#                     containers start and closes when they go. The box's
+#                     own apps get a path on the front door (nginx) instead.
+#                     Its API and metrics answer on 127.0.0.1 only
+#                     (losos.apps.traefikPort), for the job and for lososd's
+#                     statistics plugin.
 #
 # WHY THE SHAPING. The local cluster has no pod network, no kube-proxy and no
 # DNS, and its node is NotReady for life (modules/cluster.nix). A chart as
@@ -53,6 +62,22 @@
 # ProtectHome=true, and the shaping makes the app's folders under
 # /home/<user>/data. A unit started by PID 1 is outside that sandbox and
 # outlives a lososd restart.
+#
+# WHY TRAEFIK HERE AND NGINX IN FRONT. nginx stays the front door: LosOS
+# Login's auth_request, the CSP arms, the sockets only its group may open
+# (LosOS Cloud, LosOS Git) and the Nextcloud addresses all live in its
+# vhost, and none of that is an app's business. What Traefik takes is the
+# forward range, which was one nginx file per app, written by root and
+# applied by a reload that could fail and take every forward with it.
+# Labels make the route part of the app: written once by the shaping,
+# committed with its Compose file to the apps repo, gone with its
+# containers.
+#
+# WHY TRAEFIK IS NOT NOTSHARED. Whoever opens the Podman API can run
+# anything as `notshared`, so the socket is the whole grant and Traefik's
+# own user adds no wall against that. It still keeps a Traefik bug from
+# reading the owner's files directly, and keeps the `shared` apps' traffic
+# out of the owner's uid.
 #
 # WHY LINGER. Rootless Podman wants a user manager: /run/user/1000, a user
 # bus, and systemd scopes for the containers. Lingering gives `notshared`
@@ -168,12 +193,11 @@ let
   helm = pkgs.kubernetes-helm;
   stateDir = "/var/lib/losos/apps";
   helmHome = "/var/lib/losos/helm";
-  forwardDir = "/var/lib/losos-apps/nginx";
   # k3s writes it on start (root, 0600). /etc/rancher is persisted.
   kubeconfig = "/etc/rancher/k3s/k3s.yaml";
 
   # Ports an app may not listen on. Everything the box itself listens on or
-  # may listen on, and the forward range, which nginx holds. An app on one of
+  # may listen on, and the forward range, which Traefik holds. An app on one of
   # these would either fail to bind or, after a reboot that started it
   # first, take the port from the service that owns it.
   reserved = lib.unique (
@@ -198,6 +222,7 @@ let
       10259
       config.losos.cluster.kubeletPort
       10268
+      cfg.traefikPort
     ]
     ++ lib.range cfg.ports.from cfg.ports.to
   );
@@ -238,37 +263,95 @@ let
     EOF
   '';
 
-  # The forward for one app. Same guard as `lanOnly` in
-  # modules/containers.nix, for the same reasons: LAN only, never loopback
-  # (the tunnel delivers from there), never the pod CIDR. IPv4 only, as the
-  # front vhost listens: a `[::]` listen on a box without IPv6 would stop
-  # nginx from starting at the next boot.
-  forwardTemplate = pkgs.writeText "losos-app-forward.conf" ''
-    server {
-      listen @FRONT@;
-      if ($remote_addr = $server_addr) {
-        return 403;
-      }
-      deny 10.42.0.0/16;
-      allow 10.0.0.0/8;
-      allow 172.16.0.0/12;
-      allow 192.168.0.0/16;
-      deny all;
-      client_max_body_size 0;
-      location / {
-        proxy_pass http://127.0.0.1:@APP@;
-        proxy_http_version 1.1;
-        proxy_set_header Host $http_host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
-        proxy_buffering off;
-        proxy_read_timeout 1h;
-      }
+  # Traefik (see the header). Its file provider reads traefikDir: the
+  # middleware below, linked in by tmpfiles, and a route file per `shared`
+  # app, which the job writes.
+  traefikDir = "/var/lib/losos-apps/traefik";
+  traefikApi = "http://127.0.0.1:${toString cfg.traefikPort}";
+  podmanApiSocket = "/run/losos-podman-api/podman.sock";
+  yaml = pkgs.formats.yaml { };
+
+  # The same guard as lan-only.nix, in Traefik's terms: the RFC 1918 ranges
+  # with the mesh's pod network (10.42.0.0/16) cut out, because
+  # ipAllowList has no deny. Loopback matches none of them, so the tunnel
+  # (which delivers from 127.0.0.1) is turned away as on the admin routes.
+  # lan-only.nix's other line, a source equal to the address it arrived
+  # on, guards routes nothing else on the box can reach; an app's port is
+  # on 127.0.0.1 for anything on the box anyway, so it adds nothing here.
+  lanRanges = [
+    "10.0.0.0/11"
+    "10.32.0.0/13"
+    "10.40.0.0/15"
+    "10.43.0.0/16"
+    "10.44.0.0/14"
+    "10.48.0.0/12"
+    "10.64.0.0/10"
+    "10.128.0.0/9"
+    "172.16.0.0/12"
+    "192.168.0.0/16"
+  ];
+  traefikMiddleware = yaml.generate "losos-traefik-middleware.yml" {
+    http.middlewares.lan-only.ipAllowList.sourceRange = lanRanges;
+  };
+
+  # One entrypoint per port of the range, on every address as nginx's
+  # forwards were. No read timeout: an upload to an app is as long as it
+  # is, and Traefik's default cuts a request at 60 s.
+  traefikStatic = yaml.generate "losos-traefik.yml" {
+    global = {
+      checkNewVersion = false;
+      sendAnonymousUsage = false;
+    };
+    log.level = "WARN";
+    entryPoints = {
+      # `api.insecure` serves the API on the entrypoint of this name.
+      traefik.address = "127.0.0.1:${toString cfg.traefikPort}";
     }
-  '';
+    // lib.listToAttrs (
+      map (
+        port:
+        lib.nameValuePair "port-${toString port}" {
+          address = ":${toString port}";
+          transport.respondingTimeouts = {
+            readTimeout = "0s";
+            writeTimeout = "0s";
+            idleTimeout = "1h";
+          };
+        }
+      ) (lib.range cfg.ports.from cfg.ports.to)
+    );
+    providers = {
+      docker = {
+        endpoint = "unix://${podmanApiSocket}";
+        exposedByDefault = false;
+        watch = true;
+      };
+      file = {
+        directory = traefikDir;
+        watch = true;
+      };
+    };
+    api = {
+      insecure = true;
+      dashboard = false;
+    };
+    ping.entryPoint = "traefik";
+    metrics.prometheus = {
+      entryPoint = "traefik";
+      addEntryPointsLabels = true;
+      addRoutersLabels = true;
+      addServicesLabels = true;
+      buckets = [
+        0.05
+        0.1
+        0.25
+        0.5
+        1.0
+        2.5
+        5.0
+      ];
+    };
+  };
 
   appsJob = pkgs.writeShellApplication {
     name = "losos-apps";
@@ -277,6 +360,7 @@ let
       pkgs.kubectl
       pkgs.jq
       pkgs.yq-go
+      pkgs.curl
       pkgs.coreutils
       pkgs.gnused
       pkgs.gnutar
@@ -291,7 +375,7 @@ let
       dir="''${LOSOS_APPS_DIR:-${stateDir}}/$release"
       record="$dir/app.json"
       ns="losos-app-$release"
-      forward="${forwardDir}/$release.conf"
+      route_file="${traefikDir}/$release.yml"
 
       export KUBECONFIG=${kubeconfig}
       export HELM_CACHE_HOME=${helmHome}/cache
@@ -316,9 +400,6 @@ let
         sed -e '/^[[:space:]]*$/d' "$1" | tail -n 1 | sed -e 's/^Error: //' | cut -c 1-400
       }
 
-      reload_nginx() {
-        systemctl reload nginx.service
-      }
 
       run_as=$(jq -r '.runAs' "$record")
       kind=$(jq -r '.kind // "chart"' "$record")
@@ -364,24 +445,40 @@ let
         repo_commit "$verb $release"
       }
 
-      # The forward for the app's port, once it runs. A reload tests the
-      # configuration first and keeps the old one if it fails; the file is
-      # taken back out so the next boot's nginx does not stumble over it.
-      open_port() {
+      # The app's LAN port is open once Traefik has its route: from the
+      # containers' labels for a notshared app, from a route file the job
+      # writes for a shared one. Traefik picks either up within a few
+      # seconds; a minute without it is a failure the owner should see.
+      wait_route() {
+        local provider=$1 port=$2 i
+        [[ "$port" =~ ^[0-9]+$ ]] || return 0
+        for _ in $(seq 1 60); do
+          if curl -fsS -o /dev/null "${traefikApi}/api/http/routers/app-$release@$provider"; then
+            return 0
+          fi
+          sleep 1
+        done
+        set_phase failed "The app is installed, but the box could not open its port." "$port"
+        exit 1
+      }
+
+      # A shared app's route, which no container label carries. Written
+      # whole and renamed into place, so Traefik never reads half a file.
+      write_route() {
         local port=$1 front
         front=$(jq -r '.frontPort' "$record")
-        if [[ "$port" =~ ^[0-9]+$ && "$front" =~ ^[0-9]+$ ]]; then
-          sed -e "s/@FRONT@/$front/" -e "s/@APP@/$port/" ${forwardTemplate} > "$forward.tmp"
-          mv "$forward.tmp" "$forward"
-        else
-          rm -f "$forward"
+        if [[ ! "$port" =~ ^[0-9]+$ || ! "$front" =~ ^[0-9]+$ ]]; then
+          rm -f "$route_file"
+          return 0
         fi
-        if ! reload_nginx; then
-          rm -f "$forward"
-          reload_nginx || true
-          set_phase failed "The app is installed, but the box could not open its port." "$port"
-          exit 1
-        fi
+        jq -n --arg name "app-$release" --arg ep "port-$front" --arg url "http://127.0.0.1:$port" '{
+          http: {
+            routers: { ($name): { entryPoints: [$ep], rule: "PathPrefix(`/`)", middlewares: ["lan-only@file"], service: $name } },
+            services: { ($name): { loadBalancer: { servers: [{ url: $url }] } } }
+          }
+        }' > "$route_file.tmp"
+        chmod 644 "$route_file.tmp"
+        mv "$route_file.tmp" "$route_file"
       }
 
       # Why a shaping failed: the shaper's own sentence, else the last thing
@@ -408,8 +505,9 @@ let
       )
       report="$dir/render.json"
       rm -f "$report"
+      front=$(jq -r '.frontPort // empty' "$record")
       shape_args=(--release="$release" --run-as="$run_as" --reserved="${reservedArg}"
-        --taken="$taken" --report="$report")
+        --taken="$taken" --report="$report" ''${front:+--front-port="$front"})
 
       # Before notshared apps ran on Podman they were Helm releases in the
       # box's own cluster, under the same name. Installing or removing one
@@ -489,7 +587,7 @@ let
             exit 1
           fi
           port=$(jq '.port // null' "$report")
-          open_port "$port"
+          wait_route docker "$port"
           if ! repo_store; then
             echo "losos-apps: $release runs, but its Compose file is not in the apps repo" >&2
           fi
@@ -515,7 +613,8 @@ let
             exit 1
           fi
           port=$(jq '.port // null' "$report")
-          open_port "$port"
+          write_route "$port"
+          wait_route file "$port"
           set_phase running "" "$port"
           echo "losos-apps: $release is running"
           ;;
@@ -528,8 +627,6 @@ let
             exit 1
           fi
           rm -rf "$project"
-          rm -f "$forward"
-          reload_nginx || true
           if [[ -d ${appsRepo}/$release ]]; then
             as_owner rm -rf "${appsRepo}/$release"
             repo_commit "Remove $release" || true
@@ -547,10 +644,15 @@ let
             exit 1
           fi
           kubectl delete namespace "$ns" --ignore-not-found --wait=false
-          rm -f "$forward"
-          reload_nginx || true
+          rm -f "$route_file"
           rm -rf "$dir"
           echo "losos-apps: $release removed"
+          ;;
+
+        # A shared app's route file again, from its record: at boot, for an
+        # app installed before Traefik held the range.
+        route:shared)
+          write_route "$(jq -r '.appPort // empty' "$record")"
           ;;
 
         *)
@@ -571,6 +673,9 @@ in
           LOSOS_APPS_PORTS = "${toString cfg.ports.from}-${toString cfg.ports.to}";
           LOSOS_APPS_BUILTIN = lib.concatStringsSep "," builtinNames;
           LOSOS_HELM_HOME = helmHome;
+          # lososd's statistics plugin reads Traefik's metrics here
+          # (backend/plugins/statistics).
+          LOSOS_TRAEFIK_URL = traefikApi;
         }
         # A `shared` app needs the box's own cluster (backend/src/apps.rs).
         // lib.optionalAttrs localCluster { LOSOS_APPS_KUBE = "1"; };
@@ -583,14 +688,123 @@ in
         ];
       };
 
-      services.nginx.appendHttpConfig = ''
-        include ${forwardDir}/*.conf;
-      '';
-
       systemd.tmpfiles.rules = [
         "d /var/lib/losos-apps 0755 root root -"
-        "d ${forwardDir} 0755 root root -"
+        "d ${traefikDir} 0755 root root -"
+        "L+ ${traefikDir}/00-losos.yml - - - - ${traefikMiddleware}"
+        # nginx's forwards, one file per app, before Traefik held the range.
+        "R /var/lib/losos-apps/nginx - - - - -"
       ];
+
+      users.users.losos-traefik = {
+        isSystemUser = true;
+        group = "losos-traefik";
+        description = "Traefik, the LAN ports of the installed apps";
+      };
+      users.groups.losos-traefik = { };
+
+      # notshared's Podman API, for Traefik alone: the socket is
+      # notshared's and Traefik's group may open it. Socket-activated, so a
+      # box with no installs runs no API until Traefik first asks.
+      systemd.sockets.losos-podman-api = {
+        description = "Podman API of notshared, for Traefik";
+        wantedBy = [ "sockets.target" ];
+        listenStreams = [ podmanApiSocket ];
+        socketConfig = {
+          SocketUser = "notshared";
+          SocketGroup = "losos-traefik";
+          SocketMode = "0660";
+          DirectoryMode = "0755";
+        };
+      };
+      systemd.services.losos-podman-api = {
+        description = "Podman API of notshared, for Traefik";
+        requires = [ "losos-podman-api.socket" ];
+        wants = [ "user@${toString owner.uid}.service" ];
+        after = [
+          "losos-podman-api.socket"
+          "user@${toString owner.uid}.service"
+        ];
+        environment = podmanEnv;
+        path = [ "/run/wrappers" ];
+        serviceConfig = {
+          User = "notshared";
+          Group = "notshared";
+          # No address: Podman takes the socket systemd hands it.
+          ExecStart = "${podmanPkg}/bin/podman system service --time=0";
+          Restart = "on-failure";
+          # Stopping the API must not take the apps' containers with it.
+          KillMode = "process";
+        };
+      };
+
+      systemd.services.losos-traefik = {
+        description = "Traefik, the LAN ports of the installed apps";
+        wantedBy = [ "multi-user.target" ];
+        wants = [
+          "network-online.target"
+          "losos-podman-api.socket"
+        ];
+        after = [
+          "network-online.target"
+          "losos-podman-api.socket"
+          "systemd-tmpfiles-setup.service"
+        ];
+        serviceConfig = {
+          ExecStart = "${pkgs.traefik}/bin/traefik --configFile=${traefikStatic}";
+          User = "losos-traefik";
+          Group = "losos-traefik";
+          Restart = "always";
+          RestartSec = 2;
+          NoNewPrivileges = true;
+          CapabilityBoundingSet = "";
+          ProtectSystem = "strict";
+          ProtectHome = true;
+          PrivateTmp = true;
+          PrivateDevices = true;
+          ProtectKernelTunables = true;
+          ProtectKernelModules = true;
+          ProtectKernelLogs = true;
+          ProtectControlGroups = true;
+          ProtectClock = true;
+          ProtectHostname = true;
+          RestrictNamespaces = true;
+          RestrictRealtime = true;
+          RestrictSUIDSGID = true;
+          LockPersonality = true;
+          MemoryDenyWriteExecute = true;
+          RestrictAddressFamilies = [
+            "AF_INET"
+            "AF_INET6"
+            "AF_UNIX"
+          ];
+          SystemCallArchitectures = "native";
+          SystemCallFilter = [ "@system-service" ];
+          LimitNOFILE = 65536;
+        };
+      };
+
+      # A shared app installed before Traefik held the range has a record
+      # and no route file: the job writes one from the record.
+      systemd.services.losos-app-routes = lib.mkIf localCluster {
+        description = "Routes of the installed shared apps";
+        wantedBy = [ "multi-user.target" ];
+        after = [ "systemd-tmpfiles-setup.service" ];
+        path = [ pkgs.jq ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+        };
+        script = ''
+          for record in ${stateDir}/*/app.json; do
+            [[ -e "$record" ]] || continue
+            if jq -e '.runAs == "shared" and .phase == "running"' "$record" > /dev/null; then
+              release=$(jq -r .release "$record")
+              [[ -e "${traefikDir}/$release.yml" ]] || ${lib.getExe appsJob} route "$release"
+            fi
+          done
+        '';
+      };
 
       networking.firewall.allowedTCPPortRanges = [
         {
@@ -687,12 +901,18 @@ in
             [[ -e "$record" ]] || continue
             if jq -e '.runAs == "notshared" and .phase == "running"' "$record" > /dev/null; then
               release=$(jq -r .release "$record")
-              if [[ -e "${podmanHome}/projects/$release/compose.json" ]]; then
+              compose="${podmanHome}/projects/$release/compose.json"
+              labelled=0
+              if [[ -e "$compose" ]] && jq -e '[.services[].labels["losos.app"]] | all' "$compose" > /dev/null; then
+                labelled=1
+              fi
+              if [[ "$labelled" == 1 ]] || { [[ -e "$compose" ]] && ! ${lib.boolToString enabled}; }; then
                 systemctl start --no-block "losos-podman-app@$release.service"
               elif ${lib.boolToString enabled}; then
-                # Installed while notshared apps were Helm releases: the
-                # job makes it a Podman project and takes the old one away,
-                # as lososd would run it.
+                # Installed while notshared apps were Helm releases, or
+                # shaped before its containers carried their route: the job
+                # shapes it again, takes any old copy away and starts it, as
+                # lososd would run it.
                 systemd-run --no-block --unit "losos-app-$release" \
                   --description "losos app install $release" \
                   --property CollectMode=inactive-or-failed \
