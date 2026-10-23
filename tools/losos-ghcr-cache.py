@@ -70,10 +70,20 @@ def fetch_artifact(hash_value):
             nar_source = root / nar_name
             if not nar_source.is_file():
                 return False
-            destination = CACHE / "nar" / hash_value
+            nar_root = (CACHE / "nar").resolve()
+            destination = (nar_root / hash_value).resolve()
+            try:
+                destination.relative_to(nar_root)
+            except ValueError:
+                return False
             destination.mkdir(parents=True, exist_ok=True)
             nar_target = destination / nar_name
-            os.replace(nar_source, nar_target)
+            nar_target_resolved = nar_target.resolve()
+            try:
+                nar_target_resolved.relative_to(destination)
+            except ValueError:
+                return False
+            os.replace(nar_source, nar_target_resolved)
             rewritten = []
             for line in lines:
                 rewritten.append(f"URL: nar/{hash_value}/{nar_name}" if line.startswith("URL: ") else line)
