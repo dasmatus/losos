@@ -30,7 +30,7 @@ pkgs.testers.nixosTest {
     systemd.sysupdate.transfers."50-losos-components".Source = lib.mkForce {
       Type = "url-file";
       Path = "http://127.0.0.1:18991/";
-      MatchPattern = "losos-components_@v.tar.xz";
+      MatchPattern = "losos-components_@v.tar";
     };
 
     systemd.services.losos-sysupdate-proxy.enable = lib.mkForce false;
@@ -64,7 +64,7 @@ pkgs.testers.nixosTest {
 
     machine.succeed("systemd-sysupdate list")
     machine.succeed("systemd-sysupdate update")
-    machine.succeed("test -s /var/lib/losos-sysupdate/archives/losos-components_42.tar.xz")
+    machine.succeed("test -s /var/lib/losos-sysupdate/archives/losos-components_42.tar")
     machine.succeed("python3 /etc/losos-sysupdate-apply.py --extract-only")
     machine.succeed("grep -Fx persistent-update-payload /var/lib/losos-sysupdate/slots/losos-components_42/cache/marker.txt")
 
