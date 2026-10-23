@@ -11,9 +11,10 @@ let
   apply = pkgs.writeShellScriptBin "losos-sysupdate-apply" (builtins.readFile ../tools/losos-sysupdate-apply.sh);
 in
 {
-  # Disable NixOS's separate 03:00 nixos-upgrade timer. Its ExecStartPre
-  # config sync is performed (best-effort) by the sysupdate activation script.
-  system.autoUpgrade.enable = lib.mkForce false;
+  # The classic NixOS auto-upgrade stays enabled until separately published,
+  # signed release bundles are available. The activation service is present
+  # for validation/manual use; CI's follow-up change enables its timer and
+  # switches off the legacy updater atomically with artifact publication.
 
   environment.etc."sysupdate.d/50-losos.transfer".text = ''
     [Transfer]
@@ -91,14 +92,5 @@ in
     };
   };
 
-  systemd.timers.losos-sysupdate = {
-    description = "Check for LosOS updates each night";
-    wantedBy = [ "timers.target" ];
-    timerConfig = {
-      OnCalendar = "03:00";
-      Persistent = true;
-      RandomizedDelaySec = "30m";
-      Unit = "losos-sysupdate.service";
-    };
   };
 }
