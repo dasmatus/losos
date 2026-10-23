@@ -114,29 +114,49 @@ class ApplyTests(unittest.TestCase):
                     [(7, "losos-components_7"), (19, "losos-components_19")],
                 )
 
-    def test_import_requires_valid_store_paths_and_nix_signature_checking(self):
+    def test_import_requires_nix_signatures_and_signed_version_metadata(self):
         with tempfile.TemporaryDirectory() as temporary:
-            directory = Path(temporary) / "losos-components_23"
+            root = Path(temporary)
+            directory = root / "losos-components_23"
             cache = directory / "cache"
             cache.mkdir(parents=True)
             (cache / "nix-cache-info").write_text("StoreDir: /nix/store\n")
             (cache / ("a" * 32 + ".narinfo")).write_text("StorePath: /nix/store/example\n")
             store_path = "/nix/store/" + ("a" * 32) + "-losos-ctl"
-            manifest = {
+            signed_manifest_path = "/nix/store/" + ("b" * 32) + "-losos-sysupdate-metadata.json"
+            store_root = root / "store"
+            store_root.mkdir()
+            metadata = {
                 "format": 1,
                 "version": 23,
                 "sourceVersion": "v-test",
                 "commit": "0123456789abcdef",
                 "storePaths": [store_path],
             }
+            (store_root / Path(signed_manifest_path).name).write_text(json.dumps(metadata))
+            manifest = {
+                **metadata,
+                "signedManifestStorePath": signed_manifest_path,
+            }
             (directory / "manifest.json").write_text(json.dumps(manifest))
+
             with patch.object(apply.subprocess, "run") as run:
-                result = apply.import_bundle(23, directory)
+                result = apply.import_bundle(23, directory, store_root=store_root)
             self.assertEqual(result["version"], 23)
+            self.assertEqual(result["signedManifestStorePath"], signed_manifest_path)
             args = run.call_args.args[0]
             self.assertIn("--recursive", args)
             self.assertNotIn("--no-check-sigs", args)
             self.assertIn(store_path, args)
+            self.assertIn(signed_manifest_path, args)
+
+            # An attacker must not be able to relabel old, valid Nix store
+            # paths as a newer release by editing the transport manifest.
+            metadata["version"] = 22
+            (store_root / Path(signed_manifest_path).name).write_text(json.dumps(metadata))
+            with patch.object(apply.subprocess, "run"):
+                with self.assertRaisesRegex(ValueError, "version does not match"):
+                    apply.import_bundle(23, directory, store_root=store_root)
 
     def test_archive_extracts_under_persistent_slots_and_rejects_traversal(self):
         with tempfile.TemporaryDirectory() as temporary:
