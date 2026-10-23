@@ -46,7 +46,6 @@ in
     requiresMountsFor = [ cache ];
     path = [ pkgs.openssl ];
     environment = {
-      LOSOS_SYSUPDATE_CONFIG_SYNC = if config.losos.configRepo.upstream.enable then "1" else "0";
       LOSOS_SYSUPDATE_CACHE_DIR = cache;
       LOSOS_SYSUPDATE_CERT = toString certificate;
       LOSOS_SYSUPDATE_REPOSITORY = "dasmatus/losos";
@@ -70,6 +69,9 @@ in
 
   systemd.services.losos-sysupdate = {
     description = "Download and activate the newest signed LosOS system update";
+    environment = {
+      LOSOS_SYSUPDATE_CONFIG_SYNC = if config.losos.configRepo.upstream.enable then "1" else "0";
+    };
     wants = [ "network-online.target" "losos-sysupdate-proxy.service" ];
     requires = [ "losos-sysupdate-proxy.service" ];
     after = [ "network-online.target" "losos-sysupdate-proxy.service" ];
