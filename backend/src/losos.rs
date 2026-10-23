@@ -112,13 +112,6 @@ pub trait Losos {
     /// daemon answers from its scanner's cache; the fake answers what a test
     /// put there. Never an error for "nothing found": that is a status.
     fn edge_status(&mut self) -> anyhow::Result<crate::edge::EdgeStatus>;
-    /// Make `cluster` the secondary cluster this box belongs to, or (`None`)
-    /// let it settle anew, and choose its path again. Returns the status
-    /// with the new path.
-    fn set_edge_cluster(
-        &mut self,
-        cluster: Option<&str>,
-    ) -> anyhow::Result<crate::edge::EdgeStatus>;
 
     /// Record the custom domains that are live for this box on its edge, for
     /// LosOS Cloud to trust (`trusted_domains`) and to build its links from
@@ -1118,28 +1111,6 @@ pub fn cmd_edge<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
     Ok(out)
 }
 
-/// The owner moves the box to another secondary cluster in reach, or lets it
-/// settle anew (`POST /api/edge/cluster`, `{"cluster": "office"}` or
-/// `{"cluster": null}`). The box then takes a gateway of that cluster as its
-/// path, and its mesh joins that cluster's control plane.
-///
-/// # Errors
-/// [`crate::edge::ClusterNotInReach`] for a cluster none of whose gateways
-/// answered the last scan.
-pub fn cmd_edge_cluster<L: Losos>(l: &mut L, cluster: Option<&str>) -> anyhow::Result<Value> {
-    let status = l.edge_status()?;
-    match cluster {
-        Some(c) => crate::edge::check_cluster_move(&status, c)?,
-        None => {
-            if let Some(url) = &status.held {
-                return Err(crate::edge::HeldByDomain(url.clone()).into());
-            }
-        }
-    }
-    let status = l.set_edge_cluster(cluster)?;
-    Ok(json!({ "cluster": status.cluster, "path": status.path }))
-}
-
 /// The management switch as `GET /api/edge` shows it: which edge could
 /// manage the box now (or why none can), which one the owner switched it on
 /// for, and whether that one is the edge in use.
@@ -2002,12 +1973,6 @@ mod tests {
             fn edge_status(&mut self) -> anyhow::Result<crate::edge::EdgeStatus> {
                 self.0.edge_status()
             }
-            fn set_edge_cluster(
-                &mut self,
-                cluster: Option<&str>,
-            ) -> anyhow::Result<crate::edge::EdgeStatus> {
-                self.0.set_edge_cluster(cluster)
-            }
             fn write_public_names(&mut self, names: &[String]) -> anyhow::Result<()> {
                 self.0.write_public_names(names)
             }
@@ -2378,60 +2343,6 @@ mod tests {
                 .unwrap_err()
                 .downcast_ref::<crate::edge::NotManageable>(),
             Some(&crate::edge::NotManageable::NoLocalEdge)
-        );
-    }
-
-    #[test]
-    fn the_owner_moves_the_box_between_secondary_clusters() {
-        use crate::edge::{Edge, EdgeStatus, Source, Tier};
-        let gw = |cluster: &str, member: &str| Edge {
-            name: member.into(),
-            url: format!("http://{member}.local:8443"),
-            source: Source::Lan,
-            official: false,
-            rathole: Some(format!("{member}.local:2333")),
-            tier: Tier::Secondary,
-            cluster: Some(cluster.into()),
-            member: Some(member.into()),
-        };
-        let mut fake = FakeLosos::new();
-        fake.edge = EdgeStatus::found(
-            vec![
-                gw("office", "gw-a"),
-                gw("office", "gw-b"),
-                gw("lab", "gw-z"),
-            ],
-            true,
-            None,
-        );
-        let doc = cmd_edge(&mut fake).unwrap();
-        assert_eq!(doc["cluster"], "office");
-        assert_eq!(doc["path"]["tier"], "secondary");
-        assert_eq!(doc["path"]["member"], "gw-a");
-        assert_eq!(doc["clusters"][1]["gateways"][1], "gw-b");
-
-        let doc = cmd_edge_cluster(&mut fake, Some("lab")).unwrap();
-        assert_eq!(doc["cluster"], "lab");
-        assert_eq!(doc["path"]["member"], "gw-z");
-        let e = cmd_edge_cluster(&mut fake, Some("garage")).unwrap_err();
-        assert_eq!(
-            e.downcast_ref::<crate::edge::ClusterNotInReach>(),
-            Some(&crate::edge::ClusterNotInReach("garage".into()))
-        );
-        assert_eq!(fake.edge.cluster.as_deref(), Some("lab"));
-
-        // A custom domain holds the box where it is: no move, no settling anew.
-        fake.edge.held = Some("http://gw-z.local:8443".into());
-        for target in [Some("office"), None] {
-            let e = cmd_edge_cluster(&mut fake, target).unwrap_err();
-            assert!(
-                e.downcast_ref::<crate::edge::HeldByDomain>().is_some(),
-                "{e}"
-            );
-        }
-        assert_eq!(
-            cmd_edge(&mut fake).unwrap()["held"],
-            "http://gw-z.local:8443"
         );
     }
 

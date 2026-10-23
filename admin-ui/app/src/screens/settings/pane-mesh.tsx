@@ -8,8 +8,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Alert02Icon, CheckmarkBadge01Icon } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 import { Rich, useT } from "@/lib/i18n-react";
-import { postEdgeCluster, postEdgeManage, useMe, type EdgePath, type EdgeProxy, type EdgeTier } from "@/lib/api";
-import { Button } from "@/components/ui/button";
+import { postEdgeManage, useMe } from "@/lib/api";
 import { toast } from "@/components/ui/toast";
 import { HourStrip } from "./hour-strip";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue, StackRow, SwitchRow } from "./rows";
@@ -85,86 +84,37 @@ function EdgeSign({ official }: { official: boolean }) {
   );
 }
 
-/* Every link is one of three tiers (handbook in-depth/edge-federation,
- * "Three tiers"). Edges join edges in the main cluster: primary, which a box
- * never holds itself. A box joins a local gateway of its secondary cluster:
- * secondary. Only when no gateway of its own cluster answers does it go
- * straight to an official edge: tertiary. The first row says which one the
- * box is on now, each edge row which one that edge would be. */
-function tierWord(t: ReturnType<typeof useT>, tier: EdgeTier | undefined): string {
-  return t(tier === "tertiary" ? "panes.mesh.tier.tertiary" : tier === "primary" ? "panes.mesh.tier.primary" : "panes.mesh.tier.secondary");
-}
-
-function LinkRow({ path, cluster }: { path: EdgePath; cluster: string | null }) {
-  const t = useT();
-  const tier = path.tier ?? "secondary";
-  const title =
-    tier === "secondary"
-      ? t("panes.mesh.link.secondary", { gateway: path.member ?? path.name })
-      : t("panes.mesh.link.tertiary", { name: path.name });
-  const detail =
-    tier === "secondary"
-      ? path.cluster !== undefined
-        ? t("panes.mesh.link.secondaryDetail", { cluster: path.cluster })
-        : t("panes.mesh.link.secondaryLone")
-      : cluster !== null
-        ? t("panes.mesh.link.tertiaryFallback", { cluster })
-        : t("panes.mesh.link.tertiaryDetail");
-  return (
-    <Row data-link-tier={tier}>
-      <RowText title={title} detail={detail} />
-      <RowValue className={tier === "secondary" ? "text-ok" : undefined}>{tierWord(t, tier)}</RowValue>
-    </Row>
-  );
-}
-
-function edgeDetail(t: ReturnType<typeof useT>, edge: EdgeProxy): string {
-  const via = t(edge.source === "configured" ? "panes.mesh.edge.viaInternet" : "panes.mesh.edge.viaLan");
-  return edge.cluster !== undefined
-    ? t("panes.mesh.edge.inCluster", { via, cluster: edge.cluster, url: edge.url })
-    : t("panes.mesh.edge.where", { via, url: edge.url });
-}
-
 export function EdgeGroup({ view }: { view: EdgeView }) {
   const t = useT();
   const { state } = view;
   if (state.kind === "known" && state.edge.reachable) {
     const edges = state.edge.edges;
-    const path = state.edge.path ?? null;
     return (
       <PaneSection>
         <GroupTitle>{t("panes.mesh.edge.title")}</GroupTitle>
         <TooltipProvider>
           <Group>
-            {path !== null ? <LinkRow path={path} cluster={state.edge.cluster ?? null} /> : null}
-            {edges.map((edge, i) => {
-              const inUse = path !== null && path.url === edge.url;
-              return (
-                <Row
-                  key={edge.url}
-                  last={i === edges.length - 1}
-                  data-edge="found"
-                  data-edge-official={edge.official ? "yes" : "no"}
-                  data-edge-tier={edge.tier ?? "secondary"}
-                  data-edge-in-use={inUse ? "yes" : "no"}
-                >
-                  <RowText
-                    title={
-                      <span className="inline-flex items-center gap-1.5">
-                        <span>{t("panes.mesh.edge.found", { name: edge.member ?? edge.name })}</span>
-                        <EdgeSign official={edge.official} />
-                      </span>
-                    }
-                    detail={edgeDetail(t, edge)}
-                  />
-                  <RowValue className={inUse ? "text-ok" : undefined}>
-                    {inUse
-                      ? t("panes.mesh.edge.inUse", { tier: tierWord(t, edge.tier) })
-                      : tierWord(t, edge.tier)}
-                  </RowValue>
-                </Row>
-              );
-            })}
+            {edges.map((edge, i) => (
+              <Row
+                key={edge.url}
+                last={i === edges.length - 1}
+                data-edge="found"
+                data-edge-official={edge.official ? "yes" : "no"}
+              >
+                <RowText
+                  title={
+                    <span className="inline-flex items-center gap-1.5">
+                      <span>{t("panes.mesh.edge.found", { name: edge.name })}</span>
+                      <EdgeSign official={edge.official} />
+                    </span>
+                  }
+                  detail={edge.url}
+                />
+                <RowValue className="text-ok">
+                  {t(edge.source === "configured" ? "panes.mesh.edge.viaInternet" : "panes.mesh.edge.viaLan")}
+                </RowValue>
+              </Row>
+            ))}
           </Group>
         </TooltipProvider>
         <GroupCaption>
@@ -212,77 +162,6 @@ export function EdgeGroup({ view }: { view: EdgeView }) {
         </Row>
       </Group>
       <GroupCaption>{t("panes.mesh.edge.caption")}</GroupCaption>
-    </PaneSection>
-  );
-}
-
-/* The secondary clusters in reach. A box belongs to one: the one its owner
- * put it in here, or the one it settled in first (the one with the most
- * gateways). It stays there while none of that cluster's gateways answers,
- * going tertiary meanwhile, because a box never moves its own membership:
- * only this button does. Taking effect at once, like the manage switch. */
-export function ClusterGroup({ view, locked }: { view: EdgeView; locked: boolean }) {
-  const t = useT();
-  const me = useMe();
-  const [busy, setBusy] = React.useState<string | null>(null);
-  const { state } = view;
-  if (state.kind !== "known" || state.edge.clusters === undefined) return null;
-  const mine = state.edge.cluster ?? null;
-  const rows = [...state.edge.clusters];
-  if (mine !== null && !rows.some((c) => c.name === mine)) rows.push({ name: mine, gateways: [] });
-  if (rows.length === 0) return null;
-  const admin = me === null || me.admin;
-  const move = async (name: string): Promise<void> => {
-    setBusy(name);
-    try {
-      await postEdgeCluster(name);
-      toast.done(t("panes.mesh.cluster.moved", { cluster: name }));
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "";
-      toast.error(t("panes.mesh.cluster.failed"), message, { help: "edge-tiers" });
-    } finally {
-      setBusy(null);
-      view.refresh();
-    }
-  };
-  return (
-    <PaneSection>
-      <GroupTitle>{t("panes.mesh.cluster.title")}</GroupTitle>
-      <Group>
-        {rows.map((c, i) => {
-          const isMine = c.name === mine;
-          return (
-            <Row key={c.name} last={i === rows.length - 1} data-cluster={c.name} data-cluster-mine={isMine ? "yes" : "no"}>
-              <RowText
-                title={c.name}
-                detail={
-                  c.gateways.length === 0
-                    ? t("panes.mesh.cluster.noneAnswers")
-                    : t("panes.mesh.cluster.gateways", { gateways: c.gateways.join(", ") })
-                }
-              />
-              {isMine ? (
-                <RowValue className={c.gateways.length === 0 ? "text-warn" : "text-ok"}>
-                  {t("panes.mesh.cluster.mine")}
-                </RowValue>
-              ) : admin ? (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={locked || busy !== null}
-                  onClick={() => void move(c.name)}
-                >
-                  {busy === c.name ? <Spinner size={14} /> : null}
-                  {t("panes.mesh.cluster.move")}
-                </Button>
-              ) : null}
-            </Row>
-          );
-        })}
-      </Group>
-      <GroupCaption>
-        {t("panes.mesh.cluster.caption")} <HelpLink entry="edge-tiers" />
-      </GroupCaption>
     </PaneSection>
   );
 }
@@ -390,7 +269,6 @@ export function MeshPane({ form }: { form: SettingsForm }) {
   return (
     <>
       <EdgeGroup view={edge} />
-      <ClusterGroup view={edge} locked={form.locked} />
       <ManageGroup view={edge} locked={form.locked} />
 
       <PaneSection>

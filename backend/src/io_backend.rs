@@ -587,26 +587,6 @@ fn edge_identity(url: &str, nonce: &str) -> Option<String> {
         .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
-/// `GET {url}/cluster/secondary`: what the edge says it is (a gateway or
-/// not, its secondary cluster and its name in it), or `None` when it does
-/// not say (an edge from before secondary clusters, or any failure). Same
-/// curl discipline as the health probe.
-fn edge_describe(url: &str) -> Option<crate::edge::Described> {
-    let out = std::process::Command::new("curl")
-        .args(["--silent", "--show-error", "--fail"])
-        .args(["--max-time", &crate::edge::PROBE_TIMEOUT_SECS.to_string()])
-        .args(["--max-redirs", "0"])
-        .args(["--max-filesize", "65536"])
-        .arg(format!("{url}/cluster/secondary"))
-        .stdin(std::process::Stdio::null())
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    crate::edge::parse_described(&String::from_utf8_lossy(&out.stdout))
-}
-
 /// The LosOS root public key this box trusts, from the file
 /// `$LOSOS_EDGE_ROOT_KEY_FILE` names (`losos.proxy.officialRootKeyFile`).
 /// An absent or empty file means no edge can be official: fail closed.
@@ -653,7 +633,6 @@ fn scan_edge_now() -> crate::edge::EdgeStatus {
         configured.as_deref(),
         configured_rathole.as_deref(),
         edge_answers,
-        edge_describe,
         &trust,
         edge_identity,
         now,
@@ -670,19 +649,14 @@ fn scan_edge_now() -> crate::edge::EdgeStatus {
 /// the configured edge until the first scan. `systemctl` is asked not to
 /// block: this runs on the scanner thread, and a unit that takes a while
 /// to stop must not delay the next scan.
-/// `$LOSOS_EDGE_PATH_FILE`, set by modules/daemon.nix with the master proxy
-/// on: the env file the tunnel units read the path from.
-fn edge_path_file() -> Option<PathBuf> {
-    std::env::var("LOSOS_EDGE_PATH_FILE")
+fn drive_edge_path(status: &crate::edge::EdgeStatus) {
+    let Some(path_file) = std::env::var("LOSOS_EDGE_PATH_FILE")
         .ok()
         .filter(|v| !v.is_empty())
-        .map(PathBuf::from)
-}
-
-fn drive_edge_path(status: &crate::edge::EdgeStatus) {
-    let Some(path_file) = edge_path_file() else {
+    else {
         return;
     };
+    let path_file = PathBuf::from(path_file);
     let none_file = std::env::var("LOSOS_EDGE_NONE_FILE")
         .ok()
         .filter(|v| !v.is_empty())
@@ -769,16 +743,6 @@ fn drive_edge_path(status: &crate::edge::EdgeStatus) {
             "systemctl {verb} of the tunnel units failed"
         ),
         Err(e) => tracing::error!(error = %e, "could not run systemctl for the tunnel units"),
-    }
-    // Into another secondary cluster: the mesh join runs again against it,
-    // and the agent follows (modules/cluster.nix). `try-restart` leaves a box
-    // whose mesh is off alone.
-    if crate::edge::moved_cluster(prev.as_deref(), next.as_deref()) {
-        tracing::info!("the box moved to another secondary cluster: joining its mesh");
-        let _ = std::process::Command::new("systemctl")
-            .args(["try-restart", "--no-block"])
-            .args(crate::edge::MESH_UNITS)
-            .output();
     }
 }
 
@@ -1651,8 +1615,7 @@ impl IoLosos {
     /// thread calls on its cadence, and what `edge_status` falls back to
     /// before the thread's first pass.
     pub fn scan_edge(&self) -> crate::edge::EdgeStatus {
-        let mut status = scan_edge_now();
-        self.route_edge(&mut status);
+        let status = scan_edge_now();
         tracing::debug!(
             reachable = status.reachable,
             edges = status.edges.len(),
@@ -1663,103 +1626,6 @@ impl IoLosos {
         drive_edge_path(&status);
         self.publish_managed();
         status
-    }
-
-    /// Where the box keeps the secondary cluster it belongs to
-    /// (`crate::edge::choose_path`): one line, beside `state.json`.
-    fn edge_cluster_file(&self) -> PathBuf {
-        self.paths.state_dir.join("edge-cluster")
-    }
-
-    fn edge_cluster(&self) -> Option<String> {
-        std::fs::read_to_string(self.edge_cluster_file())
-            .ok()
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-    }
-
-    fn edge_hold_file(&self) -> PathBuf {
-        self.paths.state_dir.join("edge-hold.env")
-    }
-
-    /// The path a live custom domain holds this box to. Taken the first time
-    /// a scan sees live domains (the path in use then, which is the edge the
-    /// domain was set up through), dropped once the box has none. Kept in
-    /// the env file's own format beside `state.json`.
-    fn edge_hold(&self, current_env: Option<&str>) -> Option<crate::edge::EdgePath> {
-        let names =
-            std::fs::read_to_string(env_or("LOSOS_PUBLIC_NAMES_FILE", DEFAULT_PUBLIC_NAMES_FILE))
-                .ok()
-                .and_then(|t| serde_json::from_str::<Vec<String>>(&t).ok())
-                .unwrap_or_default();
-        let file = self.edge_hold_file();
-        if names.is_empty() {
-            if let Err(e) = remove_if_present(&file) {
-                tracing::warn!(error = %e, "could not drop the custom domain's hold on the edge");
-            }
-            return None;
-        }
-        if let Some(held) = std::fs::read_to_string(&file)
-            .ok()
-            .and_then(|env| crate::edge::path_from_env(&env))
-        {
-            return Some(held);
-        }
-        let env = current_env?;
-        let held = crate::edge::path_from_env(env)?;
-        tracing::info!(edge = %held.url, "a custom domain holds this box to the edge it uses");
-        if let Err(e) = atomic_write(&file, env.as_bytes()) {
-            tracing::warn!(error = %e, "could not write down the custom domain's edge");
-        }
-        Some(held)
-    }
-
-    /// Choose the path for this box: in its own cluster, staying on the
-    /// gateway it uses now, or on the edge a custom domain holds it to. A
-    /// box in no cluster yet settles in the one the rule picked, and that is
-    /// written down so the next scan keeps it.
-    fn route_edge(&self, status: &mut crate::edge::EdgeStatus) {
-        let member_of = self.edge_cluster();
-        let current_env = edge_path_file().and_then(|f| std::fs::read_to_string(f).ok());
-        let current = current_env
-            .as_deref()
-            .and_then(|env| crate::edge::env_value(env, "LOSOS_EDGE_PATH_URL"))
-            .map(str::to_string);
-        let hold = self.edge_hold(current_env.as_deref());
-        status.route(member_of.as_deref(), current.as_deref(), hold.as_ref());
-        if member_of.is_none() {
-            if let Some(cluster) = &status.cluster {
-                tracing::info!(cluster = %cluster, "this box settles in a secondary cluster");
-                if let Err(e) =
-                    atomic_write(&self.edge_cluster_file(), format!("{cluster}\n").as_bytes())
-                {
-                    tracing::warn!(error = %e, "could not write down the box's secondary cluster");
-                }
-            }
-        }
-    }
-
-    /// The owner moves the box to `cluster`, or lets it settle anew
-    /// (`None`): written down, then the path is chosen again from the last
-    /// scan and the tunnel units follow at once.
-    pub fn set_edge_cluster(
-        &self,
-        cluster: Option<&str>,
-    ) -> anyhow::Result<crate::edge::EdgeStatus> {
-        match cluster {
-            Some(c) => atomic_write(&self.edge_cluster_file(), format!("{c}\n").as_bytes())?,
-            None => match std::fs::remove_file(self.edge_cluster_file()) {
-                Ok(()) => {}
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                Err(e) => return Err(e.into()),
-            },
-        }
-        let mut status = self.edge_cached();
-        self.route_edge(&mut status);
-        *self.edge.lock().unwrap_or_else(|p| p.into_inner()) = Some(status.clone());
-        drive_edge_path(&status);
-        self.publish_managed();
-        Ok(status)
     }
 
     /// Whether the company edge in use may manage this box now
@@ -1845,13 +1711,6 @@ impl Losos for IoLosos {
 
     fn edge_status(&mut self) -> anyhow::Result<crate::edge::EdgeStatus> {
         Ok(self.edge_cached())
-    }
-
-    fn set_edge_cluster(
-        &mut self,
-        cluster: Option<&str>,
-    ) -> anyhow::Result<crate::edge::EdgeStatus> {
-        IoLosos::set_edge_cluster(self, cluster)
     }
 
     fn save_state(&mut self, s: &State) -> anyhow::Result<()> {
