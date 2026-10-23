@@ -54,7 +54,7 @@ pkgs.testers.nixosTest {
 
     virtualisation.memorySize = 1024;
     virtualisation.cores = 2;
-    environment.systemPackages = [ pkgs.findutils pkgs.util-linux ];
+    environment.systemPackages = [ pkgs.findutils pkgs.python3 pkgs.util-linux ];
   };
 
   testScript = ''
