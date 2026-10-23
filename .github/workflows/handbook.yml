@@ -14,7 +14,9 @@ name: handbook
 # answer. ci.yml's publish-cache and publish-tool jobs leave it as the
 # artifacts losos-pages-cache and losos-pages-updates on every push to main;
 # this workflow runs again when ci finishes on main and deploys the newest of
-# each under /proxy. The handbook has no page there, so nothing collides.
+# each under /proxy. The separately versioned, XZ-compressed component bundle
+# is published at /sysupdate for systemd-sysupdate; it is never embedded in
+# the installer ISO or attached to the installer release.
 #
 # The box's own copy at /handbook/ is a separate build of the same source
 # (nix/packages.nix, losos-handbook), built by ci.yml's registrar-and-ui
@@ -99,6 +101,7 @@ jobs:
           }
           fetch losos-pages-cache build/proxy
           fetch losos-pages-updates build/proxy/updates/main/x86_64
+          fetch losos-pages-sysupdate build/sysupdate
           du -sh build build/proxy 2>/dev/null || true
       # The public site is rooted at / on losos.dasmat.us; the box's copy is
       # rooted at /handbook/ and is built by nix, not here.
