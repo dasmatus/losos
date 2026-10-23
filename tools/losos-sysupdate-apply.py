@@ -255,7 +255,9 @@ def validate_store_paths(manifest: dict[str, Any]) -> list[str]:
     return paths
 
 
-def import_bundle(version: int, directory: Path) -> dict[str, object]:
+def import_bundle(
+    version: int, directory: Path, *, store_root: Path = Path("/nix/store")
+) -> dict[str, object]:
     manifest_path = directory / "manifest.json"
     cache = directory / "cache"
     if manifest_path.is_symlink() or not manifest_path.is_file():
@@ -267,26 +269,48 @@ def import_bundle(version: int, directory: Path) -> dict[str, object]:
         raise ValueError("slot version does not match manifest version")
     paths = validate_store_paths(manifest)
 
+    # The transport manifest isn't signed by itself. Bind its version and root
+    # list to a separate Nix-store file signed with the existing trusted cache
+    # key, so a mirror cannot republish old signed packages as a newer release.
+    signed_manifest_path = manifest.get("signedManifestStorePath")
+    if not isinstance(signed_manifest_path, str) or not STORE_PATH_PATTERN.fullmatch(signed_manifest_path):
+        raise ValueError("manifest does not name a valid signed metadata store path")
+
     cache = cache.resolve()
     if cache.parent != directory.resolve() or not (cache / "nix-cache-info").is_file():
         raise ValueError("bundle does not contain a valid local Nix binary cache")
     if not list(cache.glob("*.narinfo")):
         raise ValueError("bundle's Nix cache has no narinfo records")
 
-    # Do not pass --no-check-sigs: Nix must validate each imported store
-    # object against the trusted keys configured by modules/cache.nix. CI signs
-    # the entire closure before it creates this cache.
+    # Do not pass --no-check-sigs: Nix must validate every imported path,
+    # including the signed metadata file, against losos.cache.trustedPublicKeys.
     subprocess.run(
-        ["nix", "copy", "--from", cache.as_uri(), "--recursive", *paths],
+        ["nix", "copy", "--from", cache.as_uri(), "--recursive", *paths, signed_manifest_path],
         check=True,
         stdin=subprocess.DEVNULL,
     )
+
+    signed_manifest_file = store_root / Path(signed_manifest_path).name
+    if signed_manifest_file.is_symlink() or not signed_manifest_file.is_file():
+        raise ValueError("signed update metadata is not a regular file in the Nix store")
+    signed_metadata = json.loads(signed_manifest_file.read_text(encoding="utf-8"))
+    if not isinstance(signed_metadata, dict) or signed_metadata.get("format") != 1:
+        raise ValueError("unsupported signed update metadata format")
+    if signed_metadata.get("version") != version:
+        raise ValueError("signed update metadata version does not match the archive version")
+    if signed_metadata.get("sourceVersion") != manifest.get("sourceVersion"):
+        raise ValueError("source version differs from signed update metadata")
+    if signed_metadata.get("commit") != manifest.get("commit"):
+        raise ValueError("commit differs from signed update metadata")
+    if signed_metadata.get("storePaths") != paths:
+        raise ValueError("store path list differs from signed update metadata")
 
     return {
         "version": version,
         "sourceVersion": str(manifest.get("sourceVersion", "unknown")),
         "commit": str(manifest.get("commit", "unknown")),
         "storePaths": len(paths),
+        "signedManifestStorePath": signed_manifest_path,
     }
 
 
