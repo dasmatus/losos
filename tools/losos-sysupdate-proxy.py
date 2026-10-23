@@ -55,6 +55,26 @@ def stale(name: str, path: Path) -> bool:
     return False
 
 
+def prune_bundle_cache() -> None:
+    """Retain the two newest versioned archives and remove orphaned partials."""
+    for partial in CACHE_DIR.glob(".*.part"):
+        try:
+            partial.unlink(missing_ok=True)
+        except OSError:
+            pass
+    versions: list[tuple[int, Path]] = []
+    for path in CACHE_DIR.iterdir():
+        match = ALLOWED_BUNDLE.fullmatch(path.name)
+        if match and path.is_file() and not path.is_symlink():
+            versions.append((int(match.group(1)), path))
+    versions.sort(key=lambda item: item[0], reverse=True)
+    for _version, path in versions[2:]:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def download(name: str, destination: Path) -> Path:
     CACHE_DIR.mkdir(mode=0o750, parents=True, exist_ok=True)
     with cache_lock(name):
@@ -75,13 +95,28 @@ def download(name: str, destination: Path) -> Path:
                 with urllib.request.urlopen(request, timeout=90) as response:
                     if response.status != 200:
                         raise OSError(f"upstream returned HTTP {response.status}")
+                    length = response.headers.get("Content-Length")
+                    if name != "SHA256SUMS" and length is not None:
+                        try:
+                            declared = int(length)
+                        except ValueError as error:
+                            raise OSError("upstream returned an invalid Content-Length") from error
+                        if declared < 1 or declared > MAX_BUNDLE_BYTES:
+                            raise OSError("update archive exceeds the 20 GiB download limit")
+                    total = 0
                     with part.open("wb") as output:
-                        shutil.copyfileobj(response, output, length=1024 * 1024)
+                        while block := response.read(1024 * 1024):
+                            total += len(block)
+                            if name != "SHA256SUMS" and total > MAX_BUNDLE_BYTES:
+                                raise OSError("update archive exceeds the 20 GiB download limit")
+                            output.write(block)
                         output.flush()
                         os.fsync(output.fileno())
                 if part.stat().st_size == 0:
                     raise OSError("upstream returned an empty update file")
                 os.replace(part, destination)
+                if ALLOWED_BUNDLE.fullmatch(name):
+                    prune_bundle_cache()
                 return destination
             except (OSError, urllib.error.URLError, TimeoutError) as error:
                 last_error = error
@@ -147,6 +182,7 @@ def main() -> None:
     if not 1 <= PORT <= 65535:
         raise SystemExit("invalid proxy port")
     CACHE_DIR.mkdir(mode=0o750, parents=True, exist_ok=True)
+    prune_bundle_cache()
     server = ThreadingHTTPServer((BIND, PORT), Handler)
     server.daemon_threads = True
     print(
