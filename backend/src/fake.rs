@@ -297,9 +297,6 @@ impl FakeLosos {
                     source: crate::edge::Source::Lan,
                     official: true,
                     rathole: Some("edge.local:2333".to_string()),
-                    tier: crate::edge::Tier::Tertiary,
-                    cluster: None,
-                    member: None,
                 }],
                 true,
                 None,
@@ -533,16 +530,6 @@ impl Losos for FakeLosos {
     /// The real classifier, run against a scripted registrar.
     fn edge_status(&mut self) -> anyhow::Result<crate::edge::EdgeStatus> {
         self.edge_asked += 1;
-        Ok(self.edge.clone())
-    }
-
-    /// The real path rule, over the scripted scan.
-    fn set_edge_cluster(
-        &mut self,
-        cluster: Option<&str>,
-    ) -> anyhow::Result<crate::edge::EdgeStatus> {
-        let current = self.edge.path.as_ref().map(|p| p.url.clone());
-        self.edge.route(cluster, current.as_deref(), None);
         Ok(self.edge.clone())
     }
 
