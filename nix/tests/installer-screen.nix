@@ -42,6 +42,7 @@ let
       services.lvm.enable = true;
 
       environment.etc."losos/disko-script".source = pkgs.writeShellScript "disko-held" ''
+        echo "tty2-live-log-test: disko script started"
         while [ ! -e /run/losos-go ]; do sleep 1; done
         exec ${config.system.build.diskoScript}
       '';
@@ -102,6 +103,9 @@ pkgs.testers.nixosTest {
     with subtest("the steps, with the running one marked"):
         splash.wait_for_text("Erasing and encrypting")
         splash.screenshot("progress")
+        # The long-running script keeps a PTY on tty1 and mirrors its output
+        # to tty2 without replacing the main progress panel.
+        splash.wait_until_tty_matches("2", "tty2-live-log-test")
         splash.succeed("touch /run/losos-go")
 
     with subtest("how it ended, and the log and a shell after a key"):
@@ -140,8 +144,10 @@ pkgs.testers.nixosTest {
         text.wait_until_tty_matches("1", "format\\+mount complete")
         text.wait_until_tty_matches("1", "This is a root shell")
 
-    with subtest("the other consoles log root in to a shell"):
+    with subtest("tty2 is the live log and tty3 remains a root shell"):
         text.succeed("chvt 2")
-        text.wait_until_tty_matches("2", "root@")
+        text.wait_until_tty_matches("2", "LosOS installer live log")
+        text.succeed("chvt 3")
+        text.wait_until_tty_matches("3", "root@")
   '';
 }
