@@ -57,8 +57,9 @@ sync -f "$state/applied-version.new"
 mv -f "$state/applied-version.new" "$state/applied-version"
 sync -f "$state"
 
-# Reclaim only LosOS update bundles and chunks, after activation succeeded.
-# Failed updates retain these persistent files so the next attempt can resume.
+# Reclaim this release's multi-gigabyte archive and split parts only after the
+# switch succeeded. Interrupted/failed updates leave these persistent files for
+# retry; never delete them in the download or activation failure paths.
 cache="${LOSOS_SYSUPDATE_CACHE_DIR:-/persist/var/cache/losos-sysupdate-proxy}"
 shopt -s nullglob
 cached_bundles=( "$cache"/bundles/losos-update_*.tar.xz* )

@@ -1,4 +1,5 @@
-# Installs Nix with this project's substituters, for the GitHub Actions lane.
+# Installs Determinate Nix with this project's substituters and enables KVM
+# where the GitHub runner exposes /dev/kvm, for the NixOS QEMU test lane.
 #
 # The retired Codeberg lane ran every job inside docker.io/nixos/nix and set
 # the cache through a workflow-level `NIX_CONFIG`. That worked there only
@@ -10,8 +11,8 @@
 # multi-user, the workflow user is not in `trusted-users`, and so
 # `extra-substituters` in the environment is dropped with a warning — leaving a
 # green workflow that compiles losos-ctl from source in every job that touches
-# it. The fix is to write the settings into /etc/nix/nix.conf *before* the
-# daemon starts, which is what `extra_nix_config` does.
+# it. The fix is to supply the settings through Determinate's `extra-conf`
+# input, which writes them into /etc/nix/nix.conf during installation.
 #
 # The container approach is not portable here either: GitHub injects its own
 # glibc-linked Node into container jobs to exec JavaScript actions, and
@@ -34,9 +35,10 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: cachix/install-nix-action@v31
+    - uses: DeterminateSystems/nix-installer-action@v22
       with:
-        github_access_token: ${{ inputs.github-token }}
+        github-token: ${{ inputs.github-token }}
+        kvm: true
         # `extra-substituters`, never plain `substituters` — replacing the list
         # would drop cache.nixos.org, which serves the overwhelming majority of
         # any closure here, and trade a small win for a very large loss. The
@@ -46,7 +48,7 @@ runs:
         # the push half in .github/actions/proxy-push: without it every job
         # rebuilds our own paths from source even when an earlier run already
         # pushed an identical one, which for losos-ctl alone is ~9 minutes.
-        extra_nix_config: |
+        extra-conf: |
           experimental-features = nix-command flakes
           extra-substituters = http://127.0.0.1:8787 https://losos.dasmat.us/proxy
           extra-trusted-public-keys = losos-1:35OIuYFMKDrlC6yTzqivDPqNqZTMjM0l2MB89bRRreg=

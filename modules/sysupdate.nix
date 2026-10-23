@@ -1,7 +1,7 @@
 # systemd-sysupdate transports signed, versioned release bundles. The target is
 # a directory on the encrypted persistent volume, not /tmp or tmpfs. We then
 # activate from the versioned source bundle so per-machine settings survive.
-{ config, pkgs, ... }:
+{ config, lib, pkgs, ... }:
 
 let
   updateRoot = "/persist/var/lib/losos-sysupdate";
@@ -11,10 +11,10 @@ let
   apply = pkgs.writeShellScriptBin "losos-sysupdate-apply" (builtins.readFile ../tools/losos-sysupdate-apply.sh);
 in
 {
-  # The classic NixOS auto-upgrade stays enabled until separately published,
-  # signed release bundles are available. The activation service is present
-  # for validation/manual use; CI's follow-up change enables its timer and
-  # switches off the legacy updater atomically with artifact publication.
+  # The release CI below publishes this exact signed bundle alongside its
+  # detached signature. Fail closed on unsigned manifests and let sysupdate
+  # own the nightly schedule once that distribution path is enabled.
+  system.autoUpgrade.enable = lib.mkForce false;
 
   environment.etc."sysupdate.d/50-losos.transfer".text = ''
     [Transfer]
@@ -71,6 +71,7 @@ in
     description = "Download and activate the newest signed LosOS system update";
     environment = {
       LOSOS_SYSUPDATE_CONFIG_SYNC = if config.losos.configRepo.upstream.enable then "1" else "0";
+      LOSOS_SYSUPDATE_CACHE_DIR = cache;
     };
     wants = [ "network-online.target" "losos-sysupdate-proxy.service" ];
     requires = [ "losos-sysupdate-proxy.service" ];
@@ -93,5 +94,16 @@ in
       UMask = "0022";
     };
   };
+
+  systemd.timers.losos-sysupdate = {
+    description = "Check for LosOS updates each night";
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnCalendar = "03:00";
+      Persistent = true;
+      Unit = "losos-sysupdate.service";
+    };
+  };
+
 
 }
