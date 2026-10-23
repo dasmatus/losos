@@ -137,6 +137,28 @@ Aus dem Menü **⋯** oben an einem Issue:
   Kalenderdatei;
 - **Kontakt der zuständigen Person** öffnet die Person in Kontakte.
 
+Ein Rechtsklick auf ein Issue in einer Liste oder auf dem Board bietet **In
+neuem Tab öffnen**, **Link kopieren**, **Kürzel und Titel kopieren**, **An
+die Seitenleiste anheften** und dieselben Einträge für Mail und Chat.
+
+**Issue anlegen** beginnt ein Issue aus einer anderen App. Es öffnet einen
+neuen Tab mit Titel und Text schon ausgefüllt, die du vor dem Anlegen
+ändern kannst:
+
+- in LosOS Mail zitiert die Schaltfläche oben an einer Nachricht die
+  Nachricht;
+- in LosOS Chat zitiert sie das Menü einer Nachricht;
+- in LosOS Cloud verlinkt das Rechtsklick-Menü einer Datei die Datei;
+- in Office und Notizen zitiert die Leiste über markierten Wörtern sie.
+
+Als Administrator heftest du ein Issue oder ein Projekt mit der Nadel oben
+an die Seitenleiste der Admin-Seiten, und die [Suche](./admin-pages.md#search)
+der Admin-Seiten findet Issues nach Wörtern oder Kürzel. Die Kachel
+**Issues** auf der Übersicht zählt die offenen Issues, die dir zugewiesen
+sind. Tippst du `@` in eine Beschreibung, einen Kommentar oder eine Karte in
+LosOS Diagrams, stehen Issues neben Personen und Dateien zur Wahl, und
+ebenso im Link-Knopf über markierten Wörtern in Office und Notizen.
+
 Mail, Chat und Kontakte gibt es, wenn die Box teilt und in einem Mesh ist.
 Jedes dir zugewiesene Issue mit Fälligkeitsdatum steht auch in einem
 Kalender-Abo unter `https://<box>.local/git/api/v1/tracker/calendar.ics`.

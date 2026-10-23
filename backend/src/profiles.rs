@@ -279,6 +279,7 @@ pub fn render(person: &crate::people::Listed, profile: &Profile) -> Value {
         "accentChosen": profile.accent.is_some(),
         "picture": url(Kind::Picture),
         "banner": url(Kind::Banner),
+        "role": crate::roles::role_of(&person.groups).role.as_str(),
     })
 }
 

@@ -7,6 +7,8 @@ mdx:
 
 # Architecture
 
+![The Overview.](../img/overview.png)
+
 ## Systems in the flake
 
 | Output                        | What                                             |

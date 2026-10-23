@@ -15,10 +15,13 @@
 //            closed, the board and a card dragged to In Progress, the
 //            status menu from the keyboard, the palette (Ctrl+K) finding an
 //            issue a pull request closed, a new issue typed word by word,
-//            the inbox, the cycles, the Garden board LosOS Cloud had, and
-//            the repository with its issues in the sidebar;
-//   before   the same repository and /git/issues on pages without the
-//            tracker.
+//            the inbox, the cycles, the Garden board LosOS Cloud had, the
+//            repository with its issues in the sidebar, then the rest of
+//            the box: an issue pinned from its top bar and another from
+//            its right-click menu, both on the admin page's sidebar, and
+//            the admin page's search listing and finding issues;
+//   before   the same repository, /git/issues and the admin page's search
+//            on pages without the tracker.
 //
 // The window is 1280 x 900 at twice the pixels, dark, en-US, reduced motion,
 // Europe/Bratislava. Each picture waits for the page to settle: no request
@@ -227,6 +230,49 @@ async function tracker(s, base) {
   await s.take("repository", "the repository, with its issues in the sidebar", { kind: "none" }, {
     issues: p.locator("[data-slot=sidebar-menu-button]", { hasText: "Issues" }).last(),
   });
+
+  // The rest of the box: pins on the admin page's sidebar and its search.
+  await p.goto(`${base}/git/issues/p/BT?open=BT-5`);
+  const pin = p.locator('[data-pin="issue:BT-5"]');
+  await pin.waitFor();
+  await s.take("pin-button", "the pin at the top of an issue", { kind: "click", target: "pin" }, { pin });
+  await pin.click();
+  await p.locator('[data-pin="issue:BT-5"][aria-pressed="true"]').waitFor();
+  await row(p, "BT-1").click({ button: "right" });
+  const menu = p.locator('[data-slot="context-menu"]');
+  const pinItem = menu.getByRole("menuitem", { name: "Pin to sidebar" });
+  await pinItem.waitFor();
+  await s.take("row-menu", "an issue's right-click menu", { kind: "click", target: "pin" }, { menu, pin: pinItem });
+  await pinItem.click();
+  await menu.waitFor({ state: "detached" });
+
+  await p.goto(`${base}/`);
+  const pinned = p.getByRole("navigation", { name: "Sections", exact: true }).getByRole("group", { name: "Pinned" });
+  await pinned.getByRole("link", { name: /Backup runs twice/ }).waitFor();
+  const tile = p.getByRole("main").getByRole("link", { name: /^Issues/ }).first();
+  await tile.waitFor();
+  await s.take("sidebar-pins", "two issues on the admin page's sidebar, and the Issues tile", { kind: "press", target: "search" }, {
+    pinned,
+    tile,
+  });
+
+  await p.keyboard.press("Control+Shift+P");
+  const field = p.getByRole("combobox", { name: /^Search pages/ });
+  await field.waitFor();
+  const issues = p.locator("dialog[open]").getByRole("group", { name: "Issues in LosOS Git", exact: true });
+  await issues.getByRole("option").first().waitFor();
+  await s.take("search-idle", "the search with nothing typed: the open issues given to me", { kind: "type", target: "field" }, {
+    field,
+    issues,
+  });
+  await typeWords(s, "free space", "search", "the admin page's search", () => ({ field, issues }));
+  const hit = issues.getByRole("option", { name: /Check free space/ });
+  await hit.waitFor();
+  await s.take("search-found", "an issue found from the admin page", { kind: "click", target: "hit" }, { hit });
+  await hit.click();
+  await p.waitForURL(/\/git\/issues\/BT-6/);
+  await p.locator("[data-reader]").waitFor();
+  await s.take("search-opened", "the issue, opened from the admin page");
 }
 
 async function before(s, base) {
@@ -237,6 +283,14 @@ async function before(s, base) {
   await p.goto(`${base}/git/issues`);
   await p.waitForLoadState("networkidle");
   await s.take("issues", "/git/issues");
+  await p.goto(`${base}/`);
+  await p.getByRole("navigation", { name: "Sections", exact: true }).waitFor();
+  await s.take("overview", "the admin page");
+  await p.keyboard.press("Control+Shift+P");
+  const field = p.getByRole("combobox", { name: /^Search pages/ });
+  await field.fill("free space");
+  await p.waitForTimeout(2000);
+  await s.take("search", "the admin page's search for free space");
 }
 
 function parse(argv) {
