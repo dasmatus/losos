@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Safely unpack versioned systemd-sysupdate archives and import signed Nix roots.
 
+The upstream artifact is XZ-compressed *.tar.xz. systemd-sysupdate decodes
+url-file sources into a regular-file target, so the persistent target carries
+an uncompressed .tar archive before this helper extracts its contents.
+
 systemd-sysupdate downloads each XZ archive as a regular file below
 /var/lib/losos-sysupdate/archives. This helper extracts it under
 /var/lib/losos-sysupdate/slots, never /tmp or /run, and refuses path traversal,
@@ -153,7 +157,7 @@ def extract_archive(version: int, archive: Path) -> Path:
     try:
         # Stream in order: do not load an attacker-controlled TAR directory
         # into memory via getmembers(), and never use tarfile.extract/extractall.
-        with tarfile.open(archive, mode="r|xz") as bundle:
+        with tarfile.open(archive, mode="r|") as bundle:
             for member in bundle:
                 count += 1
                 if count > MAX_ARCHIVE_MEMBERS:
