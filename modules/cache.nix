@@ -21,23 +21,18 @@
 # npm build; while it was a `cp -rT` of some static files, pushing it saved a
 # target nothing worth measuring.
 #
-# CI also READS from this cache — setup-nix uses repository variables for the
-# proxy URL and public key. The appliance carries the same two values as the
-# defaults of losos.cache.* (modules/options.nix), so a stock install pulls
-# from the cache without the owner configuring anything; nix/tests/invariants.nix
-# pins them. Set losos.cache.substituters = [ ] to opt out.
+# The appliance and installer ISO use the same local GHCR-backed substituter,
+# configured by losos.cache.* (modules/options.nix), so a stock install pulls
+# prebuilt paths without a hosted cache proxy. CI may use its own local proxy
+# process; nix/tests/invariants.nix pins the appliance defaults. Set
+# losos.cache.substituters = [ ] to opt out.
 #
-# The second default substituter is the same proxy under its vercel.app name,
-# which answers when the custom domain does not resolve. It shares the
-# Vercel project, so it does not help once that project's usage runs out.
-#
-# The third is a static copy of the same paths on the GitHub Pages site (https://losos.dasmat.us/proxy, written by
-# .github/scripts/pages-cache.sh and deployed with the handbook), signed with
-# the same key, for when the proxy on Vercel does not answer. It carries only
-# the newest main build, and its Priority of 45 puts it after both the proxy
-# and cache.nixos.org.
+# The local substituter fetches individual signed OCI cache artifacts directly
+# from GHCR with oras. The GitHub Pages copy remains a remote fallback and is
+# signed with the same key.
 {
   lib,
+  pkgs,
   config,
   ...
 }:
@@ -62,16 +57,34 @@ in
 
   nix.settings = lib.mkIf enabled {
     # extra-* rather than replacing the defaults: cache.nixos.org still serves
-    # the 766 stock paths that are most of any closure here, and dropping it to
-    # add ours would trade a small win for a very large loss.
+    # upstream NixOS paths, and dropping it to add ours would be a regression.
     extra-substituters = cfg.substituters;
     extra-trusted-public-keys = cfg.trustedPublicKeys;
-
-    # A cache that is unreachable must not wedge the nightly rebuild. At 03:00
-    # on a box with no shell, "carry on and build it yourself" is the only
-    # acceptable behaviour; the alternative is a rebuild that hangs until it is
-    # killed and a generation that never switches.
     connect-timeout = 5;
     fallback = true;
+  };
+
+  # Nix speaks its ordinary binary-cache HTTP protocol to localhost. On a
+  # cache miss this service uses oras to pull the matching per-store-path OCI
+  # artifact from GHCR, rewrites only the unsigned URL field in narinfo, and
+  # serves the NAR locally. Nix still verifies the original narinfo signature.
+  systemd.services.losos-ghcr-cache = lib.mkIf enabled {
+    description = "Local GHCR-backed Nix binary cache";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "network.target" ];
+    path = [ pkgs.oras ];
+    environment = {
+      LOSOS_GHCR_CACHE = "ghcr.io/dasmatus/losos/nix-cache";
+      LOSOS_GHCR_CACHE_DIR =
+        if config.losos.installer.autorun then
+          "/mnt/persist/var/cache/losos-ghcr-cache"
+        else
+          "/var/cache/losos-ghcr-cache";
+    };
+    serviceConfig = {
+      ExecStart = "${pkgs.python3}/bin/python3 ${../tools/losos-ghcr-cache.py}";
+      Restart = "on-failure";
+      RestartSec = 3;
+    };
   };
 }
