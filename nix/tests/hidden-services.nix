@@ -499,7 +499,7 @@ pkgs.testers.runNixOSTest (
       def fetch(proxy, url, extra="", timeout=900):
           """Retries until the network has carried the request once."""
           client.wait_until_succeeds(
-              f"curl -s -o /dev/null --max-time 60 {proxy} --cacert /tmp/box-ca.pem {url}",
+              f"curl -s -o /dev/null --max-time 60 {proxy} --cacert /tmp/box-ca.pem {extra} {url}",
               timeout=timeout,
           )
           out = client.succeed(
