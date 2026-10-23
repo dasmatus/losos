@@ -3032,6 +3032,49 @@ async fn get_status(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
 }
 
 /// What the daemon found when it last looked for an edge proxy.
+/// Inspect the systemd-sysupdate transfer state for LosOS component bundles.
+async fn get_updates(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/updates", false, || {
+        let result = std::process::Command::new("systemd-sysupdate")
+            .arg("list")
+            .output();
+        match result {
+            Ok(output) if output.status.success() => HttpResponse::Ok()
+                .insert_header(("Cache-Control", "no-store"))
+                .json(serde_json::json!({
+                    "output": String::from_utf8_lossy(&output.stdout).trim().to_string(),
+                })),
+            Ok(output) => error_response(anyhow::anyhow!(
+                "systemd-sysupdate list failed: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            )),
+            Err(error) => error_response(anyhow::Error::new(error)
+                .context("starting systemd-sysupdate list")),
+        }
+    })
+}
+
+/// Ask systemd to download and extract the configured update components now.
+/// Activation still happens through the nightly machine-local NixOS rebuild.
+async fn post_updates(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/updates", true, || {
+        match std::process::Command::new("systemctl")
+            .args(["start", "--no-block", "systemd-sysupdate.service"])
+            .output()
+        {
+            Ok(output) if output.status.success() => HttpResponse::Accepted()
+                .insert_header(("Cache-Control", "no-store"))
+                .json(serde_json::json!({ "started": true })),
+            Ok(output) => error_response(anyhow::anyhow!(
+                "could not start systemd-sysupdate.service: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            )),
+            Err(error) => error_response(anyhow::Error::new(error)
+                .context("starting systemd-sysupdate.service")),
+        }
+    })
+}
+
 async fn get_edge(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     guarded(&api, &req, "/api/edge", false, || run(&api, cmd_edge))
 }
@@ -5973,6 +6016,8 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/state", web::get().to(get_state))
                 .route("/api/settings", web::get().to(get_settings))
                 .route("/api/status", web::get().to(get_status))
+                .route("/api/updates", web::get().to(get_updates))
+                .route("/api/updates", web::post().to(post_updates))
                 .route("/api/edge", web::get().to(get_edge))
                 .route("/api/edge/manage", web::post().to(post_edge_manage))
                 .route("/api/change", web::post().to(post_change))
