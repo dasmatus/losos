@@ -36,6 +36,12 @@ in
     # downloaded tar is not extracted by the privileged systemd code. Our
     # stage helper rejects links/traversal/non-regular entries, and Nix
     # verifies the signature on every imported store object.
+    Transfer = {
+      # No repository GPG keyring is configured yet. The SHA256SUMS hash check
+      # still runs; import additionally requires the trusted Nix signature on
+      # the metadata file that binds the version to the exact component roots.
+      Verify = false;
+    };
   };
 
   systemd.services.losos-sysupdate-proxy = {
