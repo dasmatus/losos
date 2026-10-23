@@ -81,7 +81,7 @@ in
   # extracting the update bundle is a prerequisite, but is weakly ordered so
   # offline boxes can still rebuild their checked-in configuration.
   systemd.services.nixos-upgrade = {
-    wants = [ "systemd-sysupdate.service" ];
-    after = [ "systemd-sysupdate.service" ];
+    wants = [ "systemd-sysupdate-update.service" ];
+    after = [ "systemd-sysupdate-update.service" ];
   };
 }
