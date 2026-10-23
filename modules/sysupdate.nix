@@ -1,7 +1,7 @@
 # systemd-sysupdate transports signed, versioned release bundles. The target is
 # a directory on the encrypted persistent volume, not /tmp or tmpfs. We then
 # activate from the versioned source bundle so per-machine settings survive.
-{ config, lib, pkgs, ... }:
+{ config, pkgs, ... }:
 
 let
   updateRoot = "/persist/var/lib/losos-sysupdate";
@@ -92,5 +92,4 @@ in
     };
   };
 
-  };
 }
