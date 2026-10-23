@@ -25,7 +25,7 @@ let
       echo "losos-sysupdate: no new verified bundle available; rebuilding the local flake" >&2
     fi
 
-    candidate_name="$(${pkgs.findutils}/bin/find "$target" -mindepth 1 -maxdepth 1 -type d -name 'losos-os_*' -printf '%f\\n' | ${pkgs.coreutils}/bin/sort -V | ${pkgs.coreutils}/bin/tail -n 1)"
+    candidate_name="$(${pkgs.findutils}/bin/find "$target" -mindepth 1 -maxdepth 1 -type d -name 'losos-os_*' -printf '%f\n' | ${pkgs.coreutils}/bin/sort -V | ${pkgs.coreutils}/bin/tail -n 1)"
     if [ -n "$candidate_name" ]; then
       candidate="$target/$candidate_name/closure.export.xz"
       version="''${candidate_name#losos-os_}"
@@ -36,7 +36,7 @@ let
       if [ -f "$candidate" ] && [ "$version" != "$imported" ]; then
         echo "losos-sysupdate: importing prebuilt closure version $version from persistent storage"
         if ${pkgs.xz}/bin/xz --decompress --stdout "$candidate" | ${config.nix.package}/bin/nix-store --import; then
-          printf '%s\\n' "$version" > "$marker.new"
+          printf '%s\n' "$version" > "$marker.new"
           mv -f "$marker.new" "$marker"
         else
           echo "losos-sysupdate: closure import failed; the normal Nix build remains the fallback" >&2
