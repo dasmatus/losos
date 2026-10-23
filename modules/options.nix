@@ -31,42 +31,59 @@ in
   # the settings by the old prefix, and keeps evaluating: each old name is a
   # hidden alias of the new one. No warning, because nix/options-doc.nix
   # reads every option and would print it on every rebuild.
+  #
+  # The edge tunnel moved from rathole to QUIC (edge/registrar/src/tunnel.rs)
+  # and its settings from `rathole` names to `tunnel` ones, aliased the same
+  # way. The rathole transport's secrets (bootstrap token, Noise keys) have
+  # no successor: the QUIC tunnel authenticates the edge by its pinned
+  # certificate and each service by the tenant token.
   imports =
-    map
-      (
-        path:
+    let
+      alias =
+        from: to:
         lib.doRename {
-          from = [
-            "losos"
-            "forgejo"
-          ]
-          ++ path;
-          to = [
-            "losos"
-            "git"
-          ]
-          ++ path;
+          from = [ "losos" ] ++ from;
+          to = [ "losos" ] ++ to;
           visible = false;
           warn = false;
           use = x: x;
           withPriority = true;
-        }
-      )
+        };
+      gone =
+        path:
+        lib.mkRemovedOptionModule ([ "losos" ] ++ path)
+          "The edge tunnel is QUIC now and authenticates the edge by its pinned certificate; drop this setting.";
+    in
+    map (path: alias ([ "forgejo" ] ++ path) ([ "git" ] ++ path)) [
+      [ "enable" ]
       [
-        [ "enable" ]
-        [
-          "site"
-          "requireSignIn"
-        ]
-        [
-          "site"
-          "defaultPrivate"
-        ]
-        [
-          "site"
-          "pushCreate"
-        ]
-      ];
+        "site"
+        "requireSignIn"
+      ]
+      [
+        "site"
+        "defaultPrivate"
+      ]
+      [
+        "site"
+        "pushCreate"
+      ]
+    ]
+    ++ [
+      (alias [ "proxy" "edgeRatholeEndpoint" ] [ "proxy" "edgeTunnelEndpoint" ])
+      (alias [ "edge" "ratholeBindAddr" ] [ "edge" "tunnelBindAddr" ])
+      (alias [ "edge" "ratholeBindPort" ] [ "edge" "tunnelBindPort" ])
+      (alias [ "edge" "ratholePortRange" ] [ "edge" "tunnelPortRange" ])
+      (alias [ "edge" "lan" "ratholeEndpoint" ] [ "edge" "lan" "tunnelEndpoint" ])
+      (alias [ "edge" "uplink" "ratholeEndpoint" ] [ "edge" "uplink" "tunnelEndpoint" ])
+    ]
+    ++ map gone [
+      [ "edge" "bootstrapTokenFile" ]
+      [ "edge" "noisePrivateKeyFile" ]
+      [ "edge" "rathole" "package" ]
+      [ "edge" "uplink" "bootstrapTokenFile" ]
+      [ "edge" "uplink" "noisePublicKeyFile" ]
+    ];
 
   options.losos = {
     targetDrives = lib.mkOption {
@@ -357,28 +374,28 @@ in
 
     # ── Master proxy (appliance side) ───────────────────────────────────────
     # Replaces the retired losos.cfd (Cloudflare Tunnel). The appliance dials
-    # out to the edge over rathole (no inbound public port) and announces
-    # itself to the edge's losos-registrar, which rewrites Traefik + rathole
-    # config there. See docs/superpowers/specs/2026-08-17-master-proxy-design.md
+    # out to the edge over a QUIC tunnel (no inbound public port) and
+    # announces itself to the edge's losos-registrar, which rewrites Traefik
+    # and the tunnel's services there. See docs/superpowers/specs/2026-08-17-master-proxy-design.md
     # and modules/proxy.nix. The edge side of the contract is losos.edge.*
     # (below). The on-box Nginx stays the slave proxy on :80.
     proxy.enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
       description = ''
-        Enable the master-proxy appliance side: a rathole client that dials
-        out to the edge (losos.proxy.edgeRatholeEndpoint) and a
+        Enable the master-proxy appliance side: a QUIC tunnel client that
+        dials out to the edge (losos.proxy.edgeTunnelEndpoint) and a
         losos-registrar announce service that registers/heartbeats this
         appliance with the edge. The on-box Nginx stays the slave proxy on
-        :80; rathole forwards the tunnel to it. No inbound public port is
+        :80; the tunnel delivers each connection to it. No inbound public port is
         opened — the no-SSH/no-public-ports invariant is preserved.
       '';
     };
 
-    proxy.edgeRatholeEndpoint = lib.mkOption {
+    proxy.edgeTunnelEndpoint = lib.mkOption {
       type = lib.types.str;
       default = "edge.losos.cfd:2333";
-      description = "host:port the rathole client dials (the edge rathole server's [server] bind).";
+      description = "host:port the tunnel client dials, QUIC on UDP or, where UDP is blocked, TLS on TCP: the edge's losos.edge.tunnelBindPort.";
     };
 
     proxy.registrarUrl = lib.mkOption {
@@ -403,7 +420,7 @@ in
       type = lib.types.str;
       default = config.losos.hostName;
       defaultText = lib.literalExpression "config.losos.hostName";
-      description = "Stable appliance id; the registry key and the rathole service name.";
+      description = "Stable appliance id; the registry key and the tunnel service name.";
     };
 
     proxy.tokenFile = lib.mkOption {
@@ -411,37 +428,26 @@ in
       default = "/var/secrets/losos-proxy-token";
       description = ''
         Per-appliance shared secret (0600, persisted via /var). Used both to
-        authenticate /register and as the rathole service token. Must match
+        authenticate /register and as the tunnel service token. Must match
         losos.edge.tenants.<applianceId>.tokenFile on the edge. Provision out
         of band (agenix or a manual write), not via the nix store.
       '';
     };
 
-    proxy.bootstrapTokenFile = lib.mkOption {
+    proxy.tunnelPinFile = lib.mkOption {
       type = secretPath;
-      default = "/var/secrets/losos-rathole-bootstrap";
+      default = "/var/secrets/losos-tunnel-pin";
       description = ''
-        The rathole default_token (0600, persisted via /var) — the shared
-        transport secret. Must match losos.edge.bootstrapTokenFile on the
-        edge. Provision out of band, not via the nix store.
-      '';
-    };
-
-    proxy.noisePublicKeyFile = lib.mkOption {
-      type = lib.types.nullOr secretPath;
-      default = "/var/secrets/losos-rathole-noise-pub";
-      description = ''
-        Where the appliance keeps the configured edge's rathole Noise
-        **public** key (base64). Nothing to provision: before the tunnel
-        first dials, losos-rathole-client fetches it from
-        losos.proxy.registrarUrl and keeps it here, and the tunnel is
-        encrypted to it from then on (trust on first use, over the
-        registrar's TLS). A file already present is never overwritten, so a
-        key distributed out of band pins the edge from the start. An edge
-        found on the LAN is pinned the same way into its own file under
+        Where the appliance keeps the SHA-256 of the configured edge's
+        tunnel certificate (64 hex characters). Nothing to provision: before
+        the tunnel first dials, losos-tunnel-client fetches it from
+        losos.proxy.registrarUrl and keeps it here, and the tunnel accepts
+        that certificate and no other from then on (trust on first use, over
+        the registrar's TLS). A file already present is never overwritten,
+        so a pin distributed out of band pins the edge from the start. An
+        edge found on the LAN is pinned the same way into its own file under
         /var/secrets/losos-edge-pins/ (lososd names it in
-        /run/losos/edge-path.env). `null` runs the tunnel in plain TCP; the
-        tunnel carries the admin token, so leave it on.
+        /run/losos/edge-path.env).
       '';
     };
 
@@ -470,13 +476,6 @@ in
       type = lib.types.str;
       default = "30s";
       description = "Cadence losos-registrar announce POSTs /heartbeat. Must be well under losos.edge.heartbeatTtl.";
-    };
-
-    proxy.rathole.package = lib.mkOption {
-      type = lib.types.package;
-      default = pkgs.rathole;
-      defaultText = lib.literalExpression "pkgs.rathole";
-      description = "rathole derivation for the appliance-side client.";
     };
 
     proxy.registrar.package = lib.mkOption {
@@ -1462,6 +1461,32 @@ in
       visible = false;
       description = "Retired with Nextcloud's admin password. Accepted and ignored.";
     };
+    # rathole's settings on the box. An Advanced-pane edit may have put them
+    # in overrides.nix, so they are accepted and ignored like the two above
+    # rather than removed: a removed option would stop the 03:00 rebuild.
+    # The edge's own (edge.bootstrapTokenFile and the rest) are removed in
+    # `imports`, since an edge's operator reads the evaluation error.
+    proxy.bootstrapTokenFile = lib.mkOption {
+      type = lib.types.anything;
+      default = null;
+      internal = true;
+      visible = false;
+      description = "Retired with rathole: the tunnel needs no bootstrap token. Accepted and ignored.";
+    };
+    proxy.noisePublicKeyFile = lib.mkOption {
+      type = lib.types.anything;
+      default = null;
+      internal = true;
+      visible = false;
+      description = "Retired with rathole: the box pins the edge's certificate in proxy.tunnelPinFile. Accepted and ignored.";
+    };
+    proxy.rathole = lib.mkOption {
+      type = lib.types.attrsOf lib.types.anything;
+      default = { };
+      internal = true;
+      visible = false;
+      description = "Retired with rathole. Accepted and ignored.";
+    };
 
     # ── GPU hardware acceleration ──────────────────────────────────────────
     gpu.enable = lib.mkOption {
@@ -1907,12 +1932,12 @@ in
 
     # ── Master proxy (edge side) ───────────────────────────────────────────
     # Options for the edge system (flake output `nixosModules.edge`), which
-    # runs Traefik (master proxy), a rathole server, and losos-registrar
+    # runs Traefik (master proxy), the QUIC tunnel server, and losos-registrar
     # (serve). Only used by that module; the appliance uses losos.proxy.* above.
     edge.enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
-      description = "Configure this system as the losos master-proxy edge (Traefik + rathole server + losos-registrar).";
+      description = "Configure this system as the losos master-proxy edge (Traefik + tunnel server + losos-registrar).";
     };
 
     edge.publicDomain = lib.mkOption {
@@ -1921,31 +1946,31 @@ in
       description = "Apex domain. The static registration router is register.<publicDomain>; per-appliance hostnames live under it.";
     };
 
-    edge.ratholeBindAddr = lib.mkOption {
+    edge.tunnelBindAddr = lib.mkOption {
       type = lib.types.str;
       default = "::";
       description = ''
-        Address the rathole server listens on for appliance clients to dial.
+        Address the tunnel server listens on, over UDP, for boxes to dial.
         Defaults to `::` (IPv6 any), which on Linux with the default
-        `net.ipv6.bindv6only=0` binds dual-stack — so appliances that resolve
-        the edge over IPv6 (the common case, and the nixosTest inter-VM path)
-        and over IPv4 both reach the tunnel. Serialised bracketed for IPv6
-        (`[::]:<port>`) by the `fmtBind` helper in modules/edge.nix and the
-        `format_bind` helper in edge/registrar/src/config.rs, which must
-        agree byte-for-byte.
+        `net.ipv6.bindv6only=0` binds dual-stack, so boxes that resolve the
+        edge over IPv6 (the common case, and the nixosTest inter-VM path) and
+        over IPv4 both reach it. Serialised bracketed for IPv6 (`[::]:<port>`)
+        by the `fmtBind` helper in modules/edge.nix and the `format_bind`
+        helper in edge/registrar/src/config.rs, which must agree byte for
+        byte.
       '';
     };
 
-    edge.ratholeBindPort = lib.mkOption {
+    edge.tunnelBindPort = lib.mkOption {
       type = lib.types.port;
       default = 2333;
-      description = "Port appliance rathole clients dial (rathole [server] bind).";
+      description = "UDP port boxes dial the tunnel on (QUIC).";
     };
 
-    edge.ratholePortRange = lib.mkOption {
+    edge.tunnelPortRange = lib.mkOption {
       type = lib.types.str;
       default = "50000-50100";
-      description = "lo-hi range the registrar allocates per-appliance rathole edge ports from.";
+      description = "lo-hi range of loopback TCP ports the registrar gives each box's tunnel service on the edge, where Traefik reaches it.";
     };
 
     edge.calls.relay.enable = lib.mkOption {
@@ -1987,13 +2012,13 @@ in
     edge.heartbeatTtl = lib.mkOption {
       type = lib.types.str;
       default = "120s";
-      description = "Tenants with no heartbeat within this TTL are pruned (their Traefik router + rathole service removed).";
+      description = "Tenants with no heartbeat within this TTL are pruned (their Traefik router and tunnel service removed).";
     };
 
     edge.reconcileInterval = lib.mkOption {
       type = lib.types.str;
       default = "15s";
-      description = "How often the registrar reconciler re-derives Traefik + rathole config from the registry.";
+      description = "How often the registrar reconciler re-derives the Traefik and tunnel config from the registry.";
     };
 
     edge.registrarApiPort = lib.mkOption {
@@ -2018,25 +2043,6 @@ in
       type = lib.types.nullOr lib.types.str;
       default = null;
       description = "Let's Encrypt account email for the on-demand cert resolver. Required when losos.edge.enable.";
-    };
-
-    edge.bootstrapTokenFile = lib.mkOption {
-      type = secretPath;
-      default = "/var/secrets/losos-rathole-bootstrap";
-      description = "rathole default_token (0600). Shared by all appliance tunnels as the transport Noise bootstrap.";
-    };
-
-    edge.noisePrivateKeyFile = lib.mkOption {
-      type = lib.types.nullOr secretPath;
-      default = "/var/secrets/losos-rathole-noise-key";
-      description = ''
-        The rathole server's Noise private key (base64, 0600, persisted via
-        /var), read by the registrar at runtime — never from the store.
-        Generated on first boot if absent, with the public half written beside
-        it as `<file>.pub` and served to appliances at /noise-public-key. To
-        use your own, put the key here before the first boot. `null` runs the
-        tunnel in plain TCP.
-      '';
     };
 
     edge.identity.keyFile = lib.mkOption {
@@ -2133,7 +2139,7 @@ in
                 that may `POST /relay` the boxes behind it, each of which must
                 be named exactly one label under this zone
                 (`mattbox.acme.losos.cfd`). Relayed boxes get a Traefik router
-                and a rathole service here, keyed `<id>.<box>` and authenticated
+                and a tunnel service here, keyed `<id>.<box>` and authenticated
                 with *this tenant's* token; they never get `cluster` or
                 `market`. `null` (the default) is an ordinary tenant that may
                 relay nothing. Rendered into tenants.json as `relay_zone`, like
@@ -2917,14 +2923,14 @@ in
       from = lib.mkOption {
         type = lib.types.port;
         default = 23000;
-        description = "First loopback port the rathole server binds a lending box's RPC tunnel on.";
+        description = "First loopback port the tunnel server binds a lending box's RPC tunnel on.";
       };
       to = lib.mkOption {
         type = lib.types.port;
         default = 23999;
         description = ''
           Last loopback port for the lending boxes' RPC tunnels. The range
-          holds at least as many ports as edge.ratholePortRange: one per box.
+          holds at least as many ports as edge.tunnelPortRange: one per box.
         '';
       };
     };
@@ -3083,15 +3089,15 @@ in
       '';
     };
 
-    edge.lan.ratholeEndpoint = lib.mkOption {
+    edge.lan.tunnelEndpoint = lib.mkOption {
       type = lib.types.str;
-      default = "${config.networking.hostName}.local:${toString config.losos.edge.ratholeBindPort}";
-      defaultText = lib.literalExpression ''"''${config.networking.hostName}.local:''${toString config.losos.edge.ratholeBindPort}"'';
+      default = "${config.networking.hostName}.local:${toString config.losos.edge.tunnelBindPort}";
+      defaultText = lib.literalExpression ''"''${config.networking.hostName}.local:''${toString config.losos.edge.tunnelBindPort}"'';
       description = ''
         The `host:port` a box on the LAN dials its tunnel to, carried by the
-        advertisement as the `rathole=` TXT record beside `url=`. A box that
-        picks this edge as its path (backend/src/edge.rs) points its rathole
-        client here instead of at losos.proxy.edgeRatholeEndpoint. Same
+        advertisement as the `tunnel=` TXT record beside `url=`. A box that
+        picks this edge as its path (backend/src/edge.rs) points its tunnel
+        client here instead of at losos.proxy.edgeTunnelEndpoint. Same
         default and same caveat as losos.edge.lan.url.
       '';
     };
@@ -3154,8 +3160,8 @@ in
       description = ''
         Relay the boxes registered here to a hub edge: the registrar posts
         the live tenant list to `<registrarUrl>/relay` every `interval` and
-        keeps /etc/rathole/uplink.toml, a rathole *client* config with one
-        service per relayed box, which `losos-rathole-uplink.service` runs.
+        keeps /etc/losos-tunnel/uplink.json, a tunnel *client* file with one
+        service per relayed box, which `losos-tunnel-uplink.service` runs.
         The hub must name this edge in its losos.edge.tenants with a
         relayZone; the boxes here must be named one label under that zone.
       '';
@@ -3167,9 +3173,8 @@ in
       example = "/var/lib/losos-edge/uplink.json";
       description = ''
         Read the uplink target from this runtime file instead of rendering
-        one from the options below (fields: registrar_url, rathole_endpoint,
-        id, token_file, optional bootstrap_token_file and
-        noise_public_key_file; paths, never secrets). The registrar re-reads
+        one from the options below (fields: registrar_url, tunnel_endpoint,
+        id, token_file, pin_file; paths, never secrets). The registrar re-reads
         it on every pass, and a missing file means "no uplink yet", so a
         gateway image can ship with the uplink enabled and let its owner
         fill the file in later with `losos-edge uplink set`.
@@ -3183,10 +3188,10 @@ in
       description = "The hub's registrar API base URL. Required unless configFile is set.";
     };
 
-    edge.uplink.ratholeEndpoint = lib.mkOption {
+    edge.uplink.tunnelEndpoint = lib.mkOption {
       type = lib.types.str;
       default = "edge.losos.cfd:2333";
-      description = "The hub's rathole server, `host:port`, that the uplink client dials.";
+      description = "The hub's tunnel server, `host:port` (UDP), that the uplink client dials.";
     };
 
     edge.uplink.id = lib.mkOption {
@@ -3202,30 +3207,19 @@ in
       description = ''
         0600 file holding this edge's tenant token on the hub (the hub's
         losos.edge.tenants.<id>.tokenFile). Authenticates `/relay` and is the
-        token of every relayed rathole service. Provision out of band.
+        token of every relayed tunnel service. Provision out of band.
       '';
     };
 
-    edge.uplink.bootstrapTokenFile = lib.mkOption {
-      type = lib.types.nullOr secretPath;
-      default = null;
+    edge.uplink.pinFile = lib.mkOption {
+      type = secretPath;
+      default = "/var/secrets/losos-uplink-tunnel-pin";
       description = ''
-        0600 file holding the hub's rathole bootstrap token, for the client's
-        `default_token`. Optional: every relayed service carries the uplink
-        token, so `default_token` is never consulted and the uplink token
-        stands in when this is null.
-      '';
-    };
-
-    edge.uplink.noisePublicKeyFile = lib.mkOption {
-      type = lib.types.nullOr secretPath;
-      default = "/var/secrets/losos-uplink-noise-pub";
-      description = ''
-        Where the hub's rathole Noise public key is pinned. Nothing to
-        provision: when the file is absent the registrar fetches
-        `<registrarUrl>/noise-public-key` once and writes it (trust on first
+        Where the SHA-256 of the hub's tunnel certificate is pinned. Nothing
+        to provision: when the file is absent the registrar fetches
+        `<registrarUrl>/tunnel-pin` once and writes it (trust on first
         contact, as a box pins its edge); a file already there is never
-        overwritten. `null` runs the uplink in plain TCP.
+        overwritten, so a hub whose certificate changed is refused.
       '';
     };
 
@@ -3233,13 +3227,6 @@ in
       type = lib.types.str;
       default = "30s";
       description = "How often the spoke posts `/relay` to the hub. Must be well under the hub's losos.edge.heartbeatTtl: the hub drops a silent spoke's boxes with the spoke.";
-    };
-
-    edge.rathole.package = lib.mkOption {
-      type = lib.types.package;
-      default = pkgs.rathole;
-      defaultText = lib.literalExpression "pkgs.rathole";
-      description = "rathole derivation for the edge-side server.";
     };
 
     edge.registrar.package = lib.mkOption {
@@ -3507,20 +3494,12 @@ in
       secrets = {
         "losos.admin.tokenFile" = config.losos.admin.tokenFile;
         "losos.proxy.tokenFile" = config.losos.proxy.tokenFile;
-        "losos.proxy.bootstrapTokenFile" = config.losos.proxy.bootstrapTokenFile;
-        "losos.edge.bootstrapTokenFile" = config.losos.edge.bootstrapTokenFile;
         "losos.cluster.tokenFile" = config.losos.cluster.tokenFile;
         "losos.shared.fscrypt.keyFile" = config.losos.shared.fscrypt.keyFile;
         "losos.edge.cluster.agentTokenFile" = config.losos.edge.cluster.agentTokenFile;
         "losos.edge.market.stripeSecretKeySealed" = config.losos.edge.market.stripeSecretKeySealed;
         "losos.edge.market.webhookSecretSealed" = config.losos.edge.market.webhookSecretSealed;
         "losos.edge.uplink.tokenFile" = config.losos.edge.uplink.tokenFile;
-      }
-      // lib.optionalAttrs (config.losos.edge.uplink.bootstrapTokenFile != null) {
-        "losos.edge.uplink.bootstrapTokenFile" = config.losos.edge.uplink.bootstrapTokenFile;
-      }
-      // lib.optionalAttrs (config.losos.edge.noisePrivateKeyFile != null) {
-        "losos.edge.noisePrivateKeyFile" = config.losos.edge.noisePrivateKeyFile;
       }
       // lib.optionalAttrs (config.losos.edge.identity.keyFile != null) {
         "losos.edge.identity.keyFile" = config.losos.edge.identity.keyFile;

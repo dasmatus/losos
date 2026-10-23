@@ -117,10 +117,31 @@ in
     # list, the CSP and X-Frame-Options maps, the /api proxy — is attached to
     # `losos-front` in modules/containers.nix, and a separate HTTPS vhost would
     # silently serve the admin plane without any of it.
+    #
+    # HTTP/3 rides on the same :443 listener, over QUIC on UDP. `quic` adds a
+    # `listen 0.0.0.0:443 quic` beside the TCP one for every ssl entry below,
+    # so TCP stays the fallback for every client that does not speak QUIC or
+    # whose network drops UDP. `reuseport` gives each nginx worker its own UDP
+    # socket, which is how nginx spreads QUIC across workers; without it every
+    # QUIC packet lands on one worker. It is set on this vhost only, and this
+    # is the one vhost on these ports.
+    #
+    # Clients learn of HTTP/3 from Alt-Svc on a response over TCP, then switch.
+    # The header is only sent over HTTPS: an http:// origin cannot be upgraded
+    # this way, and traffic through the edge's tunnel arrives here on :80, so
+    # the edge's own Alt-Svc is the one browsers see there.
+    #
+    # Chromium refuses QUIC to a certificate that chains to a root the user
+    # installed rather than a public one, so Chrome on the LAN keeps HTTP/2
+    # even after the owner trusts this certificate. Firefox, curl and the
+    # apps that speak HTTP/3 take it; nix/tests/quic.nix records which.
     services.nginx.virtualHosts."losos-front" = {
       addSSL = true;
       sslCertificate = cert;
       sslCertificateKey = key;
+      quic = true;
+      http3 = true;
+      reuseport = true;
       listen = [
         {
           addr = "0.0.0.0";
@@ -132,7 +153,18 @@ in
           ssl = true;
         }
       ];
+      extraConfig = ''
+        add_header Alt-Svc $losos_alt_svc always;
+      '';
     };
+
+    # Empty over plain HTTP, and add_header sends no header for an empty value.
+    services.nginx.appendHttpConfig = ''
+      map $https $losos_alt_svc {
+        on 'h3=":443"; ma=86400';
+        default "";
+      }
+    '';
 
     # nginx cannot start before the certificate exists, and on first boot the
     # oneshot above is what creates it.
@@ -142,5 +174,6 @@ in
     };
 
     networking.firewall.allowedTCPPorts = [ 443 ];
+    networking.firewall.allowedUDPPorts = [ 443 ];
   };
 }

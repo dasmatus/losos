@@ -5,8 +5,8 @@
 //! user-hosted edge (a **spoke**) is an ordinary tenant of an official edge (a
 //! **hub**) whose whitelist row carries a `relay_zone`. The spoke POSTs
 //! `/relay` with the boxes it currently serves; the hub keeps a `<spoke>.<box>`
-//! tenant for each, routes `Host(<box hostname>)` into a rathole service of
-//! that name, and the spoke's uplink rathole client
+//! tenant for each, routes `Host(<box hostname>)` into a tunnel service of
+//! that name, and the spoke's uplink tunnel client
 //! (`crate::config::uplink_config`) delivers that service onto the box's own
 //! tunnel. Hostname authority stays with the hub operator: a relayed hostname
 //! must be exactly one label under the zone they wrote.
@@ -146,25 +146,26 @@ pub fn refusal(tenant: &RelayTenant, zone: &str, whitelisted: bool) -> Option<&'
 pub struct UplinkFile {
     /// The hub's registrar API base URL (`https://register.<domain>`).
     pub registrar_url: String,
-    /// The hub's rathole server, `host:port`.
-    pub rathole_endpoint: String,
+    /// The hub's tunnel, `host:port` (UDP). A file `losos-edge uplink set`
+    /// wrote before the tunnel moved to QUIC names it `rathole_endpoint`;
+    /// the port is the same number, now UDP.
+    #[serde(alias = "rathole_endpoint")]
+    pub tunnel_endpoint: String,
     /// This spoke's tenant id on the hub.
     pub id: String,
     /// 0600 file holding this spoke's tenant token on the hub.
     pub token_file: String,
-    /// 0600 file holding the hub's rathole bootstrap token. Optional: every
-    /// relayed service carries the spoke's own token, so rathole's
-    /// `default_token` is never consulted, and the spoke token stands in
-    /// when no bootstrap token was handed out.
-    #[serde(default)]
-    pub bootstrap_token_file: Option<String>,
-    /// Where the hub's Noise public key is pinned. Absent means plain TCP.
-    /// When the file does not exist yet the uplink loop fetches the key once
-    /// from the hub's `/noise-public-key` and writes it here (trust on first
+    /// Where the hub's tunnel certificate is pinned (its SHA-256, hex).
+    /// When the file does not exist yet the uplink loop fetches the pin once
+    /// from the hub's `/tunnel-pin` and writes it here (trust on first
     /// contact, as a box pins its edge); from then on the file is authority
-    /// and a hub whose key changed is refused by rathole, not re-pinned.
-    #[serde(default)]
-    pub noise_public_key_file: Option<String>,
+    /// and a hub whose certificate changed is refused, not re-pinned.
+    #[serde(default = "default_pin_file")]
+    pub pin_file: String,
+}
+
+fn default_pin_file() -> String {
+    "/var/secrets/losos-uplink-tunnel-pin".into()
 }
 
 /// The uplink half of `serve`'s options.
@@ -173,8 +174,8 @@ pub struct UplinkOpts {
     /// Where the [`UplinkFile`] is. Absent at runtime means no uplink, which
     /// the gateway image relies on before its owner has entered one.
     pub file: String,
-    /// The rathole client config the uplink loop is the sole writer of.
-    pub rathole_config: String,
+    /// The tunnel client file the uplink loop is the sole writer of.
+    pub tunnel_config: String,
     /// How often the spoke posts `/relay` when nothing changed. Must be well
     /// under the hub's heartbeat TTL, like a box's heartbeat.
     pub interval: std::time::Duration,
@@ -346,6 +347,17 @@ pub async fn run(opts: crate::opts::EnrolOpts) -> miette::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_uplink_file_from_before_the_quic_tunnel_still_reads() {
+        let old = r#"{"registrar_url":"https://register.losos.cfd",
+            "rathole_endpoint":"edge.losos.cfd:2333","id":"acme",
+            "token_file":"/var/lib/losos-edge/uplink.token",
+            "noise_public_key_file":"/var/lib/losos-edge/hub-noise.pub"}"#;
+        let f: UplinkFile = serde_json::from_str(old).unwrap();
+        assert_eq!(f.tunnel_endpoint, "edge.losos.cfd:2333");
+        assert_eq!(f.pin_file, "/var/secrets/losos-uplink-tunnel-pin");
+    }
 
     #[test]
     fn labels_and_names() {

@@ -15,9 +15,9 @@ geschrieben, dass du ihm widersprechen kannst.
 
 1. **Internet → Edge.** Nur die Edge ist dem Internet zugewandt. Eine Box
    öffnet einen Tunnel nach außen und lauscht von außen auf nichts.
-2. **Edge → Box.** Noise verschlüsselt den Tunnel durchgehend. Die Box merkt
-   sich den Schlüssel der Edge beim ersten Kontakt und lehnt einen
-   geänderten ab.
+2. **Edge → Box.** TLS 1.3 verschlüsselt den Tunnel durchgehend, über
+   QUIC oder, wo UDP gesperrt ist, über TCP. Die Box merkt sich das
+   Zertifikat der Edge beim ersten Kontakt und lehnt ein geändertes ab.
 3. **LAN → Box.** Die Box liefert HTTPS mit ihrem eigenen Zertifikat aus,
    dem du einmal pro Rechner vertraust. Bis dahin könnte jemand im selben
    WLAN, der Verkehr abfangen kann, die erste Nutzung abfangen.

@@ -36,6 +36,7 @@ der durch den Tunnel einer Edge ankommt, bekommt **403**.
 | ------- | --------- | ------------------------------------------------------ |
 | 80      | HTTP      | Alles oben Genannte                                    |
 | 443     | HTTPS     | Dasselbe, mit dem eigenen Zertifikat der Box (`losos.tls.enable`, standardmäßig an) |
+| 443 (UDP) | HTTP/3  | Dasselbe über QUIC, Browsern per `Alt-Svc`-Header angeboten; HTTPS über TCP bleibt der Rückfall |
 | 5353    | mDNS      | Ankündigung von `<name>.local` und der Box als `_losos._tcp`-Dienst |
 | 445     | SMB       | Die Dateien jeder Person in LosOS Cloud als Windows-Netzwerkfreigabe (`losos.cloud.windows.enable`, standardmäßig an); nur das lokale Netz |
 | 3702 (UDP), 5357 | WS-Discovery | Die Box unter Netzwerk im Windows-Explorer zeigen, solange die Freigabe an ist |
@@ -49,6 +50,15 @@ einmal zeigen.
 Sonst ist nichts offen. Die Box erreicht das Mesh und die Edge nach außen.
 Sie öffnet den Tunnel und tritt dem Cluster selbst bei, sodass du zu Hause
 keinen eingehenden Port öffnest.
+
+## Auf einer Edge \{#on-an-edge}
+
+| Port         | Protokoll | Was                                                    |
+| ------------ | --------- | ------------------------------------------------------ |
+| 80, 443      | HTTP(S)   | Traefik: der öffentliche Name jeder Box                 |
+| 2333 (UDP)   | QUIC      | Der Tunnel, den Boxen anwählen (`losos.edge.tunnelBindPort`) |
+| 2333 (TCP)   | TLS       | Derselbe Tunnel für Boxen in einem Netz, das UDP verwirft |
+| 7883 (UDP)   | QUIC      | Das Relay für Anrufe (`losos.edge.calls.relay.port`)    |
 
 ## Namen \{#names}
 

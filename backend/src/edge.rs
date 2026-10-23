@@ -1,7 +1,7 @@
 //! Finding an edge proxy, and refusing to share storage without one.
 //!
 //! The mesh is other people's boxes behind an edge: the rke2 server that
-//! Longhorn replicates to, the rathole tunnel that makes the box reachable,
+//! Longhorn replicates to, the tunnel that makes the box reachable,
 //! the registrar that enrols it. Every one of those lives on the edge, so a
 //! box with no edge in reach cannot share anything, whatever its settings
 //! say — the agent's kubelet never starts, the announce loop retries forever,
@@ -60,16 +60,16 @@ pub const SERVICE_TYPE: &str = "_losos-edge._tcp";
 /// two probes per cycle is nothing.
 pub const SCAN_INTERVAL: Duration = Duration::from_secs(20);
 
-/// The rathole port an edge binds unless its advert says otherwise
-/// (`losos.edge.ratholeBindPort`'s default). Used for a LAN edge whose
-/// advert predates the `rathole=` record.
-pub const DEFAULT_RATHOLE_PORT: u16 = 2333;
+/// The tunnel port an edge binds unless its advert says otherwise
+/// (`losos.edge.tunnelBindPort`'s default). Used for a LAN edge whose
+/// advert carries no `tunnel=` record.
+pub const DEFAULT_TUNNEL_PORT: u16 = 2333;
 
 /// The two units modules/proxy.nix runs against the chosen edge, in the
 /// order they are restarted: the tunnel first, then the announce that asks
 /// the edge to route to it.
 pub const PATH_UNITS: [&str; 2] = [
-    "losos-rathole-client.service",
+    "losos-tunnel-client.service",
     "losos-registrar-announce.service",
 ];
 
@@ -121,13 +121,13 @@ pub struct Edge {
     /// a company's own edge is `false` here and still shares storage.
     #[serde(default)]
     pub official: bool,
-    /// Where this edge's rathole server listens, `host:port`: the advert's
-    /// `rathole=` record (or its host on the default port) for a LAN edge,
-    /// `losos.proxy.edgeRatholeEndpoint` for the configured one. `None` when
+    /// Where this edge's tunnel server listens, `host:port`: the advert's
+    /// `tunnel=` record (or its host on the default port) for a LAN edge,
+    /// `losos.proxy.edgeTunnelEndpoint` for the configured one. `None` when
     /// the box was given no endpoint for it, in which case it can be found
     /// but not tunnelled to.
     #[serde(default)]
-    pub rathole: Option<String>,
+    pub tunnel: Option<String>,
 }
 
 /// The edge this box uses, out of everything the scan found: the path
@@ -141,7 +141,7 @@ pub struct EdgePath {
     pub source: Source,
     /// `host:port` the tunnel dials. Always present: an edge with no
     /// endpoint is never chosen as the path.
-    pub rathole: String,
+    pub tunnel: String,
 }
 
 /// What the last scan found. The JSON shape is the `GET /api/edge` contract.
@@ -180,7 +180,7 @@ pub fn choose_path(edges: &[Edge]) -> Option<EdgePath> {
     let pick = |source: Source| {
         edges
             .iter()
-            .find(|e| e.source == source && e.rathole.is_some())
+            .find(|e| e.source == source && e.tunnel.is_some())
     };
     pick(Source::Lan)
         .or_else(|| pick(Source::Configured))
@@ -188,7 +188,7 @@ pub fn choose_path(edges: &[Edge]) -> Option<EdgePath> {
             name: e.name.clone(),
             url: e.url.clone(),
             source: e.source,
-            rathole: e.rathole.clone().unwrap_or_default(),
+            tunnel: e.tunnel.clone().unwrap_or_default(),
         })
 }
 
@@ -352,8 +352,8 @@ pub struct Advert {
     pub port: u16,
     /// The `url=` TXT value, when the edge published one.
     pub url: Option<String>,
-    /// The `rathole=` TXT value, when the edge published one.
-    pub rathole: Option<String>,
+    /// The `tunnel=` TXT value, when the edge published one.
+    pub tunnel: Option<String>,
 }
 
 impl Advert {
@@ -637,7 +637,7 @@ pub fn advert_from_resolved(name: &str, parameters: &Value) -> Option<Advert> {
         address,
         port,
         url: record("url"),
-        rathole: record("rathole"),
+        tunnel: record("tunnel"),
     })
 }
 
@@ -653,28 +653,27 @@ pub fn candidates(adverts: &[Advert]) -> Vec<Edge> {
             continue;
         }
         // The advertised tunnel endpoint when it is well formed, else the
-        // registrar's host on the default port: an edge from before the
-        // record existed still has a rathole there.
-        let rathole = a
-            .rathole
+        // registrar's host on the default port.
+        let tunnel = a
+            .tunnel
             .as_deref()
             .filter(|r| plain_endpoint(r))
             .map(str::to_string)
-            .unwrap_or_else(|| format!("{}:{DEFAULT_RATHOLE_PORT}", bracketed_host(&url)));
+            .unwrap_or_else(|| format!("{}:{DEFAULT_TUNNEL_PORT}", bracketed_host(&url)));
         out.push(Edge {
             name: a.name.clone(),
             url,
             source: Source::Lan,
             official: false,
-            rathole: Some(rathole),
+            tunnel: Some(tunnel),
         });
     }
     out
 }
 
-/// `host:port` as rathole takes it: a hostname or IP literal (IPv6 in
-/// brackets) and a port, nothing a shell or a TOML string would read as
-/// something else. The value goes into client.toml between quotes.
+/// `host:port` as the tunnel takes it: a hostname or IP literal (IPv6 in
+/// brackets) and a port, nothing a shell or a JSON string would read as
+/// something else. The value goes into the tunnel client's file.
 #[must_use]
 pub fn plain_endpoint(s: &str) -> bool {
     let Some((host, port)) = s.rsplit_once(':') else {
@@ -732,12 +731,12 @@ pub fn assemble(
 }
 
 /// [`assemble`] with the configured edge's tunnel endpoint
-/// (`losos.proxy.edgeRatholeEndpoint`), which is what lets that edge be the
+/// (`losos.proxy.edgeTunnelEndpoint`), which is what lets that edge be the
 /// path when the LAN has none.
 pub fn assemble_with(
     browse: Option<&[Advert]>,
     configured_url: Option<&str>,
-    configured_rathole: Option<&str>,
+    configured_tunnel: Option<&str>,
     answered: impl Fn(&str) -> bool,
     trust: &Trust<'_>,
     prove: impl Fn(&str, &str) -> Option<String>,
@@ -761,7 +760,7 @@ pub fn assemble_with(
                 url: url.clone(),
                 source: Source::Configured,
                 official: false,
-                rathole: configured_rathole
+                tunnel: configured_tunnel
                     .map(str::trim)
                     .filter(|r| plain_endpoint(r))
                     .map(str::to_string),
@@ -793,23 +792,23 @@ pub fn assemble_with(
 /// from a validated URL or endpoint (`plain_http_url`, `plain_endpoint`) or
 /// a path it named itself, so none needs quoting under systemd's rules.
 #[must_use]
-pub fn path_env(path: &EdgePath, noise_pin: Option<&str>) -> String {
+pub fn path_env(path: &EdgePath, tunnel_pin: Option<&str>) -> String {
     let mut out = format!(
-        "LOSOS_EDGE_PATH_URL={}\nLOSOS_EDGE_PATH_RATHOLE={}\nLOSOS_EDGE_PATH_SOURCE={}\n",
+        "LOSOS_EDGE_PATH_URL={}\nLOSOS_EDGE_PATH_TUNNEL={}\nLOSOS_EDGE_PATH_SOURCE={}\n",
         path.url,
-        path.rathole,
+        path.tunnel,
         match path.source {
             Source::Lan => "lan",
             Source::Configured => "configured",
         }
     );
-    if let Some(pin) = noise_pin {
-        out.push_str(&format!("LOSOS_EDGE_PATH_NOISE_PUB={pin}\n"));
+    if let Some(pin) = tunnel_pin {
+        out.push_str(&format!("LOSOS_EDGE_PATH_TUNNEL_PIN={pin}\n"));
     }
     out
 }
 
-/// The file name a LAN edge's Noise key is pinned under: its registrar's
+/// The file name a LAN edge's tunnel certificate is pinned under: its registrar's
 /// host and port with anything outside `[A-Za-z0-9.-]` replaced, so two
 /// edges never share a pin and the name is safe in a shell.
 #[must_use]
@@ -825,7 +824,7 @@ pub fn pin_file_name(url: &str) -> String {
             }
         })
         .collect();
-    format!("{}.pub", safe.trim_matches('_'))
+    format!("{}.pin", safe.trim_matches('_'))
 }
 
 /// What to do to the tunnel units after a scan.
@@ -1019,7 +1018,7 @@ pub fn check_market_gate(edge: &EdgeStatus) -> Result<(), OfficialEdgeRequired> 
 // A local edge's web page can change this box's LosOS Cloud, LosOS Git and
 // app settings, but only once the owner switched it on for that edge
 // (`State::managed_by`, `POST /api/edge/manage`). The edge calls lososd
-// through the box's own tunnel, which is pinned to the edge's Noise key, and
+// through the box's own tunnel, which is pinned to the edge's certificate, and
 // nginx's `losos-manage.invalid` server, which takes only loopback (where
 // the tunnel lands); the call carries the box's proxy token, which only this
 // box and the edge it enrolled with hold. lososd then lets it use the
@@ -1076,7 +1075,7 @@ mod tests {
             url: url.into(),
             source: Source::Lan,
             official,
-            rathole: Some("192.168.1.2:2333".into()),
+            tunnel: Some("192.168.1.2:2333".into()),
         }
     }
 
@@ -1344,10 +1343,10 @@ mod tests {
         );
         // TXT keys are case-insensitive, and an entry that is not a string
         // is skipped.
-        let txt = with("/txt", json!([7, "URL=http://e:2", "Rathole=e:2333"]));
+        let txt = with("/txt", json!([7, "URL=http://e:2", "Tunnel=e:2333"]));
         let a = advert_from_resolved("edge", &txt).unwrap();
         assert_eq!(a.url.as_deref(), Some("http://e:2"));
-        assert_eq!(a.rathole.as_deref(), Some("e:2333"));
+        assert_eq!(a.tunnel.as_deref(), Some("e:2333"));
     }
 
     #[test]
@@ -1535,7 +1534,7 @@ mod tests {
                 url: "http://edge.local:8443".into(),
                 source: Source::Lan,
                 official: false,
-                rathole: Some("edge.local:2333".into()),
+                tunnel: Some("edge.local:2333".into()),
             }],
             true,
             None,
@@ -1779,16 +1778,16 @@ mod tests {
             .contains("only edges LosOS runs may process the market"));
     }
 
-    /// A gateway edge's resolve reply, with the `rathole=` record and the
+    /// A gateway edge's resolve reply, with the `tunnel=` record and the
     /// other TXT strings `losos.edge.lan.advertise` publishes.
-    fn gateway(rathole: &str) -> Vec<Advert> {
+    fn gateway(tunnel: &str) -> Vec<Advert> {
         let reply = resolved(
             "gw.local",
             8443,
             &["192.168.1.2"],
             &[
                 "url=http://gw.local:8443",
-                &format!("rathole={rathole}"),
+                &format!("tunnel={tunnel}"),
                 "enrol=open",
                 "txtvers=1",
             ],
@@ -1801,12 +1800,12 @@ mod tests {
     #[test]
     fn the_advert_carries_the_tunnel_endpoint_and_an_old_one_gets_the_default_port() {
         let c = candidates(&gateway("gw.local:2333"));
-        assert_eq!(c[0].rathole.as_deref(), Some("gw.local:2333"));
+        assert_eq!(c[0].tunnel.as_deref(), Some("gw.local:2333"));
         let c = candidates(&browse());
-        assert_eq!(c[0].rathole.as_deref(), Some("edge.local:2333"));
+        assert_eq!(c[0].tunnel.as_deref(), Some("edge.local:2333"));
         // A malformed record is ignored, not dialled.
         let c = candidates(&gateway("gw.local:2333;rm"));
-        assert_eq!(c[0].rathole.as_deref(), Some("gw.local:2333"));
+        assert_eq!(c[0].tunnel.as_deref(), Some("gw.local:2333"));
         assert!(plain_endpoint("[fe80::1]:2333"));
         assert!(!plain_endpoint("gw.local"));
         assert!(!plain_endpoint("gw.local:0"));
@@ -1829,8 +1828,8 @@ mod tests {
         let path = both.path.clone().expect("a path");
         assert_eq!(path.source, Source::Lan);
         assert_eq!(path.url, "http://gw.local:8443");
-        assert_eq!(path.rathole, "gw.local:2333");
-        assert_eq!(both.to_json()["path"]["rathole"], "gw.local:2333");
+        assert_eq!(path.tunnel, "gw.local:2333");
+        assert_eq!(both.to_json()["path"]["tunnel"], "gw.local:2333");
 
         let official_only = assemble_with(
             Some(&gateway("gw.local:2333")),
@@ -1843,7 +1842,7 @@ mod tests {
         );
         let path = official_only.path.expect("a path");
         assert_eq!(path.source, Source::Configured);
-        assert_eq!(path.rathole, "edge.losos.cfd:2333");
+        assert_eq!(path.tunnel, "edge.losos.cfd:2333");
 
         // A configured edge the box has no tunnel endpoint for can be found
         // but is not a path.
@@ -1869,22 +1868,22 @@ mod tests {
             name: "gateway".into(),
             url: "http://gw.local:8443".into(),
             source: Source::Lan,
-            rathole: "gw.local:2333".into(),
+            tunnel: "gw.local:2333".into(),
         };
         let env = path_env(
             &path,
-            Some("/var/secrets/losos-edge-pins/gw.local_8443.pub"),
+            Some("/var/secrets/losos-edge-pins/gw.local_8443.pin"),
         );
         assert_eq!(
             env,
             "LOSOS_EDGE_PATH_URL=http://gw.local:8443\n\
-             LOSOS_EDGE_PATH_RATHOLE=gw.local:2333\n\
+             LOSOS_EDGE_PATH_TUNNEL=gw.local:2333\n\
              LOSOS_EDGE_PATH_SOURCE=lan\n\
-             LOSOS_EDGE_PATH_NOISE_PUB=/var/secrets/losos-edge-pins/gw.local_8443.pub\n"
+             LOSOS_EDGE_PATH_TUNNEL_PIN=/var/secrets/losos-edge-pins/gw.local_8443.pin\n"
         );
-        assert!(!path_env(&path, None).contains("NOISE"));
-        assert_eq!(pin_file_name("http://gw.local:8443"), "gw.local_8443.pub");
-        assert_eq!(pin_file_name("http://[fe80::1]:8443"), "fe80__1__8443.pub");
+        assert!(!path_env(&path, None).contains("PIN"));
+        assert_eq!(pin_file_name("http://gw.local:8443"), "gw.local_8443.pin");
+        assert_eq!(pin_file_name("http://[fe80::1]:8443"), "fe80__1__8443.pin");
 
         // First scan after boot with a path: start the units against it.
         assert_eq!(drive(None, false, Some(&env)), Drive::Restart);

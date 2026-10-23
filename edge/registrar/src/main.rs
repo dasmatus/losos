@@ -119,13 +119,22 @@ async fn async_main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
-        Ok(Mode::Seed(opts)) => match losos_registrar::seed::run(opts).await {
+        Ok(Mode::TunnelServer(opts)) => match losos_registrar::tunnel::serve(opts).await {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
-                tracing::error!(target: Action::Seed.target(), "{:?}", e);
+                tracing::error!(target: Action::Tunnel.target(), "{:?}", e);
                 ExitCode::FAILURE
             }
         },
+        Ok(Mode::TunnelClient { config }) => {
+            match losos_registrar::tunnel::run_client(config.into()).await {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(e) => {
+                    tracing::error!(target: Action::Tunnel.target(), "{:?}", e);
+                    ExitCode::FAILURE
+                }
+            }
+        }
         Err(e) => {
             // Usage errors: no phase has begun yet.
             tracing::error!("{:?}", e);

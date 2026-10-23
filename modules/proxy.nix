@@ -1,16 +1,16 @@
 # Master proxy — appliance side.
 #
 # The appliance keeps its no-SSH/no-public-ports invariant: it opens zero
-# inbound ports. A rathole client dials out to an edge; the edge rathole
-# server forwards public traffic back over that tunnel to this box's Nginx
-# on :80 (the slave proxy). A losos-registrar `announce` service registers
-# this appliance with the edge (POST /register) and heartbeats so the edge
-# keeps the Traefik route alive.
+# inbound ports. A tunnel client (`losos-registrar tunnel-client`, QUIC)
+# dials out to an edge; the edge carries public traffic back to this box's
+# Nginx on :80 (the slave proxy) as streams of that one connection. A
+# losos-registrar `announce` service registers this appliance with the edge
+# (POST /register) and heartbeats so the edge keeps the Traefik route alive.
 #
 # Which edge: lososd decides (backend/src/edge.rs, "the path"), and tells
 # the two units here through /run/losos/edge-path.env — an edge found on the
 # LAN first, the configured official one (losos.proxy.registrarUrl,
-# losos.proxy.edgeRatholeEndpoint) when the LAN has none, and when neither
+# losos.proxy.edgeTunnelEndpoint) when the LAN has none, and when neither
 # answers it writes /run/losos/edge-none and stops both units, so a box with
 # no edge in reach runs no tunnel at all. Both files live on /run and are
 # gone at boot: until lososd's first scan the units dial the configured
@@ -18,14 +18,14 @@
 # (nix/tests/edge-vm.nix). The daemon only writes the files when
 # losos.proxy.enable is on; see modules/daemon.nix.
 #
-# See docs/superpowers/specs/2026-08-17-master-proxy-design.md, the edge side in
-# modules/edge.nix, and handbook/docs/in-depth/edge-federation.md for the path
-# rule. Replaces the retired losos.cfd (Cloudflare).
+# See handbook/docs/in-depth/master-proxy.md, the edge side in
+# modules/edge.nix, and handbook/docs/in-depth/edge-federation.md for the
+# path rule.
 #
-# Secrets: the rathole client config contains tokens (bootstrap + per-
-# appliance). It is generated at service start from the secret files into a
-# 0600 runtime file (/run/losos-rathole/client.toml) — never baked into the
-# world-readable nix store.
+# Secrets: the client's file holds the box's token. It is generated at
+# service start from the secret file into a 0600 runtime file
+# (/run/losos-tunnel/client.json), never baked into the world-readable nix
+# store.
 {
   config,
   lib,
@@ -37,16 +37,15 @@ let
   cfg = config.losos.proxy;
   enabled = cfg.enable;
   registrar = cfg.registrar.package;
-  rathole = cfg.rathole.package;
   lend = config.losos.inference.lend.enable;
 
-  # Runtime, 0700, root. Holds the generated client.toml (with secrets).
-  confDir = "/run/losos-rathole";
+  # Runtime, 0700, root. Holds the generated client.json (with the token).
+  confDir = "/run/losos-tunnel";
 
   # What lososd writes (backend/src/io_backend.rs). The env file names the
-  # path: LOSOS_EDGE_PATH_URL (the registrar), LOSOS_EDGE_PATH_RATHOLE (the
-  # tunnel endpoint) and LOSOS_EDGE_PATH_NOISE_PUB (where that edge's Noise
-  # key is pinned). The marker means "no edge in reach".
+  # path: LOSOS_EDGE_PATH_URL (the registrar), LOSOS_EDGE_PATH_TUNNEL (the
+  # tunnel endpoint) and LOSOS_EDGE_PATH_TUNNEL_PIN (where that edge's
+  # certificate is pinned). The marker means "no edge in reach".
   pathEnv = "/run/losos/edge-path.env";
   noneMarker = "/run/losos/edge-none";
   managedMarker = "/run/losos/edge-managed";
@@ -56,76 +55,58 @@ let
   # Traefik on the edge routes a box by its own host names only.
   manageHost = "losos-manage.invalid";
 
-  # Generates client.toml at start from the secret files. The non-secret
-  # parts (remote_addr, service name, local_addr) are templated in; the
-  # secrets are read from their 0600 files so no token ever lands in the
-  # store. rathole auto-detects [client] mode from the file.
+  # Generates client.json at start. The endpoint and the services are
+  # templated in; the token is read from its 0600 file so it never lands in
+  # the store.
   #
-  # The Noise pin happens here too, per edge: the edge generates its own
-  # keypair, and before the tunnel first dials an edge the box fetches the
-  # public half from that edge's registrar (the TLS-fronted URL it registers
-  # with, or the LAN URL it was advertised at) and keeps it, so the tunnel is
-  # pinned to that key from then on: trust on first use, nothing to provision
-  # by hand. A file already at the pin path (provisioned out of band) is
-  # never overwritten, which is also how to pin a key you distributed
-  # yourself. A key that does not look like 32 base64 bytes is refused rather
-  # than written, and the unit fails and retries (Restart=always).
-  genClientConf = pkgs.writeShellScript "losos-rathole-client-conf" (
-    ''
-          set -eu
-          remote="''${LOSOS_EDGE_PATH_RATHOLE:-${cfg.edgeRatholeEndpoint}}"
-          registrar="''${LOSOS_EDGE_PATH_URL:-${cfg.registrarUrl}}"
-          install -d -m 0700 ${confDir}
-          umask 077
-          bootstrap="$(cat ${cfg.bootstrapTokenFile})"
-          token="$(cat ${cfg.tokenFile})"
-          cat > ${confDir}/client.toml <<EOF
-      [client]
-      remote_addr = "$remote"
-      default_token = "$bootstrap"
-
-      [client.services.${cfg.applianceId}]
-      token = "$token"
-      local_addr = "127.0.0.1:80"
-      EOF
-    ''
-    # The memory this box lends (modules/inference-lend.nix): the llama.cpp
-    # RPC server's port, under the name the edge gives it, with the box's own
-    # token.
-    + lib.optionalString lend ''
-          cat >> ${confDir}/client.toml <<EOF
-
-      [client.services."${cfg.applianceId}:llm"]
-      token = "$token"
-      local_addr = "127.0.0.1:50052"
-      EOF
-    ''
-    + lib.optionalString (cfg.noisePublicKeyFile != null) ''
-          # Noise (NK): the tunnel is encrypted to the edge's public key, read at
-          # runtime like the tokens so no key material is in the store.
-          pin="''${LOSOS_EDGE_PATH_NOISE_PUB:-${toString cfg.noisePublicKeyFile}}"
-          if [ ! -s "$pin" ]; then
-            key="$(curl -fsS --max-time 20 "$registrar/noise-public-key")"
-            printf '%s' "$key" | grep -Eq '^[A-Za-z0-9+/]{43}=$' || {
-              echo "$registrar returned something that is not an X25519 public key" >&2
-              exit 1
-            }
-            install -d -m 0700 "$(dirname "$pin")"
-            printf '%s\n' "$key" > "$pin.new"
-            mv "$pin.new" "$pin"
-            echo "pinned the Noise public key of $registrar into $pin"
-          fi
-          pub="$(tr -d '[:space:]' < "$pin")"
-          cat >> ${confDir}/client.toml <<EOF
-
-      [client.transport]
-      type = "noise"
-
-      [client.transport.noise]
-      remote_public_key = "$pub"
-      EOF
-    ''
-  );
+  # The pin happens here too, per edge: the edge makes its tunnel
+  # certificate on its first start, and before the tunnel first dials an
+  # edge the box fetches the certificate's SHA-256 from that edge's
+  # registrar (the TLS-fronted URL it registers with, or the LAN URL it was
+  # advertised at) and keeps it, so the tunnel accepts that certificate and
+  # no other from then on: trust on first use, nothing to provision by
+  # hand. A file already at the pin path (provisioned out of band) is never
+  # overwritten, which is also how to pin a certificate you distributed
+  # yourself. Anything that is not 64 hex characters is refused rather than
+  # written, and the unit fails and retries (Restart=always).
+  #
+  # A box that lends memory to AI models (modules/inference-lend.nix) serves
+  # a second service, the llama.cpp RPC server's port, under the name the
+  # edge gives it, with the box's own token.
+  genClientConf = pkgs.writeShellScript "losos-tunnel-client-conf" ''
+    set -eu
+    remote="''${LOSOS_EDGE_PATH_TUNNEL:-${cfg.edgeTunnelEndpoint}}"
+    registrar="''${LOSOS_EDGE_PATH_URL:-${cfg.registrarUrl}}"
+    pin_file="''${LOSOS_EDGE_PATH_TUNNEL_PIN:-${toString cfg.tunnelPinFile}}"
+    if [ ! -s "$pin_file" ]; then
+      pin="$(curl -fsS --max-time 20 "$registrar/tunnel-pin")"
+      printf '%s' "$pin" | grep -Eq '^[0-9a-f]{64}$' || {
+        echo "$registrar returned something that is not a tunnel pin" >&2
+        exit 1
+      }
+      install -d -m 0700 "$(dirname "$pin_file")"
+      printf '%s\n' "$pin" > "$pin_file.new"
+      mv "$pin_file.new" "$pin_file"
+      echo "pinned the tunnel of $registrar into $pin_file"
+    fi
+    install -d -m 0700 ${confDir}
+    umask 077
+    jq -n \
+      --arg remote "$remote" \
+      --arg pin "$(tr -d '[:space:]' < "$pin_file")" \
+      --rawfile token ${cfg.tokenFile} \
+      '($token | sub("\\s+$"; "")) as $token | {
+        remote: $remote,
+        pin: $pin,
+        services: {
+          ${builtins.toJSON cfg.applianceId}: { token: $token, local: "127.0.0.1:80" }
+    ${lib.optionalString lend ''
+      , ${builtins.toJSON "${cfg.applianceId}:llm"}: { token: $token, local: "127.0.0.1:50052" }
+    ''}
+        }
+      }' > ${confDir}/client.json.new
+    mv ${confDir}/client.json.new ${confDir}/client.json
+  '';
 
   # announce flags. --token-file is a path (read at runtime), not the secret,
   # so it's safe to put on the command line / in the store. The registrar URL
@@ -171,7 +152,7 @@ let
 in
 {
   config = lib.mkIf enabled {
-    # Hard requirements: the registrar binary and rathole must be available,
+    # Hard requirements: the registrar binary must be available,
     # and the secrets must be readable. (We can't assert file *contents* at
     # eval time; we assert the packages exist.)
     assertions = [
@@ -181,9 +162,9 @@ in
       }
     ];
 
-    # ── rathole client (outbound tunnel) ─────────────────────────────────
-    systemd.services.losos-rathole-client = {
-      description = "losos rathole client — outbound tunnel to the master-proxy edge";
+    # ── tunnel client (outbound, QUIC) ───────────────────────────────────
+    systemd.services.losos-tunnel-client = {
+      description = "losos tunnel client — outbound QUIC tunnel to the master-proxy edge";
       wantedBy = [ "multi-user.target" ];
       after = [ "network-online.target" ];
       wants = [ "network-online.target" ];
@@ -195,24 +176,25 @@ in
         pkgs.curl
         pkgs.coreutils
         pkgs.gnugrep
+        pkgs.jq
       ];
       serviceConfig = {
         EnvironmentFile = "-${pathEnv}";
         ExecStartPre = genClientConf;
-        ExecStart = "${rathole}/bin/rathole -c ${confDir}/client.toml";
+        ExecStart = "${registrar}/bin/losos-registrar tunnel-client --config ${confDir}/client.json";
         Restart = "always";
         RestartSec = 5;
         PrivateTmp = true;
         NoNewPrivileges = true;
         ProtectSystem = "strict";
         # The pins are written under /var/secrets by ExecStartPre; the
-        # configured edge's at losos.proxy.noisePublicKeyFile, a LAN edge's
+        # configured edge's at losos.proxy.tunnelPinFile, a LAN edge's
         # under losos-edge-pins/ (named by lososd).
         ReadWritePaths = [
           confDir
           "/var/secrets"
         ];
-        RuntimeDirectory = "losos-rathole";
+        RuntimeDirectory = "losos-tunnel";
         RuntimeDirectoryMode = "0700";
       };
     };
@@ -264,7 +246,7 @@ in
       wants = [ "network-online.target" ];
       unitConfig.ConditionPathExists = "!${noneMarker}";
       environment.LOSOS_EDGE_PATH_URL = cfg.registrarUrl;
-      # The rathole tunnel is up independently; announce just tells the edge
+      # The tunnel is up independently; announce just tells the edge
       # to publish the route. Don't hard-depend (announce retries forever).
       serviceConfig = {
         EnvironmentFile = "-${pathEnv}";

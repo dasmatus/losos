@@ -33,8 +33,8 @@ async fn health_and_status_answer_with_nothing_registered() {
     assert_eq!(status, 200);
     assert!(body.starts_with("# No live tenants"), "body: {body}");
 
-    // No tunnel, so no key to pin.
-    let (status, _) = call(&host, Method::GET, "/noise-public-key", None).await;
+    // No tunnel, so no certificate to pin.
+    let (status, _) = call(&host, Method::GET, "/tunnel-pin", None).await;
     assert_eq!(status, 404);
 }
 
@@ -74,7 +74,7 @@ async fn a_registered_box_shows_up_in_status_and_in_the_traefik_config() {
     let (status, body) = call(&host, Method::POST, "/register", Some(&body)).await;
     assert_eq!(status, 200, "body: {body}");
     let parsed: serde_json::Value = serde_json::from_str(&body).expect("JSON");
-    assert_eq!(parsed["rathole_port"], 50000);
+    assert_eq!(parsed["tunnel_port"], 50000);
 
     let body = heartbeat_body("demo-box", GOOD_TOKEN, true);
     let (status, _) = call(&host, Method::POST, "/heartbeat", Some(&body)).await;
@@ -87,7 +87,7 @@ async fn a_registered_box_shows_up_in_status_and_in_the_traefik_config() {
     assert_eq!(tenants.len(), 1);
     assert_eq!(tenants[0]["id"], "demo-box");
     assert_eq!(tenants[0]["hostname"], "demo.losos.example");
-    assert_eq!(tenants[0]["rathole_port"], 50000);
+    assert_eq!(tenants[0]["tunnel_port"], 50000);
     assert_eq!(tenants[0]["idle"], true);
     assert!(tenants[0]["seen_ago_secs"].as_u64().expect("age") <= 2);
 
@@ -130,7 +130,7 @@ async fn a_fresh_instance_knows_what_the_previous_one_was_told() {
     let tenants = parsed["tenants"].as_array().expect("tenants");
     assert_eq!(tenants.len(), 1);
     // The port the first instance allocated is the port the second reports.
-    assert_eq!(tenants[0]["rathole_port"], 50000);
+    assert_eq!(tenants[0]["tunnel_port"], 50000);
     assert_eq!(tenants[0]["idle"], false);
 }
 
@@ -166,13 +166,13 @@ async fn a_box_whose_heartbeats_stopped_is_pruned_on_load() {
             "tenants": {
                 "demo-box": {
                     "hostname": "demo.losos.example",
-                    "rathole_port": 50000,
+                    "tunnel_port": 50000,
                     "seen_ago_secs": 3600,
                     "idle": [true, 3600]
                 },
                 "other-box": {
                     "hostname": "other.losos.example",
-                    "rathole_port": 50001,
+                    "tunnel_port": 50001,
                     "seen_ago_secs": 10,
                     "idle": null
                 }

@@ -63,7 +63,7 @@ const EDGE_BOTH = { ...EDGE_OFFICIAL, edges: [EDGE_COMPANY.edges[0], EDGE_OFFICI
 /* The company edge in use, and the owner has let it manage the box. */
 const EDGE_MANAGED = {
   ...EDGE_COMPANY,
-  path: { name: 'office edge', url: 'http://edge.local:8443', source: 'lan', rathole: 'edge.local:2333' },
+  path: { name: 'office edge', url: 'http://edge.local:8443', source: 'lan', tunnel: 'edge.local:2333' },
   manage: {
     candidate: { name: 'office edge', url: 'http://edge.local:8443' },
     refused: null,

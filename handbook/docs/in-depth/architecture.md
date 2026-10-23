@@ -336,7 +336,7 @@ travel between processes, and `import` applies the heartbeat TTL because no
 reconciler ran in between.
 
 The tunnel, Traefik, the mesh and the Stripe gate cannot run there, so on
-that host `/cluster/join` and `/market/*` answer 503 and `/noise-public-key`
+that host `/cluster/join` and `/market/*` answer 503 and `/tunnel-pin`
 404. `devenv.nix`'s `crates` list and CI lint and test it like the other two
 crates. `nix build` never sees it. Its `tests/postgres.rs` runs only when
 `LOSOS_TEST_DATABASE_URL` is set, which CI's test job provides with a

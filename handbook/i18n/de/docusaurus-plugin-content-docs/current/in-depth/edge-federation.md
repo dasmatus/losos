@@ -23,14 +23,14 @@ Control Plane des Mesh) und bekommt einen **Uplink** zu einem Hub dazu. Zwei
 Standorte, jeder hinter seinem eigenen Spoke, erreichen einander über den
 Hub; eine Box spricht nie direkt mit dem Spoke eines anderen Standorts.
 
-![Standort A: Eine Box verbindet sich per rathole mit Spoke A und meldet sich dort an; Spoke A verbindet sich per rathole-Uplink mit dem Hub im Internet und meldet die Box mit POST /relay weiter; Standort B ist spiegelbildlich. Jeder Spoke betreibt Traefik im LAN; der Hub betreibt Traefik mit öffentlichem TLS und routet nach Host(<box>.<zone>).](/img/diagrams/edge-federation-de.svg)
+![Standort A: Eine Box verbindet sich per QUIC-Tunnel mit Spoke A und meldet sich dort an; Spoke A verbindet sich per QUIC-Uplink mit dem Hub im Internet und meldet die Box mit POST /relay weiter; Standort B ist spiegelbildlich. Jeder Spoke betreibt Traefik im LAN; der Hub betreibt Traefik mit öffentlichem TLS und routet nach Host(<box>.<zone>).](/img/diagrams/edge-federation-de.svg)
 
 Drei Ebenen, von denen nur zwei föderiert werden:
 
 | Ebene   | Was                                              | Föderiert?                                                                 |
 | ------- | ------------------------------------------------ | -------------------------------------------------------------------------- |
 | control | Registrar-API: register, heartbeat, join, market | der Spoke leitet seine Boxen an den Hub weiter (`POST /relay`); der Market nicht |
-| data    | rathole-Tunnel + Traefik                         | ein Hop mehr: Hub → Spoke → Box                                            |
+| data    | QUIC-Tunnel + Traefik                            | ein Hop mehr: Hub → Spoke → Box                                            |
 | mesh    | rke2-Server + Longhorn                           | **nein**: jede Edge ist ihr eigener Cluster, siehe „Was lokal bleibt“      |
 
 ## Hub-Seite: ein Tenant, der weiterleiten darf {#hub-side-a-tenant-that-may-relay}
@@ -58,8 +58,8 @@ der Spoke nicht mehr aufführt, ist beim nächsten Reconcile verschwunden, und
 ein Spoke, der verstummt, nimmt nach Ablauf der Heartbeat-TTL alle seine
 Boxen mit, wie jeder Tenant. Weitergeleitete Einträge stehen in der Registry
 des Hubs als `<spoke>.<box>` mit `via: <spoke>`, bekommen einen Port aus
-demselben rathole-Bereich, einen Traefik-Router `Host(<hostname>)` und einen
-rathole-Dienst, dessen Token der Token des **Spokes** ist: Der Spoke ist die
+demselben Tunnel-Bereich, einen Traefik-Router `Host(<hostname>)` und einen
+Tunnel-Dienst, dessen Token der Token des **Spokes** ist: Der Spoke ist die
 authentifizierte Partei, der Hub hält nie den Token einer Box. Die Hoheit
 über Hostnamen bleibt, wo sie war: Der Betreiber des Hubs hat die Zone
 gewählt; der Spoke wählt die Labels darin; alles andere wird pro Box
@@ -83,28 +83,26 @@ losos.edge = {
   uplink = {
     enable = true;
     registrarUrl = "https://register.losos.cfd";   # the hub's API
-    ratholeEndpoint = "edge.losos.cfd:2333";       # the hub's tunnel port
+    tunnelEndpoint = "edge.losos.cfd:2333";        # the hub's tunnel port
     id = "acme";                                   # the tenant row above
     tokenFile = "/var/secrets/losos-uplink-token";
-    # bootstrapTokenFile is optional: every relayed service carries the
-    # uplink token, so rathole's default_token is never consulted.
   };
 };
 ```
 
 Nachdem der Reconciler des Registrars seine eigenen Traefik- und
-rathole-Dateien geschrieben hat, leitet er seine **aktiven** Tenants
+Tunnel-Dateien geschrieben hat, leitet er seine **aktiven** Tenants
 (registriert, auf der Whitelist oder eingeschrieben, mit Heartbeat) an den
-Hub weiter und erzeugt `/etc/rathole/uplink.toml`: eine rathole-*Client*-
-Konfiguration mit einem Dienst pro weitergeleiteter Box, `local_addr =
-127.0.0.1:<Port dieser Box auf diesem Spoke>`, Token = der Uplink-Token. Eine
-zweite rathole-Unit, `losos-rathole-uplink`, führt sie aus (gestartet von
-einer Path-Unit, sobald die Datei existiert); rathole lädt die Datei im
-laufenden Betrieb neu, wie die des Servers. Der Noise-Public-Key des Hubs
-wird beim ersten Kontakt gepinnt (`GET /noise-public-key`, vom Registrar
-selbst nach `uplink.noisePublicKeyFile` geschrieben), so wie eine Box den
-ihrer Edge pinnt. Eine Anfrage an `https://mattbox.acme.losos.cfd/`
-terminiert also TLS auf dem Hub, betritt den rathole-Dienst `acme.mattbox`
+Hub weiter und erzeugt `/etc/losos-tunnel/uplink.json`: eine *Client*-Datei
+des Tunnels mit einem Dienst pro weitergeleiteter Box, `local =
+127.0.0.1:<Port dieser Box auf diesem Spoke>`, Token = der Uplink-Token. Die
+Unit `losos-tunnel-uplink` führt damit denselben Client aus, der auf einer
+Box läuft (gestartet von einer Path-Unit, sobald die Datei existiert), und
+verbindet sich neu, wenn sich die Datei ändert. Das Tunnel-Zertifikat des
+Hubs wird beim ersten Kontakt gepinnt (`GET /tunnel-pin`, vom Registrar
+selbst nach `uplink.pinFile` geschrieben), so wie eine Box das ihrer Edge
+pinnt. Eine Anfrage an `https://mattbox.acme.losos.cfd/`
+terminiert also TLS auf dem Hub, betritt den Tunnel-Dienst `acme.mattbox`
 des Hubs, durchquert den Uplink zum lokalen Port des Spokes für `mattbox`,
 durchquert den Tunnel der Box und landet im Nginx der Box. Zwei Tunnel, ein
 Host-Header, keine Änderung an der Box.
@@ -132,31 +130,30 @@ einzuschalten, wenn keine da ist. Es wählt einen Pfad nach dieser Regel:
 
 1. **zuerst eine lokale Edge**: die erste Ankündigung im LAN, deren
    `/health` antwortet; die Ankündigung trägt jetzt auch
-   `rathole=<host:port>`, damit die Box weiß, wohin ihr Tunnel führt;
+   `tunnel=<host:port>`, damit die Box weiß, wohin ihr Tunnel führt;
 2. **danach die offizielle Edge**: `losos.proxy.registrarUrl` und
-   `losos.proxy.edgeRatholeEndpoint`, wenn das LAN keine hat;
+   `losos.proxy.edgeTunnelEndpoint`, wenn das LAN keine hat;
 3. **keine**: jede Funktion, die von einer Edge abhängt, ist aus: Die
    Tunnel- und Announce-Units sind gestoppt, die Freigabesperre lehnt ab,
    das Market-Relay lehnt ab.
 
-`GET /api/edge` liefert die Wahl als `path` (`{name, url, rathole, source}`
-oder `null`), neben dem `rathole`-Endpunkt jeder Edge. Mit eingeschaltetem
+`GET /api/edge` liefert die Wahl als `path` (`{name, url, tunnel, source}`
+oder `null`), neben dem `tunnel`-Endpunkt jeder Edge. Mit eingeschaltetem
 `losos.proxy.enable` schreibt `lososd` den Pfad nach
-`/run/losos/edge-path.env` (`LOSOS_EDGE_PATH_URL`, `_RATHOLE`, `_SOURCE`,
-`_NOISE_PUB`) und steuert danach die beiden Tunnel-Units: Ein Wechsel des
-Pfads startet `losos-rathole-client` und `losos-registrar-announce` neu,
+`/run/losos/edge-path.env` (`LOSOS_EDGE_PATH_URL`, `_TUNNEL`, `_SOURCE`,
+`_TUNNEL_PIN`) und steuert danach die beiden Tunnel-Units: Ein Wechsel des
+Pfads startet `losos-tunnel-client` und `losos-registrar-announce` neu,
 ohne Pfad wird `/run/losos/edge-none` geschrieben und beide werden gestoppt
 (beide Units tragen `ConditionPathExists=!/run/losos/edge-none`, sodass
 nichts sie neu startet, bis wieder eine Edge da ist). Beide Dateien liegen
 auf `/run`: Bis zum ersten Scan nach einem Neustart wählen die Units die
 konfigurierte Edge an, wie sie es immer getan haben. Das eigene
-`ExecStartPre` des Clients pinnt den Noise-Key jeder Edge in einer eigenen
-Datei: den der konfigurierten Edge in `losos.proxy.noisePublicKeyFile`, den
-einer LAN-Edge unter `/var/secrets/losos-edge-pins/<host>_<port>.pub`. Ein
-zweites Gateway erbt deshalb nie den Key des ersten. Der Token der Box ist
+`ExecStartPre` des Clients pinnt das Tunnel-Zertifikat jeder Edge in einer
+eigenen Datei: das der konfigurierten Edge in `losos.proxy.tunnelPinFile`,
+das einer LAN-Edge unter `/var/secrets/losos-edge-pins/<host>_<port>.pin`.
+Ein zweites Gateway erbt deshalb nie das Zertifikat des ersten. Der Token der Box ist
 auf jedem Weg derselbe. Der Hub hat ihn in seiner Whitelist, ein Gateway
-erfährt ihn beim ersten Kontakt, und `lososd` erzeugt ihn (und den
-Bootstrap-Token) beim ersten Start, wenn die Dateien fehlen. Ihr öffentlicher
+erfährt ihn beim ersten Kontakt, und `lososd` erzeugt ihn beim ersten Start, wenn die Datei fehlt. Ihr öffentlicher
 Name ist ebenfalls derselbe: `losos.proxy.hostname`
 des Besitzers muss ein Label unterhalb der Zone des Standorts sein
 (`mattbox.acme.losos.cfd`), damit das Relay ihn annimmt, und das ist auch
@@ -310,7 +307,7 @@ Zwei Formen, eine Konfiguration:
    `losos.edge.gateway.enable` (`modules/edge-gateway.nix`), das
    `lan.advertise` und `lan.openEnrolment` setzt, den Uplink zur Laufzeit
    aus `/var/lib/losos-edge/uplink.json` liest, sodass ein Image jedem
-   Standort dient, beim ersten Booten seinen eigenen Bootstrap-Token
+   Standort dient, beim ersten Booten sein eigenes Tunnel-Zertifikat
    erzeugt, root eine Konsole gibt (erstes Passwort `losos`, Änderung beim
    ersten Login erzwungen; sshd installiert, aber gestoppt bis
    `losos-edge ssh on`) und seine Adresse auf tty1 ausgibt. Boote es
@@ -321,7 +318,7 @@ Zwei Formen, eine Konfiguration:
    ```sh
    losos-edge status
    losos-edge uplink set --id acme --token-file /root/acme.token \
-     --registrar https://register.losos.cfd --rathole edge.losos.cfd:2333
+     --registrar https://register.losos.cfd --tunnel edge.losos.cfd:2333
    losos-edge boxes
    ```
 
@@ -334,5 +331,5 @@ Zwei Formen, eine Konfiguration:
 
 Die Hub-Seite für die offiziellen Edges ist eine Tenant-Zeile pro Standort.
 Der Vercel-Host hat dieselbe `/relay`-Route und kann daher für eine Demo
-einen Spoke *annehmen*, aber da dort kein rathole läuft, braucht der
+einen Spoke *annehmen*, aber da dort kein Tunnel läuft, braucht der
 Datenpfad wie bisher den VPS.

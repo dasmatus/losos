@@ -139,13 +139,15 @@ pub fn parse(text: &str) -> anyhow::Result<OptionsDoc> {
 /// first, so a file that reads back fine there must pass the gate here too.
 /// The `forgejo.` ones are LosOS Git's settings from before it replaced
 /// Forgejo (modules/options.nix keeps them evaluating); joined under the new
-/// name, the next Apply writes them that way.
+/// name, the next Apply writes them that way. `proxy.edgeRatholeEndpoint`
+/// is the edge tunnel's address from before it moved to QUIC.
 const ALIASES: &[(&str, &str)] = &[
     ("cfd.enable", "proxy.enable"),
     ("forgejo.enable", "git.enable"),
     ("forgejo.site.requireSignIn", "git.site.requireSignIn"),
     ("forgejo.site.defaultPrivate", "git.site.defaultPrivate"),
     ("forgejo.site.pushCreate", "git.site.pushCreate"),
+    ("proxy.edgeRatholeEndpoint", "proxy.edgeTunnelEndpoint"),
 ];
 
 fn canonical(key: &str) -> &str {

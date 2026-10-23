@@ -405,7 +405,7 @@
 
       };
 
-      # The master-proxy edge: Traefik (master), a rathole server, and
+      # The master-proxy edge: Traefik (master), the QUIC tunnel server, and
       # losos-registrar (serve) on a public VPS. Exported as a module, not a
       # nixosConfiguration: the VPS flake imports this next to its own
       # hardware/bootloader config and sets losos.edge.* (a bare

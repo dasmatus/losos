@@ -124,7 +124,7 @@
         const stale = b.seen_ago_secs * 2 >= s.heartbeat_ttl_secs;
         const idle = b.idle === null ? '<span style="color:var(--faint)">unknown</span>' : b.idle ? 'idle' : 'busy';
         return `<tr class="${stale ? 'stale' : 'live'}"><td><span class="dot"></span>${stale ? 'expiring' : 'live'}</td>` +
-          `<td><code>${esc(b.id)}</code></td><td>${esc(b.hostname)}</td><td class="num">${b.rathole_port}</td>` +
+          `<td><code>${esc(b.id)}</code></td><td>${esc(b.hostname)}</td><td class="num">${b.tunnel_port}</td>` +
           `<td class="num">${ago(b.seen_ago_secs)}</td><td>${idle}</td></tr>`;
       });
       el('rows').innerHTML = rows.length ? rows.join('') :

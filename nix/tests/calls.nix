@@ -183,14 +183,11 @@ let
 
   # The box's edge token, as nix/tests/edge-vm.nix provisions it.
   proxyTokenValue = "test-proxy-token-0123456789abcdef";
-  bootstrapTokenValue = "test-bootstrap-0123456789abcdef0123";
   proxyToken = "/var/secrets/losos-proxy-token";
-  bootstrapToken = "/var/secrets/losos-rathole-bootstrap";
   secretFiles = {
     systemd.tmpfiles.rules = [
       "d /var/secrets 0700 root root - -"
       "f ${proxyToken} 0600 root root - ${proxyTokenValue}"
-      "f ${bootstrapToken} 0600 root root - ${bootstrapTokenValue}"
     ];
   };
   # The edge's identity, so it is an official edge and makes guest links:
@@ -374,12 +371,11 @@ pkgs.testers.nixosTest {
           calls.udpPort = mediaPort;
           proxy = lib.mkIf throughEdge {
             enable = true;
-            edgeRatholeEndpoint = "edge:2333";
+            edgeTunnelEndpoint = "edge:2333";
             registrarUrl = "http://edge:8443";
             hostname = "mattbox.losos.cfd";
             applianceId = "mattbox";
             tokenFile = proxyToken;
-            bootstrapTokenFile = bootstrapToken;
             heartbeatInterval = "3s";
             registrar.package = lososPkgs.losos-registrar;
           };
@@ -493,10 +489,9 @@ pkgs.testers.nixosTest {
           acmeEmail = "test@losos.cfd";
           registrarApiBind = "::";
           registrarApiPort = 8443;
-          ratholeBindPort = 2333;
-          ratholePortRange = "50000-50010";
+          tunnelBindPort = 2333;
+          tunnelPortRange = "50000-50010";
           reconcileInterval = "2s";
-          bootstrapTokenFile = bootstrapToken;
           tenants.mattbox = {
             hostname = "mattbox.losos.cfd";
             tokenFile = proxyToken;
@@ -561,7 +556,7 @@ pkgs.testers.nixosTest {
     if EDGE is not None:
         EDGE.wait_for_unit("losos-registrar.service")
         # lososd starts the tunnel once its scan finds the edge.
-        box.wait_until_succeeds("systemctl is-active losos-rathole-client.service", timeout=300)
+        box.wait_until_succeeds("systemctl is-active losos-tunnel-client.service", timeout=300)
     box.wait_for_unit("lososd.service")
     box.wait_for_unit("nginx.service")
     box.wait_for_unit("dendrite.service")

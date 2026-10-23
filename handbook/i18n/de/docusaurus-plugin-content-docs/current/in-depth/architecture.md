@@ -364,7 +364,7 @@ Heartbeat-TTL an, weil dazwischen kein Abgleicher lief.
 
 Tunnel, Traefik, Mesh und Stripe-Gate können dort nicht laufen, daher
 antworten auf diesem Host `/cluster/join` und `/market/*` mit 503 und
-`/noise-public-key` mit 404. Die `crates`-Liste in `devenv.nix` und CI linten
+`/tunnel-pin` mit 404. Die `crates`-Liste in `devenv.nix` und CI linten
 und testen es wie die anderen beiden Crates. `nix build` sieht es nie. Sein
 `tests/postgres.rs` läuft nur, wenn `LOSOS_TEST_DATABASE_URL` gesetzt ist,
 was der Test-Job in CI mit einem Postgres-Dienst bereitstellt. Der Rest

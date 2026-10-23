@@ -28,9 +28,6 @@ pub mod coins;
 pub const GOOD_TOKEN: &str = "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0";
 /// A second valid token, distinct from [`GOOD_TOKEN`].
 pub const OTHER_TOKEN: &str = "abad1deaabad1deaabad1deaabad1deaabad1deaabad1deaabad1deaabad1dea";
-/// The rathole `default_token` the edge is configured with.
-pub const BOOTSTRAP_TOKEN: &str =
-    "b00757241pb00757241pb00757241pb00757241pb00757241pb00757241pb007";
 /// The shape of a real rke2 node token: `K10<ca hash>::server:<password>`.
 /// Long, and carrying `:` — which `token_fault` allows and a control-character
 /// check must not be tightened into rejecting.
@@ -334,13 +331,9 @@ impl Edge {
         .await
     }
 
-    /// As [`Edge::start`], serving `public_key` at `/noise-public-key`.
-    pub async fn start_with_noise_public_key(
-        tag: &str,
-        tenants: &[TenantSpec],
-        public_key: &str,
-    ) -> Self {
-        Self::start_inner(tag, tenants, MeshFixture::default(), Some(public_key), None).await
+    /// As [`Edge::start`], serving `pin` at `/tunnel-pin`.
+    pub async fn start_with_tunnel_pin(tag: &str, tenants: &[TenantSpec], pin: &str) -> Self {
+        Self::start_inner(tag, tenants, MeshFixture::default(), Some(pin), None).await
     }
 
     /// An official edge (identity key and certificate in place) with a
@@ -405,20 +398,10 @@ impl Edge {
         tag: &str,
         tenants: &[TenantSpec],
         mesh: MeshFixture,
-        noise_public_key: Option<&str>,
+        tunnel_pin: Option<&str>,
         stripe_api: Option<String>,
     ) -> Self {
-        Self::start_inner_seeded(
-            tag,
-            tenants,
-            mesh,
-            noise_public_key,
-            stripe_api,
-            &[],
-            None,
-            None,
-        )
-        .await
+        Self::start_inner_seeded(tag, tenants, mesh, tunnel_pin, stripe_api, &[], None, None).await
     }
 
     /// As [`Edge::start`], with `--identity-key-file` / `--identity-cert-file`
@@ -522,7 +505,7 @@ impl Edge {
         tag: &str,
         tenants: &[TenantSpec],
         mesh: MeshFixture,
-        noise_public_key: Option<&str>,
+        tunnel_pin: Option<&str>,
         stripe_api: Option<String>,
         enrolled: &[(&str, bool)],
         market_state: Option<&serde_json::Value>,
@@ -532,7 +515,7 @@ impl Edge {
             tag,
             tenants,
             mesh,
-            noise_public_key,
+            tunnel_pin,
             stripe_api,
             enrolled,
             market_state,
@@ -550,7 +533,7 @@ impl Edge {
         tag: &str,
         tenants: &[TenantSpec],
         mesh: MeshFixture,
-        noise_public_key: Option<&str>,
+        tunnel_pin: Option<&str>,
         stripe_api: Option<String>,
         enrolled: &[(&str, bool)],
         market_state: Option<&serde_json::Value>,
@@ -595,7 +578,6 @@ impl Edge {
             .expect("seed registry.json");
         }
         std::fs::create_dir_all(dir.join("traefik")).expect("create traefik dir");
-        std::fs::write(dir.join("bootstrap.token"), BOOTSTRAP_TOKEN).expect("write bootstrap");
         write_tenants(&dir, tenants);
 
         let mesh_agent_token_file = mesh.agent_token.map(|token| {
@@ -607,9 +589,9 @@ impl Edge {
             dir.path_str("kube.token")
         });
 
-        let noise_public_key_file = noise_public_key.map(|key| {
-            std::fs::write(dir.join("noise.pub"), format!("{key}\n")).expect("write noise pub");
-            dir.path_str("noise.pub")
+        let tunnel_pin_file = tunnel_pin.map(|pin| {
+            std::fs::write(dir.join("tunnel.pin"), format!("{pin}\n")).expect("write tunnel pin");
+            dir.path_str("tunnel.pin")
         });
 
         let mut gate_stop = None;
@@ -662,13 +644,9 @@ impl Edge {
             listen: "127.0.0.1:0".to_string(),
             registry_path: dir.path_str("registry.json"),
             traefik_dir: dir.path_str("traefik"),
-            rathole_config: dir.path_str("server.toml"),
-            rathole_bind_addr: "0.0.0.0".to_string(),
-            rathole_bind_port: 2333,
+            tunnel_config: dir.path_str("tunnel.json"),
             port_range: (50000, 50100),
-            bootstrap_token_file: dir.path_str("bootstrap.token"),
-            noise_private_key_file: None,
-            noise_public_key_file,
+            tunnel_pin_file,
             identity_key_file: identity.map(|(k, _)| k.to_string()),
             identity_cert_file: identity.map(|(_, c)| c.to_string()),
             tenants_file: dir.path_str("tenants.json"),
@@ -779,8 +757,8 @@ impl Edge {
         std::fs::read_to_string(self.dir.join("traefik").join("losos.yml")).ok()
     }
 
-    pub fn rathole_toml(&self) -> Option<String> {
-        std::fs::read_to_string(self.dir.join("server.toml")).ok()
+    pub fn tunnel_json(&self) -> Option<String> {
+        std::fs::read_to_string(self.dir.join("tunnel.json")).ok()
     }
 
     pub fn registry_json(&self) -> Option<String> {

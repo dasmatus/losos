@@ -2080,7 +2080,6 @@ dependencies = [
  "http-body-util",
  "losos-registrar",
  "miette",
- "ring",
  "rustls",
  "serde",
  "serde_json",
@@ -2100,8 +2099,12 @@ name = "losos-registrar"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64 0.22.1",
+ "bytes",
  "curve25519-dalek 5.0.0",
  "futures-util",
+ "h2",
+ "http",
  "if-addrs",
  "k256 0.14.0",
  "losos-access",
@@ -2121,6 +2124,7 @@ dependencies = [
  "subtle",
  "thiserror",
  "tokio",
+ "tokio-rustls",
  "tonic",
  "tonic-prost",
  "tracing",

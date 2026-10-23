@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 authors = ["Matus Mastena <shadiness9530+ou1rlygj@pm.me>"]
-description = "losos edge registration + Traefik/rathole config reconciler (serve) and appliance registration client (announce)"
+description = "losos edge registration + Traefik and tunnel config reconciler (serve) and appliance registration client (announce)"
 license = "AGPL-3.0-or-later"
 
 [dependencies]
@@ -69,6 +69,13 @@ quinn = { version = "0.11", default-features = false, features = ["runtime-tokio
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
 if-addrs = "0.15"
+# The tunnel's fallback where UDP does not get through (`tunnel`): TLS over
+# TCP carrying HTTP/2 streams. All four are already in the lock tree through
+# reqwest and hyper.
+h2 = "0.4"
+http = "1"
+bytes = "1"
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring"] }
 # Mesh CI (`ci.rs`): a commit's archive travels in the JSON body as
 # base64. Already in the lock tree through reqwest.
 base64 = "0.22"

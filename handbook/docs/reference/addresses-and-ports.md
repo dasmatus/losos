@@ -36,6 +36,7 @@ arriving through an edge's tunnel, gets **403**.
 | ------- | -------- | ------------------------------------------------------ |
 | 80      | HTTP     | Everything above                                        |
 | 443     | HTTPS    | The same, with the box's own certificate (`losos.tls.enable`, on by default) |
+| 443 (UDP) | HTTP/3 | The same over QUIC, offered to browsers by an `Alt-Svc` header; HTTPS on TCP stays the fallback |
 | 5353    | mDNS     | Announcing `<name>.local`, and the box as a `_losos._tcp` service |
 | 445     | SMB      | Each person's LosOS Cloud files as a Windows network share (`losos.cloud.windows.enable`, on by default); the local network only |
 | 3702 (UDP), 5357 | WS-Discovery | Listing the box under Network in Windows' File Explorer, while the share is on |
@@ -48,6 +49,15 @@ While the share is on, the mDNS entry for LosOS Cloud is the SMB share
 Nothing else is open. The box reaches the mesh and the edge outwards. It
 opens the tunnel and joins the cluster itself, so you open no inbound port
 at home.
+
+## On an edge
+
+| Port         | Protocol | What                                                    |
+| ------------ | -------- | ------------------------------------------------------- |
+| 80, 443      | HTTP(S)  | Traefik: every box's public name                         |
+| 2333 (UDP)   | QUIC     | The tunnel boxes dial (`losos.edge.tunnelBindPort`)      |
+| 2333 (TCP)   | TLS      | The same tunnel, for boxes on a network that drops UDP   |
+| 7883 (UDP)   | QUIC     | The calls relay (`losos.edge.calls.relay.port`)          |
 
 ## Names
 

@@ -139,9 +139,8 @@ pub struct RoutesOpts {
 }
 
 /// `serve` options. The registrar is the sole writer of `traefik_dir`'s
-/// `losos.yml` and `rathole_config`; rathole hot-reloads the latter via its
-/// `notify` file-watcher (no signal needed), so there is no rathole-service
-/// handle here.
+/// `losos.yml` and `tunnel_config`; the tunnel re-reads the latter every
+/// second (no signal needed), so there is no tunnel handle here.
 ///
 /// The `mesh_*` / `kube_*` fields are the `/cluster/join` half and are all
 /// optional. `modules/edge.nix` only appends their flags under
@@ -154,16 +153,13 @@ pub struct ServeOpts {
     pub listen: String,
     pub registry_path: String,
     pub traefik_dir: String,
-    pub rathole_config: String,
-    pub rathole_bind_addr: String,
-    pub rathole_bind_port: u16,
+    /// The tunnel's service file (`crate::tunnel::ServerFile`).
+    pub tunnel_config: String,
     pub port_range: (u16, u16),
-    pub bootstrap_token_file: String,
-    /// 0600 file holding the rathole Noise private key; `None` = plain TCP.
-    pub noise_private_key_file: Option<String>,
-    /// The matching public key, served verbatim at `GET /noise-public-key` so
-    /// appliances can pin it on first start. Public by nature; `None` = 404.
-    pub noise_public_key_file: Option<String>,
+    /// The tunnel's `pin` file (`crate::tunnel::load_or_make_identity`),
+    /// served verbatim at `GET /tunnel-pin` so appliances can pin the
+    /// tunnel's certificate on first start. Public by nature; `None` = 404.
+    pub tunnel_pin_file: Option<String>,
     pub tenants_file: String,
     pub reconcile_interval: Duration,
     pub heartbeat_ttl: Duration,
@@ -281,20 +277,6 @@ pub enum IdentityOpts {
         nonce: String,
         answer: String,
     },
-}
-
-/// `seed` options. Writes the declarative rathole `[server]` base (for zero
-/// tenants) so rathole can start before `serve`'s reconciler has run once.
-/// Reuses [`crate::desired_config`] — the same function `serve`'s reconciler
-/// calls — so the seed and the steady-state output can never drift.
-#[derive(Debug, Clone)]
-pub struct SeedOpts {
-    pub rathole_config: String,
-    pub rathole_bind_addr: String,
-    pub rathole_bind_port: u16,
-    pub bootstrap_token_file: String,
-    /// 0600 file holding the rathole Noise private key; `None` = plain TCP.
-    pub noise_private_key_file: Option<String>,
 }
 
 /// `announce` options. The appliance reads its token from `token_file`
@@ -442,7 +424,8 @@ pub const PUBLISH_REPO: &str = "dasmatus/losos";
 pub enum Mode {
     Serve(ServeOpts),
     Announce(AnnounceOpts),
-    Seed(SeedOpts),
+    TunnelServer(crate::tunnel::ServerOpts),
+    TunnelClient { config: String },
     Join(JoinOpts),
     StripeGate(GateOpts),
     Identity(IdentityOpts),
@@ -467,7 +450,7 @@ pub enum EnrolOpts {
 pub fn parse(args: Vec<String>) -> Result<Mode> {
     if args.is_empty() {
         return Err(miette!(
-            "usage: losos-registrar serve|announce|seed|join|stripe-gate|identity|provision|enrol|lab ..."
+            "usage: losos-registrar serve|announce|tunnel-server|tunnel-client|join|stripe-gate|identity|provision|enrol|lab ..."
         ));
     }
     let mode = &args[0];
@@ -485,18 +468,9 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                     .to_string(),
                 registry_path: req(&rest, "--registry")?.to_string(),
                 traefik_dir: req(&rest, "--traefik-dir")?.to_string(),
-                rathole_config: req(&rest, "--rathole-config")?.to_string(),
-                rathole_bind_addr: arg(&rest, "--rathole-bind-addr")
-                    .unwrap_or("0.0.0.0")
-                    .to_string(),
-                rathole_bind_port: arg(&rest, "--rathole-bind-port")
-                    .unwrap_or("2333")
-                    .parse()
-                    .map_err(|_| miette!("bad --rathole-bind-port"))?,
+                tunnel_config: req(&rest, "--tunnel-config")?.to_string(),
                 port_range: (lo, hi),
-                bootstrap_token_file: req(&rest, "--bootstrap-token-file")?.to_string(),
-                noise_private_key_file: arg(&rest, "--noise-private-key-file").map(str::to_string),
-                noise_public_key_file: arg(&rest, "--noise-public-key-file").map(str::to_string),
+                tunnel_pin_file: arg(&rest, "--tunnel-pin-file").map(str::to_string),
                 tenants_file: req(&rest, "--tenants-file")?.to_string(),
                 reconcile_interval: parse_dur(arg(&rest, "--reconcile-interval").unwrap_or("15s"))?,
                 heartbeat_ttl: parse_dur(arg(&rest, "--heartbeat-ttl").unwrap_or("120s"))?,
@@ -555,8 +529,8 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                     None => None,
                     Some(file) => Some(crate::relay::UplinkOpts {
                         file: file.to_string(),
-                        rathole_config: arg(&rest, "--uplink-rathole-config")
-                            .unwrap_or("/etc/rathole/uplink.toml")
+                        tunnel_config: arg(&rest, "--uplink-tunnel-config")
+                            .unwrap_or("/etc/losos-tunnel/uplink.json")
                             .to_string(),
                         interval: parse_dur(arg(&rest, "--uplink-interval").unwrap_or("30s"))?,
                     }),
@@ -637,18 +611,17 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
             managed_file: arg(&rest, "--managed-file").map(str::to_string),
             llm_lend_file: arg(&rest, "--llm-lend-file").map(str::to_string),
         })),
-        "seed" => Ok(Mode::Seed(SeedOpts {
-            rathole_config: req(&rest, "--rathole-config")?.to_string(),
-            rathole_bind_addr: arg(&rest, "--rathole-bind-addr")
-                .unwrap_or("0.0.0.0")
-                .to_string(),
-            rathole_bind_port: arg(&rest, "--rathole-bind-port")
-                .unwrap_or("2333")
+        "tunnel-server" => Ok(Mode::TunnelServer(crate::tunnel::ServerOpts {
+            listen: arg(&rest, "--listen")
+                .unwrap_or("[::]:2333")
                 .parse()
-                .map_err(|_| miette!("bad --rathole-bind-port"))?,
-            bootstrap_token_file: req(&rest, "--bootstrap-token-file")?.to_string(),
-            noise_private_key_file: arg(&rest, "--noise-private-key-file").map(str::to_string),
+                .map_err(|_| miette!("bad --listen; expected ip:port"))?,
+            identity_dir: req(&rest, "--identity-dir")?.into(),
+            config: req(&rest, "--config")?.into(),
         })),
+        "tunnel-client" => Ok(Mode::TunnelClient {
+            config: req(&rest, "--config")?.to_string(),
+        }),
         "join" => Ok(Mode::Join(JoinOpts {
             registrar_url: req(&rest, "--registrar-url")?.to_string(),
             appliance_id: req(&rest, "--appliance-id")?.to_string(),
@@ -1665,7 +1638,7 @@ fn parse_hhmm(s: &str) -> Result<&str> {
     }
 }
 
-/// Parse a `lo-hi` rathole port range, inclusive on both ends.
+/// Parse a `lo-hi` tunnel port range, inclusive on both ends.
 ///
 /// `lo` of 0 and an inverted range are rejected here rather than surfacing
 /// later: port 0 is not bindable, and `hi < lo` makes `alloc_port`'s

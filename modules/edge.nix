@@ -4,10 +4,11 @@
 # `nixosModules.edge` flake output next to its own hardware config. It runs
 # two halves that share one binary and one tenant whitelist:
 #
-#   * the MASTER PROXY — Traefik (public TLS on :443), a rathole server
-#     (appliance clients dial :2333), and losos-registrar (serve), the stub
-#     Rust HTTP server that *constantly updates* Traefik's dynamic
-#     file-provider config and rathole's server config from a tenant registry.
+#   * the MASTER PROXY — Traefik (public TLS on :443), the tunnel server
+#     (boxes dial :2333, QUIC on UDP or TLS on TCP), and losos-registrar
+#     (serve), the stub Rust HTTP server that *constantly updates* Traefik's
+#     dynamic file-provider config and the tunnel's file from a tenant
+#     registry.
 #   * the MESH CONTROL PLANE (`losos.edge.cluster.enable`) — an rke2 server
 #     that appliances join as agents, carrying Longhorn and mesh compute.
 #
@@ -22,7 +23,7 @@
 #     registrar's loopback API). NixOS-managed (this module), symlinked in.
 #   * losos.yml      — per-appliance routers, written at runtime by the
 #     registrar. Traefik auto-reloads on change.
-# The registrar is the sole writer of losos.yml and /etc/rathole/server.toml;
+# The registrar is the sole writer of losos.yml and /etc/losos-tunnel/server.json;
 # it never touches register.yml. That separation keeps the registrar from
 # being able to lock itself out of the control plane.
 #
@@ -30,11 +31,13 @@
 # docs/superpowers/specs/2026-09-09-k3s-mesh-design.md. The appliance side is
 # modules/proxy.nix (proxy) and modules/cluster.nix (mesh).
 #
-# Transport: rathole's Noise transport (NK) encrypts the tunnel, which carries
-# post-TLS-termination HTTP. The edge holds the private key
-# (losos.edge.noisePrivateKeyFile, read by the registrar at runtime) and each
-# appliance pins the public half (losos.proxy.noisePublicKeyFile). Setting the
-# private key file to null falls back to plain TCP.
+# Transport: the tunnel (edge/registrar/src/tunnel.rs, `losos-registrar
+# tunnel-server`) is QUIC, TLS 1.3 under a certificate the edge makes on its
+# first start in /var/lib/losos-tunnel and keeps. Boxes pin its SHA-256,
+# served by the registrar at /tunnel-pin, and prove their tenant token per
+# service. It carries post-TLS-termination HTTP, one QUIC stream per
+# connection. Where UDP is blocked a box reaches the same port over TCP
+# (TLS, then HTTP/2 streams).
 {
   config,
   lib,
@@ -47,7 +50,6 @@
 let
   cfg = config.losos.edge;
   enabled = cfg.enable;
-  rathole = cfg.rathole.package;
   registrar = cfg.registrar.package;
 
   registerDomain = "register.${cfg.publicDomain}";
@@ -96,9 +98,9 @@ let
   # Format a `host:port` socket string for the registrar's `--listen`,
   # bracketing IPv6 literals: `::` → `[::]:8443`, `0.0.0.0` → `0.0.0.0:8443`
   # (parsed as a `SocketAddr`, which rejects an unbracketed IPv6 literal).
-  # Only used for the API listen address — the rathole server.toml, seed
-  # included, is rendered by the registrar itself (`losos-registrar seed`),
-  # so its formatting has a single implementation in config.rs.
+  # Used for the API and tunnel listen addresses; the per-box binds in the
+  # tunnel's file are rendered by the registrar itself, so their formatting
+  # has a single implementation in config.rs.
   fmtBind =
     addr: port:
     if lib.hasInfix ":" addr then "[${addr}]:${toString port}" else "${addr}:${toString port}";
@@ -249,26 +251,21 @@ let
     builtins.toJSON (
       {
         registrar_url = cfg.uplink.registrarUrl;
-        rathole_endpoint = cfg.uplink.ratholeEndpoint;
+        tunnel_endpoint = cfg.uplink.tunnelEndpoint;
         inherit (cfg.uplink) id;
         token_file = toString cfg.uplink.tokenFile;
-      }
-      // lib.optionalAttrs (cfg.uplink.bootstrapTokenFile != null) {
-        bootstrap_token_file = toString cfg.uplink.bootstrapTokenFile;
-      }
-      // lib.optionalAttrs (cfg.uplink.noisePublicKeyFile != null) {
-        noise_public_key_file = toString cfg.uplink.noisePublicKeyFile;
+        pin_file = toString cfg.uplink.pinFile;
       }
     )
   );
   uplinkFile =
     if cfg.uplink.configFile != null then cfg.uplink.configFile else toString uplinkRendered;
-  uplinkRatholeConfig = "/etc/rathole/uplink.toml";
+  uplinkTunnelConfig = "/etc/losos-tunnel/uplink.json";
   uplinkArgs = lib.optionals cfg.uplink.enable [
     "--uplink-file"
     uplinkFile
-    "--uplink-rathole-config"
-    uplinkRatholeConfig
+    "--uplink-tunnel-config"
+    uplinkTunnelConfig
     "--uplink-interval"
     cfg.uplink.interval
   ];
@@ -579,45 +576,27 @@ let
     done
   '';
 
-  # Seed the rathole server config at first boot so rathole can start
-  # independently of the registrar. `losos-registrar seed` renders the
-  # zero-tenant config through the same desired_config the reconciler uses,
-  # so the seed and the registrar's steady-state rewrite are identical by
-  # construction (zero churn, no hand-maintained byte-identity). Idempotent:
-  # exits untouched when the file already exists — after first boot the
-  # running registrar is the writer.
-  #
-  # Both `seed` and `serve` render the same server.toml, so both must read the
-  # same Noise key or the seed and the reconciler would disagree.
-  # The public half sits beside the private key. It is derived from it on every
-  # start (see losos-rathole-noise-keygen), so it cannot go stale or disagree.
-  noisePublicKeyFile = "${toString cfg.noisePrivateKeyFile}.pub";
-
-  noiseArgs = lib.optionals (cfg.noisePrivateKeyFile != null) [
-    "--noise-private-key-file"
-    (toString cfg.noisePrivateKeyFile)
-  ];
+  # The tunnel's state: its certificate, key and pin (the registrar serves
+  # the pin at /tunnel-pin), and the file the registrar writes and the
+  # tunnel server reads.
+  tunnelStateDir = "/var/lib/losos-tunnel";
+  tunnelConfig = "/etc/losos-tunnel/server.json";
 
   # ExecStart lines are built with escapeSystemdExecArgs, not by joining with
   # spaces. Several arguments are operator strings (the bind address, the port
   # range, the return URL): systemd would expand a `%` in one as a specifier
   # (a return URL with `%2F` in it reached the registrar changed), and split
   # one with a space into two arguments.
-  seedArgs = utils.escapeSystemdExecArgs (
-    [
-      "${registrar}/bin/losos-registrar"
-      "seed"
-      "--rathole-config"
-      "/etc/rathole/server.toml"
-      "--rathole-bind-addr"
-      cfg.ratholeBindAddr
-      "--rathole-bind-port"
-      (toString cfg.ratholeBindPort)
-      "--bootstrap-token-file"
-      (toString cfg.bootstrapTokenFile)
-    ]
-    ++ noiseArgs
-  );
+  tunnelArgs = utils.escapeSystemdExecArgs [
+    "${registrar}/bin/losos-registrar"
+    "tunnel-server"
+    "--listen"
+    (fmtBind cfg.tunnelBindAddr cfg.tunnelBindPort)
+    "--identity-dir"
+    tunnelStateDir
+    "--config"
+    tunnelConfig
+  ];
 
   # Mesh half of `serve`. Every one of these is optional in the registrar's
   # parser, and without --mesh-agent-token-file the join route answers 503 —
@@ -940,27 +919,18 @@ let
       "/var/lib/losos-registrar/registry.json"
       "--traefik-dir"
       "/etc/traefik/dynamic"
-      "--rathole-config"
-      "/etc/rathole/server.toml"
-      "--rathole-bind-addr"
-      cfg.ratholeBindAddr
-      "--rathole-bind-port"
-      (toString cfg.ratholeBindPort)
+      "--tunnel-config"
+      tunnelConfig
+      "--tunnel-pin-file"
+      "${tunnelStateDir}/pin"
       "--port-range"
-      cfg.ratholePortRange
-      "--bootstrap-token-file"
-      (toString cfg.bootstrapTokenFile)
+      cfg.tunnelPortRange
       "--tenants-file"
       (toString tenantsJson)
       "--reconcile-interval"
       cfg.reconcileInterval
       "--heartbeat-ttl"
       cfg.heartbeatTtl
-    ]
-    ++ noiseArgs
-    ++ lib.optionals (cfg.noisePrivateKeyFile != null) [
-      "--noise-public-key-file"
-      noisePublicKeyFile
     ]
     ++ meshServeArgs
     ++ marketServeArgs
@@ -977,7 +947,7 @@ let
 
   # Call media for this edge's boxes (losos.edge.calls.relay,
   # edge/registrar/src/calls_relay.rs). The QUIC port is dual-stack like
-  # rathole's; media ports bind per address.
+  # the tunnel's; media ports bind per address.
   relayCfg = cfg.calls.relay;
   callsRelayArgs = lib.optionals relayCfg.enable (
     [
@@ -1050,7 +1020,7 @@ let
 
   # The official-edge identity (losos.edge.identity.*): both files or neither,
   # asserted below. The private key is made and read by the registrar at
-  # runtime, like the Noise key; the certificate is public and arrives by
+  # runtime, like the tunnel's; the certificate is public and arrives by
   # `POST /identity/cert` from an allowlisted operator, so both default to
   # the registrar's own StateDirectory, where it can write them.
   identityArgs = lib.optionals (cfg.identity.keyFile != null) [
@@ -1335,6 +1305,8 @@ in
     # losos.yml. Traefik's file provider reads both.
     systemd.tmpfiles.rules = [
       "d /etc/traefik/dynamic 0755 root root - -"
+      # The tunnel's file, written by the registrar, read by losos-tunnel.
+      "d /etc/losos-tunnel 0755 root root - -"
       "L+ /etc/traefik/dynamic/register.yml - - - - ${toString registerYml}"
     ]
     ++ lib.optionals cfg.vms.enable [
@@ -1359,11 +1331,10 @@ in
 
     # ── losos-registrar (registration API + reconciler) ─────────────────
     systemd.services.losos-registrar = {
-      description = "losos edge registrar — registration API + Traefik/rathole config reconciler";
+      description = "losos edge registrar — registration API + Traefik and tunnel config reconciler";
       wantedBy = [ "multi-user.target" ];
       after = [
         "network-online.target"
-        "losos-rathole-seed.service"
       ]
       ++ lib.optional meshEnabled "losos-mesh-rbac.service"
       ++ lib.optional gateOn "losos-stripe-gate.service"
@@ -1390,7 +1361,8 @@ in
         StateDirectoryMode = "0700";
         Restart = "always";
         RestartSec = 5;
-        # Writes /etc/traefik/dynamic + /etc/rathole; reads 0600 token files.
+        # Writes /etc/traefik/dynamic + /etc/losos-tunnel; reads 0600 token
+        # files and the tunnel's pin.
         # Runs as root; deliberately no ProtectSystem (would make /etc RO).
         PrivateTmp = true;
         NoNewPrivileges = true;
@@ -1606,123 +1578,73 @@ in
       };
     };
 
-    # ── rathole server config seed ───────────────────────────────────────
-    # Writes the zero-tenant server.toml so rathole can start before the
-    # registrar. Idempotent (only when server.toml is absent); the registrar
-    # rewrites the file afterward, so this is a first-boot seed only.
-    systemd.services.losos-rathole-seed = {
-      description = "losos rathole server config seed (zero-tenant server.toml)";
+    # ── The tunnel server (edge/registrar/src/tunnel.rs) ─────────────────
+    # Independent of the registrar: it re-reads the file the registrar writes
+    # every second, so a registrar restart costs no tunnel and a box that
+    # registers is reachable within a second of the registrar's pass. A
+    # missing file means no services yet. The certificate is made on the
+    # first start and kept in its state directory; every box pins it.
+    systemd.services.losos-tunnel = {
+      description = "losos tunnel server: boxes dial in over QUIC, or TLS on TCP";
       wantedBy = [ "multi-user.target" ];
-      before = [
-        "losos-rathole.service"
-        "losos-registrar.service"
-      ];
-      after = lib.optional (cfg.noisePrivateKeyFile != null) "losos-rathole-noise-keygen.service";
-      serviceConfig = {
-        ExecStart = seedArgs;
-        Type = "oneshot";
-        RemainAfterExit = true;
-        PrivateTmp = true;
-      };
-    };
-
-    # ── Noise keypair (generated on first boot) ──────────────────────────
-    # The private key is 32 random bytes, base64 — the X25519 form rathole
-    # reads. Created only when absent, so a key provisioned by hand (or
-    # restored from backup) is never replaced. The public half is derived from
-    # the private one on every start by wrapping the raw key in a PKCS#8
-    # header for openssl; the registrar serves it at /noise-public-key and
-    # appliances pin it on first start. Ordered before everything that reads
-    # either file.
-    systemd.services.losos-rathole-noise-keygen = lib.mkIf (cfg.noisePrivateKeyFile != null) {
-      description = "losos rathole Noise keypair (generated once, on first boot)";
-      wantedBy = [ "multi-user.target" ];
-      before = [
-        "losos-rathole-seed.service"
-        "losos-rathole.service"
-        "losos-registrar.service"
-      ];
-      path = [
-        pkgs.openssl
-        pkgs.coreutils
-      ];
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-        PrivateTmp = true;
-      };
-      script = ''
-        set -eu
-        key=${toString cfg.noisePrivateKeyFile}
-        pub=${noisePublicKeyFile}
-        install -d -m 0700 "$(dirname "$key")"
-        if [ ! -s "$key" ]; then
-          (umask 077; head -c 32 /dev/urandom | base64 -w0 > "$key.new")
-          mv "$key.new" "$key"
-        fi
-        chmod 0600 "$key"
-        { printf '\x30\x2e\x02\x01\x00\x30\x05\x06\x03\x2b\x65\x6e\x04\x22\x04\x20'
-          base64 -d < "$key"
-        } | openssl pkey -inform DER -pubout -outform DER | tail -c 32 | base64 -w0 > "$pub.new"
-        chmod 0644 "$pub.new"
-        mv "$pub.new" "$pub"
-      '';
-    };
-
-    # ── rathole server (tunnel endpoint) ─────────────────────────────────
-    # Starts from the seeded [server] base (losos-rathole-seed), independent
-    # of the registrar. The registrar rewrites server.toml to add
-    # [server.services.*]; rathole's `notify` file-watcher hot-reloads the
-    # config the instant it's rewritten (atomic temp+rename) — no signal
-    # needed. SIGHUP would kill rathole 0.5 (no handler) and Restart=always
-    # would resurrect it ~5s later, so the registrar sends nothing.
-    systemd.services.losos-rathole = {
-      description = "losos rathole server — master-proxy tunnel endpoint";
-      wantedBy = [ "multi-user.target" ];
-      after = [
-        "network-online.target"
-        "losos-rathole-seed.service"
-      ];
-      requires = [ "losos-rathole-seed.service" ];
+      after = [ "network-online.target" ];
       wants = [ "network-online.target" ];
       serviceConfig = {
-        ExecStart = "${rathole}/bin/rathole /etc/rathole/server.toml";
+        ExecStart = tunnelArgs;
+        StateDirectory = "losos-tunnel";
+        StateDirectoryMode = "0755";
         Restart = "always";
         RestartSec = 5;
         PrivateTmp = true;
+        NoNewPrivileges = true;
+        ProtectHome = true;
+        ProtectSystem = "strict";
+        ReadOnlyPaths = [ "/etc/losos-tunnel" ];
+        # Binds only on loopback and its own port, both above 1024 by
+        # default; Traefik is the one reaching the per-box ports.
+        RestrictAddressFamilies = [
+          "AF_INET"
+          "AF_INET6"
+          "AF_UNIX"
+        ];
       };
     };
 
     # ── The uplink: this edge as a spoke (losos.edge.uplink) ─────────────
-    # A second rathole, in *client* mode, on the config the registrar's
-    # uplink loop keeps at /etc/rathole/uplink.toml: one service per box the
-    # hub accepted, each pointed at that box's local rathole port here, so a
-    # request that enters the hub crosses two tunnels to reach the box.
-    # rathole hot-reloads the file as the server does its own. The unit is
+    # The tunnel client, the one a box runs, on the file the registrar's
+    # uplink loop keeps at /etc/losos-tunnel/uplink.json: one service per box
+    # the hub accepted, each pointed at that box's local port here, so a
+    # request that enters the hub crosses two tunnels to reach the box. The
+    # client re-reads the file and reconnects when it changes. The unit is
     # conditioned on the file and started by a path unit when it appears,
     # because the file exists only once the owner has given the registrar a
     # hub (a gateway image ships with none) and the loop has rendered it.
-    systemd.services.losos-rathole-uplink = lib.mkIf cfg.uplink.enable {
-      description = "losos rathole uplink — this edge's outbound tunnel to its hub";
+    systemd.services.losos-tunnel-uplink = lib.mkIf cfg.uplink.enable {
+      description = "losos tunnel uplink: this edge's outbound tunnel to its hub";
       wantedBy = [ "multi-user.target" ];
       after = [
         "network-online.target"
         "losos-registrar.service"
       ];
       wants = [ "network-online.target" ];
-      unitConfig.ConditionPathExists = uplinkRatholeConfig;
+      unitConfig.ConditionPathExists = uplinkTunnelConfig;
       serviceConfig = {
-        ExecStart = "${rathole}/bin/rathole -c ${uplinkRatholeConfig}";
+        ExecStart = utils.escapeSystemdExecArgs [
+          "${registrar}/bin/losos-registrar"
+          "tunnel-client"
+          "--config"
+          uplinkTunnelConfig
+        ];
         Restart = "always";
         RestartSec = 5;
         PrivateTmp = true;
         NoNewPrivileges = true;
       };
     };
-    systemd.paths.losos-rathole-uplink = lib.mkIf cfg.uplink.enable {
+    systemd.paths.losos-tunnel-uplink = lib.mkIf cfg.uplink.enable {
       description = "start the uplink tunnel when the registrar has rendered its config";
       wantedBy = [ "multi-user.target" ];
-      pathConfig.PathExists = uplinkRatholeConfig;
+      pathConfig.PathExists = uplinkTunnelConfig;
     };
 
     # ── Mesh control plane (rke2 server) ─────────────────────────────────
@@ -1845,7 +1767,7 @@ in
     # losos.edge.lan.url points at. The service carries the registrar API
     # port and a `url=` record; the appliance side (backend/src/edge.rs)
     # prefers the record and falls back to the resolved address and port,
-    # then probes /health before believing either. `rathole=` is where a box
+    # then probes /health before believing either. `tunnel=` is where a box
     # that picks this edge dials its tunnel, and `enrol=` tells it (and a
     # person running `resolvectl service`) whether an unprovisioned box can
     # expect to be let in; neither is trusted for anything the box would not
@@ -1859,14 +1781,14 @@ in
         Name=losos edge on %H
         Type=_losos-edge._tcp
         Port=${toString cfg.registrarApiPort}
-        TxtText=url=${cfg.lan.url} rathole=${cfg.lan.ratholeEndpoint} enrol=${
+        TxtText=url=${cfg.lan.url} tunnel=${cfg.lan.tunnelEndpoint} enrol=${
           if cfg.lan.openEnrolment then "open" else "closed"
         } txtvers=1
       '';
     };
     losos.edge.registrarApiBind = lib.mkIf cfg.lan.advertise (lib.mkDefault "::");
 
-    # ── Firewall: public web + the rathole client-dial port ──────────────
+    # ── Firewall: public web + the tunnel's port, UDP and TCP ────────────
     # The registrar API is loopback-only in production (Traefik fronts it at
     # register.<publicDomain>); only open it in the firewall when it is bound
     # off-loopback — which the option docs say is a test-only direct-dial
@@ -1879,7 +1801,8 @@ in
     networking.firewall.allowedTCPPorts = [
       80
       443
-      cfg.ratholeBindPort
+      # The tunnel's TCP fallback, for boxes whose network drops UDP.
+      cfg.tunnelBindPort
     ]
     ++ lib.optional registrarOffBox cfg.registrarApiPort
     ++ lib.optionals meshEnabled [
@@ -1888,8 +1811,11 @@ in
     ]
     # DNS answers over TCP too: large responses and zone checks need it.
     ++ lib.optional dnsCfg.enable 53;
-    networking.firewall.allowedUDPPorts =
-      lib.optional dnsCfg.enable 53 ++ lib.optional relayCfg.enable relayCfg.port;
+    networking.firewall.allowedUDPPorts = [
+      cfg.tunnelBindPort
+    ]
+    ++ lib.optional dnsCfg.enable 53
+    ++ lib.optional relayCfg.enable relayCfg.port;
     networking.firewall.allowedUDPPortRanges = lib.optional relayCfg.enable mediaRange;
   };
 }

@@ -3,8 +3,8 @@
 //!
 //! Both are asserted against the files a real `serve` writes to a real
 //! directory, because those files *are* the product: `losos.yml` is what
-//! Traefik routes on and what it requests certificates for, and `server.toml`
-//! is what rathole binds tunnels from.
+//! Traefik routes on and what it requests certificates for, and `tunnel.json`
+//! is what the tunnel binds each box's port from.
 
 mod common;
 
@@ -18,7 +18,7 @@ use common::{Edge, TenantSpec, GOOD_TOKEN, OTHER_TOKEN};
 /// it aborted identically every 15 seconds forever. Registration, hostname
 /// changes and pruning froze for *every* tenant on the edge until an operator
 /// noticed. Here `beta` loses its secret mid-run and `alpha` must keep both
-/// its Traefik router and its rathole service.
+/// its Traefik router and its tunnel service.
 #[tokio::test]
 async fn one_broken_tenant_does_not_stop_the_pass() {
     let edge = Edge::start(
@@ -36,29 +36,25 @@ async fn one_broken_tenant_does_not_stop_the_pass() {
     assert_eq!(status, 200, "body: {body}");
 
     assert!(
-        edge.wait_for(|| edge
-            .rathole_toml()
-            .is_some_and(|t| t.contains("[server.services.beta]")))
+        edge.wait_for(|| edge.tunnel_json().is_some_and(|t| t.contains("\"beta\"")))
             .await,
-        "beta never made it into the rathole config to begin with"
+        "beta never made it into the tunnel file to begin with"
     );
 
     // The operator's secret disappears — a truncated deploy, a wiped /var.
     std::fs::remove_file(edge.token_path("beta")).expect("remove beta's token file");
 
     assert!(
-        edge.wait_for(|| edge
-            .rathole_toml()
-            .is_some_and(|t| !t.contains("[server.services.beta]")))
+        edge.wait_for(|| edge.tunnel_json().is_some_and(|t| !t.contains("\"beta\"")))
             .await,
         "the reconciler never ran again after beta's token file vanished: {:?}",
-        edge.rathole_toml()
+        edge.tunnel_json()
     );
 
-    let rathole = edge.rathole_toml().expect("server.toml exists");
+    let tunnel = edge.tunnel_json().expect("tunnel.json exists");
     assert!(
-        rathole.contains("[server.services.alpha]"),
-        "alpha lost its tunnel because of beta's fault: {rathole}"
+        tunnel.contains("\"alpha\""),
+        "alpha lost its tunnel because of beta's fault: {tunnel}"
     );
     let traefik = edge.traefik_yaml().expect("losos.yml exists");
     assert!(
@@ -205,8 +201,8 @@ async fn a_tenant_removed_from_the_whitelist_loses_its_route() {
 }
 
 /// With no live tenants, `losos.yml` must be absent rather than empty —
-/// Traefik's file provider rejects an empty dynamic config — while rathole
-/// still gets a complete zero-tenant `[server]` block so it can start.
+/// Traefik's file provider rejects an empty dynamic config — while the
+/// tunnel still gets a complete file with no services.
 #[tokio::test]
 async fn the_zero_tenant_state_removes_the_traefik_file() {
     let edge = Edge::start(
@@ -219,14 +215,12 @@ async fn the_zero_tenant_state_removes_the_traefik_file() {
         edge.traefik_yaml().is_none(),
         "no appliance has registered, so there must be no losos.yml"
     );
-    let rathole = edge
-        .rathole_toml()
-        .expect("server.toml is written at startup");
-    assert!(rathole.contains("[server.services]"), "got: {rathole}");
-    assert!(
-        rathole.contains(&format!("default_token = \"{}\"", common::BOOTSTRAP_TOKEN)),
-        "got: {rathole}"
-    );
+    let tunnel = edge
+        .tunnel_json()
+        .expect("tunnel.json is written at startup");
+    let tunnel: losos_registrar::tunnel::ServerFile =
+        serde_json::from_str(&tunnel).expect("a tunnel file");
+    assert!(tunnel.services.is_empty(), "got: {tunnel:?}");
 
     assert_eq!(
         edge.register("mattbox", "mattbox.losos.cfd", GOOD_TOKEN)

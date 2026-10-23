@@ -146,8 +146,8 @@ in
       // {
         LOSOS_EDGE_URL = config.losos.proxy.registrarUrl;
         # Where the tunnel goes when that configured edge is the path. An
-        # edge found on the LAN carries its own in the advert (`rathole=`).
-        LOSOS_EDGE_RATHOLE = config.losos.proxy.edgeRatholeEndpoint;
+        # edge found on the LAN carries its own in the advert (`tunnel=`).
+        LOSOS_EDGE_TUNNEL = config.losos.proxy.edgeTunnelEndpoint;
         # The trust anchor for "official" edges (losos.proxy.officialRootKeyFile):
         # a public key, so a store path. Without a key in it no edge is
         # official and the market relay stays off.
@@ -198,15 +198,12 @@ in
         # box; announce says so on its heartbeats (modules/proxy.nix).
         LOSOS_EDGE_MANAGED_FILE = "/run/losos/edge-managed";
         LOSOS_EDGE_PIN_DIR = "/var/secrets/losos-edge-pins";
-        # The token files the tunnel and announce read. lososd mints both
-        # (64 hex characters, 0600) when absent, so a stock box can enrol
-        # with a LAN gateway that takes any box on first contact; an
-        # official edge still has to be given the proxy token out of band.
-        LOSOS_PROXY_BOOTSTRAP_FILE = toString config.losos.proxy.bootstrapTokenFile;
-      }
-      // lib.optionalAttrs (config.losos.proxy.enable && config.losos.proxy.noisePublicKeyFile != null) {
-        # The configured edge's pin; a LAN edge's goes under LOSOS_EDGE_PIN_DIR.
-        LOSOS_EDGE_NOISE_PUB_FILE = toString config.losos.proxy.noisePublicKeyFile;
+        # The configured edge's tunnel pin; a LAN edge's goes under
+        # LOSOS_EDGE_PIN_DIR. lososd also mints the proxy token (64 hex
+        # characters, 0600) when absent, so a stock box can enrol with a LAN
+        # gateway that takes any box on first contact; an official edge
+        # still has to be given it out of band.
+        LOSOS_EDGE_TUNNEL_PIN_FILE = toString config.losos.proxy.tunnelPinFile;
       };
       # What `losos-ctl grow` shells out to. A systemd unit's default PATH does
       # not include these, and the failure is the unhelpful kind: the grow
@@ -251,7 +248,7 @@ in
         # `always`, not `on-failure`: a clean exit(0) — an unhandled shutdown
         # path, a bus disconnect the daemon treats as terminal — would
         # otherwise leave the box with no control plane and no way in (no SSH,
-        # no shell logins). The rathole/registrar units use `always` for the
+        # no shell logins). The tunnel and registrar units use `always` for the
         # same reason.
         Restart = "always";
         RestartSec = "2";

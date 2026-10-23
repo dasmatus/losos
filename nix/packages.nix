@@ -26,7 +26,7 @@
 #                output has no store references, modules/cache.nix points every
 #                box through its configured proxy, and flake.nix puts this path in the
 #                ISO's storeContents.
-#   losos-registrar — the Rust edge registration + Traefik/rathole config
+#   losos-registrar — the Rust edge registration + Traefik and tunnel config
 #                reconciler (`serve`) and appliance registration client
 #                (`announce`, `join`). Built via the same buildRustPackage
 #                from edge/registrar/. See modules/edge.nix (edge) and

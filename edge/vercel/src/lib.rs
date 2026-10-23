@@ -2,7 +2,7 @@
 //! Function, for demonstrations.
 //!
 //! The self-hosted edge (`modules/edge.nix`) is three things on one VPS: a
-//! rathole server holding the appliances' outbound tunnels, Traefik terminating
+//! tunnel server holding the appliances' outbound QUIC tunnels, Traefik terminating
 //! TLS for every tenant hostname, and `losos-registrar serve`, which turns
 //! register/heartbeat calls into the other two's config files. Only the third
 //! can run on a serverless platform, and this crate runs exactly that third:
@@ -29,13 +29,13 @@
 //!     audience can watch boxes register, heartbeat and expire, and see the
 //!     Traefik configuration the edge would be writing for them.
 //!
-//! What is *not* here, and cannot be: the rathole tunnel (a raw TCP listener
+//! What is *not* here, and cannot be: the tunnel (a UDP and TCP listener
 //! holding long-lived connections), Traefik with per-tenant Let's Encrypt
 //! certificates, the rke2 mesh control plane, and the Stripe gate (a Unix
 //! socket fed by systemd credentials). On this host `/cluster/join` and
 //! `/market/*` answer 503, as they do on a self-hosted edge with those halves
-//! switched off, and `/noise-public-key` answers 404 because there is no
-//! tunnel to pin a key for.
+//! switched off, and `/tunnel-pin` answers 404 because there is no
+//! tunnel to pin a certificate for.
 //!
 //! The owner has accepted that this exposes the registrar — tenant ids,
 //! hostnames and their liveness — to a third-party platform and, through

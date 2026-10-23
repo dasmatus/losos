@@ -28,7 +28,7 @@
 //! tenant loudly. Without that check a zero-byte token file authenticates a
 //! request carrying `"token": ""`, which is a complete tenant takeover: the
 //! caller gets the victim's Traefik router, its Let's Encrypt cert, and a
-//! rathole service provisioned with an empty token.
+//! tunnel service provisioned with an empty token.
 //!
 //! `/cluster/join` is the mesh half and reuses all of the above: the same
 //! per-appliance token, the same [`authenticate`], the same body cap and
@@ -72,7 +72,7 @@ use tokio::sync::{Mutex, Notify, Semaphore};
 
 use crate::action::Action;
 use crate::config::{
-    desired_config_with_hosts, uplink_config, EdgeOpts, TenantView, UplinkService, UplinkTarget,
+    desired_config_with_hosts, uplink_config, TenantView, UplinkService, UplinkTarget,
 };
 use crate::domains::{self, Doh, DomainError, Domains, DomainsView, Vouched};
 use crate::error::ApiError;
@@ -103,9 +103,8 @@ const ZONE_FILE_MODE: u32 = 0o644;
 /// Per-tenant Traefik router config is public (hostnames only, no secrets) →
 /// world-readable so the `traefik` user can read it.
 const TRAEFIK_FILE_MODE: u32 = 0o644;
-/// rathole server config carries service tokens → owner-only. Shared with
-/// the `seed` subcommand, which writes the same file at first boot.
-pub(crate) const RATHOLE_FILE_MODE: u32 = 0o600;
+/// The tunnel's files carry service tokens → owner-only.
+const TUNNEL_FILE_MODE: u32 = 0o600;
 
 /// Hard cap on a request body. Every route takes a three-field JSON object;
 /// 16 KiB is orders of magnitude more than any of them needs. Enforced at the
@@ -307,7 +306,7 @@ struct HeartbeatReq {
 
 #[derive(Debug, Serialize)]
 struct RegisterResp {
-    rathole_port: u16,
+    tunnel_port: u16,
 }
 
 /// A `/cluster/join` body. `share_compute` and the two window bounds default
@@ -463,7 +462,7 @@ impl App {
     }
 
     /// One reconciler pass, as the timer would run it: prune, rewrite the
-    /// Traefik and rathole files if anything changed, publish the compute
+    /// Traefik and tunnel files if anything changed, publish the compute
     /// windows, then fulfil paid market orders.
     pub async fn reconcile(&self) -> Result<()> {
         check_domains(&self.state).await;
@@ -666,7 +665,7 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
 
     let router = Router::new()
         .route("/health", get(health))
-        .route("/noise-public-key", get(noise_public_key))
+        .route("/tunnel-pin", get(tunnel_pin))
         .route("/calls/relay", get(calls_relay_info))
         .route("/calls/guest-link", post(calls_guest_link))
         .route("/identity", get(identity_route))
@@ -835,13 +834,14 @@ async fn health() -> &'static str {
     "ok"
 }
 
-/// The tunnel's Noise public key, for appliances to pin on first start.
+/// SHA-256 of the tunnel's certificate (`crate::tunnel`), for appliances to
+/// pin on first start.
 ///
-/// Unauthenticated on purpose: it is a public key, and the appliance fetches it
-/// before it holds any credential, over the TLS the edge is fronted with.
-/// 404 when Noise is off or the key has not been generated yet.
-async fn noise_public_key(State(st): State<AppState>) -> Response {
-    let Some(path) = &st.opts.noise_public_key_file else {
+/// Unauthenticated on purpose: it names a public certificate, and the
+/// appliance fetches it before it holds any credential, over the TLS the
+/// edge is fronted with. 404 when the tunnel has not made its certificate yet.
+async fn tunnel_pin(State(st): State<AppState>) -> Response {
+    let Some(path) = &st.opts.tunnel_pin_file else {
         return StatusCode::NOT_FOUND.into_response();
     };
     match tokio::fs::read_to_string(path).await {
@@ -947,7 +947,7 @@ struct IdentityQuery {
 
 /// `GET /identity/public-key` — this edge's Ed25519 public key, 64 hex
 /// characters, the thing the root signs. Unauthenticated, like
-/// `/noise-public-key`: a public key is public, and `provision edge` reads
+/// `/tunnel-pin`: a public key is public, and `provision edge` reads
 /// it before it can issue anything. 404 for an edge with no identity key.
 async fn identity_public_key(State(st): State<AppState>) -> Response {
     match &st.identity {
@@ -1134,7 +1134,7 @@ async fn register(
         tenant.hostname,
     );
     st.notify.notify_one();
-    Ok(Json(RegisterResp { rathole_port: port }))
+    Ok(Json(RegisterResp { tunnel_port: port }))
 }
 
 /// Open enrolment (`losos.edge.lan.openEnrolment`): a `/register` for an id
@@ -3118,8 +3118,6 @@ async fn reconciler(st: AppState) {
 ///   written, and since the next tick hit the same file it aborted identically
 ///   every `reconcile_interval` forever. One tenant's missing secret froze
 ///   registration, hostname changes and pruning for every tenant on the edge.
-///   The bootstrap token stays fatal: it is not per-tenant, and rathole's
-///   `[server]` block cannot be rendered without it.
 ///
 /// It also publishes the mesh compute windows, but only *after* both proxy
 /// config files are on disk, and it logs rather than propagating a failure
@@ -3131,7 +3129,7 @@ async fn reconciler(st: AppState) {
 /// is only evidence that an appliance went away if this registrar was able
 /// to hear it: under a flood of slow anonymous requests every `/heartbeat`
 /// was answered 503, the prune then took each tenant for dead, and the pass
-/// below removed every router and rathole service on the edge. An attacker
+/// below removed every router and tunnel service on the edge. An attacker
 /// with no token at all could take every appliance's public site down for as
 /// long as the flood lasted. A dead appliance kept a little longer costs a
 /// router that answers 502.
@@ -3153,24 +3151,13 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
     };
     let views = st.reg.views().await;
     let tenants = all_tenants(st).await.context("load tenants whitelist")?;
-    let bootstrap = tokio::fs::read_to_string(&st.opts.bootstrap_token_file)
-        .await
-        .into_diagnostic()
-        .context("read bootstrap token file")?;
-    let bootstrap = bootstrap.trim();
-    if let Some(fault) = token_fault(bootstrap) {
-        return Err(miette!(
-            "bootstrap token file {} is {fault}",
-            st.opts.bootstrap_token_file
-        ));
-    }
 
     let mut enriched: Vec<TenantView> = Vec::with_capacity(views.len());
     let mut stale: Vec<String> = Vec::new();
     let mut rehome: Vec<(String, String)> = Vec::new();
     for v in &views {
         // Tenants removed from the whitelist are dropped here and pruned from
-        // the registry so their rathole service + Traefik router disappear.
+        // the registry so their tunnel service + Traefik router disappear.
         let Some(entry) = tenants.get(&v.id) else {
             stale.push(v.id.clone());
             continue;
@@ -3220,7 +3207,7 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
         enriched.push(TenantView {
             id: v.id.clone(),
             hostname: hostname.to_string(),
-            rathole_port: v.rathole_port,
+            tunnel_port: v.tunnel_port,
             token: token.to_string(),
             llm_port: None,
         });
@@ -3287,7 +3274,7 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
         enriched.push(TenantView {
             id: r.key,
             hostname: r.hostname,
-            rathole_port: r.rathole_port,
+            tunnel_port: r.tunnel_port,
             token,
             llm_port: None,
         });
@@ -3319,22 +3306,6 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
         }
     }
 
-    let opts = EdgeOpts {
-        rathole_bind_addr: st.opts.rathole_bind_addr.clone(),
-        rathole_bind_port: st.opts.rathole_bind_port,
-        bootstrap_token: bootstrap.to_string(),
-        noise_private_key: match &st.opts.noise_private_key_file {
-            None => None,
-            Some(f) => Some(
-                tokio::fs::read_to_string(f)
-                    .await
-                    .into_diagnostic()
-                    .with_context(|| format!("read noise private key file {f}"))?
-                    .trim()
-                    .to_string(),
-            ),
-        },
-    };
     // The domain half: a name in the edge's zone for each box Stripe vouches
     // for, every proved custom domain, and the zone file itself. Computed
     // before the Traefik file so both describe the same moment.
@@ -3348,11 +3319,11 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
             .collect();
         for t in &mut enriched {
             if lending.contains(&t.id) {
-                t.llm_port = inference.llm_port(t.rathole_port);
+                t.llm_port = inference.llm_port(t.tunnel_port);
             }
         }
     }
-    let files = desired_config_with_hosts(&enriched, &opts, &extra_hosts);
+    let files = desired_config_with_hosts(&enriched, &extra_hosts);
 
     let traefik_path = Path::new(&st.opts.traefik_dir).join("losos.yml");
     // `None` means "no live tenants": Traefik's file provider rejects an empty
@@ -3367,21 +3338,14 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
             .await
             .with_context(|| format!("remove {}", traefik_path.display()))?,
     };
-    let changed_rathole = write_if_changed(
-        Path::new(&st.opts.rathole_config),
-        &files.rathole_toml,
-        RATHOLE_FILE_MODE,
+    let changed_tunnel = write_if_changed(
+        Path::new(&st.opts.tunnel_config),
+        &files.tunnel_json,
+        TUNNEL_FILE_MODE,
     )
     .await
-    .with_context(|| format!("write {}", st.opts.rathole_config))?;
+    .with_context(|| format!("write {}", st.opts.tunnel_config))?;
 
-    // No explicit reload signal: rathole 0.5 hot-reloads via its `notify`
-    // file-watcher, which re-applies the config the instant server.toml is
-    // rewritten above. SIGHUP has no handler in rathole 0.5 (default action
-    // terminate) — sending it would kill the process and systemd's
-    // Restart=always would resurrect it ~5s later, a needless tunnel outage
-    // on every tenant change. The atomic temp+rename above is the only
-    // signal rathole needs.
     // Never fatal, like the windows below: a zone that cannot be written
     // costs DNS answers, not tunnels.
     let changed_zone = match write_zone(st, &zone_names).await {
@@ -3423,18 +3387,18 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
     if pruned
         || repaired
         || changed_traefik
-        || changed_rathole
+        || changed_tunnel
         || dropped_windows
         || changed_windows
         || changed_zone
     {
         tracing::info!(
             target: Action::Reconcile.target(),
-            "reconciled {} tenant(s), {} compute window(s); traefik={} rathole={} windows={}",
+            "reconciled {} tenant(s), {} compute window(s); traefik={} tunnel={} windows={}",
             enriched.len(),
             windows.len(),
             changed_traefik,
-            changed_rathole,
+            changed_tunnel,
             changed_windows,
         );
     }
@@ -3637,7 +3601,7 @@ async fn all_tenants(st: &AppState) -> Result<Arc<HashMap<String, TenantEntry>>>
 
 /// The spoke's uplink (crate::relay): every `interval`, and whenever the
 /// reconciler was kicked, read the uplink file, tell the hub which boxes are
-/// live here, and rewrite the uplink rathole client config.
+/// live here, and rewrite the uplink's tunnel client file.
 ///
 /// The file is re-read on every pass so the gateway image's owner can write
 /// it (or remove it) with no restart; while it is absent the uplink config is
@@ -3684,7 +3648,7 @@ async fn uplink_once(
             .into_diagnostic()
             .with_context(|| format!("parse uplink file {}", up.file))?,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            if remove_if_exists(Path::new(&up.rathole_config)).await? {
+            if remove_if_exists(Path::new(&up.tunnel_config)).await? {
                 tracing::info!(
                     target: Action::Uplink.target(),
                     "no uplink file at {}; the uplink is off",
@@ -3710,20 +3674,6 @@ async fn uplink_once(
             target.token_file
         ));
     }
-    let bootstrap = match &target.bootstrap_token_file {
-        Some(path) => tokio::fs::read_to_string(path)
-            .await
-            .into_diagnostic()
-            .with_context(|| format!("read uplink bootstrap token file {path}"))?
-            .trim()
-            .to_string(),
-        None => token.clone(),
-    };
-    let noise_public_key = match &target.noise_public_key_file {
-        Some(path) => pin_hub_noise_key(client, &target.registrar_url, path).await,
-        None => None,
-    };
-
     // What is live here: the direct tenants whose token file reads, i.e.
     // exactly the set the local reconcile rendered. Hostnames come from the
     // whitelist (or the enrolled file), the same authority the local Traefik
@@ -3748,7 +3698,7 @@ async fn uplink_once(
         });
         services.push(UplinkService {
             name: format!("{}.{}", target.id, v.id),
-            local_port: v.rathole_port,
+            local_port: v.tunnel_port,
         });
     }
     if listed.len() > relay::MAX_RELAYED {
@@ -3787,24 +3737,29 @@ async fn uplink_once(
         Err(e) => return Err(miette!("hub {url}: {e}")),
     };
     // Only what the hub accepted gets a client service: a service the hub
-    // has no matching server entry for makes rathole log an auth failure
-    // every retry, for a box the hub told us it will not route anyway.
+    // has no matching service for is refused on every reconnect, for a box
+    // the hub told us it will not route anyway.
     let prefix = format!("{}.", target.id);
     services.retain(|s| {
         s.name
             .strip_prefix(&prefix)
             .is_some_and(|id| accepted.contains(id))
     });
+    let Some(pin) = pin_hub_tunnel(client, &target.registrar_url, &target.pin_file).await else {
+        return Err(miette!(
+            "no pin for the hub's tunnel yet; {} stays as it is",
+            up.tunnel_config
+        ));
+    };
     let rendered = uplink_config(
         &UplinkTarget {
-            rathole_endpoint: target.rathole_endpoint.clone(),
-            bootstrap_token: bootstrap,
+            tunnel_endpoint: target.tunnel_endpoint.clone(),
+            pin,
             token,
-            noise_public_key,
         },
         &services,
     );
-    if write_if_changed(Path::new(&up.rathole_config), &rendered, RATHOLE_FILE_MODE).await? {
+    if write_if_changed(Path::new(&up.tunnel_config), &rendered, TUNNEL_FILE_MODE).await? {
         tracing::info!(
             target: Action::Uplink.target(),
             "uplink to {} carries {} box(es)",
@@ -3845,14 +3800,12 @@ async fn record_hub_routes(st: &AppState, routes: &[RelayRoute]) {
     }
 }
 
-/// The hub's Noise public key for the uplink: the pinned file when it
-/// exists, else one fetch of the hub's `/noise-public-key`, written to the
-/// file (0600, atomically) so the next pass and rathole read the same
-/// bytes. A hub that answers 404 runs plain TCP, and nothing is written, so
-/// a hub that turns Noise on later is pinned on the first pass after. Any
-/// other failure is logged and the uplink waits for the next pass rather
-/// than rendering a config that would connect unpinned.
-async fn pin_hub_noise_key(
+/// The pin of the hub's tunnel for the uplink: the pinned file when it
+/// exists, else one fetch of the hub's `/tunnel-pin`, written to the file
+/// (0600, atomically) so every later pass reads the same bytes. Any failure
+/// is logged and the uplink waits for the next pass rather than rendering a
+/// file that would connect unpinned.
+async fn pin_hub_tunnel(
     client: &reqwest::Client,
     registrar_url: &str,
     path: &str,
@@ -3860,7 +3813,11 @@ async fn pin_hub_noise_key(
     match tokio::fs::read_to_string(path).await {
         Ok(k) => {
             let k = k.trim().to_string();
-            return if k.is_empty() { None } else { Some(k) };
+            if crate::tunnel::parse_pin(&k).is_some() {
+                return Some(k);
+            }
+            tracing::warn!(target: Action::Uplink.target(), "{path} does not hold a pin");
+            return None;
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => {
@@ -3868,9 +3825,8 @@ async fn pin_hub_noise_key(
             return None;
         }
     }
-    let url = format!("{}/noise-public-key", registrar_url.trim_end_matches('/'));
-    let key = match client.get(&url).send().await {
-        Ok(r) if r.status() == reqwest::StatusCode::NOT_FOUND => return None,
+    let url = format!("{}/tunnel-pin", registrar_url.trim_end_matches('/'));
+    let pin = match client.get(&url).send().await {
         Ok(r) if r.status().is_success() => match r.text().await {
             Ok(t) => t.trim().to_string(),
             Err(e) => {
@@ -3887,20 +3843,20 @@ async fn pin_hub_noise_key(
             return None;
         }
     };
-    if key.is_empty() || key.len() > 128 || !key.chars().all(|c| c.is_ascii_graphic()) {
-        tracing::warn!(target: Action::Uplink.target(), "{url}: not a Noise public key");
+    if crate::tunnel::parse_pin(&pin).is_none() {
+        tracing::warn!(target: Action::Uplink.target(), "{url}: not a pin");
         return None;
     }
     if let Some(parent) = Path::new(path).parent() {
         let _ = tokio::fs::create_dir_all(parent).await;
     }
-    match crate::fsutil::atomic_write(Path::new(path), key.as_bytes(), 0o600).await {
+    match crate::fsutil::atomic_write(Path::new(path), pin.as_bytes(), 0o600).await {
         Ok(()) => {
             tracing::info!(
                 target: Action::Uplink.target(),
-                "pinned the hub's Noise public key from {url} into {path}",
+                "pinned the hub's tunnel from {url} into {path}",
             );
-            Some(key)
+            Some(pin)
         }
         Err(e) => {
             tracing::warn!(target: Action::Uplink.target(), "write {path}: {e}");

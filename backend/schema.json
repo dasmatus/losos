@@ -97,7 +97,7 @@
         },
         "proxyEnable": {
           "type": "boolean",
-          "description": "losos.proxy.enable — expose this appliance through the master proxy (rathole tunnel to the edge Traefik)."
+          "description": "losos.proxy.enable — expose this appliance through the master proxy (a QUIC tunnel to the edge Traefik)."
         },
         "clusterEnable": {
           "type": "boolean",
@@ -857,15 +857,15 @@
         "url",
         "source",
         "official",
-        "rathole"
+        "tunnel"
       ],
       "properties": {
-        "rathole": {
+        "tunnel": {
           "type": [
             "string",
             "null"
           ],
-          "description": "`host:port` of this edge's rathole server, where the box's tunnel would dial: the advert's `rathole=` TXT record (or the registrar's host on port 2333 for an advert without one) for a LAN edge, losos.proxy.edgeRatholeEndpoint ($LOSOS_EDGE_RATHOLE) for the configured one. null when the box was given none, in which case the edge is found but never chosen as the path."
+          "description": "`host:port` of this edge's tunnel server (QUIC on UDP, TLS on TCP as the fallback), where the box's tunnel would dial: the advert's `tunnel=` TXT record (or the registrar's host on port 2333 for an advert without one) for a LAN edge, losos.proxy.edgeTunnelEndpoint ($LOSOS_EDGE_TUNNEL) for the configured one. null when the box was given none, in which case the edge is found but never chosen as the path."
         },
         "official": {
           "type": "boolean",
@@ -891,7 +891,7 @@
         "name",
         "url",
         "source",
-        "rathole"
+        "tunnel"
       ],
       "properties": {
         "name": {
@@ -904,7 +904,7 @@
         "source": {
           "$ref": "#/$defs/edgeSource"
         },
-        "rathole": {
+        "tunnel": {
           "type": "string",
           "description": "`host:port` the tunnel dials. Never null: an edge without one is not chosen."
         }

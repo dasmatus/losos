@@ -21,14 +21,14 @@ ohlasovanie v LAN, voliteľne riadiacu rovinu mesh), a pridá jeden **uplink**
 k hubu. Dve lokality, každá za vlastným spoke, sa navzájom dosiahnu cez hub;
 zariadenie sa nikdy nerozpráva priamo so spoke inej lokality.
 
-![Lokalita A: zariadenie sa cez rathole pripája k spoke A a ohlasuje sa mu; spoke A sa cez rathole uplink pripája k hubu na internete a odovzdáva mu zariadenie cez POST /relay; lokalita B je zrkadlová. Každý spoke prevádzkuje Traefik v LAN; hub prevádzkuje Traefik s verejným TLS, ktorý smeruje podľa Host(<box>.<zone>).](/img/diagrams/edge-federation-sk.svg)
+![Lokalita A: zariadenie sa cez QUIC pripája k spoke A a ohlasuje sa mu; spoke A sa cez QUIC uplink pripája k hubu na internete a odovzdáva mu zariadenie cez POST /relay; lokalita B je zrkadlová. Každý spoke prevádzkuje Traefik v LAN; hub prevádzkuje Traefik s verejným TLS, ktorý smeruje podľa Host(<box>.<zone>).](/img/diagrams/edge-federation-sk.svg)
 
 Tri roviny, z ktorých sa federujú iba dve:
 
 | Rovina  | Čo                                               | Federovaná?                                                                |
 | ------- | ------------------------------------------------ | -------------------------------------------------------------------------- |
 | control | API registrara: register, heartbeat, join, market | spoke preposiela svoje zariadenia hubu (`POST /relay`); market nie        |
-| data    | tunely rathole + Traefik                         | o jeden skok viac: hub → spoke → zariadenie                                |
+| data    | tunely QUIC + Traefik                            | o jeden skok viac: hub → spoke → zariadenie                                |
 | mesh    | rke2 server + Longhorn                           | **nie**: každý edge je samostatný cluster, pozri „Čo zostáva lokálne“      |
 
 ## Strana hubu: tenant, ktorý smie preposielať {#hub-side-a-tenant-that-may-relay}
@@ -54,8 +54,8 @@ množinu preposielaných zariadení drží zhodnú s posledným zoznamom, ktorý
 zariadenie, ktoré spoke prestane uvádzať, pri ďalšom reconcile zmizne, a spoke, ktorý
 stíchne, si po uplynutí heartbeat TTL odnesie všetky svoje zariadenia so sebou ako
 ktorýkoľvek tenant. Preposielané záznamy žijú v registri hubu ako
-`<spoke>.<box>` s `via: <spoke>`, dostanú port z toho istého rozsahu rathole,
-router Traefiku `Host(<hostname>)` a službu rathole, ktorej token je token
+`<spoke>.<box>` s `via: <spoke>`, dostanú port z toho istého rozsahu tunela,
+router Traefiku `Host(<hostname>)` a službu tunela, ktorej token je token
 **spoke**: overenou stranou je spoke, hub nikdy nedrží token zariadenia. Autorita
 nad hostname zostáva tam, kde bola: zónu zvolil prevádzkovateľ hubu; labely v
 nej volí spoke; čokoľvek iné sa odmietne pre každé zariadenie zvlášť a spoke to
@@ -79,28 +79,26 @@ losos.edge = {
   uplink = {
     enable = true;
     registrarUrl = "https://register.losos.cfd";   # the hub's API
-    ratholeEndpoint = "edge.losos.cfd:2333";       # the hub's tunnel port
+    tunnelEndpoint = "edge.losos.cfd:2333";        # the hub's tunnel port
     id = "acme";                                   # the tenant row above
     tokenFile = "/var/secrets/losos-uplink-token";
-    # bootstrapTokenFile is optional: every relayed service carries the
-    # uplink token, so rathole's default_token is never consulted.
   };
 };
 ```
 
-Reconciler registrara, keď zapíše vlastné súbory pre Traefik a rathole,
+Reconciler registrara, keď zapíše vlastné súbory pre Traefik a tunel,
 prepošle hubu svojich **živých** tenantov (registrovaných, na whiteliste
 alebo zapísaných, posielajúcich heartbeat) a vygeneruje
-`/etc/rathole/uplink.toml`: konfiguráciu *klienta* rathole s jednou službou
-na každé preposielané zariadenie, `local_addr = 127.0.0.1:<port toho boxu na tomto
-spoke>`, token = token uplinku. Druhá jednotka rathole,
-`losos-rathole-uplink`, ju spúšťa (štartuje ju path unit v okamihu, keď súbor
-vznikne); rathole súbor načíta za behu rovnako ako konfiguráciu servera.
-Verejný kľúč Noise hubu sa pripne pri prvom kontakte (`GET
-/noise-public-key`, zapíše ho do `uplink.noisePublicKeyFile` sám registrar),
-tak ako zariadenie pripína kľúč svojho edge. Požiadavka na
+`/etc/losos-tunnel/uplink.json`: súbor *klienta* tunela s jednou službou
+na každé preposielané zariadenie, `local = 127.0.0.1:<port toho boxu na tomto
+spoke>`, token = token uplinku. Jednotka `losos-tunnel-uplink` naň spúšťa
+ten istý klient, aký beží na zariadení (štartuje ju path unit v okamihu, keď
+súbor vznikne), a keď sa súbor zmení, pripojí sa nanovo. Certifikát tunela
+hubu sa pripne pri prvom kontakte (`GET /tunnel-pin`, zapíše ho do
+`uplink.pinFile` sám registrar), tak ako zariadenie pripína certifikát
+svojho edge. Požiadavka na
 `https://mattbox.acme.losos.cfd/` teda ukončí TLS na hube, vstúpi do služby
-rathole hubu `acme.mattbox`, prejde uplinkom na lokálny port spoke pre
+tunela hubu `acme.mattbox`, prejde uplinkom na lokálny port spoke pre
 `mattbox`, prejde tunelom zariadenia a skončí v Nginxe zariadenia. Dva tunely, jedna
 hlavička Host, žiadna zmena na zariadení.
 
@@ -124,29 +122,29 @@ oficiálny podľa URL) a odmietne zapnúť zdieľanie, keď nie je žiadny. Jedn
 cestu vyberie podľa tohto pravidla:
 
 1. **najprv lokálny edge**: prvé ohlásenie v LAN, ktorého `/health`
-   odpovedá; ohlásenie teraz nesie aj `rathole=<host:port>`, aby zariadenie vedelo,
+   odpovedá; ohlásenie teraz nesie aj `tunnel=<host:port>`, aby zariadenie vedelo,
    kam vedie jeho tunel;
 2. **potom oficiálny edge**: `losos.proxy.registrarUrl` a
-   `losos.proxy.edgeRatholeEndpoint`, keď v LAN žiadny nie je;
+   `losos.proxy.edgeTunnelEndpoint`, keď v LAN žiadny nie je;
 3. **žiadny**: každá funkcia závislá od edge je vypnutá: jednotky tunela a
    announce sú zastavené, brána zdieľania odmieta, relay marketu odmieta.
 
-`GET /api/edge` nesie voľbu ako `path` (`{name, url, rathole, source}` alebo
-`null`) vedľa koncového bodu `rathole` každého edge. So zapnutým
+`GET /api/edge` nesie voľbu ako `path` (`{name, url, tunnel, source}` alebo
+`null`) vedľa koncového bodu `tunnel` každého edge. So zapnutým
 `losos.proxy.enable` zapíše `lososd` cestu do `/run/losos/edge-path.env`
-(`LOSOS_EDGE_PATH_URL`, `_RATHOLE`, `_SOURCE`, `_NOISE_PUB`) a podľa nej
-riadi dve jednotky tunela: zmena cesty reštartuje `losos-rathole-client` a
+(`LOSOS_EDGE_PATH_URL`, `_TUNNEL`, `_SOURCE`, `_TUNNEL_PIN`) a podľa nej
+riadi dve jednotky tunela: zmena cesty reštartuje `losos-tunnel-client` a
 `losos-registrar-announce`, žiadna cesta zapíše `/run/losos/edge-none` a
 zastaví ich (obe jednotky majú `ConditionPathExists=!/run/losos/edge-none`,
 takže ich nič nereštartuje, kým sa edge nevráti). Oba súbory sú na `/run`:
 až do prvého skenovania po štarte jednotky volajú nakonfigurovaný edge, ako
 vždy. Vlastný `ExecStartPre` klienta
-pripne kľúč Noise každého edge do samostatného súboru: kľúč nakonfigurovaného
-edge v `losos.proxy.noisePublicKeyFile`, kľúč edge v LAN pod
-`/var/secrets/losos-edge-pins/<host>_<port>.pub`. Druhá brána preto nikdy
-nezdedí kľúč prvej. Token zariadenia je rovnaký na každej ceste. Hub ho má na
-whiteliste, brána sa ho dozvie pri prvom kontakte a `lososd` ho (aj bootstrap
-token) vytvorí pri prvom štarte, keď súbory chýbajú. Rovnaké je aj jeho
+pripne certifikát tunela každého edge do samostatného súboru: certifikát
+nakonfigurovaného edge v `losos.proxy.tunnelPinFile`, certifikát edge v LAN pod
+`/var/secrets/losos-edge-pins/<host>_<port>.pin`. Druhá brána preto nikdy
+nezdedí certifikát prvej. Token zariadenia je rovnaký na každej ceste. Hub ho
+má na whiteliste, brána sa ho dozvie pri prvom kontakte a `lososd` ho
+vytvorí pri prvom štarte, keď súbor chýba. Rovnaké je aj jeho
 verejné meno:
 `losos.proxy.hostname` vlastníka musí byť jeden label pod zónou lokality
 (`mattbox.acme.losos.cfd`), aby ho relay prijal, a je to zároveň meno,
@@ -285,7 +283,7 @@ Dve podoby, jedna konfigurácia:
    `losos.edge.gateway.enable` (`modules/edge-gateway.nix`), ktorý nastaví
    `lan.advertise` a `lan.openEnrolment`, uplink číta za behu z
    `/var/lib/losos-edge/uplink.json`, takže jeden obraz poslúži každej
-   lokalite, pri prvom štarte si vytvorí vlastný bootstrap token, dá rootu
+   lokalite, pri prvom štarte si vytvorí vlastný certifikát tunela, dá rootu
    konzolu (prvé heslo `losos`, zmena vynútená pri prvom prihlásení; sshd je
    nainštalovaný, ale zastavený, kým nezadáte `losos-edge ssh on`) a na tty1
    vypíše svoju adresu. Spustite ho na Proxmoxe, libvirt alebo VirtualBoxe so
@@ -295,7 +293,7 @@ Dve podoby, jedna konfigurácia:
    ```sh
    losos-edge status
    losos-edge uplink set --id acme --token-file /root/acme.token \
-     --registrar https://register.losos.cfd --rathole edge.losos.cfd:2333
+     --registrar https://register.losos.cfd --tunnel edge.losos.cfd:2333
    losos-edge boxes
    ```
 
@@ -308,4 +306,4 @@ Dve podoby, jedna konfigurácia:
 
 Strana hubu pre oficiálne edge je jeden riadok tenanta na lokalitu. Hostiteľ
 Vercel má tú istú trasu `/relay`, a preto môže spoke na demo *prijať*, ale
-keďže na ňom nebeží rathole, dátová cesta ako predtým potrebuje VPS.
+keďže na ňom nebeží tunel, dátová cesta ako predtým potrebuje VPS.
