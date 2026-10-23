@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import lzma
 import os
 import re
 import shutil
@@ -31,7 +32,17 @@ CACHE_DIR = Path(
 BIND = os.environ.get("LOSOS_SYSUPDATE_BIND", "127.0.0.1")
 PORT = int(os.environ.get("LOSOS_SYSUPDATE_PORT", "8789"))
 MANIFEST_TTL_SECONDS = 60
+MAX_BUNDLE_BYTES = 20 * 1024**3
+MAX_MANIFEST_BYTES = 1024 * 1024
+MAX_ARCHIVE_MEMBERS = 500000
+MAX_UNPACKED_BYTES = 100 * 1024**3
+MIN_FREE_DISK_RESERVE = 1024**3
 ALLOWED_BUNDLE = re.compile(r"losos-components_[0-9]+\.tar\.xz\Z")
+STORE_PATH_PATTERN = re.compile(r"/nix/store/[0-9a-df-np-sv-z]{32}-[A-Za-z0-9+._?=-]+\\Z")
+
+
+class InvalidBundleError(Exception):
+    """The archive is malformed or would exceed persistent disk safety limits."""
 LOCKS: dict[str, threading.Lock] = {}
 LOCKS_GUARD = threading.Lock()
 
@@ -77,55 +88,56 @@ def validate_bundle_archive(name: str, archive_path: Path) -> None:
     has_narinfo = False
 
     try:
-        with tarfile.open(archive_path, mode="r|xz") as bundle:
-            for member in bundle:
-                member_count += 1
-                if member_count > MAX_ARCHIVE_MEMBERS:
-                    raise InvalidBundleError("update archive contains too many entries")
-                raw = member.name
-                if not raw or raw.startswith("/") or "\\" in raw or "\x00" in raw:
-                    raise InvalidBundleError(f"unsafe archive member path: {raw!r}")
-                normalized = raw[:-1] if raw.endswith("/") else raw
-                parts = normalized.split("/")
-                if not normalized or any(part in {"", ".", ".."} for part in parts):
-                    raise InvalidBundleError(f"unsafe archive member path: {raw!r}")
-                if parts[0] not in {"manifest.json", "cache"}:
-                    raise InvalidBundleError(f"unexpected archive entry: {parts[0]!r}")
-                if parts[0] == "manifest.json" and len(parts) != 1:
-                    raise InvalidBundleError("manifest.json must be a top-level file")
-                if normalized in seen:
-                    raise InvalidBundleError(f"duplicate archive member: {normalized!r}")
-                seen.add(normalized)
-
-                if member.isdir():
+        with lzma.LZMAFile(archive_path, "rb", memlimit=256 * 1024**2) as compressed:
+            with tarfile.open(fileobj=compressed, mode="r|") as bundle:
+                for member in bundle:
+                    member_count += 1
+                    if member_count > MAX_ARCHIVE_MEMBERS:
+                        raise InvalidBundleError("update archive contains too many entries")
+                    raw = member.name
+                    if not raw or raw.startswith("/") or "\\" in raw or "\x00" in raw:
+                        raise InvalidBundleError(f"unsafe archive member path: {raw!r}")
+                    normalized = raw[:-1] if raw.endswith("/") else raw
+                    parts = normalized.split("/")
+                    if not normalized or any(part in {"", ".", ".."} for part in parts):
+                        raise InvalidBundleError(f"unsafe archive member path: {raw!r}")
+                    if parts[0] not in {"manifest.json", "cache"}:
+                        raise InvalidBundleError(f"unexpected archive entry: {parts[0]!r}")
+                    if parts[0] == "manifest.json" and len(parts) != 1:
+                        raise InvalidBundleError("manifest.json must be a top-level file")
+                    if normalized in seen:
+                        raise InvalidBundleError(f"duplicate archive member: {normalized!r}")
+                    seen.add(normalized)
+    
+                    if member.isdir():
+                        if normalized == "manifest.json":
+                            raise InvalidBundleError("manifest.json must be a regular file")
+                        continue
+                    if not member.isfile() or member.issym() or member.islnk() or member.sparse:
+                        raise InvalidBundleError(f"non-regular archive member: {normalized!r}")
+                    if member.size < 0:
+                        raise InvalidBundleError(f"negative archive member size: {normalized!r}")
+                    total_size += member.size
+                    if total_size > MAX_UNPACKED_BYTES:
+                        raise InvalidBundleError("update archive expands beyond 100 GiB")
+    
                     if normalized == "manifest.json":
-                        raise InvalidBundleError("manifest.json must be a regular file")
-                    continue
-                if not member.isfile() or member.issym() or member.islnk() or member.sparse:
-                    raise InvalidBundleError(f"non-regular archive member: {normalized!r}")
-                if member.size < 0:
-                    raise InvalidBundleError(f"negative archive member size: {normalized!r}")
-                total_size += member.size
-                if total_size > MAX_UNPACKED_BYTES:
-                    raise InvalidBundleError("update archive expands beyond 100 GiB")
-
-                if normalized == "manifest.json":
-                    if member.size > MAX_MANIFEST_BYTES:
-                        raise InvalidBundleError("update manifest exceeds 1 MiB")
-                    source = bundle.extractfile(member)
-                    if source is None:
-                        raise InvalidBundleError("cannot read update manifest")
-                    with source:
-                        manifest_bytes = source.read(member.size + 1)
-                    if len(manifest_bytes) != member.size:
-                        raise InvalidBundleError("truncated update manifest")
-                elif normalized == "cache":
-                    raise InvalidBundleError("cache must be a directory")
-                elif normalized == "cache/nix-cache-info":
-                    has_cache_info = True
-                elif len(parts) == 2 and parts[0] == "cache" and parts[1].endswith(".narinfo"):
-                    has_narinfo = True
-
+                        if member.size > MAX_MANIFEST_BYTES:
+                            raise InvalidBundleError("update manifest exceeds 1 MiB")
+                        source = bundle.extractfile(member)
+                        if source is None:
+                            raise InvalidBundleError("cannot read update manifest")
+                        with source:
+                            manifest_bytes = source.read(member.size + 1)
+                        if len(manifest_bytes) != member.size:
+                            raise InvalidBundleError("truncated update manifest")
+                    elif normalized == "cache":
+                        raise InvalidBundleError("cache must be a directory")
+                    elif normalized == "cache/nix-cache-info":
+                        has_cache_info = True
+                    elif len(parts) == 2 and parts[0] == "cache" and parts[1].endswith(".narinfo"):
+                        has_narinfo = True
+    
         if manifest_bytes is None:
             raise InvalidBundleError("update archive has no manifest.json")
         manifest = json.loads(manifest_bytes.decode("utf-8"))
@@ -159,7 +171,7 @@ def validate_bundle_archive(name: str, archive_path: Path) -> None:
             )
     except InvalidBundleError:
         raise
-    except (OSError, tarfile.TarError, ValueError, UnicodeDecodeError) as error:
+    except (OSError, lzma.LZMAError, tarfile.TarError, ValueError, UnicodeDecodeError) as error:
         raise InvalidBundleError(f"invalid update archive: {error}") from error
 
 
