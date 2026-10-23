@@ -185,6 +185,8 @@ pub struct Progress {
     pub tpm: bool,
     /// Seconds spent waiting for the network so far, while waiting.
     pub network_wait: Option<u64>,
+    /// Short, truthful sub-activity inside the current step.
+    pub activity: Option<String>,
 }
 
 /// The install's steps, the current one marked.
@@ -202,6 +204,9 @@ pub fn progress(p: &Progress) -> Vec<Row> {
         } else {
             Row::Muted(step.todo.into())
         });
+    }
+    if let Some(activity) = &p.activity {
+        rows.push(Row::Strong(format!("Now: {activity}")));
     }
     rows.push(Row::Gap);
     if let Some(secs) = p.network_wait {
@@ -385,6 +390,7 @@ mod tests {
             drives: vec!["/dev/vdb".into(), "/dev/vdc".into()],
             tpm: true,
             network_wait: None,
+            activity: None,
         });
         assert_eq!(rows[1], Row::Muted("Onto /dev/vdb, /dev/vdc".into()));
         assert_eq!(rows[3], Row::Plain("✓  Download LosOS".into()));
@@ -407,8 +413,10 @@ mod tests {
             drives: vec!["/dev/sda".into()],
             tpm: false,
             network_wait: Some(12),
+            activity: Some("Resolving github.com".into()),
         });
         assert!(rows.contains(&Row::Warn("No network yet (12 s)".into())));
+        assert!(rows.contains(&Row::Strong("Now: Resolving github.com".into())));
         assert!(rows.contains(&Row::Warn("This machine has no TPM chip.".into())));
     }
 
