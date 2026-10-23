@@ -1155,9 +1155,11 @@ jobs:
           name="losos-os_${version}.${build_number}"
           top="$(nix build --no-link --print-out-paths .#nixosConfigurations.install.config.system.build.toplevel)"
           mkdir -p update
-          # The persistent appliance imports this stream; never write an
-          # uncompressed export file to disk.
-          nix-store --export --recursive "$top" | xz -T2 -6 -c > update/closure.export.xz
+          # nix-store --export serializes exactly the paths passed to it;
+          # obtain the whole closure first, as required by the import protocol.
+          # Stream it through XZ so no expanded NAR export ever hits disk.
+          mapfile -t closure_paths < <(nix-store --query --requisites "$top")
+          nix-store --export "${closure_paths[@]}" | xz -T2 -6 -c > update/closure.export.xz
           tar --format=ustar -C update -cf - closure.export.xz | xz -T2 -0 -c > "update/${name}.tar.xz"
           (cd update && sha256sum "${name}.tar.xz" > SHA256SUMS)
           rm update/closure.export.xz
