@@ -63,7 +63,7 @@ cache="${LOSOS_SYSUPDATE_CACHE_DIR:-/persist/var/cache/losos-sysupdate-proxy}"
 shopt -s nullglob
 cached_bundles=( "$cache"/bundles/losos-update_*.tar.xz* )
 cached_parts=( "$cache"/parts/losos-update_*.tar.xz.part* )
-if (("${#cached_bundles[@]}" > 0)); then rm -f -- "${cached_bundles[@]}"; fi
-if (("${#cached_parts[@]}" > 0)); then rm -f -- "${cached_parts[@]}"; fi
+if ((${#cached_bundles[@]} > 0)); then rm -f -- "${cached_bundles[@]}"; fi
+if ((${#cached_parts[@]} > 0)); then rm -f -- "${cached_parts[@]}"; fi
 
 echo "LosOS update $version activated successfully"
