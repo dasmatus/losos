@@ -71,8 +71,8 @@ in
       # because lososd is the one writer of /etc/nixos and holds its lock
       # against a concurrent Apply. The `-` keeps a failure from stopping the
       # update: a box with no internet builds the tree it has, as before.
-      # Gated on the sysupdate service, not on `ExecStartPre` alone: a definition under
-      # `systemd.services.nixos-upgrade` that evaluates to nothing still
+      # Gated on the backend and upstream sync, so disabling either leaves no
+      # empty prestart unit behind.
       # creates the entry, and NixOS then writes an empty unit.
       (lib.mkIf (cfg.upstream.enable && config.losos.backend.package != null) {
         losos-sysupdate = {
