@@ -1272,6 +1272,107 @@ jobs:
           path: ${{ runner.temp }}/losos-discovery-*/qemu.log
           if-no-files-found: ignore
 
+  # Build a standalone prebuilt OS closure bundle for systemd-sysupdate.
+  # This is deliberately not a dependency of the ISO job and is never packed
+  # into the installer medium. The outer tar is XZ-compressed for sysupdate;
+  # its one member is itself an XZ-compressed nix-store export, so an appliance
+  # unpacks only the small outer layer on /persist, not into its tmpfs root.
+  sysupdate-bundle:
+    name: "nix: build the standalone sysupdate bundle"
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    if: ${{ github.event_name == 'pull_request' || (github.ref == 'refs/heads/main' && !inputs.release_tags) }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@main
+      - name: build an XZ-compressed export of the install system closure
+        id: bundle
+        run: |
+          set -euo pipefail
+          # The build label alone does not distinguish successive commits
+          # between releases. Append a zero-padded Actions run number so
+          # systemd-sysupdate sees a strictly sortable version every build.
+          version="$(nix eval --raw .#nixosConfigurations.install.config.system.nixos.label)"
+          version="${version#v}"
+          build_number="$(printf '%010d' "$GITHUB_RUN_NUMBER")"
+          name="losos-os_${version}.${build_number}"
+          top="$(nix build --no-link --print-out-paths .#nixosConfigurations.install.config.system.build.toplevel)"
+          mkdir -p update
+          # nix-store --export serializes exactly the paths passed to it;
+          # obtain the whole closure first, as required by the import protocol.
+          # Stream it through XZ so no expanded NAR export ever hits disk.
+          mapfile -t closure_paths < <(nix-store --query --requisites "$top")
+          nix-store --export "${closure_paths[@]}" | xz -T2 -6 -c > update/closure.export.xz
+          tar --format=ustar -C update -cf - closure.export.xz | xz -T2 -0 -c > "update/${name}.tar.xz"
+          (cd update && sha256sum "${name}.tar.xz" > SHA256SUMS)
+          rm update/closure.export.xz
+          printf 'name=%s\n' "$name" >> "$GITHUB_OUTPUT"
+          printf 'bundle_path=update/%s.tar.xz\n' "$name" >> "$GITHUB_OUTPUT"
+          sha256sum "update/${name}.tar.xz"
+          cat update/SHA256SUMS
+          du -h "update/${name}.tar.xz"
+          df -h
+      - name: run proxy integrity and HTTP regression tests
+        run: python3 nix/tests/sysupdate-proxy.py
+      - uses: actions/upload-artifact@v7
+        with:
+          name: losos-sysupdate-bundle-${{ github.sha }}
+          path: |
+            update/*.tar.xz
+            update/SHA256SUMS
+          retention-days: 7
+          compression-level: 0
+      - name: publish the standalone update bundle to GHCR
+        if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && !inputs.release_tags }}
+        env:
+          TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+          BUNDLE_NAME: ${{ steps.bundle.outputs.name }}
+        run: |
+          set -euo pipefail
+          oras="$(nix build nixpkgs#oras --no-link --print-out-paths)"
+          repository="ghcr.io/${GITHUB_REPOSITORY,,}/os-updates"
+          printf '%s' "$TOKEN" | "$oras/bin/oras" login ghcr.io --username "$ACTOR" --password-stdin
+          "$oras/bin/oras" push --artifact-type application/vnd.losos.os-update.v1 \
+            "$repository:main" \
+            "update/$BUNDLE_NAME.tar.xz:application/x-xz" \
+            "update/SHA256SUMS:text/plain"
+          "$oras/bin/oras" logout ghcr.io
+
+  # Run the installer's existing end-to-end NixOS VM test using Determinate Nix
+  # and QEMU/KVM. The test boots a VM with multiple virtual target drives,
+  # formats the encrypted LVM layout, runs losos-install/nixos-install and
+  # verifies the installed bootloader. It complements (rather than replaces)
+  # the ISO's UEFI/BIOS boot checks above.
+  sysupdate-install:
+    name: "nix + QEMU: install onto virtual disks"
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    if: ${{ github.event_name == 'pull_request' || (github.ref == 'refs/heads/main' && !inputs.release_tags) }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@main
+      - name: verify KVM is available when the runner exposes it
+        run: |
+          set -euo pipefail
+          if [ "${DETERMINATE_NIX_KVM:-0}" != 1 ]; then
+            echo "::warning::KVM is not exposed on this runner; the VM test will use QEMU's software accelerator."
+          else
+            echo "Determinate Nix enabled KVM acceleration."
+          fi
+      - name: test the sysupdate proxy's manifest, cache and range behavior
+        run: python3 nix/tests/sysupdate-proxy.py
+      - name: install the NixOS appliance to virtual disks and boot it
+        run: nix build .#checks.x86_64-linux.losos-install -L --no-link
+      - name: show runner storage after QEMU test
+        if: always()
+        run: df -h
+
   # Which tags release-media builds. A tag push builds that tag. A manual run
   # with `release_tags` builds the tags it names, or with "missing" every
   # published release that carries no installer ISO. Tags from before the
