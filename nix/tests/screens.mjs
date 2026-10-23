@@ -20,8 +20,8 @@
  *     await shots.finish();
  *
  * Settings are the ones the PNGs are compared at: 1280 x 900 CSS pixels at
- * twice the density, en-US, Europe/Bratislava, reduced motion, the given
- * colour scheme. The caret is hidden and nothing is taken while a spinner,
+ * twice the density, en-US (or `locale`), Europe/Bratislava, reduced
+ * motion, the given colour scheme. The caret is hidden and nothing is taken while a spinner,
  * skeleton or toast is on screen. Waits poll locators: page.waitForFunction
  * compiles its predicate in the page, and the admin page's CSP refuses it. */
 
@@ -42,12 +42,13 @@ const TOASTS = '[data-sonner-toast], li[role=status]';
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export class Shots {
-  constructor(out, { feature, test, base, scheme = 'dark', commit = '', host = null }) {
+  constructor(out, { feature, test, base, scheme = 'dark', commit = '', host = null, locale = 'en-US' }) {
     this.out = out;
     this.feature = feature;
     this.test = test;
     this.base = base.replace(/\/+$/, '');
     this.scheme = scheme;
+    this.locale = locale;
     this.commit = commit || process.env.LOSOS_COMMIT || '';
     this.host = host ?? this.base.split('://').pop();
     this.steps = [];
@@ -67,7 +68,7 @@ export class Shots {
       viewport: VIEWPORT,
       deviceScaleFactor: DPR,
       colorScheme: this.scheme,
-      locale: 'en-US',
+      locale: this.locale,
       timezoneId: 'Europe/Bratislava',
       reducedMotion: 'reduce',
       ignoreHTTPSErrors: true,

@@ -292,7 +292,7 @@ export function roomName(room: Room): string {
 
 /** A member's name in a room, with the same fallback. */
 export function memberName(room: Room, id: string): string {
-  const name = room.getMember(id)?.name ?? id;
+  const name = room.getMember(id)?.name || id;
   return shownName(name);
 }
 

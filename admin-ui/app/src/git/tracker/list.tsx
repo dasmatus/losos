@@ -4,9 +4,11 @@ import { Add01Icon, ArrowDown01Icon, Comment01Icon, GitPullRequestIcon } from "@
 import { staggerClass } from "@/components/AppTile";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/lib/i18n-react";
+import { contextMenu } from "@/lib/context-menu";
 import { cn } from "@/lib/utils";
 import { closed, priorityRank, type GroupBy, type Home, type Issue, type Priority, type WorkflowState } from "./api";
 import { Assignee, CATEGORY_NAME, DueDate, LabelChip, PRIORITY_NAME, PriorityIcon, StateIcon, cycleName } from "./parts";
+import { useIssueMenu } from "./pin";
 import { useTracker } from "./store";
 
 /* Issues in groups, one row each: priority, key, state, title, labels, what
@@ -188,9 +190,11 @@ function IssueRow({
 }) {
   const t = useT();
   const { home } = useTracker();
+  const menu = useIssueMenu();
   const today = home?.today ?? "";
   return (
     <div
+      ref={contextMenu(menu(i, onOpen))}
       role="listitem"
       data-issue-key={i.key}
       data-focused={focused || undefined}

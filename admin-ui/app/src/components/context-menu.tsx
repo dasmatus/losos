@@ -299,11 +299,12 @@ export function ContextMenuHost({
     pending.current = item;
   }, []);
 
-  if (shown === null) return null;
-
+  // The root stays mounted from the start: a root that mounts already open
+  // skips the popup's starting style, and the first menu on a page would
+  // appear in one frame instead of growing from the pointer.
   return (
     <ContextMenu.Root
-      open={open}
+      open={open && shown !== null}
       onOpenChange={(next) => {
         if (!next) close();
       }}
@@ -314,30 +315,32 @@ export function ContextMenuHost({
         item?.onSelect();
       }}
     >
-      <ContainerContext.Provider value={shown.container}>
-        <RunContext.Provider value={run}>
-          <ContextMenu.Portal container={shown.container}>
-            <ContextMenu.Positioner
-              anchor={shown.anchor}
-              // At the pointer the menu overlaps it a little, as a native
-              // one does; under a focused row it hangs just below.
-              sideOffset={shown.keyboard ? 4 : undefined}
-              collisionPadding={8}
-              className="isolate z-50 outline-none"
-            >
-              <ContextMenu.Popup
-                ref={popup}
-                data-slot="context-menu"
-                aria-label={shown.label}
-                finalFocus={{ current: shown.returnFocus }}
-                className={POPUP}
+      {shown !== null && (
+        <ContainerContext.Provider value={shown.container}>
+          <RunContext.Provider value={run}>
+            <ContextMenu.Portal container={shown.container}>
+              <ContextMenu.Positioner
+                anchor={shown.anchor}
+                // At the pointer the menu overlaps it a little, as a native
+                // one does; under a focused row it hangs just below.
+                sideOffset={shown.keyboard ? 4 : undefined}
+                collisionPadding={8}
+                className="isolate z-50 outline-none"
               >
-                <Sections sections={shown.sections} />
-              </ContextMenu.Popup>
-            </ContextMenu.Positioner>
-          </ContextMenu.Portal>
-        </RunContext.Provider>
-      </ContainerContext.Provider>
+                <ContextMenu.Popup
+                  ref={popup}
+                  data-slot="context-menu"
+                  aria-label={shown.label}
+                  finalFocus={{ current: shown.returnFocus }}
+                  className={POPUP}
+                >
+                  <Sections sections={shown.sections} />
+                </ContextMenu.Popup>
+              </ContextMenu.Positioner>
+            </ContextMenu.Portal>
+          </RunContext.Provider>
+        </ContainerContext.Provider>
+      )}
     </ContextMenu.Root>
   );
 }

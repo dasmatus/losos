@@ -27,6 +27,7 @@ import {
 import {
   deriveApps,
   formatBytes,
+  CODE_BASE,
   formatUptime,
   probeApps,
   recallAvailability,
@@ -108,7 +109,8 @@ export function Home({
   const availability = useAvailability();
   const disk = storage ?? measured;
 
-  const facts = buildFacts({ availability, status, storage: disk });
+  const assigned = useAssignedIssues(signedIn && availability.seen.code === "present");
+  const facts = buildFacts({ availability, status, storage: disk, assigned });
   const model = deriveApps(facts);
 
   const hostName = settings?.hostName ?? browserHostName();
@@ -427,13 +429,17 @@ function buildFacts({
   availability,
   status,
   storage,
+  assigned,
 }: {
   availability: { seen: Availabilities; measured: boolean };
   status: StatusResponse | null;
   storage: HomeStorage | null;
+  /** Open issues given to the person, from LosOS Git's tracker. */
+  assigned?: number | null;
 }): AppFacts {
   const details: Partial<Record<AppId, string>> = {};
   const attention: Partial<Record<AppId, AppAttention>> = {};
+  if (assigned !== undefined && assigned !== null && assigned > 0) details.issues = translate("apps.issues.assigned", { count: assigned });
 
   /* The reading is the whole disk, the system included, so it marks the
    * Files tile only when the disk is filling up and puts no size under it:
@@ -462,6 +468,27 @@ function buildFacts({
     details,
     attention,
   };
+}
+
+/* How many open issues LosOS Git's tracker has given the person, for the
+ * line under the Issues tile. Asked of LosOS Git as whoever is signed in
+ * through LosOS Login; anything else (the spare key, no tracker) is no
+ * line at all. */
+function useAssignedIssues(ask: boolean): number | null {
+  const [count, setCount] = React.useState<number | null>(null);
+  React.useEffect(() => {
+    if (!ask) return;
+    const controller = new AbortController();
+    void fetch(`${CODE_BASE}/api/v1/tracker`, { credentials: "same-origin", headers: { Accept: "application/json" }, signal: controller.signal })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const body = (await res.json()) as { assigned?: unknown };
+        if (typeof body.assigned === "number") setCount(body.assigned);
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [ask]);
+  return count;
 }
 
 // ── Is the box answering? ─────────────────────────────────────────────────

@@ -33,7 +33,7 @@ sheet.
 ## Search
 
 The magnifier at the top of the sidebar opens one list that finds pages,
-apps, files and repositories. Ctrl+Shift+P on any admin page opens it too
+apps, files, repositories and issues. Ctrl+Shift+P on any admin page opens it too
 (Cmd+Shift+P on a Mac), and so does typing a colon anywhere outside a text
 field. It finds:
 
@@ -42,6 +42,8 @@ field. It finds:
 - the apps in LosOS Cloud, and LosOS Git
 - files and folders in LosOS Cloud, by name
 - repositories in LosOS Git
+- issues in LosOS Git, by their words or their key such as `BT-12`; with
+  nothing typed, the open issues given to you
 - text inside files, once you type three letters: in your LosOS Cloud files,
   and on the main branch of every repository in LosOS Git
 - your pins
@@ -133,9 +135,10 @@ the selection hides it too.
 
 ## Pins
 
-Pin the apps, files and repositories you open most, and they sit under
+Pin the apps, files, repositories and issues you open most, and they sit under
 **Pinned** in the sidebar. A pin opens in its own app: a file or folder in
-LosOS Cloud, a repository on LosOS Git, an app on the Overview, or an app
+LosOS Cloud, a repository on LosOS Git, an issue or a project in LosOS Git's
+[issues](./issues.md), an app on the Overview, or an app
 you installed from the search on its own port. The box keeps the list, so
 every browser you sign in from shows the same pins.
 
@@ -143,11 +146,15 @@ every browser you sign in from shows the same pins.
   pinned tile keeps the pin, in colour.
 - On the Apps page, **Pin** sits beside each installed app.
 - The pencil beside **Pinned** opens the full list. There you move a pin up
-  or down, unpin it, and pin from three tabs: **Apps**, **Files**, which
-  walks the folders of LosOS Cloud, and **Repositories**.
+  or down, unpin it, and pin from four tabs: **Apps**, **Files**, which
+  walks the folders of LosOS Cloud, **Repositories**, and **Issues**, which
+  finds an issue by its words or its key.
+- On an issue or a project in LosOS Git, the pin at the top pins it. An
+  issue shows its title in the sidebar.
 - Point at a pin in the sidebar and click the crossed-out pin to unpin it.
   The [search](#search) finds pins too.
-- Right-click a file, folder or repository in the search, an app tile on
+- Right-click a file, folder, repository or issue in the search, an issue
+  in a list or on a board of LosOS Git, an app tile on
   the Overview, or a pin in the sidebar, and choose **Pin to sidebar** or
   **Unpin from sidebar**. On a touch screen, press and hold instead.
 

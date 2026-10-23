@@ -126,6 +126,26 @@ Z ponuky **⋯** navrchu úlohy:
 - **Pridať termín do kalendára** dá termín ako súbor kalendára;
 - **Kontakt riešiteľa** otvorí riešiteľa v Kontaktoch.
 
+Pravým tlačidlom na úlohe v zozname alebo na nástenke dostanete **Otvoriť
+na novej karte**, **Kopírovať odkaz**, **Kopírovať kľúč a názov**,
+**Pripnúť na bočný panel** a tie isté položky pre Mail a Chat.
+
+**Vytvoriť úlohu** začne úlohu z inej aplikácie. Otvorí novú kartu s už
+vyplneným názvom a textom, ktoré pred vytvorením môžete zmeniť:
+
+- v LosOS Mail tlačidlo navrchu správy správu zacituje;
+- v LosOS Chat ju zacituje ponuka správy;
+- v LosOS Cloud ponuka pravého tlačidla na súbore odkáže na súbor;
+- v Office a Poznámkach lišta nad vybranými slovami ich zacituje.
+
+Správca si môže úlohu alebo projekt pripnúť na bočný panel správcovských
+stránok špendlíkom navrchu a [vyhľadávanie](./admin-pages.md#search) na
+správcovských stránkach nájde úlohy podľa slov alebo kľúča. Dlaždica
+**Úlohy** na Prehľade ukazuje, koľko otvorených úloh je pridelených vám.
+Keď napíšete `@` v popise, komentári alebo karte v LosOS Diagrams, ponúknu
+sa úlohy popri ľuďoch a súboroch, a rovnako aj v tlačidle odkazu nad
+vybranými slovami v Office a Poznámkach.
+
 Mail, Chat a Kontakty sú tam, keď zariadenie zdieľa a je v sieti mesh.
 Každá vaša úloha s termínom je aj v odbere kalendára na
 `https://<box>.local/git/api/v1/tracker/calendar.ics`. Kalendárová

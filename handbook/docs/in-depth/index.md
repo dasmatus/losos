@@ -9,6 +9,8 @@ mdx:
 
 # In depth
 
+![In Depth Index.](../img/stub-in-depth-index.png)
+
 The rest of this handbook is for the owner of a box. This chapter is for the
 people who build LosOS, run an edge or cut a release: how the pieces fit
 together, why each one sits where it does, and how to change them.

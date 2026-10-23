@@ -39,6 +39,15 @@ export default defineMessages({
   "together.opening": { en: "Opening {name}", sk: "Otvára sa {name}", de: "{name} wird geöffnet" },
 
   "together.send.mail": { en: "Send by mail", sk: "Poslať e-mailom", de: "Per Mail senden" },
+  "together.issue.make": { en: "Make an issue", sk: "Vytvoriť úlohu", de: "Issue anlegen" },
+  "together.issue.fromMail": {
+    en: "From a message by {name}: {subject}",
+    sk: "Zo správy od {name}: {subject}",
+    de: "Aus einer Nachricht von {name}: {subject}",
+  },
+  "together.issue.fromChat": { en: "From {name} in LosOS Chat", sk: "Od {name} v LosOS Chat", de: "Von {name} in LosOS Chat" },
+  "together.issue.fromFile": { en: "From {path} in LosOS Cloud", sk: "Z {path} v LosOS Cloud", de: "Aus {path} in LosOS Cloud" },
+  "together.issue.about": { en: "About {file}", sk: "K súboru {file}", de: "Zu {file}" },
   "together.send.chat": { en: "Send in chat", sk: "Poslať v chate", de: "Im Chat senden" },
   "together.send.share": { en: "Send to…", sk: "Poslať…", de: "Senden an…" },
   "together.share.title": { en: "Send {name}", sk: "Poslať {name}", de: "{name} senden" },

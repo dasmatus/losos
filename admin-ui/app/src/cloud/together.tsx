@@ -1,5 +1,6 @@
 /* LosOS Cloud's files, handed to the other apps from the right-click menu:
- * send them by mail or in chat, or ask the box's AI about one.
+ * send them by mail or in chat, ask the box's AI about one, or make an
+ * issue about it in LosOS Git's tracker.
  *
  * Each item is there only while the app it leads to is live for the
  * person: Mail and Chat exist on the shared side alone (GET /api/me's
@@ -14,14 +15,14 @@
  * menu item asks it to open. */
 
 import * as React from "react";
-import { AiMagicIcon, BubbleChatIcon, Mail01Icon } from "@hugeicons/core-free-icons";
+import { AiMagicIcon, BubbleChatIcon, Mail01Icon, TaskAdd01Icon } from "@hugeicons/core-free-icons";
 import { AskAiDialog, assistantReady } from "@/components/ask-ai";
 import { loadMe, type AssistantSource } from "@/lib/api";
 import { readCloudText, textual } from "@/lib/cloud-files";
 import { addMenuItems } from "@/lib/context-menu";
 import { addQuickActions } from "@/lib/quick-actions";
 import { t } from "@/lib/i18n";
-import { canHandTo, chatShareHref, composeMailHref } from "@/lib/intents";
+import { canHandTo, canMakeIssue, chatShareHref, composeMailHref, issueTitleFrom, newIssueHref, openFileHref, quotedFrom } from "@/lib/intents";
 import type { Entry } from "./api";
 
 /** What the AI reads of one file, in characters. One more is sent, so the
@@ -61,12 +62,26 @@ addMenuItems("cloud.entry", (entries) => {
       hidden: one === undefined || !aiReady || askAbout === null || one.size > READ_BYTES || !textual(one.name, one.mime),
       onSelect: () => one !== undefined && askAbout?.(one),
     },
+    {
+      id: "make-issue",
+      label: t("together.issue.make"),
+      icon: TaskAdd01Icon,
+      hidden: one === undefined || !canMakeIssue(),
+      onSelect: () => {
+        if (one === undefined) return;
+        window.open(
+          newIssueHref({ title: one.name, body: t("together.issue.about", { file: `[${one.name.replace(/[[\]]/g, "")}](${openFileHref(one.id)})` }) }),
+          "_blank",
+          "noopener",
+        );
+      },
+    },
   ];
 });
 
-// Words picked in a document or a note go to Mail or Chat in a new tab, so
-// the document stays open where it was.
-addQuickActions("text.selection", ({ text }) => [
+// Words picked in a document or a note go to Mail, Chat or a new issue in
+// a new tab, so the document stays open where it was.
+addQuickActions("text.selection", ({ text, path }) => [
   {
     id: "send-mail",
     label: t("together.send.mail"),
@@ -80,6 +95,21 @@ addQuickActions("text.selection", ({ text }) => [
     icon: BubbleChatIcon,
     hidden: !canHandTo("chat"),
     onSelect: () => window.open(chatShareHref({ text }), "_blank", "noopener"),
+  },
+  {
+    id: "make-issue",
+    label: t("together.issue.make"),
+    icon: TaskAdd01Icon,
+    hidden: !canMakeIssue(),
+    onSelect: () =>
+      window.open(
+        newIssueHref({
+          title: issueTitleFrom(text),
+          body: path === undefined ? quotedFrom(text, "") : quotedFrom(text, t("together.issue.fromFile", { path })),
+        }),
+        "_blank",
+        "noopener",
+      ),
   },
 ]);
 

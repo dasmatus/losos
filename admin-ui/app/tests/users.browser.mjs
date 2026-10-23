@@ -10,8 +10,11 @@
  * removal only after asking; the sign-in rules go out as one request and a
  * 409 for a missing second factor of the caller's own says what to do; a
  * second factor and a rule's hold show on the person, and resetting the
- * factors asks first; Slovak names the pane; and none of it adds to the
- * Content-Security-Policy violations a plain load logs.
+ * factors asks first; a role is picked from one list (administrator,
+ * moderator, member, guest and the box's own roles) and goes out as its
+ * groups; the table says what each role can do; a role of the box's own is
+ * saved and removed with its own requests; Slovak names the pane; and none
+ * of it adds to the Content-Security-Policy violations a plain load logs.
  *
  * Same arrangement as the other files: the real dist/ bundle under the real
  * policy, the routes stubbed with page.route() as a small stateful lososd.
@@ -24,7 +27,7 @@ const { origin, close: closeServer } = await serve({ csp: true });
 const browser = await launch();
 const { check, finish } = runner();
 
-const SECTIONS = ['storage', 'backup', 'apps', 'market', 'network', 'look', 'lab', 'access', 'account'];
+const SECTIONS = ['storage', 'backup', 'apps', 'market', 'network', 'look', 'lab', 'access', 'account', 'moderation'];
 const SETTINGS = {
   sharingMyStorage: false,
   hostName: 'mattbox',
@@ -87,6 +90,7 @@ async function open({
   page.on('pageerror', (e) => errors.push(String(e)));
   let people = structuredClone(PEOPLE);
   let rules = { twoFactor: false, passwordDays: 0 };
+  let roles = [{ id: 'helpers', name: 'Backup helpers', sections: ['backup', 'account'] }];
   const posts = [];
   const body = (route) => JSON.parse(route.request().postData() ?? '{}');
 
@@ -108,7 +112,7 @@ async function open({
   await page.route('**/api/status', (route) => json(route, 200, { state: 'idle', progress: 0, message: '' }));
   await page.route('**/api/people', (route) => {
     if (route.request().method() === 'GET') {
-      return json(route, 200, { standalone, you, sections: SECTIONS, rules, people: standalone ? people : [] });
+      return json(route, 200, { standalone, you, sections: SECTIONS, rules, roles, people: standalone ? people : [] });
     }
     const b = body(route);
     posts.push({ path: '/api/people', body: b });
@@ -140,6 +144,19 @@ async function open({
     posts.push({ path: '/api/people/two-factor/reset', body: b });
     people = people.map((p) => (p.name === b.name ? { ...p, twoFactor: false } : p));
     return json(route, 200, { name: b.name, reset: true });
+  });
+  await page.route('**/api/roles', (route) => {
+    const b = body(route);
+    posts.push({ path: '/api/roles', body: b });
+    const id = b.id ?? b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    roles = [...roles.filter((r) => r.id !== id), { id, name: b.name, sections: b.sections }];
+    return json(route, 200, { id, roles });
+  });
+  await page.route('**/api/roles/remove', (route) => {
+    const b = body(route);
+    posts.push({ path: '/api/roles/remove', body: b });
+    roles = roles.filter((r) => r.id !== b.id);
+    return json(route, 200, { roles });
   });
   await page.route('**/api/people/remove', (route) => {
     const b = body(route);
@@ -178,13 +195,13 @@ const BASELINE = await baseline();
 
 console.log('admin-ui users pane checks');
 
-await check('on a box that signs people in itself, Your account and Users sit between Security and Access tokens', async () => {
+await check('on a box that signs people in itself, Your account, Users and Moderation sit between Security and Access tokens', async () => {
   const { page, context } = await open({ path: '/settings/security' });
   const labels = (await nav(page).getByRole('link').allInnerTexts()).map((l) => l.trim());
   const at = labels.indexOf('Security');
   assert.deepEqual(
-    labels.slice(at, at + 4),
-    ['Security', 'Your account', 'Users', 'Access tokens'],
+    labels.slice(at, at + 5),
+    ['Security', 'Your account', 'Users', 'Moderation', 'Access tokens'],
     labels.join(' | '),
   );
   await nav(page).getByRole('button', { name: /^Search or jump to/ }).click();
@@ -204,6 +221,7 @@ await check('a box whose sign-in runs elsewhere has no Users pane', async () => 
   const labels = (await nav(page).getByRole('link').allInnerTexts()).map((l) => l.trim());
   assert.ok(!labels.includes('Users'), labels.join(' | '));
   assert.ok(!labels.includes('Your account'), labels.join(' | '));
+  assert.ok(!labels.includes('Moderation'), labels.join(' | '));
   await nav(page).getByRole('button', { name: /^Search or jump to/ }).click();
   await page.getByRole('combobox', { name: /^Search pages/ }).fill('people');
   await page.waitForTimeout(300);
@@ -228,10 +246,14 @@ await check('the list marks the owner and the caller and gives neither a button'
   const eva = row(page, 'eva');
   assert.match(await eva.innerText(), /Eva Novak/);
   assert.match(await eva.innerText(), /eva · eva@mattbox\.local/);
-  assert.match(await eva.innerText(), /Chosen parts/);
+  assert.match(await eva.innerText(), /Member/);
   assert.match(await eva.innerText(), /Can change: Storage, Backup/);
-  assert.match(await row(page, 'oma').innerText(), /Sees everything/);
+  assert.match(await row(page, 'oma').innerText(), /Member/);
   assert.match(await row(page, 'oma').innerText(), /Sees every pane and changes nothing/);
+  // The owner and administrators carry a mark on their picture; members none.
+  assert.equal(await owner.locator('[data-slot="avatar-role"][data-role="owner"]').count(), 1);
+  assert.equal(await me.locator('[data-slot="avatar-role"][data-role="admin"]').count(), 1);
+  assert.equal(await eva.locator('[data-slot="avatar-role"]').count(), 0);
   assert.deepEqual(
     await eva.getByRole('button').allInnerTexts(),
     ['Access', 'New password', 'Remove'],
@@ -274,24 +296,73 @@ await check('a new person goes out once the name and password pass, with the gro
   await context.close();
 });
 
-await check('an administrator is asked for without sections, a viewer with them', async () => {
+await check('each role goes out as its groups', async () => {
   const { page, context, posts } = await open();
   const form = page.getByTestId('users-form');
   await form.waitFor();
-  await page.getByTestId('users-name').fill('ida');
-  await page.getByTestId('users-password').fill(GOOD_PASSWORD);
-  await form.getByTestId('users-level-select').selectOption('admin');
+  const add = async (name, role, switches = []) => {
+    await page.getByTestId('users-name').fill(name);
+    await page.getByTestId('users-password').fill(GOOD_PASSWORD);
+    await form.getByTestId('users-role-select').selectOption(role);
+    for (const s of switches) await toggle(form, s);
+    await page.getByTestId('users-add').click();
+    await row(page, name).waitFor();
+    return posts.at(-1).body.groups;
+  };
+  await form.getByTestId('users-role-select').selectOption('admin');
   assert.equal(await form.getByRole('switch').count(), 0, 'switches stay for an administrator');
-  await page.getByTestId('users-add').click();
-  await row(page, 'ida').waitFor();
-  assert.deepEqual(posts.at(-1).body.groups, ['losos-admins']);
-  await page.getByTestId('users-name').fill('ola');
-  await page.getByTestId('users-password').fill(GOOD_PASSWORD);
-  await form.getByTestId('users-level-select').selectOption('viewer');
-  await toggle(form, 'Backup');
-  await page.getByTestId('users-add').click();
-  await row(page, 'ola').waitFor();
-  assert.deepEqual(posts.at(-1).body.groups, ['losos-viewers', 'losos-account', 'losos-backup']);
+  await form.getByTestId('users-role-select').selectOption('guest');
+  assert.equal(await form.getByRole('switch').count(), 0, 'switches stay for a guest');
+  // Moderation is the moderator's role, never a switch of its own.
+  await form.getByTestId('users-role-select').selectOption('member');
+  assert.equal(await form.getByRole('switch', { name: 'Moderation', exact: true }).count(), 0);
+  assert.deepEqual(await add('ida', 'admin'), ['losos-admins']);
+  assert.deepEqual(await add('ola', 'member', ['Sees every part', 'Backup']), [
+    'losos-viewers',
+    'losos-account',
+    'losos-backup',
+  ]);
+  assert.deepEqual(await add('max', 'moderator'), ['losos-moderation', 'losos-account']);
+  assert.deepEqual(await add('gus', 'guest'), ['losos-guests', 'losos-account']);
+  assert.deepEqual(await add('bea', 'custom:helpers'), ['losos-role-helpers']);
+  await context.close();
+});
+
+await check('the table says what each role can do', async () => {
+  const { page, context } = await open();
+  const table = page.getByTestId('users-role-table');
+  await table.waitFor();
+  const head = (await table.locator('th').allInnerTexts()).map((h) => h.trim());
+  assert.deepEqual(head, ['On this box', 'Owner', 'Administrator', 'Moderator', 'Member', 'Guest']);
+  const settings = (await table.locator('tr', { hasText: 'Settings' }).locator('td').allInnerTexts()).map((c) => c.trim());
+  assert.deepEqual(settings, ['Settings', 'Everything', 'Everything', 'Parts given', 'Parts given', 'Own account']);
+  await context.close();
+});
+
+await check('a role of the box\'s own is saved, given and removed with its own requests', async () => {
+  const { page, context, posts } = await open();
+  const section = page.getByTestId('users-roles');
+  await section.waitFor();
+  assert.match(await section.innerText(), /Backup helpers/);
+  assert.match(await section.innerText(), /Gives: Backup, Own account/);
+  await section.getByTestId('users-role-new').click();
+  const dialog = page.getByRole('dialog', { name: 'New role' });
+  await dialog.waitFor();
+  await dialog.getByTestId('users-role-name').fill('Lab crew');
+  await toggle(dialog, 'Diagrams');
+  await dialog.getByTestId('users-role-save').click();
+  await dialog.waitFor({ state: 'hidden' });
+  assert.deepEqual(posts.at(-1), { path: '/api/roles', body: { name: 'Lab crew', sections: ['account', 'lab'] } });
+  await section.locator('[data-role="lab-crew"]').waitFor();
+  // The new role is in the picker at once.
+  const options = await page.getByTestId('users-form').getByTestId('users-role-select').locator('option').allInnerTexts();
+  assert.ok(options.includes('Lab crew'), options.join(' | '));
+  await section.locator('[data-role="helpers"]').getByRole('button', { name: 'Remove' }).click();
+  const confirm = page.getByRole('dialog', { name: 'Remove Backup helpers?' });
+  await confirm.waitFor();
+  await confirm.getByTestId('users-role-remove-confirm').click();
+  await section.locator('[data-role="helpers"]').waitFor({ state: 'detached' });
+  assert.deepEqual(posts.at(-1), { path: '/api/roles/remove', body: { id: 'helpers' } });
   await context.close();
 });
 
@@ -315,7 +386,7 @@ await check('access, a new password and a removal each send their own request', 
   const accessDialog = page.getByRole('dialog', { name: 'Access for Eva Novak' });
   await accessDialog.waitFor();
   assert.ok(await accessDialog.getByRole('switch', { name: 'Storage', exact: true }).isChecked());
-  await accessDialog.getByTestId('users-level-select').selectOption('admin');
+  await accessDialog.getByTestId('users-role-select').selectOption('admin');
   await accessDialog.getByTestId('users-access-save').click();
   await accessDialog.waitFor({ state: 'hidden' });
   assert.deepEqual(posts.at(-1), { path: '/api/people/access', body: { name: 'eva', groups: ['losos-admins'] } });
