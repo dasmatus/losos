@@ -74,7 +74,7 @@ in
       # Gated on the sysupdate service, not on `ExecStartPre` alone: a definition under
       # `systemd.services.nixos-upgrade` that evaluates to nothing still
       # creates the entry, and NixOS then writes an empty unit.
-      (lib.mkIf (cfg.upstream.enable && config.systemd.services.losos-sysupdate.enable) {
+      (lib.mkIf (cfg.upstream.enable && config.losos.backend.package != null) {
         losos-sysupdate = {
           wants = [ "lososd.service" ];
           after = [ "lososd.service" ];
