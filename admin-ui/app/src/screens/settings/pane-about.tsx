@@ -2,7 +2,7 @@ import * as React from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getUpdates, isAbort, isUnauthorized, postUpdatesCheck } from "@/lib/api";
+import { getUpdates, isAbort, isUnauthorized, postUpdatesCheck, useMe } from "@/lib/api";
 import { useT } from "@/lib/i18n-react";
 import { openTour } from "@/tour/store";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue } from "./rows";
@@ -21,6 +21,7 @@ import type { SettingsForm } from "./use-settings-form";
 export function AboutPane({ form }: { form: SettingsForm }) {
   const t = useT();
   const saved = form.saved;
+  const me = useMe();
 
   const [updateOutput, setUpdateOutput] = React.useState("");
   const [updateError, setUpdateError] = React.useState("");
@@ -218,14 +219,16 @@ export function AboutPane({ form }: { form: SettingsForm }) {
               {updateOutput}
             </pre>
           )}
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="secondary" size="sm" disabled={updateBusy} onClick={() => void checkAndInstall()}>
-              {updateBusy ? "Starting update…" : "Check and install now"}
-            </Button>
-            <Button variant="ghost" size="sm" disabled={updateBusy} onClick={() => void loadUpdates()}>
-              Refresh status
-            </Button>
-          </div>
+          {me?.admin && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="secondary" size="sm" disabled={updateBusy} onClick={() => void checkAndInstall()}>
+                {updateBusy ? "Starting update…" : "Check and install now"}
+              </Button>
+              <Button variant="ghost" size="sm" disabled={updateBusy} onClick={() => void loadUpdates()}>
+                Refresh status
+              </Button>
+            </div>
+          )}
         </Group>
         <GroupCaption>
           Updates are signature-checked before download, then extracted on encrypted persistent storage under /persist.
