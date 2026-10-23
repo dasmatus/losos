@@ -20,7 +20,7 @@
 # boot screen draws (modules/splash.nix), the installer runs under it and
 # shows its menu, its steps and how it ended on the screen's panel
 # (backend/src/install_screen.rs). Elsewhere it prints them on tty1 as text.
-# tty2 to tty6 log root in to a shell.
+# tty2 is reserved for live command logs; tty3 to tty6 log root in to a shell.
 {
   pkgs,
   lib,
