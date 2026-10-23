@@ -148,8 +148,10 @@ def verify_manifest(data: bytes, signature: bytes) -> dict[str, str]:
         )
         atomic_write(public_key, result.stdout)
         public_key.chmod(0o644)
-    manifest_file = CACHE / "verified-SHA256SUMS"
-    signature_file = CACHE / "verified-SHA256SUMS.sig"
+    # Validate candidate files before replacing the last known-good manifest.
+    # A hostile or broken network response must not destroy the offline cache.
+    manifest_file = CACHE / "candidate-SHA256SUMS"
+    signature_file = CACHE / "candidate-SHA256SUMS.sig"
     atomic_write(manifest_file, data)
     atomic_write(signature_file, signature)
     result = subprocess.run(
@@ -159,7 +161,10 @@ def verify_manifest(data: bytes, signature: bytes) -> dict[str, str]:
     )
     if result.returncode != 0 or "Verified OK" not in result.stdout:
         raise RuntimeError("update manifest signature verification failed")
-    return parse_manifest(data)
+    entries = parse_manifest(data)
+    manifest_file.unlink(missing_ok=True)
+    signature_file.unlink(missing_ok=True)
+    return entries
 
 
 def get_manifest(force: bool = False) -> tuple[bytes, dict[str, str], str]:
@@ -175,6 +180,9 @@ def get_manifest(force: bool = False) -> tuple[bytes, dict[str, str], str]:
     if not fresh:
         try:
             base = fetch_release_base()
+            # Force a fresh fetch on refresh, rather than reusing this cache.
+            (CACHE / "downloaded-SHA256SUMS").unlink(missing_ok=True)
+            (CACHE / "downloaded-SHA256SUMS.sig").unlink(missing_ok=True)
             manifest = download(base + "/SHA256SUMS.sysupdate", CACHE / "downloaded-SHA256SUMS").read_bytes()
             signature = download(base + "/SHA256SUMS.sysupdate.sig", CACHE / "downloaded-SHA256SUMS.sig").read_bytes()
             entries = verify_manifest(manifest, signature)
