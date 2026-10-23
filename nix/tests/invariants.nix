@@ -50,8 +50,8 @@ assert must config.boot.initrd.systemd.tpm2.enable
   "boot.initrd.systemd.tpm2.enable is off: the initrd cannot read the sealed LUKS2 token and every boot stops at a passphrase prompt";
 assert must (lib.elem "tpm2-device=auto" config.boot.initrd.luks.devices.persist.crypttabExtraOpts)
   "crypttab for `persist` has no tpm2-device=auto (${toString config.boot.initrd.luks.devices.persist.crypttabExtraOpts}): the enrolled token is never consulted";
-assert must config.system.autoUpgrade.enable
-  "the legacy NixOS updater must remain enabled until signed sysupdate bundles and their CI publishing path are in place";
+assert must (!config.system.autoUpgrade.enable)
+  "NixOS autoUpgrade must be disabled once the signed sysupdate release channel owns the nightly update schedule";
 assert must (config.systemd.services ? losos-sysupdate)
   "the persistent systemd-sysupdate activation service is missing";
 assert must

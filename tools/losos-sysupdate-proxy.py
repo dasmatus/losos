@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import http.server
+import json
 import os
 from pathlib import Path
 import re
@@ -83,26 +84,53 @@ def download(url: str, destination: Path, expected_hash: str | None = None) -> P
     if destination.is_file() and (expected_hash is None or sha256_file(destination) == expected_hash):
         return destination
     partial = destination.with_name(destination.name + ".download")
-    partial.unlink(missing_ok=True)
-    digest = hashlib.sha256()
-    try:
-        with urllib.request.urlopen(url, timeout=45) as response, partial.open("wb") as out:
-            while True:
-                block = response.read(1024 * 1024)
-                if not block:
-                    break
-                out.write(block)
-                digest.update(block)
-            out.flush()
-            os.fsync(out.fileno())
-        actual = digest.hexdigest()
-        if expected_hash is not None and actual != expected_hash:
-            raise ValueError(f"SHA-256 mismatch for {destination.name}: {actual}")
+    if expected_hash is not None and partial.is_file() and sha256_file(partial) == expected_hash:
         os.replace(partial, destination)
         return destination
-    except Exception:
-        partial.unlink(missing_ok=True)
-        raise
+
+    # Download partials live next to their final files on /persist. Resume them
+    # with HTTP Range on the next attempt; never stage a multi-GB part in tmpfs.
+    for attempt in range(2):
+        offset = partial.stat().st_size if partial.is_file() else 0
+        headers = {"User-Agent": "LosOS-sysupdate-proxy/1"}
+        if offset:
+            headers["Range"] = f"bytes={offset}-"
+        request = urllib.request.Request(url, headers=headers)
+        try:
+            with urllib.request.urlopen(request, timeout=45) as response:
+                status = getattr(response, "status", 200)
+                mode = "wb"
+                if offset and status == 206:
+                    content_range = response.headers.get("Content-Range", "")
+                    if not content_range.startswith(f"bytes {offset}-"):
+                        partial.unlink(missing_ok=True)
+                        raise ValueError(f"invalid Content-Range while resuming {destination.name}")
+                    mode = "ab"
+                # If the server ignored Range and returned the whole asset (200),
+                # restart from byte zero instead of corruptly appending it.
+                with partial.open(mode) as out:
+                    while True:
+                        block = response.read(1024 * 1024)
+                        if not block:
+                            break
+                        out.write(block)
+                    out.flush()
+                    os.fsync(out.fileno())
+            actual = sha256_file(partial)
+            if expected_hash is not None and actual != expected_hash:
+                partial.unlink(missing_ok=True)
+                raise ValueError(f"SHA-256 mismatch for {destination.name}: {actual}")
+            os.replace(partial, destination)
+            return destination
+        except urllib.error.HTTPError as error:
+            if error.code == 416 and offset and attempt == 0:
+                # The saved partial is longer than the current remote asset.
+                partial.unlink(missing_ok=True)
+                continue
+            if error.code in {400, 403, 404, 410}:
+                partial.unlink(missing_ok=True)
+            raise
+    raise RuntimeError(f"could not download {destination.name}")
 
 
 def fetch_release_base() -> str:
@@ -127,6 +155,44 @@ def fetch_release_base() -> str:
     if not expected.fullmatch(location):
         raise RuntimeError("latest-release redirect was not a versioned LosOS update manifest")
     return location.rsplit("/", 1)[0]
+
+
+def fetch_fallback_release_base() -> str:
+    """Find the newest published release that has both signed update assets.
+
+    Older tags can still have releases created after the update channel exists.
+    GitHub's "latest" alias can then point at one of those older, bundle-less
+    releases. The API fallback is used only when that alias lacks either asset.
+    """
+    url = f"https://api.github.com/repos/{REPOSITORY}/releases?per_page=100"
+    request = urllib.request.Request(url, headers={
+        "User-Agent": "LosOS-sysupdate-proxy/1",
+        "Accept": "application/vnd.github+json",
+    })
+    with urllib.request.urlopen(request, timeout=30) as response:
+        releases = json.load(response)
+    for release in releases:
+        if release.get("draft") or release.get("prerelease"):
+            continue
+        assets = {asset.get("name"): asset for asset in release.get("assets", [])}
+        if "SHA256SUMS.sysupdate" not in assets or "SHA256SUMS.sysupdate.sig" not in assets:
+            continue
+        asset_url = assets["SHA256SUMS.sysupdate"].get("browser_download_url", "")
+        tag = release.get("tag_name", "")
+        expected_url = f"https://github.com/{REPOSITORY}/releases/download/{tag}/SHA256SUMS.sysupdate"
+        if asset_url == expected_url:
+            return asset_url.rsplit("/", 1)[0]
+    raise RuntimeError("no published LosOS release contains a signed sysupdate manifest")
+
+
+def fetch_manifest_pair(base: str) -> tuple[bytes, bytes]:
+    # Delete stale candidate downloads first so a partial response cannot be
+    # mistaken for a current release's manifest.
+    (CACHE / "downloaded-SHA256SUMS").unlink(missing_ok=True)
+    (CACHE / "downloaded-SHA256SUMS.sig").unlink(missing_ok=True)
+    manifest = download(base + "/SHA256SUMS.sysupdate", CACHE / "downloaded-SHA256SUMS").read_bytes()
+    signature = download(base + "/SHA256SUMS.sysupdate.sig", CACHE / "downloaded-SHA256SUMS.sig").read_bytes()
+    return manifest, signature
 
 
 def parse_manifest(data: bytes) -> dict[str, str]:
@@ -188,19 +254,28 @@ def get_manifest(force: bool = False) -> tuple[bytes, dict[str, str], str]:
     signature_path = CACHE / "verified-SHA256SUMS.sig"
     base_path = CACHE / "release-base.txt"
     stamp_path = CACHE / "manifest-refreshed"
-    fresh = (
-        not force and manifest_path.is_file() and signature_path.is_file()
-        and base_path.is_file() and stamp_path.is_file()
-        and time.time() - float(stamp_path.read_text().strip()) < MANIFEST_TTL
-    )
+    fresh = False
+    if not force and manifest_path.is_file() and signature_path.is_file() and base_path.is_file() and stamp_path.is_file():
+        try:
+            age = time.time() - float(stamp_path.read_text().strip())
+            fresh = 0 <= age < MANIFEST_TTL
+        except (OSError, ValueError):
+            # A torn/corrupt timestamp should trigger a refresh, not prevent
+            # a box from using a still-valid signed manifest.
+            fresh = False
     if not fresh:
         try:
             base = fetch_release_base()
-            # Force a fresh fetch on refresh, rather than reusing this cache.
-            (CACHE / "downloaded-SHA256SUMS").unlink(missing_ok=True)
-            (CACHE / "downloaded-SHA256SUMS.sig").unlink(missing_ok=True)
-            manifest = download(base + "/SHA256SUMS.sysupdate", CACHE / "downloaded-SHA256SUMS").read_bytes()
-            signature = download(base + "/SHA256SUMS.sysupdate.sig", CACHE / "downloaded-SHA256SUMS.sig").read_bytes()
+            try:
+                manifest, signature = fetch_manifest_pair(base)
+            except urllib.error.HTTPError as error:
+                if error.code != 404:
+                    raise
+                # A manually published older tag may own GitHub's "latest"
+                # alias but predate the sysupdate runtime. Fall back only for
+                # a missing asset, then select a release with both signed files.
+                base = fetch_fallback_release_base()
+                manifest, signature = fetch_manifest_pair(base)
             entries = verify_manifest(manifest, signature)
             atomic_write(base_path, (base + "\n").encode())
             atomic_write(stamp_path, (str(time.time()) + "\n").encode())
@@ -315,9 +390,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return
         if name == "SHA256SUMS.gpg":
             # Verify=no is explicit in the transfer definition because the
-            # project signs this manifest with its existing pinned RSA key,
-            # rather than an OpenPGP key. The proxy verifies that signature.
-            self.send_error(404)
+            # project signs this manifest with its pinned RSA certificate
+            # rather than OpenPGP. The proxy verifies SHA256SUMS.sysupdate.sig.
+            # An empty response keeps clients that probe the optional GPG
+            # endpoint from confusing it with a real signature.
+            self._send_bytes(b"", "application/octet-stream", head_only)
             return
         if not NAME_RE.fullmatch(name) or "/" in name or "\\" in name:
             self.send_error(400, "invalid update filename")
