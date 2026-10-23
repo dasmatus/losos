@@ -27,6 +27,7 @@ STATE_DIR = Path("/var/lib/losos-sysupdate")
 ARCHIVES_DIR = STATE_DIR / "archives"
 SLOTS_DIR = STATE_DIR / "slots"
 ACTIVE_FILE = STATE_DIR / "active.json"
+GCROOTS_DIR = Path("/nix/var/nix/gcroots/auto")
 ARCHIVE_PATTERN = re.compile(r"losos-components_([0-9]+)\.tar\.xz\Z")
 SLOT_PATTERN = re.compile(r"losos-components_([0-9]+)\Z")
 # Nix's canonical base32 alphabet excludes e, o, t and u.
@@ -293,6 +294,37 @@ def prune_slots() -> None:
             shutil.rmtree(path)
 
 
+def install_gc_roots(version: int, store_paths: list[str]) -> None:
+    """Pin imported outputs until the machine-local rebuild adopts their closure."""
+    GCROOTS_DIR.mkdir(mode=0o755, parents=True, exist_ok=True)
+    for index, store_path in enumerate(store_paths):
+        target = GCROOTS_DIR / f"losos-sysupdate-components-{version}-{index}"
+        if target.exists() and not target.is_symlink():
+            raise ValueError(f"refusing to replace non-symlink GC root {target}")
+        temporary = GCROOTS_DIR / f".{target.name}.{uuid.uuid4().hex}.new"
+        try:
+            os.symlink(store_path, temporary)
+            os.replace(temporary, target)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+
+def prune_gc_roots() -> None:
+    """Retain roots for the two newest successfully imported component versions."""
+    if not GCROOTS_DIR.is_dir():
+        return
+    roots: list[tuple[int, Path]] = []
+    for child in GCROOTS_DIR.iterdir():
+        match = re.fullmatch(r"losos-sysupdate-components-([0-9]+)-[0-9]+", child.name)
+        if match and child.is_symlink():
+            roots.append((int(match.group(1)), child))
+    versions = sorted({version for version, _path in roots}, reverse=True)[:2]
+    keep = set(versions)
+    for version, path in roots:
+        if version not in keep:
+            path.unlink(missing_ok=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -316,8 +348,10 @@ def main() -> int:
             return 0
 
         result = import_bundle(version, directory)
+        install_gc_roots(version, validate_store_paths(json.loads((directory / "manifest.json").read_text(encoding="utf-8"))))
         atomic_json_write(ACTIVE_FILE, result)
         prune_slots()
+        prune_gc_roots()
         print(
             f"losos-sysupdate-apply: imported signed components version {version}; "
             "the nightly machine-local nixos-rebuild remains the activation path"
