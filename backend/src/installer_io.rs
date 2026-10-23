@@ -168,7 +168,9 @@ fn shell_quote(value: &str) -> String {
 /// forwards the PTY to tty1 while recording the same stream on tty2. Outside
 /// the installer ISO (where tty2 may not exist), use ordinary inherited stdio.
 fn run_live(exe: &str, args: &[&str]) -> anyhow::Result<()> {
-    let status = if Path::new("/dev/tty2").exists() {
+    let status = if std::env::var_os("LOSOS_INSTALLER_ISO").is_some()
+        && Path::new("/dev/tty2").exists()
+    {
         let command = std::iter::once(exe)
             .chain(args.iter().copied())
             .map(shell_quote)
