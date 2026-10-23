@@ -1459,6 +1459,32 @@
           "description": "Where /etc/nixos follows the published tree from. A follow is one commit on the box's branch whose tree is the published branch's newest tree with this box's modules/overrides.nix and modules/install-target.nix kept. nixos-upgrade.service asks for one (ConfigUpdate) before the nightly build."
         }
       }
+    },
+    "updatesResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "output"
+      ],
+      "properties": {
+        "output": {
+          "type": "string",
+          "description": "The systemd-sysupdate list output for the configured LosOS component transfer."
+        }
+      }
+    },
+    "updatesActionResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "started"
+      ],
+      "properties": {
+        "started": {
+          "type": "boolean",
+          "description": "True when the systemd-sysupdate.service start request was accepted."
+        }
+      }
     }
   },
   "commands": {
@@ -2180,6 +2206,16 @@
         "auth": true,
         "out": "configResponse",
         "note": "One sync with LosOS Git now, then the same document as the read. Audited: it can push, fast-forward /etc/nixos and queue a rebuild."
+      },
+      "GET /api/updates": {
+        "auth": true,
+        "out": "updatesResponse",
+        "note": "List the versioned LosOS component bundles known to systemd-sysupdate. Section admin."
+      },
+      "POST /api/updates": {
+        "auth": true,
+        "out": "updatesActionResponse",
+        "note": "Start systemd-sysupdate.service to download and extract components beneath persistent /var/lib/losos-sysupdate. This stages signed Nix store objects only; the local machine configuration activates through the regular nightly NixOS rebuild. Audited. Section admin."
       }
     }
   },
