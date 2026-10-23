@@ -41,7 +41,7 @@ xz --decompress --stdout "$bundle/nix-store.export.xz" | nix-store --import
 # Follow the box owner's config branch when reachable, just like the former
 # nightly ExecStartPre. Failure is non-fatal: the release bundle also works
 # offline, and --impure preserves the live /etc/nixos device overrides.
-if [[ -x /run/current-system/sw/bin/losos-ctl ]]; then
+if [[ "${LOSOS_SYSUPDATE_CONFIG_SYNC:-0}" == "1" ]] && [[ -x /run/current-system/sw/bin/losos-ctl ]]; then
   /run/current-system/sw/bin/losos-ctl config --update || \
     echo "Could not sync optional configuration upstream; keeping local configuration" >&2
 fi
