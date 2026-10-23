@@ -3051,7 +3051,10 @@ async fn post_updates(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
             }
             Err(error) => {
                 tracing::error!(error = ?error, "could not invoke systemctl for a system update");
-                err(StatusCode::SERVICE_UNAVAILABLE, "the system update could not be started")
+                err(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "the system update could not be started",
+                )
             }
         }
     })
