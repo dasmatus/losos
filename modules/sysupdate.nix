@@ -27,7 +27,7 @@ in
     Target = {
       Type = "regular-file";
       Path = "${stateDir}/archives";
-      MatchPattern = "losos-components_@v.tar.xz";
+      MatchPattern = "losos-components_@v.tar";
       Mode = "0600";
       InstancesMax = 2;
     };
