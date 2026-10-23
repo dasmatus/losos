@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { postSystemUpdate } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useT } from "@/lib/i18n-react";
 import { openTour } from "@/tour/store";
@@ -18,6 +20,21 @@ import type { SettingsForm } from "./use-settings-form";
 export function AboutPane({ form }: { form: SettingsForm }) {
   const t = useT();
   const saved = form.saved;
+  const [startingUpdate, setStartingUpdate] = useState(false);
+  const [updateMessage, setUpdateMessage] = useState<string | null>(null);
+
+  const requestUpdate = async (): Promise<void> => {
+    setStartingUpdate(true);
+    setUpdateMessage(null);
+    try {
+      await postSystemUpdate();
+      setUpdateMessage(t("panes.about.updateQueued"));
+    } catch {
+      setUpdateMessage(t("panes.about.updateFailed"));
+    } finally {
+      setStartingUpdate(false);
+    }
+  };
 
   /* Two addresses, and the order matters. `here` is the one this browser is
    * using right now, read off the address bar, so it is true by construction
@@ -158,11 +175,25 @@ export function AboutPane({ form }: { form: SettingsForm }) {
             <RowText title={t("panes.about.updates")} />
             <RowValue>{t("panes.about.everyNightAt", { time: "03:00" })}</RowValue>
           </Row>
-          <Row last>
+          <Row>
             <RowText title={t("panes.about.restarts")} />
             <RowValue>{t("panes.about.everyNightAt", { time: "00:07" })}</RowValue>
           </Row>
+          <Row last>
+            <RowText title={t("panes.about.updates")} />
+            <RowValue>
+              <button
+                type="button"
+                disabled={startingUpdate}
+                onClick={() => void requestUpdate()}
+                className="text-accent underline-offset-2 hover:underline disabled:opacity-50"
+              >
+                {startingUpdate ? t("panes.about.startingUpdate") : t("panes.about.checkForUpdates")}
+              </button>
+            </RowValue>
+          </Row>
         </Group>
+        {updateMessage !== null && <GroupCaption>{updateMessage}</GroupCaption>}
         <GroupCaption>{t("panes.about.caption")}</GroupCaption>
       </PaneSection>
     </>
