@@ -79,7 +79,12 @@ in
   # The upstream timer would download without applying the local configuration.
   systemd.timers."systemd-sysupdate-update".enable = lib.mkForce false;
 
+  # /var is bind-persisted from /persist. Nix daemon builders otherwise
+  # use /tmp by default, which is a tmpfs root on the appliance.
+  systemd.services.nix-daemon.environment.TMPDIR = "/persist/var/tmp/losos-nix-build";
+
   systemd.tmpfiles.rules = [
+    "d /persist/var/tmp/losos-nix-build 1777 root root -"
     "d ${exports} 0700 root root -"
     "d ${stateRoot} 0700 root root -"
     "d ${tempRoot} 0700 root root -"
