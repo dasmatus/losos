@@ -87,7 +87,7 @@ class BundleValidationTests(unittest.TestCase):
         (old / "SHA256SUMS").write_text(
             (self.root / "SHA256SUMS").read_text(encoding="ascii"), encoding="ascii"
         )
-        (cache / "current").write_text(old_digest + "\\n", encoding="ascii")
+        (cache / "current").write_text(old_digest + "\n", encoding="ascii")
 
         previous = {
             name: getattr(proxy, name)
