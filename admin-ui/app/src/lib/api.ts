@@ -665,6 +665,11 @@ export function getStatus(options: RequestOptions = {}): Promise<StatusResponse>
   return call<StatusResponse>("/api/status", options);
 }
 
+/** POST /api/updates — queue the coordinated sysupdate and local rebuild. */
+export function postSystemUpdate(options: RequestOptions = {}): Promise<{ started: boolean }> {
+  return call<{ started: boolean }>("/api/updates", { ...options, method: "POST" });
+}
+
 /** GET /api/statistics — what Traefik counted for the apps' LAN ports
  *  (lososd's statistics plugin). Read with readStatistics (src/statistics). */
 export function getStatistics(options: RequestOptions = {}): Promise<unknown> {
