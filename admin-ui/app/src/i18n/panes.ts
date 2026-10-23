@@ -121,6 +121,36 @@ export default defineMessages({
     sk: "každú noc o {time}",
     de: "jede Nacht um {time}",
   },
+  "panes.about.checkUpdates": {
+    en: "Download components",
+    sk: "Stiahnuť komponenty",
+    de: "Komponenten laden",
+  },
+  "panes.about.downloadingUpdates": {
+    en: "Starting…",
+    sk: "Spúšťa sa…",
+    de: "Wird gestartet…",
+  },
+  "panes.about.componentStatus": {
+    en: "Component versions",
+    sk: "Verzie komponentov",
+    de: "Komponentversionen",
+  },
+  "panes.about.checkingUpdates": {
+    en: "Checking systemd-sysupdate…",
+    sk: "Kontrolujú sa aktualizácie…",
+    de: "systemd-sysupdate wird abgefragt…",
+  },
+  "panes.about.updateErrorCaption": {
+    en: "Could not query component updates: {message}",
+    sk: "Aktualizácie komponentov sa nepodarilo načítať: {message}",
+    de: "Komponentenupdates konnten nicht abgefragt werden: {message}",
+  },
+  "panes.about.updateStorageCaption": {
+    en: "Downloads and extracted bundles are kept on encrypted persistent storage. The machine-local NixOS rebuild still activates them at night.",
+    sk: "Stiahnuté a rozbalené balíky sa uchovávajú na šifrovanom trvalom úložisku. Miestne zostavenie NixOS ich aktivuje v noci.",
+    de: "Downloads und entpackte Bundles bleiben auf verschlüsseltem persistentem Speicher. Der lokale NixOS-Rebuild aktiviert sie weiterhin nachts.",
+  },
   "panes.about.handbook": {
     en: "Handbook",
     sk: "Príručka",
