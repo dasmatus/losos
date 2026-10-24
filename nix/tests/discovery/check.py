@@ -345,8 +345,12 @@ class Windows:
         return BOX_IP in out
 
     def network_view(self):
+        # Query a fresh Shell Network namespace on every attempt. WS-Discovery
+        # is asynchronous, so main() retries this observation for ten minutes.
         _, out = self.ps(
-            "(New-Object -ComObject Shell.Application).NameSpace(18).Items() | ForEach-Object { $_.Name }",
+            "$shell = New-Object -ComObject Shell.Application; "
+            "$network = $shell.NameSpace(18); "
+            "$network.Items() | ForEach-Object { $_.Name }",
             check=False,
             timeout=120,
         )
@@ -354,13 +358,28 @@ class Windows:
 
     def found(self):
         items = self.network_view()
-        say(f"File Explorer, Network: {items}")
+        say(f"File Explorer, Network view: {items}")
         return any(i.upper() == HOST.upper() for i in items)
 
     def off(self):
         items = self.network_view()
-        say(f"File Explorer, Network: {items}")
+        say(f"File Explorer, Network view after SMB was disabled: {items}")
         return not any(i.upper() == HOST.upper() for i in items)
+
+    def diagnostics(self):
+        # Best-effort snapshot to distinguish profile/firewall problems from
+        # WS-Discovery visibility and SMB endpoint failures.
+        checks = [
+            ("adapter", "Get-NetAdapter -Name losos-lan | Format-List Name,Status,LinkSpeed; Get-NetIPAddress -InterfaceAlias losos-lan -AddressFamily IPv4 | Format-Table IPAddress,PrefixLength"),
+            ("network profile", "Get-NetConnectionProfile -InterfaceAlias losos-lan | Format-List InterfaceAlias,NetworkCategory,IPv4Connectivity"),
+            ("discovery services", "Get-Service fdPHost,FDResPub,SSDPSRV,upnphost | Format-Table Name,Status,StartType"),
+            ("Private firewall rules", "Get-NetFirewallRule -PolicyStore ActiveStore | Where-Object { $_.Enabled -eq 'True' -and $_.Profile.ToString().Contains('Private') -and $_.DisplayGroup -in @('Network Discovery','File and Printer Sharing') } | Format-Table Name,DisplayName,DisplayGroup,Profile,Enabled"),
+            ("SMB endpoint", f"Test-NetConnection {BOX_IP} -Port 445 -WarningAction SilentlyContinue | Format-List ComputerName,RemotePort,TcpTestSucceeded"),
+            ("File Explorer Network view", "$shell = New-Object -ComObject Shell.Application; $shell.NameSpace(18).Items() | ForEach-Object { $_.Name }"),
+        ]
+        for label, script in checks:
+            say(f"--- discovery diagnostics: {label} ---")
+            self.ps(script, check=False, timeout=60)
 
     def mount_smb(self):
         run(["net", "use", self.smb_drive, f"\\\\{HOST.upper()}\\{OWNER}", PASSWORD, f"/user:{OWNER}", "/persistent:no"])
