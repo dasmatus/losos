@@ -23,6 +23,14 @@ on:
           Leave empty for an ordinary CI run.
         required: false
         default: ""
+      release_channel:
+        description: >-
+          Classification for a newly created release. Existing releases keep
+          their current classification. Use auto for tag-push workflows.
+        type: choice
+        options: [auto, prerelease, stable]
+        required: true
+        default: auto
 
 # ── What this is ────────────────────────────────────────────────────────────
 #
@@ -1704,6 +1712,7 @@ jobs:
         with:
           tag: ${{ matrix.tag }}
           body: ${{ steps.body.outputs.body }}
+          prerelease: ${{ inputs.release_channel == 'stable' && 'false' || (inputs.release_channel == 'prerelease' && 'true' || 'auto') }}
           assets: |
             ${{ steps.stage.outputs.isoName }}
             ${{ steps.stage.outputs.isoName }}.sha256
