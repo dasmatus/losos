@@ -478,8 +478,19 @@ def main():
         say("claimed the box as its owner")
         until("Samba knows the owner", lambda: OWNER in serial.sh("cat /var/lib/losos-windows/users.map"), timeout=300)
 
-        until(f"{HOST} is found, once, as an SMB share", client.found, timeout=600, every=15)
+        try:
+            until(
+                f"{HOST} appears in File Explorer Network via WS-Discovery",
+                client.found,
+                timeout=600,
+                every=15,
+            )
+        except SystemExit:
+            if isinstance(client, Windows):
+                client.diagnostics()
+            raise
 
+        say("Discovery visibility passed; now independently testing SMB share access.")
         dav = f"{base}/remote.php/webdav/"
         smb = client.mount_smb()
         try:
