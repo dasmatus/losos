@@ -398,13 +398,14 @@ class Windows:
         code, out = self.ps(
             "Set-NetConnectionProfile -InterfaceAlias losos-lan -NetworkCategory Private -ErrorAction Stop; "
             "$a = Get-NetAdapter -Name losos-lan -ErrorAction Stop; "
-            "$ip = Get-NetIPAddress -InterfaceAlias losos-lan -AddressFamily IPv4 -ErrorAction Stop; "
+            "$ip = Get-NetIPAddress -InterfaceAlias losos-lan -AddressFamily IPv4 -ErrorAction Stop | "
+            "Where-Object { $_.IPAddress -eq '192.168.77.1' }; "
             "$p = Get-NetConnectionProfile -InterfaceAlias losos-lan -ErrorAction Stop; "
-            "Write-Output ('STATUS=' + $a.Status); Write-Output ('IP=' + ($ip.IPAddress -join ',')); "
+            "Write-Output ('STATUS=' + $a.Status); Write-Output ('EXPECTED_IP_COUNT=' + @($ip).Count); "
             "Write-Output ('PROFILE=' + $p.NetworkCategory)",
             check=False,
         )
-        ready = code == 0 and "STATUS=Up" in out and "IP=192.168.77.1" in out and "PROFILE=Private" in out
+        ready = code == 0 and "STATUS=Up" in out and "EXPECTED_IP_COUNT=1" in out and "PROFILE=Private" in out
         if not ready:
             say(f"losos-lan not ready for discovery: {out.strip()}")
         return ready
