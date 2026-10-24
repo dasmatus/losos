@@ -375,9 +375,10 @@ class Windows:
             ("adapter", "Get-NetAdapter -Name losos-lan | Format-List Name,Status,LinkSpeed; Get-NetIPAddress -InterfaceAlias losos-lan -AddressFamily IPv4 | Format-Table IPAddress,PrefixLength"),
             ("network profile", "Get-NetConnectionProfile -InterfaceAlias losos-lan | Format-List InterfaceAlias,NetworkCategory,IPv4Connectivity"),
             ("discovery services", "Get-Service fdPHost,FDResPub,SSDPSRV,upnphost | Format-Table Name,Status,StartType"),
-            ("Private firewall rules", "Get-NetFirewallRule -PolicyStore ActiveStore | Where-Object { $_.Enabled -eq 'True' -and $_.Profile.ToString().Contains('Private') -and $_.DisplayGroup -in @('Network Discovery','File and Printer Sharing') } | Format-Table Name,DisplayName,DisplayGroup,Profile,Enabled"),
+            ("Private firewall rules", "Get-NetFirewallRule -PolicyStore ActiveStore | Where-Object { $_.Enabled -eq 'True' -and $_.Profile.ToString().Contains('Private') -and $_.Group -in @('@FirewallAPI.dll,-32752','@FirewallAPI.dll,-28502') } | Format-Table Name,DisplayName,Group,Profile,Enabled"),
             ("SMB endpoint", f"Test-NetConnection {BOX_IP} -Port 445 -WarningAction SilentlyContinue | Format-List ComputerName,RemotePort,TcpTestSucceeded"),
-            ("File Explorer Network view", "$shell = New-Object -ComObject Shell.Application; $shell.NameSpace(18).Items() | ForEach-Object { $_.Name }"),
+            ("File Explorer Network view", "$shell = New-Object -ComObject Shell.Application; $network = $shell.NameSpace(18); try { $network.Self.InvokeVerb('refresh') } catch { }; Start-Sleep -Seconds 2; $network.Items() | ForEach-Object { $_.Name }"),
+            ("recent discovery events", "Get-WinEvent -FilterHashtable @{LogName='System'; StartTime=(Get-Date).AddMinutes(-20)} -ErrorAction SilentlyContinue | Where-Object { $_.ProviderName -match 'FunctionDiscovery|FDResPub|fdPHost|WSD' } | Select-Object -First 20 TimeCreated,ProviderName,Id,LevelDisplayName,Message | Format-List"),
         ]
         for label, script in checks:
             say(f"--- discovery diagnostics: {label} ---")
