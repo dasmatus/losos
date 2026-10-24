@@ -350,6 +350,8 @@ class Windows:
         _, out = self.ps(
             "$shell = New-Object -ComObject Shell.Application; "
             "$network = $shell.NameSpace(18); "
+            "try { $network.Self.InvokeVerb('refresh') } catch { }; "
+            "Start-Sleep -Seconds 2; "
             "$network.Items() | ForEach-Object { $_.Name }",
             check=False,
             timeout=120,
