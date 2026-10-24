@@ -1102,6 +1102,8 @@ jobs:
           choco install qemu openvpn -y --no-progress
           & "$env:ProgramFiles\OpenVPN\bin\tapctl.exe" create --hwid root\tap0901 --name losos-lan
           if ($LASTEXITCODE -ne 0) { throw "tapctl failed" }
+          # tapctl creates the adapter with DHCP enabled; disable it before assigning a static address.
+          Set-NetIPInterface -InterfaceAlias losos-lan -Dhcp Disabled
           New-NetIPAddress -InterfaceAlias losos-lan -IPAddress 192.168.77.1 -PrefixLength 24 | Out-Null
           Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled False
           foreach ($s in 'fdPHost', 'FDResPub', 'SSDPSRV', 'upnphost') {
