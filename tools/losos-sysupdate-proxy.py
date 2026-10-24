@@ -62,7 +62,23 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def safe_cache_path(root: Path, name: str) -> Path:
+    root_resolved = root.resolve()
+    candidate = (root_resolved / name).resolve()
+    try:
+        candidate.relative_to(root_resolved)
+    except ValueError as exc:
+        raise ValueError(f"path escapes cache root: {name}") from exc
+    return candidate
+
+
 def download(url: str, destination: Path, expected_hash: str | None = None) -> Path:
+    cache_root = CACHE.resolve()
+    destination = destination.resolve(strict=False)
+    try:
+        destination.relative_to(cache_root)
+    except ValueError as exc:
+        raise ValueError(f"refusing to write outside cache root: {destination}") from exc
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.is_file() and (expected_hash is None or sha256_file(destination) == expected_hash):
         return destination
@@ -213,7 +229,7 @@ def get_verified_asset(name: str, entries: dict[str, str], base: str) -> Path:
         raise FileNotFoundError(name)
     bundle_match = re.fullmatch(r"losos-update_[A-Za-z0-9_.+-]+\.tar\.xz", name)
     if bundle_match:
-        bundle_dir = CACHE / "bundles"
+        bundle_dir = (CACHE / "bundles").resolve()
         bundle_dir.mkdir(parents=True, exist_ok=True)
         output = bundle_dir / name
         if output.is_file() and sha256_file(output) == expected:
@@ -251,7 +267,11 @@ def get_verified_asset(name: str, entries: dict[str, str], base: str) -> Path:
             assembled.unlink(missing_ok=True)
             raise
         return output
-    return download(base + "/" + urllib.parse.quote(name), CACHE / "assets" / name, expected)
+    return download(
+        base + "/" + urllib.parse.quote(name),
+        safe_cache_path(CACHE / "assets", name),
+        expected,
+    )
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -322,7 +342,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(data)
 
     def _send_file(self, path: Path, head_only: bool) -> None:
-        size = path.stat().st_size
+        try:
+            cache_root = CACHE.resolve(strict=True)
+            resolved = path.resolve(strict=True)
+            resolved.relative_to(cache_root)
+        except FileNotFoundError:
+            self.send_error(404)
+            return
+        except ValueError:
+            self.send_error(403, "path escapes cache root")
+            return
+
+        size = resolved.stat().st_size
         start, end, status = 0, max(0, size - 1), 200
         range_header = self.headers.get("Range")
         if range_header:
