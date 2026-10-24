@@ -1,0 +1,114 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish, e.g. 0.7.0 or 0.7.0-rc.1 (without the leading v)"
+        type: string
+        required: true
+      channel:
+        description: "Whether the GitHub release is a pre-release or a stable release"
+        type: choice
+        options:
+          - prerelease
+          - stable
+        required: true
+        default: prerelease
+
+permissions:
+  contents: write
+  actions: write
+
+# Never let two release requests race to create or dispatch the same tag.
+concurrency:
+  group: losos-release
+  cancel-in-progress: false
+
+jobs:
+  create-tag-and-dispatch:
+    name: "release: create immutable release from CI"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: require the default branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Run this workflow from the main branch."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: validate version and create an annotated tag
+        id: tag
+        env:
+          VERSION: ${{ inputs.version }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${VERSION#v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]; then
+            echo "::error::Version must be SemVer, e.g. 0.7.0 or 0.7.0-rc.1 (no leading v needed)."
+            exit 1
+          fi
+          tag="v$version"
+
+          # Check both the checkout's refs and the remote. Never move or reuse a tag.
+          if git rev-parse --verify --quiet "refs/tags/$tag" >/dev/null ||
+             git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "::error::Tag $tag already exists. Releases are write-once; choose a new version."
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$tag" -m "LosOS $tag" HEAD
+          git push origin "refs/tags/$tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Created `$tag` at `$(git rev-parse HEAD)`."
+
+      # Pushes made with GITHUB_TOKEN intentionally do not trigger other
+      # workflows, so dispatch the normal CI explicitly on the new tag.
+      - name: run the release CI on the tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          CHANNEL: ${{ inputs.channel }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run ci.yml --repo "$REPO" --ref "$TAG" -f "release_channel=$CHANNEL"
+
+      # Keep nix/version.nix on main aligned with the newest tag. That workflow
+      # commits the version file and dispatches the main-branch CI if needed.
+      - name: sync the version on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: gh workflow run version.yml --repo "$REPO" --ref main
+
+      - name: summary
+        env:
+          REPO: ${{ github.repository }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          CHANNEL: ${{ inputs.channel }}
+        shell: bash
+        run: |
+          {
+            echo "## Release CI started"
+            echo
+            echo "- Tag: [`$TAG`](${GITHUB_SERVER_URL}/${REPO}/releases/tag/${TAG})"
+            echo "- Channel: $CHANNEL"
+            echo "- Build and publication: [CI workflow](${GITHUB_SERVER_URL}/${REPO}/actions/workflows/ci.yml)"
+            echo
+            echo "The release workflow publishes assets from a draft, then publishes the release. Ensure repository release immutability is enabled in Settings → Releases before running this workflow."
+          } >> "$GITHUB_STEP_SUMMARY"

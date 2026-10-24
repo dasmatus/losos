@@ -268,7 +268,11 @@ class MacOS:
 
     def resolve(self):
         _, out = run(f"dscacheutil -q host -a name {LOCAL}", check=False)
-        return BOX_IP in out
+        # HTTPS uses Python's resolver, which must see the mDNS answer too.
+        return BOX_IP in out and any(
+            addr[4][0] == BOX_IP
+            for addr in socket.getaddrinfo(LOCAL, 443, type=socket.SOCK_STREAM)
+        )
 
     def browse(self, kind):
         # dns-sd never exits on its own.
