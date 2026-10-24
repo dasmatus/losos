@@ -43,7 +43,7 @@ in
     description = "Persistent verified source proxy for systemd-sysupdate";
     wantedBy = [ "multi-user.target" ];
     after = [ "network.target" "persist.mount" ];
-    requiresMountsFor = [ cache ];
+    unitConfig.RequiresMountsFor = [ cache ];
     path = [ pkgs.openssl ];
     environment = {
       LOSOS_SYSUPDATE_CACHE_DIR = cache;
@@ -76,7 +76,7 @@ in
     wants = [ "network-online.target" "losos-sysupdate-proxy.service" ];
     requires = [ "losos-sysupdate-proxy.service" ];
     after = [ "network-online.target" "losos-sysupdate-proxy.service" ];
-    requiresMountsFor = [ updateRoot versions "/nix" ];
+    unitConfig.RequiresMountsFor = [ updateRoot versions "/nix" ];
     path = [
       pkgs.systemd
       pkgs.nix
