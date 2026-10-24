@@ -41,7 +41,7 @@ class DownloadTests(unittest.TestCase):
         payload = b"persistent update payload" * 20
         offset = 97
         digest = hashlib.sha256(payload).hexdigest()
-        with tempfile.TemporaryDirectory() as temporary:
+        with tempfile.TemporaryDirectory() as temporary, patch.object(proxy, "CACHE", Path(temporary)):
             destination = Path(temporary) / "asset.part"
             partial = destination.with_name(destination.name + ".download")
             partial.write_bytes(payload[:offset])
@@ -60,7 +60,7 @@ class DownloadTests(unittest.TestCase):
     def test_restarts_when_server_ignores_range(self) -> None:
         payload = b"fresh response from byte zero"
         digest = hashlib.sha256(payload).hexdigest()
-        with tempfile.TemporaryDirectory() as temporary:
+        with tempfile.TemporaryDirectory() as temporary, patch.object(proxy, "CACHE", Path(temporary)):
             destination = Path(temporary) / "asset.part"
             destination.with_name(destination.name + ".download").write_bytes(b"stale prefix")
             response = FakeResponse(payload, 200, {})
@@ -70,7 +70,7 @@ class DownloadTests(unittest.TestCase):
 
     def test_keeps_partial_after_transient_connection_failure(self) -> None:
         payload = b"already downloaded bytes"
-        with tempfile.TemporaryDirectory() as temporary:
+        with tempfile.TemporaryDirectory() as temporary, patch.object(proxy, "CACHE", Path(temporary)):
             destination = Path(temporary) / "asset.part"
             partial = destination.with_name(destination.name + ".download")
             partial.write_bytes(payload)

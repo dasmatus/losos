@@ -464,7 +464,7 @@
         losos-sysupdate-proxy = pkgs.runCommand "losos-sysupdate-proxy-tests" {
           nativeBuildInputs = [ pkgs.python3 ];
         } ''
-          python3 ${./tools/test_losos_sysupdate_proxy.py}
+          python3 ${./tools}/test_losos_sysupdate_proxy.py
           touch $out
         '';
         losos-sysupdate-staging = import ./nix/tests/sysupdate-staging.nix { inherit pkgs; };
