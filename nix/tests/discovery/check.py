@@ -239,7 +239,7 @@ class Linux:
         secrets.write_text(f"{url} {OWNER} {PASSWORD}\n")
         run(f"sudo chown root:root {secrets} && sudo chmod 600 {secrets}")
         run(
-            "printf 'use_locks 0\\nsecrets %s\\ntrust_ca_cert %s\\n' "
+            "printf 'use_locks 0\\nsecrets %s\\ntrust_server_cert %s\\n' "
             f"{secrets} {self.ca} | sudo tee /etc/davfs2/davfs2.conf >/dev/null"
         )
         run(f"sudo mount -t davfs {url} {self.dav_mount} -o uid=$(id -u),gid=$(id -g)", timeout=120)
