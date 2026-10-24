@@ -1103,7 +1103,7 @@ jobs:
           & "$env:ProgramFiles\OpenVPN\bin\tapctl.exe" create --hwid root\tap0901 --name losos-lan
           if ($LASTEXITCODE -ne 0) { throw "tapctl failed" }
           # tapctl creates the adapter with DHCP enabled; disable it before assigning a static address.
-          Set-NetIPInterface -InterfaceAlias losos-lan -Dhcp Disabled
+          Set-NetIPInterface -InterfaceAlias losos-lan -AddressFamily IPv4 -Dhcp Disabled
           New-NetIPAddress -InterfaceAlias losos-lan -IPAddress 192.168.77.1 -PrefixLength 24 | Out-Null
           # Keep the firewall enabled. Resolve the standard rules explicitly and
           # fail here if this runner image cannot configure discovery.
