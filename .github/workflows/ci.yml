@@ -1105,7 +1105,15 @@ jobs:
           # tapctl creates the adapter with DHCP enabled; disable it before assigning a static address.
           Set-NetIPInterface -InterfaceAlias losos-lan -Dhcp Disabled
           New-NetIPAddress -InterfaceAlias losos-lan -IPAddress 192.168.77.1 -PrefixLength 24 | Out-Null
-          Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled False
+          # Exercise discovery with the Windows firewall enabled. The test
+          # adapter is made Private by check.py; allow only the standard
+          # discovery and SMB rules for that profile instead of disabling
+          # the firewall on every interface/profile on the runner.
+          Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled True
+          Get-NetFirewallRule -DisplayGroup 'Network Discovery' -ErrorAction SilentlyContinue |
+            Set-NetFirewallRule -Enabled True -Profile Private
+          Get-NetFirewallRule -DisplayGroup 'File and Printer Sharing' -ErrorAction SilentlyContinue |
+            Set-NetFirewallRule -Enabled True -Profile Private
           foreach ($s in 'fdPHost', 'FDResPub', 'SSDPSRV', 'upnphost') {
             Set-Service $s -StartupType Automatic -ErrorAction SilentlyContinue
             Start-Service $s -ErrorAction SilentlyContinue
