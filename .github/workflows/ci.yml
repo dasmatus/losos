@@ -1105,21 +1105,28 @@ jobs:
           # tapctl creates the adapter with DHCP enabled; disable it before assigning a static address.
           Set-NetIPInterface -InterfaceAlias losos-lan -Dhcp Disabled
           New-NetIPAddress -InterfaceAlias losos-lan -IPAddress 192.168.77.1 -PrefixLength 24 | Out-Null
-          # Exercise discovery with the Windows firewall enabled. The test
-          # adapter is made Private by check.py; allow only the standard
-          # discovery and SMB rules for that profile instead of disabling
-          # the firewall on every interface/profile on the runner.
+          # Keep the firewall enabled. Resolve the standard rules explicitly and
+          # fail here if this runner image cannot configure discovery.
           Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled True
-          Get-NetFirewallRule -DisplayGroup 'Network Discovery' -ErrorAction SilentlyContinue |
-            Set-NetFirewallRule -Enabled True -Profile Private
-          Get-NetFirewallRule -DisplayGroup 'File and Printer Sharing' -ErrorAction SilentlyContinue |
-            Set-NetFirewallRule -Enabled True -Profile Private
+          foreach ($group in 'Network Discovery', 'File and Printer Sharing') {
+            $rules = @(Get-NetFirewallRule -DisplayGroup $group -ErrorAction Stop)
+            if ($rules.Count -eq 0) { throw "No Windows Firewall rules found for '$group'" }
+            $rules | Set-NetFirewallRule -Enabled True -Profile Private -ErrorAction Stop
+            $enabled = @($rules | Get-NetFirewallRule | Where-Object {
+              $_.Enabled -eq 'True' -and $_.Profile.ToString().Contains('Private')
+            })
+            if ($enabled.Count -eq 0) { throw "No enabled Private-profile rules for '$group'" }
+            Write-Host "$group enabled $($enabled.Count) rule(s) for Private profile"
+          }
           foreach ($s in 'fdPHost', 'FDResPub', 'SSDPSRV', 'upnphost') {
-            Set-Service $s -StartupType Automatic -ErrorAction SilentlyContinue
-            Start-Service $s -ErrorAction SilentlyContinue
+            $service = Get-Service $s -ErrorAction Stop
+            Set-Service $s -StartupType Automatic -ErrorAction Stop
+            if ($service.Status -ne 'Running') { Start-Service $s -ErrorAction Stop }
+            $service = Get-Service $s -ErrorAction Stop
+            if ($service.Status -ne 'Running') { throw "Discovery service $s is $($service.Status)" }
           }
           Install-WindowsFeature WebDAV-Redirector -ErrorAction SilentlyContinue | Format-List
-          Get-Service fdPHost, FDResPub, WebClient -ErrorAction SilentlyContinue | Format-Table Name, Status
+          Get-Service fdPHost, FDResPub, SSDPSRV, upnphost, WebClient | Format-Table Name, Status
       - name: Windows, check
         if: runner.os == 'Windows'
         shell: pwsh
