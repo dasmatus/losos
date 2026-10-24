@@ -345,11 +345,11 @@ async fn provision_edge_pushes_a_certificate_the_registrar_serves_as_official() 
         std::process::ExitCode::SUCCESS
     );
     assert!(
-        format!(
-            "{:?}",
-            run(&["provision", "root-keygen", "--out", &root_out]).await
-        )
-        .contains("not overwriting"),
+        run(&["provision", "root-keygen", "--out", &root_out])
+            .await
+            .expect_err("a second keygen must fail")
+            .to_string()
+            .contains("not overwriting"),
         "a second keygen over the same file must refuse"
     );
 

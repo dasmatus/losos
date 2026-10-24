@@ -1,7 +1,8 @@
-import { useState } from "react";
+import * as React from "react";
 import { Badge } from "@/components/ui/badge";
-import { postSystemUpdate } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getUpdates, isAbort, isUnauthorized, postUpdatesCheck, useMe } from "@/lib/api";
 import { useT } from "@/lib/i18n-react";
 import { openTour } from "@/tour/store";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue } from "./rows";
@@ -20,19 +21,41 @@ import type { SettingsForm } from "./use-settings-form";
 export function AboutPane({ form }: { form: SettingsForm }) {
   const t = useT();
   const saved = form.saved;
-  const [startingUpdate, setStartingUpdate] = useState(false);
-  const [updateMessage, setUpdateMessage] = useState<string | null>(null);
+  const me = useMe();
 
-  const requestUpdate = async (): Promise<void> => {
-    setStartingUpdate(true);
-    setUpdateMessage(null);
+  const [updateOutput, setUpdateOutput] = React.useState("");
+  const [updateError, setUpdateError] = React.useState("");
+  const [updateBusy, setUpdateBusy] = React.useState(false);
+
+  const loadUpdates = React.useCallback(async (signal?: AbortSignal) => {
     try {
-      await postSystemUpdate();
-      setUpdateMessage(t("panes.about.updateQueued"));
-    } catch {
-      setUpdateMessage(t("panes.about.updateFailed"));
+      const result = await getUpdates(signal === undefined ? {} : { signal });
+      setUpdateOutput(result.output);
+      setUpdateError("");
+    } catch (fault) {
+      if (isAbort(fault) || isUnauthorized(fault)) return;
+      setUpdateError(fault instanceof Error && fault.message ? fault.message : "Could not read update status");
+    }
+  }, []);
+
+  React.useEffect(() => {
+    const controller = new AbortController();
+    void loadUpdates(controller.signal);
+    return () => controller.abort();
+  }, [loadUpdates]);
+
+  const checkAndInstall = async () => {
+    setUpdateBusy(true);
+    try {
+      await postUpdatesCheck();
+      setUpdateError("");
+      setUpdateOutput("Update service started. The machine may restart when activation completes.");
+    } catch (fault) {
+      if (!isUnauthorized(fault)) {
+        setUpdateError(fault instanceof Error && fault.message ? fault.message : "Could not start the update service");
+      }
     } finally {
-      setStartingUpdate(false);
+      setUpdateBusy(false);
     }
   };
 
@@ -175,26 +198,41 @@ export function AboutPane({ form }: { form: SettingsForm }) {
             <RowText title={t("panes.about.updates")} />
             <RowValue>{t("panes.about.everyNightAt", { time: "03:00" })}</RowValue>
           </Row>
-          <Row>
+          <Row last>
             <RowText title={t("panes.about.restarts")} />
             <RowValue>{t("panes.about.everyNightAt", { time: "00:07" })}</RowValue>
           </Row>
-          <Row last>
-            <RowText title={t("panes.about.manualUpdate")} />
-            <RowValue>
-              <button
-                type="button"
-                disabled={startingUpdate}
-                onClick={() => void requestUpdate()}
-                className="text-accent underline-offset-2 hover:underline disabled:opacity-50"
-              >
-                {startingUpdate ? t("panes.about.startingUpdate") : t("panes.about.checkForUpdates")}
-              </button>
-            </RowValue>
-          </Row>
         </Group>
-        {updateMessage !== null && <GroupCaption>{updateMessage}</GroupCaption>}
         <GroupCaption>{t("panes.about.caption")}</GroupCaption>
+      </PaneSection>
+
+      <PaneSection>
+        <GroupTitle>System updates</GroupTitle>
+        <Group>
+          {updateError !== "" && (
+            <p role="alert" className="text-sm text-destructive">
+              {updateError}
+            </p>
+          )}
+          {updateOutput !== "" && (
+            <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-md border border-border p-2 text-xs text-muted-foreground">
+              {updateOutput}
+            </pre>
+          )}
+          {me?.admin && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="secondary" size="sm" disabled={updateBusy} onClick={() => void checkAndInstall()}>
+                {updateBusy ? "Starting update…" : "Check and install now"}
+              </Button>
+              <Button variant="ghost" size="sm" disabled={updateBusy} onClick={() => void loadUpdates()}>
+                Refresh status
+              </Button>
+            </div>
+          )}
+        </Group>
+        <GroupCaption>
+          Updates are signature-checked before download, then extracted on encrypted persistent storage under /persist.
+        </GroupCaption>
       </PaneSection>
     </>
   );

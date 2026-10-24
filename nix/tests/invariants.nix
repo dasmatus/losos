@@ -51,27 +51,18 @@ assert must config.boot.initrd.systemd.tpm2.enable
 assert must (lib.elem "tpm2-device=auto" config.boot.initrd.luks.devices.persist.crypttabExtraOpts)
   "crypttab for `persist` has no tpm2-device=auto (${toString config.boot.initrd.luks.devices.persist.crypttabExtraOpts}): the enrolled token is never consulted";
 assert must (!config.system.autoUpgrade.enable)
-  "system.autoUpgrade must remain disabled: only losos-sysupdate may coordinate the bundle import, local --impure rebuild, and conditional reboot";
-assert must config.systemd.sysupdate.enable
-  "systemd.sysupdate.enable is off: the configured LosOS bundle transfer is not generated";
+  "NixOS autoUpgrade must be disabled once the signed sysupdate release channel owns the nightly update schedule";
+assert must (config.systemd.services ? losos-sysupdate)
+  "the persistent systemd-sysupdate activation service is missing";
 assert must
-  (config.systemd.sysupdate.transfers."10-losos-os".Target.Path == "/persist/var/lib/losos-sysupdate/exports")
-  "the sysupdate extraction target is not under /persist, so an update could be lost with the tmpfs root or exhaust tmpfs";
+  (lib.elem "/persist/var/lib/losos-sysupdate/versions" config.systemd.services.losos-sysupdate.unitConfig.RequiresMountsFor)
+  "sysupdate does not require the persistent /persist update directory to be mounted";
 assert must
-  (config.systemd.services.losos-sysupdate.environment.TMPDIR == "/persist/var/lib/losos-sysupdate/tmp"
-    && config.systemd.services.losos-sysupdate-proxy.environment.TMPDIR == "/persist/var/cache/losos-sysupdate-proxy/tmp"
-    && config.systemd.services.losos-sysupdate.serviceConfig.PrivateTmp == false)
-  "sysupdate or the OCI proxy may stage data in a private tmpfs instead of persistent storage";
+  (lib.hasInfix "/persist/var/lib/losos-sysupdate/versions" config.environment.etc."sysupdate.d/50-losos.transfer".text)
+  "the sysupdate target no longer extracts the versioned update bundle below /persist";
 assert must
-  (config.systemd.services.nix-daemon.environment.TMPDIR == "/persist/var/tmp/losos-nix-build")
-  "Nix daemon still creates build scratch under /tmp, a tmpfs mount on the installed appliance";
-assert must (lib.hasSuffix "#install" config.losos.upgradeFlakeUri)
-  "losos.upgradeFlakeUri has no #install fragment (${config.losos.upgradeFlakeUri}); nixos-rebuild would look for nixosConfigurations.<hostname>, which this flake does not export";
-assert must
-  (lib.any (lib.hasSuffix "/bin/losos-ctl config --update") (
-    lib.toList (config.systemd.services.losos-sysupdate.serviceConfig.ExecStartPre or [ ])
-  ))
-  "losos-sysupdate.service no longer asks lososd to follow the published tree first (losos-ctl config --update): /etc/nixos then never changes and the nightly update rebuilds the installed version forever";
+  (lib.hasInfix "--impure" (builtins.readFile ../../tools/losos-sysupdate-apply.sh))
+  "sysupdate activation stopped passing --impure and may discard the box's install-target.nix or overrides.nix";
 assert must (!config.losos.bios && config.boot.loader.systemd-boot.enable)
   "the published flake is not on the UEFI/systemd-boot path; the README tells owners to boot the installer in UEFI mode";
 assert must

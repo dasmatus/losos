@@ -665,9 +665,23 @@ export function getStatus(options: RequestOptions = {}): Promise<StatusResponse>
   return call<StatusResponse>("/api/status", options);
 }
 
-/** POST /api/updates — queue the coordinated sysupdate and local rebuild. */
-export function postSystemUpdate(options: RequestOptions = {}): Promise<{ started: boolean }> {
-  return call<{ started: boolean }>("/api/updates", { ...options, method: "POST" });
+export interface UpdatesResponse {
+  /** Human-readable systemd-sysupdate version/source/target listing. */
+  output: string;
+}
+
+export interface UpdatesCheckResponse {
+  started: true;
+}
+
+/** GET /api/updates — update source and staged-version inventory. */
+export function getUpdates(options: RequestOptions = {}): Promise<UpdatesResponse> {
+  return call<UpdatesResponse>("/api/updates", options);
+}
+
+/** POST /api/updates/check — start the persistent update-and-activate service. */
+export function postUpdatesCheck(options: RequestOptions = {}): Promise<UpdatesCheckResponse> {
+  return call<UpdatesCheckResponse>("/api/updates/check", { ...options, method: "POST" });
 }
 
 /** GET /api/statistics — what Traefik counted for the apps' LAN ports

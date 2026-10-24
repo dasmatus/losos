@@ -461,6 +461,13 @@
       # at its top what it asserts. Most boot VMs, which CI (no KVM) never
       # builds.
       checks.${system} = {
+        losos-sysupdate-proxy = pkgs.runCommand "losos-sysupdate-proxy-tests" {
+          nativeBuildInputs = [ pkgs.python3 ];
+        } ''
+          python3 ${./tools}/test_losos_sysupdate_proxy.py
+          touch $out
+        '';
+        losos-sysupdate-staging = import ./nix/tests/sysupdate-staging.nix { inherit pkgs; };
         losos-install = import ./nix/tests/install.nix { inherit pkgs disko; };
         losos-tpm-unlock = import ./nix/tests/tpm.nix { inherit pkgs disko; };
         losos-admin-daemon = import ./nix/tests/admin-vm.nix { inherit pkgs; };

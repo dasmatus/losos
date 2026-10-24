@@ -1,376 +1,503 @@
 #!/usr/bin/env python3
-"""Loopback systemd-sysupdate source backed by a GHCR OCI artifact.
+"""Persistent, signature-verifying source proxy for systemd-sysupdate.
 
-Only the manifest and the single, checksum-verified OS bundle are served.
-OCI downloads, temporary files, and cached payloads all live below
-/persist/var/cache/losos-sysupdate-proxy; do not relocate this to /tmp.
+The installed machine only trusts a manifest after OpenSSL verifies it against
+the repository's pinned release certificate.  systemd-sysupdate subsequently
+checks the archive's SHA-256 against that manifest.  Large release assets are
+published as individually size-limited chunks; this service reassembles and
+verifies them in its persistent cache before exposing the logical .tar.xz file.
+
+All downloads, partial downloads, manifests and extracted-source cache entries
+live below LOSOS_SYSUPDATE_CACHE_DIR (normally /persist/var/cache/losos-sysupdate).
+Nothing is written to /tmp or any other tmpfs.
 """
 from __future__ import annotations
 
 import hashlib
+import http.server
 import json
 import os
-import re
-import shutil
-import subprocess
-import tempfile
-import threading
-import time
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+import re
+import subprocess
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
 
-HOST = os.environ.get("LOSOS_SYSUPDATE_HOST", "127.0.0.1")
-PORT = int(os.environ.get("LOSOS_SYSUPDATE_PORT", "8786"))
-OCI_REF = os.environ.get(
-    "LOSOS_SYSUPDATE_OCI_REF", "ghcr.io/dasmatus/losos/os-updates:main"
-)
-ROOT = Path(os.environ.get(
-    "LOSOS_SYSUPDATE_CACHE", "/persist/var/cache/losos-sysupdate-proxy"
+REPOSITORY = os.environ.get("LOSOS_SYSUPDATE_REPOSITORY", "dasmatus/losos")
+CACHE = Path(os.environ.get(
+    "LOSOS_SYSUPDATE_CACHE_DIR", "/persist/var/cache/losos-sysupdate-proxy"
 ))
-VERSIONS = ROOT / "versions"
-TEMP = ROOT / "tmp"
-CURRENT = ROOT / "current"
-LAST_CHECK = ROOT / "last-check"
-BUNDLE = re.compile(r"^losos-os_[A-Za-z0-9.+_-]+\.tar\.xz$")
-SUM = re.compile(r"^([0-9a-f]{64})  (losos-os_[A-Za-z0-9.+_-]+\.tar\.xz)$")
-DIGEST = re.compile(r"^[0-9a-f]{64}$")
-REFRESH_SECONDS = 30
-DOWNLOAD_TIMEOUT = 3 * 60 * 60
-CHUNK = 1024 * 1024
-refresh_lock = threading.Lock()
+CERT = Path(os.environ.get("LOSOS_SYSUPDATE_CERT", ""))
+HOST = os.environ.get("LOSOS_SYSUPDATE_LISTEN", "127.0.0.1")
+PORT = int(os.environ.get("LOSOS_SYSUPDATE_PORT", "8788"))
+MANIFEST_TTL = int(os.environ.get("LOSOS_SYSUPDATE_MANIFEST_TTL", "300"))
+NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,240}$")
+HASH_RE = re.compile(r"^[0-9a-f]{64}$")
+CHUNK_RE = re.compile(r"^(losos-update_[A-Za-z0-9_.+-]+\.tar\.xz)\.part([0-9]{3,})$")
+REDIRECT_CODES = {301, 302, 303, 307, 308}
 
 
-class SourceUnavailable(Exception):
-    pass
-
-
-def run_oras(args: list[str], timeout: int) -> subprocess.CompletedProcess[str]:
-    executable = shutil.which("oras")
-    if not executable:
-        raise SourceUnavailable("oras is not on PATH")
-    env = os.environ.copy()
-    # oras' own temporary writes and extracted OCI files must stay on the
-    # encrypted persistent filesystem, never the tmpfs root or /tmp.
-    env["TMPDIR"] = str(TEMP)
-    env["TMP"] = str(TEMP)
-    env["TEMP"] = str(TEMP)
-    env["HOME"] = str(ROOT / "home")
-    try:
-        return subprocess.run(
-            [executable, *args],
-            cwd=ROOT,
-            env=env,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=timeout,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise SourceUnavailable(f"oras command failed: {exc}") from exc
-
-
-def current_version_dir() -> Path | None:
-    try:
-        name = CURRENT.read_text(encoding="ascii").strip()
-    except OSError:
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
-    if not DIGEST.fullmatch(name):
-        return None
-    directory = VERSIONS / name
-    if not directory.is_dir():
-        return None
-    try:
-        manifest = (directory / "SHA256SUMS").read_text(encoding="ascii")
-        rows = manifest.splitlines()
-        if len(rows) != 1:
-            return None
-        match = SUM.fullmatch(rows[0])
-        if not match:
-            return None
-        payload = directory / match.group(2)
-        if not payload.is_file():
-            return None
-    except OSError:
-        return None
-    return directory
 
 
-def remote_manifest_digest() -> str:
-    result = run_oras(["manifest", "fetch", "--descriptor", OCI_REF], timeout=30)
-    if result.returncode:
-        raise SourceUnavailable(
-            "could not read the update OCI descriptor: " + result.stderr[-1000:]
-        )
-    try:
-        descriptor = json.loads(result.stdout)
-        digest = descriptor["digest"]
-        if not isinstance(digest, str) or not digest.startswith("sha256:"):
-            raise ValueError("descriptor has no sha256 digest")
-        value = digest.removeprefix("sha256:")
-        if not DIGEST.fullmatch(value):
-            raise ValueError("malformed OCI digest")
-        return value
-    except (ValueError, KeyError, TypeError) as exc:
-        raise SourceUnavailable(f"invalid OCI descriptor: {exc}") from exc
+def atomic_write(path: Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # The temporary sibling is deliberately on the same persistent filesystem.
+    temp = path.with_name(path.name + ".download")
+    with temp.open("wb") as out:
+        out.write(data)
+        out.flush()
+        os.fsync(out.fileno())
+    os.replace(temp, path)
 
 
-def validate_bundle(directory: Path) -> tuple[str, Path]:
-    manifest_path = directory / "SHA256SUMS"
-    if not manifest_path.is_file() or manifest_path.is_symlink():
-        raise SourceUnavailable("OCI artifact has no regular SHA256SUMS")
-    try:
-        rows = manifest_path.read_text(encoding="ascii").splitlines()
-    except (OSError, UnicodeError) as exc:
-        raise SourceUnavailable(f"cannot read SHA256SUMS: {exc}") from exc
-    if len(rows) != 1:
-        raise SourceUnavailable("SHA256SUMS must name exactly one OS bundle")
-    match = SUM.fullmatch(rows[0])
-    if not match:
-        raise SourceUnavailable("SHA256SUMS has an invalid bundle name or digest")
-    expected, name = match.groups()
-    path = directory / name
-    if path.is_symlink() or not path.is_file():
-        raise SourceUnavailable("OS bundle is not a regular file")
+def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def safe_cache_path(root: Path, name: str) -> Path:
+    root_resolved = root.resolve()
+    candidate = (root_resolved / name).resolve()
     try:
-        with path.open("rb") as source:
-            for block in iter(lambda: source.read(CHUNK), b""):
-                digest.update(block)
-    except OSError as exc:
-        raise SourceUnavailable(f"cannot read OS bundle: {exc}") from exc
-    if digest.hexdigest() != expected:
-        raise SourceUnavailable("OS bundle digest does not match SHA256SUMS")
-    return name, path
+        candidate.relative_to(root_resolved)
+    except ValueError as exc:
+        raise ValueError(f"path escapes cache root: {name}") from exc
+    return candidate
 
 
-def refresh(force: bool = False) -> Path:
-    ROOT.mkdir(mode=0o700, parents=True, exist_ok=True)
-    VERSIONS.mkdir(mode=0o700, parents=True, exist_ok=True)
-    TEMP.mkdir(mode=0o700, parents=True, exist_ok=True)
-    (ROOT / "home").mkdir(mode=0o700, exist_ok=True)
+def download(url: str, destination: Path, expected_hash: str | None = None) -> Path:
+    cache_root = CACHE.resolve()
+    destination = destination.resolve(strict=False)
+    try:
+        destination.relative_to(cache_root)
+    except ValueError as exc:
+        raise ValueError(f"refusing to write outside cache root: {destination}") from exc
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.is_file() and (expected_hash is None or sha256_file(destination) == expected_hash):
+        return destination
+    partial = destination.with_name(destination.name + ".download")
+    if expected_hash is not None and partial.is_file() and sha256_file(partial) == expected_hash:
+        os.replace(partial, destination)
+        return destination
 
-    with refresh_lock:
-        cached = current_version_dir()
+    # Download partials live next to their final files on /persist. Resume them
+    # with HTTP Range on the next attempt; never stage a multi-GB part in tmpfs.
+    for attempt in range(2):
+        offset = partial.stat().st_size if partial.is_file() else 0
+        headers = {"User-Agent": "LosOS-sysupdate-proxy/1"}
+        if offset:
+            headers["Range"] = f"bytes={offset}-"
+        request = urllib.request.Request(url, headers=headers)
         try:
-            last = float(LAST_CHECK.read_text(encoding="ascii").strip())
-        except (OSError, ValueError):
-            last = 0.0
-
-        # Do not fetch the large bundle every time systemd asks for the
-        # manifest and then the payload. Re-check the cheap OCI descriptor
-        # regularly; only pull layers when its digest changed.
-        if not force and cached and time.time() - last < REFRESH_SECONDS:
-            return cached
-
-        try:
-            remote_digest = remote_manifest_digest()
-        except SourceUnavailable:
-            if cached:
-                print("sysupdate proxy: using the last verified cached OCI artifact", flush=True)
-                return cached
-            raise
-
-        stamp_tmp = ROOT / "last-check.tmp"
-        stamp_tmp.write_text(f"{time.time():.6f}\n", encoding="ascii")
-        os.replace(stamp_tmp, LAST_CHECK)
-
-        if cached and cached.name == remote_digest:
-            return cached
-
-        staging = Path(tempfile.mkdtemp(prefix="pull-", dir=VERSIONS))
-        try:
-            result = run_oras(
-                ["pull", "--output", str(staging), OCI_REF],
-                timeout=DOWNLOAD_TIMEOUT,
-            )
-            if result.returncode:
-                raise SourceUnavailable(
-                    "could not pull the update OCI artifact: " + result.stderr[-1500:]
-                )
-            bundle_name, _payload = validate_bundle(staging)
-            unexpected = {
-                child.name for child in staging.iterdir()
-            } - {"SHA256SUMS", bundle_name}
-            if unexpected:
-                raise SourceUnavailable(
-                    "unexpected OCI artifact entries: " + ", ".join(sorted(unexpected))
-                )
-
-            destination = VERSIONS / remote_digest
-            if destination.exists():
-                shutil.rmtree(destination)
-            os.replace(staging, destination)
-            pointer_tmp = ROOT / "current.tmp"
-            pointer_tmp.write_text(remote_digest + "\n", encoding="ascii")
-            os.replace(pointer_tmp, CURRENT)
-
-            # Keep one preceding generation as a recovery/cache fallback.
-            keep = {remote_digest}
-            if cached:
-                keep.add(cached.name)
-            old = sorted(
-                (
-                    p for p in VERSIONS.iterdir()
-                    if p.is_dir() and DIGEST.fullmatch(p.name) and p.name not in keep
-                ),
-                key=lambda p: p.stat().st_mtime,
-                reverse=True,
-            )
-            for path in old:
-                shutil.rmtree(path, ignore_errors=True)
+            with urllib.request.urlopen(request, timeout=45) as response:
+                status = getattr(response, "status", 200)
+                mode = "wb"
+                if offset and status == 206:
+                    content_range = response.headers.get("Content-Range", "")
+                    if not content_range.startswith(f"bytes {offset}-"):
+                        partial.unlink(missing_ok=True)
+                        raise ValueError(f"invalid Content-Range while resuming {destination.name}")
+                    mode = "ab"
+                # If the server ignored Range and returned the whole asset (200),
+                # restart from byte zero instead of corruptly appending it.
+                with partial.open(mode) as out:
+                    while True:
+                        block = response.read(1024 * 1024)
+                        if not block:
+                            break
+                        out.write(block)
+                    out.flush()
+                    os.fsync(out.fileno())
+            actual = sha256_file(partial)
+            if expected_hash is not None and actual != expected_hash:
+                partial.unlink(missing_ok=True)
+                raise ValueError(f"SHA-256 mismatch for {destination.name}: {actual}")
+            os.replace(partial, destination)
             return destination
-        except Exception as exc:
-            shutil.rmtree(staging, ignore_errors=True)
-            if cached:
-                print(
-                    f"sysupdate proxy: new artifact failed validation ({exc}); "
-                    "serving the previous verified generation",
-                    flush=True,
-                )
-                return cached
+        except urllib.error.HTTPError as error:
+            if error.code == 416 and offset and attempt == 0:
+                # The saved partial is longer than the current remote asset.
+                partial.unlink(missing_ok=True)
+                continue
+            if error.code in {400, 403, 404, 410}:
+                partial.unlink(missing_ok=True)
             raise
+    raise RuntimeError(f"could not download {destination.name}")
 
 
-def selected_file(name: str) -> tuple[Path, str] | None:
-    directory = refresh().resolve()
-    sums_path = directory / "SHA256SUMS"
-    if name == "SHA256SUMS":
-        return (sums_path, "text/plain; charset=utf-8") if sums_path.is_file() else None
-    if not BUNDLE.fullmatch(name):
-        return None
+def fetch_release_base() -> str:
+    latest = f"https://github.com/{REPOSITORY}/releases/latest/download/SHA256SUMS.sysupdate"
+    opener = urllib.request.build_opener(NoRedirect)
+    request = urllib.request.Request(latest, method="GET", headers={"User-Agent": "LosOS-sysupdate-proxy/1"})
     try:
-        row = sums_path.read_text(encoding="ascii").strip()
-        match = SUM.fullmatch(row)
+        response = opener.open(request, timeout=30)
+    except urllib.error.HTTPError as error:
+        if error.code not in REDIRECT_CODES:
+            raise
+        location = error.headers.get("Location", "")
+    else:
+        # An unredirected manifest is not a release asset URL and cannot be
+        # safely paired with a signature from a different version.
+        response.close()
+        raise RuntimeError("GitHub latest release did not redirect to a versioned asset")
+    expected = re.compile(
+        r"^https://github\.com/" + re.escape(REPOSITORY)
+        + r"/releases/download/[A-Za-z0-9._-]+/SHA256SUMS\.sysupdate$"
+    )
+    if not expected.fullmatch(location):
+        raise RuntimeError("latest-release redirect was not a versioned LosOS update manifest")
+    return location.rsplit("/", 1)[0]
+
+
+def fetch_fallback_release_base() -> str:
+    """Find the newest published release that has both signed update assets.
+
+    Older tags can still have releases created after the update channel exists.
+    GitHub's "latest" alias can then point at one of those older, bundle-less
+    releases. The API fallback is used only when that alias lacks either asset.
+    """
+    url = f"https://api.github.com/repos/{REPOSITORY}/releases?per_page=100"
+    request = urllib.request.Request(url, headers={
+        "User-Agent": "LosOS-sysupdate-proxy/1",
+        "Accept": "application/vnd.github+json",
+    })
+    with urllib.request.urlopen(request, timeout=30) as response:
+        releases = json.load(response)
+    for release in releases:
+        if release.get("draft") or release.get("prerelease"):
+            continue
+        assets = {asset.get("name"): asset for asset in release.get("assets", [])}
+        if "SHA256SUMS.sysupdate" not in assets or "SHA256SUMS.sysupdate.sig" not in assets:
+            continue
+        asset_url = assets["SHA256SUMS.sysupdate"].get("browser_download_url", "")
+        tag = release.get("tag_name", "")
+        expected_url = f"https://github.com/{REPOSITORY}/releases/download/{tag}/SHA256SUMS.sysupdate"
+        if asset_url == expected_url:
+            return asset_url.rsplit("/", 1)[0]
+    raise RuntimeError("no published LosOS release contains a signed sysupdate manifest")
+
+
+def fetch_manifest_pair(base: str) -> tuple[bytes, bytes]:
+    # Delete stale candidate downloads first so a partial response cannot be
+    # mistaken for a current release's manifest.
+    (CACHE / "downloaded-SHA256SUMS").unlink(missing_ok=True)
+    (CACHE / "downloaded-SHA256SUMS.sig").unlink(missing_ok=True)
+    manifest = download(base + "/SHA256SUMS.sysupdate", CACHE / "downloaded-SHA256SUMS").read_bytes()
+    signature = download(base + "/SHA256SUMS.sysupdate.sig", CACHE / "downloaded-SHA256SUMS.sig").read_bytes()
+    return manifest, signature
+
+
+def parse_manifest(data: bytes) -> dict[str, str]:
+    entries: dict[str, str] = {}
+    for raw in data.decode("ascii").splitlines():
+        if not raw:
+            continue
+        match = re.fullmatch(r"([0-9a-f]{64}) [ *](\S+)", raw)
         if not match:
-            return None
-        verified_name = match.group(2)
-        path = directory / verified_name
-        if bundle_name != name:
-            return None
-        bundle_path = directory / bundle_name
-        return (bundle_path, "application/octet-stream") if bundle_path.is_file() else None
-    except OSError:
-        return None
+            raise ValueError("update manifest contains a malformed checksum line")
+        checksum, name = match.groups()
+        if not NAME_RE.fullmatch(name) or name in {".", ".."} or "/" in name or "\\" in name:
+            raise ValueError("update manifest contains an unsafe asset name")
+        if name in entries:
+            raise ValueError("update manifest contains duplicate asset names")
+        entries[name] = checksum
+    if not entries or not any(name.startswith("losos-update_") and name.endswith(".tar.xz") for name in entries):
+        raise ValueError("update manifest contains no versioned LosOS update bundle")
+    for name in entries:
+        if name.endswith(".tar.xz.part") or ".tar.xz.part" in name:
+            if not CHUNK_RE.fullmatch(name):
+                raise ValueError("update manifest contains an unsafe chunk name")
+    return entries
 
 
-class Handler(BaseHTTPRequestHandler):
+def verify_manifest(data: bytes, signature: bytes) -> dict[str, str]:
+    if not CERT.is_file():
+        raise RuntimeError(f"pinned release certificate is missing: {CERT}")
+    CACHE.mkdir(parents=True, exist_ok=True)
+    public_key = CACHE / "release-public-key.pem"
+    if not public_key.is_file() or public_key.stat().st_mtime < CERT.stat().st_mtime:
+        result = subprocess.run(
+            ["openssl", "x509", "-in", str(CERT), "-pubkey", "-noout"],
+            check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        )
+        atomic_write(public_key, result.stdout)
+        public_key.chmod(0o644)
+    # Validate candidate files before replacing the last known-good manifest.
+    # A hostile or broken network response must not destroy the offline cache.
+    manifest_file = CACHE / "candidate-SHA256SUMS"
+    signature_file = CACHE / "candidate-SHA256SUMS.sig"
+    atomic_write(manifest_file, data)
+    atomic_write(signature_file, signature)
+    result = subprocess.run(
+        ["openssl", "dgst", "-sha256", "-verify", str(public_key),
+         "-signature", str(signature_file), str(manifest_file)],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    )
+    if result.returncode != 0 or "Verified OK" not in result.stdout:
+        raise RuntimeError("update manifest signature verification failed")
+    entries = parse_manifest(data)
+    manifest_file.unlink(missing_ok=True)
+    signature_file.unlink(missing_ok=True)
+    return entries
+
+
+def get_manifest(force: bool = False) -> tuple[bytes, dict[str, str], str]:
+    manifest_path = CACHE / "verified-SHA256SUMS"
+    signature_path = CACHE / "verified-SHA256SUMS.sig"
+    base_path = CACHE / "release-base.txt"
+    stamp_path = CACHE / "manifest-refreshed"
+    fresh = False
+    if not force and manifest_path.is_file() and signature_path.is_file() and base_path.is_file() and stamp_path.is_file():
+        try:
+            age = time.time() - float(stamp_path.read_text().strip())
+            fresh = 0 <= age < MANIFEST_TTL
+        except (OSError, ValueError):
+            # A torn/corrupt timestamp should trigger a refresh, not prevent
+            # a box from using a still-valid signed manifest.
+            fresh = False
+    if not fresh:
+        try:
+            base = fetch_release_base()
+            try:
+                manifest, signature = fetch_manifest_pair(base)
+            except urllib.error.HTTPError as error:
+                if error.code != 404:
+                    raise
+                # A manually published older tag may own GitHub's "latest"
+                # alias but predate the sysupdate runtime. Prefer the previous
+                # valid bundle release before querying the API again; this
+                # avoids exhausting the anonymous GitHub API limit on boxes
+                # that refresh the manifest regularly.
+                cached_base = base_path.read_text().strip() if base_path.is_file() else ""
+                cached_pattern = (
+                    r"https://github\\.com/" + re.escape(REPOSITORY)
+                    + r"/releases/download/[A-Za-z0-9._+-]+"
+                )
+                if re.fullmatch(cached_pattern, cached_base):
+                    try:
+                        manifest, signature = fetch_manifest_pair(cached_base)
+                        base = cached_base
+                    except urllib.error.HTTPError as cached_error:
+                        if cached_error.code != 404:
+                            raise
+                        base = fetch_fallback_release_base()
+                        manifest, signature = fetch_manifest_pair(base)
+                else:
+                    base = fetch_fallback_release_base()
+                    manifest, signature = fetch_manifest_pair(base)
+            entries = verify_manifest(manifest, signature)
+            atomic_write(base_path, (base + "\n").encode())
+            atomic_write(stamp_path, (str(time.time()) + "\n").encode())
+            # Preserve the exact bytes verified; systemd must see this manifest.
+            atomic_write(manifest_path, manifest)
+            atomic_write(signature_path, signature)
+            return manifest, entries, base
+        except Exception:
+            # Offline boxes can continue to use the last valid signed manifest.
+            # No cache is ever trusted merely because it exists: verify the
+            # signature again before serving it.
+            if not (manifest_path.is_file() and signature_path.is_file() and base_path.is_file()):
+                raise
+    manifest = manifest_path.read_bytes()
+    signature = signature_path.read_bytes()
+    base = base_path.read_text().strip()
+    if not base.startswith(f"https://github.com/{REPOSITORY}/releases/download/"):
+        raise RuntimeError("cached release base is not a trusted LosOS release URL")
+    entries = verify_manifest(manifest, signature)
+    return manifest, entries, base
+
+
+def get_verified_asset(name: str, entries: dict[str, str], base: str) -> Path:
+    expected = entries.get(name)
+    if expected is None:
+        raise FileNotFoundError(name)
+    bundle_match = re.fullmatch(r"losos-update_[A-Za-z0-9_.+-]+\.tar\.xz", name)
+    if bundle_match:
+        bundle_dir = (CACHE / "bundles").resolve()
+        bundle_dir.mkdir(parents=True, exist_ok=True)
+        output = bundle_dir / name
+        if output.is_file() and sha256_file(output) == expected:
+            return output
+        chunks: list[tuple[int, str, str]] = []
+        for part_name, checksum in entries.items():
+            match = CHUNK_RE.fullmatch(part_name)
+            if match and match.group(1) == name:
+                chunks.append((int(match.group(2)), part_name, checksum))
+        chunks.sort()
+        if not chunks or [n for n, _, _ in chunks] != list(range(chunks[0][0], chunks[0][0] + len(chunks))):
+            raise RuntimeError("update bundle chunk list is incomplete")
+        if chunks[0][0] != 0:
+            raise RuntimeError("update bundle chunks do not start at part 000")
+        chunk_dir = CACHE / "parts"
+        assembled = output.with_name(output.name + ".assembling")
+        assembled.unlink(missing_ok=True)
+        try:
+            with assembled.open("wb") as out:
+                for _, part_name, checksum in chunks:
+                    part = download(base + "/" + urllib.parse.quote(part_name), chunk_dir / part_name, checksum)
+                    with part.open("rb") as inp:
+                        while True:
+                            block = inp.read(1024 * 1024)
+                            if not block:
+                                break
+                            out.write(block)
+                out.flush()
+                os.fsync(out.fileno())
+            actual = sha256_file(assembled)
+            if actual != expected:
+                raise ValueError(f"assembled update bundle checksum mismatch: {actual}")
+            os.replace(assembled, output)
+        except Exception:
+            assembled.unlink(missing_ok=True)
+            raise
+        return output
+    return download(
+        base + "/" + urllib.parse.quote(name),
+        safe_cache_path(CACHE / "assets", name),
+        expected,
+    )
+
+
+class Handler(http.server.BaseHTTPRequestHandler):
     server_version = "LosOS-sysupdate-proxy/1"
-    protocol_version = "HTTP/1.1"
 
     def log_message(self, fmt: str, *args: object) -> None:
-        print("losos-sysupdate-proxy:", fmt % args, flush=True)
-
-    def respond_error(self, code: int, message: str) -> None:
-        body = (message + "\n").encode("utf-8")
-        self.send_response(code)
-        self.send_header("Content-Type", "text/plain; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        if self.command != "HEAD":
-            try:
-                self.wfile.write(body)
-            except (BrokenPipeError, ConnectionResetError):
-                pass
+        print("%s - %s" % (self.address_string(), fmt % args), flush=True)
 
     def do_GET(self) -> None:
-        self.serve_file()
+        self._serve(False)
 
     def do_HEAD(self) -> None:
-        self.serve_file()
+        self._serve(True)
 
-    def serve_file(self) -> None:
-        path = urlsplit(self.path).path
-        prefix = "/updates/"
-        if not path.startswith(prefix):
-            self.respond_error(404, "not found")
+    def _serve(self, head_only: bool) -> None:
+        parsed = urllib.parse.urlsplit(self.path)
+        if parsed.query or "%" in parsed.path:
+            self.send_error(400, "invalid update URL")
             return
-        name = path[len(prefix):]
-        if "/" in name or "\\" in name or "%" in name or name in ("", ".", ".."):
-            self.respond_error(404, "not found")
-            return
-        try:
-            selected = selected_file(name)
-        except SourceUnavailable as exc:
-            self.respond_error(503, str(exc))
-            return
-        if selected is None:
-            self.respond_error(404, "not found")
-            return
-        file_path, content_type = selected
-        try:
-            base_dir = refresh().resolve()
-            resolved_file_path = file_path.resolve()
-            if resolved_file_path != base_dir and base_dir not in resolved_file_path.parents:
-                self.respond_error(404, "not found")
-                return
-            size = resolved_file_path.stat().st_size
-            start, end, status = 0, size - 1, 200
-            range_header = self.headers.get("Range")
-            if range_header:
-                match = re.fullmatch(r"bytes=(\d*)-(\d*)", range_header.strip())
-                if not match or size == 0:
-                    self.send_response(416)
-                    self.send_header("Content-Range", f"bytes */{size}")
-                    self.send_header("Content-Length", "0")
-                    self.end_headers()
-                    return
-                left, right = match.groups()
-                if left:
-                    start = int(left)
-                    end = int(right) if right else size - 1
-                elif right:
-                    length = int(right)
-                    start = max(0, size - length)
-                if start >= size or end < start:
-                    self.send_response(416)
-                    self.send_header("Content-Range", f"bytes */{size}")
-                    self.send_header("Content-Length", "0")
-                    self.end_headers()
-                    return
-                end = min(end, size - 1)
-                status = 206
-            length = max(0, end - start + 1)
-            self.send_response(status)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", str(length))
-            self.send_header("Accept-Ranges", "bytes")
-            self.send_header("Cache-Control", "no-cache")
-            if status == 206:
-                self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        if parsed.path == "/health":
+            body = b"ok\n"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.send_header("Content-Length", str(len(body)))
             self.end_headers()
-            if self.command == "HEAD":
-                return
-            with resolved_file_path.open("rb") as source:
-                source.seek(start)
-                remaining = length
-                while remaining:
-                    block = source.read(min(CHUNK, remaining))
-                    if not block:
-                        break
-                    self.wfile.write(block)
-                    remaining -= len(block)
-        except (BrokenPipeError, ConnectionResetError):
-            # A cancelled client may resume via Range without corrupting cache.
+            if not head_only:
+                self.wfile.write(body)
             return
-        except OSError as exc:
-            print(f"losos-sysupdate-proxy: file serving failed: {exc}", flush=True)
+        prefix = "/stable/"
+        if not parsed.path.startswith(prefix):
+            self.send_error(404)
+            return
+        name = parsed.path[len(prefix):]
+        if name in {"SHA256SUMS", "SHA256SUMS.sysupdate"}:
+            try:
+                manifest, _, _ = get_manifest()
+                self._send_bytes(manifest, "text/plain; charset=us-ascii", head_only)
+            except Exception as error:
+                self.log_error("cannot serve signed manifest: %s", error)
+                self.send_error(503, "no verified update manifest available")
+            return
+        if name == "SHA256SUMS.gpg":
+            # Verify=no is explicit in the transfer definition because the
+            # project signs this manifest with its pinned RSA certificate
+            # rather than OpenPGP. The proxy verifies SHA256SUMS.sysupdate.sig.
+            # An empty response keeps clients that probe the optional GPG
+            # endpoint from confusing it with a real signature.
+            self._send_bytes(b"", "application/octet-stream", head_only)
+            return
+        if not NAME_RE.fullmatch(name) or "/" in name or "\\" in name:
+            self.send_error(400, "invalid update filename")
+            return
+        try:
+            _, entries, base = get_manifest()
+            path = get_verified_asset(name, entries, base)
+            self._send_file(path, head_only)
+        except FileNotFoundError:
+            self.send_error(404, "asset is not in the signed manifest")
+        except Exception as error:
+            self.log_error("cannot serve %s: %s", name, error)
+            self.send_error(503, "update asset could not be verified or downloaded")
+
+    def _send_bytes(self, data: bytes, content_type: str, head_only: bool) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        if not head_only:
+            self.wfile.write(data)
+
+    def _send_file(self, path: Path, head_only: bool) -> None:
+        try:
+            cache_root = CACHE.resolve(strict=True)
+            resolved = path.resolve(strict=True)
+            resolved.relative_to(cache_root)
+        except FileNotFoundError:
+            self.send_error(404)
+            return
+        except ValueError:
+            self.send_error(403, "path escapes cache root")
+            return
+
+        size = resolved.stat().st_size
+        start, end, status = 0, max(0, size - 1), 200
+        range_header = self.headers.get("Range")
+        if range_header:
+            match = re.fullmatch(r"bytes=([0-9]*)-([0-9]*)", range_header.strip())
+            if not match or (not match.group(1) and not match.group(2)):
+                self.send_error(416, "only one byte range is supported")
+                return
+            if match.group(1):
+                start = int(match.group(1))
+                end = min(size - 1, int(match.group(2)) if match.group(2) else size - 1)
+            else:
+                suffix = int(match.group(2))
+                start = max(0, size - suffix)
+            if start >= size or end < start:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.end_headers()
+                return
+            status = 206
+        length = max(0, end - start + 1)
+        self.send_response(status)
+        self.send_header("Content-Type", "application/x-xz" if path.name.endswith(".xz") else "application/octet-stream")
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Length", str(length))
+        self.send_header("Cache-Control", "public, max-age=300")
+        if status == 206:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        self.end_headers()
+        if head_only:
+            return
+        with path.open("rb") as stream:
+            stream.seek(start)
+            remaining = length
+            while remaining:
+                block = stream.read(min(1024 * 1024, remaining))
+                if not block:
+                    break
+                self.wfile.write(block)
+                remaining -= len(block)
 
 
 def main() -> None:
-    # All cache/download paths are explicitly on /persist. Failure to create
-    # them is fatal; silently falling back to the root tmpfs is not allowed.
-    ROOT.mkdir(mode=0o700, parents=True, exist_ok=True)
-    TEMP.mkdir(mode=0o700, parents=True, exist_ok=True)
-    server = ThreadingHTTPServer((HOST, PORT), Handler)
+    if not CERT.is_file():
+        raise SystemExit(f"LosOS update signing certificate is missing: {CERT}")
+    CACHE.mkdir(parents=True, exist_ok=True)
+    for directory in ("assets", "parts", "bundles"):
+        (CACHE / directory).mkdir(parents=True, exist_ok=True)
+    server = http.server.ThreadingHTTPServer((HOST, PORT), Handler)
     server.daemon_threads = True
-    print(
-        f"losos-sysupdate-proxy: listening on {HOST}:{PORT}; OCI source {OCI_REF}; "
-        f"persistent cache {ROOT}",
-        flush=True,
-    )
+    print(f"serving signed LosOS updates on http://{HOST}:{PORT}/stable/; cache={CACHE}", flush=True)
     server.serve_forever()
 
 
