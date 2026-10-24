@@ -55,7 +55,7 @@ assert must (!config.system.autoUpgrade.enable)
 assert must (config.systemd.services ? losos-sysupdate)
   "the persistent systemd-sysupdate activation service is missing";
 assert must
-  (lib.elem "/persist/var/lib/losos-sysupdate/versions" config.systemd.services.losos-sysupdate.requiresMountsFor)
+  (lib.elem "/persist/var/lib/losos-sysupdate/versions" config.systemd.services.losos-sysupdate.unitConfig.RequiresMountsFor)
   "sysupdate does not require the persistent /persist update directory to be mounted";
 assert must
   (lib.hasInfix "/persist/var/lib/losos-sysupdate/versions" config.environment.etc."sysupdate.d/50-losos.transfer".text)
