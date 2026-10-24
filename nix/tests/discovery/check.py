@@ -371,15 +371,21 @@ class Windows:
         run(["net", "use", self.smb_drive, "/delete", "/y"], check=False)
 
     def link_up(self):
-        # The TAP adapter is an unidentified network, so Public, until QEMU
-        # connects it; a computer at home calls its LAN Private, and only
-        # then does File Explorer look for other computers on it.
+        # Wait for QEMU to connect the TAP adapter, set its profile, and
+        # verify link state and the static address used by this test.
         code, out = self.ps(
-            "Set-NetConnectionProfile -InterfaceAlias losos-lan -NetworkCategory Private -ErrorAction Stop;"
-            " (Get-NetConnectionProfile -InterfaceAlias losos-lan).NetworkCategory",
+            "Set-NetConnectionProfile -InterfaceAlias losos-lan -NetworkCategory Private -ErrorAction Stop; "
+            "$a = Get-NetAdapter -Name losos-lan -ErrorAction Stop; "
+            "$ip = Get-NetIPAddress -InterfaceAlias losos-lan -AddressFamily IPv4 -ErrorAction Stop; "
+            "$p = Get-NetConnectionProfile -InterfaceAlias losos-lan -ErrorAction Stop; "
+            "Write-Output ('STATUS=' + $a.Status); Write-Output ('IP=' + ($ip.IPAddress -join ',')); "
+            "Write-Output ('PROFILE=' + $p.NetworkCategory)",
             check=False,
         )
-        return code == 0 and "Private" in out
+        ready = code == 0 and "STATUS=Up" in out and "IP=192.168.77.1" in out and "PROFILE=Private" in out
+        if not ready:
+            say(f"losos-lan not ready for discovery: {out.strip()}")
+        return ready
 
     def dav_client(self):
         # Windows Server ships the WebDAV redirector as a feature that wants
