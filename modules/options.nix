@@ -1985,19 +1985,30 @@ in
     edge.heartbeatTtl = lib.mkOption {
       type = lib.types.str;
       default = "120s";
-      description = "Tenants with no heartbeat within this TTL are pruned (their Traefik router + rathole service removed).";
+      description = "Tenants with no heartbeat within this TTL are pruned (their Traefik routes and rathole service removed).";
     };
 
     edge.reconcileInterval = lib.mkOption {
       type = lib.types.str;
       default = "15s";
-      description = "How often the registrar reconciler re-derives Traefik + rathole config from the registry.";
+      description = "How often the registrar reconciler re-derives the Traefik routes and the rathole config from the registry.";
     };
 
     edge.registrarApiPort = lib.mkOption {
       type = lib.types.port;
       default = 8443;
       description = "Loopback port the losos-registrar HTTP API listens on; Traefik forwards register.<publicDomain> here.";
+    };
+
+    edge.traefikProviderPort = lib.mkOption {
+      type = lib.types.port;
+      default = 8090;
+      description = ''
+        Loopback port of the registrar's provider listener. Traefik's HTTP
+        provider polls it every two seconds for the routes of the live boxes
+        and published machines, and Traefik's offline page for a box it
+        cannot reach is served from it. Never reachable off the machine.
+      '';
     };
 
     edge.registrarApiBind = lib.mkOption {
@@ -2142,7 +2153,7 @@ in
         }
       );
       default = { };
-      description = "Closed-enrollment whitelist of appliances permitted to register. The registrar only ever writes Traefik routers for ids listed here.";
+      description = "Closed-enrollment whitelist of appliances permitted to register. The registrar only ever hands Traefik routes for ids listed here.";
     };
 
     # ── Mesh CI (edge side) ─────────────────────────────────────────────────
