@@ -3059,8 +3059,12 @@ async fn get_updates(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
 /// Explicitly start the supervised system update service. It stages updates on
 /// /persist and may restart lososd while nixos-rebuild activates the result.
 async fn post_updates_check(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
-    guarded(&api, &req, "/api/updates/check", true, || {
-        match Command::new("systemctl")
+    guarded(
+        &api,
+        &req,
+        "/api/updates/check",
+        true,
+        || match Command::new("systemctl")
             .args(["start", "--no-block", "losos-sysupdate.service"])
             .output()
         {
@@ -3078,8 +3082,8 @@ async fn post_updates_check(api: web::Data<Api>, req: HttpRequest) -> HttpRespon
                 StatusCode::SERVICE_UNAVAILABLE,
                 &format!("could not start sysupdate: {error}"),
             ),
-        }
-    })
+        },
+    )
 }
 
 /// What the daemon found when it last looked for an edge proxy.
