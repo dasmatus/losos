@@ -18,19 +18,24 @@ in
 pkgs.testers.nixosTest {
   name = "losos-sysupdate-staging-on-disk";
 
-  nodes.machine = { lib, pkgs, ... }: {
+  nodes.machine = { pkgs, ... }: {
     virtualisation.emptyDiskImages = [ 2048 ];
 
-    # The NixOS test harness attaches the extra image as /dev/vdb. Format it in
-    # initrd before the /persist mount is made available to systemd services.
+    # The NixOS test harness attaches the extra image as /dev/vdb. Format it
+    # in the systemd initrd before switching to stage 2, where /persist mounts.
     boot.initrd.supportedFilesystems = [ "ext4" ];
-    boot.initrd.extraUtilsCommands = ''
-      copy_bin_and_libs ${pkgs.e2fsprogs}/bin/mke2fs
-    '';
-    boot.initrd.postDeviceCommands = lib.mkAfter ''
-      udevadm settle
-      mke2fs -t ext4 -F /dev/vdb
-    '';
+    boot.initrd.systemd.extraBin.mke2fs = "${pkgs.e2fsprogs}/bin/mke2fs";
+    boot.initrd.systemd.services.format-persist-test-disk = {
+      description = "Format the sysupdate staging test disk";
+      wantedBy = [ "initrd.target" ];
+      requires = [ "dev-vdb.device" ];
+      after = [ "dev-vdb.device" ];
+      unitConfig.DefaultDependencies = false;
+      serviceConfig.Type = "oneshot";
+      script = ''
+        mke2fs -t ext4 -F /dev/vdb
+      '';
+    };
     fileSystems."/persist" = {
       device = "/dev/vdb";
       fsType = "ext4";

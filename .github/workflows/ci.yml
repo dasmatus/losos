@@ -368,6 +368,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          # nix/check-flake.sh evaluates this checkout through builtins.getFlake;
+          # Nix needs the Git history to compute self.revCount. A depth-1 checkout
+          # fails before any NixOS configuration can be evaluated.
+          fetch-depth: 0
       - uses: ./.github/actions/setup-nix
       # Mirrors devenv.nix's `check-flake`. Evaluates every output — every VM
       # test derivation, every nixosConfiguration and every package, the three
