@@ -50,15 +50,19 @@ assert must config.boot.initrd.systemd.tpm2.enable
   "boot.initrd.systemd.tpm2.enable is off: the initrd cannot read the sealed LUKS2 token and every boot stops at a passphrase prompt";
 assert must (lib.elem "tpm2-device=auto" config.boot.initrd.luks.devices.persist.crypttabExtraOpts)
   "crypttab for `persist` has no tpm2-device=auto (${toString config.boot.initrd.luks.devices.persist.crypttabExtraOpts}): the enrolled token is never consulted";
-assert must (lib.elem "--impure" config.system.autoUpgrade.flags)
-  "system.autoUpgrade does not pass --impure (${toString config.system.autoUpgrade.flags}): a remote upgradeFlakeUri then evaluates the published tree without this box's install-target.nix and overrides.nix, flips a keyfile box to the TPM shape and resets every setting";
-assert must (lib.hasSuffix "#install" config.losos.upgradeFlakeUri)
-  "losos.upgradeFlakeUri has no #install fragment (${config.losos.upgradeFlakeUri}); nixos-rebuild would look for nixosConfigurations.<hostname>, which this flake does not export";
+assert must (!config.system.autoUpgrade.enable)
+  "NixOS autoUpgrade must be disabled once the signed sysupdate release channel owns the nightly update schedule";
+assert must (config.systemd.services ? losos-sysupdate)
+  "the persistent systemd-sysupdate activation service is missing";
 assert must
-  (lib.any (lib.hasSuffix "/bin/losos-ctl config --update") (
-    lib.toList (config.systemd.services.nixos-upgrade.serviceConfig.ExecStartPre or [ ])
-  ))
-  "nixos-upgrade.service no longer asks lososd to follow the published tree first (losos-ctl config --update): /etc/nixos then never changes and the nightly update rebuilds the installed version forever";
+  (lib.elem "/persist/var/lib/losos-sysupdate/versions" config.systemd.services.losos-sysupdate.requiresMountsFor)
+  "sysupdate does not require the persistent /persist update directory to be mounted";
+assert must
+  (lib.hasInfix "/persist/var/lib/losos-sysupdate/versions" config.environment.etc."sysupdate.d/50-losos.transfer".text)
+  "the sysupdate target no longer extracts the versioned update bundle below /persist";
+assert must
+  (lib.hasInfix "--impure" (builtins.readFile ../../tools/losos-sysupdate-apply.sh))
+  "sysupdate activation stopped passing --impure and may discard the box's install-target.nix or overrides.nix";
 assert must (!config.losos.bios && config.boot.loader.systemd-boot.enable)
   "the published flake is not on the UEFI/systemd-boot path; the README tells owners to boot the installer in UEFI mode";
 assert must
