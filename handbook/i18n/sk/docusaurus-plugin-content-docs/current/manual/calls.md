@@ -12,6 +12,11 @@ zariadenie a zariadenie ho nevidí ani nepočuje. Každý snímok obrazu a zvuku
 zašifruje prehliadač, ktorý ho posiela, a dešifrujú ho až prehliadače,
 ktoré ho prijímajú.
 
+MatrixRTC spravuje členstvo v hovore, jeho vypršanie a oznámenia zvonenia.
+Každé členstvo oznamuje vlastný transport SFU LosOS; obraz a zvuk
+neprechádzajú cez LiveKit. Médiá stále tečú cez `losos-calls` a šifrovanie
+snímok v prehliadači aj výmena kľúčov cez Olm zostávajú špecifické pre LosOS.
+
 ## Kedy sú hovory k dispozícii \{#when-calls-are-there}
 
 Hovory patria k chatu, takže potrebujú to isté čo chat: zariadenie zdieľa
