@@ -137,7 +137,7 @@ const SEAL: Step = Step {
 };
 const SYSTEM: Step = Step {
     todo: "Install the system",
-    doing: "Installing the system (building the OS, may take a while)",
+    doing: "Installing the system (substituting from cache)",
 };
 const FINISH: Step = Step {
     todo: "Finish",
