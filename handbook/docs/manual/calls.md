@@ -14,6 +14,11 @@ goes through the box, and the box cannot see or hear it. Every frame of
 picture and sound is encrypted in the browser that sends it and decrypted
 in the browsers that receive it.
 
+MatrixRTC coordinates room-call membership, membership expiry and ringing
+notifications. Each membership advertises LosOS's own SFU transport, not
+LiveKit. Audio and video still travel through `losos-calls`, and the
+browser's frame-level encryption and Olm key exchange remain LosOS-specific.
+
 ## When calls are there
 
 Calls are part of chat, so they need what chat needs: the box shares its
