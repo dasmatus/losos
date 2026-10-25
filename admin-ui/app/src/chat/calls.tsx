@@ -101,7 +101,26 @@ export function callTransportUrl(room: Room, call: string): string | null {
     const raw = content[SFU_TRANSPORT_KEY];
     if (typeof raw !== "object" || raw === null || Array.isArray(raw)) continue;
     const url = (raw as Record<string, unknown>)["url"];
-    if (typeof url !== "string" || !/^wss?:\/\//.test(url)) continue;
+    if (typeof url !== "string") continue;
+    let endpoint: URL;
+    try {
+      endpoint = new URL(url);
+    } catch {
+      continue;
+    }
+    const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+    // Call signaling stays on the same box/edge origin, through its normal
+    // authenticated endpoint. Never let a room member redirect a join to an
+    // arbitrary WebSocket host or path.
+    if (
+      endpoint.protocol !== protocol ||
+      endpoint.host !== location.host ||
+      endpoint.pathname !== "/calls/api/ws" ||
+      endpoint.username !== "" ||
+      endpoint.password !== "" ||
+      endpoint.search !== "" ||
+      endpoint.hash !== ""
+    ) continue;
     const created = typeof content["created_ts"] === "number" ? content["created_ts"] : ev.getTs();
     const expires = typeof content["expires"] === "number" ? content["expires"] : 0;
     if (!Number.isFinite(created) || !Number.isFinite(expires) || expires <= 0 || Date.now() >= created + expires) continue;
