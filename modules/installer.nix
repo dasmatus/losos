@@ -148,15 +148,16 @@ in
     systemd.services."autovt@tty1".enable = lib.mkIf autorun false;
     # Lock tty2 as a pure live-log console. Never spawn a getty or drop to
     # a shell on it; recovery shells stay on tty3–tty6.
+    # enable = false already masks the unit (symlink to /dev/null).
+    # unitConfig.Mask is not a valid systemd option.
     systemd.services."getty@tty2".enable = lib.mkIf autorun false;
     systemd.services."autovt@tty2".enable = lib.mkIf autorun false;
-    systemd.services."getty@tty2".unitConfig.Mask = lib.mkIf autorun true;
-    systemd.services."autovt@tty2".unitConfig.Mask = lib.mkIf autorun true;
     # Prevent logind from auto-spawning a VT on tty2.
     # Keep later VTs available for recovery shells; only tty2 is locked.
+    # logind settings are strings in the generated conf.
     services.logind.settings.Login = lib.mkIf autorun {
-      NAutoVTs = 6;
-      ReserveVT = 6;
+      NAutoVTs = "6";
+      ReserveVT = "6";
     };
 
     # Oneshot that actually performs the install. Runs as root with the
