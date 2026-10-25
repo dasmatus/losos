@@ -170,7 +170,15 @@ in
       # or the tty1 wrapper.
       wantedBy = [ ];
       restartIfChanged = false;
-      path = tools;
+      path = [
+        pkgs.disko
+        pkgs.git
+        pkgs.util-linux
+        pkgs.coreutils
+        pkgs.cryptsetup
+        pkgs.lvm2
+        config.systemd.package
+      ];
       environment = {
         HOME = "/root";
         TERM = "linux";
