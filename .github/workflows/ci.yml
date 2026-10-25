@@ -1316,7 +1316,7 @@ jobs:
           du -h "update/${name}.tar.xz"
           df -h
       - name: run proxy integrity and HTTP regression tests
-        run: python3 nix/tests/sysupdate-proxy.py
+        run: python3 tools/test_losos_sysupdate_proxy.py
       - uses: actions/upload-artifact@v7
         with:
           name: losos-sysupdate-bundle-${{ github.sha }}
@@ -1366,7 +1366,7 @@ jobs:
             echo "Determinate Nix enabled KVM acceleration."
           fi
       - name: test the sysupdate proxy's manifest, cache and range behavior
-        run: python3 nix/tests/sysupdate-proxy.py
+        run: python3 tools/test_losos_sysupdate_proxy.py
       - name: install the NixOS appliance to virtual disks and boot it
         run: nix build .#checks.x86_64-linux.losos-install -L --no-link
       - name: show runner storage after QEMU test
