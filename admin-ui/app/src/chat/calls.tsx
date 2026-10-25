@@ -101,7 +101,7 @@ export function callTransportUrl(room: Room, call: string): string | null {
     const raw = content[SFU_TRANSPORT_KEY];
     if (typeof raw !== "object" || raw === null || Array.isArray(raw)) continue;
     const url = (raw as Record<string, unknown>)["url"];
-    if (typeof url !== "string" || !/^wss?:\\/\\//.test(url)) continue;
+    if (typeof url !== "string" || !/^wss?:\/\//.test(url)) continue;
     const created = typeof content["created_ts"] === "number" ? content["created_ts"] : ev.getTs();
     const expires = typeof content["expires"] === "number" ? content["expires"] : 0;
     if (!Number.isFinite(created) || !Number.isFinite(expires) || expires <= 0 || Date.now() >= created + expires) continue;
