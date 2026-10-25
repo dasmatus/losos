@@ -283,16 +283,17 @@ export function CallsProvider({ client, children }: { client: MatrixClient; chil
   // Stop ringing when the last LosOS MatrixRTC membership leaves or expires.
   React.useEffect(() => {
     if (ringing === null) return;
+    const room = client.getRoom(ringing.roomId);
+    if (room === null) return;
     const onRoomState = (ev: MatrixEvent): void => {
-      if (ev.getType() !== EventType.GroupCallMemberPrefix || ev.getRoomId() !== ringing.roomId) return;
-      const room = client.getRoom(ringing.roomId);
-      if (room !== null && callEnded(room, ringing.call)) {
+      if (ev.getType() !== EventType.GroupCallMemberPrefix) return;
+      if (callEnded(room, ringing.call)) {
         setRinging((current) => (current?.call === ringing.call ? null : current));
       }
     };
-    client.on(RoomStateEvent.Events, onRoomState);
+    room.on(RoomStateEvent.Events, onRoomState);
     return () => {
-      client.off(RoomStateEvent.Events, onRoomState);
+      room.off(RoomStateEvent.Events, onRoomState);
     };
   }, [client, ringing]);
 
