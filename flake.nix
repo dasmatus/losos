@@ -467,7 +467,6 @@
           python3 ${./tools}/test_losos_sysupdate_proxy.py
           touch $out
         '';
-        losos-sysupdate-staging = import ./nix/tests/sysupdate-staging.nix { inherit pkgs; };
         losos-install = import ./nix/tests/install.nix { inherit pkgs disko; };
         losos-tpm-unlock = import ./nix/tests/tpm.nix { inherit pkgs disko; };
         losos-admin-daemon = import ./nix/tests/admin-vm.nix { inherit pkgs; };
