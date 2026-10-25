@@ -146,10 +146,18 @@ in
     # modules/console.nix uses on the installed box.
     systemd.services."getty@tty1".enable = lib.mkIf autorun false;
     systemd.services."autovt@tty1".enable = lib.mkIf autorun false;
-    # Reserve tty2 for the installer's live command output; the next VT
-    # remains available as a root shell if Wi-Fi or recovery work is needed.
+    # Lock tty2 as a pure live-log console. Never spawn a getty or drop to
+    # a shell on it; recovery shells stay on tty3–tty6.
     systemd.services."getty@tty2".enable = lib.mkIf autorun false;
     systemd.services."autovt@tty2".enable = lib.mkIf autorun false;
+    systemd.services."getty@tty2".unitConfig.Mask = lib.mkIf autorun true;
+    systemd.services."autovt@tty2".unitConfig.Mask = lib.mkIf autorun true;
+    # Prevent logind from auto-spawning a VT on tty2.
+    # Keep later VTs available for recovery shells; only tty2 is locked.
+    services.logind.settings.Login = lib.mkIf autorun {
+      NAutoVTs = 6;
+      ReserveVT = 6;
+    };
 
     # Oneshot that actually performs the install. Runs as root with the
     # system Nix configuration (so substituters and trusted keys are
