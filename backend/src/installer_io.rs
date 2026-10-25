@@ -330,7 +330,23 @@ impl Install for IoInstall {
 
     fn run_nixos_install(&mut self, work: &Path) -> anyhow::Result<()> {
         let flake = format!("{}#install", work.to_string_lossy());
-        run_inherit("nixos-install", &["--flake", &flake, "--no-root-passwd"])
+        // Prefer the local GHCR-backed cache that the installer ISO starts
+        // (losos-ghcr-cache.service on 127.0.0.1:8787). Explicit flags keep
+        // substitution working even if the system nix.conf is not inherited.
+        run_inherit(
+            "nixos-install",
+            &[
+                "--flake",
+                &flake,
+                "--no-root-passwd",
+                "--option",
+                "extra-substituters",
+                "http://127.0.0.1:8787 https://losos.dasmat.us/proxy",
+                "--option",
+                "fallback",
+                "true",
+            ],
+        )
     }
 
     /// Copy the flake to `/persist/etc/nixos` and make it a git repo, so the
