@@ -12,6 +12,12 @@ Der Anruf läuft über die Box, und die Box kann ihn weder sehen noch hören.
 Jedes Bild und jedes Stück Ton verschlüsselt der Browser, der es sendet,
 und erst die Browser, die es empfangen, entschlüsseln es.
 
+MatrixRTC koordiniert die Anrufteilnahme im Raum, den Ablauf der Mitgliedschaften
+und die Klingelbenachrichtigungen. Jede Mitgliedschaft veröffentlicht LosOS'
+eigenen SFU-Transport, nicht LiveKit. Audio und Video laufen weiterhin über
+`losos-calls`; die Verschlüsselung der Medienframes im Browser und der
+Schlüsselaustausch über Olm bleiben LosOS-spezifisch.
+
 ## Wann es Anrufe gibt \{#when-calls-are-there}
 
 Anrufe gehören zum Chat und brauchen deshalb dasselbe wie der Chat: Die Box
