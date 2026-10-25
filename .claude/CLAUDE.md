@@ -150,13 +150,16 @@ and is never served or built by nix.
   SFU as `shared` on `/run/losos-calls/http.sock` (nginx's group only),
   `/calls/api/` behind LosOS Login with no spare-key bypass. nginx hands
   the SFU the signed-in person as `Remote-User` (`calls/person.rs`), the
-  Matrix id `@<name>:<server>`; Dendrite answers no OpenID check with
-  federation off, so calls take no Matrix token.
-  Every frame is AES-GCM sealed in the browser by an encoded transform
-  (`admin-ui/app/src/calls/e2ee.ts`, worker `e2ee-worker.ts`), sender keys
-  ratchet on a join and are replaced on a leave, and travel as Olm
-  to-device `org.losos.call.key`; the room gets `org.losos.call`
-  started/ended events (`src/chat/calls.tsx`). In Chromium a worker held
+  Matrix id `@<name>:<server>`. The chat client uses MatrixRTC membership
+  state events (`org.matrix.msc3401.call.member`) and standard RTC ring
+  notifications (`org.matrix.msc4075.rtc.notification`). Each membership
+  advertises the custom `org.losos.sfu` transport at `/calls/api/ws`; the
+  SFU remains LosOS's str0m implementation, not LiveKit. MatrixRTC media-key
+  management is disabled: every frame is still AES-GCM sealed by the browser's
+  encoded transform (`admin-ui/app/src/calls/e2ee.ts`, worker
+  `e2ee-worker.ts`), with sender keys exchanged over Olm to-device
+  `org.losos.call.key`. `org.losos.call` remains for old timeline history
+  and end markers, not to start or ring calls. In Chromium a worker held
   by an `RTCRtpScriptTransform` loses its own `postMessage` and timers, so
   stats go over a MessagePort from the frame path. `--address IP=OFFERED`
   offers a forwarded port's address; `nix/tests/calls.nix` reaches the SFU
