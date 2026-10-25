@@ -159,7 +159,9 @@ impl Splash {
 /// Write an installer message to tty1 and, on the installer ISO, tty2.
 fn log_line(message: &str) {
     println!("{message}");
-    if std::env::var_os("LOSOS_INSTALLER_ISO").is_some() {
+    // Always attempt tty2 on the installer ISO so the live log is not
+    // dependent on the calling context or PTY setup.
+    if std::env::var_os("LOSOS_INSTALLER_ISO").is_some() || Path::new("/dev/tty2").exists() {
         if let Ok(mut tty) = std::fs::OpenOptions::new().write(true).open("/dev/tty2") {
             let _ = writeln!(tty, "{message}");
         }
