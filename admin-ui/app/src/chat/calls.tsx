@@ -1,5 +1,6 @@
 import * as React from "react";
-import { ClientEvent, type MatrixClient, type MatrixEvent, type Room, RoomEvent, KnownMembership } from "matrix-js-sdk";
+import { ClientEvent, EventType, type MatrixClient, type MatrixEvent, type Room, RoomEvent, RoomStateEvent, KnownMembership } from "matrix-js-sdk";
+import { MatrixRTCSession, MatrixRTCSessionEvent } from "matrix-js-sdk/lib/matrixrtc";
 import type { ReceivedToDeviceMessage } from "matrix-js-sdk/lib/sync-accumulator";
 import type { ToDevicePayload } from "matrix-js-sdk/lib/models/ToDeviceMessage";
 import { toast } from "@/components/ui/toast";
@@ -20,25 +21,30 @@ import { roomName } from "./model";
 
 /* Voice and video calls, started from a room or a DM.
  *
- * The media goes through the box's own SFU (losos-calls, backend/src/calls/),
- * which forwards frames it cannot read: every frame is encrypted in the
- * sender's browser (src/calls/e2ee.ts) with a key that only the people in
- * the call hold. Those keys travel between devices as Olm-encrypted
- * to-device messages, so the box carries them without being able to open
- * them either. The room gets one `org.losos.call` event when a call starts
- * and one when it ends, which is what rings the others and what the
- * timeline draws with a Join button. */
+ * MatrixRTC owns per-device room membership, expiry and incoming-call
+ * notifications. Its transport descriptor points at LosOS's own SFU; this
+ * deliberately does not use LiveKit. losos-calls still carries the media,
+ * and the browser still encrypts every frame with the sender keys exchanged
+ * between devices over Olm. The legacy org.losos.call event remains only as
+ * an end marker and for old timeline history. */
 
 export const CALL_EVENT = "org.losos.call";
 const KEY_EVENT = "org.losos.call.key";
+const SFU_TRANSPORT_TYPE = "org.losos.sfu";
+const SFU_TRANSPORT_KEY = "org.losos.sfu";
 /* A start older than this no longer rings. */
 const RING_FOR_MS = 60_000;
+const MEMBERSHIP_EXPIRY_MS = 5 * 60_000;
 const CALL_ID = /^[0-9a-f]{32}$/;
 
 export interface Active {
   roomId: string;
   call: string;
   video: boolean;
+  /** The MatrixRTC membership advertises the SFU that owns this call. */
+  socket: string;
+  /** Only the initiating device asks MatrixRTC to ring the room. */
+  notify: boolean;
 }
 
 export interface Ringing {
@@ -69,25 +75,62 @@ export function useCalls(): CallsState {
   return React.useContext(CallsContext) ?? NO_CALLS;
 }
 
-/** What an `org.losos.call` event says, or null when it is not one. */
+/** Parse MatrixRTC call notifications and legacy LosOS call timeline events. */
 export function callEvent(ev: MatrixEvent): { call: string; video: boolean; state: "started" | "ended" } | null {
-  if (ev.getType() !== CALL_EVENT) return null;
   const content = ev.getContent();
+  if (ev.getType() === EventType.RTCNotification) {
+    const slot = content["slot_id"];
+    const prefix = "m.call#";
+    if (typeof slot !== "string" || !slot.startsWith(prefix)) return null;
+    const call = slot.slice(prefix.length);
+    if (!CALL_ID.test(call)) return null;
+    return { call, video: content["m.call.intent"] === "video", state: "started" };
+  }
+  if (ev.getType() !== CALL_EVENT) return null;
   const call = content["call_id"];
   const state = content["state"];
   if (typeof call !== "string" || !CALL_ID.test(call) || (state !== "started" && state !== "ended")) return null;
   return { call, video: content["video"] === true, state };
 }
 
-/** Whether the room's live timeline already holds the end of `call`. */
+/** Return the active LosOS SFU endpoint announced in MatrixRTC membership. */
+export function callTransportUrl(room: Room, call: string): string | null {
+  for (const ev of room.currentState.getStateEvents(EventType.GroupCallMemberPrefix)) {
+    const content = ev.getContent();
+    if (content["application"] !== "m.call" || content["call_id"] !== call) continue;
+    const raw = content[SFU_TRANSPORT_KEY];
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) continue;
+    const url = (raw as Record<string, unknown>)["url"];
+    if (typeof url !== "string" || !/^wss?:\\/\\//.test(url)) continue;
+    const created = typeof content["created_ts"] === "number" ? content["created_ts"] : ev.getTs();
+    const expires = typeof content["expires"] === "number" ? content["expires"] : 0;
+    if (!Number.isFinite(created) || !Number.isFinite(expires) || expires <= 0 || Date.now() >= created + expires) continue;
+    return url;
+  }
+  return null;
+}
+
+/** True only for LosOS calls, not unrelated MatrixRTC applications in the room. */
+export function isLososCall(room: Room, call: string): boolean {
+  if (callTransportUrl(room, call) !== null) return true;
+  return room.getLiveTimeline().getEvents().some((ev) => {
+    if (ev.getType() !== CALL_EVENT) return false;
+    const said = callEvent(ev);
+    return said?.call === call && said.state === "ended";
+  });
+}
+
+/** Whether a call ended explicitly or its MatrixRTC membership has expired/left. */
 export function callEnded(room: Room, call: string): boolean {
-  return room
-    .getLiveTimeline()
-    .getEvents()
-    .some((ev) => {
-      const said = callEvent(ev);
-      return said?.call === call && said.state === "ended";
-    });
+  const events = room.getLiveTimeline().getEvents();
+  if (events.some((ev) => {
+    if (ev.getType() !== CALL_EVENT) return false;
+    const said = callEvent(ev);
+    return said?.call === call && said.state === "ended";
+  })) return true;
+
+  const wasMatrixRTC = events.some((ev) => ev.getType() === EventType.RTCNotification && callEvent(ev)?.call === call);
+  return wasMatrixRTC && callTransportUrl(room, call) === null;
 }
 
 const joinedUsers = (room: Room): string[] =>
@@ -174,8 +217,9 @@ async function createCall(room: Room, video: boolean): Promise<string> {
   return body.call;
 }
 
-function announce(client: MatrixClient, roomId: string, call: string, video: boolean, state: "started" | "ended"): Promise<unknown> {
-  // The SDK types a custom event's content as never; this one is ours.
+function announce(client: MatrixClient, roomId: string, call: string, video: boolean, state: "ended"): Promise<unknown> {
+  // MatrixRTC carries membership and ringing. This small legacy event closes
+  // the timeline row cleanly and remains readable by older LosOS clients.
   return client.sendEvent(roomId, CALL_EVENT as never, { call_id: call, video, state } as never);
 }
 
@@ -216,7 +260,8 @@ export function CallsProvider({ client, children }: { client: MatrixClient; chil
       void client.decryptEventIfNeeded(ev).then(() => {
         const said = callEvent(ev);
         if (said === null) return;
-        if (said.state === "ended") {
+        if (ev.getType() === EventType.RTCNotification && !isLososCall(room, said.call)) return;
+        if (said.state === "ended" || callEnded(room, said.call)) {
           setRinging((current) => (current?.call === said.call ? null : current));
           return;
         }
@@ -227,13 +272,29 @@ export function CallsProvider({ client, children }: { client: MatrixClient; chil
           video: said.video,
           sender: ev.getSender() ?? "",
         });
-      });
+      }).catch(() => undefined);
     };
     client.on(RoomEvent.Timeline, onTimeline);
     return () => {
       client.off(RoomEvent.Timeline, onTimeline);
     };
   }, [available, client, me]);
+
+  // Stop ringing when the last LosOS MatrixRTC membership leaves or expires.
+  React.useEffect(() => {
+    if (ringing === null) return;
+    const onRoomState = (ev: MatrixEvent): void => {
+      if (ev.getType() !== EventType.GroupCallMemberPrefix || ev.getRoomId() !== ringing.roomId) return;
+      const room = client.getRoom(ringing.roomId);
+      if (room !== null && callEnded(room, ringing.call)) {
+        setRinging((current) => (current?.call === ringing.call ? null : current));
+      }
+    };
+    client.on(RoomStateEvent.Events, onRoomState);
+    return () => {
+      client.off(RoomStateEvent.Events, onRoomState);
+    };
+  }, [client, ringing]);
 
   // A call that was not answered stops ringing on its own.
   React.useEffect(() => {
@@ -259,7 +320,7 @@ export function CallsProvider({ client, children }: { client: MatrixClient; chil
   );
 
   const enter = React.useCallback(
-    (roomId: string, video: boolean, make: () => Promise<string>) => {
+    (roomId: string, video: boolean, make: () => Promise<string>, notify: boolean, socket: string) => {
       if (activeCall.current !== null) return;
       (async () => {
         if (!canEncrypt()) throw new CallError("calls.noEncryption");
@@ -267,7 +328,7 @@ export function CallsProvider({ client, children }: { client: MatrixClient; chil
         try {
           const call = await make();
           setRinging((current) => (current?.call === call ? null : current));
-          setActive({ roomId, call, video, local });
+          setActive({ roomId, call, video, socket, notify, local });
         } catch (error) {
           local.stop();
           throw error;
@@ -279,15 +340,18 @@ export function CallsProvider({ client, children }: { client: MatrixClient; chil
 
   const start = React.useCallback(
     (room: Room, video: boolean) =>
-      enter(room.roomId, video, async () => {
-        const call = await createCall(room, video);
-        await announce(client, room.roomId, call, video, "started");
-        return call;
-      }),
-    [client, enter],
+      enter(room.roomId, video, () => createCall(room, video), true, socketUrl("/calls/api/ws")),
+    [enter],
   );
 
-  const join = React.useCallback((roomId: string, call: string, video: boolean) => enter(roomId, video, async () => call), [enter]);
+  const join = React.useCallback(
+    (roomId: string, call: string, video: boolean) => {
+      const room = client.getRoom(roomId);
+      const socket = room === null ? socketUrl("/calls/api/ws") : callTransportUrl(room, call) ?? socketUrl("/calls/api/ws");
+      enter(roomId, video, async () => call, false, socket);
+    },
+    [client, enter],
+  );
 
   const end = React.useCallback(
     (last: boolean | Promise<boolean>) => {
@@ -360,6 +424,7 @@ function CallScreen({
   const [podcast, setPodcast] = React.useState<Podcast | null>(null);
   const [invite, setInvite] = React.useState<{ link: string | null } | null>(null);
   const session = React.useRef<CallSession | null>(null);
+  const rtcSession = React.useRef<MatrixRTCSession | null>(null);
   const others = React.useRef(0);
   const [deserted, setDeserted] = React.useState(false);
   const finished = React.useRef(false);
@@ -390,13 +455,17 @@ function CallScreen({
     const stop = (error: unknown): void => {
       if (finished.current) return;
       finished.current = true;
+      void session.current?.leave();
+      const rtc = rtcSession.current;
+      rtcSession.current = null;
+      if (rtc !== null) void rtc.leave(5000).finally(() => void rtc.stop());
       callbacks.current.onFail(error);
       callbacks.current.onEnd(false);
     };
     warnBackground();
     try {
       const call = new CallSession({
-        socket: socketUrl("/calls/api/ws"),
+        socket: active.socket,
         call: active.call,
         device: client.getDeviceId() ?? "",
         local: media.stream,
@@ -424,14 +493,43 @@ function CallScreen({
       });
       session.current = call;
       call.start();
+
+      if (room === null) throw new CallError("calls.ended");
+      const userId = client.getUserId();
+      const deviceId = client.getDeviceId();
+      if (userId === null || deviceId === null) throw new CallError("calls.noEncryption");
+
+      const transport = { type: SFU_TRANSPORT_TYPE, url: active.socket };
+      const rtc = MatrixRTCSession.sessionForSlot(client, room, { application: "m.call", id: active.call });
+      rtcSession.current = rtc;
+      const membershipError = (error: unknown): void => {
+        stop(new CallError(`MatrixRTC membership failed: ${String(error)}`));
+      };
+      rtc.on(MatrixRTCSessionEvent.MembershipManagerError, membershipError);
+      rtc.join(
+        { userId, deviceId, memberId: crypto.randomUUID() },
+        [transport],
+        {
+          callIntent: active.video ? "video" : "audio",
+          callCapabilities: active.video ? ["m.render_audio", "m.render_video"] : ["m.render_audio"],
+          applicationData: { [SFU_TRANSPORT_KEY]: transport },
+          notificationType: active.notify ? "ring" : undefined,
+          notificationLifetimeMs: RING_FOR_MS,
+          membershipEventExpiryMs: MEMBERSHIP_EXPIRY_MS,
+          manageMediaKeys: false,
+        },
+      );
     } catch (error) {
       stop(error);
     }
     return () => {
       if (!finished.current) void session.current?.leave();
       session.current = null;
+      const rtc = rtcSession.current;
+      rtcSession.current = null;
+      if (rtc !== null) void rtc.leave(5000).finally(() => void rtc.stop());
     };
-  }, [client, active.call, active.roomId, media, warnBackground]);
+  }, [client, active.call, active.roomId, active.socket, active.video, active.notify, media, warnBackground, room]);
 
   React.useEffect(() => () => podcast?.dispose(), [podcast]);
 
