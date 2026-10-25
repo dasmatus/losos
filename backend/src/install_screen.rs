@@ -290,10 +290,7 @@ fn sentence(error: &str) -> String {
 
 /// How the install ended when it failed.
 pub fn failed(error: &str) -> Vec<Row> {
-    let mut rows = vec![
-        Row::Warn("The install failed".into()),
-        Row::Gap,
-    ];
+    let mut rows = vec![Row::Warn("The install failed".into()), Row::Gap];
     rows.extend(wrap(&sentence(error), WRAP).into_iter().map(Row::Plain));
     rows.extend([
         Row::Gap,
