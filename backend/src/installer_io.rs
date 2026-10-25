@@ -401,7 +401,7 @@ impl Install for IoInstall {
     fn run_nixos_install(&mut self, work: &Path) -> anyhow::Result<()> {
         let flake = format!("{}#install", work.to_string_lossy());
         self.run_with_activity(
-            "Building and copying the NixOS system",
+            "Building the NixOS system (100% CPU is normal)",
             "nixos-install",
             &["--flake", &flake, "--no-root-passwd"],
         )

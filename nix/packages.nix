@@ -355,7 +355,7 @@ images
     #
     # nix/tests/admin-ui.nix carries the SAME hash over the SAME lock file: two
     # derivations, one dependency set. Change both together.
-    npmDepsHash = "sha256-ZimG01qBX7S7emmGa3GU7mrEjk71/cL9MUDsggyYAUE=";
+    npmDepsHash = "sha256-jWWh0sVi7usDOIwsXCHuK0cpoDGMKyavzTw7oCjxKnE=";
 
     # No postinstall scripts. playwright is a devDependency (nix/tests/admin-ui.nix
     # drives the browser check with it) and its postinstall downloads browsers:
@@ -421,7 +421,7 @@ images
     # SHA256 of the npm dependency cache built from handbook/package-lock.json,
     # same convention as losos-admin-ui above. After changing the lock file:
     # `nix run nixpkgs#prefetch-npm-deps -- handbook/package-lock.json`.
-    npmDepsHash = "sha256-h9w/FChRdSrkCg/x6QiUgTtuGaORFdHX0SA4snvAoWI=";
+    npmDepsHash = "sha256-Sp2yoHsttkm/QTtvp/oqwfamJku2L3grKOmzBqC/ejY=";
 
     npmFlags = [ "--ignore-scripts" ];
     env.LOSOS_HANDBOOK_BASE = "/handbook/";
