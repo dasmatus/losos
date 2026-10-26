@@ -36,6 +36,8 @@
     "GET /api/state": "signed-in",
     "GET /api/settings": "signed-in",
     "GET /api/status": "signed-in",
+    "GET /api/updates": "signed-in",
+    "POST /api/updates/check": "admin",
     "GET /api/edge": "signed-in",
     "POST /api/edge/manage": "admin",
     "GET /api/look": "signed-in",
@@ -94,6 +96,7 @@
     "POST /api/backup/run": "backup",
 
     "GET /api/apps": "apps",
+    "GET /api/statistics": "apps",
     "GET /api/apps/search": "apps",
     "GET /api/apps/chart": "apps",
     "POST /api/apps/install": "apps",

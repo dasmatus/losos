@@ -1,6 +1,7 @@
 import type { IconSvgElement } from "@hugeicons/react";
 import {
   ArrowReloadHorizontalIcon,
+  ChartLineData01Icon,
   Flag02Icon,
   CloudUploadIcon,
   ComputerCloudIcon,
@@ -50,6 +51,7 @@ export type SettingsPaneId =
   | "market"
   | "machines"
   | "apps"
+  | "statistics"
   | "network"
   | "look"
   | "hardware"
@@ -191,6 +193,15 @@ export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
     "private",
     "repository",
     "email",
+  ]),
+  pane("statistics", ChartLineData01Icon, [
+    "traffic",
+    "requests",
+    "visits",
+    "errors",
+    "traefik",
+    "bandwidth",
+    "latency",
   ]),
   pane("network", Globe02Icon, [
     "name",
@@ -407,6 +418,7 @@ const PANE_SECTION: Record<SettingsPaneId, string> = {
   market: "market",
   machines: "market",
   apps: "apps",
+  statistics: "apps",
   network: "network",
   look: "look",
   hardware: "admin",

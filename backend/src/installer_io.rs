@@ -159,7 +159,9 @@ impl Splash {
 /// Write an installer message to tty1 and, on the installer ISO, tty2.
 fn log_line(message: &str) {
     println!("{message}");
-    if std::env::var_os("LOSOS_INSTALLER_ISO").is_some() {
+    // Always attempt tty2 on the installer ISO so the live log is not
+    // dependent on the calling context or PTY setup.
+    if std::env::var_os("LOSOS_INSTALLER_ISO").is_some() || Path::new("/dev/tty2").exists() {
         if let Ok(mut tty) = std::fs::OpenOptions::new().write(true).open("/dev/tty2") {
             let _ = writeln!(tty, "{message}");
         }
@@ -400,10 +402,26 @@ impl Install for IoInstall {
 
     fn run_nixos_install(&mut self, work: &Path) -> anyhow::Result<()> {
         let flake = format!("{}#install", work.to_string_lossy());
+        // Only the local GHCR cache proxy. The installer ISO starts
+        // losos-ghcr-cache.service on 127.0.0.1:8787 before this step.
+        // Trusted keys come from the system nix.conf that the ISO carries.
+        log_line("losos-install: starting nixos-install");
+        log_line("losos-install: substituter http://127.0.0.1:8787 (local GHCR cache proxy)");
+        log_line("losos-install: live nix output follows on this console");
         self.run_with_activity(
-            "Building and copying the NixOS system",
+            "Substituting the system from the binary cache",
             "nixos-install",
-            &["--flake", &flake, "--no-root-passwd"],
+            &[
+                "--flake",
+                &flake,
+                "--no-root-passwd",
+                "--option",
+                "extra-substituters",
+                "http://127.0.0.1:8787",
+                "--option",
+                "fallback",
+                "true",
+            ],
         )
     }
 

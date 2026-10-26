@@ -137,7 +137,7 @@ const SEAL: Step = Step {
 };
 const SYSTEM: Step = Step {
     todo: "Install the system",
-    doing: "Installing the system, the longest step",
+    doing: "Installing the system (substituting from cache)",
 };
 const FINISH: Step = Step {
     todo: "Finish",
@@ -290,11 +290,12 @@ fn sentence(error: &str) -> String {
 
 /// How the install ended when it failed.
 pub fn failed(error: &str) -> Vec<Row> {
-    let mut rows = vec![Row::Warn("The install stopped".into()), Row::Gap];
+    let mut rows = vec![Row::Warn("The install failed".into()), Row::Gap];
     rows.extend(wrap(&sentence(error), WRAP).into_iter().map(Row::Plain));
     rows.extend([
         Row::Gap,
-        Row::Muted("Press any key for the full log and a shell.".into()),
+        Row::Muted("The full command log is on tty2 (Alt+F2).".into()),
+        Row::Muted("Press any key for a shell.".into()),
     ]);
     rows
 }
@@ -431,7 +432,7 @@ mod tests {
         );
         assert!(finished(true, false).contains(&Row::Warn("This box has no TPM chip.".into())));
         let f = failed("disko failed (exit status: 1); see the output above");
-        assert_eq!(f[0], Row::Warn("The install stopped".into()));
+        assert_eq!(f[0], Row::Warn("The install failed".into()));
         assert!(f.contains(&Row::Plain(
             "disko failed (exit status: 1); see the output above.".into()
         )));

@@ -6,9 +6,11 @@
  * set into anything that just wants to read the board back out of storage.
  */
 
+import type * as React from "react";
 import type { IconSvgElement } from "@hugeicons/react";
 import {
   Calendar03Icon,
+  ChartLineData01Icon,
   HardDriveIcon,
   LayoutGridIcon,
   Share08Icon,
@@ -16,6 +18,8 @@ import {
 } from "@hugeicons/core-free-icons";
 import type { MessageKey } from "@/lib/i18n";
 import type { BuiltinId } from "@/lib/widgets";
+import { paneHref } from "@/lib/routes";
+import { BoxStatisticsSummary } from "@/statistics/box-summary";
 import { appsWidget, diskWidget, meshWidget, rebuildsWidget, uptimeWidget } from "./builtin";
 import type { WidgetFn, WidgetKind } from "./types";
 
@@ -31,7 +35,16 @@ export interface CatalogueEntry {
   readonly name: MessageKey;
   readonly blurb: MessageKey;
   readonly icon: IconSvgElement;
-  readonly run: WidgetFn;
+  /** A widget that runs in the sandbox and returns a result to draw. */
+  readonly run?: WidgetFn;
+  /** Or a built-in drawn by a component of its own, which fetches for
+   *  itself (it is the box's code, not a widget's), and the page the tile
+   *  opens. */
+  readonly view?: {
+    readonly Body: React.ComponentType;
+    readonly to: string;
+    readonly openLabel: MessageKey;
+  };
   readonly span: WidgetSpan;
   /** Milliseconds between runs. A tile only refreshes while it can be seen. */
   readonly refreshMs: number;
@@ -44,6 +57,8 @@ export interface CatalogueEntry {
  *   disk     — reads a recorded measurement; cheap, but no point spinning.
  *   mesh     — /api/settings, cached for 30 s in metrics.ts anyway.
  *   apps     — sends two HEAD requests at the apps themselves. A minute.
+ *   statistics — its own poll (src/statistics/use-statistics.ts, 15 s):
+ *              the figures are counters that move with every request.
  *   rebuilds — the one tile that tracks something live. Fifteen seconds is
  *              slow enough not to matter and fast enough to notice a change
  *              starting. The Progress bar on the settings screens is where a
@@ -92,6 +107,19 @@ export const CATALOGUE: readonly CatalogueEntry[] = [
     blurb: "widgets.catalogue.rebuilds.blurb",
     icon: Timer02Icon,
     run: rebuildsWidget,
+    span: "half",
+    refreshMs: 15_000,
+  },
+  {
+    id: "statistics",
+    name: "widgets.catalogue.statistics.name",
+    blurb: "widgets.catalogue.statistics.blurb",
+    icon: ChartLineData01Icon,
+    view: {
+      Body: BoxStatisticsSummary,
+      to: paneHref("statistics"),
+      openLabel: "widgets.catalogue.statistics.open",
+    },
     span: "half",
     refreshMs: 15_000,
   },
