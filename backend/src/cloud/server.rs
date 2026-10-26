@@ -218,6 +218,10 @@ async fn route(req: HttpRequest, body: web::Payload, state: web::Data<State>) ->
     if let Some(r) = crate::cloud::share::public(&req, cloud, &method, &path) {
         return r;
     }
+    // A calendar its owner published, read by anyone holding the address.
+    if let Some(r) = crate::cloud::calendar::public(cloud, &method, &path) {
+        return r;
+    }
     // A knowledge base's site: open to anyone or to people signed in,
     // which nginx says by naming them (modules/cloud.nix, /kb/api/).
     if path.starts_with("/kb/api/") {
@@ -283,6 +287,12 @@ async fn route(req: HttpRequest, body: web::Payload, state: web::Data<State>) ->
             body,
         )
         .await;
+    }
+    if let Some(rest) = path.strip_prefix("/cloud/api/calendar") {
+        if rest.is_empty() || rest.starts_with('/') {
+            let segs: Vec<&str> = rest.split('/').filter(|s| !s.is_empty()).collect();
+            return crate::cloud::calendar::api(&req, &state.cloud, &who, &segs, body).await;
+        }
     }
     if path == "/cloud/api" || path.starts_with("/cloud/api/") {
         return api::handle(&req, cloud, &who, body).await;

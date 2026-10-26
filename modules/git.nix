@@ -21,7 +21,9 @@
 # are one SQLite file beside them. A box that ran Forgejo has its
 # repositories, accounts, tokens, issues and pull requests carried over on
 # the first start (`importForgejo` below), and the server takes in every
-# repository it finds without a record.
+# repository it finds without a record. Issues are the tracker's
+# (backend/src/forge/tracker/): every repository issue becomes one on start,
+# and LosOS Cloud's boards are taken in once (`importBoards`).
 #
 # /var/lib is on /persist through impermanence's whole-/var entry, so
 # nothing else is listed for it.
@@ -34,6 +36,11 @@
 
 let
   cfg = config.losos.git;
+  chat = config.losos.chat;
+  # People of other boxes sign in with their chat address: LosOS Git asks
+  # their box who a token belongs to (backend/src/forge/matrix.rs). The
+  # boxes of this LAN, or any server once this box's chat has a public name.
+  chatOutside = chat.federation.enable && !lib.hasSuffix ".local" chat.serverName;
   pkg = config.losos.backend.package;
   on = cfg.enable && pkg != null;
 
@@ -211,6 +218,39 @@ let
         --state-dir ${stateDir} --from "$out"
     '';
   };
+
+  # LosOS Cloud's boards (Nextcloud Deck's, carried into LosOS Cloud),
+  # taken into the issue tracker once (backend/src/forge/tracker/boards.rs):
+  # a board becomes a project, its columns the workflow, its cards issues,
+  # and a card that stood for a repository's issue moves that issue
+  # instead of making a second one. cloud.db is LosOS Cloud's and only
+  # root may read it, so a consistent copy is taken for losos-git to read
+  # and removed after. `boards/import.json` says what came over; once it
+  # says complete this does nothing.
+  boardsDir = "${stateDir}/boards";
+  importBoards = pkgs.writeShellApplication {
+    name = "losos-git-boards-import";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.gnugrep
+      pkgs.util-linux
+      pkgs.sqlite
+    ];
+    text = ''
+      db=/var/lib/losos-cloud/cloud.db
+      out=${boardsDir}
+      [ -f "$db" ] || exit 0
+      if grep -qs '"complete": true' "$out/import.json"; then
+        exit 0
+      fi
+      install -d -m 0700 -o losos-git -g losos-git ${stateDir} "$out"
+      sqlite3 -readonly "$db" ".backup '$out/cloud.db'"
+      chown losos-git:losos-git "$out/cloud.db"
+      runuser -u losos-git -- ${pkg}/bin/losos-git import-boards \
+        --state-dir ${stateDir} --from "$out/cloud.db" --report "$out/import.json"
+      rm -f "$out/cloud.db"
+    '';
+  };
 in
 {
   config = lib.mkIf on {
@@ -241,14 +281,36 @@ in
       };
     };
 
+    systemd.services.losos-git-boards-import = {
+      description = "Carry LosOS Cloud's boards into LosOS Git's issues";
+      wantedBy = [ "multi-user.target" ];
+      before = [ "losos-git.service" ];
+      # A board linked to a repository needs the repository's record, and
+      # a box upgraded from Nextcloud has its boards in LosOS Cloud first.
+      after = [
+        "losos-git-forgejo-import.service"
+        "losos-cloud-from-nextcloud.service"
+      ];
+      unitConfig.ConditionPathExists = "/var/lib/losos-cloud/cloud.db";
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = lib.getExe importBoards;
+        UMask = "0077";
+      };
+    };
+
     systemd.services.losos-git = {
       description = "LosOS Git";
       wantedBy = [ "multi-user.target" ];
       # An import that fails does not hold the repositories back.
-      wants = [ "losos-git-forgejo-import.service" ];
+      wants = [
+        "losos-git-forgejo-import.service"
+        "losos-git-boards-import.service"
+      ];
       after = [
         "network.target"
         "losos-git-forgejo-import.service"
+        "losos-git-boards-import.service"
       ];
       # nginx opens the socket; it waits for nothing of ours to start.
       before = lib.optional config.services.nginx.enable "nginx.service";
@@ -296,7 +358,15 @@ in
             # box without it the socket is missing and nothing is sent.
             "--events-socket"
             "/run/losos-ci-events/events.sock"
+            "--matrix-server-name"
+            chat.serverName
           ]
+          # Repository rooms in LosOS Chat (modules/chat.nix).
+          ++ lib.optionals config.lososInternal.chat [
+            "--events-socket"
+            "/run/losos-git-chat/events.sock"
+          ]
+          ++ lib.optional config.losos.cloud.mesh.selfSigned "--matrix-self-signed"
           ++ lib.optional cfg.site.requireSignIn "--require-sign-in"
           ++ lib.optional (cfg.site.defaultPrivate == "public") "--public-by-default"
           ++ lib.optional cfg.site.pushCreate "--push-create"
@@ -329,11 +399,19 @@ in
           "AF_INET"
           "AF_INET6"
         ];
-        # Loopback only: people reach it through nginx's socket, lososd on
-        # 127.0.0.1, and LosOS Reviewer asks the model on 127.0.0.1. Code
-        # in the repositories cannot be sent anywhere else from here.
-        IPAddressDeny = "any";
-        IPAddressAllow = "localhost";
+        # People reach it through nginx's socket, lososd on 127.0.0.1, and
+        # LosOS Reviewer asks the model on 127.0.0.1. The only other address
+        # it dials is a chat server's, to ask who signs in with a chat
+        # address: a GET of a fixed path, never with code in it
+        # (backend/src/forge/matrix.rs), and never this box itself.
+        IPAddressDeny = lib.mkIf (!chatOutside) "any";
+        IPAddressAllow = [
+          "localhost"
+          "10.0.0.0/8"
+          "172.16.0.0/12"
+          "192.168.0.0/16"
+          "fc00::/7"
+        ];
         RestrictNamespaces = true;
         RestrictRealtime = true;
         RestrictSUIDSGID = true;

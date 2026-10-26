@@ -274,7 +274,7 @@ let
   # build a set with the probe in it.
   # backend/plugins' vendored crates: lososd's plugins and Mesh CI's pm
   # plugin are built from the one workspace.
-  pluginsCargoHash = "sha256-KfPuzfODxOgD0a1zjrob4bsYM56pwi8k3Jar5vs4+R8=";
+  pluginsCargoHash = "sha256-n4jKabybOqM8qy4bxPSDpAl7NrATbvn1kvHcC9SJh8Q=";
   lososPlugins =
     {
       pname ? "losos-plugins",
@@ -284,6 +284,7 @@ let
         "pins"
         "mail"
         "ci"
+        "statistics"
       ],
     }:
     pkgs.rustPlatform.buildRustPackage {
@@ -354,7 +355,7 @@ images
     #
     # nix/tests/admin-ui.nix carries the SAME hash over the SAME lock file: two
     # derivations, one dependency set. Change both together.
-    npmDepsHash = "sha256-ITWr3t02KoCqCbjJMcXiqhT4Itw8VRUV9Ez2oruX8Zc=";
+    npmDepsHash = "sha256-rB4klq53pPN2rjWwzfLr8gXC2aF5APl0FfwU50vu6rI=";
 
     # No postinstall scripts. playwright is a devDependency (nix/tests/admin-ui.nix
     # drives the browser check with it) and its postinstall downloads browsers:
@@ -371,6 +372,15 @@ images
     env.LOSOS_SEGMENTER_MODEL = "${pkgs.fetchurl {
       url = "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/1/selfie_segmenter.tflite";
       hash = "sha256-GRrJUprlBu4L7vprLJRaFy2rnQfR6AKikKTkA4ImZYs=";
+    }}";
+    # The nudity warning (src/lib/nudity.ts): Marqo's nsfw-image-detection-384
+    # (Apache-2.0), exported to ONNX at a fixed revision. Its safetensors in
+    # that repository are Marqo's own, byte for byte; the export's report
+    # gives the largest logit difference against PyTorch as 7e-7. Copied to
+    # nudity/model.onnx and only fetched by a page that turned the warning on.
+    env.LOSOS_NUDITY_MODEL = "${pkgs.fetchurl {
+      url = "https://huggingface.co/KanariKanaru/nsfw-image-detection-384-onnx/resolve/8edc47eedf74b30fd379673bc202fe3b754b1538/model.onnx";
+      hash = "sha256-6TUOV2YIr+S1egif/rDrr6E4nNzqSILdYd8oxF8cJNI=";
     }}";
     # LosOS Lab (lab/index.html, the second Vite entry) imports the Rust core,
     # the GPU canvas and, for guests on the relay path, the libvirt client.
@@ -411,7 +421,7 @@ images
     # SHA256 of the npm dependency cache built from handbook/package-lock.json,
     # same convention as losos-admin-ui above. After changing the lock file:
     # `nix run nixpkgs#prefetch-npm-deps -- handbook/package-lock.json`.
-    npmDepsHash = "sha256-h9w/FChRdSrkCg/x6QiUgTtuGaORFdHX0SA4snvAoWI=";
+    npmDepsHash = "sha256-Sp2yoHsttkm/QTtvp/oqwfamJku2L3grKOmzBqC/ejY=";
 
     npmFlags = [ "--ignore-scripts" ];
     env.LOSOS_HANDBOOK_BASE = "/handbook/";

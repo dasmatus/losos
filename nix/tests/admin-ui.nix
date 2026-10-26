@@ -66,14 +66,16 @@ pkgs.buildNpmPackage {
   # nix/packages.nix carries the SAME hash over the SAME lock file — two
   # derivations, one dependency set. Change both together or the second one
   # fails with the correct hash in its error.
-  npmDepsHash = "sha256-ITWr3t02KoCqCbjJMcXiqhT4Itw8VRUV9Ez2oruX8Zc=";
+  npmDepsHash = "sha256-rB4klq53pPN2rjWwzfLr8gXC2aF5APl0FfwU50vu6rI=";
 
   # No postinstall scripts: playwright must not try to fetch browsers (there is
   # no network here, and the ones it would fetch are not the ones this runs
   # against), and esbuild's binary arrives through its platform package.
   npmFlags = [ "--ignore-scripts" ];
   # tests/calls.browser.mjs decodes the SFU's tap with ffmpeg.
-  nativeBuildInputs = [ pkgs.ffmpeg-headless ];
+  # The calls browser test starts the SFU with its edge client; curl is a
+  # runtime dependency of that client and must exist in the sandbox.
+  nativeBuildInputs = [ pkgs.ffmpeg-headless pkgs.curl ];
   preBuild = labCorePkg + labVirtPkg + labRenderPkg;
 
   env = {
@@ -86,7 +88,8 @@ pkgs.buildNpmPackage {
     };
     PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "true";
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
-    FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = [ pkgs.dejavu_fonts ]; };
+    # fonts.nix: the generic families mapped, or the pictures come out serif.
+    FONTCONFIG_FILE = import ./fonts.nix { inherit pkgs; };
     LOSOS_CALLS_BIN = "${callsPackage}/bin/losos-calls";
     # The sandbox has only loopback; Chromium takes a loopback candidate.
     LOSOS_CALLS_ADDRESS = "127.0.0.1";

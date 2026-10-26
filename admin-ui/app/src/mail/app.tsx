@@ -19,6 +19,9 @@
  * the raw message, opens it in the browser (./pgp.ts, ./encryption.tsx) and
  * shows its text and attachments, never its HTML. */
 
+import { Masked, useDetailsCheck } from "@/components/details";
+import { openReport } from "@/components/report-dialog";
+import { MailHtml } from "./pictures";
 import * as React from "react";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
@@ -27,6 +30,7 @@ import {
   Attachment01Icon,
   Delete02Icon,
   FileEditIcon,
+  Flag02Icon,
   FavouriteIcon,
   Folder01Icon,
   InboxIcon,
@@ -71,6 +75,7 @@ import {
   deleteMailFolder,
   deleteMailMessage,
   findMailKeys,
+  getContacts,
   getMail,
   getMailMessage,
   getMailMessages,
@@ -78,7 +83,6 @@ import {
   getProfiles,
   loadMe,
   mailFile,
-  mailHtmlUrl,
   sendMail,
   signInUrl,
   updateMailFolder,
@@ -92,10 +96,12 @@ import {
   type MailPage,
   type MailRole,
   type MailSummary,
+  sharedApp,
 } from "@/lib/api";
 import { useLocale, useT } from "@/lib/i18n-react";
 import type { MessageKey } from "@/lib/i18n";
 import { contextMenu, type MenuBuilder, type MenuItem } from "@/lib/context-menu";
+import { PeopleField } from "@/contacts/suggest";
 import { readMailIntent, withoutMailIntent } from "@/lib/intents";
 import { cn } from "@/lib/utils";
 import {
@@ -111,6 +117,7 @@ import {
 } from "./encryption";
 import { formatBytes } from "@/lib/apps";
 import { CannotOpen, openMail, seal, type Opened } from "./pgp";
+import { InviteCard, isCalendarFile } from "@/calendar/invite";
 import { ComposeAttachments, ReceivedAttachment, useAttached, useCloud } from "./attachments";
 import { DeleteFolderDialog, FolderDialog, explainFolder, tree, within, type Placed } from "./folders";
 import { FiltersDialog, blankFilter } from "./filters";
@@ -186,10 +193,20 @@ function useFaces(home: MailHome): Faces {
   const [byAddress, setByAddress] = React.useState<ReadonlyMap<string, PersonLike>>(new Map());
   React.useEffect(() => {
     const controller = new AbortController();
-    void getProfiles({ signal: controller.signal })
-      .then(({ people }) => {
+    // The person's contacts name and picture whoever is in them; people on
+    // the box, with their own profiles, come after and win.
+    const book = getContacts({ signal: controller.signal })
+      .then(({ contacts }) => contacts)
+      .catch(() => []);
+    void Promise.all([getProfiles({ signal: controller.signal }), book])
+      .then(([{ people }, contacts]) => {
         const byName = new Map(people.map((p) => [p.name, p]));
         const next = new Map<string, PersonLike>();
+        for (const c of contacts) {
+          for (const e of c.emails ?? []) {
+            next.set(e.value.toLowerCase(), { name: `contact:${c.id}`, displayName: c.name, picture: c.photo ?? null });
+          }
+        }
         for (const p of home.people) {
           const profile = byName.get(p.name);
           if (profile !== undefined) next.set(p.address.toLowerCase(), profile);
@@ -1077,7 +1094,8 @@ function MessageRow({
             className={cn("size-2 shrink-0 rounded-full", m.seen ? "bg-transparent" : "bg-accent")}
           />
           <span className={cn("min-w-0 flex-1 truncate text-sm", !m.seen && "font-medium")}>
-            {(sent ? t("mail.toPrefix") + " " : "") + (who(people) || t("mail.nobody"))}
+            {(sent ? t("mail.toPrefix") + " " : "") +
+              (people.map((a) => a.name ?? faces(a).displayName).join(", ") || t("mail.nobody"))}
           </span>
           {m.pgp === "encrypted" && (
             <HugeiconsIcon icon={SquareLock02Icon} className="size-3.5 shrink-0 text-ok" aria-label={t("mail.pgp.list.encrypted")} />
@@ -1099,7 +1117,7 @@ function MessageRow({
           {m.subject || t("mail.noSubject")}
         </span>
         <span className="line-clamp-1 pl-4 text-[13px] text-muted">
-          {m.pgp === "encrypted" ? t("mail.pgp.list.encrypted") : m.preview}
+          {m.pgp === "encrypted" ? t("mail.pgp.list.encrypted") : <Masked text={m.preview} still />}
         </span>
         </span>
       </button>
@@ -1290,6 +1308,8 @@ function Reader({
         )}
         <PersonLinks message={m} home={home} />
         <span className="ml-auto" />
+        {!folders.some(({ folder: f }) => f.role === "sent" && m.mailboxIds.includes(f.id)) &&
+          tool(Flag02Icon, t("report.action"), () => openReport({ app: "mail", about: null, ref: m.id }))}
         {tool(Delete02Icon, t("mail.delete"), onDelete)}
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
@@ -1336,6 +1356,13 @@ function Reader({
             </div>
           )}
         </div>
+        {/* An invitation, a guest's answer or a cancellation, as LosOS
+            Calendar reads it (src/calendar/invite.tsx). */}
+        {sharedApp("calendar") &&
+          m.attachments
+            .filter(isCalendarFile)
+            .slice(0, 1)
+            .map((a) => <InviteCard key={a.blobId} attachment={a} address={home.address} subject={m.subject} />)}
         {!pgp && m.attachments.length > 0 && (
           <ul className="flex flex-wrap gap-2 px-5 pb-3" aria-label={t("mail.attachments")}>
             {m.attachments.map((a) => (
@@ -1370,20 +1397,15 @@ function Reader({
             </pre>
           )
         ) : html ? (
-          // White, as senders lay their HTML out for it, and inset like a card
-          // so it does not read as a hole in the dark theme.
-          <div className="mx-5 mb-5 flex min-h-80 flex-1 overflow-hidden rounded-card border border-line">
-            <iframe
-              title={t("mail.htmlTitle")}
-              src={mailHtmlUrl(m.id)}
-              sandbox="allow-popups allow-popups-to-escape-sandbox"
-              referrerPolicy="no-referrer"
-              className="w-full flex-1 bg-white"
-            />
-          </div>
+          <MailHtml
+            id={m.id}
+            from={m.from[0]}
+            title={t("mail.htmlTitle")}
+            own={folders.some(({ folder: f }) => f.role === "sent" && m.mailboxIds.includes(f.id))}
+          />
         ) : (
           <pre className="border-t border-hair px-5 py-4 font-sans text-sm leading-relaxed break-words whitespace-pre-wrap">
-            {m.text !== "" ? m.text : m.preview}
+            <Masked text={m.text !== "" ? m.text : m.preview} />
           </pre>
         )}
       </div>
@@ -1422,6 +1444,7 @@ function Composer({
   const [sending, setSending] = React.useState(false);
   const [problem, setProblem] = React.useState<string | null>(null);
   const [showCc, setShowCc] = React.useState(initial.cc.length > 0);
+  const detailsCheck = useDetailsCheck();
   const attached = useAttached({ cloud: initial.cloud, carry: initial.carry });
   const [unlocking, setUnlocking] = React.useState(false);
   const list = (value: string) =>
@@ -1452,6 +1475,11 @@ function Composer({
   const deliver = async () => {
     setSending(true);
     setProblem(null);
+    // Card and ID numbers are asked about first; "Don't send" keeps the draft.
+    if (!(await detailsCheck.check(`${subject}\n${text}`))) {
+      setSending(false);
+      return;
+    }
     try {
       let made: { text: string; pgp?: MailDraft["pgp"] } = { text };
       const files = attached.files.flatMap((a) => (a.file === null ? [] : [a.file]));
@@ -1524,13 +1552,15 @@ function Composer({
                 </Button>
               )}
             </span>
-            <Input
+            {/* The person's contacts and the people on this box, as they
+                type (src/contacts/suggest.tsx). */}
+            <PeopleField
               id="mail-to"
+              want="email"
+              multiple
               value={to}
-              onChange={(event) => setTo(event.target.value)}
-              list="mail-people"
+              onChange={setTo}
               autoFocus={initial.to.length === 0}
-              autoComplete="off"
               placeholder={people[0]?.address ?? ""}
               required
             />
@@ -1538,16 +1568,9 @@ function Composer({
           {showCc && (
             <Field>
               <FieldLabel htmlFor="mail-cc">{t("mail.cc")}</FieldLabel>
-              <Input id="mail-cc" value={cc} onChange={(event) => setCc(event.target.value)} list="mail-people" autoComplete="off" />
+              <PeopleField id="mail-cc" want="email" multiple value={cc} onChange={setCc} />
             </Field>
           )}
-          <datalist id="mail-people">
-            {people.map((p) => (
-              <option key={p.address} value={p.address}>
-                {p.label}
-              </option>
-            ))}
-          </datalist>
           {hasKey && recipients.length > 0 && (
             <ul className="flex flex-wrap gap-1.5" aria-live="polite">
               {recipients.map((a) => {
@@ -1686,6 +1709,7 @@ function Composer({
           }}
         />
       )}
+      {detailsCheck.dialog}
     </Dialog>
   );
 }

@@ -33,6 +33,17 @@
 //! between: a chart Service on port 80 in front of a container on 8080 is
 //! reached at 8080.
 //!
+//! # How the LAN reaches it
+//!
+//! Traefik on the box (`modules/apps.nix`) holds the forward range and reads
+//! its routes off the containers: every service of an app carries the labels
+//! [`route`] writes, which send the app's LAN port (`frontPort`) to its
+//! primary port on `127.0.0.1`, through the `lan-only` middleware. Labels an
+//! app brings under `traefik.` or `losos.` are dropped first, so an app
+//! cannot route itself onto another app's port, or past the LAN guard. The
+//! box's own apps get no route: nginx serves them on a path of the front
+//! door.
+//!
 //! # Shape
 //!
 //! Pure, like the cluster shaping: JSON in, a [`Project`] out, tested here.
@@ -199,8 +210,96 @@ fn harden(service: &mut Map<String, Value>, uid: u32, hosts: &[String]) {
     }
 }
 
+/// The Traefik router and service an app's labels name: `app-<release>`,
+/// so `app-notes@docker` in Traefik's API and metrics is the app `notes`.
+#[must_use]
+pub fn route_name(release: &str) -> String {
+    format!("app-{release}")
+}
+
+/// The Traefik entrypoint that listens on a LAN port of the forward range
+/// (`modules/apps.nix` declares one per port).
+#[must_use]
+pub fn entrypoint(front: u16) -> String {
+    format!("port-{front}")
+}
+
+/// A service's own labels, as a map. Compose takes a map or a list of
+/// `key=value`; anything else, or a value that is not text, is refused.
+fn labels_of(service: &str, value: Option<Value>) -> Result<BTreeMap<String, String>, Refusal> {
+    let mut out = BTreeMap::new();
+    match value {
+        None | Some(Value::Null) => {}
+        Some(Value::Object(m)) => {
+            for (k, v) in m {
+                let Some(v) = as_string(&v) else {
+                    return refuse(format!(
+                        "The service {service} sets the label {k} to something that is not text."
+                    ));
+                };
+                out.insert(k, v);
+            }
+        }
+        Some(Value::Array(list)) => {
+            for entry in list {
+                let Some(line) = entry.as_str() else {
+                    return refuse(format!("The service {service} lists its labels strangely."));
+                };
+                let (k, v) = line.split_once('=').unwrap_or((line, ""));
+                out.insert(k.to_string(), v.to_string());
+            }
+        }
+        Some(_) => return refuse(format!("The service {service} lists its labels strangely.")),
+    }
+    Ok(out)
+}
+
+/// Label every service so Traefik routes the app's LAN port to `primary`.
+///
+/// Every service rather than the one that listens: the services share the
+/// host's network, so the route's address is `127.0.0.1:<primary>` whichever
+/// container carries it, and Traefik merges the identical copies. The route
+/// then lasts while any of the app's containers runs, and which one owns the
+/// port (an `x-losos.port`, a chart's Service) need not be known.
+fn route(
+    services: &mut Map<String, Value>,
+    primary: Option<u16>,
+    ctx: &ShapeCtx,
+) -> Result<(), Refusal> {
+    let name = route_name(&ctx.release);
+    for (sname, svc) in services.iter_mut() {
+        let Value::Object(s) = svc else { continue };
+        let mut labels = labels_of(sname, s.remove("labels"))?;
+        labels.retain(|k, _| !k.starts_with("traefik.") && !k.starts_with("losos."));
+        labels.insert("losos.app".into(), ctx.release.clone());
+        match (ctx.front_port, primary) {
+            (Some(front), Some(port)) => {
+                let router = format!("traefik.http.routers.{name}");
+                for (k, v) in [
+                    ("traefik.enable".to_string(), "true".to_string()),
+                    (format!("{router}.entrypoints"), entrypoint(front)),
+                    (format!("{router}.rule"), "PathPrefix(`/`)".into()),
+                    (format!("{router}.middlewares"), "lan-only@file".into()),
+                    (format!("{router}.service"), name.clone()),
+                    (
+                        format!("traefik.http.services.{name}.loadbalancer.server.port"),
+                        port.to_string(),
+                    ),
+                ] {
+                    labels.insert(k, v);
+                }
+            }
+            _ => {
+                labels.insert("traefik.enable".into(), "false".into());
+            }
+        }
+        s.insert("labels".into(), json!(labels));
+    }
+    Ok(())
+}
+
 fn finish(
-    services: Map<String, Value>,
+    mut services: Map<String, Value>,
     ports: Vec<(u16, Option<String>)>,
     wanted: Option<u16>,
     ctx: &ShapeCtx,
@@ -225,6 +324,7 @@ fn finish(
             .or_else(|| ports.first())
             .map(|(p, _)| *p)
     });
+    route(&mut services, primary, ctx)?;
     let compose = json!({
         "name": project_name(&ctx.release),
         "services": services,
@@ -1241,6 +1341,7 @@ pub fn from_kube(shaped: Shaped, ctx: &ShapeCtx) -> Result<Project, Refusal> {
     // The chart's own ports: the cluster shaping already checked them.
     let ports = shaped.ports.clone();
     let primary = shaped.primary;
+    route(&mut services, primary, ctx)?;
     let compose = json!({
         "name": project_name(&ctx.release),
         "services": services,
@@ -1369,6 +1470,7 @@ mod tests {
             run_as: RunAs::Notshared,
             reserved: vec![8082, 3000],
             taken: vec![(9000, "other".into())],
+            front_port: Some(30001),
         }
     }
 
@@ -1725,5 +1827,120 @@ mod tests {
         assert!(relative("a/../../x").is_none());
         assert!(relative("/etc").is_none());
         assert!(relative("~/x").is_none());
+    }
+
+    #[test]
+    fn every_service_carries_the_route_to_the_apps_lan_port() {
+        let p = compose(json!({
+            "x-losos": { "port": 8080 },
+            "services": {
+                "web": {
+                    "image": "a",
+                    "ports": ["8080"],
+                    "labels": {
+                        "com.example.team": "board",
+                        "traefik.http.routers.steal.entrypoints": "port-30000",
+                        "traefik.http.routers.app-board.middlewares": "",
+                        "losos.app": "other",
+                    },
+                },
+                "db": { "image": "b", "labels": ["traefik.enable=true", "tier=db"] },
+            },
+        }))
+        .unwrap();
+        for (name, svc) in p.compose["services"].as_object().unwrap() {
+            let l = &svc["labels"];
+            assert_eq!(l["traefik.enable"], "true", "{name}");
+            assert_eq!(
+                l["traefik.http.routers.app-board.entrypoints"], "port-30001",
+                "{name}"
+            );
+            assert_eq!(
+                l["traefik.http.routers.app-board.rule"], "PathPrefix(`/`)",
+                "{name}"
+            );
+            assert_eq!(
+                l["traefik.http.routers.app-board.middlewares"], "lan-only@file",
+                "{name}"
+            );
+            assert_eq!(
+                l["traefik.http.routers.app-board.service"], "app-board",
+                "{name}"
+            );
+            assert_eq!(
+                l["traefik.http.services.app-board.loadbalancer.server.port"], "8080",
+                "{name}"
+            );
+            assert_eq!(l["losos.app"], "board", "{name}");
+            // Nothing of the app's own under traefik. survives.
+            let theirs: Vec<&String> = l
+                .as_object()
+                .unwrap()
+                .keys()
+                .filter(|k| {
+                    k.starts_with("traefik.") && !k.contains("app-board") && *k != "traefik.enable"
+                })
+                .collect();
+            assert!(theirs.is_empty(), "{name}: {theirs:?}");
+        }
+        assert_eq!(
+            p.compose["services"]["web"]["labels"]["com.example.team"],
+            "board"
+        );
+        assert_eq!(p.compose["services"]["db"]["labels"]["tier"], "db");
+    }
+
+    #[test]
+    fn an_app_without_a_lan_port_or_a_page_is_left_unrouted() {
+        let own = ShapeCtx {
+            front_port: None,
+            ..ctx()
+        };
+        let p = shape_compose(
+            json!({ "services": { "web": { "image": "a", "ports": ["8080"] } } }),
+            &own,
+            &[],
+        )
+        .unwrap();
+        let l = &p.compose["services"]["web"]["labels"];
+        assert_eq!(l["traefik.enable"], "false");
+        assert_eq!(l["losos.app"], "board");
+        assert!(l.get("traefik.http.routers.app-board.rule").is_none());
+
+        // A worker with no port at all: nothing to route to.
+        let p = compose(json!({ "services": { "worker": { "image": "a" } } })).unwrap();
+        assert_eq!(
+            p.compose["services"]["worker"]["labels"]["traefik.enable"],
+            "false"
+        );
+    }
+
+    #[test]
+    fn labels_that_are_not_text_are_refused() {
+        let e = compose(json!({
+            "services": { "web": { "image": "a", "labels": { "n": { "deep": 1 } } } },
+        }))
+        .unwrap_err();
+        assert!(e.0.contains("label n"), "{e}");
+        let e =
+            compose(json!({ "services": { "web": { "image": "a", "labels": 3 } } })).unwrap_err();
+        assert!(e.0.contains("labels strangely"), "{e}");
+    }
+
+    #[test]
+    fn a_chart_made_into_a_project_is_routed_to_its_primary_port() {
+        let p = from_kube(shape(chart(), &ctx()).unwrap(), &ctx()).unwrap();
+        let primary = p.primary.unwrap().to_string();
+        for svc in p.compose["services"].as_object().unwrap().values() {
+            let l = &svc["labels"];
+            assert_eq!(
+                l["traefik.http.routers.app-board.entrypoints"],
+                "port-30001"
+            );
+            assert_eq!(
+                l["traefik.http.services.app-board.loadbalancer.server.port"],
+                primary.as_str()
+            );
+        }
     }
 }

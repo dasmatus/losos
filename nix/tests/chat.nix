@@ -16,9 +16,16 @@
 #     and only root, nginx and `shared` may open its port;
 #   * messages, uploads and the thread list (which lososd answers, because
 #     Dendrite has none) work through nginx;
+#   * a moderator's hide redacts a reported message as its sender, and a
+#     muted person reads on but sends nothing until unmuted;
 #   * the chat page itself: two people in two browsers, an end-to-end
 #     encrypted conversation, a reply, a reaction, a thread, a picture and an
-#     edit, and a recovery key that lets a second device read the past.
+#     edit, and a recovery key that lets a second device read the past;
+#   * pictures from others wait blurred and unfetched; an administrator
+#     marks a person a child or an adult, which holds the nudity warning on
+#     or allows "No one"; the warning (on a stand-in model that flags red)
+#     holds a picture back and asks before one is sent; card and IBAN
+#     numbers are black bars, asked about before sending; Report opens.
 #
 # The browser is Chromium under Playwright in the test driver
 # (nix/tests/chat-browser.mjs), talking to the box through a SOCKS proxy on
@@ -37,12 +44,28 @@ let
   inherit (pkgs) lib;
   lososPkgs = import ../packages.nix { inherit pkgs; };
 
+  # The nudity warning's stand-in model (nudity-stand-in.py): red pictures
+  # are flagged, green ones are not, and nothing real is ever looked at.
+  nudityStandIn =
+    pkgs.runCommand "nudity-stand-in.onnx"
+      { nativeBuildInputs = [ (pkgs.python3.withPackages (p: [ p.onnx ])) ]; }
+      "python3 ${./nudity-stand-in.py} $out";
+  squares = pkgs.runCommand "chat-test-squares" { nativeBuildInputs = [ pkgs.imagemagick ]; } ''
+    mkdir $out
+    magick -size 480x320 xc:'#d01010' $out/red.png
+    magick -size 480x320 xc:'#10b030' $out/green.png
+  '';
+
   # The admin UI as it ships, without LosOS Diagrams' WebAssembly, which
   # takes longer to build than the test to run: stand-ins take the place of
   # the three packages, so the bundle builds without Bevy, and only
-  # /diagrams, which no step here opens, would fail.
-  ui = lososPkgs.losos-admin-ui.overrideAttrs (_: {
+  # /diagrams, which no step here opens, would fail. The nudity model is
+  # the stand-in above.
+  ui = lososPkgs.losos-admin-ui.overrideAttrs (old: {
     pname = "losos-admin-ui-without-lab";
+    env = old.env // {
+      LOSOS_NUDITY_MODEL = "${nudityStandIn}";
+    };
     preBuild = ''
       for f in core-pkg/losos_lab_core virt-pkg/losos_lab_virt \
                render-pkg/webgpu/losos_lab_render render-pkg/webgl2/losos_lab_render; do
@@ -266,7 +289,7 @@ pkgs.testers.nixosTest {
         ])
         box.succeed(f"mkdir -p /etc/nixos/modules && cat > /etc/nixos/modules/overrides.nix <<'EOF'\n{content}\nEOF")
 
-    with subtest("the claim makes Matus, and an administrator adds Eva"):
+    with subtest("the claim makes Matus, and an administrator adds Eva, who may open her own account"):
         code, body = call(
             "/api/setup/claim",
             method="POST",
@@ -286,7 +309,7 @@ pkgs.testers.nixosTest {
             matus,
             method="POST",
             data={"name": "eva", "displayName": "Eva", "email": "eva@mattbox.local",
-                  "password": EVA_PASSWORD, "groups": []},
+                  "password": EVA_PASSWORD, "groups": ["losos-account"]},
         )
         assert code == 200, (code, body)
         box.wait_until_succeeds(f"grep -q eva {PEOPLE}")
@@ -353,7 +376,7 @@ pkgs.testers.nixosTest {
         assert set(people) == {m["userId"], e["userId"]}, people
         assert people[e["userId"]] == "Eva", people
         code, body = call("/api/me", matus)
-        assert json.loads(body)["shared"] == ["chat"], body
+        assert "chat" in json.loads(body)["shared"], body
 
     with subtest("messages, uploads and the thread list go through nginx"):
         mt, et = m["accessToken"], e["accessToken"]
@@ -395,6 +418,34 @@ pkgs.testers.nixosTest {
         assert code == 401, (code, body)
         assert box.succeed("find /home/shared/data/chat/media -type f | wc -l").strip() != "0"
 
+    with subtest("a moderator hides a reported message and mutes someone in chat"):
+        code, body = call(f"/_matrix/client/v3/rooms/{q}/send/m.room.message/t3", eva, method="PUT",
+                          token=et, data={"msgtype": "m.text", "body": "Buy cheap watches here."})
+        assert code == 200, (code, body)
+        spam = json.loads(body)["event_id"]
+        code, body = call("/api/reports", matus, method="POST", data={
+            "app": "chat", "ref": f"{room}/{spam}", "reason": "spam", "about": "eva"})
+        assert code == 200, (code, body)
+        report = json.loads(body)["id"]
+        code, body = call("/api/moderation", matus)
+        assert "chat" in json.loads(body)["hides"], body
+        code, body = call(f"/api/moderation/reports/{report}", matus, method="POST", data={"action": "hide"})
+        assert code == 200, (code, body)
+        # Redacted as its sender: the text is gone for everyone in the room.
+        code, body = call(f"/_matrix/client/v3/rooms/{q}/event/{urllib.parse.quote(spam)}", matus, token=mt)
+        assert code == 200 and "cheap watches" not in body and "redacted_because" in body, (code, body)
+        code, body = call("/api/moderation/mute", matus, method="POST", data={"name": "eva", "minutes": 60})
+        assert code == 200, (code, body)
+        code, body = call(f"/_matrix/client/v3/rooms/{q}/send/m.room.message/t4", eva, method="PUT",
+                          token=et, data={"msgtype": "m.text", "body": "Still here."})
+        assert code == 403, (code, body)
+        # Reading goes on.
+        assert call(f"/_matrix/client/v3/rooms/{q}/messages?dir=b&limit=10", eva, token=et)[0] == 200
+        assert call("/api/moderation/unmute", matus, method="POST", data={"name": "eva"})[0] == 200
+        code, body = call(f"/_matrix/client/v3/rooms/{q}/send/m.room.message/t5", eva, method="PUT",
+                          token=et, data={"msgtype": "m.text", "body": "Sorry about that."})
+        assert code == 200, (code, body)
+
     with subtest("signing out of LosOS Login ends chat at the next request"):
         gone = sign_in("matus", PASSWORD)
         g = session(gone)
@@ -435,6 +486,8 @@ pkgs.testers.nixosTest {
         "FONTCONFIG_FILE": "${fonts}",
         "CHAT_HOST": HOST,
         "CHAT_PICTURE": "${picture}",
+        "CHAT_RED": "${squares}/red.png",
+        "CHAT_GREEN": "${squares}/green.png",
         "CHAT_MATUS_PASSWORD": PASSWORD,
         "CHAT_EVA_PASSWORD": EVA_PASSWORD,
     }
@@ -468,7 +521,7 @@ pkgs.testers.nixosTest {
         box.fail("systemctl cat dendrite.service")
         code, body = call("/api/chat", matus)
         assert code == 404, (code, body)
-        assert json.loads(call("/api/me", matus)[1])["shared"] == []
+        assert "chat" not in json.loads(call("/api/me", matus)[1])["shared"]
         code, _ = call("/_matrix/client/v3/account/whoami", matus)
         assert code == 404, code
         code, _ = call("/_matrix/media/v3/config", matus)
@@ -482,7 +535,7 @@ pkgs.testers.nixosTest {
         saved(True)
         box.wait_for_unit("dendrite.service")
         box.wait_until_succeeds("curl -sf http://127.0.0.1:8008/_matrix/client/versions")
-        assert json.loads(call("/api/me", matus)[1])["shared"] == ["chat"]
+        assert "chat" in json.loads(call("/api/me", matus)[1])["shared"]
         browser("on")
   '';
 }

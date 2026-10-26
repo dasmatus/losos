@@ -66,7 +66,9 @@ alebo odhlásiť.
 ## Písanie ľuďom
 
 - **Priama správa:** kliknite na **Napísať niekomu** a vyberte človeka. V
-  zozname je každý, kto má na zariadení účet v LosOS Login.
+  zozname je každý, kto má na zariadení účet v LosOS Login, aj každý z vašich
+  [kontaktov](contacts), ktorý má adresu v chate. Tlačidlo **Chat** na
+  stránke kontaktu otvorí tú istú konverzáciu.
 - **Miestnosť:** kliknite na **Nová miestnosť**, pomenujte ju a vyberte, či
   je na zariadení verejná, alebo len na pozvanie. Ľudí pozvete z hlavičky
   miestnosti.
@@ -103,7 +105,17 @@ neprihlásia, pretože chat nemá heslá a prihlasuje len cez LosOS Login.
 Používajte stránku chatu v prehliadači na ľubovoľnom zariadení v sieti
 zariadenia.
 
-Chat komunikuje len so zariadením. Spojenie s inými servermi Matrix je
-vypnuté, kým ho správca nezapne cez `losos.chat.federation.enable` v
-**Nastavenia** > **Rozšírené**. Na to treba vlastnú doménu, ktorú ostatné
-servery dosiahnu.
+## Iné LosOS boxy \{#other-losos-boxes}
+
+Chat dosiahne LosOS boxy vo vašej sieti. Napíšte z `mattbox.local` na
+`@eva:kitchenbox.local` a správa ide z jedného boxu na druhý bez toho, aby
+opustila sieť. Box s menom `.local` odpovedá iným chatovým serverom len zo
+siete, v ktorej je.
+
+Aby sa dalo písať aj na servery Matrix na internete, zariadenie potrebuje
+vlastnú doménu, ktorú dosiahnu. `losos.chat.federation.enable` v
+**Nastavenia** > **Rozšírené** spojenie s inými servermi úplne vypne.
+
+Repozitár v [LosOS Git](losos-git#a-chat-room-for-a-repository) tu môže mať
+miestnosť, kam LosOS Git píše, čo sa v ňom deje. Ľudia z iných boxov sa do
+LosOS Git prihlasujú aj svojou chatovou adresou.

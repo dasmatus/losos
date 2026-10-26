@@ -6,6 +6,8 @@ slug: /manual/office
 
 # Office documents
 
+![LosOS Office.](../img/office-docs.png)
+
 LosOS Office opens text documents, spreadsheets and presentations in the browser
 and saves them back on the box. Several people can work in one document at
 the same time, and each sees where the others are typing. The editor is
@@ -89,6 +91,9 @@ links, pictures, links to notes and embeds, tags, block link targets,
 footnotes and properties. Select some text first and the button marks it;
 press it again and the mark comes off. **Ctrl B**, **Ctrl I**, **Ctrl K**
 and **Ctrl E** work too.
+Selected text also gets a small bar above it with the marks used most,
+links, mentions and **Ask AI**; see
+[the bar over a selection](admin-pages#the-bar-over-a-selection).
 
 A document is written on the left and read on the right, drawn as Notes
 draws it. **Write** and **Read** give either side the whole width. Links to

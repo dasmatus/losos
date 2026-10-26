@@ -32,6 +32,7 @@ use actix_web::http::StatusCode;
 use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer};
 use anyhow::Context;
 use std::path::Path;
+use std::process::Command;
 use std::time::Instant;
 
 /// Default loopback port; overridden by `$LOSOS_ADMIN_PORT`.
@@ -82,6 +83,12 @@ struct Api {
     share: crate::cloud_share::Share,
     /// LosOS Chat's homeserver, as far as lososd runs it (`crate::chat`).
     chat: crate::chat::Chat,
+    /// The chat rooms lososd made for LosOS Git repositories
+    /// (`crate::git_rooms`).
+    git_rooms: crate::git_rooms::Rooms,
+    /// LosOS Cloud runs here, and with it LosOS Contacts' address books
+    /// and LosOS Calendar (`LOSOS_CLOUD_CONTACTS`, `modules/cloud.nix`).
+    contacts: bool,
     /// LosOS Mail (`crate::mail`).
     mail: crate::mail::Mail,
     /// People's OpenPGP keys for LosOS Mail (`crate::mail_pgp`), while mail
@@ -92,6 +99,12 @@ struct Api {
     /// Each person's picture, banner and the rest of their profile
     /// (`crate::profiles`).
     profiles: crate::profiles::Profiles,
+    /// Custom roles (`crate::roles`).
+    roles: crate::roles::Presets,
+    /// Reports, mutes, suspensions and their log (`crate::moderation`).
+    moderation: crate::moderation::Moderation,
+    /// Who sees which pictures blurred, and the age marks (`crate::pictures`).
+    pictures: crate::pictures::Pictures,
     /// Turns at decoding an upload (`IMAGE_JOBS`).
     image_jobs: tokio::sync::Semaphore,
     /// The plugins that answer every route not registered below
@@ -171,6 +184,12 @@ fn error_response(e: anyhow::Error) -> HttpResponse {
         return err(
             StatusCode::from_u16(r.status()).unwrap_or(StatusCode::CONFLICT),
             &r.to_string(),
+        );
+    }
+    if let Some(r) = e.downcast_ref::<crate::moderation::Refused>() {
+        return err(
+            StatusCode::from_u16(r.status).unwrap_or(StatusCode::BAD_REQUEST),
+            &r.message,
         );
     }
     if let Some(r) = e.downcast_ref::<crate::market::Refused>() {
@@ -532,13 +551,22 @@ fn gate_at(
         // lists (removed or disabled since they signed in). A 401 would
         // send the page back to Authelia, which would send it straight
         // back here; a 403 stops that loop.
-        if api.people.headers
-            && req
-                .headers()
-                .get("remote-user")
-                .is_some_and(|v| !v.is_empty())
-        {
+        let named = req
+            .headers()
+            .get("remote-user")
+            .and_then(|v| v.to_str().ok())
+            .filter(|v| !v.is_empty());
+        if let (true, Some(name)) = (api.people.headers, named) {
             audit("no account", None);
+            if let Some(hold) = api.moderation.suspended(name, crate::login::now()) {
+                return Err(Box::new(HttpResponse::Forbidden().json(
+                    serde_json::json!({
+                        "error": "a moderator has suspended your account",
+                        "noAccount": true,
+                        "suspended": hold,
+                    }),
+                )));
+            }
             return Err(Box::new(HttpResponse::Forbidden().json(
                 serde_json::json!({
                     "error": "your account is not on this box any more",
@@ -599,6 +627,29 @@ fn gate_at(
                 }),
             )));
         }
+        if person.groups.iter().any(|g| g == crate::roles::GUESTS)
+            && !crate::sections::guest_allows(method, &pattern, section)
+        {
+            audit("forbidden", Some(&person.name));
+            return Err(Box::new(HttpResponse::Forbidden().json(
+                serde_json::json!({
+                    "error": "guests cannot do this on this box",
+                    "guest": true,
+                    "section": section,
+                }),
+            )));
+        }
+        if crate::sections::speech(method, &pattern) {
+            if let Some(hold) = api.moderation.muted(&person.name, crate::login::now()) {
+                audit("muted", Some(&person.name));
+                return Err(Box::new(HttpResponse::Forbidden().json(
+                    serde_json::json!({
+                        "error": "a moderator has muted you",
+                        "muted": hold,
+                    }),
+                )));
+            }
+        }
     }
     if matches!(who, Principal::Edge) && !crate::sections::edge_allows(method, section) {
         audit("forbidden", Some("edge"));
@@ -624,6 +675,14 @@ fn shared_apps(api: &Api) -> Vec<&'static str> {
     if api.chat.live() {
         apps.push("chat");
     }
+    // Not shared-side apps: LosOS Contacts and LosOS Calendar are LosOS
+    // Cloud's address books and calendars, on every box that runs LosOS
+    // Cloud. Listed here because the sidebar draws the app entries this
+    // list names.
+    if api.contacts {
+        apps.push("contacts");
+        apps.push("calendar");
+    }
     // modules/ci.nix names the socket only while Mesh CI runs.
     if std::env::var_os("LOSOS_CI_SOCKET").is_some() {
         apps.push("ci");
@@ -647,6 +706,8 @@ async fn get_me(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
                 "name": null,
                 "displayName": null,
                 "groups": [],
+                "role": "admin",
+                "reports": open_reports(&api),
                 "admin": true,
                 "spareKey": true,
                 "sections": all(),
@@ -671,7 +732,7 @@ async fn get_me(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
                         name: p.name.clone(),
                         display_name: p.display_name.clone(),
                         email: String::new(),
-                        groups: Vec::new(),
+                        groups: p.groups.clone(),
                         disabled: false,
                     },
                     &api.profiles.get(&p.name).unwrap_or_default(),
@@ -682,6 +743,13 @@ async fn get_me(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
                     "picture": shown["picture"],
                     "accent": shown["accent"],
                     "groups": p.groups,
+                    "role": shown["role"],
+                    "roleName": role_name(&api, &p.groups),
+                    "reports": if sections.contains(&"moderation") {
+                        open_reports(&api)
+                    } else {
+                        0
+                    },
                     "admin": who.is_admin() && locked.is_empty(),
                     "spareKey": false,
                     "companion": matches!(who, Principal::Companion(_)),
@@ -715,27 +783,37 @@ async fn get_me(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
  * (`People::headers`, `LOSOS_IDENTITY=authelia`); a box whose sign-in runs
  * elsewhere lists nobody and changes nothing here. */
 
-/// The groups the Users pane may hand out: administrator, viewer, and one
-/// per section of `backend/sections.json`.
-fn grantable_groups() -> Vec<String> {
+/// The groups the Users pane may hand out: administrator, viewer, guest,
+/// one per section of `backend/sections.json`, and one per custom role.
+fn grantable_groups(
+    presets: &std::collections::BTreeMap<String, crate::roles::Preset>,
+) -> Vec<String> {
     let mut all = vec![
         crate::people::ADMINS.to_string(),
         crate::people::VIEWERS.to_string(),
+        crate::roles::GUESTS.to_string(),
     ];
     all.extend(
         crate::sections::names()
             .into_iter()
             .map(|s| format!("losos-{s}")),
     );
+    all.extend(
+        presets
+            .keys()
+            .map(|id| format!("{}{id}", crate::roles::CUSTOM)),
+    );
     all
 }
 
-/// `groups` from a request body, each one a group the pane may hand out.
-fn requested_groups(doc: &serde_json::Value) -> Result<Vec<String>, String> {
+/// `groups` from a request body, each one a group the pane may hand out,
+/// as the role they name bundles them (`crate::roles::normalize`).
+fn requested_groups(api: &Api, doc: &serde_json::Value) -> Result<Vec<String>, String> {
     let Some(list) = doc.get("groups").and_then(|g| g.as_array()) else {
         return Err("groups must be a list".into());
     };
-    let allowed = grantable_groups();
+    let presets = api.roles.all();
+    let allowed = grantable_groups(&presets);
     let mut out = Vec::new();
     for g in list {
         let Some(g) = g.as_str() else {
@@ -748,7 +826,28 @@ fn requested_groups(doc: &serde_json::Value) -> Result<Vec<String>, String> {
             out.push(g.to_string());
         }
     }
-    Ok(out)
+    crate::roles::normalize(&out, &presets)
+}
+
+/// The name of the custom role `groups` hold, if any.
+fn role_name(api: &Api, groups: &[String]) -> Option<String> {
+    let id = crate::roles::role_of(groups).custom?;
+    api.roles.all().remove(&id).map(|p| p.name)
+}
+
+/// How many reports wait for a moderator.
+fn open_reports(api: &Api) -> usize {
+    api.moderation
+        .reports()
+        .iter()
+        .filter(|r| r.state == crate::moderation::State::Open)
+        .count()
+}
+
+/// A role as the log says it: "moderator", or a custom role's name.
+fn role_words(api: &Api, groups: &[String]) -> String {
+    role_name(api, groups)
+        .unwrap_or_else(|| crate::roles::role_of(groups).role.as_str().to_string())
 }
 
 fn not_standalone() -> HttpResponse {
@@ -773,6 +872,9 @@ async fn get_people(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
         let rules = api.login.rules();
         let now = crate::login::now();
         let profiles = api.profiles.all().unwrap_or_default();
+        let presets = api.roles.all();
+        let holds = api.moderation.holds();
+        let marks = api.pictures.marks().unwrap_or_default();
         let people: Vec<serde_json::Value> = people
             .into_iter()
             .map(|p| {
@@ -788,6 +890,16 @@ async fn get_people(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
                 row["picture"] = shown["picture"].clone();
                 row["accent"] = shown["accent"].clone();
                 row["banner"] = shown["banner"].clone();
+                row["role"] = shown["role"].clone();
+                row["roleName"] = serde_json::json!(crate::roles::role_of(&p.groups)
+                    .custom
+                    .and_then(|id| presets.get(&id).map(|r| r.name.clone())));
+                let held = holds.get(&p.name).cloned().unwrap_or_default();
+                row["muted"] = serde_json::json!(held
+                    .muted
+                    .filter(|_| api.moderation.muted(&p.name, now).is_some()));
+                row["suspended"] = serde_json::json!(held.suspended);
+                row["age"] = serde_json::json!(marks.get(&p.name));
                 row
             })
             .collect();
@@ -795,6 +907,7 @@ async fn get_people(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
             "standalone": api.people.headers,
             "you": who.person().map(|p| p.name.clone()),
             "sections": crate::sections::names(),
+            "roles": presets_json(&presets),
             "rules": rules,
             "people": people,
         }))
@@ -826,7 +939,7 @@ async fn post_person(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) ->
             Ok(s) => s,
             Err(e) => return err(StatusCode::BAD_REQUEST, &e),
         };
-        let groups = match requested_groups(&doc) {
+        let groups = match requested_groups(&api, &doc) {
             Ok(g) => g,
             Err(e) => return err(StatusCode::BAD_REQUEST, &e),
         };
@@ -874,13 +987,29 @@ async fn post_person_access(
                 r#"body must be JSON: {"name": "...", "groups": [...]}"#,
             );
         };
-        let groups = match requested_groups(&doc) {
+        let groups = match requested_groups(&api, &doc) {
             Ok(g) => g,
             Err(e) => return err(StatusCode::BAD_REQUEST, &e),
         };
         let by = who.person().map(|p| p.name.as_str());
+        let before = api
+            .people
+            .list()
+            .ok()
+            .and_then(|all| all.into_iter().find(|p| p.name == name))
+            .map(|p| role_words(&api, &p.groups));
         match api.people.set_access(&name, &groups, by) {
             Ok(()) => {
+                let after = role_words(&api, &groups);
+                if before.as_deref() != Some(after.as_str()) {
+                    api.moderation.note(
+                        crate::login::now(),
+                        who.audit_name(),
+                        "role",
+                        Some(&name),
+                        &after,
+                    );
+                }
                 HttpResponse::Ok().json(serde_json::json!({ "name": name, "groups": groups }))
             }
             Err(e) => error_response(e),
@@ -967,9 +1096,19 @@ async fn post_person_remove(
                         tracing::warn!(error = %e, person = %name, "a removed person's chat devices stayed signed in")
                     }
                 }
-                if let Err(e) = api.profiles.forget(&name) {
-                    tracing::warn!(error = ?e, "a removed person's profile stayed");
+                if let Err(e) = api.moderation.forget(&name) {
+                    tracing::warn!(error = ?e, "a removed person's mutes stayed");
                 }
+                if let Err(e) = api.pictures.forget(&name) {
+                    tracing::warn!(error = ?e, "a removed person's picture settings stayed");
+                }
+                api.moderation.note(
+                    crate::login::now(),
+                    who.audit_name(),
+                    "remove",
+                    Some(&name),
+                    "",
+                );
                 HttpResponse::Ok().json(serde_json::json!({ "name": name, "removed": true }))
             }
             Err(e) => error_response(e),
@@ -1039,6 +1178,19 @@ fn reconcile_login(api: &Api) {
     }
 }
 
+/// End the mutes and suspensions whose time has come. A suspended person
+/// never reaches this daemon (LosOS Login turns them away), so it is a
+/// timer that lets them back in.
+fn lift_due(api: &Api) {
+    let now = crate::login::now();
+    if let Err(e) = api
+        .moderation
+        .lift_due(now, |name| api.people.set_disabled(name, false, None))
+    {
+        tracing::warn!(error = ?e, "the moderation file could not be read");
+    }
+}
+
 /// The thread that keeps the marks in step.
 fn start_login_marks(api: web::Data<Api>) {
     if !api.people.headers {
@@ -1046,6 +1198,7 @@ fn start_login_marks(api: web::Data<Api>) {
     }
     std::thread::spawn(move || loop {
         reconcile_login(&api);
+        lift_due(&api);
         std::thread::sleep(std::time::Duration::from_secs(10));
     });
 }
@@ -1170,6 +1323,7 @@ fn shown_people(api: &Api) -> anyhow::Result<Vec<serde_json::Value>> {
         return Ok(Vec::new());
     }
     let profiles = api.profiles.all()?;
+    let presets = api.roles.all();
     Ok(api
         .people
         .list()?
@@ -1177,7 +1331,11 @@ fn shown_people(api: &Api) -> anyhow::Result<Vec<serde_json::Value>> {
         .filter(|p| !p.disabled)
         .map(|p| {
             let profile = profiles.get(&p.name).cloned().unwrap_or_default();
-            crate::profiles::render(&p, &profile)
+            let mut shown = crate::profiles::render(&p, &profile);
+            shown["roleName"] = serde_json::json!(crate::roles::role_of(&p.groups)
+                .custom
+                .and_then(|id| presets.get(&id).map(|r| r.name.clone())));
+            shown
         })
         .collect())
 }
@@ -1411,6 +1569,194 @@ async fn delete_account_banner(api: web::Data<Api>, req: HttpRequest) -> HttpRes
     delete_own_image(&api, &req, crate::profiles::Kind::Banner)
 }
 
+// ── Pictures in Chat and Mail: blur, trusted people, age marks ───────────
+// (`crate::pictures`). The blur and the nudity warning are drawn by the
+// person's browser; these routes only keep and answer the settings.
+
+/// A refusal from the picture settings, with the word the page keys on.
+fn pictures_error(e: anyhow::Error) -> HttpResponse {
+    match e.downcast_ref::<crate::pictures::Refused>() {
+        Some(r) => HttpResponse::Forbidden()
+            .json(serde_json::json!({ "error": r.to_string(), "code": r.code() })),
+        None => error_response(e),
+    }
+}
+
+fn own_pictures(
+    who: &Principal,
+    f: impl FnOnce(&crate::people::Person) -> anyhow::Result<crate::pictures::Settings>,
+) -> HttpResponse {
+    let Some(person) = who.person() else {
+        return err(
+            StatusCode::CONFLICT,
+            "the spare key has no account of its own",
+        );
+    };
+    match f(person) {
+        Ok(s) => HttpResponse::Ok()
+            .insert_header(("Cache-Control", "no-store"))
+            .json(crate::pictures::render(&s)),
+        Err(e) => pictures_error(e),
+    }
+}
+
+/// `GET /api/pictures`: the caller's own picture settings.
+async fn get_pictures(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded_as(&api, &req, "/api/pictures", false, |who| {
+        own_pictures(who, |p| api.pictures.get(&p.name))
+    })
+}
+
+/// `POST /api/pictures`: `{"blur": "everyone|strangers|nobody",
+/// "nudityCheck": bool}`, each optional. 403 `adultRequired` or
+/// `childAccount` when the age mark does not allow it.
+async fn post_pictures(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    guarded_as(&api, &req, "/api/pictures", true, |who| {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        let change = match crate::pictures::parse_change(&doc) {
+            Ok(c) => c,
+            Err(why) => return err(StatusCode::BAD_REQUEST, &why),
+        };
+        own_pictures(who, |p| api.pictures.set(&p.name, &change))
+    })
+}
+
+/// `POST /api/pictures/trust`: `{"id": "@bo:box.local" | "bo@example.org",
+/// "trusted": bool}`. A trusted sender's pictures are never blurred.
+async fn post_pictures_trust(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded_as(&api, &req, "/api/pictures/trust", true, |who| {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        let (Some(id), Some(trusted)) = (
+            doc.get("id").and_then(serde_json::Value::as_str),
+            doc.get("trusted").and_then(serde_json::Value::as_bool),
+        ) else {
+            return err(
+                StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"id": "...", "trusted": true}"#,
+            );
+        };
+        own_pictures(who, |p| api.pictures.trust(&p.name, id, trusted))
+    })
+}
+
+/// `GET /api/pictures/sender?id=`: whether pictures from this chat ID or
+/// address show at once for the caller. `{"shown": bool, "because":
+/// "trusted|known|setting"|null, "nudityCheck": bool}`. "known" means on
+/// this box or in the caller's contacts, asked only for `strangers`.
+async fn get_pictures_sender(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    let mut person = None;
+    let refused = guarded_as(&api, &req, "/api/pictures/sender", false, |who| {
+        match who.person() {
+            Some(p) => {
+                person = Some(p.clone());
+                HttpResponse::Ok().finish()
+            }
+            None => err(
+                StatusCode::CONFLICT,
+                "the spare key has no account of its own",
+            ),
+        }
+    });
+    let Some(person) = person else {
+        return refused;
+    };
+    let Some(sender) = query_map(&req)
+        .get("id")
+        .and_then(|id| crate::pictures::valid_id(id))
+    else {
+        return err(
+            StatusCode::BAD_REQUEST,
+            "id is a chat ID such as @ana:box.local or a mail address",
+        );
+    };
+    let worker = api.clone();
+    let answer = web::block(move || -> anyhow::Result<serde_json::Value> {
+        let settings = worker.pictures.get(&person.name)?;
+        let because = crate::pictures::shown_because(&settings, &sender, || {
+            sender_known(&worker, &person, &sender)
+        });
+        Ok(serde_json::json!({
+            "shown": because.is_some(),
+            "because": because,
+            "nudityCheck": settings.nudity_check(),
+        }))
+    })
+    .await;
+    match answer {
+        Ok(Ok(v)) => HttpResponse::Ok()
+            .insert_header(("Cache-Control", "no-store"))
+            .json(v),
+        Ok(Err(e)) => error_response(e),
+        Err(_) => HttpResponse::ServiceUnavailable().finish(),
+    }
+}
+
+/// Whether `sender` is a person on this box or in `person`'s contacts.
+fn sender_known(api: &Api, person: &crate::people::Person, sender: &str) -> bool {
+    let same = |s: &str| s.eq_ignore_ascii_case(sender);
+    if contacts_neighbours(api).iter().any(|n| {
+        n.name != person.name
+            && (n.matrix_id.as_deref().is_some_and(same) || n.email.as_deref().is_some_and(same))
+    }) {
+        return true;
+    }
+    if !api.contacts {
+        return false;
+    }
+    let login = if person.groups.iter().any(|g| g == crate::people::OWNER) {
+        crate::app_names::OWNER_ACCOUNT.to_string()
+    } else {
+        person.name.clone()
+    };
+    let want = if sender.starts_with('@') {
+        crate::cloud::contacts::Want::Matrix
+    } else {
+        crate::cloud::contacts::Want::Email
+    };
+    let book = crate::contacts::book_matches(&mut api.backend.clone(), &login, sender, want);
+    book.known_matrix_ids.iter().any(|id| same(id))
+        || book.matches.iter().any(|r| {
+            r.suggestion.matrix_id.as_deref().is_some_and(same)
+                || r.suggestion.emails.iter().any(|e| same(e))
+        })
+}
+
+/// `POST /api/people/age`: `{"name", "age": "adult" | "child" | null}`.
+/// An administrator marks a person as an adult (who may then show every
+/// picture at once) or as a child (whose nudity warning stays on).
+async fn post_people_age(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    guarded(&api, &req, "/api/people/age", true, || {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        let name = doc.get("name").and_then(serde_json::Value::as_str);
+        let age = match doc.get("age") {
+            Some(serde_json::Value::Null) => Some(None),
+            Some(v) => v.as_str().and_then(crate::pictures::Age::parse).map(Some),
+            None => None,
+        };
+        let (Some(name), Some(age)) = (name, age) else {
+            return err(
+                StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"name": "...", "age": "adult" | "child" | null}"#,
+            );
+        };
+        match api.people.get(name) {
+            Ok(Some(_)) => {}
+            Ok(None) => {
+                return error_response(crate::people::Refused::Unknown(name.to_string()).into())
+            }
+            Err(e) => return error_response(e),
+        }
+        match api.pictures.set_age(name, age) {
+            Ok(s) => HttpResponse::Ok().json(serde_json::json!({ "name": name, "age": s.age })),
+            Err(e) => pictures_error(e),
+        }
+    })
+}
+
 /// `POST /api/people/profile/clear`: `{"name", "kind": "picture|banner"}`.
 /// An administrator takes down a picture someone else put up. The rest of
 /// the profile stays theirs.
@@ -1420,7 +1766,7 @@ async fn post_people_profile_clear(
     body: web::Bytes,
 ) -> HttpResponse {
     const SHAPE: &str = r#"body must be JSON: {"name": "...", "kind": "picture|banner"}"#;
-    guarded(&api, &req, "/api/people/profile/clear", true, || {
+    guarded_as(&api, &req, "/api/people/profile/clear", true, |who| {
         if !api.people.headers {
             return not_standalone();
         }
@@ -1441,8 +1787,490 @@ async fn post_people_profile_clear(
             Err(e) => return error_response(e),
         }
         match api.profiles.remove_image(name, kind) {
-            Ok(_) => HttpResponse::Ok()
-                .json(serde_json::json!({ "name": name, "kind": kind.as_str(), "cleared": true })),
+            Ok(_) => {
+                api.moderation.note(
+                    crate::login::now(),
+                    who.audit_name(),
+                    "take down",
+                    Some(name),
+                    kind.as_str(),
+                );
+                HttpResponse::Ok().json(
+                    serde_json::json!({ "name": name, "kind": kind.as_str(), "cleared": true }),
+                )
+            }
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+// ── Roles and moderation ─────────────────────────────────────────────────
+
+/* Roles are bundles of the groups sections.json reads (`crate::roles`);
+ * moderation is reports, mutes, suspensions and a log (`crate::moderation`).
+ * Both stay in this daemon, beside the people file they write and the
+ * sign-in they decide. */
+
+/// The custom roles as `GET /api/people` lists them.
+fn presets_json(
+    presets: &std::collections::BTreeMap<String, crate::roles::Preset>,
+) -> Vec<serde_json::Value> {
+    presets
+        .iter()
+        .map(|(id, p)| serde_json::json!({ "id": id, "name": p.name, "sections": p.sections }))
+        .collect()
+}
+
+/// Put everyone who holds custom role `id` in `groups` in place of what
+/// they had.
+fn regroup(api: &Api, id: &str, groups: &[String]) -> anyhow::Result<()> {
+    let mark = format!("{}{id}", crate::roles::CUSTOM);
+    for person in api.people.list()? {
+        if person.groups.contains(&mark) {
+            api.people.set_access(&person.name, groups, None)?;
+        }
+    }
+    Ok(())
+}
+
+/// `POST /api/roles`: `{"id"?, "name", "sections"}`. Save a custom role,
+/// and move everyone who holds it to its new sections.
+async fn post_roles(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    const SHAPE: &str = r#"body must be JSON: {"id"?: "...", "name": "...", "sections": [...]}"#;
+    guarded_as(&api, &req, "/api/roles", true, |who| {
+        if !api.people.headers {
+            return not_standalone();
+        }
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        let (Some(name), Some(list)) = (
+            doc.get("name").and_then(|v| v.as_str()),
+            doc.get("sections").and_then(|v| v.as_array()),
+        ) else {
+            return err(StatusCode::BAD_REQUEST, SHAPE);
+        };
+        let sections: Vec<String> = list
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect();
+        let id = doc.get("id").and_then(|v| v.as_str());
+        let id = match api.roles.put(id, name, &sections) {
+            Ok(id) => id,
+            Err(e) => return error_response(e),
+        };
+        let presets = api.roles.all();
+        if let Some(preset) = presets.get(&id) {
+            if let Err(e) = regroup(&api, &id, &crate::roles::preset_groups(&id, preset)) {
+                return error_response(e);
+            }
+            api.moderation.note(
+                crate::login::now(),
+                who.audit_name(),
+                "role saved",
+                None,
+                &preset.name,
+            );
+        }
+        HttpResponse::Ok().json(serde_json::json!({ "id": id, "roles": presets_json(&presets) }))
+    })
+}
+
+/// `POST /api/roles/remove`: `{"id"}`. Everyone who held the role keeps
+/// only their own account.
+async fn post_roles_remove(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded_as(&api, &req, "/api/roles/remove", true, |who| {
+        if !api.people.headers {
+            return not_standalone();
+        }
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        let Some(id) = doc.get("id").and_then(|v| v.as_str()) else {
+            return err(
+                StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"id": "..."}"#,
+            );
+        };
+        let Some(preset) = api.roles.all().remove(id) else {
+            return error_response(crate::people::Refused::Unknown(id.to_string()).into());
+        };
+        if let Err(e) = regroup(&api, id, &["losos-account".to_string()]) {
+            return error_response(e);
+        }
+        if let Err(e) = api.roles.remove(id) {
+            return error_response(e);
+        }
+        api.moderation.note(
+            crate::login::now(),
+            who.audit_name(),
+            "role removed",
+            None,
+            &preset.name,
+        );
+        HttpResponse::Ok().json(serde_json::json!({ "roles": presets_json(&api.roles.all()) }))
+    })
+}
+
+/// `POST /api/reports`: `{"app", "ref", "reason", "about"?, "note"?}` from
+/// anyone signed in. The report names the thing; it never carries it.
+async fn post_report(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    guarded_as(&api, &req, "/api/reports", true, |who| {
+        let Some(person) = who.person() else {
+            return err(
+                StatusCode::CONFLICT,
+                "the spare key is nobody; sign in with LosOS Login to report something",
+            );
+        };
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        let new = match crate::moderation::parse_report(&doc) {
+            Ok(n) => n,
+            Err(e) => return error_response(e),
+        };
+        match api
+            .moderation
+            .report(&person.name, new, crate::login::now())
+        {
+            Ok(id) => HttpResponse::Ok().json(serde_json::json!({ "id": id })),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// The caller's role, for what they may do to whom. The spare key acts as
+/// an administrator.
+fn actor_role(who: &Principal) -> crate::roles::Role {
+    who.person().map_or(crate::roles::Role::Admin, |p| {
+        crate::roles::role_of(&p.groups).role
+    })
+}
+
+/// `name`'s entry, if the caller may moderate them, or the answer that
+/// says why not.
+fn moderated(
+    api: &Api,
+    who: &Principal,
+    name: &str,
+) -> Result<crate::people::Listed, Box<HttpResponse>> {
+    if !api.people.headers {
+        return Err(Box::new(not_standalone()));
+    }
+    let listed = match api.people.list() {
+        Ok(all) => all.into_iter().find(|p| p.name == name),
+        Err(e) => return Err(Box::new(error_response(e))),
+    };
+    let Some(listed) = listed else {
+        return Err(Box::new(error_response(
+            crate::people::Refused::Unknown(name.to_string()).into(),
+        )));
+    };
+    if who.person().is_some_and(|p| p.name == name) {
+        return Err(Box::new(err(
+            StatusCode::CONFLICT,
+            "you cannot mute or suspend yourself",
+        )));
+    }
+    let target = crate::roles::role_of(&listed.groups).role;
+    if !crate::roles::may_moderate(actor_role(who), target) {
+        return Err(Box::new(err(
+            StatusCode::FORBIDDEN,
+            "moderators act on members and guests; an administrator can help with the rest",
+        )));
+    }
+    Ok(listed)
+}
+
+/// `GET /api/moderation`: the reports, everyone with what holds them, and
+/// the newest lines of the log.
+async fn get_moderation(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded_as(&api, &req, "/api/moderation", false, |who| {
+        let now = crate::login::now();
+        let actor = actor_role(who);
+        let you = who.person().map(|p| p.name.clone());
+        let people = if api.people.headers {
+            api.people.list().unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        let profiles = api.profiles.all().unwrap_or_default();
+        let presets = api.roles.all();
+        let holds = api.moderation.holds();
+        let people: Vec<serde_json::Value> = people
+            .into_iter()
+            .map(|p| {
+                let profile = profiles.get(&p.name).cloned().unwrap_or_default();
+                let mut row = crate::profiles::render(&p, &profile);
+                let standing = crate::roles::role_of(&p.groups);
+                row["roleName"] = serde_json::json!(standing
+                    .custom
+                    .and_then(|id| presets.get(&id).map(|r| r.name.clone())));
+                let held = holds.get(&p.name).cloned().unwrap_or_default();
+                row["muted"] = serde_json::json!(held
+                    .muted
+                    .filter(|_| api.moderation.muted(&p.name, now).is_some()));
+                row["suspended"] = serde_json::json!(held.suspended);
+                row["disabled"] = serde_json::json!(p.disabled);
+                row["actionable"] = serde_json::json!(
+                    you.as_deref() != Some(p.name.as_str())
+                        && crate::roles::may_moderate(actor, standing.role)
+                );
+                row
+            })
+            .collect();
+        HttpResponse::Ok().json(serde_json::json!({
+            "standalone": api.people.headers,
+            "you": you,
+            "admin": who.is_admin(),
+            "hides": if api.chat.live() {
+                serde_json::json!(["mail", "chat", "profile"])
+            } else {
+                serde_json::json!(["mail", "profile"])
+            },
+            "reports": api.moderation.reports(),
+            "people": people,
+            "log": api.moderation.log(crate::moderation::LOG_SHOWN),
+        }))
+    })
+}
+
+/// `POST /api/moderation/reports/{id}`: `{"action": "hide" | "release" |
+/// "dismiss" | "resolve"}`. Hiding holds a mail in the recipient's
+/// Quarantine, redacts a chat message as its sender, or takes a picture
+/// down, without anything of it reaching the moderator.
+async fn post_moderation_report(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    path: web::Path<String>,
+    body: web::Bytes,
+) -> HttpResponse {
+    use crate::moderation::{Act, App};
+    guarded_as(&api, &req, "/api/moderation/reports", true, |who| {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        let Some(act) = doc
+            .get("action")
+            .and_then(|v| v.as_str())
+            .and_then(Act::parse)
+        else {
+            return err(
+                StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"action": "hide|release|dismiss|resolve"}"#,
+            );
+        };
+        let Some(report) = api.moderation.find(&path) else {
+            return err(StatusCode::NOT_FOUND, "no such report");
+        };
+        if let Err(r) = crate::moderation::check_act(&report, act) {
+            return error_response(r.into());
+        }
+        match (report.app, act) {
+            (App::Mail, Act::Hide | Act::Release) => {
+                let Ok(Some(owner)) = api.people.get(&report.by) else {
+                    return err(
+                        StatusCode::CONFLICT,
+                        "the person who reported it has no account on this box now",
+                    );
+                };
+                let hold = act == Act::Hide;
+                let moved = if hold {
+                    api.mail.hold(&owner, &report.reference)
+                } else {
+                    api.mail.release(&owner, &report.reference)
+                };
+                if let Err(r) = moved {
+                    return mail_refused(&r);
+                }
+                if let Err(e) = api
+                    .moderation
+                    .hold_mail(&owner.name, &report.reference, hold)
+                {
+                    return error_response(e);
+                }
+            }
+            (App::Chat, Act::Hide) => {
+                let Some((room, event)) = crate::chat::event_ref(&report.reference) else {
+                    return err(
+                        StatusCode::CONFLICT,
+                        "the report does not say which room the message is in",
+                    );
+                };
+                let Some(about) = report.about.as_deref() else {
+                    return err(
+                        StatusCode::CONFLICT,
+                        "the message is from someone on another box; leave the room or ask its admins",
+                    );
+                };
+                if let Err(resp) = moderated(&api, who, about) {
+                    return *resp;
+                }
+                if let Err(e) = api.chat.redact(about, room, event, "Hidden by a moderator") {
+                    return chat_refused(&e);
+                }
+            }
+            (App::Profile, Act::Hide) => {
+                let Some(about) = report.about.as_deref() else {
+                    return err(StatusCode::CONFLICT, "the report names nobody's profile");
+                };
+                let Some(kind) = crate::profiles::Kind::parse(&report.reference) else {
+                    return err(
+                        StatusCode::CONFLICT,
+                        "a picture or a banner can be taken down; the rest of a profile is its owner's",
+                    );
+                };
+                if let Err(resp) = moderated(&api, who, about) {
+                    return *resp;
+                }
+                if let Err(e) = api.profiles.remove_image(about, kind) {
+                    return error_response(e);
+                }
+            }
+            _ => {}
+        }
+        match api
+            .moderation
+            .settle(&report.id, act, who.audit_name(), crate::login::now())
+        {
+            Ok(done) => HttpResponse::Ok().json(done),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// A hold's `minutes` (absent or null: until lifted) and `reason`.
+fn hold_of(doc: &serde_json::Value, by: &str, now: u64) -> Result<crate::moderation::Hold, String> {
+    /// A year, the longest a hold runs by itself.
+    const MAX_MINUTES: u64 = 366 * 24 * 60;
+    let until = match doc.get("minutes") {
+        None | Some(serde_json::Value::Null) => None,
+        Some(v) => match v.as_u64() {
+            Some(m) if (1..=MAX_MINUTES).contains(&m) => Some(now + m * 60),
+            _ => {
+                return Err(format!(
+                    "minutes is 1 to {MAX_MINUTES}, or null until lifted"
+                ))
+            }
+        },
+    };
+    Ok(crate::moderation::Hold {
+        at: now,
+        by: by.to_string(),
+        until,
+        reason: crate::moderation::clean_reason(
+            doc.get("reason").and_then(|v| v.as_str()).unwrap_or(""),
+        ),
+    })
+}
+
+/// The `name` of a moderation request, the person it names, and the body.
+fn moderation_target(
+    api: &Api,
+    who: &Principal,
+    body: &[u8],
+) -> Result<(String, serde_json::Value), Box<HttpResponse>> {
+    let Some((name, doc)) = named(body) else {
+        return Err(Box::new(err(
+            StatusCode::BAD_REQUEST,
+            r#"body must be JSON: {"name": "...", "minutes"?: n, "reason"?: "..."}"#,
+        )));
+    };
+    moderated(api, who, &name)?;
+    Ok((name, doc))
+}
+
+/// `POST /api/moderation/mute`: `{"name", "minutes"?, "reason"?}`. They
+/// keep reading; they cannot send mail or change their profile.
+async fn post_moderation_mute(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded_as(&api, &req, "/api/moderation/mute", true, |who| {
+        let (name, doc) = match moderation_target(&api, who, &body) {
+            Ok(t) => t,
+            Err(resp) => return *resp,
+        };
+        let hold = match hold_of(&doc, who.audit_name(), crate::login::now()) {
+            Ok(h) => h,
+            Err(e) => return err(StatusCode::BAD_REQUEST, &e),
+        };
+        match api.moderation.mute(&name, hold.clone()) {
+            Ok(()) => HttpResponse::Ok().json(serde_json::json!({ "name": name, "muted": hold })),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// `POST /api/moderation/unmute`: `{"name"}`.
+async fn post_moderation_unmute(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded_as(&api, &req, "/api/moderation/unmute", true, |who| {
+        let (name, _) = match moderation_target(&api, who, &body) {
+            Ok(t) => t,
+            Err(resp) => return *resp,
+        };
+        match api
+            .moderation
+            .unmute(&name, who.audit_name(), crate::login::now())
+        {
+            Ok(()) => HttpResponse::Ok().json(serde_json::json!({ "name": name, "muted": null })),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// `POST /api/moderation/suspend`: `{"name", "minutes"?, "reason"?}`. LosOS
+/// Login stops letting them in at their next click; nothing of theirs is
+/// deleted.
+async fn post_moderation_suspend(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded_as(&api, &req, "/api/moderation/suspend", true, |who| {
+        let (name, doc) = match moderation_target(&api, who, &body) {
+            Ok(t) => t,
+            Err(resp) => return *resp,
+        };
+        let hold = match hold_of(&doc, who.audit_name(), crate::login::now()) {
+            Ok(h) => h,
+            Err(e) => return err(StatusCode::BAD_REQUEST, &e),
+        };
+        let by = who.person().map(|p| p.name.as_str());
+        if let Err(e) = api.people.set_disabled(&name, true, by) {
+            return error_response(e);
+        }
+        match api.moderation.suspend(&name, hold.clone()) {
+            Ok(()) => {
+                HttpResponse::Ok().json(serde_json::json!({ "name": name, "suspended": hold }))
+            }
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// `POST /api/moderation/unsuspend`: `{"name"}`.
+async fn post_moderation_unsuspend(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded_as(&api, &req, "/api/moderation/unsuspend", true, |who| {
+        let (name, _) = match moderation_target(&api, who, &body) {
+            Ok(t) => t,
+            Err(resp) => return *resp,
+        };
+        if let Err(e) = api.people.set_disabled(&name, false, None) {
+            return error_response(e);
+        }
+        match api
+            .moderation
+            .unsuspend(&name, who.audit_name(), crate::login::now())
+        {
+            Ok(()) => {
+                HttpResponse::Ok().json(serde_json::json!({ "name": name, "suspended": null }))
+            }
             Err(e) => error_response(e),
         }
     })
@@ -1822,6 +2650,212 @@ async fn post_chat_session(
     }
 }
 
+/// `POST /api/chat/openid`: a Matrix OpenID token for the person LosOS Login
+/// signed in, for another box to learn their chat address from
+/// (`crate::chat::Chat::openid`). The chat page's "tell that box who you
+/// are" asks for it; never the spare key or the edge.
+async fn post_chat_openid(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    let person = match chat_person(&api, &req, "/api/chat/openid", true) {
+        Ok(p) => p,
+        Err(refused) => return *refused,
+    };
+    let api = api.clone();
+    match web::block(move || api.chat.openid(&person)).await {
+        Ok(Ok(token)) => HttpResponse::Ok()
+            .insert_header(("Cache-Control", "no-store"))
+            .json(token),
+        Ok(Err(e)) => chat_refused(&e),
+        Err(_) => HttpResponse::ServiceUnavailable().finish(),
+    }
+}
+
+/// `POST /api/chat/git-room` `{"owner": "...", "repo": "..."}`: give a
+/// LosOS Git repository a chat room (`crate::git_rooms`). Only an
+/// administrator of the repository, asked of LosOS Git as that person. A
+/// repository that has its room gets the same one back.
+async fn post_chat_git_room(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    let person = match chat_person(&api, &req, "/api/chat/git-room", true) {
+        Ok(p) => p,
+        Err(refused) => return *refused,
+    };
+    let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+    let field = |k: &str| {
+        doc.get(k)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    };
+    let (owner, repo) = (field("owner"), field("repo"));
+    if !crate::git_rooms::plain_name(&owner) || !crate::git_rooms::plain_name(&repo) {
+        return err(
+            StatusCode::BAD_REQUEST,
+            r#"body must be JSON: {"owner": "...", "repo": "..."}"#,
+        );
+    }
+    if !api.chat.live() {
+        return chat_refused(&crate::chat::ChatError::Off);
+    }
+    let api = api.clone();
+    let made = web::block(move || git_room(&api, &person, &owner, &repo)).await;
+    match made {
+        Ok(Ok(room)) => HttpResponse::Ok().json(serde_json::json!({ "room": room })),
+        Ok(Err((status, message))) => err(status, &message),
+        Err(_) => HttpResponse::ServiceUnavailable().finish(),
+    }
+}
+
+fn git_room(
+    api: &Api,
+    person: &crate::people::Person,
+    owner: &str,
+    repo: &str,
+) -> Result<String, (StatusCode, String)> {
+    use crate::config_repo::{classify, Answer, GitOp};
+    use crate::losos::Losos;
+    let login = if person.groups.iter().any(|g| g == crate::people::OWNER) {
+        crate::app_names::OWNER_ACCOUNT.to_string()
+    } else {
+        person.name.clone()
+    };
+    let not_up = |e: anyhow::Error| {
+        tracing::warn!(error = ?e, "LosOS Git for a chat room");
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "LosOS Git is not answering; try again in a moment.".to_string(),
+        )
+    };
+    let mut backend = api.backend.clone();
+    let (status, body) = backend
+        .git_request(&GitOp::RepoAs {
+            login: login.clone(),
+            owner: owner.to_string(),
+            name: repo.to_string(),
+        })
+        .map_err(not_up)?;
+    let doc = match classify(status, &body) {
+        Answer::Ok(doc) => doc,
+        Answer::Missing => {
+            return Err((StatusCode::NOT_FOUND, "No such repository.".to_string()));
+        }
+        Answer::Exists | Answer::Refused { .. } => {
+            return Err((
+                StatusCode::BAD_GATEWAY,
+                format!("LosOS Git answered {status}."),
+            ));
+        }
+    };
+    if doc["permissions"]["admin"] != serde_json::json!(true) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Only an administrator of the repository can give it a chat room.".to_string(),
+        ));
+    }
+    let linked = doc["chat_room"].as_str().unwrap_or("");
+    let room = match api.git_rooms.get(owner, repo) {
+        Some(room) if room == linked => return Ok(room),
+        // Made before, unlinked since: link the same room again.
+        Some(room) => room,
+        None => {
+            let server = api.chat.server_name().unwrap_or_default();
+            let made = api.chat.git_room(
+                person,
+                &crate::chat::RepoRoom {
+                    name: repo.to_string(),
+                    url: format!("https://{server}/git/{owner}/{repo}"),
+                    public: doc["visibility"] == "public",
+                },
+            );
+            let room = made.map_err(|e| {
+                (
+                    StatusCode::from_u16(e.status()).unwrap_or(StatusCode::BAD_GATEWAY),
+                    e.to_string(),
+                )
+            })?;
+            api.git_rooms.set(owner, repo, &room).map_err(|e| {
+                tracing::warn!(error = ?e, "the chat room of a repository was not kept");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "The room was made but could not be kept.".to_string(),
+                )
+            })?;
+            room
+        }
+    };
+    let (status, body) = backend
+        .git_request(&GitOp::SetChatRoom {
+            login,
+            owner: owner.to_string(),
+            name: repo.to_string(),
+            room: room.clone(),
+        })
+        .map_err(not_up)?;
+    match classify(status, &body) {
+        Answer::Ok(_) => Ok(room),
+        _ => Err((
+            StatusCode::BAD_GATEWAY,
+            format!("LosOS Git would not link the room ({status})."),
+        )),
+    }
+}
+
+/// Take LosOS Git's events and post those of a repository with a room
+/// there (`crate::git_rooms`). Only where chat runs and `modules/chat.nix`
+/// names the socket.
+fn listen_for_git_events(api: &web::Data<Api>) {
+    let Some(path) = std::env::var_os("LOSOS_GIT_CHAT_EVENTS_SOCKET") else {
+        return;
+    };
+    if !api.chat.live() {
+        return;
+    }
+    let api = api.clone();
+    let started = crate::git_rooms::listen(std::path::Path::new(&path), move |event| {
+        git_event(&api, &event);
+    });
+    if let Err(e) = started {
+        tracing::warn!(error = ?e, "LosOS Git's events will not reach chat rooms");
+    }
+}
+
+fn git_event(api: &Api, event: &serde_json::Value) {
+    let text = |k: &str| {
+        event
+            .get(k)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+    };
+    let room = text("chatRoom");
+    if room.is_empty() || api.git_rooms.get(text("owner"), text("repo")).as_deref() != Some(room) {
+        return;
+    }
+    let Some(server) = api.chat.server_name() else {
+        return;
+    };
+    let owner = api
+        .people
+        .list()
+        .ok()
+        .and_then(|all| {
+            all.into_iter()
+                .find(|p| p.groups.iter().any(|g| g == crate::people::OWNER))
+        })
+        .map(|p| format!("@{}:{server}", p.name))
+        .unwrap_or_default();
+    let who = |login: &str| {
+        crate::git_rooms::address(login, server, crate::app_names::OWNER_ACCOUNT, &owner)
+    };
+    let Some(notice) = crate::git_rooms::notice(event, &format!("https://{server}"), &who) else {
+        return;
+    };
+    if let Err(e) = api.chat.git_notice(room, &notice) {
+        tracing::warn!(error = %e, room, "a LosOS Git notice was not posted");
+    }
+}
+
 /// `GET /internal/chat/authz`: nginx's question before every request to the
 /// homeserver's client and media APIs. 200 goes on, 401 is "sign in with
 /// LosOS Login", 403 is "not yours". nginx alone asks it (`modules/chat.nix`).
@@ -1840,8 +2874,13 @@ async fn get_chat_authz(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     };
     let token = crate::chat::token_of(header("authorization").as_deref(), &asked.original_url);
     let api = api.clone();
-    let verdict =
-        web::block(move || api.chat.authorize(&api.people, &asked, token.as_deref())).await;
+    let verdict = web::block(move || {
+        let now = crate::login::now();
+        let muted = |name: &str| api.moderation.muted(name, now).is_some();
+        api.chat
+            .authorize(&api.people, &asked, token.as_deref(), &muted)
+    })
+    .await;
     match verdict {
         Ok(Ok(crate::chat::Verdict::Allow)) => HttpResponse::Ok().finish(),
         Ok(Ok(crate::chat::Verdict::SignIn)) => HttpResponse::Unauthorized().finish(),
@@ -1892,6 +2931,92 @@ async fn get_chat_threads(
     }
 }
 
+// ── LosOS Contacts' people pickers (crate::contacts) ──────────────────────
+//
+// The book is LosOS Cloud's (`/cloud/api/contacts/`, crate::cloud::contacts);
+// lososd answers only the pickers, which also offer the people on the box.
+// `signed-in` in sections.json: the spare key and the edge have no book.
+
+/// Everyone on this box, as people pickers offer them: their chat ID where
+/// chat runs, their address where mail does.
+fn contacts_neighbours(api: &Api) -> Vec<crate::contacts::Neighbour> {
+    let Ok(everyone) = api.people.list() else {
+        return Vec::new();
+    };
+    let chat = api.chat.live();
+    everyone
+        .into_iter()
+        .filter(|p| !p.disabled && !p.groups.iter().any(|g| g == crate::people::LOCKED))
+        .map(|p| {
+            let shown = crate::profiles::render(&p, &api.profiles.get(&p.name).unwrap_or_default());
+            crate::contacts::Neighbour {
+                email: api.mail.address(&p.name),
+                picture: shown["picture"].as_str().map(str::to_string),
+                matrix_id: chat.then(|| api.chat.user_id(&p.name).ok()).flatten(),
+                display_name: p.display_name,
+                name: p.name,
+            }
+        })
+        .collect()
+}
+
+/// `GET /api/contacts/suggest?q=&want=any|email|matrix|mesh|box&limit=8`:
+/// the people a picker offers, the caller's contacts (from LosOS Cloud)
+/// and the people on this box, best match first. `{"contacts": [...]}`.
+async fn get_contacts_suggest(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    let mut person = None;
+    let refused = guarded_as(
+        &api,
+        &req,
+        "/api/contacts/suggest",
+        false,
+        |who| match who.person() {
+            Some(p) => {
+                person = Some(p.clone());
+                HttpResponse::Ok().finish()
+            }
+            None => err(
+                StatusCode::FORBIDDEN,
+                "sign in with LosOS Login to use your contacts",
+            ),
+        },
+    );
+    let Some(person) = person else {
+        return refused;
+    };
+    let q = query_map(&req);
+    let text = q.get("q").cloned().unwrap_or_default();
+    let want = crate::cloud::contacts::Want::parse(q.get("want").map_or("", String::as_str));
+    let limit = q
+        .get("limit")
+        .and_then(|l| l.parse::<usize>().ok())
+        .unwrap_or(8);
+    let worker = api.clone();
+    let found = web::block(move || {
+        let book = if worker.contacts {
+            // The owner's LosOS Cloud account is the owner's own
+            // (`modules/app-sign-in.nix`); everyone else's is their name.
+            let login = if person.groups.iter().any(|g| g == crate::people::OWNER) {
+                crate::app_names::OWNER_ACCOUNT.to_string()
+            } else {
+                person.name.clone()
+            };
+            crate::contacts::book_matches(&mut worker.backend.clone(), &login, &text, want)
+        } else {
+            crate::cloud::contacts::Matches::default()
+        };
+        let neighbours = contacts_neighbours(&worker);
+        crate::contacts::suggest(book, &neighbours, &person.name, &text, want, limit)
+    })
+    .await;
+    match found {
+        Ok(found) => HttpResponse::Ok()
+            .insert_header(("Cache-Control", "no-store"))
+            .json(serde_json::json!({ "contacts": found })),
+        Err(_) => HttpResponse::ServiceUnavailable().finish(),
+    }
+}
+
 async fn health() -> HttpResponse {
     HttpResponse::Ok().json(serde_json::json!({ "ok": true }))
 }
@@ -1908,6 +3033,60 @@ async fn get_settings(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
 
 async fn get_status(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     guarded(&api, &req, "/api/status", false, || run(&api, cmd_status))
+}
+
+async fn get_updates(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/updates", false, || {
+        let result = Command::new("systemd-sysupdate")
+            .args(["--no-pager", "--definitions=/etc/sysupdate.d", "list"])
+            .output();
+        match result {
+            Ok(output) if output.status.success() => HttpResponse::Ok().json(serde_json::json!({
+                "output": String::from_utf8_lossy(&output.stdout).trim()
+            })),
+            Ok(output) => err(
+                StatusCode::SERVICE_UNAVAILABLE,
+                &format!(
+                    "systemd-sysupdate list failed: {}",
+                    String::from_utf8_lossy(&output.stderr).trim()
+                ),
+            ),
+            Err(error) => err(
+                StatusCode::SERVICE_UNAVAILABLE,
+                &format!("could not run systemd-sysupdate: {error}"),
+            ),
+        }
+    })
+}
+
+/// Explicitly start the supervised system update service. It stages updates on
+/// /persist and may restart lososd while nixos-rebuild activates the result.
+async fn post_updates_check(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(
+        &api,
+        &req,
+        "/api/updates/check",
+        true,
+        || match Command::new("systemctl")
+            .args(["start", "--no-block", "losos-sysupdate.service"])
+            .output()
+        {
+            Ok(output) if output.status.success() => {
+                HttpResponse::Accepted().json(serde_json::json!({ "started": true }))
+            }
+            Ok(output) => err(
+                StatusCode::SERVICE_UNAVAILABLE,
+                &format!(
+                    "could not start sysupdate: {}",
+                    String::from_utf8_lossy(&output.stderr).trim()
+                ),
+            ),
+            Err(error) => err(
+                StatusCode::SERVICE_UNAVAILABLE,
+                &format!("could not start sysupdate: {error}"),
+            ),
+        },
+    )
 }
 
 /// What the daemon found when it last looked for an edge proxy.
@@ -2904,13 +4083,29 @@ async fn relayed(
     mutating: bool,
     work: impl FnOnce(&mut IoLosos) -> anyhow::Result<serde_json::Value> + Send + 'static,
 ) -> HttpResponse {
+    relayed_then(api, req, route, mutating, work, |_, _, _| {}).await
+}
+
+/// [`relayed`], with `then` shown the caller and the edge's answer before
+/// it goes back.
+async fn relayed_then(
+    api: &web::Data<Api>,
+    req: &HttpRequest,
+    route: &str,
+    mutating: bool,
+    work: impl FnOnce(&mut IoLosos) -> anyhow::Result<serde_json::Value> + Send + 'static,
+    then: impl FnOnce(&Api, &Principal, &serde_json::Value),
+) -> HttpResponse {
     let who = match gate_at(api, req, route, None, mutating) {
         Ok(who) => who,
         Err(refused) => return *refused,
     };
     let worker = api.clone();
     let resp = match web::block(move || work(&mut worker.backend.clone())).await {
-        Ok(Ok(v)) => HttpResponse::Ok().json(v),
+        Ok(Ok(v)) => {
+            then(api, &who, &v);
+            HttpResponse::Ok().json(v)
+        }
         Ok(Err(e)) => error_response(e),
         Err(e) => {
             tracing::error!(error = %e, "the edge call did not finish");
@@ -3097,33 +4292,79 @@ async fn post_market_coin_pay(
 }
 
 /// `POST /api/market/onramp` — `{"address","euros"}`: a Binance order for
-/// USDC on Base to this box's wallet, with Binance's checkout link.
+/// USDC on Base to this box's wallet, with Binance's checkout link. The
+/// order is noted against the person who started it, so a finished
+/// purchase can mark them as an adult (`crate::pictures`).
 async fn post_market_onramp(
     api: web::Data<Api>,
     req: HttpRequest,
     body: web::Bytes,
 ) -> HttpResponse {
-    post_market(api, req, body, "/api/market/onramp", |d| {
-        Some(crate::market::Op::Onramp {
-            address: field_str(d, "address")?,
-            euros: field_str(d, "euros")?,
-        })
-    })
+    let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+    let (Some(address), Some(euros)) = (field_str(&doc, "address"), field_str(&doc, "euros"))
+    else {
+        return post_market(api, req, body, "/api/market/onramp", |_| None).await;
+    };
+    let op = crate::market::Op::Onramp { address, euros };
+    relayed_then(
+        &api,
+        &req,
+        "/api/market/onramp",
+        true,
+        move |b| crate::losos::cmd_market_op(b, &op),
+        |api, who, order| {
+            let (Some(person), Some(id)) = (who.person(), order_id_of(order)) else {
+                return;
+            };
+            if let Err(e) = api.pictures.order_started(&person.name, id) {
+                tracing::warn!(error = ?e, "a Binance order was not noted for the adult mark");
+            }
+        },
+    )
     .await
 }
 
 /// `POST /api/market/onramp/status` — `{"order_id"}`: where that order is.
+/// A finished purchase marks whoever started it as an adult.
 async fn post_market_onramp_status(
     api: web::Data<Api>,
     req: HttpRequest,
     body: web::Bytes,
 ) -> HttpResponse {
-    post_market(api, req, body, "/api/market/onramp/status", |d| {
-        Some(crate::market::Op::OnrampStatus {
-            order_id: field_str(d, "order_id")?,
-        })
-    })
+    let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+    let Some(order_id) = field_str(&doc, "order_id") else {
+        return post_market(api, req, body, "/api/market/onramp/status", |_| None).await;
+    };
+    let op = crate::market::Op::OnrampStatus { order_id };
+    relayed_then(
+        &api,
+        &req,
+        "/api/market/onramp/status",
+        true,
+        move |b| crate::losos::cmd_market_op(b, &op),
+        |api, _, order| {
+            let (Some(id), Some(stage)) = (
+                order_id_of(order),
+                order.get("stage").and_then(serde_json::Value::as_str),
+            ) else {
+                return;
+            };
+            match api.pictures.order_stage(id, stage) {
+                Ok(Some(name)) => tracing::info!(person = %name, "marked as an adult by a finished Binance purchase"),
+                Ok(None) => {}
+                Err(e) => tracing::warn!(error = ?e, "a finished Binance order did not reach the adult mark"),
+            }
+        },
+    )
     .await
+}
+
+/// The order ID in the edge's answer about a Binance order, when it is one.
+fn order_id_of(order: &serde_json::Value) -> Option<&str> {
+    order
+        .get("order_id")
+        .and_then(serde_json::Value::as_str)
+        .filter(|id| id.len() == 32 && id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')))
 }
 
 async fn post_market_rpc(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
@@ -3406,6 +4647,14 @@ async fn delete_builder_build(
 /// `allow-popups` is for.
 pub const MAIL_FRAME_CSP: &str = "sandbox allow-popups allow-popups-to-escape-sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; frame-ancestors 'self'; base-uri 'none'; form-action 'none'";
 
+/// [`MAIL_FRAME_CSP`] for a message whose pictures stay hidden: no picture
+/// of any kind loads, in an `<img>` or in its CSS (`crate::pictures`).
+pub const MAIL_FRAME_CSP_NO_PICTURES: &str = "sandbox allow-popups allow-popups-to-escape-sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src 'none'; font-src data:; frame-ancestors 'self'; base-uri 'none'; form-action 'none'";
+
+/// Drawn where a hidden picture would be, so the layout keeps its holes
+/// instead of broken-image icons.
+const MAIL_HIDDEN_PICTURE_STYLE: &str = "<style>img{color:transparent;background:repeating-linear-gradient(45deg,#8881 0 8px,#8882 8px 16px);min-width:24px;min-height:24px}</style>";
+
 fn mail_refused(r: &crate::mail::Refused) -> HttpResponse {
     err(
         StatusCode::from_u16(r.status).unwrap_or(StatusCode::BAD_GATEWAY),
@@ -3439,6 +4688,25 @@ fn mail_person<'a>(
             "the spare key has no mailbox; sign in with LosOS Login to read mail",
         ))),
     }
+}
+
+/// The answer for a message a moderator holds (`crate::moderation`): it
+/// neither opens nor moves until they let it go. Deleting it is the
+/// person's own choice and stays open.
+fn not_held<'a>(
+    api: &Api,
+    person: &'a crate::people::Person,
+    id: &str,
+) -> Result<&'a crate::people::Person, Box<HttpResponse>> {
+    if api.moderation.is_held(&person.name, id) {
+        return Err(Box::new(HttpResponse::Forbidden().json(
+            serde_json::json!({
+                "error": "a moderator is holding this message",
+                "held": true,
+            }),
+        )));
+    }
+    Ok(person)
 }
 
 /// `GET /api/mail` — the person's address, their folders, and the people
@@ -3506,14 +4774,16 @@ async fn get_mail_message(
         &req,
         "/api/mail/messages",
         false,
-        |who| match mail_person(&api, who).map(|p| {
-            let by_person = !matches!(who, Principal::Companion(_));
-            let m = api.mail.message(p, &path, by_person);
-            if let (Ok(m), Some(keys), true) = (&m, &api.mail_keys, by_person) {
-                learn_autocrypt(&api, keys, p, m);
-            }
-            m
-        }) {
+        |who| match mail_person(&api, who)
+            .and_then(|p| not_held(&api, p, &path))
+            .map(|p| {
+                let by_person = !matches!(who, Principal::Companion(_));
+                let m = api.mail.message(p, &path, by_person);
+                if let (Ok(m), Some(keys), true) = (&m, &api.mail_keys, by_person) {
+                    learn_autocrypt(&api, keys, p, m);
+                }
+                m
+            }) {
             Ok(Ok(m)) => HttpResponse::Ok().json(m),
             Ok(Err(r)) => mail_refused(&r),
             Err(resp) => *resp,
@@ -3533,14 +4803,30 @@ async fn get_mail_html(
         &req,
         "/api/mail/messages/html",
         false,
-        |who| match mail_person(&api, who).map(|p| api.mail.html(p, &path)) {
-            Ok(Ok(html)) => HttpResponse::Ok()
-                .content_type("text/html; charset=utf-8")
-                .insert_header(("Content-Security-Policy", MAIL_FRAME_CSP))
-                .insert_header(("X-Content-Type-Options", "nosniff"))
-                .insert_header(("Referrer-Policy", "no-referrer"))
-                .insert_header(("Cache-Control", "private, no-store"))
-                .body(html),
+        |who| match mail_person(&api, who)
+            .and_then(|p| not_held(&api, p, &path))
+            .map(|p| api.mail.html(p, &path))
+        {
+            Ok(Ok(html)) => {
+                // `?pictures=1` once the person chose to see them; hidden
+                // otherwise, whatever the message says.
+                let shown = query_map(&req).get("pictures").is_some_and(|v| v == "1");
+                let (csp, html) = if shown {
+                    (MAIL_FRAME_CSP, html)
+                } else {
+                    (
+                        MAIL_FRAME_CSP_NO_PICTURES,
+                        format!("{MAIL_HIDDEN_PICTURE_STYLE}{html}"),
+                    )
+                };
+                HttpResponse::Ok()
+                    .content_type("text/html; charset=utf-8")
+                    .insert_header(("Content-Security-Policy", csp))
+                    .insert_header(("X-Content-Type-Options", "nosniff"))
+                    .insert_header(("Referrer-Policy", "no-referrer"))
+                    .insert_header(("Cache-Control", "private, no-store"))
+                    .body(html)
+            }
             Ok(Err(r)) => mail_refused(&r),
             Err(resp) => *resp,
         },
@@ -3557,6 +4843,7 @@ async fn post_mail_message(
     guarded_as(&api, &req, "/api/mail/messages", true, |who| {
         let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
         let done = mail_person(&api, who)
+            .and_then(|p| not_held(&api, p, &path))
             .map(|p| crate::mail::parse_change(&doc).and_then(|c| api.mail.change(p, &path, &c)));
         match done {
             Ok(Ok(())) => HttpResponse::Ok().json(serde_json::json!({ "ok": true })),
@@ -4862,6 +6149,8 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
             login,
             share: crate::cloud_share::Share::default(),
             chat: crate::chat::Chat::from_env(),
+            git_rooms: crate::git_rooms::Rooms::from_env(),
+            contacts: std::env::var("LOSOS_CLOUD_CONTACTS").is_ok_and(|v| v == "1"),
             mail: crate::mail::Mail::from_env(),
             mail_keys: crate::mail::Config::from_env().map(|c| {
                 let keys = crate::mail_pgp::Keys::from_env(&c.domain);
@@ -4870,6 +6159,9 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
             }),
             credentials: crate::credentials::Credentials::from_env(),
             profiles: crate::profiles::Profiles::from_env(),
+            roles: crate::roles::Presets::from_env(),
+            moderation: crate::moderation::Moderation::from_env(),
+            pictures: crate::pictures::Pictures::from_env(),
             image_jobs: tokio::sync::Semaphore::new(IMAGE_JOBS),
             plugins,
         });
@@ -4881,6 +6173,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
             .max(crate::profiles::MAX_UPLOAD_BYTES)
             .max(crate::mail::MAX_REQUEST);
         owner_in_owner_group(&api);
+        listen_for_git_events(&api);
         start_login_marks(api.clone());
         sync_names_later(api.clone(), None);
         let server = HttpServer::new(move || {
@@ -4922,6 +6215,8 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/state", web::get().to(get_state))
                 .route("/api/settings", web::get().to(get_settings))
                 .route("/api/status", web::get().to(get_status))
+                .route("/api/updates", web::get().to(get_updates))
+                .route("/api/updates/check", web::post().to(post_updates_check))
                 .route("/api/edge", web::get().to(get_edge))
                 .route("/api/edge/manage", web::post().to(post_edge_manage))
                 .route("/api/change", web::post().to(post_change))
@@ -4948,6 +6243,27 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/people/password", web::post().to(post_person_password))
                 .route("/api/people/remove", web::post().to(post_person_remove))
                 .route("/api/people/rules", web::post().to(post_people_rules))
+                .route("/api/roles", web::post().to(post_roles))
+                .route("/api/roles/remove", web::post().to(post_roles_remove))
+                .route("/api/reports", web::post().to(post_report))
+                .route("/api/moderation", web::get().to(get_moderation))
+                .route(
+                    "/api/moderation/reports/{id}",
+                    web::post().to(post_moderation_report),
+                )
+                .route("/api/moderation/mute", web::post().to(post_moderation_mute))
+                .route(
+                    "/api/moderation/unmute",
+                    web::post().to(post_moderation_unmute),
+                )
+                .route(
+                    "/api/moderation/suspend",
+                    web::post().to(post_moderation_suspend),
+                )
+                .route(
+                    "/api/moderation/unsuspend",
+                    web::post().to(post_moderation_unsuspend),
+                )
                 .route(
                     "/api/people/two-factor/reset",
                     web::post().to(post_person_factors_reset),
@@ -4958,6 +6274,11 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/windows", web::get().to(get_windows))
                 .route("/api/windows", web::post().to(post_windows))
                 .route("/api/account/profile", web::post().to(post_account_profile))
+                .route("/api/pictures", web::get().to(get_pictures))
+                .route("/api/pictures", web::post().to(post_pictures))
+                .route("/api/pictures/trust", web::post().to(post_pictures_trust))
+                .route("/api/pictures/sender", web::get().to(get_pictures_sender))
+                .route("/api/people/age", web::post().to(post_people_age))
                 .route("/api/account/picture", web::put().to(put_account_picture))
                 .route(
                     "/api/account/picture",
@@ -5102,6 +6423,9 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/chat", web::get().to(get_chat))
                 .route("/api/chat/session", web::post().to(post_chat_session))
                 .route("/api/chat/people", web::get().to(get_chat_people))
+                .route("/api/chat/openid", web::post().to(post_chat_openid))
+                .route("/api/chat/git-room", web::post().to(post_chat_git_room))
+                .route("/api/contacts/suggest", web::get().to(get_contacts_suggest))
                 .route("/internal/chat/authz", web::get().to(get_chat_authz))
                 .route(
                     "/internal/chat/threads/{room}",

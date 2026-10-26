@@ -5,9 +5,9 @@ export default defineMessages({
   "pins.title": { en: "Pinned", sk: "Pripnuté", de: "Angeheftet" },
   "pins.edit": { en: "Edit pins", sk: "Upraviť pripnuté", de: "Angeheftete bearbeiten" },
   "pins.empty": {
-    en: "Pin apps, files and repositories here.",
-    sk: "Sem si pripnite aplikácie, súbory a repozitáre.",
-    de: "Hefte hier Apps, Dateien und Repositorys an.",
+    en: "Pin apps, files, repositories and issues here.",
+    sk: "Sem si pripnite aplikácie, súbory, repozitáre a úlohy.",
+    de: "Hefte hier Apps, Dateien, Repositorys und Issues an.",
   },
   "pins.add": { en: "Add a pin", sk: "Pripnúť", de: "Etwas anheften" },
   "pins.pin": { en: "Pin {name}", sk: "Pripnúť {name}", de: "{name} anheften" },
@@ -48,6 +48,19 @@ export default defineMessages({
   "pins.tab.apps": { en: "Apps", sk: "Aplikácie", de: "Apps" },
   "pins.tab.files": { en: "Files", sk: "Súbory", de: "Dateien" },
   "pins.tab.repos": { en: "Repositories", sk: "Repozitáre", de: "Repositorys" },
+  "pins.tab.issues": { en: "Issues", sk: "Úlohy", de: "Issues" },
+  "pins.issues.search": { en: "Find an issue by its words or key", sk: "Nájsť úlohu podľa slov alebo kľúča", de: "Issue nach Wörtern oder Kürzel suchen" },
+  "pins.issues.none": {
+    en: "No open issue is given to you. Type to find any other.",
+    sk: "Nemáte pridelenú žiadnu otvorenú úlohu. Píšte a nájdete akúkoľvek inú.",
+    de: "Dir ist kein offenes Issue zugeteilt. Tipp, um ein anderes zu finden.",
+  },
+  "pins.issues.noMatch": { en: "No issue matches.", sk: "Žiadna úloha nezodpovedá.", de: "Kein Issue passt." },
+  "pins.issues.noGit": {
+    en: "Issues come from LosOS Git, which needs you signed in with your password.",
+    sk: "Úlohy prichádzajú z LosOS Git, ktorý potrebuje prihlásenie heslom.",
+    de: "Issues kommen aus LosOS Git, dafür musst du mit deinem Passwort angemeldet sein.",
+  },
 
   "pins.apps.overview": { en: "On the Overview", sk: "Na prehľade", de: "In der Übersicht" },
   "pins.apps.installed": {
