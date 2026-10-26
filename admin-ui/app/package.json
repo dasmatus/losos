@@ -42,7 +42,7 @@
     "dompurify": "3.4.17",
     "highlight.js": "11.11.1",
     "katex": "0.18.10",
-    "markdown-it": "14.3.3",
+    "markdown-it": "15.0.3",
     "markdown-it-footnote": "4.0.0",
     "matrix-js-sdk": "44.0.0",
     "onnxruntime-web": "1.30.0",
