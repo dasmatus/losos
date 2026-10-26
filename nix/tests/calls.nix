@@ -78,12 +78,44 @@ let
     withFirefox = false;
     withWebkit = false;
   };
-  fonts = pkgs.makeFontsConf {
-    fontDirectories = [
-      pkgs.dejavu_fonts
-      pkgs.noto-fonts-color-emoji
-    ];
-  };
+  # The build sandbox has no /etc/fonts/conf.d, so nothing tells fontconfig
+  # what the generic names are, and the app's system-ui stack drew in a
+  # serif. Name them here.
+  fonts = pkgs.writeText "calls-fonts.conf" ''
+    <?xml version="1.0"?>
+    <!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+    <fontconfig>
+      <include>${
+        pkgs.makeFontsConf {
+          fontDirectories = [
+            pkgs.dejavu_fonts
+            pkgs.noto-fonts-color-emoji
+          ];
+        }
+      }</include>
+      ${lib.concatMapStrings
+        (family: ''
+          <alias binding="same"><family>${family}</family><prefer><family>DejaVu Sans</family><family>Noto Color Emoji</family></prefer></alias>
+        '')
+        [
+          "system-ui"
+          "ui-sans-serif"
+          "sans-serif"
+          "sans"
+        ]
+      }
+      <alias binding="same"><family>serif</family><prefer><family>DejaVu Serif</family></prefer></alias>
+      ${lib.concatMapStrings
+        (family: ''
+          <alias binding="same"><family>${family}</family><prefer><family>DejaVu Sans Mono</family></prefer></alias>
+        '')
+        [
+          "ui-monospace"
+          "monospace"
+        ]
+      }
+    </fontconfig>
+  '';
   # Each person's camera: a drawn stand-in, a person in a room of their own
   # (calls-faces.py), with a slow drift so the picture moves like a webcam's,
   # looped by Chromium's fake device. A room behind the person is what the

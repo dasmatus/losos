@@ -12,12 +12,15 @@
  *   Contacts  /contacts?person=<sign-in name>   /contacts?id=<contact id>
  *   Cloud     /cloud/files?fileid=<id>          the file in its folder
  *             /cloud/open/<id>                  the file in the app that edits it
+ *   Issues    /git/issues?new=1&title=…&body=…&into=<project key>
+ *             /git/issues/<key>                 one issue
  *
  * A link into Mail, Chat or Contacts is only drawn while that app is live
  * for the person (`sharedApp`): those run on the shared side alone, and a
  * button that can only lead to a 404 is not offered. */
 
 import { sharedApp } from "@/lib/api";
+import { probeCode } from "@/lib/apps";
 
 /** What Mail's composer opens with. */
 export interface MailIntent {
@@ -104,6 +107,51 @@ export function cloudFileHref(id: number): string {
  *  folder. LosOS Cloud's page decides, from the openers registered there. */
 export function openFileHref(id: number): string {
   return `/cloud/open/${id}`;
+}
+
+/** `/git/issues?new=1&…`: LosOS Git's tracker with a new issue started,
+ *  its title and description filled in, in project `into` when that is
+ *  one the person may write to. */
+export function newIssueHref(draft: { title?: string; body?: string; into?: string }): string {
+  const q = new URLSearchParams({ new: "1" });
+  if (draft.title !== undefined && draft.title.trim() !== "") q.set("title", draft.title.trim().slice(0, 200));
+  if (draft.body !== undefined && draft.body !== "") q.set("body", draft.body.slice(0, 4000));
+  if (draft.into !== undefined && draft.into !== "") q.set("into", draft.into);
+  return `/git/issues?${q.toString()}`;
+}
+
+/** A title for an issue made of picked text: its first line, cut short. */
+export function issueTitleFrom(text: string): string {
+  const line = text.trim().split("\n")[0]?.trim() ?? "";
+  return line.length > 80 ? `${line.slice(0, 79).trimEnd()}…` : line;
+}
+
+/** Picked text as a Markdown quote, cut short, with where it came from. */
+export function quotedFrom(text: string, from: string): string {
+  const cut = text.trim().length > 1500 ? `${text.trim().slice(0, 1499).trimEnd()}…` : text.trim();
+  const quote = cut
+    .split("\n")
+    .map((line) => `> ${line}`.trimEnd())
+    .join("\n");
+  return from === "" ? quote : `${quote}\n\n${from}`;
+}
+
+let git: "unknown" | "absent" | "present" = "unknown";
+let asked = false;
+
+/** Whether this box runs LosOS Git, for "Make an issue": asked once a page,
+ *  and offered until the box has said no. */
+export function canMakeIssue(): boolean {
+  if (!asked) {
+    asked = true;
+    void probeCode().then(
+      (answer) => {
+        git = answer;
+      },
+      () => {},
+    );
+  }
+  return git !== "absent";
 }
 
 /** Whether a link into this app may be drawn now. */

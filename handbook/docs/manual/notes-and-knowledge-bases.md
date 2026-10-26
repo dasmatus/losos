@@ -54,7 +54,8 @@ the note. Tick a task box and the note is saved with the box ticked.
 - **Edit** opens the note in the editor people type in together (see
   [Sharing and editing together](sharing-and-editing-together)), with the
   note drawn beside the text on a wide screen. Type `[[` to pick a note to
-  link.
+  link. Select words, in the editor or while reading, for
+  [a bar of actions](admin-pages#the-bar-over-a-selection) above them.
 - **Mind map** draws the note's headings and the lists under them as
   branches. Click a heading's branch to read that part.
 - **Graph of all notes**, above the notes, shows every note in the folder

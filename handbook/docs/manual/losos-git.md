@@ -6,6 +6,9 @@ slug: /manual/losos-git
 
 # LosOS Git
 
+
+![LosOS Git's repositories.](../img/apps-site-settings.png)
+
 LosOS Git is the box's own Git server. It keeps your repositories, takes
 pushes and clones over HTTPS, and has pages for reading code, opening pull
 requests and reviewing them.
@@ -63,6 +66,12 @@ git asks for a name and a token. `losos git setup`, from
 [the terminal client](terminal#use-losos-cloud-and-losos-git-from-this-computer),
 makes a token for one computer and hands it to git, so cloning and pushing
 then need no password.
+
+## Issues
+
+The issue tracker at **Issues** in the sidebar keeps the bugs, tasks and
+ideas of a repository, and of work that is not code. A repository's
+**Issues** opens its project there. See [Issues in LosOS Git](issues).
 
 ## Pull requests
 
@@ -131,6 +140,51 @@ git push -u origin fix-backup
 request for that branch, if there is one. A pull request whose branch is
 pushed from a named worktree shows that worktree's name in its header.
 **Forget** takes a worktree off the list; its next push puts it back.
+
+## People of other boxes
+
+Someone whose account is on another LosOS box on your network can take part
+in your public repositories without an account on yours. They sign in with
+their chat address, the one LosOS Chat shows under their name, such as
+`@eva:kitchenbox.local`.
+
+1. On your box's repository page they press **Use your chat address**, type
+   the address and press **Continue on your box**.
+2. Their own box opens and asks whether to tell yours who they are. They
+   press **Tell `<name>.local`**.
+3. They are back on your box, signed in as `@eva:kitchenbox.local`.
+
+Their box tells yours only their chat address and their name. Your box
+checks the answer with their box's chat server before it believes it.
+People with an account on your box sign in with LosOS Login as before.
+
+Signed in this way, they can comment, review and open pull requests. They
+cannot push to your branches. They push to branches whose names start with
+their own sign-in name here, for example `eva@kitchenbox.local/hours`, and
+ask for the change in a pull request. **Copy git password** on the
+repository page copies the password git asks for; any user name works with
+it.
+
+```sh
+git push https://<name>.local/git/notshared/site.git HEAD:eva@kitchenbox.local/hours
+```
+
+Only you and your admins merge. Sign out ends their visit on this computer.
+
+## A chat room for a repository
+
+With LosOS Chat on the box, **Settings** of a repository has **Talk about
+this repository in LosOS Chat**. Turn it on, and the box makes a room for
+the repository in your chat, with LosOS Git in it. LosOS Git posts every
+push, pull request, comment, merge and check result there.
+
+A **Chat** button then sits in the repository's header for everyone who is
+signed in. For a public repository anyone can join the room, from their own
+box's chat too. For a private one people join when you invite them from
+chat.
+
+Turning the switch off stops the posts. The room and what is in it stay in
+your chat.
 
 ## Settings
 

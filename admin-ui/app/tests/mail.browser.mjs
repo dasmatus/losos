@@ -324,6 +324,22 @@ await check('opening a message reads it, and Reply quotes it and threads under i
   await done();
 });
 
+await check('Make an issue opens a new issue in LosOS Git with the message quoted', async () => {
+  const { page, done } = await open();
+  await page.getByRole('button', { name: /Photos from the lake/ }).click();
+  await page.getByText('The one of the boat at sunset is my favourite.').waitFor();
+  const [tab] = await Promise.all([page.waitForEvent('popup'), page.locator('[data-action="make-issue"]').click()]);
+  const url = new URL(tab.url());
+  assert.equal(url.pathname, '/git/issues');
+  assert.equal(url.searchParams.get('new'), '1');
+  assert.equal(url.searchParams.get('title'), 'Photos from the lake');
+  const body = url.searchParams.get('body');
+  assert.match(body, /^> Hi Matus,/);
+  assert.match(body, /\n\nFrom a message by .+: Photos from the lake$/);
+  await tab.close();
+  await done();
+});
+
 await check('search asks lososd with the words typed', async () => {
   const { page, calls, done } = await open();
   await page.getByRole('button', { name: /Autumn sale/ }).waitFor();

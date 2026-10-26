@@ -195,39 +195,27 @@ in
     # ── Binary cache ────────────────────────────────────────────────────────
     cache.substituters = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      # The LosOS cache proxy: the `losos-cache-proxy` Vercel project in front
-      # of the GHCR-hosted cache CI pushes to. CI reads the same URL from the
-      # `LOSOS_PROXY_URL` repository variable; the two must name one host or
-      # the appliance substitutes from a cache nothing fills. The second is
-      # the same Vercel project under its own vercel.app name, for when the
-      # custom domain does not resolve. The third is the static copy the
-      # GitHub Pages site serves (.github/scripts/pages-cache.sh), signed
-      # with the same key, which nix asks only for what the proxy and
-      # cache.nixos.org did not answer.
+      # The local cache server fetches signed per-store-path OCI artifacts
+      # from GHCR with oras. GitHub Pages is a static fallback if GHCR is
+      # unreachable. Neither the installer nor the installed appliance needs
+      # a hosted cache proxy.
       default = [
-        "https://proxy.losos.dasmat.us"
-        "https://losos-cache-proxy.vercel.app"
+        "http://127.0.0.1:8787"
         "https://losos.dasmat.us/proxy"
       ];
       description = ''
         Extra Nix substituters, added to the appliance *and* to the installer
-        medium. The default is the LosOS cache proxy's public URL
-        (`https://proxy.losos.dasmat.us`), then the same proxy under
-        Vercel's own name (`https://losos-cache-proxy.vercel.app`), then the
-        copy of the newest build's paths on the GitHub Pages site
-        (`https://losos.dasmat.us/proxy`); `trustedPublicKeys` carries the
-        key all three are signed with. Set it to `[ ]` to use cache.nixos.org
-        alone.
+        medium. The local `http://127.0.0.1:8787` service pulls signed
+        per-store-path artifacts from GHCR with `oras`; the static copy of the
+        newest build on GitHub Pages (`https://losos.dasmat.us/proxy`) is a
+        remote fallback. `trustedPublicKeys` carries the key used to sign
+        those paths. Set this to `[ ]` to use cache.nixos.org alone.
 
         This exists because `losos-ctl install` runs a bare `nixos-install`
         with no substituter flags, and the install closure carries the
         workload images and the LosOS packages, none of which cache.nixos.org
-        has. Without a cache that serves them, a fresh install *builds* them
-        on a repurposed mini-PC.
-
-        The installer medium matters as much as the installed system: a
-        substituter the target only learns about after it is installed does not
-        make installing it any faster.
+        has. The local server lets Nix pull those artifacts directly from GHCR
+        without depending on a separately hosted cache proxy.
       '';
     };
 
@@ -665,6 +653,16 @@ in
       type = lib.types.port;
       default = 30099;
       description = "Last port of the range in losos.apps.ports.from.";
+    };
+
+    apps.traefikPort = lib.mkOption {
+      type = lib.types.port;
+      default = 8089;
+      description = ''
+        Loopback port of the Traefik that opens the installed apps on their
+        LAN ports: its API and metrics, read by the install job and by the
+        Statistics page. Never reachable from the LAN.
+      '';
     };
 
     cluster.idleLoadThreshold = lib.mkOption {
@@ -1477,25 +1475,18 @@ in
       type = lib.types.str;
       default = "git+file:///etc/nixos#install";
       description = ''
-        Flake URI system.autoUpgrade rebuilds from. The fragment is mandatory:
-        without one `nixos-rebuild --flake` looks for
-        nixosConfigurations.<hostname>, and this flake only exports `iso` and
-        `install` — so every unfragmented run dies with "flake does not provide
-        attribute". lososd uses the same `#install` ref (backend/src/io_backend.rs).
-        New versions arrive through losos.configRepo.upstream, which moves
-        /etc/nixos itself before the rebuild, so an Apply and the nightly
-        update build the same tree. A github: URI (still with `#install`)
-        also works, but an Apply then rebuilds from the older tree in
-        /etc/nixos and undoes the update until the next night.
+        Flake URI used by lososd for settings-driven NixOS rebuilds. The
+        fragment is mandatory: without one, nixos-rebuild looks for
+        nixosConfigurations.<hostname>, while this flake exports only iso and
+        install. The nightly sysupdate service instead rebuilds its verified
+        release source bundle with --impure; it does not use this URI.
 
-        A remote URI evaluates the published tree, which has neither
-        modules/install-target.nix (this box's drive list, firmware mode and
-        unlock mode, written by the installer) nor this box's
-        modules/overrides.nix (the settings the admin UI writes). flake.nix
-        therefore reads both from /etc/nixos when the evaluation is impure,
-        and the nightly upgrade (updates.nix) and lososd both pass --impure.
-        Evaluate the flake purely against a remote URI and the defaults
-        apply instead: TPM2 unlock, /dev/sda, UEFI, every setting reset.
+        The default git+file:///etc/nixos#install keeps local settings changes
+        on the box's own configuration. New configuration versions are synced
+        through losos.configRepo.upstream when enabled. The impure rebuild
+        retains this machine's install-target.nix and overrides.nix values,
+        including its disks, firmware mode, unlock mode, and admin settings.
+      
       '';
     };
 
@@ -1578,11 +1569,15 @@ in
 
     chat.federation.enable = lib.mkOption {
       type = lib.types.bool;
-      default = false;
+      default = true;
       description = ''
-        Let people here talk with people on other Matrix servers, and let
-        those servers reach this one. Needs a chat server name other
-        servers can reach (not a .local name).
+        Let people here talk with people on other chat servers, and let
+        those servers reach this one. With a .local server name that means
+        the other boxes on this network, and only them: the federation
+        addresses answer the LAN alone. With a name other servers can
+        reach, any Matrix server. LosOS Git uses it too: people of other
+        boxes sign in to its repositories with their chat address, and a
+        repository's room takes them in.
       '';
     };
 

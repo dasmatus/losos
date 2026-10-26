@@ -10,6 +10,8 @@ import {
   LayoutGridIcon,
   FlowchartIcon,
   Mail01Icon,
+  Calendar03Icon,
+  ContactBookIcon,
   PencilEdit02Icon,
   PinOffIcon,
   Search01Icon,
@@ -63,7 +65,10 @@ import { useOfficeFolder } from "@/lib/office-folder";
  *     Market                selling storage and compute, and disk sharing
  *     Machines              virtual machines on the mesh
  *   Diagrams                (LosOS Diagrams at /diagrams)
- *   Mail                    (LosOS Mail at /mail, only on the shared side)
+ *   Chat                    (LosOS Chat at /chat/, only on the shared side)
+ *   Mail                    (LosOS Mail at /mail, the same)
+ *   Contacts                (LosOS Contacts at /contacts, wherever LosOS Cloud runs)
+ *   Calendar                (LosOS Calendar at /calendar, the same)
  *   Mesh CI                 (workflows at /ci, only on the shared side)
  *   Settings            ▾   (a fold only; /settings opens Network)
  *     Network, Hardware, Security, About, Reset
@@ -94,8 +99,9 @@ interface LinkEntry {
   icon: IconSvgElement;
   /** The settings pane behind it, for matching and for "is this current". */
   pane?: SettingsPaneId;
-  /** An app that runs as the shared user (GET /api/me's `shared`): drawn
-   * only while the box shares its storage and the app is up. */
+  /** An app GET /api/me lists in `shared` while it is up: mail and chat
+   * only while the box shares its storage, contacts wherever LosOS Cloud
+   * runs. */
   shared?: string;
   children?: readonly Entry[];
 }
@@ -162,6 +168,22 @@ const TREE: readonly Entry[] = [
   },
   {
     kind: "link",
+    key: "contacts",
+    to: "/contacts",
+    label: "shell.nav.contacts",
+    icon: ContactBookIcon,
+    shared: "contacts",
+  },
+  {
+    kind: "link",
+    key: "calendar",
+    to: "/calendar",
+    label: "shell.nav.calendar",
+    icon: Calendar03Icon,
+    shared: "calendar",
+  },
+  {
+    kind: "link",
     key: "ci",
     to: "/ci",
     label: "shell.nav.ci",
@@ -175,7 +197,7 @@ const TREE: readonly Entry[] = [
     icon: Settings01Icon,
     railTo: "/settings",
     children: (
-      ["network", "look", "hardware", "security", "account", "users", "access", "credentials", "advanced", "history", "backup", "about", "reset"] as const
+      ["network", "look", "hardware", "security", "account", "users", "moderation", "access", "credentials", "advanced", "history", "backup", "about", "reset"] as const
     ).map(
       settingsLeaf,
     ),
@@ -190,8 +212,9 @@ function allowed(entry: LinkEntry, office: boolean): boolean {
   if (entry.pane !== undefined) return paneOpen(entry.pane);
   if (entry.key === "lab") return canUse("lab");
   if (entry.key === "documents") return office;
-  // Shared-side: there only while the box shares its storage, which lososd
-  // says in /api/me's `shared`. With sharing off the page does not exist.
+  // There only while lososd lists the app in /api/me's `shared`: mail and
+  // chat while the box shares its storage, contacts and calendar with LosOS
+  // Cloud.
   if (entry.shared !== undefined) return sharedApp(entry.shared);
   return true;
 }
@@ -266,7 +289,7 @@ export function AppSidebar() {
   const pins = usePins();
   const [editing, setEditing] = React.useState(false);
   const views = React.useMemo(
-    () => pins.pins.map((pin) => viewPin(pin, pins.installed)).filter((view): view is PinView => view !== null),
+    () => pins.pins.map((pin) => viewPin(pin, pins.installed, pins.names)).filter((view): view is PinView => view !== null),
     [pins],
   );
   const openEditor = (): void => {

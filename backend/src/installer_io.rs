@@ -4,9 +4,9 @@
 //! string, so there is no quoting to get wrong on a path that formats disks.
 //!
 //! Long-running commands (`disko`, `nixos-install`, a prebuilt disko script)
-//! run with **inherited stdio**. Capturing them would leave the installer
-//! console frozen for the entire install and would swallow the LUKS passphrase
-//! prompt in TPM mode.
+//! run in a pseudo-terminal whose live output is mirrored to tty2. That keeps
+//! terminal-sensitive output and prompts working on tty1 while tty2 remains a
+//! readable command log. Outside the installer ISO, stdio is inherited normally.
 
 use crate::install_screen::{self, Progress, Row};
 use crate::installer::{
@@ -14,7 +14,7 @@ use crate::installer::{
 };
 use crate::io_backend::{atomic_write, env_or};
 use anyhow::{bail, Context};
-use std::io::Read;
+use std::io::{Read, Write};
 use std::net::ToSocketAddrs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -44,6 +44,27 @@ const CLONE_ATTEMPTS: u32 = 3;
 #[derive(Default)]
 pub struct IoInstall {
     screen: Option<(Splash, Progress)>,
+}
+
+impl IoInstall {
+    fn set_activity(&mut self, activity: Option<&str>) {
+        if let Some((splash, progress)) = self.screen.as_mut() {
+            progress.activity = activity.map(str::to_owned);
+            splash.show(&install_screen::progress(progress));
+        }
+    }
+
+    fn run_with_activity(
+        &mut self,
+        activity: &str,
+        exe: &str,
+        args: &[&str],
+    ) -> anyhow::Result<()> {
+        self.set_activity(Some(activity));
+        let result = run_live(exe, args);
+        self.set_activity(None);
+        result
+    }
 }
 
 /// The installer medium's boot screen, when it is the one on tty1.
@@ -135,15 +156,50 @@ impl Splash {
     }
 }
 
-/// Run a command with inherited stdio, failing on a non-zero exit.
-fn run_inherit(exe: &str, args: &[&str]) -> anyhow::Result<()> {
-    let status = Command::new(exe)
-        .args(args)
-        .status()
-        .with_context(|| format!("could not start {exe}"))?;
+/// Write an installer message to tty1 and, on the installer ISO, tty2.
+fn log_line(message: &str) {
+    println!("{message}");
+    // Always attempt tty2 on the installer ISO so the live log is not
+    // dependent on the calling context or PTY setup.
+    if std::env::var_os("LOSOS_INSTALLER_ISO").is_some() || Path::new("/dev/tty2").exists() {
+        if let Ok(mut tty) = std::fs::OpenOptions::new().write(true).open("/dev/tty2") {
+            let _ = writeln!(tty, "{message}");
+        }
+    }
+}
+
+/// Quote one argument for the shell used by util-linux `script`.
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+/// Run a command in a pseudo-terminal and mirror its live output to tty2.
+///
+/// Keeping a PTY matters: disko and nixos-install must still see a terminal,
+/// and any interactive prompt must still receive keyboard input. `script`
+/// forwards the PTY to tty1 while recording the same stream on tty2. Outside
+/// the installer ISO (where tty2 may not exist), use ordinary inherited stdio.
+fn run_live(exe: &str, args: &[&str]) -> anyhow::Result<()> {
+    let status =
+        if std::env::var_os("LOSOS_INSTALLER_ISO").is_some() && Path::new("/dev/tty2").exists() {
+            let command = std::iter::once(exe)
+                .chain(args.iter().copied())
+                .map(shell_quote)
+                .collect::<Vec<_>>()
+                .join(" ");
+            Command::new("script")
+                .args(["-q", "-f", "-e", "-c", &command, "/dev/tty2"])
+                .status()
+                .with_context(|| format!("could not start {exe} through script"))?
+        } else {
+            Command::new(exe)
+                .args(args)
+                .status()
+                .with_context(|| format!("could not start {exe}"))?
+        };
     if !status.success() {
         bail!(
-            "{exe} {} failed ({status}); see the output above",
+            "{exe} {} failed ({status}); see tty2 for the live command log",
             args.join(" ")
         );
     }
@@ -217,7 +273,7 @@ impl Install for IoInstall {
         if path.exists() {
             return Ok(());
         }
-        println!("losos-install: generating {}", path.display());
+        log_line(&format!("losos-install: generating {}", path.display()));
         if let Some(dir) = path.parent() {
             owner_only_dir(dir)?;
         }
@@ -230,7 +286,11 @@ impl Install for IoInstall {
     }
 
     fn run_disko_script(&mut self, path: &Path) -> anyhow::Result<()> {
-        run_inherit(&path.to_string_lossy(), &[])
+        self.run_with_activity(
+            "Partitioning and formatting disks",
+            &path.to_string_lossy(),
+            &[],
+        )
     }
 
     /// Clone the flake, then drop the clone's `.git`.
@@ -251,6 +311,7 @@ impl Install for IoInstall {
     /// couple of times for a flaky first connection. Nothing destructive has
     /// run by this point, so waiting is always safe.
     fn clone_flake(&mut self, url: &str, work: &Path) -> anyhow::Result<()> {
+        self.set_activity(Some("Checking network connection"));
         if let Some(host) = flake_host(url) {
             let secs = std::env::var("LOSOS_NETWORK_TIMEOUT")
                 .ok()
@@ -270,30 +331,40 @@ impl Install for IoInstall {
             }
             waited?;
         }
+        self.set_activity(Some("Downloading repository"));
         let mut attempt = 1;
         loop {
             if work.exists() {
                 std::fs::remove_dir_all(work)
                     .with_context(|| format!("clearing {}", work.display()))?;
             }
-            match run_quiet(
+            match run_live(
                 "git",
-                &["clone", "--depth", "1", url, &work.to_string_lossy()],
+                &[
+                    "clone",
+                    "--progress",
+                    "--depth",
+                    "1",
+                    url,
+                    &work.to_string_lossy(),
+                ],
             ) {
                 Ok(()) => break,
                 Err(e) if attempt < CLONE_ATTEMPTS => {
-                    println!("losos-install: clone attempt {attempt} of {CLONE_ATTEMPTS} failed, retrying: {e:#}");
+                    log_line(&format!("losos-install: clone attempt {attempt} of {CLONE_ATTEMPTS} failed, retrying: {e:#}"));
                     std::thread::sleep(Duration::from_secs(5 * u64::from(attempt)));
                     attempt += 1;
                 }
                 Err(e) => return Err(e),
             }
         }
+        self.set_activity(Some("Preparing downloaded repository"));
         let git_dir = work.join(".git");
         if git_dir.exists() {
             std::fs::remove_dir_all(&git_dir)
                 .with_context(|| format!("removing {}", git_dir.display()))?;
         }
+        self.set_activity(None);
         Ok(())
     }
 
@@ -305,7 +376,8 @@ impl Install for IoInstall {
     /// confirmation is answered up front.
     fn run_disko(&mut self, work: &Path) -> anyhow::Result<()> {
         let flake = format!("{}#install", work.to_string_lossy());
-        run_inherit(
+        self.run_with_activity(
+            "Partitioning, encrypting and mounting disks",
             "disko",
             &[
                 "--mode",
@@ -330,7 +402,27 @@ impl Install for IoInstall {
 
     fn run_nixos_install(&mut self, work: &Path) -> anyhow::Result<()> {
         let flake = format!("{}#install", work.to_string_lossy());
-        run_inherit("nixos-install", &["--flake", &flake, "--no-root-passwd"])
+        // Only the local GHCR cache proxy. The installer ISO starts
+        // losos-ghcr-cache.service on 127.0.0.1:8787 before this step.
+        // Trusted keys come from the system nix.conf that the ISO carries.
+        log_line("losos-install: starting nixos-install");
+        log_line("losos-install: substituter http://127.0.0.1:8787 (local GHCR cache proxy)");
+        log_line("losos-install: live nix output follows on this console");
+        self.run_with_activity(
+            "Substituting the system from the binary cache",
+            "nixos-install",
+            &[
+                "--flake",
+                &flake,
+                "--no-root-passwd",
+                "--option",
+                "extra-substituters",
+                "http://127.0.0.1:8787",
+                "--option",
+                "fallback",
+                "true",
+            ],
+        )
     }
 
     /// Copy the flake to `/persist/etc/nixos` and make it a git repo, so the
@@ -392,7 +484,8 @@ impl Install for IoInstall {
     /// the installer console.
     fn enroll_tpm(&mut self, device: &Path, keyfile: &Path) -> anyhow::Result<()> {
         let unlock = format!("--unlock-key-file={}", keyfile.display());
-        run_inherit(
+        self.run_with_activity(
+            "Sealing the disk key to the TPM",
             "systemd-cryptenroll",
             &[
                 "--tpm2-device=auto",
@@ -404,7 +497,7 @@ impl Install for IoInstall {
     }
 
     fn log_info(&mut self, msg: &str) {
-        println!("{msg}");
+        log_line(msg);
     }
 }
 
@@ -456,7 +549,7 @@ fn wait_for_host(
             .is_ok_and(|mut a| a.next().is_some())
         {
             if announced {
-                println!("losos-install: network is up, {host} resolves");
+                log_line(&format!("losos-install: network is up, {host} resolves"));
             }
             return Ok(());
         }
@@ -469,11 +562,11 @@ fn wait_for_host(
             );
         }
         if !announced || waited.as_secs() % 30 < 2 {
-            println!(
+            log_line(&format!(
                 "losos-install: waiting for network ({host} does not resolve yet, {}s so far). \
                  Plug in a cable; for Wi-Fi press Ctrl-C, run nmtui, then run losos-install",
                 waited.as_secs()
-            );
+            ));
             announced = true;
         }
         on_wait(waited.as_secs());
@@ -675,6 +768,7 @@ pub fn run_install(opts: &Options, splash: Option<Splash>) -> anyhow::Result<()>
         drives: resolve_drives(opts, &devs).map_err(|e| anyhow::anyhow!(e))?,
         tpm: opts.tpm,
         network_wait: None,
+        activity: Some("Preparing installer".into()),
     };
     splash.show(&install_screen::progress(&progress));
     let mut io = IoInstall {

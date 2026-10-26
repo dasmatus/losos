@@ -49,9 +49,10 @@ pub const LOCKED: &str = "losos-locked";
 /// change of access keeps them.
 pub const MARKS: [&str; 2] = [TWO_FACTOR, LOCKED];
 /// Names already taken by the box's own accounts in LosOS Cloud and LosOS
-/// Git: the owner's, the shared domain's and the bot's. A person
-/// signing in under one of them would arrive as that account.
-const RESERVED: [&str; 3] = ["notshared", "shared", "losos"];
+/// Git: the owner's, the shared domain's and the bot's, and LosOS Git's
+/// account in chat (`crate::chat::GIT_BOT`). A person signing in under
+/// one of them would arrive as that account.
+const RESERVED: [&str; 4] = ["notshared", "shared", "losos", crate::chat::GIT_BOT];
 /// Sign-in names: what Authelia and the audit log show. Lower case so two
 /// people cannot differ by case alone.
 const MAX_NAME_CHARS: usize = 32;
@@ -502,6 +503,31 @@ impl People {
         self.write(&doc)
     }
 
+    /// Disable or enable `name`'s account: LosOS Login, which reads the
+    /// file on every request, stops letting them in at once. Same refusals
+    /// as [`People::remove`] when `by` names who asked.
+    pub fn set_disabled(&self, name: &str, disabled: bool, by: Option<&str>) -> anyhow::Result<()> {
+        let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+        let mut doc = self.read()?;
+        let Some(record) = doc.users.get_mut(name) else {
+            return Err(Refused::Unknown(name.to_string()).into());
+        };
+        if by == Some(name) {
+            return Err(Refused::Yourself.into());
+        }
+        if record.groups.iter().any(|g| g == OWNER) {
+            return Err(Refused::Owner(name.to_string()).into());
+        }
+        if record.disabled == disabled {
+            return Ok(());
+        }
+        record.disabled = disabled;
+        if !any_admin(&doc) {
+            return Err(Refused::LastAdmin.into());
+        }
+        self.write(&doc)
+    }
+
     /// The person signed in as `name`, unless they are unknown or disabled.
     pub fn get(&self, name: &str) -> anyhow::Result<Option<Person>> {
         let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
@@ -692,6 +718,33 @@ mod tests {
     }
 
     #[test]
+    fn a_disabled_person_is_nobody_until_enabled() {
+        let (_d, p) = people();
+        let pw = Secret::new("Correct-Horse-Battery-9");
+        p.add("ada", "Ada", "", &pw, &[ADMINS, OWNER]).unwrap();
+        p.add("bob", "Bob", "", &pw, &[ADMINS]).unwrap();
+        p.add("eva", "Eva", "", &pw, &["losos-account"]).unwrap();
+        p.set_disabled("eva", true, Some("bob")).unwrap();
+        assert!(p.get("eva").unwrap().is_none());
+        assert!(!p.check_password("eva", &pw).unwrap());
+        p.set_disabled("eva", false, None).unwrap();
+        assert!(p.get("eva").unwrap().is_some());
+        let refused = |r: anyhow::Result<()>| r.unwrap_err().downcast::<Refused>().unwrap();
+        assert_eq!(
+            refused(p.set_disabled("ada", true, Some("bob"))),
+            Refused::Owner("ada".into())
+        );
+        assert_eq!(
+            refused(p.set_disabled("bob", true, Some("bob"))),
+            Refused::Yourself
+        );
+        assert_eq!(
+            refused(p.set_disabled("zed", true, None)),
+            Refused::Unknown("zed".into())
+        );
+    }
+
+    #[test]
     fn names_are_lower_case_and_start_with_a_letter() {
         assert!(validate_name("matus").is_ok());
         assert!(validate_name("a.b-c_9").is_ok());
@@ -702,7 +755,7 @@ mod tests {
 
     #[test]
     fn the_boxs_own_account_names_are_refused() {
-        for taken in ["notshared", "shared", "losos"] {
+        for taken in ["notshared", "shared", "losos", "losos-git"] {
             let e = validate_name(taken).unwrap_err();
             assert!(e.contains("box's own accounts"), "{taken}: {e}");
         }

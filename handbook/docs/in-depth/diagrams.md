@@ -7,6 +7,8 @@ mdx:
 
 # Diagrams
 
+![Diagrams.](../img/diagrams-cloud.png)
+
 LosOS Diagrams is a diagram editor: flowcharts, plans, mind maps, boards
 and network drawings, written as cards on a canvas. Its files are JSON
 Canvas, the format Obsidian Canvas uses, so a `.canvas` file moves between
@@ -46,7 +48,10 @@ as the simulator draws it.
 - **Groups, colours and layout.** A group is a labelled frame; cards inside
   it move with it. Six colours follow the light and dark themes, or pick
   any colour. The inspector orders, aligns, groups, duplicates and deletes
-  what is selected. Undo and redo cover every change.
+  what is selected, and so does a bar that comes up above the selection
+  (see [the bar over a selection](../manual/admin-pages#the-bar-over-a-selection)),
+  which also draws an arrow between two picked cards. Undo and redo cover
+  every change.
 - **Templates.** A flowchart, a service architecture, a mind map, a board
   and a home network, put down where you click.
 - **Files.** **File** saves the diagram as a `.canvas` file and opens one.

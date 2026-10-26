@@ -3,9 +3,11 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import {
   ArrowTurnBackwardIcon,
   CloudUploadIcon,
+  TaskAdd01Icon,
   Comment01Icon,
   Copy01Icon,
   Delete02Icon,
+  Flag02Icon,
   PencilEdit01Icon,
   SmileIcon,
 } from "@hugeicons/core-free-icons";
@@ -22,6 +24,8 @@ import {
   RoomEvent,
   RoomMemberEvent,
 } from "matrix-js-sdk";
+import { Masked } from "@/components/details";
+import { openReport } from "@/components/report-dialog";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
@@ -34,6 +38,7 @@ import { callable, callEnded, callEvent, useCalls } from "./calls";
 import { saveAttachment, useCloud } from "./cloud";
 import { carriesFile, fileNameOf, infoOf, MessageBody, sourceOf } from "./message-body";
 import { buildItems, continues, type Item, type Message, memberName, plainBody, shownName, useEmitted } from "./model";
+import { canMakeIssue, issueTitleFrom, newIssueHref, quotedFrom } from "@/lib/intents";
 
 export const QUICK_REACTIONS = ["👍", "❤️", "😂", "🎉", "😮", "😢", "🙏", "👀"] as const;
 
@@ -105,7 +110,7 @@ function ReplyQuote({ client, room, id }: { client: MatrixClient; room: Room; id
   return (
     <div className="mb-1 max-w-md border-l-2 border-accent pl-2 text-[12.5px] leading-snug text-muted">
       {who !== null && <span className="font-medium text-ink">{who} </span>}
-      <span className="line-clamp-2">{text}</span>
+      <span className="line-clamp-2"><Masked text={text} /></span>
     </div>
   );
 }
@@ -148,8 +153,9 @@ function ReactionBar({ client, room, item }: { client: MatrixClient; room: Room;
 }
 
 /** The quick reactions in a pill under a message, shown while the pointer
- *  or the focus is on it. A reaction of yours is lit, and pressing it again
- *  takes it back. */
+ *  or the focus is on it. It hangs below the row, over the gap to the next
+ *  one, so it never covers the message's own text. A reaction of yours is
+ *  lit, and pressing it again takes it back. */
 function QuickReactions({ client, room, item, live }: { client: MatrixClient; room: Room; item: Message; live: boolean }) {
   const t = useT();
   if (!live) return null;
@@ -169,7 +175,7 @@ function QuickReactions({ client, room, item, live }: { client: MatrixClient; ro
       aria-label={t("chat.reaction.pick")}
       data-slot="quick-reactions"
       className={cn(
-        "pointer-events-none absolute bottom-0 left-15 z-10 flex translate-y-1/2 items-center gap-0.5 rounded-full border border-line bg-surface p-0.5 opacity-0 shadow-card",
+        "pointer-events-none absolute top-full left-15 z-10 flex -translate-y-1 items-center gap-0.5 rounded-full border border-line bg-surface p-0.5 opacity-0 shadow-card",
         "transition-opacity duration-150 motion-reduce:transition-none",
         "group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100",
       )}
@@ -184,7 +190,7 @@ function QuickReactions({ client, room, item, live }: { client: MatrixClient; ro
             title={key}
             onClick={() => toggle(key)}
             className={cn(
-              "grid size-7 place-items-center rounded-full text-[15px] leading-none transition-transform duration-150 hover:scale-125 hover:bg-sunk motion-reduce:transition-none motion-reduce:hover:scale-100",
+              "grid size-6 place-items-center rounded-full text-[14px] leading-none transition-transform duration-150 hover:scale-125 hover:bg-sunk motion-reduce:transition-none motion-reduce:hover:scale-100",
               mine && "bg-accent-wash",
             )}
           >
@@ -218,7 +224,13 @@ function useMoves(client: MatrixClient, room: Room, item: Message, me: string) {
   const file = cloud && carriesFile(item.content);
   const save = (t: ReturnType<typeof useT>): void =>
     void saveAttachment(client, t, { eventId: ev.getId() ?? "", source: sourceOf(item.content), mime: infoOf(item.content).mimetype, name: fileNameOf(item.content) });
-  return { ev, mine, canRedact, isText, live, react, remove, file, save };
+  return { ev, me, mine, canRedact, isText, live, react, remove, file, save };
+}
+
+/** The sign-in name behind a chat ID on this box's own server, else null. */
+function boxName(sender: string, me: string): string | null {
+  const server = (id: string) => id.slice(id.indexOf(":") + 1);
+  return sender.startsWith("@") && server(sender) === server(me) ? sender.slice(1, sender.indexOf(":")) : null;
 }
 
 function messageMenu(
@@ -256,6 +268,14 @@ function messageMenu(
           },
           { id: "copy", label: t("menu.copy"), icon: Copy01Icon, hidden: text === "", onSelect: () => void copied() },
           { id: "save", label: t("together.save.action"), icon: CloudUploadIcon, hidden: !file, onSelect: () => save(t) },
+          {
+            id: "make-issue",
+            label: t("together.issue.make"),
+            icon: TaskAdd01Icon,
+            hidden: text === "" || !canMakeIssue(),
+            onSelect: () =>
+              window.open(newIssueHref({ title: issueTitleFrom(text), body: quotedFrom(text, t("together.issue.fromChat", { name: sender })) }), "_blank", "noopener"),
+          },
         ],
         [
           { id: "edit", label: t("chat.message.edit"), icon: PencilEdit01Icon, hidden: !(mine && isText), onSelect: () => actions.onEdit(ev) },
@@ -266,6 +286,13 @@ function messageMenu(
             danger: true,
             hidden: !canRedact,
             onSelect: () => remove(t("chat.message.deleteConfirm")),
+          },
+          {
+            id: "report",
+            label: t("report.action"),
+            icon: Flag02Icon,
+            hidden: mine,
+            onSelect: () => openReport({ app: "chat", about: boxName(ev.getSender() ?? "", moves.me), ref: `${ev.getRoomId() ?? ""}/${ev.getId() ?? ""}` }),
           },
         ],
       ],
@@ -622,7 +649,7 @@ export function RoomTimeline({ client, room, me, actions }: RoomTimelineProps) {
     <div className="flex min-h-0 flex-1 flex-col">
       <div
         ref={box}
-        className="min-h-0 flex-1 overflow-y-auto pb-5"
+        className="min-h-0 flex-1 overflow-y-auto pb-8"
         onScroll={(event) => {
           if (event.currentTarget.scrollTop < 200) void loadOlder();
         }}

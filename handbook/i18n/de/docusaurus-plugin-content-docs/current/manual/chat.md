@@ -72,7 +72,8 @@ einzelne überprüfen oder abmelden.
 
 - **Eine Direktnachricht:** Klick auf **Jemandem schreiben** und wähle eine
   Person. In der Liste stehen alle mit einem Konto bei LosOS Login auf dem
-  Gerät.
+  Gerät und alle deine [Kontakte](contacts) mit einer Chat-Adresse. Der Knopf
+  **Chat** auf der Seite eines Kontakts öffnet dieselbe Unterhaltung.
 - **Ein Raum:** Klick auf **Neuer Raum**, gib ihm einen Namen und wähle, ob
   er auf dem Gerät öffentlich ist oder nur auf Einladung. Personen lädst du
   über die Kopfzeile des Raums ein.
@@ -115,8 +116,19 @@ anmelden, denn Chat hat keine Passwörter und meldet nur über LosOS Login an.
 Verwende die Chat-Seite in einem Browser auf einem beliebigen Gerät im
 Netzwerk des Geräts.
 
-Chat spricht nur mit dem Gerät. Die Verbindung zu anderen Matrix-Servern ist
-aus, bis eine Administratorin oder ein Administrator
-`losos.chat.federation.enable` unter **Einstellungen** > **Erweitert**
-einschaltet. Dafür braucht es eine eigene Domain, die andere Server
-erreichen.
+## Andere LosOS-Boxen \{#other-losos-boxes}
+
+Der Chat erreicht die LosOS-Boxen in deinem Netz. Schreib von
+`mattbox.local` an `@eva:kitchenbox.local`, und die Nachricht geht von einer
+Box zur anderen, ohne das Netz zu verlassen. Eine Box mit einem
+`.local`-Namen antwortet anderen Chat-Servern nur aus dem Netz, in dem sie
+steht.
+
+Um auch mit Matrix-Servern im Internet zu sprechen, braucht das Gerät eine
+eigene Domain, die sie erreichen. `losos.chat.federation.enable` unter
+**Einstellungen** > **Erweitert** schaltet die Verbindung zu anderen
+Servern ganz aus.
+
+Ein Repository in [LosOS Git](losos-git#a-chat-room-for-a-repository) kann
+hier einen Raum haben, in den LosOS Git schreibt, was darin passiert. Leute
+von anderen Boxen melden sich bei LosOS Git auch mit ihrer Chat-Adresse an.

@@ -10,6 +10,7 @@ import { AccessPane } from "./settings/pane-access";
 import { CredentialsPane } from "./settings/pane-credentials";
 import { AccountPane } from "./settings/pane-account";
 import { UsersPane } from "./settings/pane-users";
+import { ModerationPane } from "./settings/pane-moderation";
 import { AdvancedPane } from "./settings/pane-advanced";
 import { AppsPane } from "./settings/pane-apps";
 import { BackupPane } from "./settings/pane-backup";
@@ -22,6 +23,7 @@ import { MeshPane } from "./settings/pane-mesh";
 import { NetworkPane } from "./settings/pane-network";
 import { ResetPane } from "./settings/pane-reset";
 import { SecurityPane } from "./settings/pane-security";
+import { StatisticsPane } from "./settings/pane-statistics";
 import { StoragePane } from "./settings/pane-storage";
 import { DEFAULT_PANE, paneById, type SettingsPaneId } from "./settings/panes";
 import { PaneHeader } from "./settings/rows";
@@ -105,6 +107,9 @@ function Pane({
       return <MachinesPane locked={form.locked} />;
     case "apps":
       return <AppsPane form={form} />;
+    case "statistics":
+      // No draft, no Apply bar: it only reads what Traefik counted.
+      return <StatisticsPane />;
     case "network":
       return <NetworkPane form={form} />;
     case "look":
@@ -123,6 +128,9 @@ function Pane({
     case "users":
       // No draft, no Apply bar: every person is their own request.
       return <UsersPane locked={form.locked} />;
+    case "moderation":
+      // No draft, no Apply bar: every action is its own request.
+      return <ModerationPane locked={form.locked} />;
     case "access":
       // No draft, no Apply bar: every token is its own request.
       return <AccessPane locked={form.locked} />;

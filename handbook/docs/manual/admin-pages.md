@@ -33,7 +33,7 @@ sheet.
 ## Search
 
 The magnifier at the top of the sidebar opens one list that finds pages,
-apps, files and repositories. Ctrl+Shift+P on any admin page opens it too
+apps, files, repositories and issues. Ctrl+Shift+P on any admin page opens it too
 (Cmd+Shift+P on a Mac), and so does typing a colon anywhere outside a text
 field. It finds:
 
@@ -42,6 +42,8 @@ field. It finds:
 - the apps in LosOS Cloud, and LosOS Git
 - files and folders in LosOS Cloud, by name
 - repositories in LosOS Git
+- issues in LosOS Git, by their words or their key such as `BT-12`; with
+  nothing typed, the open issues given to you
 - text inside files, once you type three letters: in your LosOS Cloud files,
   and on the main branch of every repository in LosOS Git
 - your pins
@@ -73,10 +75,10 @@ directly.
 
 ## The right-click menu
 
-Right-click on the admin pages, in LosOS Cloud or in Mail, and a menu lists
-what you can do with the thing under the pointer. On a touch screen, press
-and hold. From the keyboard, Shift+F10 or the Menu key opens it for
-whatever has the focus, and the arrow keys move through it.
+Right-click on the admin pages, in LosOS Cloud, Mail or Contacts, and a
+menu lists what you can do with the thing under the pointer. On a touch
+screen, press and hold. From the keyboard, Shift+F10 or the Menu key opens
+it for whatever has the focus, and the arrow keys move through it.
 
 - **Empty space**: Back, Forward, Reload, the search, the light or dark
   theme, and this handbook.
@@ -90,6 +92,9 @@ whatever has the focus, and the arrow keys move through it.
   good.
 - **A message in Mail**: open, reply, reply all, forward, mark as read or
   unread, flag, archive, move to another folder, delete.
+- **A person in Contacts**: mail, chat, call or video, edit, export as
+  `.vcf`, delete. Someone listed under **On this box** offers **Add to
+  contacts** instead of the last three.
 
 The keys shown beside an item work without the menu too. In LosOS Cloud,
 F2 renames the ticked file and Delete moves it to the trash (Cmd+Backspace
@@ -97,11 +102,43 @@ on a Mac). Text fields keep the browser's own menu, for spelling and paste.
 The menu lists only what this box can do: an item for a feature the box
 does not have is left out, not greyed.
 
+## The bar over a selection
+
+Select words in a LosOS Office Markdown document or presentation, or in a
+note, and a small bar comes up above them once you let go of the mouse.
+Pick cards or arrows in Diagrams and it comes up above those. It offers
+what you would most likely do next, so you do not have to look for it in
+the toolbar.
+
+- **Text you can edit** (LosOS Office, and Notes in **Edit**): **Ask AI**,
+  bold, italic, strikethrough, highlight and code, a link to a web page, a
+  link to another note, a mention of a person or a file, and Copy. A
+  pressed button shows the mark is already there; press it again to take
+  it off. A link asks for its address in the bar itself, and a link to a
+  note or a mention offers names as you type.
+- **A note you are reading**: **Ask AI**, Copy, and a copy of the link to
+  the section the words are in.
+- **Cards and arrows in Diagrams**: **Ask AI** when the cards have text, a
+  colour, editing the text of one card, aligning several, an arrow between
+  two cards, grouping, duplicating and deleting. Each one does the same as
+  the inspector's button, so one undo takes it back.
+
+With Mail or Chat on the box, the bar over text also sends the words by
+mail or in a chat. **Ask AI** shows only while the box's AI is turned on;
+on text you can edit, **Replace selection** puts the answer in place of the
+words.
+
+From the keyboard, Alt+F10 moves into the bar, the arrow keys move along
+it, and Enter or Space presses a button. Escape goes back to the text or
+the diagram and hides the bar until you select something else. Typing over
+the selection hides it too.
+
 ## Pins
 
-Pin the apps, files and repositories you open most, and they sit under
+Pin the apps, files, repositories and issues you open most, and they sit under
 **Pinned** in the sidebar. A pin opens in its own app: a file or folder in
-LosOS Cloud, a repository on LosOS Git, an app on the Overview, or an app
+LosOS Cloud, a repository on LosOS Git, an issue or a project in LosOS Git's
+[issues](./issues.md), an app on the Overview, or an app
 you installed from the search on its own port. The box keeps the list, so
 every browser you sign in from shows the same pins.
 
@@ -109,11 +146,15 @@ every browser you sign in from shows the same pins.
   pinned tile keeps the pin, in colour.
 - On the Apps page, **Pin** sits beside each installed app.
 - The pencil beside **Pinned** opens the full list. There you move a pin up
-  or down, unpin it, and pin from three tabs: **Apps**, **Files**, which
-  walks the folders of LosOS Cloud, and **Repositories**.
+  or down, unpin it, and pin from four tabs: **Apps**, **Files**, which
+  walks the folders of LosOS Cloud, **Repositories**, and **Issues**, which
+  finds an issue by its words or its key.
+- On an issue or a project in LosOS Git, the pin at the top pins it. An
+  issue shows its title in the sidebar.
 - Point at a pin in the sidebar and click the crossed-out pin to unpin it.
   The [search](#search) finds pins too.
-- Right-click a file, folder or repository in the search, an app tile on
+- Right-click a file, folder, repository or issue in the search, an issue
+  in a list or on a board of LosOS Git, an app tile on
   the Overview, or a pin in the sidebar, and choose **Pin to sidebar** or
   **Unpin from sidebar**. On a touch screen, press and hold instead.
 

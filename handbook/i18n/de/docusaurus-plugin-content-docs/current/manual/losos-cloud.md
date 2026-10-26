@@ -79,6 +79,9 @@ Anmeldung der App für Computer oder Telefon an, oder im Netz der Box mit
 deinem Passwort für LosOS Login. Eine Kalender-App, die die ganze Adresse
 will, bekommt `https://<name>.local/remote.php/dav/`.
 
+Im Browser findest du dieselben Kalender im [Kalender](calendar) und die
+Adressbücher in [Kontakte](contacts).
+
 ## Im Dateimanager \{#in-the-file-manager}
 
 Dieselben Dateien sind eine WebDAV-Freigabe unter dieser Adresse:
