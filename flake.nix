@@ -536,6 +536,10 @@
           inherit pkgs;
           screens = true;
         };
+        # OpenPGP in Mail: keys made in the browser, encrypted mail between
+        # two people, the box's WKD, keys from an outside WKD, a keyserver and
+        # Autocrypt (nix/tests/mail-pgp.nix).
+        losos-mail-pgp = import ./nix/tests/mail-pgp.nix { inherit pkgs; };
         # Roles and moderation: reports, held mail, mutes and suspensions
         # across LosOS Login, lososd and Stalwart (nix/tests/moderation.nix).
         losos-moderation = import ./nix/tests/moderation.nix { inherit pkgs; };
