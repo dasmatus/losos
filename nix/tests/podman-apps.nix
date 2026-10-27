@@ -424,8 +424,8 @@ pkgs.testers.nixosTest {
         assert "traefik" in listener(front), listener(front)
         assert "nginx" not in listener(front), listener(front)
         box.fail("test -e /var/lib/losos-apps/nginx")
-        assert box.succeed(f"stat -c %U /run/losos-podman-api/podman.sock").strip() == "notshared"
-        assert box.succeed(f"stat -c %G:%a /run/losos-podman-api/podman.sock").strip() == "losos-traefik:660"
+        assert box.succeed("stat -c %U /run/losos-podman-api/podman.sock").strip() == "notshared"
+        assert box.succeed("stat -c %G:%a /run/losos-podman-api/podman.sock").strip() == "losos-traefik:660"
         assert box.succeed("ps -o user= -C traefik").split() == ["losos-traefik"]
         # LAN only: the box itself is turned away, the laptop is not.
         code = box.succeed(f"curl -s -o /dev/null -w '%{{http_code}}' http://127.0.0.1:{front}/").strip()
