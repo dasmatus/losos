@@ -467,7 +467,15 @@ fn splash_firmware(splash: Splash) -> Option<bool> {
 /// panel too, which waits for a key before the login wrapper takes the
 /// splash down and opens a shell under the log.
 fn install_failed(splash: Option<Splash>, error: &str) -> ExitCode {
-    eprintln!("losos-install: {error}");
+    let banner = format!(
+        "\nlosos-install: FAILED\nlosos-install: {error}\nlosos-install: the install stopped. See the lines above on tty2 for the full command output.\n"
+    );
+    eprintln!("{banner}");
+    // Always try tty2 so a failure is explicit even when the splash is up.
+    if let Ok(mut tty) = std::fs::OpenOptions::new().write(true).open("/dev/tty2") {
+        use std::io::Write;
+        let _ = write!(tty, "{banner}");
+    }
     if let Some(splash) = splash {
         splash.show(&install_screen::failed(error));
         splash.key(None, None, |_| {});

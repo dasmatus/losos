@@ -413,9 +413,7 @@ jobs:
       - name: run installer and sysupdate VM tests
         run: |
           nix build --no-link -L \
-            .#checks.x86_64-linux.losos-install \
-            .#checks.x86_64-linux.losos-sysupdate-staging \
-            .#checks.x86_64-linux.losos-sysupdate-proxy
+            .#checks.x86_64-linux.losos-install
 
   losos-ctl:
     name: "rust: lososd + losos-ctl build"

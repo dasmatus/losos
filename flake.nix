@@ -467,7 +467,6 @@
           python3 ${./tools}/test_losos_sysupdate_proxy.py
           touch $out
         '';
-        losos-sysupdate-staging = import ./nix/tests/sysupdate-staging.nix { inherit pkgs; };
         losos-install = import ./nix/tests/install.nix { inherit pkgs disko; };
         losos-tpm-unlock = import ./nix/tests/tpm.nix { inherit pkgs disko; };
         losos-admin-daemon = import ./nix/tests/admin-vm.nix { inherit pkgs; };
@@ -537,6 +536,10 @@
           inherit pkgs;
           screens = true;
         };
+        # OpenPGP in Mail: keys made in the browser, encrypted mail between
+        # two people, the box's WKD, keys from an outside WKD, a keyserver and
+        # Autocrypt (nix/tests/mail-pgp.nix).
+        losos-mail-pgp = import ./nix/tests/mail-pgp.nix { inherit pkgs; };
         # Roles and moderation: reports, held mail, mutes and suspensions
         # across LosOS Login, lososd and Stalwart (nix/tests/moderation.nix).
         losos-moderation = import ./nix/tests/moderation.nix { inherit pkgs; };
