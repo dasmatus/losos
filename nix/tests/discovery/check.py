@@ -237,10 +237,12 @@ class Linux:
         run(f"sudo mkdir -p {self.dav_mount}")
         secrets = WORK / "davfs-secrets"
         secrets.write_text(f"{url} {OWNER} {PASSWORD}\n")
-        run(f"sudo chown root:root {secrets} && sudo chmod 600 {secrets}")
+        # davfs2 refuses `secrets` in the system davfs2.conf ("unknown
+        # option"); a mount run as root reads /etc/davfs2/secrets instead.
+        run(f"sudo install -o root -g root -m 600 {secrets} /etc/davfs2/secrets")
         run(
-            "printf 'use_locks 0\\nsecrets %s\\ntrust_server_cert %s\\n' "
-            f"{secrets} {self.ca} | sudo tee /etc/davfs2/davfs2.conf >/dev/null"
+            "printf 'use_locks 0\\ntrust_server_cert %s\\n' "
+            f"{self.ca} | sudo tee /etc/davfs2/davfs2.conf >/dev/null"
         )
         run(f"sudo mount -t davfs {url} {self.dav_mount} -o uid=$(id -u),gid=$(id -g)", timeout=120)
         return self.dav_mount
