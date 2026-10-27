@@ -1,5 +1,5 @@
-name: "Publish to LosOS proxy"
-description: "Sign Nix closures and publish them as GHCR artifacts served by the LosOS Desktop proxy."
+name: "Publish GHCR Nix cache"
+description: "Sign Nix closures and publish per-store-path OCI artifacts to GHCR for local cache readers."
 
 inputs:
   installables:

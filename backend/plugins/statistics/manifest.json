@@ -1,0 +1,13 @@
+{
+  "name": "statistics",
+  "description": "What Traefik on the box counted for the installed apps: requests, answers, bytes and answer times.",
+  "routes": [
+    { "method": "GET", "path": "/api/statistics" }
+  ],
+  "http": ["${LOSOS_TRAEFIK_URL}"],
+  "timers": [{ "name": "start" }, { "name": "sample", "every": 60 }],
+  "limits": { "memoryMiB": 32, "timeoutSecs": 10 },
+  "config": {
+    "traefik": "${LOSOS_TRAEFIK_URL}"
+  }
+}

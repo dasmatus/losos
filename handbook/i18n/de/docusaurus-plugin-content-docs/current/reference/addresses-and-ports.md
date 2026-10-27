@@ -59,6 +59,6 @@ keinen eingehenden Port öffnest.
 | `<name>.<edge domain>`      | Die Box über ihre Edge, für LosOS Cloud und LosOS Git    |
 | `losos-edge.dasmat.us`      | Die Steuerebene der LosOS-Edge und die Seite „Find my box“ |
 | `proxy.losos.dasmat.us`     | Der Binär-Cache, aus dem sich die Box aktualisiert       |
-| `losos-cache-proxy.vercel.app` | Derselbe Cache unter Vercels eigenem Namen            |
+| `127.0.0.1:8787`            | Lokaler GHCR-Nix-Cache auf Gerät und Installationsmedium |
 | `losos.dasmat.us/proxy`     | Eine Kopie dieses Caches, die verwendet wird, wenn der erste nicht antwortet |
 | `losos.dasmat.us`           | Dieses Handbuch im Web                                   |
