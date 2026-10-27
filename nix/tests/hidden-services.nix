@@ -57,30 +57,36 @@ let
     exec ${pkgs.nodejs}/bin/node ${./shoot.mjs} "$@"
   '';
 
-  # The Network pane, scrolled to the Windows section above the new one: the
-  # Before picture comes from the same plan on the previous admin UI.
-  networkPlan = pkgs.writeText "network-plan.json" (
-    builtins.toJSON {
-      viewport = {
-        width = 1280;
-        height = 900;
-      };
-      shots = [
-        {
-          file = "network.png";
-          path = "/settings/network";
-          title = "Settings, Network";
-          waitFor = "[data-testid=network-windows]";
-          steps = [
-            {
-              kind = "scroll";
-              target = "[data-testid=network-hidden]";
-            }
-          ];
-        }
-      ];
-    }
-  );
+  # The Network pane, scrolled to its end, where the new section is: the
+  # Before picture is the same plan on the previous admin UI, whose last
+  # section is Windows. One plan per language for the handbook's page.
+  networkPlan =
+    locale: suffix:
+    pkgs.writeText "network-plan${suffix}.json" (
+      builtins.toJSON {
+        viewport = {
+          width = 1280;
+          height = 900;
+        };
+        dpr = 2;
+        colorScheme = "light";
+        inherit locale;
+        shots = [
+          {
+            file = "tor-and-i2p${suffix}.png";
+            path = "/settings/network";
+            title = "Settings, Network";
+            waitFor = "[data-testid=network-hidden]";
+            steps = [
+              {
+                kind = "scroll";
+                target = "[data-testid=network-hidden]";
+              }
+            ];
+          }
+        ];
+      }
+    );
 
   i2pTestnet = ip: {
     loglevel = "info";
@@ -401,7 +407,11 @@ pkgs.testers.runNixOSTest (
             pkgs.openssl
             shooter
           ];
-          environment.etc."losos-test/network-plan.json".source = networkPlan;
+          environment.etc = {
+            "losos-test/network-plan.json".source = networkPlan "en-US" "";
+            "losos-test/network-plan-sk.json".source = networkPlan "sk-SK" "-sk";
+            "losos-test/network-plan-de.json".source = networkPlan "de-DE" "-de";
+          };
           networking.hosts.${nodes.box.networking.primaryIPAddress} = [ "mattbox.local" ];
           fonts.packages = [ pkgs.dejavu_fonts ];
           virtualisation = {
@@ -581,13 +591,17 @@ pkgs.testers.runNixOSTest (
               "edge": {"tor": made["tor"], "i2p": made["i2p"]},
           }, shown
           client.succeed("mkdir -p /tmp/shots")
-          status, _ = client.execute(
-              "losos-shoot /etc/losos-test/network-plan.json /tmp/shots https://mattbox.local matus"
-              f" '{PASSWORD}' >&2",
-              timeout=1800,
-          )
+          missed = []
+          for plan in ["network-plan", "network-plan-sk", "network-plan-de"]:
+              status, _ = client.execute(
+                  f"losos-shoot /etc/losos-test/{plan}.json /tmp/shots https://mattbox.local matus"
+                  f" '{PASSWORD}' >&2",
+                  timeout=1800,
+              )
+              if status != 0:
+                  missed.append(plan)
           client.copy_from_machine("/tmp/shots", "")
-          assert status == 0, "the Network pane was not taken; see the log"
+          assert not missed, f"not taken: {missed}; see the log"
     '';
   }
 )
