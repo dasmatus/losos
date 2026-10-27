@@ -16,7 +16,8 @@
 #
 # A shot names a host port and a path. With "token" the page is signed in
 # with that box's admin key (sessionStorage, as the spare-key dialog does);
-# "wait" is a Playwright selector to wait for before the picture.
+# "wait" is a Playwright selector to wait for before the picture, and
+# "local" a map of localStorage entries the page starts with (a board).
 import json as _rec_json
 import os as _rec_os
 import time as _rec_time

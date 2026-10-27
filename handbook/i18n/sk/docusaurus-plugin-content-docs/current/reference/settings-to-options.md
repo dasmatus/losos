@@ -45,7 +45,7 @@ a [Správa](/in-depth/administration.md#settings) ich opisuje úplne.
 | Disky                                | `losos.targetDrives`               | podľa toho, čo našiel inštalátor           |
 | Platnosť certifikátu                 | `losos.tls.validityDays`           | 730                                        |
 | Prah nečinnosti pre požičiavanie CPU | `losos.cluster.idleLoadThreshold`  | 0,25 na jadro                              |
-| Binárna cache                        | `losos.cache.substituters`         | `https://proxy.losos.dasmat.us`, potom `https://losos-cache-proxy.vercel.app`, potom `https://losos.dasmat.us/proxy` |
+| Binárna cache                        | `losos.cache.substituters`         | `http://127.0.0.1:8787`, potom `https://losos.dasmat.us/proxy` |
 | Kto môže z webovej stránky čítať `/setup/state.json` | `losos.setup.finderOrigins` | stránka find na edge LosOS     |
 
 ![Panel Rozšírené, kde sa upravujú voľby, ktoré nie sú na iných paneloch, každá skontrolovaná pred stlačením Použiť.](@site/docs/img/settings-advanced-sk.png)

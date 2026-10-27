@@ -4,7 +4,7 @@
  *   LOSOS_RECORD_DIR=<dir> node nix/demo/record.mjs
  *
  * The VM script appends one JSON line per step to <dir>/timeline.jsonl,
- * each with a list of shots ({name, port, path, token?, wait?}), and waits
+ * each with a list of shots ({name, port, path, token?, wait?, local?}), and waits
  * for <dir>/ack-<n>. For each shot this opens http://127.0.0.1:<port><path>,
  * signed in with the admin key in <dir>/<token> when the shot names one,
  * waits for the `wait` selector, and writes <dir>/<nn>-<name>.png. The
@@ -38,11 +38,12 @@ async function shoot(n, shot) {
   const page = await browser.newPage({ viewport, locale: 'en-US' });
   const token = shot.token ? readFileSync(join(dir, shot.token), 'utf8').trim() : null;
   await page.addInitScript(
-    ([t, th]) => {
+    ([t, th, local]) => {
       if (t) window.sessionStorage.setItem('losos-token', t);
       window.localStorage.setItem('losos-theme', th);
+      for (const [k, v] of Object.entries(local)) window.localStorage.setItem(k, v);
     },
-    [token, theme],
+    [token, theme, shot.local || {}],
   );
   try {
     await page.goto(`http://127.0.0.1:${shot.port}${shot.path || '/'}`, { waitUntil: 'networkidle', timeout: 120000 });

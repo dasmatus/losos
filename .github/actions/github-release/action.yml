@@ -15,7 +15,7 @@
 # body into `null` and the assets went to /releases/null/assets. A step that can silently
 # no-op is worse than one that fails.
 name: "GitHub release"
-description: "Create a release for a tag, or replace an existing release's body, and attach assets."
+description: "Create or update a draft release, upload assets, then publish it immutably when enabled."
 
 inputs:
   tag:
@@ -25,6 +25,10 @@ inputs:
     description: "Release title. Defaults to the tag."
     required: false
     default: ""
+  prerelease:
+    description: "For a new release: auto (derive from tag), true (pre-release), or false (stable)."
+    required: false
+    default: "auto"
   body:
     description: "Generated release notes. Written between marker comments, so hand-written notes around them survive; see below."
     required: true
@@ -61,6 +65,7 @@ runs:
         IN_TAG: ${{ inputs.tag }}
         IN_NAME: ${{ inputs.name }}
         IN_BODY: ${{ inputs.body }}
+        IN_PRERELEASE: ${{ inputs.prerelease }}
         IN_ASSETS: ${{ inputs.assets }}
         IN_MODE: ${{ inputs.mode }}
         IN_RETRIES: ${{ inputs.retries }}
@@ -125,6 +130,14 @@ runs:
 
         api GET "$API/releases/tags/$TAG" >/tmp/rel.json || true
 
+        # Once published as immutable, never attempt to edit the release or
+        # replace its assets on a retry. GitHub rejects these operations; fail
+        # early with a useful message instead of reaching an upload loop.
+        if [ "$CODE" = "200" ] && jq -e '(.immutable == true) and (.draft != true)' /tmp/rel.json >/dev/null; then
+          echo "::error::${TAG} is already immutable. Its tag and assets are write-once; create a new version rather than retrying this release." >&2
+          exit 1
+        fi
+
         # A draft is invisible to the by-tag lookup above, so a release saved
         # as a draft by hand before its tag was pushed would get a second,
         # separate release beside it. Look for one before creating anything.
@@ -140,13 +153,24 @@ runs:
           fi
         fi
 
+        case "${IN_PRERELEASE:-auto}" in
+          true|false) CREATE_PRERELEASE="$IN_PRERELEASE" ;;
+          auto)
+            if [[ "$TAG" =~ -[0-9A-Za-z] ]]; then CREATE_PRERELEASE=true; else CREATE_PRERELEASE=false; fi
+            ;;
+          *) echo "::error::prerelease must be auto, true, or false" >&2; exit 1 ;;
+        esac
+
         if [ "$CODE" = "404" ]; then
           if [ "$IN_MODE" = "patch" ]; then
             echo "::error::no release exists for $TAG to patch"
             exit 1
           fi
+          # Always assemble releases as drafts. This is required for GitHub's
+          # immutable-release policy: every asset must be attached before the
+          # one-way publish step at the end of this action.
           echo '{}' | merge_body /dev/stdin \
-            | jq --arg t "$TAG" --arg n "$NAME" '. + {tag_name:$t, name:$n}' >/tmp/body.json
+            | jq --arg t "$TAG" --arg n "$NAME" --argjson p "$CREATE_PRERELEASE" '. + {tag_name:$t, name:$n, draft:true, prerelease:$p}' >/tmp/body.json
           api POST "$API/releases" -H 'content-type: application/json' \
             --data-binary @/tmp/body.json >/tmp/rel.json
           if [ "$CODE" != "201" ]; then
@@ -245,6 +269,40 @@ runs:
             }
             echo "attached $base"
           done <<< "$IN_ASSETS"
+        fi
+
+        # Publish only after every asset has uploaded. With release immutability
+        # enabled, this transition locks the associated tag and all assets.
+        # If the setting is off, put the release back in draft and fail loudly
+        # rather than silently publishing a mutable release.
+        if [ "$IN_MODE" != "patch" ]; then
+          api GET "$API/releases/$id" >/tmp/rel.json
+          if [ "$CODE" != "200" ]; then
+            echo "::error::checking release state before publish failed: HTTP $CODE" >&2
+            cat /tmp/rel.json >&2; exit 1
+          fi
+          if [ "$(jq -r '.draft // false' /tmp/rel.json)" = "true" ]; then
+            printf '{"draft":false}\n' >/tmp/publish.json
+            api PATCH "$API/releases/$id" -H 'content-type: application/json' \
+              --data-binary @/tmp/publish.json >/tmp/rel.json
+            if [ "$CODE" != "200" ]; then
+              echo "::error::publishing release $TAG failed: HTTP $CODE" >&2
+              cat /tmp/rel.json >&2; exit 1
+            fi
+            if ! jq -e '.immutable == true' /tmp/rel.json >/dev/null; then
+              echo "::error::GitHub did not mark $TAG immutable. Enable repository Settings → Releases → Enable release immutability, then review this draft before retrying." >&2
+              printf '{"draft":true}\n' >/tmp/unpublish.json
+              api PATCH "$API/releases/$id" -H 'content-type: application/json' \
+                --data-binary @/tmp/unpublish.json >/tmp/unpublish-response.json || true
+              if [ "$CODE" = "200" ]; then
+                echo "::notice::${TAG} has been returned to draft state; its assets are retained." >&2
+              else
+                echo "::warning::could not return ${TAG} to draft state; inspect the release immediately." >&2
+              fi
+              exit 1
+            fi
+            echo "published immutable release $TAG"
+          fi
         fi
 
         {
