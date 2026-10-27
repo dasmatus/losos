@@ -91,6 +91,9 @@ struct Api {
     contacts: bool,
     /// LosOS Mail (`crate::mail`).
     mail: crate::mail::Mail,
+    /// People's OpenPGP keys for LosOS Mail (`crate::mail_pgp`), while mail
+    /// is live.
+    mail_keys: Option<crate::mail_pgp::Keys>,
     /// The box's credential store (`crate::credentials`).
     credentials: crate::credentials::Credentials,
     /// Each person's picture, banner and the rest of their profile
@@ -4775,7 +4778,11 @@ async fn get_mail_message(
             .and_then(|p| not_held(&api, p, &path))
             .map(|p| {
                 let by_person = !matches!(who, Principal::Companion(_));
-                api.mail.message(p, &path, by_person)
+                let m = api.mail.message(p, &path, by_person);
+                if let (Ok(m), Some(keys), true) = (&m, &api.mail_keys, by_person) {
+                    learn_autocrypt(&api, keys, p, m);
+                }
+                m
             }) {
             Ok(Ok(m)) => HttpResponse::Ok().json(m),
             Ok(Err(r)) => mail_refused(&r),
@@ -4870,14 +4877,184 @@ async fn delete_mail_message(
 async fn post_mail_send(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
     guarded_as(&api, &req, "/api/mail/send", true, |who| {
         let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
-        let done = mail_person(&api, who)
-            .map(|p| crate::mail::parse_draft(&doc).and_then(|d| api.mail.send(p, &d)));
+        let done = mail_person(&api, who).map(|p| {
+            let autocrypt = api.mail_keys.as_ref().and_then(|k| {
+                let address = api.mail.address(&p.name)?;
+                let key = k.public(&p.name)?;
+                Some(crate::mail_pgp::autocrypt_header(&address, &key.binary()))
+            });
+            crate::mail::parse_draft(&doc).and_then(|d| api.mail.send(p, &d, autocrypt.as_deref()))
+        });
         match done {
             Ok(Ok(())) => HttpResponse::Ok().json(serde_json::json!({ "ok": true })),
             Ok(Err(r)) => mail_refused(&r),
             Err(resp) => *resp,
         }
     })
+}
+
+/// Learn the key in the `Autocrypt:` header of a message its person opened.
+fn learn_autocrypt(
+    api: &Api,
+    keys: &crate::mail_pgp::Keys,
+    person: &crate::people::Person,
+    m: &crate::mail::Message,
+) {
+    let (Some(header), Some(from)) = (&m.autocrypt, m.summary.from.first()) else {
+        return;
+    };
+    let own = api.mail.address(&person.name).unwrap_or_default();
+    let sent = m.sent_at.as_deref().unwrap_or(&m.summary.received_at);
+    keys.learn(&person.name, &own, &from.email, sent, header);
+}
+
+/// The vCards in `person`'s LosOS Contacts, every address book, asked of
+/// LosOS Cloud over its socket as them. Nothing when Cloud is not there.
+fn contact_cards(api: &Api, person: &crate::people::Person) -> Vec<String> {
+    let user = if person.groups.iter().any(|g| g == crate::people::OWNER) {
+        crate::app_names::OWNER_ACCOUNT
+    } else {
+        person.name.as_str()
+    };
+    let asked = api.backend.serialized(|b| {
+        use crate::losos::Losos as _;
+        let (status, body) = b.cloud_request(&crate::pins::CloudRequest::AddressBooks { user })?;
+        anyhow::ensure!(status == 207, "LosOS Cloud answered {status}");
+        let mut cards = Vec::new();
+        for href in crate::pins::parse_address_books(&String::from_utf8_lossy(&body), user) {
+            let (status, body) =
+                b.cloud_request(&crate::pins::CloudRequest::Cards { user, href: &href })?;
+            if status == 207 {
+                cards.extend(crate::pins::parse_cards(&String::from_utf8_lossy(&body)));
+            }
+        }
+        Ok(cards)
+    });
+    asked.unwrap_or_else(|e| {
+        tracing::debug!(error = %e, "no contacts to look for keys in");
+        Vec::new()
+    })
+}
+
+fn no_keys() -> HttpResponse {
+    err(StatusCode::NOT_FOUND, "there is no mail on this box")
+}
+
+/// `GET /api/mail/keys` — the person's own key: public, and private locked
+/// with their passphrase; `{"key": null}` before they set one.
+async fn get_mail_keys(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded_as(&api, &req, "/api/mail/keys", false, |who| {
+        let person = match mail_person(&api, who) {
+            Ok(p) => p,
+            Err(resp) => return *resp,
+        };
+        let Some(keys) = &api.mail_keys else {
+            return no_keys();
+        };
+        match keys.mine(&person.name) {
+            Ok(mine) => HttpResponse::Ok()
+                .insert_header(("Cache-Control", "private, no-store"))
+                .json(serde_json::json!({ "key": mine })),
+            Err(r) => mail_refused(&r),
+        }
+    })
+}
+
+/// `PUT /api/mail/keys` `{"publicKey", "lockedKey"}` — set the person's key.
+/// The private key must be locked with a passphrase; the box seals it again
+/// in its credential store and publishes the public key in its WKD.
+async fn put_mail_keys(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    guarded_as(&api, &req, "/api/mail/keys", true, |who| {
+        let person = match mail_person(&api, who) {
+            Ok(p) => p,
+            Err(resp) => return *resp,
+        };
+        let Some(keys) = &api.mail_keys else {
+            return no_keys();
+        };
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        let field = |k: &str| doc.get(k).and_then(serde_json::Value::as_str).unwrap_or("");
+        let address = api.mail.address(&person.name).unwrap_or_default();
+        let sealed_to = api.credentials.key().ok().flatten();
+        let done = crate::mail_pgp::check_own(field("publicKey"), field("lockedKey"), &address)
+            .and_then(|own| keys.set(&person.name, &own, sealed_to))
+            .and_then(|()| keys.mine(&person.name));
+        match done {
+            Ok(mine) => HttpResponse::Ok().json(serde_json::json!({ "key": mine })),
+            Err(r) => mail_refused(&r),
+        }
+    })
+}
+
+/// `DELETE /api/mail/keys` — forget the person's key and unpublish it.
+async fn delete_mail_keys(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded_as(&api, &req, "/api/mail/keys", true, |who| {
+        let person = match mail_person(&api, who) {
+            Ok(p) => p,
+            Err(resp) => return *resp,
+        };
+        let Some(keys) = &api.mail_keys else {
+            return no_keys();
+        };
+        match keys.remove(&person.name) {
+            Ok(()) => HttpResponse::Ok().json(serde_json::json!({ "key": null })),
+            Err(r) => mail_refused(&r),
+        }
+    })
+}
+
+/// `GET /api/mail/keys/find?email=<address>` — the keys mail to that
+/// address can be encrypted with, and its signatures checked against, best
+/// first, each with where it was found.
+async fn find_mail_keys(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded_as(&api, &req, "/api/mail/keys/find", false, |who| {
+        let person = match mail_person(&api, who) {
+            Ok(p) => p,
+            Err(resp) => return *resp,
+        };
+        let Some(keys) = &api.mail_keys else {
+            return no_keys();
+        };
+        let email =
+            web::Query::<std::collections::HashMap<String, String>>::from_query(req.query_string())
+                .ok()
+                .and_then(|q| q.get("email").cloned())
+                .unwrap_or_default();
+        match keys.find(&person.name, &email, || contact_cards(&api, person)) {
+            Ok(found) => HttpResponse::Ok().json(
+                serde_json::json!({ "email": email.trim().to_ascii_lowercase(), "keys": found }),
+            ),
+            Err(r) => mail_refused(&r),
+        }
+    })
+}
+
+/// `GET /api/mail/messages/{id}/raw` — the whole message, for the page to
+/// decrypt or check a signature on. Never shown as a document.
+async fn get_mail_raw(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    path: web::Path<String>,
+) -> HttpResponse {
+    guarded_as(
+        &api,
+        &req,
+        "/api/mail/messages/raw",
+        false,
+        |who| match mail_person(&api, who).map(|p| api.mail.raw(p, &path)) {
+            Ok(Ok(bytes)) => HttpResponse::Ok()
+                .content_type("application/octet-stream")
+                .insert_header((
+                    "Content-Disposition",
+                    "attachment; filename=\"message.eml\"",
+                ))
+                .insert_header(("X-Content-Type-Options", "nosniff"))
+                .insert_header(("Cache-Control", "private, no-store"))
+                .body(bytes),
+            Ok(Err(r)) => mail_refused(&r),
+            Err(resp) => *resp,
+        },
+    )
 }
 
 /// `GET /api/mail/attachments/{blob}?name=<file name>` — an attachment, as
@@ -5975,6 +6152,11 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
             git_rooms: crate::git_rooms::Rooms::from_env(),
             contacts: std::env::var("LOSOS_CLOUD_CONTACTS").is_ok_and(|v| v == "1"),
             mail: crate::mail::Mail::from_env(),
+            mail_keys: crate::mail::Config::from_env().map(|c| {
+                let keys = crate::mail_pgp::Keys::from_env(&c.domain);
+                keys.republish();
+                keys
+            }),
             credentials: crate::credentials::Credentials::from_env(),
             profiles: crate::profiles::Profiles::from_env(),
             roles: crate::roles::Presets::from_env(),
@@ -5989,7 +6171,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
             .plugins
             .max_body()
             .max(crate::profiles::MAX_UPLOAD_BYTES)
-            .max(1024 * 1024);
+            .max(crate::mail::MAX_REQUEST);
         owner_in_owner_group(&api);
         listen_for_git_events(&api);
         start_login_marks(api.clone());
@@ -6020,6 +6202,11 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                     web::delete().to(delete_mail_message),
                 )
                 .route("/api/mail/messages/{id}/html", web::get().to(get_mail_html))
+                .route("/api/mail/messages/{id}/raw", web::get().to(get_mail_raw))
+                .route("/api/mail/keys", web::get().to(get_mail_keys))
+                .route("/api/mail/keys", web::put().to(put_mail_keys))
+                .route("/api/mail/keys", web::delete().to(delete_mail_keys))
+                .route("/api/mail/keys/find", web::get().to(find_mail_keys))
                 .route(
                     "/api/mail/attachments/{blob}",
                     web::get().to(get_mail_attachment),
