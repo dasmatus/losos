@@ -230,6 +230,21 @@ pub fn check_owner_key(armored: &str, now: i64) -> Result<(SignedPublicKey, Owne
     Ok((key, owner))
 }
 
+/// Did `key` (its primary key, or a bound signing subkey) make the armored
+/// detached `signature` over exactly `data`?
+#[must_use]
+pub fn signed_by(key: &SignedPublicKey, signature: &str, data: &[u8]) -> bool {
+    let Ok((sig, _)) = DetachedSignature::from_string(signature.trim_start()) else {
+        return false;
+    };
+    sig.verify(&key.primary_key, data).is_ok()
+        || key.public_subkeys.iter().any(|sub| {
+            sub.verify_bindings(&key.primary_key).is_ok()
+                && sub.signatures.iter().any(|s| s.key_flags().sign())
+                && sig.verify(&sub.key, data).is_ok()
+        })
+}
+
 /// Verify a passport: the owner's key, their detached signature over the
 /// statement's exact bytes (by the primary key or a signing subkey), the
 /// statement's form and its expiry.
@@ -240,18 +255,7 @@ pub fn verify(
     now: i64,
 ) -> Result<(Statement, Owner), PassportError> {
     let (key, owner) = check_owner_key(owner_key, now)?;
-    let (sig, _) = DetachedSignature::from_string(signature.trim_start())
-        .map_err(|_| PassportError::Signature)?;
-    let data = statement.as_bytes();
-    let by_primary = sig.verify(&key.primary_key, data).is_ok();
-    let by_subkey = || {
-        key.public_subkeys.iter().any(|sub| {
-            sub.verify_bindings(&key.primary_key).is_ok()
-                && sub.signatures.iter().any(|s| s.key_flags().sign())
-                && sig.verify(&sub.key, data).is_ok()
-        })
-    };
-    if !(by_primary || by_subkey()) {
+    if !signed_by(&key, signature, statement.as_bytes()) {
         return Err(PassportError::Signature);
     }
     let parsed = Statement::parse(statement)?;
