@@ -23,6 +23,8 @@ The search above the list looks through the pages of every space and every
 knowledge base at once, and offers the same words to the handbook's own
 search.
 
+![LosOS Wiki's directory: the box's spaces, a knowledge base and the handbook, with one search above them.](../img/wiki-directory.png)
+
 ## Spaces
 
 A space is the wiki of a repository in [LosOS Git](losos-git). Its pages
@@ -44,6 +46,8 @@ pick, and writes its first page. To give an existing repository a wiki,
 open it in LosOS Git and choose **Wiki** in its menu.
 
 ## Pages
+
+![A space open at its home page, with the page tree on the left.](../img/wiki-space.png)
 
 - Each page is one file. "Getting started" is `Getting-started.md`.
 - A page below another is a file in a folder: **New page below this one**
@@ -81,6 +85,8 @@ repository's wiki address makes the space. Pages written in the browser and
 pages pushed with Git are the same files.
 
 ## The published site
+
+![The garden space as a published site.](../img/wiki-site.png)
 
 Each space is also a site at `https://<box>/wiki/<owner>/<repository>/`,
 like a project's pages on GitHub Pages: the page tree, the page, and a

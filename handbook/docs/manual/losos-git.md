@@ -7,7 +7,7 @@ slug: /manual/losos-git
 # LosOS Git
 
 
-![LosOS Git's repositories.](../img/apps-site-settings.png)
+![A repository in LosOS Git, with Wiki in its menu.](../img/losos-git-repository.png)
 
 LosOS Git is the box's own Git server. It keeps your repositories, takes
 pushes and clones over HTTPS, and has pages for reading code, opening pull

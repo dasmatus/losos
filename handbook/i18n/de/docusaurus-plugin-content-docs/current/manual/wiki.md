@@ -24,6 +24,8 @@ Die Suche über der Liste durchsucht die Seiten aller Bereiche und
 Wissensdatenbanken auf einmal und bietet dieselben Wörter der Suche des
 Handbuchs an.
 
+![Das Verzeichnis von LosOS Wiki: die Bereiche der Box, eine Wissensdatenbank und das Handbuch, darüber eine Suche.](@site/docs/img/wiki-directory-de.png)
+
 ## Bereiche \{#spaces}
 
 Ein Bereich ist das Wiki eines Repositorys in [LosOS Git](losos-git).
@@ -46,6 +48,8 @@ Repository ein Wiki zu geben, öffne es in LosOS Git und wähle **Wiki** in
 seinem Menü.
 
 ## Seiten \{#pages}
+
+![Ein Bereich, geöffnet auf seiner Startseite, links der Seitenbaum.](@site/docs/img/wiki-space-de.png)
 
 - Jede Seite ist eine Datei. „Getting started“ ist `Getting-started.md`.
 - Eine Seite unter einer anderen ist eine Datei in einem Ordner: **Neue
@@ -85,6 +89,8 @@ Wiki-Adresse eines Repositorys legt den Bereich an. Im Browser geschriebene
 und mit Git gepushte Seiten sind dieselben Dateien.
 
 ## Die veröffentlichte Seite \{#the-published-site}
+
+![Der Bereich garden als veröffentlichte Seite.](@site/docs/img/wiki-site-de.png)
 
 Jeder Bereich ist auch eine Website unter
 `https://<box>/wiki/<Besitzer>/<Repository>/`, wie die Seiten eines Projekts

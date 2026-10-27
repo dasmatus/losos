@@ -247,6 +247,50 @@ let
             }
           ];
     };
+    # The handbook's pictures of LosOS Wiki and LosOS Git, in its three
+    # languages: handbook/docs/img/{wiki-*,losos-git-repository}{,-sk,-de}.png.
+    handbook = plan "handbook" {
+      height = 800;
+      variants = map (l: {
+        inherit (l) suffix locale;
+        colorScheme = "light";
+      }) [
+        {
+          suffix = "en";
+          locale = "en-US";
+        }
+        {
+          suffix = "sk";
+          locale = "sk-SK";
+        }
+        {
+          suffix = "de";
+          locale = "de-DE";
+        }
+      ];
+      shots = [
+        {
+          name = "wiki-directory";
+          path = "/wikis";
+          waitFor.selector = "[data-wiki-entry=\"space:notshared/garden\"]";
+        }
+        {
+          name = "wiki-space";
+          path = "/wikis/notshared/garden/";
+          waitFor = garden;
+        }
+        {
+          name = "wiki-site";
+          path = "/wiki/notshared/garden/";
+          waitFor = garden;
+        }
+        {
+          name = "losos-git-repository";
+          path = "/git/notshared/garden";
+          waitFor.selector = "[data-repo-wiki]";
+        }
+      ];
+    };
     # Done once, in the browser: an edit saved, a space made.
     edit = pkgs.writeText "plan-edit.json" (
       builtins.toJSON {
@@ -613,6 +657,9 @@ pkgs.testers.nixosTest {
         repo = ok("GET", "/repos/notshared/Team-handbook", token=owner)
         assert repo["visibility"] == "internal", repo
         assert ok("GET", "/repos/notshared/Team-handbook/wiki", token=owner)["home"] == "Home"
+
+    with subtest("the handbook's pictures, in English, Slovak and German"):
+        capture("handbook", "handbook")
 
     with subtest("the pictures: the same addresses before LosOS Wiki"):
         old_ui = os.environ.get("LOSOS_WIKI_OLD_UI", "")

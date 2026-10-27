@@ -23,6 +23,8 @@ boxe, ktorú smiete čítať:
 Hľadanie nad zoznamom prejde stránky všetkých priestorov a znalostných báz
 naraz a tie isté slová ponúkne aj vyhľadávaniu v príručke.
 
+![Zoznam wiki v LosOS Wiki: priestory boxu, znalostná báza a príručka, nad nimi jedno hľadanie.](@site/docs/img/wiki-directory-sk.png)
+
 ## Priestory \{#spaces}
 
 Priestor je wiki repozitára v [LosOS Git](losos-git). Jeho stránky sú
@@ -44,6 +46,8 @@ a napíše jeho prvú stránku. Ak chcete dať wiki existujúcemu repozitáru,
 otvorte ho v LosOS Git a v jeho ponuke zvoľte **Wiki**.
 
 ## Stránky \{#pages}
+
+![Priestor otvorený na domovskej stránke, vľavo strom stránok.](@site/docs/img/wiki-space-sk.png)
 
 - Každá stránka je jeden súbor. „Getting started“ je `Getting-started.md`.
 - Stránka pod inou stránkou je súbor v priečinku: **Nová stránka pod touto**
@@ -81,6 +85,8 @@ repozitára priestor vytvorí. Stránky napísané v prehliadači a stránky
 poslané Gitom sú tie isté súbory.
 
 ## Zverejnená stránka \{#the-published-site}
+
+![Priestor garden ako zverejnená stránka.](@site/docs/img/wiki-site-sk.png)
 
 Každý priestor je aj stránka na adrese
 `https://<box>/wiki/<vlastník>/<repozitár>/`, podobne ako stránky projektu
