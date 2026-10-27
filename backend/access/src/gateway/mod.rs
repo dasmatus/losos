@@ -17,3 +17,4 @@ pub mod eventlog;
 pub mod passport;
 pub mod pe;
 pub mod tpm;
+pub mod uki;

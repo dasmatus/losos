@@ -36,9 +36,35 @@ pub enum CertError {
     Unsupported(String),
 }
 
-/// Parse DER.
+/// Parse DER. A TPM keeps its certificate in an NV index that some makers
+/// size larger than the certificate and pad with zeros or 0xff, so the
+/// bytes after the outer SEQUENCE are dropped when they are only padding.
 pub fn parse(der: &[u8]) -> Result<Certificate, CertError> {
-    Certificate::from_der(der).map_err(|_| CertError::Malformed)
+    let end = der_len(der).ok_or(CertError::Malformed)?;
+    if der[end..].iter().any(|b| *b != 0 && *b != 0xff) {
+        return Err(CertError::Malformed);
+    }
+    Certificate::from_der(&der[..end]).map_err(|_| CertError::Malformed)
+}
+
+/// The length of the DER element at the start of `der`, header included.
+fn der_len(der: &[u8]) -> Option<usize> {
+    let first = *der.get(1)?;
+    let (header, body) = if first & 0x80 == 0 {
+        (2, usize::from(first))
+    } else {
+        let n = usize::from(first & 0x7f);
+        if n == 0 || n > 4 {
+            return None;
+        }
+        let len = der
+            .get(2..2 + n)?
+            .iter()
+            .fold(0usize, |acc, b| (acc << 8) | usize::from(*b));
+        (2 + n, len)
+    };
+    let end = header.checked_add(body)?;
+    (end <= der.len()).then_some(end)
 }
 
 /// Does `cert` certify the RSA endorsement key `ek`?
@@ -211,5 +237,10 @@ mod tests {
             Err(CertError::UnknownIssuer)
         );
         assert_eq!(parse(b"junk").unwrap_err(), CertError::Malformed);
+        let mut padded = hex(vectors::EK_CERT);
+        padded.extend_from_slice(&[0, 0, 0xff]);
+        assert!(parse(&padded).is_ok());
+        padded.push(1);
+        assert_eq!(parse(&padded).unwrap_err(), CertError::Malformed);
     }
 }
