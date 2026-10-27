@@ -227,7 +227,13 @@ await check('the AI builds an app step by step, the preview tries each version f
   assert.equal(saved[0].source, APP.source);
   const app = page.frameLocator('[data-testid=user-app] iframe');
   await app.getByLabel('Item').fill('Milk');
+  // The collection updates optimistically; wait for the box's write response
+  // before asserting the request and the persisted data.
+  const writeResponse = page.waitForResponse((response) =>
+    response.url().endsWith('/api/user-apps/u1/data') && response.request().method() === 'POST',
+  );
   await app.getByRole('button', { name: 'Add' }).click();
+  await writeResponse;
   await app.getByText('Milk').waitFor();
   assert.deepEqual(writes, [{ op: 'add', collection: 'items', value: { name: 'Milk', done: false } }]);
   assert.equal(data.collections.items[0].name, 'Milk');

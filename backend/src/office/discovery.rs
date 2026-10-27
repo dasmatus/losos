@@ -308,10 +308,28 @@ mod tests {
         let addr = listener.local_addr().unwrap();
         let server = std::thread::spawn(move || {
             let (mut s, _) = listener.accept().unwrap();
-            let mut buf = [0u8; 1024];
-            let n = s.read(&mut buf).unwrap();
-            let req = String::from_utf8_lossy(&buf[..n]).to_string();
-            write!(s, "HTTP/1.1 200 OK\r\nContent-Type: text/xml\r\n\r\n{XML}").unwrap();
+            // Read the complete request headers before replying. A single TCP
+            // read is not guaranteed to contain the whole request, and closing
+            // the socket with unread request bytes can reset the client while
+            // it is reading the response.
+            let mut req = Vec::new();
+            loop {
+                let mut buf = [0u8; 256];
+                let n = s.read(&mut buf).unwrap();
+                if n == 0 {
+                    break;
+                }
+                req.extend_from_slice(&buf[..n]);
+                if req.windows(4).any(|window| window == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            let req = String::from_utf8_lossy(&req).to_string();
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/xml\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{XML}",
+                XML.len()
+            );
+            s.write_all(response.as_bytes()).unwrap();
             req
         });
         let d = Discovery::fetch(&format!("http://{addr}")).unwrap();
