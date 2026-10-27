@@ -1242,6 +1242,8 @@ await check('buying opens Stripe Checkout in a new tab', async () => {
  * it, and a purchase whose seller went offline: part refunded, the rest
  * paid. */
 const SLOT_END = 1792800000;
+// Keep the paid-period assertions independent of the calendar date CI runs.
+const SLOT_NOW = new Date((SLOT_END - 86400) * 1000);
 const slotOrder = (id, extra) => ({
   id,
   listing_id: 'lst_held',
@@ -1276,7 +1278,7 @@ const SLOTS = {
 };
 
 await check('a paid period greys Stop selling, and Pay out sends what is ready', async () => {
-  const { page, errors, marketPosts } = await open({ path: '/settings/market', stored: true, market: SLOTS });
+  const { page, errors, marketPosts } = await open({ path: '/settings/market', stored: true, market: SLOTS, now: SLOT_NOW });
   await page.getByText(/on sale · paid for until/).waitFor();
   const stop = page.getByRole('button', { name: 'Stop selling' });
   assert.ok(await stop.isDisabled(), 'Stop selling is live while a paid period runs');
@@ -1295,7 +1297,7 @@ await check('a paid period greys Stop selling, and Pay out sends what is ready',
 
 await check('Pay out is greyed until a period ends, and says when the next one does', async () => {
   const waiting = { ...SLOTS, account: { ...SLOTS.account, payouts: { ...SLOTS.account.payouts, ready: 0 } } };
-  const { page, errors, marketPosts } = await open({ path: '/settings/market', stored: true, market: waiting });
+  const { page, errors, marketPosts } = await open({ path: '/settings/market', stored: true, market: waiting, now: SLOT_NOW });
   await page.getByText('You can pay out once a period ends, the next on', { exact: false }).waitFor();
   assert.ok(await page.getByRole('button', { name: 'Pay out' }).isDisabled(), 'Pay out is live with nothing ready');
   assert.deepEqual(marketPosts, []);
