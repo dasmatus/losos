@@ -77,11 +77,10 @@ which `oras pull` fetches too; the proxy only redirects to GHCR's storage
 .#losos-registrar-static` (the same binary), `nix build .#losos-registrar`
 (for a machine with Nix), or `cargo build` in `edge/registrar/`.
 
-When `proxy.losos.dasmat.us` does not answer, put
-`https://losos-cache-proxy.vercel.app` in its place in the line above: it is
-the same proxy under Vercel's own name. When neither answers, the same two
-files of the newest main build are on the GitHub Pages site at
-`https://losos.dasmat.us/proxy`.
+If the hosted update route is unavailable, pull the same artifacts
+directly from GHCR with `oras pull
+ghcr.io/dasmatus/losos/images:main-x86_64`; the `losos-registrar` binary and
+`SHA256SUMS` are included in that artifact.
 
 ## Operator steps
 

@@ -61,7 +61,14 @@ Jeder Dienst läuft:
   gehört;
 - ohne Capabilities und mit `no-new-privileges`;
 - neu gestartet, solange ihn niemand angehalten hat, wenn die Datei nichts
-  anderes sagt.
+  anderes sagt;
+- mit den Labels, die die App auf ihrem Port im lokalen Netz öffnen.
+  Traefik auf der Box liest sie: `traefik.http.routers.app-<name>.entrypoints`
+  nennt den Port, `…services.app-<name>.loadbalancer.server.port` den Port,
+  auf dem die App lauscht, und die Middleware `lan-only` lässt nur das
+  lokale Netz herein. Labels, die die Datei unter `traefik.` oder `losos.`
+  setzt, werden vorher entfernt, sodass eine App nicht den Port einer
+  anderen öffnen kann. Andere Labels bleiben, wie sie geschrieben sind.
 
 Dienste finden einander über ihren Namen: Jeder Dienstname zeigt auf
 `127.0.0.1`. Weil sie ein Netz teilen, müssen sie auf verschiedenen Ports

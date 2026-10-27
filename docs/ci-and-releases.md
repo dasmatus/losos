@@ -111,32 +111,29 @@ CI publishes signed Nix store paths as OCI artifacts at
 [LosOS Desktop proxy](https://github.com/dasmatus/losos-desktop/tree/main/proxy)
 serves them, with `GHCR_REPOSITORY=dasmatus/losos`.
 
+The publisher stores one OCI artifact per Nix store path at
+`ghcr.io/dasmatus/losos/nix-cache:<store-hash>`. The appliance, installer ISO
+and CI runners pull these artifacts directly from GHCR with `oras`; no hosted
+cache proxy is needed for Nix substitutions.
+
 Setup:
 
-1. `nix key generate-secret --key-name losos-1`
-2. Store the secret key as repository secret `NIX_CACHE_SIGNING_KEY`.
-3. Store the public key (`nix key convert-secret-to-public`) as repository
-   variable `NIX_CACHE_PUBLIC_KEY`.
-4. Store the proxy's HTTPS URL as repository variable `LOSOS_PROXY_URL`.
-   That is the domain attached to the `losos-cache-proxy` Vercel project,
-   `https://proxy.losos.dasmat.us`, and nothing else. The earlier name,
-   `losos-proxy.dasmat.us`, now 307-redirects there. A hostname that merely
-   resolves to Vercel answers `DEPLOYMENT_NOT_FOUND`; nix then prints
-   `warning: '<url>' does not appear to be a binary cache` in every job,
-   builds from source, and the run stays green. `setup-nix` now checks
-   `<url>/nix-cache-info` and annotates the run when that happens.
-5. Make the `losos/nix-cache` package public, and `losos/images` (below)
-   once the first push to main has created it. GitHub creates a package
-   private, and the proxy then answers `502 token: 403` for everything in it.
-6. Keep `losos.cache.substituters` and `losos.cache.trustedPublicKeys` in
-   `modules/options.nix` at the same URL and key. Their defaults are
-   `https://proxy.losos.dasmat.us`, the same project's own name
-   `https://losos-cache-proxy.vercel.app` for when the custom domain does
-   not resolve, and the `losos-1` public key, so a stock
-   appliance and installer medium already pull from the cache, and
-   `nix/tests/invariants.nix` fails if either default is dropped. Rotating the
-   signing key means changing the variable and the default together.
+1. Run `nix key generate-secret --key-name losos-1` once.
+2. Store the secret half as repository secret `NIX_CACHE_SIGNING_KEY`.
+3. Make the `losos/nix-cache` GHCR package public after CI creates it.
+4. Keep the public half in `modules/options.nix` as
+   `losos.cache.trustedPublicKeys`. It must match the signing secret or Nix
+   will reject the signatures and fall back to building from source.
 
+The `setup-nix` action starts `tools/losos-ghcr-cache.py` on
+`127.0.0.1:8787` after installing Nix. The installer ISO and installed
+appliance run the same service from their system configuration. It pulls only
+the requested store-path artifact, caches the NAR on local disk, and rewrites
+only the unsigned `URL` field in narinfo; Nix still verifies the signed
+store path, NAR hash and references. `cache.nixos.org` remains enabled for
+upstream paths, and GitHub Pages remains a static fallback. The separate
+`LOSOS_PROXY_URL` deployment is still used by non-cache features such as
+update downloads, but it is not part of the binary-cache path.
 Every job reports what it got from the cache. `setup-nix` puts a `nix` shim
 on `PATH` that counts nix's own `copying path '…' from '<url>'` and
 `building '…'` lines per invocation. It writes a **Nix binary cache use**
@@ -156,8 +153,8 @@ put the secret key in the flake or on an appliance.
 ### The copy on GitHub Pages
 
 The GitHub Pages site that serves the handbook also serves a copy of the
-cache at `https://losos.dasmat.us/proxy`, for when the proxy on Vercel does
-not answer. Pages runs no code, so the copy is a plain file cache. On each
+cache at `https://losos.dasmat.us/proxy`. Pages runs no code, so the copy is
+a plain file cache and remains a fallback if direct GHCR access is unavailable. On each
 push to main, the `publish-cache` job writes the paths it publishes with
 `nix copy --to file://`, signs them with the same `losos-1` key and leaves
 out every path cache.nixos.org already serves. The `handbook` workflow runs
@@ -197,10 +194,8 @@ requests never publish.
 curl -fsSLO "https://proxy.losos.dasmat.us/updates/main/x86_64/{losos-registrar,SHA256SUMS}" && sha256sum -c --ignore-missing SHA256SUMS && chmod +x losos-registrar
 ```
 
-When `proxy.losos.dasmat.us` does not answer, the proxy is also at
-`https://losos-cache-proxy.vercel.app`. When neither answers, the same two
-files of the newest main build are at
-`https://losos.dasmat.us/proxy/updates/main/x86_64/`.
+The update artifacts can also be pulled directly from GHCR, without a hosted
+proxy, with `oras pull ghcr.io/dasmatus/losos/images:main-x86_64`.
 
 The job's step summary carries the artifact reference, the URL and the sum.
 `oras pull ghcr.io/dasmatus/losos/images:main-x86_64` fetches the same files

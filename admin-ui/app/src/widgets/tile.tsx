@@ -19,9 +19,11 @@
 
 import * as React from "react";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
+import { Link } from "react-router-dom";
 import {
   Alert02Icon,
   ArrowDown01Icon,
+  ArrowRight01Icon,
   ArrowUp01Icon,
   Delete02Icon,
   RefreshIcon,
@@ -33,7 +35,13 @@ import { t } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-react";
 import { cn, setCssVar } from "@/lib/utils";
 import type { WidgetInstance } from "@/lib/widgets";
-import { catalogueEntry, CUSTOM_REFRESH_MS, spanForKind, type WidgetSpan } from "./catalogue";
+import {
+  catalogueEntry,
+  CUSTOM_REFRESH_MS,
+  spanForKind,
+  type CatalogueEntry,
+  type WidgetSpan,
+} from "./catalogue";
 import { BarView } from "./render/bar";
 import { HeatmapView } from "./render/heatmap";
 import { ListView } from "./render/list";
@@ -63,7 +71,7 @@ function resolve(instance: WidgetInstance): Runnable | { error: string } {
   }
   if (instance.source.kind === "builtin") {
     const entry = catalogueEntry(instance.source.id);
-    if (entry === undefined) {
+    if (entry?.run === undefined) {
       return { error: t("widgets.tile.notInVersion") };
     }
     return { run: entry.run, span: entry.span, refreshMs: entry.refreshMs, name: t(entry.name) };
@@ -131,7 +139,51 @@ export interface WidgetTileProps {
  * here at all: it is a document the box keeps, drawn by the sandboxed frame
  * (hand-frame.tsx), so its tile is a different thing with the same chrome. */
 export function WidgetTile(props: WidgetTileProps) {
-  return props.instance.source.kind === "hand" ? <HandTile {...props} /> : <RunTile {...props} />;
+  const { source } = props.instance;
+  if (source.kind === "hand") return <HandTile {...props} />;
+  const view = source.kind === "builtin" ? catalogueEntry(source.id)?.view : undefined;
+  if (view !== undefined) return <ViewTile {...props} view={view} />;
+  return <RunTile {...props} />;
+}
+
+/* A built-in that is a component of the box's own (Statistics): the same
+ * chrome, its body a link to the page it summarises. The move and remove
+ * buttons stay outside the link, so they never open the page. */
+function ViewTile({
+  view,
+  ...props
+}: WidgetTileProps & { view: NonNullable<CatalogueEntry["view"]> }) {
+  const t = useT();
+  const { instance, index } = props;
+  const entry = instance.source.kind === "builtin" ? catalogueEntry(instance.source.id) : undefined;
+  const title = instance.title ?? (entry !== undefined ? t(entry.name) : t("widgets.tile.fallbackTitle"));
+  const { Body } = view;
+  return (
+    <div
+      ref={(element) => {
+        setCssVar(element, "--tile-i", String(index));
+      }}
+      data-testid="view-tile"
+      className={cn("widget-tile", entry?.span === "full" && "md:col-span-2")}
+    >
+      <Card className="flex h-full animate-none flex-col">
+        <TileHeader title={title} failed={false} {...props} />
+        <Link
+          to={view.to}
+          aria-label={t(view.openLabel)}
+          className="group mx-2 mb-2 flex flex-1 flex-col justify-between gap-3 rounded-[10px] px-2 pb-2 outline-none transition-colors hover:bg-sunk focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          <TileBoundary onError={() => undefined}>
+            <Body />
+          </TileBoundary>
+          <span className="flex items-center gap-1 text-[11.5px] leading-snug text-faint group-hover:text-ink">
+            {t(view.openLabel)}
+            <HugeiconsIcon icon={ArrowRight01Icon} size={13} strokeWidth={1.8} aria-hidden="true" />
+          </span>
+        </Link>
+      </Card>
+    </div>
+  );
 }
 
 function RunTile({ instance, index, total, onRemove, onMove }: WidgetTileProps) {
