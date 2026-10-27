@@ -75,6 +75,7 @@ pub mod provision;
 pub mod registry;
 pub mod relay;
 pub mod routes;
+pub mod secondary;
 pub mod seed;
 pub mod server;
 pub mod slots;

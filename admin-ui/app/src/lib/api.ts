@@ -706,6 +706,13 @@ export function getStorage(options: RequestOptions = {}): Promise<StorageRespons
 
 export type EdgeSource = "lan" | "configured";
 
+/** Which kind of link (handbook in-depth/edge-federation, "Three tiers").
+ *  primary: edge to edge, the main cluster. secondary: a box to a local
+ *  gateway of its secondary cluster. tertiary: a box straight to an official
+ *  edge, only while no gateway of its own cluster answers. A box's own link
+ *  is never primary. */
+export type EdgeTier = "primary" | "secondary" | "tertiary";
+
 export interface EdgeProxy {
   /** The advertised instance name, or the configured URL's host. */
   name: string;
@@ -717,6 +724,30 @@ export interface EdgeProxy {
   /** Base URL of its registrar API. */
   url: string;
   source: EdgeSource;
+  /** Secondary for a local gateway, tertiary for an official edge. Missing
+   *  on a box whose lososd predates the tiers. */
+  tier?: EdgeTier;
+  /** The secondary cluster a gateway belongs to. */
+  cluster?: string;
+  /** The gateway's name in it. */
+  member?: string;
+}
+
+/** The edge this box uses (backend/src/edge.rs, choose_path). */
+export interface EdgePath {
+  name: string;
+  url: string;
+  source: EdgeSource;
+  rathole: string;
+  tier?: EdgeTier;
+  cluster?: string;
+  member?: string;
+}
+
+/** A secondary cluster in reach and its gateways that answered. */
+export interface EdgeCluster {
+  name: string;
+  gateways: string[];
 }
 
 export interface EdgeResponse {
@@ -733,6 +764,13 @@ export interface EdgeResponse {
   configuredUrl: string | null;
   /** Unix seconds of the scan; null before the first. */
   checkedAt: number | null;
+  /** The edge this box uses, or null when none answers. */
+  path?: EdgePath | null;
+  /** The secondary clusters in reach. */
+  clusters?: EdgeCluster[];
+  /** The secondary cluster this box belongs to; kept while none of its
+   *  gateways answers. */
+  cluster?: string | null;
   /** Whether a company edge may manage this box. Missing on a box whose
    *  lososd predates the switch. */
   manage?: EdgeManage;
@@ -768,6 +806,20 @@ export function postEdgeManage(
     method: "POST",
     contentType: "application/json",
     body: JSON.stringify({ enabled }),
+  });
+}
+
+/** POST /api/edge/cluster — move the box to another secondary cluster in
+ *  reach, or with null let it settle anew. Takes effect at once. */
+export function postEdgeCluster(
+  cluster: string | null,
+  options: RequestOptions = {},
+): Promise<{ cluster: string | null; path: EdgePath | null }> {
+  return call<{ cluster: string | null; path: EdgePath | null }>("/api/edge/cluster", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify({ cluster }),
   });
 }
 
