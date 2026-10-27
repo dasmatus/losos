@@ -239,7 +239,7 @@ class Linux:
         secrets.write_text(f"{url} {OWNER} {PASSWORD}\n")
         run(f"sudo chown root:root {secrets} && sudo chmod 600 {secrets}")
         run(
-            "printf 'use_locks 0\\nsecrets %s\\ntrust_ca_cert %s\\n' "
+            "printf 'use_locks 0\\nsecrets %s\\ntrust_server_cert %s\\n' "
             f"{secrets} {self.ca} | sudo tee /etc/davfs2/davfs2.conf >/dev/null"
         )
         run(f"sudo mount -t davfs {url} {self.dav_mount} -o uid=$(id -u),gid=$(id -g)", timeout=120)
@@ -268,7 +268,11 @@ class MacOS:
 
     def resolve(self):
         _, out = run(f"dscacheutil -q host -a name {LOCAL}", check=False)
-        return BOX_IP in out
+        # HTTPS uses Python's resolver, which must see the mDNS answer too.
+        return BOX_IP in out and any(
+            addr[4][0] == BOX_IP
+            for addr in socket.getaddrinfo(LOCAL, 443, type=socket.SOCK_STREAM)
+        )
 
     def browse(self, kind):
         # dns-sd never exits on its own.
@@ -345,8 +349,14 @@ class Windows:
         return BOX_IP in out
 
     def network_view(self):
+        # Query a fresh Shell Network namespace on every attempt. WS-Discovery
+        # is asynchronous, so main() retries this observation for ten minutes.
         _, out = self.ps(
-            "(New-Object -ComObject Shell.Application).NameSpace(18).Items() | ForEach-Object { $_.Name }",
+            "$shell = New-Object -ComObject Shell.Application; "
+            "$network = $shell.NameSpace(18); "
+            "try { $network.Self.InvokeVerb('refresh') } catch { }; "
+            "Start-Sleep -Seconds 2; "
+            "$network.Items() | ForEach-Object { $_.Name }",
             check=False,
             timeout=120,
         )
@@ -354,13 +364,29 @@ class Windows:
 
     def found(self):
         items = self.network_view()
-        say(f"File Explorer, Network: {items}")
+        say(f"File Explorer, Network view: {items}")
         return any(i.upper() == HOST.upper() for i in items)
 
     def off(self):
         items = self.network_view()
-        say(f"File Explorer, Network: {items}")
+        say(f"File Explorer, Network view after SMB was disabled: {items}")
         return not any(i.upper() == HOST.upper() for i in items)
+
+    def diagnostics(self):
+        # Best-effort snapshot to distinguish profile/firewall problems from
+        # WS-Discovery visibility and SMB endpoint failures.
+        checks = [
+            ("adapter", "Get-NetAdapter -Name losos-lan | Format-List Name,Status,LinkSpeed; Get-NetIPAddress -InterfaceAlias losos-lan -AddressFamily IPv4 | Format-Table IPAddress,PrefixLength"),
+            ("network profile", "Get-NetConnectionProfile -InterfaceAlias losos-lan | Format-List InterfaceAlias,NetworkCategory,IPv4Connectivity"),
+            ("discovery services", "Get-Service fdPHost,FDResPub,SSDPSRV,upnphost | Format-Table Name,Status,StartType"),
+            ("Private firewall rules", "Get-NetFirewallRule -PolicyStore ActiveStore | Where-Object { $_.Enabled -eq 'True' -and $_.Profile.ToString().Contains('Private') -and $_.Group -in @('@FirewallAPI.dll,-32752','@FirewallAPI.dll,-28502') } | Format-Table Name,DisplayName,Group,Profile,Enabled"),
+            ("SMB endpoint", f"Test-NetConnection {BOX_IP} -Port 445 -WarningAction SilentlyContinue | Format-List ComputerName,RemotePort,TcpTestSucceeded"),
+            ("File Explorer Network view", "$shell = New-Object -ComObject Shell.Application; $network = $shell.NameSpace(18); try { $network.Self.InvokeVerb('refresh') } catch { }; Start-Sleep -Seconds 2; $network.Items() | ForEach-Object { $_.Name }"),
+            ("recent discovery events", "Get-WinEvent -FilterHashtable @{LogName='System'; StartTime=(Get-Date).AddMinutes(-20)} -ErrorAction SilentlyContinue | Where-Object { $_.ProviderName -match 'FunctionDiscovery|FDResPub|fdPHost|WSD' } | Select-Object -First 20 TimeCreated,ProviderName,Id,LevelDisplayName,Message | Format-List"),
+        ]
+        for label, script in checks:
+            say(f"--- discovery diagnostics: {label} ---")
+            self.ps(script, check=False, timeout=60)
 
     def mount_smb(self):
         run(["net", "use", self.smb_drive, f"\\\\{HOST.upper()}\\{OWNER}", PASSWORD, f"/user:{OWNER}", "/persistent:no"])
@@ -371,15 +397,22 @@ class Windows:
         run(["net", "use", self.smb_drive, "/delete", "/y"], check=False)
 
     def link_up(self):
-        # The TAP adapter is an unidentified network, so Public, until QEMU
-        # connects it; a computer at home calls its LAN Private, and only
-        # then does File Explorer look for other computers on it.
+        # Wait for QEMU to connect the TAP adapter, set its profile, and
+        # verify link state and the static address used by this test.
         code, out = self.ps(
-            "Set-NetConnectionProfile -InterfaceAlias losos-lan -NetworkCategory Private -ErrorAction Stop;"
-            " (Get-NetConnectionProfile -InterfaceAlias losos-lan).NetworkCategory",
+            "Set-NetConnectionProfile -InterfaceAlias losos-lan -NetworkCategory Private -ErrorAction Stop; "
+            "$a = Get-NetAdapter -Name losos-lan -ErrorAction Stop; "
+            "$ip = Get-NetIPAddress -InterfaceAlias losos-lan -AddressFamily IPv4 -ErrorAction Stop | "
+            "Where-Object { $_.IPAddress -eq '192.168.77.1' }; "
+            "$p = Get-NetConnectionProfile -InterfaceAlias losos-lan -ErrorAction Stop; "
+            "Write-Output ('STATUS=' + $a.Status); Write-Output ('EXPECTED_IP_COUNT=' + @($ip).Count); "
+            "Write-Output ('PROFILE=' + $p.NetworkCategory)",
             check=False,
         )
-        return code == 0 and "Private" in out
+        ready = code == 0 and "STATUS=Up" in out and "EXPECTED_IP_COUNT=1" in out and "PROFILE=Private" in out
+        if not ready:
+            say(f"losos-lan not ready for discovery: {out.strip()}")
+        return ready
 
     def dav_client(self):
         # Windows Server ships the WebDAV redirector as a feature that wants
@@ -453,8 +486,19 @@ def main():
         say("claimed the box as its owner")
         until("Samba knows the owner", lambda: OWNER in serial.sh("cat /var/lib/losos-windows/users.map"), timeout=300)
 
-        until(f"{HOST} is found, once, as an SMB share", client.found, timeout=600, every=15)
+        try:
+            until(
+                f"{HOST} appears in File Explorer Network via WS-Discovery",
+                client.found,
+                timeout=600,
+                every=15,
+            )
+        except SystemExit:
+            if isinstance(client, Windows):
+                client.diagnostics()
+            raise
 
+        say("Discovery visibility passed; now independently testing SMB share access.")
         dav = f"{base}/remote.php/webdav/"
         smb = client.mount_smb()
         try:

@@ -53,8 +53,10 @@ LosOS Cloud (`modules/cloud.nix`, `backend/src/cloud/`) a LosOS Git
 hostiteľovi a každá počúva na Unix sockete, ktorý smie otvoriť iba nginx.
 Vlastný k3s klaster zariadenia prevádzkuje iba aplikácie inštalované ako
 `shared`, kým zariadenie zdieľa disk s mesh; jeho pody používajú
-`hostNetwork`. nginx je jediná služba na verejných portoch a smeruje podľa
-cesty.
+`hostNetwork`. nginx drží webové porty zariadenia a smeruje podľa cesty.
+Traefik drží porty nainštalovaných aplikácií v lokálnej sieti
+(`losos.apps.ports`) a cestu ku každej aplikácii číta zo štítkov na jej
+kontajneroch.
 
 ## Rozloženie repozitára {#repository-layout}
 
@@ -264,14 +266,21 @@ zoznam je jeden riadok `[ "a" "b" ]`, iba reťazce.
 systemd-nspawn je preč a s ním aj režimy aplikácií: LosOS Cloud a LosOS Git
 bežia na hostiteľovi, každá pod vlastným používateľom, a vlastný lokálny k3s
 klaster zariadenia prevádzkuje iba aplikácie inštalované ako `shared`. nginx
-je jediný proces, ktorý drží verejné porty. Smeruje podľa cesty na mDNS mene
+drží webové porty 80 a 443. Smeruje podľa cesty na mDNS mene
 zariadenia (`<hostName>.local/cloud/` a adresy, ktoré volajú aplikácie
 Nextcloud, `/git/`) a na tom istom vhoste servíruje administračnú SPA.
 Aplikácie, ktoré vlastník nainštaluje ako
 `notshared`, a vlastné aplikácie zariadenia naopak bežia na Podmane bez
 roota cez Podman Compose (`modules/apps.nix`,
 [Formát aplikácií](app-format.md)), takže zariadenie, ktoré nič nezdieľa,
-pre ne nepotrebuje klaster.
+pre ne nepotrebuje klaster. Každú
+nainštalovanú aplikáciu otvorí na porte z `losos.apps.ports` v lokálnej sieti
+Traefik (`losos-traefik`, pod vlastným používateľom). Cesty číta zo štítkov,
+ktoré zariadenie dá na kontajnery aplikácie, cez Podman API používateľa
+`notshared`, ktoré smie otvoriť iba skupina Traefiku. Aplikácia `shared`
+namiesto toho dostane súbor s cestou. API Traefiku a jeho metriky
+Prometheus odpovedajú na `127.0.0.1:${losos.apps.traefikPort}` (8089), kde
+ich plugin štatistík v lososd raz za minútu číta pre `GET /api/statistics`.
 
 **LosOS Git** (`modules/git.nix`, `backend/src/forge/`, binárka
 `losos-git` z crate lososd). Git server zariadenia, pod vlastným
