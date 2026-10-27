@@ -29,7 +29,7 @@ actix-web = { version = "4", default-features = false, features = ["macros"] }
 # "blocking-api" is what the facade CLI uses: a one-shot D-Bus call needs no
 # runtime. The daemon uses the async side on tokio.
 zbus = { version = "5", default-features = false, features = ["tokio", "blocking-api"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "signal", "process", "io-util"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "signal", "net", "process", "io-util"] }
 
 # Job ids are "%Y%m%d%H%M%S-<pid>-<counter>"; the counter is what keeps two
 # jobs queued in the same second apart.
@@ -136,6 +136,18 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 kamadak-exif = "0.6"
 tract-onnx = "0.23"
 
+# Calls (src/calls/, the losos-calls binary): a forwarding SFU on str0m, a
+# sans-IO WebRTC stack, with its pure-Rust DTLS and SRTP so nothing links
+# OpenSSL. The browsers encrypt every frame end to end before it reaches
+# the SFU; str0m only ever sees that ciphertext inside SRTP.
+str0m = { version = "0.24", default-features = false, features = ["rust-crypto"] }
+# The call page's signalling socket is actix-ws, declared above.
+# Which addresses the SFU offers as ICE host candidates.
+if-addrs = "0.15"
+# Media through the edge (src/calls/relay.rs): one QUIC connection the
+# edge hands the browsers' datagrams down, TLS 1.3 on ring like the rest.
+# rustls is declared above with the mesh link.
+quinn = { version = "0.11", default-features = false, features = ["runtime-tokio", "rustls-ring"] }
 # The plugin runtime (src/plugin/): lososd's areas are WebAssembly
 # components written against plugins/wit/plugin.wit, loaded from the
 # read-only directory the NixOS module names. Component model for typed
@@ -155,7 +167,18 @@ flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
 serde_yaml = "0.9"
 tar = { version = "0.4", default-features = false }
 
+# OpenPGP in LosOS Mail (src/mail_pgp.rs): the box checks the public half of
+# a person's key before it publishes it (WKD, Autocrypt), learns the keys
+# other people's mail carries, and makes sure a private key it keeps is
+# locked with a passphrase it never sees. The same rPGP the access crate
+# uses, so the tree keeps one copy; bzip2 off for the same reason. SHA-1 is
+# what WKD hashes an address's local part with (RFC draft-koch-openpgp-webkey).
+pgp = { version = "0.21", default-features = false }
+sha1 = "0.10"
+
 [dev-dependencies]
+# Keys for the mail key store's tests (src/mail_pgp.rs); rPGP's own version.
+rand = "0.8"
 # The CLI book's integration-testing trio: run the real binary, assert on its
 # output, and give it a throwaway filesystem.
 assert_cmd = "2"
@@ -198,6 +221,14 @@ path = "src/bin/losos-cloud.rs"
 [[bin]]
 name = "losos-search"
 path = "src/bin/losos-search.rs"
+
+[[bin]]
+name = "losos-chat-threads"
+path = "src/bin/losos-chat-threads.rs"
+
+[[bin]]
+name = "losos-calls"
+path = "src/bin/losos-calls.rs"
 
 [[bin]]
 name = "losos-office"

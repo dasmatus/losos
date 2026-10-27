@@ -39,23 +39,9 @@ let
   inherit (pkgs) lib;
   lososPkgs = import ../packages.nix { inherit pkgs; };
 
-  noLab =
-    ui:
-    ui.overrideAttrs {
-      preBuild = "";
-      buildPhase = ''
-        runHook preBuild
-        cat > vite.nolab.config.ts <<'EOF'
-        import config from "./vite.config";
-        delete (config.build!.rolldownOptions!.input as Record<string, string>)["lab"];
-        export default config;
-        EOF
-        node_modules/.bin/vite build --config vite.nolab.config.ts
-        runHook postBuild
-      '';
-    };
+  noLab = import ./admin-ui-without-lab.nix;
 
-  model = "llama3.2:3b";
+  model = "gemma3:1b";
   # What the stand-in answers, by a word in the material.
   answers = pkgs.writeText "answers.json" (
     builtins.toJSON [
@@ -88,6 +74,9 @@ in
 
 pkgs.testers.nixosTest {
   name = "losos-apps-together";
+  # Two walks through the apps at 2x on emulated machines, one of them typed
+  # word by word and recorded.
+  globalTimeout = 7200;
 
   nodes = {
     box = _: {
@@ -135,9 +124,9 @@ pkgs.testers.nixosTest {
 
       systemd.services.lososd.environment = {
         # What modules/builder.nix sets, pointed at the stand-in.
-        LOSOS_BUILDER_URL = "http://127.0.0.1:11434";
-        LOSOS_BUILDER_MODEL = model;
-        LOSOS_BUILDER_CONTEXT = "8192";
+        LOSOS_ASSISTANT_URL = "http://127.0.0.1:11434";
+        LOSOS_ASSISTANT_MODEL = model;
+        LOSOS_ASSISTANT_CONTEXT = "8192";
       };
       systemd.services.assistant-model-stand-in = {
         wantedBy = [ "multi-user.target" ];
@@ -275,9 +264,9 @@ pkgs.testers.nixosTest {
         laptop.succeed(f"curl -sf --cacert {CA} -H 'Cookie: {cookie}' '{BASE}{path}' -o /tmp/got")
         return laptop.succeed("base64 -w0 /tmp/got").strip()
 
-    def shots(verb, out):
+    def shots(verb, out, extra=""):
         laptop.succeed(
-            f"together-shots {verb} {BASE} matus '{PASSWORD}' /tmp/shots/{out} --test losos-apps-together >&2",
+            f"together-shots {verb} {BASE} matus '{PASSWORD}' /tmp/shots/{out} --test losos-apps-together {extra} >&2",
             timeout=3600,
         )
 
@@ -304,7 +293,10 @@ pkgs.testers.nixosTest {
             timeout=60,
         )
         eva = sign_in("eva", EVA_PASSWORD)
-        assert ok("/api/me", matus)["shared"] == ["mail"]
+        # Mail is on the shared side, so the box lists it; Contacts and
+        # Calendar join it wherever LosOS Cloud runs.
+        shared = ok("/api/me", matus)["shared"]
+        assert "mail" in shared, shared
 
     with subtest("the box's AI is the plugin over the box's own model"):
         assert ok("/api/assistant", matus) == {"available": True, "ready": True, "model": "${model}"}
@@ -381,6 +373,11 @@ pkgs.testers.nixosTest {
             code, _ = api("/api/assistant/asks", matus, method="POST", data=bad)
             assert code == 400, (bad, code)
 
+    # For the film: one picture per typed word. No video: Playwright writes
+    # it when the page closes, and at 2x under TCG that outlasts the hour.
+    with subtest("the same walk again, typed word by word"):
+        shots("after", "film", "--typing")
+
     if BEFORE:
         with subtest("the same screens from before the apps were tied together"):
             box.succeed("/run/current-system/specialisation/before/bin/switch-to-configuration test")
@@ -394,7 +391,7 @@ pkgs.testers.nixosTest {
         box.wait_until_fails("systemctl is-active losos-mail.service", timeout=120)
         box.wait_for_unit("lososd.service")
         laptop.wait_until_succeeds(
-            f"curl -s --cacert {CA} -H 'Cookie: {matus}' {BASE}/api/me | jq -e '.shared == []'", timeout=120
+            f"curl -s --cacert {CA} -H 'Cookie: {matus}' {BASE}/api/me | jq -e '.shared | any(. == \"mail\") | not'", timeout=120
         )
         code, _ = api("/api/mail", matus)
         assert code == 404, code

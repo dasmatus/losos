@@ -1,5 +1,6 @@
 import type { IconSvgElement } from "@hugeicons/react";
 import {
+  BubbleChatIcon,
   BookOpen01Icon,
   ComputerIcon,
   Home01Icon,
@@ -10,7 +11,7 @@ import {
   RoadLocation01Icon,
   Sun03Icon,
 } from "@hugeicons/core-free-icons";
-import { canUse, signOut } from "@/lib/api";
+import { canUse, sharedApp, signOut } from "@/lib/api";
 import { signOutKeys } from "@/lib/shortcuts";
 import { CATALOGUE, recallAvailability, type AppDefinition } from "@/lib/apps";
 import { HANDBOOK_BASE } from "@/lib/handbook";
@@ -36,7 +37,7 @@ export type Target =
   | { kind: "href"; href: string; newTab?: boolean }
   | { kind: "run"; run: () => void };
 
-export type GroupId = "pins" | "pages" | "apps" | "files" | "repos" | "text" | "install" | "actions";
+export type GroupId = "pins" | "pages" | "apps" | "files" | "repos" | "issues" | "text" | "install" | "actions";
 
 export interface Item {
   /** Unique across the whole list; also the option's DOM id suffix. */
@@ -132,6 +133,14 @@ export function pageItems(): Item[] {
     icon: FlowchartIcon,
     words: `${template("shell.nav.lab", undefined, "en")} lab canvas obsidian flowchart whiteboard mind map simulator topology network map machines`,
     target: { kind: "route", to: "/diagrams" },
+  });
+  if (sharedApp("chat")) items.push({
+    id: "page-chat",
+    group: "pages",
+    title: t("shell.nav.chat"),
+    icon: BubbleChatIcon,
+    words: `${template("shell.nav.chat", undefined, "en")} matrix messages talk call room`,
+    target: { kind: "href", href: "/chat/" },
   });
   return items;
 }

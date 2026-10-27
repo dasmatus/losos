@@ -33,7 +33,7 @@ dem Handy öffnet sie sich als Overlay.
 ## Suche \{#search}
 
 Die Lupe oben in der Seitenleiste öffnet eine Liste, die Seiten, Apps,
-Dateien und Repositorys findet. Strg+Umschalt+P öffnet sie auf jeder
+Dateien, Repositorys und Issues findet. Strg+Umschalt+P öffnet sie auf jeder
 Admin-Seite ebenfalls (Cmd+Umschalt+P auf einem Mac), und genauso ein
 Doppelpunkt, den du irgendwo außerhalb eines Textfelds tippst. Sie findet:
 
@@ -42,6 +42,8 @@ Doppelpunkt, den du irgendwo außerhalb eines Textfelds tippst. Sie findet:
 - die Apps in LosOS Cloud und LosOS Git
 - Dateien und Ordner in LosOS Cloud, nach Namen
 - Repositorys in LosOS Git
+- Issues in LosOS Git, nach ihren Wörtern oder ihrem Kürzel wie `BT-12`;
+  tippst du nichts, die offenen Issues, die dir zugewiesen sind
 - Text in Dateien, sobald du drei Buchstaben tippst: in deinen Dateien in
   LosOS Cloud und im Hauptzweig jedes Repositorys in LosOS Git
 - deine angehefteten Einträge
@@ -96,6 +98,9 @@ und die Pfeiltasten bewegen sich darin.
 - **Eine Nachricht in Mail**: öffnen, antworten, allen antworten,
   weiterleiten, als gelesen oder ungelesen markieren, markieren,
   archivieren, in einen anderen Ordner verschieben, löschen.
+- **Eine Person in Kontakte**: Mail, Chat, Anruf oder Video, bearbeiten,
+  als `.vcf` exportieren, löschen. Wer unter **Auf dieser Box** steht,
+  bietet statt der letzten drei **Zu Kontakten hinzufügen**.
 
 Die Tasten neben einem Eintrag funktionieren auch ohne Menü. In LosOS Cloud
 benennt F2 die markierte Datei um und Entf verschiebt sie in den Papierkorb
@@ -103,12 +108,48 @@ benennt F2 die markierte Datei um und Entf verschiebt sie in den Papierkorb
 Rechtschreibung und Einfügen. Das Menü zeigt nur, was diese Box kann: Ein
 Eintrag für eine Funktion, die die Box nicht hat, fehlt, statt grau zu sein.
 
+## Die Leiste über einer Auswahl \{#the-bar-over-a-selection}
+
+Markier Wörter in einem Markdown-Dokument oder einer Präsentation in LosOS
+Office oder in einer Notiz, und sobald du die Maustaste loslässt, erscheint
+darüber eine kleine Leiste. Wähl Karten oder Pfeile in Diagrams aus, und
+sie erscheint über ihnen. Sie bietet an, was du am wahrscheinlichsten als
+Nächstes tust, damit du es nicht in der Werkzeugleiste suchen musst.
+
+- **Text, den du bearbeiten kannst** (LosOS Office und Notizen unter
+  **Bearbeiten**): **KI fragen**, fett, kursiv, durchgestrichen,
+  hervorgehoben und Code, ein Link auf eine Webseite, ein Link auf eine
+  andere Notiz, eine Erwähnung einer Person oder Datei und Kopieren. Ein
+  gedrückter Knopf zeigt, dass die Auszeichnung schon gesetzt ist; ein
+  zweiter Druck nimmt sie weg. Ein Link fragt seine Adresse direkt in der
+  Leiste ab, und ein Link auf eine Notiz oder eine Erwähnung schlägt beim
+  Tippen Namen vor.
+- **Eine Notiz, die du liest**: **KI fragen**, Kopieren und den Link auf
+  den Abschnitt kopieren, in dem die Wörter stehen.
+- **Karten und Pfeile in Diagrams**: **KI fragen**, wenn die Karten Text
+  haben, eine Farbe, den Text einer Karte bearbeiten, mehrere ausrichten,
+  ein Pfeil zwischen zwei Karten, gruppieren, duplizieren und löschen.
+  Jeder Knopf tut dasselbe wie der im Inspektor, also nimmt ein
+  Rückgängig ihn zurück.
+
+Laufen Mail oder Chat auf der Box, schickt die Leiste über Text die Wörter
+auch per Mail oder im Chat. **KI fragen** erscheint nur, solange die KI der
+Box eingeschaltet ist; bei Text, den du bearbeiten kannst, setzt **Auswahl
+ersetzen** die Antwort an die Stelle der Wörter.
+
+Mit der Tastatur bringt dich Alt+F10 in die Leiste, die Pfeiltasten
+bewegen sich darin, und Enter oder die Leertaste drückt einen Knopf. Escape
+führt zurück in den Text oder das Diagramm und blendet die Leiste aus, bis
+du etwas anderes auswählst. Tippst du über die Auswahl, verschwindet sie
+auch.
+
 ## Angeheftete Einträge \{#pins}
 
-Hefte die Apps, Dateien und Repositorys an, die du am häufigsten öffnest,
+Hefte die Apps, Dateien, Repositorys und Issues an, die du am häufigsten öffnest,
 und sie stehen unter **Angeheftet** in der Seitenleiste. Ein angehefteter
 Eintrag öffnet sich in seiner eigenen App: eine Datei oder ein Ordner in
-LosOS Cloud, ein Repository in LosOS Git, eine App auf der Übersicht oder
+LosOS Cloud, ein Repository in LosOS Git, ein Issue oder ein Projekt in den
+[Issues](./issues.md) von LosOS Git, eine App auf der Übersicht oder
 eine App, die du über die Suche installiert hast, auf ihrem eigenen Port.
 Die Box speichert die Liste, sodass jeder Browser, mit dem du dich
 anmeldest, dieselben Einträge zeigt.
@@ -117,14 +158,18 @@ anmeldest, dieselben Einträge zeigt.
   in ihrer Ecke. Eine angeheftete Kachel behält die Nadel, in Farbe.
 - Auf der Seite Apps steht **Anheften** neben jeder installierten App.
 - Der Stift neben **Angeheftet** öffnet die ganze Liste. Dort schiebst du
-  einen Eintrag nach oben oder unten, löst ihn und heftest aus drei Tabs an:
-  **Apps**, **Dateien**, das durch die Ordner von LosOS Cloud führt, und
-  **Repositorys**.
+  einen Eintrag nach oben oder unten, löst ihn und heftest aus vier Tabs an:
+  **Apps**, **Dateien**, das durch die Ordner von LosOS Cloud führt,
+  **Repositorys** und **Issues**, das ein Issue nach Wörtern oder Kürzel
+  findet.
+- An einem Issue oder einem Projekt in LosOS Git heftet die Nadel oben es
+  an. Ein Issue steht mit seinem Titel in der Seitenleiste.
 - Zeige in der Seitenleiste auf einen Eintrag und klicke auf die
   durchgestrichene Nadel, um ihn zu lösen. Die [Suche](#search) findet
   angeheftete Einträge ebenfalls.
-- Klicke mit der rechten Maustaste auf eine Datei, einen Ordner oder ein
-  Repository in der Suche, auf eine App-Kachel in der Übersicht oder auf
+- Klicke mit der rechten Maustaste auf eine Datei, einen Ordner, ein
+  Repository oder ein Issue in der Suche, auf ein Issue in einer Liste oder
+  auf einem Board von LosOS Git, auf eine App-Kachel in der Übersicht oder auf
   einen Eintrag in der Seitenleiste und wähle **An die Seitenleiste
   anheften** oder **Von der Seitenleiste lösen**. Auf einem Touchscreen
   hältst du stattdessen den Finger darauf.

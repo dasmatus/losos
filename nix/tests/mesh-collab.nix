@@ -39,20 +39,7 @@ let
   inherit (pkgs) lib;
   lososPkgs = import ../packages.nix { inherit pkgs; };
 
-  noLab = ui: ui.overrideAttrs {
-    preBuild = "";
-    buildPhase = ''
-      runHook preBuild
-      cat > vite.nolab.config.ts <<'EOF'
-      import config from "./vite.config";
-      // Before the rename the page was `lab`; a Before UI may still have it.
-      for (const page of ["diagrams", "lab"]) delete (config.build!.rolldownOptions!.input as Record<string, string>)[page];
-      export default config;
-      EOF
-      node_modules/.bin/vite build --config vite.nolab.config.ts
-      runHook postBuild
-    '';
-  };
+  noLab = import ./admin-ui-without-lab.nix;
   adminUi = noLab lososPkgs.losos-admin-ui;
 
   # Matus's profile picture, a figure drawn in the palette (no photo, no

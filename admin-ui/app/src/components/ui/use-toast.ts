@@ -20,7 +20,14 @@ export interface Confirmation {
   duration: number;
   /** The handbook page an error leads to, as a "What to do" link. */
   help?: HandbookEntry;
+  /** One button that acts on it: join the call a reminder is for. */
+  action?: ToastAction;
   open: boolean;
+}
+
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
 }
 
 /* Five is a stack, six is a wall. The oldest is closed to make room. */

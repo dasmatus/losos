@@ -41,8 +41,9 @@ deinem eigenen Konto anzumelden.
   Nachrichten. Auf einem breiten Bildschirm sind sie ein Baum links von der
   Liste, auf einem schmaleren eine Zeile darüber.
 - **Suchen** durchsucht den offenen Ordner: Absender, Betreff und Text.
-- **Schreiben** öffnet eine neue Nachricht. Das Feld **An** schlägt die
-  anderen Personen auf der Box vor. **Antworten**, **Allen antworten** und
+- **Schreiben** öffnet eine neue Nachricht. Die Felder **An** und **Cc**
+  schlagen deine [Kontakte](contacts) und die anderen Personen auf der Box
+  vor. **Antworten**, **Allen antworten** und
   **Weiterleiten** zitieren die Nachricht.
 - **Markieren**, **Als ungelesen markieren**, **Archivieren** und
   **Verschieben nach** wirken auf die offene Nachricht. **Löschen**
@@ -119,13 +120,81 @@ angemeldet ist.
 
 ## Die KI der Box fragen \{#ask-the-boxs-ai}
 
-Auf einer Box mit einem Sprachmodell für **Mit KI bauen** fragt
-**Zusammenfassen** in der Leiste der Nachricht die KI nach der offenen
-Nachricht. Das Modell läuft auf der Box, Nachricht und Antwort bleiben also
-dort, und es liest nur die Nachricht, nach der du gefragt hast. Es
-beantwortet eine Frage nach der anderen; auf einer kleinen Box kann eine
-Antwort ein paar Minuten dauern. Text in einer Nachricht, der der KI etwas
-befiehlt, zählt zur Nachricht und nicht als deine Bitte.
+**Zusammenfassen** in der Leiste der Nachricht fragt das eigene Sprachmodell
+der Box nach der offenen Nachricht. Das Modell läuft auf der Box, Nachricht
+und Antwort bleiben also dort, und es liest nur die Nachricht, nach der du
+gefragt hast. Es beantwortet eine Frage nach der anderen; auf einer kleinen
+Box kann eine Antwort ein, zwei Minuten dauern. Text in einer Nachricht, der
+der KI etwas befiehlt, zählt zur Nachricht und nicht als deine Bitte.
+
+Fragen zu Mail, Dateien und Notizen gehen an Gemma 3 1B, ein Modell für
+Text. **Mit KI bauen** behält ein Modell für Code. Die Box lädt jedes Modell
+einmal herunter, wenn sie zum ersten Mal online ist, und hält immer nur
+eines im Speicher. Eine Administratorin oder ein Administrator kann unter
+**Einstellungen**, **Erweitert** ein anderes Modell wählen
+(`assistant.model`). Gemma is provided under and subject to the Gemma Terms
+of Use found at ai.google.dev/gemma/terms.
+
+## Verschlüsselung \{#encryption}
+
+Mail kann Nachrichten mit OpenPGP verschlüsseln und signieren, dem
+Standard, den GnuPG, Thunderbird und die meisten Mailprogramme lesen.
+
+**Dein Schlüssel.** **Verschlüsselung** neben **Schreiben** erstellt einen
+Schlüssel für deine Adresse oder importiert einen, den du schon hast. Du
+wählst eine Passphrase dafür; sie ist nicht dein Anmeldepasswort. Der
+Schlüssel wird in deinem Browser erstellt und entsperrt. Die Box bewahrt
+den privaten Schlüssel nur gesperrt mit deiner Passphrase auf und versiegelt
+ihn zusätzlich an ihr TPM oder ihren eigenen Schlüssel, wie ihre anderen
+Geheimnisse (siehe [Zugangsdaten](../reference/credentials)). Ohne die Passphrase kann
+niemand auf der Box deine verschlüsselte Mail lesen, auch kein
+Administrator. Dasselbe Fenster zeigt den Fingerabdruck, lädt eine
+Sicherung (weiterhin mit deiner Passphrase gesperrt) und den öffentlichen
+Schlüssel herunter, sperrt den Schlüssel wieder und entfernt ihn. Ein
+entfernter Schlüssel kann an ihn geschickte Mail erst wieder lesen, wenn du
+die Sicherung importierst.
+
+**Entsperren.** Der Schlüssel bleibt in dem Tab entsperrt, in dem du ihn
+entsperrt hast, bis du ihn sperrst oder den Tab schließt. Mail fragt nach
+der Passphrase, wenn sie gebraucht wird: um eine verschlüsselte Nachricht
+zu öffnen oder um eine zu signieren.
+
+**Schreiben.** Unter der Nachricht schaltest du **Verschlüsseln** und
+**Signieren** ein oder aus. Während du eine Adresse tippst, sucht Mail den
+Schlüssel dieser Person und zeigt, woher er kommt:
+
+- jemand auf dieser Box: der Schlüssel, den die Person hier erstellt hat;
+- deine Kontakte: ein beim Kontakt gespeicherter Schlüssel;
+- frühere Mail: ein Schlüssel, den die Person in einem Autocrypt-Header
+  geschickt hat, gelernt, als du ihre Mail geöffnet hast;
+- ihre Maildomain: das Web Key Directory (WKD) der Domain;
+- keys.openpgp.org, wenn ihre Domain keines hat. Ein Administrator kann mit
+  `losos.mail.keyserver` einen anderen Schlüsselserver eintragen oder ihn
+  abschalten.
+
+Hat jeder Empfänger einen Schlüssel, schaltet sich **Verschlüsseln** von
+selbst ein. Fehlt einer, sagt Mail, bei wem, und die Nachricht geht erst
+raus, wenn du die Verschlüsselung ausschaltest oder die Person weglässt.
+Verschlüsselte Mail wird auch an deinen eigenen Schlüssel verschlüsselt,
+damit du deine Kopie unter Gesendet lesen kannst. Der Betreff wird nicht
+verschlüsselt. Mail wird als PGP/MIME verschickt; **Inline, für ältere
+Mailprogramme** setzt den verschlüsselten Text stattdessen in den Inhalt,
+was den Text schützt, aber nicht die Anhänge.
+
+**Lesen.** Eine verschlüsselte Nachricht hat in der Liste ein Schloss. Beim
+Öffnen wird sie in deinem Browser entschlüsselt, und eine Zeile unter den
+Kopfzeilen sagt, wie sie kam: verschlüsselt, signiert und von wem, signiert
+mit einem Schlüssel, den die Box nicht kennt, oder mit einer Signatur, die
+nicht passt. Eine Nachricht, die jemand anderes als ihr Absender signiert
+hat, sagt das. Entschlüsselte Mail wird als Text gezeigt, nie in der
+Formatierung des Absenders, und ihre Anhänge werden wie alle anderen
+heruntergeladen.
+
+**Dein öffentlicher Schlüssel für andere.** Die Box veröffentlicht den
+öffentlichen Schlüssel jeder Person in ihrem eigenen Web Key Directory
+unter `/.well-known/openpgpkey/`, damit Mailprogramme anderswo ihn über
+deine Adresse finden. Jede Nachricht, die du schickst, trägt ihn außerdem
+in einem Autocrypt-Header.
 
 ## Was Mail noch nicht kann \{#what-mail-does-not-do-yet}
 

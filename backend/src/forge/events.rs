@@ -31,15 +31,43 @@ pub enum Event {
         before: String,
         after: String,
         pusher: String,
+        chat_room: Option<String>,
     },
-    /// A pull request was opened, reopened, closed or merged, or its head
-    /// moved (`synchronize`).
+    /// A pull request was opened, reopened, closed or merged, its head
+    /// moved (`synchronize`), or someone reviewed it or wrote in it
+    /// (`reviewed`, `commented`).
     PullRequest {
         action: String,
         owner: String,
         repo: String,
         private: bool,
         pr: PullRequest,
+        chat_room: Option<String>,
+    },
+    /// An issue was opened, closed, reopened or written in.
+    Issue {
+        action: String,
+        owner: String,
+        repo: String,
+        private: bool,
+        number: i64,
+        /// The issue tracker's key (`LOS-12`), when it has one.
+        key: Option<String>,
+        title: String,
+        /// Who did it.
+        author: String,
+        chat_room: Option<String>,
+    },
+    /// A check on a commit finished: `success`, `failure` or `error`.
+    Status {
+        owner: String,
+        repo: String,
+        private: bool,
+        sha: String,
+        context: String,
+        state: String,
+        description: String,
+        chat_room: Option<String>,
     },
 }
 
@@ -54,6 +82,8 @@ pub struct PullRequest {
     /// `refs/heads/main`.
     pub base_ref: String,
     pub author: String,
+    /// Who did what the event says, when a person did (not a push).
+    pub actor: String,
 }
 
 impl Event {
@@ -69,6 +99,7 @@ impl Event {
                 before,
                 after,
                 pusher,
+                chat_room,
             } => json!({
                 "kind": "push",
                 "owner": owner,
@@ -78,6 +109,7 @@ impl Event {
                 "before": before,
                 "after": after,
                 "pusher": pusher,
+                "chatRoom": chat_room,
             }),
             Event::PullRequest {
                 action,
@@ -85,6 +117,7 @@ impl Event {
                 repo,
                 private,
                 pr,
+                chat_room,
             } => json!({
                 "kind": "pull_request",
                 "action": action,
@@ -97,15 +130,60 @@ impl Event {
                 "headSha": pr.head_sha,
                 "baseRef": pr.base_ref,
                 "author": pr.author,
+                "actor": pr.actor,
+                "chatRoom": chat_room,
+            }),
+            Event::Issue {
+                action,
+                owner,
+                repo,
+                private,
+                number,
+                key,
+                title,
+                author,
+                chat_room,
+            } => json!({
+                "kind": "issue",
+                "action": action,
+                "owner": owner,
+                "repo": repo,
+                "private": private,
+                "number": number,
+                "key": key,
+                "title": title,
+                "author": author,
+                "chatRoom": chat_room,
+            }),
+            Event::Status {
+                owner,
+                repo,
+                private,
+                sha,
+                context,
+                state,
+                description,
+                chat_room,
+            } => json!({
+                "kind": "status",
+                "owner": owner,
+                "repo": repo,
+                "private": private,
+                "sha": sha,
+                "context": context,
+                "state": state,
+                "description": description,
+                "chatRoom": chat_room,
             }),
         }
     }
 }
 
 type Consumer = Box<dyn Fn(&Event) + Send + Sync>;
+type Shared = std::sync::Arc<dyn Fn(&Event) + Send + Sync>;
 
-fn consumers() -> &'static Mutex<Vec<Consumer>> {
-    static C: OnceLock<Mutex<Vec<Consumer>>> = OnceLock::new();
+fn consumers() -> &'static Mutex<Vec<Shared>> {
+    static C: OnceLock<Mutex<Vec<Shared>>> = OnceLock::new();
     C.get_or_init(|| Mutex::new(Vec::new()))
 }
 
@@ -119,7 +197,7 @@ pub fn subscribe(f: Consumer) {
     consumers()
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .push(f);
+        .push(std::sync::Arc::from(f));
 }
 
 /// Send every event from now on to the socket at `path` as well.
@@ -132,11 +210,13 @@ pub fn deliver_to(path: PathBuf) {
 
 /// Tell everyone.
 pub fn emit(event: Event) {
-    for c in consumers()
+    // Called with the list unlocked: a consumer may emit an event of its
+    // own (the tracker closes an issue for a push and says so).
+    let listeners = consumers()
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .iter()
-    {
+        .clone();
+    for c in listeners {
         c(&event);
     }
     let targets = sockets()
@@ -190,6 +270,7 @@ pub fn pushed(repo: &Repo, pusher: &str, changes: &[(String, String, String)]) {
             before: before.clone(),
             after: after.clone(),
             pusher: pusher.to_string(),
+            chat_room: repo.chat_room.clone(),
         });
     }
 }
@@ -203,6 +284,40 @@ pub fn pull_request(action: &str, repo: &Repo, pr: PullRequest) {
         repo: repo.name.clone(),
         private: repo.private,
         pr,
+        chat_room: repo.chat_room.clone(),
+    });
+}
+
+/// An issue changed: `action` is opened, closed, reopened or commented.
+pub fn issue(action: &str, repo: &Repo, number: i64, key: Option<&str>, title: &str, author: &str) {
+    emit(Event::Issue {
+        action: action.to_string(),
+        owner: repo.owner.clone(),
+        repo: repo.name.clone(),
+        private: repo.private,
+        number,
+        key: key.map(str::to_string),
+        title: title.to_string(),
+        author: author.to_string(),
+        chat_room: repo.chat_room.clone(),
+    });
+}
+
+/// A check on `sha` reached `state`. Only a finished check is an event:
+/// `pending` says nothing yet.
+pub fn status(repo: &Repo, sha: &str, context: &str, state: &str, description: &str) {
+    if !matches!(state, "success" | "failure" | "error") {
+        return;
+    }
+    emit(Event::Status {
+        owner: repo.owner.clone(),
+        repo: repo.name.clone(),
+        private: repo.private,
+        sha: sha.to_string(),
+        context: context.to_string(),
+        state: state.to_string(),
+        description: description.to_string(),
+        chat_room: repo.chat_room.clone(),
     });
 }
 
@@ -224,7 +339,29 @@ mod tests {
             fork_of: None,
             created: String::new(),
             updated: String::new(),
+            chat_room: Some("!room:mattbox.local".into()),
         }
+    }
+
+    #[test]
+    fn an_issue_event_is_the_shape_the_rooms_read() {
+        let e = Event::Issue {
+            action: "closed".into(),
+            owner: "matus".into(),
+            repo: "site".into(),
+            private: true,
+            number: 12,
+            key: Some("SIT-12".into()),
+            title: "Fix the header".into(),
+            author: "eva".into(),
+            chat_room: None,
+        };
+        assert_eq!(
+            e.to_json(),
+            json!({"kind": "issue", "action": "closed", "owner": "matus", "repo": "site",
+                   "private": true, "number": 12, "key": "SIT-12", "title": "Fix the header",
+                   "author": "eva", "chatRoom": null})
+        );
     }
 
     #[test]
@@ -282,6 +419,7 @@ mod tests {
         assert_eq!(body["ref"], "refs/heads/main");
         assert_eq!(body["after"], a);
         assert_eq!(body["private"], true);
+        assert_eq!(body["chatRoom"], "!room:mattbox.local");
         // The deletion is not an event.
         let seen = seen.lock().unwrap();
         assert!(seen

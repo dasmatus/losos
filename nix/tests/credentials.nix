@@ -49,32 +49,9 @@ let
 
   # The admin UI as it ships, without the Lab page, which this test never
   # opens and whose WebAssembly takes longer to build than the test to run.
-  ui = lososPkgs.losos-admin-ui.overrideAttrs (
-    _:
-    {
-      pname = "losos-admin-ui-without-lab";
-      preBuild = ''
-        cat > vite.credentials-test.config.ts <<'EOF'
-        import base from "./vite.config";
-        import { join } from "node:path";
-        import { fileURLToPath } from "node:url";
-        const root = fileURLToPath(new URL(".", import.meta.url));
-        const config = base as Record<string, any>;
-        config.build.rolldownOptions.input = {
-          main: join(root, "index.html"),
-          manage: join(root, "manage/index.html"),
-        };
-        export default config;
-        EOF
-      '';
-      buildPhase = ''
-        runHook preBuild
-        npx vite build --config vite.credentials-test.config.ts
-        runHook postBuild
-      '';
-    }
+  ui = import ./admin-ui-without-lab.nix (
     # The earlier UI shares this one's lock file, so its npm cache too.
-    // lib.optionalAttrs (!after) { src = before; }
+    lososPkgs.losos-admin-ui.overrideAttrs (_: lib.optionalAttrs (!after) { src = before; })
   );
 
   # What a reader of `probe` saw: a digest, so the value itself is never
@@ -297,8 +274,11 @@ pkgs.testers.nixosTest {
 
   testScript = ''
     import json
+    import os
     import re
     import secrets
+    import signal
+    import time
 
     AFTER = ${if after then "True" else "False"}
     BOX = "192.168.1.1"
@@ -314,6 +294,26 @@ pkgs.testers.nixosTest {
 
     def digest_of(m, value):
         return m.succeed(f"printf %s '{value}' | sha256sum | cut -d' ' -f1").strip()
+
+    def power_cycle(m):
+        """Shut the machine down and start it again on the same TPM state.
+
+        The test VM's swtpm can outlive QEMU's exit, and the next start then
+        reaches that old one, whose answer to the start-up is a TPM failure,
+        so it is stopped first."""
+        m.shutdown()
+        pidfile = m.state_dir / f"{m.name}-swtpm" / "pid"
+        if pidfile.exists():
+            pid = int(pidfile.read_text().strip())
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            for _ in range(60):
+                if not os.path.exists(f"/proc/{pid}"):
+                    break
+                time.sleep(1)
+        m.start()
 
     def nowhere_on_disk(m, value, where):
         """No file under `where` holds `value`, after proving grep finds one."""
@@ -554,8 +554,7 @@ pkgs.testers.nixosTest {
                 "AWS_ACCESS_KEY_ID=AKIDEXAMPLE\\n"
                 f"AWS_SECRET_ACCESS_KEY={BUCKET_SECRET}\\n' > /var/secrets/losos-backup.env"
             )
-            box.shutdown()
-            box.start()
+            power_cycle(box)
             box.wait_for_unit("lososd.service")
             box.wait_for_open_port(443)
 
@@ -709,10 +708,12 @@ pkgs.testers.nixosTest {
         with subtest("the values survive a power cycle unchanged"):
             names = BOX_MADE + ("backup-bucket",)
             blobs = {n: sha(box, f"{STORE}/{n}") for n in names}
-            box.shutdown()
-            box.start()
+            power_cycle(box)
             box.wait_for_unit("lososd.service")
             box.wait_for_unit("authelia-losos.service")
+            # The unit is active before lososd has loaded its plugins and
+            # opened its port, a minute or more under TCG.
+            box.wait_for_open_port(8082)
             for n, digest in blobs.items():
                 assert sha(box, f"{STORE}/{n}") == digest, f"{n} was sealed again"
             assert decrypt(box, "admin-token") == TOKEN

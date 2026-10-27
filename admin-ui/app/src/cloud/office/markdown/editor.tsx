@@ -41,6 +41,7 @@ import { accentFor, nameOf as loginOf } from "../../collab/people";
 import { NameDialog, explain } from "../../dialogs";
 import { cloudSource, noteHref, notes } from "../../notes/api";
 import { onText, wikilinkCompletion } from "../../notes/editing";
+import { EditorQuickActions } from "../../quick-text";
 import { activeAt, formatKeys, headingAt, type Action, type Words } from "./format";
 import { Filmstrip, Presenter, SlideView } from "./slide";
 import { isDeck, slideAt, splitSlides } from "./slides";
@@ -371,6 +372,18 @@ export function MarkdownOffice({ entry: first, onClose }: { entry: Entry; onClos
           </div>
         )}
       </main>
+
+      {meta !== null && presenting === null && (
+        <EditorQuickActions
+          view={view}
+          app="office"
+          path={entry.path}
+          title={entry.name}
+          vault={() => vaultRef.current}
+          readOnly={readOnly}
+          deck={deck}
+        />
+      )}
 
       {presenting !== null && (
         <Presenter

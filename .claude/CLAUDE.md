@@ -90,7 +90,9 @@ and is never served or built by nix.
   manifest. lososd loads them only from `losos.backend.plugins` in the
   read-only store and refuses to start on anything else. New lososd routes
   go in a plugin, each with its `sections.json` line; sign-in, sections and
-  D-Bus stay in the host. The look and the pins are plugins so far;
+  D-Bus stay in the host. The look, the pins and the statistics
+  (`/api/statistics`, Traefik's metrics, a minute ring in its cache) are
+  plugins so far;
   `nix/tests/plugins.nix` boots them with a browser that takes the PR's screenshots
   (`nix/tests/screens/`, reusable by any VM test).
 - `admin-ui/app`: React 19 + Vite + Tailwind SPA on real paths. Its `dist/`
@@ -143,6 +145,37 @@ and is never served or built by nix.
   `gh`, never an edge-made key. `losos cloud setup` and `losos git setup` mint an
   app password and a LosOS Git token per computer with the owner's password
   (`backend/src/devices.rs`); `losos git credential` is git's helper.
+- Calls (`modules/calls.nix`, `losos.calls.enable`, only while chat runs):
+  `losos-calls` (`backend/src/calls/`, str0m, ICE-lite, VP8 and Opus) is an
+  SFU as `shared` on `/run/losos-calls/http.sock` (nginx's group only),
+  `/calls/api/` behind LosOS Login with no spare-key bypass. nginx hands
+  the SFU the signed-in person as `Remote-User` (`calls/person.rs`), the
+  Matrix id `@<name>:<server>`; Dendrite answers no OpenID check with
+  federation off, so calls take no Matrix token.
+  Every frame is AES-GCM sealed in the browser by an encoded transform
+  (`admin-ui/app/src/calls/e2ee.ts`, worker `e2ee-worker.ts`), sender keys
+  ratchet on a join and are replaced on a leave, and travel as Olm
+  to-device `org.losos.call.key`; the room gets `org.losos.call`
+  started/ended events (`src/chat/calls.tsx`). In Chromium a worker held
+  by an `RTCRtpScriptTransform` loses its own `postMessage` and timers, so
+  stats go over a MessagePort from the frame path. `--address IP=OFFERED`
+  offers a forwarded port's address; `nix/tests/calls.nix` reaches the SFU
+  that way and reads its `--tap` (`lososInternal.callsTap`) to prove the
+  box holds only ciphertext. Behind an edge (`losos.proxy.enable`) the SFU
+  keeps one QUIC link to the edge's relay (`calls/relay.rs`,
+  `edge/registrar/src/calls_relay.rs`) and opens no port. The screen is a
+  third transceiver (`p<pid>-screen`); the black background is MediaPipe's
+  selfie segmenter in the browser before the seal (`calls/background.ts`,
+  files under `/chat/calls-ml/`, model from `LOSOS_SEGMENTER_MODEL`).
+  Podcast mode composites on the host's canvas and sends WebM to
+  `/calls/api/stream`, which ffmpeg passes to RTMP: the one plaintext path,
+  marked public in the UI. Guests: only an official edge answers
+  `POST /calls/guest-link`; the box serves `/calls/guest/` (its own Vite
+  build, `vite.guest.config.ts`) and `/calls/guest/ws` without LosOS Login,
+  and the link's `#` secret, which no server sees, keys an ECDH pair per
+  guest (`calls/guests.ts`). lososd runs `HTTP_WORKERS` (8) and a 120 s
+  `client_request_timeout` because its handlers block; one worker per core
+  and the 5 s default 408'd chat on a two-core box.
 - LosOS Diagrams at `/diagrams/` (sidebar entry Diagrams; `/lab/` 301s
   there; internal names stay `lab`: the section, `/api/lab/*`, the crates,
   `src/lab/`): a screen of the admin SPA at `/diagrams`, laid out like Mail
@@ -179,8 +212,8 @@ and is never served or built by nix.
   `nix/tests/cloud-from-nextcloud.nix` boots a real Nextcloud and checks it.
 - `containers.nix`, `cluster.nix`: the box's own k3s server runs only the
   apps of its shared side (sharing on and in a mesh); `services.rke2`
-  (agent) joins the edge's mesh. Nginx is the only public listener:
-  `/cloud/`, `/git/`, admin SPA on `/`.
+  (agent) joins the edge's mesh. nginx holds 80 and 443: `/cloud/`,
+  `/git/`, admin SPA on `/`. Traefik holds `losos.apps.ports` (apps.nix).
 - `git.nix` + `backend/src/forge/` (`losos-git`, a second binary of the
   backend crate): LosOS Git, the box's Git server in place of Forgejo.
   Smart HTTP (`git upload-pack`/`receive-pack --stateless-rpc`, protocol
@@ -221,8 +254,29 @@ and is never served or built by nix.
   only where that cluster runs. `losos-app-<name>` transient units do the
   work; the `losos-shape` rules (`losos-app-shape`) put every pod on the
   host network without root, turn claims into folders in that user's data
-  domain and refuse a chart that needs more; nginx forwards a port of
-  `losos.apps.ports` to it, LAN only. `nix/tests/podman-apps.nix` boots it.
+  domain and refuse a chart that needs more. `losos-traefik` (its own
+  user) holds `losos.apps.ports`, an entrypoint `port-<n>` each, LAN only
+  through the `lan-only@file` ipAllowList (RFC 1918 minus 10.42/16). Routes
+  are labels `compose.rs` writes on every service (`app-<name>`, dropping an
+  app's own `traefik.*`/`losos.*`), read through `losos-podman-api`, a
+  socket-activated Podman API of `notshared` only Traefik's group opens; a
+  `shared` app gets a route file in `/var/lib/losos-apps/traefik/`. No
+  nginx forward, no reload. API and metrics on `127.0.0.1:8089`
+  (`losos.apps.traefikPort`), the job waits on it. Settings › Statistics and
+  the Overview's Statistics tile draw `src/statistics/` (shared with the
+  edge's manage page). `nix/tests/podman-apps.nix` boots it.
+- `chat.nix` + `backend/src/chat.rs` + `admin-ui/app/src/chat/` (LosOS
+  Chat, `/chat/`, its own Vite page of the admin UI): Dendrite as `shared` in
+  `/home/shared/data/chat`, only while `lososInternal.sharedSide`
+  (`sharingMyStorage` and `cluster.enable`, the gate mail shares); off, nginx
+  sends `/chat/` home and `/_matrix/` 404s. No Matrix passwords: lososd is an
+  application service over every user and the only way in
+  (`/api/chat/session`), and nginx asks `/internal/chat/authz` before every
+  client and media request (LosOS Login cookie plus a token of that same
+  person). Dendrite has no thread list; lososd answers it through
+  `losos-chat-threads` as `shared`. The client is matrix-js-sdk with its Rust
+  crypto under the Lab's CSP arm. `nix/tests/chat.nix` boots it and drives
+  two browsers (`chat-browser.mjs`); its output holds the screenshots.
 - `mail.nix` + `backend/src/mail.rs` (`losos.mail.*`): LosOS Mail. Stalwart
   as `shared`, mailboxes in `/home/shared/data/mail`, loopback HTTP only (no
   SMTP or IMAP listener), its own unit rather than nixpkgs' module because a
@@ -409,7 +463,10 @@ and is never served or built by nix.
   with the `HISTORY_SCRUB_DEPLOY_KEY` deploy key and tags with the CI token.
   `stale-branches.yml` deletes, each Sunday, branches with no commit in 30
   days that no open PR uses as head or base.
-  The VM tests are not in CI; there is no KVM there.
+  `discovery` boots the netboot box `nix/tests/discovery/box.nix` on Linux,
+  macOS and Windows runners, and `nix/tests/discovery/check.py` has each
+  find it and read and write files over SMB and WebDAV.
+  The nixos-test VM tests are not in CI.
 
 ## Rules
 
@@ -704,8 +761,8 @@ quotes (it used to cut inside them, which mangled the default
 `modules/cluster.nix` + `modules/cloud.nix` + `modules/git.nix`):
 systemd-nspawn is gone, and so are Nextcloud and Forgejo. LosOS Cloud and
 LosOS Git are host services of their own on Unix sockets, and the box's own
-k3s cluster runs only the apps of its shared side. Nginx is the only thing
-holding public ports: path-based routing on the appliance's mDNS name
+k3s cluster runs only the apps of its shared side. Nginx holds the web ports
+(Traefik holds only the installed apps' LAN range): path-based routing on the appliance's mDNS name
 (`/cloud/` plus the Nextcloud client addresses, `/git/`) and the admin SPA on
 the same vhost. `admin-ui/design-system/` (`tokens.css` + `losos.css`, plus
 a `react/` wrapper package for claude.ai/design) is **dev-machine-only and no

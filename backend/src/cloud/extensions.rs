@@ -55,6 +55,9 @@ pub async fn api(
         (_, ["notes", rest @ ..]) => crate::cloud::notes::api(req, cloud, who, rest, body).await,
         (_, ["kb", rest @ ..]) => crate::cloud::notes::kb::api(req, cloud, who, rest, body).await,
         (_, ["photos", rest @ ..]) => crate::cloud::photos::api(req, cloud, who, rest, body).await,
+        (_, ["contacts", rest @ ..]) => {
+            crate::cloud::contacts::api(req, cloud, who, rest, body).await
+        }
         ("GET", ["boards"]) => match crate::cloud::boards::list(store, &who.login) {
             Ok(list) => HttpResponse::Ok().json(serde_json::json!({ "boards": list })),
             Err(e) => crate::cloud::api::store_error(&e),

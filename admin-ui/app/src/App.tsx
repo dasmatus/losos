@@ -1,4 +1,5 @@
 import * as React from "react";
+import { ReportDialogHost } from "@/components/report-dialog";
 import { BrowserRouter, Link, Route, Routes, useLocation } from "react-router-dom";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Compass01Icon, Search01Icon } from "@hugeicons/core-free-icons";
@@ -40,6 +41,7 @@ import {
   signIn,
   signInPageReady,
   sentToSignIn,
+  sharedApp,
   signInUrl,
   signOut,
   subscribeAuth,
@@ -57,6 +59,7 @@ import { paneFromPath } from "@/lib/routes";
 import { useT } from "@/lib/i18n-react";
 import { useWaitGame } from "@/components/play-while-waiting";
 import { cn } from "@/lib/utils";
+import { chatDocument } from "@/chat/document";
 
 /* Screens load on demand.
  *
@@ -84,6 +87,22 @@ const CommandPalette = React.lazy(() => import("@/palette/command-palette"));
 /* LosOS Mail (src/mail/): only on the shared side, so most boxes never
  * fetch it. */
 const Mail = React.lazy(() => import("@/mail/app"));
+/* LosOS Contacts (src/contacts/): kept in chat's homeserver, so on the
+ * shared side only, like Mail and Chat. */
+const Contacts = React.lazy(() => import("@/contacts/app"));
+/* LosOS Calendar (src/calendar/): LosOS Cloud's calendars, with
+ * subscriptions and invitations. Its reminders are a small chunk of their
+ * own the shell holds, so they show on every screen. */
+const Calendar = React.lazy(() => import("@/calendar/app"));
+const Reminders = React.lazy(() => import("@/calendar/reminders"));
+/* LosOS Chat (src/chat/), the same: on the shared side only, and the only
+ * screen that brings matrix-js-sdk and its crypto. */
+const Chat = React.lazy(() => import("@/chat/app"));
+/* Another box asks who the person is, for its LosOS Git (src/chat/vouch.tsx). */
+const ChatVouch = React.lazy(() => import("@/chat/vouch"));
+/* Calls outlive the chat screen, so the shell holds them, on a document
+ * loaded at /chat/ only: elsewhere matrix-js-sdk stays out of the page. */
+const CallsShell = React.lazy(() => import("@/chat/calls-shell"));
 /* Mesh CI (src/ci/): on the shared side too, beside LosOS Git. */
 const Ci = React.lazy(() => import("@/ci/app"));
 /* LosOS Diagrams (src/lab/): its own chunk with the Rust core's
@@ -183,6 +202,10 @@ function useGate(): Gate {
   return claimed ? "signin" : "setup";
 }
 
+function CallsHolder({ children }: { children: React.ReactNode }) {
+  return chatDocument() ? <CallsShell>{children}</CallsShell> : <>{children}</>;
+}
+
 function Shell() {
   const gate = useGate();
   const t = useT();
@@ -228,9 +251,11 @@ function Shell() {
    * says why instead of failing pane by pane. */
   const me = useMe();
   const held = signedIn && (me?.locked?.length ?? 0) > 0;
-  /* LosOS Diagrams draws on a canvas beside an inspector, which wants more
-   * room than a pane of rows: on /diagrams the bar and the page are wider. */
-  const wide = useLocation().pathname.startsWith("/diagrams");
+  /* LosOS Diagrams draws on a canvas beside an inspector, and LosOS
+   * Calendar a week of seven columns, which want more room than a pane of
+   * rows: on /diagrams and /calendar the bar and the page are wider. */
+  const path = useLocation().pathname;
+  const wide = path.startsWith("/diagrams") || path.startsWith("/calendar");
   const tourOpen = React.useSyncExternalStore(subscribeTour, isTourOpen, () => false);
   const paletteOpen = React.useSyncExternalStore(subscribePalette, () => paletteState().open, () => false);
   const searchable = signedIn && !held;
@@ -338,6 +363,7 @@ function Shell() {
         <main className="min-w-0 flex-1">
           {signedIn && !held && <MeshNotice />}
           <React.Suspense fallback={<ScreenFallback />}>
+          <CallsHolder>
           {held ? (
             <Settings pane="account" />
           ) : (
@@ -367,6 +393,14 @@ function Shell() {
                 (modules/containers.nix); the screen says so too if the box
                 leaves it while the page is open. */}
             <Route path="/mail" element={<Mail />} />
+            {/* nginx answers /contacts with 404 off the shared side too. */}
+            <Route path="/contacts" element={<Contacts />} />
+            {/* nginx answers /calendar with 404 without LosOS Cloud too. */}
+            <Route path="/calendar" element={<Calendar />} />
+            {/* nginx serves /chat/ only on the shared side, under chat's
+                own policy (modules/chat.nix); off it, /chat/ goes home. */}
+            <Route path="/chat/vouch" element={<ChatVouch />} />
+            <Route path="/chat/*" element={<Chat />} />
             {/* The same for Mesh CI. LosOS Git's checks link a run's job as
                 /ci/runs/<id>#job-<job>. */}
             <Route path="/ci" element={<Ci />} />
@@ -377,6 +411,7 @@ function Shell() {
             <Route path="*" element={<NotFound />} />
           </Routes>
           )}
+          </CallsHolder>
           </React.Suspense>
         </main>
       </SidebarProvider>
@@ -388,11 +423,17 @@ function Shell() {
           <CommandPalette />
         </React.Suspense>
       )}
+      {signedIn && !held && sharedApp("calendar") && (
+        <React.Suspense fallback={null}>
+          <Reminders />
+        </React.Suspense>
+      )}
       {signedIn && !held && tourOpen && (
         <React.Suspense fallback={null}>
           <Tour />
         </React.Suspense>
       )}
+      {signedIn && <ReportDialogHost />}
       <Toaster />
     </div>
   );

@@ -79,6 +79,19 @@ enum Cmd {
         /// service's back into the table as they happen (the Windows share).
         #[arg(long)]
         watch: bool,
+        /// The fetcher that reads subscribed calendars (`webcal-fetch`
+        /// behind a socket). Without it this process runs curl itself,
+        /// which on the box has no network.
+        #[arg(long)]
+        webcal_socket: Option<PathBuf>,
+    },
+    /// Read one calendar address for LosOS Cloud: a JSON request line on
+    /// stdin, the answer's header line and body on stdout. The box runs it
+    /// once per connection on `/run/losos-webcal/fetch.sock`, with network
+    /// that the cloud itself does not have.
+    WebcalFetch {
+        #[arg(long, default_value = "curl")]
+        curl: String,
     },
     /// Bring the table in line with the files on disk, for one person or all.
     Scan {
@@ -151,6 +164,7 @@ fn main() -> anyhow::Result<()> {
             office_wopi,
             coolwsd,
             watch,
+            webcal_socket,
         } => {
             let cloud = Arc::new(Cloud::open(
                 &cli.root,
@@ -158,10 +172,21 @@ fn main() -> anyhow::Result<()> {
                     product,
                     trash_days,
                     knowledge_bases,
+                    webcal_socket,
                 },
             )?);
             if watch {
                 cloud::watch::spawn(cloud.clone())?;
+            }
+            // Subscribed calendars, each read again when its interval is up.
+            {
+                let cloud = cloud.clone();
+                std::thread::Builder::new()
+                    .name("webcal".into())
+                    .spawn(move || loop {
+                        cloud::calendar::refresh_due(&cloud);
+                        std::thread::sleep(std::time::Duration::from_secs(60));
+                    })?;
             }
             let listen = match (socket, listen) {
                 (Some(s), _) => server::Listen::Unix(s),
@@ -208,6 +233,10 @@ fn main() -> anyhow::Result<()> {
                 )
                 .await
             })?;
+            Ok(())
+        }
+        Cmd::WebcalFetch { curl } => {
+            cloud::webcal::serve_one(&curl, std::io::stdin().lock(), std::io::stdout().lock())?;
             Ok(())
         }
         Cmd::Scan { owner } => {

@@ -99,7 +99,8 @@ Chart so, dass es so läuft wie LosOS Git.
 - Der Speicher, den das Chart anfordert, wird zu Ordnern unter
   `/home/<user>/data/apps/<name>`.
 - Die App bekommt einen eigenen Port aus `losos.apps.ports`, standardmäßig
-  30000 bis 30099, und nur dein lokales Netz erreicht ihn.
+  30000 bis 30099, und nur dein lokales Netz erreicht ihn. Der Port öffnet
+  sich, sobald die App läuft, und schließt sich, wenn sie anhält.
 
 :::note[Charts, die die Box ablehnt]
 Ein Chart, das mehr braucht, lehnt die Box ab und sagt, warum. Typische
@@ -125,6 +126,18 @@ braucht den eigenen Cluster der Box, der nur läuft, solange die Box ihre
 Festplatte mit einem Mesh teilt ([Wo die Apps laufen](../types/app-modes)). Um das Installieren abzuschalten,
 setze `losos.apps.enable` im Bereich **Erweitert** auf false.
 :::
+
+## Statistik \{#statistics}
+
+**Einstellungen › Statistik** zeigt, wie oft deine installierten Apps
+aufgerufen wurden. Du siehst die Anfragen der letzten Stunde, Minute für
+Minute, und wie viele davon mit einem Fehler endeten. Du siehst auch, wie
+viel die Box gesendet hat und wie lange die langsamsten Antworten gedauert
+haben. Jede App steht mit ihrem Port in der Liste. Die Zähler beginnen von
+vorn, wenn die Box neu startet.
+
+Das Widget **Statistik** zeigt die letzte Stunde auf der Übersicht. Füge es
+unter **Widget hinzufügen** hinzu. Ein Klick darauf öffnet die Seite.
 
 ## Deine Apps \{#your-apps}
 

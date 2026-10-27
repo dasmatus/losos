@@ -154,7 +154,31 @@ pub enum CloudRequest<'a> {
         user: &'a str,
         display_name: &'a str,
     },
+    /// `user`'s address books, one level under their CardDAV home.
+    AddressBooks { user: &'a str },
+    /// Every card in the address book at `href`, with its vCard, for the
+    /// keys LosOS Mail looks for (`crate::mail_pgp::vcard_keys`).
+    Cards { user: &'a str, href: &'a str },
+    /// `user`'s contacts that match `query`, for a people picker
+    /// (`crate::contacts`): `want` is `any`, `email`, `matrix` or `mesh`.
+    ContactMatches {
+        user: &'a str,
+        query: &'a str,
+        want: &'a str,
+    },
 }
+
+const BOOKS_BODY: &str = concat!(
+    r#"<?xml version="1.0"?>"#,
+    r#"<d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/></d:prop></d:propfind>"#,
+);
+
+const CARDS_BODY: &str = concat!(
+    r#"<?xml version="1.0"?>"#,
+    r#"<card:addressbook-query xmlns:d="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav">"#,
+    "<d:prop><card:address-data/></d:prop>",
+    "</card:addressbook-query>",
+);
 
 const PROPFIND_BODY: &str = concat!(
     r#"<?xml version="1.0"?>"#,
@@ -204,6 +228,31 @@ pub fn request_bytes(request: &CloudRequest<'_>) -> Vec<u8> {
             out.push_str("Connection: close\r\n\r\n");
             out.push_str(&body);
         }
+        CloudRequest::AddressBooks { user } => {
+            out.push_str(&format!(
+                "PROPFIND /remote.php/dav/addressbooks/users/{}/ HTTP/1.1\r\n",
+                encode_part(user)
+            ));
+            out.push_str("Host: localhost\r\n");
+            out.push_str(&person(user));
+            out.push_str("Depth: 1\r\n");
+            out.push_str("Content-Type: application/xml; charset=utf-8\r\n");
+            out.push_str(&format!("Content-Length: {}\r\n", BOOKS_BODY.len()));
+            out.push_str(&format!("User-Agent: {KEY_CLIENT}\r\n"));
+            out.push_str("Connection: close\r\n\r\n");
+            out.push_str(BOOKS_BODY);
+        }
+        CloudRequest::Cards { user, href } => {
+            out.push_str(&format!("REPORT {} HTTP/1.1\r\n", clean(href)));
+            out.push_str("Host: localhost\r\n");
+            out.push_str(&person(user));
+            out.push_str("Depth: 1\r\n");
+            out.push_str("Content-Type: application/xml; charset=utf-8\r\n");
+            out.push_str(&format!("Content-Length: {}\r\n", CARDS_BODY.len()));
+            out.push_str(&format!("User-Agent: {KEY_CLIENT}\r\n"));
+            out.push_str("Connection: close\r\n\r\n");
+            out.push_str(CARDS_BODY);
+        }
         CloudRequest::Arrive { user, display_name } => {
             out.push_str("GET /ocs/v2.php/cloud/user HTTP/1.1\r\n");
             out.push_str("Host: localhost\r\n");
@@ -213,8 +262,62 @@ pub fn request_bytes(request: &CloudRequest<'_>) -> Vec<u8> {
             out.push_str(&format!("User-Agent: {KEY_CLIENT}\r\n"));
             out.push_str("Connection: close\r\n\r\n");
         }
+        CloudRequest::ContactMatches { user, query, want } => {
+            let q = url::form_urlencoded::Serializer::new(String::new())
+                .append_pair("q", query)
+                .append_pair("want", want)
+                .finish();
+            out.push_str(&format!("GET /cloud/api/contacts/suggest?{q} HTTP/1.1\r\n"));
+            out.push_str("Host: localhost\r\n");
+            out.push_str(&person(user));
+            out.push_str("Accept: application/json\r\n");
+            out.push_str(&format!("User-Agent: {KEY_CLIENT}\r\n"));
+            out.push_str("Connection: close\r\n\r\n");
+        }
     }
     out.into_bytes()
+}
+
+/// The text of every `<{tag}>` element in a multistatus LosOS Cloud wrote,
+/// entities undone. LosOS Cloud's own answer, with its own prefixes
+/// (`cloud::xml::ROOT_NAMESPACES`), so a scan is enough.
+fn dav_texts(xml: &str, tag: &str) -> Vec<String> {
+    let open = format!("<{tag}>");
+    let close = format!("</{tag}>");
+    let mut out = Vec::new();
+    let mut rest = xml;
+    while let Some(at) = rest.find(&open) {
+        let after = &rest[at + open.len()..];
+        let Some(end) = after.find(&close) else { break };
+        out.push(
+            after[..end]
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&quot;", "\"")
+                .replace("&apos;", "'")
+                .replace("&#13;", "\r")
+                .replace("&#xD;", "\r")
+                .replace("&amp;", "&"),
+        );
+        rest = &after[end + close.len()..];
+    }
+    out
+}
+
+/// The address books in a PROPFIND answer for `user`'s CardDAV home: every
+/// `href` under it, not the home itself.
+pub fn parse_address_books(xml: &str, user: &str) -> Vec<String> {
+    let home = format!("/remote.php/dav/addressbooks/users/{}/", encode_part(user));
+    xml.split("<d:response>")
+        .filter(|r| r.contains("addressbook"))
+        .flat_map(|r| dav_texts(r, "d:href"))
+        .filter(|h| h.starts_with(&home) && h.len() > home.len() && !h.contains(".."))
+        .collect()
+}
+
+/// The vCards in an addressbook-query answer.
+pub fn parse_cards(xml: &str) -> Vec<String> {
+    dav_texts(xml, "card:address-data")
 }
 
 /// A WebDAV SEARCH (RFC 5323, as LosOS Cloud speaks it) for names that

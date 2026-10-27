@@ -64,18 +64,18 @@ in
         };
       }
 
-      # Following the published tree: right before the nightly build, ask
+      # Following the published tree: right before sysupdate activation, ask
       # lososd to move /etc/nixos to the newest published commit, keeping the
       # box's own files (`losos-ctl config --update`, backend/src/losos.rs
       # cmd_config_update). Through lososd rather than a git command here,
       # because lososd is the one writer of /etc/nixos and holds its lock
       # against a concurrent Apply. The `-` keeps a failure from stopping the
       # update: a box with no internet builds the tree it has, as before.
-      # Gated on autoUpgrade, not on `ExecStartPre` alone: a definition under
-      # `systemd.services.nixos-upgrade` that evaluates to nothing still
+      # Gated on the backend and upstream sync, so disabling either leaves no
+      # empty prestart unit behind.
       # creates the entry, and NixOS then writes an empty unit.
-      (lib.mkIf (cfg.upstream.enable && config.system.autoUpgrade.enable) {
-        nixos-upgrade = {
+      (lib.mkIf (cfg.upstream.enable && config.losos.backend.package != null) {
+        losos-sysupdate = {
           wants = [ "lososd.service" ];
           after = [ "lososd.service" ];
           serviceConfig.ExecStartPre = [

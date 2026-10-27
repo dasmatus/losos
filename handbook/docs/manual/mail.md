@@ -6,6 +6,11 @@ slug: /manual/mail
 
 # Mail
 
+
+![LosOS Mail's inbox.](../img/mail-inbox.png)
+
+![A message.](../img/mail-message.png)
+
 LosOS Mail is a mail client for the people on the box. Each person signed in
 through LosOS Login has a mailbox, and **Mail** in the sidebar opens it at
 `/mail`. The mail server is Stalwart. It runs on the shared side of the
@@ -40,8 +45,8 @@ Mail asks you to sign in with your own account.
   folders beside them and the unread count beside each. On a wide screen
   they are a tree on the left of the list; narrower, a row above it.
 - **Search** looks through the open folder: senders, subjects and text.
-- **Write** opens a new message. The **To** field suggests the other people
-  on the box. **Reply**, **Reply all** and **Forward** quote the message.
+- **Write** opens a new message. The **To** and **Cc** fields suggest your
+  [contacts](contacts) and the other people on the box. **Reply**, **Reply all** and **Forward** quote the message.
 - **Flag**, **Mark as unread**, **Archive** and **Move to** work on the open
   message. **Delete** moves it to the bin, and deleting it from the bin
   removes it for good.
@@ -109,12 +114,71 @@ server, so they work while Mail is closed and nobody is signed in.
 
 ## Ask the box's AI
 
-On a box that runs a language model for **Build with AI**, **Summarise** in
-the message's toolbar asks it about the open message. The model runs on the
-box, so the message and the answer stay there, and it reads only the
-message you asked about. It answers one question at a time; on a small box
-an answer can take a few minutes. Text in a message that tells the AI to do
-something counts as part of the message, not as your request.
+**Summarise** in the message's toolbar asks the box's own language model
+about the open message. The model runs on the box, so the message and the
+answer stay there, and it reads only the message you asked about. It
+answers one question at a time; on a small box an answer can take a minute
+or two. Text in a message that tells the AI to do something counts as part
+of the message, not as your request.
+
+Questions about mail, files and notes go to Gemma 3 1B, a model for text.
+**Build with AI** keeps a model for code. The box downloads each model
+once, the first time it is online, and keeps only one in memory at a time.
+An administrator can pick another model under **Settings**, **Advanced**
+(`assistant.model`). Gemma is provided under and subject to the Gemma Terms
+of Use found at ai.google.dev/gemma/terms.
+
+## Encryption
+
+Mail can encrypt and sign messages with OpenPGP, the standard GnuPG,
+Thunderbird and most mail programs read.
+
+**Your key.** **Encryption**, beside **Write**, makes a key for your address
+or imports one you already have. You choose a passphrase for it; it is not
+your sign-in password. The key is made and unlocked in your browser. The
+box keeps only the private key locked with your passphrase, and seals that
+again to its TPM or its own key, as it does its other secrets (see
+[credentials](../reference/credentials)), so nobody on the box, an administrator included, can read your encrypted
+mail without the passphrase. The same window shows the fingerprint, downloads
+a backup (still locked with your passphrase) and the public key, locks the
+key again, and removes it. A removed key cannot read mail sent to it until
+you import the backup.
+
+**Unlocking.** The key stays unlocked in the tab where you unlocked it, until
+you lock it or close the tab. Mail asks for the passphrase when it needs it:
+to open an encrypted message or to sign one.
+
+**Writing.** Under the message, **Encrypt** and **Sign** switch each one on
+or off. As you type an address, Mail looks for that person's key and shows
+where it came from:
+
+- someone on this box: the key they made here;
+- your contacts: a key saved on the contact;
+- earlier mail: a key the person sent in an Autocrypt header, learned when
+  you opened their mail;
+- their mail domain: the domain's Web Key Directory (WKD);
+- keys.openpgp.org, when their domain has none. An administrator can point
+  this at another keyserver, or turn it off, with `losos.mail.keyserver`.
+
+When every recipient has a key, **Encrypt** turns on by itself. If one of
+them has none, Mail says who, and the message is not sent until you turn
+encryption off or leave them out. Encrypted mail is also encrypted to your
+own key, so you can read your copy in Sent. The subject is not encrypted.
+Mail is sent as PGP/MIME; **Inline, for older mail programs** puts the
+encrypted text in the body instead, which protects the text but not
+attachments.
+
+**Reading.** An encrypted message shows a lock in the list. Opening it
+decrypts it in your browser, and a line under the headers says how it came:
+encrypted, signed and by whom, signed by a key the box does not know, or a
+signature that does not match. A message signed by someone other than its
+sender says so. Decrypted mail is shown as text, never as the sender's
+formatting, and its attachments download like any other.
+
+**Your public key for others.** The box publishes everyone's public key in
+its own Web Key Directory at `/.well-known/openpgpkey/`, so mail programs
+elsewhere find it from your address. Every message you send also carries it
+in an Autocrypt header.
 
 ## What Mail does not do yet
 

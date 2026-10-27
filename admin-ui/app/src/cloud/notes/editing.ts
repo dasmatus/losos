@@ -11,7 +11,7 @@ import type { Vault } from "@/notes/vault";
 
 /** How a link names a note: its bare name when that is unique, else its
  * path without the extension, as Obsidian writes them. */
-function linkName(vault: Vault, path: string): string {
+export function linkName(vault: Vault, path: string): string {
   const name = noteName(path);
   const same = vault.notes.filter((n) => noteName(n.path).toLowerCase() === name.toLowerCase());
   return same.length > 1 ? path.replace(/\.md$/i, "") : name;

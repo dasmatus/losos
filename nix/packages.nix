@@ -274,7 +274,7 @@ let
   # build a set with the probe in it.
   # backend/plugins' vendored crates: lososd's plugins and Mesh CI's pm
   # plugin are built from the one workspace.
-  pluginsCargoHash = "sha256-KfPuzfODxOgD0a1zjrob4bsYM56pwi8k3Jar5vs4+R8=";
+  pluginsCargoHash = "sha256-n4jKabybOqM8qy4bxPSDpAl7NrATbvn1kvHcC9SJh8Q=";
   lososPlugins =
     {
       pname ? "losos-plugins",
@@ -284,6 +284,7 @@ let
         "pins"
         "mail"
         "ci"
+        "statistics"
       ],
     }:
     pkgs.rustPlatform.buildRustPackage {
@@ -354,7 +355,7 @@ images
     #
     # nix/tests/admin-ui.nix carries the SAME hash over the SAME lock file: two
     # derivations, one dependency set. Change both together.
-    npmDepsHash = "sha256-xuNMvZ29PHuMfTjWRsQ1tap+6QVQuScKoaI/MUra3eo=";
+    npmDepsHash = "sha256-rB4klq53pPN2rjWwzfLr8gXC2aF5APl0FfwU50vu6rI=";
 
     # No postinstall scripts. playwright is a devDependency (nix/tests/admin-ui.nix
     # drives the browser check with it) and its postinstall downloads browsers:
@@ -365,6 +366,22 @@ images
     # nothing else needs a script to run.
     npmFlags = [ "--ignore-scripts" ];
     env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
+    # The person segmenter behind a call's black background
+    # (src/calls/background.ts): MediaPipe's selfie segmenter, Apache-2.0,
+    # a fixed version of the model, copied beside the chat page.
+    env.LOSOS_SEGMENTER_MODEL = "${pkgs.fetchurl {
+      url = "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/1/selfie_segmenter.tflite";
+      hash = "sha256-GRrJUprlBu4L7vprLJRaFy2rnQfR6AKikKTkA4ImZYs=";
+    }}";
+    # The nudity warning (src/lib/nudity.ts): Marqo's nsfw-image-detection-384
+    # (Apache-2.0), exported to ONNX at a fixed revision. Its safetensors in
+    # that repository are Marqo's own, byte for byte; the export's report
+    # gives the largest logit difference against PyTorch as 7e-7. Copied to
+    # nudity/model.onnx and only fetched by a page that turned the warning on.
+    env.LOSOS_NUDITY_MODEL = "${pkgs.fetchurl {
+      url = "https://huggingface.co/KanariKanaru/nsfw-image-detection-384-onnx/resolve/8edc47eedf74b30fd379673bc202fe3b754b1538/model.onnx";
+      hash = "sha256-6TUOV2YIr+S1egif/rDrr6E4nNzqSILdYd8oxF8cJNI=";
+    }}";
     # LosOS Lab (lab/index.html, the second Vite entry) imports the Rust core,
     # the GPU canvas and, for guests on the relay path, the libvirt client.
     preBuild = labCorePkg + labVirtPkg + labRenderPkg;
@@ -404,7 +421,7 @@ images
     # SHA256 of the npm dependency cache built from handbook/package-lock.json,
     # same convention as losos-admin-ui above. After changing the lock file:
     # `nix run nixpkgs#prefetch-npm-deps -- handbook/package-lock.json`.
-    npmDepsHash = "sha256-h9w/FChRdSrkCg/x6QiUgTtuGaORFdHX0SA4snvAoWI=";
+    npmDepsHash = "sha256-Sp2yoHsttkm/QTtvp/oqwfamJku2L3grKOmzBqC/ejY=";
 
     npmFlags = [ "--ignore-scripts" ];
     env.LOSOS_HANDBOOK_BASE = "/handbook/";
@@ -452,7 +469,7 @@ images
     src = lib.cleanSource ./../backend;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-ctl-rs` will print the new hash to paste here.
-    cargoHash = "sha256-Sqp7ysUU+K56lmTTGVByfk8qymtqDAJyn7EEdLSMlUc=";
+    cargoHash = "sha256-2+3Y4woL4+HKHQM2V4wRSOXt0dIjWGW+JzfDPccFNQ4=";
     # No system deps: zbus speaks the D-Bus wire protocol natively, so there is
     # no libdbus to link against.
     # doCheck is off, and the tests still run — in CI's lint job and in
@@ -478,7 +495,7 @@ images
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-registrar` will print the new hash to paste here.
-    cargoHash = "sha256-/8x0VXwOtWciHb73EyTKCX6YJY9E368RWjdYQJfFJDI=";
+    cargoHash = "sha256-FA4QaT3fwEAX9Xorhea8MePJHiGKCUi50EXqR6VHA7s=";
     # No system deps; pure Rust with rustls (no openssl).
     # Same reasoning as losos-ctl above: the suite runs via cargo test in the
     # lint job, not inside this derivation.
@@ -503,7 +520,7 @@ images
     pname = "losos-registrar-static";
     version = "0.1.0";
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
-    cargoHash = "sha256-/8x0VXwOtWciHb73EyTKCX6YJY9E368RWjdYQJfFJDI=";
+    cargoHash = "sha256-FA4QaT3fwEAX9Xorhea8MePJHiGKCUi50EXqR6VHA7s=";
     doCheck = false;
   };
 

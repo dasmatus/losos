@@ -323,6 +323,9 @@ pub fn run(config: Config, listen: Listen) -> anyhow::Result<()> {
     if adopted > 0 {
         tracing::info!(adopted, "repositories taken in from disk");
     }
+    // Repository issues from before the tracker, or from a Forgejo import.
+    super::tracker::adopt::adopt_repo_issues(&state.store)?;
+    super::tracker::hooks::start(state.clone())?;
 
     actix_web::rt::System::new().block_on(async move {
         let mut servers = Vec::new();

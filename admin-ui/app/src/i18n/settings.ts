@@ -66,6 +66,17 @@ export default defineMessages({
     sk: "aplikácia súbory kód inštalovať hľadať pridať katalóg jazyk telefón zdieľanie odkaz heslo platnosť kvóta miesto kôš verzie prihlásenie súkromný repozitár e-mail správa",
     de: "App Dateien Code installieren suchen hinzufügen Katalog Sprache Telefon Teilen Link Passwort Ablauf Kontingent Speicher Papierkorb Versionen Anmeldung privat Repository E-Mail Verwaltung",
   },
+  "settings.panes.statistics.label": { en: "Statistics", sk: "Štatistiky", de: "Statistik" },
+  "settings.panes.statistics.summary": {
+    en: "How much the apps on this box were asked for, how they answered and how quickly.",
+    sk: "Koľko žiadostí dostali aplikácie na tomto zariadení, ako na ne odpovedali a ako rýchlo.",
+    de: "Wie oft die Apps auf dieser Box aufgerufen wurden, wie sie geantwortet haben und wie schnell.",
+  },
+  "settings.panes.statistics.keywords": {
+    en: "",
+    sk: "návštevnosť žiadosti návštevy chyby prenos rýchlosť odozva",
+    de: "Verkehr Anfragen Aufrufe Fehler Datenmenge Geschwindigkeit Antwortzeit",
+  },
   "settings.panes.network.label": { en: "Network", sk: "Sieť", de: "Netzwerk" },
   "settings.panes.network.summary": {
     en: "The name this box answers to, and how it is reached from outside your home.",
@@ -135,6 +146,17 @@ export default defineMessages({
     en: "",
     sk: "používateľ používatelia ľudia osoba účet účty člen rodina tím pridať prihlásenie heslo správca oprávnenia skupiny",
     de: "Benutzer Nutzer Personen Person Konto Konten Mitglied Familie Team hinzufügen Anmeldung Passwort Administrator Rechte Gruppen",
+  },
+  "settings.panes.moderation.label": { en: "Moderation", sk: "Moderovanie", de: "Moderation" },
+  "settings.panes.moderation.summary": {
+    en: "Reports from people on this box, who is muted or suspended, and what moderators did.",
+    sk: "Nahlásenia od ľudí na tomto zariadení, kto je stíšený alebo pozastavený a čo urobili moderátori.",
+    de: "Meldungen von Personen auf dieser Box, wer stumm oder gesperrt ist und was Moderatoren getan haben.",
+  },
+  "settings.panes.moderation.keywords": {
+    en: "",
+    sk: "nahlásenie nahlásenia spam urážky stíšiť pozastaviť zablokovať karanténa záznam moderátor",
+    de: "Meldung Meldungen Spam Beleidigung stummschalten sperren blockieren Quarantäne Protokoll Moderator",
   },
   "settings.panes.account.label": { en: "Your account", sk: "Váš účet", de: "Dein Konto" },
   "settings.panes.account.summary": {

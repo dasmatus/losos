@@ -209,11 +209,12 @@ export function Steps({items}: {items: Step[]}): ReactNode {
  * in order with the ones already shipped crossed off. The list is the
  * project page's "What is done and what is planned" plus what the code
  * shows unfinished: nix/keys/official-edge-root.pub is empty, so no box sees an
- * official edge to trade through yet, no edge deploys Longhorn while
- * losos.edge.cluster.longhornChart defaults to null, and
- * nix/keys/secure-boot-db.pem holds no certificate. Nothing goes here that is
- * not built or started. Once every part of a card is done, the card says
- * so; move it up to the features then. */
+ * official edge to trade through yet, and nix/keys/secure-boot-db.pem holds no
+ * certificate. Longhorn's chart is pinned in modules/options.nix and wired into
+ * the edge's rke2 deployment; the remaining pooling gaps are listed in
+ * nix/demo/edge-lan/CHECKLIST.md. Nothing goes here that is not built or
+ * started. Once every part of a card is done, the card says so; move it up to
+ * the features then. */
 type Part = {done: boolean; text: ReactNode};
 type Planned = Feature & {parts: Part[]};
 

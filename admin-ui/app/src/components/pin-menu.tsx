@@ -1,25 +1,27 @@
 import { LinkSquare02Icon, PinIcon, PinOffIcon } from "@hugeicons/core-free-icons";
 import type { MenuCommand } from "@/lib/context-menu";
 import { useT } from "@/lib/i18n-react";
-import { isPinned, toggled, type Pin } from "@/lib/pins";
+import { isPinned, pinKey, toggled, type Pin } from "@/lib/pins";
 import { usePins, useSavePins } from "./pins-dialog";
 
 /* The items a right-click menu (components/context-menu.tsx) offers on
  * anything that can be pinned: a file, folder or repository in the command
- * palette, an app tile on the Overview, a pin in the sidebar. Pin to
+ * palette, an app tile on the Overview, a pin in the sidebar, an issue in
+ * LosOS Git's tracker. Pin to
  * sidebar or Unpin, and Open in new tab, since the custom menu takes the
  * place of the browser's own. Signed out there is no list to change, so
  * there is no pin item. */
 
 export function usePinItems(): {
-  pin: (pin: Pin | null) => MenuCommand;
+  /** `name` is the title an issue or project pin shows. */
+  pin: (pin: Pin | null, name?: string) => MenuCommand;
   newTab: (open: () => void) => MenuCommand;
 } {
   const t = useT();
   const state = usePins();
   const { busy, save } = useSavePins();
   return {
-    pin: (pin) => {
+    pin: (pin, name) => {
       const ready = pin !== null && state.status === "ready";
       const pinned = ready && isPinned(state.pins, pin);
       const full = ready && !pinned && state.pins.length >= state.limit;
@@ -31,7 +33,7 @@ export function usePinItems(): {
         disabled: busy || full,
         title: full ? t("pins.full", { limit: state.limit }) : undefined,
         onSelect: () => {
-          if (pin !== null) void save(toggled(state.pins, pin));
+          if (pin !== null) void save(toggled(state.pins, pin), name === undefined ? undefined : new Map([[pinKey(pin), name]]));
         },
       };
     },

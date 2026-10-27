@@ -214,9 +214,12 @@ async function files(s, p, old) {
     newDeck: p.getByRole("button", { name: "New presentation" }),
   });
   await row.click({ button: "right" });
-  await p.locator("[data-row-menu]").waitFor();
+  // The box-wide right-click menu (components/context-menu.tsx); an older
+  // UI drew a row menu of its own.
+  const menu = p.locator('[data-slot="context-menu"], [data-row-menu]').first();
+  await menu.waitFor();
   await s.take(p, "menu", "a right click on a Markdown file", { kind: "none" }, {
-    office: p.locator('[data-row-menu] [data-action="office-markdown"]'),
+    office: menu.getByRole("menuitem", { name: "Open in LosOS Office" }),
   });
   await p.keyboard.press("Escape");
 }

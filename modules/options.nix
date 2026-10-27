@@ -195,39 +195,27 @@ in
     # ── Binary cache ────────────────────────────────────────────────────────
     cache.substituters = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      # The LosOS cache proxy: the `losos-cache-proxy` Vercel project in front
-      # of the GHCR-hosted cache CI pushes to. CI reads the same URL from the
-      # `LOSOS_PROXY_URL` repository variable; the two must name one host or
-      # the appliance substitutes from a cache nothing fills. The second is
-      # the same Vercel project under its own vercel.app name, for when the
-      # custom domain does not resolve. The third is the static copy the
-      # GitHub Pages site serves (.github/scripts/pages-cache.sh), signed
-      # with the same key, which nix asks only for what the proxy and
-      # cache.nixos.org did not answer.
+      # The local cache server fetches signed per-store-path OCI artifacts
+      # from GHCR with oras. GitHub Pages is a static fallback if GHCR is
+      # unreachable. Neither the installer nor the installed appliance needs
+      # a hosted cache proxy.
       default = [
-        "https://proxy.losos.dasmat.us"
-        "https://losos-cache-proxy.vercel.app"
+        "http://127.0.0.1:8787"
         "https://losos.dasmat.us/proxy"
       ];
       description = ''
         Extra Nix substituters, added to the appliance *and* to the installer
-        medium. The default is the LosOS cache proxy's public URL
-        (`https://proxy.losos.dasmat.us`), then the same proxy under
-        Vercel's own name (`https://losos-cache-proxy.vercel.app`), then the
-        copy of the newest build's paths on the GitHub Pages site
-        (`https://losos.dasmat.us/proxy`); `trustedPublicKeys` carries the
-        key all three are signed with. Set it to `[ ]` to use cache.nixos.org
-        alone.
+        medium. The local `http://127.0.0.1:8787` service pulls signed
+        per-store-path artifacts from GHCR with `oras`; the static copy of the
+        newest build on GitHub Pages (`https://losos.dasmat.us/proxy`) is a
+        remote fallback. `trustedPublicKeys` carries the key used to sign
+        those paths. Set this to `[ ]` to use cache.nixos.org alone.
 
         This exists because `losos-ctl install` runs a bare `nixos-install`
         with no substituter flags, and the install closure carries the
         workload images and the LosOS packages, none of which cache.nixos.org
-        has. Without a cache that serves them, a fresh install *builds* them
-        on a repurposed mini-PC.
-
-        The installer medium matters as much as the installed system: a
-        substituter the target only learns about after it is installed does not
-        make installing it any faster.
+        has. The local server lets Nix pull those artifacts directly from GHCR
+        without depending on a separately hosted cache proxy.
       '';
     };
 
@@ -667,6 +655,16 @@ in
       description = "Last port of the range in losos.apps.ports.from.";
     };
 
+    apps.traefikPort = lib.mkOption {
+      type = lib.types.port;
+      default = 8089;
+      description = ''
+        Loopback port of the Traefik that opens the installed apps on their
+        LAN ports: its API and metrics, read by the install job and by the
+        Statistics page. Never reachable from the LAN.
+      '';
+    };
+
     cluster.idleLoadThreshold = lib.mkOption {
       type = lib.types.float;
       default = 0.25;
@@ -964,6 +962,29 @@ in
       '';
     };
 
+    calls.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Let people on the box call each other from LosOS chat, by voice or
+        video. Calls belong to the box's shared side, like chat: they exist
+        only while the box shares its storage and is in a mesh. Every
+        frame is encrypted in the caller's browser and decrypted in the
+        others', so the box forwards media it cannot read.
+      '';
+    };
+
+    calls.udpPort = lib.mkOption {
+      type = lib.types.port;
+      default = 7882;
+      description = ''
+        The UDP port call media arrives on, on a box that tunnels through
+        no edge. It is opened on the box's firewall while calls are on. A
+        box with `losos.proxy.enable` opens no port: its media goes
+        through the edge over QUIC (`losos.edge.calls.relay`).
+      '';
+    };
+
     cloud.enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -1162,6 +1183,46 @@ in
         3,000), the widget or app to change, a second turn when the box finds
         a mistake, and the answer (up to 4,096). Each token of window costs
         the model some memory while it runs.
+      '';
+    };
+
+    assistant.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Ask the box's AI: "Ask AI about this" in LosOS Cloud, Summarise in
+        Mail and the other apps' questions about a file or a message go to
+        a language model that runs on this box (Ollama, on loopback only,
+        beside the builder's). The material and the question never leave
+        the box. The model is downloaded once, about 800 MB, the first
+        time the box is online. While it answers it needs about 1 GiB of
+        memory; it lets go of it five minutes after the last question.
+      '';
+    };
+
+    assistant.model = lib.mkOption {
+      type = lib.types.str;
+      default = "gemma3:1b";
+      description = ''
+        The Ollama model the apps' questions go to: everything that is not
+        code. The builder and LosOS Reviewer keep `builder.model`. The
+        default, Gemma 3 1B (Gemma Terms of Use, ai.google.dev/gemma/terms),
+        fits the smallest box LosOS runs on: 4 GiB of memory and two
+        processor cores. Ollama holds one model at a time, so the two never
+        need memory together. On a box with 8 GiB or more, `gemma4:e2b`
+        (Apache License 2.0, about 5 GiB while it answers) writes better
+        summaries.
+      '';
+    };
+
+    assistant.contextTokens = lib.mkOption {
+      type = lib.types.ints.between 4096 131072;
+      default = 8192;
+      description = ''
+        The assistant's context window, in tokens: its instructions, the
+        material (cut at 9,000 characters, about 2,500 tokens), the question
+        and the answer. Each token of window costs the model some memory
+        while it runs.
       '';
     };
 
@@ -1427,25 +1488,18 @@ in
       type = lib.types.str;
       default = "git+file:///etc/nixos#install";
       description = ''
-        Flake URI system.autoUpgrade rebuilds from. The fragment is mandatory:
-        without one `nixos-rebuild --flake` looks for
-        nixosConfigurations.<hostname>, and this flake only exports `iso` and
-        `install` — so every unfragmented run dies with "flake does not provide
-        attribute". lososd uses the same `#install` ref (backend/src/io_backend.rs).
-        New versions arrive through losos.configRepo.upstream, which moves
-        /etc/nixos itself before the rebuild, so an Apply and the nightly
-        update build the same tree. A github: URI (still with `#install`)
-        also works, but an Apply then rebuilds from the older tree in
-        /etc/nixos and undoes the update until the next night.
+        Flake URI used by lososd for settings-driven NixOS rebuilds. The
+        fragment is mandatory: without one, nixos-rebuild looks for
+        nixosConfigurations.<hostname>, while this flake exports only iso and
+        install. The nightly sysupdate service instead rebuilds its verified
+        release source bundle with --impure; it does not use this URI.
 
-        A remote URI evaluates the published tree, which has neither
-        modules/install-target.nix (this box's drive list, firmware mode and
-        unlock mode, written by the installer) nor this box's
-        modules/overrides.nix (the settings the admin UI writes). flake.nix
-        therefore reads both from /etc/nixos when the evaluation is impure,
-        and the nightly upgrade (updates.nix) and lososd both pass --impure.
-        Evaluate the flake purely against a remote URI and the defaults
-        apply instead: TPM2 unlock, /dev/sda, UEFI, every setting reset.
+        The default git+file:///etc/nixos#install keeps local settings changes
+        on the box's own configuration. New configuration versions are synced
+        through losos.configRepo.upstream when enabled. The impure rebuild
+        retains this machine's install-target.nix and overrides.nix values,
+        including its disks, firmware mode, unlock mode, and admin settings.
+      
       '';
     };
 
@@ -1495,6 +1549,61 @@ in
       type = lib.types.port;
       default = 9091;
       description = "Loopback port Authelia listens on. nginx serves it at /auth/.";
+    };
+
+    # ── LosOS Chat (modules/chat.nix, backend/src/chat.rs) ─────────────────
+    chat.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Run LosOS Chat: a Matrix homeserver on the box and the chat page at
+        /chat/, where everyone with a LosOS Login account can talk in rooms
+        and direct messages, with end-to-end encryption, files, reactions,
+        threads and voice and video calls on the box's network. Chat runs
+        as the shared user and keeps everything in the shared data domain,
+        so it is there only while the box shares its storage in a mesh it
+        has joined. Signing in to
+        chat is always through LosOS Login; there are no chat passwords.
+      '';
+    };
+
+    chat.serverName = lib.mkOption {
+      type = lib.types.strMatching "[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+";
+      default = "${config.losos.hostName}.local";
+      defaultText = lib.literalExpression ''"''${config.losos.hostName}.local"'';
+      description = ''
+        The part after the colon in everyone's chat address,
+        @name:server-name. Set it once, before people start chatting: the
+        addresses and rooms made under one name do not move to another.
+        Federation needs a name other servers can reach, such as a domain
+        of your own that your edge routes to this box.
+      '';
+    };
+
+    chat.federation.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Let people here talk with people on other chat servers, and let
+        those servers reach this one. With a .local server name that means
+        the other boxes on this network, and only them: the federation
+        addresses answer the LAN alone. With a name other servers can
+        reach, any Matrix server. LosOS Git uses it too: people of other
+        boxes sign in to its repositories with their chat address, and a
+        repository's room takes them in.
+      '';
+    };
+
+    chat.port = lib.mkOption {
+      type = lib.types.port;
+      default = 8008;
+      description = "Loopback port the homeserver listens on. nginx serves it at /_matrix/.";
+    };
+
+    chat.maxUploadMiB = lib.mkOption {
+      type = lib.types.ints.between 1 4096;
+      default = 100;
+      description = "The largest file one person can send in chat, in MiB.";
     };
 
     # ── Standalone admin endpoint (lososd HTTP API + static admin UI) ──────
@@ -1619,6 +1728,19 @@ in
       description = ''
         Loopback port of the mail server's HTTP listener, which lososd
         alone talks to.
+      '';
+    };
+
+    mail.keyserver = lib.mkOption {
+      type = lib.types.nullOr (lib.types.strMatching "https://[A-Za-z0-9.-]+(:[0-9]+)?");
+      default = "https://keys.openpgp.org";
+      example = "https://keys.mailvelope.com";
+      description = ''
+        The OpenPGP keyserver LosOS Mail asks for someone's key when
+        neither LosOS Contacts, Autocrypt nor the recipient's own Web Key
+        Directory has one. It is asked by email address over the VKS
+        interface (`/vks/v1/by-email/`), which keys.openpgp.org and Hagrid
+        servers answer. Null asks no keyserver.
       '';
     };
 
@@ -1841,6 +1963,42 @@ in
       type = lib.types.str;
       default = "50000-50100";
       description = "lo-hi range the registrar allocates per-appliance rathole edge ports from.";
+    };
+
+    edge.calls.relay.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Carry call media for the boxes this edge serves. Each box keeps one
+        QUIC connection to the edge and gets a UDP port of its own, which
+        browsers in its calls send to; the edge passes the datagrams along
+        without being able to read them (they are DTLS-SRTP around frames
+        encrypted end to end). The edge sends from a box's port only to
+        addresses that sent to it.
+      '';
+    };
+
+    edge.calls.relay.port = lib.mkOption {
+      type = lib.types.port;
+      default = 7883;
+      description = "UDP port boxes reach the calls relay on (QUIC).";
+    };
+
+    edge.calls.relay.mediaPorts = lib.mkOption {
+      type = lib.types.str;
+      default = "40000-40999";
+      description = "lo-hi range of UDP ports the calls relay gives boxes, one each, for browsers to send call media to.";
+    };
+
+    edge.calls.relay.addresses = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "10.0.0.5=203.0.113.7" ];
+      description = ''
+        Addresses browsers reach the calls relay's media ports on, `IP`, or
+        `IP=PUBLIC` behind a 1:1 NAT that forwards the ports to IP. Empty:
+        every address of every interface that is up.
+      '';
     };
 
     edge.heartbeatTtl = lib.mkOption {
@@ -3272,6 +3430,22 @@ in
     description = "The shared side is live: losos.sharingMyStorage and losos.cluster.enable.";
   };
 
+  # Whether this box runs chat, as it actually runs: the switch and the
+  # sharing gate together. Chat belongs to the shared user and keeps its
+  # data in the shared domain (modules/chat.nix). Read-only.
+  options.lososInternal.chat = lib.mkOption {
+    type = lib.types.bool;
+    internal = true;
+    readOnly = true;
+    default =
+      config.losos.chat.enable
+      && config.lososInternal.sharedSide
+      && config.losos.identity.enable
+      && config.losos.admin.enable
+      && config.losos.admin.ui != null;
+    description = "LosOS Chat runs: losos.chat.enable, the shared user's apps (lososInternal.sharedSide) and LosOS Login.";
+  };
+
   # ── Mesh CI, as it actually runs ────────────────────────────────────────
   # On the shared side, like mail, and only beside LosOS Git, whose pushes
   # and pull requests start the runs. modules/ci.nix, lososd's environment
@@ -3316,6 +3490,23 @@ in
           "${lib.toLower config.losos.hostName}.home.arpa";
       description = "The domain of this box's mail addresses.";
     };
+  };
+
+  # A directory the SFU writes every forwarded frame into, so a test can
+  # show they are ciphertext (backend/src/calls/tap.rs). Tests only.
+  options.lososInternal.callsTap = lib.mkOption {
+    type = lib.types.nullOr lib.types.str;
+    default = null;
+    internal = true;
+  };
+
+  # The addresses the SFU takes media on, as losos-calls' `--address`
+  # (`IP` or `IP=OFFERED`); empty for every address the box has. Tests set
+  # it to reach the SFU through a forwarded port.
+  options.lososInternal.callsAddresses = lib.mkOption {
+    type = lib.types.listOf lib.types.str;
+    default = [ ];
+    internal = true;
   };
 
   # Whether this box hosts machines, as it actually runs: the switch and

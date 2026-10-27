@@ -1,21 +1,25 @@
 import * as React from "react";
 import { getProfiles, type Profile } from "@/lib/api";
 
-/* @ tags: a person on this box or a file in the signed-in person's LosOS
- * Cloud, picked by typing @ and written into the text as Markdown that
- * any other reader still makes sense of:
+/* @ tags: a person on this box, a file in the signed-in person's LosOS
+ * Cloud or an issue of LosOS Git's tracker, picked by typing @ and written
+ * into the text as Markdown that any other reader still makes sense of:
  *
  *   a person   @eva                                  (their sign-in name)
  *   a file     [@plan.canvas](/diagrams?file=...)    (a link on this box)
+ *   an issue   [LOS-12 Fix the header](/git/issues/LOS-12)
  *
- * People come from GET /api/profiles and files from the Cloud service's
- * own search (GET /cloud/api/files/search), which answers for whoever is
- * signed in, so nobody is offered a file they cannot open. Either source
- * failing (the hosted Diagrams, a box without Cloud) leaves the other. */
+ * People come from GET /api/profiles, files from the Cloud service's own
+ * search (GET /cloud/api/files/search) and issues from LosOS Git's
+ * (GET /git/api/v1/tracker/issues), both of which answer for whoever is
+ * signed in, so nobody is offered a file or an issue they cannot open. Any
+ * source failing (the hosted Diagrams, a box without Cloud or Git) leaves
+ * the others. */
 
 export type Mention =
   | { kind: "person"; id: string; label: string; detail: string; person: Profile }
-  | { kind: "file"; id: string; label: string; detail: string; href: string; dir: boolean };
+  | { kind: "file"; id: string; label: string; detail: string; href: string; dir: boolean }
+  | { kind: "issue"; id: string; label: string; detail: string; href: string; key: string };
 
 interface CloudEntry {
   id: number;
@@ -60,9 +64,23 @@ export function fileHref(entry: CloudEntry): string {
   return `/cloud/files?fileid=${entry.id}`;
 }
 
-/** A link a file mention may carry: only these two apps on this origin. */
+/** A link a file or issue mention may carry: only these apps on this origin. */
 export function isMentionHref(href: string): boolean {
-  return /^\/(cloud\/files|diagrams)(?:[/?#]|$)/.test(href);
+  return /^\/(cloud\/files|diagrams|git\/issues)(?:[/?#]|$)/.test(href);
+}
+
+async function searchIssues(q: string, signal: AbortSignal): Promise<Mention[]> {
+  if (q.trim() === "") return [];
+  const res = await fetch(`/git/api/v1/tracker/issues?${new URLSearchParams({ q, limit: "5", sort: "updated" }).toString()}`, {
+    credentials: "same-origin",
+    signal,
+  });
+  if (!res.ok) return [];
+  const body = (await res.json()) as { issues?: unknown };
+  return (Array.isArray(body.issues) ? (body.issues as { key: unknown; title: unknown }[]) : [])
+    .filter((i): i is { key: string; title: string } => typeof i.key === "string" && /^[A-Z][A-Z0-9]{1,5}-\d+$/.test(i.key) && typeof i.title === "string")
+    .slice(0, 5)
+    .map((i) => ({ kind: "issue", id: `issue:${i.key}`, label: i.title, detail: i.key, key: i.key, href: `/git/issues/${i.key}` }));
 }
 
 async function searchFiles(q: string, signal: AbortSignal): Promise<Mention[]> {
@@ -86,24 +104,23 @@ async function searchFiles(q: string, signal: AbortSignal): Promise<Mention[]> {
 /** People whose sign-in or display name has `q` in it, then files. */
 export async function searchMentions(q: string, signal: AbortSignal): Promise<Mention[]> {
   const needle = q.toLocaleLowerCase();
-  const [list, files] = await Promise.all([
-    loadPeople(),
-    searchFiles(q, signal).catch((err: unknown) => {
-      if (signal.aborted) throw err;
-      return [] as Mention[];
-    }),
-  ]);
+  const quiet = (err: unknown): Mention[] => {
+    if (signal.aborted) throw err;
+    return [];
+  };
+  const [list, files, issues] = await Promise.all([loadPeople(), searchFiles(q, signal).catch(quiet), searchIssues(q, signal).catch(quiet)]);
   const found: Mention[] = list
     .filter((p) => p.name.includes(needle) || p.displayName.toLocaleLowerCase().includes(needle))
     .sort((a, b) => Number(!a.name.startsWith(needle)) - Number(!b.name.startsWith(needle)))
     .slice(0, 5)
     .map((p) => ({ kind: "person", id: `person:${p.name}`, label: p.displayName.trim() || p.name, detail: `@${p.name}`, person: p }));
-  return [...found, ...files];
+  return [...found, ...files, ...issues];
 }
 
 /** The Markdown a picked mention becomes. */
 export function mentionText(m: Mention): string {
   if (m.kind === "person") return `@${m.person.name}`;
+  if (m.kind === "issue") return `[${m.key} ${m.label.replace(/[[\]\n]/g, "")}](${m.href})`;
   return `[@${m.label.replace(/[[\]\n]/g, "")}](${m.href})`;
 }
 

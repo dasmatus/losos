@@ -30,28 +30,7 @@ let
 
   # The admin UI as it ships, without the Lab page, which this test never
   # opens and whose WebAssembly takes longer to build than the test to run.
-  ui = lososPkgs.losos-admin-ui.overrideAttrs (_: {
-    pname = "losos-admin-ui-without-lab";
-    preBuild = ''
-      cat > vite.wait-game-test.config.ts <<'EOF'
-      import base from "./vite.config";
-      import { join } from "node:path";
-      import { fileURLToPath } from "node:url";
-      const root = fileURLToPath(new URL(".", import.meta.url));
-      const config = base as Record<string, any>;
-      config.build.rolldownOptions.input = {
-        main: join(root, "index.html"),
-        manage: join(root, "manage/index.html"),
-      };
-      export default config;
-      EOF
-    '';
-    buildPhase = ''
-      runHook preBuild
-      npx vite build --config vite.wait-game-test.config.ts
-      runHook postBuild
-    '';
-  });
+  ui = import ./admin-ui-without-lab.nix lososPkgs.losos-admin-ui;
 
   # What lososd's rebuild unit runs: a rebuild that takes as long as the
   # script wants, then succeeds.
@@ -65,12 +44,8 @@ let
     withFirefox = false;
     withWebkit = false;
   };
-  fonts = pkgs.makeFontsConf {
-    fontDirectories = [
-      pkgs.inter
-      pkgs.dejavu_fonts
-    ];
-  };
+  # fonts.nix: the generic families mapped, or the pictures come out serif.
+  fonts = import ./fonts.nix { inherit pkgs; };
   driver = ./wait-game-browser.mjs;
 in
 

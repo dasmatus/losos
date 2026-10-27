@@ -66,7 +66,7 @@ class Shots {
         return true;
       },
       undefined,
-      { timeout: 120_000 },
+      { timeout: 600_000 },
     );
     // The caret would blink into one picture and not the next. A CSSOM
     // write, which the box's style-src 'self' allows.
@@ -79,7 +79,7 @@ class Shots {
   async take(slug, title, action = { kind: "none" }, targets = {}) {
     await this.settle();
     const file = `${String(this.steps.length + 1).padStart(2, "0")}-${slug}.png`;
-    await this.page.screenshot({ path: join(this.out, file) });
+    await this.page.screenshot({ path: join(this.out, file), timeout: 600_000 });
     const found = {};
     for (const [key, loc] of Object.entries(targets)) {
       const b = await loc.boundingBox().catch(() => null);
@@ -237,6 +237,10 @@ const context = await browser.newContext({
   reducedMotion: "reduce",
 });
 const page = await context.newPage();
+// Emulated without KVM, a 2x screenshot of a full page can take minutes;
+// Playwright's 30 s default fails the run on a slow machine, not a bug.
+page.setDefaultTimeout(600_000);
+page.setDefaultNavigationTimeout(600_000);
 await signIn(page, base, name, password);
 // What the admin page itself logs on a plain load (sonner's stylesheet,
 // which the box's style-src 'self' refuses and the bundle carries instead,

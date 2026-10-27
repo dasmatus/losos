@@ -89,6 +89,11 @@ let
   # on the shared side, so with sharing off there is no /mail at all
   # (modules/mail.nix).
   mailEnabled = adminEnabled && config.lososInternal.mail.live;
+  # LosOS Contacts' screen (admin-ui/app/src/contacts/): the book is LosOS
+  # Cloud's address books (backend/src/cloud/contacts.rs), so it exists
+  # exactly where LosOS Cloud runs. LosOS Calendar (src/calendar/) is its
+  # calendars, under the same condition.
+  contactsEnabled = adminEnabled && config.lososInternal.appSignIn.cloud;
   # Mesh CI's screen (admin-ui/app/src/screens/ci/), the same way: only
   # while Mesh CI runs (modules/ci.nix).
   ciEnabled = adminEnabled && config.lososInternal.ci.live;
@@ -236,6 +241,25 @@ let
     "form-action 'none'"
   ];
 
+  # LosOS Chat's policy (modules/chat.nix, admin-ui/app/chat/): the admin
+  # policy's 'wasm-unsafe-eval' for its end-to-end encryption (matrix-js-sdk's
+  # Rust crypto), plus blob: media for the voice messages and videos it
+  # decrypts or downloads (an authenticated download is a fetch with a
+  # header, shown from a blob: URL) and for the camera and microphone of a
+  # call. connect-src 'self': the homeserver is this origin's /_matrix/.
+  chatCsp = lib.concatStringsSep "; " [
+    "default-src 'none'"
+    "script-src 'self' 'wasm-unsafe-eval'"
+    "style-src 'self'"
+    "img-src 'self' data: blob:"
+    "media-src 'self' blob:"
+    "font-src 'self'"
+    "connect-src 'self'"
+    "frame-ancestors 'none'"
+    "base-uri 'none'"
+    "form-action 'none'"
+  ];
+
   # ── The widget frame ──────────────────────────────────────────────────
   # Widgets the owner writes by hand (backend/src/look.rs) are HTML with
   # their own script, and the admin CSP above refuses inline script for
@@ -319,10 +343,11 @@ let
   # One map per header: value on the admin surface, empty (header omitted) on
   # LosOS Login under /auth/, which sends its own (the admin `base-uri 'none'`
   # drops its `<base href>`, and every page below /auth/ then loads its scripts
-  # from the wrong folder and stays blank), the handbook's own value (or the
-  # admin value, for the headers they share) under /handbook/, each frame's
-  # own value (or nothing) under /widget-frame/ and /app-frame/, and a mail
-  # message's under its HTML route.
+  # from the wrong folder and stays blank), the handbook's and chat's own
+  # values (or the admin value, for the headers they share) under /handbook/
+  # and /chat/ (and chat's for the guest call page, /calls/guest/), each
+  # frame's own value (or nothing) under /widget-frame/ and /app-frame/, and
+  # a mail message's under its HTML route.
   #
   # Collabora Online's two prefixes (modules/office.nix) get nothing either,
   # only while it is on: coolwsd sends its own policy, whose frame-ancestors
@@ -332,12 +357,14 @@ let
     ~^/browser/      "";
         ~^/cool/         "";
   '';
-  adminHeaderMap = variable: value: handbookValue: frameValue: appFrameValue: mailValue: ''
+  adminHeaderMap = variable: value: handbookValue: chatValue: frameValue: appFrameValue: mailValue: ''
     map $uri ${variable} {
         default          "${value}";
         ${officeArms}
         ~^/auth/         "";
         ~^/handbook/     "${handbookValue}";
+        ~^/chat/         "${chatValue}";
+        ~^/calls/guest/  "${chatValue}";
         ~^/widget-frame/ "${frameValue}";
         ~^/app-frame/    "${appFrameValue}";
         ~^/api/mail/messages/[A-Za-z0-9_-]+/html$ "${mailValue}";
@@ -350,6 +377,7 @@ let
       variable = "$losos_csp";
       value = adminCsp;
       handbookValue = handbookCsp;
+      chatValue = chatCsp;
       frameValue = widgetFrameCsp;
       appFrameValue = appFrameCsp;
       mailValue = mailFrameCsp;
@@ -377,7 +405,7 @@ let
 
   adminHeaderMaps = lib.concatMapStrings (
     h:
-    adminHeaderMap h.variable h.value (h.handbookValue or h.value) h.frameValue (
+    adminHeaderMap h.variable h.value (h.handbookValue or h.value) (h.chatValue or h.value) h.frameValue (
       h.appFrameValue or h.frameValue
     ) (
       h.mailValue or h.value
@@ -573,6 +601,16 @@ in
           "= /mail".return = "404";
           "/mail/".return = "404";
         })
+        (lib.mkIf (adminEnabled && !contactsEnabled) {
+          # LosOS Contacts is a screen of the SPA at /contacts while LosOS
+          # Cloud runs. Without it there is no book: both spellings answer
+          # 404, as /cloud/api/ does.
+          "= /contacts".return = "404";
+          "/contacts/".return = "404";
+          # LosOS Calendar, at /calendar, is LosOS Cloud's calendars.
+          "= /calendar".return = "404";
+          "/calendar/".return = "404";
+        })
         (lib.mkIf (adminEnabled && !ciEnabled) {
           # Mesh CI's screen at /ci, gone with Mesh CI.
           "= /ci".return = "404";
@@ -643,6 +681,7 @@ in
             toGit = ''
               ${if signInGit then signInMaybe else clearSignIn}
               client_max_body_size 0;
+              client_body_buffer_size 1m;
               proxy_request_buffering off;
               proxy_buffering off;
               proxy_http_version 1.1;

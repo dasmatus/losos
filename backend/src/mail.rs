@@ -69,6 +69,11 @@ const MAX_RECIPIENTS: usize = 50;
 const MAX_SUBJECT: usize = 900;
 /// The largest body a person may write.
 const MAX_BODY: usize = 1024 * 1024;
+/// The largest OpenPGP body: an encrypted 1 MiB message, armoured, with
+/// room to spare.
+const MAX_ARMORED: usize = 3 * 1024 * 1024;
+/// The largest request body the mail routes take.
+pub const MAX_REQUEST: usize = MAX_ARMORED + 64 * 1024;
 /// The largest answer read from the server: a message with its bodies, or
 /// an attachment.
 const MAX_ANSWER: u64 = 64 * 1024 * 1024;
@@ -312,6 +317,9 @@ pub struct Summary {
     pub seen: bool,
     pub flagged: bool,
     pub has_attachment: bool,
+    /// `encrypted` or `signed` for OpenPGP mail (PGP/MIME, or an armoured
+    /// block in the text), `null` for anything else.
+    pub pgp: Option<&'static str>,
 }
 
 /// A page of a mailbox.
@@ -347,6 +355,13 @@ pub struct Message {
     /// Whether there is an HTML body to show in the frame.
     pub has_html: bool,
     pub attachments: Vec<Attachment>,
+    /// The raw `Autocrypt:` header, which `crate::mail_pgp` learns a key
+    /// from; not for the page.
+    #[serde(skip)]
+    pub autocrypt: Option<String>,
+    /// When the sender says they sent it, RFC 3339; Autocrypt's clock.
+    #[serde(skip)]
+    pub sent_at: Option<String>,
 }
 
 /// Someone on this box the page can offer as a recipient.
@@ -367,6 +382,8 @@ pub struct Draft {
     pub text: String,
     /// The id of the message this answers, for the threading headers.
     pub in_reply_to: Option<String>,
+    /// An OpenPGP/MIME body the browser made, in place of `text`.
+    pub pgp: Option<PgpBody>,
     /// Files to attach, as the page sent them.
     pub files: Vec<Upload>,
     /// The same files once the server holds them, which is what the
@@ -392,6 +409,24 @@ impl std::fmt::Debug for Upload {
             .field("bytes", &self.data.len())
             .finish()
     }
+}
+
+/// What the browser encrypted or signed (`admin-ui/app/src/mail/pgp.ts`).
+/// The box puts it inside the RFC 3156 structure and adds the headers; it
+/// never sees the plain text of an encrypted message, and it cannot change
+/// a signed part without the signature failing.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PgpBody {
+    /// `multipart/encrypted`: the armoured OpenPGP message.
+    Encrypted { armored: String },
+    /// `multipart/signed`: the MIME part as it was signed, CRLF line ends,
+    /// the armoured detached signature over it, and the hash it used as
+    /// `micalg` names it (`pgp-sha256`).
+    Signed {
+        part: String,
+        signature: String,
+        micalg: &'static str,
+    },
 }
 
 /// What a message may be changed to.
@@ -486,13 +521,24 @@ pub fn parse_draft(doc: &Value) -> Result<Draft, Refused> {
     if let Some(id) = &in_reply_to {
         check_id(id)?;
     }
+    let pgp = match doc.get("pgp") {
+        None | Some(Value::Null) => None,
+        Some(p) => Some(parse_pgp(p)?),
+    };
     let files = parse_files(doc)?;
+    if pgp.is_some() && !files.is_empty() {
+        return refuse(
+            400,
+            "an OpenPGP message carries its files inside the encrypted or signed part",
+        );
+    }
     Ok(Draft {
         to,
         cc,
         subject,
         text,
         in_reply_to,
+        pgp,
         files,
         attached: Vec::new(),
     })
@@ -593,6 +639,67 @@ pub fn parse_uploaded(resp: &Response, file: &Upload) -> Result<Attachment, Refu
             .and_then(Value::as_u64)
             .unwrap_or(file.data.len() as u64),
     })
+}
+
+/// Lines of `text` end in CRLF, and no line is longer than RFC 5322's 998.
+fn crlf_only(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    bytes.iter().enumerate().all(|(i, &b)| match b {
+        b'\n' => i > 0 && bytes[i - 1] == b'\r',
+        b'\r' => bytes.get(i + 1) == Some(&b'\n'),
+        _ => true,
+    }) && text.split("\r\n").all(|l| l.len() <= 998)
+}
+
+/// `pgp`: `{"mime": "encrypted", "armored"}` or `{"mime": "signed",
+/// "part", "signature"}`. Armour and a signed part are 7-bit text; nothing
+/// else is taken, so nothing here can add a header or a part.
+pub fn parse_pgp(doc: &Value) -> Result<PgpBody, Refused> {
+    let field = |k: &str| doc.get(k).and_then(Value::as_str).unwrap_or("");
+    let armor = |text: &str, label: &str| -> Result<String, Refused> {
+        let text = text.trim().replace("\r\n", "\n").replace('\n', "\r\n");
+        let begin = format!("-----BEGIN PGP {label}-----");
+        let end = format!("-----END PGP {label}-----");
+        if text.len() > MAX_ARMORED
+            || !text.starts_with(&begin)
+            || !text.ends_with(&end)
+            || !text.is_ascii()
+            || !crlf_only(&text)
+        {
+            return refuse(400, "the encrypted or signed message is not OpenPGP armour");
+        }
+        Ok(text)
+    };
+    match field("mime") {
+        "encrypted" => Ok(PgpBody::Encrypted {
+            armored: armor(field("armored"), "MESSAGE")?,
+        }),
+        "signed" => {
+            let part = field("part");
+            if part.is_empty()
+                || part.len() > MAX_ARMORED
+                || !part.is_ascii()
+                || !crlf_only(part)
+                || !part.to_ascii_lowercase().starts_with("content-type:")
+                || !part.contains("\r\n\r\n")
+            {
+                return refuse(400, "the signed part is not a MIME part in 7-bit text");
+            }
+            let micalg = match field("micalg") {
+                "" | "pgp-sha256" => "pgp-sha256",
+                "pgp-sha384" => "pgp-sha384",
+                "pgp-sha512" => "pgp-sha512",
+                "pgp-sha224" => "pgp-sha224",
+                _ => return refuse(400, "pgp.micalg names a SHA-2 hash"),
+            };
+            Ok(PgpBody::Signed {
+                part: part.to_string(),
+                signature: armor(field("signature"), "SIGNATURE")?,
+                micalg,
+            })
+        }
+        _ => refuse(400, "pgp.mime is encrypted or signed"),
+    }
 }
 
 /// Mail leaves the box only once an edge carries it (the edge's port 25
@@ -713,7 +820,7 @@ const MAILBOX_PROPS: [&str; 6] = [
     "sortOrder",
 ];
 
-const SUMMARY_PROPS: [&str; 10] = [
+const SUMMARY_PROPS: [&str; 11] = [
     "threadId",
     "subject",
     "from",
@@ -724,6 +831,7 @@ const SUMMARY_PROPS: [&str; 10] = [
     "hasAttachment",
     "mailboxIds",
     "size",
+    "header:Content-Type:asRaw",
 ];
 
 pub fn mailboxes_call(account: &str) -> Vec<Value> {
@@ -740,6 +848,29 @@ pub fn archive_calls(account: &str) -> Vec<Value> {
         }, "s"]),
         json!(["Mailbox/get", { "accountId": account, "properties": MAILBOX_PROPS }, "m"]),
     ]
+}
+
+/// The folder mail a moderator holds goes to (`crate::moderation`). It has
+/// no JMAP role, so it is found by name, and the page never lists it.
+pub const QUARANTINE: &str = "Quarantine";
+
+/// Make the Quarantine folder, then read the folders again.
+pub fn quarantine_calls(account: &str) -> Vec<Value> {
+    vec![
+        json!(["Mailbox/set", {
+            "accountId": account,
+            "create": { "q": { "name": QUARANTINE } },
+        }, "s"]),
+        json!(["Mailbox/get", { "accountId": account, "properties": MAILBOX_PROPS }, "m"]),
+    ]
+}
+
+/// The id of the Quarantine folder.
+pub fn quarantine_of(boxes: &[Mailbox]) -> Option<&str> {
+    boxes
+        .iter()
+        .find(|m| m.role.is_none() && m.name == QUARANTINE)
+        .map(|m| m.id.as_str())
 }
 
 /// Where a role sorts in the folder list: the inbox first, the bin last.
@@ -876,7 +1007,38 @@ fn summary(m: &Value) -> Option<Summary> {
             .get("hasAttachment")
             .and_then(Value::as_bool)
             .unwrap_or(false),
+        pgp: pgp_kind(
+            raw_header(m, "Content-Type").unwrap_or(""),
+            m.get("preview").and_then(Value::as_str).unwrap_or(""),
+        ),
     })
+}
+
+/// A header asked for as `header:<name>:asRaw`. Stalwart answers it under
+/// `header:<name>`, without the form, so both keys are read.
+fn raw_header<'a>(m: &'a Value, name: &str) -> Option<&'a str> {
+    m.get(format!("header:{name}:asRaw"))
+        .or_else(|| m.get(format!("header:{name}")))
+        .and_then(Value::as_str)
+}
+
+/// Whether a message is OpenPGP mail, from its top-level `Content-Type` and
+/// the start of its text: PGP/MIME (RFC 3156), or an armoured block.
+pub fn pgp_kind(content_type: &str, text: &str) -> Option<&'static str> {
+    let ct = content_type.to_ascii_lowercase();
+    if ct.contains("multipart/encrypted") && ct.contains("application/pgp-encrypted") {
+        return Some("encrypted");
+    }
+    if ct.contains("multipart/signed") && ct.contains("application/pgp-signature") {
+        return Some("signed");
+    }
+    if text.contains("-----BEGIN PGP MESSAGE-----") {
+        return Some("encrypted");
+    }
+    if text.contains("-----BEGIN PGP SIGNED MESSAGE-----") {
+        return Some("signed");
+    }
+    None
 }
 
 pub fn parse_list(resp: &Value, position: usize) -> Result<Page, Refused> {
@@ -920,6 +1082,8 @@ pub fn message_calls(account: &str, id: &str, mark_read: bool) -> Vec<Value> {
         "htmlBody",
         "attachments",
         "bodyValues",
+        "sentAt",
+        "header:Autocrypt:asRaw",
     ]);
     let mut calls = vec![json!(["Email/get", {
         "accountId": account,
@@ -1031,14 +1195,20 @@ pub fn parse_message(resp: &Value, marked_read: bool) -> Result<Message, Refused
         .map(|o| o.keys().cloned().collect())
         .unwrap_or_default();
     mailbox_ids.sort();
+    let text = joined(m, "textBody");
+    if summary.pgp.is_none() {
+        summary.pgp = pgp_kind("", &text);
+    }
     Ok(Message {
         summary,
         cc: addresses(m.get("cc")),
         reply_to: addresses(m.get("replyTo")),
         mailbox_ids,
-        text: joined(m, "textBody"),
+        text,
         has_html,
         attachments,
+        autocrypt: raw_header(m, "Autocrypt").map(str::to_string),
+        sent_at: m.get("sentAt").and_then(Value::as_str).map(str::to_string),
     })
 }
 
@@ -1196,6 +1366,17 @@ pub fn send_calls(account: &str, from: &Address, prep: &Prepared, draft: &Draft)
     calls
 }
 
+/// Add a header to the email [`send_calls`] creates.
+fn with_header(calls: &mut [Value], name: &str, value: &str) {
+    for call in calls.iter_mut() {
+        if call.get(0).and_then(Value::as_str) == Some("Email/set") {
+            if let Some(email) = call.pointer_mut("/1/create/draft") {
+                email[name] = Value::String(value.to_string());
+            }
+        }
+    }
+}
+
 /// Whether the message went: every step's `/set` succeeded.
 pub fn parse_sent(resp: &Value, made_identity: bool) -> Result<(), Refused> {
     let mut steps = vec![("Email/set", "e"), ("EmailSubmission/set", "s")];
@@ -1209,6 +1390,236 @@ pub fn parse_sent(resp: &Value, made_identity: bool) -> Result<(), Refused> {
         }
     }
     Ok(())
+}
+
+// ── OpenPGP/MIME: the whole message, built here ────────────────────────────
+
+/// A header value as RFC 2047 encoded words when it is not plain ASCII.
+pub fn encoded(text: &str) -> String {
+    if text.chars().all(|c| c.is_ascii() && !c.is_ascii_control()) {
+        return text.to_string();
+    }
+    // At most 45 bytes per word, whole characters only: 60 characters of
+    // base64 plus the markers stays under the 75 a word may have.
+    let mut words = Vec::new();
+    let mut chunk = String::new();
+    for c in text.chars().filter(|c| !c.is_control()) {
+        if chunk.len() + c.len_utf8() > 45 {
+            words.push(std::mem::take(&mut chunk));
+        }
+        chunk.push(c);
+    }
+    if !chunk.is_empty() {
+        words.push(chunk);
+    }
+    words
+        .iter()
+        .map(|w| format!("=?UTF-8?B?{}?=", base64(w.as_bytes())))
+        .collect::<Vec<_>>()
+        .join("\r\n ")
+}
+
+/// `Name <address>`, the name quoted or encoded as it needs.
+pub fn mailbox(name: Option<&str>, email: &str) -> String {
+    match name.map(str::trim).filter(|n| !n.is_empty()) {
+        None => email.to_string(),
+        Some(n) if n.chars().all(|c| c.is_ascii_alphanumeric() || c == ' ') => {
+            format!("{n} <{email}>")
+        }
+        Some(n) if n.is_ascii() => format!(
+            "\"{}\" <{email}>",
+            n.replace(['\\', '"'], "")
+                .replace(|c: char| c.is_control(), "")
+        ),
+        Some(n) => format!("{} <{email}>", encoded(n)),
+    }
+}
+
+/// The headers and the message ids [`raw_message`] needs besides the body.
+#[derive(Debug, Clone)]
+pub struct Envelope<'a> {
+    pub from: &'a Address,
+    pub to: &'a [String],
+    pub cc: &'a [String],
+    pub subject: &'a str,
+    /// RFC 5322 date, e.g. `Thu, 22 Oct 2026 10:00:00 +0000`.
+    pub date: &'a str,
+    /// `<...@domain>`.
+    pub message_id: &'a str,
+    pub in_reply_to: &'a [String],
+    pub references: &'a [String],
+    /// The `Autocrypt:` header's folded value.
+    pub autocrypt: Option<&'a str>,
+}
+
+/// The whole message for an OpenPGP/MIME body, RFC 3156: headers, then a
+/// `multipart/encrypted` with the version part and the armour, or a
+/// `multipart/signed` with the part as it was signed and the signature.
+/// `boundary` must not occur in the body.
+pub fn raw_message(env: &Envelope<'_>, body: &PgpBody, boundary: &str) -> Vec<u8> {
+    let ids = |list: &[String]| {
+        list.iter()
+            .map(|id| format!("<{}>", id.trim_matches(['<', '>'])))
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    let mut out = String::new();
+    out.push_str(&format!(
+        "From: {}\r\n",
+        mailbox(env.from.name.as_deref(), &env.from.email)
+    ));
+    out.push_str(&format!("To: {}\r\n", env.to.join(", ")));
+    if !env.cc.is_empty() {
+        out.push_str(&format!("Cc: {}\r\n", env.cc.join(", ")));
+    }
+    out.push_str(&format!("Subject: {}\r\n", encoded(env.subject)));
+    out.push_str(&format!("Date: {}\r\n", env.date));
+    out.push_str(&format!("Message-ID: {}\r\n", env.message_id));
+    if !env.in_reply_to.is_empty() {
+        out.push_str(&format!("In-Reply-To: {}\r\n", ids(env.in_reply_to)));
+        out.push_str(&format!("References: {}\r\n", ids(env.references)));
+    }
+    if let Some(a) = env.autocrypt {
+        out.push_str(&format!("Autocrypt:{a}\r\n"));
+    }
+    out.push_str("MIME-Version: 1.0\r\n");
+    match body {
+        PgpBody::Encrypted { armored } => {
+            out.push_str(&format!(
+                "Content-Type: multipart/encrypted;\r\n protocol=\"application/pgp-encrypted\";\r\n boundary=\"{boundary}\"\r\n\r\n"
+            ));
+            out.push_str("This is an OpenPGP/MIME encrypted message (RFC 4880 and 3156)\r\n");
+            out.push_str(&format!("--{boundary}\r\n"));
+            out.push_str("Content-Type: application/pgp-encrypted\r\n");
+            out.push_str("Content-Description: PGP/MIME version identification\r\n\r\n");
+            out.push_str("Version: 1\r\n\r\n");
+            out.push_str(&format!("--{boundary}\r\n"));
+            out.push_str("Content-Type: application/octet-stream; name=\"encrypted.asc\"\r\n");
+            out.push_str("Content-Description: OpenPGP encrypted message\r\n");
+            out.push_str("Content-Disposition: inline; filename=\"encrypted.asc\"\r\n\r\n");
+            out.push_str(armored);
+            out.push_str(&format!("\r\n\r\n--{boundary}--\r\n"));
+        }
+        PgpBody::Signed {
+            part,
+            signature,
+            micalg,
+        } => {
+            out.push_str(&format!(
+                "Content-Type: multipart/signed; micalg={micalg};\r\n protocol=\"application/pgp-signature\";\r\n boundary=\"{boundary}\"\r\n\r\n"
+            ));
+            out.push_str("This is an OpenPGP/MIME signed message (RFC 4880 and 3156)\r\n");
+            out.push_str(&format!("--{boundary}\r\n"));
+            // Byte for byte: the CRLF before the next delimiter belongs to
+            // the delimiter, not to the part (RFC 2046 5.1.1).
+            out.push_str(part);
+            out.push_str(&format!("\r\n--{boundary}\r\n"));
+            out.push_str("Content-Type: application/pgp-signature; name=\"signature.asc\"\r\n");
+            out.push_str("Content-Description: OpenPGP digital signature\r\n");
+            out.push_str("Content-Disposition: attachment; filename=\"signature.asc\"\r\n\r\n");
+            out.push_str(signature);
+            out.push_str(&format!("\r\n\r\n--{boundary}--\r\n"));
+        }
+    }
+    out.into_bytes()
+}
+
+/// Import an uploaded message into Drafts, as sending a written one does.
+pub fn import_calls(account: &str, blob: &str, drafts: &str) -> Vec<Value> {
+    vec![json!(["Email/import", {
+        "accountId": account,
+        "emails": { "m": {
+            "blobId": blob,
+            "mailboxIds": { drafts: true },
+            "keywords": { "$draft": true, "$seen": true },
+        } },
+    }, "e"])]
+}
+
+pub fn parse_imported(resp: &Value) -> Result<String, Refused> {
+    let args = answer(resp, "Email/import", "e")?;
+    if let Some(why) = args.pointer("/notCreated/m").map(|e| {
+        e.get("description")
+            .or_else(|| e.get("type"))
+            .and_then(Value::as_str)
+            .unwrap_or("refused")
+            .to_string()
+    }) {
+        tracing::warn!(why, "the mail server would not take a message");
+        return refuse(422, format!("the message was not sent: {why}"));
+    }
+    args.pointer("/created/m/id")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| odd("Email/import created"))
+}
+
+/// Submit an email already in Drafts, and move it to Sent once it went.
+pub fn submit_calls(account: &str, identity: &str, email: &str, prep: &Prepared) -> Vec<Value> {
+    let mut moved = serde_json::Map::new();
+    moved.insert(format!("mailboxIds/{}", prep.drafts), Value::Null);
+    moved.insert(format!("mailboxIds/{}", prep.sent), Value::Bool(true));
+    moved.insert("keywords/$draft".into(), Value::Null);
+    vec![json!(["EmailSubmission/set", {
+        "accountId": account,
+        "create": { "send": { "identityId": identity, "emailId": email } },
+        "onSuccessUpdateEmail": { "#send": moved },
+    }, "s"])]
+}
+
+/// Make the identity sending needs, on its own.
+pub fn identity_calls(account: &str, from: &Address) -> Vec<Value> {
+    vec![json!(["Identity/set", {
+        "accountId": account,
+        "create": { "me": { "name": from.name.clone().unwrap_or_default(), "email": from.email } },
+    }, "i"])]
+}
+
+pub fn parse_identity(resp: &Value) -> Result<String, Refused> {
+    let args = answer(resp, "Identity/set", "i")?;
+    if let Some(why) = set_failure(args) {
+        return refuse(422, format!("the message was not sent: {why}"));
+    }
+    args.pointer("/created/me/id")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| odd("Identity/set created"))
+}
+
+pub fn parse_submitted(resp: &Value) -> Result<(), Refused> {
+    if let Some(why) = set_failure(answer(resp, "EmailSubmission/set", "s")?) {
+        tracing::warn!(why, "the mail server would not send a message");
+        return refuse(422, format!("the message was not sent: {why}"));
+    }
+    Ok(())
+}
+
+/// The blob of the whole message, for [`Mail::raw`].
+pub fn blob_calls(account: &str, id: &str) -> Vec<Value> {
+    vec![json!(["Email/get", {
+        "accountId": account,
+        "ids": [id],
+        "properties": ["blobId"],
+    }, "g"])]
+}
+
+pub fn parse_blob(resp: &Value) -> Result<String, Refused> {
+    answer(resp, "Email/get", "g")?
+        .pointer("/list/0/blobId")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| Refused {
+            status: 404,
+            message: "no such message".into(),
+        })
+}
+
+/// Sixteen random bytes as hex, for a Message-ID and a boundary.
+fn random_hex() -> String {
+    use ring::rand::SecureRandom;
+    let mut bytes = [0u8; 16];
+    let _ = ring::rand::SystemRandom::new().fill(&mut bytes);
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 pub fn change_calls(account: &str, id: &str, change: &Change) -> Vec<Value> {
@@ -1422,7 +1833,14 @@ impl Mail {
         Ok((account, doc))
     }
 
+    /// The folders the page lists: every one but Quarantine.
     pub fn mailboxes(&self, person: &crate::people::Person) -> Result<Vec<Mailbox>, Refused> {
+        let mut boxes = self.all_mailboxes(person)?;
+        boxes.retain(|m| !(m.role.is_none() && m.name == QUARANTINE));
+        Ok(boxes)
+    }
+
+    fn all_mailboxes(&self, person: &crate::people::Person) -> Result<Vec<Mailbox>, Refused> {
         let (_, resp) = self.jmap(person, mailboxes_call)?;
         let boxes = parse_mailboxes(&resp)?;
         if with_role(&boxes, "archive").is_some() {
@@ -1430,6 +1848,46 @@ impl Mail {
         }
         let (_, resp) = self.jmap(person, archive_calls)?;
         parse_mailboxes(&resp)
+    }
+
+    /// Move `person`'s message `id` into Quarantine, making the folder the
+    /// first time. Nothing of the message is read.
+    pub fn hold(&self, person: &crate::people::Person, id: &str) -> Result<(), Refused> {
+        check_id(id)?;
+        let boxes = self.all_mailboxes(person)?;
+        let quarantine = match quarantine_of(&boxes) {
+            Some(q) => q.to_string(),
+            None => {
+                let (_, resp) = self.jmap(person, quarantine_calls)?;
+                let boxes = parse_mailboxes(&resp)?;
+                quarantine_of(&boxes)
+                    .ok_or_else(|| odd("no Quarantine"))?
+                    .to_string()
+            }
+        };
+        self.change(
+            person,
+            id,
+            &Change {
+                mailbox: Some(quarantine),
+                ..Change::default()
+            },
+        )
+    }
+
+    /// Move a held message back to `person`'s inbox.
+    pub fn release(&self, person: &crate::people::Person, id: &str) -> Result<(), Refused> {
+        check_id(id)?;
+        let boxes = self.all_mailboxes(person)?;
+        let inbox = with_role(&boxes, "inbox").ok_or_else(|| odd("no Inbox"))?;
+        self.change(
+            person,
+            id,
+            &Change {
+                mailbox: Some(inbox.to_string()),
+                ..Change::default()
+            },
+        )
     }
 
     pub fn list(
@@ -1461,7 +1919,14 @@ impl Mail {
         parse_html(&resp)
     }
 
-    pub fn send(&self, person: &crate::people::Person, draft: &Draft) -> Result<(), Refused> {
+    /// Send `draft`. `autocrypt` is the person's `Autocrypt:` header value
+    /// when they have a key (`crate::mail_pgp::autocrypt_header`).
+    pub fn send(
+        &self,
+        person: &crate::people::Person,
+        draft: &Draft,
+        autocrypt: Option<&str>,
+    ) -> Result<(), Refused> {
         let config = self.open().ok_or_else(closed)?;
         local_only(&config.domain, draft)?;
         let address = self.address(&person.name).unwrap_or_default();
@@ -1474,19 +1939,98 @@ impl Mail {
             email: address,
         };
         let mut draft = draft.clone();
-        for file in std::mem::take(&mut draft.files) {
-            let resp = self.transport.send(&Request {
-                method: "POST",
-                path: format!("/jmap/upload/{account}/"),
-                user: format!("{}%{MASTER_USER}", person.name),
-                secret: self.secret(config)?,
-                body: Some(file.data.clone()),
-                content_type: Some(file.kind.clone()),
+        let Some(body) = draft.pgp.clone() else {
+            for file in std::mem::take(&mut draft.files) {
+                let resp = self.transport.send(&Request {
+                    method: "POST",
+                    path: format!("/jmap/upload/{account}/"),
+                    user: format!("{}%{MASTER_USER}", person.name),
+                    secret: self.secret(config)?,
+                    body: Some(file.data.clone()),
+                    content_type: Some(file.kind.clone()),
+                })?;
+                draft.attached.push(parse_uploaded(&resp, &file)?);
+            }
+            let (_, resp) = self.jmap(person, |_| {
+                let mut calls = send_calls(&account, &from, &prep, &draft);
+                if let Some(value) = autocrypt {
+                    with_header(&mut calls, "header:Autocrypt:asRaw", value);
+                }
+                calls
             })?;
-            draft.attached.push(parse_uploaded(&resp, &file)?);
+            return parse_sent(&resp, prep.identity.is_none());
+        };
+        let identity = match &prep.identity {
+            Some(id) => id.clone(),
+            None => {
+                let (_, resp) = self.jmap(person, |a| identity_calls(a, &from))?;
+                parse_identity(&resp)?
+            }
+        };
+        let boundary = format!("losos-{}", random_hex());
+        if matches!(&body, PgpBody::Signed { part, .. } if part.contains(&boundary)) {
+            return refuse(400, "the signed part cannot be sent as it is");
         }
-        let (_, resp) = self.jmap(person, |_| send_calls(&account, &from, &prep, &draft))?;
-        parse_sent(&resp, prep.identity.is_none())
+        let mut references = prep.references.clone();
+        references.extend(prep.message_id.iter().cloned());
+        let date = chrono::Utc::now().to_rfc2822();
+        let message_id = format!("<{}@{}>", random_hex(), config.domain);
+        let raw = raw_message(
+            &Envelope {
+                from: &from,
+                to: &draft.to,
+                cc: &draft.cc,
+                subject: &draft.subject,
+                date: &date,
+                message_id: &message_id,
+                in_reply_to: &prep.message_id,
+                references: &references,
+                autocrypt,
+            },
+            &body,
+            &boundary,
+        );
+        let blob = self.upload(person, &account, raw)?;
+        let (_, resp) = self.jmap(person, |a| import_calls(a, &blob, &prep.drafts))?;
+        let email = parse_imported(&resp)?;
+        let (_, resp) = self.jmap(person, |a| submit_calls(a, &identity, &email, &prep))?;
+        parse_submitted(&resp)
+    }
+
+    /// Upload a whole message; its blob id.
+    fn upload(
+        &self,
+        person: &crate::people::Person,
+        account: &str,
+        raw: Vec<u8>,
+    ) -> Result<String, Refused> {
+        let config = self.open().ok_or_else(closed)?;
+        let resp = self.transport.send(&Request {
+            method: "POST",
+            path: format!("/jmap/upload/{account}/"),
+            user: format!("{}%{MASTER_USER}", person.name),
+            secret: self.secret(config)?,
+            body: Some(raw),
+            content_type: Some("message/rfc822".to_string()),
+        })?;
+        if !(200..300).contains(&resp.status) {
+            tracing::warn!(status = resp.status, "the mail server refused an upload");
+            return Err(odd("upload"));
+        }
+        let doc: Value = serde_json::from_slice(&resp.body).map_err(|_| odd("upload JSON"))?;
+        doc.get("blobId")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .ok_or_else(|| odd("upload blobId"))
+    }
+
+    /// The whole message as it arrived, for the browser to decrypt or check
+    /// a signature on.
+    pub fn raw(&self, person: &crate::people::Person, id: &str) -> Result<Vec<u8>, Refused> {
+        check_id(id)?;
+        let (_, resp) = self.jmap(person, |a| blob_calls(a, id))?;
+        let blob = parse_blob(&resp)?;
+        self.download(person, &blob).map(|(_, bytes)| bytes)
     }
 
     pub fn change(
@@ -2204,6 +2748,67 @@ mod tests {
     }
 
     #[test]
+    fn held_mail_goes_to_a_quarantine_the_page_never_lists() {
+        let dir = tempdir();
+        let fake = Fake::default();
+        let seen = fake.seen.clone();
+        let folders = |extra: &[Value]| {
+            let mut list = mailboxes_answer()["methodResponses"][0][1]["list"].clone();
+            let all = list.as_array_mut().unwrap();
+            all.push(json!({ "id": "f", "name": "Archive", "role": "archive", "totalEmails": 0, "unreadEmails": 0 }));
+            all.extend(extra.iter().cloned());
+            list
+        };
+        let quarantine = json!({ "id": "q", "name": QUARANTINE, "role": null, "totalEmails": 1, "unreadEmails": 1 });
+        let moved =
+            json!({ "methodResponses": [["Email/set", { "updated": { "m1": null } }, "s"]] });
+        *fake.answers.lock().unwrap() = vec![
+            ok(json!({ "data": 1 })),
+            ok(json!({ "data": 2 })),
+            ok(json!({ "primaryAccounts": { "urn:ietf:params:jmap:mail": "d" } })),
+            ok(json!({ "methodResponses": [["Mailbox/get", { "list": folders(&[]) }, "m"]] })),
+            ok(json!({ "methodResponses": [
+                ["Mailbox/set", { "created": { "q": { "id": "q" } } }, "s"],
+                ["Mailbox/get", { "list": folders(std::slice::from_ref(&quarantine)) }, "m"],
+            ]})),
+            ok(moved.clone()),
+            ok(
+                json!({ "methodResponses": [["Mailbox/get", { "list": folders(std::slice::from_ref(&quarantine)) }, "m"]] }),
+            ),
+            ok(
+                json!({ "methodResponses": [["Mailbox/get", { "list": folders(&[quarantine]) }, "m"]] }),
+            ),
+            ok(moved),
+        ];
+        let mail = Mail::new(Some(config(&dir)), Box::new(fake));
+        mail.hold(&person("eva"), "m1").unwrap();
+        let boxes = mail.mailboxes(&person("eva")).unwrap();
+        assert!(boxes.iter().all(|b| b.name != QUARANTINE), "{boxes:?}");
+        mail.release(&person("eva"), "m1").unwrap();
+
+        let seen = seen.lock().unwrap();
+        let body =
+            |i: usize| -> Value { serde_json::from_slice(seen[i].body.as_ref().unwrap()).unwrap() };
+        assert_eq!(
+            body(4)["methodCalls"][0][1]["create"]["q"]["name"],
+            QUARANTINE
+        );
+        assert_eq!(
+            body(5)["methodCalls"][0][1]["update"]["m1"]["mailboxIds"],
+            json!({ "q": true })
+        );
+        // Nothing of the message was read on the way.
+        for i in 3..seen.len() {
+            let calls = body(i)["methodCalls"].to_string();
+            assert!(!calls.contains("Email/get"), "{calls}");
+        }
+        assert_eq!(
+            body(8)["methodCalls"][0][1]["update"]["m1"]["mailboxIds"],
+            json!({ "a": true })
+        );
+    }
+
+    #[test]
     fn a_server_that_does_not_answer_is_starting() {
         let dir = tempdir();
         let mail = Mail::new(Some(config(&dir)), Box::new(Fake::default()));
@@ -2244,5 +2849,215 @@ mod tests {
         let n = mail.neighbours(&[listed("eva", false), listed("bob", true)]);
         assert_eq!(n.len(), 1);
         assert_eq!(n[0].address, "eva@mattbox.home.arpa");
+    }
+
+    #[test]
+    fn a_raw_header_is_read_as_stalwart_names_it() {
+        // Stalwart answers header:Content-Type:asRaw under header:Content-Type.
+        let stalwart = json!({ "header:Content-Type": " multipart/signed; micalg=pgp-sha256" });
+        assert_eq!(
+            raw_header(&stalwart, "Content-Type"),
+            Some(" multipart/signed; micalg=pgp-sha256")
+        );
+        let spec = json!({ "header:Autocrypt:asRaw": " addr=x" });
+        assert_eq!(raw_header(&spec, "Autocrypt"), Some(" addr=x"));
+        assert_eq!(raw_header(&spec, "Content-Type"), None);
+    }
+
+    #[test]
+    fn openpgp_mail_is_told_apart_by_its_type_or_its_armour() {
+        assert_eq!(
+            pgp_kind(
+                "multipart/encrypted; protocol=\"application/pgp-encrypted\"; boundary=x",
+                ""
+            ),
+            Some("encrypted")
+        );
+        assert_eq!(
+            pgp_kind(
+                "multipart/signed; micalg=pgp-sha256;\r\n protocol=\"application/pgp-signature\"",
+                ""
+            ),
+            Some("signed")
+        );
+        assert_eq!(
+            pgp_kind(
+                "multipart/signed; protocol=\"application/pkcs7-signature\"",
+                ""
+            ),
+            None
+        );
+        assert_eq!(
+            pgp_kind("text/plain", "hi\n-----BEGIN PGP MESSAGE-----\n"),
+            Some("encrypted")
+        );
+        assert_eq!(
+            pgp_kind("", "-----BEGIN PGP SIGNED MESSAGE-----"),
+            Some("signed")
+        );
+        assert_eq!(pgp_kind("text/plain", "hello"), None);
+    }
+
+    #[test]
+    fn a_pgp_body_is_armour_or_a_7bit_part_and_nothing_else() {
+        let armored = "-----BEGIN PGP MESSAGE-----\n\nwV4D\n-----END PGP MESSAGE-----\n";
+        let body = parse_pgp(&json!({ "mime": "encrypted", "armored": armored })).unwrap();
+        assert_eq!(
+            body,
+            PgpBody::Encrypted {
+                armored: "-----BEGIN PGP MESSAGE-----\r\n\r\nwV4D\r\n-----END PGP MESSAGE-----"
+                    .into()
+            }
+        );
+        // Anything after the armour could be a header or a part of its own.
+        for bad in [
+            "-----BEGIN PGP MESSAGE-----\nx\n-----END PGP MESSAGE-----\n--b\nContent-Type: text/html",
+            "hello",
+            "-----BEGIN PGP MESSAGE-----\nž\n-----END PGP MESSAGE-----",
+        ] {
+            assert!(parse_pgp(&json!({ "mime": "encrypted", "armored": bad })).is_err(), "{bad}");
+        }
+        let sig = "-----BEGIN PGP SIGNATURE-----\n\niHUE\n-----END PGP SIGNATURE-----";
+        let part = "Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\nAhoj=\r\n";
+        let body = parse_pgp(&json!({ "mime": "signed", "part": part, "signature": sig })).unwrap();
+        assert!(matches!(&body, PgpBody::Signed { part: p, .. } if p == part));
+        // A signed part is kept byte for byte, so it must already be CRLF.
+        let lf = part.replace("\r\n", "\n");
+        assert!(parse_pgp(&json!({ "mime": "signed", "part": lf, "signature": sig })).is_err());
+        assert!(
+            parse_pgp(&json!({ "mime": "signed", "part": "hello\r\n\r\n", "signature": sig }))
+                .is_err()
+        );
+        assert!(parse_pgp(&json!({ "mime": "other" })).is_err());
+        let draft = parse_draft(&json!({ "to": "eva@x.org", "text": "", "pgp": { "mime": "encrypted", "armored": armored } })).unwrap();
+        assert!(draft.pgp.is_some());
+        assert!(parse_draft(&json!({ "to": "eva@x.org", "text": "" }))
+            .unwrap()
+            .pgp
+            .is_none());
+    }
+
+    #[test]
+    fn names_and_subjects_outside_ascii_are_encoded_words() {
+        assert_eq!(encoded("Plan"), "Plan");
+        let e = encoded("Plán na štvrtok");
+        assert!(e.starts_with("=?UTF-8?B?") && e.ends_with("?="), "{e}");
+        let long = encoded(&"ľ".repeat(80));
+        assert!(long.split("\r\n ").all(|w| w.len() <= 75), "{long}");
+        assert_eq!(mailbox(Some("Eva"), "eva@x.org"), "Eva <eva@x.org>");
+        assert_eq!(
+            mailbox(Some("Eva, M."), "eva@x.org"),
+            "\"Eva, M.\" <eva@x.org>"
+        );
+        assert_eq!(mailbox(None, "eva@x.org"), "eva@x.org");
+        assert!(mailbox(Some("Éva"), "eva@x.org").starts_with("=?UTF-8?B?"));
+    }
+
+    #[test]
+    fn an_encrypted_message_is_rfc_3156_with_the_armour_untouched() {
+        let from = Address {
+            name: Some("Matúš".into()),
+            email: "matus@mattbox.home.arpa".into(),
+        };
+        let to = vec!["eva@mattbox.home.arpa".to_string()];
+        let env = Envelope {
+            from: &from,
+            to: &to,
+            cc: &[],
+            subject: "Plan",
+            date: "Thu, 22 Oct 2026 10:00:00 +0000",
+            message_id: "<abc@mattbox.home.arpa>",
+            in_reply_to: &["m1@x".to_string()],
+            references: &["m0@x".to_string(), "m1@x".to_string()],
+            autocrypt: Some(
+                " addr=matus@mattbox.home.arpa; prefer-encrypt=mutual; keydata=\r\n AAAA",
+            ),
+        };
+        let armored = "-----BEGIN PGP MESSAGE-----\r\n\r\nwV4D\r\n-----END PGP MESSAGE-----";
+        let raw = String::from_utf8(raw_message(
+            &env,
+            &PgpBody::Encrypted {
+                armored: armored.into(),
+            },
+            "B1",
+        ))
+        .unwrap();
+        assert!(raw.contains("\r\nTo: eva@mattbox.home.arpa\r\n"));
+        assert!(raw.contains("In-Reply-To: <m1@x>\r\nReferences: <m0@x> <m1@x>\r\n"));
+        assert!(raw.contains(
+            "Autocrypt: addr=matus@mattbox.home.arpa; prefer-encrypt=mutual; keydata=\r\n AAAA\r\n"
+        ));
+        assert!(raw.contains("Content-Type: multipart/encrypted;\r\n protocol=\"application/pgp-encrypted\";\r\n boundary=\"B1\""));
+        assert!(raw.contains("--B1\r\nContent-Type: application/pgp-encrypted\r\n"));
+        assert!(raw.contains("Version: 1\r\n"));
+        assert!(raw.contains(&format!("\r\n\r\n{armored}\r\n\r\n--B1--\r\n")));
+        assert!(raw.lines().all(|l| l.len() <= 998));
+        assert!(!raw.replace("\r\n", "").contains('\n'), "bare LF");
+
+        let part = "Content-Type: text/plain; charset=utf-8\r\n\r\nAhoj";
+        let raw = String::from_utf8(raw_message(
+            &env,
+            &PgpBody::Signed {
+                part: part.into(),
+                signature: "SIG".into(),
+                micalg: "pgp-sha256",
+            },
+            "B2",
+        ))
+        .unwrap();
+        assert!(raw.contains("multipart/signed; micalg=pgp-sha256;"));
+        // Exactly the bytes signed, between the delimiter and the next one.
+        assert!(raw.contains(&format!(
+            "--B2\r\n{part}\r\n--B2\r\nContent-Type: application/pgp-signature"
+        )));
+    }
+
+    #[test]
+    fn an_imported_message_is_submitted_and_moved_to_sent() {
+        let prep = Prepared {
+            identity: Some("i7".into()),
+            drafts: "d".into(),
+            sent: "s".into(),
+            message_id: vec![],
+            references: vec![],
+        };
+        let calls = import_calls("c", "blob1", "d");
+        assert_eq!(calls[0][1]["emails"]["m"]["blobId"], "blob1");
+        assert_eq!(
+            calls[0][1]["emails"]["m"]["mailboxIds"],
+            json!({ "d": true })
+        );
+        let resp = json!({ "methodResponses": [["Email/import", { "created": { "m": { "id": "e9" } } }, "e"]] });
+        assert_eq!(parse_imported(&resp).unwrap(), "e9");
+        let resp = json!({ "methodResponses": [["Email/import", { "notCreated": { "m": { "type": "invalidEmail" } } }, "e"]] });
+        assert_eq!(parse_imported(&resp).unwrap_err().status, 422);
+        let calls = submit_calls("c", "i7", "e9", &prep);
+        assert_eq!(calls[0][1]["create"]["send"]["emailId"], "e9");
+        assert_eq!(
+            calls[0][1]["onSuccessUpdateEmail"]["#send"]["mailboxIds/s"],
+            true
+        );
+    }
+
+    #[test]
+    fn a_plain_message_carries_the_autocrypt_header() {
+        let prep = Prepared {
+            identity: Some("i7".into()),
+            drafts: "d".into(),
+            sent: "s".into(),
+            message_id: vec![],
+            references: vec![],
+        };
+        let from = Address {
+            name: None,
+            email: "matus@mattbox.home.arpa".into(),
+        };
+        let draft = parse_draft(&json!({ "to": "eva@mattbox.home.arpa", "text": "hi" })).unwrap();
+        let mut calls = send_calls("c", &from, &prep, &draft);
+        with_header(&mut calls, "header:Autocrypt:asRaw", " addr=x");
+        assert_eq!(
+            calls[0][1]["create"]["draft"]["header:Autocrypt:asRaw"],
+            " addr=x"
+        );
     }
 }

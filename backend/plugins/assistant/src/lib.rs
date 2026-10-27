@@ -4,8 +4,9 @@
 //! Every LosOS app offers "Ask AI" where it fits: a mail thread, a file in
 //! LosOS Cloud, a note. The page reads the material with the person's own
 //! session, so the model sees nothing the person could not open, and sends
-//! it here with the question. This plugin asks Ollama, the same model the
-//! builder uses (`modules/builder.nix`, `losos.builder.model`), on loopback:
+//! it here with the question. This plugin asks Ollama on loopback, the
+//! model for everything that is not code (`modules/builder.nix`,
+//! `losos.assistant.model`, Gemma 3 1B; the builder keeps its coder):
 //! the question and the material never leave the box, and nothing is kept
 //! but the answer, in lososd's memory, for an hour.
 //!
@@ -37,7 +38,7 @@ fn base_url() -> Option<String> {
 }
 
 fn model_name() -> String {
-    config::get_or("model", "llama3.2:3b")
+    config::get_or("model", "gemma3:1b")
 }
 
 fn context() -> u32 {
@@ -196,7 +197,9 @@ fn answer(kept: &mut Kept, ask: &Ask) -> Result<(), String> {
     let body = model::chat_body(&model_name(), context(), ask);
     let stream = http::Request::post(&format!("{url}/api/chat"))
         .json(&body)
-        .timeout_ms(890_000)
+        // The whole job but ten seconds: the first token can be minutes
+        // away on two old cores reading 2,500 tokens of material.
+        .timeout_ms(1_790_000)
         .send()
         .map_err(|e| format!("the model did not answer: {e}"))?;
     if !(200..300).contains(&stream.status) {
