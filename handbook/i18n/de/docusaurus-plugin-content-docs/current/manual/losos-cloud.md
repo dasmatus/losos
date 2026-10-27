@@ -60,6 +60,8 @@ sehen, blättere mit den Pfeiltasten weiter und drück **Details** (oder
 und welches Objektiv, die Belichtung, die Größe, wo es aufgenommen wurde,
 wer darauf ist und jede weitere Angabe der Kamera.
 
+![Die Details eines Fotos in LosOS Cloud: wann es aufgenommen wurde, die Kamera, das Objektiv, die Einstellungen und der Ort.](@site/docs/img/cloud-photos.png)
+
 Die Box findet die Gesichter auf deinen Bildern und fasst die, die sich
 ähneln, zu einer Person zusammen. **Personen** über den Fotos zeigt alle,
 die auf mehr als einem Bild vorkommen; klick auf ein Gesicht, um alle Fotos

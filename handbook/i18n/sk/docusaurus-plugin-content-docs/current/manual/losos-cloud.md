@@ -58,6 +58,8 @@ obrázok zväčšíte, šípkami prechádzate ďalšie a **Podrobnosti** (alebo
 a objektív, expozíciu, veľkosť, kde bol obrázok odfotený, kto je na ňom
 a každý ďalší údaj, ktorý fotoaparát uložil.
 
+![Podrobnosti fotky v LosOS Cloud: kedy bola odfotená, fotoaparát, objektív, nastavenia a miesto.](@site/docs/img/cloud-photos.png)
+
 Zariadenie nájde na vašich obrázkoch tváre a tie, ktoré sa podobajú, spojí
 do jednej osoby. **Ľudia** nad fotkami ukazujú každého, kto je na viac ako
 jednom obrázku; kliknutím na tvár uvidíte všetky fotky tejto osoby a môžete

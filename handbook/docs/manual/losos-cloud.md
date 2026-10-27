@@ -52,6 +52,8 @@ to go through them, and press **Details** (or <kbd>i</kbd>) for what the
 camera wrote: when, which camera and lens, the exposure, the size, where it
 was taken, who is in it, and every other tag the camera saved.
 
+![A photo's details in LosOS Cloud: when it was taken, the camera, the lens, the settings and the place.](../img/cloud-photos.png)
+
 The box finds the faces in your pictures and puts the ones that look alike
 together as one person. **People** above the photos shows everyone seen in
 more than one picture; click a face to see all of that person's photos and
