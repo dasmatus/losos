@@ -91,8 +91,8 @@ card that the simulator runs, and an arrow between two of them is a cable.
 The page opens on **This box**: it reads the box's settings and the edges
 it found, using the same three admin routes as the other pages, and draws
 the box from them: its router, the edges in reach, the official edge when
-one is configured, and a laptop. The router, the cables and the laptop are
-assumed, because the box cannot see them. Diagrams never writes to the box.
+one is configured, and a laptop. Diagrams guesses the router, the cables
+and the laptop, because the box cannot see them. Diagrams never writes to the box.
 If nobody is signed in, it says so and opens the built-in setups.
 
 - **Logical and Physical views.** The logical view shows subnets, the edge
@@ -213,7 +213,7 @@ the canvas in its tooltip.
 
 ## Guests under libvirt
 
-qemu-wasm is slow: it emulates every instruction with no KVM, each guest
+qemu-wasm is slow. It emulates every instruction with no KVM, each guest
 costs the tab about 450 MB, and a tab runs three. If the computer Diagrams is open on has libvirt (the thing
 virt-manager drives), Diagrams can run its guests there instead, under KVM
 when the CPU has it. They boot in a few seconds, and up to eight run at once.
@@ -240,9 +240,9 @@ There are three ways a guest can run, in order of preference:
 
 The helper starts each guest as a transient domain named `losos-lab-...`
 with `virsh create`. Transient means libvirt never saves it, so nothing
-outlives the helper: Ctrl-C or SIGTERM destroys every guest it started, a
-guest no page has watched for a minute is destroyed too, and on start
-it removes any `losos-lab-` domain a killed helper left behind. A guest is
+outlives the helper. Ctrl-C or SIGTERM destroys every guest it started, the
+helper destroys a guest no page has watched for a minute, and on start it
+removes any `losos-lab-` domain a killed helper left behind. A guest is
 on no libvirt network and no bridge. Its serial console and its network
 card are connected to the helper on 127.0.0.1, and the helper hands both to
 the page over WebSockets. The page is still the switch, so a libvirt guest
@@ -290,7 +290,7 @@ simulated console.
 
 ### The WebAssembly client and the relay
 
-A web page cannot open libvirt's socket: browsers offer no raw TCP and no
+A web page cannot open libvirt's socket. Browsers offer no raw TCP and no
 unix sockets to a normal page, and libvirt has no WebSocket listener of its
 own. So the helper relays. The page asks `POST /lab/v1/virt-ticket` for a
 ticket, then opens the WebSocket `/lab/v1/virt` with the subprotocols
@@ -336,8 +336,8 @@ The client creates its guests with libvirt's autodestroy flag, so they end
 when the connection does: when the tab closes, and when the helper stops,
 because the helper closes every relayed socket on Ctrl-C or SIGTERM. When
 the page powers a guest off, it destroys the domain itself and hands the
-card back with `DELETE guests/<key>`. A card no page watches is ended
-after `--idle`, like a guest of the helper's own, and because the page
+card back with `DELETE guests/<key>`. The helper ends a card no page
+watches after `--idle`, like a guest of its own, and because the page
 names its domain the way the helper does, the helper's sweep and idle
 check reach that domain too. `admin-ui/lab/virt-rpc/README.md` shows the
 client on its own, through its demo page.
@@ -351,7 +351,7 @@ never the page, and polkit asks about the helper too. With
 `qemu:///system` that is as good as root on the computer, because a page can
 create a domain that attaches any host file or disk, and the relay cannot
 refuse such a domain without parsing libvirt's protocol. Prefer
-`qemu:///session` on your own PC: then the worst case is your own user's
+`qemu:///session` on your own PC. There the worst case is your own user's
 files. Diagrams' guests need nothing from the system instance.
 :::
 
