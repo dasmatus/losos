@@ -99,6 +99,7 @@ pkgs.testers.nixosTest {
       losos = {
         hostName = "mattbox";
         backend.package = lososPkgs.losos-ctl;
+        backend.plugins = lososPkgs.losos-plugins;
         admin.ui = ui;
         git.enable = true;
         mdns.enable = true;

@@ -14,8 +14,6 @@ use losos_registrar::opts::{parse, Mode};
 const SERVE_DEFAULTS: &[&str] = &[
     "--registry",
     "/var/lib/losos-registrar/registry.json",
-    "--traefik-dir",
-    "/etc/traefik/dynamic",
     "--tunnel-config",
     "/etc/losos-tunnel/server.json",
     "--tenants-file",

@@ -113,9 +113,9 @@ impl Settings {
     /// Write the whitelist and the token files under the state directory, and build the registrar's `serve` options against them.
     ///
     /// Paths are laid out so nothing collides with what the registrar itself
-    /// writes there (`registry.json`, `tunnel.json`, `traefik/losos.yml`,
-    /// `compute-windows.json`). The listen address is a formality: the host
-    /// never binds it, Vercel's bridge delivers requests.
+    /// writes there (`registry.json`, `tunnel.json`, `compute-windows.json`).
+    /// The listen address is a formality: the host never binds it, Vercel's
+    /// bridge delivers requests.
     pub fn materialise(&self) -> Result<ServeOpts> {
         let dir = &self.state_dir;
         create_private_dir(dir)?;
@@ -157,8 +157,6 @@ impl Settings {
             "127.0.0.1:0",
             "--registry",
             &path("registry.json"),
-            "--traefik-dir",
-            &path("traefik"),
             "--tunnel-config",
             &path("tunnel.json"),
             "--port-range",

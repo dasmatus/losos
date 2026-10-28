@@ -24,8 +24,39 @@ Import the `nixosModules.edge` flake output into the VPS configuration and set
 - `losos.edge.cluster.enable` also runs the [mesh](mesh.md) control plane, an
   rke2 server with Longhorn. The proxy works without it.
 
-`losos-registrar` keeps Traefik's dynamic config and the tunnel server's file
-in step with the registered appliances.
+`losos-registrar` keeps the tunnel server's file in step with the registered
+appliances, and Traefik finds them through the registrar.
+
+## How Traefik finds the boxes
+
+Traefik discovers the boxes through its HTTP provider. Every two seconds it
+asks the registrar, on a loopback-only port (`losos.edge.traefikProviderPort`,
+default 8090), for the current routes: one per live box name, custom domain
+and published machine, each pointing at that box's end of the tunnel. A box
+that registers is reachable within seconds, and one whose heartbeats stop
+loses its route when the registrar prunes it. The registrar writes nothing
+into Traefik's directory, which holds only the routes NixOS manages.
+
+If the registrar stops or restarts, Traefik keeps the routes it last
+received, so the boxes stay reachable. Upgrading an edge that still has the
+`losos.yml` and `losos-vms.yml` files an older registrar wrote removes them
+on the switch.
+
+## HTTP/3
+
+The public entry point answers HTTP/3 over QUIC on UDP port 443 as well as
+HTTP/1.1 and HTTP/2 on TCP port 443. Traefik announces HTTP/3 in an
+`Alt-Svc` header, so a browser moves to QUIC after its first request. A
+network that blocks UDP keeps working over TCP. Open UDP 443 in any
+firewall in front of the edge; the edge's own firewall opens it.
+
+## When a box can't be reached
+
+When Traefik cannot reach a box (it is switched off, restarting or offline,
+or its tunnel is down), the visitor gets a page from the edge that says so,
+in English, Slovak or German after the browser's language, instead of a bare
+"Bad Gateway". The status stays 502, or 504 when the box did not answer in
+time.
 
 ## Appliance
 

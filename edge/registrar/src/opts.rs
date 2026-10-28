@@ -138,9 +138,10 @@ pub struct RoutesOpts {
     pub pass_key_file: String,
 }
 
-/// `serve` options. The registrar is the sole writer of `traefik_dir`'s
-/// `losos.yml` and `tunnel_config`; the tunnel re-reads the latter every
-/// second (no signal needed), so there is no tunnel handle here.
+/// `serve` options. Traefik discovers the boxes by polling
+/// `traefik_provider_listen`; the registrar is the sole writer of
+/// `tunnel_config`, which the tunnel re-reads every second (no signal
+/// needed), so there is no tunnel handle here.
 ///
 /// The `mesh_*` / `kube_*` fields are the `/cluster/join` half and are all
 /// optional. `modules/edge.nix` only appends their flags under
@@ -152,7 +153,10 @@ pub struct RoutesOpts {
 pub struct ServeOpts {
     pub listen: String,
     pub registry_path: String,
-    pub traefik_dir: String,
+    /// Where Traefik's HTTP provider reads the boxes' routes, and the page an
+    /// unreachable box answers with (`server::provider_router`). Loopback:
+    /// nothing but Traefik on the same machine is meant to reach it.
+    pub traefik_provider_listen: String,
     /// The tunnel's service file (`crate::tunnel::ServerFile`).
     pub tunnel_config: String,
     pub port_range: (u16, u16),
@@ -237,6 +241,9 @@ pub struct ServeOpts {
     /// of waiting jobs in. `None` unless `--ci-dir` was given, and every
     /// `/ci/*` route answers 503.
     pub ci_dir: Option<String>,
+    /// Tor and I2P addresses for the boxes (`crate::hidden`). `None` unless
+    /// `--hidden-dir` was given.
+    pub hidden: Option<crate::hidden::HiddenOpts>,
 }
 
 /// `serve --manage-key-file FILE [--manage-ui DIR]`.
@@ -309,6 +316,10 @@ pub struct AnnounceOpts {
     /// (`losos.inference.lend`). Re-read on every heartbeat; missing,
     /// unreadable or not a number lends nothing.
     pub llm_lend_file: Option<String>,
+    /// `--hidden-file`: where to keep the Tor and I2P addresses the edge
+    /// made for this box (`crate::hidden`), from each heartbeat's answer.
+    /// Removed when the edge makes none.
+    pub hidden_file: Option<String>,
 }
 
 /// `join` options. Runs once per boot on the appliance, from
@@ -467,7 +478,9 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                     .unwrap_or("127.0.0.1:8443")
                     .to_string(),
                 registry_path: req(&rest, "--registry")?.to_string(),
-                traefik_dir: req(&rest, "--traefik-dir")?.to_string(),
+                traefik_provider_listen: arg(&rest, "--traefik-provider-listen")
+                    .unwrap_or("127.0.0.1:8090")
+                    .to_string(),
                 tunnel_config: req(&rest, "--tunnel-config")?.to_string(),
                 port_range: (lo, hi),
                 tunnel_pin_file: arg(&rest, "--tunnel-pin-file").map(str::to_string),
@@ -512,6 +525,23 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                 routes: parse_routes(&rest)?,
                 enrol_dir: arg(&rest, "--enrol-dir").map(str::to_string),
                 ci_dir: arg(&rest, "--ci-dir").map(str::to_string),
+                hidden: match arg(&rest, "--hidden-dir") {
+                    None => None,
+                    Some(dir) => Some(crate::hidden::HiddenOpts {
+                        dir: dir.to_string(),
+                        addresses_file: arg(&rest, "--hidden-addresses")
+                            .unwrap_or("/var/lib/losos-hidden/addresses.json")
+                            .to_string(),
+                        http_port: arg(&rest, "--hidden-http-port")
+                            .unwrap_or("8480")
+                            .parse()
+                            .map_err(|_| miette!("bad --hidden-http-port"))?,
+                        https_port: arg(&rest, "--hidden-https-port")
+                            .unwrap_or("8444")
+                            .parse()
+                            .map_err(|_| miette!("bad --hidden-https-port"))?,
+                    }),
+                },
                 operator: arg(&rest, "--access-dir").map(|dir| crate::operator::OperatorOpts {
                     access_dir: dir.to_string(),
                     keys_file: arg(&rest, "--access-keys-file")
@@ -610,6 +640,7 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
             relay_pass_file: arg(&rest, "--relay-pass-file").map(str::to_string),
             managed_file: arg(&rest, "--managed-file").map(str::to_string),
             llm_lend_file: arg(&rest, "--llm-lend-file").map(str::to_string),
+            hidden_file: arg(&rest, "--hidden-file").map(str::to_string),
         })),
         "tunnel-server" => Ok(Mode::TunnelServer(crate::tunnel::ServerOpts {
             listen: arg(&rest, "--listen")
@@ -1424,15 +1455,6 @@ fn parse_vms(args: &[String]) -> Result<Option<crate::vms::VmOpts>> {
             return Err(miette!("bad --vm-domain {d:?}; expected a domain name"));
         }
     }
-    let routes_file = match &domain {
-        Some(_) => Some(
-            std::path::Path::new(req(args, "--traefik-dir")?)
-                .join("losos-vms.yml")
-                .to_string_lossy()
-                .into_owned(),
-        ),
-        None => None,
-    };
     Ok(Some(crate::vms::VmOpts {
         catalogue,
         shape,
@@ -1446,7 +1468,6 @@ fn parse_vms(args: &[String]) -> Result<Option<crate::vms::VmOpts>> {
             * 1024,
         fetch_base,
         domain,
-        routes_file,
     }))
 }
 

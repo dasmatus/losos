@@ -5,9 +5,9 @@
 //! Traefik and the tunnel, reading files, and the operator, reading the journal.
 //! A demonstration needs a window, so this host adds one — read-only, hostnames
 //! and liveness only, never a token — and the page in `public/` draws it.
-//! `/status/traefik` shows the dynamic configuration the reconciler just wrote
-//! to the scratch disk, i.e. exactly the `losos.yml` a real edge's Traefik
-//! would be reloading right now.
+//! `/status/traefik` shows the routes the reconciler just decided, i.e.
+//! exactly the document a real edge's Traefik would be reading from the
+//! registrar's provider listener right now.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -102,15 +102,15 @@ async fn status(State(host): State<Arc<Host>>) -> Json<Status> {
 }
 
 async fn traefik(State(host): State<Arc<Host>>) -> Response {
-    let body = match host.traefik_config().await {
-        Some(yaml) => yaml,
-        // The zero-tenant state is "no file" on a real edge too; say so rather
-        // than 404, which the page would read as the route being gone.
-        None => "# No live tenants: the edge would have removed losos.yml.\n".to_string(),
-    };
+    // Pretty-printed for the page; Traefik reads the compact form. `{}` is the
+    // zero-tenant document on a real edge too.
+    let doc = host.traefik_config();
+    let body = serde_json::from_str::<serde_json::Value>(&doc)
+        .and_then(|v| serde_json::to_string_pretty(&v))
+        .unwrap_or(doc);
     (
         StatusCode::OK,
-        [(header::CONTENT_TYPE, "text/yaml; charset=utf-8")],
+        [(header::CONTENT_TYPE, "application/json")],
         body,
     )
         .into_response()

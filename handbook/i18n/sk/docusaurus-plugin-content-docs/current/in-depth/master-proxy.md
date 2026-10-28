@@ -24,8 +24,38 @@ Importujte výstup flaku `nixosModules.edge` do konfigurácie VPS a nastavte
 - `losos.edge.cluster.enable` navyše spúšťa riadiacu vrstvu [mesh](/in-depth/mesh.md),
   server rke2 s Longhornom. Proxy funguje aj bez nej.
 
-`losos-registrar` udržiava dynamickú konfiguráciu Traefiku a súbor
-tunelového servera v súlade s registrovanými zariadeniami.
+`losos-registrar` udržiava súbor tunelového servera v súlade
+s registrovanými zariadeniami a Traefik ich nachádza cez registrar.
+
+## Ako Traefik nachádza boxy {#how-traefik-finds-the-boxes}
+
+Traefik objavuje boxy cez svoj HTTP provider. Každé dve sekundy sa registrara
+na porte dostupnom iba z loopbacku (`losos.edge.traefikProviderPort`,
+predvolene 8090) spýta na aktuálne trasy: jednu pre každý názov živého boxu,
+vlastnú doménu a zverejnený virtuálny stroj, každú smerom k jeho koncu tunela.
+Box, ktorý sa zaregistruje, je dostupný do niekoľkých sekúnd, a box, ktorému
+prestanú chodiť heartbeaty, stratí trasu, keď ho registrar vyradí. Registrar
+do adresára Traefiku nič nezapisuje, sú v ňom iba trasy, ktoré spravuje NixOS.
+
+Ak sa registrar zastaví alebo reštartuje, Traefik si ponechá trasy, ktoré
+dostal naposledy, takže boxy zostanú dostupné. Pri aktualizácii edge, na ktorom
+ešte zostali súbory `losos.yml` a `losos-vms.yml` od staršieho registrara, sa
+tieto súbory pri prepnutí odstránia.
+
+## HTTP/3 {#http3}
+
+Verejný vstupný bod odpovedá cez HTTP/3 nad QUIC na porte UDP 443 a zároveň
+cez HTTP/1.1 a HTTP/2 na porte TCP 443. Traefik ohlasuje HTTP/3 v hlavičke
+`Alt-Svc`, takže prehliadač po prvej požiadavke prejde na QUIC. Sieť, ktorá
+blokuje UDP, ďalej funguje cez TCP. Vo firewalle pred edge otvorte UDP 443;
+vlastný firewall edge ho otvára sám.
+
+## Keď box nie je dostupný {#when-a-box-cant-be-reached}
+
+Keď sa Traefik k boxu nedostane (je vypnutý, reštartuje sa, je offline alebo
+mu nefunguje tunel), návštevník namiesto holého „Bad Gateway“ dostane stránku
+z edge, ktorá to vysvetlí, po anglicky, slovensky alebo nemecky podľa jazyka
+prehliadača. Stavový kód zostáva 502, alebo 504, keď box neodpovedal včas.
 
 ## Zariadenie {#appliance}
 

@@ -304,7 +304,7 @@ async fn a_box_stripe_vouches_for_gets_a_name_and_a_proved_domain_goes_live() {
     assert_eq!(v["domains"][0]["problem"], Value::Null);
     let y = edge.traefik_yaml().unwrap();
     assert!(y.contains("mattbox-host-"), "{y}");
-    assert!(y.contains("main: cloud.example.org"), "{y}");
+    assert!(y.contains(r#""main":"cloud.example.org""#), "{y}");
 
     // Another box Stripe also vouches for cannot take it while it is live.
     let (status, body) = edge

@@ -85,14 +85,14 @@ losos.edge = {
 };
 ```
 
-The registrar's reconciler, after it has written its own Traefik and tunnel
-files, relays its **live** tenants (registered, whitelisted or enrolled,
-heartbeating) to the hub and renders `/etc/losos-tunnel/uplink.json`: a
-tunnel *client* file with one service per relayed box, `local =
-127.0.0.1:<that box's port on this spoke>`, token = the uplink token. The
-unit `losos-tunnel-uplink` runs the same client a box runs (started by a
-path unit the moment the file exists), and reconnects when the file
-changes. The hub's tunnel certificate is pinned on first contact (`GET
+The registrar's reconciler, after it has decided its own Traefik routes and
+written its tunnel file, relays its **live** tenants (registered, whitelisted
+or enrolled, heartbeating) to the hub and renders
+`/etc/losos-tunnel/uplink.json`: a tunnel *client* file with one service per
+relayed box, `local = 127.0.0.1:<that box's port on this spoke>`, token = the
+uplink token. The unit `losos-tunnel-uplink` runs the same client a box runs
+(started by a path unit the moment the file exists), and reconnects when the
+file changes. The hub's tunnel certificate is pinned on first contact (`GET
 /tunnel-pin`, written to `uplink.pinFile` by the registrar itself), as a box
 pins its edge's. So a request for
 `https://mattbox.acme.losos.cfd/` terminates TLS on the hub, enters the

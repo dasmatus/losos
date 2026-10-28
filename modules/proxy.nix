@@ -143,6 +143,11 @@ let
     # so the edge's page lists the box within one interval of the switch.
     "--managed-file"
     managedMarker
+    # The Tor and I2P addresses the edge made for this box, when it makes
+    # any (modules/edge-hidden.nix): kept for LosOS Login and the Network
+    # page (modules/hidden-lib.nix), removed when the edge makes none.
+    "--hidden-file"
+    (import ./hidden-lib.nix { inherit lib pkgs; }).edgeFile
   ];
 
   # What the box lends to models split across boxes, written by

@@ -123,18 +123,17 @@ in
     # so TCP stays the fallback for every client that does not speak QUIC or
     # whose network drops UDP. `reuseport` gives each nginx worker its own UDP
     # socket, which is how nginx spreads QUIC across workers; without it every
-    # QUIC packet lands on one worker. It is set on this vhost only, and this
-    # is the one vhost on these ports.
+    # QUIC packet lands on one worker. Listen options may be given once per
+    # address, so this is the one vhost that sets any on these ports.
     #
     # Clients learn of HTTP/3 from Alt-Svc on a response over TCP, then switch.
     # The header is only sent over HTTPS: an http:// origin cannot be upgraded
     # this way, and traffic through the edge's tunnel arrives here on :80, so
     # the edge's own Alt-Svc is the one browsers see there.
     #
-    # Chromium refuses QUIC to a certificate that chains to a root the user
-    # installed rather than a public one, so Chrome on the LAN keeps HTTP/2
-    # even after the owner trusts this certificate. Firefox, curl and the
-    # apps that speak HTTP/3 take it; nix/tests/quic.nix records which.
+    # A client that will not use QUIC with a certificate from a root the
+    # user installed (Chromium has refused that) simply stays on HTTP/2.
+    # nix/tests/quic.nix fetches over both with curl and times them.
     services.nginx.virtualHosts."losos-front" = {
       addSSL = true;
       sslCertificate = cert;
@@ -142,6 +141,8 @@ in
       quic = true;
       http3 = true;
       reuseport = true;
+      # Restated whole, the loopback listeners of Tor and I2P included
+      # (modules/containers.nix).
       listen = [
         {
           addr = "0.0.0.0";
@@ -152,7 +153,10 @@ in
           port = 443;
           ssl = true;
         }
-      ];
+      ]
+      ++ (import ./hidden-lib.nix { inherit lib pkgs; }).frontListen (
+        config.losos.hidden.tor.enable || config.losos.hidden.i2p.enable
+      );
       extraConfig = ''
         add_header Alt-Svc $losos_alt_svc always;
       '';

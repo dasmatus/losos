@@ -105,6 +105,9 @@ let
   publicNamesFile = "/var/lib/losos-public-names/domains.json";
   # The name the edge routes to this box through the tunnel.
   tunnelName = lib.optionalString config.losos.proxy.enable config.losos.proxy.hostname;
+  # The box's own Tor and I2P addresses, and those an edge made for it
+  # (modules/hidden-lib.nix).
+  hidden = import ./hidden-lib.nix { inherit lib pkgs; };
 
   # What an app's sign-in page shows when LosOS Login cannot sign the person
   # in: while it starts (`waiting`, which asks again by itself), and for a
@@ -265,7 +268,9 @@ let
       # file says: each goes into YAML below.
       public=()
       for n in ${lib.escapeShellArg tunnelName} \
-        $(jq -r '.[]? | strings' ${publicNamesFile} 2>/dev/null || true); do
+        $(jq -r '.[]? | strings' ${publicNamesFile} 2>/dev/null || true) \
+        $(jq -r '.[]? | .tor, .i2p | strings' ${hidden.addressesFile} 2>/dev/null || true) \
+        $(jq -r '.tor, .i2p | strings' ${hidden.edgeFile} 2>/dev/null || true); do
         if [ -n "$n" ] && [ "''${#n}" -le 253 ] &&
           printf '%s' "$n" | grep -Eqx '[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+'; then
           public+=("$n")
@@ -526,12 +531,17 @@ in
       '';
     };
 
-    # The public names change when the owner adds or drops a domain.
+    # The public names change when the owner adds or drops a domain, and
+    # when Tor, I2P or an edge make the box an address.
     systemd.paths.losos-identity-public-names = {
       description = "Re-render sign-in's session domains when the public names change";
       wantedBy = [ "multi-user.target" ];
       pathConfig = {
-        PathChanged = publicNamesFile;
+        PathChanged = [
+          publicNamesFile
+          hidden.addressesFile
+          hidden.edgeFile
+        ];
         Unit = "losos-identity-setup.service";
       };
     };
@@ -633,10 +643,15 @@ in
 
     # The scheme the person's browser used. The edge ends TLS and sends the
     # request through the tunnel as http from 127.0.0.1 with
-    # `X-Forwarded-Proto: https`, which is believed from there only.
+    # `X-Forwarded-Proto: https`, which is believed from there only. The
+    # box's Tor and I2P addresses (modules/hidden-services.nix) arrive on
+    # loopback listeners of their own, one behind nginx's own TLS and one
+    # without, so for them the port decides and no header does.
     services.nginx.appendHttpConfig = ''
-      map "$remote_addr|$http_x_forwarded_proto" $losos_proto {
-        "127.0.0.1|https" https;
+      map "$server_port|$remote_addr|$http_x_forwarded_proto" $losos_proto {
+        "~^${toString hidden.tlsPort}\|" https;
+        "~^${toString hidden.plainPort}\|" http;
+        "~^[0-9]+\|127\.0\.0\.1\|https$" https;
         default $scheme;
       }
       ${lib.optionalString anyAppSignIn appMaps}

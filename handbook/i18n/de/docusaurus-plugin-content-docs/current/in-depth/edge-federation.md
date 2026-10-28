@@ -90,8 +90,8 @@ losos.edge = {
 };
 ```
 
-Nachdem der Reconciler des Registrars seine eigenen Traefik- und
-Tunnel-Dateien geschrieben hat, leitet er seine **aktiven** Tenants
+Nachdem der Reconciler des Registrars seine eigenen Traefik-Routen
+festgelegt und seine Tunnel-Datei geschrieben hat, leitet er seine **aktiven** Tenants
 (registriert, auf der Whitelist oder eingeschrieben, mit Heartbeat) an den
 Hub weiter und erzeugt `/etc/losos-tunnel/uplink.json`: eine *Client*-Datei
 des Tunnels mit einem Dienst pro weitergeleiteter Box, `local =

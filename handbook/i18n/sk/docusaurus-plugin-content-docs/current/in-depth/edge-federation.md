@@ -86,8 +86,8 @@ losos.edge = {
 };
 ```
 
-Reconciler registrara, keď zapíše vlastné súbory pre Traefik a tunel,
-prepošle hubu svojich **živých** tenantov (registrovaných, na whiteliste
+Reconciler registrara, keď určí vlastné trasy pre Traefik a zapíše súbor
+pre tunel, prepošle hubu svojich **živých** tenantov (registrovaných, na whiteliste
 alebo zapísaných, posielajúcich heartbeat) a vygeneruje
 `/etc/losos-tunnel/uplink.json`: súbor *klienta* tunela s jednou službou
 na každé preposielané zariadenie, `local = 127.0.0.1:<port toho boxu na tomto

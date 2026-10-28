@@ -1,19 +1,24 @@
 //! Pure config generation. `desired_config` takes the live tenant set and
-//! returns the exact bytes to write to Traefik's dynamic file-provider dir and
-//! the tunnel's service file (`crate::tunnel::ServerFile`). No IO, no time, no
-//! randomness — fully deterministic and unit-testable.
+//! returns the routes Traefik discovers and the exact bytes of the tunnel's
+//! service file (`crate::tunnel::ServerFile`). No IO, no time, no randomness
+//! — fully deterministic and unit-testable.
 //!
-//! Both files are regenerated in full on every reconcile (the tenant set is
-//! small), so the reconciler byte-compares old-vs-new and only writes when
+//! Traefik finds the boxes through its HTTP provider: it polls the
+//! registrar's loopback provider listener (`server::provider_router`) for
+//! [`provider_document`], the JSON form of the [`Routes`] the last reconcile
+//! pass decided on. Nothing is written to Traefik's directory any more; the
+//! file provider there carries only the NixOS-owned `register*.yml`.
+//! The tunnel's file is regenerated in full on every reconcile (the tenant
+//! set is small), so the reconciler byte-compares old-vs-new and only writes when
 //! something actually changed.
 //!
-//! The Traefik dynamic config is modeled as typed serde structs ([`TraefikConfig`]
+//! The Traefik dynamic config is modeled as typed serde structs ([`Routes`]
 //! and friends) so its shape — routers and services nested under `http`, each
 //! router's `tls` block, the load-balancer server list — is enforced at
-//! compile time. The earlier hand-rolled YAML could produce a structurally
-//! invalid file (e.g. an empty `routers: {}`) that Traefik only rejected at
-//! runtime ("routers cannot be a standalone element"); the type model makes
-//! that unrepresentable.
+//! compile time. Traefik decodes an empty section such as `routers: {}` as
+//! an error ("routers cannot be a standalone element") and then keeps the
+//! routes it had, so every map is skipped when empty and no routes at all is
+//! the document `{}`, which Traefik takes as "drop every box".
 
 use std::collections::BTreeMap;
 use std::net::{Ipv4Addr, SocketAddr};
@@ -46,94 +51,221 @@ pub struct TenantView {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Files {
-    /// The Traefik dynamic config, or `None` when there are no live tenants.
-    /// Traefik's file provider **rejects** an empty dynamic config — both
-    /// `http: {}` and `http:\n  routers: {}\n  services: {}` error as
-    /// "<key> cannot be a standalone element" — so the zero-tenant state is
-    /// "no `losos.yml`", represented as `None`: the reconciler removes the
-    /// file and Traefik drops every appliance router. The tunnel's file, by
-    /// contrast, is always written: no services is a valid file.
-    pub traefik_yaml: Option<String>,
+    /// The boxes' routes for Traefik's HTTP provider. Empty with no live
+    /// tenants, which [`provider_document`] renders as `{}`.
+    pub traefik: Routes,
+    /// The tunnel's service file. Always written: no services is a valid file.
     pub tunnel_json: String,
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// Traefik dynamic file-provider config — typed model.
+// Traefik dynamic config — typed model.
 //
-// These mirror the subset of Traefik's dynamic config the registrar emits
-// (https://doc.traefik.io/traefik/reference/dynamic-configuration/file/).
-// `#[serde(rename_all = "camelCase")]` maps the snake_case Rust fields to the
-// camelCase keys Traefik expects (entryPoints, certResolver, loadBalancer).
-// `BTreeMap` gives deterministic key order so the serialized output is stable
-// across runs (the reconciler byte-compares old vs new).
+// These mirror the subset of Traefik's dynamic config the registrar serves
+// (https://doc.traefik.io/traefik/reference/dynamic-configuration/file/; the
+// HTTP provider decodes the same document). `#[serde(rename_all =
+// "camelCase")]` maps the snake_case Rust fields to the camelCase keys
+// Traefik expects (entryPoints, certResolver, loadBalancer). `BTreeMap` gives
+// deterministic key order, so the document only changes when a route does
+// (Traefik hashes each response and ignores one it has seen).
 //
-// Only the parts the registrar actually writes are modeled — adding a field
+// Only the parts the registrar actually serves are modeled — adding a field
 // Traefik doesn't understand is a compile error against these structs, not a
 // runtime "unknown field" from Traefik.
 
-/// Root of a Traefik dynamic config file (`losos.yml`).
+/// Root of the provider document: `{"http": {...}}`, or `{}` with no routes.
 #[derive(Debug, Serialize, Deserialize)]
 struct TraefikConfig {
-    http: TraefikHttp,
+    #[serde(default, skip_serializing_if = "Routes::is_empty")]
+    http: Routes,
 }
 
-/// The `http:` top-level section: one router and one service per appliance.
-#[derive(Debug, Serialize, Deserialize)]
+/// The `http:` section of a dynamic config: routers, the middlewares they
+/// use and the services they forward to. One value per source (the boxes,
+/// the machines), merged by [`provider_document`]; names never collide across
+/// sources because each source names its own entries.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct TraefikHttp {
+pub struct Routes {
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     routers: BTreeMap<String, TraefikRouter>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    middlewares: BTreeMap<String, TraefikMiddleware>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     services: BTreeMap<String, TraefikService>,
+}
+
+impl Routes {
+    /// No router, middleware or service.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.routers.is_empty() && self.middlewares.is_empty() && self.services.is_empty()
+    }
+
+    /// The hostnames routed, sorted: what the boxes are reachable at.
+    #[must_use]
+    pub fn hosts(&self) -> Vec<String> {
+        let mut hosts: Vec<String> = self
+            .routers
+            .values()
+            .flat_map(|r| r.tls.domains.iter().map(|d| d.main.clone()))
+            .collect();
+        hosts.sort();
+        hosts.dedup();
+        hosts
+    }
+
+    /// This source alone as a provider document, or `None` when it routes
+    /// nothing.
+    #[must_use]
+    pub fn document(&self) -> Option<String> {
+        (!self.is_empty()).then(|| provider_document([self]))
+    }
+
+    fn extend(&mut self, other: &Routes) {
+        self.routers
+            .extend(other.routers.iter().map(|(k, v)| (k.clone(), v.clone())));
+        self.middlewares.extend(
+            other
+                .middlewares
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone())),
+        );
+        self.services
+            .extend(other.services.iter().map(|(k, v)| (k.clone(), v.clone())));
+    }
+
+    /// Put [`OFFLINE_MIDDLEWARE`] in front of every router: a box Traefik
+    /// cannot reach (switched off, rebooting, its tunnel down) answers with
+    /// the edge's own page instead of a bare 502. `url` is the provider
+    /// listener, which serves that page at `/offline/<status>`.
+    #[must_use]
+    pub fn with_offline_page(&self, url: &str) -> Routes {
+        if self.routers.is_empty() {
+            return self.clone();
+        }
+        let mut out = self.clone();
+        for r in out.routers.values_mut() {
+            r.middlewares.push(OFFLINE_MIDDLEWARE.to_string());
+        }
+        out.middlewares.insert(
+            OFFLINE_MIDDLEWARE.to_string(),
+            TraefikMiddleware {
+                errors: TraefikErrors {
+                    status: OFFLINE_STATUSES.iter().map(|s| (*s).to_string()).collect(),
+                    service: OFFLINE_MIDDLEWARE.to_string(),
+                    query: "/offline/{status}".to_string(),
+                },
+            },
+        );
+        out.services.insert(
+            OFFLINE_MIDDLEWARE.to_string(),
+            TraefikService {
+                load_balancer: TraefikLoadBalancer {
+                    servers: vec![TraefikServer {
+                        url: url.to_string(),
+                    }],
+                },
+            },
+        );
+        out
+    }
+}
+
+/// The middleware (and the service behind it) that answers for an
+/// unreachable box. Tenant services are named after the tenant id, and no id
+/// can be this one: an enrolled or relayed id is made of DNS labels, which
+/// hold no underscore, and `modules/edge.nix` refuses it as a tenant id.
+pub const OFFLINE_MIDDLEWARE: &str = "losos_offline";
+
+/// What Traefik answers when it cannot reach a box: 502 when the tunnel
+/// refuses or drops the connection, 504 when the box does not answer in
+/// time. 503 is left alone, because a box sends it on purpose while an app
+/// is starting.
+pub const OFFLINE_STATUSES: [&str; 2] = ["502", "504"];
+
+/// The provider document Traefik's HTTP provider reads: every source merged.
+/// `{}` when nothing is routed, which Traefik takes as "no routes" (an empty
+/// `http` section would be refused, and the old routes kept).
+#[must_use]
+pub fn provider_document<'a>(parts: impl IntoIterator<Item = &'a Routes>) -> String {
+    let mut http = Routes::default();
+    for part in parts {
+        http.extend(part);
+    }
+    serde_json::to_string(&TraefikConfig { http })
+        .expect("serializing TraefikConfig is infallible for String/Vec/BTreeMap fields")
 }
 
 /// A per-appliance router: match `Host(<hostname>)`, forward to the service of
 /// the same id, terminate TLS with the on-demand Let's Encrypt resolver.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TraefikRouter {
     rule: String,
     service: String,
     entry_points: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    middlewares: Vec<String>,
     tls: TraefikTls,
 }
 
 /// Per-router TLS: the `le` cert resolver and the hostname to obtain a cert
 /// for. The registrar is the gatekeeper of which hostnames ever get certs —
 /// Traefik obtains lazily on first hit for a router that exists.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TraefikTls {
-    cert_resolver: String,
+    /// `None` is Traefik's own default certificate: no public authority
+    /// issues for a Tor or I2P name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    cert_resolver: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     domains: Vec<TraefikDomain>,
 }
 
 /// A `domains:` entry — `main` is the cert's primary SAN.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct TraefikDomain {
     main: String,
+}
+
+/// The one middleware kind the registrar uses: `errors`, which hands a
+/// response with one of `status` to `service` at `query` instead.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct TraefikMiddleware {
+    errors: TraefikErrors,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct TraefikErrors {
+    status: Vec<String>,
+    service: String,
+    query: String,
 }
 
 /// A per-appliance service: a load balancer with one server — the tunnel's
 /// edge port for this appliance (`http://127.0.0.1:<tunnel_port>`), which
 /// the tunnel (`crate::tunnel`) carries to the appliance's Nginx.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TraefikService {
     load_balancer: TraefikLoadBalancer,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TraefikLoadBalancer {
     servers: Vec<TraefikServer>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct TraefikServer {
     url: String,
 }
 
-/// Render the Traefik dynamic file-provider config and the tunnel's service
-/// file for the given live tenants.
+/// Render the Traefik routes and the tunnel's service file for the given
+/// live tenants.
 ///
 /// Traefik: one router + one service per tenant, `Host(<hostname>)` →
 /// `http://127.0.0.1:<tunnel_port>`, with per-router `tls.certResolver: le`
@@ -142,10 +274,8 @@ struct TraefikServer {
 /// gatekeeper of which hostnames ever get certs: it only writes routers for
 /// authenticated tenants.
 ///
-/// Tunnel: one service per tenant, named by its id, on the loopback port
-/// Traefik forwards to, with the per-appliance token. The appliance's tunnel
-/// client presents the same token to take the service, and the tunnel
-/// carries each connection on that port to the appliance's local Nginx.
+/// Tunnel: one service per tenant, bound on loopback (only Traefik, on the
+/// same host, reaches it), with the per-appliance token the box presents.
 #[must_use]
 pub fn desired_config(tenants: &[TenantView]) -> Files {
     desired_config_with_hosts(tenants, &BTreeMap::new())
@@ -168,22 +298,23 @@ pub fn desired_config_with_hosts(
 ) -> Files {
     let tunnel_json = tunnel_file(tenants);
     if tenants.is_empty() {
-        // Traefik rejects an empty dynamic config (see `Files`), so the
-        // zero-tenant Traefik state is `None` — no losos.yml — not an empty
-        // file. The reconciler removes the file.
+        // Traefik gets no routes, which the provider serves as `{}`.
         return Files {
-            traefik_yaml: None,
+            traefik: Routes::default(),
             tunnel_json,
         };
     }
 
+    let mut sorted: Vec<&TenantView> = tenants.iter().collect();
+    sorted.sort_by(|a, b| a.id.cmp(&b.id));
+
     // BTreeMap gives deterministic ordering by id so byte-compare is stable
-    // across runs regardless of input iteration order. serde_yaml quotes the
-    // map keys only when the id needs it.
+    // across runs regardless of input iteration order. serde_json escapes
+    // the map keys.
     let mut routers: BTreeMap<String, TraefikRouter> = BTreeMap::new();
     let mut services: BTreeMap<String, TraefikService> = BTreeMap::new();
 
-    for t in tenants {
+    for t in sorted {
         let id = t.id.clone();
         let host = t.hostname.clone();
         routers.insert(
@@ -192,10 +323,11 @@ pub fn desired_config_with_hosts(
                 rule: format!("Host(`{host}`)"),
                 service: id.clone(),
                 entry_points: vec!["websecure".to_string()],
+                middlewares: Vec::new(),
                 tls: TraefikTls {
                     cert_resolver: "le".to_string(),
                     domains: vec![TraefikDomain { main: host.clone() }],
-                },
+                }),
             },
         );
         if let Some(hosts) = extra_hosts.get(&t.id) {
@@ -209,12 +341,13 @@ pub fn desired_config_with_hosts(
                         rule: format!("Host(`{extra}`)"),
                         service: id.clone(),
                         entry_points: vec!["websecure".to_string()],
+                        middlewares: Vec::new(),
                         tls: TraefikTls {
                             cert_resolver: "le".to_string(),
                             domains: vec![TraefikDomain {
                                 main: extra.clone(),
                             }],
-                        },
+                        }),
                     },
                 );
             }
@@ -231,16 +364,12 @@ pub fn desired_config_with_hosts(
         );
     }
 
-    // Serializing these structs is infallible in practice: every field is a
-    // String/Vec/BTreeMap<String,_>, so there are no enums, no unbounded
-    // recursion, and no non-string keys for serde_yaml to choke on.
-    let traefik_yaml = serde_yaml::to_string(&TraefikConfig {
-        http: TraefikHttp { routers, services },
-    })
-    .expect("serializing TraefikConfig is infallible for String/Vec/BTreeMap fields");
-
     Files {
-        traefik_yaml: Some(traefik_yaml),
+        traefik: Routes {
+            routers,
+            middlewares: BTreeMap::new(),
+            services,
+        },
         tunnel_json,
     }
 }
@@ -274,17 +403,12 @@ fn tunnel_file(tenants: &[TenantView]) -> String {
     out
 }
 
-/// The Traefik file for the virtual machines the market published
-/// (`crate::vms`): one router per machine order, `Host(<host>)`, with its own
-/// certificate, to that order's Service in the mesh. `routes` is
-/// `(hostname, service URL)`; the router is named after the hostname's first
-/// label, the order's stem. `None` for no routes, for the same reason as
-/// [`Files::traefik_yaml`]: Traefik refuses an empty file.
+/// The routes of the virtual machines the market published (`crate::vms`):
+/// one router per machine order, `Host(<host>)`, with its own certificate, to
+/// that order's Service in the mesh. `routes` is `(hostname, service URL)`;
+/// the router is named after the hostname's first label, the order's stem.
 #[must_use]
-pub fn vm_routes_yaml(routes: &[(String, String)]) -> Option<String> {
-    if routes.is_empty() {
-        return None;
-    }
+pub fn vm_routes(routes: &[(String, String)]) -> Routes {
     let mut routers = BTreeMap::new();
     let mut services = BTreeMap::new();
     for (host, url) in routes {
@@ -295,10 +419,11 @@ pub fn vm_routes_yaml(routes: &[(String, String)]) -> Option<String> {
                 rule: format!("Host(`{host}`)"),
                 service: name.clone(),
                 entry_points: vec!["websecure".to_string()],
+                middlewares: Vec::new(),
                 tls: TraefikTls {
                     cert_resolver: "le".to_string(),
                     domains: vec![TraefikDomain { main: host.clone() }],
-                },
+                }),
             },
         );
         services.insert(
@@ -309,6 +434,81 @@ pub fn vm_routes_yaml(routes: &[(String, String)]) -> Option<String> {
                 },
             },
         );
+    }
+    Routes {
+        routers,
+        middlewares: BTreeMap::new(),
+        services,
+    }
+}
+
+/// One box behind this edge with Tor or I2P addresses
+/// (`crate::hidden`): its id, the edge port of its tunnel, and the names.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HiddenRoute {
+    pub id: String,
+    pub tunnel_port: u16,
+    pub hosts: Vec<String>,
+}
+
+/// The Traefik file for the boxes' Tor and I2P addresses: per box, one
+/// router on the plain `losos-hidden` entry point and one on
+/// `losos-hidden-tls` with Traefik's default certificate, both
+/// `Host(<onion>) || Host(<b32>)`, to a service of their own at the box's
+/// tunnel port. Those entry points listen on loopback, where only Tor and
+/// I2P connect, and no other router listens there. `None` for no routes,
+/// as [`Files::traefik_yaml`].
+#[must_use]
+pub fn hidden_routes_yaml(routes: &[HiddenRoute]) -> Option<String> {
+    let mut routers = BTreeMap::new();
+    let mut services = BTreeMap::new();
+    for r in routes {
+        if r.hosts.is_empty() {
+            continue;
+        }
+        let mut hosts = r.hosts.clone();
+        hosts.sort();
+        hosts.dedup();
+        let rule = hosts
+            .iter()
+            .map(|h| format!("Host(`{h}`)"))
+            .collect::<Vec<_>>()
+            .join(" || ");
+        let service = format!("{}-hidden", r.id);
+        routers.insert(
+            service.clone(),
+            TraefikRouter {
+                rule: rule.clone(),
+                service: service.clone(),
+                entry_points: vec![crate::hidden::PLAIN_ENTRY_POINT.to_string()],
+                tls: None,
+            },
+        );
+        routers.insert(
+            format!("{}-hidden-tls", r.id),
+            TraefikRouter {
+                rule,
+                service: service.clone(),
+                entry_points: vec![crate::hidden::TLS_ENTRY_POINT.to_string()],
+                tls: Some(TraefikTls {
+                    cert_resolver: None,
+                    domains: Vec::new(),
+                }),
+            },
+        );
+        services.insert(
+            service,
+            TraefikService {
+                load_balancer: TraefikLoadBalancer {
+                    servers: vec![TraefikServer {
+                        url: format!("http://127.0.0.1:{}", r.tunnel_port),
+                    }],
+                },
+            },
+        );
+    }
+    if routers.is_empty() {
+        return None;
     }
     Some(
         serde_yaml::to_string(&TraefikConfig {

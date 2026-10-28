@@ -24,7 +24,9 @@
 #      hub routes `acme.mattbox` with the spoke's token and
 #      Host(mattbox.acme.losos.cfd), the spoke's uplink tunnel file carries
 #      the service, the hub's certificate is pinned on the spoke, and a request
-#      entering the hub crosses two tunnels to the box;
+#      entering the hub crosses two tunnels to the box, both through the
+#      hub's Traefik over HTTPS and HTTP/3 and through the spoke's Traefik
+#      for a visitor on the LAN;
 #   4. the spoke goes away: the box falls back to the configured official
 #      edge (`path.source == "configured"`), the units are restarted against
 #      it, and the box's direct tenant row on the hub answers;
@@ -33,10 +35,9 @@
 #      unavailable;
 #   6. the spoke comes back: the path returns to the LAN and the units run.
 #
-# Everything that would need public DNS or a TLS certificate (Traefik's
-# ACME, Host routing over 443) is out of reach in a VM, as in nix/tests/edge-vm.nix;
-# the hub's Traefik file is asserted as text and the data path is driven
-# through the tunnel's per-service loopback ports.
+# Let's Encrypt is out of reach in a VM, as in nix/tests/edge-vm.nix: Traefik
+# answers with its default certificate and the curls pass -k. Host routing
+# over 443 is real: each Traefik discovers the boxes from its own registrar.
 { pkgs }:
 
 let
@@ -331,8 +332,8 @@ pkgs.testers.nixosTest {
     relayed = services(hub)["acme.mattbox"]
     assert relayed["token"] == "${spokeTokenValue}", relayed
     hub_port = relayed["bind"].rsplit(":", 1)[1]
-    traefik = hub.succeed("cat /etc/traefik/dynamic/losos.yml")
-    assert "Host(`mattbox.acme.losos.cfd`)" in traefik, traefik
+    traefik = hub.wait_until_succeeds("curl -fsS http://127.0.0.1:8090/traefik | grep -F 'Host(`mattbox.acme.losos.cfd`)'")
+    assert "losos_offline" in traefik, traefik
     registry = json.loads(hub.succeed("cat /var/lib/losos-registrar/registry.json"))
     assert registry["tenants"]["acme.mattbox"]["via"] == "acme", registry
 
@@ -346,6 +347,25 @@ pkgs.testers.nixosTest {
 
     # Two tunnels, one request: in at the hub, out at the box's Nginx.
     assert through(hub, hub_port).strip() == "hello-losos"
+
+    # The same request as a visitor makes it: the hub's Traefik, which found
+    # the relayed box through its registrar, over TCP and over HTTP/3 from
+    # another machine. And the spoke's own Traefik for a visitor on the LAN.
+    def resolve(machine, name):
+        v4 = machine.succeed(f"getent ahostsv4 {name} | awk 'NR==1{{print $1}}'").strip()
+        return v4 or "[" + machine.succeed(f"getent ahostsv6 {name} | awk 'NR==1{{print $1}}'").strip() + "]"
+
+    def visit(machine, at, http3):
+        curl = "${pkgs.curl}/bin/curl --http3-only" if http3 else "curl"
+        return machine.wait_until_succeeds(
+            f"{curl} -fsSk --max-time 10 --resolve mattbox.acme.losos.cfd:443:{at} "
+            "https://mattbox.acme.losos.cfd/",
+            timeout=120,
+        )
+
+    assert visit(hub, "127.0.0.1", False).strip() == "hello-losos"
+    assert visit(box, resolve(box, "hub"), True).strip() == "hello-losos"
+    assert visit(box, resolve(box, "spoke"), True).strip() == "hello-losos"
 
     # ── 4. The spoke goes away: fall back to the official edge ───────────
     # resolved and both its sockets, or a lookup on the spoke starts it again.

@@ -26,8 +26,41 @@ VPS und setze `losos.edge.*`:
   [Mesh](/in-depth/mesh.md), einen rke2-Server mit Longhorn. Der Proxy funktioniert
   auch ohne sie.
 
-`losos-registrar` hält die dynamische Konfiguration von Traefik und die
-Datei des Tunnel-Servers mit den registrierten Appliances im Gleichschritt.
+`losos-registrar` hält die Datei des Tunnel-Servers mit den registrierten
+Appliances im Gleichschritt, und Traefik findet sie über den Registrar.
+
+## Wie Traefik die Boxen findet {#how-traefik-finds-the-boxes}
+
+Traefik entdeckt die Boxen über seinen HTTP-Provider. Alle zwei Sekunden
+fragt er den Registrar auf einem nur über Loopback erreichbaren Port
+(`losos.edge.traefikProviderPort`, standardmäßig 8090) nach den aktuellen
+Routen: eine pro Name einer laufenden Box, eigener Domain und
+veröffentlichter virtueller Maschine, jede zum Tunnelende dieser Box. Eine
+Box, die sich registriert, ist innerhalb von Sekunden erreichbar, und eine,
+deren Heartbeats ausbleiben, verliert ihre Route, sobald der Registrar sie
+entfernt. Der Registrar schreibt nichts in das Verzeichnis von Traefik, dort
+liegen nur die Routen, die NixOS verwaltet.
+
+Hält der Registrar an oder startet er neu, behält Traefik die zuletzt
+erhaltenen Routen, und die Boxen bleiben erreichbar. Beim Update einer Edge,
+auf der noch die Dateien `losos.yml` und `losos-vms.yml` eines älteren
+Registrars liegen, werden diese beim Umschalten entfernt.
+
+## HTTP/3 {#http3}
+
+Der öffentliche Einstiegspunkt beantwortet HTTP/3 über QUIC auf UDP-Port 443
+und daneben HTTP/1.1 und HTTP/2 auf TCP-Port 443. Traefik kündigt HTTP/3 im
+Header `Alt-Svc` an, sodass ein Browser nach der ersten Anfrage zu QUIC
+wechselt. Ein Netz, das UDP sperrt, funktioniert weiter über TCP. Öffne UDP
+443 in jeder Firewall vor der Edge; die Firewall der Edge selbst öffnet ihn.
+
+## Wenn eine Box nicht erreichbar ist {#when-a-box-cant-be-reached}
+
+Erreicht Traefik eine Box nicht (sie ist ausgeschaltet, startet neu, ist
+offline oder ihr Tunnel ist unterbrochen), bekommt der Besucher statt eines
+nackten „Bad Gateway“ eine Seite der Edge, die das erklärt, auf Englisch,
+Slowakisch oder Deutsch je nach Sprache des Browsers. Der Statuscode bleibt
+502, oder 504, wenn die Box nicht rechtzeitig geantwortet hat.
 
 ## Appliance {#appliance}
 

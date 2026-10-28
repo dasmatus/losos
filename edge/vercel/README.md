@@ -14,7 +14,7 @@ status page an audience can watch. It is **not** a replacement for the edge VPS
 | `losos-registrar serve`: `/register`, `/heartbeat`, `/deregister`, `/health` | yes | **yes, unmodified** |
 | Tenant whitelist + token check | `losos.edge.tenants` → `tenants.json` + `/var/secrets` files | the same files, written from `LOSOS_TENANTS` |
 | Registry persistence | `registry.json` on disk | one `jsonb` row in a Neon Postgres, over TLS; memory only if none is configured |
-| Reconciler (prune by TTL, Traefik and tunnel config files) | timer, every 15 s | runs once per request; files land on the function's scratch disk and `/status/traefik` shows the Traefik one |
+| Reconciler (prune by TTL, Traefik routes, tunnel config file) | timer, every 15 s | runs once per request; the tunnel file lands on the function's scratch disk and `/status/traefik` shows the routes Traefik's HTTP provider would read |
 | Tunnel server (`:2333`, QUIC with a TCP fallback) | yes | **no** — a listener holding long-lived connections has no serverless shape |
 | Traefik, per-tenant TLS, `*.publicDomain` routing | yes | **no** — nothing to forward to without the tunnel |
 | rke2 mesh control plane, `/cluster/join` | optional | **no** (`/cluster/join` → 503, as on a proxy-only edge) |
@@ -27,7 +27,7 @@ So the demo shows the **control plane**: an appliance (a VM, or any machine
 running `losos-registrar announce`) authenticates with its token, is allotted
 a tunnel port, heartbeats, reports whether it is idle, and disappears from the
 registry when its heartbeats stop — and the page shows the exact Traefik
-configuration the edge would be writing for it. The data path (a browser
+routes the edge would be serving for it. The data path (a browser
 reaching the box's LosOS Cloud through `https://<hostname>`) needs the tunnel
 and stays a self-hosted demonstration (`nix/tests/edge-vm.nix` is the automated
 one).
