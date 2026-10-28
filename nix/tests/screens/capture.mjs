@@ -308,6 +308,18 @@ try {
     for (const shot of plan.shots) {
       const name = variant.suffix ? `${shot.name}-${variant.suffix}` : shot.name;
       const page = await context.newPage();
+      // What the browser has kept for the page (a shot's `storage`, key to
+      // string), as an owner's own browser would have it: the Overview's
+      // board, for one, lives only there.
+      if (shot.storage) {
+        await page.addInitScript((items) => {
+          try {
+            for (const [k, v] of Object.entries(items)) localStorage.setItem(k, v);
+          } catch {
+            // about:blank has no storage.
+          }
+        }, shot.storage);
+      }
       const errors = [];
       page.on('pageerror', (e) => errors.push(String(e)));
       // Without a script the page cannot count its own refusals.

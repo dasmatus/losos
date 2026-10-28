@@ -400,6 +400,9 @@ pkgs.testers.nixosTest {
              "waitFor": {"selector": "[data-connect]"}},
             # The admin pages around it, on a box with LosOS Cloud.
             {"name": "overview", "path": "/", "waitFor": {"role": "heading", "name": "mattbox"},
+             "storage": {"losos-widgets": json.dumps({"version": 1, "widgets": [
+                 {"id": f"w{i}", "source": {"kind": "builtin", "id": w}}
+                 for i, w in enumerate(["disk", "apps", "rebuilds"])]})},
              "settle": 1500},
             {"name": "apps", "path": "/apps", "waitFor": {"selector": "[data-testid=accordion-cloud]"},
              "settle": 1500},
