@@ -89,6 +89,10 @@ const CLASSES: &[&str] = &[
     // Notes' own syntax (its pass in this crate).
     "losos-",
     "is-",
+    "wikilink",
+    "tag",
+    "note-embed",
+    "embed-",
 ];
 
 fn class_ok(token: &str) -> bool {

@@ -253,14 +253,16 @@ fn links_go_through_the_resolver() {
 fn a_pass_can_add_attributes_to_the_elements_written() {
     let mut parsed = losos_mdx::parse("Para ^abc\n\n- item", Flavour::Mdx).unwrap();
     parsed.attributes.insert(
-        0,
+        (0, "p".into()),
         vec![
             ("id".into(), "^abc".into()),
             ("data-line".into(), "0".into()),
         ],
     );
+    // The list and its item start at the same offset; the tag tells them
+    // apart.
     parsed.attributes.insert(
-        11,
+        (11, "li".into()),
         vec![
             ("class".into(), "is-task".into()),
             ("data-task".into(), "x".into()),
@@ -273,7 +275,8 @@ fn a_pass_can_add_attributes_to_the_elements_written() {
         r.html
     );
     assert!(
-        r.html.contains("<li data-task=\"x\" class=\"is-task\">"),
+        r.html
+            .contains("<ul><li data-task=\"x\" class=\"is-task\">"),
         "{}",
         r.html
     );
