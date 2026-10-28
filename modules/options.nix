@@ -3260,6 +3260,31 @@ in
       '';
     };
 
+    edge.dns.ech.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Encrypted Client Hello: an HTTPS record at every name in the zone
+        carries the edge's ECH key, and Traefik decrypts with it, so the
+        network between a browser and the edge sees only the public name,
+        not which box was asked for. The key is made on the first start in
+        /var/lib/losos-ech. No released Traefik decrypts ECH yet, so this
+        runs Traefik built from its ECH change (nix/traefik-ech.nix).
+      '';
+    };
+
+    edge.dns.ech.publicName = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "edge.example.org";
+      description = ''
+        The name the outer, unencrypted handshake shows. It needs a
+        certificate on the edge, because a browser checks it whenever the
+        edge turns ECH down. `null` is `register.<publicDomain>`, which has
+        one from the start.
+      '';
+    };
+
     # Custom domains for boxes behind a local edge
     # (handbook/docs/in-depth/edge-federation.md, "Custom domains behind a local
     # edge"). The official edge keeps the route table in the registrar's own

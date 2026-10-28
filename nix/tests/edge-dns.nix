@@ -26,7 +26,12 @@
 #      the ENS record at the box's name, signed, and validated by `delv`
 #      against the zone's own DS as the trust anchor. A signature for another
 #      box is refused; unbinding takes the record away.
-#   5. The route table's wiring: the registrar made its relay pass key
+#   5. Encrypted Client Hello: the edge made its key (0640, group traefik),
+#      every name carries an HTTPS record with it, signed and validated like
+#      the wallet's, and a client that reads the key from that record
+#      reaches the box's name through Traefik with ECH accepted, the box's
+#      name never in the clear.
+#   6. The route table's wiring: the registrar made its relay pass key
 #      (0600); a spoke forwarding that pass on `/relay` is answered with no
 #      routes (the box is not in this edge's mesh), but the binding is kept
 #      in relay-routes.json (0600) beside the registry, and is still there
@@ -53,6 +58,49 @@ let
   walletAddress = "0x4a62316623ad457f02cdc5d997ded67a383ec569";
   walletSignature = "0xf60bb8dd608847e9d8dcc4f85fc660e541f7b9050677dac6cf472873b4d01e622718b441f44b85d93219309bb09f4ab3a19894ef759bf155655b84c51c8370301c";
   ensRecord = "ENS1 dnsname.ens.eth ${walletAddress}";
+  # An ECH client: Go's crypto/tls with the ECHConfigList it is handed,
+  # printing whether the server decrypted the inner hello.
+  echProbe = pkgs.buildGoModule {
+    pname = "ech-probe";
+    version = "0";
+    src = pkgs.runCommand "ech-probe-src" { } ''
+      mkdir $out
+      printf 'module echprobe\n\ngo 1.24\n' > $out/go.mod
+      cp ${pkgs.writeText "main.go" ''
+        package main
+
+        import (
+        	"crypto/tls"
+        	"encoding/base64"
+        	"fmt"
+        	"os"
+        )
+
+        // ech-probe ADDR NAME ECHCONFIGLIST
+        func main() {
+        	list, err := base64.StdEncoding.DecodeString(os.Args[3])
+        	if err != nil {
+        		fmt.Println("error:", err)
+        		os.Exit(2)
+        	}
+        	c, err := tls.Dial("tcp", os.Args[1], &tls.Config{
+        		ServerName:                     os.Args[2],
+        		EncryptedClientHelloConfigList: list,
+        		// The test edge has no certificate from Let's Encrypt.
+        		InsecureSkipVerify: true,
+        	})
+        	if err != nil {
+        		fmt.Println("error:", err)
+        		os.Exit(1)
+        	}
+        	defer c.Close()
+        	st := c.ConnectionState()
+        	fmt.Printf("ech=%v tls=%x\n", st.ECHAccepted, st.Version)
+        }
+      ''} $out/main.go
+    '';
+    vendorHash = null;
+  };
 in
 
 pkgs.testers.nixosTest {
@@ -102,7 +150,11 @@ pkgs.testers.nixosTest {
             relayRoutes.enable = true;
           };
         };
-        networking.firewall.allowedTCPPorts = [ 8443 ];
+        networking.firewall.allowedTCPPorts = [
+          8443
+          443
+        ];
+        networking.firewall.allowedUDPPorts = [ 443 ];
         environment.systemPackages = [ pkgs.jq ];
         virtualisation.memorySize = 1024;
       };
@@ -112,6 +164,8 @@ pkgs.testers.nixosTest {
         pkgs.knot-dns
         # delv: a validating lookup against a trust anchor of our choosing.
         pkgs.bind
+        echProbe
+        pkgs.tcpdump
       ];
     };
   };
@@ -249,6 +303,50 @@ pkgs.testers.nixosTest {
           client.wait_until_succeeds(
               "test -z \"$(kdig @${edgeIp} mattbox.boxes.example.test TXT +short)\""
           )
+
+      with subtest("Encrypted Client Hello: the key, the HTTPS records, a handshake"):
+          edge.succeed("systemctl show -p Result losos-ech-key.service | grep -qx Result=success")
+          edge.succeed("stat -c '%a %G' /var/lib/losos-ech/ech.pem | grep -qx '640 traefik'")
+          edge.succeed("grep -q 'BEGIN ECHCONFIG' /var/lib/losos-ech/ech.pem")
+          # The registrar reads the same key: one key, one value in the zone.
+          ech = edge.succeed(
+              "${registrar} ech-key --key-file /var/lib/losos-ech/ech.pem --public-name register.example.test"
+          ).strip()
+          for name in ["boxes.example.test", "mattbox.boxes.example.test"]:
+              client.wait_until_succeeds(
+                  f"kdig @${edgeIp} {name} HTTPS +short | grep -qF '{ech}'"
+              )
+          https = client.succeed("kdig @${edgeIp} mattbox.boxes.example.test HTTPS +short")
+          print(https)
+          assert "alpn=h3,h2" in https.replace('"', ""), https
+          signed = client.succeed("kdig @${edgeIp} mattbox.boxes.example.test HTTPS +dnssec +norec")
+          assert re.search(r"RRSIG\s+HTTPS\s+13\s", signed), signed
+          valid = client.succeed(
+              "delv @${edgeIp} -a /tmp/anchor.conf +root=boxes.example.test "
+              "mattbox.boxes.example.test HTTPS 2>&1"
+          )
+          print(valid)
+          assert "fully validated" in valid, valid
+
+          # Traefik loaded the key without complaint, and decrypts with it.
+          edge.wait_for_open_port(443)
+          edge.fail("journalctl -u traefik.service | grep -i 'ech key'")
+          client.succeed("tcpdump -i eth1 -w /tmp/hello.pcap -U 'tcp port 443' >/dev/null 2>&1 & echo $! > /tmp/tcpdump.pid")
+          client.sleep(2)
+          probe = client.succeed(f"ech-probe ${edgeIp}:443 mattbox.boxes.example.test '{ech}'").strip()
+          print(probe)
+          assert probe == "ech=true tls=304", probe
+          client.succeed("sleep 1; kill $(cat /tmp/tcpdump.pid)")
+          # On the wire the hello names the public name, never the box.
+          client.succeed("grep -aq 'register.example.test' /tmp/hello.pcap")
+          client.fail("grep -aq mattbox /tmp/hello.pcap")
+          # A key Traefik does not hold is turned down, and says so.
+          other = edge.succeed(
+              "${registrar} ech-key --key-file /tmp/other.pem --public-name register.example.test"
+          ).strip()
+          refused = client.fail(f"ech-probe ${edgeIp}:443 mattbox.boxes.example.test '{other}'")
+          print(refused)
+          assert "ECH" in refused or "encrypted client hello" in refused.lower(), refused
 
       with subtest("the route table: the pass key, /relay, and the table file"):
           edge.succeed("stat -c %a /var/lib/losos-registrar/relay-pass.key | grep -qx 600")
