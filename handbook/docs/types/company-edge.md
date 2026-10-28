@@ -101,7 +101,7 @@ whether that edge may.
 The edge cannot see anyone's files, add people, change passwords, or touch
 storage, backups, the network or the switch itself. The box checks each call
 on its own, so a changed page on the edge gets no further. Only an edge on
-the box's own network can manage it, and never the LosOS edge: LosOS does not
+the box's own network can manage it, and never the LosOS edge. LosOS does not
 manage anyone's box. When the owner turns the switch off, the edge's next
 call is refused.
 

@@ -21,8 +21,8 @@ with LosOS Login.
 | **Member** | Sees and changes only the parts switched on for them, for example Storage and Backup. |
 | **Guest** | Their own account, mail and profile. Changes no part of the box and starts nothing on it. |
 
-A member or moderator can also get **Sees every part**: they can look at
-every pane and still change only their own parts. A viewer never sees the
+A member or moderator can also get **Sees every part**. They can then look
+at every pane and still change only their own parts. A viewer never sees the
 Moderation pane.
 
 People show their role as a small mark on their picture and a badge beside

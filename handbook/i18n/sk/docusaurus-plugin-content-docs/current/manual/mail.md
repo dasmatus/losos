@@ -168,7 +168,7 @@ kľúč, takže svoju kópiu v Odoslanej pošte prečítate. Predmet šifrovaný
 je. Pošta sa posiela ako PGP/MIME; **Vložené, pre staršie poštové programy**
 dá šifrovaný text priamo do tela správy, čo chráni text, ale nie prílohy.
 
-![Nová správa pre Evu: jej kľúč sa našiel na tomto zariadení a Šifrovať a Podpísať sú zapnuté.](@site/docs/img/mail-pgp-compose.png)
+![Nová správa pre Evu: Evin kľúč sa našiel na tomto zariadení a Šifrovať a Podpísať sú zapnuté.](@site/docs/img/mail-pgp-compose.png)
 
 **Čítanie.** Šifrovaná správa má v zozname zámok. Keď ju otvoríte, dešifruje
 sa vo vašom prehliadači a riadok pod hlavičkou povie, ako prišla: šifrovaná,
@@ -177,7 +177,7 @@ podpisom, ktorý nesedí. Správa podpísaná niekým iným než jej odosielate�
 to povie. Dešifrovaná pošta sa zobrazí ako text, nikdy vo formátovaní od
 odosielateľa, a jej prílohy sa sťahujú ako všetky ostatné.
 
-![Eva číta správu: v zozname je zámok a poznámka hovorí, že ju zašifroval a podpísal Matus, s jeho odtlačkom.](@site/docs/img/mail-pgp-opened.png)
+![Eva číta správu: v zozname je zámok a poznámka hovorí, že ju zašifroval a podpísal Matus, s Matusovým odtlačkom.](@site/docs/img/mail-pgp-opened.png)
 
 **Váš verejný kľúč pre ostatných.** Zariadenie zverejňuje verejný kľúč
 každého vo svojej Web Key Directory na `/.well-known/openpgpkey/`, takže ho

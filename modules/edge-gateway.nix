@@ -82,9 +82,12 @@ let
         fi
         printf '\n  This machine has no console login and no SSH.\n'
       }
+      # The script runs under errexit: a test that fails inside the
+      # command substitution below must still leave it with status 0, or
+      # the screen exits before it draws anything.
       last=""
       while true; do
-        now="$(addresses | tr '\n' ' ')|$(cat ${manageKey} 2>/dev/null || true)|$([ -s ${uplinkJson} ] && echo up)"
+        now="$(addresses | tr '\n' ' ')|$(cat ${manageKey} 2>/dev/null || true)|$([ ! -s ${uplinkJson} ] || echo up)"
         if [ "$now" != "$last" ]; then
           draw
           last="$now"
