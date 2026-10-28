@@ -31,3 +31,4 @@ leaks. This vault keeps what worked, what did not, and when to sow.
 | 4   | Fallow    |            |
 
 See also https://www.rhs.org.uk for the long version.
+Seed swaps are on www.seedcooperative.org.uk; the plan above is Home.md.
