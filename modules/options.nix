@@ -542,25 +542,63 @@ in
       '';
     };
 
-    proxy.officialRootKeyFile = lib.mkOption {
-      type = lib.types.path;
-      default = ../nix/keys/official-edge-root.pub;
-      defaultText = lib.literalExpression "../nix/keys/official-edge-root.pub";
-      description = ''
-        The LosOS root **public** key (Ed25519, 64 hex characters; `#` lines
-        are comments), read by lososd on every edge scan. An edge counts as
-        *official* only if it presents a certificate signed by the matching
-        private key and answers a fresh nonce with the certificate's key
-        (`GET <url>/identity?nonce=`, backend/src/edge.rs); only official
-        edges may process P2P storage and compute trading, so the market
-        relay answers `{available: false, reason: "noOfficialEdge"}` and
-        refuses actions (409, `officialEdgeRequired`) through any other edge.
-        Discovery and storage sharing are not gated on this: a company's own
-        edge keeps working. A file with no key in it (the committed default
-        until the project owner writes the key) makes no edge official, so a
-        tree without the key fails closed. A public key, so a store path is
-        fine here.
-      '';
+    proxy.gateways = {
+      tpmRoots = lib.mkOption {
+        type = lib.types.path;
+        default = "${import ../nix/gateway/tpm-roots.nix { inherit pkgs; }}/tpm-roots.pem";
+        defaultText = lib.literalExpression ''"''${import ../nix/gateway/tpm-roots.nix { inherit pkgs; }}/tpm-roots.pem"'';
+        description = ''
+          The TPM makers' certificates (PEM; self-signed ones are roots, the
+          rest intermediates) a box checks an edge's TPM against before it
+          trusts the edge with trading (backend/src/edge.rs, "gateways").
+          The default is Microsoft's TrustedTpm bundle.
+        '';
+      };
+      images = lib.mkOption {
+        type = lib.types.listOf (
+          lib.types.submodule {
+            options = {
+              name = lib.mkOption {
+                type = lib.types.str;
+                description = "The image's name, shown beside a trusted edge.";
+              };
+              pcr11 = lib.mkOption {
+                type = lib.types.strMatching "[0-9a-fA-F]{64}";
+                description = "The SHA-256 PCR 11 its unified kernel image leaves, hex.";
+              };
+              apps = lib.mkOption {
+                type = lib.types.listOf (lib.types.strMatching "[0-9a-fA-F]{64}");
+                description = "Authenticode SHA-256 of every program the firmware may start for it, hex.";
+              };
+            };
+          }
+        );
+        default = import ../nix/gateway/images.nix;
+        defaultText = lib.literalExpression "import ../nix/gateway/images.nix";
+        description = ''
+          The published LosOS gateway images. A box trusts an edge with
+          trading only when the edge's TPM quote shows one of them booted,
+          its owner's passport holds, its fee addresses are LosOS's
+          (`payouts`) and nothing changed since it booted. An edge that
+          proves tampered is disabled on the box for good
+          (/var/lib/losos/gateways.json). Empty, no edge is trusted with
+          trading; storage sharing works through any edge regardless.
+        '';
+      };
+      payouts = lib.mkOption {
+        type = lib.types.attrsOf lib.types.str;
+        default = import ../nix/gateway/payouts.nix;
+        defaultText = lib.literalExpression "import ../nix/gateway/payouts.nix";
+        example = {
+          base = "0x0000000000000000000000000000000000000000";
+        };
+        description = ''
+          LosOS's payout address on each network, where a gateway sends
+          LosOS's 2% of a sale. A gateway whose measured settings name any
+          other address, or another split, is not trusted. Empty, no gateway
+          is.
+        '';
+      };
     };
 
     proxy.heartbeatInterval = lib.mkOption {
@@ -2208,40 +2246,19 @@ in
       '';
     };
 
-    edge.identity.keyFile = lib.mkOption {
-      type = lib.types.nullOr secretPath;
-      default = "/var/lib/losos-registrar/identity.key";
+    edge.passport.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
       description = ''
-        This edge's identity **private** key (PKCS#8 hex, 0600, persisted via
-        /var, never in the store). The registrar makes it on its first start
-        if the file is missing, so the private half never leaves the edge;
-        `GET /identity/public-key` serves the public half. Together with
-        `edge.identity.certFile` it is what can make the edge *official*:
-        once an operator has pushed a certificate the LosOS root signed for
-        this key (`losos-registrar provision edge`, from their own machine,
-        behind a GitHub sign-in that the edge checks too), the registrar
-        serves `GET /identity?nonce=` and boxes whose
-        losos.proxy.officialRootKeyFile matches the signer let it process
-        their market traffic. Until then the edge is found and shares
-        storage but is not official — the shape of an edge a company runs
-        for itself. `null` (with `certFile = null`) runs an edge that
-        cannot become official at all: every `/identity*` route is 404.
-      '';
-    };
-
-    edge.identity.certFile = lib.mkOption {
-      type = lib.types.nullOr lib.types.path;
-      default = "/var/lib/losos-registrar/identity.cert.json";
-      description = ''
-        Where the certificate for `edge.identity.keyFile` lives: the JSON
-        `POST /identity/cert` installs (the primitive is `losos-registrar
-        identity sign`), signed by the LosOS root key the project owner
-        holds offline. Public, and the registrar writes it, so it must be a
-        writable runtime path for the push to work; a store path is read
-        but can never be replaced by a push. Must name this edge's public
-        URL (the one boxes probe) and be unexpired, or boxes reject it; a
-        certificate that is not for the key is logged and ignored. Set
-        with `keyFile` or not at all.
+        Run this edge as an open gateway that boxes check for themselves
+        (modules/edge-passport.nix): the registrar keeps an edge key at
+        /var/lib/losos-registrar/edge.key and answers `/passport*` with the
+        owner's signed settings, measured into the TPM's PCR 15 at boot, and
+        a TPM quote over PCRs 4, 11 and 15. A box trusts the gateway when the
+        owner's OpenPGP passport names it, the quote shows a published
+        LosOS image, the TPM's maker vouches for the TPM, and the fee payout
+        addresses are LosOS's own. Needs a TPM 2.0 at /dev/tpm0; the
+        `losos-disk-edge-qcow2` image turns it on.
       '';
     };
 
@@ -3804,9 +3821,6 @@ in
       }
       // lib.optionalAttrs (config.losos.edge.noisePrivateKeyFile != null) {
         "losos.edge.noisePrivateKeyFile" = config.losos.edge.noisePrivateKeyFile;
-      }
-      // lib.optionalAttrs (config.losos.edge.identity.keyFile != null) {
-        "losos.edge.identity.keyFile" = config.losos.edge.identity.keyFile;
       }
       // lib.mapAttrs' (
         id: tenant: lib.nameValuePair "losos.edge.tenants.${id}.tokenFile" tenant.tokenFile
