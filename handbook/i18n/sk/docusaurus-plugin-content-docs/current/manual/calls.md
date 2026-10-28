@@ -12,6 +12,14 @@ zariadenie a zariadenie ho nevidí ani nepočuje. Každý snímok obrazu a zvuku
 zašifruje prehliadač, ktorý ho posiela, a dešifrujú ho až prehliadače,
 ktoré ho prijímajú.
 
+Hovory sa riadia štandardom MatrixRTC, ktorý Matrix používa na hovory v
+miestnostiach, ako vlastný typ hovoru LosOS, `org.losos.call`, s jedným
+hovorom na miestnosť. Každý v hovore zverejní členstvo, ktoré uvádza server
+hovorov zariadenia, `losos-calls`. Aplikácia Matrix, ktorá tento typ hovoru
+nepozná, ho preto nechá tak a neponúkne **Pripojiť sa**, ktoré by
+nefungovalo. Zvonenie, odmietnutie a výmena kľúčov používajú vlastné
+udalosti MatrixRTC. Obraz a zvuk idú cez `losos-calls`, nie cez LiveKit.
+
 ## Kedy sú hovory k dispozícii \{#when-calls-are-there}
 
 Hovory patria k chatu, takže potrebujú to isté čo chat: zariadenie zdieľa
@@ -32,15 +40,25 @@ alebo ste ju nepovolili, pripojíte sa s vypnutou kamerou a ukáže sa o tom
 správa; ostatní vás počujú ako zvyčajne. Bez mikrofónu sa pripojíte len ako
 poslucháč a tlačidlo mikrofónu sa naň opýta znova.
 
-Každému v miestnosti sa v rohu stránky chatu ukáže karta, ktorá zvoní
-minútu. **Prijať** pripojí tak, ako sa hovor začal. Pri
-videohovore **Prijať bez videa** pripojí len s mikrofónom. **Odmietnuť**
-kartu len skryje.
+V priamej správe sa druhému človeku v rohu stránky chatu ukáže karta,
+ktorá zvoní minútu a pol. V miestnosti sa ukáže všetkým, ak ten, kto hovor
+začína, smie upozorniť celú miestnosť, čo je predvolene správca miestnosti;
+inak ostatní uvidia hovor v časovej osi. **Prijať** pripojí tak, ako sa
+hovor začal. Pri videohovore **Prijať bez videa** pripojí len s mikrofónom.
+**Odmietnuť** kartu skryje. V priamej správe sa to dozvie aj volajúci a
+jeho hovor sa zatvorí.
 
 Časová os miestnosti ukáže, že sa začal hovor. Kým hovor trvá, riadok má
 tlačidlo **Pripojiť sa**, takže sa môže pripojiť aj ten, kto zvonenie
 zmeškal alebo z hovoru odišiel. Keď odíde posledný človek, časová os ukáže,
-že sa hovor skončil.
+že sa hovor skončil. Iné aplikácie Matrix namiesto toho ukážu krátke
+oznámenie s odkazom, ktorý otvorí hovor v LosOS Chat, kde sa ľudia
+prihlásia cez LosOS Login.
+
+Miestnosti a priame správy vytvorené v LosOS Chat sú na hovory pripravené.
+V miestnosti vytvorenej staršou verziou LosOS zapne hovory správca
+miestnosti tým, že začne prvý. Dovtedy dostane každý iný, kto to skúsi,
+správu, ktorá to vysvetľuje.
 
 ## Počas hovoru \{#during-a-call}
 
@@ -145,8 +163,8 @@ menia:
 Kľúče sú len v pamäti prehliadača a s koncom hovoru zmiznú. Nič sa
 neukladá, takže kľúč, ktorý by sa našiel neskôr, z hovoru neotvorí nič.
 
-Jednu hranicu je dobré poznať. Prehliadač posiela svoj kľúč zariadeniam,
-ktoré pre každého človeka v hovore uvádza server chatu na zariadení LosOS.
+Jednu hranicu je dobré poznať. Prehliadač posiela svoj kľúč zariadeniam
+v hovore tak, ako ich uvádza server chatu na zariadení LosOS.
 Niekto, kto by ovládol softvér zariadenia, by mohol uviesť aj vlastné
 zariadenie. Overte si navzájom zariadenia v chate (**Zabezpečené správy**,
 potom **Overiť**), aby ste vedeli, že zariadenie naozaj patrí tomu druhému.
