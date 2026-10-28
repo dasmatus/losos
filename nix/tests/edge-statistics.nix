@@ -5,7 +5,7 @@
 #
 # Three VMs on one network:
 #   * `edge`      — losos.edge with the manage page and the real admin UI:
-#                   Traefik, the tunnel server, the registrar;
+#                   Traefik, the tunnel, the registrar;
 #   * `appliance` — the tunnel and the announce loop of modules/proxy.nix,
 #                   and an nginx that answers for the box;
 #   * `laptop`    — a browser (nix/tests/screens).
