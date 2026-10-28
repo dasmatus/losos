@@ -302,6 +302,11 @@ pub enum PassportOpts {
         name: String,
         apps: Vec<String>,
     },
+    /// `passport image --name N [--event-log F]`: the image entry for the
+    /// machine it runs on, as it booted: PCR 11 read from its TPM and the
+    /// programs its firmware's event log says it started. For a box that
+    /// pins a gateway it has looked at, and for the VM tests.
+    Image { name: String, event_log: String },
     /// `passport check --url U --tpm-roots F --images F --payouts F`: the
     /// box's whole check against a running gateway. Exit 0 when it would be
     /// trusted, 1 with the reason when not, 2 when the reason is tampering.
@@ -817,6 +822,12 @@ fn parse_passport(args: &[String]) -> Result<PassportOpts> {
                 .map(str::to_string)
                 .collect(),
         },
+        "image" => PassportOpts::Image {
+            name: req(&rest, "--name")?.to_string(),
+            event_log: arg(&rest, "--event-log")
+                .unwrap_or("/sys/kernel/security/tpm0/binary_bios_measurements")
+                .to_string(),
+        },
         "check" => PassportOpts::Check {
             url: req(&rest, "--url")?.trim_end_matches('/').to_string(),
             tpm_roots: req(&rest, "--tpm-roots")?.to_string(),
@@ -825,7 +836,7 @@ fn parse_passport(args: &[String]) -> Result<PassportOpts> {
         },
         _ => {
             return Err(miette!(
-                "usage: losos-registrar passport statement|settings|measure|check ..."
+                "usage: losos-registrar passport statement|settings|measure|image|check ..."
             ))
         }
     })
