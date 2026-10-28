@@ -60,7 +60,8 @@
 // option of a native select), `upload` ({selector, file}),
 // `press` (a key), `type` (text typed at the focus), `hold` (the mouse pressed on a control and left
 // down), `waitText` (exact text), `sleep` (milliseconds), `goto` (a path),
-// `scroll` ("end": the page scrolled to its foot)
+// `scroll` ("end": the page scrolled to its foot), `stay` (the page's own
+// reloads answered 204, so it holds still for its picture)
 // and, for a strip, `freeze` (what comes before it plays at full speed,
 // only what comes after is taken frame by frame). A shot fails the run when a step does or the page throws:
 // a picture of a half-loaded page is worse than none.
@@ -121,6 +122,16 @@ async function step(page, s, { force = false } = {}) {
     // The mouse pressed on it and left down, for what a held control shows.
     await locate(page, s.hold).hover({ force });
     await page.mouse.down();
+  }
+  else if (s.stay) {
+    // Keep the page as it is: a page that reloads itself (a refresh the
+    // box sends while a rebuild runs) is answered 204, which leaves the
+    // document in place, so a slow screenshot is not cut short.
+    await page.route('**/*', (r) =>
+      r.request().isNavigationRequest() && r.request().frame() === page.mainFrame()
+        ? r.fulfill({ status: 204 })
+        : r.continue(),
+    );
   }
   else if (s.freeze) {
     // Only marks where a strip freezes the motion; nothing to do here.
