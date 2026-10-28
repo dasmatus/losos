@@ -150,13 +150,26 @@ and is never served or built by nix.
   SFU as `shared` on `/run/losos-calls/http.sock` (nginx's group only),
   `/calls/api/` behind LosOS Login with no spare-key bypass. nginx hands
   the SFU the signed-in person as `Remote-User` (`calls/person.rs`), the
-  Matrix id `@<name>:<server>`; Dendrite answers no OpenID check with
-  federation off, so calls take no Matrix token.
-  Every frame is AES-GCM sealed in the browser by an encoded transform
-  (`admin-ui/app/src/calls/e2ee.ts`, worker `e2ee-worker.ts`), sender keys
-  ratchet on a join and are replaced on a leave, and travel as Olm
-  to-device `org.losos.call.key`; the room gets `org.losos.call`
-  started/ended events (`src/chat/calls.tsx`). In Chromium a worker held
+  Matrix id `@<name>:<server>`. Calls are a MatrixRTC application of
+  their own, `org.losos.call`, one slot per room (`org.losos.call#room`,
+  `src/chat/rtc.ts`): `m.call` is LiveKit-only, and this one is str0m.
+  Membership is the state-event form (`org.matrix.msc3401.call.member`)
+  because Dendrite has no sticky events; each advertises an `org.losos.sfu`
+  transport, and the page always dials its own `/calls/api/ws`. The SFU
+  owns the call id: `POST /calls/api/calls` hands back the room's live call
+  (`created:false`), so two starts never split. Ringing is MSC4075
+  (`org.matrix.msc4075.rtc.notification`, the SDK's receiving rules),
+  decline MSC4310. New private rooms and DMs carry the open slot and a
+  level-0 membership in their power levels; in an older room an admin's
+  first call adds them. A start also sends an `m.notice` with a
+  `/chat/?join=` link for other Matrix apps, which LosOS Chat hides.
+  MatrixRTC's own media keys are off: every frame is AES-GCM sealed by the
+  browser's encoded transform (`admin-ui/app/src/calls/e2ee.ts`, worker
+  `e2ee-worker.ts`), and its sender keys travel as MatrixRTC per-member
+  keys (`io.element.call.encryption_keys` over Olm) to the devices the
+  SFU lists in the call, since a membership can sync later than its sender
+  joins. The legacy `org.losos.call` timeline event is kept for
+  end markers and old history. In Chromium a worker held
   by an `RTCRtpScriptTransform` loses its own `postMessage` and timers, so
   stats go over a MessagePort from the frame path. `--address IP=OFFERED`
   offers a forwarded port's address; `nix/tests/calls.nix` reaches the SFU

@@ -47,6 +47,17 @@ export default defineMessages({
     de: "{sealed} Bilder verschlüsselt gesendet, {opened} empfangen und entschlüsselt",
   },
   "calls.ended": { en: "The call ended", sk: "Hovor sa skončil", de: "Der Anruf ist beendet" },
+  "calls.declined": { en: "{who} declined the call", sk: "{who} odmietol(a) hovor", de: "{who} hat den Anruf abgelehnt" },
+  "calls.notAllowed": {
+    en: "Calls are not turned on in this room. A room admin turns them on by starting a call.",
+    sk: "V tejto miestnosti nie sú hovory zapnuté. Zapne ich ten, kto miestnosť spravuje, keď začne hovor.",
+    de: "In diesem Raum sind Anrufe nicht eingeschaltet. Admins des Raums schalten sie ein, wenn sie einen Anruf beginnen.",
+  },
+  "calls.startNotice": {
+    en: "{who} started a call. Join it in LosOS Chat: {link}",
+    sk: "{who} začal(a) hovor. Pripojte sa v LosOS Chat: {link}",
+    de: "{who} hat einen Anruf gestartet. Mach mit in LosOS Chat: {link}",
+  },
   "calls.failed": {
     en: "The call could not continue",
     sk: "Hovor nemohol pokračovať",
