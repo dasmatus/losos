@@ -648,7 +648,8 @@ pkgs.testers.nixosTest {
         planting = ok("GET", "/repos/notshared/garden/wiki/pages/Planting", token=owner)
         assert "frost ended on 9 May" in planting["text"], planting
         assert planting["history"][0]["subject"] == "Note this year's last frost", planting
-        assert planting["history"][0]["author"] == "Matus", planting
+        # Saved by whoever signed in, under the name LosOS Login gives them.
+        assert planting["history"][0]["author"] == "matus", planting
         laptop.succeed(f"cd /tmp/garden && git pull -q https://x:{owner}@{HOST}/git/notshared/garden.wiki.git main")
         laptop.succeed("grep -q 'frost ended on 9 May' /tmp/garden/Planting.md")
         repo = ok("GET", "/repos/notshared/Team-handbook", token=owner)
