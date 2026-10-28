@@ -1,8 +1,8 @@
 # nixos-test for paying a box by its name, from the owner's side.
 #
 # Three VMs on one network:
-#   * `edge`   — an official edge (losos.edge with dns.enable and an identity
-#                certificate from a root made at build time): Knot signs the
+#   * `edge`   — an official edge (losos.edge with dns.enable, an open
+#                gateway the box vets, nix/tests/open-gateway.nix): Knot signs the
 #                zone, the registrar answers /domains*. Its API is behind TLS
 #                on :8444, because lososd sends the box's token to an edge
 #                only over https.
@@ -41,36 +41,27 @@ let
   inherit (pkgs) lib;
   proxyTokenValue = "test-proxy-token-0123456789abcdef";
   proxyToken = "/var/secrets/losos-proxy-token";
-  identityKey = "/var/secrets/losos-edge-identity.key";
   edgeName = "edge.losos.dasmat.us";
   registrarUrl = "https://${edgeName}:8444";
   zone = "boxes.losos.dasmat.us";
   password = "Correct-Horse-Battery-9";
 
   # The store keeps the fixture for as long as its inputs do not change, so
-  # its certificates are valid for 3650 days (the most `identity sign`
-  # issues), not 30 days after the first build.
+  # its certificates are valid for ten years, not 30 days after the first
+  # build.
   validDays = "3650";
 
-  # The root, the edge's identity certificate naming the URL the box uses,
-  # and a TLS certificate for that name from a CA the box trusts.
+  # The edge is an open gateway whose passport names the URL the box uses.
+  openGateway = import ./open-gateway.nix { inherit pkgs lososPkgs; };
+
+  # A TLS certificate for the edge's name from a CA the box trusts.
   fixture =
     pkgs.runCommand "losos-box-wallet-name-fixture"
       {
-        nativeBuildInputs = [
-          lososPkgs.losos-registrar
-          pkgs.openssl
-        ];
+        nativeBuildInputs = [ pkgs.openssl ];
       }
       ''
         mkdir -p $out
-        losos-registrar identity keygen --out $out/root.key > $out/root.pub
-        losos-registrar identity keygen --out $out/edge.key > $out/edge.pub
-        losos-registrar identity sign \
-          --root-key $out/root.key --public-key "$(cat $out/edge.pub)" \
-          --name "losos test edge" --url ${registrarUrl} --days ${validDays} \
-          > $out/edge.cert.json
-
         openssl req -x509 -newkey rsa:2048 -nodes -days ${validDays} -subj "/CN=test CA" \
           -keyout $out/ca.key -out $out/ca.pem
         openssl req -newkey rsa:2048 -nodes -subj "/CN=${edgeName}" \
@@ -163,6 +154,7 @@ pkgs.testers.nixosTest {
         imports = [
           ../../modules/options.nix
           ../../modules/edge.nix
+          (openGateway.edge registrarUrl)
         ];
         _module.args.self = {
           packages.x86_64-linux.losos-registrar = lososPkgs.losos-registrar;
@@ -170,7 +162,6 @@ pkgs.testers.nixosTest {
         systemd.tmpfiles.rules = [
           "d /var/secrets 0700 root root - -"
           "f ${proxyToken} 0600 root root - ${proxyTokenValue}"
-          "C ${identityKey} 0600 root root - ${fixture}/edge.key"
         ];
         losos.edge = {
           enable = true;
@@ -180,10 +171,6 @@ pkgs.testers.nixosTest {
           tenants.mattbox = {
             hostname = "mattbox.${zone}";
             tokenFile = proxyToken;
-          };
-          identity = {
-            keyFile = identityKey;
-            certFile = "${fixture}/edge.cert.json";
           };
           dns = {
             enable = true;
@@ -230,6 +217,7 @@ pkgs.testers.nixosTest {
           ../../modules/tls.nix
           ../../modules/daemon.nix
           ../../modules/identity.nix
+          openGateway.box
         ];
         losos = {
           hostName = "mattbox";
@@ -238,7 +226,6 @@ pkgs.testers.nixosTest {
           proxy = {
             enable = true;
             inherit registrarUrl;
-            officialRootKeyFile = "${fixture}/root.pub";
           };
         };
         systemd.tmpfiles.rules = [
@@ -285,14 +272,20 @@ pkgs.testers.nixosTest {
       boxIp = nodes.box.networking.primaryIPAddress;
       edgeIp = nodes.edge.networking.primaryIPAddress;
     in
-    ''
+    openGateway.script
+    + ''
       import json
 
-      start_all()
+      # One after another: three machines booting at once under TCG can
+      # miss the driver's wait for a shell.
+      for m in (edge, box, laptop):
+          m.start()
+          m.succeed("true")
       edge.wait_for_unit("knot.service")
       edge.wait_for_unit("losos-registrar.service")
       edge.wait_for_open_port(8444)
       box.wait_for_unit("lososd.service")
+      trust(edge, box)
       box.wait_for_unit("nginx.service")
       box.wait_for_open_port(443)
       laptop.wait_for_unit("multi-user.target")

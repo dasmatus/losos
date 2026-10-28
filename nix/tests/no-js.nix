@@ -119,46 +119,45 @@ let
   };
 
   # JavaScript off: from the first address to signing out.
-  withoutScript =
-    [
-      {
-        name = "sign-in";
-        path = "/";
-        waitFor = signInPage;
-      }
-      {
-        name = "signed-in";
-        path = "/";
-        waitFor = signInPage;
-        steps = signIn;
-      }
-    ]
-    ++ pages
-    ++ [
-      {
-        name = "apply-bar";
-        path = "/settings/hardware";
-        waitFor = gpu;
-        steps = [
-          { click = gpu; }
-          { waitText = "1 change not applied yet"; }
-        ];
-      }
-      {
-        name = "menu";
-        path = "/";
-        waitFor = overview;
-        steps = [
-          { click = personMenu; }
-          {
-            waitFor = {
-              role = "button";
-              name = "Sign out";
-            };
-          }
-        ];
-      }
-    ];
+  withoutScript = [
+    {
+      name = "sign-in";
+      path = "/";
+      waitFor = signInPage;
+    }
+    {
+      name = "signed-in";
+      path = "/";
+      waitFor = signInPage;
+      steps = signIn;
+    }
+  ]
+  ++ pages
+  ++ [
+    {
+      name = "apply-bar";
+      path = "/settings/hardware";
+      waitFor = gpu;
+      steps = [
+        { click = gpu; }
+        { waitText = "1 change not applied yet"; }
+      ];
+    }
+    {
+      name = "menu";
+      path = "/";
+      waitFor = overview;
+      steps = [
+        { click = personMenu; }
+        {
+          waitFor = {
+            role = "button";
+            name = "Sign out";
+          };
+        }
+      ];
+    }
+  ];
 
   # Applying a change, its rebuild and its end, then signing out.
   applying = [
@@ -253,23 +252,26 @@ let
         # The handbook's picture, in each of its languages.
         handbook = plan "handbook" {
           script = false;
-          variants = map (l: {
-            suffix = l.suffix;
-            locale = l.locale;
-          }) [
-            {
-              suffix = "en";
-              locale = "en-US";
-            }
-            {
-              suffix = "sk";
-              locale = "sk-SK";
-            }
-            {
-              suffix = "de";
-              locale = "de-DE";
-            }
-          ];
+          variants =
+            map
+              (l: {
+                inherit (l) suffix;
+                inherit (l) locale;
+              })
+              [
+                {
+                  suffix = "en";
+                  locale = "en-US";
+                }
+                {
+                  suffix = "sk";
+                  locale = "sk-SK";
+                }
+                {
+                  suffix = "de";
+                  locale = "de-DE";
+                }
+              ];
           shots = [
             {
               name = "overview";
