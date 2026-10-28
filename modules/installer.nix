@@ -67,17 +67,9 @@ let
   #     losos-ctl, not the wrapper) and then opens a shell under the log. The
   #     service never restarts it: that would run the destructive installer
   #     again.
-  # CLI entry point: start the oneshot service and wait for it.
-  # The service runs as root with the system Nix config so substituters
-  # are trusted. Output goes to the journal and tty2.
   losos-install = pkgs.writeShellScriptBin "losos-install" ''
     ${lib.optionalString autorun "export LOSOS_INSTALLER_ISO=1"}
-    if systemctl is-system-running --quiet 2>/dev/null || systemctl is-active --quiet losos-install-oneshot.service 2>/dev/null; then
-      systemctl start --wait losos-install-oneshot.service
-    else
-      # Fallback for environments without the service (VM tests, etc.)
-      exec ${ctl}/bin/losos-ctl install "$@"
-    fi
+    exec ${ctl}/bin/losos-ctl install "$@"
   '';
 
   # Plymouth reads tty1's keyboard while it draws, so the installer takes
@@ -146,70 +138,10 @@ in
     # modules/console.nix uses on the installed box.
     systemd.services."getty@tty1".enable = lib.mkIf autorun false;
     systemd.services."autovt@tty1".enable = lib.mkIf autorun false;
-    # Lock tty2 as a pure live-log console. Never spawn a getty or drop to
-    # a shell on it; recovery shells stay on tty3–tty6.
-    # enable = false already masks the unit (symlink to /dev/null).
-    # unitConfig.Mask is not a valid systemd option.
+    # Reserve tty2 for the installer's live command output; the next VT
+    # remains available as a root shell if Wi-Fi or recovery work is needed.
     systemd.services."getty@tty2".enable = lib.mkIf autorun false;
     systemd.services."autovt@tty2".enable = lib.mkIf autorun false;
-    # Prevent logind from auto-spawning a VT on tty2.
-    # Keep later VTs available for recovery shells; only tty2 is locked.
-    # logind settings are strings in the generated conf.
-    services.logind.settings.Login = lib.mkIf autorun {
-      NAutoVTs = "6";
-      ReserveVT = "6";
-    };
-
-    # Oneshot that actually performs the install. Runs as root with the
-    # system Nix configuration (so substituters and trusted keys are
-    # honoured) and logs to the journal + tty2.
-    systemd.services.losos-install-oneshot = {
-      description = "LosOS system install (oneshot)";
-      after = [ "losos-ghcr-cache.service" "network-online.target" ];
-      wants = [ "losos-ghcr-cache.service" "network-online.target" ];
-      # Never start automatically; only via systemctl start from the CLI
-      # or the tty1 wrapper.
-      wantedBy = [ ];
-      restartIfChanged = false;
-      path = [
-        pkgs.disko
-        pkgs.git
-        pkgs.util-linux
-        pkgs.coreutils
-        pkgs.cryptsetup
-        pkgs.lvm2
-        config.systemd.package
-      ];
-      environment = {
-        HOME = "/root";
-        TERM = "linux";
-        LOSOS_INSTALLER_ISO = "1";
-      };
-      script = ''
-        set -euo pipefail
-        # Force every line of the install onto tty2 so the live log is
-        # always visible, independent of script/PTY or journal routing.
-        if [ -w /dev/tty2 ]; then
-          exec > /dev/tty2 2>&1
-          printf '\033c'
-          printf 'LosOS install oneshot starting\n'
-          printf 'substituter: http://127.0.0.1:8787\n'
-          printf 'all output from this point goes to tty2\n\n'
-        fi
-        exec ${ctl}/bin/losos-ctl install "$@"
-      '';
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-        StandardOutput = "journal+console";
-        StandardError = "journal+console";
-        SyslogIdentifier = "losos-install";
-        # Ensure Nix treats this as trusted so client-specified
-        # substituters are not ignored.
-        User = "root";
-        Group = "root";
-      };
-    };
 
     systemd.services.losos-installer = lib.mkIf autorun {
       description = "The LosOS installer on tty1";
@@ -226,17 +158,16 @@ in
         "autovt@tty1.service"
       ];
       before = [ "getty.target" ];
+      # A switch must never start the destructive installer again.
       restartIfChanged = false;
       path = [ pkgs.kbd ] ++ lib.optional plymouth config.boot.plymouth.package;
       environment.HOME = "/root";
+      # The login environment: PATH with nixos-install, the CA bundle for
+      # the clone and the flake inputs, TERM.
       script = ''
         source /etc/profile
         export TERM=linux
-        # Trigger the oneshot and wait for it; the oneshot owns the
-        # actual install and logs to tty2 + journal.
-        systemctl start --wait losos-install-oneshot.service || true
-        # Keep a shell on tty1 after the install finishes or fails.
-        exec bash
+        exec ${lib.getExe losos-install-tty1-wrapped} "$@"
       '';
       serviceConfig = {
         Type = "idle";

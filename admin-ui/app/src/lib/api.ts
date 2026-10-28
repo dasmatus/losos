@@ -722,25 +722,6 @@ export function getStatus(options: RequestOptions = {}): Promise<StatusResponse>
   return call<StatusResponse>("/api/status", options);
 }
 
-export interface UpdatesResponse {
-  /** Human-readable systemd-sysupdate version/source/target listing. */
-  output: string;
-}
-
-export interface UpdatesCheckResponse {
-  started: true;
-}
-
-/** GET /api/updates — update source and staged-version inventory. */
-export function getUpdates(options: RequestOptions = {}): Promise<UpdatesResponse> {
-  return call<UpdatesResponse>("/api/updates", options);
-}
-
-/** POST /api/updates/check — start the persistent update-and-activate service. */
-export function postUpdatesCheck(options: RequestOptions = {}): Promise<UpdatesCheckResponse> {
-  return call<UpdatesCheckResponse>("/api/updates/check", { ...options, method: "POST" });
-}
-
 /** GET /api/statistics — what Traefik counted for the apps' LAN ports
  *  (lososd's statistics plugin). Read with readStatistics (src/statistics). */
 export function getStatistics(options: RequestOptions = {}): Promise<unknown> {
@@ -793,6 +774,10 @@ export interface EdgeResponse {
   /** Whether a company edge may manage this box. Missing on a box whose
    *  lososd predates the switch. */
   manage?: EdgeManage;
+  /** Unix seconds when the box turned sharing off by itself because no edge
+   *  answered; it turns it back on a minute after one does. Null when not
+   *  paused, missing from an older lososd. */
+  sharingPausedAt?: number | null;
 }
 
 /** The switch that lets a company edge on this LAN manage LosOS Cloud,
@@ -2570,6 +2555,27 @@ export function getWindowsShare(options: RequestOptions = {}): Promise<WindowsSh
  *  takes it. 403 for a wrong password. */
 export function postWindowsShare(password: string, options: RequestOptions = {}): Promise<WindowsShare> {
   return postJson("/api/windows", { password }, options);
+}
+
+// ── Tor and I2P ───────────────────────────────────────────────────────────
+
+/* The box's addresses on Tor and I2P (modules/hidden-services.nix,
+ * backend/plugins/hidden): those its own Tor and I2P made, and those the
+ * edge it reports to made for it (modules/edge-hidden.nix). A name is null
+ * until it is made, and while its network is off. */
+export interface HiddenPair {
+  tor: string | null;
+  i2p: string | null;
+}
+
+export interface HiddenAddresses {
+  box: HiddenPair;
+  edge: HiddenPair;
+}
+
+/** GET /api/hidden — this box's Tor and I2P addresses. */
+export function getHidden(options: RequestOptions = {}): Promise<HiddenAddresses> {
+  return call<HiddenAddresses>("/api/hidden", options);
 }
 
 // ── Profiles ──────────────────────────────────────────────────────────────

@@ -450,7 +450,7 @@ let
       # writes for a shared one. Traefik picks either up within a few
       # seconds; a minute without it is a failure the owner should see.
       wait_route() {
-        local provider=$1 port=$2 i
+        local provider=$1 port=$2
         [[ "$port" =~ ^[0-9]+$ ]] || return 0
         for _ in $(seq 1 60); do
           if curl -fsS -o /dev/null "${traefikApi}/api/http/routers/app-$release@$provider"; then
@@ -673,9 +673,6 @@ in
           LOSOS_APPS_PORTS = "${toString cfg.ports.from}-${toString cfg.ports.to}";
           LOSOS_APPS_BUILTIN = lib.concatStringsSep "," builtinNames;
           LOSOS_HELM_HOME = helmHome;
-          # lososd's statistics plugin reads Traefik's metrics here
-          # (backend/plugins/statistics).
-          LOSOS_TRAEFIK_URL = traefikApi;
         }
         # A `shared` app needs the box's own cluster (backend/src/apps.rs).
         // lib.optionalAttrs localCluster { LOSOS_APPS_KUBE = "1"; };

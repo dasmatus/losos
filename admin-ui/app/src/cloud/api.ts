@@ -68,6 +68,65 @@ export class CloudError extends Error {
 
 const BASE = "/cloud/api";
 
+/** A picture with what Photos groups it by (backend/src/cloud/photos/). The
+ * camera's fields are there once the box has read the picture. */
+export interface Photo extends Pick<Entry, "id" | "path" | "name" | "mime" | "mtime" | "size" | "etag"> {
+  /** As the camera's clock read it, `2019-06-08T10:12:31`, no zone. */
+  taken?: string;
+  camera?: string;
+  lens?: string;
+  lat?: number;
+  lon?: number;
+  width?: number;
+  height?: number;
+  /** The people in it, left to right. */
+  people: number[];
+}
+
+export interface Person {
+  id: number;
+  /** Empty until the owner names them. */
+  name: string;
+  photos: number;
+  /** The face that shows them best, for `faceUrl`. */
+  face: number;
+}
+
+export interface PhotoIndex {
+  total: number;
+  done: number;
+  /** Whether the box looks for faces (`losos.cloud.photos.faces`). */
+  faces: boolean;
+  last: number | null;
+}
+
+export interface PhotoField {
+  group: "picture" | "camera" | "place" | "other";
+  name: string;
+  value: string;
+}
+
+export interface PhotoDetails {
+  id: number;
+  indexed: boolean;
+  summary?: {
+    taken?: string;
+    camera?: string;
+    lens?: string;
+    exposure?: string;
+    aperture?: string;
+    iso?: number;
+    focal?: string;
+    lat?: number;
+    lon?: number;
+    altitude?: number;
+    width: number;
+    height: number;
+  };
+  fields?: PhotoField[];
+  faces: { id: number; x: number; y: number; w: number; h: number; person: number | null; name: string }[];
+}
+
 function signedOut(): never {
   window.location.reload();
   throw new CloudError(401, "signIn", "signed out");
@@ -116,6 +175,10 @@ export const cloud = {
     call<{ entries: Entry[] }>("GET", `/files/search?q=${q(text)}`, undefined, signal),
   media: (signal?: AbortSignal) =>
     call<{ entries: Entry[] }>("GET", "/files/media?kind=image&limit=2000", undefined, signal),
+  photos: (signal?: AbortSignal) =>
+    call<{ photos: Photo[]; people: Person[]; index: PhotoIndex }>("GET", "/photos", undefined, signal),
+  photo: (id: number, signal?: AbortSignal) => call<PhotoDetails>("GET", `/photos/${id}`, undefined, signal),
+  namePerson: (id: number, name: string) => call<{ id: number }>("POST", `/photos/people/${id}`, { name }),
   versions: (path: string, signal?: AbortSignal) =>
     call<{ versions: Version[] }>("GET", `/files/versions?path=${q(path)}`, undefined, signal),
   restoreVersion: (id: number, mtime: number) => call<Entry>("POST", "/files/versions/restore", { id, mtime }),
@@ -137,8 +200,10 @@ export const contentUrl = (path: string, download = false): string =>
 
 export const versionUrl = (id: number, mtime: number): string => `${BASE}/files/versions/${id}/${mtime}`;
 
-export const previewUrl = (entry: Entry, size: number): string =>
+export const previewUrl = (entry: Pick<Entry, "id" | "etag">, size: number): string =>
   `${BASE}/preview/${entry.id}?size=${size}&v=${encodeURIComponent(entry.etag)}`;
+
+export const faceUrl = (face: number): string => `${BASE}/photos/faces/${face}`;
 
 /** The thumbnail kinds the service renders (backend/src/cloud/preview.rs). */
 export function hasPreview(entry: Entry): boolean {
