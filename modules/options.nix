@@ -491,6 +491,31 @@ in
       '';
     };
 
+    # ── Tor and I2P (modules/hidden-services.nix) ─────────────────────────
+    hidden.tor.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Give the box an address on Tor, a `.onion` name people open in Tor
+        Browser. It reaches what the box's public name reaches through an
+        edge, LosOS Cloud, LosOS Git and LosOS Login, never the admin pages,
+        and needs no edge and no open port: the box connects out to Tor. The
+        address appears on the Network page once Tor has made it, and stays
+        the same across reboots.
+      '';
+    };
+
+    hidden.i2p.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Give the box an address on I2P, a `.b32.i2p` name people open
+        through an I2P router. It reaches the same pages as the Tor address
+        and, like it, needs no edge and no open port. The box takes part in
+        I2P as a router with a small bandwidth share.
+      '';
+    };
+
     # ── Compute mesh (appliance side) ───────────────────────────────────────
     # Two Kubernetes instances run on the appliance and they are deliberately
     # different clusters. See
@@ -1038,6 +1063,19 @@ in
       '';
     };
 
+    cloud.photos.faces = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Find the faces in LosOS Cloud's photos and group them into people,
+        whom the owner can name. Two small models do it on this box's CPU, in
+        the background at the lowest priority; no face, place or picture
+        leaves the box, and only the photos' owner sees them. Turning it off
+        deletes every face and person found so far; the camera's details
+        (date, camera, lens, place) are read either way.
+      '';
+    };
+
     cloud.mesh.enable = lib.mkOption {
       type = lib.types.bool;
       default = config.losos.sharingMyStorage || config.losos.cluster.enable;
@@ -1489,18 +1527,25 @@ in
       type = lib.types.str;
       default = "git+file:///etc/nixos#install";
       description = ''
-        Flake URI used by lososd for settings-driven NixOS rebuilds. The
-        fragment is mandatory: without one, nixos-rebuild looks for
-        nixosConfigurations.<hostname>, while this flake exports only iso and
-        install. The nightly sysupdate service instead rebuilds its verified
-        release source bundle with --impure; it does not use this URI.
+        Flake URI system.autoUpgrade rebuilds from. The fragment is mandatory:
+        without one `nixos-rebuild --flake` looks for
+        nixosConfigurations.<hostname>, and this flake only exports `iso` and
+        `install` — so every unfragmented run dies with "flake does not provide
+        attribute". lososd uses the same `#install` ref (backend/src/io_backend.rs).
+        New versions arrive through losos.configRepo.upstream, which moves
+        /etc/nixos itself before the rebuild, so an Apply and the nightly
+        update build the same tree. A github: URI (still with `#install`)
+        also works, but an Apply then rebuilds from the older tree in
+        /etc/nixos and undoes the update until the next night.
 
-        The default git+file:///etc/nixos#install keeps local settings changes
-        on the box's own configuration. New configuration versions are synced
-        through losos.configRepo.upstream when enabled. The impure rebuild
-        retains this machine's install-target.nix and overrides.nix values,
-        including its disks, firmware mode, unlock mode, and admin settings.
-      
+        A remote URI evaluates the published tree, which has neither
+        modules/install-target.nix (this box's drive list, firmware mode and
+        unlock mode, written by the installer) nor this box's
+        modules/overrides.nix (the settings the admin UI writes). flake.nix
+        therefore reads both from /etc/nixos when the evaluation is impure,
+        and the nightly upgrade (updates.nix) and lososd both pass --impure.
+        Evaluate the flake purely against a remote URI and the defaults
+        apply instead: TPM2 unlock, /dev/sda, UEFI, every setting reset.
       '';
     };
 
@@ -3149,6 +3194,28 @@ in
       '';
     };
 
+    edge.hidden.tor.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Give every box this edge routes an address on Tor of its own, a
+        `.onion` name that reaches the box through its tunnel the way its
+        public name does. The addresses are made here and kept across
+        restarts; each box learns its own on its next heartbeat and shows
+        it on its Network page. The edge opens no port for it.
+      '';
+    };
+
+    edge.hidden.i2p.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Give every box this edge routes an address on I2P of its own, a
+        `.b32.i2p` name, in the same way as edge.hidden.tor.enable. The edge
+        takes part in I2P as a router with a small bandwidth share.
+      '';
+    };
+
     edge.manage.ui = lib.mkOption {
       type = lib.types.nullOr lib.types.path;
       default = null;
@@ -3418,6 +3485,16 @@ in
         description = "LosOS Cloud runs, and signs people in with LosOS Login.";
       };
     };
+
+  # Tunnel length of the box's and the edge's I2P services
+  # (modules/hidden-lib.nix); null is i2pd's own default. Only a test's
+  # private I2P network, with too few routers for three hops, sets it.
+  options.lososInternal.hidden.i2pHops = lib.mkOption {
+    type = lib.types.nullOr lib.types.ints.positive;
+    internal = true;
+    default = null;
+    description = "Hops of each I2P tunnel of the box's or edge's addresses; null for i2pd's default.";
+  };
 
   # ── The shared side ───────────────────────────────────────────────────
   # The shared user's apps (mail, chat) exist only while the box's storage

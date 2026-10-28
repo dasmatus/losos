@@ -59,6 +59,7 @@ pub mod error;
 pub mod evm_tx;
 mod fsutil;
 pub mod hardware;
+pub mod hidden;
 pub mod identity;
 pub mod idle;
 pub mod inference;

@@ -2,6 +2,7 @@ import * as React from "react";
 import { FieldError, Input } from "@/components/ui/input";
 import { useT } from "@/lib/i18n-react";
 import { DomainsSection } from "./domains-section";
+import { HiddenSection } from "./hidden-section";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue, SwitchRow } from "./rows";
 import { BoolRow, slotFor } from "./site-settings";
 import type { SettingsForm } from "./use-settings-form";
@@ -26,6 +27,8 @@ export function NetworkPane({ form }: { form: SettingsForm }) {
   const windowsId = React.useId();
   // Drawn only on a box whose option document declares it.
   const windows = slotFor(form, "cloud.windows.enable");
+  const tor = slotFor(form, "hidden.tor.enable");
+  const i2p = slotFor(form, "hidden.i2p.enable");
 
   const draft = form.draft;
   const disabled = form.locked || !form.ready;
@@ -100,6 +103,8 @@ export function NetworkPane({ form }: { form: SettingsForm }) {
           </GroupCaption>
         </PaneSection>
       )}
+
+      {(tor !== null || i2p !== null) && <HiddenSection tor={tor} i2p={i2p} locked={form.locked} />}
 
       <DomainsSection locked={form.locked} />
     </>

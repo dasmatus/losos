@@ -121,6 +121,8 @@ in
       addSSL = true;
       sslCertificate = cert;
       sslCertificateKey = key;
+      # Restated whole, the loopback listeners of Tor and I2P included
+      # (modules/containers.nix).
       listen = [
         {
           addr = "0.0.0.0";
@@ -131,7 +133,10 @@ in
           port = 443;
           ssl = true;
         }
-      ];
+      ]
+      ++ (import ./hidden-lib.nix { inherit lib pkgs; }).frontListen (
+        config.losos.hidden.tor.enable || config.losos.hidden.i2p.enable
+      );
     };
 
     # nginx cannot start before the certificate exists, and on first boot the
