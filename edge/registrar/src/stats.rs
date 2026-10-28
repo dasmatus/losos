@@ -130,10 +130,22 @@ fn parse_labels(mut s: &str) -> Option<(Vec<(String, String)>, &str)> {
 type Buckets = BTreeMap<Bound, f64>;
 
 /// A bucket bound that sorts, `+Inf` included.
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Copy)]
 struct Bound(f64);
 
+impl PartialEq for Bound {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other).is_eq()
+    }
+}
+
 impl Eq for Bound {}
+
+impl PartialOrd for Bound {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
 
 impl Ord for Bound {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
@@ -278,9 +290,10 @@ fn add_buckets(into: &mut Buckets, more: &Buckets) {
 /// `histogram_quantile` does. `None` with nothing counted. Past the last
 /// finite bound the answer is that bound: the histogram knows no more.
 fn p95_ms(buckets: &Buckets) -> Option<f64> {
-    let total = buckets.get(&Bound(f64::INFINITY)).copied().or_else(|| {
-        buckets.values().copied().reduce(f64::max)
-    })?;
+    let total = buckets
+        .get(&Bound(f64::INFINITY))
+        .copied()
+        .or_else(|| buckets.values().copied().reduce(f64::max))?;
     if total <= 0.0 {
         return None;
     }
@@ -580,7 +593,8 @@ mod tests {
     #[test]
     fn minutes_hold_what_was_added_and_a_restart_counts_from_zero() {
         let mut ring = Ring::default();
-        let t0 = 1_800_000_000 - 1_800_000_000 % 60;
+        // A minute boundary: 1_800_000_000 is a multiple of 60.
+        let t0 = 1_800_000_000;
         ring.record(reading(100, 0, 100, 0, 1_000), t0);
         // The first reading belongs to no minute.
         let doc = ring.document(&BTreeMap::new(), t0);
@@ -611,7 +625,8 @@ mod tests {
     #[test]
     fn minutes_older_than_an_hour_drop_off() {
         let mut ring = Ring::default();
-        let t0 = 1_800_000_000 - 1_800_000_000 % 60;
+        // A minute boundary: 1_800_000_000 is a multiple of 60.
+        let t0 = 1_800_000_000;
         ring.record(reading(0, 0, 0, 0, 1), t0);
         for i in 1..=70_u64 {
             ring.record(reading(i, 0, i, 0, 1), t0 + i * 60);
@@ -629,7 +644,8 @@ mod tests {
     #[test]
     fn routes_carry_their_host_and_the_hours_percentile() {
         let mut ring = Ring::default();
-        let t0 = 1_800_000_000 - 1_800_000_000 % 60;
+        // A minute boundary: 1_800_000_000 is a multiple of 60.
+        let t0 = 1_800_000_000;
         ring.record(reading(0, 0, 0, 0, 1), t0);
         ring.record(reading(20, 0, 19, 1, 1), t0 + 20);
         let hosts: BTreeMap<String, String> =

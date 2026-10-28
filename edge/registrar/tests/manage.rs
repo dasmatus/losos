@@ -348,13 +348,14 @@ async fn statistics_are_what_traefik_counted_with_each_box_named() {
     edge.register("office-box", "office-box.example.test", TOKEN)
         .await;
 
-    // The first reading is taken as the registrar starts.
+    // The first reading is taken as the registrar starts, and the box's
+    // name joins once a reconcile pass has routed it.
     let mut doc = serde_json::Value::Null;
     for _ in 0..50 {
         let (status, body) = get(&edge, "/manage/api/statistics", Some(&key)).await;
         assert_eq!(status, 200, "{body}");
         doc = serde_json::from_str(&body).unwrap();
-        if doc["available"] == true {
+        if doc["available"] == true && doc["routes"][0]["host"].is_string() {
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
