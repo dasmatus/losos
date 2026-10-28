@@ -91,13 +91,16 @@ on:
 # binaries and runs no suites; the suites run in the `test` job. A bare
 # `nix build` is therefore not a test gate.
 
-# Superseded runs are cancelled on pull requests and branches, where only the
-# newest push matters. Never on tags or on a run that publishes release media
+# Superseded runs are cancelled on pull requests only, where the newest push
+# is all that matters. Never on tags or on a run that publishes release media
 # for older tags: the release-media job is not something to interrupt half way
-# through multi-gigabyte builds and uploads.
+# through multi-gigabyte builds and uploads. A newer push to a pull request's branch cancels the run before it. On main
+# every merge runs to the end: when one merge cancelled the last, merges a
+# few minutes apart left main with no finished run for an afternoon, and two
+# broken merges went unseen.
 concurrency:
   group: ci-${{ github.ref }}${{ inputs.release_tags && format('-release-{0}', inputs.release_tags) || '' }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') && !inputs.release_tags }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Read-only by default; the jobs that write ask for contents: write themselves.
 # A fork's pull request gets a read-only token and no secrets whatever this
@@ -1255,6 +1258,46 @@ jobs:
           name: discovery-${{ matrix.os }}-console
           path: ${{ runner.temp }}/losos-discovery-*/qemu.log
           if-no-files-found: ignore
+
+  # One check for the whole run: green when every job this change needed
+  # passed and the rest were skipped, red when any failed or was cancelled.
+  # It is the check to require on main, since a required job that a change
+  # skips would otherwise have to be listed one by one.
+  result:
+    name: "result: every job this change needs passed"
+    if: always()
+    needs:
+      - pins
+      - changes
+      - clippy
+      - clippy-wasm
+      - test
+      - solana-escrow
+      - evm-escrow
+      - eval
+      - losos-ctl
+      - registrar-and-ui
+      - images
+      - publish-cache
+      - tui
+      - publish-tool
+      - fmt-bot
+      - iso
+      - discovery-box
+      - discovery
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          jq -r 'to_entries[] | "\(.value.result)\t\(.key)"' <<<"$NEEDS" | sort
+          bad=$(jq -r 'to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | .key' <<<"$NEEDS")
+          if [ -n "$bad" ]; then
+            echo "::error::failed or cancelled: $(tr '\n' ' ' <<<"$bad")"
+            exit 1
+          fi
 
   # Which tags release-media builds. A tag push builds that tag. A manual run
   # with `release_tags` builds the tags it names, or with "missing" every

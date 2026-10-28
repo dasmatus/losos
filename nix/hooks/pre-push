@@ -116,10 +116,10 @@ for update in "${updates[@]}"; do
     fi
 
     if [ "${lane_ui:-false}" = true ]; then
-      run admin-ui nix build --no-link -L "$hook_root#checks.x86_64-linux.losos-admin-ui"
+      run admin-ui nix build --no-link -L "$(hook_flake)#checks.x86_64-linux.losos-admin-ui"
     fi
     if grep -q '^handbook/' <<<"$changed"; then
-      run handbook nix build --no-link -L "$hook_root#losos-handbook"
+      run handbook nix build --no-link -L "$(hook_flake)#losos-handbook"
     fi
 
     # The VM tests this change touches.
@@ -152,13 +152,13 @@ for update in "${updates[@]}"; do
     esac
     vm_run() {
       local check=$1 out="$hook_logdir/$1"
-      if [ -e /dev/kvm ] || ! nix eval --raw "$hook_root#checks.x86_64-linux.$check.driver.drvPath" >/dev/null 2>&1; then
+      if [ -e /dev/kvm ] || ! nix eval --raw "$(hook_flake)#checks.x86_64-linux.$check.driver.drvPath" >/dev/null 2>&1; then
         # With KVM, or a check that boots no VM (invariants, options-doc).
-        nix build -L --out-link "$out/result" "$hook_root#checks.x86_64-linux.$check"
+        nix build -L --out-link "$out/result" "$(hook_flake)#checks.x86_64-linux.$check"
       else
         echo "no /dev/kvm: the test driver under TCG"
         local driver
-        driver=$(nix build --no-link --print-out-paths "$hook_root#checks.x86_64-linux.$check.driver") || return 1
+        driver=$(nix build --no-link --print-out-paths "$(hook_flake)#checks.x86_64-linux.$check.driver") || return 1
         mkdir -p "$out/output"
         (cd "$out" && "$driver/bin/nixos-test-driver" --no-interactive -o "$out/output")
       fi

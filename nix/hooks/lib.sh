@@ -6,8 +6,8 @@
 # made it.
 #
 # What each hook runs is in its own header. Everything here is plumbing:
-# finding the tools (cargo, npm and the Nix linters come from the flake when
-# they are not on PATH), running one check with its output in a log file,
+# finding the tools (cargo is the flake's pinned toolchain; npm and the Nix
+# linters come from the flake when they are not on PATH), running one check with its output in a log file,
 # and the summary at the end.
 #
 #   LOSOS_HOOKS_SKIP=name,name   skip these checks, by the names the hook
@@ -31,6 +31,16 @@ hook_logs_base="$hook_common/losos-hooks/logs"
 hook_passed_base="$hook_common/losos-hooks/passed"
 # Set by a hook when what it checks is exactly one git tree.
 hook_tree=""
+
+# The flake of the tree being checked. A shallow clone, and a worktree of
+# one, evaluates only with ?shallow=1.
+hook_flake() {
+  if [ "$(git -C "$hook_root" rev-parse --is-shallow-repository)" = true ]; then
+    echo "git+file://$hook_root?shallow=1"
+  else
+    echo "git+file://$hook_root"
+  fi
+}
 
 # Every linted crate, as devenv.nix's `linted` and CI's clippy job list them.
 hook_crates=(
@@ -174,17 +184,27 @@ hook_crates_for() {
   done
 }
 
-# cargo, from PATH (devenv, nix develop) or from the flake's CI shell, the
-# same toolchain CI lints and tests with.
+# cargo from the flake's pinned toolchain, the rustc CI lints, tests and
+# ships with: the one on PATH inside devenv or nix develop, else the flake's
+# CI shell. A cargo from elsewhere (rustup) is a different compiler, and its
+# clippy can disagree with CI's; it is used only when there is no nix.
 hook_cargo() {
-  if command -v cargo >/dev/null 2>&1; then
-    cargo "$@"
-  elif command -v nix >/dev/null 2>&1; then
-    nix develop "$hook_root#ci" -c cargo "$@"
-  else
-    echo "cargo is not on PATH and nix is not installed: enter devenv shell or nix develop" >&2
-    return 127
-  fi
+  local found
+  found=$(command -v cargo 2>/dev/null || true)
+  case $found in
+    /nix/store/*) cargo "$@" ;;
+    *)
+      if command -v nix >/dev/null 2>&1; then
+        nix develop "$(hook_flake)#ci" -c cargo "$@"
+      elif [ -n "$found" ]; then
+        echo "note: $found is not the flake's toolchain; CI may disagree" >&2
+        cargo "$@"
+      else
+        echo "cargo is not on PATH and nix is not installed: enter devenv shell or nix develop" >&2
+        return 127
+      fi
+      ;;
+  esac
 }
 
 # A program from the flake's nixpkgs when it is not on PATH.
@@ -195,7 +215,7 @@ hook_tool() {
   if command -v "$prog" >/dev/null 2>&1; then
     "$prog" "$@"
   elif command -v nix >/dev/null 2>&1; then
-    nix shell --inputs-from "$hook_root" "nixpkgs#$attr" -c "$prog" "$@"
+    nix shell --inputs-from "$(hook_flake)" "nixpkgs#$attr" -c "$prog" "$@"
   else
     echo "$prog is not on PATH and nix is not installed" >&2
     return 127
@@ -254,8 +274,8 @@ hook_eval_checks() {
   run check-flake bash "$hook_root/nix/check-flake.sh"
   local cfg
   for cfg in install iso edge-gateway; do
-    run "eval-$cfg" nix eval --raw "$hook_root#nixosConfigurations.$cfg.config.system.build.toplevel.drvPath"
+    run "eval-$cfg" nix eval --raw "$(hook_flake)#nixosConfigurations.$cfg.config.system.build.toplevel.drvPath"
   done
-  run eval-iso-image nix path-info --derivation "$hook_root#nixosConfigurations.iso.config.system.build.isoImage"
-  run eval-edge-qcow2 nix path-info --derivation "$hook_root#losos-disk-edge-qcow2"
+  run eval-iso-image nix path-info --derivation "$(hook_flake)#nixosConfigurations.iso.config.system.build.isoImage"
+  run eval-edge-qcow2 nix path-info --derivation "$(hook_flake)#losos-disk-edge-qcow2"
 }
