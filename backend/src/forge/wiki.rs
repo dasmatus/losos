@@ -602,7 +602,8 @@ fn find(
         let Some(name) = page_name(&path) else {
             continue;
         };
-        if !listed(name) || seen.contains(name) {
+        // One hit per page: its first matching line.
+        if !listed(name) || !seen.insert(name.to_string()) {
             continue;
         }
         hits.push(hit(state, repo, name, Some((line, snippet(&text)))));

@@ -183,7 +183,7 @@ let
             }
             { press = "Enter"; }
             { waitFor.selector = "[data-wiki-results] [data-hit=\"garden/Guides/Watering\"]"; }
-            { waitFor.selector = "[data-wiki-results] [data-hit^=\"birds/\"]"; }
+            { waitFor.selector = "[data-wiki-results] [data-hit^=\"bird-notes/\"]"; }
           ];
         }
         {
@@ -216,11 +216,6 @@ let
           path = "/wiki/";
           waitFor.selector = "[data-wiki-directory] [data-wiki-space=\"eva/recipes\"]";
         }
-        {
-          name = "git-repository";
-          path = "/git/notshared/garden";
-          waitFor.selector = "[data-repo-wiki]";
-        }
       ];
     };
     # The same addresses on the build before LosOS Wiki: no pages there yet.
@@ -249,8 +244,9 @@ let
     };
     # The handbook's pictures of LosOS Wiki and LosOS Git, in its three
     # languages: handbook/docs/img/{wiki-*,losos-git-repository}{,-sk,-de}.png.
+    # The repository page is here rather than above: on a phone its menu,
+    # Wiki included, is folded away.
     handbook = plan "handbook" {
-      height = 800;
       variants = map (l: {
         inherit (l) suffix locale;
         colorScheme = "light";
@@ -526,7 +522,7 @@ pkgs.testers.nixosTest {
         assert "Every change is a commit" in page["footer"], page
         assert page["updated"]["author"] == "Matus", page
         # The wiki is no repository of its own.
-        names = [r["name"] for r in ok("GET", "/user/repos", token=owner)]
+        names = [r["name"] for r in ok("GET", "/users/notshared/repos", token=owner)]
         assert sorted(names) == ["garden", "plans"], names
 
     with subtest("Eva writes her public wiki in the browser's way, page by page"):
@@ -569,7 +565,8 @@ pkgs.testers.nixosTest {
         # The search finds titles first, then lines.
         hits = ok("GET", "/repos/notshared/garden/wiki/search?q=water", token=owner)["hits"]
         assert hits[0]["page"] == "Guides/Watering" and hits[0]["line"] is None, hits
-        assert {h["page"] for h in hits} == {"Guides/Watering", "Home", "Guides"}, hits
+        # One hit per page, however many of its lines match.
+        assert [h["page"] for h in hits] == ["Guides/Watering", "Guides", "Home"], hits
         # A picture is served as one; a page's file is not.
         head = curl(f"-D - -o /tmp/beds.png -H 'Authorization: token {owner}' {BASE}/git/api/v1/repos/notshared/garden/wiki/raw/beds.png")
         assert re.search(r"(?im)^content-type: image/png", head), head
@@ -595,7 +592,7 @@ pkgs.testers.nixosTest {
             "systemctl restart losos-git.service",
         )
         box.wait_for_open_port(3000)
-        names = sorted(r["name"] for r in ok("GET", "/user/repos", token=owner))
+        names = sorted(r["name"] for r in ok("GET", "/users/notshared/repos", token=owner))
         assert names == ["family", "garden", "plans"], names
         w = ok("GET", "/repos/notshared/family/wiki", token=owner)
         assert w["exists"] and w["branch"] == "master" and w["home"] == "Home", w
