@@ -135,7 +135,7 @@ Thunderbird and most mail programs read.
 
 **Your key.** **Encryption**, beside **Write**, makes a key for your address
 or imports one you already have. You choose a passphrase for it; it is not
-your sign-in password. The key is made and unlocked in your browser. The
+your sign-in password. Your browser makes and unlocks the key. The
 box keeps only the private key locked with your passphrase, and seals that
 again to its TPM or its own key, as it does its other secrets (see
 [credentials](../reference/credentials)), so nobody on the box, an administrator included, can read your encrypted
@@ -170,7 +170,7 @@ Mail is sent as PGP/MIME; **Inline, for older mail programs** puts the
 encrypted text in the body instead, which protects the text but not
 attachments.
 
-![A new message to Eva: her key was found on this box, and Encrypt and Sign are on.](../img/mail-pgp-compose.png)
+![A new message to Eva: Eva's key was found on this box, and Encrypt and Sign are on.](../img/mail-pgp-compose.png)
 
 **Reading.** An encrypted message shows a lock in the list. Opening it
 decrypts it in your browser, and a line under the headers says how it came:
@@ -179,7 +179,7 @@ signature that does not match. A message signed by someone other than its
 sender says so. Decrypted mail is shown as text, never as the sender's
 formatting, and its attachments download like any other.
 
-![Eva reads the message: a lock in the list, and a note that it was encrypted and signed by Matus, with his fingerprint.](../img/mail-pgp-opened.png)
+![Eva reads the message: a lock in the list, and a note that it was encrypted and signed by Matus, with Matus's fingerprint.](../img/mail-pgp-opened.png)
 
 **Your public key for others.** The box publishes everyone's public key in
 its own Web Key Directory at `/.well-known/openpgpkey/`, so mail programs

@@ -40,7 +40,7 @@ opraví.
 
 | Čo                                  | Prečo to nepotrebuje internet                                                                                    |
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Prihlásenie na správcovské stránky  | Zariadenie overí heslo voči LosOS Cloud priamo na sebe, cez vlastný loopback. Funguje aj vytlačený náhradný kľúč. |
+| Prihlásenie na správcovské stránky  | LosOS Login overí heslo priamo na zariadení, cez jeho vlastný loopback. Funguje aj vytlačený náhradný kľúč. |
 | LosOS Cloud a LosOS Git             | Oba bežia na zariadení, takže súbory, kalendáre, kontakty, repozitáre aj mobilné aplikácie na tej istej Wi-Fi zostávajú lokálne. |
 | Vaše vlastné súbory                 | Sú na šifrovanom disku zariadenia, v každom režime úložiska.                                                     |
 | Lokálne zdieľanie medzi ľuďmi doma  | O zdieľaniach, odkazoch a oprávneniach rozhoduje zariadenie vnútri LosOS Cloud.                                  |

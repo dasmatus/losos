@@ -57,7 +57,7 @@ If it goes wrong, see the
 ## Step 2: Choose how you sign in
 
 Choose a **sign-in name** and set the **owner password**. The name is lower
-case: it starts with a letter, then letters, digits, `.`, `_` or `-`, at most
+case. It starts with a letter, then letters, digits, `.`, `_` or `-`, at most
 32 characters. The password needs at least 12 characters with a lower-case
 letter, an upper-case letter, a digit and a symbol such as `-` or `!`. The
 wizard ticks each rule as you type. You become the box's first
@@ -91,9 +91,9 @@ password you just set:
 
 <img src={require("../img/wizard-step2-spare-key.png").default} alt="Step 2 after the password is set: your name on LosOS Login, your LosOS Cloud account, and the spare admin key shown once with Copy and Print." width="520" />
 
-A **passkey** for LosOS Cloud, so a phone or a laptop can sign in to your
-files without typing the password, can be added later from the security
-settings inside LosOS Cloud.
+You can add a **passkey** for LosOS Cloud later, from the security settings
+inside LosOS Cloud, so a phone or a laptop can sign in to your files without
+typing the password.
 
 ## Step 3: Your desktop
 
