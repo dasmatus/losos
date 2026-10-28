@@ -15,7 +15,7 @@
 # (`<lan.url>/manage/`) and the key that signs in there; whoever can read the
 # screen is standing at the machine. Everything its owner does happens on
 # that page (edge/registrar/src/server/manage/gateway.rs): the owner's signed
-# settings, the hub, forgetting a box that left.
+# settings, the hub, the secondary cluster, forgetting a box that left.
 #
 # `flake.nix` builds it two ways: `nixosConfigurations.edge-gateway` plus the
 # QCOW2 in nix/disk-images.nix (`nix build .#losos-disk-edge-qcow2`, attached

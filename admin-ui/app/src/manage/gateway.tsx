@@ -15,7 +15,11 @@ import {
   forgetGatewayBox,
   getGatewaySettings,
   isAbort,
+  leaveGatewayCluster,
+  setGatewayCluster,
   setGatewayUplink,
+  type GatewayCluster,
+  type GatewayMainRow,
   type GatewaySettings,
 } from "@/lib/api";
 import { useT } from "@/lib/i18n-react";
@@ -81,6 +85,8 @@ export function GatewaySection() {
         <GroupCaption>{t("manage.gateway.noShell")}</GroupCaption>
       </PaneSection>
       {settings.uplink !== null && <Uplink uplink={settings.uplink} onChange={reload} />}
+      {settings.cluster != null && <Cluster joined={settings.cluster.joined} onChange={reload} />}
+      {(settings.main ?? []).length > 0 && <MainCluster rows={settings.main ?? []} />}
       {settings.enrolled.length > 0 && <Enrolled ids={settings.enrolled} onChange={reload} />}
     </>
   );
@@ -383,6 +389,189 @@ function UplinkForm({
         </div>
       </form>
     </StackRow>
+  );
+}
+
+// ── The secondary cluster ─────────────────────────────────────────────────
+
+function Cluster({ joined, onChange }: { joined: GatewayCluster | null; onChange: () => void }) {
+  const t = useT();
+  const [form, setForm] = React.useState<"start" | "join" | null>(null);
+  const [busy, setBusy] = React.useState(false);
+
+  const leave = async () => {
+    setBusy(true);
+    try {
+      await leaveGatewayCluster();
+      toast.done(t("manage.cluster.left"), t("manage.cluster.leftDetail"));
+      onChange();
+    } catch (error) {
+      toast.error(t("manage.cluster.failed"), message(error), { help: "index" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <PaneSection data-testid="cluster">
+      <GroupTitle>{t("manage.cluster.title")}</GroupTitle>
+      <Group>
+        {joined === null ? (
+          <Row last={form === null}>
+            <RowText title={t("manage.cluster.none")} detail={t("manage.cluster.noneDetail")} />
+            {form === null && (
+              <div className="flex shrink-0 gap-2">
+                <Button size="sm" variant="ghost" onClick={() => setForm("join")}>
+                  {t("manage.cluster.join")}
+                </Button>
+                <Button size="sm" variant="secondary" onClick={() => setForm("start")}>
+                  {t("manage.cluster.start")}
+                </Button>
+              </div>
+            )}
+          </Row>
+        ) : (
+          <>
+            <Row>
+              <RowText
+                title={t("manage.cluster.in", { name: joined.name })}
+                detail={t("manage.cluster.member", { member: joined.member })}
+              />
+              <Button size="sm" variant="ghost" disabled={busy} onClick={() => void leave()}>
+                {busy && <Spinner size={14} label={t("manage.cluster.leave")} />}
+                {t("manage.cluster.leave")}
+              </Button>
+            </Row>
+            {joined.gateways.map((g) => (
+              <Row key={g.url} data-cluster-gateway={g.member}>
+                <RowText title={g.member} detail={g.url} />
+              </Row>
+            ))}
+            <StackRow last>
+              <p className="mb-2 text-[13px] text-muted">{t("manage.cluster.addAnother")}</p>
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[13px]" data-testid="cluster-join-line">
+                <dt className="text-muted">{t("manage.cluster.name")}</dt>
+                <dd>{joined.name}</dd>
+                <dt className="text-muted">{t("manage.cluster.secret")}</dt>
+                <dd className="break-all font-mono">{joined.secret}</dd>
+                <dt className="text-muted">{t("manage.cluster.address")}</dt>
+                <dd className="break-all">{joined.url}</dd>
+              </dl>
+            </StackRow>
+          </>
+        )}
+        {joined === null && form !== null && (
+          <ClusterForm
+            joining={form === "join"}
+            onCancel={() => setForm(null)}
+            onSaved={() => {
+              setForm(null);
+              onChange();
+            }}
+          />
+        )}
+      </Group>
+      <GroupCaption>{t("manage.cluster.caption")}</GroupCaption>
+    </PaneSection>
+  );
+}
+
+function ClusterForm({ joining, onCancel, onSaved }: { joining: boolean; onCancel: () => void; onSaved: () => void }) {
+  const t = useT();
+  const base = React.useId();
+  const [name, setName] = React.useState("");
+  const [secret, setSecret] = React.useState("");
+  const [peer, setPeer] = React.useState("");
+  const [problem, setProblem] = React.useState<string | null>(null);
+  const [busy, setBusy] = React.useState(false);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setProblem(null);
+    try {
+      const joined = await setGatewayCluster(
+        joining ? { name: name.trim(), secret: secret.trim(), peer: peer.trim() } : { name: name.trim() },
+      );
+      toast.success(
+        t(joining ? "manage.cluster.joined" : "manage.cluster.started", { name: joined.name }),
+        t("manage.cluster.syncs"),
+      );
+      onSaved();
+    } catch (error) {
+      setProblem(message(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const field = (key: string, label: string, value: string, set: (v: string) => void, mono = false, placeholder?: string) => {
+    const Field = mono ? MonoInput : Input;
+    return (
+      <div>
+        <label htmlFor={`${base}-${key}`} className="mb-1.5 block text-[13px] font-medium">
+          {label}
+        </label>
+        <Field
+          id={`${base}-${key}`}
+          value={value}
+          autoComplete="off"
+          spellCheck={false}
+          placeholder={placeholder}
+          onChange={(event) => set(event.target.value)}
+          className="w-full"
+        />
+      </div>
+    );
+  };
+
+  const ready = name.trim() !== "" && (!joining || (secret.trim() !== "" && peer.trim() !== ""));
+  return (
+    <StackRow last>
+      <form className="grid gap-3 sm:grid-cols-2" onSubmit={(event) => void submit(event)} noValidate>
+        {field("name", t("manage.cluster.name"), name, setName, false, "office")}
+        {joining && field("peer", t("manage.cluster.address"), peer, setPeer, false, "http://gw-a.local:8443")}
+        {joining && <div className="sm:col-span-2">{field("secret", t("manage.cluster.secret"), secret, setSecret, true)}</div>}
+        {problem !== null && (
+          <Alert variant="crit" className="sm:col-span-2">
+            <HugeiconsIcon icon={Alert01Icon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+            <AlertDescription>{problem}</AlertDescription>
+          </Alert>
+        )}
+        <div className="flex flex-wrap justify-end gap-2 sm:col-span-2">
+          <Button type="button" variant="ghost" onClick={onCancel} disabled={busy}>
+            {t("manage.gateway.cancel")}
+          </Button>
+          <Button type="submit" disabled={busy || !ready}>
+            {busy && <Spinner size={14} label={t("manage.gateway.save")} />}
+            {t(joining ? "manage.cluster.join" : "manage.cluster.start")}
+          </Button>
+        </div>
+      </form>
+    </StackRow>
+  );
+}
+
+// ── The main cluster ──────────────────────────────────────────────────────
+
+function MainCluster({ rows }: { rows: GatewayMainRow[] }) {
+  const t = useT();
+  return (
+    <PaneSection data-testid="main-cluster">
+      <GroupTitle>{t("manage.main.title")}</GroupTitle>
+      <Group>
+        {rows.map((r, index) => (
+          <Row key={`${r.site}/${r.gateway}`} last={index === rows.length - 1}>
+            <RowText
+              title={r.gateway === "" ? r.site : `${r.site} · ${r.gateway}`}
+              detail={r.cluster !== null ? t("manage.main.inCluster", { cluster: r.cluster }) : undefined}
+            />
+            <span className="text-[13px] text-muted">{t("manage.main.boxes", { count: r.boxes })}</span>
+          </Row>
+        ))}
+      </Group>
+      <GroupCaption>{t("manage.main.caption")}</GroupCaption>
+    </PaneSection>
   );
 }
 
