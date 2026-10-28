@@ -486,6 +486,23 @@
  * it, which is fine. */
 .losos-shell {
   background-color: var(--ground);
+  /* The page ends above the phone's bottom bar, and clear of a notch on a
+   * phone held sideways (the pages ask for viewport-fit=cover). */
+  padding-bottom: var(--bottom-nav);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* The phone's bottom bar (components/ui/bottom-nav.tsx) is fixed to the
+ * viewport and drawn only below md. While it is on the page its height,
+ * the home indicator's safe area included, is --bottom-nav: the shell pads
+ * its foot by it, and whatever else floats at the bottom edge (the upload
+ * list, a call in the corner, a selection's actions) sits that much higher. */
+:root {
+  --bottom-nav: 0px;
+}
+:root:has([data-slot="bottom-nav"]) {
+  --bottom-nav: calc(3.5rem + 1px + env(safe-area-inset-bottom, 0px));
 }
 html.has-bg .losos-shell {
   background-image:
@@ -497,6 +514,42 @@ html.has-bg .losos-shell {
   background-size: cover;
   background-position: center;
   background-attachment: fixed;
+}
+
+/* ── The desktop on the wizard's last step (App.tsx, `stage`) ─────────────
+ * `preview`: the signed-in desktop, drawn small at the top of the window
+ * with the wizard's card over its foot, rising into place as it arrives.
+ * `live`: "Let's go" pressed, and it grows to the whole window. Transform,
+ * radius and shadow only, so nothing inside lays out again; the page under
+ * it turns from the sunk colour back to the ground. Under reduced motion
+ * the global rule below makes both instant. */
+.desktop-stage {
+  transform-origin: 50% 0;
+  transition:
+    transform 700ms cubic-bezier(0.2, 0.75, 0.25, 1),
+    border-radius 700ms cubic-bezier(0.2, 0.75, 0.25, 1),
+    box-shadow 700ms ease-out;
+}
+.desktop-stage[data-stage="preview"] {
+  transform: translateY(20px) scale(0.84);
+  border-radius: 18px;
+  box-shadow:
+    0 0 0 1px var(--line),
+    0 28px 70px -24px rgba(0, 0, 0, 0.35);
+  user-select: none;
+  animation: desktop-arrive 900ms cubic-bezier(0.2, 0.75, 0.25, 1) backwards;
+}
+@keyframes desktop-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(72px) scale(0.8);
+  }
+}
+body {
+  transition: background-color 700ms ease-out;
+}
+html:has(.desktop-stage[data-stage="preview"]) body {
+  background-color: var(--sunk);
 }
 
 /* A long press opens the page's own menu (components/context-menu.tsx), so

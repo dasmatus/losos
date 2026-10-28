@@ -67,6 +67,32 @@ A box with no internet at 03:00 rebuilds the version it has and tries
 again the next night.
 :::
 
+## Downloads stay on the box
+
+Every download a rebuild makes goes through a local copy on the box, kept on
+the encrypted disk under `/var/cache/losos-nix-cache`. The clean-up at 04:30
+deletes the build tools the last rebuild fetched, and the next rebuild finds
+them in the copy instead of downloading them again. The copy also survives
+the 00:07 restart, so a box with no internet at 03:00 can still rebuild from
+what it already fetched once.
+
+Nothing in the copy is trusted for being there. Every piece of software in
+it carries the signature of the cache it came from, and the box checks that
+signature each time it installs it.
+
+| Option                          | Default | What                                            |
+| ------------------------------- | ------- | ----------------------------------------------- |
+| `losos.cache.local.enable`      | on      | Keep the copy                                   |
+| `losos.cache.local.maxSize`     | `8g`    | Most space it takes; the oldest unused go first |
+| `losos.cache.local.minFree`     | `4g`    | Free space it always leaves for your files      |
+| `losos.cache.local.shareOnLan`  | off     | Let other boxes on your network use it          |
+| `losos.cache.local.peers`       | none    | Other boxes' copies to ask first                |
+
+With several boxes at home, turn on `shareOnLan` on one and list it in
+`peers` on the others, as `http://<name>.local:8790`. They then download
+each update from the internet once between them. Only addresses on your own
+network are let in.
+
 ## When the box is off
 
 Nothing happens, and nothing is lost. Switch it on and it boots, restarts

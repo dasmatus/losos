@@ -442,6 +442,28 @@ await check('a phone gets no sideways scroll on the pull request', async () => {
   await page.close();
 });
 
+await check('on a phone LosOS Git has a bar along the bottom: the places of the repository, then More for the rest', async () => {
+  const { page, settle } = await open('/notshared/notes/pulls/3', { viewport: { width: 390, height: 844 } });
+  const bar = page.getByRole('navigation', { name: 'Main places', exact: true });
+  await bar.waitFor();
+  assert.deepEqual((await bar.getByRole('listitem').allInnerTexts()).map((l) => l.trim()), ['Repositories', 'Code', 'Pull requests', 'Issues', 'More']);
+  assert.equal(await bar.locator('a[aria-current="page"]').innerText(), 'Pull requests');
+  const box = await bar.boundingBox();
+  assert.ok(Math.abs(box.y + box.height - 844) <= 1, `the bar is not on the bottom edge: ${JSON.stringify(box)}`);
+  await bar.getByRole('button', { name: 'More', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'LosOS Git' });
+  await sheet.waitFor();
+  await sheet.getByRole('link', { name: 'Branches' }).click();
+  await page.waitForURL(/\/git\/notshared\/notes\/branches$/);
+  await sheet.waitFor({ state: 'detached' });
+  await bar.getByRole('link', { name: 'Repositories', exact: true }).click();
+  await page.waitForURL(/\/git\/?$/);
+  await bar.getByRole('link', { name: 'Code', exact: true }).waitFor({ state: 'detached' });
+  assert.deepEqual((await bar.getByRole('listitem').allInnerTexts()).map((l) => l.trim()), ['Repositories', 'Issues', 'More']);
+  await settle();
+  await page.close();
+});
+
 await browser.close();
 await closeServer();
 finish();
