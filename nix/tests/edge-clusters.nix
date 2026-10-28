@@ -208,6 +208,7 @@ pkgs.testers.nixosTest {
   };
 
   testScript = openGateway.script + ''
+    import hashlib
     import json
     import shlex
 
@@ -401,33 +402,44 @@ pkgs.testers.nixosTest {
 
     # ── 5. gwb goes away too: a tertiary link to the official edge ───────
     gwb.succeed(stop_gw)
-    doc = wait_path("http://hub1:8443", "tertiary")
+    # Both hubs are official and in one cluster, so the box spreads over
+    # them by rendezvous weight of its name (backend/src/edge.rs `weight`),
+    # not by which one it was configured with.
+    def weight(url):
+        return hashlib.sha256(b"mattbox\0" + url.encode()).digest()
+    hubs = {"http://hub1:8443": hub1, "http://hub2:8443": hub2}
+    near, far = sorted(hubs, key=weight, reverse=True)
+    doc = wait_path(near, "tertiary")
     assert doc["path"]["officialCluster"] == "eu", doc
     assert doc["cluster"] == "office", doc
     by_url = {x["url"]: x for x in doc["edges"]}
-    assert by_url["http://hub2:8443"]["officialCluster"] == "eu", doc
-    assert by_url["http://hub2:8443"]["tier"] == "tertiary", doc
+    assert by_url[far]["officialCluster"] == "eu", doc
+    assert by_url[far]["tier"] == "tertiary", doc
     e = env()
     assert "LOSOS_EDGE_PATH_TIER=tertiary\n" in e and "LOSOS_EDGE_PATH_OFFICIAL_CLUSTER=eu\n" in e, e
-    assert through(hub1, box_port(hub1, "mattbox")).strip() == "hello-losos"
+    assert through(hubs[near], box_port(hubs[near], "mattbox")).strip() == "hello-losos"
 
-    # ── 6. hub1 is banned: the box moves to hub2 on its own ──────────────
-    box.succeed("install -d -m 0755 /var/lib/losos && echo '{\"edges\":[\"http://hub1:8443\"]}' > /var/lib/losos/edge-bans.json")
-    doc = wait_path("http://hub2:8443", "tertiary")
-    assert doc["leftBanned"] == "http://hub1:8443", doc
+    # ── 6. that hub is banned: the box moves to the other on its own ─────
+    box.succeed(f"install -d -m 0755 /var/lib/losos && echo '{{\"edges\":[\"{near}\"]}}' > /var/lib/losos/edge-bans.json")
+    doc = wait_path(far, "tertiary")
+    assert doc["leftBanned"] == near, doc
     e = env()
-    assert "LOSOS_EDGE_PATH_TUNNEL=hub2:2333\n" in e, e
-    assert "LOSOS_EDGE_PATH_TUNNEL_PIN=/var/secrets/losos-edge-pins/hub2_8443.pin" in e, e
-    client_remote("hub2:2333")
-    assert box.succeed("cat /var/secrets/losos-edge-pins/hub2_8443.pin").strip() == hub_pin["hub2"]
-    assert through(hub2, box_port(hub2, "mattbox")).strip() == "hello-losos"
+    far_host = hubs[far].name
+    assert f"LOSOS_EDGE_PATH_TUNNEL={far_host}:2333\n" in e, e
+    pin = [line.split("=", 1)[1] for line in e.splitlines() if line.startswith("LOSOS_EDGE_PATH_TUNNEL_PIN=")][0]
+    client_remote(f"{far_host}:2333")
+    assert box.succeed(f"cat {pin}").strip() == hub_pin[far_host], pin
+    assert through(hubs[far], box_port(hubs[far], "mattbox")).strip() == "hello-losos"
 
     # ── 7. gwa comes back; hub1 banned on the gateway moves its uplink ───
     gwa.succeed("install -d /var/lib/losos-registrar && echo '{\"edges\":[\"http://hub1:8443\"]}' > /var/lib/losos-registrar/bans.json")
     gwa.succeed(start_gw)
     doc = wait_path("http://gwa.local:8443", "secondary")
     assert doc["leftBanned"] is None, doc
-    gwa.wait_until_succeeds("jq -e '.registrar_url == \"http://hub2:8443\"' /var/lib/losos-edge/uplink.json", timeout=120)
+    retry(
+        lambda _: json.loads(gwa.succeed("cat /var/lib/losos-edge/uplink.json"))["registrar_url"] == "http://hub2:8443",
+        timeout_seconds=120,
+    )
     hub2.wait_until_succeeds("grep -F -q '\"acme.mattbox\":' /etc/losos-tunnel/server.json", timeout=180)
     registry = json.loads(hub2.succeed("cat /var/lib/losos-registrar/registry.json"))
     assert registry["tenants"]["acme.mattbox"]["via"] == "acme", registry
