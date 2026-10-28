@@ -377,7 +377,6 @@
             ./modules/config-repo.nix
             # modules/overrides.nix is imported through onBox below, never here.
             ./modules/updates.nix
-            ./modules/sysupdate.nix
             ./modules/logs.nix
             ./modules/defaults.nix
             ./modules/proxy.nix
@@ -461,12 +460,6 @@
       # at its top what it asserts. Most boot VMs, which CI (no KVM) never
       # builds.
       checks.${system} = {
-        losos-sysupdate-proxy = pkgs.runCommand "losos-sysupdate-proxy-tests" {
-          nativeBuildInputs = [ pkgs.python3 ];
-        } ''
-          python3 ${./tools}/test_losos_sysupdate_proxy.py
-          touch $out
-        '';
         losos-install = import ./nix/tests/install.nix { inherit pkgs disko; };
         losos-tpm-unlock = import ./nix/tests/tpm.nix { inherit pkgs disko; };
         losos-admin-daemon = import ./nix/tests/admin-vm.nix { inherit pkgs; };
