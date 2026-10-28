@@ -1,0 +1,43 @@
+# LosOS's documents and notes as MDX, read without running any of it.
+# Shared by LosOS Office (the conversion plugin renders a document to HTML
+# for Pandoc) and Notes (the vault and the knowledge-base pages), and built
+# for the browser through wasm-bindgen, so a preview and an export come out
+# of the same code. The rules are in README.md.
+[package]
+name = "losos-mdx"
+version = "0.1.0"
+edition = "2021"
+publish = false
+authors = ["Matus Mastena <shadiness9530+ou1rlygj@pm.me>"]
+description = "MDX and Markdown to sanitized HTML: a fixed component set, no expressions, no imports, nothing executed"
+license = "AGPL-3.0-or-later"
+
+# Not a member of a workspace, like backend/access: lososd and the plugin
+# workspace both take it by path.
+[workspace]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# The browser package (nix/packages.nix, losos-mdx-wasm).
+wasm = ["dep:wasm-bindgen"]
+
+[dependencies]
+# markdown-rs: CommonMark, GFM, front matter, maths and MDX's JSX, to mdast.
+markdown = { version = "1", features = ["serde"] }
+# The last word on the HTML: an allowlist of tags, attributes and URL schemes.
+ammonia = "4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# The YAML the rest of the backend reads with.
+serde_yaml = "0.9"
+# Pinned to nixpkgs' wasm-bindgen-cli, which refuses a module built against
+# any other version (as admin-ui/lab/core does).
+wasm-bindgen = { version = "=0.2.127", optional = true }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
