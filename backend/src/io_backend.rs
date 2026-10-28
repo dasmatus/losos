@@ -568,32 +568,127 @@ fn edge_answers(url: &str) -> bool {
     }
 }
 
-/// `GET {url}/identity?nonce={nonce}`: the body when the edge has an
-/// identity to show, `None` on 404 (a company edge) or any failure. Same
-/// curl discipline as the health probe; the body is bounded by curl's
-/// `--max-filesize` so a hostile edge cannot feed the parser a gigabyte.
-fn edge_identity(url: &str, nonce: &str) -> Option<String> {
-    let out = std::process::Command::new("curl")
-        .args(["--silent", "--show-error", "--fail"])
-        .args(["--max-time", &crate::edge::PROBE_TIMEOUT_SECS.to_string()])
-        .args(["--max-redirs", "0"])
-        .args(["--max-filesize", "65536"])
-        .arg(format!("{url}/identity?nonce={nonce}"))
-        .stdin(std::process::Stdio::null())
-        .output()
-        .ok()?;
-    out.status
-        .success()
-        .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+/// The gateway checks' two requests over curl, with the probe's discipline:
+/// no redirects, a deadline, and a size bound so a hostile edge cannot feed
+/// the parser a gigabyte. The attestation runs the TPM, so it gets longer.
+struct CurlWire;
+
+impl CurlWire {
+    fn run(args: &[&str], body: Option<&str>) -> Result<(u16, String), String> {
+        use std::io::Write;
+        let mut cmd = std::process::Command::new("curl");
+        cmd.args(["--silent", "--show-error"])
+            .args(["--max-redirs", "0"])
+            .args(["--max-filesize", &crate::edge::GATEWAY_BODY_MAX.to_string()])
+            .args(["--write-out", "\n%{http_code}"])
+            .args(args)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .stdin(if body.is_some() {
+                std::process::Stdio::piped()
+            } else {
+                std::process::Stdio::null()
+            });
+        let mut child = cmd.spawn().map_err(|e| format!("curl: {e}"))?;
+        if let (Some(body), Some(mut stdin)) = (body, child.stdin.take()) {
+            stdin
+                .write_all(body.as_bytes())
+                .map_err(|e| format!("curl: {e}"))?;
+        }
+        let out = child.wait_with_output().map_err(|e| format!("curl: {e}"))?;
+        if !out.status.success() {
+            return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+        }
+        let text = String::from_utf8_lossy(&out.stdout);
+        let (body, code) = text.rsplit_once('\n').unwrap_or(("", &text));
+        Ok((code.trim().parse().unwrap_or(0), body.to_string()))
+    }
 }
 
-/// The LosOS root public key this box trusts, from the file
-/// `$LOSOS_EDGE_ROOT_KEY_FILE` names (`losos.proxy.officialRootKeyFile`).
-/// An absent or empty file means no edge can be official: fail closed.
-fn root_public_key() -> Option<String> {
-    let path = std::env::var("LOSOS_EDGE_ROOT_KEY_FILE").ok()?;
-    let text = std::fs::read_to_string(path).ok()?;
-    crate::edge::parse_root_key_file(&text)
+impl crate::edge::Wire for CurlWire {
+    fn hello(&self, url: &str, nonce: &str) -> Result<Option<String>, String> {
+        let deadline = crate::edge::PROBE_TIMEOUT_SECS.to_string();
+        let target = format!("{url}/passport?nonce={nonce}");
+        match Self::run(&["--max-time", &deadline, &target], None)? {
+            (200, body) => Ok(Some(body)),
+            // No passport: an edge that is not an open gateway, or one whose
+            // owner has not claimed it yet.
+            (404, _) => Ok(None),
+            (code, _) => Err(format!("{target} answered {code}")),
+        }
+    }
+
+    fn attest(&self, url: &str, body: &str) -> Result<String, String> {
+        let target = format!("{url}/passport/attest");
+        match Self::run(
+            &[
+                "--max-time",
+                "60",
+                "--header",
+                "content-type: application/json",
+                "--data-binary",
+                "@-",
+                &target,
+            ],
+            Some(body),
+        )? {
+            (200, answer) => Ok(answer),
+            (code, answer) => Err(format!("{target} answered {code}: {}", answer.trim())),
+        }
+    }
+}
+
+/// The anchors this box checks gateways against, from the three files
+/// modules/daemon.nix names: the TPM makers' certificates, the published
+/// gateway images and LosOS's payout addresses. `None`, and no edge is
+/// asked anything, when any is missing or does not parse.
+fn gateway_anchors() -> Option<crate::edge::Anchors> {
+    let read = |var: &str| {
+        let path = std::env::var(var).ok()?;
+        std::fs::read_to_string(&path)
+            .map_err(
+                |e| tracing::warn!(path, error = %e, "a gateway anchor file could not be read"),
+            )
+            .ok()
+    };
+    let (roots, images, payouts) = (
+        read("LOSOS_GATEWAY_TPM_ROOTS")?,
+        read("LOSOS_GATEWAY_IMAGES")?,
+        read("LOSOS_GATEWAY_PAYOUTS")?,
+    );
+    crate::edge::Anchors::from_texts(&roots, &images, &payouts)
+        .map_err(
+            |e| tracing::warn!(error = %e, "the gateway anchors do not parse; no edge is checked"),
+        )
+        .ok()
+}
+
+/// `/var/lib/losos/gateways.json`: the gateways this box disabled.
+fn gateways_file() -> PathBuf {
+    PathBuf::from(env_or("LOSOS_STATE_DIR", "/var/lib/losos")).join("gateways.json")
+}
+
+/// The checks' memory across scans, made on the first.
+fn vetter() -> &'static Mutex<crate::edge::Vetter> {
+    static VETTER: std::sync::OnceLock<Mutex<crate::edge::Vetter>> = std::sync::OnceLock::new();
+    VETTER.get_or_init(|| {
+        let ledger = match std::fs::read_to_string(gateways_file()) {
+            Ok(text) => serde_json::from_str(&text).map_err(|e| e.to_string()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                Ok(crate::edge::Ledger::default())
+            }
+            Err(e) => Err(e.to_string()),
+        };
+        Mutex::new(match ledger {
+            Ok(ledger) => crate::edge::Vetter::new(gateway_anchors(), ledger),
+            // A list that cannot be read is not an empty one: trusting no
+            // gateway beats trusting one this box once caught.
+            Err(e) => {
+                tracing::warn!(error = %e, "gateways.json cannot be read; no gateway is checked");
+                crate::edge::Vetter::new(None, crate::edge::Ledger::default())
+            }
+        })
+    })
 }
 
 /// A fresh 32-byte nonce, hex, for one scan's challenges.
@@ -601,17 +696,17 @@ fn fresh_nonce() -> String {
     use ring::rand::SecureRandom;
     let mut bytes = [0u8; 32];
     if ring::rand::SystemRandom::new().fill(&mut bytes).is_err() {
-        // No randomness means no challenge worth trusting: an all-zero nonce
-        // is still a valid request, and a replayed answer to it would only
-        // ever mark an edge official that the root did sign.
-        tracing::warn!("the system random source failed; this scan's nonce is not fresh");
+        // A nonce that is not fresh would let a recorded answer pass: no
+        // gateway is checked this round.
+        tracing::warn!("the system random source failed; no gateway is checked this scan");
+        return String::new();
     }
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// One complete scan: the LAN browse, the configured URL from
-/// `$LOSOS_EDGE_URL`, a probe of every candidate, and the identity
-/// challenge for the ones that answered.
+/// `$LOSOS_EDGE_URL`, a probe of every candidate, and the gateway checks
+/// for the ones that answered.
 fn scan_edge_now() -> crate::edge::EdgeStatus {
     let configured = std::env::var("LOSOS_EDGE_URL")
         .ok()
@@ -622,21 +717,32 @@ fn scan_edge_now() -> crate::edge::EdgeStatus {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
-    let root = root_public_key();
     let nonce = fresh_nonce();
-    let trust = crate::edge::Trust {
-        root_public: root.as_deref(),
-        nonce: &nonce,
-    };
-    crate::edge::assemble_with(
+    let mut vetter = vetter().lock().unwrap_or_else(|p| p.into_inner());
+    let mut ledger_changed = false;
+    let status = crate::edge::assemble_with(
         browse_lan().as_deref(),
         configured.as_deref(),
         configured_rathole.as_deref(),
         edge_answers,
-        &trust,
-        edge_identity,
+        |url| {
+            if nonce.is_empty() {
+                return None;
+            }
+            let (gateway, changed) =
+                vetter.vet(url, &CurlWire, &nonce, now, &mut rand::rngs::OsRng);
+            ledger_changed |= changed;
+            gateway
+        },
         now,
-    )
+    );
+    if ledger_changed {
+        let body = serde_json::to_vec_pretty(&vetter.ledger).unwrap_or_default();
+        if let Err(e) = atomic_write(&gateways_file(), &body) {
+            tracing::warn!(error = %e, "the disabled gateways could not be written down");
+        }
+    }
+    status
 }
 
 /// Tell the tunnel units which edge the scan chose (modules/proxy.nix reads

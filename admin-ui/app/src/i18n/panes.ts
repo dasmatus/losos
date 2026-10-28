@@ -385,22 +385,42 @@ export default defineMessages({
     sk: "Zdieľanie je vypnuté",
     de: "Teilen ist aus",
   },
-  // The sign beside each edge's name: is this edge one LosOS runs? It
-  // decides trading only; the words are the tooltip and the button's name.
+  // The sign beside each edge's name: did this edge pass the gateway checks?
+  // It decides trading only; the words are the tooltip and the button's name.
   "panes.mesh.edge.officialTip": {
-    en: "Official LosOS edge. It proved it is run by LosOS, so it may process storage and compute trading for this box.",
-    sk: "Oficiálny okrajový server LosOS. Preukázal, že ho prevádzkuje LosOS, takže môže pre toto zariadenie spracúvať obchodovanie s úložiskom a výpočtami.",
-    de: "Offizieller LosOS-Edge. Er hat nachgewiesen, dass LosOS ihn betreibt; er darf für diese Box den Handel mit Speicher und Rechenleistung abwickeln.",
+    en: "Checked gateway, run by {owner}. Its TPM shows the published image {image}, LosOS's fee addresses and nothing changed since it started, so it may process storage and compute trading for this box.",
+    sk: "Overená brána, prevádzkuje ju {owner}. Jej TPM ukazuje zverejnený obraz {image}, adresy poplatkov LosOS a že sa od spustenia nič nezmenilo, takže môže pre toto zariadenie spracúvať obchodovanie s úložiskom a výpočtami.",
+    de: "Geprüftes Gateway, betrieben von {owner}. Sein TPM zeigt das veröffentlichte Image {image}, die Gebührenadressen von LosOS und dass sich seit dem Start nichts geändert hat; es darf für diese Box den Handel mit Speicher und Rechenleistung abwickeln.",
   },
   "panes.mesh.edge.companyTip": {
-    en: "Not an official LosOS edge. What you are missing through it:\n• buying storage or compute on the market\n• selling this box's spare storage and compute\nSharing storage through it works.",
-    sk: "Nie je oficiálny okrajový server LosOS. Čo cez neho chýba:\n• nákup úložiska alebo výpočtov na trhu\n• predaj voľného úložiska a výpočtov tohto zariadenia\nZdieľanie úložiska cez neho funguje.",
-    de: "Kein offizieller LosOS-Edge. Was dir darüber fehlt:\n• Speicher oder Rechenleistung auf dem Markt kaufen\n• freien Speicher und Rechenleistung dieser Box verkaufen\nSpeicher darüber zu teilen funktioniert.",
+    en: "This edge shows no gateway passport, so this box cannot check it. What you are missing through it:\n• buying storage or compute on the market\n• selling this box's spare storage and compute\nSharing storage through it works.",
+    sk: "Tento okrajový server neukazuje pas brány, takže ho toto zariadenie nemôže overiť. Čo cez neho chýba:\n• nákup úložiska alebo výpočtov na trhu\n• predaj voľného úložiska a výpočtov tohto zariadenia\nZdieľanie úložiska cez neho funguje.",
+    de: "Dieser Edge zeigt keinen Gateway-Pass, darum kann diese Box ihn nicht prüfen. Was dir darüber fehlt:\n• Speicher oder Rechenleistung auf dem Markt kaufen\n• freien Speicher und Rechenleistung dieser Box verkaufen\nSpeicher darüber zu teilen funktioniert.",
+  },
+  "panes.mesh.edge.refusedTip": {
+    en: "Not trusted with trading: {reason}\nThis box checks again on its next scan. Sharing storage through it works.",
+    sk: "Nie je dôveryhodný na obchodovanie: {reason}\nToto zariadenie ho overí znova pri ďalšom hľadaní. Zdieľanie úložiska cez neho funguje.",
+    de: "Für den Handel nicht vertrauenswürdig: {reason}\nDiese Box prüft beim nächsten Suchen erneut. Speicher darüber zu teilen funktioniert.",
+  },
+  "panes.mesh.edge.disabledTip": {
+    en: "Tampered with: {reason}\nThis box no longer uses this edge for anything, and will not again.",
+    sk: "Bol pozmenený: {reason}\nToto zariadenie tento okrajový server už na nič nepoužíva a ani nebude.",
+    de: "Manipuliert: {reason}\nDiese Box nutzt diesen Edge für nichts mehr, und das bleibt so.",
+  },
+  "panes.mesh.edge.disabled": {
+    en: "Not used",
+    sk: "Nepoužíva sa",
+    de: "Nicht genutzt",
+  },
+  "panes.mesh.edge.ownedBy": {
+    en: "{url} · run by {owner}",
+    sk: "{url} · prevádzkuje {owner}",
+    de: "{url} · betrieben von {owner}",
   },
   "panes.mesh.edge.captionCompany": {
-    en: "The edge proxy is the box in the middle: it holds the mesh together and makes yours reachable from outside. Several can be in reach at once; sharing works through any of them. None of these is run by LosOS, so the market (buying and selling storage and compute) stays off until an official edge answers. Your own files and apps work either way.",
-    sk: "Okrajový proxy server je zariadenie uprostred: drží sieť mesh pohromade a sprístupňuje to vaše zvonku. Dostupných ich môže byť viac naraz; zdieľanie funguje cez ktorýkoľvek. Žiadny z týchto neprevádzkuje LosOS, takže trh (nákup a predaj úložiska a výpočtov) zostane vypnutý, kým sa neozve oficiálny. Vaše vlastné súbory a aplikácie fungujú tak či tak.",
-    de: "Der Edge-Proxy ist die Box in der Mitte: Er hält das Mesh zusammen und macht deine von außen erreichbar. Mehrere können zugleich erreichbar sein; Teilen funktioniert über jeden davon. Keiner davon wird von LosOS betrieben, darum bleibt der Markt (Speicher und Rechenleistung kaufen und verkaufen) aus, bis ein offizieller antwortet. Deine eigenen Dateien und Apps laufen so oder so.",
+    en: "The edge proxy is the box in the middle: it holds the mesh together and makes yours reachable from outside. Several can be in reach at once; sharing works through any of them. None of these passed the gateway checks, so the market (buying and selling storage and compute) stays off until a checked gateway answers. Your own files and apps work either way.",
+    sk: "Okrajový proxy server je zariadenie uprostred: drží sieť mesh pohromade a sprístupňuje to vaše zvonku. Dostupných ich môže byť viac naraz; zdieľanie funguje cez ktorýkoľvek. Žiadny z týchto neprešiel overením brány, takže trh (nákup a predaj úložiska a výpočtov) zostane vypnutý, kým sa neozve overená brána. Vaše vlastné súbory a aplikácie fungujú tak či tak.",
+    de: "Der Edge-Proxy ist die Box in der Mitte: Er hält das Mesh zusammen und macht deine von außen erreichbar. Mehrere können zugleich erreichbar sein; Teilen funktioniert über jeden davon. Keiner davon hat die Gateway-Prüfung bestanden, darum bleibt der Markt (Speicher und Rechenleistung kaufen und verkaufen) aus, bis ein geprüftes Gateway antwortet. Deine eigenen Dateien und Apps laufen so oder so.",
   },
   "panes.mesh.manage.title": {
     en: "Managed from the edge",
@@ -436,11 +456,6 @@ export default defineMessages({
     en: "Only an edge on this network can manage the box, and this box uses none right now.",
     sk: "Zariadenie môže spravovať iba okrajový server v tejto sieti a toto zariadenie teraz žiadny nepoužíva.",
     de: "Nur ein Edge in diesem Netz kann die Box verwalten, und diese Box nutzt gerade keinen.",
-  },
-  "panes.mesh.manage.official": {
-    en: "The edge in use is run by LosOS, and LosOS never manages anyone's box.",
-    sk: "Používaný okrajový server prevádzkuje LosOS a LosOS nikdy nespravuje cudzie zariadenia.",
-    de: "Der genutzte Edge wird von LosOS betrieben, und LosOS verwaltet nie die Box von jemandem.",
   },
   "panes.mesh.manage.caption": {
     en: "For a company's own edge. The switch is tied to the edge it was turned on for, so a different edge never inherits it. Turn it off and the edge loses access at once.",
@@ -685,9 +700,9 @@ export default defineMessages({
     de: "Für diese Box nicht verfügbar",
   },
   "panes.network.domains.noOfficialEdge": {
-    en: "Custom domains come from an official LosOS edge, and none is in reach.",
-    sk: "Vlastné domény poskytuje oficiálny okrajový server LosOS a žiadny nie je dostupný.",
-    de: "Eigene Domains kommen von einem offiziellen LosOS-Edge, und keiner ist erreichbar.",
+    en: "Custom domains come from a checked LosOS gateway, and none is in reach.",
+    sk: "Vlastné domény poskytuje overená brána LosOS a žiadna nie je dostupná.",
+    de: "Eigene Domains kommen von einem geprüften LosOS-Gateway, und keines ist erreichbar.",
   },
   "panes.network.domains.notOffered": {
     en: "Turn on \"Reachable from outside your home\" first. If it is on, the edge this box uses does not hand out domain names.",
@@ -1729,9 +1744,9 @@ export default defineMessages({
     de: "Er ist optional und setzt voraus, dass die Box über einen Master-Proxy erreichbar ist, dessen Betreiber ihn eingeschaltet hat. Nichts sonst auf der Box hängt davon ab.",
   },
   "panes.market.unavailable.noOfficialEdge": {
-    en: "The edge proxy this box found is not run by LosOS. Sharing storage through it works; trading needs an official LosOS edge in reach.",
-    sk: "Okrajový proxy server, ktorý toto zariadenie našlo, neprevádzkuje LosOS. Zdieľanie úložiska cez neho funguje; obchodovanie vyžaduje dostupný oficiálny okrajový server LosOS.",
-    de: "Der Edge-Proxy, den diese Box gefunden hat, wird nicht von LosOS betrieben. Speicher darüber zu teilen funktioniert; Handel braucht einen erreichbaren offiziellen LosOS-Edge.",
+    en: "The edge proxy this box found did not pass the gateway checks. Sharing storage through it works; trading needs a checked LosOS gateway in reach.",
+    sk: "Okrajový proxy server, ktorý toto zariadenie našlo, neprešiel overením brány. Zdieľanie úložiska cez neho funguje; obchodovanie vyžaduje dostupnú overenú bránu LosOS.",
+    de: "Der Edge-Proxy, den diese Box gefunden hat, hat die Gateway-Prüfung nicht bestanden. Speicher darüber zu teilen funktioniert; Handel braucht ein erreichbares geprüftes LosOS-Gateway.",
   },
   "panes.market.actionFailed": {
     en: "That did not work. Try again in a moment.",

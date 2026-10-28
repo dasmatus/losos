@@ -451,6 +451,9 @@ images
 
   # Photos' face models (nix/face-models.nix), read by losos-cloud-photos.
   losos-face-models = import ./face-models.nix { inherit pkgs; };
+  # The TPM makers' certificates boxes check gateways against
+  # (nix/gateway/tpm-roots.nix, losos.proxy.gateways.tpmRoots).
+  losos-tpm-roots = import ./gateway/tpm-roots.nix { inherit pkgs; };
   # The same with the probe, a plugin that tries every import, for
   # nix/tests/plugins.nix. Never on a box.
   losos-plugins-probe = lososPlugins {

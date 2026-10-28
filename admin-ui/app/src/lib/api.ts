@@ -687,14 +687,22 @@ export function getStorage(options: RequestOptions = {}): Promise<StorageRespons
 
 export type EdgeSource = "lan" | "configured";
 
+/** What the box's gateway checks concluded about one edge
+ *  (backend/src/edge.rs, "gateways"). */
+export type EdgeGateway =
+  | { state: "trusted"; owner: string; fingerprint: string; image: string }
+  | { state: "refused"; code: string; reason: string }
+  | { state: "disabled"; code: string; reason: string; since: number };
+
 export interface EdgeProxy {
   /** The advertised instance name, or the configured URL's host. */
   name: string;
-  /** Proved on this scan to be an edge LosOS runs (a certificate the LosOS
-   *  root signed, a fresh nonce answered). Only official edges may process
-   *  trading; a company's own edge is found and shares storage with this
-   *  false. */
+  /** Passed every gateway check on this scan: its TPM showed a published
+   *  LosOS image, its owner's signed passport and LosOS's fee addresses.
+   *  Only such an edge may process trading; any edge shares storage. */
   official: boolean;
+  /** The checks' outcome, when the edge showed a passport. */
+  gateway?: EdgeGateway;
   /** Base URL of its registrar API. */
   url: string;
   source: EdgeSource;
@@ -728,9 +736,8 @@ export interface EdgeResponse {
 export interface EdgeManage {
   /** The edge in use that could manage the box, or null. */
   candidate: { name: string; url: string } | null;
-  /** Why none can: no company edge on this network, or the one in use is
-   *  official (official edges never manage boxes). */
-  refused: "noLocalEdge" | "official" | null;
+  /** Why none can: the box uses no edge on this network. */
+  refused: "noLocalEdge" | null;
   /** The registrar URL the owner switched management on for, or null. */
   managedBy: string | null;
   /** That edge is the one in use, so it manages the box now. */

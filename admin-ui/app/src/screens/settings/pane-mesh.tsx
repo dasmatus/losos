@@ -5,10 +5,10 @@ import { Spinner } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { HelpLink } from "@/components/ui/help-link";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Alert02Icon, CheckmarkBadge01Icon } from "@hugeicons/core-free-icons";
+import { Alert02Icon, Cancel01Icon, CheckmarkBadge01Icon } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 import { Rich, useT } from "@/lib/i18n-react";
-import { postEdgeManage, useMe } from "@/lib/api";
+import { postEdgeManage, useMe, type EdgeProxy } from "@/lib/api";
 import { toast } from "@/components/ui/toast";
 import { HourStrip } from "./hour-strip";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue, StackRow, SwitchRow } from "./rows";
@@ -50,16 +50,34 @@ const STOCK_NAME = "mattbox";
  *
  * One row per edge, because a box may have several in reach at once (its
  * own network's and the public one, say): sharing is allowed while ANY of
- * them answers, and trading only through one that proved it is LosOS's.
- * That second fact sits next to each edge's name as a sign with a tooltip:
- * a check for an official edge, a warning for any other, whose tooltip
- * lists what that edge cannot do for this box. The sign is a button so the
- * same words are its accessible name — Base UI shows no tooltip on touch,
- * and a settings row must not hide half its meaning in a hover. */
+ * them answers, and trading only through one that passed the gateway checks
+ * (its TPM showed a published LosOS image, its owner's signed passport and
+ * LosOS's fee addresses). That sits next to each edge's name as a sign with
+ * a tooltip: a check for a trusted gateway, a warning for any other, a stop
+ * sign for one this box caught tampered and stopped using. The sign is a
+ * button so the same words are its accessible name — Base UI shows no
+ * tooltip on touch, and a settings row must not hide half its meaning in a
+ * hover. */
 
-function EdgeSign({ official }: { official: boolean }) {
+type SignKind = "trusted" | "warning" | "disabled";
+
+function signOf(edge: EdgeProxy): SignKind {
+  if (edge.gateway?.state === "disabled") return "disabled";
+  return edge.official ? "trusted" : "warning";
+}
+
+function EdgeSign({ edge }: { edge: EdgeProxy }) {
   const t = useT();
-  const label = t(official ? "panes.mesh.edge.officialTip" : "panes.mesh.edge.companyTip");
+  const kind = signOf(edge);
+  const g = edge.gateway;
+  const label =
+    g?.state === "trusted"
+      ? t("panes.mesh.edge.officialTip", { owner: g.owner, image: g.image })
+      : g?.state === "disabled"
+        ? t("panes.mesh.edge.disabledTip", { reason: g.reason })
+        : g?.state === "refused"
+          ? t("panes.mesh.edge.refusedTip", { reason: g.reason })
+          : t("panes.mesh.edge.companyTip");
   return (
     <Tooltip>
       <TooltipTrigger
@@ -67,16 +85,20 @@ function EdgeSign({ official }: { official: boolean }) {
           <button
             type="button"
             aria-label={label}
-            data-edge-sign={official ? "official" : "warning"}
+            data-edge-sign={kind === "trusted" ? "official" : kind}
             className={cn(
               "inline-flex size-5 shrink-0 items-center justify-center rounded-full align-middle",
               "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
-              official ? "text-ok" : "text-warn",
+              kind === "trusted" ? "text-ok" : kind === "disabled" ? "text-danger" : "text-warn",
             )}
           />
         }
       >
-        <HugeiconsIcon icon={official ? CheckmarkBadge01Icon : Alert02Icon} size={16} strokeWidth={2} />
+        <HugeiconsIcon
+          icon={kind === "trusted" ? CheckmarkBadge01Icon : kind === "disabled" ? Cancel01Icon : Alert02Icon}
+          size={16}
+          strokeWidth={2}
+        />
       </TooltipTrigger>
       <TooltipContent side="top" align="start" className="max-w-[22rem] whitespace-pre-line">
         {label}
@@ -121,19 +143,28 @@ export function EdgeGroup({ view }: { view: EdgeView }) {
                 last={i === edges.length - 1}
                 data-edge="found"
                 data-edge-official={edge.official ? "yes" : "no"}
+                data-edge-gateway={edge.gateway?.state ?? "none"}
               >
                 <RowText
                   title={
                     <span className="inline-flex items-center gap-1.5">
                       <span>{t("panes.mesh.edge.found", { name: edge.name })}</span>
-                      <EdgeSign official={edge.official} />
+                      <EdgeSign edge={edge} />
                     </span>
                   }
-                  detail={edge.url}
+                  detail={
+                    edge.gateway?.state === "trusted"
+                      ? t("panes.mesh.edge.ownedBy", { url: edge.url, owner: edge.gateway.owner })
+                      : edge.url
+                  }
                 />
-                <RowValue className="text-ok">
-                  {t(edge.source === "configured" ? "panes.mesh.edge.viaInternet" : "panes.mesh.edge.viaLan")}
-                </RowValue>
+                {edge.gateway?.state === "disabled" ? (
+                  <RowValue className="text-danger">{t("panes.mesh.edge.disabled")}</RowValue>
+                ) : (
+                  <RowValue className="text-ok">
+                    {t(edge.source === "configured" ? "panes.mesh.edge.viaInternet" : "panes.mesh.edge.viaLan")}
+                  </RowValue>
+                )}
               </Row>
             ))}
           </Group>
@@ -208,9 +239,7 @@ export function ManageGroup({ view, locked }: { view: EdgeView; locked: boolean 
     ? manage.active
       ? t("panes.mesh.manage.active", { name: name ?? manage.managedBy ?? "" })
       : t("panes.mesh.manage.elsewhere", { url: manage.managedBy ?? "" })
-    : manage.refused === "official"
-      ? t("panes.mesh.manage.official")
-      : manage.refused === "noLocalEdge"
+    : manage.refused === "noLocalEdge"
         ? t("panes.mesh.manage.noLocalEdge")
         : t("panes.mesh.manage.offDetail");
   const flip = async (next: boolean): Promise<void> => {
