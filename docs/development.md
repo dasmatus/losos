@@ -91,7 +91,7 @@ the appliance cannot afford to lose to a drifting default: garbage
 collection, the boot-menu cap, the unlock mode, the `#install` fragment.
 `nix flake check --no-build` runs it, and so does `nix/check-flake.sh`, the
 same evaluation a few attributes per process, which CI's eval job and
-`check-flake` use: one process evaluating every VM test passes 13 GiB, more
+`check-flake` use. One process evaluating every VM test passes 13 GiB, more
 than a GitHub runner has. Either way it fails at no build cost.
 
 ## Pull requests
@@ -209,7 +209,7 @@ this is the reasoning behind it.
   which lososd believes only from loopback and only with
   `LOSOS_IDENTITY=authelia`. lososd is the only writer of
   `/var/lib/losos-identity/users.yml` (`backend/src/people.rs`, argon2id
-  hashes), and Authelia must start only after that file exists: its file
+  hashes), and Authelia must start only after that file exists. Its file
   backend refuses an empty users map, and with no file it writes an example
   account of its own. A request with `Authorization: Bearer` skips Authelia
   in the authz location and lososd checks the token itself, which is what
@@ -219,7 +219,7 @@ this is the reasoning behind it.
   nginx; a route missing there is admin only. `nix/tests/identity.nix` boots it.
   `backend/src/signin.rs` now only holds the LosOS Cloud login helpers that
   device setup (`losos cloud setup`, `losos git setup`) and the pin picker
-  use: keep the password in a Basic header over loopback, never a `curl -u`
+  use. Keep the password in a Basic header over loopback, never a `curl -u`
   (it would be in an argv), and let `signin::validate_candidate` check shape
   only.
 - **Hand-written widgets run in `/widget-frame/`, never in the admin page.**
