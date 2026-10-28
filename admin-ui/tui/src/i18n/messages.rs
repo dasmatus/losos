@@ -703,9 +703,9 @@ messages! {
         de: "Ein Geheimnis auf einer Edge versiegeln, verdeckt getippt oder per Pipe",
     },
     "tui.help.cmd.reconcile" => {
-        en: "Regenerate an edge's Traefik and rathole config now",
-        sk: "Hneď znova vytvoriť konfiguráciu Traefik a rathole na edge",
-        de: "Traefik- und rathole-Konfiguration einer Edge jetzt neu erzeugen",
+        en: "Regenerate an edge's Traefik and tunnel config now",
+        sk: "Hneď znova vytvoriť konfiguráciu Traefik a tunela na edge",
+        de: "Traefik- und Tunnel-Konfiguration einer Edge jetzt neu erzeugen",
     },
     "tui.help.cmd.ciSetup" => {
         en: "Make a key for CI and put it in GitHub Actions with gh",
@@ -944,9 +944,9 @@ messages! {
         de: "Jetzt abgleichen",
     },
     "tui.edge.reconcileDetail" => {
-        en: "Writes the Traefik and rathole config again from the registry, without waiting for the timer.",
-        sk: "Znova zapíše konfiguráciu Traefik a rathole z registra, bez čakania na časovač.",
-        de: "Schreibt die Traefik- und rathole-Konfiguration aus dem Register neu, ohne auf den Timer zu warten.",
+        en: "Writes the Traefik and tunnel config again from the registry, without waiting for the timer.",
+        sk: "Znova zapíše konfiguráciu Traefik a tunela z registra, bez čakania na časovač.",
+        de: "Schreibt die Traefik- und Tunnel-Konfiguration aus dem Register neu, ohne auf den Timer zu warten.",
     },
     "tui.edge.reconcileButton" => {
         en: "Reconcile",
@@ -954,9 +954,9 @@ messages! {
         de: "Abgleichen",
     },
     "tui.edge.reconciled" => {
-        en: "The edge wrote its Traefik and rathole config again.",
-        sk: "Edge znova zapísal konfiguráciu Traefik a rathole.",
-        de: "Die Edge hat ihre Traefik- und rathole-Konfiguration neu geschrieben.",
+        en: "The edge wrote its Traefik and tunnel config again.",
+        sk: "Edge znova zapísal konfiguráciu Traefik a tunela.",
+        de: "Die Edge hat ihre Traefik- und Tunnel-Konfiguration neu geschrieben.",
     },
     "tui.edge.optIns" => {
         en: "Opt-ins",
