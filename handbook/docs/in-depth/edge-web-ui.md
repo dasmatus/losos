@@ -57,6 +57,22 @@ A box says on each heartbeat whether its owner allows it, so a change on the
 box shows here within one heartbeat. A box that stops sending heartbeats drops
 off the list.
 
+## Statistics
+
+The **Statistics** card above the list counts the requests the edge's
+Traefik answered in the last hour, the share that were server errors and
+what was sent, with a bar per minute. **Open** goes to the Statistics page,
+`/manage/statistics`: the same hour in more detail, the answers by class
+(2xx, 3xx, 4xx, 5xx), and one row per box and name the edge routes, with
+its requests, errors, bytes sent and the 95th percentile answer time.
+
+The registrar reads Traefik's Prometheus counters every 15 seconds on a
+loopback port (`losos.edge.traefikMetricsPort`, 8091), which nothing off the
+machine can reach, and keeps the last 60 minutes in memory. A restart of
+the registrar starts the hour again; the route rows count since Traefik
+started, as the page says under them, and take their answer time from the
+last hour.
+
 ## A box's page
 
 ![A box's page: LosOS Cloud and LosOS Git settings, the installed apps and the app search.](../img/edge-manage-box.png)

@@ -5,16 +5,15 @@
 //!     `/deregister`, `/health` and the rest), a reconciler task that
 //!     *constantly updates* the routes Traefik discovers the boxes from (its
 //!     HTTP provider polls the registrar's loopback provider listener) and
-//!     rathole's server config (`/etc/rathole/server.toml`) from a tenant
-//!     registry. Sole writer of that file; atomic temp+fsync+rename. rathole
-//!     hot-reloads from its own file watcher, so no signal is sent.
+//!     the tunnel's service file (`/etc/losos-tunnel/server.json`) from a
+//!     tenant registry. Sole writer of that file; atomic temp+fsync+rename.
+//!     The tunnel re-reads its file every second, so no signal is sent.
 //!   * `announce` — runs on the appliance. Reads its token, POSTs `/register`
 //!     on start, then `/heartbeat` on a cadence. Stateless.
-//!   * `seed` — runs once on the edge at boot, before `serve`. Writes the
-//!     zero-tenant rathole `[server]` base (via the same
-//!     [`config::desired_config`] `serve`'s reconciler calls) so rathole can
-//!     start before the reconciler's first pass; a no-op if the file already
-//!     exists, since `serve` then owns it.
+//!   * `tunnel-server` and `tunnel-client` — the two ends of the QUIC tunnel
+//!     between an edge and its boxes ([`tunnel`]). The server runs beside
+//!     `serve` on the edge and needs nothing from it but the file; the client
+//!     runs on the box, and on an edge that relays its boxes to a hub.
 //!   * (`serve` also hosts the optional Stripe Connect storage/compute market —
 //!     see [`market`]; its routes answer 503 unless `--market-gate-socket`
 //!     is given. The Stripe key is not held by `serve` at all: see
@@ -79,22 +78,23 @@ pub mod registry;
 pub mod relay;
 pub mod routes;
 pub mod secondary;
-pub mod seed;
 pub mod server;
 pub mod slots;
 pub mod solana;
 pub mod solana_escrow;
 pub mod stablecoin;
+pub mod stats;
 pub mod stripe_gate;
 pub mod stripe_mode;
 pub mod sync;
+pub mod tunnel;
 pub mod vms;
 pub mod window;
 pub mod zcash;
 pub mod zone;
 pub use config::{
-    desired_config, provider_document, uplink_config, EdgeOpts, Files, Routes, TenantView,
-    UplinkService, UplinkTarget,
+    desired_config, provider_document, uplink_config, Files, Routes, TenantView, UplinkService,
+    UplinkTarget,
 };
 pub use error::{ApiError, RegistryError};
 pub use registry::{Registry, Relayed, RelayedView, Snapshot, SnapshotTenant, Tenant};

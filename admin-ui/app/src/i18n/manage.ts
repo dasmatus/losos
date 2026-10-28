@@ -141,11 +141,6 @@ export default defineMessages({
   "manage.uplink.registrar": { en: "Registrar URL", sk: "URL registrátora", de: "Registrar-URL" },
   "manage.uplink.endpoint": { en: "Tunnel endpoint", sk: "Koncový bod tunela", de: "Tunnel-Endpunkt" },
   "manage.uplink.token": { en: "Token", sk: "Token", de: "Token" },
-  "manage.uplink.bootstrap": {
-    en: "Bootstrap token (optional)",
-    sk: "Úvodný token (nepovinný)",
-    de: "Bootstrap-Token (optional)",
-  },
   "manage.uplink.saved": { en: "Hub saved", sk: "Hub uložený", de: "Hub gespeichert" },
   "manage.uplink.savedDetail": {
     en: "The boxes here are relayed within a minute.",
@@ -295,6 +290,13 @@ export default defineMessages({
 
   // ── One box ───────────────────────────────────────────────────────────
   "manage.box.back": { en: "All boxes", sk: "Všetky zariadenia", de: "Alle Boxen" },
+
+  // ── Statistics ────────────────────────────────────────────────────────
+  "manage.statistics.summary": {
+    en: "Requests this edge's Traefik answered, for every box and name it routes.",
+    sk: "Požiadavky, na ktoré odpovedal Traefik tohto edge, pre každé zariadenie a názov, ktoré smeruje.",
+    de: "Anfragen, die der Traefik dieser Edge beantwortet hat, für jede Box und jeden Namen, die sie weiterleitet.",
+  },
   "manage.box.summary": {
     en: "LosOS Cloud, LosOS Git and the apps on this box. Everything else stays with its owner.",
     sk: "LosOS Cloud, LosOS Git a aplikácie na tomto zariadení. Všetko ostatné ostáva jeho vlastníkovi.",

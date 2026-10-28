@@ -105,7 +105,7 @@ pub struct SecondaryOpts {
     /// This gateway's registrar URL as its peers and boxes reach it
     /// (`losos.edge.lan.url`).
     pub self_url: String,
-    /// Where this gateway's tunnel listens (`losos.edge.lan.ratholeEndpoint`).
+    /// Where this gateway's tunnel listens (`losos.edge.lan.tunnelEndpoint`).
     pub self_tunnel: String,
     /// How often peers are synced. Well under the heartbeat TTL.
     pub interval: Duration,

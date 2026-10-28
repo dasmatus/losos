@@ -14,8 +14,9 @@ mohli polemizovať.
 
 1. **Internet → edge.** Do internetu je obrátený iba edge. Zariadenie
    otvára tunel smerom von a zvonku nepočúva na ničom.
-2. **Edge → zariadenie.** Noise šifruje tunel od konca po koniec. Zariadenie
-   si pri prvom spojení zapamätá kľúč edge a zmenený kľúč odmietne.
+2. **Edge → zariadenie.** TLS 1.3 šifruje tunel od konca po koniec, cez QUIC
+   alebo, kde je UDP zablokované, cez TCP. Zariadenie si pri prvom spojení
+   zapamätá certifikát edge a zmenený certifikát odmietne.
 3. **LAN → zariadenie.** Zariadenie poskytuje HTTPS s vlastným certifikátom,
    ktorému na každom počítači raz dôverujete. Kým to neurobíte, niekto na tej
    istej Wi-Fi, kto dokáže zachytávať prevádzku, môže zachytiť prvé použitie.

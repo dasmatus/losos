@@ -10,7 +10,7 @@ mdx:
 Optional. Er macht die Box aus dem Internet erreichbar, ohne dass du zu Hause
 einen Port öffnen musst.
 
-![Internet → Traefik (VPS, :443) → rathole-Server ⇐ Tunnel ⇐ rathole-Client (Box) → nginx](/img/diagrams/master-proxy-de.svg)
+![Internet → Traefik (VPS, :443) → Tunnel-Server ⇐ QUIC-Tunnel ⇐ Tunnel-Client (Box) → nginx](/img/diagrams/master-proxy-de.svg)
 
 ## Edge (VPS) {#edge-vps}
 
@@ -26,9 +26,8 @@ VPS und setze `losos.edge.*`:
   [Mesh](/in-depth/mesh.md), einen rke2-Server mit Longhorn. Der Proxy funktioniert
   auch ohne sie.
 
-`losos-registrar` hält die Serverkonfiguration von rathole mit den
-registrierten Appliances im Gleichschritt, und Traefik findet sie über den
-Registrar.
+`losos-registrar` hält die Datei des Tunnel-Servers mit den registrierten
+Appliances im Gleichschritt, und Traefik findet sie über den Registrar.
 
 ## Wie Traefik die Boxen findet {#how-traefik-finds-the-boxes}
 
@@ -66,21 +65,36 @@ Slowakisch oder Deutsch je nach Sprache des Browsers. Der Statuscode bleibt
 ## Appliance {#appliance}
 
 Setze `losos.proxy.enable = true` und die Optionen `losos.proxy.*`
-(`registrarUrl`, `edgeRatholeEndpoint`, `hostname`, `applianceId`,
+(`registrarUrl`, `edgeTunnelEndpoint`, `hostname`, `applianceId`,
 `tokenFile`).
+
+## Der Tunnel {#the-tunnel}
+
+Die Box hält eine QUIC-Verbindung zur Edge, auf UDP-Port 2333
+(`losos.edge.tunnelBindPort`). Jede Verbindung eines Besuchers läuft darin
+als eigener Stream, sodass ein langsamer Download keine anderen Anfragen
+aufhält, eine neue Anfrage keinen neuen Handshake braucht und die Verbindung
+einen Adresswechsel der Box übersteht. Die Box wählt sich nur nach außen
+ein, sie funktioniert also hinter NAT und Carrier-Grade-NAT ohne
+Portweiterleitung. Ein Keepalive alle 10 Sekunden hält den NAT-Eintrag offen.
+
+Verwirft ein Netz UDP, gibt die Box QUIC fünf Sekunden und wählt dann
+denselben Port über TCP: TLS 1.3 mit demselben Zertifikat, darin
+HTTP/2-Streams. Alle fünf Minuten versucht sie QUIC erneut und wechselt
+zurück, sobald es durchkommt. Die Firewall der Edge öffnet den Port für
+beides.
 
 ## Tunnel-Verschlüsselung {#tunnel-encryption}
 
-rathole nutzt seinen Noise-Transport. Die Edge erzeugt beim ersten Booten ein
-Schlüsselpaar. Jede Appliance holt sich beim ersten Start den öffentlichen
-Schlüssel vom Registrar und legt ihn unter `losos.proxy.noisePublicKeyFile`
-ab. Willst du den Schlüssel auf einem separaten Weg festlegen, leg die
-Datei vorher dort ab; die Appliance überschreibt sie nie.
-
-:::warning[Lass den Tunnel verschlüsselt]
-Wird eine der beiden Schlüsseloptionen auf `null` gesetzt, fällt die
-Verbindung auf reines TCP zurück. Tu das nicht.
-:::
+Der Tunnel ist auf beiden Transporten TLS 1.3. Die Edge erzeugt beim ersten
+Start ein selbstsigniertes Zertifikat und behält es in
+`/var/lib/losos-tunnel`. Jede Appliance holt sich vor ihrer ersten
+Verbindung den SHA-256 des Zertifikats vom Registrar (`GET /tunnel-pin`) und
+legt ihn unter `losos.proxy.tunnelPinFile` ab; ab dann akzeptiert der Tunnel
+dieses Zertifikat und kein anderes. Willst du es auf einem separaten Weg
+festlegen, leg die Datei vorher dort ab; die Appliance überschreibt sie nie.
+Jeden Dienst, den die Box anbietet, beansprucht sie mit ihrem Token, das in
+konstanter Zeit verglichen wird.
 
 ## Die Admin-Oberfläche bleibt im LAN {#admin-ui-stays-lan-only}
 
@@ -392,7 +406,7 @@ Token-Prüfung, als Vercel Function unter `https://losos-edge.dasmat.us`, dem
 Standardwert von `losos.proxy.registrarUrl`. Die Registry liegt in einer Neon
 Postgres, und eine Statusseite unter `/` zeigt die registrierten Boxen und
 die Traefik-Konfiguration, die die Edge für sie schreiben würde. Es ist nur
-die Control Plane. Der rathole-Tunnel, das TLS von Traefik, das Mesh und der
+die Control Plane. Der Tunnel, das TLS von Traefik, das Mesh und der
 Marktplatz können nicht auf einem Serverless-Host laufen, daher braucht der
 Datenpfad, also das Erreichen einer Box über ihren öffentlichen Hostnamen,
 weiterhin den VPS. Die Seite listet außerdem IDs und Hostnamen für jeden auf,
