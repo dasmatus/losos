@@ -5,11 +5,12 @@
  *   npm run lab:core    admin-ui/lab/core      -> src/lab/core-pkg/
  *   npm run lab:virt    admin-ui/lab/virt-rpc  -> src/lab/virt-pkg/
  *   npm run lab:render  admin-ui/lab/render    -> src/lab/render-pkg/{webgpu,webgl2}/
+ *   npm run mdx         backend/mdx            -> src/mdx/pkg/ (LosOS Office, Notes)
  *
  * Needs cargo with the wasm32-unknown-unknown target and wasm-bindgen-cli at
  * exactly the version the crates pin (0.2.127): on PATH, or named by
  * $WASM_BINDGEN. The folders it writes are gitignored; `npm run typecheck`
- * and `npm run build` need all three to exist, so run these first.
+ * and `npm run build` need all four to exist, so run these first.
  *
  * The canvas (render) is built twice, once per backend, because Bevy picks
  * its WebGPU or WebGL2 code paths at compile time. Each build needs about
@@ -27,6 +28,7 @@ import { fileURLToPath } from 'node:url';
 const CRATES = {
   core: { dir: '../lab/core', wasm: 'losos_lab_core', out: 'src/lab/core-pkg' },
   virt: { dir: '../lab/virt-rpc', wasm: 'losos_lab_virt', out: 'src/lab/virt-pkg' },
+  mdx: { dir: '../../backend/mdx', wasm: 'losos_mdx', out: 'src/mdx/pkg', features: 'wasm' },
   render: { dir: '../lab/render', wasm: 'losos_lab_render', out: 'src/lab/render-pkg', backends: ['webgpu', 'webgl2'] },
 };
 const which = process.argv[2] ?? 'core';
@@ -57,7 +59,7 @@ function run(cmd, args, cwd, { optional = false } = {}) {
 const bindgen = process.env.WASM_BINDGEN || 'wasm-bindgen';
 
 if (!spec.backends) {
-  run('cargo', ['build', '--release', '--target', 'wasm32-unknown-unknown'], crate);
+  run('cargo', ['build', '--release', '--target', 'wasm32-unknown-unknown', ...(spec.features ? ['--features', spec.features] : [])], crate);
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
   run(bindgen, ['--target', 'web', '--out-dir', out, wasm], app);
