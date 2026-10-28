@@ -211,9 +211,14 @@ pkgs.testers.nixosTest {
         # the build. See admin-ui/app/vite.config.ts.
         assert "/theme-boot.js" in body, f"the pre-paint theme script is not linked: {body!r}"
         # The fallback itself: a path that exists only as a client-side route
-        # must return the SAME document, not a 404 and not a different page.
+        # must return the SAME document, not a 404 and not a different page,
+        # but for its <noscript> refresh, which nginx points at the same page
+        # under /basic/ (sub_filter in modules/containers.nix).
         deep = noadmin.succeed("curl -s http://appliance/settings/network")
-        assert deep == body, "the SPA fallback did not serve index.html for a deep link"
+        assert 'url=/basic/"' in body, f"LAN / has no refresh to /basic/: {body!r}"
+        assert deep == body.replace('url=/basic/"', 'url=/basic/settings/network"', 1), (
+            "the SPA fallback did not serve index.html for a deep link"
+        )
 
     with subtest("LAN source, same box: 403, the hostNetwork gap closed"):
         # A hostNetwork pod has no address of its own, so it can source-bind the
