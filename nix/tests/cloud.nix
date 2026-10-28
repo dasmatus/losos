@@ -79,6 +79,10 @@ pkgs.testers.nixosTest {
         backend.plugins = lososPkgs.losos-plugins;
         admin.ui = lososPkgs.losos-admin-ui;
         cloud.enable = true;
+        # Faces are nix/tests/cloud-photos.nix's; here the pass reads only
+        # the camera's details, which takes seconds, so Photos is not still
+        # reading (a turning spinner) when the pictures are taken.
+        cloud.photos.faces = false;
         git.enable = false;
         configRepo.enable = false;
         mdns.enable = true;
@@ -356,6 +360,8 @@ pkgs.testers.nixosTest {
             assert status == "204", (path, status)
         dav("notshared", owner_app, "PROPPATCH", "Documents/budget.ods",
             "-H 'Content-Type: application/xml' --data '<d:propertyupdate xmlns:d=\"DAV:\" xmlns:oc=\"http://owncloud.org/ns\"><d:set><d:prop><oc:favorite>1</oc:favorite></d:prop></d:set></d:propertyupdate>'")
+        # The pass the timer would start; a oneshot, so this waits for it.
+        box.succeed("systemctl start losos-cloud-photos.service")
         # A sign-in the desktop client has started, for the connect page.
         init = json.loads(curl(f"-f -X POST -A 'Mozilla/5.0 (Linux) mirall/3.16.0 (Nextcloud)' {BASE}/index.php/login/v2"))
         laptop.succeed(
