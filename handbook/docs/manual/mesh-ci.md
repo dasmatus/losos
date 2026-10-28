@@ -47,7 +47,49 @@ except when:
   box would see the code;
 - the box has no edge in reach.
 
-Then it runs on this box.
+Then it runs on this box. A job whose `runs-on` names `losos-desktop` goes
+to a company computer instead: see [Company computers](#company-computers).
+
+## Company computers
+
+A LosOS Desktop computer joined to this box (see
+[LosOS Desktop computers](../types/company-edge.md#losos-desktop-computers))
+takes the jobs whose `runs-on` names `losos-desktop` and the computer's name.
+Such a job waits on this box until that computer asks for it, every few
+seconds while it is on the office network, and never goes to the mesh.
+
+A company computer runs no shell and no other actions. Its steps are only
+these, each with the `with:` shown:
+
+| Step | `with:` | What the computer does |
+|---|---|---|
+| `losos/desktop-status` | | Says its version, update channel and company accounts |
+| `losos/desktop-update` | | Updates itself now |
+| `losos/desktop-reboot` | | Restarts a minute after the job ends |
+| `losos/desktop-channel` | `channel` | Follows another update channel |
+| `losos/desktop-lock` | `user` | Locks a company account |
+| `losos/desktop-unlock` | `user` | Unlocks a company account |
+
+Anything else (`run:`, another action, a container, `env:`) fails the job
+before it reaches the computer, and the computer checks the list again
+before it does anything. `${{ }}` expressions in `with:` are worked out on
+this box. A matrix reaches several computers:
+
+```yaml
+on: workflow_dispatch
+jobs:
+  update:
+    strategy:
+      matrix:
+        computer: [reception, laptop-7]
+    runs-on: [losos-desktop, '${{ matrix.computer }}']
+    steps:
+      - uses: losos/desktop-update
+      - uses: losos/desktop-reboot
+```
+
+A job its computer has not asked for in a day, or whose computer stops
+reporting for two minutes, ends as an error.
 
 ## Lending this box's runner
 

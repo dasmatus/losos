@@ -34,6 +34,10 @@ impl Daemon {
     }
 
     fn start() -> Daemon {
+        Daemon::start_with(None)
+    }
+
+    fn start_with(ci_socket: Option<&std::path::Path>) -> Daemon {
         let dir = TempDir::new().unwrap();
         std::fs::write(
             dir.path().join("users.yml"),
@@ -52,8 +56,12 @@ impl Daemon {
             .unwrap()
             .port();
         std::fs::create_dir_all(dir.path().join("state")).unwrap();
+        let ci_socket = ci_socket
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| dir.path().join("no-ci.sock"));
         let child = Command::new(env!("CARGO_BIN_EXE_lososd"))
             .env("LOSOS_NO_DBUS", "1")
+            .env("LOSOS_CI_SOCKET", &ci_socket)
             .env("LOSOS_STATE_DIR", dir.path().join("state"))
             .env("LOSOS_OVERRIDES", dir.path().join("overrides.nix"))
             .env("LOSOS_ADMIN_TOKEN_FILE", dir.path().join("token"))
@@ -223,4 +231,101 @@ fn only_an_administrator_joins_a_computer() {
     assert_eq!(status, 403, "{body}");
     let (status, body) = join(&d, Who::Person("ada"), "no/slashes");
     assert_eq!(status, 400, "{body}");
+}
+
+/// A stand-in for `losos-ci`'s page socket: answers a claim with one job
+/// and keeps each request's head.
+fn fake_ci(socket: &std::path::Path) -> std::sync::Arc<std::sync::Mutex<Vec<String>>> {
+    use std::io::{BufRead, BufReader};
+    let listener = std::os::unix::net::UnixListener::bind(socket).unwrap();
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let kept = seen.clone();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let mut stream = stream.unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let (mut head, mut length) = (String::new(), 0);
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                if let Some(v) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                    length = v.trim().parse().unwrap();
+                }
+                head.push_str(&line);
+                if line == "\r\n" {
+                    break;
+                }
+            }
+            let mut body = vec![0; length];
+            reader.read_exact(&mut body).unwrap();
+            kept.lock().unwrap().push(head.clone());
+            let answer = if head.starts_with("POST /ci/desktop/claim ") {
+                json!({ "id": "7", "name": "Fleet / update", "timeoutSecs": 60,
+                        "payload": { "desktop": "laptop-7", "steps": [] } })
+            } else {
+                json!({ "stop": false })
+            }
+            .to_string();
+            let _ = write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{answer}",
+                answer.len()
+            );
+        }
+    });
+    seen
+}
+
+#[test]
+fn a_joined_computer_asks_for_its_own_mesh_ci_jobs_and_nobody_else_does() {
+    let sockets = TempDir::new().unwrap();
+    let socket = sockets.path().join("api.sock");
+    let seen = fake_ci(&socket);
+    let d = Daemon::start_with(Some(&socket));
+    let (_, joined) = join(&d, Who::Person("ada"), "laptop-7");
+    let token = joined["token"].as_str().unwrap().to_string();
+
+    let (status, work) = d.call(
+        "POST",
+        "/api/directory/jobs/claim",
+        Who::Bearer(&token),
+        r#"{"wait": 999}"#,
+    );
+    assert_eq!(status, 200, "{work}");
+    assert_eq!(work["id"], "7");
+    let (status, answer) = d.call(
+        "POST",
+        "/api/directory/jobs/report",
+        Who::Bearer(&token),
+        r#"{"id": "7", "log": "ok\n", "state": "success"}"#,
+    );
+    assert_eq!(status, 200, "{answer}");
+    assert_eq!(answer["stop"], false);
+
+    let heads = seen.lock().unwrap().clone();
+    assert_eq!(heads.len(), 2);
+    for head in &heads {
+        // The computer is the one its token names, and no person.
+        assert!(head.contains("X-Losos-Desktop: laptop-7\r\n"), "{head}");
+        assert!(
+            !head.to_ascii_lowercase().contains("x-losos-person"),
+            "{head}"
+        );
+    }
+
+    // A person, administrator or not, and the spare key are no computer.
+    for who in [Who::Person("ada"), Who::Bearer(&d.spare_key())] {
+        let (status, body) = d.call("POST", "/api/directory/jobs/claim", who, "{}");
+        assert_eq!(status, 403, "{body}");
+    }
+    assert_eq!(seen.lock().unwrap().len(), 2);
+}
+
+#[test]
+fn without_mesh_ci_a_computer_has_no_work() {
+    let d = Daemon::start();
+    let (_, joined) = join(&d, Who::Person("ada"), "laptop-7");
+    let token = joined["token"].as_str().unwrap().to_string();
+    let (status, _) = d.call("POST", "/api/directory/jobs/claim", Who::Bearer(&token), "");
+    assert_eq!(status, 204);
 }

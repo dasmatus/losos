@@ -12,7 +12,9 @@
 //! which nginx passes on without asking LosOS Login. The token is nobody: it
 //! reaches the one `GET` and reads names, display names, e-mail addresses,
 //! groups and whether each account is disabled, never a password hash or a
-//! second factor. Only its SHA-256 is kept, in `directory.json` beside
+//! second factor. Besides that it asks for the computer's own Mesh CI jobs
+//! (`runs-on: [losos-desktop, <computer>]`), which `losos-ci` keeps for it
+//! and lososd relays. Only its SHA-256 is kept, in `directory.json` beside
 //! `state.json`, so an erase takes it with the rest.
 
 use std::path::{Path, PathBuf};
@@ -30,12 +32,19 @@ const SECRET_HEX: usize = 40;
 /// not rewrite the file on every read.
 const TOUCH_SECS: i64 = 300;
 
-/// The one route a directory token reaches.
+/// The route a directory token reads the people list at.
 pub const PEOPLE_ROUTE: &str = "/api/directory/people";
+/// Mesh CI's jobs for the computer (`runs-on: [losos-desktop, <computer>]`,
+/// `crate::ci::workflow::desktop_job`): asking for one, and reporting on it.
+pub const JOBS_CLAIM_ROUTE: &str = "/api/directory/jobs/claim";
+pub const JOBS_REPORT_ROUTE: &str = "/api/directory/jobs/report";
 
-/// May a directory token make this call? Only the one `GET`.
+/// May a directory token make this call? The people list, and its own
+/// Mesh CI jobs.
 pub fn route_allowed(method: &str, path: &str) -> bool {
-    method.eq_ignore_ascii_case("GET") && path == PEOPLE_ROUTE
+    (method.eq_ignore_ascii_case("GET") && path == PEOPLE_ROUTE)
+        || (method.eq_ignore_ascii_case("POST")
+            && (path == JOBS_CLAIM_ROUTE || path == JOBS_REPORT_ROUTE))
 }
 
 /// One joined computer as stored.
@@ -341,6 +350,10 @@ mod tests {
         assert!(!route_allowed("POST", PEOPLE_ROUTE));
         assert!(!route_allowed("GET", "/api/people"));
         assert!(!route_allowed("GET", "/api/directory/people/x"));
+        assert!(route_allowed("POST", JOBS_CLAIM_ROUTE));
+        assert!(route_allowed("POST", JOBS_REPORT_ROUTE));
+        assert!(!route_allowed("GET", JOBS_CLAIM_ROUTE));
+        assert!(!route_allowed("POST", "/api/ci/runs/1/cancel"));
     }
 
     #[test]

@@ -211,6 +211,8 @@
     "POST /api/devices/directory": "admin",
     "DELETE /api/devices/directory/{id}": "admin",
     "GET /api/directory/people": "admin",
+    "POST /api/directory/jobs/claim": "admin",
+    "POST /api/directory/jobs/report": "admin",
     "POST /api/devices/{kind}": "admin",
     "GET /api/cloud/text": "admin",
     "GET /api/git/text": "admin",

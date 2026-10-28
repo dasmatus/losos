@@ -1935,6 +1935,18 @@
         "out": "{\"people\":[{\"name\",\"displayName\",\"email\",\"groups\",\"disabled\"}]}",
         "note": "The people list a joined LosOS Desktop computer reads on a timer, to lock the accounts this box removed or disabled. The caller is the computer's `Authorization: Bearer losos_dir_...` token, which reaches this route and nothing else and is nobody everywhere else (403), or an administrator. No password hash or second factor leaves the box. 409 when LosOS Login does not run here. HTTP-only."
       },
+      "POST /api/directory/jobs/claim": {
+        "auth": true,
+        "in": "nothing (the body is ignored)",
+        "out": "{\"id\",\"name\",\"payload\":{\"desktop\",\"steps\":[{\"uses\",\"with\",\"name\"}],\"timeoutMinutes\"},\"timeoutSecs\"} or 204",
+        "note": "A joined LosOS Desktop computer asks for its next Mesh CI job (`runs-on: [losos-desktop, <computer>]`, backend/src/ci/workflow.rs `desktop_job`): waits up to 15 s (inside a client's 20 s read timeout), relayed to losos-ci as the computer its `losos_dir_` token names. The steps are fixed actions (`losos/desktop-*`) with their `with:` filled in on the box. 204 when there is nothing, or no Mesh CI on this box. Only a directory token; 403 for anyone else. HTTP-only."
+      },
+      "POST /api/directory/jobs/report": {
+        "auth": true,
+        "in": "{\"id\": \"<job id>\", \"log\": \"...\", \"state\"?: \"success|failure|cancelled|error\", \"exitCode\"?, \"outputs\"?}",
+        "out": "{\"stop\": bool}",
+        "note": "The computer's log and result for a job it took; `stop` says the run was cancelled. A computer reports only on its own running jobs (403 otherwise). Only a directory token. HTTP-only."
+      },
       "GET /api/apps/search": {
         "auth": true,
         "in": "query string: q=<search term>, 2-128 characters, no control characters",

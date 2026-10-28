@@ -3797,6 +3797,74 @@ async fn get_directory_people(api: web::Data<Api>, req: HttpRequest) -> HttpResp
     })
 }
 
+/// Where `losos-ci` answers lososd (`backend/src/ci/api.rs`'s page socket).
+fn ci_socket() -> std::path::PathBuf {
+    std::env::var_os("LOSOS_CI_SOCKET")
+        .map(Into::into)
+        .unwrap_or_else(|| "/run/losos-ci/api.sock".into())
+}
+
+/// `POST /api/directory/jobs/claim` and `/report`: a joined computer's
+/// Mesh CI jobs (`runs-on: [losos-desktop, <computer>]`), relayed to
+/// `losos-ci` as that computer. Only the computer's own token: the
+/// computer's name comes from the token lososd checked, never from the
+/// request. A claim waits up to 15 s for work, off lososd's workers.
+async fn post_directory_jobs(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    let (route, target) = if req.path() == crate::directory::JOBS_CLAIM_ROUTE {
+        (crate::directory::JOBS_CLAIM_ROUTE, "/ci/desktop/claim")
+    } else {
+        (crate::directory::JOBS_REPORT_ROUTE, "/ci/desktop/report")
+    };
+    let computer = match gate_at(&api, &req, route, None, false) {
+        Ok(Principal::Directory(computer)) => computer.device,
+        Ok(_) => {
+            return err(
+                StatusCode::FORBIDDEN,
+                "only a joined computer asks for its own jobs",
+            )
+        }
+        Err(refused) => return *refused,
+    };
+    let body = if target == "/ci/desktop/claim" {
+        serde_json::json!({ "wait": 15 }).to_string().into_bytes()
+    } else {
+        body.to_vec()
+    };
+    let answer = web::block(move || {
+        crate::ci::net::unix_http_with(
+            &ci_socket(),
+            "POST",
+            target,
+            &[
+                ("Content-Type", "application/json"),
+                ("X-Losos-Desktop", &computer),
+            ],
+            &body,
+            1024 * 1024,
+            std::time::Duration::from_secs(40),
+        )
+    })
+    .await;
+    match answer {
+        Ok(Ok((204, _))) => HttpResponse::NoContent().finish(),
+        Ok(Ok((code, body))) => {
+            HttpResponse::build(StatusCode::from_u16(code).unwrap_or(StatusCode::BAD_GATEWAY))
+                .content_type("application/json")
+                .body(body)
+        }
+        // No socket: this box runs no Mesh CI, so there is never work.
+        Ok(Err(e)) => {
+            tracing::debug!("losos-ci did not answer: {e:#}");
+            HttpResponse::NoContent().finish()
+        }
+        Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
+    }
+}
+
 /// `POST /api/devices/cloud` and `POST /api/devices/git`: a credential of
 /// one computer's own for LosOS Cloud or LosOS Git (`crate::devices`).
 ///
@@ -6543,6 +6611,14 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                     web::delete().to(delete_device_directory),
                 )
                 .route("/api/directory/people", web::get().to(get_directory_people))
+                .route(
+                    crate::directory::JOBS_CLAIM_ROUTE,
+                    web::post().to(post_directory_jobs),
+                )
+                .route(
+                    crate::directory::JOBS_REPORT_ROUTE,
+                    web::post().to(post_directory_jobs),
+                )
                 .route("/api/devices/{kind}", web::post().to(post_device))
                 .route("/api/apps/search", web::get().to(get_apps_search))
                 .route("/api/cloud/text", web::get().to(get_cloud_text))
