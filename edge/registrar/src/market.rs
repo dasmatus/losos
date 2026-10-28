@@ -5507,7 +5507,6 @@ mod tests {
             max_upload_bytes: 1 << 30,
             fetch_base: "https://register.example".to_string(),
             domain: Some("vm.example".to_string()),
-            routes_file: None,
         }
     }
 

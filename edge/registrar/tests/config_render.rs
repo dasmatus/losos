@@ -28,11 +28,12 @@ fn tenant(id: &str, hostname: &str, port: u16, token: &str) -> TenantView {
 }
 
 #[test]
-fn zero_tenants_yield_no_traefik_file_and_an_empty_rathole_services_table() {
+fn zero_tenants_yield_no_routes_and_an_empty_rathole_services_table() {
     let files = desired_config(&[], &opts());
-    // Traefik's file provider rejects an empty dynamic config, so the
-    // zero-tenant state is "no losos.yml", not "an empty losos.yml".
-    assert!(files.traefik_yaml.is_none());
+    // Traefik refuses an empty `http` section and keeps the routes it had,
+    // so no tenants is no routes at all, served as the document `{}`.
+    assert!(files.traefik.is_empty());
+    assert_eq!(losos_registrar::provider_document([&files.traefik]), "{}");
     // rathole, by contrast, requires the `services` key to be present.
     assert_eq!(
         files.rathole_toml,
@@ -46,14 +47,12 @@ fn one_tenant_renders_a_router_a_service_and_a_tunnel() {
         &[tenant("mattbox", "mattbox.losos.cfd", 50000, "TOK")],
         &opts(),
     );
-    let yaml = files
-        .traefik_yaml
-        .expect("one tenant yields a traefik config");
+    let yaml = files.traefik.document().expect("one tenant yields routes");
 
     // Assert on the parsed document rather than substrings: this is the shape
     // Traefik actually reads, and it is checked without leaning on the
     // crate's own structs agreeing with themselves.
-    let doc: serde_yaml::Value = serde_yaml::from_str(&yaml).expect("losos.yml is valid YAML");
+    let doc: serde_yaml::Value = serde_yaml::from_str(&yaml).expect("the document is valid YAML");
     let router = &doc["http"]["routers"]["mattbox"];
     assert_eq!(router["rule"].as_str(), Some("Host(`mattbox.losos.cfd`)"));
     assert_eq!(router["service"].as_str(), Some("mattbox"));
@@ -295,7 +294,7 @@ fn a_lending_box_gets_a_second_tunnel_service_on_its_llm_port() {
     unique.dedup();
     assert_eq!(tables.len(), unique.len(), "{toml}");
     // The model port never becomes a web route.
-    let yaml = files.traefik_yaml.unwrap();
+    let yaml = files.traefik.document().unwrap();
     assert!(!yaml.contains("23001"), "{yaml}");
     assert!(!yaml.contains("box-a:llm"), "{yaml}");
 }

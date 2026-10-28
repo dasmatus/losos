@@ -74,11 +74,16 @@ LAN](/in-depth/master-proxy.md#edge-on-the-same-lan).
 Kým nič neodpovedá, zariadenie odmietne zapnúť zdieľanie závislé od siete.
 Prepnutie do režimu mesh a akékoľvek použitie nastavení (apply), ktoré
 zapína `losos.sharingMyStorage` alebo `losos.cluster.enable`, dostane
-odpoveď 409 s dôvodom a prepínače sú sivé s tou istou vetou. Nastavenia,
-ktoré sú už zapnuté, zostanú nedotknuté, takže zariadenie, ktorému edge zmizol, si
-ponechá svoju konfiguráciu a stále môže zmeniť čokoľvek iné. Vypnúť
-zdieľanie sa dá vždy. Vaše vlastné súbory a aplikácie od edge nikdy
-nezávisia.
+odpoveď 409 s dôvodom a prepínače sú sivé s tou istou vetou. Vypnúť
+zdieľanie sa dá vždy a počas výpadku môže zariadenie zmeniť čokoľvek iné.
+Vaše vlastné súbory a aplikácie od edge nikdy nezávisia.
+
+Zariadenie, ktoré zdieľa úložisko a potom desať minút nenájde žiadny edge,
+samo vypne zdieľanie, rovnako ako by to urobil jeho prepínač, a panel Mesh
+ukáže **Zdieľanie pozastavené**. Keď edge minútu odpovedá, zariadenie
+zdieľanie znova zapne. Vráti iba vlastné pozastavenie: ak medzitým
+zdieľanie zapnete alebo vypnete, platí vaša voľba. `losos.proxy.pauseSharingAfter`
+nastavuje čakanie v sekundách a `0` pozastavenie vypína.
 
 Nájsť edge a zveriť mu peniaze sú dve rôzne otázky. Zdieľanie otvorí
 ktorýkoľvek edge, ktorý odpovedá. Obchodovať na markete sa dá iba cez

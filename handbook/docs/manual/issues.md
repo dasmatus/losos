@@ -152,6 +152,10 @@ description, a comment or a card in LosOS Diagrams offers issues next to
 people and files, and so does the link button over picked words in Office
 and Notes.
 
+![The Overview with two issues pinned in the sidebar and the Issues tile counting three open issues.](../img/issues-pins.png)
+
+![The admin search with "free space" typed, finding issue BT-6 under Issues in LosOS Git.](../img/issues-search.png)
+
 Mail, Chat and Contacts are there when the box shares and is in a mesh.
 Every issue with a due date that is given to you is also in a calendar
 feed, at `https://<box>.local/git/api/v1/tracker/calendar.ics`. A calendar

@@ -14,8 +14,6 @@ use losos_registrar::opts::{parse, Mode};
 const SERVE_DEFAULTS: &[&str] = &[
     "--registry",
     "/var/lib/losos-registrar/registry.json",
-    "--traefik-dir",
-    "/etc/traefik/dynamic",
     "--rathole-config",
     "/etc/rathole/server.toml",
     "--bootstrap-token-file",
