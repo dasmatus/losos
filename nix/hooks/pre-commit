@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# pre-commit: CI's quick gates for the staged files, before the commit exists.
+#
+# The staged paths pick CI's lanes (.github/scripts/ci-changes.sh); a lane
+# that is off runs nothing here either. What runs, and its name for
+# LOSOS_HOOKS_SKIP:
+#
+#   rustfmt               cargo fmt --check, every crate      rust lane
+#   clippy:<crate>        clippy --all-targets -D warnings,   rust lane
+#                         each crate the change reaches
+#   nixfmt deadnix statix the staged .nix files               any .nix staged
+#   pins                  nix/check-pins.sh                   a lock or devenv.yaml
+#   hashes                fix-hashes.py --check               a Cargo.lock or package-lock.json
+#   typecheck:<package>   npm run typecheck                   admin-ui/app, design-system/react
+#   check-flake, eval-*   CI's eval job: every flake output   eval lane
+#                         evaluated, the three systems'
+#                         module merge, the ISO and edge
+#                         image derivations
+#
+# The tests, the wasm32 lint, Playwright and the VM tests are pre-push's.
+# The checks read the working tree, so unstaged edits count; pre-push runs
+# on exactly the commits it sends.
+set -uo pipefail
+# shellcheck source=nix/hooks/lib.sh
+. "$(dirname "$0")/lib.sh"
+cd "$hook_root" || exit 1
+
+staged=$(git diff --cached --name-only --diff-filter=ACMRD)
+[ -n "$staged" ] || exit 0
+
+hook_start pre-commit
+if git diff --quiet; then
+  # The working tree is the index: what passes here is what is committed.
+  hook_tree=$(git write-tree)
+else
+  echo "  note: unstaged edits in the working tree are checked too"
+fi
+hook_lanes <<<"$staged"
+
+if [ "${lane_rust:-false}" = true ]; then
+  run rustfmt hook_fmt_all
+  while IFS= read -r c; do
+    run "clippy:$c" hook_cargo clippy --manifest-path "$c/Cargo.toml" --all-targets -- -D warnings
+  done < <(hook_crates_for <<<"$staged")
+fi
+
+mapfile -t nixfiles < <(git diff --cached --name-only --diff-filter=ACMR -- '*.nix')
+hook_nix_lints "${nixfiles[@]}"
+
+if grep -qxE 'flake.lock|devenv.yaml|devenv.lock' <<<"$staged"; then
+  run pins bash nix/check-pins.sh
+fi
+
+if grep -qE '(^|/)(Cargo.lock|package-lock.json)$' <<<"$staged"; then
+  run hashes python3 .github/scripts/fix-hashes.py --check --base HEAD
+fi
+
+for pkg in admin-ui/app admin-ui/design-system/react; do
+  grep -q "^$pkg/" <<<"$staged" || continue
+  typecheck() {
+    cd "$hook_root/$1" || return 1
+    [ -d node_modules ] || hook_npm ci --no-audit --no-fund || return 1
+    hook_npm run typecheck
+  }
+  run "typecheck:$pkg" typecheck "$pkg"
+done
+
+if [ "${lane_eval:-false}" = true ]; then
+  hook_eval_checks
+fi
+
+hook_finish

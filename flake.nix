@@ -141,8 +141,11 @@
                 pkgs.nodejs
               ];
             inherit (fast) env;
+            # The git hooks (nix/hooks) run CI's gates before a commit
+            # or a push; this shell installs them as devenv's does.
             shellHook = ''
-              echo "Toolchain-only shell. For the scripts and pre-commit hooks:"
+              root=$(git rev-parse --show-toplevel 2>/dev/null) && bash "$root/nix/hooks/install"
+              echo "Toolchain-only shell. For the scripts:"
               echo "  devenv shell      (or: direnv allow)"
             '';
           };
