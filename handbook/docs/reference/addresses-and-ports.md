@@ -42,6 +42,7 @@ arriving through an edge's tunnel, gets **403**.
 | 5355    | LLMNR    | Answering Windows when it asks for the box by its bare name, while the share is on |
 | 8082    | HTTP     | The control API, on the box's loopback only; nginx proxies `/api/` to it |
 | 8480, 8443 | HTTP, HTTPS | What Tor and I2P deliver for the box's own addresses (`losos.hidden.tor.enable`, `losos.hidden.i2p.enable`), on the box's loopback only. See [Tor and I2P](../manual/tor-and-i2p.md) |
+| 8790    | HTTP     | The local copy of the binary caches, on loopback; on the local network only with `losos.cache.local.shareOnLan` |
 
 While the share is on, the mDNS entry for LosOS Cloud is the SMB share
 (`_smb._tcp`), so Finder and Linux file managers list the box once.
@@ -59,5 +60,6 @@ at home.
 | `losos-edge.dasmat.us`      | The LosOS edge's control plane and the "find my box" page |
 | `proxy.losos.dasmat.us`     | The binary cache the box updates from                    |
 | `127.0.0.1:8787`            | Local GHCR-backed Nix cache, on the box and installer |
+| `127.0.0.1:8790`            | The box's local copy of all of these, kept on its disk |
 | `losos.dasmat.us/proxy`     | A copy of that cache, used when the first does not answer |
 | `losos.dasmat.us`           | This handbook on the web                                 |
