@@ -10,7 +10,7 @@
 
 use crate::install_screen::{self, Progress, Row};
 use crate::installer::{
-    execute, plan_install, resolve_drives, BlockDev, Install, LsblkOutput, Options,
+    execute, plan_install, resolve_drives, BlockDev, Install, LsblkOutput, Options, Tang,
 };
 use crate::io_backend::{atomic_write, env_or};
 use anyhow::{bail, Context};
@@ -496,6 +496,42 @@ impl Install for IoInstall {
         )
     }
 
+    /// Seal the keyfile with Clevis to the TPM2 and a Tang server.
+    ///
+    /// The keyfile goes in on stdin and the JWE comes out on stdout into a
+    /// 0600 file, so the key is never an argument. The policy carries each
+    /// server's thumbprint, so Clevis checks the advertisement against it and
+    /// asks nothing; `-y` only covers the TPM2 pin's own question. A server
+    /// that cannot be reached fails the install here, before the long copy.
+    fn bind_tang(&mut self, keyfile: &Path, jwe: &Path, policy: &str) -> anyhow::Result<()> {
+        use std::os::unix::fs::OpenOptionsExt;
+        if let Some(dir) = jwe.parent() {
+            owner_only_dir(dir)?;
+        }
+        let out = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(jwe)
+            .with_context(|| format!("creating {}", jwe.display()))?;
+        let input = std::fs::File::open(keyfile)
+            .with_context(|| format!("opening {}", keyfile.display()))?;
+        self.set_activity(Some("Sealing the disk key to the TPM and a Tang server"));
+        let status = Command::new("clevis")
+            .args(["encrypt", "sss", policy, "-y"])
+            .stdin(input)
+            .stdout(out)
+            .status();
+        self.set_activity(None);
+        let status = status.context("running clevis")?;
+        if !status.success() {
+            let _ = std::fs::remove_file(jwe);
+            bail!("clevis encrypt failed ({status}): is a Tang server reachable at the address given?");
+        }
+        Ok(())
+    }
+
     fn log_info(&mut self, msg: &str) {
         log_line(msg);
     }
@@ -678,8 +714,10 @@ pub fn tpm_present() -> bool {
 }
 
 /// Fill in the environment-overridable defaults around the parsed CLI flags.
+#[allow(clippy::too_many_arguments)]
 pub fn options_from_env(
     tpm: bool,
+    tang: Vec<Tang>,
     bios: Option<bool>,
     drives: Option<Vec<String>>,
     no_install: bool,
@@ -689,6 +727,7 @@ pub fn options_from_env(
 ) -> Options {
     Options {
         tpm,
+        tang,
         bios: bios.unwrap_or_else(booted_in_bios),
         drives,
         no_install,

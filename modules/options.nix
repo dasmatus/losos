@@ -127,6 +127,50 @@ in
       '';
     };
 
+    tpm.tang = lib.mkOption {
+      type = lib.types.listOf (
+        lib.types.submodule {
+          options = {
+            url = lib.mkOption {
+              type = lib.types.strMatching "https?://[^[:space:]\"'$`\\]+";
+              example = "http://tang.lan:7500";
+              description = "The Tang server's address, reachable from the box's own network.";
+            };
+            thumbprint = lib.mkOption {
+              type = lib.types.strMatching "[A-Za-z0-9_-]{20,}";
+              description = ''
+                The thumbprint of the Tang server's signing key (`tang-show-keys`
+                on the server). The installer binds to that key and no other, so
+                a server that answers at the address with another key unlocks
+                nothing.
+              '';
+            };
+          };
+        }
+      );
+      default = [ ];
+      example = [
+        {
+          url = "http://tang.lan:7500";
+          thumbprint = "x3ZDsT7uAzTcJiJ9qZ7f0wJ8Kq0pEJ2O5b5b7l7XyZk";
+        }
+      ];
+      description = ''
+        Unlock /persist only on the box's own network. Empty (the default):
+        the TPM2 alone opens the volume, so a box carried away still boots
+        with its data readable. With one or more Tang servers, the installer
+        seals the disk key to the TPM2 AND any one of these servers (Clevis,
+        `sss` with a threshold of two) instead of the TPM alone, and the
+        initrd asks a server over the network at every boot. A box taken off
+        its network, or whose servers have forgotten it, does not open; at
+        the console it then asks for the box's recovery code, which the box
+        adds as a passphrase once it has one.
+
+        Set by the installer (`losos-install --tang URL#THUMBPRINT`) into
+        install-target.nix, like `tpm.enable`. Needs `tpm.enable`.
+      '';
+    };
+
     bios = lib.mkOption {
       type = lib.types.bool;
       default = false;

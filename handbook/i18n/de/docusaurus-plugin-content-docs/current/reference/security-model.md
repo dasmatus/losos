@@ -81,7 +81,9 @@ beschreibt jeden Schalter und was er kostet.
   jede Software heraus, die auf diesem Rechner gestartet wird, also kann ein
   Dieb mit der Box ihn lesen. Die Verschlüsselung schützt nur eine einzeln
   ausgebaute Festplatte. Auf einer Box ohne TPM ist sogar die Festplatte
-  allein lesbar. [TPM und der Festplattenschlüssel](tpm) erklärt den
+  allein lesbar. Eine mit `--tang` installierte Box öffnet sich nur mit einem
+  Schlüsselserver in ihrem eigenen Netz und fragt anderswo nach dem
+  Wiederherstellungscode. [TPM und der Festplattenschlüssel](tpm) erklärt den
   Unterschied.
 - **Das Audit-Log** rotiert nicht, und root kann es umschreiben.
 - **Die Drosselung gilt pro Adresse**, sodass ein Angreifer im LAN, der

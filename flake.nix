@@ -302,6 +302,9 @@
             ./modules/impermanence.nix
             ./modules/disko.nix
             ./modules/boot.nix
+            # losos.tpm.tang: the disk opens only with the TPM2 and a Tang
+            # server on the box's own network.
+            ./modules/network-unlock.nix
             # LosOS and its release tag in the boot menu, os-release and the
             # console banners.
             ./modules/branding.nix
@@ -465,6 +468,9 @@
       checks.${system} = {
         losos-install = import ./nix/tests/install.nix { inherit pkgs disko; };
         losos-tpm-unlock = import ./nix/tests/tpm.nix { inherit pkgs disko; };
+        # losos.tpm.tang: the TPM2 and a Tang server on the network, the
+        # recovery code at the console without one.
+        losos-network-unlock = import ./nix/tests/network-unlock.nix { inherit pkgs disko; };
         losos-admin-daemon = import ./nix/tests/admin-vm.nix { inherit pkgs; };
         losos-edge-proxy = import ./nix/tests/edge-vm.nix { inherit pkgs; };
         losos-quic = import ./nix/tests/quic.nix { inherit pkgs; };

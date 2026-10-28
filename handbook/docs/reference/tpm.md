@@ -81,9 +81,46 @@ update, and the box has no shell to recover from that.
 :::warning[A thief with the whole box]
 The chip hands the key to anything booted on that machine, including a
 thief's USB stick. A TPM keeps the disk on its own unreadable. It does not
-help once someone has the whole box. The [security model](security-model.md)
-lists this as a known limitation.
+help once someone has the whole box, unless the box also needs a server on
+its own network to open the disk (next section). The
+[security model](security-model.md) lists this as a known limitation.
 :::
+
+## Opening the disk only at home {#opening-the-disk-only-at-home}
+
+A box can be set up so that the chip alone is not enough. Give the installer
+one or more Tang servers on the box's own network:
+
+```sh
+losos-ctl install --tang 'http://192.168.1.1:7500#THUMBPRINT'
+```
+
+Tang is a small key server. OpenWrt has a `tang` package, and NixOS has
+`services.tang`. Run `tang-show-keys 7500` on the server for the thumbprint.
+The installer checks the server against it, so it trusts nothing on first
+contact.
+
+The installer then seals the disk key with Clevis to the TPM and the Tang
+server together, instead of to the TPM alone. At every boot the box takes an
+address on the wired network, asks the server, and opens the disk only with
+both answers. The server never sees the key. It learns only that the box
+started.
+
+What that changes:
+
+- A box carried away from its network does not open, and neither does a box
+  whose server is gone. A thief with the whole box gets a passphrase prompt.
+- The box asks the server for about half a minute, then the screen asks for
+  a passphrase. Type the box's recovery code, which Settings, Backup shows.
+  The box adds the code as a passphrase as soon as it has one, and swaps it
+  when the code changes.
+- The server has to answer whenever the box starts, including the nightly
+  restart at 00:07. If it is off then, the box waits at the prompt until
+  someone types the code.
+- The disk alone is still unreadable, as on any TPM box.
+
+Like the TPM itself, the setting is in `modules/install-target.nix`
+(`tpm.tang`), so the way to turn it on or off is a reinstall.
 
 ## How to tell which mode a box is in
 

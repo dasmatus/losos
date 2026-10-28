@@ -13,7 +13,7 @@
 use clap::{Args, Parser, Subcommand};
 use losos_ctl::facade::{call_backend, BackendFailure};
 use losos_ctl::install_screen;
-use losos_ctl::installer::resolve_tpm;
+use losos_ctl::installer::{parse_tang, resolve_tpm, Tang};
 use losos_ctl::installer_io::{
     booted_in_bios, load_gpg_keys, options_from_env, run_install, secure_boot_state, tpm_present,
     Splash,
@@ -150,6 +150,11 @@ struct InstallArgs {
     /// TPM2 chip, even where one exists.
     #[arg(long)]
     no_tpm: bool,
+    /// Open the disk only with the TPM2 AND this Tang server on the box's
+    /// network (Clevis). URL#THUMBPRINT, the thumbprint from tang-show-keys
+    /// on the server. Repeat for more servers; any one of them will do.
+    #[arg(long = "tang", value_name = "URL#THUMBPRINT", value_parser = parse_tang, conflicts_with = "no_tpm")]
+    tang: Vec<Tang>,
     /// Install for legacy BIOS (GRUB). Default: whatever firmware booted this
     /// medium.
     #[arg(long, conflicts_with = "uefi")]
@@ -399,6 +404,7 @@ fn main() -> ExitCode {
         };
         let opts = options_from_env(
             tpm,
+            args.tang.clone(),
             bios,
             args.drives.clone().map(|d| d.0),
             args.no_install,

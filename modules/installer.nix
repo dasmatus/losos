@@ -35,7 +35,8 @@ let
   # The tools losos-ctl install shells out to at runtime: disko + git for the
   # full path, util-linux for lsblk (drive detection), coreutils for cp/chmod
   # (laying the flake), systemd for systemd-cryptenroll (sealing the disk key
-  # to the TPM2 right after the format). nixos-install comes from the installer
+  # to the TPM2 right after the format), clevis for `--tang` (the same key
+  # sealed to the TPM2 and a Tang server). nixos-install comes from the installer
   # medium's own PATH (--prefix preserves the rest of PATH). cryptsetup/lvm2
   # mirror the old wrap in case disko reaches for them directly.
   tools = lib.makeBinPath [
@@ -45,6 +46,7 @@ let
     pkgs.coreutils
     pkgs.cryptsetup
     pkgs.lvm2
+    pkgs.clevis
     config.systemd.package
   ];
 

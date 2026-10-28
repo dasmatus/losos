@@ -29,6 +29,7 @@ nix build .#nixosConfigurations.iso.config.system.build.isoImage
 nix build .#checks.x86_64-linux.losos-admin-daemon  # lososd: D-Bus, HTTP, token
 nix build .#checks.x86_64-linux.losos-install       # installer, keyfile, BIOS
 nix build .#checks.x86_64-linux.losos-tpm-unlock    # installer, swtpm unlock
+nix build .#checks.x86_64-linux.losos-network-unlock # --tang: TPM2 + Tang, recovery code
 nix build .#checks.x86_64-linux.losos-identity      # LosOS Login (Authelia), sections
 npm run dev | typecheck | test:browser              # in admin-ui/app
 cargo test --manifest-path admin-ui/tui/Cargo.toml  # losos, the terminal client
@@ -68,7 +69,10 @@ and is never served or built by nix.
 - `impermanence.nix` + `disko.nix` + `boot.nix`: tmpfs root, LUKS ext4
   `/persist` formatted unattended from `/etc/keys/persist-keyfile`. Unlock is
   TPM2 with no PCR binding by default; without a TPM the keyfile rides in the
-  initrd on the ESP. The installer writes `modules/install-target.nix` (the
+  initrd on the ESP. With `losos.tpm.tang` (`--tang URL#THP`) the key is a
+  Clevis JWE sealed to the TPM2 AND a Tang server instead
+  (`network-unlock.nix`, initrd DHCP), and the recovery code is added as the
+  console passphrase. The installer writes `modules/install-target.nix` (the
   box's drives, firmware mode, unlock mode) onto the box; it is not in the
   tree, and `flake.nix` imports the live copy from `/etc/nixos` on rebuilds.
 - `configuration.nix`: `notshared` (uid 1000, the owner's apps and LosOS Cloud name) and `shared`

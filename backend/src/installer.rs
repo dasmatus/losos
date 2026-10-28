@@ -37,6 +37,12 @@
 //!     keyfile path bakes it into the initrd. Enrolling before the long
 //!     install means a chip that cannot seal fails the run in seconds, not
 //!     after twenty minutes of copying.
+//!   * With `--tang`, the TPM2 is one of two Clevis pins instead
+//!     (modules/network-unlock.nix): the keyfile is sealed to the chip AND a
+//!     Tang server into `persist.jwe`, no systemd TPM2 token is enrolled, and
+//!     the JWE is staged into `/mnt/etc/keys` like the keyfile path's key,
+//!     because the initrd carries it. It is ciphertext there, which is the
+//!     difference.
 
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
@@ -129,7 +135,13 @@ pub fn detect_candidates(devs: &[BlockDev]) -> Vec<String> {
 /// Render `modules/install-target.nix`.
 ///
 /// The format is asserted on by the installer VM test, so it is exact.
-pub fn render_target(drives: &[String], tpm: bool, bios: bool, gpg_keys: &[String]) -> String {
+pub fn render_target(
+    drives: &[String],
+    tpm: bool,
+    tang: &[Tang],
+    bios: bool,
+    gpg_keys: &[String],
+) -> String {
     let list = drives
         .iter()
         .map(|d| format!("\"{d}\""))
@@ -156,6 +168,18 @@ pub fn render_target(drives: &[String], tpm: bool, bios: bool, gpg_keys: &[Strin
         "  losos.tpm.enable = {};\n",
         if tpm { "true" } else { "false" }
     ));
+    // Only when there are any, like the keys below. parse_tang has already
+    // refused anything that could end the string.
+    if !tang.is_empty() {
+        s.push_str("  losos.tpm.tang = [\n");
+        for t in tang {
+            s.push_str(&format!(
+                "    {{ url = \"{}\"; thumbprint = \"{}\"; }}\n",
+                t.url, t.thumbprint
+            ));
+        }
+        s.push_str("  ];\n");
+    }
     s.push_str(&format!(
         "  losos.bios = {};\n",
         if bios { "true" } else { "false" }
@@ -192,6 +216,66 @@ pub fn gpg_key_fault(armored: &str) -> Option<&'static str> {
     }
 }
 
+/// A Tang server the disk key is bound to, from `--tang URL#THUMBPRINT`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Tang {
+    pub url: String,
+    /// The thumbprint of the server's signing key (`tang-show-keys`). Clevis
+    /// checks the server's advertisement against it, so nothing is trusted on
+    /// first use.
+    pub thumbprint: String,
+}
+
+/// Parse `URL#THUMBPRINT`. The same shapes `losos.tpm.tang` accepts
+/// (modules/options.nix), checked here so a typo stops the install before any
+/// disk is touched rather than at the rebuild.
+pub fn parse_tang(arg: &str) -> Result<Tang, String> {
+    let (url, thumbprint) = arg
+        .rsplit_once('#')
+        .ok_or_else(|| format!("--tang {arg}: expected URL#THUMBPRINT (tang-show-keys on the server prints the thumbprint)"))?;
+    let rest = url
+        .strip_prefix("http://")
+        .or_else(|| url.strip_prefix("https://"))
+        .ok_or_else(|| format!("--tang {arg}: the address must start with http:// or https://"))?;
+    if rest.is_empty()
+        || url
+            .chars()
+            .any(|c| c.is_whitespace() || matches!(c, '"' | '\'' | '$' | '`' | '\\'))
+    {
+        return Err(format!("--tang {arg}: not a usable address"));
+    }
+    if thumbprint.len() < 20
+        || !thumbprint
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(format!(
+            "--tang {arg}: the thumbprint is the base64url string tang-show-keys prints"
+        ));
+    }
+    Ok(Tang {
+        url: url.to_string(),
+        thumbprint: thumbprint.to_string(),
+    })
+}
+
+/// The Clevis policy: the TPM2 (no PCRs, for the reason [`LUKS_HEADER_DEVICE`]'s
+/// enrolment gives) AND any one of the Tang servers.
+pub fn clevis_policy(tang: &[Tang]) -> String {
+    let servers: Vec<serde_json::Value> = tang
+        .iter()
+        .map(|t| serde_json::json!({ "url": t.url, "thp": t.thumbprint }))
+        .collect();
+    serde_json::json!({
+        "t": 2,
+        "pins": {
+            "tpm2": {},
+            "sss": { "t": 1, "pins": { "tang": servers } },
+        },
+    })
+    .to_string()
+}
+
 // ── Options and the plan ─────────────────────────────────────────────────────
 
 /// Everything the planner needs. The path and URL fields are environment
@@ -199,6 +283,8 @@ pub fn gpg_key_fault(armored: &str) -> Option<&'static str> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Options {
     pub tpm: bool,
+    /// Tang servers the TPM2 shares the key with. Empty: the TPM2 alone.
+    pub tang: Vec<Tang>,
     /// Install for legacy BIOS (GRUB) rather than UEFI (systemd-boot). Resolved
     /// by the CLI layer from the running firmware unless forced.
     pub bios: bool,
@@ -234,6 +320,9 @@ pub enum InstallAction {
     /// Seal a LUKS2 token to the TPM2 on `device`, authenticating with the
     /// keyfile the volume was formatted with. Never prompts.
     EnrollTpm(PathBuf, PathBuf),
+    /// Seal the keyfile (first) with Clevis under the policy (third) into a
+    /// JWE (second): the TPM2 and a Tang server.
+    BindTang(PathBuf, PathBuf, String),
 }
 
 /// What a keyfile install costs, in one line the owner sees on the console. The
@@ -264,8 +353,14 @@ pub fn resolve_tpm(explicit: Option<bool>, present: bool) -> Result<bool, String
 /// file and stop), `--disko-script` (format and mount with a prebuilt script,
 /// used by the VM test), and the real install.
 pub fn plan_install(opts: &Options, devs: &[BlockDev]) -> Result<Vec<InstallAction>, String> {
+    if !opts.tang.is_empty() && !opts.tpm {
+        return Err(
+            "--tang needs the TPM2: the disk key is sealed to the chip AND a Tang server"
+                .to_string(),
+        );
+    }
     let drives = resolve_drives(opts, devs)?;
-    let target = render_target(&drives, opts.tpm, opts.bios, &opts.gpg_keys);
+    let target = render_target(&drives, opts.tpm, &opts.tang, opts.bios, &opts.gpg_keys);
     let mut acts = vec![InstallAction::Log(format!(
         "losos-install: target drives: {}",
         drives.join(" ")
@@ -280,7 +375,12 @@ pub fn plan_install(opts: &Options, devs: &[BlockDev]) -> Result<Vec<InstallActi
         return Ok(acts);
     }
 
-    acts.push(InstallAction::Log(if opts.tpm {
+    acts.push(InstallAction::Log(if !opts.tang.is_empty() {
+        format!(
+            "losos-install: unlock: TPM2 and a Tang server on this network ({}); recovery key kept inside /persist",
+            opts.tang.iter().map(|t| t.url.as_str()).collect::<Vec<_>>().join(", ")
+        )
+    } else if opts.tpm {
         "losos-install: unlock: TPM2 (disk key sealed to the chip; recovery key kept inside /persist)"
             .to_string()
     } else {
@@ -320,11 +420,31 @@ pub fn plan_install(opts: &Options, devs: &[BlockDev]) -> Result<Vec<InstallActi
     Ok(acts)
 }
 
+/// Where the Clevis JWE is staged on the medium: beside the keyfile.
+pub fn staged_jwe(opts: &Options) -> PathBuf {
+    opts.keyfile.with_file_name("persist.jwe")
+}
+
 /// The TPM2 enrolment, on the TPM path only. Runs against the freshly
-/// formatted header, before anything slow.
+/// formatted header, before anything slow. With Tang servers it is the
+/// Clevis binding instead, which asks a server now: one that cannot be
+/// reached, or answers with another key, fails the run here.
 fn enroll(opts: &Options) -> Vec<InstallAction> {
     if !opts.tpm {
         return Vec::new();
+    }
+    if !opts.tang.is_empty() {
+        return vec![
+            InstallAction::Log(
+                "losos-install: sealing the disk key to the TPM2 and a Tang server (clevis)"
+                    .to_string(),
+            ),
+            InstallAction::BindTang(
+                opts.keyfile.clone(),
+                staged_jwe(opts),
+                clevis_policy(&opts.tang),
+            ),
+        ];
     }
     vec![
         InstallAction::Log(
@@ -371,6 +491,20 @@ fn install_tail(opts: &Options, work: &Path) -> Vec<InstallAction> {
         opts.keyfile.clone(),
         PathBuf::from("/mnt/persist/etc/keys/persist-keyfile"),
     ));
+    if !opts.tang.is_empty() {
+        // The JWE, twice for the same two reasons: the chroot copy is what
+        // the bootloader install bakes into the initrd, the /persist copy is
+        // what later rebuilds bake (/etc/keys is persisted).
+        for dst in [
+            "/mnt/etc/keys/persist.jwe",
+            "/mnt/persist/etc/keys/persist.jwe",
+        ] {
+            acts.push(InstallAction::CopyKeyfile(
+                staged_jwe(opts),
+                PathBuf::from(dst),
+            ));
+        }
+    }
 
     acts.push(InstallAction::RunNixosInstall(work.to_path_buf()));
     acts.push(InstallAction::LayFlake(
@@ -422,6 +556,7 @@ pub trait Install {
     fn lay_flake(&mut self, work: &Path, dest: &Path) -> anyhow::Result<()>;
     fn copy_keyfile(&mut self, src: &Path, dst: &Path) -> anyhow::Result<()>;
     fn enroll_tpm(&mut self, device: &Path, keyfile: &Path) -> anyhow::Result<()>;
+    fn bind_tang(&mut self, keyfile: &Path, jwe: &Path, policy: &str) -> anyhow::Result<()>;
     fn log_info(&mut self, msg: &str);
 }
 
@@ -440,6 +575,7 @@ pub fn execute<I: Install>(installer: &mut I, acts: &[InstallAction]) -> anyhow:
             InstallAction::LayFlake(s, d) => installer.lay_flake(s, d)?,
             InstallAction::CopyKeyfile(s, d) => installer.copy_keyfile(s, d)?,
             InstallAction::EnrollTpm(dev, key) => installer.enroll_tpm(dev, key)?,
+            InstallAction::BindTang(key, jwe, policy) => installer.bind_tang(key, jwe, policy)?,
         }
     }
     Ok(())
@@ -452,6 +588,7 @@ mod tests {
     fn opts() -> Options {
         Options {
             tpm: false,
+            tang: Vec::new(),
             bios: false,
             drives: None,
             no_install: false,
@@ -561,13 +698,13 @@ mod tests {
     #[test]
     fn seeded_keys_go_in_as_indented_strings() {
         let key = "-----BEGIN PGP PUBLIC KEY BLOCK-----\n\nmDMEZ\n=abcd\n-----END PGP PUBLIC KEY BLOCK-----\n";
-        let t = render_target(&["/dev/vdb".into()], true, false, &[key.into()]);
+        let t = render_target(&["/dev/vdb".into()], true, &[], false, &[key.into()]);
         assert!(t.contains(
             "  losos.access.gpgKeys = [\n    ''\n      -----BEGIN PGP PUBLIC KEY BLOCK-----\n"
         ));
         assert!(t.contains("      -----END PGP PUBLIC KEY BLOCK-----\n    ''\n  ];\n}\n"));
         // No keys, no line: a stock medium's file is unchanged.
-        assert!(!render_target(&["/dev/vdb".into()], true, false, &[]).contains("gpgKeys"));
+        assert!(!render_target(&["/dev/vdb".into()], true, &[], false, &[]).contains("gpgKeys"));
         assert!(gpg_key_fault(key).is_none());
         assert!(gpg_key_fault("${builtins.exec}").is_some());
         assert!(gpg_key_fault("-----BEGIN PGP PUBLIC KEY BLOCK----- ''").is_some());
@@ -576,17 +713,24 @@ mod tests {
 
     #[test]
     fn render_target_is_exact() {
-        let t = render_target(&["/dev/vdb".into(), "/dev/vdc".into()], false, false, &[]);
+        let t = render_target(
+            &["/dev/vdb".into(), "/dev/vdc".into()],
+            false,
+            &[],
+            false,
+            &[],
+        );
         assert!(t.contains(r#"  losos.targetDrives = [ "/dev/vdb" "/dev/vdc" ];"#));
         assert!(t.contains("  losos.tpm.enable = false;"));
         assert!(t.contains("{ ... }:"));
         assert!(t.ends_with("}\n"));
         assert!(t.contains("  losos.bios = false;"));
-        assert!(render_target(&["/dev/nvme0n1".into()], true, false, &[])
-            .contains("losos.tpm.enable = true;"));
         assert!(
-            render_target(&["/dev/vdb".into()], false, true, &[]).contains("  losos.bios = true;")
+            render_target(&["/dev/nvme0n1".into()], true, &[], false, &[])
+                .contains("losos.tpm.enable = true;")
         );
+        assert!(render_target(&["/dev/vdb".into()], false, &[], true, &[])
+            .contains("  losos.bios = true;"));
     }
 
     #[test]
@@ -670,6 +814,105 @@ mod tests {
         assert!(acts
             .iter()
             .any(|a| matches!(a, InstallAction::BindMount(..))));
+    }
+
+    fn home_tang() -> Tang {
+        parse_tang("http://tang.lan:7500#x3ZDsT7uAzTcJiJ9qZ7f0wJ8Kq0pEJ2O5b5b7l7XyZk").unwrap()
+    }
+
+    #[test]
+    fn tang_mode_binds_with_clevis_instead_of_a_token_and_stages_the_jwe() {
+        let o = Options {
+            tpm: true,
+            tang: vec![home_tang()],
+            ..opts()
+        };
+        let acts = plan_install(&o, &targets()).unwrap();
+        // No systemd TPM2 token: disko.nix leaves tpm2-device= off crypttab
+        // in this mode, and a token nobody reads is one more way in.
+        assert!(!acts
+            .iter()
+            .any(|a| matches!(a, InstallAction::EnrollTpm(..))));
+        let pos = |f: &dyn Fn(&InstallAction) -> bool| acts.iter().position(f).unwrap();
+        let disko = pos(&|a| matches!(a, InstallAction::RunDisko(_)));
+        let bind = pos(&|a| matches!(a, InstallAction::BindTang(..)));
+        let install = pos(&|a| matches!(a, InstallAction::RunNixosInstall(_)));
+        assert!(disko < bind && bind < install, "{acts:?}");
+        let InstallAction::BindTang(key, jwe, policy) = &acts[bind] else {
+            unreachable!()
+        };
+        assert_eq!(key, &PathBuf::from("/etc/keys/persist-keyfile"));
+        assert_eq!(jwe, &PathBuf::from("/etc/keys/persist.jwe"));
+        let policy: serde_json::Value = serde_json::from_str(policy).unwrap();
+        assert_eq!(policy["t"], 2);
+        assert_eq!(policy["pins"]["tpm2"], serde_json::json!({}));
+        assert_eq!(policy["pins"]["sss"]["t"], 1);
+        assert_eq!(
+            policy["pins"]["sss"]["pins"]["tang"][0]["url"],
+            "http://tang.lan:7500"
+        );
+        // The keyfile stays only inside /persist; the JWE goes to both places,
+        // the chroot copy before nixos-install bakes it into the initrd.
+        let copies: Vec<(usize, &PathBuf)> = acts
+            .iter()
+            .enumerate()
+            .filter_map(|(i, a)| match a {
+                InstallAction::CopyKeyfile(_, dst) => Some((i, dst)),
+                _ => None,
+            })
+            .collect();
+        let dsts: Vec<&PathBuf> = copies.iter().map(|(_, d)| *d).collect();
+        assert_eq!(
+            dsts,
+            vec![
+                &PathBuf::from("/mnt/persist/etc/keys/persist-keyfile"),
+                &PathBuf::from("/mnt/etc/keys/persist.jwe"),
+                &PathBuf::from("/mnt/persist/etc/keys/persist.jwe"),
+            ]
+        );
+        assert!(copies.iter().all(|(i, _)| *i < install));
+        // The target file names the server, so rebuilds keep the mode.
+        let target = acts
+            .iter()
+            .find_map(|a| match a {
+                InstallAction::WriteTarget(_, t) => Some(t.clone()),
+                _ => None,
+            })
+            .unwrap();
+        assert!(target.contains(
+            "  losos.tpm.tang = [\n    { url = \"http://tang.lan:7500\"; thumbprint = \"x3ZDsT7uAzTcJiJ9qZ7f0wJ8Kq0pEJ2O5b5b7l7XyZk\"; }\n  ];\n"
+        ));
+    }
+
+    #[test]
+    fn tang_without_the_tpm_is_refused_before_any_disk_is_touched() {
+        let o = Options {
+            tpm: false,
+            tang: vec![home_tang()],
+            ..opts()
+        };
+        assert!(plan_install(&o, &targets()).unwrap_err().contains("TPM2"));
+    }
+
+    #[test]
+    fn a_stock_target_file_says_nothing_about_tang() {
+        assert!(!render_target(&["/dev/vdb".into()], true, &[], false, &[]).contains("tang"));
+    }
+
+    #[test]
+    fn tang_arguments_are_checked_like_the_option() {
+        assert_eq!(home_tang().url, "http://tang.lan:7500");
+        for bad in [
+            "http://tang.lan:7500",
+            "tang.lan#x3ZDsT7uAzTcJiJ9qZ7f0wJ8Kq0pEJ2O5b5b7l7XyZk",
+            "http://#x3ZDsT7uAzTcJiJ9qZ7f0wJ8Kq0pEJ2O5b5b7l7XyZk",
+            "http://tang.lan\"; x = 1;#x3ZDsT7uAzTcJiJ9qZ7f0wJ8Kq0pEJ2O5b5b7l7XyZk",
+            "http://tang.lan/${x}#x3ZDsT7uAzTcJiJ9qZ7f0wJ8Kq0pEJ2O5b5b7l7XyZk",
+            "http://tang.lan#short",
+            "http://tang.lan#x3ZDsT7uAzTcJiJ9qZ7f0wJ8Kq0pEJ2O5b5b7l7Xy\"",
+        ] {
+            assert!(parse_tang(bad).is_err(), "{bad}");
+        }
     }
 
     #[test]
