@@ -1,0 +1,118 @@
+# losos-mdx
+
+MDX and Markdown to sanitized HTML, for LosOS Office (`.paper`, `.slides`)
+and Notes (`.note`, `.md`). The same crate runs in three places: on the box,
+inside lososd's document plugin, which hands the HTML to Pandoc for an
+export; in the browser, as the `losos-mdx-wasm` package
+(`nix build .#losos-mdx-wasm`), for previews and the editor; and in tests.
+A preview and an export therefore come from the same code.
+
+## Nothing in a document runs
+
+The usual MDX tools compile a document to JavaScript and run it, so a
+document can do anything a script can. This crate never compiles or runs
+anything. It parses the document with markdown-rs and writes the HTML
+itself:
+
+- **JSX elements** are one of LosOS's components or a few plain HTML
+  elements (the table below). Anything else is refused.
+- **Props** are strings in quotes, checked against the component's entry:
+  a choice from a list, a number, a date, a link or plain text. A prop
+  written as an expression (`title={x}`), a spread (`{...x}`), or a prop the
+  component does not have is refused.
+- **Expressions** in braces, and `import` and `export` lines, are refused.
+  A brace in text is written `\{`.
+- **Links** may use http, https and mailto, or a path. Any other scheme
+  (`javascript:`, `data:`) is refused and dropped.
+- **The output** goes through an allowlist of tags, attributes, classes
+  and URL schemes (`src/sanitize.rs`), whatever wrote it: render.rs, raw
+  HTML in a `.md` file, or a Notes pass. No script, style, frame or form
+  can get through, nor any form field, event handler or `style` attribute.
+  Classes are limited to the document's own (`mdx-*`, `callout-*`,
+  `language-*` and a few more), so a document cannot borrow the page's
+  layout classes to cover the page.
+- **Size and depth** are bounded: documents over 1 MiB, and nesting deeper
+  than 100 levels, are errors. markdown-rs recurses, and its time grows
+  faster than the document does.
+
+A refusal is a `Problem` with a line and column, not a failure. The page
+still draws the document, with the refused part as plain text, and lists
+what was refused. An export calls `Rendered::strict()`, which fails on any
+problem. `tests/hostile.rs` covers each rule with documents written to
+break it.
+
+## Flavours
+
+| Files | Flavour | `<` and `{` | Raw HTML |
+|---|---|---|---|
+| `.paper`, `.slides`, `.note`, `.mdx` | `Flavour::Mdx` | syntax | no; components instead |
+| `.md`, `.markdown` | `Flavour::Md` | text | through the allowlist |
+
+Both read CommonMark, GFM (tables, task lists, strikethrough, footnotes,
+autolinks), YAML front matter and `$maths$`.
+
+## Components
+
+| Element | Props | HTML |
+|---|---|---|
+| `Callout` | `type` (note, tip, important, warning, caution), `title` | `aside.callout.callout-<type>` |
+| `Details` | `summary`, `open` | `details.mdx-details` |
+| `Columns`, `Column` | | `div.mdx-columns`, `div.mdx-column` |
+| `Tabs`, `Tab` | `label` (required on Tab) | `div.mdx-tabs`, `section.mdx-tab` |
+| `Figure` | `src` (required), `alt`, `caption` | `figure.mdx-figure` |
+| `Embed` | `href` (required), `title` | `a.mdx-embed` |
+| `Slide` | `layout` (title, content, two-columns, picture) | `section.mdx-slide` |
+| `Notes` | | `aside.mdx-speaker-notes` |
+| `PageBreak` | | `div.page-break` |
+| `TableOfContents` | `title` | `nav.mdx-toc`, the headings as nested lists |
+| `Header`, `Footer` | | `header.mdx-page-header`, `footer.mdx-page-footer` |
+| `PageNumber` | | `span.mdx-page-number` |
+| `Table`, `Row`, `Cell` | `caption`; `header`; `colSpan`, `rowSpan`, `align` | `table.mdx-table`, `tr`, `th` or `td` |
+| `Comment` | `text` (required), `author`, `date` | `span.mdx-comment` around the text it is about |
+| `Equation` | `tex` (required), `inline` | `code.language-math` |
+| `Chart` | `src` (required, a `.sheet`), `range`, `type` (bar, line, area, pie), `title` | `figure.mdx-chart` with `data-*` |
+| `Mention` | `login` (required) | `span.mdx-mention` |
+| `Date` | `value` (required, YYYY-MM-DD), `format` (short, long) | `time.mdx-date` |
+
+Plain elements, as themselves: `abbr` (with `title`), `br`, `kbd`, `mark`,
+`s`, `small`, `sub`, `sup`, `u`.
+
+Charts, the table of contents and page numbers are filled in by whoever
+shows the page: the editor draws a chart from its sheet, and an export
+lays the pages out.
+
+## API
+
+```rust
+use losos_mdx::{render, Flavour, Plain};
+
+let rendered = render(source, Flavour::Mdx, &Plain)?;
+rendered.html;          // sanitized HTML
+rendered.properties;    // front matter as JSON
+rendered.headings;      // level, text, id, line
+rendered.links;         // what the document points at
+rendered.problems;      // what was refused, with places
+rendered.strict()?;     // an export: fails on any problem
+```
+
+A `Resolver` decides where links go: `note` (a note by name to its path),
+`file` (a picture's address) and `href` (a path plus `#heading`). The crate
+never decides; Notes, the knowledge-base pages and Office each pass their
+own.
+
+Notes' own syntax (wikilinks, tags, callouts) is a pass between `parse` and
+`Parsed::render_with`:
+
+- The pass expresses it as JSX elements in the reserved `losos:` namespace.
+  `parse` refuses that namespace in what an author wrote, so only a pass
+  can put such an element in the tree.
+- A `Hook` draws the reserved elements, with the `Writer`'s `raw`, `text`,
+  `children` and `resolver`.
+- `Parsed::attributes` adds `id`, `class` and `data-*` to the element
+  written for a node, keyed by the node's start offset.
+
+The allowlist runs over all of it.
+
+In the browser, `render(source, "mdx" | "md", resolver?)` returns the same
+result as JSON, and `tree(source, flavour)` the mdast (positions kept) the
+WYSIWYG editor builds its document from.
