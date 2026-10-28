@@ -76,7 +76,7 @@ let
       ];
       _module.args.self = {
         packages.x86_64-linux = {
-          losos-registrar = lososPkgs.losos-registrar;
+          inherit (lososPkgs) losos-registrar;
           losos-admin-ui = ui;
         };
       };
@@ -95,7 +95,7 @@ let
         };
         manage = {
           enable = true;
-          ui = ui;
+          inherit ui;
         };
       };
       environment.systemPackages = [ pkgs.jq ];
