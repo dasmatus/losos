@@ -274,7 +274,7 @@ let
   # build a set with the probe in it.
   # backend/plugins' vendored crates: lososd's plugins and Mesh CI's pm
   # plugin are built from the one workspace.
-  pluginsCargoHash = "sha256-n4jKabybOqM8qy4bxPSDpAl7NrATbvn1kvHcC9SJh8Q=";
+  pluginsCargoHash = "sha256-Je8oCWy0gsGaePeLq5GuR+omoQsjLWlRonY0pf1T+nQ=";
   lososPlugins =
     {
       pname ? "losos-plugins",
@@ -285,6 +285,7 @@ let
         "mail"
         "ci"
         "statistics"
+        "hidden"
       ],
     }:
     pkgs.rustPlatform.buildRustPackage {
@@ -447,6 +448,9 @@ images
   losos-themes = (import ./../admin-ui/themes { inherit pkgs; }).package;
 
   losos-plugins = lososPlugins { };
+
+  # Photos' face models (nix/face-models.nix), read by losos-cloud-photos.
+  losos-face-models = import ./face-models.nix { inherit pkgs; };
   # The same with the probe, a plugin that tries every import, for
   # nix/tests/plugins.nix. Never on a box.
   losos-plugins-probe = lososPlugins {
@@ -466,7 +470,7 @@ images
     src = lib.cleanSource ./../backend;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-ctl-rs` will print the new hash to paste here.
-    cargoHash = "sha256-TiMcSoQN78bQdI7mOfEtPe3NCX4+D5EfSzP5WIKci+E=";
+    cargoHash = "sha256-u9Uf4VN+ml03YOKxI8rIs4zugWss+IcAf90LapOGfmY=";
     # No system deps: zbus speaks the D-Bus wire protocol natively, so there is
     # no libdbus to link against.
     # doCheck is off, and the tests still run — in CI's lint job and in
