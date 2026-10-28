@@ -43,6 +43,7 @@ der durch den Tunnel einer Edge ankommt, bekommt **403**.
 | 5355    | LLMNR     | Windows antworten, wenn es die Box beim bloßen Namen sucht, solange die Freigabe an ist |
 | 8082    | HTTP      | Die Steuer-API, nur auf dem Loopback der Box; nginx leitet `/api/` dorthin weiter |
 | 8480, 8443 | HTTP, HTTPS | Was Tor und I2P für die eigenen Adressen der Box zustellen (`losos.hidden.tor.enable`, `losos.hidden.i2p.enable`), nur auf dem Loopback der Box. Siehe [Tor und I2P](../manual/tor-and-i2p.md) |
+| 8790    | HTTP      | Die lokale Kopie der Binär-Caches, auf dem Loopback; im lokalen Netz nur mit `losos.cache.local.shareOnLan` |
 
 Solange die Freigabe an ist, ist der mDNS-Eintrag für LosOS Cloud die
 SMB-Freigabe (`_smb._tcp`), sodass Finder und Linux-Dateimanager die Box
@@ -70,5 +71,6 @@ keinen eingehenden Port öffnest.
 | `losos-edge.dasmat.us`      | Die Steuerebene der LosOS-Edge und die Seite „Find my box“ |
 | `proxy.losos.dasmat.us`     | Der Binär-Cache, aus dem sich die Box aktualisiert       |
 | `127.0.0.1:8787`            | Lokaler GHCR-Nix-Cache auf Gerät und Installationsmedium |
+| `127.0.0.1:8790`            | Die lokale Kopie all dieser Caches auf der Platte der Box |
 | `losos.dasmat.us/proxy`     | Eine Kopie dieses Caches, die verwendet wird, wenn der erste nicht antwortet |
 | `losos.dasmat.us`           | Dieses Handbuch im Web                                   |

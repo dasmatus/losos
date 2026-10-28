@@ -24,7 +24,7 @@ Once the box has rebuilt, Tor makes its address within seconds and I2P
 within about a minute. Until then the row says **Being made…**. The
 addresses then appear on the same page, each with a button that copies it.
 
-![Settings, Network: Tor and I2P with both switches on, the box's own .onion and .b32.i2p addresses, and the two its edge made, each with a copy button.](../img/tor-and-i2p.png)
+![Settings, Network: Tor and I2P, the box's own .onion and .b32.i2p addresses, and the two its edge made, each with a copy button.](../img/tor-and-i2p.png)
 
 The box keeps its addresses. Turning a network off and on again brings back
 the same one, and updates and restarts leave them alone.

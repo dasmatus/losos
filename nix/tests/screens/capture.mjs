@@ -56,7 +56,8 @@
 // is there now), `fill` ({label, value}), `select` ({label, value}, an
 // option of a native select), `upload` ({selector, file}),
 // `press` (a key), `type` (text typed at the focus), `hold` (the mouse pressed on a control and left
-// down), `waitText` (exact text), `sleep` (milliseconds), `goto` (a path)
+// down), `waitText` (exact text), `sleep` (milliseconds), `goto` (a path),
+// `scroll` ("end": the page scrolled to its foot)
 // and, for a strip, `freeze` (what comes before it plays at full speed,
 // only what comes after is taken frame by frame). A shot fails the run when a step does or the page throws:
 // a picture of a half-loaded page is worse than none.
@@ -112,6 +113,7 @@ async function step(page, s, { force = false } = {}) {
   else if (s.waitText) await page.getByText(s.waitText, { exact: true }).first().waitFor({ timeout: 60000 });
   else if (s.sleep) await page.waitForTimeout(s.sleep);
   else if (s.goto) await page.goto(base + s.goto, { waitUntil: 'networkidle', timeout: 120000 });
+  else if (s.scroll === 'end') await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   else if (s.hold) {
     // The mouse pressed on it and left down, for what a held control shows.
     await locate(page, s.hold).hover({ force });
