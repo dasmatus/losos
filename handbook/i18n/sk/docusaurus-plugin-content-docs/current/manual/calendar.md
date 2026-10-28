@@ -6,6 +6,8 @@ slug: /manual/calendar
 
 # Kalendár
 
+![Týždeň v LosOS Calendar: vľavo vaše kalendáre a dva odbery, rozvrh hodín a daňový termín z odberov a Review the box, udalosť s videohovorom v LosOS Chat.](@site/docs/img/calendar-week-sk.png)
+
 LosOS Calendar uchováva vaše udalosti a kalendáre, ktoré sledujete. Položka
 **Kalendár** v bočnom paneli ho otvorí na adrese `/calendar`. Vaše kalendáre
 patria len vám. Ostatní ľudia na zariadení, ani správcovia, ich nedokážu
