@@ -195,7 +195,7 @@ pkgs.testers.nixosTest {
             "# Garden day",
             "with **everyone**",
             '<Callout type="tip">',
-            "| Bed | Crop |",
+            "\n| Bed | Crop |",
             '<Figure src="tomato.png"',
             "[^1]",
             "<Footer>",
@@ -203,6 +203,10 @@ pkgs.testers.nixosTest {
         ]:
             assert want in doc, f"{want!r} not in {doc!r}"
         assert doc.startswith("---\n"), doc
+        # The table, picture and callout are the page's, in that order, and
+        # the footnote's text comes after all of them.
+        order = [doc.index(w) for w in ["\n| Bed | Crop |", "<Figure", '<Callout type="tip">', "\n[^1]:"]]
+        assert order == sorted(order), doc
         deck = dav("Untitled presentation.slides")
         assert deck.startswith('<Slide layout="title">\n# Untitled presentation\n'), deck
         assert deck.count("<Slide") == 3, deck

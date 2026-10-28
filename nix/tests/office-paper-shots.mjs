@@ -190,7 +190,10 @@ async function after(s, p, base) {
   await caretAfter(p, "everyone");
   await p.keyboard.press("End");
   await p.keyboard.type(".");
-  await p.keyboard.press("Enter");
+
+  // Each component goes in after the block the cursor is in, so they are
+  // put in from the end of that paragraph, last first, and the footnote's
+  // text stays at the end of the document on its own.
 
   // A callout, its kind picked in the fields under the bar.
   await insert(p, "callout");
@@ -198,9 +201,17 @@ async function after(s, p, base) {
   await p.keyboard.type("Gloves, water and the seed list.");
   await p.getByTestId("paper-fields").locator("select[data-field=type], [data-field=type] select").selectOption("tip");
 
+  // A picture from the computer, uploaded beside the document.
+  await caretAfter(p, "everyone");
+  await p.keyboard.press("End");
+  const [chooser] = await Promise.all([p.waitForEvent("filechooser"), insert(p, "picture")]);
+  await chooser.setFiles(PICTURE);
+  await pm(p).locator("figure img").waitFor();
+  await p.getByTestId("paper-fields").locator("[data-field=caption]").fill("This year's first tomatoes");
+
   // A table, filled with Tab, its spare column deleted with the table tools.
-  await caretAfter(p, "the seed list.");
-  await p.keyboard.press("ArrowDown");
+  await caretAfter(p, "everyone");
+  await p.keyboard.press("End");
   await insert(p, "table");
   await typing(p);
   for (const cell of ["Bed", "Crop", "", "1", "Tomatoes", "", "2", "Beans"]) {
@@ -210,14 +221,6 @@ async function after(s, p, base) {
   await caretAfter(p, "Crop");
   await p.keyboard.press("Tab");
   await p.getByTestId("paper-table-tools").getByRole("button", { name: "Delete column" }).click();
-
-  // A picture from the computer, uploaded beside the document.
-  await caretAfter(p, "Beans");
-  await p.keyboard.press("Control+End");
-  const [chooser] = await Promise.all([p.waitForEvent("filechooser"), insert(p, "picture")]);
-  await chooser.setFiles(PICTURE);
-  await pm(p).locator("figure img").waitFor();
-  await p.getByTestId("paper-fields").locator("[data-field=caption]").fill("This year's first tomatoes");
 
   // A footer with the page number, and the page set up for Letter.
   await insert(p, "footer");
@@ -249,8 +252,12 @@ async function after(s, p, base) {
   // A component's fields, under the bar.
   await caretAfter(p, "the seed list");
   await p.getByTestId("paper-fields").waitFor();
+  // The callout sits under the picture: bring it up beside its fields.
+  await pm(p).locator("aside.callout").evaluate((el) => el.scrollIntoView({ block: "center" }));
+  await p.waitForTimeout(300);
   await s.take(p, "fields", "the callout's fields under the bar", { kind: "none" }, {
     fields: p.getByTestId("paper-fields"),
+    callout: pm(p).locator("aside.callout"),
   });
 
   // A presentation: slides in the strip, each a 16:9 card on the desk.
