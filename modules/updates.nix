@@ -1,34 +1,8 @@
-# Auto-upgrade + scheduled reboot.
-#
-# Two independent mechanisms:
-#   1. system.autoUpgrade rebuilds+activates a new generation from the flake
-#      URI, rebooting only when the kernel/initrd/bootloader actually changed.
-#   2. A midnight timer that reboots unconditionally — the requested daily
-#      "restart at midnight". It runs at 00:07 (off the round minute).
-{ pkgs, config, ... }:
+# Scheduled OS updates live in modules/sysupdate.nix. Keep the persistent
+# store collector and the unconditional nightly reboot here.
+{ pkgs, ... }:
 
 {
-  system.autoUpgrade = {
-    enable = true;
-    # Must carry a fragment. `nixos-rebuild --flake <uri>` with no `#attr`
-    # resolves nixosConfigurations.$(hostname), and this flake exports only
-    # `iso` and `install` — so an unfragmented URI makes every nightly run die
-    # with "flake does not provide attribute". losos.upgradeFlakeUri defaults
-    # to git+file:///etc/nixos#install.
-    flake = config.losos.upgradeFlakeUri;
-    # Impure on purpose: flake.nix reads modules/install-target.nix and
-    # modules/overrides.nix from /etc/nixos when it can, so a remote
-    # upgradeFlakeUri keeps this box's drives, firmware mode, unlock mode and
-    # settings instead of evaluating the published defaults. Under the local
-    # default URI the files are in-tree anyway and the flag changes nothing.
-    # lososd passes the same flag (backend/src/supervisor.rs);
-    # nix/tests/invariants.nix pins this one.
-    flags = [ "--impure" ];
-    dates = "03:00"; # build/upgrade well away from the midnight reboot
-    allowReboot = true; # reboot if the upgrade changed kernel/initrd
-    randomizedDelaySec = "30m"; # spread load, avoid hammering the flake ref
-  };
-
   # Garbage collection, because the box upgrades itself and nothing else
   # ever deletes a generation. /nix *is* /persist here (impermanence binds
   # /persist/nix over /nix), and with linuxPackages_latest every nightly

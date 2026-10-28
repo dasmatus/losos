@@ -36,6 +36,8 @@
     "GET /api/state": "signed-in",
     "GET /api/settings": "signed-in",
     "GET /api/status": "signed-in",
+    "GET /api/updates": "signed-in",
+    "POST /api/updates/check": "admin",
     "GET /api/edge": "signed-in",
     "POST /api/edge/manage": "admin",
     "GET /api/look": "signed-in",
@@ -71,6 +73,11 @@
     "DELETE /api/mail/folders/{id}": "signed-in",
     "GET /api/mail/filters": "signed-in",
     "PUT /api/mail/filters": "signed-in",
+    "GET /api/mail/messages/{id}/raw": "signed-in",
+    "GET /api/mail/keys": "signed-in",
+    "PUT /api/mail/keys": "signed-in",
+    "DELETE /api/mail/keys": "signed-in",
+    "GET /api/mail/keys/find": "signed-in",
 
     "GET /api/ci": "signed-in",
     "PUT /api/ci/runner": "admin",
@@ -94,6 +101,7 @@
     "POST /api/backup/run": "backup",
 
     "GET /api/apps": "apps",
+    "GET /api/statistics": "apps",
     "GET /api/apps/search": "apps",
     "GET /api/apps/chart": "apps",
     "POST /api/apps/install": "apps",

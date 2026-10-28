@@ -54,22 +54,18 @@ only through an official edge.
 ### What pooling still needs (B3, B4)
 
 The box side has the Longhorn prerequisites (iSCSI initiator, NFS client,
-`dm_crypt`), the edge side has the rke2 server and the Longhorn chart hook
-(`losos.edge.cluster.longhornChart`), and the gate decides *whether* a box
-may join. Three pieces are not wired, and a two-box pool cannot be shown
-before they are:
+`dm_crypt`), and `modules/options.nix` pins the Longhorn chart that the edge
+deploys through rke2. Two pieces remain before a two-box pool can be shown
+end to end:
 
-1. **No Longhorn chart is pinned.** `losos.edge.cluster.longhornChart`
-   defaults to `null` and nothing in the tree sets it, so no edge deploys
-   Longhorn today; the mesh cluster has nodes and no storage class.
-2. **The join does not follow discovery.** `losos-mesh-join` enrols at the
+1. **The join does not follow discovery.** `losos-mesh-join` enrols at the
    build-time `losos.proxy.registrarUrl` and `losos.cluster.serverAddr`
    (the public edge), not at the edge the box just found on the LAN; a LAN
    site sets both in its own flake for now. The enrolment credential a box
    needs for that route is being added by open LAN enrolment (PR #81, the
    edge gateway).
-3. **The box opens no Longhorn ports.** Joining needs none (the agent dials
+2. **The box opens no Longhorn ports.** Joining needs none (the agent dials
    out), replicas need several; `modules/cluster.nix` opens none yet.
 
-Each of the three is a follow-up on top of PR #75 and PR #81; the checklist
-above does not change when they land, only the "Covered by" column does.
+These remaining gaps are why B3 and B4 are still manual; the pinned chart
+does not, by itself, prove that a two-box volume replicates across the LAN.

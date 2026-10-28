@@ -476,6 +476,10 @@ pub struct ShapeCtx {
     pub reserved: Vec<u16>,
     /// Ports other apps already listen on, with the app's name.
     pub taken: Vec<(u16, String)>,
+    /// The LAN port the app is reached on (`frontPort` in its record), which
+    /// Traefik on the box holds. None for the box's own apps, which nginx
+    /// serves on a path of the front door instead.
+    pub front_port: Option<u16>,
 }
 
 impl ShapeCtx {
@@ -1325,6 +1329,7 @@ mod tests {
             run_as: RunAs::Notshared,
             reserved: vec![8080, 8082, 3000],
             taken: vec![],
+            front_port: None,
         }
     }
 
