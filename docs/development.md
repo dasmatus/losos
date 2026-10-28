@@ -121,7 +121,8 @@ say so when they did not run.
   lock files that differ from `origin/main` (`--all` for every one, `--check`
   to only report). On a pull request from a branch of this repository,
   Dependabot's included, `dependency-hashes.yml` runs it and pushes the
-  result to the branch.
+  result to the branch; on a push to `main` that still carries a stale
+  hash, it opens a pull request with the fix.
 
 ## Handbook
 

@@ -86,6 +86,14 @@ push starts CI on the branch like any other; without it the job starts
 before it opens its pull request. Run it by hand from the Actions tab with a
 branch name, and tick `all` to check every lock file.
 
+A pull request can still bring a stale hash to `main`: it was merged while
+its run waited for a runner, or the lock file changed in the merge. So the
+same workflow also runs on every push to `main` that touches a lock file,
+checks the lock files changed in the last five merges, and when one is stale
+opens a pull request from a `bot/dependency-hashes-<sha>` branch with the fix
+and closes any older one it made. It never pushes to `main`, which takes
+signed commits only.
+
 `stale-branches.yml` deletes stale branches every Sunday:
 any branch whose last commit is older than 30 days (the `STALE_BRANCH_DAYS`
 repository variable overrides it), except the default branch, `gh-pages`,
