@@ -69,6 +69,33 @@ Eine Box, die um 03:00 kein Internet hat, baut die Version neu, die sie hat,
 und versucht es in der nächsten Nacht erneut.
 :::
 
+## Downloads bleiben auf der Box \{#downloads-stay-on-the-box}
+
+Jeder Download eines Neuaufbaus geht über eine lokale Kopie auf der Box, die
+auf der verschlüsselten Platte unter `/var/cache/losos-nix-cache` liegt. Die
+Aufräumrunde um 04:30 löscht die Werkzeuge, die der letzte Neuaufbau geholt
+hat, und der nächste findet sie in der Kopie, statt sie erneut
+herunterzuladen. Die Kopie übersteht auch den Neustart um 00:07, sodass eine
+Box ohne Internet um 03:00 aus dem neu bauen kann, was sie schon einmal
+geholt hat.
+
+Nichts in der Kopie gilt als vertrauenswürdig, nur weil es dort liegt. Jede
+Software darin trägt die Signatur des Caches, aus dem sie stammt, und die Box
+prüft diese Signatur bei jeder Installation.
+
+| Option                          | Standard | Was                                                   |
+| ------------------------------- | -------- | ----------------------------------------------------- |
+| `losos.cache.local.enable`      | an       | Die Kopie behalten                                    |
+| `losos.cache.local.maxSize`     | `8g`     | Höchstens so viel Platz; zuerst geht, was am längsten ungenutzt ist |
+| `losos.cache.local.minFree`     | `4g`     | Freier Platz, den sie immer für deine Dateien lässt   |
+| `losos.cache.local.shareOnLan`  | aus      | Andere Boxen in deinem Netz dürfen sie nutzen         |
+| `losos.cache.local.peers`       | keine    | Kopien anderer Boxen, die zuerst gefragt werden       |
+
+Mit mehreren Boxen zu Hause schaltest du `shareOnLan` auf einer ein und
+trägst sie auf den anderen unter `peers` ein, als `http://<name>.local:8790`.
+Dann laden sie jedes Update gemeinsam nur einmal aus dem Internet. Nur
+Adressen aus deinem eigenen Netz kommen herein.
+
 ## Wenn die Box aus ist \{#when-the-box-is-off}
 
 Nichts passiert, und nichts geht verloren. Schalte sie ein, und sie startet,

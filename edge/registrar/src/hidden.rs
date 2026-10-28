@@ -6,7 +6,8 @@
 //! (`modules/hidden-lib.nix`) turns that into an onion service and an I2P
 //! server tunnel per box, reloads the daemons and writes the addresses they
 //! made to `addresses.json`. The registrar reads that back to route each
-//! address to its box ([`crate::config::hidden_routes_yaml`]) and to hand a
+//! address to its box ([`crate::config::hidden_routes`], served to Traefik
+//! with the other routes) and to hand a
 //! box its own addresses on its heartbeat.
 //!
 //! Every service points at the same two loopback ports, Traefik's
@@ -204,7 +205,7 @@ mod tests {
 
     #[test]
     fn routes_listen_on_the_hidden_entry_points_only() {
-        let yaml = crate::config::hidden_routes_yaml(&[
+        let routes = crate::config::hidden_routes(&[
             crate::config::HiddenRoute {
                 id: "box-a".into(),
                 rathole_port: 50001,
@@ -215,11 +216,11 @@ mod tests {
                 rathole_port: 50002,
                 hosts: vec![],
             },
-        ])
-        .unwrap();
-        let v: serde_json::Value = serde_yaml::from_str(&yaml).unwrap();
+        ]);
+        let doc = routes.document().unwrap();
+        let v: serde_json::Value = serde_json::from_str(&doc).unwrap();
         let routers = v["http"]["routers"].as_object().unwrap();
-        assert_eq!(routers.len(), 2, "{yaml}");
+        assert_eq!(routers.len(), 2, "{doc}");
         let plain = &routers["box-a-hidden"];
         assert_eq!(plain["entryPoints"], serde_json::json!([PLAIN_ENTRY_POINT]));
         assert_eq!(plain["rule"], format!("Host(`{B32}`) || Host(`{ONION}`)"));
@@ -232,7 +233,7 @@ mod tests {
             v["http"]["services"]["box-a-hidden"]["loadBalancer"]["servers"][0]["url"],
             "http://127.0.0.1:50001"
         );
-        assert!(crate::config::hidden_routes_yaml(&[]).is_none());
+        assert!(crate::config::hidden_routes(&[]).is_empty());
     }
 
     #[test]
