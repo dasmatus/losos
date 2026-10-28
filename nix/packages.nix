@@ -274,7 +274,7 @@ let
   # build a set with the probe in it.
   # backend/plugins' vendored crates: lososd's plugins and Mesh CI's pm
   # plugin are built from the one workspace.
-  pluginsCargoHash = "sha256-Je8oCWy0gsGaePeLq5GuR+omoQsjLWlRonY0pf1T+nQ=";
+  pluginsCargoHash = "sha256-QjOlI0fBfoVpVz2sFyLzyLTfEgN4IVJHnwHNsgmZrnA=";
   lososPlugins =
     {
       pname ? "losos-plugins",
@@ -286,6 +286,7 @@ let
         "ci"
         "statistics"
         "hidden"
+        "basic"
       ],
     }:
     pkgs.rustPlatform.buildRustPackage {

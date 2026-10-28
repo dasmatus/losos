@@ -470,6 +470,7 @@
         losos-quic = import ./nix/tests/quic.nix { inherit pkgs; };
         losos-edge-lan = import ./nix/tests/edge-lan.nix { inherit pkgs; };
         losos-edge-manage = import ./nix/tests/edge-manage.nix { inherit pkgs; };
+        losos-edge-statistics = import ./nix/tests/edge-statistics.nix { inherit pkgs; };
         losos-edge-federation = import ./nix/tests/edge-federation.nix { inherit pkgs; };
         # Primary, secondary and tertiary links: two official edges, two
         # gateways in one secondary cluster, a box; failover, bans, the hold.
@@ -529,6 +530,9 @@
         # The phone's bottom bar and its sheet on a real box, with the pull
         # request's pictures (nix/tests/bottom-nav.nix).
         losos-bottom-nav = import ./nix/tests/bottom-nav.nix { inherit pkgs; };
+        # The admin pages with JavaScript off, from sign-in to a rebuild, with
+        # the pull request's pictures (nix/tests/no-js.nix).
+        losos-no-js = import ./nix/tests/no-js.nix { inherit pkgs; };
         # The Mesh page while the box has paused sharing for want of an edge,
         # with the pull request's pictures (nix/tests/sharing-pause.nix).
         losos-sharing-pause = import ./nix/tests/sharing-pause.nix { inherit pkgs; };

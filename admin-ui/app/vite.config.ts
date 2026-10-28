@@ -132,6 +132,52 @@ function appFrame(): Plugin {
   };
 }
 
+/* The pages for a browser with JavaScript off (/basic/, the `basic` plugin
+ * in backend/plugins/basic/) are drawn by lososd in Rust, in this bundle's
+ * stylesheet, and say what the script pages say. So the catalogue in
+ * src/i18n/ is written out once per language as plain JSON,
+ * basic/messages.<locale>.json, a key to its text or its plural forms, and
+ * the plugin reads the copy in this package. nginx sends /basic/ to lososd,
+ * so the files are never served. */
+const BASIC_MESSAGES_ENTRY = "src/i18n/index.ts";
+
+function basicMessages(): Plugin {
+  let config: ResolvedConfig;
+  return {
+    name: "losos:basic-messages",
+    configResolved(resolved) {
+      config = resolved;
+    },
+    async buildStart() {
+      if (config.command !== "build") return;
+      const result = await esbuild({
+        absWorkingDir: config.root,
+        entryPoints: [BASIC_MESSAGES_ENTRY],
+        bundle: true,
+        format: "esm",
+        platform: "neutral",
+        target: "es2022",
+        write: false,
+        legalComments: "none",
+      });
+      const code = result.outputFiles[0]?.text ?? "";
+      const url = `data:text/javascript;base64,${Buffer.from(code).toString("base64")}`;
+      const { MESSAGES } = (await import(url)) as {
+        MESSAGES: Record<string, Record<"en" | "sk" | "de", unknown>>;
+      };
+      for (const locale of ["en", "sk", "de"] as const) {
+        const out: Record<string, unknown> = {};
+        for (const [key, entry] of Object.entries(MESSAGES)) out[key] = entry[locale];
+        this.emitFile({
+          type: "asset",
+          fileName: `basic/messages.${locale}.json`,
+          source: JSON.stringify(out),
+        });
+      }
+    },
+  };
+}
+
 /* LosOS Lab's splash can carry a two-panel meme: LOSOS_LAB_MEME names a
  * folder with no.jpg and yes.jpg, which are copied beside dist/diagrams/index.html
  * as meme-no.jpg and meme-yes.jpg, and __LAB_MEME__ tells the page they are
@@ -233,7 +279,7 @@ function labMeme(): Plugin {
 const root = fileURLToPath(new URL(".", import.meta.url));
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), themeBoot(), appFrame(), labMeme(), segmenterFiles(), nudityFiles(), segmenterQuiet()],
+  plugins: [react(), tailwindcss(), themeBoot(), appFrame(), basicMessages(), labMeme(), segmenterFiles(), nudityFiles(), segmenterQuiet()],
   // Served from the vhost root by nginx.
   base: "/",
   resolve: {
