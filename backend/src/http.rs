@@ -32,7 +32,6 @@ use actix_web::http::StatusCode;
 use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer};
 use anyhow::Context;
 use std::path::Path;
-use std::process::Command;
 use std::time::Instant;
 
 /// Default loopback port; overridden by `$LOSOS_ADMIN_PORT`.
@@ -3044,60 +3043,6 @@ async fn get_settings(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
 
 async fn get_status(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     guarded(&api, &req, "/api/status", false, || run(&api, cmd_status))
-}
-
-async fn get_updates(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
-    guarded(&api, &req, "/api/updates", false, || {
-        let result = Command::new("systemd-sysupdate")
-            .args(["--no-pager", "--definitions=/etc/sysupdate.d", "list"])
-            .output();
-        match result {
-            Ok(output) if output.status.success() => HttpResponse::Ok().json(serde_json::json!({
-                "output": String::from_utf8_lossy(&output.stdout).trim()
-            })),
-            Ok(output) => err(
-                StatusCode::SERVICE_UNAVAILABLE,
-                &format!(
-                    "systemd-sysupdate list failed: {}",
-                    String::from_utf8_lossy(&output.stderr).trim()
-                ),
-            ),
-            Err(error) => err(
-                StatusCode::SERVICE_UNAVAILABLE,
-                &format!("could not run systemd-sysupdate: {error}"),
-            ),
-        }
-    })
-}
-
-/// Explicitly start the supervised system update service. It stages updates on
-/// /persist and may restart lososd while nixos-rebuild activates the result.
-async fn post_updates_check(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
-    guarded(
-        &api,
-        &req,
-        "/api/updates/check",
-        true,
-        || match Command::new("systemctl")
-            .args(["start", "--no-block", "losos-sysupdate.service"])
-            .output()
-        {
-            Ok(output) if output.status.success() => {
-                HttpResponse::Accepted().json(serde_json::json!({ "started": true }))
-            }
-            Ok(output) => err(
-                StatusCode::SERVICE_UNAVAILABLE,
-                &format!(
-                    "could not start sysupdate: {}",
-                    String::from_utf8_lossy(&output.stderr).trim()
-                ),
-            ),
-            Err(error) => err(
-                StatusCode::SERVICE_UNAVAILABLE,
-                &format!("could not start sysupdate: {error}"),
-            ),
-        },
-    )
 }
 
 /// What the daemon found when it last looked for an edge proxy.
@@ -6251,8 +6196,6 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/state", web::get().to(get_state))
                 .route("/api/settings", web::get().to(get_settings))
                 .route("/api/status", web::get().to(get_status))
-                .route("/api/updates", web::get().to(get_updates))
-                .route("/api/updates/check", web::post().to(post_updates_check))
                 .route("/api/edge", web::get().to(get_edge))
                 .route("/api/edge/manage", web::post().to(post_edge_manage))
                 .route("/api/edge/cluster", web::post().to(post_edge_cluster))

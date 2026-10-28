@@ -239,6 +239,89 @@ in
       '';
     };
 
+    # ── Local copy of the binary cache ──────────────────────────────────────
+    # modules/cache.nix. A caching proxy on the box that every Nix download
+    # goes through, keeping what it fetched under /var/cache (on /persist).
+    cache.local.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Keep a copy of every store path the box downloads, so it never fetches
+        the same one twice. Nix on the box substitutes from a local proxy
+        (`http://127.0.0.1:8790` by default) that
+        asks `losos.cache.local.peers` and then `losos.cache.local.upstreams`
+        and keeps each answer in `/var/cache/losos-nix-cache`, which lives on
+        `/persist`. Nix still checks every signature against
+        `nix.settings.trusted-public-keys`; the proxy changes where a path comes
+        from, never what is accepted.
+
+        It pays off on the nightly rebuild: the clean-up at 04:30 deletes the
+        build tools the last rebuild fetched, and the next one fetches them
+        again. On by default on the box; off on the installer medium.
+      '';
+    };
+
+    cache.local.port = lib.mkOption {
+      type = lib.types.port;
+      default = 8790;
+      description = "Port of the local cache proxy, on loopback (and on the LAN with `losos.cache.local.shareOnLan`).";
+    };
+
+    cache.local.maxSize = lib.mkOption {
+      type = lib.types.strMatching "[1-9][0-9]*[kmg]";
+      default = "8g";
+      example = "20g";
+      description = ''
+        Most disk space the local copy may take, as nginx sizes (`512m`,
+        `8g`). Past it the least recently used paths are deleted first.
+      '';
+    };
+
+    cache.local.minFree = lib.mkOption {
+      type = lib.types.strMatching "[1-9][0-9]*[kmg]";
+      default = "4g";
+      description = ''
+        Free space the local copy always leaves on `/persist`. When the disk
+        has less, the least recently used paths are deleted until it has this
+        much again, whatever `maxSize` says. Your files come first.
+      '';
+    };
+
+    cache.local.upstreams = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ "https://cache.nixos.org" ] ++ config.losos.cache.substituters;
+      defaultText = lib.literalExpression ''[ "https://cache.nixos.org" ] ++ config.losos.cache.substituters'';
+      description = ''
+        Binary caches the local proxy asks, in this order, for a path it does
+        not have. The first that has it wins. Every one is `http://` or
+        `https://`, with an optional path.
+      '';
+    };
+
+    cache.local.shareOnLan = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Answer other machines on the local network too, so several boxes in
+        one home download each update once. Only private (RFC 1918) addresses
+        are let in. What the copy holds is public software, signed by the
+        caches it came from; a box that uses it still checks every signature.
+      '';
+    };
+
+    cache.local.peers = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "http://other-box.local:8790" ];
+      description = ''
+        Local copies on other boxes (`shareOnLan` on there) to ask before
+        `upstreams`. A path one of them has is fetched over the LAN. A peer
+        that does not have a path fetches it from its own upstreams and keeps
+        it, so the next box finds it there; it never asks its own peers on
+        your behalf, which keeps two boxes that name each other out of a loop.
+      '';
+    };
+
     # ── Storage headroom ────────────────────────────────────────────────────
     storage.fillPercent = lib.mkOption {
       type = lib.types.ints.between 50 100;
@@ -445,6 +528,20 @@ in
       '';
     };
 
+    proxy.pauseSharingAfter = lib.mkOption {
+      type = lib.types.ints.unsigned;
+      default = 600;
+      example = 1800;
+      description = ''
+        Seconds without any edge answering before a box that shares storage
+        through one turns sharing off by itself, as the owner's switch
+        would (backend/src/edge.rs, `sharing_step`). Once an edge has
+        answered for a minute, the box turns sharing back on. Only a pause
+        the box made itself is undone; the owner switching sharing in the
+        meantime keeps their choice. `0` never pauses.
+      '';
+    };
+
     proxy.officialRootKeyFile = lib.mkOption {
       type = lib.types.path;
       default = ../nix/keys/official-edge-root.pub;
@@ -486,6 +583,31 @@ in
         The losos-registrar derivation (Rust). When non-null, the announce
         service runs; wired by modules/defaults.nix to
         self.packages.<system>.losos-registrar. Leave null to run without.
+      '';
+    };
+
+    # ── Tor and I2P (modules/hidden-services.nix) ─────────────────────────
+    hidden.tor.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Give the box an address on Tor, a `.onion` name people open in Tor
+        Browser. It reaches what the box's public name reaches through an
+        edge, LosOS Cloud, LosOS Git and LosOS Login, never the admin pages,
+        and needs no edge and no open port: the box connects out to Tor. The
+        address appears on the Network page once Tor has made it, and stays
+        the same across reboots.
+      '';
+    };
+
+    hidden.i2p.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Give the box an address on I2P, a `.b32.i2p` name people open
+        through an I2P router. It reaches the same pages as the Tor address
+        and, like it, needs no edge and no open port. The box takes part in
+        I2P as a router with a small bandwidth share.
       '';
     };
 
@@ -1036,6 +1158,19 @@ in
       '';
     };
 
+    cloud.photos.faces = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Find the faces in LosOS Cloud's photos and group them into people,
+        whom the owner can name. Two small models do it on this box's CPU, in
+        the background at the lowest priority; no face, place or picture
+        leaves the box, and only the photos' owner sees them. Turning it off
+        deletes every face and person found so far; the camera's details
+        (date, camera, lens, place) are read either way.
+      '';
+    };
+
     cloud.mesh.enable = lib.mkOption {
       type = lib.types.bool;
       default = config.losos.sharingMyStorage || config.losos.cluster.enable;
@@ -1487,18 +1622,25 @@ in
       type = lib.types.str;
       default = "git+file:///etc/nixos#install";
       description = ''
-        Flake URI used by lososd for settings-driven NixOS rebuilds. The
-        fragment is mandatory: without one, nixos-rebuild looks for
-        nixosConfigurations.<hostname>, while this flake exports only iso and
-        install. The nightly sysupdate service instead rebuilds its verified
-        release source bundle with --impure; it does not use this URI.
+        Flake URI system.autoUpgrade rebuilds from. The fragment is mandatory:
+        without one `nixos-rebuild --flake` looks for
+        nixosConfigurations.<hostname>, and this flake only exports `iso` and
+        `install` — so every unfragmented run dies with "flake does not provide
+        attribute". lososd uses the same `#install` ref (backend/src/io_backend.rs).
+        New versions arrive through losos.configRepo.upstream, which moves
+        /etc/nixos itself before the rebuild, so an Apply and the nightly
+        update build the same tree. A github: URI (still with `#install`)
+        also works, but an Apply then rebuilds from the older tree in
+        /etc/nixos and undoes the update until the next night.
 
-        The default git+file:///etc/nixos#install keeps local settings changes
-        on the box's own configuration. New configuration versions are synced
-        through losos.configRepo.upstream when enabled. The impure rebuild
-        retains this machine's install-target.nix and overrides.nix values,
-        including its disks, firmware mode, unlock mode, and admin settings.
-      
+        A remote URI evaluates the published tree, which has neither
+        modules/install-target.nix (this box's drive list, firmware mode and
+        unlock mode, written by the installer) nor this box's
+        modules/overrides.nix (the settings the admin UI writes). flake.nix
+        therefore reads both from /etc/nixos when the evaluation is impure,
+        and the nightly upgrade (updates.nix) and lososd both pass --impure.
+        Evaluate the flake purely against a remote URI and the defaults
+        apply instead: TPM2 unlock, /dev/sda, UEFI, every setting reset.
       '';
     };
 
@@ -2003,19 +2145,30 @@ in
     edge.heartbeatTtl = lib.mkOption {
       type = lib.types.str;
       default = "120s";
-      description = "Tenants with no heartbeat within this TTL are pruned (their Traefik router + rathole service removed).";
+      description = "Tenants with no heartbeat within this TTL are pruned (their Traefik routes and rathole service removed).";
     };
 
     edge.reconcileInterval = lib.mkOption {
       type = lib.types.str;
       default = "15s";
-      description = "How often the registrar reconciler re-derives Traefik + rathole config from the registry.";
+      description = "How often the registrar reconciler re-derives the Traefik routes and the rathole config from the registry.";
     };
 
     edge.registrarApiPort = lib.mkOption {
       type = lib.types.port;
       default = 8443;
       description = "Loopback port the losos-registrar HTTP API listens on; Traefik forwards register.<publicDomain> here.";
+    };
+
+    edge.traefikProviderPort = lib.mkOption {
+      type = lib.types.port;
+      default = 8090;
+      description = ''
+        Loopback port of the registrar's provider listener. Traefik's HTTP
+        provider polls it every two seconds for the routes of the live boxes
+        and published machines, and Traefik's offline page for a box it
+        cannot reach is served from it. Never reachable off the machine.
+      '';
     };
 
     edge.registrarApiBind = lib.mkOption {
@@ -2160,7 +2313,7 @@ in
         }
       );
       default = { };
-      description = "Closed-enrollment whitelist of appliances permitted to register. The registrar only ever writes Traefik routers for ids listed here.";
+      description = "Closed-enrollment whitelist of appliances permitted to register. The registrar only ever hands Traefik routes for ids listed here.";
     };
 
     # ── Mesh CI (edge side) ─────────────────────────────────────────────────
@@ -3229,6 +3382,28 @@ in
       '';
     };
 
+    edge.hidden.tor.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Give every box this edge routes an address on Tor of its own, a
+        `.onion` name that reaches the box through its tunnel the way its
+        public name does. The addresses are made here and kept across
+        restarts; each box learns its own on its next heartbeat and shows
+        it on its Network page. The edge opens no port for it.
+      '';
+    };
+
+    edge.hidden.i2p.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Give every box this edge routes an address on I2P of its own, a
+        `.b32.i2p` name, in the same way as edge.hidden.tor.enable. The edge
+        takes part in I2P as a router with a small bandwidth share.
+      '';
+    };
+
     edge.manage.ui = lib.mkOption {
       type = lib.types.nullOr lib.types.path;
       default = null;
@@ -3498,6 +3673,16 @@ in
         description = "LosOS Cloud runs, and signs people in with LosOS Login.";
       };
     };
+
+  # Tunnel length of the box's and the edge's I2P services
+  # (modules/hidden-lib.nix); null is i2pd's own default. Only a test's
+  # private I2P network, with too few routers for three hops, sets it.
+  options.lososInternal.hidden.i2pHops = lib.mkOption {
+    type = lib.types.nullOr lib.types.ints.positive;
+    internal = true;
+    default = null;
+    description = "Hops of each I2P tunnel of the box's or edge's addresses; null for i2pd's default.";
+  };
 
   # ── The shared side ───────────────────────────────────────────────────
   # The shared user's apps (mail, chat) exist only while the box's storage

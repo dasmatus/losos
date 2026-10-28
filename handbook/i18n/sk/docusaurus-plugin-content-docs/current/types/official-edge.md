@@ -51,9 +51,9 @@ siete. Prepnutie úložiska do režimu mesh, **Pripojiť sa k sieti mesh**
 a **Zdieľať disk tohto zariadenia so sieťou mesh** sú sivé s textom
 „Vyžaduje dostupný okrajový proxy server.“ a zariadenie s rovnakým dôvodom
 odmietne aj každé použitie nastavení, ktoré by niektoré z nich napriek tomu
-zaplo. Nastavenia, ktoré sú už zapnuté, zariadenie nechá tak. Zariadenie,
-ktorému edge zmizol, si ponechá konfiguráciu, môže naďalej meniť všetko
-ostatné a zdieľanie môže vždy *vypnúť*. Vaše vlastné súbory a aplikácie od
+zaplo. Zariadenie, ktorému edge zmizol, môže naďalej meniť všetko ostatné a
+zdieľanie môže vždy *vypnúť*. Po desiatich minútach bez edge zdieľanie samo
+pozastaví a minútu po tom, ako edge odpovie, ho znova zapne. Vaše vlastné súbory a aplikácie od
 edge nikdy nezávisia. Ani prepínač tunela nie je blokovaný. Tunel sa znova
 pripojí, keď edge opäť odpovie.
 

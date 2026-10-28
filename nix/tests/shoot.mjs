@@ -111,7 +111,8 @@ if (missed.length) {
 }
 
 async function take(shot) {
-  await page.goto(`${origin}${shot.path}`);
+  // Under TCG the first load of a pane can take longer than Playwright's 30 s.
+  await page.goto(`${origin}${shot.path}`, { timeout: 180_000 });
   // A constructed sheet, since the admin page's CSP refuses <style>.
   await page.evaluate((css) => {
     const sheet = new CSSStyleSheet();

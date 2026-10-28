@@ -196,8 +196,8 @@ losos.edge = {
 };
 ```
 
-Nachdem der Reconciler des Registrars seine eigenen Traefik- und
-rathole-Dateien geschrieben hat, leitet er seine **aktiven** Tenants
+Nachdem der Reconciler des Registrars seine eigenen Traefik-Routen
+festgelegt und seine rathole-Datei geschrieben hat, leitet er seine **aktiven** Tenants
 (registriert, auf der Whitelist oder eingeschrieben, mit Heartbeat) an den
 Hub weiter und erzeugt `/etc/rathole/uplink.toml`: eine rathole-*Client*-
 Konfiguration mit einem Dienst pro weitergeleiteter Box, `local_addr =

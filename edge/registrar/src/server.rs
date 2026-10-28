@@ -6,7 +6,8 @@
 //! and the unit runs as root. Treat everything here as hostile input.
 //!
 //! The API is the only thing that mutates the registry; the reconciler is the
-//! only thing that writes config files. A `tokio::sync::Notify` lets the API
+//! only thing that writes config files and decides the routes Traefik
+//! discovers through the provider listener (`provider`). A `tokio::sync::Notify` lets the API
 //! kick the reconciler immediately on register/heartbeat/deregister instead of
 //! waiting for the next tick — but the reconciler also ticks every
 //! `reconcile_interval` so stale tenants are pruned even with no traffic
@@ -72,7 +73,8 @@ use tokio::sync::{Mutex, Notify, Semaphore};
 
 use crate::action::Action;
 use crate::config::{
-    desired_config_with_hosts, uplink_config, EdgeOpts, TenantView, UplinkService, UplinkTarget,
+    desired_config_with_hosts, uplink_config, vm_routes, EdgeOpts, TenantView, UplinkService,
+    UplinkTarget,
 };
 use crate::domains::{self, Doh, DomainError, Domains, DomainsView, Vouched};
 use crate::error::ApiError;
@@ -99,17 +101,22 @@ mod ci;
 mod llm;
 mod manage;
 mod operator;
+mod provider;
 mod vm;
+
+pub use provider::Discovery;
 
 /// The zone file is public DNS data, read by the `knot` user.
 const ZONE_FILE_MODE: u32 = 0o644;
 
-/// Per-tenant Traefik router config is public (hostnames only, no secrets) →
-/// world-readable so the `traefik` user can read it.
-const TRAEFIK_FILE_MODE: u32 = 0o644;
+/// Files that hold nothing secret (the hub's routes beside the registry).
+const PUBLIC_FILE_MODE: u32 = 0o644;
 /// rathole server config carries service tokens → owner-only. Shared with
 /// the `seed` subcommand, which writes the same file at first boot.
 pub(crate) const RATHOLE_FILE_MODE: u32 = 0o600;
+/// The box ids `losos-hidden-sync` reads, as root: the ids are on the
+/// public routes anyway, but nothing else needs them.
+const HIDDEN_SERVICES_FILE_MODE: u32 = 0o600;
 
 /// Hard cap on a request body. Every route takes a three-field JSON object;
 /// 16 KiB is orders of magnitude more than any of them needs. Enforced at the
@@ -283,6 +290,8 @@ struct AppState {
     /// (`crate::official`): its official cluster and the official edges it
     /// lists, which is where the uplink goes if the hub is banned.
     hub: Arc<std::sync::Mutex<Option<HubView>>>,
+    /// The routes Traefik's HTTP provider is served (`provider`).
+    discovery: Discovery,
 }
 
 /// A gateway of this gateway's secondary cluster, and the ids it was warned
@@ -391,14 +400,24 @@ struct ClusterJoinResp {
     node_name: String,
 }
 
-/// Bind `opts.listen` and serve until SIGTERM/SIGINT.
+/// Bind `opts.listen` and the provider listener, and serve until
+/// SIGTERM/SIGINT.
 pub async fn run(opts: ServeOpts) -> Result<()> {
     let listener = TcpListener::bind(&opts.listen)
         .await
         .into_diagnostic()
         .with_context(|| format!("bind {}", opts.listen))?;
     tracing::info!(target: Action::Bind.target(), "listening on {}", opts.listen);
-    serve(listener, opts, shutdown_signal()).await
+    let provider = TcpListener::bind(&opts.traefik_provider_listen)
+        .await
+        .into_diagnostic()
+        .with_context(|| format!("bind {}", opts.traefik_provider_listen))?;
+    tracing::info!(
+        target: Action::Bind.target(),
+        "serving Traefik's routes on {}",
+        opts.traefik_provider_listen,
+    );
+    serve(listener, Some(provider), opts, shutdown_signal()).await
 }
 
 /// Serve on an already-bound listener until `shutdown` resolves.
@@ -408,12 +427,48 @@ pub async fn run(opts: ServeOpts) -> Result<()> {
 /// listener (port 0) and a oneshot. In-flight requests finish before the
 /// listener closes — a registrar killed mid-`/register` would otherwise leave
 /// the appliance to time out and retry against a `registry.json` that may or
-/// may not have been written.
-pub async fn serve<F>(listener: TcpListener, opts: ServeOpts, shutdown: F) -> Result<()>
+/// may not have been written. `provider` is the listener Traefik polls for
+/// the routes; `None` serves the API alone.
+pub async fn serve<F>(
+    listener: TcpListener,
+    provider: Option<TcpListener>,
+    opts: ServeOpts,
+    shutdown: F,
+) -> Result<()>
 where
     F: Future<Output = ()> + Send + 'static,
 {
-    let app = build(opts).await?;
+    serve_app(build(opts).await?, listener, provider, shutdown).await
+}
+
+/// [`serve`] for an [`App`] the caller built, so it can keep a handle on
+/// what the app publishes ([`App::discovery`]).
+pub async fn serve_app<F>(
+    app: App,
+    listener: TcpListener,
+    provider: Option<TcpListener>,
+    shutdown: F,
+) -> Result<()>
+where
+    F: Future<Output = ()> + Send + 'static,
+{
+    // Traefik keeps the routes it has while this listener is down, and only
+    // reloads when the document changes, so it needs no graceful stop.
+    let provider = match provider {
+        Some(listener) => {
+            let addr = listener.local_addr().into_diagnostic()?;
+            app.state
+                .discovery
+                .set_offline_url(format!("http://{addr}"));
+            let routes = provider::router(app.state.discovery.clone());
+            Some(tokio::spawn(async move {
+                if let Err(e) = axum::serve(listener, routes).await {
+                    tracing::error!(target: Action::Serve.target(), "provider listener: {e}");
+                }
+            }))
+        }
+        None => None,
+    };
     let recon = tokio::spawn(reconciler(app.state.clone()));
     // The uplink is a loop of its own: it talks to another machine and must
     // never hold up the local reconcile.
@@ -467,6 +522,10 @@ where
         sync.abort();
         let _ = sync.await;
     }
+    if let Some(provider) = provider {
+        provider.abort();
+        let _ = provider.await;
+    }
     Ok(())
 }
 
@@ -504,8 +563,14 @@ impl App {
         &self.state.opts
     }
 
-    /// One reconciler pass, as the timer would run it: prune, rewrite the
-    /// Traefik and rathole files if anything changed, publish the compute
+    /// The routes this app publishes for Traefik.
+    #[must_use]
+    pub fn discovery(&self) -> Discovery {
+        self.state.discovery.clone()
+    }
+
+    /// One reconciler pass, as the timer would run it: prune, decide the
+    /// Traefik routes, rewrite the rathole file if anything changed, publish the compute
     /// windows, then fulfil paid market orders.
     pub async fn reconcile(&self) -> Result<()> {
         check_domains(&self.state).await;
@@ -710,11 +775,22 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         }),
         main: Arc::new(std::sync::Mutex::new(BTreeMap::new())),
         hub: Arc::new(std::sync::Mutex::new(None)),
+        discovery: Discovery::default(),
     };
 
     // Generate config from whatever we just loaded, so the box is serving
     // before any heartbeat arrives.
     reconcile_once(&state).await?;
+    // The machines' routes come from the ledger, which is open already: in
+    // the first document too, so a restart does not drop them until the
+    // market's first pass.
+    if let Some(market) = &state.market {
+        if market.vm_opts().is_some_and(|o| o.domain.is_some()) {
+            state
+                .discovery
+                .set_vms(vm_routes(&market.vm_routes().await));
+        }
+    }
 
     let router = Router::new()
         .route("/health", get(health))
@@ -1257,7 +1333,7 @@ fn remember_pass(st: &AppState, id: &str, pass: Option<&str>) {
 async fn heartbeat(
     State(st): State<AppState>,
     Json(req): Json<HeartbeatReq>,
-) -> Result<StatusCode, ApiError> {
+) -> Result<Response, ApiError> {
     authenticate(&st, &req.appliance_id, &req.token).await?;
     // Recorded before the liveness check so the two cannot disagree about
     // which heartbeat this was.
@@ -1272,7 +1348,18 @@ async fn heartbeat(
         if let Some(manage) = &st.manage {
             manage.record(&req.appliance_id, req.managed);
         }
-        Ok(StatusCode::NO_CONTENT)
+        // The box's Tor and I2P addresses on this edge, when it has any
+        // (crate::hidden); the box shows them and lets LosOS Login answer
+        // on them. An older box reads any 2xx as a heartbeat taken.
+        if let Some(h) = &st.opts.hidden {
+            let addresses = crate::hidden::read_addresses(Path::new(&h.addresses_file)).await;
+            if let Some(a) = addresses.get(&req.appliance_id) {
+                return Ok(
+                    (StatusCode::OK, Json(serde_json::json!({ "hidden": a }))).into_response()
+                );
+            }
+        }
+        Ok(StatusCode::NO_CONTENT.into_response())
     } else {
         // Unknown id mid-run: tell the appliance to re-register. (It will, on
         // the next announce loop, because 404 triggers re-enroll.)
@@ -1605,7 +1692,7 @@ async fn write_main_cluster(st: &AppState, members: &[MainMember]) {
         .collect();
     let mut text = serde_json::to_string_pretty(&rows).expect("members serialize");
     text.push('\n');
-    match write_if_changed(&path, &text, TRAEFIK_FILE_MODE).await {
+    match write_if_changed(&path, &text, PUBLIC_FILE_MODE).await {
         Ok(true) => tracing::info!(
             target: Action::Relay.target(),
             "main cluster: {} gateway(s) on primary links",
@@ -3492,7 +3579,7 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
     };
     // The domain half: a name in the edge's zone for each box Stripe vouches
     // for, every proved custom domain, and the zone file itself. Computed
-    // before the Traefik file so both describe the same moment.
+    // before the Traefik routes so both describe the same moment.
     let (extra_hosts, zone_names) = domain_hosts(st, &enriched, &tenants).await;
     // A box lending memory to AI models gets its second tunnel service.
     if let Some(inference) = &st.inference {
@@ -3509,19 +3596,9 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
     }
     let files = desired_config_with_hosts(&enriched, &opts, &extra_hosts);
 
-    let traefik_path = Path::new(&st.opts.traefik_dir).join("losos.yml");
-    // `None` means "no live tenants": Traefik's file provider rejects an empty
-    // dynamic config, so the zero-tenant state is "no losos.yml" — remove the
-    // file so Traefik drops every appliance router. `Some` is the normal
-    // write-if-changed path.
-    let changed_traefik = match files.traefik_yaml {
-        Some(ref content) => write_if_changed(&traefik_path, content, TRAEFIK_FILE_MODE)
-            .await
-            .with_context(|| format!("write {}", traefik_path.display()))?,
-        None => remove_if_exists(&traefik_path)
-            .await
-            .with_context(|| format!("remove {}", traefik_path.display()))?,
-    };
+    // Traefik polls the provider listener and picks this up within its poll
+    // interval; nothing is written for it.
+    let changed_traefik = st.discovery.set_tenants(files.traefik.clone());
     let changed_rathole = write_if_changed(
         Path::new(&st.opts.rathole_config),
         &files.rathole_toml,
@@ -3529,6 +3606,19 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
     )
     .await
     .with_context(|| format!("write {}", st.opts.rathole_config))?;
+
+    // Tor and I2P (crate::hidden): never fatal, like the zone below. A box
+    // whose address is not made yet is routed on a later tick.
+    let changed_hidden = match &st.opts.hidden {
+        None => false,
+        Some(h) => match reconcile_hidden(h, &st.discovery, &enriched).await {
+            Ok(changed) => changed,
+            Err(e) => {
+                tracing::error!(target: Action::Reconcile.target(), "Tor and I2P routes: {e:?}");
+                false
+            }
+        },
+    };
 
     // No explicit reload signal: rathole 0.5 hot-reloads via its `notify`
     // file-watcher, which re-applies the config the instant server.toml is
@@ -3579,6 +3669,7 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
         || repaired
         || changed_traefik
         || changed_rathole
+        || changed_hidden
         || dropped_windows
         || changed_windows
         || changed_zone
@@ -4413,7 +4504,7 @@ async fn record_hub_routes(st: &AppState, routes: &[RelayRoute]) {
     let path = Path::new(&st.opts.registry_path).with_file_name("hub-routes.json");
     let mut text = serde_json::to_string_pretty(&sorted).expect("routes serialize");
     text.push('\n');
-    match write_if_changed(&path, &text, TRAEFIK_FILE_MODE).await {
+    match write_if_changed(&path, &text, PUBLIC_FILE_MODE).await {
         Ok(true) => {
             for r in &sorted {
                 tracing::info!(
@@ -4496,6 +4587,37 @@ async fn pin_hub_noise_key(
     }
 }
 
+/// The live boxes for `losos-hidden-sync`, and Traefik's routes for the
+/// addresses it made (`crate::hidden`). Whether either changed.
+async fn reconcile_hidden(
+    h: &crate::hidden::HiddenOpts,
+    discovery: &Discovery,
+    tenants: &[TenantView],
+) -> Result<bool> {
+    let ids: Vec<&str> = tenants.iter().map(|t| t.id.as_str()).collect();
+    let services = Path::new(&h.dir).join(crate::hidden::SERVICES_FILE);
+    let changed_services = write_if_changed(
+        &services,
+        &crate::hidden::services_json(&ids, h),
+        HIDDEN_SERVICES_FILE_MODE,
+    )
+    .await
+    .with_context(|| format!("write {}", services.display()))?;
+    let addresses = crate::hidden::read_addresses(Path::new(&h.addresses_file)).await;
+    let routes: Vec<crate::config::HiddenRoute> = tenants
+        .iter()
+        .filter_map(|t| {
+            addresses.get(&t.id).map(|a| crate::config::HiddenRoute {
+                id: t.id.clone(),
+                rathole_port: t.rathole_port,
+                hosts: a.hosts(),
+            })
+        })
+        .collect();
+    let changed_routes = discovery.set_hidden(crate::config::hidden_routes(&routes));
+    Ok(changed_services || changed_routes)
+}
+
 async fn write_if_changed(path: &Path, content: &str, mode: u32) -> Result<bool> {
     let existing = match tokio::fs::read(path).await {
         Ok(b) => b,
@@ -4520,8 +4642,7 @@ async fn write_if_changed(path: &Path, content: &str, mode: u32) -> Result<bool>
 }
 
 /// Remove `path` if it exists. Returns `true` if a file was removed, `false`
-/// if it was already absent. Used for the zero-tenant Traefik state: delete
-/// `losos.yml` so Traefik's file provider drops all appliance routers.
+/// if it was already absent.
 async fn remove_if_exists(path: &Path) -> Result<bool> {
     match tokio::fs::remove_file(path).await {
         Ok(()) => Ok(true),

@@ -342,20 +342,95 @@ pub fn cmd_change<L: Losos>(l: &mut L, mode: Mode) -> anyhow::Result<Value> {
         }
         .into());
     }
+    // The owner chose: a pause the box made is theirs to keep or undo now,
+    // and turning sharing on just passed the gate, so an edge answered.
+    let (job, commit) = set_sharing(l, sharing, "Change", |s| {
+        s.sharing_paused_at = None;
+        s.sharing_edge_seen = sharing;
+    })?;
+    Ok(json!({ "job": job, "commit": commit }))
+}
+
+/// Write `losos.sharingMyStorage`, record the mode, and rebuild: the one
+/// road for the owner's mode change and the box's own pause and resume.
+/// `mark` adjusts the state saved with the rebuild.
+fn set_sharing<L: Losos>(
+    l: &mut L,
+    sharing: bool,
+    title: &str,
+    mark: impl FnOnce(&mut State),
+) -> anyhow::Result<(String, Value)> {
     let before = l.read_overrides()?;
     let lines: Vec<String> = before.lines().map(str::to_string).collect();
     let mut body = crate::overrides::inject_line(sharing, &lines).join("\n");
     body.push('\n');
     l.write_overrides(&body)?;
-    let commit = commit_settings(l, "Change", &before, &body);
+    let commit = commit_settings(l, title, &before, &body);
     let job = l.next_job_id()?;
     let mut s = l.load_state()?;
-    s.mode = mode;
+    s.mode = if sharing { Mode::Mesh } else { Mode::Local };
     s.sharing = sharing;
     s.rebuild = Some(building(&job, MSG_STARTED));
+    mark(&mut s);
     l.save_state(&s)?;
     l.spawn_rebuild(&job)?;
-    Ok(json!({ "job": job, "commit": commit }))
+    Ok((job, commit))
+}
+
+/// After each edge scan: pause sharing when no edge has answered for
+/// `pause_after` seconds, and share again once one is back
+/// (`crate::edge::sharing_step` is the rule). Returns what it did, for the
+/// journal. `clock` must already hold this scan.
+///
+/// # Errors
+/// Reading the state or the settings, or queueing the rebuild, failed.
+pub fn sharing_tick<L: Losos>(
+    l: &mut L,
+    clock: &crate::edge::OutageClock,
+    now: u64,
+    pause_after: u64,
+) -> anyhow::Result<crate::edge::SharingStep> {
+    use crate::edge::SharingStep;
+    let s = l.load_state()?;
+    // An erase owns the settings until it is done.
+    if s.erase.is_some() {
+        return Ok(SharingStep::Nothing);
+    }
+    let sharing = crate::edge::SharingNow {
+        on: parse_settings(&l.read_overrides()?).sharing_my_storage,
+        paused: s.sharing_paused_at.is_some(),
+        edge_seen: s.sharing_edge_seen,
+        building: s
+            .rebuild
+            .as_ref()
+            .is_some_and(|rb| rb.state == RebuildState::Building),
+    };
+    let step = crate::edge::sharing_step(sharing, clock, now, pause_after);
+    match step {
+        SharingStep::Nothing => {}
+        SharingStep::SeenEdge => {
+            let mut s = s;
+            s.sharing_edge_seen = true;
+            l.save_state(&s)?;
+        }
+        SharingStep::Forget => {
+            let mut s = s;
+            s.sharing_paused_at = None;
+            l.save_state(&s)?;
+        }
+        SharingStep::Pause => {
+            set_sharing(l, false, "Pause sharing: no edge answers", |s| {
+                s.sharing_paused_at = Some(now);
+            })?;
+        }
+        SharingStep::Resume => {
+            set_sharing(l, true, "Resume sharing: an edge answers again", |s| {
+                s.sharing_paused_at = None;
+                s.sharing_edge_seen = true;
+            })?;
+        }
+    }
+    Ok(step)
 }
 
 /// Record a change to `overrides.nix` in the configuration repository
@@ -428,6 +503,14 @@ pub fn cmd_apply<L: Losos>(l: &mut L, nix_code: &str) -> anyhow::Result<Value> {
     let body = crate::overrides::drop_retired(nix_code);
     l.write_overrides(&body)?;
     let commit = commit_settings(l, "Change", &before, &body);
+    if now.sharing_my_storage != want.sharing_my_storage {
+        // The owner flipped sharing: as in `cmd_change`, a pause the box
+        // made is forgotten.
+        let mut s = l.load_state()?;
+        s.sharing_paused_at = None;
+        s.sharing_edge_seen = want.sharing_my_storage;
+        l.save_state(&s)?;
+    }
     let job = queue_rebuild(l, MSG_STARTED)?;
     Ok(json!({ "job": job, "commit": commit }))
 }
@@ -1112,9 +1195,12 @@ pub fn valid_relay_pass(s: &str) -> bool {
 /// What the daemon knows about edge proxies: `GET /api/edge`.
 pub fn cmd_edge<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
     let status = l.edge_status()?;
-    let managed_by = l.load_state()?.managed_by;
+    let state = l.load_state()?;
     let mut out = status.to_json();
-    out["manage"] = manage_json(managed_by.as_deref(), &status);
+    out["manage"] = manage_json(state.managed_by.as_deref(), &status);
+    // Sharing the box turned off itself while no edge answered, and turns
+    // back on once one does (`sharing_tick`).
+    out["sharingPausedAt"] = json!(state.sharing_paused_at);
     Ok(out)
 }
 
@@ -2230,6 +2316,139 @@ mod tests {
         assert_eq!(fake.state.mode, Mode::Local);
         assert!(!fake.spawned, "no rebuild may start for a refused change");
         assert_eq!(fake.edge_asked, 1);
+    }
+
+    // ── Pausing sharing while no edge answers (crate::edge::sharing_step) ──
+
+    /// A box sharing through an edge it has seen, with the rebuild that
+    /// turned sharing on finished.
+    fn sharing_fake() -> FakeLosos {
+        let mut fake = FakeLosos::new();
+        cmd_change(&mut fake, Mode::Mesh).unwrap();
+        fake.state.rebuild.as_mut().unwrap().state = RebuildState::Done;
+        fake.spawned = false;
+        fake
+    }
+
+    fn sharing_line(fake: &FakeLosos) -> bool {
+        parse_settings(&fake.config.join("\n")).sharing_my_storage
+    }
+
+    #[test]
+    fn an_outage_pauses_sharing_once_and_an_edge_brings_it_back() {
+        use crate::edge::{OutageClock, SharingStep};
+        let mut fake = sharing_fake();
+        assert!(
+            fake.state.sharing_edge_seen,
+            "the gate passed, so an edge answered"
+        );
+        let mut clock = OutageClock::default();
+
+        clock.observe(false, 1000);
+        assert_eq!(
+            sharing_tick(&mut fake, &clock, 1000, 600).unwrap(),
+            SharingStep::Nothing
+        );
+        clock.observe(false, 1599);
+        assert_eq!(
+            sharing_tick(&mut fake, &clock, 1599, 600).unwrap(),
+            SharingStep::Nothing
+        );
+        assert!(sharing_line(&fake) && !fake.spawned);
+
+        clock.observe(false, 1600);
+        assert_eq!(
+            sharing_tick(&mut fake, &clock, 1600, 600).unwrap(),
+            SharingStep::Pause
+        );
+        assert!(!sharing_line(&fake), "overrides.nix says sharing is off");
+        assert_eq!(fake.state.mode, Mode::Local);
+        assert_eq!(fake.state.sharing_paused_at, Some(1600));
+        assert!(
+            fake.spawned,
+            "the pause is a rebuild like the owner's switch"
+        );
+
+        // Nothing more while the rebuild runs, or while the edge stays away.
+        fake.spawned = false;
+        clock.observe(false, 2000);
+        assert_eq!(
+            sharing_tick(&mut fake, &clock, 2000, 600).unwrap(),
+            SharingStep::Nothing
+        );
+        fake.state.rebuild.as_mut().unwrap().state = RebuildState::Done;
+        assert_eq!(
+            sharing_tick(&mut fake, &clock, 2000, 600).unwrap(),
+            SharingStep::Nothing
+        );
+        assert!(!fake.spawned);
+
+        // The edge answers; a minute later sharing is back.
+        clock.observe(true, 2020);
+        assert_eq!(
+            sharing_tick(&mut fake, &clock, 2020, 600).unwrap(),
+            SharingStep::Nothing
+        );
+        clock.observe(true, 2080);
+        assert_eq!(
+            sharing_tick(&mut fake, &clock, 2080, 600).unwrap(),
+            SharingStep::Resume
+        );
+        assert!(sharing_line(&fake));
+        assert_eq!(fake.state.mode, Mode::Mesh);
+        assert_eq!(fake.state.sharing_paused_at, None);
+        assert!(fake.state.sharing_edge_seen);
+        assert!(fake.spawned);
+    }
+
+    #[test]
+    fn the_owner_going_local_during_a_pause_is_not_undone() {
+        use crate::edge::{OutageClock, SharingStep};
+        let mut fake = sharing_fake();
+        let mut clock = OutageClock::default();
+        clock.observe(false, 0);
+        clock.observe(false, 600);
+        assert_eq!(
+            sharing_tick(&mut fake, &clock, 600, 600).unwrap(),
+            SharingStep::Pause
+        );
+        fake.state.rebuild.as_mut().unwrap().state = RebuildState::Done;
+
+        cmd_change(&mut fake, Mode::Local).unwrap();
+        fake.state.rebuild.as_mut().unwrap().state = RebuildState::Done;
+        assert_eq!(fake.state.sharing_paused_at, None);
+        clock.observe(true, 700);
+        clock.observe(true, 800);
+        assert_eq!(
+            sharing_tick(&mut fake, &clock, 800, 600).unwrap(),
+            SharingStep::Nothing
+        );
+        assert!(!sharing_line(&fake));
+    }
+
+    #[test]
+    fn a_box_that_never_reached_an_edge_is_never_paused() {
+        use crate::edge::{OutageClock, SharingStep};
+        // Sharing set in the configuration with no edge anywhere, the way
+        // the shared side's VM tests boot.
+        let mut fake = FakeLosos::new().without_edge();
+        fake.config = crate::overrides::inject_line(true, &fake.config);
+        let mut clock = OutageClock::default();
+        clock.observe(false, 0);
+        clock.observe(false, 10_000);
+        assert_eq!(
+            sharing_tick(&mut fake, &clock, 10_000, 600).unwrap(),
+            SharingStep::Nothing
+        );
+        assert!(sharing_line(&fake) && !fake.spawned);
+    }
+
+    #[test]
+    fn edge_status_says_when_sharing_was_paused() {
+        let mut fake = FakeLosos::new();
+        assert_eq!(cmd_edge(&mut fake).unwrap()["sharingPausedAt"], Value::Null);
+        fake.state.sharing_paused_at = Some(42);
+        assert_eq!(cmd_edge(&mut fake).unwrap()["sharingPausedAt"], json!(42));
     }
 
     #[test]
