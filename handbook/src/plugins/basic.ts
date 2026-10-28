@@ -70,6 +70,9 @@ type LoadedVersion = {docs: LoadedDoc[]; sidebars: Record<string, SidebarItem[]>
 /** The ## and ### headings of a Markdown page, with the ids Docusaurus gives
  * them. Ids come from the same slugger over the heading's text with its
  * Markdown taken out; an explicit {#id} wins, as it does in the docs plugin.
+ * Inline HTML is left as text (no heading has any, and the label is only
+ * ever rendered as text): an <x> inside backticks is part of the heading's
+ * text, and a tag-stripping pass would take it out of the id too.
  * A wrong id is not silent: the page links each one, and onBrokenAnchors
  * fails the build. */
 function headings(markdown: string, permalink: string): ContentsSection[] {
@@ -92,7 +95,6 @@ function headings(markdown: string, permalink: string): ContentsSection[] {
     const label = text
       .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
       .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-      .replace(/<[^>]+>/g, '')
       .replace(/`([^`]*)`/g, '$1')
       .replace(/(\*\*|__)(.*?)\1/g, '$2')
       .replace(/(\*|_)(.*?)\1/g, '$2')
