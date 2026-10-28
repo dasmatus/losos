@@ -110,7 +110,7 @@ What that changes:
 
 - A box carried away from its network does not open, and neither does a box
   whose server is gone. A thief with the whole box gets a passphrase prompt.
-- The box asks the server for about half a minute, then the screen asks for
+- The box asks the server for up to a minute, then the screen asks for
   a passphrase. Type the box's recovery code, which Settings, Backup shows.
   The box adds the code as a passphrase as soon as it has one, and swaps it
   when the code changes.

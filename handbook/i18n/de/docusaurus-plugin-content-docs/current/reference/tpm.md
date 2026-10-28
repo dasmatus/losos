@@ -125,7 +125,7 @@ Was sich dadurch ändert:
 - Eine Box, die aus ihrem Netz weggetragen wird, öffnet sich nicht, und
   eine Box, deren Server fehlt, auch nicht. Ein Dieb mit der ganzen Box
   bekommt eine Passwortabfrage.
-- Die Box fragt den Server etwa eine halbe Minute lang, dann fragt der
+- Die Box fragt den Server bis zu einer Minute lang, dann fragt der
   Bildschirm nach einem Passwort. Gib den Wiederherstellungscode der Box
   ein, den Einstellungen, Sicherung anzeigt. Die Box fügt den Code als
   Passwort hinzu, sobald sie einen hat, und tauscht ihn aus, wenn er sich

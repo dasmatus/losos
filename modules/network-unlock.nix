@@ -68,21 +68,28 @@ in
       timeout = 30;
     };
     # nixpkgs' unit asks once. The first answer can come before the port the
-    # server is on has its address (another port was online first), so ask
-    # for up to half a minute before systemd-cryptsetup falls back to the
-    # console prompt. An empty key file is what that fallback expects: it is
-    # what a failed `clevis decrypt` leaves, as in nixpkgs' own test.
+    # server is on has its address (another port was online first), so keep
+    # asking for half a minute, each try cut off after 20 s, before
+    # systemd-cryptsetup falls back to the console prompt: the prompt comes
+    # within a minute either way. An empty key file is what that fallback
+    # expects: it is what a failed `clevis decrypt` leaves, as in nixpkgs'
+    # own test.
     boot.initrd.systemd.services.cryptsetup-clevis-persist.script = lib.mkForce ''
       mkdir -p /clevis-persist
       mount -t ramfs none /clevis-persist
       umask 277
-      for try in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-        if clevis decrypt < /etc/clevis/persist.jwe > /clevis-persist/decrypted; then
+      until=$(( $(date +%s) + 30 ))
+      try=1
+      while :; do
+        if timeout 20 clevis decrypt < /etc/clevis/persist.jwe > /clevis-persist/decrypted; then
           exit 0
         fi
+        [ "$(date +%s)" -lt "$until" ] || break
         echo "no Tang server answered (try $try), asking again"
+        try=$(( try + 1 ))
         sleep 2
       done
+      : > /clevis-persist/decrypted
       echo "no Tang server answered: the disk asks for the recovery code"
       exit 1
     '';

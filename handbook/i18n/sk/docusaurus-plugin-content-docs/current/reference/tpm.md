@@ -112,7 +112,7 @@ Server kľúč nikdy nevidí. Dozvie sa iba to, že zariadenie naštartovalo.
 
 - Zariadenie odnesené zo svojej siete sa neotvorí, rovnako ani zariadenie,
   ktorého server zmizol. Zlodej s celým zariadením uvidí výzvu na heslo.
-- Zariadenie sa pýta servera asi pol minúty, potom obrazovka vypýta heslo.
+- Zariadenie sa pýta servera najviac minútu, potom obrazovka vypýta heslo.
   Zadajte kód na obnovu zariadenia, ktorý ukáže Nastavenia, Záloha.
   Zariadenie si kód pridá ako heslo hneď, ako ho má, a vymení ho, keď sa
   kód zmení.

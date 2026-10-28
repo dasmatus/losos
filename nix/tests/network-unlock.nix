@@ -34,7 +34,11 @@ pkgs.testers.nixosTest {
     services.tang = {
       enable = true;
       listenStream = [ (toString tangPort) ];
-      ipAddressAllow = [ "192.168.1.0/24" ];
+      # Loopback for tang-show-keys on the router itself.
+      ipAddressAllow = [
+        "127.0.0.1/32"
+        "192.168.1.0/24"
+      ];
     };
     services.dnsmasq = {
       enable = true;
@@ -48,7 +52,10 @@ pkgs.testers.nixosTest {
     };
     networking.firewall.allowedTCPPorts = [ tangPort ];
     networking.firewall.allowedUDPPorts = [ 67 ];
-    environment.systemPackages = [ pkgs.tang ];
+    environment.systemPackages = [
+      pkgs.tang
+      pkgs.curl
+    ];
   };
 
   nodes.machine =
