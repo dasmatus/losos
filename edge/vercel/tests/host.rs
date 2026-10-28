@@ -31,7 +31,7 @@ async fn health_and_status_answer_with_nothing_registered() {
 
     let (status, body) = call(&host, Method::GET, "/status/traefik", None).await;
     assert_eq!(status, 200);
-    assert!(body.starts_with("# No live tenants"), "body: {body}");
+    assert_eq!(body, "{}", "body: {body}");
 
     // No tunnel, so no key to pin.
     let (status, _) = call(&host, Method::GET, "/noise-public-key", None).await;

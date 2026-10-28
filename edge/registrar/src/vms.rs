@@ -346,9 +346,6 @@ pub struct VmOpts {
     /// `--vm-domain`: machines are published as `https://<order>.<domain>`.
     /// `None` publishes nothing.
     pub domain: Option<String>,
-    /// The Traefik dynamic file the machine routes are written to (beside
-    /// `losos.yml`). `None` with no domain.
-    pub routes_file: Option<String>,
 }
 
 /// An order's image, resolved to what a replica is made from.

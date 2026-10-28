@@ -23,8 +23,8 @@ gets their own files. The person who set up the box gets the owner's.
   upload them, or use **Upload**. Tick files to download, rename, move,
   copy or delete them, or to see their earlier versions.
 - **Recent** shows what changed lately, **Favorites** what you starred.
-- **Photos** shows every picture, newest month first. Click one to see it
-  large and use the arrow keys to go through them.
+- **Photos** shows every picture by when it was taken, and the people in
+  them. See [Photos](#photos).
 - **Trash** keeps deleted files for 30 days, or as long as the **Apps**
   pane says. Restore one, or delete it for good. Files deleted through
   the [network share](files-on-your-computer#the-network-share) skip it.
@@ -42,6 +42,28 @@ gets their own files. The person who set up the box gets the owner's.
   mail** and **Send in chat** while the box has Mail and Chat, and **Ask AI
   about this** for a text file on a box that runs a language model. The AI
   runs on the box and reads only the file you picked.
+
+## Photos
+
+**Photos** shows every picture in any folder, newest first, by the month
+the camera says it was taken. **Group by** sorts them by person, by camera
+or by place instead. Click a picture to see it large, use the arrow keys
+to go through them, and press **Details** (or <kbd>i</kbd>) for what the
+camera wrote: when, which camera and lens, the exposure, the size, where it
+was taken, who is in it, and every other tag the camera saved.
+
+![A photo's details in LosOS Cloud: when it was taken, the camera, the lens, the settings and the place.](../img/cloud-photos.png)
+
+The box finds the faces in your pictures and puts the ones that look alike
+together as one person. **People** above the photos shows everyone seen in
+more than one picture; click a face to see all of that person's photos and
+give them a name. Give two people the same name and they become one.
+
+All of it happens on the box, in the background and at the lowest priority,
+a few minutes after a picture arrives: two small models find and compare
+faces on the box's own processor, and nothing about a picture, a face or a
+place is sent anywhere. Only you see your photos' faces, names and places;
+other people on the box see none of them.
 
 ## Desktop and phone apps
 
@@ -110,4 +132,6 @@ box tries again on the next start.
 
 The **Apps** pane's LosOS Cloud fold sets how long the trash keeps files
 (`losos.cloud.trashDays`, 1 to 365 days). `losos.cloud.enable` on the
-**Advanced** pane turns LosOS Cloud off.
+**Advanced** pane turns LosOS Cloud off, and `losos.cloud.photos.faces`
+stops Photos looking for faces: the next pass deletes every face and name
+found so far, and the camera's details stay.

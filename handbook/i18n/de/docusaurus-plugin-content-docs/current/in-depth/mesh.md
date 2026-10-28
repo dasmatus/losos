@@ -79,10 +79,17 @@ Solange nichts antwortet, weigert sich die Box, netzwerkabhängiges Teilen
 einzuschalten. Der Wechsel in den Mesh-Modus und jedes Apply, das
 `losos.sharingMyStorage` oder `losos.cluster.enable` einschaltet, werden mit
 409 und dem Grund beantwortet, und die Schalter sind mit demselben Satz
-ausgegraut. Bereits eingeschaltete Einstellungen bleiben unberührt, sodass
-eine Box, deren Edge verschwunden ist, ihre Konfiguration behält und alles
-andere weiterhin ändern kann. Teilen auszuschalten ist immer erlaubt. Deine
-eigenen Dateien und Apps hängen nie von der Edge ab.
+ausgegraut. Teilen auszuschalten ist immer erlaubt, und alles andere lässt
+sich auch während eines Ausfalls ändern. Deine eigenen Dateien und Apps
+hängen nie von der Edge ab.
+
+Eine Box, die ihren Speicher teilt und dann zehn Minuten lang keine Edge
+findet, schaltet das Teilen selbst aus, so wie es ihr Schalter täte, und der
+Bereich Mesh zeigt **Teilen pausiert**. Sobald eine Edge eine Minute lang
+antwortet, schaltet die Box das Teilen wieder ein. Sie nimmt nur ihre eigene
+Pause zurück: Schaltest du das Teilen in der Zwischenzeit ein oder aus,
+bleibt deine Wahl. `losos.proxy.pauseSharingAfter` legt die Wartezeit in
+Sekunden fest, `0` schaltet die Pause ab.
 
 Eine Edge zu finden und ihr Geld anzuvertrauen sind zwei verschiedene
 Fragen. Jede Edge, die antwortet, öffnet das Teilen. Handel auf dem Market

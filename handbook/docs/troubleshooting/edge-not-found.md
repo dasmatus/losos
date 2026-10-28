@@ -69,6 +69,9 @@ tried:
 
 Once the edge answers again, the next scan finds it within 20 seconds, and
 the Mesh pane shows it a few seconds later. The tunnel comes back without a
-restart. An outage turns off nothing you turned on. While the box finds no
-edge it refuses only *turning on*, and
+restart. While the box finds no edge it refuses *turning on*, and
 [Sharing is refused](sharing-refused) covers that.
+
+After ten minutes with no edge, a box that shares its storage turns sharing
+off by itself and the Mesh pane says **Sharing paused**. A minute after an
+edge answers again, the box turns sharing back on, with no action from you.
