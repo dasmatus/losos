@@ -448,6 +448,63 @@ export function signOutTo(path: string): void {
   window.location.assign(`https://${window.location.host}/auth/logout?rd=${encodeURIComponent(back)}`);
 }
 
+/** What LosOS Login said to a name and a password. */
+export type PasswordSignIn = "signedIn" | "refused" | "notYet";
+
+/* POST /auth/api/firstfactor, the call LosOS Login's own sign-in page makes,
+ * from this page: same origin, so the session cookie it sets is this tab's
+ * from the next request on. The wizard's last step signs the owner in this
+ * way with the password they have just chosen, so the first sign-in needs
+ * no second tab. "notYet" is LosOS Login still starting (nginx says 502
+ * until it answers) or the request not getting through at all. */
+export async function signInWithPassword(
+  username: string,
+  password: string,
+  signal?: AbortSignal,
+): Promise<PasswordSignIn> {
+  try {
+    const init: RequestInit = {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password, keepMeLoggedIn: false }),
+      cache: "no-store",
+      credentials: "same-origin",
+    };
+    if (signal !== undefined) init.signal = signal;
+    const response = await fetch("/auth/api/firstfactor", init);
+    if (response.ok) return "signedIn";
+    if (response.status === 401 || response.status === 403) return "refused";
+    return "notYet";
+  } catch (error) {
+    if (isAbort(error)) throw error;
+    return "notYet";
+  }
+}
+
+/* Swap the spare key this tab holds for the LosOS Login session its cookie
+ * now carries: GET /api/me without the key, and only if that names a person
+ * does the key leave sessionStorage. One notification for both halves, so
+ * nothing on the page sees a moment with neither. False, and the key kept,
+ * when the cookie names nobody. */
+export async function adoptSession(signal?: AbortSignal): Promise<boolean> {
+  let answer: Partial<Me>;
+  try {
+    answer = await call<Partial<Me>>("/api/me", signal === undefined ? { anonymous: true } : { anonymous: true, signal });
+  } catch (error) {
+    if (isAbort(error)) throw error;
+    return false;
+  }
+  if (typeof answer.name !== "string" || answer.spareKey === true || !Array.isArray(answer.sections)) return false;
+  try {
+    window.sessionStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* nothing stored */
+  }
+  me = answer as Me;
+  notifyAuth();
+  return true;
+}
+
 /* A 401 on a stored token is the session ending, and every screen has to
  * react to it — re-prompt, stop polling, disable the destructive buttons. So
  * the eviction happens once, here, and the app shell subscribes rather than

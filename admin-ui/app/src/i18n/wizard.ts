@@ -40,7 +40,7 @@ export default defineMessages({
     sk: "Pokračovať bez kódu",
     de: "Ohne Code weiter",
   },
-  "wizard.nav.finish": { en: "Finish", sk: "Dokončiť", de: "Abschließen" },
+  "wizard.nav.letsGo": { en: "Let's go", sk: "Poďme na to", de: "Los geht's" },
   "wizard.closing.titleNamed": {
     en: "{name} is ready",
     sk: "Zariadenie {name} je pripravené",
@@ -68,7 +68,7 @@ export default defineMessages({
     sk: "Vyberte si spôsob prihlásenia",
     de: "Wähle, wie du dich anmeldest",
   },
-  "wizard.steps.finish": { en: "Sign in", sk: "Prihlásiť sa", de: "Anmelden" },
+  "wizard.steps.finish": { en: "Your desktop", sk: "Vaša plocha", de: "Dein Desktop" },
   "wizard.rail.label": {
     en: "Setup progress",
     sk: "Priebeh nastavenia",
@@ -624,52 +624,79 @@ export default defineMessages({
     de: "Das hat nicht geklappt",
   },
 
-  // ── StepFirstSignIn.tsx ─────────────────────────────────────────────────
-  "wizard.first.signedIn.title": {
-    en: "You are signed in",
-    sk: "Ste prihlásení",
-    de: "Du bist angemeldet",
+  // ── StepDesktop.tsx ─────────────────────────────────────────────────────
+  "wizard.desktop.signingIn": {
+    en: "Signing you in",
+    sk: "Prihlasujeme vás",
+    de: "Du wirst angemeldet",
   },
-  "wizard.first.signedIn.body": {
-    en: "That was the last step. Finish below, or carry on in the other tab. Nothing is waiting on you.",
-    sk: "To bol posledný krok. Dokončite nastavenie nižšie alebo pokračujte na druhej karte. Nič na vás nečaká.",
-    de: "Das war der letzte Schritt. Schließ unten ab oder mach im anderen Tab weiter. Nichts wartet auf dich.",
+  "wizard.desktop.signingInNamed": {
+    en: "Signing you in as {name}",
+    sk: "Prihlasujeme vás ako {name}",
+    de: "Du wirst als {name} angemeldet",
   },
-  "wizard.first.intro": {
-    en: "Open LosOS Cloud and sign in with the name and password you set. This page notices when you are through and finishes on its own.",
-    sk: "Otvorte LosOS Cloud a prihláste sa menom a heslom, ktoré ste nastavili. Táto stránka spozná, keď budete prihlásení, a dokončí sa sama.",
-    de: "Öffne LosOS Cloud und melde dich mit dem Namen und dem Passwort an, die du festgelegt hast. Diese Seite merkt, wenn du durch bist, und schließt von selbst ab.",
+  "wizard.desktop.starting.title": {
+    en: "LosOS Login is still starting",
+    sk: "LosOS Login sa ešte spúšťa",
+    de: "LosOS Login startet noch",
   },
-  "wizard.first.introNamed": {
-    en: "Open LosOS Cloud and sign in with the name and password you set in step 2. The name is {name}. This page notices when you are through and finishes on its own.",
-    sk: "Otvorte LosOS Cloud a prihláste sa menom a heslom, ktoré ste nastavili v kroku 2. Meno je {name}. Táto stránka spozná, keď budete prihlásení, a dokončí sa sama.",
-    de: "Öffne LosOS Cloud und melde dich mit dem Namen und dem Passwort an, die du in Schritt 2 festgelegt hast. Der Name ist {name}. Diese Seite merkt, wenn du durch bist, und schließt von selbst ab.",
+  "wizard.desktop.starting.body": {
+    en: "It starts once the box has its first password. This page keeps asking and signs you in when it answers. On a new box this takes a minute.",
+    sk: "Spustí sa, keď má zariadenie prvé heslo. Táto stránka sa pýta ďalej a prihlási vás, hneď ako odpovie. Na novom zariadení to trvá minútu.",
+    de: "Es startet, sobald die Box ihr erstes Passwort hat. Diese Seite fragt weiter nach und meldet dich an, sobald es antwortet. Auf einer neuen Box dauert das eine Minute.",
   },
-  "wizard.first.starting.title": {
-    en: "Your files are still starting",
-    sk: "Vaše súbory sa ešte spúšťajú",
-    de: "Deine Dateien starten noch",
+  "wizard.desktop.ready": {
+    en: "This is your desktop, and you are signed in. Your apps, your files and every setting are here.",
+    sk: "Toto je vaša plocha a ste prihlásení. Sú tu vaše aplikácie, súbory a všetky nastavenia.",
+    de: "Das ist dein Desktop, und du bist angemeldet. Hier sind deine Apps, deine Dateien und alle Einstellungen.",
   },
-  "wizard.first.starting.body": {
-    en: "LosOS Cloud has not answered yet. This page keeps asking and the button opens once it does. On a new box this takes a minute.",
-    sk: "LosOS Cloud ešte neodpovedá. Táto stránka sa pýta ďalej a tlačidlo sa sprístupní, hneď ako odpovie. Na novom zariadení to trvá minútu.",
-    de: "LosOS Cloud antwortet noch nicht. Diese Seite fragt weiter nach, und der Button geht auf, sobald es antwortet. Auf einer neuen Box dauert das eine Minute.",
+  "wizard.desktop.readyNamed": {
+    en: "This is your desktop, and you are signed in as {name}. Your apps, your files and every setting are here.",
+    sk: "Toto je vaša plocha a ste prihlásení ako {name}. Sú tu vaše aplikácie, súbory a všetky nastavenia.",
+    de: "Das ist dein Desktop, und du bist als {name} angemeldet. Hier sind deine Apps, deine Dateien und alle Einstellungen.",
   },
-  "wizard.first.waiting": {
-    en: "Waiting for you to sign in",
-    sk: "Čaká sa na prihlásenie",
-    de: "Wartet auf deine Anmeldung",
+  "wizard.desktop.spare.title": {
+    en: "Signed in with the spare key",
+    sk: "Prihlásené náhradným kľúčom",
+    de: "Mit dem Ersatzschlüssel angemeldet",
   },
-  "wizard.first.newTab": {
-    en: "Open LosOS Cloud",
-    sk: "Otvoriť LosOS Cloud",
-    de: "LosOS Cloud öffnen",
+  "wizard.desktop.spare.plainHttp": {
+    en: "This page is not encrypted, and LosOS Login signs people in over https only. This tab stays signed in with the spare key. Next time, open the box at its https address and sign in with your password.",
+    sk: "Táto stránka nie je šifrovaná a LosOS Login prihlasuje iba cez https. Táto karta zostane prihlásená náhradným kľúčom. Nabudúce otvorte zariadenie na jeho adrese https a prihláste sa heslom.",
+    de: "Diese Seite ist nicht verschlüsselt, und LosOS Login meldet nur über https an. Dieser Tab bleibt mit dem Ersatzschlüssel angemeldet. Öffne die Box nächstes Mal unter ihrer https-Adresse und melde dich mit deinem Passwort an.",
   },
-  "wizard.first.manual": {
-    en: "I have signed in",
-    sk: "Prihlásenie je hotové",
-    de: "Ich habe mich angemeldet",
+  "wizard.desktop.spare.noLogin": {
+    en: "This box has no LosOS Login, so the spare key is how you sign in to it. This tab stays signed in with it.",
+    sk: "Toto zariadenie nemá LosOS Login, takže sa doň prihlasujete náhradným kľúčom. Táto karta ním zostane prihlásená.",
+    de: "Diese Box hat kein LosOS Login, also meldest du dich mit dem Ersatzschlüssel an. Dieser Tab bleibt damit angemeldet.",
   },
+  "wizard.desktop.spare.address": {
+    en: "LosOS Login took your password but does not sign people in at this address. This tab stays signed in with the spare key. Open the box by its name to sign in with your password.",
+    sk: "LosOS Login vaše heslo prijal, ale na tejto adrese neprihlasuje. Táto karta zostane prihlásená náhradným kľúčom. Ak sa chcete prihlásiť heslom, otvorte zariadenie podľa jeho mena.",
+    de: "LosOS Login hat dein Passwort angenommen, meldet unter dieser Adresse aber nicht an. Dieser Tab bleibt mit dem Ersatzschlüssel angemeldet. Öffne die Box unter ihrem Namen, um dich mit deinem Passwort anzumelden.",
+  },
+  "wizard.desktop.password.again": {
+    en: "This tab no longer has the password you set in step 2. Type it once more to sign in.",
+    sk: "Táto karta si už nepamätá heslo, ktoré ste nastavili v kroku 2. Zadajte ho ešte raz a prihláste sa.",
+    de: "Dieser Tab kennt das Passwort aus Schritt 2 nicht mehr. Gib es noch einmal ein, um dich anzumelden.",
+  },
+  "wizard.desktop.password.refused": {
+    en: "LosOS Login did not take that password. Type the one you set in step 2.",
+    sk: "LosOS Login toto heslo neprijal. Zadajte to, ktoré ste nastavili v kroku 2.",
+    de: "LosOS Login hat dieses Passwort nicht angenommen. Gib das aus Schritt 2 ein.",
+  },
+  "wizard.desktop.password.name": {
+    en: "Sign-in name",
+    sk: "Prihlasovacie meno",
+    de: "Anmeldename",
+  },
+  "wizard.desktop.password.label": { en: "Password", sk: "Heslo", de: "Passwort" },
+  "wizard.desktop.password.wrong": {
+    en: "Wrong name or password.",
+    sk: "Nesprávne meno alebo heslo.",
+    de: "Falscher Name oder falsches Passwort.",
+  },
+  "wizard.desktop.password.submit": { en: "Sign in", sk: "Prihlásiť sa", de: "Anmelden" },
 
   // ── Toasts the wizard raises ──────────────────────────────────────────────
   "wizard.trust.quick.copiedTitle": {
@@ -717,15 +744,5 @@ export default defineMessages({
     en: "Paste it somewhere that is not this box.",
     sk: "Vložte ho niekam mimo tohto zariadenia.",
     de: "Füg ihn irgendwo ein, nur nicht auf dieser Box.",
-  },
-  "wizard.first.signedIn.toast": {
-    en: "That was the last step. Finish below.",
-    sk: "To bol posledný krok. Dokončite nastavenie nižšie.",
-    de: "Das war der letzte Schritt. Schließ unten ab.",
-  },
-  "wizard.closing.toast": {
-    en: "Setup finished",
-    sk: "Nastavenie je dokončené",
-    de: "Einrichtung abgeschlossen",
   },
 });

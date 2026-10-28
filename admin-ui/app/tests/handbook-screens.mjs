@@ -579,6 +579,12 @@ async function open({
   // Who GET /api/me says is signed in; null leaves it to the catch-all,
   // which reads as the spare key on a box that predates the field.
   me = null,
+  // The address the page is served at. LosOS Login's cookie is https only,
+  // so the wizard's last step is taken at the https one.
+  at = AT,
+  // LosOS Login answers: the wizard's sign-in takes the password, and from
+  // then on GET /api/me without the key is Matus by the session.
+  login = false,
 } = {}) {
   const page = await browser.newPage({ viewport, locale, colorScheme: theme, deviceScaleFactor: 2, reducedMotion });
   await page.clock.setFixedTime(NOW);
@@ -597,7 +603,7 @@ async function open({
   // The page is served as if from the box's own name, so the address bar and
   // the About pane read as they do on a LAN, not as 127.0.0.1:port. Registered
   // FIRST: Playwright uses the last matching route, so every stub below wins.
-  await page.route(`${AT}/**`, async (route) => {
+  await page.route(`${at}/**`, async (route) => {
     const url = new URL(route.request().url());
     const response = await route.fetch({ url: origin + url.pathname + url.search });
     await route.fulfill({ response });
@@ -633,6 +639,21 @@ async function open({
     return auth !== undefined && auth !== `Bearer ${TOKEN}` ? json(route, 401, { error: 'unauthorized' }) : json(route, 200, state);
   });
   if (me !== null) await page.route('**/api/me', (route) => json(route, 200, me));
+  if (login) {
+    let session = false;
+    await page.route('**/auth/api/health', (route) => json(route, 200, { status: 'OK' }));
+    await page.route('**/auth/api/firstfactor', (route) => {
+      session = route.request().postDataJSON().password === PASSWORD;
+      return json(route, session ? 200 : 401, { status: session ? 'OK' : 'KO' });
+    });
+    await page.route('**/api/me', (route) => {
+      if (route.request().headers()['authorization'] !== undefined) {
+        return json(route, 200, { name: null, displayName: null, groups: [], admin: true, spareKey: true, sections: [], standalone: true });
+      }
+      if (!session) return json(route, 401, { error: 'unauthorized' });
+      return json(route, 200, { name: 'matus', displayName: 'Matus', groups: ['losos-admins', 'losos-owner'], admin: true, spareKey: false, sections: [], standalone: true, shared: [] });
+    });
+  }
   await page.route('**/api/people', (route) => json(route, 200, PEOPLE));
   await page.route('**/api/account', (route) => json(route, 200, ACCOUNT));
   await page.route('**/api/settings', (route) => json(route, 200, settings));
@@ -671,10 +692,8 @@ async function open({
   // The app tiles probe LosOS Cloud and LosOS Git; both answer.
   await page.route('**/status.php', (route) => json(route, 200, { installed: true, productname: 'LosOS Cloud' }));
   await page.route('**/git/api/v1/version', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '<title>LosOS Git</title>' }));
-  // The wizard's last step asks LosOS Cloud who is signed in: nobody yet.
-  await page.route('**/cloud/api/me', (route) => json(route, 401, { error: 'signed out' }));
 
-  await page.goto(AT + path, { waitUntil: 'networkidle' });
+  await page.goto(at + path, { waitUntil: 'networkidle' });
   await page.waitForTimeout(600);
   return page;
 }
@@ -1053,16 +1072,20 @@ const SHOTS = [
   },
   { name: 'wizard-step2-spare-key', path: '/', claimed: false, signedIn: false, full: true, crop: 'column', langs: true, act: wizardSetPassword },
   {
-    name: 'wizard-step3-sign-in',
+    // The last step: signed in, the desktop behind the card.
+    name: 'wizard-step3-desktop',
     path: '/',
     claimed: false,
     signedIn: false,
-    crop: 'column',
+    at: 'https://mattbox.local',
+    login: true,
+    reducedMotion: 'reduce',
     langs: true,
     act: async (page, t) => {
       await wizardSetPassword(page, t);
       await page.getByRole('button', { name: t('wizard.nav.continue') }).last().click();
-      await settle(page, 2500);
+      await page.getByTestId('desktop-ready').waitFor({ timeout: 10_000 });
+      await settle(page, 1500);
       await hideToasts(page);
     },
   },

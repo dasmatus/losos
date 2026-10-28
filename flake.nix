@@ -491,6 +491,9 @@
         losos-tls = import ./nix/tests/tls.nix { inherit pkgs; };
         losos-setup = import ./nix/tests/setup.nix { inherit pkgs; };
         losos-tour = import ./nix/tests/tour.nix { inherit pkgs; };
+        # The wizard's last step: signed in by the page itself, the desktop
+        # behind the card, and "Let's go" (nix/tests/setup-desktop.nix).
+        losos-setup-desktop = import ./nix/tests/setup-desktop.nix { inherit pkgs; };
         # The game a long wait offers, played during a real wizard wait and a
         # real rebuild, with the pull request's pictures (nix/tests/wait-game.nix).
         losos-wait-game = import ./nix/tests/wait-game.nix { inherit pkgs; };
