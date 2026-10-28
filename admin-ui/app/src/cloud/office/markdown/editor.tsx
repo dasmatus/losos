@@ -31,7 +31,7 @@ import { getProfile, type Profile } from "@/lib/api";
 import { useLocale, useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { readProperties, renderNote, splitFrontMatter, type Resolver } from "@/notes/markdown";
-import { NoteView } from "@/notes/note-view";
+import { NoteView, useNotesReady } from "@/notes/note-view";
 import { Vault } from "@/notes/vault";
 import { cloud, contentUrl, joinPath, parentOf, type Entry } from "../../api";
 import { collab, type DocMeta } from "../../collab/api";
@@ -200,7 +200,8 @@ export function MarkdownOffice({ entry: first, onClose }: { entry: Entry; onClos
   const deck = isDeck(properties);
   const slides = React.useMemo(() => (deck ? splitSlides(shown) : []), [deck, shown]);
   const current = deck ? slideAt(slides, cursor.line) : 0;
-  const rendered = React.useMemo(() => (deck ? null : renderNote(shown, resolver)), [deck, shown, resolver]);
+  const notesReady = useNotesReady();
+  const rendered = React.useMemo(() => (deck || !notesReady ? null : renderNote(shown, resolver)), [deck, notesReady, shown, resolver]);
   const labels = React.useMemo(
     () => ({ properties: t("notes.properties"), embedLoading: t("notes.embed.loading"), embedMissing: t("notes.embed.missing") }),
     [t],

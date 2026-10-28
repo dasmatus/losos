@@ -1,28 +1,27 @@
-import markdownit from "markdown-it";
-import type { Env as MdEnv, MarkdownIt, StateBlock, StateCore, StateInline, Token } from "markdown-it";
-import footnote from "markdown-it-footnote";
 import DOMPurify from "dompurify";
 import katex from "katex";
 import { parse as parseYaml } from "yaml";
+import { renderNote as crateRenderNote, toNote as crateToNote } from "@/mdx/pkg/losos_mdx.js";
+import { loadMdx } from "@/mdx/wasm";
 import { highlight } from "./highlight";
 import { escapeHtml } from "./html";
-import { parseLink, slug } from "./links";
+import { slug } from "./links";
 
-/* A note's Markdown to HTML, the way Obsidian and GitHub read it.
+/* A note to HTML, the way Obsidian and GitHub read it, by losos-mdx
+ * (backend/mdx) in WebAssembly: the parser and allowlist the box itself
+ * renders documents with. A `.note` is MDX, a `.md` Markdown, and both
+ * carry Obsidian's syntax: properties, [[wikilinks]] and ![[embeds]],
+ * #tags, callouts, ==highlights==, %%comments%%, task marks, ^block ids,
+ * $maths$ and single line breaks kept. MDX components are a fixed table
+ * the crate draws itself; no expression, import or export is ever run,
+ * so a note carries no script.
  *
- * GitHub's flavour: tables, task lists, strikethrough, autolinks, footnotes,
- * fenced code with highlighting and alerts (`> [!NOTE]`). Obsidian's on
- * top: properties (YAML front matter), [[wikilinks]] with headings, blocks
- * and aliases, ![[embeds]], #tags, callouts (the same syntax as the alerts,
- * with a title and folding), ==highlights==, %%comments%%, block ids (^id)
- * and $maths$. Single line breaks are kept, as Obsidian keeps them.
- *
- * The HTML goes through DOMPurify before it reaches a page, and no element
- * carries a style attribute: the pages run under `style-src 'self'`, which
- * refuses them. Maths is MathML (KaTeX's "mathml" output), which needs no
- * stylesheet; code is classes the note stylesheet colours (note.css). What
- * a link points at is the caller's business (`Resolver`): LosOS Cloud
- * opens notes in its own view, a knowledge base in its own pages. */
+ * The crate's HTML is already through its allowlist. What it may not write
+ * (a checkbox, a player, maths, coloured code) is added here from data
+ * attributes, then the whole goes through DOMPurify again, and no element
+ * carries a style attribute: the pages run under `style-src 'self'`. Maths
+ * is MathML (KaTeX's "mathml" output); code is classes note.css colours.
+ * What a link points at is the caller's business (`Resolver`). */
 
 export interface Resolved {
   /** The note's path in the vault. */
@@ -55,9 +54,22 @@ export interface Rendered {
   headings: Heading[];
   /** The text with the front matter and comments taken out. */
   body: string;
-  /** Lines the front matter takes: a line in `body` is this many further
-   * down the file. */
-  frontLines: number;
+  /** What the note asked for and did not get (a component that does not
+   * exist, a prop out of range), or why a .note was read as Markdown. */
+  problems: Problem[];
+}
+
+export interface Problem {
+  /** From 1. */
+  line: number;
+  message: string;
+}
+
+/** Which way a note is read: a .note is MDX, anything else Markdown. */
+export type Flavour = "mdx" | "md";
+
+export function flavourOf(path: string): Flavour {
+  return /\.note$/i.test(path) ? "mdx" : "md";
 }
 
 const FRONT = /^---[ \t]*\r?\n([\s\S]*?)\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/;
@@ -130,128 +142,33 @@ export function stripComments(text: string): string {
     .join("\n");
 }
 
-// ── Inline rules ────────────────────────────────────────────────────────
+// ── The renderer ────────────────────────────────────────────────────────
 
-/** [[target#sub|alias]] and ![[target#sub|size]]. */
-function wikilinkRule(state: StateInline, silent: boolean): boolean {
-  const src = state.src;
-  let pos = state.pos;
-  const embed = src.charCodeAt(pos) === 0x21; /* ! */
-  if (embed) pos++;
-  if (src.charCodeAt(pos) !== 0x5b || src.charCodeAt(pos + 1) !== 0x5b) return false;
-  const end = src.indexOf("]]", pos + 2);
-  if (end < 0) return false;
-  const inner = src.slice(pos + 2, end);
-  if (inner.includes("\n") || inner.trim() === "" || inner.includes("[[")) return false;
-  if (!silent) {
-    const token = state.push(embed ? "obsidian_embed" : "wikilink", "", 0);
-    token.content = inner;
-  }
-  state.pos = end + 2;
-  return true;
+let ready = false;
+let loading: Promise<void> | null = null;
+
+/** Load the renderer once; every page that draws a note awaits it first. */
+export function loadNotes(): Promise<void> {
+  loading ??= loadMdx().then(() => {
+    ready = true;
+  });
+  return loading;
 }
 
-/** ==highlight== */
-function highlightRule(state: StateInline, silent: boolean): boolean {
-  const src = state.src;
-  const pos = state.pos;
-  if (src.charCodeAt(pos) !== 0x3d || src.charCodeAt(pos + 1) !== 0x3d) return false;
-  const end = src.indexOf("==", pos + 2);
-  if (end < 0 || end === pos + 2) return false;
-  const inner = src.slice(pos + 2, end);
-  if (/^\s|\s$/.test(inner)) return false;
-  if (!silent) {
-    state.push("mark_open", "mark", 1);
-    const oldMax = state.posMax;
-    state.pos = pos + 2;
-    state.posMax = end;
-    state.md.inline.tokenize(state);
-    state.posMax = oldMax;
-    state.push("mark_close", "mark", -1);
-  }
-  state.pos = end + 2;
-  return true;
+/** Whether renderNote can run yet. */
+export function notesReady(): boolean {
+  return ready;
 }
 
-/** A #tag: letters, digits, _, -, / and not only digits, after a space or
- * at the start of the text. */
-export const TAG = /^#([\p{L}\p{N}_\-/]*[\p{L}_\-/][\p{L}\p{N}_\-/]*)/u;
-
-function tagRule(state: StateInline, silent: boolean): boolean {
-  const pos = state.pos;
-  if (state.src.charCodeAt(pos) !== 0x23) return false;
-  if (pos > 0 && !/[\s([{,;]/.test(state.src[pos - 1] ?? "")) return false;
-  const m = TAG.exec(state.src.slice(pos));
-  if (m === null || m[1] === undefined) return false;
-  if (!silent) {
-    const token = state.push("obsidian_tag", "", 0);
-    token.content = m[1];
-  }
-  state.pos += m[0].length;
-  return true;
+interface CrateRendered {
+  html: string;
+  properties: Record<string, unknown> | null;
+  propertiesError: string | null;
+  headings: Heading[];
+  problems: { place: { line: number; column: number }; message: string }[];
 }
 
-/** $inline maths$: not `$ ` at the start, not ` $` at the end, and not a
- * price (a digit straight after the closing dollar). */
-function mathInlineRule(state: StateInline, silent: boolean): boolean {
-  const src = state.src;
-  const pos = state.pos;
-  if (src.charCodeAt(pos) !== 0x24 || src.charCodeAt(pos + 1) === 0x24) return false;
-  if (/\s/.test(src[pos + 1] ?? " ")) return false;
-  let end = pos + 1;
-  for (;;) {
-    end = src.indexOf("$", end);
-    if (end < 0) return false;
-    if (src[end - 1] === "\\") {
-      end++;
-      continue;
-    }
-    break;
-  }
-  if (/\s/.test(src[end - 1] ?? " ") || /\d/.test(src[end + 1] ?? "")) return false;
-  if (!silent) {
-    const token = state.push("math_inline", "", 0);
-    token.content = src.slice(pos + 1, end);
-  }
-  state.pos = end + 1;
-  return true;
-}
-
-/** $$ block maths $$, on lines of their own or on one line. */
-function mathBlockRule(state: StateBlock, startLine: number, endLine: number, silent: boolean): boolean {
-  const start = (state.bMarks[startLine] ?? 0) + (state.tShift[startLine] ?? 0);
-  const max = state.eMarks[startLine] ?? 0;
-  const first = state.src.slice(start, max);
-  if (!first.startsWith("$$")) return false;
-  if (silent) return true;
-  let content: string;
-  let next = startLine;
-  const rest = first.slice(2);
-  if (rest.trimEnd().endsWith("$$") && rest.trim() !== "") {
-    content = rest.trimEnd().slice(0, -2);
-  } else {
-    const parts = [rest];
-    let closed = false;
-    while (++next < endLine) {
-      const s = (state.bMarks[next] ?? 0) + (state.tShift[next] ?? 0);
-      const line = state.src.slice(s, state.eMarks[next] ?? 0);
-      if (line.trimEnd().endsWith("$$")) {
-        parts.push(line.trimEnd().slice(0, -2));
-        closed = true;
-        break;
-      }
-      parts.push(line);
-    }
-    if (!closed) return false;
-    content = parts.join("\n");
-  }
-  const token = state.push("math_block", "", 0);
-  token.content = content.trim();
-  token.map = [startLine, next + 1];
-  token.block = true;
-  state.line = next + 1;
-  return true;
-}
+const SIZE = /^(\d{1,5})(?:x(\d{1,5}))?$/;
 
 function renderMath(tex: string, display: boolean): string {
   try {
@@ -261,388 +178,85 @@ function renderMath(tex: string, display: boolean): string {
   }
 }
 
-// ── Core rules ──────────────────────────────────────────────────────────
-
-const TASK = /^\[([ xX/\-><!?*"lbiSIpcfkwud])\][ \t]/;
-
-/** - [ ] and - [x], and Obsidian's other marks (- [/], - [-], …). */
-function taskLists(state: StateCore): void {
-  const tokens = state.tokens;
-  for (let i = 2; i < tokens.length; i++) {
-    const inline = tokens[i];
-    if (inline?.type !== "inline" || tokens[i - 1]?.type !== "paragraph_open" || tokens[i - 2]?.type !== "list_item_open") continue;
-    const m = TASK.exec(inline.content);
-    if (m === null) continue;
-    const mark = m[1] ?? " ";
-    const item = tokens[i - 2] as Token;
-    item.attrJoin("class", "task-list-item");
-    item.attrSet("data-task", mark);
-    const first = inline.children?.[0];
-    if (first?.type === "text") first.content = first.content.replace(TASK, "");
-    const box = new state.Token("task_box", "", 0);
-    box.meta = { mark, line: item.map?.[0] ?? -1 };
-    inline.children?.unshift(box);
-    // Mark the list too, which drops its bullets.
-    for (let j = i - 3; j >= 0; j--) {
-      const t = tokens[j] as Token;
-      if ((t.type === "bullet_list_open" || t.type === "ordered_list_open") && t.level === item.level - 1) {
-        t.attrJoin("class", "contains-task-list");
-        break;
-      }
-    }
+/** What the crate leaves to the page, from its data attributes. */
+function finish(html: string, links: Map<string, { path: string; sub: string }>): string {
+  // Already through the crate's allowlist; a parsed document runs nothing.
+  const doc = new DOMParser().parseFromString(`<body>${html}</body>`, "text/html");
+  const body = doc.body;
+  for (const box of body.querySelectorAll<HTMLElement>("span.task-box")) {
+    const input = doc.createElement("input");
+    input.type = "checkbox";
+    input.className = "task-box";
+    if ((box.dataset["task"] ?? " ") !== " ") input.setAttribute("checked", "");
+    input.dataset["line"] = box.dataset["line"] ?? "-1";
+    input.setAttribute("aria-label", input.hasAttribute("checked") ? "done" : "to do");
+    box.replaceWith(input);
   }
-}
-
-const CALLOUT = /^\[!([\w-]+)\]([+-]?)[ \t]*(.*)$/;
-
-/** > [!type]± Title: Obsidian's callouts and GitHub's alerts. */
-function callouts(state: StateCore): void {
-  const tokens = state.tokens;
-  for (let i = 0; i < tokens.length; i++) {
-    const open = tokens[i] as Token;
-    if (open.type !== "blockquote_open") continue;
-    const p = tokens[i + 1];
-    const inline = tokens[i + 2];
-    if (p?.type !== "paragraph_open" || inline?.type !== "inline") continue;
-    const firstLine = inline.content.split("\n")[0] ?? "";
-    const m = CALLOUT.exec(firstLine);
-    if (m === null) continue;
-    const kind = (m[1] ?? "note").toLowerCase();
-    const fold = m[2] ?? "";
-    const title = m[3]?.trim() ?? "";
-    // The rest of the first paragraph, after the marker line.
-    const rest = inline.content.split("\n").slice(1).join("\n");
-    open.type = "callout_open";
-    open.meta = { kind, fold, title: title === "" ? null : title };
-    // The matching close, at the same level.
-    let depth = 0;
-    for (let j = i; j < tokens.length; j++) {
-      const t = tokens[j] as Token;
-      if (t.type === "blockquote_open" || t.type === "callout_open") depth++;
-      if (t.type === "blockquote_close") {
-        depth--;
-        if (depth === 0) {
-          t.type = "callout_close";
-          t.meta = { fold };
-          break;
-        }
-      }
-    }
-    // The title is parsed inline, like any other text.
-    const titleTokens: Token[] = [];
-    if (title !== "") state.md.inline.parse(title, state.md, state.env, titleTokens);
-    (open.meta as { titleTokens?: Token[] }).titleTokens = titleTokens;
-    if (rest.trim() === "") {
-      // Only the title: drop the paragraph.
-      tokens.splice(i + 1, 3);
-    } else {
-      inline.content = rest;
-      inline.children = [];
-      state.md.inline.parse(rest, state.md, state.env, inline.children);
-    }
+  for (const spot of body.querySelectorAll<HTMLElement>("span.embed-media")) {
+    const kind = spot.dataset["kind"] === "audio" ? "audio" : "video";
+    const media = doc.createElement(kind);
+    media.className = `embed-${kind}`;
+    media.setAttribute("controls", "");
+    media.setAttribute("src", spot.dataset["src"] ?? "");
+    spot.replaceWith(media);
   }
-}
-
-const BLOCK_ID = /[ \t]\^([A-Za-z0-9-]+)[ \t]*$/;
-const BLOCK_ID_ALONE = /^\^([A-Za-z0-9-]+)[ \t]*$/;
-
-/** A block's ^id at the end of its last line becomes the block's id, so
- * [[note#^id]] lands on it. On a line of its own it names the block above. */
-function blockIds(state: StateCore): void {
-  const tokens = state.tokens;
-  for (let i = 0; i < tokens.length; i++) {
-    const inline = tokens[i] as Token;
-    if (inline.type !== "inline") continue;
-    const lines = inline.content.split("\n");
-    const last = lines[lines.length - 1] ?? "";
-    const m = BLOCK_ID.exec(last) ?? (lines.length > 1 ? null : BLOCK_ID_ALONE.exec(last));
-    if (m === null) continue;
-    const id = m[1] ?? "";
-    // The block that holds it: the nearest opening token before.
-    let target: Token | null = null;
-    for (let j = i - 1; j >= 0; j--) {
-      const t = tokens[j] as Token;
-      if (t.nesting === 1) {
-        target = t;
-        // A list item's paragraph: the id goes on the item.
-        const above = tokens[j - 1];
-        if (above?.type === "list_item_open" && t.type === "paragraph_open") target = above;
-        break;
-      }
-    }
-    if (target === null) continue;
-    if (BLOCK_ID_ALONE.test(last) && lines.length === 1) {
-      // A paragraph that is only the id: give it to the block before it.
-      const before = findBlockBefore(tokens, i - 1);
-      if (before !== null) before.attrSet("id", `^${id}`);
-      const p = tokens[i - 1] as Token;
-      p.hidden = true;
-      inline.children = [];
-      (tokens[i + 1] as Token).hidden = true;
+  for (const img of body.querySelectorAll<HTMLImageElement>("img")) {
+    const src = img.getAttribute("src") ?? "";
+    const alt = img.getAttribute("alt") ?? "";
+    if (/^(https?:)?\/\//i.test(src)) {
+      // The page loads no picture from off the box: a link to it instead.
+      const a = doc.createElement("a");
+      a.className = "external image-link";
+      a.setAttribute("href", src);
+      a.textContent = alt || src;
+      img.replaceWith(a);
       continue;
     }
-    target.attrSet("id", `^${id}`);
-    const children = inline.children ?? [];
-    const tail = children[children.length - 1];
-    if (tail?.type === "text") tail.content = tail.content.replace(BLOCK_ID, "");
+    img.classList.add("embed-image");
+    img.setAttribute("loading", "lazy");
+    const width = img.dataset["width"];
+    const size = SIZE.exec(width !== undefined ? `${width}${img.dataset["height"] !== undefined ? `x${img.dataset["height"]}` : ""}` : (alt.split("|").pop() ?? ""));
+    if (size !== null) {
+      img.setAttribute("width", size[1] ?? "");
+      if (size[2] !== undefined) img.setAttribute("height", size[2]);
+    }
   }
-}
-
-function findBlockBefore(tokens: Token[], from: number): Token | null {
-  // The opening token of the block that closed just before `from`.
-  const close = tokens[from - 1];
-  if (close === undefined || close.nesting !== -1) return null;
-  let depth = 0;
-  for (let j = from - 1; j >= 0; j--) {
-    const t = tokens[j] as Token;
-    depth += t.nesting;
-    if (depth === 0) return t;
+  for (const a of body.querySelectorAll<HTMLAnchorElement>("a[href]")) {
+    let href = a.getAttribute("href") ?? "";
+    if (href.startsWith("http://www.") && a.textContent === href.slice("http://".length)) {
+      // A bare www. address: GitHub's flavour says http, the web is https.
+      href = `https://${a.textContent}`;
+      a.setAttribute("href", href);
+    }
+    const note = links.get(href);
+    if (a.dataset["notePath"] === undefined && note !== undefined && !a.classList.contains("tag")) {
+      // A Markdown link to a note: opened in the page, like a wikilink.
+      a.dataset["notePath"] = note.path;
+      a.dataset["sub"] = note.sub;
+      a.classList.add("wikilink");
+    }
+    if (/^[a-z][a-z0-9+.-]*:/i.test(href) || a.classList.contains("is-file")) {
+      a.setAttribute("target", "_blank");
+      a.setAttribute("rel", "noopener noreferrer");
+      if (!a.classList.contains("is-file")) a.classList.add("external");
+    }
   }
-  return null;
-}
-
-// ── The renderer ────────────────────────────────────────────────────────
-
-interface Env extends MdEnv {
-  resolver: Resolver;
-  headings: Heading[];
-  slugs: Map<string, number>;
-  lineOffset: number;
-}
-
-const EMBED_SIZE = /^(\d+)(?:x(\d+))?$/;
-const IMAGE = /\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i;
-const AUDIO = /\.(mp3|wav|m4a|ogg|flac|3gp|webm)$/i;
-const VIDEO = /\.(mp4|mov|mkv|ogv)$/i;
-
-function attrs(pairs: Record<string, string | null | undefined>): string {
-  return Object.entries(pairs)
-    .filter((p): p is [string, string] => p[1] !== null && p[1] !== undefined)
-    .map(([k, v]) => ` ${k}="${escapeHtml(v)}"`)
-    .join("");
-}
-
-/** The note's environment, which renderNote hands to every render. */
-function noteEnv(env: MdEnv | undefined): Env {
-  return env as Env;
-}
-
-/** A token's attribute as text; markdown-it types attribute values as
- * numbers too, though its own rules only ever set strings. */
-function attrText(token: Token, name: string): string {
-  const value = token.attrGet(name);
-  return value === null ? "" : String(value);
-}
-
-function createMd(): MarkdownIt {
-  const md = new markdownit({
-    html: true,
-    linkify: true,
-    breaks: true,
-    typographer: false,
-    highlight: (code, lang) => highlight(code, lang),
-  });
-  md.use(footnote);
-  // GitHub links www.example.com without a scheme; linkify-it 6 links only
-  // schemes by default, which also keeps a note's Home.md from turning into
-  // a link to a Moldovan site.
-  md.linkify.add("www.", {
-    validate: (text, pos, self) => {
-      const tail = self.testSchemaAt(`//www.${text.slice(pos)}`, "http:", 0);
-      return tail > 6 ? tail - 6 : 0;
-    },
-    normalize: (match) => {
-      match.url = `https://${match.url}`;
-    },
-  });
-  md.inline.ruler.before("link", "wikilink", wikilinkRule);
-  md.inline.ruler.before("emphasis", "highlight", highlightRule);
-  md.inline.ruler.after("wikilink", "obsidian_tag", tagRule);
-  md.inline.ruler.after("escape", "math_inline", mathInlineRule);
-  md.block.ruler.before("fence", "math_block", mathBlockRule, { alt: ["paragraph", "reference", "blockquote", "list"] });
-  md.core.ruler.after("inline", "callouts", callouts);
-  md.core.ruler.after("callouts", "task_lists", taskLists);
-  md.core.ruler.after("task_lists", "block_ids", blockIds);
-
-  const r = md.renderer.rules;
-  r["math_inline"] = (tokens, idx) => renderMath(tokens[idx]?.content ?? "", false);
-  r["math_block"] = (tokens, idx) => `<div class="math-block">${renderMath(tokens[idx]?.content ?? "", true)}</div>\n`;
-  r["mark_open"] = () => "<mark>";
-  r["mark_close"] = () => "</mark>";
-  r["task_box"] = (tokens, idx) => {
-    const { mark, line } = tokens[idx]?.meta as { mark: string; line: number };
-    const done = mark !== " ";
-    return `<input type="checkbox" class="task-box"${done ? " checked" : ""}${attrs({ "data-line": String(line), "aria-label": done ? "done" : "to do" })}> `;
-  };
-  r["obsidian_tag"] = (tokens, idx) => {
-    const tag = tokens[idx]?.content ?? "";
-    return `<a class="tag"${attrs({ href: `#tag/${tag}`, "data-tag": tag })}>#${escapeHtml(tag)}</a>`;
-  };
-  r["wikilink"] = (tokens, idx, _o, mdEnv) => {
-    const env = noteEnv(mdEnv);
-    const link = parseLink(tokens[idx]?.content ?? "");
-    const text = link.alias ?? (link.target === "" ? link.sub.replace(/^\^/, "") : link.sub === "" ? link.target : `${link.target} > ${link.sub.replace(/^\^/, "")}`);
-    if (link.target === "") {
-      // [[#Heading]]: a place in this note.
-      return `<a class="wikilink internal"${attrs({ href: `#${anchorFor(link.sub)}`, "data-sub": link.sub })}>${escapeHtml(text)}</a>`;
-    }
-    const found = env.resolver.note(link.target);
-    if (found === null) {
-      const file = env.resolver.file(link.target);
-      if (file !== null) return `<a class="wikilink file"${attrs({ href: file, target: "_blank", rel: "noopener" })}>${escapeHtml(text)}</a>`;
-      return `<a class="wikilink is-unresolved"${attrs({ href: "#", "data-note-target": link.target })}>${escapeHtml(text)}</a>`;
-    }
-    return `<a class="wikilink"${attrs({ href: env.resolver.href(found.path, link.sub), "data-note-path": found.path, "data-sub": link.sub })}>${escapeHtml(text)}</a>`;
-  };
-  r["obsidian_embed"] = (tokens, idx, _o, mdEnv) => {
-    const env = noteEnv(mdEnv);
-    const link = parseLink(tokens[idx]?.content ?? "");
-    const size = link.alias !== null ? EMBED_SIZE.exec(link.alias) : null;
-    const file = IMAGE.test(link.target) || AUDIO.test(link.target) || VIDEO.test(link.target) || /\.pdf$/i.test(link.target) ? env.resolver.file(link.target) : null;
-    if (file !== null) {
-      if (IMAGE.test(link.target)) {
-        const alt = size === null ? (link.alias ?? link.target) : link.target;
-        return `<img class="embed-image"${attrs({ src: file, alt, loading: "lazy", width: size?.[1] ?? null, height: size?.[2] ?? null })}>`;
-      }
-      if (AUDIO.test(link.target)) return `<audio class="embed-audio" controls${attrs({ src: file })}></audio>`;
-      if (VIDEO.test(link.target)) return `<video class="embed-video" controls${attrs({ src: file })}></video>`;
-      return `<a class="wikilink file"${attrs({ href: file, target: "_blank", rel: "noopener" })}>${escapeHtml(link.alias ?? link.target)}</a>`;
-    }
-    const found = env.resolver.note(link.target);
-    if (found === null) {
-      return `<span class="embed-missing"${attrs({ "data-note-target": link.target })}>${escapeHtml(link.target)}</span>`;
-    }
-    // Filled in by the page (NoteView), which has the note's text.
-    return `<span class="note-embed"${attrs({ "data-embed-path": found.path, "data-sub": link.sub })}></span>`;
-  };
-  r["callout_open"] = (tokens, idx, options, mdEnv, self) => {
-    const env = noteEnv(mdEnv);
-    const { kind, fold, title, titleTokens } = tokens[idx]?.meta as { kind: string; fold: string; title: string | null; titleTokens: Token[] };
-    const titleHtml = title === null ? escapeHtml(calloutTitle(kind)) : self.renderInline(titleTokens, options, env);
-    const head = `<span class="callout-icon" aria-hidden="true"></span><span class="callout-title-inner">${titleHtml}</span>`;
-    if (fold !== "") {
-      return `<details class="callout"${attrs({ "data-callout": kind })}${fold === "+" ? " open" : ""}><summary class="callout-title">${head}</summary><div class="callout-content">\n`;
-    }
-    return `<div class="callout"${attrs({ "data-callout": kind })}><div class="callout-title">${head}</div><div class="callout-content">\n`;
-  };
-  r["callout_close"] = (tokens, idx) => ((tokens[idx]?.meta as { fold: string }).fold !== "" ? "</div></details>\n" : "</div></div>\n");
-
-  // Headings carry ids, and the page learns the outline.
-  const headingOpen = r["heading_open"];
-  r["heading_open"] = (tokens, idx, options, mdEnv, self) => {
-    const env = noteEnv(mdEnv);
-    const token = tokens[idx] as Token;
-    const text = inlineText(tokens[idx + 1]);
-    const id = anchorFor(text, env.slugs);
-    if (token.attrGet("id") === null) token.attrSet("id", id);
-    env.headings.push({ level: Number(token.tag.slice(1)), text, id, line: (token.map?.[0] ?? 0) + env.lineOffset });
-    return headingOpen ? headingOpen(tokens, idx, options, env, self) : self.renderToken(tokens, idx, options);
-  };
-
-  // Links: outside ones open in a new tab; a .md file in the vault is a
-  // note; a picture off the box is a link, since the page loads none.
-  const linkOpen = r["link_open"];
-  r["link_open"] = (tokens, idx, options, mdEnv, self) => {
-    const env = noteEnv(mdEnv);
-    const token = tokens[idx] as Token;
-    const href = attrText(token, "href");
-    if (/^[a-z][a-z0-9+.-]*:/i.test(href)) {
-      token.attrSet("target", "_blank");
-      token.attrSet("rel", "noopener noreferrer");
-      token.attrJoin("class", "external");
-    } else if (!href.startsWith("#")) {
-      const [target, sub = ""] = safeDecode(href).split("#", 2);
-      const found = target !== undefined && target !== "" ? env.resolver.note(target) : null;
-      if (found !== null) {
-        token.attrSet("href", env.resolver.href(found.path, sub));
-        token.attrSet("data-note-path", found.path);
-        token.attrSet("data-sub", sub);
-        token.attrJoin("class", "wikilink");
-      } else if (target !== undefined && target !== "") {
-        const file = env.resolver.file(target);
-        if (file !== null) token.attrSet("href", file);
-      }
-    }
-    return linkOpen ? linkOpen(tokens, idx, options, env, self) : self.renderToken(tokens, idx, options);
-  };
-  r["image"] = (tokens, idx, options, mdEnv, self) => {
-    const env = noteEnv(mdEnv);
-    const token = tokens[idx] as Token;
-    const src = attrText(token, "src");
-    const alt = self.renderInlineAsText(token.children ?? [], options, env);
-    if (/^(https?:)?\/\//i.test(src)) {
-      return `<a class="external image-link"${attrs({ href: src, target: "_blank", rel: "noopener noreferrer" })}>${escapeHtml(alt || src)}</a>`;
-    }
-    if (/^data:/i.test(src)) return escapeHtml(alt);
-    const file = env.resolver.file(safeDecode(src));
-    if (file === null) return `<span class="embed-missing">${escapeHtml(alt || src)}</span>`;
-    const size = EMBED_SIZE.exec(alt.split("|").pop() ?? "");
-    return `<img class="embed-image"${attrs({ src: file, alt, loading: "lazy", width: size?.[1] ?? null, height: size?.[2] ?? null })}>`;
-  };
-  return md;
-}
-
-function safeDecode(text: string): string {
-  try {
-    return decodeURIComponent(text);
-  } catch {
-    return text;
+  for (const code of body.querySelectorAll<HTMLElement>("code.language-math")) {
+    const display = code.classList.contains("math-display");
+    const pre = code.parentElement?.tagName === "PRE" ? code.parentElement : null;
+    const box = doc.createElement(display ? "div" : "span");
+    if (display) box.className = "math-block";
+    box.innerHTML = renderMath(code.textContent ?? "", display);
+    (display && pre !== null ? pre : code).replaceWith(box);
   }
+  for (const code of body.querySelectorAll<HTMLElement>("pre > code")) {
+    const lang = [...code.classList].find((c) => c.startsWith("language-"))?.slice("language-".length) ?? "";
+    if (lang === "") continue;
+    code.classList.add("hljs");
+    code.innerHTML = highlight(code.textContent ?? "", lang);
+  }
+  return sanitize(body.innerHTML);
 }
-
-function inlineText(token: Token | undefined): string {
-  if (token === undefined) return "";
-  return (token.children ?? [])
-    .map((c) => (c.type === "text" || c.type === "code_inline" ? c.content : c.type === "wikilink" ? (parseLink(c.content).alias ?? parseLink(c.content).target) : c.type === "obsidian_tag" ? `#${c.content}` : ""))
-    .join("")
-    .trim();
-}
-
-/** The id a heading gets, and the one a link to it looks for. */
-export function anchorFor(text: string, used?: Map<string, number>): string {
-  if (text.startsWith("^")) return text;
-  const base = `h-${slug(text)}`;
-  if (used === undefined) return base;
-  const n = used.get(base) ?? 0;
-  used.set(base, n + 1);
-  return n === 0 ? base : `${base}-${n}`;
-}
-
-const CALLOUT_TITLES: Record<string, string> = {
-  note: "Note",
-  abstract: "Abstract",
-  summary: "Summary",
-  tldr: "TL;DR",
-  info: "Info",
-  todo: "To do",
-  tip: "Tip",
-  hint: "Hint",
-  important: "Important",
-  success: "Success",
-  check: "Check",
-  done: "Done",
-  question: "Question",
-  help: "Help",
-  faq: "FAQ",
-  warning: "Warning",
-  caution: "Caution",
-  attention: "Attention",
-  failure: "Failure",
-  fail: "Fail",
-  missing: "Missing",
-  danger: "Danger",
-  error: "Error",
-  bug: "Bug",
-  example: "Example",
-  quote: "Quote",
-  cite: "Cite",
-};
-
-function calloutTitle(kind: string): string {
-  return CALLOUT_TITLES[kind] ?? kind.charAt(0).toUpperCase() + kind.slice(1);
-}
-
-let shared: MarkdownIt | null = null;
 
 let hooked = false;
 function hookPurify(): void {
@@ -665,16 +279,75 @@ export function sanitize(html: string): string {
   });
 }
 
-/** A note, rendered. */
-export function renderNote(source: string, resolver: Resolver): Rendered {
-  const { yaml, body, lines } = splitFrontMatter(source);
-  const { properties, error } = readProperties(yaml);
-  const text = stripComments(body);
-  shared ??= createMd();
-  const env: Env = { resolver, headings: [], slugs: new Map(), lineOffset: lines };
-  const raw = shared.render(text, env);
-  return { html: sanitize(raw), properties, propertiesError: error, headings: env.headings, body: text, frontLines: lines };
+const EMPTY: Rendered = { html: "", properties: null, propertiesError: null, headings: [], body: "", problems: [] };
+
+/** A note, rendered. Until loadNotes() has finished it is empty: a page
+ * that draws notes waits for it (useNotesReady). A .note that is not valid
+ * MDX is drawn as Markdown, with the reason among its problems. */
+export function renderNote(source: string, resolver: Resolver, flavour: Flavour = "md"): Rendered {
+  if (!ready) return EMPTY;
+  const links = new Map<string, { path: string; sub: string }>();
+  const js = {
+    note: (target: string) => resolver.note(target)?.path ?? null,
+    file: (target: string) => resolver.file(target),
+    href: (path: string, sub: string) => {
+      const href = resolver.href(path, sub);
+      links.set(href, { path, sub });
+      return href;
+    },
+  };
+  const problems: Problem[] = [];
+  const { body } = splitFrontMatter(source);
+  const attempt = (f: Flavour): CrateRendered | null => {
+    try {
+      return JSON.parse(crateRenderNote(source, f, js)) as CrateRendered;
+    } catch (e) {
+      const text = e instanceof Error ? e.message : String(e);
+      const m = /^line (\d+), column \d+: ([\s\S]*)$/.exec(text);
+      problems.push({ line: Number(m?.[1] ?? 1), message: m?.[2] ?? text });
+      return null;
+    }
+  };
+  // A .note that is not MDX is still the owner's text: read as Markdown.
+  const out = attempt(flavour) ?? (flavour === "mdx" ? attempt("md") : null);
+  if (out === null) {
+    // Too large or too deep for either: the text as it is.
+    return { ...EMPTY, html: `<pre class="note-plain">${escapeHtml(source)}</pre>`, body, problems };
+  }
+  for (const p of out.problems) problems.push({ line: p.place.line, message: p.message });
+  return {
+    html: finish(out.html, links),
+    properties: out.properties,
+    propertiesError: out.propertiesError,
+    headings: out.headings,
+    body: stripComments(body),
+    problems,
+  };
 }
+
+/** A .md note's text as a .note's. Throws, naming the line, when MDX
+ * cannot say the same thing. */
+export async function toNote(source: string): Promise<string> {
+  await loadNotes();
+  return crateToNote(source);
+}
+
+/** The id a heading gets, the crate's own slug (render::slug), and the one
+ * a link to it looks for. */
+export function anchorFor(text: string, used?: Map<string, number>): string {
+  if (text.startsWith("^")) return text;
+  let base = "";
+  for (const c of text.trim()) {
+    if (/[\p{L}\p{N}_-]/u.test(c)) base += c.toLowerCase();
+    else if (/\s/.test(c)) base += "-";
+  }
+  if (used === undefined) return base;
+  const n = used.get(base) ?? 0;
+  used.set(base, n + 1);
+  return n === 0 ? base : `${base}-${n}`;
+}
+
+const BLOCK_ID_ALONE = /^\^([A-Za-z0-9-]+)[ \t]*$/;
 
 /** One part of a note: under a heading, or the block with an id. */
 export function section(source: string, sub: string): string {

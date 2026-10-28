@@ -14,9 +14,9 @@ import { cn } from "@/lib/utils";
 import { CanvasView } from "@/notes/canvas-view";
 import { GraphView } from "@/notes/graph";
 import { folderOf } from "@/notes/links";
-import { anchorFor, renderNote } from "@/notes/markdown";
+import { anchorFor, flavourOf, renderNote } from "@/notes/markdown";
 import { MindMap, outline } from "@/notes/mindmap";
-import { NoteView } from "@/notes/note-view";
+import { NoteView, useNotesReady } from "@/notes/note-view";
 import { NoteSide } from "@/notes/side";
 import { VaultTree } from "@/notes/tree";
 import { DEFAULT_GRAPH, displayName, Vault, type Hit, type Source, type VaultIndex } from "@/notes/vault";
@@ -75,7 +75,7 @@ function noteAt(vault: Vault, pathname: string): string | null {
     })
     .join("/");
   if (rest === "") return null;
-  for (const p of [rest, `${rest}.md`, `${rest}.markdown`]) if (vault.note(p) !== undefined) return p;
+  for (const p of [rest, `${rest}.note`, `${rest}.md`, `${rest}.markdown`]) if (vault.note(p) !== undefined) return p;
   return rest;
 }
 
@@ -206,14 +206,21 @@ function Reader({ site, vault, pathname, hash, go }: { site: Site; vault: Vault;
   }, [note, site.title]);
 
   const body = text !== null && text.path === path ? text.text : null;
+  const notesReady = useNotesReady();
   const rendered = React.useMemo(
-    () => (body === null || path === null || canvas ? null : renderNote(body, vault.resolver(path, source))),
-    [body, path, canvas, vault],
+    () => (!notesReady || body === null || path === null || canvas ? null : renderNote(body, vault.resolver(path, source), flavourOf(path))),
+    [notesReady, body, path, canvas, vault],
   );
   const resolverFor = React.useCallback((p: string) => vault.resolver(p, source), [vault]);
   const load = React.useCallback((p: string) => source.text(p), []);
   const labels = React.useMemo(
-    () => ({ properties: t("notes.properties"), embedLoading: t("notes.embed.loading"), embedMissing: t("notes.embed.missing") }),
+    () => ({
+      properties: t("notes.properties"),
+      embedLoading: t("notes.embed.loading"),
+      embedMissing: t("notes.embed.missing"),
+      problems: t("notes.problems"),
+      line: (line: number) => t("notes.problems.line", { line }),
+    }),
     [t],
   );
 
