@@ -76,7 +76,7 @@ const ALL = [
  * `box` is what the box answers on /api/me, /api/options and /api/domains;
  * nothing there is a box that predates every feature. `optionsDelay` holds
  * the options answer back. */
-async function openApp({ path = '/', tour = 'pending', reducedMotion = 'no-preference', locale = 'en-US', settings = SETTINGS, box = {}, optionsDelay = 0 } = {}) {
+async function openApp({ path = '/', tour = 'pending', reducedMotion = 'no-preference', locale = 'en-US', settings = SETTINGS, box = {}, optionsDelay = 0, clock = false } = {}) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale, reducedMotion });
   const page = await context.newPage();
   const errors = [];
@@ -110,6 +110,8 @@ async function openApp({ path = '/', tour = 'pending', reducedMotion = 'no-prefe
     },
     { token: TOKEN, tour },
   );
+  // A fake clock drives requestAnimationFrame too, so a test can step the scene's frames.
+  if (clock) await page.clock.install();
   // A late answer would hold networkidle until it arrives, which is the moment under test.
   await page.goto(origin + path, { waitUntil: optionsDelay > 0 ? 'load' : 'networkidle' });
   return { page, context, errors };
@@ -330,6 +332,44 @@ await check('the picture moves, and holds still under prefers-reduced-motion', a
   await still.page.waitForTimeout(600);
   assert.equal(await picture(still.page), b, 'the scene moved under reduced motion');
   await still.context.close();
+});
+
+/* A window that grows out of the page and folds back into it (the Overview's
+ * Files, About's tour) must never be drawn as an empty box: whenever it has
+ * grown well past its starting size, what is inside it shows. The scene's clock
+ * is stepped a tenth of a second at a time through one whole loop. */
+async function neverEmpty(page, part, word, side, least) {
+  let open = 0;
+  for (let t = 0; t < 6000; t += 100) {
+    await page.clock.runFor(100);
+    const seen = await tour(page).locator('svg').first().evaluate((svg, [part, side]) => {
+      const win = svg.querySelector(`g[data-part="${part}"]`);
+      if (win === null) return null;
+      const box = win.querySelector(':scope > rect:not([x="-166"])');
+      const inside = win.querySelector(':scope > g');
+      return { size: Number(box.getAttribute(side)), opacity: Number(inside.getAttribute('opacity') ?? 1), text: inside.textContent };
+    }, [part, side]);
+    if (seen === null || seen.size < least) continue;
+    open += 1;
+    assert.ok(seen.opacity >= 0.5 && seen.text.includes(word), `${part} at ${t} ms is ${Math.round(seen.size)} in ${side} and shows nothing: ${JSON.stringify(seen)}`);
+  }
+  assert.ok(open >= 10, `${part} was open in only ${open} samples`);
+}
+
+await check('the Overview step never shows the Files window as an empty box, growing or folding back', async () => {
+  const { page, context } = await openApp({ clock: true });
+  await tour(page).waitFor({ timeout: 5000 });
+  await neverEmpty(page, 'files-window', 'Files', 'width', 200);
+  await context.close();
+});
+
+await check('the last step never shows the tour it opens as an empty box', async () => {
+  const { page, context } = await openApp({ clock: true });
+  await tour(page).waitFor({ timeout: 5000 });
+  for (let i = 1; i < STOCK.length; i++) await tour(page).getByRole('button', { name: 'Next' }).click();
+  await tour(page).getByRole('heading', { name: STOCK[STOCK.length - 1], exact: true }).waitFor({ timeout: 3000 });
+  await neverEmpty(page, 'tour-window', 'Your apps, on your box', 'height', 100);
+  await context.close();
 });
 
 await check('the tour follows the language on screen', async () => {

@@ -87,7 +87,7 @@ práve nastavili:
 
 - **Vaše meno v LosOS Login**: vaše nové prihlasovacie meno. Otvára admin
   stránky.
-- **Váš účet v LosOS Cloud**: účet, ktorý zadáte v kroku 3 a v aplikáciách
+- **Váš účet v LosOS Cloud**: účet, ktorý zadáte v aplikáciách
   pre počítač a telefón.
 
 <img src={require("@site/docs/img/wizard-step2-spare-key-sk.png").default} alt="Krok 2 po nastavení hesla: vaše meno v LosOS Login, váš účet v LosOS Cloud a náhradný správcovský kľúč, ukázaný raz, s tlačidlami Kopírovať a Tlačiť." width="520" />
@@ -96,12 +96,21 @@ práve nastavili:
 notebook mohli k vašim súborom prihlásiť bez písania hesla, si môžete pridať
 neskôr v nastaveniach zabezpečenia v LosOS Cloud.
 
-## Krok 3: Prihlásiť sa \{#step-3-sign-in}
+## Krok 3: Vaša plocha \{#step-3-your-desktop}
 
-Sprievodca otvorí LosOS Cloud priamo na stránke a vy sa prihlásite svojím
-účtom v LosOS Cloud a heslom, ktoré ste práve nastavili. Potom vás
-sprievodca prenesie na prehľad admin stránok. Odtiaľto pokračujte stránkou
-[Admin stránky](../manual/admin-pages).
+Sprievodca vás prihlási do LosOS Login menom a heslom z kroku 2, takže už
+nič nepíšete. Na novom zariadení sa LosOS Login spustí až po nastavení
+hesla a stránka naň počká s poznámkou, ktorá to hovorí. Potom sa za kartou
+objaví vaša plocha, už prihlásená: prehľad admin stránok s vaším menom
+v hornej lište. **Poďme na to** ju zväčší na celé okno. Odtiaľto pokračujte
+stránkou [Admin stránky](../manual/admin-pages).
+
+![Krok 3: prihlásená plocha za kartou s textom „Toto je vaša plocha a ste prihlásení ako matus“ a tlačidlami Späť a Poďme na to.](@site/docs/img/wizard-step3-desktop-sk.png)
+
+Ak stránku na tomto kroku znova načítate, opýta sa na heslo ešte raz,
+pretože ho nikde neukladá. Na stránke otvorenej cez obyčajné http alebo na
+zariadení bez LosOS Login to sprievodca povie a prehliadač zostane namiesto
+toho prihlásený náhradným kľúčom.
 
 Pri prvom otvorení sa nad prehľadom spustí krátka prehliadka. Každý krok
 ukazuje malý pohyblivý obrázok stránky s položkou bočného panela, kde daná
@@ -117,5 +126,3 @@ sama neotvorí. **Spustiť prehliadku** v časti Nastavenia, O zariadení ju
 vráti.
 
 ![Prvý krok prehliadky nad prehľadom: obrázok stránky so šiestimi aplikáciami LosOS Cloud, „1 z 6“ a tlačidlá Preskočiť prehliadku a Ďalej.](@site/docs/img/tour-sk.png)
-
-![Krok 3: Ste prihlásení. To bol posledný krok.](@site/docs/img/wizard-step3-sign-in-sk.png)

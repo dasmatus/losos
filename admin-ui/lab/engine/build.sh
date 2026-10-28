@@ -80,7 +80,9 @@ docker build -q -o "$WORK/guest-out" "$ctx"
 cp "$WORK/guest-out/bzImage" "$WORK/guest-out/rootfs.bin" "$ENG/guest/"
 
 echo "== Netzgeräte Betriebssystem (nix, against the flake's own nixpkgs)"
-NIXPKGS=$(nix eval --raw --impure --expr "(builtins.getFlake \"git+file://$ROOT\").inputs.nixpkgs.outPath")
+# The pin is read from flake.lock rather than through getFlake: CI checks the
+# repository out shallow, and a git+file flake of a shallow clone has no revCount.
+NIXPKGS=$(nix eval --raw --impure --expr "let lock = builtins.fromJSON (builtins.readFile \"$ROOT/flake.lock\"); in (builtins.fetchTree lock.nodes.\${lock.nodes.root.inputs.nixpkgs}.locked).outPath")
 nix-build "$HERE/gear/netzgeraete.nix" --arg nixpkgs "$NIXPKGS" -o "$WORK/gear"
 install -m 0644 "$WORK/gear/rootfs.bin" "$ENG/guest/gear.bin"
 
