@@ -1488,18 +1488,25 @@ in
       type = lib.types.str;
       default = "git+file:///etc/nixos#install";
       description = ''
-        Flake URI used by lososd for settings-driven NixOS rebuilds. The
-        fragment is mandatory: without one, nixos-rebuild looks for
-        nixosConfigurations.<hostname>, while this flake exports only iso and
-        install. The nightly sysupdate service instead rebuilds its verified
-        release source bundle with --impure; it does not use this URI.
+        Flake URI system.autoUpgrade rebuilds from. The fragment is mandatory:
+        without one `nixos-rebuild --flake` looks for
+        nixosConfigurations.<hostname>, and this flake only exports `iso` and
+        `install` — so every unfragmented run dies with "flake does not provide
+        attribute". lososd uses the same `#install` ref (backend/src/io_backend.rs).
+        New versions arrive through losos.configRepo.upstream, which moves
+        /etc/nixos itself before the rebuild, so an Apply and the nightly
+        update build the same tree. A github: URI (still with `#install`)
+        also works, but an Apply then rebuilds from the older tree in
+        /etc/nixos and undoes the update until the next night.
 
-        The default git+file:///etc/nixos#install keeps local settings changes
-        on the box's own configuration. New configuration versions are synced
-        through losos.configRepo.upstream when enabled. The impure rebuild
-        retains this machine's install-target.nix and overrides.nix values,
-        including its disks, firmware mode, unlock mode, and admin settings.
-      
+        A remote URI evaluates the published tree, which has neither
+        modules/install-target.nix (this box's drive list, firmware mode and
+        unlock mode, written by the installer) nor this box's
+        modules/overrides.nix (the settings the admin UI writes). flake.nix
+        therefore reads both from /etc/nixos when the evaluation is impure,
+        and the nightly upgrade (updates.nix) and lososd both pass --impure.
+        Evaluate the flake purely against a remote URI and the defaults
+        apply instead: TPM2 unlock, /dev/sda, UEFI, every setting reset.
       '';
     };
 
