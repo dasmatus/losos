@@ -114,9 +114,15 @@ say so when they did not run.
 
 - `flake.lock` pins the nixpkgs that builds the appliance; `devenv.lock` the
   one that lints and tests it. Update them together.
-- After changing `Cargo.lock` or `admin-ui/app/package-lock.json`, update
-  `cargoHash` or `npmDepsHash` in `nix/packages.nix`. The admin UI hash is
-  also in `nix/tests/admin-ui.nix`.
+- A `Cargo.lock` or `package-lock.json` is vendored by a fixed-output
+  derivation whose hash (`cargoHash`, `npmDepsHash`, `pluginsCargoHash`) is
+  written in `nix/packages.nix` or a test under `nix/tests/`. After changing
+  a lock file, `.github/scripts/fix-hashes.py` rewrites the hashes of the
+  lock files that differ from `origin/main` (`--all` for every one, `--check`
+  to only report). On a pull request from a branch of this repository,
+  Dependabot's included, `dependency-hashes.yml` runs it and pushes the
+  result to the branch; on a push to `main` that still carries a stale
+  hash, it opens a pull request with the fix.
 
 ## Handbook
 
@@ -191,7 +197,7 @@ this is the reasoning behind it.
   Don't drop the re-attach.
 - **The admin routes deny loopback on purpose** (`lanOnly` in
   `containers.nix`). Master-proxy tunnel traffic reaches the front vhost
-  *from 127.0.0.1* (rathole's `local_addr`), so the LAN-only guard on `/`,
+  *from 127.0.0.1* (the tunnel client's `local`), so the LAN-only guard on `/`,
   `/assets/`, `/setup/` and `/api/` must not allow loopback. A
   `curl localhost/` on the box, or in a VM test, gets 403 by design.
   "Fixing" it with `allow 127.0.0.1` exposes the whole admin interface to the

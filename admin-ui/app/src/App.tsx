@@ -30,6 +30,7 @@ import type { HandbookEntry } from "@/lib/handbook";
 import { Input, MonoInput } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { ContextMenuHost, usePageMenu } from "@/components/context-menu";
+import { BottomNavHost } from "@/components/ui/bottom-nav";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { toast, Toaster } from "@/components/ui/toast";
 import {
@@ -255,6 +256,13 @@ function Shell() {
   const [preview, setPreview] = React.useState(false);
   const [leaving, setLeaving] = React.useState(false);
   const stageRef = React.useRef<HTMLDivElement>(null);
+  // The same element as state, for the phone's bottom bar to be drawn
+  // inside while it is a preview (components/ui/bottom-nav.tsx).
+  const [stageElement, setStageElement] = React.useState<HTMLDivElement | null>(null);
+  const holdStage = React.useCallback((element: HTMLDivElement | null) => {
+    stageRef.current = element;
+    setStageElement(element);
+  }, []);
   const leaveSetup = React.useCallback(() => setLeaving(true), []);
   React.useEffect(() => {
     if (!leaving) return;
@@ -386,8 +394,9 @@ function Shell() {
 
   return (
     <>
+    <BottomNavHost.Provider value={stage === undefined ? null : stageElement}>
     <div
-      ref={stageRef}
+      ref={holdStage}
       data-testid="desktop"
       data-stage={stage}
       inert={stage === "preview"}
@@ -491,6 +500,7 @@ function Shell() {
       )}
       {signedIn && <ReportDialogHost />}
     </div>
+    </BottomNavHost.Provider>
     {wizard}
     <Toaster />
     </>

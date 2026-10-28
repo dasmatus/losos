@@ -8,6 +8,7 @@ import access from "./access";
 import account from "./account";
 import advanced from "./advanced";
 import apps from "./apps";
+import basic from "./basic";
 import calendar from "./calendar";
 import calls from "./calls";
 import chat from "./chat";
@@ -106,6 +107,7 @@ export const MESSAGES = {
   ...quick,
   ...wiki,
   ...statistics,
+  ...basic,
 };
 
 export type MessageKey = keyof typeof MESSAGES;

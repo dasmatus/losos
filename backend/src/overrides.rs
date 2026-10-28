@@ -45,10 +45,19 @@ pub const DEFAULT_OVERRIDES_NIX: &str = r#"{ ... }:
 /// Option prefixes an older box's `overrides.nix` may still assign, for
 /// things the box no longer has: Nextcloud (`nextcloud.*`, and `aio.*`
 /// from before its rename) and the admin password kept for it
-/// (`keyring.*`). `modules/options.nix` still accepts and ignores them so
+/// (`keyring.*`), and rathole's settings on the box (`proxy.bootstrapTokenFile`,
+/// `proxy.noisePublicKeyFile`, `proxy.rathole.*`), which the QUIC tunnel
+/// replaced. `modules/options.nix` still accepts and ignores them so
 /// such a file evaluates; lososd drops their lines whenever it writes the
 /// file, and the gate does not hold them against an Apply.
-pub const RETIRED: &[&str] = &["nextcloud.", "keyring.", "aio."];
+pub const RETIRED: &[&str] = &[
+    "nextcloud.",
+    "keyring.",
+    "aio.",
+    "proxy.bootstrapTokenFile",
+    "proxy.noisePublicKeyFile",
+    "proxy.rathole.",
+];
 
 /// Whether `key` (without `losos.`) is one of [`RETIRED`].
 pub fn is_retired(key: &str) -> bool {
@@ -571,6 +580,17 @@ mod tests {
         assert!(is_retired("nextcloud.site.trashDays"));
         assert!(!is_retired("cloud.trashDays"));
         assert_eq!(drop_retired(DEFAULT_OVERRIDES_NIX), DEFAULT_OVERRIDES_NIX);
+    }
+
+    #[test]
+    fn rathole_settings_are_retired_and_the_tunnel_ones_are_not() {
+        let old = "{\n  losos.proxy.bootstrapTokenFile = \"/var/secrets/b\";\n  losos.proxy.noisePublicKeyFile = \"/var/secrets/n.pub\";\n  losos.proxy.tunnelPinFile = \"/var/secrets/p\";\n}\n";
+        assert_eq!(
+            drop_retired(old),
+            "{\n  losos.proxy.tunnelPinFile = \"/var/secrets/p\";\n}\n"
+        );
+        assert!(is_retired("proxy.rathole.package"));
+        assert!(!is_retired("proxy.edgeTunnelEndpoint"));
     }
 
     #[test]
