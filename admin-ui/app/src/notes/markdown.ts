@@ -1,5 +1,5 @@
-import MarkdownIt from "markdown-it";
-import type { PluginSimple, StateBlock, StateCore, StateInline, Token } from "markdown-it";
+import markdownit from "markdown-it";
+import type { Env as MdEnv, MarkdownIt, StateBlock, StateCore, StateInline, Token } from "markdown-it";
 import footnote from "markdown-it-footnote";
 import DOMPurify from "dompurify";
 import katex from "katex";
@@ -403,7 +403,7 @@ function findBlockBefore(tokens: Token[], from: number): Token | null {
 
 // ── The renderer ────────────────────────────────────────────────────────
 
-interface Env {
+interface Env extends MdEnv {
   resolver: Resolver;
   headings: Heading[];
   slugs: Map<string, number>;
@@ -422,16 +422,39 @@ function attrs(pairs: Record<string, string | null | undefined>): string {
     .join("");
 }
 
+/** The note's environment, which renderNote hands to every render. */
+function noteEnv(env: MdEnv | undefined): Env {
+  return env as Env;
+}
+
+/** A token's attribute as text; markdown-it types attribute values as
+ * numbers too, though its own rules only ever set strings. */
+function attrText(token: Token, name: string): string {
+  const value = token.attrGet(name);
+  return value === null ? "" : String(value);
+}
+
 function createMd(): MarkdownIt {
-  const md = new MarkdownIt({
+  const md = new markdownit({
     html: true,
     linkify: true,
     breaks: true,
     typographer: false,
     highlight: (code, lang) => highlight(code, lang),
   });
-  // Its types are written against an older markdown-it; the plugin is not.
-  md.use(footnote as unknown as PluginSimple);
+  md.use(footnote);
+  // GitHub links www.example.com without a scheme; linkify-it 6 links only
+  // schemes by default, which also keeps a note's Home.md from turning into
+  // a link to a Moldovan site.
+  md.linkify.add("www.", {
+    validate: (text, pos, self) => {
+      const tail = self.testSchemaAt(`//www.${text.slice(pos)}`, "http:", 0);
+      return tail > 6 ? tail - 6 : 0;
+    },
+    normalize: (match) => {
+      match.url = `https://${match.url}`;
+    },
+  });
   md.inline.ruler.before("link", "wikilink", wikilinkRule);
   md.inline.ruler.before("emphasis", "highlight", highlightRule);
   md.inline.ruler.after("wikilink", "obsidian_tag", tagRule);
@@ -455,7 +478,8 @@ function createMd(): MarkdownIt {
     const tag = tokens[idx]?.content ?? "";
     return `<a class="tag"${attrs({ href: `#tag/${tag}`, "data-tag": tag })}>#${escapeHtml(tag)}</a>`;
   };
-  r["wikilink"] = (tokens, idx, _o, env: Env) => {
+  r["wikilink"] = (tokens, idx, _o, mdEnv) => {
+    const env = noteEnv(mdEnv);
     const link = parseLink(tokens[idx]?.content ?? "");
     const text = link.alias ?? (link.target === "" ? link.sub.replace(/^\^/, "") : link.sub === "" ? link.target : `${link.target} > ${link.sub.replace(/^\^/, "")}`);
     if (link.target === "") {
@@ -470,7 +494,8 @@ function createMd(): MarkdownIt {
     }
     return `<a class="wikilink"${attrs({ href: env.resolver.href(found.path, link.sub), "data-note-path": found.path, "data-sub": link.sub })}>${escapeHtml(text)}</a>`;
   };
-  r["obsidian_embed"] = (tokens, idx, _o, env: Env) => {
+  r["obsidian_embed"] = (tokens, idx, _o, mdEnv) => {
+    const env = noteEnv(mdEnv);
     const link = parseLink(tokens[idx]?.content ?? "");
     const size = link.alias !== null ? EMBED_SIZE.exec(link.alias) : null;
     const file = IMAGE.test(link.target) || AUDIO.test(link.target) || VIDEO.test(link.target) || /\.pdf$/i.test(link.target) ? env.resolver.file(link.target) : null;
@@ -490,7 +515,8 @@ function createMd(): MarkdownIt {
     // Filled in by the page (NoteView), which has the note's text.
     return `<span class="note-embed"${attrs({ "data-embed-path": found.path, "data-sub": link.sub })}></span>`;
   };
-  r["callout_open"] = (tokens, idx, options, env: Env, self) => {
+  r["callout_open"] = (tokens, idx, options, mdEnv, self) => {
+    const env = noteEnv(mdEnv);
     const { kind, fold, title, titleTokens } = tokens[idx]?.meta as { kind: string; fold: string; title: string | null; titleTokens: Token[] };
     const titleHtml = title === null ? escapeHtml(calloutTitle(kind)) : self.renderInline(titleTokens, options, env);
     const head = `<span class="callout-icon" aria-hidden="true"></span><span class="callout-title-inner">${titleHtml}</span>`;
@@ -503,7 +529,8 @@ function createMd(): MarkdownIt {
 
   // Headings carry ids, and the page learns the outline.
   const headingOpen = r["heading_open"];
-  r["heading_open"] = (tokens, idx, options, env: Env, self) => {
+  r["heading_open"] = (tokens, idx, options, mdEnv, self) => {
+    const env = noteEnv(mdEnv);
     const token = tokens[idx] as Token;
     const text = inlineText(tokens[idx + 1]);
     const id = anchorFor(text, env.slugs);
@@ -515,9 +542,10 @@ function createMd(): MarkdownIt {
   // Links: outside ones open in a new tab; a .md file in the vault is a
   // note; a picture off the box is a link, since the page loads none.
   const linkOpen = r["link_open"];
-  r["link_open"] = (tokens, idx, options, env: Env, self) => {
+  r["link_open"] = (tokens, idx, options, mdEnv, self) => {
+    const env = noteEnv(mdEnv);
     const token = tokens[idx] as Token;
-    const href = token.attrGet("href") ?? "";
+    const href = attrText(token, "href");
     if (/^[a-z][a-z0-9+.-]*:/i.test(href)) {
       token.attrSet("target", "_blank");
       token.attrSet("rel", "noopener noreferrer");
@@ -537,9 +565,10 @@ function createMd(): MarkdownIt {
     }
     return linkOpen ? linkOpen(tokens, idx, options, env, self) : self.renderToken(tokens, idx, options);
   };
-  r["image"] = (tokens, idx, options, env: Env, self) => {
+  r["image"] = (tokens, idx, options, mdEnv, self) => {
+    const env = noteEnv(mdEnv);
     const token = tokens[idx] as Token;
-    const src = token.attrGet("src") ?? "";
+    const src = attrText(token, "src");
     const alt = self.renderInlineAsText(token.children ?? [], options, env);
     if (/^(https?:)?\/\//i.test(src)) {
       return `<a class="external image-link"${attrs({ href: src, target: "_blank", rel: "noopener noreferrer" })}>${escapeHtml(alt || src)}</a>`;
