@@ -458,8 +458,13 @@ async function safety(owner, eva) {
   await report.getByTestId("report-handbook").waitFor();
   await shot(eva, "report");
   await eva.getByTestId("report-send").click();
-  await eva.getByText("This box has no moderators to report to yet.", { exact: false }).waitFor();
-  await eva.keyboard.press("Escape");
+  await eva.getByText("The moderators have your report", { exact: true }).waitFor();
+  await report.waitFor({ state: "hidden" });
+  // Matus moderates: the report names the room and the event, never the text.
+  const queue = await api(owner, "/api/moderation");
+  const chatReport = (queue.body?.reports ?? []).find((r) => r.app === "chat" && r.state === "open");
+  if (!chatReport || !/^![^/]+\/\$/.test(chatReport.ref)) throw new Error(`the chat report: ${JSON.stringify(queue.body?.reports)}`);
+  if (JSON.stringify(chatReport).includes("Pay the cabin")) throw new Error("the report carries the message's text");
 
   // Matus marks Eva as an adult: "No one" is hers to choose.
   await owner.goto(`${ORIGIN}/settings/users`);

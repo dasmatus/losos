@@ -41,6 +41,7 @@ arriving through an edge's tunnel, gets **403**.
 | 3702 (UDP), 5357 | WS-Discovery | Listing the box under Network in Windows' File Explorer, while the share is on |
 | 5355    | LLMNR    | Answering Windows when it asks for the box by its bare name, while the share is on |
 | 8082    | HTTP     | The control API, on the box's loopback only; nginx proxies `/api/` to it |
+| 8480, 8443 | HTTP, HTTPS | What Tor and I2P deliver for the box's own addresses (`losos.hidden.tor.enable`, `losos.hidden.i2p.enable`), on the box's loopback only. See [Tor and I2P](../manual/tor-and-i2p.md) |
 
 While the share is on, the mDNS entry for LosOS Cloud is the SMB share
 (`_smb._tcp`), so Finder and Linux file managers list the box once.
