@@ -526,6 +526,42 @@ html.has-bg .losos-shell {
   background-attachment: fixed;
 }
 
+/* ── The desktop on the wizard's last step (App.tsx, `stage`) ─────────────
+ * `preview`: the signed-in desktop, drawn small at the top of the window
+ * with the wizard's card over its foot, rising into place as it arrives.
+ * `live`: "Let's go" pressed, and it grows to the whole window. Transform,
+ * radius and shadow only, so nothing inside lays out again; the page under
+ * it turns from the sunk colour back to the ground. Under reduced motion
+ * the global rule below makes both instant. */
+.desktop-stage {
+  transform-origin: 50% 0;
+  transition:
+    transform 700ms cubic-bezier(0.2, 0.75, 0.25, 1),
+    border-radius 700ms cubic-bezier(0.2, 0.75, 0.25, 1),
+    box-shadow 700ms ease-out;
+}
+.desktop-stage[data-stage="preview"] {
+  transform: translateY(20px) scale(0.84);
+  border-radius: 18px;
+  box-shadow:
+    0 0 0 1px var(--line),
+    0 28px 70px -24px rgba(0, 0, 0, 0.35);
+  user-select: none;
+  animation: desktop-arrive 900ms cubic-bezier(0.2, 0.75, 0.25, 1) backwards;
+}
+@keyframes desktop-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(72px) scale(0.8);
+  }
+}
+body {
+  transition: background-color 700ms ease-out;
+}
+html:has(.desktop-stage[data-stage="preview"]) body {
+  background-color: var(--sunk);
+}
+
 /* A long press opens the page's own menu (components/context-menu.tsx), so
  * iOS keeps its link and picture callout out of the way. */
 .losos-shell :where(a, img) {

@@ -448,6 +448,63 @@ export function signOutTo(path: string): void {
   window.location.assign(`https://${window.location.host}/auth/logout?rd=${encodeURIComponent(back)}`);
 }
 
+/** What LosOS Login said to a name and a password. */
+export type PasswordSignIn = "signedIn" | "refused" | "notYet";
+
+/* POST /auth/api/firstfactor, the call LosOS Login's own sign-in page makes,
+ * from this page: same origin, so the session cookie it sets is this tab's
+ * from the next request on. The wizard's last step signs the owner in this
+ * way with the password they have just chosen, so the first sign-in needs
+ * no second tab. "notYet" is LosOS Login still starting (nginx says 502
+ * until it answers) or the request not getting through at all. */
+export async function signInWithPassword(
+  username: string,
+  password: string,
+  signal?: AbortSignal,
+): Promise<PasswordSignIn> {
+  try {
+    const init: RequestInit = {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password, keepMeLoggedIn: false }),
+      cache: "no-store",
+      credentials: "same-origin",
+    };
+    if (signal !== undefined) init.signal = signal;
+    const response = await fetch("/auth/api/firstfactor", init);
+    if (response.ok) return "signedIn";
+    if (response.status === 401 || response.status === 403) return "refused";
+    return "notYet";
+  } catch (error) {
+    if (isAbort(error)) throw error;
+    return "notYet";
+  }
+}
+
+/* Swap the spare key this tab holds for the LosOS Login session its cookie
+ * now carries: GET /api/me without the key, and only if that names a person
+ * does the key leave sessionStorage. One notification for both halves, so
+ * nothing on the page sees a moment with neither. False, and the key kept,
+ * when the cookie names nobody. */
+export async function adoptSession(signal?: AbortSignal): Promise<boolean> {
+  let answer: Partial<Me>;
+  try {
+    answer = await call<Partial<Me>>("/api/me", signal === undefined ? { anonymous: true } : { anonymous: true, signal });
+  } catch (error) {
+    if (isAbort(error)) throw error;
+    return false;
+  }
+  if (typeof answer.name !== "string" || answer.spareKey === true || !Array.isArray(answer.sections)) return false;
+  try {
+    window.sessionStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* nothing stored */
+  }
+  me = answer as Me;
+  notifyAuth();
+  return true;
+}
+
 /* A 401 on a stored token is the session ending, and every screen has to
  * react to it — re-prompt, stop polling, disable the destructive buttons. So
  * the eviction happens once, here, and the app shell subscribes rather than
@@ -687,6 +744,13 @@ export function getStorage(options: RequestOptions = {}): Promise<StorageRespons
 
 export type EdgeSource = "lan" | "configured";
 
+/** Which kind of link (handbook in-depth/edge-federation, "Three tiers").
+ *  primary: edge to edge, the main cluster. secondary: a box to a local
+ *  gateway of its secondary cluster. tertiary: a box straight to an official
+ *  edge, only while no gateway of its own cluster answers. A box's own link
+ *  is never primary. */
+export type EdgeTier = "primary" | "secondary" | "tertiary";
+
 export interface EdgeProxy {
   /** The advertised instance name, or the configured URL's host. */
   name: string;
@@ -698,6 +762,34 @@ export interface EdgeProxy {
   /** Base URL of its registrar API. */
   url: string;
   source: EdgeSource;
+  /** Secondary for a local gateway, tertiary for an official edge. Missing
+   *  on a box whose lososd predates the tiers. */
+  tier?: EdgeTier;
+  /** The secondary cluster a gateway belongs to. */
+  cluster?: string;
+  /** The gateway's name in it. */
+  member?: string;
+  /** The official cluster (edges behind one load balancer) an official
+   *  edge sits in. */
+  officialCluster?: string;
+}
+
+/** The edge this box uses (backend/src/edge.rs, choose_path). */
+export interface EdgePath {
+  name: string;
+  url: string;
+  source: EdgeSource;
+  rathole: string;
+  tier?: EdgeTier;
+  cluster?: string;
+  member?: string;
+  officialCluster?: string;
+}
+
+/** A secondary cluster in reach and its gateways that answered. */
+export interface EdgeCluster {
+  name: string;
+  gateways: string[];
 }
 
 export interface EdgeResponse {
@@ -714,6 +806,17 @@ export interface EdgeResponse {
   configuredUrl: string | null;
   /** Unix seconds of the scan; null before the first. */
   checkedAt: number | null;
+  /** The edge this box uses, or null when none answers. */
+  path?: EdgePath | null;
+  /** The secondary clusters in reach. */
+  clusters?: EdgeCluster[];
+  /** The secondary cluster this box belongs to; kept while none of its
+   *  gateways answers. */
+  cluster?: string | null;
+  /** The edge a live custom domain holds this box to, or null. */
+  held?: string | null;
+  /** The banned edge this box moved off on the last choice, or null. */
+  leftBanned?: string | null;
   /** Whether a company edge may manage this box. Missing on a box whose
    *  lososd predates the switch. */
   manage?: EdgeManage;
@@ -753,6 +856,20 @@ export function postEdgeManage(
     method: "POST",
     contentType: "application/json",
     body: JSON.stringify({ enabled }),
+  });
+}
+
+/** POST /api/edge/cluster — move the box to another secondary cluster in
+ *  reach, or with null let it settle anew. Takes effect at once. */
+export function postEdgeCluster(
+  cluster: string | null,
+  options: RequestOptions = {},
+): Promise<{ cluster: string | null; path: EdgePath | null }> {
+  return call<{ cluster: string | null; path: EdgePath | null }>("/api/edge/cluster", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify({ cluster }),
   });
 }
 

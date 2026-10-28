@@ -159,6 +159,9 @@ in
         # a public key, so a store path. Without a key in it no edge is
         # official and the market relay stays off.
         LOSOS_EDGE_ROOT_KEY_FILE = "${config.losos.proxy.officialRootKeyFile}";
+        # Edges and official clusters the box must not use (losos.proxy.bansFile):
+        # read on every scan, a missing file bans nothing.
+        LOSOS_EDGE_BANS_FILE = config.losos.proxy.bansFile;
       }
       # What `cryptsetup resize` authenticates with during `losos-ctl grow`.
       #
