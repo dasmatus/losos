@@ -43,11 +43,9 @@ let
   # both before it serves anything.
   stripeKey = "sk_test_vm_0123456789abcdefghijklmnop";
   webhookSecret = "whsec_vm_0123456789abcdefghijklmnopqrstuv";
-  bootstrapTokenValue = "test-bootstrap-0123456789abcdef0123";
 
   keySealed = "/var/secrets/losos-stripe-secret-key.cred";
   webhookSealed = "/var/secrets/losos-stripe-webhook-secret.cred";
-  bootstrapToken = "/var/secrets/losos-rathole-bootstrap";
   agentToken = "/var/secrets/losos-mesh-agent-token";
 
   # Plays Stripe for the settle subtest: two held market charges, one of
@@ -133,7 +131,6 @@ pkgs.testers.nixosTest {
       losos.edge = {
         enable = true;
         acmeEmail = "test@losos.cfd";
-        bootstrapTokenFile = bootstrapToken;
         cluster = {
           enable = true;
           advertiseAddr = "192.0.2.1";
@@ -163,7 +160,6 @@ pkgs.testers.nixosTest {
 
       systemd.tmpfiles.rules = [
         "d /var/secrets 0700 root root - -"
-        "f ${bootstrapToken} 0600 root root - ${bootstrapTokenValue}"
         "f ${agentToken} 0600 root root - test-agent-token"
       ];
 

@@ -38,7 +38,7 @@
   --lab-p-dns: oklch(from var(--accent) l c 255);
   --lab-p-http: oklch(from var(--crit) l c 50);
   --lab-p-icmp: var(--warn);
-  --lab-p-rathole: var(--accent);
+  --lab-p-tunnel: var(--accent);
   --lab-p-rke2: oklch(from var(--crit) l c 350);
   --lab-p-lososd: var(--muted);
   /* the terminal is a code block in the house palette */
@@ -98,7 +98,7 @@
 [data-proto="DNS"] { --lab-pk: var(--lab-p-dns); }
 [data-proto="HTTP"] { --lab-pk: var(--lab-p-http); }
 [data-proto="ICMP"] { --lab-pk: var(--lab-p-icmp); }
-[data-proto="rathole"] { --lab-pk: var(--lab-p-rathole); }
+[data-proto="tunnel"] { --lab-pk: var(--lab-p-tunnel); }
 [data-proto="rke2"] { --lab-pk: var(--lab-p-rke2); }
 [data-proto="lososd"] { --lab-pk: var(--lab-p-lososd); }
 .lab-proto { background: var(--lab-pk); }

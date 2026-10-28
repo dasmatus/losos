@@ -46,7 +46,7 @@ async fn a_fresh_database_reads_as_empty_and_round_trips_a_snapshot() {
         "tenants": {
             "demo-box": {
                 "hostname": "demo.losos.example",
-                "rathole_port": 50000,
+                "tunnel_port": 50000,
                 "seen_ago_secs": 7,
                 "idle": [true, 3]
             }
@@ -106,7 +106,7 @@ async fn two_hosts_on_one_database_see_one_registry() {
     assert_eq!(parsed["store"], "postgres");
     let tenants = parsed["tenants"].as_array().expect("tenants");
     assert_eq!(tenants.len(), 1);
-    assert_eq!(tenants[0]["rathole_port"], 50000);
+    assert_eq!(tenants[0]["tunnel_port"], 50000);
     assert_eq!(tenants[0]["idle"], true);
     let (_, yaml) = call(&second, Method::GET, "/status/traefik", None).await;
     assert!(yaml.contains("Host(`demo.losos.example`)"), "yaml: {yaml}");

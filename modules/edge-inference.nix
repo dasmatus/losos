@@ -1,7 +1,7 @@
 # Models split across boxes, edge side (losos.edge.inference).
 #
 # Boxes lend memory (losos.inference.lend, modules/inference-lend.nix): each
-# runs a llama.cpp RPC server on its own loopback, and its rathole client
+# runs a llama.cpp RPC server on its own loopback, and its tunnel client
 # carries it to this edge as the service `<appliance id>:llm`, which the
 # registrar binds on 127.0.0.1 at a port of `portRange`. The registrar groups
 # lending boxes until a model of the catalogue fits, and for each group runs
@@ -57,9 +57,9 @@ let
   socketDir = "/run/losos-llm-heads";
 
   rangeSize = r: r.to - r.from + 1;
-  ratholeRange =
+  tunnelRange =
     let
-      bounds = map lib.toInt (lib.splitString "-" edge.ratholePortRange);
+      bounds = map lib.toInt (lib.splitString "-" edge.tunnelPortRange);
     in
     {
       from = builtins.elemAt bounds 0;
@@ -114,12 +114,12 @@ in
         message = "losos.edge.inference.portRange: `from` is above `to`.";
       }
       {
-        assertion = rangeSize cfg.portRange >= rangeSize ratholeRange;
-        message = "losos.edge.inference.portRange holds ${toString (rangeSize cfg.portRange)} ports, fewer than the ${toString (rangeSize ratholeRange)} of losos.edge.ratholePortRange: every box needs one.";
+        assertion = rangeSize cfg.portRange >= rangeSize tunnelRange;
+        message = "losos.edge.inference.portRange holds ${toString (rangeSize cfg.portRange)} ports, fewer than the ${toString (rangeSize tunnelRange)} of losos.edge.tunnelPortRange: every box needs one.";
       }
       {
-        assertion = cfg.portRange.to < ratholeRange.from || cfg.portRange.from > ratholeRange.to;
-        message = "losos.edge.inference.portRange overlaps losos.edge.ratholePortRange.";
+        assertion = cfg.portRange.to < tunnelRange.from || cfg.portRange.from > tunnelRange.to;
+        message = "losos.edge.inference.portRange overlaps losos.edge.tunnelPortRange.";
       }
       {
         assertion = lib.length ids == lib.length (lib.unique ids);

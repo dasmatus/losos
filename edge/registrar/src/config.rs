@@ -1,15 +1,15 @@
 //! Pure config generation. `desired_config` takes the live tenant set and
-//! edge options and returns the routes Traefik discovers and the exact bytes
-//! of rathole's server config. No IO, no time, no randomness — fully
-//! deterministic and unit-testable.
+//! returns the routes Traefik discovers and the exact bytes of the tunnel's
+//! service file (`crate::tunnel::ServerFile`). No IO, no time, no randomness
+//! — fully deterministic and unit-testable.
 //!
 //! Traefik finds the boxes through its HTTP provider: it polls the
 //! registrar's loopback provider listener (`server::provider_router`) for
 //! [`provider_document`], the JSON form of the [`Routes`] the last reconcile
 //! pass decided on. Nothing is written to Traefik's directory any more; the
 //! file provider there carries only the NixOS-owned `register*.yml`.
-//! rathole's file is regenerated in full on every reconcile (the tenant set
-//! is small), so the reconciler byte-compares old-vs-new and only writes when
+//! The tunnel's file is regenerated in full on every reconcile (the tenant
+//! set is small), so the reconciler byte-compares old-vs-new and only writes when
 //! something actually changed.
 //!
 //! The Traefik dynamic config is modeled as typed serde structs ([`Routes`]
@@ -21,8 +21,11 @@
 //! the document `{}`, which Traefik takes as "drop every box".
 
 use std::collections::BTreeMap;
+use std::net::{Ipv4Addr, SocketAddr};
 
 use serde::{Deserialize, Serialize};
+
+use crate::tunnel::{ClientFile, ClientService, ServerFile, ServerService};
 
 /// A live tenant, from the registry's point of view, reduced to what the
 /// config needs. `last_seen` is deliberately absent here — it is a runtime
@@ -31,8 +34,8 @@ use serde::{Deserialize, Serialize};
 pub struct TenantView {
     pub id: String,
     pub hostname: String,
-    pub rathole_port: u16,
-    /// The per-appliance rathole service token. Populated by the reconciler
+    pub tunnel_port: u16,
+    /// The per-appliance tunnel service token. Populated by the reconciler
     /// (not the registry) by reading the tenant's token file, so the on-disk
     /// token file stays the single source of truth and tokens auto-rotate.
     pub token: String,
@@ -46,26 +49,13 @@ pub struct TenantView {
     pub llm_port: Option<u16>,
 }
 
-/// Edge-wide options baked into the generated config.
-#[derive(Debug, Clone)]
-pub struct EdgeOpts {
-    /// rathole `[server] bind_addr` — the address appliance clients dial.
-    pub rathole_bind_addr: String,
-    pub rathole_bind_port: u16,
-    /// rathole `default_token` (also the bootstrap shared secret).
-    pub bootstrap_token: String,
-    /// The tunnel's Noise (`Noise_NK_25519_ChaChaPoly_BLAKE2s`) private key,
-    /// base64, read from a 0600 file at runtime. `Some` turns rathole's Noise
-    /// transport on for the server; `None` leaves the tunnel plain TCP.
-    pub noise_private_key: Option<String>,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Files {
     /// The boxes' routes for Traefik's HTTP provider. Empty with no live
     /// tenants, which [`provider_document`] renders as `{}`.
     pub traefik: Routes,
-    pub rathole_toml: String,
+    /// The tunnel's service file. Always written: no services is a valid file.
+    pub tunnel_json: String,
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -261,9 +251,9 @@ struct TraefikErrors {
     query: String,
 }
 
-/// A per-appliance service: a load balancer with one server — the rathole
-/// edge port for this appliance (`http://127.0.0.1:<rathole_port>`), which
-/// rathole forwards over the tunnel to the appliance's Nginx.
+/// A per-appliance service: a load balancer with one server — the tunnel's
+/// edge port for this appliance (`http://127.0.0.1:<tunnel_port>`), which
+/// the tunnel (`crate::tunnel`) carries to the appliance's Nginx.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TraefikService {
@@ -281,31 +271,21 @@ struct TraefikServer {
     url: String,
 }
 
-/// Render the Traefik routes and the rathole server config for the given
+/// Render the Traefik routes and the tunnel's service file for the given
 /// live tenants.
 ///
 /// Traefik: one router + one service per tenant, `Host(<hostname>)` →
-/// `http://127.0.0.1:<rathole_port>`, with per-router `tls.certResolver: le`
+/// `http://127.0.0.1:<tunnel_port>`, with per-router `tls.certResolver: le`
 /// and `tls.domains: [{main: <hostname>}]`. Traefik obtains the Let's Encrypt
 /// cert lazily on the first hit for that router — so the *registrar* is the
 /// gatekeeper of which hostnames ever get certs: it only writes routers for
 /// authenticated tenants.
 ///
-/// rathole: one `[server.services.<id>]` per tenant, `bind_addr` loopback
-/// (only Traefik, on the same host, reaches it), `token` = the per-appliance
-/// token. The appliance client presents the same token; rathole matches it to
-/// the service and forwards `127.0.0.1:<rathole_port>` traffic over the tunnel
-/// to the appliance's local Nginx.
-///
-/// Note: rathole's server config keys are `bind_addr` (a scalar string), not
-/// `bind` (a list). The `[server]` block emitted here for zero tenants is
-/// exactly what `seed` (see [`crate::seed::run`]) writes to disk on first
-/// boot, before `serve`'s reconciler has run — both call this same function
-/// — so steady-state (no tenants) is zero churn: the reconciler's first
-/// compare sees no change.
+/// Tunnel: one service per tenant, bound on loopback (only Traefik, on the
+/// same host, reaches it), with the per-appliance token the box presents.
 #[must_use]
-pub fn desired_config(tenants: &[TenantView], opts: &EdgeOpts) -> Files {
-    desired_config_with_hosts(tenants, opts, &BTreeMap::new())
+pub fn desired_config(tenants: &[TenantView]) -> Files {
+    desired_config_with_hosts(tenants, &BTreeMap::new())
 }
 
 /// [`desired_config`], plus more hostnames for some tenants: the box's name
@@ -321,53 +301,17 @@ pub fn desired_config(tenants: &[TenantView], opts: &EdgeOpts) -> Files {
 #[must_use]
 pub fn desired_config_with_hosts(
     tenants: &[TenantView],
-    opts: &EdgeOpts,
     extra_hosts: &BTreeMap<String, Vec<String>>,
 ) -> Files {
-    // rathole [server] base. The [server.services] table is appended below —
-    // either empty (zero tenants) or one [server.services.<id>] per tenant.
-    // For zero tenants this is exactly what `seed::run` writes to disk on
-    // first boot — it calls this same function, so there is nothing else to
-    // keep in sync.
-    let mut toml = format!(
-        "[server]\nbind_addr = \"{bind}\"\ndefault_token = \"{tok}\"\n",
-        bind = format_bind(&opts.rathole_bind_addr, opts.rathole_bind_port),
-        tok = toml_escape(&opts.bootstrap_token),
-    );
-    if let Some(key) = &opts.noise_private_key {
-        toml.push_str(&format!(
-            "\n[server.transport]\ntype = \"noise\"\n\n[server.transport.noise]\nlocal_private_key = \"{}\"\n",
-            toml_escape(key)
-        ));
-    }
-
+    let tunnel_json = tunnel_file(tenants);
     if tenants.is_empty() {
-        // rathole's server config requires a `services` field (serde rejects a
-        // `[server]` block with no services table: "missing field `services`"),
-        // so emit an empty `[server.services]` table: rathole starts, listens
-        // on `bind_addr`, and watches the file for hot-reload — the registrar
-        // later rewrites it with real `[server.services.<id>]` blocks as
-        // appliances register. This empty rathole form is exactly what `seed`
-        // writes to disk on first boot (it calls this same function with no
-        // tenants), so a freshly-booted edge produces zero rathole churn on
-        // its first reconcile.
-        //
         // Traefik gets no routes, which the provider serves as `{}`.
-        toml.push_str("\n[server.services]\n");
         return Files {
             traefik: Routes::default(),
-            rathole_toml: toml,
+            tunnel_json,
         };
     }
 
-    // Sort by id so the rathole per-service blocks (emitted in iteration
-    // order) match the Traefik BTreeMap (key order) — the output is then
-    // deterministic regardless of the order callers pass tenants in. The
-    // registry already sorts `views()`, but `desired_config` must not lean on
-    // that: a caller that passed the same tenants in a different order would
-    // otherwise produce byte-identical Traefik config (BTreeMap) but a
-    // different rathole block order, byte-compare as "changed", and trigger a
-    // spurious rathole SIGHUP + reload.
     let mut sorted: Vec<&TenantView> = tenants.iter().collect();
     sorted.sort_by(|a, b| a.id.cmp(&b.id));
 
@@ -420,26 +364,11 @@ pub fn desired_config_with_hosts(
             TraefikService {
                 load_balancer: TraefikLoadBalancer {
                     servers: vec![TraefikServer {
-                        url: format!("http://127.0.0.1:{port}", port = t.rathole_port),
+                        url: format!("http://127.0.0.1:{port}", port = t.tunnel_port),
                     }],
                 },
             },
         );
-
-        // rathole per-service block: token + loopback bind Traefik hits.
-        toml.push_str(&format!(
-            "\n[server.services.{id}]\ntoken = \"{tok}\"\nbind_addr = \"127.0.0.1:{port}\"\n",
-            id = toml_key(&t.id),
-            tok = toml_escape(&t.token),
-            port = t.rathole_port,
-        ));
-        if let Some(port) = t.llm_port {
-            toml.push_str(&format!(
-                "\n[server.services.{id}]\ntoken = \"{tok}\"\nbind_addr = \"127.0.0.1:{port}\"\n",
-                id = toml_key(&format!("{}:llm", t.id)),
-                tok = toml_escape(&t.token),
-            ));
-        }
     }
 
     Files {
@@ -448,8 +377,37 @@ pub fn desired_config_with_hosts(
             middlewares: BTreeMap::new(),
             services,
         },
-        rathole_toml: toml,
+        tunnel_json,
     }
+}
+
+/// The tunnel's service file: `<id>` on the tenant's port, and `<id>:llm` on
+/// its model port when it lends memory. JSON from a `BTreeMap`, so the same
+/// tenants in any order give the same bytes.
+fn tunnel_file(tenants: &[TenantView]) -> String {
+    let loopback = |port| SocketAddr::from((Ipv4Addr::LOCALHOST, port));
+    let mut file = ServerFile::default();
+    for t in tenants {
+        file.services.insert(
+            t.id.clone(),
+            ServerService {
+                token: t.token.clone(),
+                bind: loopback(t.tunnel_port),
+            },
+        );
+        if let Some(port) = t.llm_port {
+            file.services.insert(
+                format!("{}:llm", t.id),
+                ServerService {
+                    token: t.token.clone(),
+                    bind: loopback(port),
+                },
+            );
+        }
+    }
+    let mut out = serde_json::to_string_pretty(&file).expect("a tunnel file serializes");
+    out.push('\n');
+    out
 }
 
 /// The routes of the virtual machines the market published (`crate::vms`):
@@ -496,7 +454,7 @@ pub fn vm_routes(routes: &[(String, String)]) -> Routes {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HiddenRoute {
     pub id: String,
-    pub rathole_port: u16,
+    pub tunnel_port: u16,
     pub hosts: Vec<String>,
 }
 
@@ -551,7 +509,7 @@ pub fn hidden_routes(routes: &[HiddenRoute]) -> Routes {
             TraefikService {
                 load_balancer: TraefikLoadBalancer {
                     servers: vec![TraefikServer {
-                        url: format!("http://127.0.0.1:{}", r.rathole_port),
+                        url: format!("http://127.0.0.1:{}", r.tunnel_port),
                     }],
                 },
             },
@@ -563,19 +521,17 @@ pub fn hidden_routes(routes: &[HiddenRoute]) -> Routes {
 /// The hub a spoke relays through, as the uplink renderer needs it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UplinkTarget {
-    /// rathole `[client] remote_addr` — the hub's tunnel port.
-    pub rathole_endpoint: String,
-    /// The hub's rathole `default_token` (its bootstrap token).
-    pub bootstrap_token: String,
+    /// The hub's tunnel, `host:port` (UDP).
+    pub tunnel_endpoint: String,
+    /// SHA-256 of the hub's tunnel certificate, pinned.
+    pub pin: String,
     /// This spoke's own tenant token on the hub: every relayed service
     /// authenticates with it, because the spoke is the authenticated party.
     pub token: String,
-    /// The hub's Noise public key, pinned; `None` leaves the uplink plain TCP.
-    pub noise_public_key: Option<String>,
 }
 
 /// One relayed box as the uplink carries it: the service name the hub
-/// expects (`<spoke>.<box>`) and the spoke-local rathole port that reaches
+/// expects (`<spoke>.<box>`) and the spoke-local tunnel port that reaches
 /// the box's own tunnel.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UplinkService {
@@ -583,105 +539,29 @@ pub struct UplinkService {
     pub local_port: u16,
 }
 
-/// Render the rathole *client* config of a spoke's uplink: one
-/// `[client.services.<spoke>.<box>]` per relayed box, `local_addr` the
-/// spoke-local port the hub's traffic is to be delivered to, token the
-/// spoke's own. Deterministic (services sorted by name), so the reconciler's
-/// byte-compare is stable, and always a complete file: with no services
-/// rathole keeps the connection and idles, which is what a site with no box
-/// registered yet wants.
+/// Render the tunnel *client* file of a spoke's uplink: one service per
+/// relayed box, `<spoke>.<box>`, delivered to the spoke-local port that box's
+/// own tunnel serves, with the spoke's token. Deterministic (a `BTreeMap`),
+/// so the reconciler's byte-compare is stable, and always a complete file.
 #[must_use]
 pub fn uplink_config(target: &UplinkTarget, services: &[UplinkService]) -> String {
-    let mut toml = format!(
-        "[client]\nremote_addr = \"{addr}\"\ndefault_token = \"{tok}\"\n",
-        addr = toml_escape(&target.rathole_endpoint),
-        tok = toml_escape(&target.bootstrap_token),
-    );
-    if let Some(key) = &target.noise_public_key {
-        toml.push_str(&format!(
-            "\n[client.transport]\ntype = \"noise\"\n\n[client.transport.noise]\nremote_public_key = \"{}\"\n",
-            toml_escape(key)
-        ));
-    }
-    let mut sorted: Vec<&UplinkService> = services.iter().collect();
-    sorted.sort_by(|a, b| a.name.cmp(&b.name));
-    if sorted.is_empty() {
-        toml.push_str("\n[client.services]\n");
-    }
-    for s in sorted {
-        toml.push_str(&format!(
-            "\n[client.services.{name}]\ntoken = \"{tok}\"\nlocal_addr = \"127.0.0.1:{port}\"\n",
-            name = toml_key(&s.name),
-            tok = toml_escape(&target.token),
-            port = s.local_port,
-        ));
-    }
-    toml
-}
-
-/// Format a `host:port` socket string for rathole's `bind_addr`, bracketing
-/// IPv6 literals: `::` → `[::]:2333`, `0.0.0.0` → `0.0.0.0:2333`. rathole
-/// parses `bind_addr` as a `SocketAddr`, so an unbracketed IPv6 literal
-/// (`::2333`) is rejected. The default `rathole_bind_addr` is `::` (dual-stack
-/// — Linux accepts IPv4-mapped connections on an `::` bind), so an appliance
-/// that resolves the edge over IPv6 reaches the tunnel. Both `seed` and
-/// `serve`'s reconciler render through this same helper, so there is no
-/// second implementation that could drift out of bracketing-lockstep.
-fn format_bind(addr: &str, port: u16) -> String {
-    if addr.contains(':') {
-        format!("[{addr}]:{port}")
-    } else {
-        format!("{addr}:{port}")
-    }
-}
-
-/// Escape a string for a TOML **basic string** value (the `"..."` form).
-///
-/// TOML 1.0 forbids a raw control character inside a basic string: besides
-/// `\` and `"`, the range U+0000-U+0008, U+000A-U+001F and U+007F must be
-/// escaped — `\b`, `\t`, `\n`, `\f`, `\r` where a short form exists,
-/// `\uXXXX` otherwise.
-///
-/// This is not hypothetical tidiness. The registrar is the *sole* writer of
-/// `server.toml`; a single tenant id or token file that ends up carrying a
-/// newline would emit a file rathole cannot parse, and every tunnel — not
-/// just that tenant's — drops at the next reconcile. The reconciler also
-/// refuses tokens containing control characters (see `server::token_fault`),
-/// so this is the second line of defence, not the first.
-fn toml_escape(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\u{8}' => out.push_str("\\b"),
-            '\t' => out.push_str("\\t"),
-            '\n' => out.push_str("\\n"),
-            '\u{c}' => out.push_str("\\f"),
-            '\r' => out.push_str("\\r"),
-            c if c.is_control() => {
-                out.push_str("\\u");
-                let n = c as u32;
-                // Every `is_control()` char is below U+0100, so four hex
-                // digits always suffice for the \uXXXX form.
-                for shift in [12u32, 8, 4, 0] {
-                    out.push(char::from_digit((n >> shift) & 0xF, 16).unwrap_or('0'));
-                }
-            }
-            c => out.push(c),
-        }
-    }
+    let file = ClientFile {
+        remote: target.tunnel_endpoint.clone(),
+        pin: target.pin.clone(),
+        services: services
+            .iter()
+            .map(|s| {
+                (
+                    s.name.clone(),
+                    ClientService {
+                        token: target.token.clone(),
+                        local: format!("127.0.0.1:{}", s.local_port),
+                    },
+                )
+            })
+            .collect(),
+    };
+    let mut out = serde_json::to_string_pretty(&file).expect("a tunnel file serializes");
+    out.push('\n');
     out
-}
-
-fn toml_key(s: &str) -> String {
-    // Bare TOML keys allow A-Za-z0-9-_ only; quote anything else.
-    let bare = !s.is_empty()
-        && s.chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
-    if bare {
-        s.to_string()
-    } else {
-        format!("\"{}\"", toml_escape(s))
-    }
 }

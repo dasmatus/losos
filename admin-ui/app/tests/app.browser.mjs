@@ -464,7 +464,7 @@ const EDGE_CLUSTERS = {
     gwEdge('lab', 'gw-z'),
     { name: 'losos-edge.dasmat.us', url: 'https://losos-edge.dasmat.us', source: 'configured', official: true, tier: 'tertiary' },
   ],
-  path: { name: 'gw-a', url: 'http://gw-a.local:8443', source: 'lan', rathole: 'gw-a.local:2333', tier: 'secondary', cluster: 'office', member: 'gw-a' },
+  path: { name: 'gw-a', url: 'http://gw-a.local:8443', source: 'lan', tunnel: 'gw-a.local:2333', tier: 'secondary', cluster: 'office', member: 'gw-a' },
   clusters: [{ name: 'lab', gateways: ['gw-z'] }, { name: 'office', gateways: ['gw-a', 'gw-b'] }],
   cluster: 'office',
 };
@@ -472,7 +472,7 @@ const EDGE_CLUSTERS = {
 const EDGE_TERTIARY = {
   ...EDGE_CLUSTERS,
   edges: [EDGE_CLUSTERS.edges[2], EDGE_CLUSTERS.edges[3]],
-  path: { name: 'losos-edge.dasmat.us', url: 'https://losos-edge.dasmat.us', source: 'configured', rathole: 'edge.losos.cfd:2333', tier: 'tertiary' },
+  path: { name: 'losos-edge.dasmat.us', url: 'https://losos-edge.dasmat.us', source: 'configured', tunnel: 'edge.losos.cfd:2333', tier: 'tertiary' },
   clusters: [{ name: 'lab', gateways: ['gw-z'] }],
 };
 const EDGE_NONE = {

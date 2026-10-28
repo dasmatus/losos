@@ -65,7 +65,7 @@ pub const TYPES: &[TypeInfo] = &[
         ports: ETH0,
         endpoint: true,
         emulate: Some("edge-local"),
-        blurb: "A local edge (spoke): registrar, rathole server, LAN advert, optional mesh.",
+        blurb: "A local edge (spoke): registrar, tunnel server, LAN advert, optional mesh.",
     },
     TypeInfo {
         key: "edge-official",
@@ -204,7 +204,7 @@ pub const PROTO: &[(&str, &str, &str)] = &[
     ("DNS", "#4f86e0", "DNS"),
     ("HTTP", "#e8775a", "HTTP(S)"),
     ("ICMP", "#d4a72c", "ICMP"),
-    ("rathole", "#2b6cb0", "rathole/Noise"),
+    ("tunnel", "#2b6cb0", "tunnel/QUIC"),
     ("rke2", "#c05fa0", "rke2 (mesh)"),
     ("lososd", "#5c6a77", "lososd"),
 ];
