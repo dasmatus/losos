@@ -1,8 +1,5 @@
-import * as React from "react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getUpdates, isAbort, isUnauthorized, postUpdatesCheck, useMe } from "@/lib/api";
 import { useT } from "@/lib/i18n-react";
 import { openTour } from "@/tour/store";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue } from "./rows";
@@ -21,43 +18,6 @@ import type { SettingsForm } from "./use-settings-form";
 export function AboutPane({ form }: { form: SettingsForm }) {
   const t = useT();
   const saved = form.saved;
-  const me = useMe();
-
-  const [updateOutput, setUpdateOutput] = React.useState("");
-  const [updateError, setUpdateError] = React.useState("");
-  const [updateBusy, setUpdateBusy] = React.useState(false);
-
-  const loadUpdates = React.useCallback(async (signal?: AbortSignal) => {
-    try {
-      const result = await getUpdates(signal === undefined ? {} : { signal });
-      setUpdateOutput(result.output);
-      setUpdateError("");
-    } catch (fault) {
-      if (isAbort(fault) || isUnauthorized(fault)) return;
-      setUpdateError(fault instanceof Error && fault.message ? fault.message : "Could not read update status");
-    }
-  }, []);
-
-  React.useEffect(() => {
-    const controller = new AbortController();
-    void loadUpdates(controller.signal);
-    return () => controller.abort();
-  }, [loadUpdates]);
-
-  const checkAndInstall = async () => {
-    setUpdateBusy(true);
-    try {
-      await postUpdatesCheck();
-      setUpdateError("");
-      setUpdateOutput("Update service started. The machine may restart when activation completes.");
-    } catch (fault) {
-      if (!isUnauthorized(fault)) {
-        setUpdateError(fault instanceof Error && fault.message ? fault.message : "Could not start the update service");
-      }
-    } finally {
-      setUpdateBusy(false);
-    }
-  };
 
   /* Two addresses, and the order matters. `here` is the one this browser is
    * using right now, read off the address bar, so it is true by construction
@@ -204,35 +164,6 @@ export function AboutPane({ form }: { form: SettingsForm }) {
           </Row>
         </Group>
         <GroupCaption>{t("panes.about.caption")}</GroupCaption>
-      </PaneSection>
-
-      <PaneSection>
-        <GroupTitle>System updates</GroupTitle>
-        <Group>
-          {updateError !== "" && (
-            <p role="alert" className="text-sm text-destructive">
-              {updateError}
-            </p>
-          )}
-          {updateOutput !== "" && (
-            <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-md border border-border p-2 text-xs text-muted-foreground">
-              {updateOutput}
-            </pre>
-          )}
-          {me?.admin && (
-            <div className="flex flex-wrap items-center gap-2">
-              <Button variant="secondary" size="sm" disabled={updateBusy} onClick={() => void checkAndInstall()}>
-                {updateBusy ? "Starting update…" : "Check and install now"}
-              </Button>
-              <Button variant="ghost" size="sm" disabled={updateBusy} onClick={() => void loadUpdates()}>
-                Refresh status
-              </Button>
-            </div>
-          )}
-        </Group>
-        <GroupCaption>
-          Updates are signature-checked before download, then extracted on encrypted persistent storage under /persist.
-        </GroupCaption>
       </PaneSection>
     </>
   );
