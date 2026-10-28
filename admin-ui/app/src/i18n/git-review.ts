@@ -11,12 +11,12 @@ export default defineMessages({
     de: "Pull-Requests mit LosOS Reviewer prüfen",
   },
   "gitReview.hint": {
-    en: "The box's own code model comments on every pull request when it is opened or pushed to. It never approves or merges, and the code stays on this box.",
+    en: "The box's own code model comments on every pull request when someone opens it or pushes to it. It never approves or merges, and the code stays on this box.",
     sk: "Vlastný model zariadenia okomentuje každý pull request, keď sa otvorí alebo doň pribudnú commity. Nikdy neschvaľuje ani nezlučuje a kód zostáva na tomto zariadení.",
     de: "Das eigene Code-Modell der Box kommentiert jeden Pull-Request, wenn er geöffnet wird oder neue Commits bekommt. Es genehmigt nie und führt nie zusammen, und der Code bleibt auf dieser Box.",
   },
   "gitReview.hintModel": {
-    en: "{model} on this box comments on every pull request when it is opened or pushed to. It never approves or merges, and the code stays on this box.",
+    en: "{model} on this box comments on every pull request when someone opens it or pushes to it. It never approves or merges, and the code stays on this box.",
     sk: "{model} na tomto zariadení okomentuje každý pull request, keď sa otvorí alebo doň pribudnú commity. Nikdy neschvaľuje ani nezlučuje a kód zostáva na tomto zariadení.",
     de: "{model} auf dieser Box kommentiert jeden Pull-Request, wenn er geöffnet wird oder neue Commits bekommt. Es genehmigt nie und führt nie zusammen, und der Code bleibt auf dieser Box.",
   },
