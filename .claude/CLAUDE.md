@@ -444,6 +444,16 @@ and is never served or built by nix.
   TXT token and CNAME check out, only for a box with a ready Stripe account.
   lososd writes the live names to `/var/lib/losos-public-names`, which
   LosOS Login reads for its cookie domains.
+- Traefik finds the boxes through its HTTP provider: it polls the
+  registrar's loopback provider listener (`server/provider.rs`,
+  `losos.edge.traefikProviderPort`, 8090) every 2 s for `config::Routes` as
+  JSON. The registrar writes nothing into `/etc/traefik/dynamic` (NixOS-owned
+  `register*.yml` only; tmpfiles removes an old edge's `losos.yml`). No routes
+  is the document `{}`: an empty `routers: {}` is refused and Traefik keeps
+  the old routes, as it does on any non-200. Box routers carry the
+  `losos_offline` errors middleware (502/504 → the edge's page).
+  `websecure` also answers HTTP/3 on UDP 443. `nix/tests/edge-vm.nix` and
+  `edge-federation.nix` curl real HTTPS and HTTP/3 through Traefik with -k.
 - `edge/registrar/src/routes.rs`: custom domains of mesh boxes behind a
   local edge. The official edge keeps the routes in the registrar's own
   state (`relay-routes.json` beside the registry, no etcd) and binds a box

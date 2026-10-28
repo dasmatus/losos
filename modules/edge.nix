@@ -4,10 +4,12 @@
 # `nixosModules.edge` flake output next to its own hardware config. It runs
 # two halves that share one binary and one tenant whitelist:
 #
-#   * the MASTER PROXY — Traefik (public TLS on :443), a rathole server
-#     (appliance clients dial :2333), and losos-registrar (serve), the stub
-#     Rust HTTP server that *constantly updates* Traefik's dynamic
-#     file-provider config and rathole's server config from a tenant registry.
+#   * the MASTER PROXY — Traefik (public TLS on :443 over TCP, and HTTP/3
+#     over QUIC on UDP :443), a rathole server (appliance clients dial
+#     :2333), and losos-registrar (serve), the Rust HTTP server Traefik
+#     discovers the boxes from (its HTTP provider polls the registrar's
+#     loopback provider listener) and that writes rathole's server config
+#     from a tenant registry.
 #   * the MESH CONTROL PLANE (`losos.edge.cluster.enable`) — an rke2 server
 #     that appliances join as agents, carrying Longhorn and mesh compute.
 #
@@ -17,14 +19,19 @@
 # stays true. Nothing in the proxy path may grow a hard dependency on the
 # cluster path — an apiserver that is down must not take the tunnels with it.
 #
-# Traefik's file provider watches /etc/traefik/dynamic as a directory:
-#   * register.yml  — the one static route (register.<domain> → the
-#     registrar's loopback API). NixOS-managed (this module), symlinked in.
-#   * losos.yml      — per-appliance routers, written at runtime by the
-#     registrar. Traefik auto-reloads on change.
-# The registrar is the sole writer of losos.yml and /etc/rathole/server.toml;
-# it never touches register.yml. That separation keeps the registrar from
-# being able to lock itself out of the control plane.
+# Traefik has two providers:
+#   * file, watching /etc/traefik/dynamic: register.yml, the one static route
+#     (register.<domain> → the registrar's loopback API), and its siblings.
+#     NixOS-managed (this module and edge-inference.nix), symlinked in.
+#   * http, polling http://127.0.0.1:<traefikProviderPort>/traefik: one
+#     router per live box name and published machine, decided by the
+#     registrar's reconciler and held in its memory. Traefik keeps the routes
+#     it has whenever the registrar does not answer 200.
+# The registrar never touches the file provider's directory. That separation
+# keeps it from being able to lock itself out of the control plane. Edges
+# from before the HTTP provider had the registrar write losos.yml and
+# losos-vms.yml into that directory; tmpfiles removes both on the first boot
+# of this generation, or Traefik would route every box twice.
 #
 # See docs/superpowers/specs/2026-08-17-master-proxy-design.md and
 # docs/superpowers/specs/2026-09-09-k3s-mesh-design.md. The appliance side is
@@ -120,7 +127,11 @@ let
   # Static Traefik config. We bypass services.traefik.staticConfigOptions
   # because the NixOS module force-merges `providers.file.filename` (a single
   # file); we need `providers.file.directory` so Traefik watches the dir the
-  # registrar drops losos.yml into alongside the static register.yml.
+  # static register*.yml files are linked into.
+  #
+  # websecure answers HTTP/3 on UDP 443 beside TCP, and Traefik adds an
+  # Alt-Svc header to every response so a browser moves to QUIC on its next
+  # request; a network that blocks UDP keeps HTTP/2 on TCP.
   tomlFmt = pkgs.formats.toml { };
   staticCfg = tomlFmt.generate "losos-traefik-static.toml" (
     lib.recursiveUpdate
@@ -129,7 +140,13 @@ let
         entryPoints.web.http.redirections.entryPoint.to = "websecure";
         entryPoints.web.http.redirections.entryPoint.scheme = "https";
         entryPoints.websecure.address = ":443";
+        entryPoints.websecure.http3 = { };
         providers.file.directory = "/etc/traefik/dynamic";
+        providers.http = {
+          endpoint = "http://127.0.0.1:${toString cfg.traefikProviderPort}/traefik";
+          pollInterval = "2s";
+          pollTimeout = "2s";
+        };
         certificatesResolvers.le.acme.email =
           if cfg.acmeEmail == null then "unconfigured@losos.cfd" else cfg.acmeEmail;
         certificatesResolvers.le.acme.storage = "/var/lib/traefik/acme.json";
@@ -962,8 +979,8 @@ let
       "${fmtBind cfg.registrarApiBind cfg.registrarApiPort}"
       "--registry"
       "/var/lib/losos-registrar/registry.json"
-      "--traefik-dir"
-      "/etc/traefik/dynamic"
+      "--traefik-provider-listen"
+      "127.0.0.1:${toString cfg.traefikProviderPort}"
       "--rathole-config"
       "/etc/rathole/server.toml"
       "--rathole-bind-addr"
@@ -1105,6 +1122,12 @@ in
         # (edge/registrar/src/config.rs); a colon in an id could take it.
         assertion = lib.all (id: !lib.hasInfix ":" id) (lib.attrNames cfg.tenants);
         message = "losos.edge.tenants: an appliance id may not contain a colon.";
+      }
+      {
+        # The offline page's middleware and service (edge/registrar's
+        # config.rs, OFFLINE_MIDDLEWARE) sit beside the tenants' own.
+        assertion = !(cfg.tenants ? losos_offline);
+        message = "losos.edge.tenants: `losos_offline` is the name of the edge's offline page.";
       }
       {
         assertion = (cfg.identity.keyFile == null) == (cfg.identity.certFile == null);
@@ -1356,11 +1379,14 @@ in
     };
 
     # /etc/traefik/dynamic: real dir (0755, root) holding the static
-    # register.yml (symlinked from the store) + the registrar's runtime
-    # losos.yml. Traefik's file provider reads both.
+    # register*.yml files (symlinked from the store). The two `r` lines take
+    # away what the registrar wrote there before Traefik discovered the boxes
+    # from it (see the top of this file).
     systemd.tmpfiles.rules = [
       "d /etc/traefik/dynamic 0755 root root - -"
       "L+ /etc/traefik/dynamic/register.yml - - - - ${toString registerYml}"
+      "r /etc/traefik/dynamic/losos.yml - - - - -"
+      "r /etc/traefik/dynamic/losos-vms.yml - - - - -"
     ]
     ++ lib.optionals cfg.vms.enable [
       "L+ /etc/traefik/dynamic/register-vm-transfer.yml - - - - ${toString vmTransferYml}"
@@ -1384,7 +1410,7 @@ in
 
     # ── losos-registrar (registration API + reconciler) ─────────────────
     systemd.services.losos-registrar = {
-      description = "losos edge registrar — registration API + Traefik/rathole config reconciler";
+      description = "losos edge registrar — registration API, Traefik's service discovery, rathole config";
       wantedBy = [ "multi-user.target" ];
       after = [
         "network-online.target"
@@ -1415,7 +1441,7 @@ in
         StateDirectoryMode = "0700";
         Restart = "always";
         RestartSec = 5;
-        # Writes /etc/traefik/dynamic + /etc/rathole; reads 0600 token files.
+        # Writes /etc/rathole; reads 0600 token files.
         # Runs as root; deliberately no ProtectSystem (would make /etc RO).
         PrivateTmp = true;
         NoNewPrivileges = true;
@@ -1891,7 +1917,7 @@ in
     };
     losos.edge.registrarApiBind = lib.mkIf cfg.lan.advertise (lib.mkDefault "::");
 
-    # ── Firewall: public web + the rathole client-dial port ──────────────
+    # ── Firewall: public web (TCP and QUIC) + the rathole client-dial port ─
     # The registrar API is loopback-only in production (Traefik fronts it at
     # register.<publicDomain>); only open it in the firewall when it is bound
     # off-loopback — which the option docs say is a test-only direct-dial
@@ -1913,8 +1939,12 @@ in
     ]
     # DNS answers over TCP too: large responses and zone checks need it.
     ++ lib.optional dnsCfg.enable 53;
-    networking.firewall.allowedUDPPorts =
-      lib.optional dnsCfg.enable 53 ++ lib.optional relayCfg.enable relayCfg.port;
+    # 443 over UDP is HTTP/3 (QUIC), Traefik's websecure.
+    networking.firewall.allowedUDPPorts = [
+      443
+    ]
+    ++ lib.optional dnsCfg.enable 53
+    ++ lib.optional relayCfg.enable relayCfg.port;
     networking.firewall.allowedUDPPortRanges = lib.optional relayCfg.enable mediaRange;
   };
 }

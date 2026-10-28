@@ -88,8 +88,8 @@ losos.edge = {
 };
 ```
 
-Reconciler registrara, keď zapíše vlastné súbory pre Traefik a rathole,
-prepošle hubu svojich **živých** tenantov (registrovaných, na whiteliste
+Reconciler registrara, keď určí vlastné trasy pre Traefik a zapíše súbor
+pre rathole, prepošle hubu svojich **živých** tenantov (registrovaných, na whiteliste
 alebo zapísaných, posielajúcich heartbeat) a vygeneruje
 `/etc/rathole/uplink.toml`: konfiguráciu *klienta* rathole s jednou službou
 na každé preposielané zariadenie, `local_addr = 127.0.0.1:<port toho boxu na tomto
