@@ -901,7 +901,7 @@ function SelectionBar({
   const common = issues.length > 0 ? issues.flatMap((i) => i.labels.map((l) => l.name)).filter((n, _, all) => all.filter((x) => x === n).length === issues.length) : [];
   return (
     <div
-      className="fixed inset-x-0 bottom-4 z-30 mx-auto flex w-fit max-w-[calc(100vw-2rem)] animate-rise flex-wrap items-center gap-1.5 rounded-card border border-line bg-surface p-1.5 pl-3 shadow-pop"
+      className="fixed inset-x-0 bottom-[calc(1rem+var(--bottom-nav))] z-30 mx-auto flex w-fit max-w-[calc(100vw-2rem)] animate-rise flex-wrap items-center gap-1.5 rounded-card border border-line bg-surface p-1.5 pl-3 shadow-pop"
       role="toolbar"
       aria-label={t("tracker.selection.label", { count })}
       data-selection-bar
