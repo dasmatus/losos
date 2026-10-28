@@ -278,6 +278,9 @@ struct AppState {
     ci: Option<Arc<crate::ci::Ci>>,
     /// The routes Traefik's HTTP provider is served (`provider`).
     discovery: Discovery,
+    /// The ECH key the zone publishes (`crate::ech`); `None` without
+    /// `--ech-key-file`.
+    ech: Option<Arc<crate::ech::EchKey>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -693,6 +696,16 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         )),
     };
 
+    // Made on the first start like the manage key, so the zone's first
+    // render already carries it.
+    let ech = match &opts.ech {
+        None => None,
+        Some(e) => Some(Arc::new(crate::ech::load_or_make(
+            Path::new(&e.key_file),
+            &e.public_name,
+        )?)),
+    };
+
     let state = AppState {
         reg,
         opts: Arc::new(opts),
@@ -724,6 +737,7 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         calls_relay,
         ci,
         discovery: Discovery::default(),
+        ech,
     };
 
     // Generate config from whatever we just loaded, so the box is serving
@@ -3543,7 +3557,10 @@ async fn domain_hosts(
     tenants: &HashMap<String, TenantEntry>,
 ) -> (BTreeMap<String, Vec<String>>, ZoneNames) {
     let mut hosts: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    let mut names = ZoneNames::default();
+    let mut names = ZoneNames {
+        ech: st.ech.as_ref().map(|k| k.config_list_base64()),
+        ..ZoneNames::default()
+    };
     let Ok(store) = domains_of(st) else {
         return (hosts, names);
     };

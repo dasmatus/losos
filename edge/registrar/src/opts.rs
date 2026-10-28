@@ -247,6 +247,18 @@ pub struct ServeOpts {
     /// Tor and I2P addresses for the boxes (`crate::hidden`). `None` unless
     /// `--hidden-dir` was given.
     pub hidden: Option<crate::hidden::HiddenOpts>,
+    /// The ECH key (`crate::ech`): `--ech-key-file FILE --ech-public-name
+    /// NAME`. `None` publishes no HTTPS records with an `ech` value.
+    pub ech: Option<EchOpts>,
+}
+
+/// `serve --ech-key-file FILE --ech-public-name NAME`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EchOpts {
+    /// RFC 9934 PEM, made on the first start, read by the TLS front.
+    pub key_file: String,
+    /// The name the outer handshake shows: the edge's own domain.
+    pub public_name: String,
 }
 
 /// `serve --manage-key-file FILE [--manage-ui DIR]`.
@@ -459,6 +471,10 @@ pub enum Mode {
     Provision(ProvisionOpts),
     Enrol(EnrolOpts),
     Lab(crate::lab::LabOpts),
+    /// `ech-key --key-file FILE --public-name NAME`: make the ECH key if
+    /// missing (`crate::ech`) and print its ECHConfigList, before the TLS
+    /// front starts.
+    EchKey(EchOpts),
 }
 
 /// `enrol` options: the LAN owner's view of the boxes a `--enrol-dir`
@@ -580,6 +596,18 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                     ui_dir: arg(&rest, "--manage-ui").map(str::to_string),
                 }),
                 calls_relay: parse_calls_relay(&rest)?,
+                ech: match (arg(&rest, "--ech-key-file"), arg(&rest, "--ech-public-name")) {
+                    (None, None) => None,
+                    (Some(key_file), Some(public_name)) => Some(EchOpts {
+                        key_file: key_file.to_string(),
+                        public_name: public_name.to_string(),
+                    }),
+                    _ => {
+                        return Err(miette!(
+                            "--ech-key-file and --ech-public-name go together"
+                        ))
+                    }
+                },
                 uplink: match arg(&rest, "--uplink-file") {
                     None => None,
                     Some(file) => Some(crate::relay::UplinkOpts {
@@ -666,6 +694,10 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
             managed_file: arg(&rest, "--managed-file").map(str::to_string),
             llm_lend_file: arg(&rest, "--llm-lend-file").map(str::to_string),
             hidden_file: arg(&rest, "--hidden-file").map(str::to_string),
+        })),
+        "ech-key" => Ok(Mode::EchKey(EchOpts {
+            key_file: req(&rest, "--key-file")?.to_string(),
+            public_name: req(&rest, "--public-name")?.to_string(),
         })),
         "seed" => Ok(Mode::Seed(SeedOpts {
             rathole_config: req(&rest, "--rathole-config")?.to_string(),

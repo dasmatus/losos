@@ -126,6 +126,19 @@ async fn async_main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+        Ok(Mode::EchKey(opts)) => match losos_registrar::ech::load_or_make(
+            std::path::Path::new(&opts.key_file),
+            &opts.public_name,
+        ) {
+            Ok(key) => {
+                println!("{}", key.config_list_base64());
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                tracing::error!("{:?}", e);
+                ExitCode::FAILURE
+            }
+        },
         Err(e) => {
             // Usage errors: no phase has begun yet.
             tracing::error!("{:?}", e);
