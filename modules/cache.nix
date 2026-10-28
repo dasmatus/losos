@@ -99,7 +99,7 @@ let
       }
     '';
 
-  # Who may ask. Loopback always (this port is not one rathole forwards, so
+  # Who may ask. Loopback always (this port is not one the tunnel forwards, so
   # unlike the front vhost's lanOnly guard, 127.0.0.1 here really is the box);
   # private LAN addresses only with shareOnLan, minus the mesh's pod network
   # like lanOnly (modules/lan-only.nix).

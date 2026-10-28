@@ -48,13 +48,13 @@ impl LabCore {
             "box" => &[
                 "losos-ctl status",
                 "losos-ctl edge",
-                "journalctl -u losos-rathole-client",
+                "journalctl -u losos-tunnel-client",
                 "avahi-browse -rt _losos-edge._tcp",
             ],
             "edge-local" => &[
                 "losos-edge boxes",
                 "journalctl -u losos-registrar",
-                "journalctl -u losos-rathole-uplink",
+                "journalctl -u losos-tunnel-uplink",
             ],
             _ => &["journalctl -u losos-registrar", "losos-registrar tenants"],
         };
@@ -177,7 +177,7 @@ impl LabCore {
                     return "-- No entries --".into();
                 };
                 let Some(path) = &st.path else {
-                    return format!("{ts} {n} systemd[1]: losos-rathole-client.service: skipped, ConditionPathExists=!/run/losos/edge-none was not met");
+                    return format!("{ts} {n} systemd[1]: losos-tunnel-client.service: skipped, ConditionPathExists=!/run/losos/edge-none was not met");
                 };
                 let e = self.nm(&path.id);
                 let last = if st.tunnel == "refused" {
@@ -196,8 +196,8 @@ impl LabCore {
                     )
                 };
                 [
-                    format!("{ts} {n} losos-rathole-client[812]: pinned Noise key for {e}"),
-                    format!("{ts} {n} losos-rathole-client[812]: control channel established to {e}:2333"),
+                    format!("{ts} {n} losos-tunnel-client[812]: pinned the tunnel certificate of {e}"),
+                    format!("{ts} {n} losos-tunnel-client[812]: QUIC tunnel up to {e}:2333"),
                     last,
                 ]
                 .join("\n")
