@@ -1731,7 +1731,6 @@ async fn vm_edge(tag: &str, stripe: &StripeStub, kube: &KubeStub, max_upload: u6
                 max_upload_bytes: max_upload,
                 fetch_base: "https://register.example.test".to_string(),
                 domain: Some(VM_DOMAIN.to_string()),
-                routes_file: Some(dir.path_str("traefik/losos-vms.yml")),
             });
         },
     )
@@ -1953,9 +1952,12 @@ async fn a_machine_order_is_split_in_half_and_becomes_replicas_on_the_hosting_bo
         .any(|(k, _)| k == "POST /api/v1/namespaces/market-buyer-box/services"));
 
     // Traefik is pointed at the Service.
-    let routes_file = edge.dir.join("traefik/losos-vms.yml");
-    assert!(edge.wait_for(|| routes_file.exists()).await);
-    let routes = std::fs::read_to_string(&routes_file).expect("routes file");
+    let host = format!("Host(`{stem}.{VM_DOMAIN}`)");
+    assert!(
+        edge.wait_for(|| edge.traefik_yaml().is_some_and(|d| d.contains(&host)))
+            .await
+    );
+    let routes = edge.traefik_yaml().expect("the machine's route");
     assert!(
         routes.contains(&format!("Host(`{stem}.{VM_DOMAIN}`)")),
         "{routes}"
@@ -2274,7 +2276,6 @@ async fn a_lapsed_machine_order_is_halted_and_keeps_its_disks() {
                 max_upload_bytes: 1 << 20,
                 fetch_base: "https://register.example.test".to_string(),
                 domain: Some(VM_DOMAIN.to_string()),
-                routes_file: Some(dir.path_str("traefik/losos-vms.yml")),
             });
         },
     )
@@ -2307,7 +2308,11 @@ async fn a_lapsed_machine_order_is_halted_and_keeps_its_disks() {
         "nothing is deleted"
     );
     // A halted machine is not published.
-    assert!(!edge.dir.join("traefik/losos-vms.yml").exists());
+    assert!(
+        edge.wait_for(|| edge.traefik_yaml().is_none()).await,
+        "{:?}",
+        edge.traefik_yaml()
+    );
     let account = buyer_account(&edge).await;
     assert_eq!(account["purchases"][0]["vm"]["halted"], true);
     assert_eq!(account["entitlements"]["vm_replicas"], 0);

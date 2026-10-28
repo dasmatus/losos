@@ -24,8 +24,8 @@ eingerichtet hat, bekommt die des Besitzers.
   oder ihre früheren Versionen ansehen.
 - **Zuletzt** zeigt, was sich zuletzt geändert hat, **Favoriten**, was du
   mit einem Stern markiert hast.
-- **Fotos** zeigt alle Bilder, den neuesten Monat zuerst. Klick auf eins,
-  um es groß zu sehen, und blättere mit den Pfeiltasten weiter.
+- **Fotos** zeigt alle Bilder nach dem Aufnahmedatum und die Personen
+  darauf. Siehe [Fotos](#photos).
 - **Papierkorb** behält gelöschte Dateien 30 Tage oder so lange, wie es
   der Bereich **Apps** sagt. Stell eine wieder her oder lösche sie
   endgültig. Was du über die
@@ -49,6 +49,31 @@ eingerichtet hat, bekommt die des Besitzers.
   und Chat hat, und **Die KI dazu fragen** bei einer Textdatei auf einer Box
   mit Sprachmodell. Die KI läuft auf der Box und liest nur die gewählte
   Datei.
+
+## Fotos \{#photos}
+
+**Fotos** zeigt jedes Bild aus jedem Ordner, das neueste zuerst, nach dem
+Monat, in dem die Kamera es aufgenommen hat. **Gruppieren nach** ordnet sie
+stattdessen nach Person, Kamera oder Ort. Klick auf ein Bild, um es groß zu
+sehen, blättere mit den Pfeiltasten weiter und drück **Details** (oder
+<kbd>i</kbd>) für das, was die Kamera gespeichert hat: wann, welche Kamera
+und welches Objektiv, die Belichtung, die Größe, wo es aufgenommen wurde,
+wer darauf ist und jede weitere Angabe der Kamera.
+
+![Die Details eines Fotos in LosOS Cloud: wann es aufgenommen wurde, die Kamera, das Objektiv, die Einstellungen und der Ort.](@site/docs/img/cloud-photos.png)
+
+Die Box findet die Gesichter auf deinen Bildern und fasst die, die sich
+ähneln, zu einer Person zusammen. **Personen** über den Fotos zeigt alle,
+die auf mehr als einem Bild vorkommen; klick auf ein Gesicht, um alle Fotos
+dieser Person zu sehen und ihr einen Namen zu geben. Gibst du zwei Personen
+denselben Namen, werden sie zu einer.
+
+Das alles geschieht auf der Box, im Hintergrund und mit der niedrigsten
+Priorität, ein paar Minuten nachdem ein Bild angekommen ist: Zwei kleine
+Modelle finden und vergleichen Gesichter auf dem Prozessor der Box, und
+nichts über ein Bild, ein Gesicht oder einen Ort wird irgendwohin
+geschickt. Nur du siehst die Gesichter, Namen und Orte deiner Fotos; andere
+Personen auf der Box sehen nichts davon.
 
 ## Apps für Computer und Telefon \{#desktop-and-phone-apps}
 
@@ -119,4 +144,7 @@ einmal.
 
 Der Abschnitt LosOS Cloud im Bereich **Apps** legt fest, wie lange der
 Papierkorb Dateien behält (`losos.cloud.trashDays`, 1 bis 365 Tage).
-`losos.cloud.enable` im Bereich **Erweitert** schaltet LosOS Cloud ab.
+`losos.cloud.enable` im Bereich **Erweitert** schaltet LosOS Cloud ab, und
+`losos.cloud.photos.faces` lässt Fotos keine Gesichter mehr suchen: Der
+nächste Durchlauf löscht alle bisher gefundenen Gesichter und Namen, die
+Angaben der Kamera bleiben.

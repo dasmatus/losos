@@ -144,6 +144,8 @@ správca. To isté okno ukáže odtlačok, stiahne zálohu (stále zamknutú va�
 heslom) a verejný kľúč, kľúč znova zamkne a odstráni ho. Odstránený kľúč
 neprečíta poštu poslanú preň, kým neimportujete zálohu.
 
+![Okno Šifrovanie s kľúčom: odtlačok, adresa a dátum a tlačidlá na zamknutie, zálohu a odstránenie kľúča.](@site/docs/img/mail-pgp-key.png)
+
 **Odomknutie.** Kľúč zostane odomknutý v karte, kde ste ho odomkli, kým ho
 nezamknete alebo kartu nezavriete. Pošta si heslo vypýta, keď ho potrebuje:
 na otvorenie šifrovanej správy alebo na podpísanie.
@@ -166,12 +168,16 @@ kľúč, takže svoju kópiu v Odoslanej pošte prečítate. Predmet šifrovaný
 je. Pošta sa posiela ako PGP/MIME; **Vložené, pre staršie poštové programy**
 dá šifrovaný text priamo do tela správy, čo chráni text, ale nie prílohy.
 
+![Nová správa pre Evu: jej kľúč sa našiel na tomto zariadení a Šifrovať a Podpísať sú zapnuté.](@site/docs/img/mail-pgp-compose.png)
+
 **Čítanie.** Šifrovaná správa má v zozname zámok. Keď ju otvoríte, dešifruje
 sa vo vašom prehliadači a riadok pod hlavičkou povie, ako prišla: šifrovaná,
 podpísaná a kým, podpísaná kľúčom, ktorý zariadenie nepozná, alebo s
 podpisom, ktorý nesedí. Správa podpísaná niekým iným než jej odosielateľom
 to povie. Dešifrovaná pošta sa zobrazí ako text, nikdy vo formátovaní od
 odosielateľa, a jej prílohy sa sťahujú ako všetky ostatné.
+
+![Eva číta správu: v zozname je zámok a poznámka hovorí, že ju zašifroval a podpísal Matus, s jeho odtlačkom.](@site/docs/img/mail-pgp-opened.png)
 
 **Váš verejný kľúč pre ostatných.** Zariadenie zverejňuje verejný kľúč
 každého vo svojej Web Key Directory na `/.well-known/openpgpkey/`, takže ho

@@ -15,6 +15,7 @@ use actix_web::{web, HttpRequest, HttpResponse};
 pub fn init(store: &Store) -> Result<(), StoreError> {
     crate::cloud::share::init(store)?;
     crate::cloud::notes::kb::init(store)?;
+    crate::cloud::photos::init(store)?;
     Ok(())
 }
 
@@ -53,6 +54,7 @@ pub async fn api(
     match (req.method().as_str(), segs) {
         (_, ["notes", rest @ ..]) => crate::cloud::notes::api(req, cloud, who, rest, body).await,
         (_, ["kb", rest @ ..]) => crate::cloud::notes::kb::api(req, cloud, who, rest, body).await,
+        (_, ["photos", rest @ ..]) => crate::cloud::photos::api(req, cloud, who, rest, body).await,
         (_, ["contacts", rest @ ..]) => {
             crate::cloud::contacts::api(req, cloud, who, rest, body).await
         }

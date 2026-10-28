@@ -200,4 +200,6 @@ export const ON_PANE: Readonly<Record<string, SettingsPaneId>> = {
   "inference.lend.enable": "market",
   "inference.lend.memoryMiB": "market",
   "cloud.windows.enable": "network",
+  "hidden.tor.enable": "network",
+  "hidden.i2p.enable": "network",
 };
