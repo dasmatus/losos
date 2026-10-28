@@ -3284,6 +3284,45 @@ export interface GatewaySettings {
   } | null;
   /** Boxes that enrolled here on first contact; only these can be forgotten. */
   enrolled: string[];
+  /** Null on an edge that runs no secondary cluster. */
+  cluster?: { joined: GatewayCluster | null } | null;
+  /** The main cluster as the hub last answered: gateways on primary links. */
+  main?: GatewayMainRow[];
+}
+
+/** The secondary cluster this gateway is in (edge/registrar/src/secondary.rs). */
+export interface GatewayCluster {
+  name: string;
+  /** This gateway's name in it. */
+  member: string;
+  /** What another gateway of this network joins with. */
+  secret: string;
+  /** This gateway's address, which another gateway joins through. */
+  url: string;
+  /** The gateways that answer, this one first. */
+  gateways: { member: string; url: string }[];
+}
+
+export interface GatewayMainRow {
+  site: string;
+  gateway: string;
+  cluster: string | null;
+  boxes: number;
+}
+
+/** PUT /manage/api/gateway/cluster: a name alone starts a cluster; a name,
+ *  the founder's secret and its address join that one. */
+export function setGatewayCluster(form: { name: string; secret?: string; peer?: string }): Promise<GatewayCluster> {
+  return call<GatewayCluster>("/manage/api/gateway/cluster", {
+    method: "PUT",
+    body: JSON.stringify(form),
+    contentType: "application/json",
+  });
+}
+
+/** DELETE /manage/api/gateway/cluster: stand alone again. */
+export function leaveGatewayCluster(): Promise<{ joined: null }> {
+  return call<{ joined: null }>("/manage/api/gateway/cluster", { method: "DELETE" });
 }
 
 export interface UplinkForm {

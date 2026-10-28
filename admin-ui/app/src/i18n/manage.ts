@@ -163,6 +163,65 @@ export default defineMessages({
     de: "Der Hub konnte nicht geändert werden",
   },
 
+  // ── The secondary cluster ─────────────────────────────────────────────
+  "manage.cluster.title": { en: "Secondary cluster", sk: "Sekundárny klaster", de: "Sekundärer Cluster" },
+  "manage.cluster.caption": {
+    en: "Gateways on one network that serve the same boxes. When one goes away, its boxes move to another without enrolling again.",
+    sk: "Brány v jednej sieti, ktoré obsluhujú tie isté zariadenia. Keď jedna vypadne, jej zariadenia prejdú na inú bez novej registrácie.",
+    de: "Gateways in einem Netz, die dieselben Boxen bedienen. Fällt eines aus, wechseln seine Boxen ohne neue Aufnahme zu einem anderen.",
+  },
+  "manage.cluster.none": { en: "In no cluster", sk: "V žiadnom klastri", de: "In keinem Cluster" },
+  "manage.cluster.noneDetail": {
+    en: "Boxes here hold secondary links to this gateway alone.",
+    sk: "Zariadenia tu majú sekundárne spojenie iba s touto bránou.",
+    de: "Boxen hier halten sekundäre Verbindungen nur zu diesem Gateway.",
+  },
+  "manage.cluster.start": { en: "Start a cluster", sk: "Založiť klaster", de: "Cluster gründen" },
+  "manage.cluster.join": { en: "Join a cluster", sk: "Pridať sa ku klastru", de: "Cluster beitreten" },
+  "manage.cluster.leave": { en: "Leave", sk: "Opustiť", de: "Verlassen" },
+  "manage.cluster.in": { en: "Cluster {name}", sk: "Klaster {name}", de: "Cluster {name}" },
+  "manage.cluster.member": {
+    en: "This gateway is {member} in it.",
+    sk: "Táto brána je v ňom {member}.",
+    de: "Dieses Gateway heißt darin {member}.",
+  },
+  "manage.cluster.addAnother": {
+    en: "To add another gateway on this network, open its page, choose Join a cluster and enter:",
+    sk: "Ak chcete pridať ďalšiu bránu v tejto sieti, otvorte jej stránku, zvoľte Pridať sa ku klastru a zadajte:",
+    de: "Um ein weiteres Gateway in diesem Netz hinzuzufügen, öffnen Sie seine Seite, wählen Sie Cluster beitreten und geben Sie ein:",
+  },
+  "manage.cluster.name": { en: "Name", sk: "Názov", de: "Name" },
+  "manage.cluster.secret": { en: "Secret", sk: "Tajomstvo", de: "Geheimnis" },
+  "manage.cluster.address": { en: "Gateway address", sk: "Adresa brány", de: "Gateway-Adresse" },
+  "manage.cluster.started": { en: "Cluster {name} started", sk: "Klaster {name} založený", de: "Cluster {name} gegründet" },
+  "manage.cluster.joined": { en: "Joined cluster {name}", sk: "Pridané ku klastru {name}", de: "Cluster {name} beigetreten" },
+  "manage.cluster.syncs": {
+    en: "The gateways sync on their next pass, within a minute.",
+    sk: "Brány sa zosynchronizujú pri ďalšom prechode, do minúty.",
+    de: "Die Gateways gleichen sich beim nächsten Durchlauf ab, innerhalb einer Minute.",
+  },
+  "manage.cluster.left": { en: "Left the cluster", sk: "Klaster opustený", de: "Cluster verlassen" },
+  "manage.cluster.leftDetail": {
+    en: "The boxes here stay on this gateway. The others no longer fail over to it.",
+    sk: "Zariadenia tu zostávajú na tejto bráne. Ostatné na ňu už neprechádzajú.",
+    de: "Die Boxen hier bleiben an diesem Gateway. Die anderen weichen nicht mehr darauf aus.",
+  },
+  "manage.cluster.failed": {
+    en: "Could not change the cluster",
+    sk: "Klaster sa nepodarilo zmeniť",
+    de: "Der Cluster konnte nicht geändert werden",
+  },
+
+  // ── The main cluster ──────────────────────────────────────────────────
+  "manage.main.title": { en: "Main cluster", sk: "Hlavný klaster", de: "Hauptcluster" },
+  "manage.main.caption": {
+    en: "The gateways that relay through the same hub, each on a primary link.",
+    sk: "Brány, ktoré sú prepojené cez ten istý hub, každá na primárnom spojení.",
+    de: "Die Gateways, die über denselben Hub weiterleiten, jedes über eine primäre Verbindung.",
+  },
+  "manage.main.inCluster": { en: "Cluster {cluster}", sk: "Klaster {cluster}", de: "Cluster {cluster}" },
+  "manage.main.boxes": { en: "{count} boxes", sk: "Zariadenia: {count}", de: "{count} Boxen" },
+
   // ── Boxes that enrolled here ──────────────────────────────────────────
   "manage.enrolled.title": {
     en: "Enrolled on first contact",

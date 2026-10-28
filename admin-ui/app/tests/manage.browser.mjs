@@ -99,6 +99,22 @@ async function openEdge({ path = '/manage/', signedIn = true, refuse = false, ga
         gateway.uplink.set = null;
         return json(route, 200, { set: false });
       }
+      if (url.pathname === '/manage/api/gateway/cluster' && request.method() === 'PUT') {
+        if (!/^[a-z0-9-]+$/.test(body.name)) return json(route, 400, { error: 'the cluster name must be a DNS label' });
+        const joined = {
+          name: body.name,
+          member: 'losos-edge',
+          secret: body.secret ?? 'c'.repeat(64),
+          url: 'http://losos-edge.local:8443',
+          gateways: [{ member: 'losos-edge', url: 'http://losos-edge.local:8443' }],
+        };
+        gateway.cluster.joined = joined;
+        return json(route, 200, joined);
+      }
+      if (url.pathname === '/manage/api/gateway/cluster') {
+        gateway.cluster.joined = null;
+        return json(route, 200, { joined: null });
+      }
       const forget = url.pathname.match(/^\/manage\/api\/gateway\/boxes\/([^/]+)$/);
       if (forget !== null) {
         gateway.enrolled = gateway.enrolled.filter((id) => id !== forget[1]);
@@ -156,6 +172,8 @@ const gatewayFixture = () => ({
   passport: { edgeKey: 'e'.repeat(64), claimed: false, owner: null },
   uplink: { set: null, relaying: 0 },
   enrolled: ['reception'],
+  cluster: { joined: null },
+  main: [],
 });
 
 console.log('admin-ui edge manage page checks');
@@ -287,6 +305,43 @@ await check('the gateway is set up from the page: its owner, its hub and the box
   await enrolled.getByRole('button', { name: 'Forget' }).click();
   await enrolled.waitFor({ state: 'detached' });
   assert.ok(writes.some((w) => w.method === 'DELETE' && w.path === '/manage/api/gateway/boxes/reception'), JSON.stringify(writes));
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await check('the gateway starts, shows and leaves a secondary cluster from the page, with no shell', async () => {
+  const gateway = gatewayFixture();
+  gateway.main = [{ site: 'acme', gateway: 'losos-edge', cluster: null, boxes: 3 }];
+  const { page, context, writes, errors } = await openEdge({ gateway });
+  const section = page.getByTestId('cluster');
+  await section.getByText('In no cluster').waitFor();
+  await section.getByRole('button', { name: 'Start a cluster' }).click();
+  await section.getByLabel('Name').fill('Office!');
+  await section.getByRole('button', { name: 'Start a cluster' }).click();
+  await section.getByRole('alert').filter({ hasText: 'DNS label' }).waitFor();
+  await section.getByLabel('Name').fill('office');
+  await section.getByRole('button', { name: 'Start a cluster' }).click();
+  await section.getByText('Cluster office').waitFor();
+  const line = section.getByTestId('cluster-join-line');
+  assert.match(await line.innerText(), /c{64}/);
+  assert.match(await line.innerText(), /http:\/\/losos-edge\.local:8443/);
+  assert.deepEqual(writes.filter((w) => w.method === 'PUT').at(-1).body, { name: 'office' });
+  assert.match(await page.getByTestId('main-cluster').innerText(), /acme · losos-edge/);
+
+  await section.getByRole('button', { name: 'Leave' }).click();
+  await section.getByText('In no cluster').waitFor();
+  await section.getByRole('button', { name: 'Join a cluster' }).click();
+  await section.getByLabel('Name').fill('office');
+  await section.getByLabel('Gateway address').fill('http://gw-a.local:8443');
+  await section.getByLabel('Secret').fill('d'.repeat(64));
+  await section.getByRole('button', { name: 'Join a cluster' }).click();
+  await section.getByText('Cluster office').waitFor();
+  assert.deepEqual(writes.filter((w) => w.method === 'PUT').at(-1).body, {
+    name: 'office',
+    secret: 'd'.repeat(64),
+    peer: 'http://gw-a.local:8443',
+  });
+  assert.ok(writes.some((w) => w.method === 'DELETE' && w.path === '/manage/api/gateway/cluster'));
   assert.deepEqual(errors, []);
   await context.close();
 });
