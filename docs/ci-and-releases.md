@@ -40,8 +40,8 @@ lanes, one per group of jobs:
 
 | Lane | Jobs | Turned on by |
 |---|---|---|
-| `rust` | clippy, rustfmt, the crate suites | the ten crates, and the web UI files `admin-ui/tui/build.rs` reads |
-| `wasm` | clippy for wasm32 | `backend/plugins/`, `admin-ui/lab/` |
+| `rust` | clippy, rustfmt, the crate suites | the eleven crates, and the web UI files `admin-ui/tui/build.rs` reads |
+| `wasm` | clippy for wasm32 | `backend/plugins/`, `backend/mdx/`, `admin-ui/lab/` |
 | `solana`, `evm` | the escrow programs | `edge/contracts/`, `edge/registrar/` |
 | `eval` | the flake evaluation | anything but Markdown, Rust, pictures, `docs/` and `.github/` |
 | `ctl` | `losos-ctl` | the backend crate |
