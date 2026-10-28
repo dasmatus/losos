@@ -186,6 +186,9 @@ let
           };
         }
         { waitText = "Applying your changes"; }
+        # The page reloads itself every few seconds while the rebuild
+        # runs; under emulation a screenshot takes longer than that.
+        { stay = true; }
       ];
     }
     {
