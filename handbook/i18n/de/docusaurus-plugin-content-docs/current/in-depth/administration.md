@@ -407,8 +407,8 @@ einfache Datei.
 
 **Wiederherstellen** verlangt den Wiederherstellungscode der Box, die das Backup
 erstellt hat. Der neueste Snapshot kommt zurück: Die Apps halten an, die
-Dateien werden zurücksynchronisiert, die Datenbanken mit
-`pg_restore --clean` geladen, die Apps starten, und das wiederhergestellte
+Dateien werden zurücksynchronisiert, die Datenbanken geladen (mit
+`pg_restore --clean` auf einer Box, die noch PostgreSQL betreibt), die Apps starten, und das wiederhergestellte
 `overrides.nix` wird wie jedes Apply geprüft und neu gebaut. Der Code, der
 das Backup geöffnet hat, wird zum Wiederherstellungscode dieser Box. Auf
 einer gelöschten oder neu installierten Box führst du den Assistenten aus,
