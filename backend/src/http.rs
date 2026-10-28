@@ -76,6 +76,8 @@ struct Api {
     people: crate::people::People,
     /// LosOS Login's word on companion tokens (`crate::companion`).
     companion: crate::companion::Companion,
+    /// LosOS Desktop computers joined to this box (`crate::directory`).
+    directory: crate::directory::Directory,
     /// LosOS Login's rules and second factors (`crate::login`).
     login: crate::login::Login,
     /// LosOS Login names on LosOS Cloud's share (`crate::cloud_share`).
@@ -130,6 +132,9 @@ pub(crate) enum Principal {
     /// (`losos_access::BACKUPS_CLIENT_ID`): `POST /api/devices/backups`
     /// only, which makes that person's own credentials and nobody else's.
     Backups(crate::people::Person),
+    /// A LosOS Desktop computer joined to this box, reading the people list
+    /// (`crate::directory`): `GET /api/directory/people` only. Nobody.
+    Directory(crate::directory::Computer),
 }
 
 impl Principal {
@@ -138,6 +143,7 @@ impl Principal {
             Principal::Spare => "spare-key",
             Principal::Person(p) | Principal::Companion(p) | Principal::Backups(p) => &p.name,
             Principal::Edge => "edge",
+            Principal::Directory(c) => &c.device,
         }
     }
 
@@ -145,13 +151,16 @@ impl Principal {
         match self {
             Principal::Spare => true,
             Principal::Person(p) => p.is_admin(),
-            Principal::Edge | Principal::Companion(_) | Principal::Backups(_) => false,
+            Principal::Edge
+            | Principal::Companion(_)
+            | Principal::Backups(_)
+            | Principal::Directory(_) => false,
         }
     }
 
     fn person(&self) -> Option<&crate::people::Person> {
         match self {
-            Principal::Spare | Principal::Edge => None,
+            Principal::Spare | Principal::Edge | Principal::Directory(_) => None,
             Principal::Person(p) | Principal::Companion(p) | Principal::Backups(p) => Some(p),
         }
     }
@@ -394,6 +403,14 @@ fn identify(api: &Api, req: &HttpRequest) -> Option<Principal> {
         };
     }
     if let Some(token) = header("authorization").and_then(bearer_credentials) {
+        // A joined computer's own token, which only this box made and
+        // only lososd checks.
+        if crate::directory::is_directory_token(token) {
+            return api
+                .directory
+                .check(token, losos_access::now_secs())
+                .map(Principal::Directory);
+        }
         // nginx passes a Bearer header on without asking Authelia; a token
         // of LosOS Login's is checked with LosOS Login, at the address the
         // request came to, which is where it was issued.
@@ -630,6 +647,17 @@ fn gate_at(
             )));
         }
     }
+    if let Principal::Directory(computer) = &who {
+        if !crate::directory::route_allowed(method, req.path()) {
+            audit("forbidden", Some(&computer.device));
+            return Err(Box::new(HttpResponse::Forbidden().json(
+                serde_json::json!({
+                    "error": "a joined computer only reads the people list",
+                    "section": section,
+                }),
+            )));
+        }
+    }
     if let Principal::Person(person) | Principal::Companion(person) | Principal::Backups(person) =
         &who
     {
@@ -804,6 +832,8 @@ async fn get_me(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
                     .collect::<Vec<_>>(),
                 "standalone": api.people.headers,
             })),
+            // The gate lets a joined computer read the people list alone.
+            Principal::Directory(_) => err(StatusCode::FORBIDDEN, "a joined computer is nobody"),
         }
     })
 }
@@ -3537,6 +3567,7 @@ async fn post_set_password(
         Principal::Edge => err(StatusCode::FORBIDDEN, "the edge has no password here"),
         Principal::Companion(_) => err(StatusCode::FORBIDDEN, "the LosOS companion only reads"),
         Principal::Backups(_) => err(StatusCode::FORBIDDEN, "backups do not change passwords"),
+        Principal::Directory(_) => err(StatusCode::FORBIDDEN, "a joined computer only reads"),
     })
 }
 
@@ -3671,6 +3702,96 @@ async fn post_device_backups(
             .serialized(|l| crate::losos::cmd_device_backups(l, person, &device))
         {
             Ok(v) => HttpResponse::Ok().json(v),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+fn directory_error(e: crate::directory::DirectoryError) -> HttpResponse {
+    use crate::directory::DirectoryError as E;
+    match e {
+        E::Invalid(why) => err(StatusCode::BAD_REQUEST, &why),
+        E::Full => err(StatusCode::CONFLICT, &E::Full.to_string()),
+        E::NotFound => err(StatusCode::NOT_FOUND, &E::NotFound.to_string()),
+        E::Io(e) => error_response(e),
+    }
+}
+
+/// `POST /api/devices/directory` — `{"device"}`: join a LosOS Desktop
+/// computer to this box (`crate::directory`). An administrator asks, from
+/// the computer's `losos-login-bridge join` with their LosOS Login session,
+/// and the answer carries the computer's token, once.
+async fn post_device_directory(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded_as(&api, &req, "/api/devices/directory", true, |who| {
+        let Some(device) = serde_json::from_slice::<serde_json::Value>(&body)
+            .ok()
+            .and_then(|d| d.get("device")?.as_str().map(str::to_string))
+        else {
+            return err(
+                StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"device": "..."}"#,
+            );
+        };
+        match api.directory.join(
+            &device,
+            who.person().map(|p| p.name.as_str()),
+            losos_access::now_secs(),
+        ) {
+            Ok((token, computer)) => HttpResponse::Ok().json(serde_json::json!({
+                "token": token,
+                "computer": computer,
+            })),
+            Err(e) => directory_error(e),
+        }
+    })
+}
+
+/// `GET /api/devices/directory`: the joined computers, without tokens.
+async fn get_device_directory(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded_as(&api, &req, "/api/devices/directory", false, |_| {
+        match api.directory.list() {
+            Ok(computers) => HttpResponse::Ok().json(serde_json::json!({ "computers": computers })),
+            Err(e) => directory_error(e),
+        }
+    })
+}
+
+/// `DELETE /api/devices/directory/{id}`: take a computer out. Its token
+/// stops at once; the accounts already on it stay, as they would offline.
+async fn delete_device_directory(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    id: web::Path<String>,
+) -> HttpResponse {
+    guarded_as(
+        &api,
+        &req,
+        "/api/devices/directory/{id}",
+        true,
+        |_| match api.directory.remove(&id) {
+            Ok(()) => HttpResponse::Ok().json(serde_json::json!({ "removed": true })),
+            Err(e) => directory_error(e),
+        },
+    )
+}
+
+/// `GET /api/directory/people`: the people list a joined computer reads to
+/// lock the accounts this box removed or disabled (`crate::directory`).
+/// The computer's own token, or an administrator.
+async fn get_directory_people(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded_as(&api, &req, crate::directory::PEOPLE_ROUTE, false, |_| {
+        if !api.people.headers {
+            return err(
+                StatusCode::CONFLICT,
+                "LosOS Login does not run on this box, so it has no people list",
+            );
+        }
+        match api.people.list() {
+            Ok(people) => HttpResponse::Ok().json(crate::directory::people(people)),
             Err(e) => error_response(e),
         }
     })
@@ -5519,7 +5640,9 @@ fn plugin_caller(
         // No plugin route is a companion route (`guarded_at` refuses it
         // before a plugin is asked), and a plugin's own calls would run
         // with this caller: nobody, then.
-        Some(Principal::Companion(_) | Principal::Backups(_)) => t::Principal::Anonymous,
+        Some(Principal::Companion(_) | Principal::Backups(_) | Principal::Directory(_)) => {
+            t::Principal::Anonymous
+        }
         Some(Principal::Person(p)) => t::Principal::Person(t::Person {
             name: p.name.clone(),
             display_name: p.display_name.clone(),
@@ -6251,6 +6374,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
             builder: crate::builder::Builder::from_env(),
             people,
             companion: crate::companion::Companion::from_env(),
+            directory: crate::directory::Directory::from_env(),
             login,
             share: crate::cloud_share::Share::default(),
             chat: crate::chat::Chat::from_env(),
@@ -6406,6 +6530,19 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 )
                 .route("/api/recovery", web::get().to(get_recovery))
                 .route("/api/devices/backups", web::post().to(post_device_backups))
+                .route(
+                    "/api/devices/directory",
+                    web::get().to(get_device_directory),
+                )
+                .route(
+                    "/api/devices/directory",
+                    web::post().to(post_device_directory),
+                )
+                .route(
+                    "/api/devices/directory/{id}",
+                    web::delete().to(delete_device_directory),
+                )
+                .route("/api/directory/people", web::get().to(get_directory_people))
                 .route("/api/devices/{kind}", web::post().to(post_device))
                 .route("/api/apps/search", web::get().to(get_apps_search))
                 .route("/api/cloud/text", web::get().to(get_cloud_text))

@@ -45,6 +45,7 @@ pub mod contacts;
 pub mod credentials;
 pub mod dbus;
 pub mod devices;
+pub mod directory;
 pub mod edge;
 pub mod erase;
 pub mod facade;
