@@ -46,8 +46,11 @@ connects, the way SSH pins a host key:
 
 ```
 GET /api/access/host-key
-200 {"fingerprint": "<40 hex, upper case>", "publicKey": "-----BEGIN PGP PUBLIC KEY BLOCK-----…"}
+200 {"fingerprint": "<40 hex, upper case>", "publicKey": "-----BEGIN PGP PUBLIC KEY BLOCK-----…", "edgeUrl": "https://<name>.<edge zone>" | null}
 ```
+
+`edgeUrl` is where the client reaches the box away from its LAN (below),
+and `null` when the box has no edge or keeps the terminal on its LAN.
 
 The client's key must be able to sign and must have an encryption subkey,
 which every key `gpg --full-generate-key` makes does.
@@ -144,7 +147,7 @@ KeePassXC all work. Every item carries `service=losos` and a `kind`:
 | kind | other attributes | secret |
 |---|---|---|
 | `gpg-key` | `fingerprint` | the armoured secret key, as exported (still under its passphrase if it had one) |
-| `host` | `url` | JSON: `{"url", "kind": "box"\|"edge", "fingerprint", "publicKey", "token", "keyFingerprint", "tlsPin"?}` |
+| `host` | `url` | JSON: `{"url", "kind": "box"\|"edge", "fingerprint", "publicKey", "token", "keyFingerprint", "tlsPin"?, "edgeUrl"?}` |
 | `cloud` | `url` | JSON: `{"url", "user", "secret", "location"}`, the LosOS Cloud app password of `losos cloud setup` |
 | `git` | `url`, `protocol`, `server` | the same, with the LosOS Git token of `losos git setup`; `server` is the host as git's credential protocol names it |
 | `companion` | `url` | JSON: `{"url", "tlsPin"?, "accessToken", "expiresAt", "refreshToken"}`, the AI agent companion's LosOS Login sign-in (below) |
@@ -157,6 +160,29 @@ with the scheme's default filled in (GVfs looks up 443 for a `davs://`
 address without one).
 
 When no Secret Service answers, `losos` says so and stores nothing.
+
+## Through the edge
+
+All of `/api/` is LAN-only (`lanOnly`, modules/containers.nix), except
+these two routes while `losos.access.throughEdge` (on by default) and
+`losos.proxy.enable` are both set: `= /api/access/host-key` and
+`= /api/access/call` take the tunnel's connections too, and Tor's and
+I2P's, which also arrive on loopback. Nothing else changes for them: the
+envelope is checked as it is on the LAN, and an edge in the middle sees
+only the armoured message. lososd names the address, `https://` and
+`losos.proxy.hostname`, as `edgeUrl` (`LOSOS_ACCESS_EDGE_URL`), and the
+client keeps it in the host record (`edgeUrl`, above) at `login`.
+
+The client tries the box's own URL first. Only when that one cannot be
+connected to at all (the name does not resolve, or nothing takes the
+connection: `HttpError::NoConnection`) does it seal the call again, with a
+new nonce, and send it to `edgeUrl`, taking only a certificate the web
+trusts there. A timeout or a changed certificate may have reached the box,
+so neither is retried. Every call through the tunnel comes from 127.0.0.1
+as far as lososd can tell, so they share one throttle.
+
+The companion (`losos mcp`) and `losos cloud`/`git setup` reach the box's
+API directly and stay on its LAN.
 
 ## The TLS certificate
 

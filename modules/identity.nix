@@ -78,6 +78,17 @@ let
   );
 
   enabled = cfg.enable && config.losos.admin.enable && config.losos.admin.ui != null;
+  # The terminal's two routes, when the tunnel may reach them, are
+  # modules/containers.nix's, without the LAN guard.
+  throughEdge = [
+    "/api/access/host-key"
+    "/api/access/call"
+  ];
+  lanPublicPaths =
+    if config.losos.proxy.enable && config.losos.access.throughEdge then
+      lib.subtractLists throughEdge publicPaths
+    else
+      publicPaths;
   fqdn = "${config.losos.hostName}.local";
   apiPort = config.losos.admin.apiPort;
   inherit (cfg) port;
@@ -819,7 +830,7 @@ in
         "counts.css"
       ]) (_: { extraConfig = basicHttps; })
       # The public routes, past Authelia. Exact matches beat the /api/ prefix.
-      // lib.genAttrs (map (p: "= ${p}") publicPaths) (_: {
+      // lib.genAttrs (map (p: "= ${p}") lanPublicPaths) (_: {
         proxyPass = "http://127.0.0.1:${toString apiPort}";
         extraConfig = toLososd;
       });

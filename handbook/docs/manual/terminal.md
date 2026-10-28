@@ -150,6 +150,20 @@ Access tokens, the market, Diagrams and anything that wipes data stay in
 the admin pages.
 :::
 
+## Away from home
+
+When the box reaches the internet through an edge, `login` also notes the
+box's address on the edge, and `losos hosts` shows it as **away from
+home**. When the box's own address leads nowhere, because this computer is
+on another network, `losos` sends the call to that address instead. The
+edge passes it on without reading it: it is still signed by your key and
+encrypted to the box's key, and the box answers the same way. The edge has
+a certificate the web trusts, so there is nothing more to pin.
+
+Only the terminal's calls go through the edge this way. The rest of the
+admin pages stay on the box's own network. To keep the terminal there too,
+turn off `losos.access.throughEdge` on the Advanced pane.
+
 ## Use LosOS Cloud and LosOS Git from this computer
 
 ```sh

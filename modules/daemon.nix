@@ -176,6 +176,12 @@ in
       // {
         LOSOS_LUKS_KEYFILE = "/etc/keys/persist-keyfile";
       }
+      # Where `losos` reaches the box away from its LAN, which the host key's
+      # answer names for it to remember (losos.access.throughEdge; the two
+      # routes the tunnel may reach are in modules/containers.nix).
+      // lib.optionalAttrs (config.losos.proxy.enable && config.losos.access.throughEdge) {
+        LOSOS_ACCESS_EDGE_URL = "https://${config.losos.proxy.hostname}";
+      }
       # The plugins lososd loads (backend/plugins/README.md), a store path:
       # lososd refuses one anywhere else. Unset, it serves no plugin routes.
       // lib.optionalAttrs (config.losos.backend.plugins != null) {
