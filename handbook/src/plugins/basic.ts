@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {createSlugger, parseMarkdownHeadingId} from '@docusaurus/utils';
+import {load} from 'cheerio';
 import type {LoadContext, Plugin} from '@docusaurus/types';
 
 /* The handbook without JavaScript. The same source builds a second time with
@@ -165,20 +166,6 @@ function htmlFiles(outDir: string, baseUrl: string, routesPaths: string[]): stri
   ];
 }
 
-/** The page with every <script> element and script preload taken out. Run
- * to a fixed point, so that taking one out cannot join the pieces around it
- * into another; the build also fails if a `<script` is left afterwards. */
-function withoutScripts(html: string): string {
-  let out = html;
-  for (;;) {
-    const next = out
-      .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '')
-      .replace(/<link\b[^>]*\bas="script"[^>]*>/gi, '');
-    if (next === out) return out;
-    out = next;
-  }
-}
-
 /** Whether every file in `dir` is also in `other`, at the same size. */
 async function sameFiles(dir: string, other: string): Promise<boolean> {
   const names = await fs.readdir(dir).catch(() => [] as string[]);
@@ -267,17 +254,30 @@ export default function basicPlugin(context: LoadContext, options: unknown): Plu
         if (shared) html = html.replaceAll(`${plain}assets/images/`, `${usual}assets/images/`);
         // The Contents page is the one page the usual copy does not have.
         const own = rel === 'contents/index.html';
-        html = withoutScripts(html)
-          // The canonical address, its language alternates and og:url name
-          // the usual copy: the two copies are one page to a search engine.
-          .replace(/<(link|meta)\b[^>]*\b(rel="(canonical|alternate)"|property="og:url")[^>]*>/g, (tag) =>
-            own
-              ? tag
-              : tag.replaceAll(`${context.siteConfig.url}${plain}`, `${context.siteConfig.url}${usual}`),
-          );
-        if (/<script\b/i.test(html) || /\bsrc="[^"]*\.js"/.test(html)) {
+        // Parsed, not matched with patterns: the elements come out whole,
+        // whatever their case or attributes, and nothing can be stitched
+        // back together around them.
+        const $ = load(html);
+        $('script, link[as="script"]').remove();
+        // The canonical address, its language alternates and og:url name
+        // the usual copy: the two copies are one page to a search engine.
+        if (!own) {
+          const from = `${context.siteConfig.url}${plain}`;
+          const to = `${context.siteConfig.url}${usual}`;
+          $('link[rel="canonical"], link[rel="alternate"]').each((_, el) => {
+            const href = $(el).attr('href');
+            if (href?.startsWith(from)) $(el).attr('href', to + href.slice(from.length));
+          });
+          $('meta[property="og:url"]').each((_, el) => {
+            const content = $(el).attr('content');
+            if (content?.startsWith(from)) $(el).attr('content', to + content.slice(from.length));
+          });
+        }
+        // Whatever else might still name a bundle, now that assets/js goes.
+        if ($('[src$=".js"], link[href$=".js"]').length > 0) {
           throw new Error(`basic: ${rel} still loads a script`);
         }
+        html = $.html();
         await fs.writeFile(file, html);
       }
       // What only a script would read: the bundles, the search page and its
