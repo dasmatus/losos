@@ -219,9 +219,6 @@ in
       # `path` *replaces* PATH rather than extending it, so nothing is
       # reachable by accident.
       path = [
-        # The authenticated admin API launches systemd-sysupdate and the
-        # explicit losos-sysupdate.service through these systemd tools.
-        pkgs.systemd
         pkgs.lvm2
         pkgs.cryptsetup
         pkgs.e2fsprogs
