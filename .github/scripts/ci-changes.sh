@@ -20,7 +20,7 @@
 # anyway, so a pattern here only decides what a pull request may skip.
 set -euo pipefail
 
-lanes=(rust wasm solana evm eval ctl ui tui images iso discovery)
+lanes=(rust wasm solana evm eval ctl ui tui images iso install discovery)
 
 # CI's own wiring and the toolchain every lane builds with: any change here
 # runs everything.
@@ -124,6 +124,18 @@ lane_iso=(
   "admin-ui/themes/brand/*"
   nix/sign-iso.sh nix/version.nix "nix/keys/*"
   nix/tests/iso-boot.py
+  "${pkgs[@]}"
+)
+
+# nix/tests/iso-install.nix: the installer from the medium's system onto an
+# empty disk, then that disk booted on its own. The installer, the layout it
+# formats, the boot path and unlock, and the test.
+lane_install=(
+  "${installer[@]}"
+  modules/cache.nix modules/branding.nix modules/splash.nix
+  modules/boot.nix modules/impermanence.nix modules/configuration.nix
+  modules/credentials.nix modules/console.nix modules/defaults.nix
+  nix/tests/iso-install.nix
   "${pkgs[@]}"
 )
 
