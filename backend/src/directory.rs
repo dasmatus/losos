@@ -30,7 +30,10 @@ const SECRET_HEX: usize = 40;
 /// not rewrite the file on every read.
 const TOUCH_SECS: i64 = 300;
 
-/// The one route a directory token reaches.
+/// The one route a directory token reaches through the gate. Schizo mode's
+/// check-in routes (`/api/login-devices/self*`) take the same token, but
+/// check it in their own handlers (`http::device_call`) and never pass the
+/// gate.
 pub const PEOPLE_ROUTE: &str = "/api/directory/people";
 
 /// May a directory token make this call? Only the one `GET`.

@@ -75,11 +75,18 @@ let
   themes = import ../admin-ui/themes { inherit pkgs; };
   sections = lib.importJSON ../backend/sections.json;
   # The paths of the public routes, each once.
-  publicPaths = lib.unique (
+  allPublic = lib.unique (
     lib.mapAttrsToList (route: _: lib.last (lib.splitString " " route)) (
       lib.filterAttrs (_: section: section == "public") sections.routes
     )
   );
+  # A computer whose logins this box manages checks in here
+  # (backend/src/schizo.rs): from the office, from home through the edge,
+  # and over the box's Tor address once schizo mode sends everything through
+  # Tor. So these are the public routes the LAN guard does not hold; the
+  # computer's own token is the whole check, and lososd throttles a wrong one.
+  devicePaths = lib.filter (lib.hasPrefix "/api/login-devices/self") allPublic;
+  publicPaths = lib.subtractLists devicePaths allPublic;
 
   enabled = cfg.enable && config.losos.admin.enable && config.losos.admin.ui != null;
   fqdn = "${config.losos.hostName}.local";
@@ -244,6 +251,9 @@ let
   '';
   toLososd = ''
     ${lanOnly}
+    ${toLososdAnywhere}
+  '';
+  toLososdAnywhere = ''
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Losos-Via-Edge "";
     proxy_set_header X-Losos-Edge "";
@@ -849,6 +859,15 @@ in
       // lib.genAttrs (map (p: "= ${p}") publicPaths) (_: {
         proxyPass = "http://127.0.0.1:${toString apiPort}";
         extraConfig = toLososd;
+      })
+      # The check-ins of the computers this box manages, from anywhere
+      # (devicePaths above). Their bodies are a few words of JSON.
+      // lib.genAttrs (map (p: "= ${p}") devicePaths) (_: {
+        proxyPass = "http://127.0.0.1:${toString apiPort}";
+        extraConfig = ''
+          ${toLososdAnywhere}
+          client_max_body_size 4k;
+        '';
       });
   };
 }
