@@ -6,7 +6,7 @@ slug: /manual/losos-git
 
 # LosOS Git
 
-![Ein Repository in LosOS Git, mit Wiki in seinem Menü.](@site/docs/img/losos-git-repository-de.png)
+![Ein Repository in LosOS Git: seine Dateien und die README, im Kopf der Chat-Knopf und die Klon-Adresse.](@site/docs/img/git-repository.png)
 
 LosOS Git ist der eigene Git-Server der Box. Er hält deine Repositorys,
 nimmt Pushes und Klone über HTTPS an und hat Seiten, auf denen du Code
@@ -155,6 +155,8 @@ Jedes Repository kann ein Wiki haben: Seiten in Markdown in
 das Repository. **Wiki** im Menü eines Repositorys öffnet seine
 veröffentlichte Seite. In [LosOS Wiki](wiki) werden die Seiten geschrieben,
 und dort stehen die Wikis aller Repositorys, die du lesen darfst.
+
+![Ein Repository in LosOS Git, mit Wiki in seinem Menü.](@site/docs/img/losos-git-repository-de.png)
 
 ## Leute von anderen Boxen \{#people-of-other-boxes}
 
