@@ -170,7 +170,7 @@ pub fn parse_key(text: &str) -> Result<ViewingKey, &'static str> {
     if text.starts_with("zxview") {
         return Err("that is a Sapling viewing key; send the unified viewing key (uview…), whose Orchard part orders are paid to");
     }
-    if let Ok((network, ufvk)) = unified::Ufvk::decode(text) {
+    if let Ok((network, _, ufvk)) = unified::Ufvk::decode(text) {
         let bytes = ufvk
             .items()
             .into_iter()
@@ -187,7 +187,7 @@ pub fn parse_key(text: &str) -> Result<ViewingKey, &'static str> {
             ivk: fvk.to_ivk(Scope::External),
         });
     }
-    if let Ok((network, uivk)) = unified::Uivk::decode(text) {
+    if let Ok((network, _, uivk)) = unified::Uivk::decode(text) {
         let bytes = uivk
             .items()
             .into_iter()
@@ -219,9 +219,14 @@ fn order_index(n: u32) -> DiversifierIndex {
     DiversifierIndex::from(bytes)
 }
 
+/// Unified containers the edge writes are ZIP 316 Revision 0 (`u1…`,
+/// `uivk1…`), the encoding every Orchard wallet reads; decoding takes either
+/// revision.
+const REVISION: unified::Revision = unified::Revision::R0;
+
 fn encode_address(address: &orchard::Address, network: NetworkType) -> String {
     let receiver = unified::Receiver::Orchard(address.to_raw_address_bytes());
-    unified::Address::try_from_items(vec![receiver])
+    unified::Address::try_from_items(REVISION, vec![unified::Uitem::Data(receiver)])
         .expect("one Orchard receiver is a valid unified address")
         .encode(&network)
 }
@@ -230,9 +235,14 @@ impl ViewingKey {
     /// The key as the edge stores it: an incoming viewing key with the
     /// Orchard part alone (`uivk…`), whatever the seller pasted.
     pub fn encode(&self) -> String {
-        unified::Uivk::try_from_items(vec![unified::Ivk::Orchard(self.ivk.to_bytes())])
-            .expect("one Orchard item is a valid unified viewing key")
-            .encode(&self.network)
+        unified::Uivk::try_from_items(
+            REVISION,
+            vec![unified::Uitem::Data(unified::Ivk::Orchard(
+                self.ivk.to_bytes(),
+            ))],
+        )
+        .expect("one Orchard item is a valid unified viewing key")
+        .encode(&self.network)
     }
 
     /// The Orchard-only unified address of order number `n`.
@@ -985,9 +995,12 @@ mod tests {
     }
 
     fn ufvk(fvk: &FullViewingKey, network: NetworkType) -> String {
-        unified::Ufvk::try_from_items(vec![unified::Fvk::Orchard(fvk.to_bytes())])
-            .unwrap()
-            .encode(&network)
+        unified::Ufvk::try_from_items(
+            unified::Revision::R0,
+            vec![unified::Uitem::Data(unified::Fvk::Orchard(fvk.to_bytes()))],
+        )
+        .unwrap()
+        .encode(&network)
     }
 
     #[test]

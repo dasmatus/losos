@@ -225,6 +225,20 @@ pub struct ServeOpts {
     /// The uplink to a hub (`crate::relay`). `None` and this edge relays
     /// nothing anywhere.
     pub uplink: Option<crate::relay::UplinkOpts>,
+    /// The secondary cluster this gateway may belong to
+    /// (`crate::secondary`), from `--secondary-file`. `None` and the edge
+    /// never syncs with a peer.
+    pub secondary: Option<crate::secondary::SecondaryOpts>,
+    /// The official cluster this edge belongs to (`crate::official`), from
+    /// `--official-cluster`: the load balancer it sits behind.
+    pub official_cluster: Option<String>,
+    /// The official edges it lists for boxes and gateways to spread over and
+    /// move to, from `--official-peer CLUSTER,URL,TUNNEL` (repeatable).
+    pub official_peers: Vec<crate::official::OfficialPeer>,
+    /// The ban list (`crate::official::Bans`), from `--bans-file`. A
+    /// gateway's uplink leaves a banned hub for an official edge outside
+    /// every ban.
+    pub bans_file: Option<String>,
     /// The route table for boxes behind a local edge (`crate::routes`).
     /// `None` unless `--relay-routes` was given, which needs `--dns-zone`:
     /// only an edge that routes domains keeps the table.
@@ -581,6 +595,39 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                     traefik_metrics: arg(&rest, "--manage-traefik-metrics").map(str::to_string),
                 }),
                 calls_relay: parse_calls_relay(&rest)?,
+                secondary: match arg(&rest, "--secondary-file") {
+                    None => None,
+                    Some(file) => Some(crate::secondary::SecondaryOpts {
+                        file: file.to_string(),
+                        self_url: req(&rest, "--secondary-self-url")?
+                            .trim_end_matches('/')
+                            .to_string(),
+                        self_tunnel: req(&rest, "--secondary-self-tunnel")?.to_string(),
+                        interval: parse_dur(arg(&rest, "--secondary-interval").unwrap_or("10s"))?,
+                    }),
+                },
+                official_cluster: match arg(&rest, "--official-cluster") {
+                    None => None,
+                    Some(c) if crate::relay::dns_label(c) => Some(c.to_string()),
+                    Some(c) => return Err(miette!("--official-cluster {c:?} is not a DNS label")),
+                },
+                official_peers: {
+                    let peers = args_all(&rest, "--official-peer")
+                        .into_iter()
+                        .map(|p| {
+                            crate::official::OfficialPeer::parse(p)
+                                .map_err(|e| miette!("--official-peer {e}"))
+                        })
+                        .collect::<Result<Vec<_>>>()?;
+                    if peers.len() > crate::official::MAX_OFFICIALS {
+                        return Err(miette!(
+                            "more than {} --official-peer flags",
+                            crate::official::MAX_OFFICIALS
+                        ));
+                    }
+                    peers
+                },
+                bans_file: arg(&rest, "--bans-file").map(str::to_string),
                 uplink: match arg(&rest, "--uplink-file") {
                     None => None,
                     Some(file) => Some(crate::relay::UplinkOpts {
