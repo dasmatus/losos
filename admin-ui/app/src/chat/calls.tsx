@@ -627,7 +627,10 @@ function CallScreen({
       rtc.on(MatrixRTCSessionEvent.DidSendCallNotification, (sent: { event_id?: string }) => {
         notification.current = sent.event_id ?? null;
       });
-      void leaving.then(() => {
+      // Join once the session knows who is already in the call: a session
+      // that still counts nobody takes this device for the first and rings
+      // the room a second time.
+      void leaving.then(() => rtc.initialMembershipCalculated).then(() => {
         if (rtcSession.current !== rtc) return;
         const me = client.getSafeUserId();
         rtc.join({ userId: me, deviceId, memberId: memberId(me, deviceId) }, [transport], {

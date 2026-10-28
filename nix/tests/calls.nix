@@ -1405,7 +1405,9 @@ pkgs.testers.nixosTest {
         # page it was the last one there, so it tells the room.
         owner.locator("[data-call-view]").wait_for(state="detached", timeout=60000)
         owner.get_by_role("log").get_by_text("The call ended").last.wait_for(timeout=60000)
-        her.locator("[data-call-notice] button").wait_for(state="detached", timeout=30000)
+        until_js(her, "document.querySelectorAll('[data-call-notice] button').length === 0", timeout=30000)
+        # The call rang the room once, however many joined it.
+        assert her.locator("[data-call-notice]").count() == 1, her.locator("[data-call-notice]").count()
 
     with subtest("a call link from another app opens the direct chat and rings"):
         # Contacts and Mail link a person as /chat/?with=<name>&call=voice.
