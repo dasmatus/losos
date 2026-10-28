@@ -109,6 +109,9 @@ struct Api {
     /// The plugins that answer every route not registered below
     /// (`crate::plugin`).
     plugins: crate::plugin::Runtime,
+    /// The owner's schizo mode and the computers it reaches
+    /// (`crate::schizo`).
+    schizo: crate::schizo::Schizo,
 }
 
 /// Who made a call.
@@ -182,6 +185,12 @@ fn error_response(e: anyhow::Error) -> HttpResponse {
     if let Some(r) = e.downcast_ref::<crate::people::Refused>() {
         return err(
             StatusCode::from_u16(r.status()).unwrap_or(StatusCode::CONFLICT),
+            &r.to_string(),
+        );
+    }
+    if let Some(r) = e.downcast_ref::<crate::schizo::Refused>() {
+        return err(
+            StatusCode::from_u16(r.status()).unwrap_or(StatusCode::BAD_REQUEST),
             &r.to_string(),
         );
     }
@@ -590,6 +599,20 @@ fn gate_at(
     };
     api.throttle.record_success(&remote);
     let method = req.method().as_str();
+    // Schizo mode takes the owner off the market (`crate::schizo`). A read
+    // is the market's own "not offered here", which every pane already
+    // shows; anything else is refused.
+    if crate::schizo::market_route(req.path()) && api.schizo.on() {
+        audit("schizo", Some(who.audit_name()));
+        return Err(Box::new(if method == "GET" {
+            HttpResponse::Ok().json(serde_json::json!({ "available": false, "schizo": true }))
+        } else {
+            HttpResponse::Forbidden().json(serde_json::json!({
+                "error": "schizo mode is on: nothing is bought or sold with this box",
+                "schizo": true,
+            }))
+        }));
+    }
     let pattern = pattern
         .map(str::to_string)
         .or_else(|| req.match_pattern())
@@ -1124,6 +1147,285 @@ async fn post_person_remove(
             Err(e) => error_response(e),
         }
     })
+}
+
+// ── Schizo mode and the computers it reaches (`crate::schizo`) ───────────
+
+/// The owner, when `who` is them signed in. Schizo mode is the owner's own
+/// setting: not an administrator's, not the spare key's.
+fn owner_of<'a>(api: &Api, who: &'a Principal) -> Option<&'a crate::people::Person> {
+    use crate::losos::Losos;
+    let person = who.person()?;
+    let owner = api.backend.serialized(|l| l.load_state()).ok()?.owner?;
+    (person.name == owner && person.groups.iter().any(|g| g == crate::people::OWNER))
+        .then_some(person)
+}
+
+/// `GET /api/schizo`: whether schizo mode is on, and the computers it
+/// reaches, for the owner.
+async fn get_schizo(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded_as(&api, &req, "/api/schizo", false, |who| {
+        if owner_of(&api, who).is_none() {
+            return err(StatusCode::FORBIDDEN, "schizo mode is the owner's to see");
+        }
+        match api.schizo.status() {
+            Ok(v) => HttpResponse::Ok().json(v),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// `POST /api/schizo`: `{"on", "full", "duress"?}`, the owner signed in.
+/// Turning it on closes the box's open market listings.
+async fn post_schizo(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    const SHAPE: &str = r#"body must be JSON: {"on": bool, "full": bool, "duress"?: "..."}"#;
+    guarded_as(&api, &req, "/api/schizo", true, |who| {
+        let Some(owner) = owner_of(&api, who) else {
+            return err(
+                StatusCode::FORBIDDEN,
+                "only the owner turns schizo mode on or off",
+            );
+        };
+        let Ok(doc) = serde_json::from_slice::<serde_json::Value>(&body) else {
+            return err(StatusCode::BAD_REQUEST, SHAPE);
+        };
+        let (Some(on), full) = (
+            doc.get("on").and_then(serde_json::Value::as_bool),
+            doc.get("full")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false),
+        ) else {
+            return err(StatusCode::BAD_REQUEST, SHAPE);
+        };
+        let duress = match doc.get("duress").and_then(serde_json::Value::as_str) {
+            None => None,
+            Some(code) => match crate::signin::validate_candidate(code) {
+                Ok(code) => Some(code),
+                Err(e) => return err(StatusCode::BAD_REQUEST, &e),
+            },
+        };
+        let was_on = api.schizo.on();
+        let is_password = |code: &crate::setup::Secret| {
+            api.people.check_password(&owner.name, code).unwrap_or(true)
+        };
+        if let Err(e) = api
+            .schizo
+            .set(on, full, duress.as_ref(), is_password, crate::login::now())
+        {
+            return error_response(e);
+        }
+        if on && !was_on {
+            close_listings(&api);
+            match api.backend.serialized(crate::losos::cmd_schizo_tor) {
+                Ok(Some(job)) => {
+                    tracing::info!(job = %job, "schizo mode: giving the box a Tor address")
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    tracing::warn!(error = %e, "schizo mode could not give the box a Tor address")
+                }
+            }
+        }
+        match api.schizo.status() {
+            Ok(v) => HttpResponse::Ok().json(v),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// The box's open listings, closed on its edge in the background: schizo
+/// mode sells nothing, and a listing left open would.
+fn close_listings(api: &web::Data<Api>) {
+    let api = api.clone();
+    std::thread::spawn(move || {
+        let closed = api
+            .backend
+            .serialized(|l| Ok::<_, anyhow::Error>(crate::erase::close_listings(l)));
+        match closed {
+            Ok((n, true)) => tracing::info!(closed = n, "schizo mode closed the box's listings"),
+            Ok((n, false)) => {
+                tracing::warn!(closed = n, "schizo mode could not close every listing")
+            }
+            Err(e) => tracing::warn!(error = %e, "schizo mode could not close the listings"),
+        }
+    });
+}
+
+/// `POST /api/login-devices`: `{"name"}`. A computer joining this box's
+/// LosOS Login, as an administrator signed in there: its id, and the token
+/// it checks in with, shown this once.
+async fn post_login_device(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded(&api, &req, "/api/login-devices", true, || {
+        let Some(name) = serde_json::from_slice::<serde_json::Value>(&body)
+            .ok()
+            .and_then(|d| d.get("name")?.as_str().map(str::to_string))
+        else {
+            return err(
+                StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"name": "..."}"#,
+            );
+        };
+        match api.schizo.register(&name, crate::login::now()) {
+            Ok((id, token)) => {
+                HttpResponse::Ok().json(serde_json::json!({ "id": id, "token": token }))
+            }
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// `DELETE /api/login-devices/{id}`: an administrator takes a computer out.
+async fn delete_login_device(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    id: web::Path<String>,
+) -> HttpResponse {
+    guarded(&api, &req, "/api/login-devices/{id}", true, || {
+        match api.schizo.forget(&id) {
+            Ok(()) => HttpResponse::Ok().json(serde_json::json!({ "id": *id, "removed": true })),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// The computer behind a `losos_dev_` token, or the answer that refuses
+/// the call. These routes are open beyond the LAN and past LosOS Login
+/// (`modules/identity.nix`), so the token is the whole of the check, and a
+/// wrong one counts against the address as a wrong spare key does.
+fn device_call(api: &Api, req: &HttpRequest) -> Result<String, HttpResponse> {
+    let remote = remote_addr(req);
+    if let Err(wait) = api.throttle.check(&remote, Instant::now()) {
+        let mut resp = err(
+            StatusCode::TOO_MANY_REQUESTS,
+            "too many failed attempts; slow down",
+        );
+        resp.headers_mut().insert(
+            actix_web::http::header::RETRY_AFTER,
+            retry_after_secs(wait).to_string().parse().expect("digits"),
+        );
+        return Err(resp);
+    }
+    let token = req
+        .headers()
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(bearer_credentials);
+    match token.and_then(|t| api.schizo.device(t)) {
+        Some(id) => {
+            api.throttle.record_success(&remote);
+            Ok(id)
+        }
+        None => {
+            api.throttle.record_failure(&remote, Instant::now());
+            Err(err(StatusCode::UNAUTHORIZED, "unauthorized"))
+        }
+    }
+}
+
+/// `POST /api/login-devices/self`: `{"onion"?}`. A computer checks in,
+/// with its own Tor address once it has one, and is told whether schizo
+/// mode is on, the duress code's hash while the full form is, a wipe order
+/// it has not confirmed, and, while schizo mode is on, the Tor addresses of
+/// the box and of the owner's other computers.
+async fn post_login_device_self(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    let id = match device_call(&api, &req) {
+        Ok(id) => id,
+        Err(refused) => return refused,
+    };
+    let onion = serde_json::from_slice::<serde_json::Value>(&body)
+        .ok()
+        .and_then(|d| d.get("onion")?.as_str().map(str::to_string));
+    let box_onion = crate::schizo::box_onion(std::path::Path::new(HIDDEN_ADDRESSES));
+    match api.schizo.policy(
+        &id,
+        onion.as_deref(),
+        box_onion.as_deref(),
+        crate::login::now(),
+    ) {
+        Ok(p) => HttpResponse::Ok().json(p),
+        Err(e) => error_response(e),
+    }
+}
+
+/// The box's Tor and I2P addresses (modules/hidden-lib.nix).
+const HIDDEN_ADDRESSES: &str = "/var/lib/losos-hidden/addresses.json";
+
+/// `POST /api/login-devices/self/ack`: `{"wipe"}`. The computer heard the
+/// order and is carrying it out.
+async fn post_login_device_ack(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    let id = match device_call(&api, &req) {
+        Ok(id) => id,
+        Err(refused) => return refused,
+    };
+    let Some(wipe) = serde_json::from_slice::<serde_json::Value>(&body)
+        .ok()
+        .and_then(|d| d.get("wipe")?.as_str().map(str::to_string))
+    else {
+        return err(
+            StatusCode::BAD_REQUEST,
+            r#"body must be JSON: {"wipe": "..."}"#,
+        );
+    };
+    match api.schizo.ack(&id, &wipe, crate::login::now()) {
+        Ok(known) => HttpResponse::Ok().json(serde_json::json!({ "wipe": wipe, "known": known })),
+        Err(e) => error_response(e),
+    }
+}
+
+/// `POST /api/login-devices/self/duress`: `{"code"}`. Someone typed this at
+/// the computer's login. The box checks it against its own hash, and a
+/// match orders every other computer of the owner's to wipe itself.
+async fn post_login_device_duress(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    let id = match device_call(&api, &req) {
+        Ok(id) => id,
+        Err(refused) => return refused,
+    };
+    let Some(code) = serde_json::from_slice::<serde_json::Value>(&body)
+        .ok()
+        .and_then(|d| d.get("code")?.as_str().map(str::to_string))
+        .and_then(|c| crate::signin::validate_candidate(&c).ok())
+    else {
+        return err(
+            StatusCode::BAD_REQUEST,
+            r#"body must be JSON: {"code": "..."}"#,
+        );
+    };
+    match api.schizo.report(&id, &code, crate::login::now()) {
+        Ok(crate::schizo::Reported::Wipe) => {
+            // Every other computer of the owner's hears of it at its next
+            // check-in. What the box itself removes of the owner's is not
+            // decided yet; until it is, the box keeps everything.
+            tracing::warn!(device = %id, "a duress code was entered: the owner's computers are told to wipe");
+            HttpResponse::Ok().json(serde_json::json!({ "wipe": true }))
+        }
+        Ok(crate::schizo::Reported::Already) => {
+            HttpResponse::Ok().json(serde_json::json!({ "wipe": true }))
+        }
+        // The same answer as a right code that came too late: whoever holds
+        // the token learns nothing about the code from it.
+        Ok(crate::schizo::Reported::Wrong) => {
+            api.throttle
+                .record_failure(&remote_addr(&req), Instant::now());
+            HttpResponse::Ok().json(serde_json::json!({ "wipe": false }))
+        }
+        Err(e) => error_response(e),
+    }
 }
 
 // ── LosOS Login: rules, second factors, own account ──────────────────────
@@ -6201,6 +6503,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
             pictures: crate::pictures::Pictures::from_env(),
             image_jobs: tokio::sync::Semaphore::new(IMAGE_JOBS),
             plugins,
+            schizo: crate::schizo::Schizo::from_env(),
         });
         api.plugins
             .set_authorize(std::sync::Arc::new(authorize_caller));
@@ -6337,6 +6640,25 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                     web::post().to(post_people_profile_clear),
                 )
                 .route("/api/recovery", web::get().to(get_recovery))
+                .route("/api/schizo", web::get().to(get_schizo))
+                .route("/api/schizo", web::post().to(post_schizo))
+                .route("/api/login-devices", web::post().to(post_login_device))
+                .route(
+                    "/api/login-devices/self",
+                    web::post().to(post_login_device_self),
+                )
+                .route(
+                    "/api/login-devices/self/ack",
+                    web::post().to(post_login_device_ack),
+                )
+                .route(
+                    "/api/login-devices/self/duress",
+                    web::post().to(post_login_device_duress),
+                )
+                .route(
+                    "/api/login-devices/{id}",
+                    web::delete().to(delete_login_device),
+                )
                 .route("/api/devices/{kind}", web::post().to(post_device))
                 .route("/api/apps/search", web::get().to(get_apps_search))
                 .route("/api/cloud/text", web::get().to(get_cloud_text))
