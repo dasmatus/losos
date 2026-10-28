@@ -4,7 +4,8 @@
 //! nginx can open, and names the person it signed in as `Remote-User`
 //! ([`super::person`]).
 //!
-//! * `POST /calls/api/calls` `{room, invited, video}` → `{call}`
+//! * `POST /calls/api/calls` `{room, invited, video}` → `{call, created}`: the
+//!   room's call, made when it has none (a room holds one call at a time).
 //! * `GET /calls/api/ws`, a websocket speaking [`super::wire`].
 //! * `GET /calls/api/stream`, podcast mode's websocket ([`super::stream`]).
 //! * `POST /calls/api/invites` `{call, pid}` → `{url}`: a guest
@@ -144,9 +145,13 @@ async fn create(
         return HttpResponse::ServiceUnavailable().finish();
     }
     match answer.await {
-        Ok(Ok(())) => {
-            tracing::info!("{creator} started call {}", id.0);
-            HttpResponse::Ok().json(serde_json::json!({ "call": id.0 }))
+        Ok(Ok((call, created))) => {
+            if created {
+                tracing::info!("{creator} started call {}", call.0);
+            } else {
+                tracing::info!("{creator} asked for call {}, which their room has", call.0);
+            }
+            HttpResponse::Ok().json(serde_json::json!({ "call": call.0, "created": created }))
         }
         Ok(Err(r)) => refused(r),
         Err(_) => HttpResponse::ServiceUnavailable().finish(),

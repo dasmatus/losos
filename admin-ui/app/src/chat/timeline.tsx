@@ -34,7 +34,7 @@ import { getLocale, INTL_TAG } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { Avatar } from "./avatar";
-import { callable, callEnded, callEvent, isLososCall, useCalls } from "./calls";
+import { callable, callEnded, callEvent, useCalls } from "./calls";
 import { saveAttachment, useCloud } from "./cloud";
 import { carriesFile, fileNameOf, infoOf, MessageBody, sourceOf } from "./message-body";
 import { buildItems, continues, type Item, type Message, memberName, plainBody, shownName, useEmitted } from "./model";
@@ -429,12 +429,9 @@ export function MessageRow({ client, room, item, grouped, me, actions, seenBy }:
 function CallNotice({ room, event, who }: { room: Room; event: MatrixEvent; who: string }) {
   const t = useT();
   const calls = useCalls();
-  const said = callEvent(event);
+  const said = callEvent(room, event);
   if (said === null) return null;
-  if (event.getType() === EventType.RTCNotification && !isLososCall(room, said.call)) return null;
-  if (said.state === "ended" || callEnded(room, said.call)) {
-    return <p className="px-4 py-1 pl-15 text-[12.5px] text-faint">{t("calls.ended")}</p>;
-  }
+  if (said.state === "ended") return <p className="px-4 py-1 pl-15 text-[12.5px] text-faint">{t("calls.ended")}</p>;
   const open = calls.available && callable(room) && calls.active === null && !callEnded(room, said.call);
   return (
     <p className="flex items-center gap-2 px-4 py-1 pl-15 text-[12.5px] text-faint" data-call-notice={said.call}>

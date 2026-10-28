@@ -12,11 +12,14 @@ Der Anruf läuft über die Box, und die Box kann ihn weder sehen noch hören.
 Jedes Bild und jedes Stück Ton verschlüsselt der Browser, der es sendet,
 und erst die Browser, die es empfangen, entschlüsseln es.
 
-MatrixRTC koordiniert die Anrufteilnahme im Raum, den Ablauf der Mitgliedschaften
-und die Klingelbenachrichtigungen. Jede Mitgliedschaft veröffentlicht LosOS'
-eigenen SFU-Transport, nicht LiveKit. Audio und Video laufen weiterhin über
-`losos-calls`; die Verschlüsselung der Medienframes im Browser und der
-Schlüsselaustausch über Olm bleiben LosOS-spezifisch.
+Anrufe folgen MatrixRTC, dem Matrix-Standard für Anrufe in Räumen, als
+LosOS' eigener Anruftyp `org.losos.call`, mit einem Anruf pro Raum. Wer in
+einem Anruf ist, veröffentlicht eine Mitgliedschaft, die den Anrufserver
+der Box nennt, `losos-calls`. Eine Matrix-App, die diesen Anruftyp nicht
+kennt, lässt ihn deshalb in Ruhe, statt ein **Beitreten** anzubieten, das
+nicht funktionieren kann. Klingeln, Ablehnen und der Austausch der
+Schlüssel nutzen die eigenen Ereignisse von MatrixRTC. Bild und Ton laufen
+über `losos-calls`, nicht über LiveKit.
 
 ## Wann es Anrufe gibt \{#when-calls-are-there}
 
@@ -38,15 +41,27 @@ oder du sie nicht erlaubt hast, bist du mit ausgeschalteter Kamera dabei,
 und eine Meldung sagt das; die anderen hören dich wie gewohnt. Ohne
 Mikrofon hörst du nur zu, und der Mikrofonknopf fragt erneut danach.
 
-Alle im Raum bekommen in der Ecke ihrer Chat-Seite eine Karte, die eine
-Minute lang klingelt. **Annehmen** tritt so bei, wie der Anruf gestartet
-wurde. Bei einem Videoanruf tritt **Ohne Video annehmen** nur
-mit dem Mikrofon bei. **Ablehnen** blendet die Karte nur aus.
+In einer Direktnachricht bekommt die andere Person in der Ecke ihrer
+Chat-Seite eine Karte, die anderthalb Minuten lang klingelt. In einem Raum
+bekommen alle sie, wenn die Person, die den Anruf startet, den ganzen Raum
+benachrichtigen darf, was standardmäßig ein Raum-Admin ist; sonst sehen die
+anderen den Anruf in der Zeitleiste. **Annehmen** tritt so bei, wie der
+Anruf gestartet wurde. Bei einem Videoanruf tritt **Ohne Video annehmen**
+nur mit dem Mikrofon bei. **Ablehnen** blendet die Karte aus. In einer
+Direktnachricht erfährt es auch die Person, die anruft, und ihr Anruf
+schließt sich.
 
 Die Zeitleiste des Raums zeigt, dass ein Anruf begonnen hat. Solange er
 läuft, hat die Zeile einen Knopf **Beitreten**, damit auch zurückkommen
 kann, wer das Klingeln verpasst oder den Anruf verlassen hat. Wenn die
 letzte Person geht, zeigt die Zeitleiste, dass der Anruf beendet ist.
+Andere Matrix-Apps zeigen stattdessen einen kurzen Hinweis mit einem Link,
+der den Anruf in LosOS Chat öffnet, wo man sich mit LosOS Login anmeldet.
+
+Räume und Direktnachrichten, die in LosOS Chat angelegt wurden, sind für
+Anrufe bereit. In einem Raum, der mit einem älteren LosOS angelegt wurde,
+schaltet ein Raum-Admin Anrufe ein, indem er den ersten startet. Bis dahin
+bekommt jede andere Person, die es versucht, eine Meldung dazu.
 
 ## Während eines Anrufs \{#during-a-call}
 
@@ -163,7 +178,7 @@ Anruf endet. Nichts wird gespeichert, also öffnet ein später gefundener
 Schlüssel nichts aus dem Anruf.
 
 Eine Grenze solltest du kennen. Ein Browser sendet seinen Schlüssel an die
-Geräte, die der Chat-Server der Box für jede Person im Anruf nennt. Wer die
+Geräte im Anruf, so wie der Chat-Server der Box sie nennt. Wer die
 Software der Box übernommen hätte, könnte dort auch ein eigenes Gerät
 nennen. Verifiziert eure Geräte im Chat gegenseitig (**Sichere
 Nachrichten**, dann **Verifizieren**), dann wisst ihr, dass ein Gerät

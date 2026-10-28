@@ -23,6 +23,7 @@ import {
   KnownMembership,
 } from "matrix-js-sdk";
 import type { RoomMessageEventContent } from "matrix-js-sdk/lib/@types/events";
+import { isStartNotice } from "./rtc";
 
 interface Emitter {
   on(event: string, listener: (...args: never[]) => void): unknown;
@@ -238,6 +239,7 @@ export function buildItems(events: readonly MatrixEvent[], me: string, inThread:
     const root = threadRootOf(ev);
     if (inThread === null ? root !== null : root !== inThread && ev.getId() !== inThread) continue;
     if (MESSAGE_TYPES.has(type)) {
+      if (type === EventType.RoomMessage && isStartNotice(ev.getContent())) continue;
       const id = ev.getId() ?? "";
       const edit = edits.get(id);
       const newContent = edit?.getContent()["m.new_content"];
