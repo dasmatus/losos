@@ -52,7 +52,9 @@ Obrázky sú v `handbook/docs/img/`. Sú troch druhov:
 - **Obrazovky skutočného počítača.** Inštalátor, banner na tty1, výzva na
   heslo a odmietnutia pri Secure Boot pochádzajú z behov vo VM
   (`nix/tests/secure-boot.nix` a inštalácie do VM). Žiadny skript ich znova
-  nenasníma.
+  nenasníma. Obrázky ponuky pravého tlačidla sú tiež zo zariadenia vo VM:
+  `nix/tests/context-menu.nix` ich vo všetkých troch jazykoch zapíše do
+  `shots/after/handbook/` vo svojom výstupe.
 - **Diagramy.** Sú to ručne písané SVG na bielej karte, vo farbách admin
   rozhrania (`admin-ui/app/src/styles/tokens.css`), takže sa čítajú rovnako
   vo svetlej aj tmavej téme. Upravujte ich ako text.
