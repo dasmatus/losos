@@ -30,7 +30,7 @@ The box announces `<name>.local` and its services through
 systemd-resolved, not Avahi. resolved is already part of the system, runs
 as its own user under its upstream sandbox, and gives nothing else on the
 box a way to announce services. Its other name protocol, LLMNR, is on only
-while the Windows share is (`losos.cloud.windows.enable`): Windows finds
+while the Windows share is (`losos.cloud.windows.enable`), because Windows finds
 the box by a bare name and asks for its address with LLMNR.
 Avahi ran as root with a lighter sandbox, because it needed netlink to
 follow the network interfaces. It is gone, not kept beside resolved, since
