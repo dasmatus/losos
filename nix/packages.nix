@@ -60,6 +60,9 @@
 #                libvirt's remote protocol for wasm32, through wasm-bindgen,
 #                for a page that drives libvirt over `losos-registrar lab`'s
 #                byte relay with no virsh on the host.
+#   losos-mdx-wasm — losos-mdx (backend/mdx/), MDX and Markdown to sanitized
+#                HTML, as the wasm-bindgen package Notes and LosOS Office
+#                import, so the browser renders with the box's own code.
 #   losos-sign-iso — signs the installer ISO's UEFI loader in place with the
 #                Secure Boot db key, after `nix build`, so the key never
 #                enters a store (modules/secure-boot.nix, nix/sign-iso.sh).
@@ -110,6 +113,7 @@ let
       dir,
       wasm,
       cargoHash,
+      features ? [ ],
     }:
     pkgs.rustPlatform.buildRustPackage {
       inherit pname cargoHash;
@@ -121,7 +125,9 @@ let
       ];
       buildPhase = ''
         runHook preBuild
-        cargo build --release --offline --target wasm32-unknown-unknown
+        cargo build --release --offline --target wasm32-unknown-unknown ${
+          lib.optionalString (features != [ ]) "--features ${lib.concatStringsSep "," features}"
+        }
         runHook postBuild
       '';
       doCheck = false;
@@ -150,6 +156,17 @@ let
     cargoHash = "sha256-TXH+ZimT0PygfRRnjOCNpFgi3Acmb4kxN0S7vcL9Pxk=";
   };
   labCorePkg = labPkg "core" losos-lab-core;
+
+  # losos-mdx for the browser (backend/mdx/README.md): the same parser and
+  # allowlist the box renders documents with, so a page's preview and an
+  # export cannot disagree. Notes and LosOS Office import it.
+  losos-mdx-wasm = labWasm {
+    pname = "losos-mdx-wasm";
+    dir = ./../backend/mdx;
+    wasm = "losos_mdx";
+    features = [ "wasm" ];
+    cargoHash = "sha256-/PsXCBJFqy5hJ1ov20niOX5WhMcbm30UIkCoppjWiBI=";
+  };
 
   # The Lab's libvirt client (admin-ui/lab/virt-rpc/README.md), loaded
   # lazily when a guest starts on that path.
@@ -338,6 +355,7 @@ images
 // {
   inherit losos-image-ci-base;
   inherit losos-lab-core losos-lab-render losos-lab-virt;
+  inherit losos-mdx-wasm;
 
   losos-admin-ui = pkgs.buildNpmPackage {
     pname = "losos-admin-ui";

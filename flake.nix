@@ -629,6 +629,13 @@
         # Collabora on the box (nix/tests/office-markdown.nix).
         losos-office-markdown = import ./nix/tests/office-markdown.nix { inherit pkgs; };
         losos-quick-actions = import ./nix/tests/quick-actions.nix { inherit pkgs; };
+        # Not a VM: losos-mdx's browser package in Node, against the crate's
+        # own expectations and its limits inside a wasm stack
+        # (nix/tests/mdx-wasm.nix).
+        losos-mdx-wasm = import ./nix/tests/mdx-wasm.nix {
+          inherit pkgs;
+          mdxWasm = self.packages.${system}.losos-mdx-wasm;
+        };
         # The box half of models split across boxes: the RPC server as
         # `shared`, its memory cap, the lend file, the loopback owner rule
         # and the `:llm` tunnel service (nix/tests/inference-lend.nix).
