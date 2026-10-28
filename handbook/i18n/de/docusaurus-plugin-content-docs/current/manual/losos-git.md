@@ -169,6 +169,8 @@ unter ihrem Namen zeigt, etwa `@eva:kitchenbox.local`.
    ist. Sie drückt **`<name>.local` Bescheid geben**.
 3. Sie ist zurück auf deinem Gerät, angemeldet als `@eva:kitchenbox.local`.
 
+![Evas eigene Box fragt, bevor sie mattbox.local sagt, wer sie ist.](@site/docs/img/git-other-box-vouch.png)
+
 Ihre Box sagt deiner nur die Chat-Adresse und den Namen. Dein Gerät prüft
 die Antwort beim Chat-Server ihrer Box, bevor es ihr glaubt. Wer ein Konto
 auf deinem Gerät hat, meldet sich wie bisher mit LosOS Login an.
@@ -187,6 +189,8 @@ git push https://<name>.local/git/notshared/site.git HEAD:eva@kitchenbox.local/h
 Zusammenführen dürfen nur du und deine Admins. **Abmelden** beendet ihren
 Besuch auf diesem Computer.
 
+![Ein Pull-Request aus Evas eigenem Branch, mit einer Antwort des Repository-Besitzers.](@site/docs/img/git-other-box-pull.png)
+
 ## Ein Chatraum für ein Repository \{#a-chat-room-for-a-repository}
 
 Mit LosOS Chat auf dem Gerät haben die **Einstellungen** eines Repositorys
@@ -194,6 +198,8 @@ den Schalter **In LosOS Chat über dieses Repository reden**. Schalte ihn
 ein, und das Gerät macht in deinem Chat einen Raum für das Repository, mit
 LosOS Git darin. LosOS Git schreibt dort jeden Push, Pull-Request,
 Kommentar, jede Zusammenführung und jedes Prüfergebnis hinein.
+
+![Die Einstellungen eines Repositorys, In LosOS Chat über dieses Repository reden eingeschaltet, mit einem Link zum Raum.](@site/docs/img/git-repository-room.png)
 
 Im Kopf des Repositorys steht dann für alle, die angemeldet sind, ein
 Knopf **Chat**. Einem öffentlichen Repository kann jede Person beitreten,

@@ -161,6 +161,8 @@ their chat address, the one LosOS Chat shows under their name, such as
    press **Tell `<name>.local`**.
 3. They are back on your box, signed in as `@eva:kitchenbox.local`.
 
+![Eva's own box asks before it tells mattbox.local who she is.](../img/git-other-box-vouch.png)
+
 Their box tells yours only their chat address and their name. Your box
 checks the answer with their box's chat server before it believes it.
 People with an account on your box sign in with LosOS Login as before.
@@ -178,12 +180,16 @@ git push https://<name>.local/git/notshared/site.git HEAD:eva@kitchenbox.local/h
 
 Only you and your admins merge. Sign out ends their visit on this computer.
 
+![A pull request from Eva's own branch, with an answer from the repository's owner.](../img/git-other-box-pull.png)
+
 ## A chat room for a repository
 
 With LosOS Chat on the box, **Settings** of a repository has **Talk about
 this repository in LosOS Chat**. Turn it on, and the box makes a room for
 the repository in your chat, with LosOS Git in it. LosOS Git posts every
 push, pull request, comment, merge and check result there.
+
+![A repository's settings with Talk about this repository in LosOS Chat turned on and a link to the room.](../img/git-repository-room.png)
 
 A **Chat** button then sits in the repository's header for everyone who is
 signed in. For a public repository anyone can join the room, from their own

@@ -246,6 +246,39 @@ function Shell() {
     if (gate === "setup") setSetupStarted(true);
   }, [gate]);
 
+  /* The wizard's last step shows the owner their desktop before they are
+   * let into it: the real one, signed in, drawn behind the card small and
+   * out of reach (`preview`). "Let's go" grows it to the window
+   * (`leaving`), and only once that has played out does setup end. The
+   * desktop is the same element all the way through, so nothing on it
+   * loads twice. */
+  const [preview, setPreview] = React.useState(false);
+  const [leaving, setLeaving] = React.useState(false);
+  const stageRef = React.useRef<HTMLDivElement>(null);
+  const leaveSetup = React.useCallback(() => setLeaving(true), []);
+  React.useEffect(() => {
+    if (!leaving) return;
+    let live = true;
+    const done = (): void => {
+      if (!live) return;
+      setSetupDone(true);
+      setLeaving(false);
+      setPreview(false);
+      // Then the tour, once, over the desktop (src/tour/).
+      startTour();
+    };
+    /* The growth is the stage's own transitions (index.css), and setup ends
+     * when they have: no timer of its own to drift from the stylesheet, and
+     * nothing to wait for under reduced motion, where there are none. A
+     * transition cut short settles its promise too. */
+    const growing = stageRef.current?.getAnimations() ?? [];
+    if (growing.length === 0) done();
+    else void Promise.allSettled(growing.map((a) => a.finished)).then(done);
+    return () => {
+      live = false;
+    };
+  }, [leaving]);
+
   const inSetup = setupStarted && !setupDone;
   const signedIn = gate === "open";
   /* A rule of LosOS Login holds this person to their own account
@@ -306,11 +339,11 @@ function Shell() {
   }, [signedIn, inSetup, held]);
 
   // A box being set up gets the wizard and nothing else: no chrome, no
-  // navigation, no dialog over the top. There is nothing behind it worth
-  // showing yet, and it is a sequence the owner should not be able to wander
-  // out of halfway.
-  if (inSetup) {
-    return (
+  // navigation, no dialog over the top, until its last step shows the
+  // desktop behind it. It is a sequence the owner should not be able to
+  // wander out of halfway.
+  const wizard = inSetup ? (
+    <div className={cn(leaving && "wizard-leave")} inert={leaving}>
       <React.Suspense
         fallback={
           <div className="grid min-h-dvh place-items-center bg-ground text-ink">
@@ -318,18 +351,20 @@ function Shell() {
           </div>
         }
       >
-        {/* Leaving the wizard opens the tour, once: the owner lands on the
-            overview with six short steps over it (src/tour/). */}
-        <Wizard
-          onDone={() => {
-            setSetupDone(true);
-            startTour();
-          }}
-        />
-        {/* The wizard has its own shell, so it gets its own stack: step 2's
-            "ready" and "password set" and step 1's "copied" land here. */}
-        <Toaster />
+        <Wizard onDone={leaveSetup} onPreview={setPreview} />
       </React.Suspense>
+    </div>
+  ) : null;
+
+  if (inSetup && !preview) {
+    // The same three places as below, so the wizard stays mounted when the
+    // desktop arrives in the first.
+    return (
+      <>
+        {null}
+        {wizard}
+        <Toaster />
+      </>
     );
   }
 
@@ -347,8 +382,21 @@ function Shell() {
   const editing =
     signedIn && !held && location.pathname.startsWith("/office") && location.hash.length > 1;
 
+  const stage = inSetup ? (leaving ? "live" : "preview") : undefined;
+
   return (
-    <div className={cn("losos-shell min-h-dvh text-ink", editing && "flex h-dvh flex-col")}>
+    <>
+    <div
+      ref={stageRef}
+      data-testid="desktop"
+      data-stage={stage}
+      inert={stage === "preview"}
+      className={cn(
+        "losos-shell min-h-dvh text-ink",
+        editing && "flex h-dvh flex-col",
+        stage !== undefined && "desktop-stage h-dvh overflow-hidden",
+      )}
+    >
       <TopBar signedIn={signedIn} wide={wide} />
       <ContextMenuHost page={pageMenu} search={searchable ? (text) => openPalette(text) : undefined} />
 
@@ -442,8 +490,10 @@ function Shell() {
         </React.Suspense>
       )}
       {signedIn && <ReportDialogHost />}
-      <Toaster />
     </div>
+    {wizard}
+    <Toaster />
+    </>
   );
 }
 

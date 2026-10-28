@@ -340,7 +340,7 @@ export function RingingCard(p: RingingProps) {
       role="alertdialog"
       aria-live="assertive"
       data-ringing=""
-      className="fixed right-4 bottom-4 z-50 w-[min(22rem,calc(100vw-2rem))] rounded-card border border-line bg-surface p-4 shadow-pop"
+      className="fixed right-4 bottom-[calc(1rem+var(--bottom-nav))] z-50 w-[min(22rem,calc(100vw-2rem))] rounded-card border border-line bg-surface p-4 shadow-pop"
     >
       <div className="flex items-center gap-3">
         {p.avatar ?? <Initials name={p.caller} />}

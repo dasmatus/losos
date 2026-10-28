@@ -3456,7 +3456,7 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
     // whose address is not made yet is routed on a later tick.
     let changed_hidden = match &st.opts.hidden {
         None => false,
-        Some(h) => match reconcile_hidden(h, &st.opts.traefik_dir, &enriched).await {
+        Some(h) => match reconcile_hidden(h, &st.discovery, &enriched).await {
             Ok(changed) => changed,
             Err(e) => {
                 tracing::error!(target: Action::Reconcile.target(), "Tor and I2P routes: {e:?}");
@@ -4001,10 +4001,10 @@ async fn pin_hub_noise_key(
 }
 
 /// The live boxes for `losos-hidden-sync`, and Traefik's routes for the
-/// addresses it made (`crate::hidden`). Whether either file changed.
+/// addresses it made (`crate::hidden`). Whether either changed.
 async fn reconcile_hidden(
     h: &crate::hidden::HiddenOpts,
-    traefik_dir: &str,
+    discovery: &Discovery,
     tenants: &[TenantView],
 ) -> Result<bool> {
     let ids: Vec<&str> = tenants.iter().map(|t| t.id.as_str()).collect();
@@ -4027,12 +4027,7 @@ async fn reconcile_hidden(
             })
         })
         .collect();
-    let path = Path::new(traefik_dir).join("hidden.yml");
-    let changed_routes = match crate::config::hidden_routes_yaml(&routes) {
-        Some(text) => write_if_changed(&path, &text, TRAEFIK_FILE_MODE).await,
-        None => remove_if_exists(&path).await,
-    }
-    .with_context(|| format!("write {}", path.display()))?;
+    let changed_routes = discovery.set_hidden(crate::config::hidden_routes(&routes));
     Ok(changed_services || changed_routes)
 }
 

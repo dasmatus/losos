@@ -120,7 +120,7 @@ actix-files = "0.7"
 tempfile = "3"
 httpdate = "1"
 percent-encoding = "2"
-base64 = "0.22"
+base64 = "0.23"
 url = "2"
 mime = "0.3"
 # Thumbnails of pictures (src/cloud/preview.rs), turned the way the camera
@@ -174,7 +174,7 @@ tar = { version = "0.4", default-features = false }
 # uses, so the tree keeps one copy; bzip2 off for the same reason. SHA-1 is
 # what WKD hashes an address's local part with (RFC draft-koch-openpgp-webkey).
 pgp = { version = "0.21", default-features = false }
-sha1 = "0.10"
+sha1 = "0.11"
 
 [dev-dependencies]
 # Keys for the mail key store's tests (src/mail_pgp.rs); rPGP's own version.
