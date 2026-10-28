@@ -110,6 +110,8 @@ struct Allowed {
     dir: PathBuf,
     user: Option<User>,
     own_branches: Option<String>,
+    /// The repository's wiki (`<name>.wiki.git`) rather than its code.
+    wiki: bool,
 }
 
 fn authorize(
@@ -122,6 +124,13 @@ fn authorize(
 ) -> Result<Allowed, Fail> {
     let caller = server::caller(req, state)?;
     let name = super::names::strip_git(repo);
+    // `<name>.wiki.git` is the wiki of `<name>`, read and written by whoever
+    // may read and write the repository (`super::wiki`).
+    let (name, wiki) = match super::names::wiki_of(name) {
+        Some(base) => (base, true),
+        None => (name, false),
+    };
+    let may_create = may_create && !wiki;
     let (Ok(owner), Ok(name)) = (super::names::owner(owner), super::names::repo(name)) else {
         return Err(Fail::not_found("repository"));
     };
@@ -167,7 +176,7 @@ fn authorize(
     // A person from another box pushes to their own branches only, which
     // `rpc` checks before git sees the push.
     let own_branches = match service {
-        Service::ReceivePack if access < service.needs() => {
+        Service::ReceivePack if access < service.needs() && !wiki => {
             caller.own_branches(&state.store, &repo)?
         }
         _ => None,
@@ -183,6 +192,24 @@ fn authorize(
             "You may read this repository but not push to it.",
         ));
     }
+    if wiki {
+        let path = state.config.wiki_path(&repo.owner, &repo.name);
+        if !path.join("HEAD").exists() {
+            // The first push makes the wiki, as the first page saved in
+            // the browser does.
+            if service != Service::ReceivePack {
+                return Err(Fail::not_found("wiki"));
+            }
+            state.git.init_bare(&path, super::wiki::BRANCH)?;
+        }
+        return Ok(Allowed {
+            repo,
+            dir: path,
+            user: caller.user().cloned(),
+            own_branches: None,
+            wiki,
+        });
+    }
     let path = state.config.repo_path(&repo.owner, &repo.name);
     if !path.join("HEAD").exists() {
         tracing::error!(path = %path.display(), "a repository on record is missing on disk");
@@ -193,6 +220,7 @@ fn authorize(
         dir: path,
         user: caller.user().cloned(),
         own_branches,
+        wiki,
     })
 }
 
@@ -382,6 +410,7 @@ async fn rpc(
         dir,
         user: pusher,
         own_branches,
+        wiki,
     } = match authorize(&req, &state, &owner, &repo_name, service, false) {
         Ok(v) => v,
         Err(fail) => return actix_web::ResponseError::error_response(&fail),
@@ -447,7 +476,9 @@ async fn rpc(
         whole = Some(raw);
     }
 
-    let before = if service == Service::ReceivePack {
+    // A wiki's push has none of a repository's bookkeeping: no events, no
+    // checks, no worktrees.
+    let before = if service == Service::ReceivePack && !wiki {
         match state.git.refs(&dir) {
             Ok(r) => Some(r),
             Err(e) => return internal(e),

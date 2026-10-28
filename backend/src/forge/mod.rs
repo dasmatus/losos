@@ -46,6 +46,7 @@ pub mod server;
 pub mod statuses;
 pub mod tracker;
 pub mod transport;
+pub mod wiki;
 pub mod worktrees;
 
 use std::path::{Path, PathBuf};
@@ -89,6 +90,12 @@ impl Config {
     /// [`names`]' checks: that is what keeps the path inside the tree.
     pub fn repo_path(&self, owner: &str, name: &str) -> PathBuf {
         repo_path(&self.repositories(), owner, name)
+    }
+
+    /// Where a repository's wiki is: `<name>.wiki.git` beside it, as
+    /// Forgejo kept them.
+    pub fn wiki_path(&self, owner: &str, name: &str) -> PathBuf {
+        repo_path(&self.repositories(), owner, &format!("{name}.wiki"))
     }
 }
 

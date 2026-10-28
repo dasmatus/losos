@@ -392,8 +392,11 @@ pub fn sharing_tick<L: Losos>(
 ) -> anyhow::Result<crate::edge::SharingStep> {
     use crate::edge::SharingStep;
     let s = l.load_state()?;
-    // An erase owns the settings until it is done.
-    if s.erase.is_some() {
+    // An erase owns the settings until it is done. And a box nobody has
+    // claimed yet has no state file, which is what keeps the claim route
+    // open (`State::claimed`): writing one here, when its default sharing
+    // first sees an edge, locked the owner out of their own new box.
+    if s.erase.is_some() || !s.claimed {
         return Ok(SharingStep::Nothing);
     }
     let sharing = crate::edge::SharingNow {
@@ -2324,6 +2327,7 @@ mod tests {
     /// turned sharing on finished.
     fn sharing_fake() -> FakeLosos {
         let mut fake = FakeLosos::new();
+        fake.state.claimed = true;
         cmd_change(&mut fake, Mode::Mesh).unwrap();
         fake.state.rebuild.as_mut().unwrap().state = RebuildState::Done;
         fake.spawned = false;
@@ -2432,6 +2436,7 @@ mod tests {
         // Sharing set in the configuration with no edge anywhere, the way
         // the shared side's VM tests boot.
         let mut fake = FakeLosos::new().without_edge();
+        fake.state.claimed = true;
         fake.config = crate::overrides::inject_line(true, &fake.config);
         let mut clock = OutageClock::default();
         clock.observe(false, 0);
@@ -2441,6 +2446,23 @@ mod tests {
             SharingStep::Nothing
         );
         assert!(sharing_line(&fake) && !fake.spawned);
+    }
+
+    #[test]
+    fn an_unclaimed_box_that_sees_an_edge_writes_no_state() {
+        use crate::edge::{OutageClock, SharingStep};
+        // A fresh box: sharing on by default, no state file yet. A state
+        // file is what marks a box claimed, so writing one here would shut
+        // the claim route on its owner.
+        let mut fake = FakeLosos::new();
+        assert!(!fake.state.claimed && sharing_line(&fake));
+        let mut clock = OutageClock::default();
+        clock.observe(true, 100);
+        assert_eq!(
+            sharing_tick(&mut fake, &clock, 100, 600).unwrap(),
+            SharingStep::Nothing
+        );
+        assert_eq!(fake.state, State::default(), "nothing was saved");
     }
 
     #[test]
