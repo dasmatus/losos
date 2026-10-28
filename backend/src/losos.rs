@@ -476,6 +476,29 @@ pub(crate) fn queue_rebuild<L: Losos>(l: &mut L, message: &str) -> anyhow::Resul
     Ok(job)
 }
 
+/// Schizo mode was turned on: give the box its Tor address
+/// (`losos.hidden.tor.enable`, modules/hidden-services.nix), so the owner's
+/// computers, whose connections all go through Tor now, can reach it there.
+/// `None` when it already has one, or when a rebuild is under way, which
+/// this does not queue behind: the owner then turns it on in Network.
+pub fn cmd_schizo_tor<L: Losos>(l: &mut L) -> anyhow::Result<Option<String>> {
+    let s = l.load_state()?;
+    if s.erase.is_some()
+        || s.rebuild
+            .as_ref()
+            .is_some_and(|rb| rb.state == RebuildState::Building)
+    {
+        return Ok(None);
+    }
+    let before = l.read_overrides()?;
+    let Some(body) = crate::schizo::with_tor(&before) else {
+        return Ok(None);
+    };
+    l.write_overrides(&body)?;
+    commit_settings(l, "Schizo mode: a Tor address", &before, &body);
+    queue_rebuild(l, MSG_STARTED).map(Some)
+}
+
 /// Overwrite `overrides.nix` with an already-validated body and rebuild.
 ///
 /// Mode and sharing are left exactly as they were: applying settings is not a
