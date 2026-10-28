@@ -107,7 +107,7 @@ call is refused.
 
 [Edge web page](../in-depth/edge-web-ui.md) goes through the page in full.
 
-## LosOS Desktop computers
+## LosOS Desktop computers \{#losos-desktop-computers}
 
 The company's people can log in to its LosOS Desktop computers with their
 LosOS Login name and password. One box behind the company's edge gateway

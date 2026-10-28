@@ -129,8 +129,10 @@ fn token_id(token: &str) -> Option<&str> {
     (hex(id, ID_HEX) && hex(secret, SECRET_HEX)).then_some(id)
 }
 
-/// Whether `token` has a directory token's shape, so the HTTP layer asks
-/// this store and not LosOS Login about it.
+/// Whether `token` carries a directory token's prefix, so the HTTP layer
+/// asks this store and not LosOS Login about it. The prefix alone decides:
+/// no other credential starts with it, so a misshapen one is refused here
+/// (`check` answers nobody) instead of being tried as something else.
 pub fn is_directory_token(token: &str) -> bool {
     token.starts_with(PREFIX)
 }
@@ -238,7 +240,15 @@ impl Directory {
         let id = token_id(token)?;
         let hash = sha256_hex(token);
         let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
-        let mut records = self.read().ok()?;
+        let mut records = match self.read() {
+            Ok(records) => records,
+            Err(e) => {
+                // Every joined computer is refused until the file reads
+                // again; say why, or it looks like a wrong token.
+                tracing::warn!("joined computers: {e:#}");
+                return None;
+            }
+        };
         let record = records.iter_mut().find(|r| r.id == id)?;
         let same = record.sha256.len() == hash.len()
             && record
