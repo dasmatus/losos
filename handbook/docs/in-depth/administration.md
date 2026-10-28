@@ -10,7 +10,7 @@ mdx:
 ## Admin UI
 
 Open `http://<ip>/` (the address on the box's tty1 banner) or
-`https://<host>.local/` from the LAN. The admin UI is blocked for anything
+`https://<host>.local/` from the LAN. The admin UI refuses anything
 outside the LAN, including traffic through the [master proxy](master-proxy.md).
 `<host>.local` is an mDNS name. A computer that does not resolve it, typically
 the host of a NAT'ed VM, uses the IP address, and every route below answers
@@ -117,7 +117,7 @@ sets the owner password, becomes the first person who can sign in (an
 administrator) and receives the token in the response. This route
 requires no token, but stops accepting claims once the box has an owner. Set
 up the box only on a trusted LAN, because the first caller becomes its owner.
-The token is handed back only once and cannot be fetched again through the UI.
+The box hands the token back only once, and the UI cannot fetch it again.
 
 Nothing has to start before the first password, so `GET /api/setup/claim`
 answers `ready: true` on an unclaimed box and the first-run wizard moves on
@@ -252,8 +252,8 @@ after of each in the body. **Settings, History** lists the last forty.
 
 With `losos.configRepo.enable` (the default) and LosOS Git on, lososd also
 keeps the configuration in a private repository on LosOS Git,
-`<owner>/losos-config`, owned by the admin's own account (`notshared`). The
-account is created on the first sync, as LosOS Git's administrator. A
+`<owner>/losos-config`, owned by the admin's own account (`notshared`).
+lososd creates the account on the first sync, as LosOS Git's administrator. A
 reconciler in lososd runs every 30 s:
 
 - it commits anything uncommitted and pushes the box's branch when LosOS
@@ -294,7 +294,7 @@ Forgejo had and what came over, table by table, and names what did not,
 such as milestones, releases and timeline entries. A full dump of
 Forgejo's database is kept beside it (`forgejo.sql`, or `forgejo.db` on a
 native box), and Forgejo's own folder and the Postgres data are left where
-they were. If the move fails, nothing changes and it is tried again on the
+they were. If the move fails, nothing changes and the box tries again on the
 next start; LosOS Git serves the repositories meanwhile.
 
 ### Box-wide app settings
@@ -325,7 +325,7 @@ there is no page inside it to change them from.
 :::note[What stays in the apps]
 Everything an account sets for itself stays in the app. In LosOS Git, the
 owner's account is the administrator. LosOS Cloud has no administrator
-inside it at all: who may use it is decided by LosOS Login, and everything
+inside it at all. LosOS Login decides who may use it, and everything
 box-wide is a setting on the Apps pane.
 :::
 
@@ -359,7 +359,7 @@ Flexible Retrieval or Deep Archive turns on restic's `s3-restore` feature,
 which asks AWS to thaw the packs and waits up to 48 hours; tidying there
 never repacks (`--max-repack-size 0`), since a repack would need a thaw too.
 A lifecycle rule that moves the bucket to Glacier would take restic's
-metadata with it, so the class is chosen on the pane instead.
+metadata with it, so you choose the class on the pane instead.
 
 The bucket keeps the last seven. lososd runs each backup and restore as a
 transient unit, `losos-backup-<job>`, started by systemd outside lososd's
@@ -368,9 +368,10 @@ store and reach the unit through `LoadCredentialEncrypted=`, never on a
 command line or in a plain file.
 
 **Restore** takes the recovery code of the box that made the backup. The
-newest snapshot comes back: the apps stop, the files are synced back, the
-databases are loaded with `pg_restore --clean`, the apps start, and the
-restored `overrides.nix` is checked like any apply and rebuilt. The code
+newest snapshot comes back. The apps stop, the box syncs the files back and
+loads the databases (with `pg_restore --clean` on a box that still runs
+PostgreSQL), the apps start, and the box checks the restored `overrides.nix`
+like any apply and rebuilds. The code
 that opened the backup becomes this box's recovery code. On an erased or
 reinstalled box, run the wizard, set up the same bucket, then restore.
 
