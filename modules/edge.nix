@@ -1379,14 +1379,16 @@ in
     };
 
     # /etc/traefik/dynamic: real dir (0755, root) holding the static
-    # register*.yml files (symlinked from the store). The two `r` lines take
+    # register*.yml files (symlinked from the store). The `r` lines take
     # away what the registrar wrote there before Traefik discovered the boxes
-    # from it (see the top of this file).
+    # from it (see the top of this file), the boxes' Tor and I2P names
+    # included.
     systemd.tmpfiles.rules = [
       "d /etc/traefik/dynamic 0755 root root - -"
       "L+ /etc/traefik/dynamic/register.yml - - - - ${toString registerYml}"
       "r /etc/traefik/dynamic/losos.yml - - - - -"
       "r /etc/traefik/dynamic/losos-vms.yml - - - - -"
+      "r /etc/traefik/dynamic/hidden.yml - - - - -"
     ]
     ++ lib.optionals cfg.vms.enable [
       "L+ /etc/traefik/dynamic/register-vm-transfer.yml - - - - ${toString vmTransferYml}"
