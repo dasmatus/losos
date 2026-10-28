@@ -174,11 +174,6 @@ in
       # lososd refuses one anywhere else. Unset, it serves no plugin routes.
       // lib.optionalAttrs (config.losos.backend.plugins != null) {
         LOSOS_PLUGIN_DIR = "${config.losos.backend.plugins}";
-        # The statistics plugin's manifest names Traefik's API here, and a
-        # plugin whose manifest names an unset variable stops lososd. Set on
-        # every box: with apps off nothing answers there, and the plugin
-        # says so.
-        LOSOS_TRAEFIK_URL = "http://127.0.0.1:${toString config.losos.apps.traefikPort}";
       }
       // lib.optionalAttrs config.losos.lab.ordering.enable {
         LOSOS_LAB_ORDERING = "1";
