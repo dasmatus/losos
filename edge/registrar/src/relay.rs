@@ -355,7 +355,7 @@ impl Enrolment {
         Ok(true)
     }
 
-    /// Drop an enrolled id and its token file: what `losos-edge forget` does.
+    /// Drop an enrolled id and its token file: what forgetting a box on the manage page does.
     pub async fn forget(&self, id: &str) -> std::io::Result<bool> {
         let _guard = self.lock.lock().await;
         let mut file = self.read().await?;

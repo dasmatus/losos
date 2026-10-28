@@ -322,15 +322,13 @@ let
   # points at a runtime path instead; the registrar re-reads either on every
   # pass and treats a missing file as "no uplink yet".
   uplinkRendered = pkgs.writeText "losos-uplink.json" (
-    builtins.toJSON (
-      {
-        registrar_url = cfg.uplink.registrarUrl;
-        tunnel_endpoint = cfg.uplink.tunnelEndpoint;
-        inherit (cfg.uplink) id;
-        token_file = toString cfg.uplink.tokenFile;
-        pin_file = toString cfg.uplink.pinFile;
-      }
-    )
+    builtins.toJSON {
+      registrar_url = cfg.uplink.registrarUrl;
+      tunnel_endpoint = cfg.uplink.tunnelEndpoint;
+      inherit (cfg.uplink) id;
+      token_file = toString cfg.uplink.tokenFile;
+      pin_file = toString cfg.uplink.pinFile;
+    }
   );
   uplinkFile =
     if cfg.uplink.configFile != null then cfg.uplink.configFile else toString uplinkRendered;
@@ -345,7 +343,7 @@ let
   ];
 
   # Clusters and bans (handbook/docs/in-depth/edge-federation.md, "Three
-  # tiers"). The cluster file is runtime state (`losos-edge cluster`), the
+  # tiers"). The cluster file is runtime state (the manage page writes it), the
   # registrar re-reads it every pass; the official cluster and its peers are
   # configuration; the ban file is re-read on every uplink pass and a missing
   # one bans nothing.
