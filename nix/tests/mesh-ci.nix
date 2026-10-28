@@ -229,7 +229,6 @@ let
       "d /var/lib/reg 0700 root root -"
       "f /var/lib/reg/boxa.token 0600 root root - token-of-boxa-0123456789abcdef01234567"
       "f /var/lib/reg/boxb.token 0600 root root - token-of-boxb-0123456789abcdef01234567"
-      "f /var/lib/reg/bootstrap 0600 root root - bootstrap-token-0123456789abcdef0123456789"
     ];
     # The registrar as modules/edge.nix starts it, less what this test does
     # not need: no Traefik, no tunnel, no mesh server.
@@ -248,10 +247,8 @@ let
         "/var/lib/reg/registry.json"
         "--traefik-provider-listen"
         "127.0.0.1:8090"
-        "--rathole-config"
-        "/var/lib/reg/rathole.toml"
-        "--bootstrap-token-file"
-        "/var/lib/reg/bootstrap"
+        "--tunnel-config"
+        "/var/lib/reg/tunnel.json"
         "--tenants-file"
         "/etc/losos-test/tenants.json"
         "--compute-windows-file"

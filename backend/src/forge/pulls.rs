@@ -477,7 +477,7 @@ fn find_pull(
     Ok((repo, pr, c, p))
 }
 
-fn signature(u: &User) -> Signature {
+pub(super) fn signature(u: &User) -> Signature {
     Signature {
         name: if u.full_name.is_empty() {
             u.login.clone()

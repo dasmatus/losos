@@ -8,6 +8,7 @@ import access from "./access";
 import account from "./account";
 import advanced from "./advanced";
 import apps from "./apps";
+import basic from "./basic";
 import calendar from "./calendar";
 import calls from "./calls";
 import chat from "./chat";
@@ -51,6 +52,7 @@ import tour from "./tour";
 import userApps from "./user-apps";
 import users from "./users";
 import widgets from "./widgets";
+import wiki from "./wiki";
 import wizard from "./wizard";
 
 export type { Entry, Plural, Text } from "./define";
@@ -103,7 +105,9 @@ export const MESSAGES = {
   ...games,
   ...together,
   ...quick,
+  ...wiki,
   ...statistics,
+  ...basic,
 };
 
 export type MessageKey = keyof typeof MESSAGES;

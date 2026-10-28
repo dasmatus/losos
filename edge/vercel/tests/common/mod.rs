@@ -58,7 +58,6 @@ pub fn settings(dir: &TempDir) -> Settings {
     );
     Settings {
         tenants,
-        bootstrap_token: "test-bootstrap-0123456789abcdef0123".to_string(),
         heartbeat_ttl: "120s".to_string(),
         port_range: "50000-50100".to_string(),
         state_dir: dir.path.clone(),

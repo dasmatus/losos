@@ -72,15 +72,16 @@ async fn async_main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
-        Ok(Mode::Identity(opts)) => match losos_registrar::identity::run(opts) {
-            Ok(()) => ExitCode::SUCCESS,
+        // `passport check` says "not trusted" (1) and "tampered" (2) apart.
+        Ok(Mode::Passport(opts)) => match losos_registrar::gateway::cli::run(opts).await {
+            Ok(code) => code,
             Err(e) => {
-                tracing::error!(target: Action::Serve.target(), "identity: {:?}", e);
+                tracing::error!(target: Action::Passport.target(), "passport: {:?}", e);
                 ExitCode::FAILURE
             }
         },
-        // The ceremony: its exit code says "refused" (3) and "not official
-        // yet" (2) apart from a failure, so a script around it can tell.
+        // The operator gate: its exit code says "refused" (3) apart from a
+        // failure, so a script around it can tell.
         Ok(Mode::Provision(opts)) => match losos_registrar::provision::run(opts).await {
             Ok(code) => code,
             Err(e) => {
@@ -119,13 +120,22 @@ async fn async_main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
-        Ok(Mode::Seed(opts)) => match losos_registrar::seed::run(opts).await {
+        Ok(Mode::TunnelServer(opts)) => match losos_registrar::tunnel::serve(opts).await {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
-                tracing::error!(target: Action::Seed.target(), "{:?}", e);
+                tracing::error!(target: Action::Tunnel.target(), "{:?}", e);
                 ExitCode::FAILURE
             }
         },
+        Ok(Mode::TunnelClient { config }) => {
+            match losos_registrar::tunnel::run_client(config.into()).await {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(e) => {
+                    tracing::error!(target: Action::Tunnel.target(), "{:?}", e);
+                    ExitCode::FAILURE
+                }
+            }
+        }
         Err(e) => {
             // Usage errors: no phase has begun yet.
             tracing::error!("{:?}", e);

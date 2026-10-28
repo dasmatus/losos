@@ -73,7 +73,28 @@ git diff --name-only origin/main... | .github/scripts/ci-changes.sh
 When a new file is read by a job outside its lane (a `build.rs` reading the
 web UI, a VM test reading a Rust file), add it to that lane in the script.
 
-Beside `ci.yml`, `stale-branches.yml` deletes stale branches every Sunday:
+Beside `ci.yml`, `dependency-hashes.yml` keeps the Nix hashes of the lock
+files current. On a pull request from a branch of this repository that
+changes a `Cargo.lock` or `package-lock.json`, Dependabot's included, it runs
+`.github/scripts/fix-hashes.py`, which vendors each changed lock file with a
+placeholder hash so no cache can answer for it, and pushes the real hashes
+back to the branch as one commit. It runs as `pull_request_target`, so a
+Dependabot branch gets a token that can push, and for the same reason it
+never takes a fork's branch. With the `LOCKFILE_UPDATE_TOKEN` secret its
+push starts CI on the branch like any other; without it the job starts
+`ci.yml` itself. The weekly `lockfile-updates.yml` runs the same script
+before it opens its pull request. Run it by hand from the Actions tab with a
+branch name, and tick `all` to check every lock file.
+
+A pull request can still bring a stale hash to `main`: it was merged while
+its run waited for a runner, or the lock file changed in the merge. So the
+same workflow also runs on every push to `main` that touches a lock file,
+checks the lock files changed in the last five merges, and when one is stale
+opens a pull request from a `bot/dependency-hashes-<sha>` branch with the fix
+and closes any older one it made. It never pushes to `main`, which takes
+signed commits only.
+
+`stale-branches.yml` deletes stale branches every Sunday:
 any branch whose last commit is older than 30 days (the `STALE_BRANCH_DAYS`
 repository variable overrides it), except the default branch, `gh-pages`,
 `release/*`, and branches that are the head or base of an open pull request.

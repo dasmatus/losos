@@ -148,6 +148,16 @@ Branch aus einem benannten Worktree gepusht wird, zeigt dessen Namen in
 seinem Kopf. **Vergessen** nimmt einen Worktree von der Liste; sein nächster
 Push setzt ihn wieder darauf.
 
+## Wiki \{#wiki}
+
+Jedes Repository kann ein Wiki haben: Seiten in Markdown in
+`<Repository>.wiki.git`, gelesen und geschrieben von denselben Leuten wie
+das Repository. **Wiki** im Menü eines Repositorys öffnet seine
+veröffentlichte Seite. In [LosOS Wiki](wiki) werden die Seiten geschrieben,
+und dort stehen die Wikis aller Repositorys, die du lesen darfst.
+
+![Ein Repository in LosOS Git, mit Wiki in seinem Menü.](@site/docs/img/losos-git-repository-de.png)
+
 ## Leute von anderen Boxen \{#people-of-other-boxes}
 
 Wer ein Konto auf einer anderen LosOS-Box in deinem Netz hat, kann ohne

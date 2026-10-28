@@ -38,7 +38,8 @@ pub enum Command {
         room: String,
         invited: Vec<String>,
         video: bool,
-        reply: Reply<()>,
+        /// The room's call, and whether this made it.
+        reply: Reply<(CallId, bool)>,
     },
     Join {
         call: CallId,

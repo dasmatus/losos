@@ -183,14 +183,11 @@ let
 
   # The box's edge token, as nix/tests/edge-vm.nix provisions it.
   proxyTokenValue = "test-proxy-token-0123456789abcdef";
-  bootstrapTokenValue = "test-bootstrap-0123456789abcdef0123";
   proxyToken = "/var/secrets/losos-proxy-token";
-  bootstrapToken = "/var/secrets/losos-rathole-bootstrap";
   secretFiles = {
     systemd.tmpfiles.rules = [
       "d /var/secrets 0700 root root - -"
       "f ${proxyToken} 0600 root root - ${proxyTokenValue}"
-      "f ${bootstrapToken} 0600 root root - ${bootstrapTokenValue}"
     ];
   };
   # The edge's identity, so it is an official edge and makes guest links:
@@ -374,12 +371,11 @@ pkgs.testers.nixosTest {
           calls.udpPort = mediaPort;
           proxy = lib.mkIf throughEdge {
             enable = true;
-            edgeRatholeEndpoint = "edge:2333";
+            edgeTunnelEndpoint = "edge:2333";
             registrarUrl = "http://edge:8443";
             hostname = "mattbox.losos.cfd";
             applianceId = "mattbox";
             tokenFile = proxyToken;
-            bootstrapTokenFile = bootstrapToken;
             heartbeatInterval = "3s";
             registrar.package = lososPkgs.losos-registrar;
           };
@@ -493,10 +489,9 @@ pkgs.testers.nixosTest {
           acmeEmail = "test@losos.cfd";
           registrarApiBind = "::";
           registrarApiPort = 8443;
-          ratholeBindPort = 2333;
-          ratholePortRange = "50000-50010";
+          tunnelBindPort = 2333;
+          tunnelPortRange = "50000-50010";
           reconcileInterval = "2s";
-          bootstrapTokenFile = bootstrapToken;
           tenants.mattbox = {
             hostname = "mattbox.losos.cfd";
             tokenFile = proxyToken;
@@ -561,7 +556,7 @@ pkgs.testers.nixosTest {
     if EDGE is not None:
         EDGE.wait_for_unit("losos-registrar.service")
         # lososd starts the tunnel once its scan finds the edge.
-        box.wait_until_succeeds("systemctl is-active losos-rathole-client.service", timeout=300)
+        box.wait_until_succeeds("systemctl is-active losos-tunnel-client.service", timeout=300)
     box.wait_for_unit("lososd.service")
     box.wait_for_unit("nginx.service")
     box.wait_for_unit("dendrite.service")
@@ -1278,10 +1273,20 @@ pkgs.testers.nixosTest {
                           token=tokens["matus"],
                           data={"name": "Holiday", "preset": "private_chat",
                                 "invite": [f"@eva:{HOST}", f"@jan:{HOST}"],
+                                # As chat makes a private room: every member
+                                # may send a MatrixRTC membership.
+                                "power_level_content_override": {
+                                    "events": {"org.matrix.msc3401.call.member": 0}},
                                 # Calls are only for encrypted rooms: their
-                                # keys go to devices the crypto tracks.
+                                # keys go to devices the crypto tracks. The
+                                # slot is the room's one call (MSC4143).
                                 "initial_state": [{"type": "m.room.encryption", "state_key": "",
-                                                   "content": {"algorithm": "m.megolm.v1.aes-sha2"}}]})
+                                                   "content": {"algorithm": "m.megolm.v1.aes-sha2"}},
+                                                  {"type": "org.matrix.msc4143.rtc.slot",
+                                                   "state_key": "org.losos.call#room",
+                                                   "content": {"status": "open",
+                                                               "application": {"type": "org.losos.call"},
+                                                               "encryption": {"type": "org.matrix.msc4143.per_member"}}}]})
         assert code == 200, (code, body)
         room = urllib.parse.quote(json.loads(body)["room_id"])
         for n in ("eva", "jan"):
@@ -1312,6 +1317,22 @@ pkgs.testers.nixosTest {
             page.locator("[data-ringing]").get_by_role("button", name="Answer", exact=True).click()
         for page in (owner, her, jan):
             live(page, 2)
+        # What the room holds is MatrixRTC: the open slot, and one
+        # membership per device, each publishing the SFU and the one call.
+        code, body = call(f"/_matrix/client/v3/rooms/{room}/state", cookies["matus"], token=tokens["matus"])
+        assert code == 200, (code, body)
+        state = json.loads(body)
+        slot = [e for e in state if e["type"] == "org.matrix.msc4143.rtc.slot"]
+        assert [e["state_key"] for e in slot] == ["org.losos.call#room"], slot
+        assert slot[0]["content"]["status"] == "open", slot
+        members = [e for e in state if e["type"] == "org.matrix.msc3401.call.member" and e["content"]]
+        assert sorted(e["sender"] for e in members) == sorted(f"@{n}:{HOST}" for n in ("matus", "eva", "jan")), members
+        for e in members:
+            c = e["content"]
+            assert c["application"] == "org.losos.call" and c["call_id"] == "room", c
+            assert e["state_key"].startswith(f"_{e['sender']}_{c['device_id']}_"), e
+            assert c["foci_preferred"][0]["type"] == "org.losos.sfu", c
+        assert len({e["content"]["foci_preferred"][0]["call"] for e in members}) == 1, members
         shot(owner, "call-three")
         film(owner, "call-of-three", "a call of three in a room")
         jan.get_by_role("button", name="Leave the call").click()
@@ -1332,6 +1353,22 @@ pkgs.testers.nixosTest {
         notice.scroll_into_view_if_needed()
         shot(jan, "timeline-join", top=False)
         notice.get_by_role("button", name="Join", exact=True).click()
+        for page in (owner, her, jan):
+            live(page, 2, frames=0)
+        # The link in the notice other Matrix apps show brings Eva back.
+        her.get_by_role("button", name="Leave the call").click()
+        her.locator("[data-call-view]").wait_for(state="detached")
+        # Her leave reaches the room before the page goes away.
+        def eva_in_call():
+            state = json.loads(call(f"/_matrix/client/v3/rooms/{room}/state", cookies["matus"], token=tokens["matus"])[1])
+            return any(e["type"] == "org.matrix.msc3401.call.member" and e["content"]
+                       and e["sender"] == f"@eva:{HOST}" for e in state)
+        for _ in range(60):
+            if not eva_in_call():
+                break
+            time.sleep(1)
+        assert not eva_in_call(), "Eva's membership stayed after she left"
+        her.goto(f"https://{HOST}/chat/?join={room}&call=video")
         for page in (owner, her, jan):
             live(page, 2, frames=0)
 

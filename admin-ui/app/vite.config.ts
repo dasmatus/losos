@@ -132,6 +132,52 @@ function appFrame(): Plugin {
   };
 }
 
+/* The pages for a browser with JavaScript off (/basic/, the `basic` plugin
+ * in backend/plugins/basic/) are drawn by lososd in Rust, in this bundle's
+ * stylesheet, and say what the script pages say. So the catalogue in
+ * src/i18n/ is written out once per language as plain JSON,
+ * basic/messages.<locale>.json, a key to its text or its plural forms, and
+ * the plugin reads the copy in this package. nginx sends /basic/ to lososd,
+ * so the files are never served. */
+const BASIC_MESSAGES_ENTRY = "src/i18n/index.ts";
+
+function basicMessages(): Plugin {
+  let config: ResolvedConfig;
+  return {
+    name: "losos:basic-messages",
+    configResolved(resolved) {
+      config = resolved;
+    },
+    async buildStart() {
+      if (config.command !== "build") return;
+      const result = await esbuild({
+        absWorkingDir: config.root,
+        entryPoints: [BASIC_MESSAGES_ENTRY],
+        bundle: true,
+        format: "esm",
+        platform: "neutral",
+        target: "es2022",
+        write: false,
+        legalComments: "none",
+      });
+      const code = result.outputFiles[0]?.text ?? "";
+      const url = `data:text/javascript;base64,${Buffer.from(code).toString("base64")}`;
+      const { MESSAGES } = (await import(url)) as {
+        MESSAGES: Record<string, Record<"en" | "sk" | "de", unknown>>;
+      };
+      for (const locale of ["en", "sk", "de"] as const) {
+        const out: Record<string, unknown> = {};
+        for (const [key, entry] of Object.entries(MESSAGES)) out[key] = entry[locale];
+        this.emitFile({
+          type: "asset",
+          fileName: `basic/messages.${locale}.json`,
+          source: JSON.stringify(out),
+        });
+      }
+    },
+  };
+}
+
 /* LosOS Lab's splash can carry a two-panel meme: LOSOS_LAB_MEME names a
  * folder with no.jpg and yes.jpg, which are copied beside dist/diagrams/index.html
  * as meme-no.jpg and meme-yes.jpg, and __LAB_MEME__ tells the page they are
@@ -233,7 +279,7 @@ function labMeme(): Plugin {
 const root = fileURLToPath(new URL(".", import.meta.url));
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), themeBoot(), appFrame(), labMeme(), segmenterFiles(), nudityFiles(), segmenterQuiet()],
+  plugins: [react(), tailwindcss(), themeBoot(), appFrame(), basicMessages(), labMeme(), segmenterFiles(), nudityFiles(), segmenterQuiet()],
   // Served from the vhost root by nginx.
   base: "/",
   resolve: {
@@ -247,14 +293,15 @@ export default defineConfig({
     sourcemap: false,
     // The appliance has no external hosts and no CDN: one origin, one bundle.
     modulePreload: { polyfill: false },
-    // Six pages: the admin SPA at / (LosOS Diagrams is its screen at
+    // Seven pages: the admin SPA at / (LosOS Diagrams is its screen at
     // /diagrams), LosOS Chat at /chat/ (the admin SPA's own document under
     // chat's CSP, which adds blob: media for decrypted voice messages and
     // videos; modules/chat.nix), a company edge's manage page, which the
     // edge serves at /manage/ from this same dist/
     // (edge/registrar/src/server/manage.rs), LosOS Cloud at /cloud/ and the
     // knowledge bases published from it at /kb/ (modules/cloud.nix), and
-    // LosOS Git at /git/ (modules/containers.nix). They share chunks. The
+    // LosOS Git at /git/ with its spaces published as sites at /wiki/
+    // (modules/containers.nix). They share chunks. The
     // hosted copy of Diagrams (VITE_LAB_HOSTED=1,
     // admin-ui/lab/engine/build.sh) adds diagrams/index.html, the same
     // screen on a page of its own; a box never gets that page, so nothing
@@ -268,6 +315,7 @@ export default defineConfig({
         cloud: join(root, "cloud/index.html"),
         kb: join(root, "kb/index.html"),
         git: join(root, "git/index.html"),
+        wiki: join(root, "wiki/index.html"),
       },
     },
   },

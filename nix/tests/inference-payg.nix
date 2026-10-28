@@ -2,7 +2,7 @@
 # lending boxes, with a local chain on the edge standing in for Base Sepolia.
 #
 #   * `edge`: the registrar with a USDC-only market (`cards.enable = false`)
-#              and one model (stories260K), rathole and the head units of
+#              and one model (stories260K), the tunnel and the head units of
 #              modules/edge-inference.nix, and anvil on loopback with chain id
 #              84532: Circle's Base Sepolia USDC address holds MockUSDC's code
 #              (`anvil_setCode`) and LososEscrow is deployed with a treasury
@@ -11,7 +11,7 @@
 #              pragma pins. Base Sepolia is a test network; this file is the
 #              only place the chain id is used this way.
 #   * `box1`, `box2`: losos.inference.lend (1536 and 1024 MiB) and the
-#              master proxy: their rathole tunnels carry the `<id>:llm` service
+#              master proxy: their tunnels carry the `<id>:llm` service
 #              and announce reports what they lend.
 #   * `mattbox`: an owner's box: lososd with its market relay pointed at the
 #              edge as a fourth tenant, and the front vhost serving the admin
@@ -91,10 +91,8 @@ let
   # Circle's USDC on Base Sepolia (edge/registrar/src/stablecoin.rs).
   usdc = "0x036cbd53842c5426634e7929541ec2318f3dcf7e";
 
-  bootstrapToken = "/var/secrets/losos-rathole-bootstrap";
   agentToken = "/var/secrets/losos-mesh-agent-token";
   proxyToken = "/var/secrets/losos-proxy-token";
-  bootstrapTokenValue = "test-bootstrap-0123456789abcdef0123";
   tokens = {
     box1 = "test-box1-token-0123456789abcdef0123456789";
     box2 = "test-box2-token-0123456789abcdef0123456789";
@@ -212,18 +210,16 @@ let
       systemd.tmpfiles.rules = [
         "d /var/secrets 0700 root root - -"
         "f ${proxyToken} 0600 root root - ${tokens.${name}}"
-        "f ${bootstrapToken} 0600 root root - ${bootstrapTokenValue}"
       ];
       losos = {
         hostName = name;
         proxy = {
           enable = true;
-          edgeRatholeEndpoint = "edge:2333";
+          edgeTunnelEndpoint = "edge:2333";
           registrarUrl = "http://edge:8443";
           hostname = "${name}.losos.cfd";
           applianceId = name;
           tokenFile = proxyToken;
-          bootstrapTokenFile = bootstrapToken;
           heartbeatInterval = "3s";
           registrar.package = lososPkgs.losos-registrar;
         };
@@ -261,9 +257,8 @@ pkgs.testers.nixosTest {
           enable = true;
           acmeEmail = "test@losos.cfd";
           registrarApiBind = "::";
-          ratholePortRange = "50000-50010";
+          tunnelPortRange = "50000-50010";
           reconcileInterval = "2s";
-          bootstrapTokenFile = bootstrapToken;
           tenants = lib.genAttrs (builtins.attrNames tokens) (id: {
             hostname = "${id}.losos.cfd";
             tokenFile = tokenFile id;
@@ -314,7 +309,6 @@ pkgs.testers.nixosTest {
 
         systemd.tmpfiles.rules = [
           "d /var/secrets 0700 root root - -"
-          "f ${bootstrapToken} 0600 root root - ${bootstrapTokenValue}"
           "f ${agentToken} 0600 root root - test-agent-token"
           "C ${identityKey} 0600 root root - ${identityFixture}/edge.key"
         ]
@@ -419,7 +413,6 @@ pkgs.testers.nixosTest {
         systemd.tmpfiles.rules = [
           "d /var/secrets 0700 root root - -"
           "f ${proxyToken} 0600 root root - ${tokens.mattbox}"
-          "f ${bootstrapToken} 0600 root root - ${bootstrapTokenValue}"
         ];
         security.pki.certificateFiles = [ "${edgeTls}/ca.pem" ];
         losos = {
@@ -433,12 +426,11 @@ pkgs.testers.nixosTest {
           };
           proxy = {
             enable = true;
-            edgeRatholeEndpoint = "edge:2333";
+            edgeTunnelEndpoint = "edge:2333";
             registrarUrl = edgeUrl;
             hostname = "mattbox.losos.cfd";
             applianceId = "mattbox";
             tokenFile = proxyToken;
-            bootstrapTokenFile = bootstrapToken;
             officialRootKeyFile = "${identityFixture}/root.pub";
             registrar.package = lososPkgs.losos-registrar;
           };
@@ -687,7 +679,7 @@ pkgs.testers.nixosTest {
     box2.start()
     for b in [box1, box2]:
         b.wait_for_unit("losos-llm-rpc.service")
-        b.wait_for_unit("losos-rathole-client.service")
+        b.wait_for_unit("losos-tunnel-client.service")
         b.wait_for_unit("losos-registrar-announce.service")
 
     payout = {name: address(key) for name, key in SELLER_KEYS.items()}
@@ -699,11 +691,10 @@ pkgs.testers.nixosTest {
             sig = cast(f"wallet sign --private-key {SELLER_KEYS[name]} {shlex.quote(message)}", rpc=False)
             ok("/market/payout", name, {"address": payout[name], "signature": sig})
         edge.wait_until_succeeds(
-            "grep -F -q '[server.services.\"box1:llm\"]' /etc/rathole/server.toml"
-            " && grep -F -q '[server.services.\"box2:llm\"]' /etc/rathole/server.toml",
+            "jq -e '.services[\"box1:llm\"] and .services[\"box2:llm\"]' /etc/losos-tunnel/server.json",
             timeout=600,
         )
-        print(edge.succeed("grep -A2 -F -- ':llm' /etc/rathole/server.toml"))
+        print(edge.succeed("jq '.services | with_entries(select(.key | endswith(\":llm\"))) | map_values(.bind)' /etc/losos-tunnel/server.json"))
         retry(lambda _: overview()["models"][0]["lentMib"] == 2560, timeout=timedelta(seconds=300))
         model = overview()["models"][0]
         print("model:", model)

@@ -25,7 +25,7 @@ async fn a_whitelisted_appliance_with_its_token_registers() {
         .await;
     assert_eq!(status, 200, "body: {body}");
     let parsed: serde_json::Value = serde_json::from_str(&body).expect("register returns JSON");
-    let port = parsed["rathole_port"].as_u64().expect("rathole_port");
+    let port = parsed["tunnel_port"].as_u64().expect("tunnel_port");
     assert!(
         (50000..=50100).contains(&port),
         "port {port} outside the configured range"
@@ -44,7 +44,7 @@ async fn a_whitelisted_appliance_with_its_token_registers() {
 /// `expected.trim()` was `""` and a request supplying `"token": ""` compared
 /// equal — an unauthenticated caller on the public internet could register as
 /// any tenant whose secret had not landed, taking over its Traefik router,
-/// its Let's Encrypt cert and its rathole service.
+/// its Let's Encrypt cert and its tunnel service.
 #[tokio::test]
 async fn an_empty_token_file_authenticates_nobody() {
     let edge = Edge::start(
@@ -230,31 +230,32 @@ async fn health_needs_no_token() {
     edge.shutdown().await;
 }
 
-/// The Noise public key is served unauthenticated (it is public, and an
-/// appliance pins it before it holds any credential); without a key on disk the
-/// route is a 404, not an empty 200 the appliance would write out as its pin.
+/// The tunnel's pin is served unauthenticated (it names a public
+/// certificate, and an appliance pins it before it holds any credential);
+/// without the file the route is a 404, not an empty 200 the appliance would
+/// write out as its pin.
 #[tokio::test]
-async fn noise_public_key_is_served_when_present_and_404_otherwise() {
-    let none = Edge::start("noise-none", &[]).await;
+async fn the_tunnel_pin_is_served_when_present_and_404_otherwise() {
+    let none = Edge::start("pin-none", &[]).await;
     let response = none
         .client
-        .get(format!("{}/noise-public-key", none.base))
+        .get(format!("{}/tunnel-pin", none.base))
         .send()
         .await
         .expect("responds");
     assert_eq!(response.status().as_u16(), 404);
     none.shutdown().await;
 
-    let key = "vxjh79ZmYZKYad666A4woy4+bakp2f0ey45JQEbYDUk=";
-    let some = Edge::start_with_noise_public_key("noise-some", &[], key).await;
+    let pin = "5e".repeat(32);
+    let some = Edge::start_with_tunnel_pin("pin-some", &[], &pin).await;
     let response = some
         .client
-        .get(format!("{}/noise-public-key", some.base))
+        .get(format!("{}/tunnel-pin", some.base))
         .send()
         .await
         .expect("responds");
     assert_eq!(response.status().as_u16(), 200);
-    assert_eq!(response.text().await.unwrap_or_default(), key);
+    assert_eq!(response.text().await.unwrap_or_default(), pin);
     some.shutdown().await;
 }
 
