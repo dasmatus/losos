@@ -175,6 +175,12 @@ in
       // lib.optionalAttrs (config.losos.backend.plugins != null) {
         LOSOS_PLUGIN_DIR = "${config.losos.backend.plugins}";
       }
+      # The built admin page, for the pages without JavaScript
+      # (backend/plugins/basic/): its stylesheet's name and the catalogue
+      # written out for them (basic/messages.<locale>.json).
+      // lib.optionalAttrs (config.losos.admin.ui != null) {
+        LOSOS_ADMIN_UI_DIR = "${config.losos.admin.ui}";
+      }
       // lib.optionalAttrs config.losos.lab.ordering.enable {
         LOSOS_LAB_ORDERING = "1";
       }

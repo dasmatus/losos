@@ -215,6 +215,18 @@
     "GET /api/options": "admin",
     "GET /api/config": "admin",
     "POST /api/config/sync": "admin",
-    "POST /api/lab/virt-ticket": "admin"
+    "POST /api/lab/virt-ticket": "admin",
+    "GET /api/basic/sign-in": "public",
+    "POST /api/basic/sign-in": "public",
+    "POST /api/basic/sign-in/code": "public",
+    "POST /api/basic/sign-in/key": "public",
+    "POST /api/basic/sign-out": "public",
+    "POST /api/basic/prefs": "public",
+    "GET /api/basic/counts.css": "public",
+    "GET /api/basic/": "signed-in",
+    "GET /api/basic/{page}": "signed-in",
+    "POST /api/basic/{page}": "signed-in",
+    "GET /api/basic/settings/{pane}": "signed-in",
+    "POST /api/basic/settings/{pane}": "signed-in"
   }
 }

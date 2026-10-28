@@ -712,3 +712,92 @@ fn a_domain_is_added_and_removed_by_forms_of_its_own() {
     );
     assert!(html(&after).contains("That domain is not yours"));
 }
+
+/// Every string in the page crates' sources, one per line: what the admin
+/// bundle's Tailwind reads (admin-ui/app/src/styles/index.css's `@source`)
+/// so the classes only these pages use are in the stylesheet too. The
+/// bundle is built from admin-ui/app alone, so it cannot read the Rust
+/// files themselves. `UPDATE_BASIC_CLASSES=1 cargo test` writes the file.
+#[test]
+fn the_bundle_knows_every_class_these_pages_use() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    let mut strings = std::collections::BTreeSet::new();
+    for dir in ["page/src", "basic/src"] {
+        let mut files: Vec<_> = std::fs::read_dir(root.join(dir))
+            .unwrap()
+            .flatten()
+            .map(|e| e.path())
+            .collect();
+        files.sort();
+        for file in files {
+            let name = file.file_name().unwrap().to_string_lossy().into_owned();
+            // The icons are paths, and the tests' strings are no page's.
+            if name == "icons.rs" || name == "tests.rs" {
+                continue;
+            }
+            let text = std::fs::read_to_string(&file).unwrap();
+            for literal in string_literals(&text) {
+                for token in literal.split_whitespace() {
+                    if token.contains('-') || token.contains(':') || token.contains('[') {
+                        strings.insert(token.to_string());
+                    }
+                }
+            }
+        }
+    }
+    let want: String = strings.into_iter().map(|s| s + "\n").collect();
+    let path = root.join("../../admin-ui/app/src/styles/basic-classes.txt");
+    if std::env::var_os("UPDATE_BASIC_CLASSES").is_some() {
+        std::fs::write(&path, &want).unwrap();
+    }
+    let have = std::fs::read_to_string(&path).unwrap_or_default();
+    assert!(
+        have == want,
+        "{} is out of date: run UPDATE_BASIC_CLASSES=1 cargo test -p losos-plugin-basic",
+        path.display()
+    );
+}
+
+/// The contents of every `"…"` and `r#"…"#` in `src`, escapes left as
+/// they are.
+fn string_literals(src: &str) -> Vec<&str> {
+    let b = src.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < b.len() {
+        match b[i] {
+            b'/' if b.get(i + 1) == Some(&b'/') => {
+                while i < b.len() && b[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            b'\'' => {
+                // A char literal ('"', '\'') or a lifetime.
+                if b.get(i + 2) == Some(&b'\'') {
+                    i += 3;
+                } else if b.get(i + 1) == Some(&b'\\') && b.get(i + 3) == Some(&b'\'') {
+                    i += 4;
+                } else {
+                    i += 1;
+                }
+            }
+            b'r' if b.get(i + 1) == Some(&b'#') && b.get(i + 2) == Some(&b'"') => {
+                let start = i + 3;
+                let end = src[start..].find("\"#").map_or(b.len(), |e| start + e);
+                out.push(&src[start..end]);
+                i = end + 2;
+            }
+            b'"' => {
+                let start = i + 1;
+                let mut j = start;
+                while j < b.len() && b[j] != b'"' {
+                    j += if b[j] == b'\\' { 2 } else { 1 };
+                }
+                out.push(&src[start..j.min(b.len())]);
+                i = j + 1;
+            }
+            _ => i += 1,
+        }
+    }
+    out
+}
