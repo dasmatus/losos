@@ -239,6 +239,89 @@ in
       '';
     };
 
+    # ── Local copy of the binary cache ──────────────────────────────────────
+    # modules/cache.nix. A caching proxy on the box that every Nix download
+    # goes through, keeping what it fetched under /var/cache (on /persist).
+    cache.local.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Keep a copy of every store path the box downloads, so it never fetches
+        the same one twice. Nix on the box substitutes from a local proxy
+        (`http://127.0.0.1:8790` by default) that
+        asks `losos.cache.local.peers` and then `losos.cache.local.upstreams`
+        and keeps each answer in `/var/cache/losos-nix-cache`, which lives on
+        `/persist`. Nix still checks every signature against
+        `nix.settings.trusted-public-keys`; the proxy changes where a path comes
+        from, never what is accepted.
+
+        It pays off on the nightly rebuild: the clean-up at 04:30 deletes the
+        build tools the last rebuild fetched, and the next one fetches them
+        again. On by default on the box; off on the installer medium.
+      '';
+    };
+
+    cache.local.port = lib.mkOption {
+      type = lib.types.port;
+      default = 8790;
+      description = "Port of the local cache proxy, on loopback (and on the LAN with `losos.cache.local.shareOnLan`).";
+    };
+
+    cache.local.maxSize = lib.mkOption {
+      type = lib.types.strMatching "[1-9][0-9]*[kmg]";
+      default = "8g";
+      example = "20g";
+      description = ''
+        Most disk space the local copy may take, as nginx sizes (`512m`,
+        `8g`). Past it the least recently used paths are deleted first.
+      '';
+    };
+
+    cache.local.minFree = lib.mkOption {
+      type = lib.types.strMatching "[1-9][0-9]*[kmg]";
+      default = "4g";
+      description = ''
+        Free space the local copy always leaves on `/persist`. When the disk
+        has less, the least recently used paths are deleted until it has this
+        much again, whatever `maxSize` says. Your files come first.
+      '';
+    };
+
+    cache.local.upstreams = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ "https://cache.nixos.org" ] ++ config.losos.cache.substituters;
+      defaultText = lib.literalExpression ''[ "https://cache.nixos.org" ] ++ config.losos.cache.substituters'';
+      description = ''
+        Binary caches the local proxy asks, in this order, for a path it does
+        not have. The first that has it wins. Every one is `http://` or
+        `https://`, with an optional path.
+      '';
+    };
+
+    cache.local.shareOnLan = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Answer other machines on the local network too, so several boxes in
+        one home download each update once. Only private (RFC 1918) addresses
+        are let in. What the copy holds is public software, signed by the
+        caches it came from; a box that uses it still checks every signature.
+      '';
+    };
+
+    cache.local.peers = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "http://other-box.local:8790" ];
+      description = ''
+        Local copies on other boxes (`shareOnLan` on there) to ask before
+        `upstreams`. A path one of them has is fetched over the LAN. A peer
+        that does not have a path fetches it from its own upstreams and keeps
+        it, so the next box finds it there; it never asks its own peers on
+        your behalf, which keeps two boxes that name each other out of a loop.
+      '';
+    };
+
     # ── Storage headroom ────────────────────────────────────────────────────
     storage.fillPercent = lib.mkOption {
       type = lib.types.ints.between 50 100;

@@ -78,6 +78,11 @@ let
             title = "Settings, Network";
             waitFor = "[data-testid=network-hidden]";
             steps = [
+              # The two switches show what overrides.nix says.
+              {
+                kind = "wait";
+                target = "[data-testid=network-hidden] input[role=switch]:checked >> nth=1";
+              }
               {
                 kind = "scroll";
                 target = "[data-testid=network-hidden]";
@@ -362,7 +367,10 @@ pkgs.testers.runNixOSTest (
             script = ''
               mkdir -p /etc/nixos/modules
               cd /etc/nixos
-              printf '{ ... }:\n{\n}\n' > modules/overrides.nix
+              # Both networks on, as the Network pane writes them; the
+              # configuration above sets the same, since the test does not
+              # rebuild.
+              printf '{ ... }:\n{\n  losos.hidden.tor.enable = true;\n  losos.hidden.i2p.enable = true;\n}\n' > modules/overrides.nix
               git init -q -b main
               git add -A
               git -c user.name=LosOS -c user.email=losos@mattbox.local commit -qm "The box as installed"
@@ -558,7 +566,8 @@ pkgs.testers.runNixOSTest (
               "jq -e '.mattbox.tor and .mattbox.i2p' /var/lib/losos-hidden/addresses.json", timeout=300
           )
           made = json.loads(edge.succeed("cat /var/lib/losos-hidden/addresses.json"))["mattbox"]
-          routes = edge.succeed("cat /etc/traefik/dynamic/hidden.yml")
+          # Traefik reads them from the registrar's provider document.
+          routes = edge.succeed("curl -fsS http://127.0.0.1:8090/traefik")
           assert made["tor"] in routes and made["i2p"] in routes, routes
           # The box hears them on its heartbeat and keeps them.
           box.wait_until_succeeds(

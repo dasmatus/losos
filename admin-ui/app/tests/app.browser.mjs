@@ -869,33 +869,93 @@ await check('the panel narrows to icons with its trigger or Ctrl+B, and remember
   await page.close();
 });
 
-await check('on a phone the panel is a sheet from the left, opened from a row naming where you are', async () => {
-  const { page, errors } = await open({ path: '/settings/about', stored: true, viewport: { width: 375, height: 800 } });
-  // Closed: one row naming the page, and no panel in the page at all.
-  await page.getByRole('button', { name: 'About', exact: true }).waitFor();
+const bottomBar = (page) => page.getByRole('navigation', { name: 'Main places', exact: true });
+const more = (page) => bottomBar(page).getByRole('button', { name: 'More', exact: true });
+
+await check('on a phone the sections are a bar along the bottom, and More raises the rest as a sheet from below', async () => {
+  const { page, errors } = await open({ path: '/storage', stored: true, viewport: { width: 375, height: 800 } });
+  const bar = bottomBar(page);
+  await bar.waitFor();
+  // Four places and More, in reach of a thumb: the bar sits on the bottom
+  // edge and every tab is at least 48 px tall.
+  assert.deepEqual((await bar.getByRole('listitem').allInnerTexts()).map((l) => l.trim()), ['Overview', 'Apps', 'Storage', 'Mesh', 'More']);
+  const box = await bar.boundingBox();
+  assert.ok(Math.abs(box.y + box.height - 800) <= 1 && box.width === 375, `the bar is not on the bottom edge: ${JSON.stringify(box)}`);
+  for (const tab of await bar.locator('a, button').all()) assert.ok((await tab.boundingBox()).height >= 48, 'a tab is too small to press');
+  // The page marks itself, and the closed panel is nowhere in the page.
+  assert.equal(await bar.locator('a[aria-current="page"]').innerText(), 'Storage');
   assert.equal(await nav(page).count(), 0, 'the closed phone panel is in the page');
-  await page.getByRole('button', { name: 'Expand the sidebar' }).click();
+  assert.equal(await page.getByRole('button', { name: 'Expand the sidebar' }).count(), 0, 'the old row above the page is still there');
+  // A tab goes where it says, and the mark follows.
+  await bar.getByRole('link', { name: 'Mesh', exact: true }).click();
+  await page.waitForURL(origin + '/mesh');
+  await bar.locator('a[aria-current="page"]').filter({ hasText: 'Mesh' }).waitFor();
+  // The end of the page clears the bar.
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  const shell = await page.locator('.losos-shell').evaluate((el) => parseFloat(getComputedStyle(el).paddingBottom));
+  assert.ok(shell >= box.height - 1, `the page's foot is ${shell}px, the bar ${box.height}px`);
+
+  // More: the whole tree in a sheet that rises from the bottom edge.
+  assert.equal(await more(page).getAttribute('aria-expanded'), 'false');
+  await more(page).click();
   const sheet = page.getByRole('dialog', { name: 'Sections' });
   await sheet.waitFor();
-  await page.waitForTimeout(350);
-  const box = await sheet.boundingBox();
-  assert.ok(box.x <= 1 && box.width < 375, `the sheet is not at the left edge: ${JSON.stringify(box)}`);
-  // Base UI locks the page's scroll behind it through CSSOM, which the CSP
-  // allows (a Radix sheet's injected <style> lock would be refused).
+  await page.waitForTimeout(400);
+  const up = await sheet.boundingBox();
+  assert.ok(Math.abs(up.y + up.height - 800) <= 1 && up.x <= 1 && up.width >= 374, `the sheet did not rise from the bottom: ${JSON.stringify(up)}`);
   assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).overflow === 'hidden' || getComputedStyle(document.body).overflow === 'hidden'), true, 'the page behind the sheet still scrolls');
-  // The whole tree is in it, the current page marked.
-  await nav(page).locator('a[aria-current="page"]').filter({ hasText: 'About' }).waitFor();
-  await nav(page).getByRole('link', { name: 'Storage', exact: true }).click();
-  await page.waitForURL(origin + '/storage');
-  // Choosing a destination closes the sheet; the row names the new page.
+  await nav(page).locator('a[aria-current="page"]').filter({ hasText: 'Mesh' }).waitFor();
+  // A page the bar does not name lights More instead.
+  await nav(page).getByRole('button', { name: 'Settings', exact: true }).click();
+  await nav(page).getByRole('link', { name: 'About', exact: true }).click();
+  await page.waitForURL(origin + '/settings/about');
   await sheet.waitFor({ state: 'detached' });
-  await page.getByRole('button', { name: 'Storage', exact: true }).waitFor();
-  // Escape closes it too.
-  await page.getByRole('button', { name: 'Expand the sidebar' }).click();
+  assert.equal(await bar.locator('a[aria-current="page"]').count(), 0);
+  assert.equal(await more(page).getAttribute('data-active'), '');
+  // Escape closes it, and so does the button on its title row.
+  await more(page).click();
   await sheet.waitFor();
   await page.keyboard.press('Escape');
   await sheet.waitFor({ state: 'detached' });
+  await more(page).click();
+  await sheet.getByRole('button', { name: 'Dismiss' }).click();
+  await sheet.waitFor({ state: 'detached' });
   assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('a flick down closes the phone sheet', async () => {
+  const { page, errors } = await open({ path: '/', stored: true, viewport: { width: 375, height: 800 } });
+  await more(page).click();
+  const sheet = page.getByRole('dialog', { name: 'Sections' });
+  await sheet.waitFor();
+  await page.waitForTimeout(400);
+  const up = await sheet.boundingBox();
+  // Take hold of the title row and flick it down.
+  const x = up.x + 60;
+  const y = up.y + 30;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  for (let step = 1; step <= 8; step++) await page.mouse.move(x, y + step * 40, { steps: 1 });
+  await page.mouse.up();
+  await sheet.waitFor({ state: 'detached', timeout: 3000 });
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('a box with chat and mail puts them in the bar', async () => {
+  const { page, errors } = await open({ path: '/', viewport: { width: 375, height: 800 }, person: { name: 'matus', displayName: 'Matus', groups: ['losos-admins'], admin: true, spareKey: false, sections: [], shared: ['chat', 'mail'] } });
+  await bottomBar(page).waitFor();
+  assert.deepEqual((await bottomBar(page).getByRole('listitem').allInnerTexts()).map((l) => l.trim()), ['Overview', 'Chat', 'Mail', 'Apps', 'More']);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('a wide screen has no bottom bar', async () => {
+  const { page } = await open({ path: '/storage', stored: true });
+  await nav(page).waitFor();
+  assert.equal(await bottomBar(page).count(), 0);
+  assert.equal(await page.locator('.losos-shell').evaluate((el) => getComputedStyle(el).paddingBottom), '0px');
   await page.close();
 });
 
@@ -932,7 +992,7 @@ for (const { name, now, file, tip } of [
  * an injected <style> element or a style attribute, which it refuses. Under
  * the real policy, using all of them must add no violation to the ones
  * already logged at load (Sonner's refused copy of its stylesheet). */
-await check('under the appliance CSP the rail tooltip, the folds and the phone sheet add no violation', async () => {
+await check('under the appliance CSP the rail tooltip, the folds, the bottom bar and the phone sheet add no violation', async () => {
   const { origin: strict, close } = await serve({ csp: true });
   try {
     for (const viewport of [{ width: 1280, height: 900 }, { width: 375, height: 800 }]) {
@@ -960,11 +1020,11 @@ await check('under the appliance CSP the rail tooltip, the folds and the phone s
         const box = await tip.boundingBox();
         assert.ok(box.x > 40 && box.y > 60, `the tooltip was not positioned: ${JSON.stringify(box)}`);
       } else {
-        await page.getByRole('button', { name: 'Expand the sidebar' }).click();
+        await page.getByRole('navigation', { name: 'Main places' }).getByRole('button', { name: 'More' }).click();
         await page.getByRole('dialog', { name: 'Sections' }).waitFor();
-        await page.waitForTimeout(350);
+        await page.waitForTimeout(400);
         const box = await page.getByRole('dialog', { name: 'Sections' }).boundingBox();
-        assert.ok(box.x <= 1, `the sheet did not slide in: ${JSON.stringify(box)}`);
+        assert.ok(Math.abs(box.y + box.height - viewport.height) <= 1, `the sheet did not rise: ${JSON.stringify(box)}`);
       }
       const after = await page.evaluate(() => window.__violations);
       assert.equal(after.length, atLoad, `the sidebar added CSP violations: ${after.slice(atLoad).join(', ')}`);
@@ -2555,7 +2615,7 @@ await check('the banner fits a phone in both themes', async () => {
 
 await check('a phone-width viewport does not scroll the page sideways', async () => {
   const { page } = await open({ stored: true, viewport: { width: 375, height: 800 } });
-  await page.getByRole('button', { name: 'Expand the sidebar' }).waitFor();
+  await bottomBar(page).waitFor();
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
