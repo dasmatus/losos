@@ -25,7 +25,7 @@ Keď sa zariadenie prestavia, Tor vytvorí adresu za pár sekúnd a I2P asi za
 minútu. Dovtedy je v riadku **Vytvára sa…**. Potom sa adresy objavia na tej
 istej stránke, každá s tlačidlom, ktoré ju skopíruje.
 
-![Nastavenia, Sieť: Tor a I2P s oboma zapnutými prepínačmi, vlastné adresy zariadenia .onion a .b32.i2p a dve adresy od jeho edge, každá s tlačidlom na kopírovanie.](@site/docs/img/tor-and-i2p-sk.png)
+![Nastavenia, Sieť: Tor a I2P, vlastné adresy zariadenia .onion a .b32.i2p a dve adresy od jeho edge, každá s tlačidlom na kopírovanie.](@site/docs/img/tor-and-i2p-sk.png)
 
 Zariadenie si adresy necháva. Keď sieť vypnete a znova zapnete, vráti sa tá
 istá adresa, a aktualizácie ani reštarty ich nemenia.
