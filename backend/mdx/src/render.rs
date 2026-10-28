@@ -20,7 +20,7 @@ const MAX_DEPTH: usize = crate::MAX_NESTING + 28;
 pub trait Hook {
     /// Writes `node`, a reserved element named `name`, and says whether it
     /// did. One it does not know is drawn as its children.
-    fn element(&self, w: &mut Writer<'_>, name: &str, node: &Node) -> bool;
+    fn element<'a>(&self, w: &mut Writer<'a>, name: &str, node: &'a Node) -> bool;
 }
 
 pub(crate) struct Output {
