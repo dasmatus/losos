@@ -5,7 +5,7 @@
 //! on startup it loads the file, restores each tenant's port assignment, and
 //! sets `last_seen = now` (grace) so a rebooting edge doesn't immediately
 //! prune every appliance mid-reconnect. The reconciler then regenerates
-//! Traefik + rathole config *before* the API opens — mirrors lososd's
+//! Traefik + tunnel config *before* the API opens — mirrors lososd's
 //! rebuild re-attach.
 //!
 //! The [`tokio::sync::Mutex`] (not `std`) is deliberate: **the guard is held
@@ -20,7 +20,7 @@
 //! `registry.json` is operator-adjacent state that survives reboots, so
 //! [`Registry::load`] treats it as untrusted: ports outside the configured
 //! range, duplicate port claims and empty ids/hostnames are dropped with a
-//! warning rather than becoming live rathole binds. Hostnames are *not*
+//! warning rather than becoming live tunnel binds. Hostnames are *not*
 //! authoritative here at all — the reconciler overrides them from the
 //! operator whitelist (`tenants.json`), which is the security boundary.
 //!
@@ -54,7 +54,7 @@ use crate::window::{valid_hhmm, ComputeWindow};
 #[derive(Debug, Clone)]
 pub struct Tenant {
     pub hostname: String,
-    pub rathole_port: u16,
+    pub tunnel_port: u16,
     pub last_seen: Instant,
     /// The last thing this appliance said about whether it was busy, and when
     /// it said it.
@@ -119,7 +119,8 @@ pub struct Snapshot {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SnapshotTenant {
     pub hostname: String,
-    pub rathole_port: u16,
+    #[serde(alias = "rathole_port")]
+    pub tunnel_port: u16,
     /// Seconds between the last register/heartbeat and the export.
     pub seen_ago_secs: u64,
     /// The last idle report, as `(idle, seconds between the report and the
@@ -136,7 +137,8 @@ pub struct SnapshotTenant {
 pub struct Relayed {
     pub id: String,
     pub hostname: String,
-    pub rathole_port: u16,
+    #[serde(alias = "rathole_port")]
+    pub tunnel_port: u16,
 }
 
 /// A relayed tenant as the reconciler sees it: who relayed it, and the
@@ -147,7 +149,7 @@ pub struct RelayedView {
     pub key: String,
     pub via: String,
     pub hostname: String,
-    pub rathole_port: u16,
+    pub tunnel_port: u16,
 }
 
 /// Everything the registry mutates, under one lock. Two `Mutex`es would need a
@@ -203,7 +205,7 @@ impl Registry {
         let (lo, hi) = self.port_range;
         let now = Instant::now();
         let mut st = self.inner.lock().await;
-        let mut claimed: HashSet<u16> = st.tenants.values().map(|t| t.rathole_port).collect();
+        let mut claimed: HashSet<u16> = st.tenants.values().map(|t| t.tunnel_port).collect();
         // BTreeMap: deterministic id order, so duplicate resolution is stable.
         for (id, t) in file.tenants.into_iter().collect::<BTreeMap<_, _>>() {
             if id.trim().is_empty() || t.hostname.trim().is_empty() {
@@ -233,7 +235,7 @@ impl Registry {
                 id,
                 Tenant {
                     hostname: t.hostname,
-                    rathole_port: t.port,
+                    tunnel_port: t.port,
                     last_seen: now,
                     idle: None,
                     llm: None,
@@ -265,7 +267,7 @@ impl Registry {
     }
 
     /// Register (or re-register) a tenant. Allocates a port if new; preserves
-    /// the existing port on re-register so Traefik/rathole don't churn.
+    /// the existing port on re-register so Traefik and the tunnel don't churn.
     /// Returns the assigned port, or [`RegistryError::PortRangeExhausted`]
     /// if no port is free.
     ///
@@ -277,7 +279,7 @@ impl Registry {
             Some(t) => {
                 t.hostname = hostname.to_string();
                 t.last_seen = Instant::now();
-                t.rathole_port
+                t.tunnel_port
             }
             None => {
                 let port = alloc_port(&st.tenants, self.port_range)?;
@@ -285,7 +287,7 @@ impl Registry {
                     id.to_string(),
                     Tenant {
                         hostname: hostname.to_string(),
-                        rathole_port: port,
+                        tunnel_port: port,
                         last_seen: Instant::now(),
                         idle: None,
                         llm: None,
@@ -351,7 +353,7 @@ impl Registry {
                         );
                         t.gateway = gateway.map(str::to_string);
                     }
-                    t.rathole_port
+                    t.tunnel_port
                 }
                 Some(_) => continue,
                 None => {
@@ -360,7 +362,7 @@ impl Registry {
                         key,
                         Tenant {
                             hostname: hostname.clone(),
-                            rathole_port: port,
+                            tunnel_port: port,
                             last_seen: now,
                             idle: None,
                             llm: None,
@@ -374,7 +376,7 @@ impl Registry {
             out.push(Relayed {
                 id: id.clone(),
                 hostname: hostname.clone(),
-                rathole_port: port,
+                tunnel_port: port,
             });
         }
         self.persist_locked(&st).await?;
@@ -393,7 +395,7 @@ impl Registry {
                     key: key.clone(),
                     via: via.clone(),
                     hostname: t.hostname.clone(),
-                    rathole_port: t.rathole_port,
+                    tunnel_port: t.tunnel_port,
                 })
             })
             .collect();
@@ -519,7 +521,7 @@ impl Registry {
             .iter()
             .filter_map(|(id, t)| match t.llm {
                 Some((mib, at)) if now.duration_since(at) <= ttl => {
-                    Some((id.clone(), t.rathole_port, mib))
+                    Some((id.clone(), t.tunnel_port, mib))
                 }
                 _ => None,
             })
@@ -597,7 +599,7 @@ impl Registry {
             .map(|(id, t)| TenantView {
                 id: id.clone(),
                 hostname: t.hostname.clone(),
-                rathole_port: t.rathole_port,
+                tunnel_port: t.tunnel_port,
                 // Token is enriched by the reconciler; placeholder here.
                 token: String::new(),
                 llm_port: None,
@@ -634,7 +636,7 @@ impl Registry {
                         id.clone(),
                         SnapshotTenant {
                             hostname: t.hostname.clone(),
-                            rathole_port: t.rathole_port,
+                            tunnel_port: t.tunnel_port,
                             seen_ago_secs: now.duration_since(t.last_seen).as_secs(),
                             idle: t
                                 .idle
@@ -680,11 +682,11 @@ impl Registry {
                 );
                 continue;
             }
-            if t.rathole_port < lo || t.rathole_port > hi {
+            if t.tunnel_port < lo || t.tunnel_port > hi {
                 tracing::warn!(
                     target: Action::LoadRegistry.target(),
                     "dropping tenant {id}: port {} outside range {lo}-{hi}",
-                    t.rathole_port,
+                    t.tunnel_port,
                 );
                 continue;
             }
@@ -698,11 +700,11 @@ impl Registry {
                 );
                 continue;
             }
-            if !claimed.insert(t.rathole_port) {
+            if !claimed.insert(t.tunnel_port) {
                 tracing::warn!(
                     target: Action::LoadRegistry.target(),
                     "dropping tenant {id}: port {} already claimed",
-                    t.rathole_port,
+                    t.tunnel_port,
                 );
                 continue;
             }
@@ -717,7 +719,7 @@ impl Registry {
                 id,
                 Tenant {
                     hostname: t.hostname,
-                    rathole_port: t.rathole_port,
+                    tunnel_port: t.tunnel_port,
                     last_seen: now.checked_sub(age).unwrap_or(now),
                     idle,
                     llm: None,
@@ -757,7 +759,7 @@ impl Registry {
                         id.clone(),
                         RegistryFileTenant {
                             hostname: t.hostname.clone(),
-                            port: t.rathole_port,
+                            port: t.tunnel_port,
                             via: t.via.clone(),
                         },
                     )
@@ -777,7 +779,7 @@ impl Registry {
 /// Allocate the lowest free port in `[lo, hi]`. Returns
 /// [`RegistryError::PortRangeExhausted`] when none is free — never a sentinel.
 fn alloc_port(map: &HashMap<String, Tenant>, (lo, hi): (u16, u16)) -> Result<u16, RegistryError> {
-    let used: HashSet<u16> = map.values().map(|t| t.rathole_port).collect();
+    let used: HashSet<u16> = map.values().map(|t| t.tunnel_port).collect();
     (lo..=hi)
         .find(|p| !used.contains(p))
         .ok_or(RegistryError::PortRangeExhausted { lo, hi })

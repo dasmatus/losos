@@ -38,7 +38,7 @@ let
   # manage page, with the hub's tokens beside it.
   stateDir = "/var/lib/losos-edge";
   uplinkJson = "${stateDir}/uplink.json";
-  uplinkToml = "/etc/rathole/uplink.toml";
+  uplinkTunnel = "/etc/losos-tunnel/uplink.json";
   manageKey = "/var/lib/losos-registrar/manage-key";
   manageUrl = "${edge.lan.url}/manage/";
 
@@ -128,35 +128,10 @@ in
       acmeEmail = lib.mkDefault "gateway@losos.cfd";
     };
 
-    # ── Secrets the edge module expects to find ──────────────────────────
-    # The rathole bootstrap token is a transport secret every box shares
-    # with the edge; with open enrolment no box knows it in advance, and
-    # every box service carries its own token, so its value is immaterial.
-    # Generated once, before the seed and the registrar read it, so the image
-    # boots with no provisioning step and no two gateways share a token.
-    systemd.services.losos-edge-gateway-secrets = {
-      description = "losos edge gateway — first-boot secrets";
-      wantedBy = [ "multi-user.target" ];
-      before = [
-        "losos-rathole-seed.service"
-        "losos-registrar.service"
-      ];
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-      };
-      path = [ pkgs.coreutils ];
-      script = ''
-        set -eu
-        umask 077
-        install -d -m 0700 /var/secrets ${stateDir}
-        token=${toString edge.bootstrapTokenFile}
-        if [ ! -s "$token" ]; then
-          head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$token.new"
-          mv "$token.new" "$token"
-        fi
-      '';
-    };
+    # ── The gateway's own state ──────────────────────────────────────────
+    # Where the manage page keeps the uplink, its token and the hub's pin. Nothing in it is made in advance: the tunnel's certificate is the
+    # tunnel server's own, and the hub's pin is fetched on first contact.
+    systemd.tmpfiles.rules = [ "d ${stateDir} 0700 root root - -" ];
 
     # ── No shell ─────────────────────────────────────────────────────────
     # No login prompt on any terminal, serial line or container console,
@@ -207,8 +182,8 @@ in
     };
 
     # The manage page writes the uplink; the tunnel follows it. A hub that
-    # changed under a running tunnel needs a restart (its pinned key went
-    # with the old row), and a cleared uplink stops it.
+    # changed under a running tunnel needs a restart (its pinned certificate
+    # went with the old row), and a cleared uplink stops it.
     systemd.paths.losos-edge-uplink-changed = {
       description = "follow the uplink the manage page writes";
       wantedBy = [ "multi-user.target" ];
@@ -220,10 +195,10 @@ in
       path = [ pkgs.systemd ];
       script = ''
         if [ -s ${uplinkJson} ]; then
-          systemctl try-restart losos-rathole-uplink.service
+          systemctl try-restart losos-tunnel-uplink.service
         else
-          rm -f ${uplinkToml}
-          systemctl stop losos-rathole-uplink.service
+          rm -f ${uplinkTunnel}
+          systemctl stop losos-tunnel-uplink.service
         fi
       '';
     };

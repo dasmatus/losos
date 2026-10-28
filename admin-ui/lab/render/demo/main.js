@@ -20,7 +20,7 @@ function log(msg) {
 const TOKENS = [
   'ground', 'surface', 'sunk', 'ink', 'muted', 'faint', 'line', 'hair', 'accent', 'accent-wash', 'ok', 'warn', 'crit',
   'lab-copper', 'lab-fiber', 'lab-wan', 'lab-wifi', 'lab-grid', 'lab-room', 'lab-room-edge', 'lab-mark', 'lab-led-off',
-  'lab-p-dhcp', 'lab-p-arp', 'lab-p-mdns', 'lab-p-dns', 'lab-p-http', 'lab-p-icmp', 'lab-p-rathole', 'lab-p-rke2', 'lab-p-lososd',
+  'lab-p-dhcp', 'lab-p-arp', 'lab-p-mdns', 'lab-p-dns', 'lab-p-http', 'lab-p-icmp', 'lab-p-tunnel', 'lab-p-rke2', 'lab-p-lososd',
   'lab-kit', 'lab-kit-face', 'lab-kit-edge', 'lab-hole', 'lab-rack', 'lab-rack-edge', 'lab-rack-face', 'lab-screen',
   'lab-rack-bay', 'lab-rack-ink', 'lab-screen-off', 'lab-screen-tile',
 ];

@@ -208,12 +208,12 @@ mod tests {
         let routes = crate::config::hidden_routes(&[
             crate::config::HiddenRoute {
                 id: "box-a".into(),
-                rathole_port: 50001,
+                tunnel_port: 50001,
                 hosts: vec![B32.into(), ONION.into()],
             },
             crate::config::HiddenRoute {
                 id: "box-b".into(),
-                rathole_port: 50002,
+                tunnel_port: 50002,
                 hosts: vec![],
             },
         ]);

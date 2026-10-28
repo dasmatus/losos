@@ -145,7 +145,7 @@ pkgs.testers.nixosTest {
         losos.edge = {
           gateway.enable = true;
           registrarApiPort = 8443;
-          ratholePortRange = "50000-50010";
+          tunnelPortRange = "50000-50010";
           reconcileInterval = "2s";
           heartbeatTtl = "30s";
         };
@@ -275,7 +275,7 @@ pkgs.testers.nixosTest {
         assert code == "409" and json.loads(body)["edgeRequired"] is True, (code, body)
         # No tunnel runs on a box with no edge in reach.
         m.wait_until_succeeds("test -e /run/losos/edge-none")
-        m.wait_until_succeeds("test \"$(systemctl is-active losos-rathole-client.service)\" = inactive")
+        m.wait_until_succeeds("test \"$(systemctl is-active losos-tunnel-client.service)\" = inactive")
         # Each finds the other by mDNS: its .local name and its _losos._tcp
         # advert, as LosOS Desktop lists boxes.
         print(f"{name} found {other[name]}.local by mDNS at {mdns_ipv4(name, other[name])}")
@@ -290,7 +290,7 @@ pkgs.testers.nixosTest {
     # ── 2. The edge is switched on and found ─────────────────────────────
     edge.start()
     edge.wait_for_unit("losos-registrar.service")
-    edge.wait_for_unit("losos-rathole.service")
+    edge.wait_for_unit("losos-tunnel.service")
     edge.wait_until_succeeds("curl -fsS http://localhost:8443/health")
     edge.forward_port(host_port=18443, guest_port=8443)
     key = edge.succeed("cat /var/lib/losos-registrar/manage-key").strip()
@@ -313,9 +313,9 @@ pkgs.testers.nixosTest {
 
     # ── 3. Enrolled on first contact, two tunnels ────────────────────────
     for name, m in boxes.items():
-        m.wait_until_succeeds("systemctl is-active losos-rathole-client.service", timeout=180)
+        m.wait_until_succeeds("systemctl is-active losos-tunnel-client.service", timeout=180)
         m.wait_until_succeeds("systemctl is-active losos-registrar-announce.service", timeout=180)
-        edge.wait_until_succeeds(f"grep -F -q '[server.services.{name}]' /etc/rathole/server.toml", timeout=240)
+        edge.wait_until_succeeds(f"grep -F -q '\"{name}\":' /etc/losos-tunnel/server.json", timeout=240)
     listed = edge.succeed("losos-edge boxes")
     print(listed)
     assert "boxa\tboxa.losos.cfd\tport " in listed and "boxb\tboxb.losos.cfd\tport " in listed, listed
@@ -361,7 +361,7 @@ pkgs.testers.nixosTest {
     gone_in = int(time.time() - t0)
     for name, m in boxes.items():
         m.wait_until_succeeds("test -e /run/losos/edge-none")
-        m.wait_until_succeeds("test \"$(systemctl is-active losos-rathole-client.service)\" = inactive")
+        m.wait_until_succeeds("test \"$(systemctl is-active losos-tunnel-client.service)\" = inactive")
         code, body = sharing(name)
         assert code == "409", (name, code, body)
         m.succeed(f"curl -fsS http://{other[name]}.local/ | grep -q '<div id=\"root\">'")

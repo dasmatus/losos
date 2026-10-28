@@ -121,7 +121,8 @@ say so when they did not run.
   lock files that differ from `origin/main` (`--all` for every one, `--check`
   to only report). On a pull request from a branch of this repository,
   Dependabot's included, `dependency-hashes.yml` runs it and pushes the
-  result to the branch.
+  result to the branch; on a push to `main` that still carries a stale
+  hash, it opens a pull request with the fix.
 
 ## Handbook
 
@@ -196,7 +197,7 @@ this is the reasoning behind it.
   Don't drop the re-attach.
 - **The admin routes deny loopback on purpose** (`lanOnly` in
   `containers.nix`). Master-proxy tunnel traffic reaches the front vhost
-  *from 127.0.0.1* (rathole's `local_addr`), so the LAN-only guard on `/`,
+  *from 127.0.0.1* (the tunnel client's `local`), so the LAN-only guard on `/`,
   `/assets/`, `/setup/` and `/api/` must not allow loopback. A
   `curl localhost/` on the box, or in a VM test, gets 403 by design.
   "Fixing" it with `allow 127.0.0.1` exposes the whole admin interface to the

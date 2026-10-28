@@ -43,8 +43,9 @@ async function open({
   /* `tpm.enable`'s running value in GET /api/options, or null to leave the
    * route to the catch-all (no document). */
   tpm = null,
+  viewport = { width: 1280, height: 900 },
 }) {
-  const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
+  const page = await browser.newPage({ viewport, locale: 'en-US' });
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
 
@@ -729,6 +730,22 @@ await check("Let's go grows the desktop into the window, signed in, with the tou
   assert.equal(await page.getByTestId('wizard').count(), 0, 'a reload went back into setup');
   await tour.getByRole('button', { name: 'Skip the tour' }).click();
   await tour.waitFor({ state: 'detached', timeout: 3000 });
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check("on a phone the desktop's bottom bar stays inside the preview, and Let's go is in reach", async () => {
+  const { page, errors } = await open({ claimed: false, ready: true, at: HTTPS_BOX, viewport: { width: 390, height: 844 } });
+  await login(page);
+  await throughStepTwo(page);
+  await page.getByTestId('desktop-ready').waitFor({ timeout: 10_000 });
+  const bar = page.locator('[data-slot="bottom-nav"]');
+  await bar.waitFor({ timeout: 5000 });
+  // Drawn in <body> it would sit over the card, live, while the rest is a picture.
+  assert.equal(await bar.evaluate((el) => el.closest('[data-testid="desktop"]') !== null), true, 'the bottom bar escaped the preview');
+  await page.getByRole('button', { name: "Let's go" }).click({ timeout: 3000 });
+  await page.getByTestId('tour').waitFor({ timeout: 5000 });
+  assert.equal(await desktopStage(page), null);
   assert.deepEqual(errors, []);
   await page.close();
 });

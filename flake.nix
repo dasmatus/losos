@@ -407,7 +407,7 @@
 
       };
 
-      # The master-proxy edge: Traefik (master), a rathole server, and
+      # The master-proxy edge: Traefik (master), the QUIC tunnel server, and
       # losos-registrar (serve) on a public VPS. Exported as a module, not a
       # nixosConfiguration: the VPS flake imports this next to its own
       # hardware/bootloader config and sets losos.edge.* (a bare
@@ -467,6 +467,7 @@
         losos-tpm-unlock = import ./nix/tests/tpm.nix { inherit pkgs disko; };
         losos-admin-daemon = import ./nix/tests/admin-vm.nix { inherit pkgs; };
         losos-edge-proxy = import ./nix/tests/edge-vm.nix { inherit pkgs; };
+        losos-quic = import ./nix/tests/quic.nix { inherit pkgs; };
         losos-edge-lan = import ./nix/tests/edge-lan.nix { inherit pkgs; };
         losos-edge-manage = import ./nix/tests/edge-manage.nix { inherit pkgs; };
         losos-edge-statistics = import ./nix/tests/edge-statistics.nix { inherit pkgs; };
