@@ -117,10 +117,30 @@ in
     # list, the CSP and X-Frame-Options maps, the /api proxy — is attached to
     # `losos-front` in modules/containers.nix, and a separate HTTPS vhost would
     # silently serve the admin plane without any of it.
+    #
+    # HTTP/3 rides on the same :443 listener, over QUIC on UDP. `quic` adds a
+    # `listen 0.0.0.0:443 quic` beside the TCP one for every ssl entry below,
+    # so TCP stays the fallback for every client that does not speak QUIC or
+    # whose network drops UDP. `reuseport` gives each nginx worker its own UDP
+    # socket, which is how nginx spreads QUIC across workers; without it every
+    # QUIC packet lands on one worker. Listen options may be given once per
+    # address, so this is the one vhost that sets any on these ports.
+    #
+    # Clients learn of HTTP/3 from Alt-Svc on a response over TCP, then switch.
+    # The header is only sent over HTTPS: an http:// origin cannot be upgraded
+    # this way, and traffic through the edge's tunnel arrives here on :80, so
+    # the edge's own Alt-Svc is the one browsers see there.
+    #
+    # A client that will not use QUIC with a certificate from a root the
+    # user installed (Chromium has refused that) simply stays on HTTP/2.
+    # nix/tests/quic.nix fetches over both with curl and times them.
     services.nginx.virtualHosts."losos-front" = {
       addSSL = true;
       sslCertificate = cert;
       sslCertificateKey = key;
+      quic = true;
+      http3 = true;
+      reuseport = true;
       # Restated whole, the loopback listeners of Tor and I2P included
       # (modules/containers.nix).
       listen = [
@@ -137,7 +157,28 @@ in
       ++ (import ./hidden-lib.nix { inherit lib pkgs; }).frontListen (
         config.losos.hidden.tor.enable || config.losos.hidden.i2p.enable
       );
+      # GSO hands the kernel a burst of QUIC packets in one call, and a
+      # stream buffer bigger than nginx's 64k default lets a download keep
+      # more than one window in flight. Without both, nix/tests/quic.nix
+      # measured HTTP/3 at half the speed of HTTP/2 on a lossy link and up
+      # to five times the CPU. With them HTTP/3 takes about half the time of
+      # HTTP/2 on a link that loses 2 % of packets, at under twice the CPU;
+      # on a clean link HTTP/2 is still the quicker of the two. 256k bounds
+      # what one stream can make the box hold.
+      extraConfig = ''
+        add_header Alt-Svc $losos_alt_svc always;
+        quic_gso on;
+        http3_stream_buffer_size 256k;
+      '';
     };
+
+    # Empty over plain HTTP, and add_header sends no header for an empty value.
+    services.nginx.appendHttpConfig = ''
+      map $https $losos_alt_svc {
+        on 'h3=":443"; ma=86400';
+        default "";
+      }
+    '';
 
     # nginx cannot start before the certificate exists, and on first boot the
     # oneshot above is what creates it.
@@ -147,5 +188,6 @@ in
     };
 
     networking.firewall.allowedTCPPorts = [ 443 ];
+    networking.firewall.allowedUDPPorts = [ 443 ];
   };
 }

@@ -91,8 +91,8 @@ async function openEdge({ path = '/manage/', signedIn = true, refuse = false, ga
       const body = request.postData() === null ? null : JSON.parse(request.postData());
       writes.push({ method: request.method(), path: url.pathname, body });
       if (url.pathname === '/manage/api/gateway/uplink' && request.method() === 'PUT') {
-        if (!/^[^:\s]+:\d+$/.test(body.ratholeEndpoint)) return json(route, 400, { error: 'the tunnel endpoint must be host:port' });
-        gateway.uplink.set = { id: body.id, registrarUrl: body.registrarUrl, ratholeEndpoint: body.ratholeEndpoint };
+        if (!/^[^:\s]+:\d+$/.test(body.tunnelEndpoint)) return json(route, 400, { error: 'the tunnel endpoint must be host:port' });
+        gateway.uplink.set = { id: body.id, registrarUrl: body.registrarUrl, tunnelEndpoint: body.tunnelEndpoint };
         return json(route, 200, { set: true });
       }
       if (url.pathname === '/manage/api/gateway/uplink') {
@@ -295,7 +295,7 @@ await check('the gateway is set up from the page: its owner, its hub and the box
     id: 'acme',
     token: 'hub-token',
     registrarUrl: 'https://register.example.test',
-    ratholeEndpoint: 'relay.example.test:2333',
+    tunnelEndpoint: 'relay.example.test:2333',
   });
   await hub.getByRole('button', { name: 'Stop relaying' }).click();
   await hub.getByText('Not relaying').waitFor();

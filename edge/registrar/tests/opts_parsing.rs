@@ -14,10 +14,8 @@ use losos_registrar::opts::{parse, Mode};
 const SERVE_DEFAULTS: &[&str] = &[
     "--registry",
     "/var/lib/losos-registrar/registry.json",
-    "--rathole-config",
-    "/etc/rathole/server.toml",
-    "--bootstrap-token-file",
-    "/var/secrets/bootstrap",
+    "--tunnel-config",
+    "/etc/losos-tunnel/server.json",
     "--tenants-file",
     "/nix/store/tenants.json",
     "--port-range",
@@ -374,11 +372,62 @@ fn passport_statement_takes_every_payout_and_check_trims_the_url() {
     );
 }
 
+#[test]
+fn the_tunnel_halves_parse() {
+    let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    match parse(args(&[
+        "tunnel-server",
+        "--identity-dir",
+        "/var/lib/losos-tunnel",
+        "--config",
+        "/etc/losos-tunnel/server.json",
+    ])) {
+        Ok(Mode::TunnelServer(o)) => {
+            assert_eq!(o.listen.to_string(), "[::]:2333");
+            assert_eq!(o.identity_dir.to_str(), Some("/var/lib/losos-tunnel"));
+            assert_eq!(o.config.to_str(), Some("/etc/losos-tunnel/server.json"));
+        }
+        other => panic!("expected tunnel-server, got {}", mode_name(&other)),
+    }
+    match parse(args(&[
+        "tunnel-server",
+        "--listen",
+        "0.0.0.0:7000",
+        "--identity-dir",
+        "d",
+        "--config",
+        "c",
+    ])) {
+        Ok(Mode::TunnelServer(o)) => assert_eq!(o.listen.to_string(), "0.0.0.0:7000"),
+        other => panic!("expected tunnel-server, got {}", mode_name(&other)),
+    }
+    assert!(parse(args(&[
+        "tunnel-server",
+        "--listen",
+        "nowhere",
+        "--identity-dir",
+        "d",
+        "--config",
+        "c"
+    ]))
+    .is_err());
+    assert!(parse(args(&["tunnel-server", "--config", "c"])).is_err());
+    match parse(args(&[
+        "tunnel-client",
+        "--config",
+        "/run/losos-tunnel/client.json",
+    ])) {
+        Ok(Mode::TunnelClient { config }) => assert_eq!(config, "/run/losos-tunnel/client.json"),
+        other => panic!("expected tunnel-client, got {}", mode_name(&other)),
+    }
+}
+
 fn mode_name(mode: &miette::Result<Mode>) -> &'static str {
     match mode {
         Ok(Mode::Serve(_)) => "serve",
         Ok(Mode::Announce(_)) => "announce",
-        Ok(Mode::Seed(_)) => "seed",
+        Ok(Mode::TunnelServer(_)) => "tunnel-server",
+        Ok(Mode::TunnelClient { .. }) => "tunnel-client",
         Ok(Mode::Join(_)) => "join",
         Ok(Mode::StripeGate(_)) => "stripe-gate",
         Ok(Mode::Passport(_)) => "passport",
@@ -721,19 +770,19 @@ fn federation_flags_are_off_unless_given() {
     );
     let uplink = opts.uplink.expect("uplink on");
     assert_eq!(uplink.file, "/var/lib/losos-edge/uplink.json");
-    assert_eq!(uplink.rathole_config, "/etc/rathole/uplink.toml");
+    assert_eq!(uplink.tunnel_config, "/etc/losos-tunnel/uplink.json");
     assert_eq!(uplink.interval, std::time::Duration::from_secs(30));
 
     let opts = serve_opts(&[
         "--uplink-file",
         "u.json",
-        "--uplink-rathole-config",
-        "/tmp/up.toml",
+        "--uplink-tunnel-config",
+        "/tmp/up.json",
         "--uplink-interval",
         "5s",
     ]);
     let uplink = opts.uplink.expect("uplink on");
-    assert_eq!(uplink.rathole_config, "/tmp/up.toml");
+    assert_eq!(uplink.tunnel_config, "/tmp/up.json");
     assert_eq!(uplink.interval, std::time::Duration::from_secs(5));
 }
 

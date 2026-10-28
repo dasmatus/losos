@@ -36,6 +36,7 @@ vrátane prevádzky, ktorá prichádza cez tunel edge, dostane **403**.
 | ------- | -------- | ------------------------------------------------------ |
 | 80      | HTTP     | Všetko vyššie                                          |
 | 443     | HTTPS    | To isté s vlastným certifikátom zariadenia (`losos.tls.enable`, predvolene zapnuté) |
+| 443 (UDP) | HTTP/3 | To isté cez QUIC, prehliadačom ho ponúka hlavička `Alt-Svc`; HTTPS cez TCP zostáva ako záloha |
 | 5353    | mDNS     | Ohlasovanie `<name>.local` a boxu ako služby `_losos._tcp` |
 | 445     | SMB      | Súbory každého človeka v LosOS Cloud ako sieťový priečinok Windows (`losos.cloud.windows.enable`, predvolene zapnuté); iba lokálna sieť |
 | 3702 (UDP), 5357 | WS-Discovery | Zobrazenie zariadenia v Sieti v Prieskumníkovi Windows, kým je priečinok zapnutý |
@@ -51,6 +52,15 @@ raz.
 Nič iné otvorené nie je. Zariadenie sa k mesh sieti a k edge pripája smerom
 von. Tunel otvára a ku clustru sa pripája samo, takže doma neotvárate žiadny
 prichádzajúci port.
+
+## Na edge \{#on-an-edge}
+
+| Port         | Protokol | Čo                                                      |
+| ------------ | -------- | ------------------------------------------------------- |
+| 80, 443      | HTTP(S)  | Traefik: verejné meno každého zariadenia                 |
+| 2333 (UDP)   | QUIC     | Tunel, ktorý zariadenia vytáčajú (`losos.edge.tunnelBindPort`) |
+| 2333 (TCP)   | TLS      | Ten istý tunel pre zariadenia v sieti, ktorá zahadzuje UDP |
+| 7883 (UDP)   | QUIC     | Relay hovorov (`losos.edge.calls.relay.port`)            |
 
 ## Názvy \{#names}
 

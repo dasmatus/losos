@@ -49,9 +49,7 @@
 let
   lososPkgs = import ../packages.nix { inherit pkgs; };
   proxyTokenValue = "test-proxy-token-0123456789abcdef";
-  bootstrapTokenValue = "test-bootstrap-0123456789abcdef0123";
   proxyToken = "/var/secrets/losos-proxy-token";
-  bootstrapToken = "/var/secrets/losos-rathole-bootstrap";
   # A root key and one edge certificate, made the way the project owner makes
   # the real ones (edge/registrar/src/identity.rs), at build time: the
   # test's trust anchor is this root, not the committed nix/keys/ file, which
@@ -81,7 +79,6 @@ let
     systemd.tmpfiles.rules = [
       "d /var/secrets 0700 root root - -"
       "f ${proxyToken} 0600 root root - ${proxyTokenValue}"
-      "f ${bootstrapToken} 0600 root root - ${bootstrapTokenValue}"
       "C ${identityKey} 0600 root root - ${identityFixture}/edge.key"
     ];
   };
@@ -107,9 +104,8 @@ pkgs.testers.nixosTest {
           enable = true;
           acmeEmail = "test@losos.cfd";
           registrarApiPort = 8443;
-          ratholePortRange = "50000-50010";
+          tunnelPortRange = "50000-50010";
           reconcileInterval = "2s";
-          bootstrapTokenFile = bootstrapToken;
           tenants.mattbox = {
             hostname = "mattbox.losos.cfd";
             tokenFile = proxyToken;

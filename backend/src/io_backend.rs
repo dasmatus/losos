@@ -731,7 +731,7 @@ fn scan_edge_now() -> crate::edge::EdgeStatus {
     let configured = std::env::var("LOSOS_EDGE_URL")
         .ok()
         .filter(|v| !v.trim().is_empty());
-    let configured_rathole = std::env::var("LOSOS_EDGE_RATHOLE")
+    let configured_tunnel = std::env::var("LOSOS_EDGE_TUNNEL")
         .ok()
         .filter(|v| !v.trim().is_empty());
     let now = std::time::SystemTime::now()
@@ -743,7 +743,7 @@ fn scan_edge_now() -> crate::edge::EdgeStatus {
     let mut status = crate::edge::assemble_with(
         browse_lan().as_deref(),
         configured.as_deref(),
-        configured_rathole.as_deref(),
+        configured_tunnel.as_deref(),
         edge_answers,
         edge_describe,
         |url| {
@@ -827,7 +827,7 @@ fn drive_edge_path(status: &crate::edge::EdgeStatus) {
     let pin_dir = std::env::var("LOSOS_EDGE_PIN_DIR")
         .ok()
         .filter(|v| !v.is_empty());
-    let configured_pin = std::env::var("LOSOS_EDGE_NOISE_PUB_FILE")
+    let configured_pin = std::env::var("LOSOS_EDGE_TUNNEL_PIN_FILE")
         .ok()
         .filter(|v| !v.is_empty());
     let configured_url = std::env::var("LOSOS_EDGE_URL")
@@ -837,11 +837,9 @@ fn drive_edge_path(status: &crate::edge::EdgeStatus) {
 
     let next = status.path.as_ref().map(|p| {
         // The pin lives with the edge it belongs to: the configured one at
-        // losos.proxy.noisePublicKeyFile, any other (a LAN gateway, or an
+        // losos.proxy.tunnelPinFile, any other (a LAN gateway, or an
         // official peer the configured edge listed) under the pin dir by its
-        // host, so a second edge never inherits the first's key. Noise is on
-        // for every edge or none (the configured file is unset only when the
-        // module runs plain TCP).
+        // host, so a second edge never inherits the first's certificate.
         let pin = configured_pin.as_ref().map(|configured| {
             let own = p.source == crate::edge::Source::Configured
                 && configured_url.as_deref() == Some(p.url.as_str());
@@ -897,7 +895,7 @@ fn drive_edge_path(status: &crate::edge::EdgeStatus) {
     };
     match &status.path {
         Some(p) => {
-            tracing::info!(edge = %p.url, rathole = %p.rathole, source = ?p.source, "edge path: {verb} the tunnel units")
+            tracing::info!(edge = %p.url, tunnel = %p.tunnel, source = ?p.source, "edge path: {verb} the tunnel units")
         }
         None => tracing::info!("no edge in reach: {verb} the tunnel units"),
     }
@@ -925,32 +923,30 @@ fn drive_edge_path(status: &crate::edge::EdgeStatus) {
     }
 }
 
-/// Mint the box's proxy token and rathole bootstrap token when the files
-/// are absent (`LOSOS_PROXY_TOKEN_FILE`, `LOSOS_PROXY_BOOTSTRAP_FILE`; 64
-/// hex characters, 0600, atomically), so a stock box can enrol with a LAN
+/// Mint the box's proxy token when the file is absent
+/// (`LOSOS_PROXY_TOKEN_FILE`; 64 hex characters, 0600, atomically), so a stock box can enrol with a LAN
 /// gateway that takes any box on first contact. A file that exists is never
 /// touched, whatever it holds: an official edge was given that token out of
 /// band, and replacing it would lock the box out of its own tenant row.
-fn ensure_proxy_secrets() {
-    for var in ["LOSOS_PROXY_TOKEN_FILE", "LOSOS_PROXY_BOOTSTRAP_FILE"] {
-        let Some(path) = std::env::var(var).ok().filter(|v| !v.is_empty()) else {
-            continue;
-        };
-        let path = Path::new(&path);
-        if path.exists() {
-            continue;
+fn ensure_proxy_token() {
+    let var = "LOSOS_PROXY_TOKEN_FILE";
+    let Some(path) = std::env::var(var).ok().filter(|v| !v.is_empty()) else {
+        return;
+    };
+    let path = Path::new(&path);
+    if path.exists() {
+        return;
+    }
+    let token = match random_bytes::<32>() {
+        Ok(buf) => hex(&buf),
+        Err(e) => {
+            tracing::error!(error = %e, "could not read /dev/urandom to mint {var}");
+            return;
         }
-        let token = match random_bytes::<32>() {
-            Ok(buf) => hex(&buf),
-            Err(e) => {
-                tracing::error!(error = %e, "could not read /dev/urandom to mint {var}");
-                continue;
-            }
-        };
-        match atomic_write_secret(path, token.as_bytes()) {
-            Ok(()) => tracing::info!(path = %path.display(), "minted the {var} secret"),
-            Err(e) => tracing::error!(error = %e, path = %path.display(), "could not mint {var}"),
-        }
+    };
+    match atomic_write_secret(path, token.as_bytes()) {
+        Ok(()) => tracing::info!(path = %path.display(), "minted the {var} secret"),
+        Err(e) => tracing::error!(error = %e, path = %path.display(), "could not mint {var}"),
     }
 }
 
@@ -978,7 +974,7 @@ pub fn start_edge_scanner(backend: &IoLosos) {
     let spawned = std::thread::Builder::new()
         .name("lososd-edge-scan".into())
         .spawn(move || {
-            ensure_proxy_secrets();
+            ensure_proxy_token();
             let pause_after = sharing_pause_after();
             let mut clock = crate::edge::OutageClock::default();
             loop {

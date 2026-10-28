@@ -501,7 +501,7 @@ impl LabCore {
                 for e in live {
                     let ip = self.net.ip(&e.id).unwrap_or("undefined");
                     let s = format!(
-                        "= {port} IPv4 {n}  _losos-edge._tcp  local\n   hostname = [{n}.local]\n   address = [{ip}]\n   port = [8443]\n   txt = [\"url=http://{n}.local:8443\" \"rathole={n}.local:2333\" \"enrol={}\"]",
+                        "= {port} IPv4 {n}  _losos-edge._tcp  local\n   hostname = [{n}.local]\n   address = [{ip}]\n   port = [8443]\n   txt = [\"url=http://{n}.local:8443\" \"tunnel={n}.local:2333\" \"enrol={}\"]",
                         if e.flag("openEnrolment") { "open" } else { "closed" },
                         n = e.name
                     );
@@ -626,7 +626,7 @@ impl LabCore {
                             &e.id,
                             bid,
                             format!(
-                                "answer {n}._losos-edge._tcp url=http://{n}.local:8443 rathole={n}.local:2333 enrol={}",
+                                "answer {n}._losos-edge._tcp url=http://{n}.local:8443 tunnel={n}.local:2333 enrol={}",
                                 if e.flag("openEnrolment") { "open" } else { "closed" },
                                 n = e.name
                             ),
@@ -694,16 +694,16 @@ impl LabCore {
         if let Some(p) = st.path.as_ref().filter(|_| b.flag("proxy")) {
             let pn = self.nm(&p.id);
             stages.push(vec![pdu(
-                "rathole",
+                "tunnel",
                 bid,
                 &p.id,
-                format!("Noise_NK handshake to {pn}:2333 (pinned key)"),
+                format!("QUIC handshake to {pn}:2333 (pinned certificate)"),
             )]);
             stages.push(vec![pdu(
-                "rathole",
+                "tunnel",
                 &p.id,
                 bid,
-                "handshake ok, control channel open",
+                "handshake ok, services held",
             )]);
             stages.push(vec![pdu(
                 "HTTP",
@@ -794,13 +794,13 @@ impl LabCore {
             format!("200 relayed under {zone}"),
         )]);
         st.push(vec![pdu(
-            "rathole",
+            "tunnel",
             sid,
             &hub.id,
-            "uplink: Noise_NK handshake to edge:2333",
+            "uplink: QUIC handshake to edge:2333",
         )]);
         st.push(vec![pdu(
-            "rathole",
+            "tunnel",
             &hub.id,
             sid,
             "uplink up: one service per relayed box",
@@ -979,7 +979,7 @@ impl LabCore {
                 stages.push(vec![Pdu {
                     hops: rev(self.world.hops(&spoke, &hub)),
                     ..pdu(
-                        "rathole",
+                        "tunnel",
                         &hub,
                         &spoke,
                         format!("uplink service {first}.{}", self.nm(&bx)),
@@ -988,31 +988,31 @@ impl LabCore {
                 stages.push(vec![Pdu {
                     hops: rev(self.world.hops(&bx, &spoke)),
                     ..pdu(
-                        "rathole",
+                        "tunnel",
                         &spoke,
                         &bx,
                         format!("tunnel to {} → nginx :80", self.nm(&bx)),
                     )
                 }]);
                 stages.push(vec![pdu(
-                    "rathole",
+                    "tunnel",
                     &bx,
                     &spoke,
                     format!("{} from nginx (client seen as 127.0.0.1)", resp.status),
                 )]);
-                stages.push(vec![pdu("rathole", &spoke, &hub, resp.status.to_string())]);
+                stages.push(vec![pdu("tunnel", &spoke, &hub, resp.status.to_string())]);
             } else {
                 stages.push(vec![Pdu {
                     hops: rev(self.world.hops(&bx, &hub)),
                     ..pdu(
-                        "rathole",
+                        "tunnel",
                         &hub,
                         &bx,
                         format!("tunnel to {} → nginx :80", self.nm(&bx)),
                     )
                 }]);
                 stages.push(vec![pdu(
-                    "rathole",
+                    "tunnel",
                     &bx,
                     &hub,
                     format!("{} from nginx (client seen as 127.0.0.1)", resp.status),
