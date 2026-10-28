@@ -470,6 +470,9 @@
         losos-edge-lan = import ./nix/tests/edge-lan.nix { inherit pkgs; };
         losos-edge-manage = import ./nix/tests/edge-manage.nix { inherit pkgs; };
         losos-edge-federation = import ./nix/tests/edge-federation.nix { inherit pkgs; };
+        # Primary, secondary and tertiary links: two official edges, two
+        # gateways in one secondary cluster, a box; failover, bans, the hold.
+        losos-edge-clusters = import ./nix/tests/edge-clusters.nix { inherit pkgs; };
         losos-edge-lan-two-boxes = import ./nix/demo/edge-lan/two-boxes.nix { inherit pkgs; };
         # Two boxes and an edge gateway between them, the light mode of the
         # demo nix/demo/box-edge-box/bootstrap.sh sets up.
@@ -641,6 +644,10 @@
         # boards carried over, closing words in commits and pull requests,
         # and the pages from Chromium (nix/tests/git-issues.nix).
         losos-git-issues = import ./nix/tests/git-issues.nix { inherit pkgs; };
+        # LosOS Wiki: spaces kept as LosOS Git wikis, written with git and in
+        # the browser, the directory with the knowledge bases, and each
+        # space's published site (nix/tests/wiki.nix).
+        losos-wiki = import ./nix/tests/wiki.nix { inherit pkgs; };
         # People of another box in LosOS Git by their chat address, and a
         # repository's chat room between two boxes (nix/tests/git-federation.nix).
         losos-git-federation = import ./nix/tests/git-federation.nix { inherit pkgs; };
