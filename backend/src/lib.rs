@@ -65,6 +65,7 @@ pub mod login;
 pub mod losos;
 pub mod mail;
 pub mod mail_pgp;
+pub mod mail_setup;
 pub mod market;
 pub mod model;
 pub mod moderation;

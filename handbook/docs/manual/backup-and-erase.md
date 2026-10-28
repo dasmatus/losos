@@ -71,6 +71,8 @@ somewhere other than the box.
 - LosOS Cloud's files;
 - LosOS Git's repositories;
 - the databases of both;
+- the mailboxes of LosOS Mail, where the box has Mail (the mail server pauses
+  for the few seconds the copy takes);
 - the folder the box shares with the mesh, if sharing is on (it is opened for
   the copy and locked again afterwards);
 - every setting, and the look of the home page.
