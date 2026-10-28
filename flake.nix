@@ -380,6 +380,8 @@
             ./modules/logs.nix
             ./modules/defaults.nix
             ./modules/proxy.nix
+            # The box on Tor and I2P (losos.hidden.*).
+            ./modules/hidden-services.nix
           ]
           # The two files that describe *this* box rather than the appliance:
           # modules/install-target.nix (drive list, firmware mode, unlock
@@ -432,6 +434,7 @@
           ./modules/edge-vms.nix
           ./modules/edge-inference.nix
           ./modules/edge-gateway.nix
+          ./modules/edge-hidden.nix
           ./modules/logs.nix
         ];
         _module.args.self = self;
@@ -508,6 +511,7 @@
         losos-profiles = import ./nix/tests/profiles.nix { inherit pkgs; };
         losos-profile-screens = import ./nix/tests/profile-screens.nix { inherit pkgs; };
         losos-plugins = import ./nix/tests/plugins.nix { inherit pkgs; };
+        losos-hidden-services = import ./nix/tests/hidden-services.nix { inherit pkgs; };
         losos-design = import ./nix/tests/design.nix { inherit pkgs; };
         losos-agents = import ./nix/tests/agents.nix { inherit pkgs; };
         # The banner a box off the mesh shows over every page, both states

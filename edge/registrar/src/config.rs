@@ -104,7 +104,9 @@ struct TraefikRouter {
     rule: String,
     service: String,
     entry_points: Vec<String>,
-    tls: TraefikTls,
+    /// `None` for a plain-http router (the Tor and I2P entry point).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tls: Option<TraefikTls>,
 }
 
 /// Per-router TLS: the `le` cert resolver and the hostname to obtain a cert
@@ -113,7 +115,11 @@ struct TraefikRouter {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TraefikTls {
-    cert_resolver: String,
+    /// `None` is Traefik's own default certificate: no public authority
+    /// issues for a Tor or I2P name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    cert_resolver: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     domains: Vec<TraefikDomain>,
 }
 
@@ -251,10 +257,10 @@ pub fn desired_config_with_hosts(
                 rule: format!("Host(`{host}`)"),
                 service: id.clone(),
                 entry_points: vec!["websecure".to_string()],
-                tls: TraefikTls {
-                    cert_resolver: "le".to_string(),
+                tls: Some(TraefikTls {
+                    cert_resolver: Some("le".to_string()),
                     domains: vec![TraefikDomain { main: host.clone() }],
-                },
+                }),
             },
         );
         if let Some(hosts) = extra_hosts.get(&t.id) {
@@ -268,12 +274,12 @@ pub fn desired_config_with_hosts(
                         rule: format!("Host(`{extra}`)"),
                         service: id.clone(),
                         entry_points: vec!["websecure".to_string()],
-                        tls: TraefikTls {
-                            cert_resolver: "le".to_string(),
+                        tls: Some(TraefikTls {
+                            cert_resolver: Some("le".to_string()),
                             domains: vec![TraefikDomain {
                                 main: extra.clone(),
                             }],
-                        },
+                        }),
                     },
                 );
             }
@@ -340,10 +346,10 @@ pub fn vm_routes_yaml(routes: &[(String, String)]) -> Option<String> {
                 rule: format!("Host(`{host}`)"),
                 service: name.clone(),
                 entry_points: vec!["websecure".to_string()],
-                tls: TraefikTls {
-                    cert_resolver: "le".to_string(),
+                tls: Some(TraefikTls {
+                    cert_resolver: Some("le".to_string()),
                     domains: vec![TraefikDomain { main: host.clone() }],
-                },
+                }),
             },
         );
         services.insert(
@@ -354,6 +360,82 @@ pub fn vm_routes_yaml(routes: &[(String, String)]) -> Option<String> {
                 },
             },
         );
+    }
+    Some(
+        serde_yaml::to_string(&TraefikConfig {
+            http: TraefikHttp { routers, services },
+        })
+        .expect("serializing TraefikConfig is infallible for String/Vec/BTreeMap fields"),
+    )
+}
+
+/// One box behind this edge with Tor or I2P addresses
+/// (`crate::hidden`): its id, the edge port of its tunnel, and the names.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HiddenRoute {
+    pub id: String,
+    pub rathole_port: u16,
+    pub hosts: Vec<String>,
+}
+
+/// The Traefik file for the boxes' Tor and I2P addresses: per box, one
+/// router on the plain `losos-hidden` entry point and one on
+/// `losos-hidden-tls` with Traefik's default certificate, both
+/// `Host(<onion>) || Host(<b32>)`, to a service of their own at the box's
+/// tunnel port. Those entry points listen on loopback, where only Tor and
+/// I2P connect, and no other router listens there. `None` for no routes,
+/// as [`Files::traefik_yaml`].
+#[must_use]
+pub fn hidden_routes_yaml(routes: &[HiddenRoute]) -> Option<String> {
+    let mut routers = BTreeMap::new();
+    let mut services = BTreeMap::new();
+    for r in routes {
+        if r.hosts.is_empty() {
+            continue;
+        }
+        let mut hosts = r.hosts.clone();
+        hosts.sort();
+        hosts.dedup();
+        let rule = hosts
+            .iter()
+            .map(|h| format!("Host(`{h}`)"))
+            .collect::<Vec<_>>()
+            .join(" || ");
+        let service = format!("{}-hidden", r.id);
+        routers.insert(
+            service.clone(),
+            TraefikRouter {
+                rule: rule.clone(),
+                service: service.clone(),
+                entry_points: vec![crate::hidden::PLAIN_ENTRY_POINT.to_string()],
+                tls: None,
+            },
+        );
+        routers.insert(
+            format!("{}-hidden-tls", r.id),
+            TraefikRouter {
+                rule,
+                service: service.clone(),
+                entry_points: vec![crate::hidden::TLS_ENTRY_POINT.to_string()],
+                tls: Some(TraefikTls {
+                    cert_resolver: None,
+                    domains: Vec::new(),
+                }),
+            },
+        );
+        services.insert(
+            service,
+            TraefikService {
+                load_balancer: TraefikLoadBalancer {
+                    servers: vec![TraefikServer {
+                        url: format!("http://127.0.0.1:{}", r.rathole_port),
+                    }],
+                },
+            },
+        );
+    }
+    if routers.is_empty() {
+        return None;
     }
     Some(
         serde_yaml::to_string(&TraefikConfig {

@@ -52,6 +52,7 @@
     "POST /api/pictures/trust": "signed-in",
     "GET /api/pictures/sender": "signed-in",
     "GET /api/windows": "signed-in",
+    "GET /api/hidden": "network",
     "POST /api/windows": "signed-in",
 
     "GET /api/mail": "signed-in",
