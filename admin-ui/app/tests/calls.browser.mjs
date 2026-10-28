@@ -170,11 +170,11 @@ const until = async (what, fn, ms = 20000) => {
   }
 };
 
-const create = async (name, invited) =>
+const create = async (name, invited, room = '!room:calls.test') =>
   fetch(`${api(name)}/calls`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ room: '!room:calls.test', invited, video: true }),
+    body: JSON.stringify({ room, invited, video: true }),
   });
 
 /* Chromium lists the machine's interfaces to WebRTC only for a page whose
@@ -238,8 +238,13 @@ await check('only a local person starts a call, and only the invited join', asyn
   assert.equal((await create(null, [])).status, 401);
   const r = await create('matus', ['@eva:calls.test', '@jan:calls.test']);
   assert.equal(r.status, 200);
-  call = (await r.json()).call;
+  const made = await r.json();
+  call = made.call;
   assert.match(call, /^[0-9a-f]{32}$/);
+  assert.equal(made.created, true);
+  // The room has one call at a time: Eva starting one too lands in it.
+  const again = await (await create('eva', ['@matus:calls.test'])).json();
+  assert.deepEqual(again, { call, created: false });
 });
 
 // A tab that only listens to the key channel.
@@ -558,7 +563,7 @@ await check('the tapped frames are AES-GCM under keys only the members had', asy
 });
 
 await check('a call starts without a camera, or listening only without a microphone', async () => {
-  const r = await create('matus', ['@eva:calls.test', '@jan:calls.test']);
+  const r = await create('matus', ['@eva:calls.test', '@jan:calls.test'], '!quiet:calls.test');
   call = (await r.json()).call;
   // Each tab's browser has no camera, or no device at all.
   const without = async (name, user, device, refuse) => {
