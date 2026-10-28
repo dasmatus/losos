@@ -49,7 +49,7 @@ let
   cfg = config.losos.chat;
   live = config.lososInternal.chat;
   pkg = config.losos.backend.package;
-  dendrite = pkgs.dendrite;
+  inherit (pkgs) dendrite;
   inherit (cfg) port;
   sharedUid = 1001;
 
@@ -58,7 +58,7 @@ let
   runDir = "/run/losos-chat";
   threadsSocket = "${runDir}/threads.sock";
   asTokenFile = "${secretsDir}/as_token";
-  serverName = cfg.serverName;
+  inherit (cfg) serverName;
   federation = cfg.federation.enable;
   # A .local name is this network's: federate with the boxes on it alone.
   lanName = lib.hasSuffix ".local" serverName;
