@@ -78,7 +78,7 @@ curve25519-dalek = "5"
 # file on disk, nothing resident between searches, and an update is a row
 # replaced in a transaction. Bundled so the index does not depend on the
 # system's sqlite build having FTS5 compiled in.
-rusqlite = { version = "0.40", features = ["bundled"] }
+rusqlite = { version = "0.41", features = ["bundled"] }
 # The text of ODF and Office Open XML documents is XML inside a zip. Only
 # deflate, the one method office suites write.
 zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"] }
