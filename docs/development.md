@@ -197,7 +197,7 @@ this is the reasoning behind it.
   Don't drop the re-attach.
 - **The admin routes deny loopback on purpose** (`lanOnly` in
   `containers.nix`). Master-proxy tunnel traffic reaches the front vhost
-  *from 127.0.0.1* (rathole's `local_addr`), so the LAN-only guard on `/`,
+  *from 127.0.0.1* (the tunnel client's `local`), so the LAN-only guard on `/`,
   `/assets/`, `/setup/` and `/api/` must not allow loopback. A
   `curl localhost/` on the box, or in a VM test, gets 403 by design.
   "Fixing" it with `allow 127.0.0.1` exposes the whole admin interface to the

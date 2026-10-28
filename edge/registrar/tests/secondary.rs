@@ -16,6 +16,8 @@ use serde_json::{json, Value};
 
 const ZONE: &str = "acme.losos.cfd";
 const SITE_TOKEN: &str = "517e517e517e517e517e517e517e517e517e517e517e517e517e517e517e517e";
+/// The pin a gateway starts with for its hub, as if fetched once already.
+const HUB_PIN: &str = "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e";
 const SECRET: &str = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
 
 async fn listener() -> (tokio::net::TcpListener, String) {
@@ -35,20 +37,22 @@ fn gateway(
     move |opts, dir| {
         opts.enrol_dir = Some(dir.path_str("enrolled"));
         std::fs::write(dir.join("uplink.token"), SITE_TOKEN).unwrap();
+        std::fs::write(dir.join("hub.pin"), HUB_PIN).unwrap();
         std::fs::write(
             dir.join("uplink.json"),
             serde_json::to_vec(&json!({
                 "registrar_url": hub,
-                "rathole_endpoint": "hub.losos.cfd:2333",
+                "tunnel_endpoint": "hub.losos.cfd:2333",
                 "id": "acme",
                 "token_file": dir.path_str("uplink.token"),
+                "pin_file": dir.path_str("hub.pin"),
             }))
             .unwrap(),
         )
         .unwrap();
         opts.uplink = Some(losos_registrar::relay::UplinkOpts {
             file: dir.path_str("uplink.json"),
-            rathole_config: dir.path_str("uplink.toml"),
+            tunnel_config: dir.path_str("uplink-tunnel.json"),
             interval: Duration::from_millis(100),
         });
         std::fs::write(
@@ -81,7 +85,7 @@ async fn info(edge: &Edge) -> Value {
 }
 
 fn uplink(edge: &Edge) -> String {
-    std::fs::read_to_string(edge.dir.join("uplink.toml")).unwrap_or_default()
+    std::fs::read_to_string(edge.dir.join("uplink-tunnel.json")).unwrap_or_default()
 }
 
 fn enrolled(edge: &Edge) -> Value {
@@ -166,7 +170,7 @@ async fn two_gateways_share_their_boxes_and_one_relays_each() {
         uplink(&gw_a)
     );
     assert!(
-        hub.wait_for(|| hub.rathole_toml().is_some_and(|t| t.contains("acme.box1")))
+        hub.wait_for(|| hub.tunnel_json().is_some_and(|t| t.contains("acme.box1")))
             .await
     );
     // gw-b knows the box but has not heard it: not on its uplink.
@@ -216,7 +220,7 @@ async fn two_gateways_share_their_boxes_and_one_relays_each() {
         "{}",
         uplink(&gw_a)
     );
-    assert!(hub.rathole_toml().unwrap().contains("acme.box1"));
+    assert!(hub.tunnel_json().unwrap().contains("acme.box1"));
     assert_eq!(hub_port(&hub), hub_port_before);
     let registry = hub.registry_json().unwrap();
     assert!(registry.contains("\"acme.box1\""), "{registry}");
@@ -279,19 +283,15 @@ async fn an_enrolled_box_may_join_the_mesh_of_its_secondary_cluster() {
 }
 
 fn hub_port(hub: &Edge) -> String {
-    let toml = hub.rathole_toml().unwrap();
-    let block = toml
-        .split("[server.services.\"acme.box1\"]")
-        .nth(1)
-        .unwrap();
-    block
-        .split("bind_addr = \"127.0.0.1:")
-        .nth(1)
-        .unwrap()
-        .split('"')
-        .next()
-        .unwrap()
-        .to_string()
+    let file: Value = serde_json::from_str(&hub.tunnel_json().unwrap()).unwrap();
+    let bind = file["services"]["acme.box1"]["bind"].as_str().unwrap();
+    bind.strip_prefix("127.0.0.1:").unwrap().to_string()
+}
+
+/// A hub's tunnel pin, distinct per official cluster.
+fn pin_of(cluster: &str) -> String {
+    let byte = if cluster == "us" { "a5" } else { "e5" };
+    byte.repeat(32)
 }
 
 fn main_cluster(edge: &Edge) -> Value {
@@ -315,10 +315,14 @@ async fn a_gateway_leaves_a_banned_official_cluster() {
             .unwrap(),
     ];
     let site = [TenantSpec::new("acme", "acme.losos.cfd", SITE_TOKEN).with_relay_zone(ZONE)];
+    // Each hub serves its own tunnel pin, which a gateway that moves to it
+    // fetches afresh.
     let official = |cluster: &'static str, peers: Vec<losos_registrar::official::OfficialPeer>| {
-        move |opts: &mut ServeOpts, _dir: &TempDir| {
+        move |opts: &mut ServeOpts, dir: &TempDir| {
             opts.official_cluster = Some(cluster.to_string());
             opts.official_peers = peers;
+            std::fs::write(dir.join("tunnel.pin"), pin_of(cluster)).unwrap();
+            opts.tunnel_pin_file = Some(dir.path_str("tunnel.pin"));
         }
     };
     let hub_eu =
@@ -341,7 +345,7 @@ async fn a_gateway_leaves_a_banned_official_cluster() {
     assert!(
         hub_eu
             .wait_for(|| hub_eu
-                .rathole_toml()
+                .tunnel_json()
                 .is_some_and(|t| t.contains("acme.box1")))
             .await
     );
@@ -361,7 +365,7 @@ async fn a_gateway_leaves_a_banned_official_cluster() {
     assert!(
         hub_us
             .wait_for(|| hub_us
-                .rathole_toml()
+                .tunnel_json()
                 .is_some_and(|t| t.contains("acme.box1")))
             .await,
         "{}",
@@ -371,6 +375,8 @@ async fn a_gateway_leaves_a_banned_official_cluster() {
     assert!(file.contains(&hub_us.base), "{file}");
     assert!(file.contains("127.0.0.1:2334"), "{file}");
     assert!(uplink(&gw).contains("127.0.0.1:2334"), "{}", uplink(&gw));
+    // The old hub's pin went with it: the uplink pins the new hub's.
+    assert!(uplink(&gw).contains(&pin_of("us")), "{}", uplink(&gw));
 
     gw.shutdown().await;
     hub_us.shutdown().await;

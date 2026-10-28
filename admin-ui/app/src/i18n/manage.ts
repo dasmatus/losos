@@ -141,11 +141,6 @@ export default defineMessages({
   "manage.uplink.registrar": { en: "Registrar URL", sk: "URL registrátora", de: "Registrar-URL" },
   "manage.uplink.endpoint": { en: "Tunnel endpoint", sk: "Koncový bod tunela", de: "Tunnel-Endpunkt" },
   "manage.uplink.token": { en: "Token", sk: "Token", de: "Token" },
-  "manage.uplink.bootstrap": {
-    en: "Bootstrap token (optional)",
-    sk: "Úvodný token (nepovinný)",
-    de: "Bootstrap-Token (optional)",
-  },
   "manage.uplink.saved": { en: "Hub saved", sk: "Hub uložený", de: "Hub gespeichert" },
   "manage.uplink.savedDetail": {
     en: "The boxes here are relayed within a minute.",
