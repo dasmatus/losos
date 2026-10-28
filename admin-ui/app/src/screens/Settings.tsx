@@ -137,8 +137,9 @@ function Pane({
     case "advanced":
       return <AdvancedPane form={form} />;
     case "history":
-      // No draft, no Apply bar: it reads the repository and syncs on request.
-      return <HistoryPane locked={form.locked} />;
+      // It reads the repository and syncs on request; the release channel
+      // is its one line of the draft.
+      return <HistoryPane form={form} />;
     case "backup":
       // No draft, no Apply bar: the bucket and every run are their own requests.
       return <BackupPane locked={form.locked} rebuilding={form.applying} />;

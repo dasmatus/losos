@@ -21,7 +21,9 @@ on:
 # task, and nothing removed them. Once a week this deletes every branch whose
 # tip commit is older than the threshold, except:
 #
-#   - the default branch, `gh-pages` and `release/*` (KEEP below);
+#   - the default branch, `gh-pages`, `release/*` and the release channels
+#     `channel/*`, which a monthly channel can leave alone for 31 days
+#     (KEEP below);
 #   - any branch that is the head of an open pull request from this
 #     repository, so an open PR is never closed by the job;
 #   - any branch that is the base of an open pull request, so a stacked PR
@@ -61,7 +63,7 @@ jobs:
       DRY_RUN: ${{ inputs.dry_run == true }}
       DAYS: ${{ inputs.days || vars.STALE_BRANCH_DAYS || '30' }}
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-      KEEP: '^(gh-pages|release/.*)$'
+      KEEP: '^(gh-pages|release/.*|channel/.*)$'
     steps:
       - name: find stale branches
         run: |

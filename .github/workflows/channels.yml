@@ -1,0 +1,124 @@
+name: channels
+
+on:
+  schedule:
+    # ~00:17 UTC: the cuts. Before the boxes' 03:00 update in Europe (01:00
+    # or 02:00 UTC), and before lockfile-updates.yml on Mondays (04:17), so
+    # a weekly cut is never the first build on a fresh nixpkgs.
+    - cron: "17 0 * * *"
+    # Hourly: hotfix candidates whose CI finished move their channel.
+    - cron: "47 * * * *"
+  pull_request_target:
+    types: [closed, labeled]
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "cut: move channels to the newest main that passed CI. hotfix: put a merged hotfix on every channel. promote: move channels to candidates that passed CI."
+        type: choice
+        options: [cut, hotfix, promote]
+        default: cut
+      channels:
+        description: "For cut: daily, weekly, monthly or all, separated by spaces. Empty: the ones due today."
+        type: string
+        default: ""
+      pr:
+        description: "For hotfix: the pull request's number."
+        type: string
+        default: ""
+
+# ── What this is ────────────────────────────────────────────────────────────
+#
+# The branches boxes follow (`losos.updates.channel`, modules/options.nix):
+# channel/daily, channel/weekly and channel/monthly. The logic is
+# .github/scripts/channels.py, whose header has the whole story, and
+# test_channels.py runs it against a fake GitHub over a real repository.
+#
+#   - Every night the cut moves each due channel (daily always, weekly on
+#     Mondays, monthly on the 1st) to the newest commit of main whose `ci`
+#     run passed with its cache upload. A fast-forward when it can be, else a
+#     merge commit whose tree is main's: never a force push.
+#   - A merged pull request labelled `hotfix` is cherry-picked onto every
+#     channel that lacks it, on a candidate branch `hotfix/<channel>/<n>`,
+#     and `ci` is started there by dispatch (a push with this token would
+#     start nothing). The label can go on before or after the merge.
+#   - When that run passes, cache upload included, the channel
+#     fast-forwards to the candidate and the candidate is deleted. That
+#     happens on the run's completion and, should that event not come, in
+#     the hourly pass.
+#
+# Every commit is made through GitHub's API, which signs it for the
+# repository's ruleset.
+#
+# pull_request_target runs this file from main with a token that can write;
+# the job reads the pull request's number, title and labels from the API and
+# never checks out or runs its code.
+
+permissions:
+  contents: read
+
+jobs:
+  channels:
+    name: "bot: release channels"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: >-
+      github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'pull_request_target' && github.event.pull_request.merged
+          && (github.event.action == 'closed' && contains(github.event.pull_request.labels.*.name, 'hotfix')
+              || github.event.label.name == 'hotfix'))
+      || (github.event_name == 'workflow_run' && startsWith(github.event.workflow_run.head_branch, 'hotfix/'))
+    # A group keeps one pending run and drops the one before it, so each
+    # kind of run has its own: a promotion arriving while one runs must not
+    # drop the night's cut, and nothing would bring a dropped hotfix back.
+    # They may then overlap. A cut and a promotion are safe together: GitHub
+    # moves a ref only by fast-forward, and a candidate whose channel moved
+    # meanwhile is picked again onto the new head (channels.py,
+    # promote_one).
+    concurrency:
+      group: >-
+        channels-${{ github.event_name == 'pull_request_target' && format('hotfix-{0}', github.event.pull_request.number)
+        || (github.event.schedule == '17 0 * * *' || inputs.task == 'cut') && 'cut' || 'promote' }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      actions: write
+      pull-requests: write
+      issues: write
+    steps:
+      # The default branch, whole: the cherry-picks happen in this clone.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: run
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT: ${{ github.event_name }}
+          SCHEDULE: ${{ github.event.schedule }}
+          TASK: ${{ inputs.task }}
+          CHANNELS: ${{ inputs.channels }}
+          INPUT_PR: ${{ inputs.pr }}
+          EVENT_PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          bot=.github/scripts/channels.py
+          case "$EVENT" in
+            schedule)
+              if [ "$SCHEDULE" = "17 0 * * *" ]; then python3 "$bot" cut; fi
+              python3 "$bot" promote
+              ;;
+            pull_request_target) python3 "$bot" hotfix "$EVENT_PR" ;;
+            workflow_run) python3 "$bot" promote ;;
+            workflow_dispatch)
+              case "$TASK" in
+                # shellcheck disable=SC2086 # the channels are words
+                cut) python3 "$bot" cut $CHANNELS ;;
+                hotfix) python3 "$bot" hotfix "$INPUT_PR" ;;
+                promote) python3 "$bot" promote ;;
+              esac
+              ;;
+          esac

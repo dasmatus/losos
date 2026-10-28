@@ -193,7 +193,7 @@ export function BoolRow({
 }
 
 /* A choice from a fixed list. `nullable`: the first choice, "", is null. */
-function SelectRow({
+export function SelectRow({
   id,
   slot,
   title,

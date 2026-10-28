@@ -303,9 +303,9 @@ export default defineMessages({
     de: "Neueste veröffentlichte Version {sha}",
   },
   "history.update.caption": {
-    en: "Before the nightly update, the box takes the newest version of this branch as one change and keeps your settings, disks and unlock mode. If you change any file other than modules/overrides.nix, the box keeps your edit and stops updating until you put it back.",
-    sk: "Pred nočnou aktualizáciou zariadenie prevezme najnovšiu verziu tejto vetvy ako jednu zmenu a ponechá vaše nastavenia, disky a spôsob odomykania. Ak zmeníte iný súbor než modules/overrides.nix, zariadenie vašu úpravu ponechá a prestane sa aktualizovať, kým ju nevrátite.",
-    de: "Vor dem nächtlichen Update übernimmt die Box die neueste Version dieses Branches als eine Änderung und behält deine Einstellungen, Platten und Entsperrart. Änderst du eine andere Datei als modules/overrides.nix, behält die Box deine Änderung und aktualisiert nicht mehr, bis du sie zurücknimmst.",
+    en: "Before the nightly update, the box takes the newest version of its channel as one change and keeps your settings, disks and unlock mode. After a move to a slower channel, it keeps the version it has until the channel passes it. If you change any file other than modules/overrides.nix, the box keeps your edit and stops updating until you put it back.",
+    sk: "Pred nočnou aktualizáciou zariadenie prevezme najnovšiu verziu svojho kanála ako jednu zmenu a ponechá vaše nastavenia, disky a spôsob odomykania. Po prechode na pomalší kanál si ponechá verziu, ktorú má, kým ju kanál nedobehne. Ak zmeníte iný súbor než modules/overrides.nix, zariadenie vašu úpravu ponechá a prestane sa aktualizovať, kým ju nevrátite.",
+    de: "Vor dem nächtlichen Update übernimmt die Box die neueste Version ihres Kanals als eine Änderung und behält deine Einstellungen, Platten und Entsperrart. Nach dem Wechsel auf einen langsameren Kanal behält sie ihre Version, bis der Kanal sie überholt. Änderst du eine andere Datei als modules/overrides.nix, behält die Box deine Änderung und aktualisiert nicht mehr, bis du sie zurücknimmst.",
   },
   "history.update.off": {
     en: "This box does not take new versions. It rebuilds only from the configuration it has.",
@@ -316,6 +316,40 @@ export default defineMessages({
   "history.update.state.pending": { en: "Not yet", sk: "Zatiaľ nie", de: "Noch nicht" },
   "history.update.state.ok": { en: "Up to date", sk: "Aktuálne", de: "Aktuell" },
   "history.update.state.kept": { en: "Kept your edits", sk: "Ponechané vaše úpravy", de: "Deine Änderungen behalten" },
+  "history.update.state.holding": {
+    en: "Waiting for the channel",
+    sk: "Čaká sa na kanál",
+    de: "Wartet auf den Kanal",
+  },
+  "history.update.channel": {
+    en: "Release channel",
+    sk: "Kanál vydaní",
+    de: "Release-Kanal",
+  },
+  "history.update.channel.daily": { en: "Daily", sk: "Denne", de: "Täglich" },
+  "history.update.channel.weekly": { en: "Weekly", sk: "Týždenne", de: "Wöchentlich" },
+  "history.update.channel.monthly": { en: "Monthly", sk: "Mesačne", de: "Monatlich" },
+  "history.update.channel.main": { en: "Every change", sk: "Každá zmena", de: "Jede Änderung" },
+  "history.update.channel.dailyDetail": {
+    en: "The newest version that passed every check, at most a day old.",
+    sk: "Najnovšia verzia, ktorá prešla všetkými kontrolami, najviac deň stará.",
+    de: "Die neueste Version, die alle Prüfungen bestanden hat, höchstens einen Tag alt.",
+  },
+  "history.update.channel.weeklyDetail": {
+    en: "A new version each Monday. Hotfixes still arrive the same day.",
+    sk: "Nová verzia každý pondelok. Opravy označené ako hotfix prídu aj tak v ten istý deň.",
+    de: "Jeden Montag eine neue Version. Hotfixes kommen trotzdem am selben Tag.",
+  },
+  "history.update.channel.monthlyDetail": {
+    en: "A new version on the 1st of each month. Hotfixes still arrive the same day.",
+    sk: "Nová verzia vždy 1. dňa v mesiaci. Opravy označené ako hotfix prídu aj tak v ten istý deň.",
+    de: "Am 1. jedes Monats eine neue Version. Hotfixes kommen trotzdem am selben Tag.",
+  },
+  "history.update.channel.mainDetail": {
+    en: "Every change the night it is made, checked or not. For testing LosOS itself.",
+    sk: "Každá zmena v noci po tom, ako vznikne, skontrolovaná alebo nie. Na testovanie samotného LosOS.",
+    de: "Jede Änderung in der Nacht, in der sie entsteht, geprüft oder nicht. Zum Testen von LosOS selbst.",
+  },
   "history.update.state.waiting": { en: "Waiting", sk: "Čaká sa", de: "Wartet" },
   "history.update.state.unavailable": {
     en: "Source not reachable",
