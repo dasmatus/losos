@@ -433,6 +433,20 @@ in
       '';
     };
 
+    proxy.pauseSharingAfter = lib.mkOption {
+      type = lib.types.ints.unsigned;
+      default = 600;
+      example = 1800;
+      description = ''
+        Seconds without any edge answering before a box that shares storage
+        through one turns sharing off by itself, as the owner's switch
+        would (backend/src/edge.rs, `sharing_step`). Once an edge has
+        answered for a minute, the box turns sharing back on. Only a pause
+        the box made itself is undone; the owner switching sharing in the
+        meantime keeps their choice. `0` never pauses.
+      '';
+    };
+
     proxy.officialRootKeyFile = lib.mkOption {
       type = lib.types.path;
       default = ../nix/keys/official-edge-root.pub;
@@ -474,6 +488,31 @@ in
         The losos-registrar derivation (Rust). When non-null, the announce
         service runs; wired by modules/defaults.nix to
         self.packages.<system>.losos-registrar. Leave null to run without.
+      '';
+    };
+
+    # ── Tor and I2P (modules/hidden-services.nix) ─────────────────────────
+    hidden.tor.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Give the box an address on Tor, a `.onion` name people open in Tor
+        Browser. It reaches what the box's public name reaches through an
+        edge, LosOS Cloud, LosOS Git and LosOS Login, never the admin pages,
+        and needs no edge and no open port: the box connects out to Tor. The
+        address appears on the Network page once Tor has made it, and stays
+        the same across reboots.
+      '';
+    };
+
+    hidden.i2p.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Give the box an address on I2P, a `.b32.i2p` name people open
+        through an I2P router. It reaches the same pages as the Tor address
+        and, like it, needs no edge and no open port. The box takes part in
+        I2P as a router with a small bandwidth share.
       '';
     };
 
@@ -1021,6 +1060,19 @@ in
       description = ''
         How many days a deleted file stays in LosOS Cloud's trash before it
         is deleted for good.
+      '';
+    };
+
+    cloud.photos.faces = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Find the faces in LosOS Cloud's photos and group them into people,
+        whom the owner can name. Two small models do it on this box's CPU, in
+        the background at the lowest priority; no face, place or picture
+        leaves the box, and only the photos' owner sees them. Turning it off
+        deletes every face and person found so far; the camera's details
+        (date, camera, lens, place) are read either way.
       '';
     };
 
@@ -1998,19 +2050,30 @@ in
     edge.heartbeatTtl = lib.mkOption {
       type = lib.types.str;
       default = "120s";
-      description = "Tenants with no heartbeat within this TTL are pruned (their Traefik router + rathole service removed).";
+      description = "Tenants with no heartbeat within this TTL are pruned (their Traefik routes and rathole service removed).";
     };
 
     edge.reconcileInterval = lib.mkOption {
       type = lib.types.str;
       default = "15s";
-      description = "How often the registrar reconciler re-derives Traefik + rathole config from the registry.";
+      description = "How often the registrar reconciler re-derives the Traefik routes and the rathole config from the registry.";
     };
 
     edge.registrarApiPort = lib.mkOption {
       type = lib.types.port;
       default = 8443;
       description = "Loopback port the losos-registrar HTTP API listens on; Traefik forwards register.<publicDomain> here.";
+    };
+
+    edge.traefikProviderPort = lib.mkOption {
+      type = lib.types.port;
+      default = 8090;
+      description = ''
+        Loopback port of the registrar's provider listener. Traefik's HTTP
+        provider polls it every two seconds for the routes of the live boxes
+        and published machines, and Traefik's offline page for a box it
+        cannot reach is served from it. Never reachable off the machine.
+      '';
     };
 
     edge.registrarApiBind = lib.mkOption {
@@ -2155,7 +2218,7 @@ in
         }
       );
       default = { };
-      description = "Closed-enrollment whitelist of appliances permitted to register. The registrar only ever writes Traefik routers for ids listed here.";
+      description = "Closed-enrollment whitelist of appliances permitted to register. The registrar only ever hands Traefik routes for ids listed here.";
     };
 
     # ── Mesh CI (edge side) ─────────────────────────────────────────────────
@@ -3142,6 +3205,28 @@ in
       '';
     };
 
+    edge.hidden.tor.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Give every box this edge routes an address on Tor of its own, a
+        `.onion` name that reaches the box through its tunnel the way its
+        public name does. The addresses are made here and kept across
+        restarts; each box learns its own on its next heartbeat and shows
+        it on its Network page. The edge opens no port for it.
+      '';
+    };
+
+    edge.hidden.i2p.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Give every box this edge routes an address on I2P of its own, a
+        `.b32.i2p` name, in the same way as edge.hidden.tor.enable. The edge
+        takes part in I2P as a router with a small bandwidth share.
+      '';
+    };
+
     edge.manage.ui = lib.mkOption {
       type = lib.types.nullOr lib.types.path;
       default = null;
@@ -3411,6 +3496,16 @@ in
         description = "LosOS Cloud runs, and signs people in with LosOS Login.";
       };
     };
+
+  # Tunnel length of the box's and the edge's I2P services
+  # (modules/hidden-lib.nix); null is i2pd's own default. Only a test's
+  # private I2P network, with too few routers for three hops, sets it.
+  options.lososInternal.hidden.i2pHops = lib.mkOption {
+    type = lib.types.nullOr lib.types.ints.positive;
+    internal = true;
+    default = null;
+    description = "Hops of each I2P tunnel of the box's or edge's addresses; null for i2pd's default.";
+  };
 
   # ── The shared side ───────────────────────────────────────────────────
   # The shared user's apps (mail, chat) exist only while the box's storage

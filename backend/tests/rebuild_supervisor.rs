@@ -127,6 +127,8 @@ fn record(backend: &IoLosos, job: &str, state: RebuildState) {
             erase: None,
             owner: None,
             managed_by: None,
+            sharing_paused_at: None,
+            sharing_edge_seen: false,
         },
     )
     .unwrap();

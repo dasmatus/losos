@@ -136,6 +136,12 @@ in
         # seeded keys from losos.access.gpgKeys.
         LOSOS_ACCESS_DIR = "/var/lib/losos/access";
         LOSOS_ACCESS_KEYS_FILE = "/etc/losos/access-keys.asc";
+        # Traefik's metrics for the statistics plugin
+        # (backend/plugins/statistics, modules/apps.nix). Set on every box,
+        # apps or not: lososd refuses to start a plugin whose manifest names
+        # a variable it lacks, and the plugin answers "unavailable" while
+        # nothing listens there.
+        LOSOS_TRAEFIK_URL = "http://127.0.0.1:${toString config.losos.apps.traefikPort}";
       }
       # Where lososd looks for an edge proxy besides the LAN (backend/src/edge.rs):
       # the configured registrar, probed whether or not the master proxy is on,
@@ -145,6 +151,7 @@ in
       # runs for its own `.local` name (modules/mdns.nix).
       // {
         LOSOS_EDGE_URL = config.losos.proxy.registrarUrl;
+        LOSOS_SHARING_PAUSE_AFTER_SECS = toString config.losos.proxy.pauseSharingAfter;
         # Where the tunnel goes when that configured edge is the path. An
         # edge found on the LAN carries its own in the advert (`rathole=`).
         LOSOS_EDGE_RATHOLE = config.losos.proxy.edgeRatholeEndpoint;

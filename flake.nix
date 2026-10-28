@@ -380,6 +380,8 @@
             ./modules/logs.nix
             ./modules/defaults.nix
             ./modules/proxy.nix
+            # The box on Tor and I2P (losos.hidden.*).
+            ./modules/hidden-services.nix
           ]
           # The two files that describe *this* box rather than the appliance:
           # modules/install-target.nix (drive list, firmware mode, unlock
@@ -432,6 +434,7 @@
           ./modules/edge-vms.nix
           ./modules/edge-inference.nix
           ./modules/edge-gateway.nix
+          ./modules/edge-hidden.nix
           ./modules/logs.nix
         ];
         _module.args.self = self;
@@ -508,11 +511,15 @@
         losos-profiles = import ./nix/tests/profiles.nix { inherit pkgs; };
         losos-profile-screens = import ./nix/tests/profile-screens.nix { inherit pkgs; };
         losos-plugins = import ./nix/tests/plugins.nix { inherit pkgs; };
+        losos-hidden-services = import ./nix/tests/hidden-services.nix { inherit pkgs; };
         losos-design = import ./nix/tests/design.nix { inherit pkgs; };
         losos-agents = import ./nix/tests/agents.nix { inherit pkgs; };
         # The banner a box off the mesh shows over every page, both states
         # and the dismissal, with the pull request's pictures (nix/tests/mesh-notice.nix).
         losos-mesh-notice = import ./nix/tests/mesh-notice.nix { inherit pkgs; };
+        # The Mesh page while the box has paused sharing for want of an edge,
+        # with the pull request's pictures (nix/tests/sharing-pause.nix).
+        losos-sharing-pause = import ./nix/tests/sharing-pause.nix { inherit pkgs; };
         # LosOS Diagrams on a box with LosOS Cloud: the /lab/ move, a .canvas
         # file opened and saved back, and the pull request's pictures.
         losos-diagrams = import ./nix/tests/diagrams.nix { inherit pkgs; };
@@ -548,6 +555,9 @@
         # the pull request's pictures (nix/tests/context-menu.nix).
         losos-context-menu = import ./nix/tests/context-menu.nix { inherit pkgs; };
         losos-cloud-from-nextcloud = import ./nix/tests/cloud-from-nextcloud.nix { inherit pkgs; };
+        # Photos: the camera's details and faces read on the box, grouped
+        # into people the owner names (nix/tests/cloud-photos.nix).
+        losos-cloud-photos = import ./nix/tests/cloud-photos.nix { inherit pkgs; };
         # Notes on a kitchen garden vault, and the folder published as a
         # knowledge base, on and off the mesh (nix/tests/notes.nix).
         losos-notes = import ./nix/tests/notes.nix { inherit pkgs; };
