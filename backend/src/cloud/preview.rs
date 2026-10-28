@@ -36,8 +36,9 @@ fn cache_dir(cloud: &Cloud, id: i64) -> PathBuf {
     cloud.store.root().join(".previews").join(id.to_string())
 }
 
-/// Decode, turn and shrink. Returns the bytes and whether they are PNG.
-pub fn render(src: &Path, size: u32) -> Result<(Vec<u8>, bool), String> {
+/// A picture decoded and turned upright, with the EXIF block its file
+/// carries (`photos` reads every tag from it), within the limits above.
+pub fn open_upright(src: &Path) -> Result<(DynamicImage, Option<Vec<u8>>), String> {
     let meta = std::fs::metadata(src).map_err(|e| e.to_string())?;
     if meta.len() > MAX_BYTES {
         return Err("too large".into());
@@ -52,10 +53,17 @@ pub fn render(src: &Path, size: u32) -> Result<(Vec<u8>, bool), String> {
         return Err("too many pixels".into());
     }
     let orientation = decoder.orientation().ok();
+    let exif = decoder.exif_metadata().ok().flatten();
     let mut img = DynamicImage::from_decoder(decoder).map_err(|e| e.to_string())?;
     if let Some(o) = orientation {
         img.apply_orientation(o);
     }
+    Ok((img, exif))
+}
+
+/// Decode, turn and shrink. Returns the bytes and whether they are PNG.
+pub fn render(src: &Path, size: u32) -> Result<(Vec<u8>, bool), String> {
+    let (img, _) = open_upright(src)?;
     let thumb = img.thumbnail(size, size);
     let alpha = thumb.color().has_alpha();
     let mut out = std::io::Cursor::new(Vec::new());
