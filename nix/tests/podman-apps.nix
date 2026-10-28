@@ -225,6 +225,8 @@ pkgs.testers.nixosTest {
       ];
       losos = {
         backend.package = lososPkgs.losos-ctl;
+        # GET /api/statistics is a plugin (backend/plugins/statistics).
+        backend.plugins = lososPkgs.losos-plugins;
         admin.ui = lososPkgs.losos-admin-ui;
         # The spare key signs in; LosOS Login has a test of its own.
         identity.enable = false;
@@ -325,8 +327,11 @@ pkgs.testers.nixosTest {
         return {"name": name, "port": 18080, "path": "/", "token": "box.token", "wait": wait,
                 "local": {"losos-widgets": board}}
 
-    def statistics(name, wait=None):
-        return {"name": name, "port": 18080, "path": "/settings/statistics", "token": "box.token", "wait": wait}
+    def statistics(name, wait=None, lang=None):
+        shot = {"name": name, "port": 18080, "path": "/settings/statistics", "token": "box.token", "wait": wait}
+        if lang:
+            shot["local"] = {"losos-lang": lang}
+        return shot
 
     traefik = "http://127.0.0.1:8089"
 
@@ -430,6 +435,12 @@ pkgs.testers.nixosTest {
         # LAN only: the box itself is turned away, the laptop is not.
         code = box.succeed(f"curl -s -o /dev/null -w '%{{http_code}}' http://127.0.0.1:{front}/").strip()
         assert code == "403", code
+        # IPv4 only, as nginx's forwards were: the laptop's IPv6 address
+        # could not be told from the internet's, so the firewall resets it.
+        # curl exits 7 on a refused connection.
+        status, _ = laptop.execute(f"curl -6 -sS -m 5 -o /dev/null http://box:{front}/")
+        assert status == 7, status
+        laptop.succeed(f"curl -4 -fsS http://box:{front}/ | grep -q 'notes from an app'")
         # The API and metrics answer on loopback only.
         laptop.fail("curl -fsS -m 5 http://box:8089/ping")
         box.succeed(f"curl -fsS {traefik}/ping")
@@ -499,6 +510,9 @@ pkgs.testers.nixosTest {
         record("statistics", "Traefik's counts, on the Overview and in Settings.", [
           overview("overview-statistics", "text=requests in the last hour"),
           statistics("settings-statistics", "text=notes"),
+          # The handbook's Slovak and German pages show the page in their language.
+          statistics("settings-statistics-sk", "text=notes", "sk"),
+          statistics("settings-statistics-de", "text=notes", "de"),
         ])
 
     with subtest("the apps' Compose files are in notshared's own Git repo"):

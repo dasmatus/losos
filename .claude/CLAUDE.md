@@ -256,7 +256,9 @@ and is never served or built by nix.
   host network without root, turn claims into folders in that user's data
   domain and refuse a chart that needs more. `losos-traefik` (its own
   user) holds `losos.apps.ports`, an entrypoint `port-<n>` each, LAN only
-  through the `lan-only@file` ipAllowList (RFC 1918 minus 10.42/16). Routes
+  through the `lan-only@file` ipAllowList (RFC 1918 minus 10.42/16), IPv4
+  only (Go listens on both families, so the firewall resets IPv6 to the
+  range; an IPv6 LAN address looks like anyone's). Routes
   are labels `compose.rs` writes on every service (`app-<name>`, dropping an
   app's own `traefik.*`/`losos.*`), read through `losos-podman-api`, a
   socket-activated Podman API of `notshared` only Traefik's group opens; a
