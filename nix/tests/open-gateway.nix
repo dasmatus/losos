@@ -154,6 +154,9 @@ in
       losos.proxy.gateways = {
         tpmRoots = "${maker}/ca.pem";
         payouts = losos;
+        # These gateways serve no signed zone, so there is no DNSSEC or ECH
+        # name to hold them to; nix/tests/edge-dns.nix covers that check.
+        domain.enable = false;
       };
       systemd.services.lososd.environment.LOSOS_GATEWAY_IMAGES = lib.mkForce imagesFile;
       systemd.tmpfiles.rules = [ "d /run/losos-test 0755 root root - -" ];
