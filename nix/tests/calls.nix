@@ -542,6 +542,10 @@ pkgs.testers.nixosTest {
     # The edge node, with throughEdge; looked up so the script reads the
     # same without one.
     EDGE = globals().get("edge")
+    # The film is recorded by losos-calls alone: under emulation a 2x
+    # recording of Matus's window costs the edge run, with a third machine
+    # and its relay, more than it can spare.
+    FILMING = EDGE is None
 
     start_all()
     if EDGE is not None:
@@ -795,7 +799,7 @@ pkgs.testers.nixosTest {
             timezone_id="Europe/Bratislava",
             reduced_motion="reduce",
             ignore_https_errors=True,
-            **({"record_video_dir": f"{FILM}/raw", "record_video_size": {"width": 2560, "height": 1800}} if name == "matus" else {}),
+            **({"record_video_dir": f"{FILM}/raw", "record_video_size": {"width": 2560, "height": 1800}} if name == "matus" and FILMING else {}),
         )
         if name == "matus":
             clip_start["matus"] = time.time()
@@ -1204,6 +1208,9 @@ pkgs.testers.nixosTest {
             guest.get_by_label("Your name").fill("Jack")
             shot(guest, "guest-join")
             guest.get_by_role("button", name="Join the call").click()
+            # Under emulation the guest's camera and its background cut take
+            # minutes to open; the call view comes after them.
+            guest.locator("[data-guest-call]").wait_for(timeout=360000)
             # Two others for the guest, and the guest for each of them.
             live(guest, 2)
             for page in (owner, her):
@@ -1443,15 +1450,16 @@ pkgs.testers.nixosTest {
     # Matus's clip: Chromium writes it when his window closes. Under
     # emulation the page paints well below 60 frames a second, so the
     # clip is resampled to a constant 60 for the cut.
-    raw = owner.video.path()
-    owner.context.close()
-    subprocess.run(
-        ["${pkgs.ffmpeg-headless}/bin/ffmpeg", "-v", "error", "-i", raw, "-vf", "fps=60",
-         "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
-         "-movflags", "+faststart", "-y", f"{FILM}/calls-matus.mp4"],
-        check=True,
-    )
-    os.remove(raw)
+    if FILMING:
+        raw = owner.video.path()
+        owner.context.close()
+        subprocess.run(
+            ["${pkgs.ffmpeg-headless}/bin/ffmpeg", "-v", "error", "-i", raw, "-vf", "fps=60",
+             "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
+             "-movflags", "+faststart", "-y", f"{FILM}/calls-matus.mp4"],
+            check=True,
+        )
+        os.remove(raw)
 
     for b in browsers.values():
         b.close()
