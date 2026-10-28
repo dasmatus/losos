@@ -644,6 +644,10 @@
         # boards carried over, closing words in commits and pull requests,
         # and the pages from Chromium (nix/tests/git-issues.nix).
         losos-git-issues = import ./nix/tests/git-issues.nix { inherit pkgs; };
+        # LosOS Wiki: spaces kept as LosOS Git wikis, written with git and in
+        # the browser, the directory with the knowledge bases, and each
+        # space's published site (nix/tests/wiki.nix).
+        losos-wiki = import ./nix/tests/wiki.nix { inherit pkgs; };
         # People of another box in LosOS Git by their chat address, and a
         # repository's chat room between two boxes (nix/tests/git-federation.nix).
         losos-git-federation = import ./nix/tests/git-federation.nix { inherit pkgs; };
