@@ -71,6 +71,9 @@ pkgs.testers.nixosTest {
       cloud.enable = true;
       git.enable = false;
     };
+    # The statistics plugin reads Traefik's metrics there; modules/apps.nix
+    # sets it on a full box, and this one has no apps.
+    systemd.services.lososd.environment.LOSOS_TRAEFIK_URL = "http://127.0.0.1:8089";
     environment.systemPackages = [
       pkgs.curl
       pkgs.jq
