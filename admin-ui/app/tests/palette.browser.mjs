@@ -375,7 +375,7 @@ await check('actions run in place: the theme changes, and the palette closes', a
 
 await check('on a phone the sheet hands over to the palette', async () => {
   const { page } = await open({ viewport: { width: 375, height: 800 } });
-  await page.getByRole('button', { name: 'Expand the sidebar' }).click();
+  await page.getByRole('navigation', { name: 'Main places' }).getByRole('button', { name: 'More' }).click();
   await page.getByRole('dialog', { name: 'Sections' }).getByRole('button', { name: /^Search or jump to/ }).click();
   await box(page).waitFor();
   const panel = await page.locator('dialog[open]').last().boundingBox();
