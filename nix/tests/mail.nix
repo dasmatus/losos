@@ -59,6 +59,9 @@ in
 
 pkgs.testers.nixosTest {
   name = if screens then "losos-mail-screens" else "losos-mail";
+  # The handbook's pictures in three languages take most of an hour on
+  # their own under TCG.
+  globalTimeout = 3 * 3600;
 
   nodes = {
     box =
