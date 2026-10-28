@@ -2920,7 +2920,7 @@ dependencies = [
  "predicates",
  "quick-xml",
  "quinn",
- "rand 0.10.3",
+ "rand 0.8.8",
  "ring",
  "rusqlite",
  "rustix",

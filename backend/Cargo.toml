@@ -178,7 +178,7 @@ sha1 = "0.11"
 
 [dev-dependencies]
 # Keys for the mail key store's tests (src/mail_pgp.rs); rPGP's own version.
-rand = "0.10"
+rand = "0.8"
 # The CLI book's integration-testing trio: run the real binary, assert on its
 # output, and give it a throwaway filesystem.
 assert_cmd = "2"
