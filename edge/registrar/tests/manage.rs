@@ -385,3 +385,154 @@ async fn statistics_without_traefik_say_why() {
     assert_eq!(doc["reason"], "this edge does not read Traefik's counters");
     edge.shutdown().await;
 }
+
+/// The gateway's own settings, which the console's `losos-edge` command
+/// used to change: no key, no settings; with it, an uplink is set and
+/// cleared and an enrolled box is forgotten.
+#[tokio::test]
+async fn the_gateway_is_set_up_from_the_page_with_the_key() {
+    let edge = Edge::start_custom("manage-gateway", &[], |opts, dir| {
+        opts.manage = Some(ManageOpts {
+            key_file: dir.path_str("manage-key"),
+            ui_dir: None,
+            traefik_metrics: None,
+        });
+        opts.enrol_dir = Some(dir.path_str("enrolled"));
+        opts.uplink = Some(losos_registrar::relay::UplinkOpts {
+            file: dir.path_str("edge/uplink.json"),
+            rathole_config: dir.path_str("uplink.toml"),
+            interval: std::time::Duration::from_secs(3600),
+        });
+    })
+    .await;
+    let key = key(&edge);
+    let send =
+        |method: reqwest::Method, path: &str, k: Option<&str>, body: Option<serde_json::Value>| {
+            let mut req = edge.client.request(method, format!("{}{path}", edge.base));
+            if let Some(k) = k {
+                req = req.bearer_auth(k);
+            }
+            if let Some(b) = body {
+                req = req.json(&b);
+            }
+            async move {
+                let resp = req.send().await.unwrap();
+                (resp.status().as_u16(), resp.text().await.unwrap())
+            }
+        };
+    let uplink = serde_json::json!({
+        "id": "acme",
+        "token": "hub-token",
+        "registrarUrl": "https://register.example.test",
+        "ratholeEndpoint": "relay.example.test:2333",
+    });
+
+    assert_eq!(get(&edge, "/manage/api/gateway", None).await.0, 401);
+    assert_eq!(
+        send(
+            reqwest::Method::PUT,
+            "/manage/api/gateway/uplink",
+            None,
+            Some(uplink.clone())
+        )
+        .await
+        .0,
+        401
+    );
+    assert!(!edge.dir.join("edge/uplink.json").exists());
+
+    let (status, body) = get(&edge, "/manage/api/gateway", Some(&key)).await;
+    assert_eq!(status, 200, "{body}");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert!(v["uplink"]["set"].is_null(), "{v}");
+    assert_eq!(v["enrolled"], serde_json::json!([]));
+
+    // A malformed row is refused and writes nothing.
+    let mut bad = uplink.clone();
+    bad["ratholeEndpoint"] = "relay".into();
+    let (status, body) = send(
+        reqwest::Method::PUT,
+        "/manage/api/gateway/uplink",
+        Some(&key),
+        Some(bad),
+    )
+    .await;
+    assert_eq!(status, 400, "{body}");
+    assert!(!edge.dir.join("edge/uplink.json").exists());
+
+    let (status, body) = send(
+        reqwest::Method::PUT,
+        "/manage/api/gateway/uplink",
+        Some(&key),
+        Some(uplink),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    let file: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(edge.dir.join("edge/uplink.json")).unwrap()).unwrap();
+    assert_eq!(file["id"], "acme");
+    assert_eq!(
+        std::fs::read_to_string(edge.dir.join("edge/uplink.token")).unwrap(),
+        "hub-token"
+    );
+    let (_, body) = get(&edge, "/manage/api/gateway", Some(&key)).await;
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        v["uplink"]["set"]["registrarUrl"], "https://register.example.test",
+        "{v}"
+    );
+
+    // An unknown box enrols on first contact, and the page forgets it.
+    let (status, body) = edge
+        .register("newbox", "newbox.example.test", common::GOOD_TOKEN)
+        .await;
+    assert_eq!(status, 200, "{body}");
+    let (_, body) = get(&edge, "/manage/api/gateway", Some(&key)).await;
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(v["enrolled"], serde_json::json!(["newbox"]), "{v}");
+    assert_eq!(
+        send(
+            reqwest::Method::DELETE,
+            "/manage/api/gateway/boxes/newbox",
+            None,
+            None
+        )
+        .await
+        .0,
+        401
+    );
+    let (status, body) = send(
+        reqwest::Method::DELETE,
+        "/manage/api/gateway/boxes/newbox",
+        Some(&key),
+        None,
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        send(
+            reqwest::Method::DELETE,
+            "/manage/api/gateway/boxes/newbox",
+            Some(&key),
+            None
+        )
+        .await
+        .0,
+        404
+    );
+
+    // Cleared: the file, its tokens and the rendered tunnel config go.
+    std::fs::write(edge.dir.join("uplink.toml"), "[client]\n").unwrap();
+    let (status, body) = send(
+        reqwest::Method::DELETE,
+        "/manage/api/gateway/uplink",
+        Some(&key),
+        None,
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert!(!edge.dir.join("edge/uplink.json").exists());
+    assert!(!edge.dir.join("edge/uplink.token").exists());
+    assert!(!edge.dir.join("uplink.toml").exists());
+    edge.shutdown().await;
+}
