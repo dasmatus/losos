@@ -247,6 +247,9 @@ await signIn(page, base, name, password);
 // as tests/*.browser.mjs baseline it): LosOS Cloud's pages may log nothing
 // beyond that.
 const baseline = new Set();
+// Answers a box without LosOS Office gives on purpose: LosOS Cloud asks
+// which types Office opens and takes a 404 as "none" (src/cloud/office/opener.ts).
+const expected = new Set(["404 GET /cloud/api/office/extensions"]);
 const listen = (sink) => {
   // Chromium logs a failed request without its address; the response
   // names it, so a 404 says which route the box did not serve.
@@ -255,7 +258,8 @@ const listen = (sink) => {
   };
   const onError = (e) => sink(String(e));
   const onResponse = (r) => {
-    if (r.status() >= 400) sink(`${r.status()} ${r.request().method()} ${new URL(r.url()).pathname}`);
+    const line = `${r.status()} ${r.request().method()} ${new URL(r.url()).pathname}`;
+    if (r.status() >= 400 && !expected.has(line)) sink(line);
   };
   page.on("console", onConsole);
   page.on("pageerror", onError);
