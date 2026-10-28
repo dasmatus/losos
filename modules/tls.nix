@@ -157,8 +157,18 @@ in
       ++ (import ./hidden-lib.nix { inherit lib pkgs; }).frontListen (
         config.losos.hidden.tor.enable || config.losos.hidden.i2p.enable
       );
+      # GSO hands the kernel a burst of QUIC packets in one call, and a
+      # stream buffer bigger than nginx's 64k default lets a download keep
+      # more than one window in flight. Without both, nix/tests/quic.nix
+      # measured HTTP/3 at half the speed of HTTP/2 on a lossy link and up
+      # to five times the CPU. With them HTTP/3 takes about half the time of
+      # HTTP/2 on a link that loses 2 % of packets, at under twice the CPU;
+      # on a clean link HTTP/2 is still the quicker of the two. 256k bounds
+      # what one stream can make the box hold.
       extraConfig = ''
         add_header Alt-Svc $losos_alt_svc always;
+        quic_gso on;
+        http3_stream_buffer_size 256k;
       '';
     };
 
