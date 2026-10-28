@@ -461,12 +461,15 @@
       # at its top what it asserts. Most boot VMs, which CI (no KVM) never
       # builds.
       checks.${system} = {
-        losos-sysupdate-proxy = pkgs.runCommand "losos-sysupdate-proxy-tests" {
-          nativeBuildInputs = [ pkgs.python3 ];
-        } ''
-          python3 ${./tools}/test_losos_sysupdate_proxy.py
-          touch $out
-        '';
+        losos-sysupdate-proxy =
+          pkgs.runCommand "losos-sysupdate-proxy-tests"
+            {
+              nativeBuildInputs = [ pkgs.python3 ];
+            }
+            ''
+              python3 ${./tools}/test_losos_sysupdate_proxy.py
+              touch $out
+            '';
         losos-install = import ./nix/tests/install.nix { inherit pkgs disko; };
         losos-tpm-unlock = import ./nix/tests/tpm.nix { inherit pkgs disko; };
         losos-admin-daemon = import ./nix/tests/admin-vm.nix { inherit pkgs; };
@@ -490,6 +493,8 @@
         losos-resize = import ./nix/tests/resize.nix { inherit pkgs; };
         losos-tls = import ./nix/tests/tls.nix { inherit pkgs; };
         losos-setup = import ./nix/tests/setup.nix { inherit pkgs; };
+        # The local copy of the binary caches on /persist (modules/cache.nix).
+        losos-nix-cache = import ./nix/tests/nix-cache.nix { inherit pkgs; };
         losos-tour = import ./nix/tests/tour.nix { inherit pkgs; };
         # The game a long wait offers, played during a real wizard wait and a
         # real rebuild, with the pull request's pictures (nix/tests/wait-game.nix).
