@@ -146,7 +146,13 @@ let
         waitFor = gpu;
         steps = [
           { click = gpuSwitch; }
-          { waitText = "1 change not applied yet"; }
+          # The count is the stylesheet's own text (a counter), which
+          # no locator reads; the bar showing is what the change did.
+          {
+            waitFor = {
+              selector = "[data-basic-apply]";
+            };
+          }
         ];
       }
       {
@@ -157,7 +163,7 @@ let
           { click = personMenu; }
           {
             waitFor = {
-              role = "button";
+              role = "menuitem";
               name = "Sign out";
             };
           }
@@ -203,7 +209,7 @@ let
         { click = personMenu; }
         {
           click = {
-            role = "button";
+            role = "menuitem";
             name = "Sign out";
           };
         }
