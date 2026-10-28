@@ -2043,40 +2043,19 @@ in
       '';
     };
 
-    edge.identity.keyFile = lib.mkOption {
-      type = lib.types.nullOr secretPath;
-      default = "/var/lib/losos-registrar/identity.key";
+    edge.passport.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
       description = ''
-        This edge's identity **private** key (PKCS#8 hex, 0600, persisted via
-        /var, never in the store). The registrar makes it on its first start
-        if the file is missing, so the private half never leaves the edge;
-        `GET /identity/public-key` serves the public half. Together with
-        `edge.identity.certFile` it is what can make the edge *official*:
-        once an operator has pushed a certificate the LosOS root signed for
-        this key (`losos-registrar provision edge`, from their own machine,
-        behind a GitHub sign-in that the edge checks too), the registrar
-        serves `GET /identity?nonce=` and boxes whose
-        losos.proxy.officialRootKeyFile matches the signer let it process
-        their market traffic. Until then the edge is found and shares
-        storage but is not official — the shape of an edge a company runs
-        for itself. `null` (with `certFile = null`) runs an edge that
-        cannot become official at all: every `/identity*` route is 404.
-      '';
-    };
-
-    edge.identity.certFile = lib.mkOption {
-      type = lib.types.nullOr lib.types.path;
-      default = "/var/lib/losos-registrar/identity.cert.json";
-      description = ''
-        Where the certificate for `edge.identity.keyFile` lives: the JSON
-        `POST /identity/cert` installs (the primitive is `losos-registrar
-        identity sign`), signed by the LosOS root key the project owner
-        holds offline. Public, and the registrar writes it, so it must be a
-        writable runtime path for the push to work; a store path is read
-        but can never be replaced by a push. Must name this edge's public
-        URL (the one boxes probe) and be unexpired, or boxes reject it; a
-        certificate that is not for the key is logged and ignored. Set
-        with `keyFile` or not at all.
+        Run this edge as an open gateway that boxes check for themselves
+        (modules/edge-passport.nix): the registrar keeps an edge key at
+        /var/lib/losos-registrar/edge.key and answers `/passport*` with the
+        owner's signed settings, measured into the TPM's PCR 15 at boot, and
+        a TPM quote over PCRs 4, 11 and 15. A box trusts the gateway when the
+        owner's OpenPGP passport names it, the quote shows a published
+        LosOS image, the TPM's maker vouches for the TPM, and the fee payout
+        addresses are LosOS's own. Needs a TPM 2.0 at /dev/tpm0; the
+        `losos-disk-edge-qcow2` image turns it on.
       '';
     };
 
@@ -3525,9 +3504,6 @@ in
       }
       // lib.optionalAttrs (config.losos.edge.noisePrivateKeyFile != null) {
         "losos.edge.noisePrivateKeyFile" = config.losos.edge.noisePrivateKeyFile;
-      }
-      // lib.optionalAttrs (config.losos.edge.identity.keyFile != null) {
-        "losos.edge.identity.keyFile" = config.losos.edge.identity.keyFile;
       }
       // lib.mapAttrs' (
         id: tenant: lib.nameValuePair "losos.edge.tenants.${id}.tokenFile" tenant.tokenFile

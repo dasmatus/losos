@@ -36,6 +36,7 @@ import {
   StackRow,
 } from "@/screens/settings/rows";
 import { SiteSettings } from "@/screens/settings/site-settings";
+import { GatewaySection } from "./gateway";
 import { useSiteForm } from "./use-site-form";
 
 /* A company edge's page for the boxes behind it (served by the edge at
@@ -189,6 +190,7 @@ function BoxList() {
 
   return (
     <>
+      <GatewaySection />
       <PaneHeader title={t("manage.boxes.title")} summary={t("manage.boxes.summary")} />
       <PaneSection>
         <Group>

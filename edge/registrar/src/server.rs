@@ -1006,14 +1006,25 @@ async fn passport_settings(
             "rebooting": true,
         }))
         .into_response(),
-        Err(e @ crate::gateway::ClaimError::NotTheOwner) => {
-            (StatusCode::FORBIDDEN, e.to_string()).into_response()
-        }
+        // JSON like the manage page's other answers: it shows `error`.
+        Err(e @ crate::gateway::ClaimError::NotTheOwner) => (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        )
+            .into_response(),
         Err(e @ crate::gateway::ClaimError::Write(_)) => {
             tracing::error!(target: Action::Passport.target(), "settings: {e}");
-            (StatusCode::INSUFFICIENT_STORAGE, e.to_string()).into_response()
+            (
+                StatusCode::INSUFFICIENT_STORAGE,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            )
+                .into_response()
         }
-        Err(e) => (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        )
+            .into_response(),
     }
 }
 
