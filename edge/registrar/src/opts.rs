@@ -272,6 +272,10 @@ pub struct ManageOpts {
     /// The built admin UI, whose `manage/index.html` is the page. `None`
     /// serves only the JSON routes.
     pub ui_dir: Option<String>,
+    /// Traefik's Prometheus endpoint (`losos.edge.traefikMetricsPort`), read
+    /// every minute for the Statistics page (`crate::stats`). `None` leaves
+    /// the page empty.
+    pub traefik_metrics: Option<String>,
 }
 
 /// `identity` options: the offline key ceremony (`crate::identity`).
