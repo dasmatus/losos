@@ -16,6 +16,8 @@ to the services that read it.
 reads it, what it is sealed to and when it last changed. It never shows a
 value, and nothing on the page can reveal one.
 
+![Settings, Credentials: what the secrets are sealed to, then each one with what it is for, how it was made, when it changed and what reads it, and Make new where a secret can be replaced.](../img/settings-credentials.png)
+
 ## Where they are kept
 
 Each credential is one file in `/etc/credstore.encrypted`, encrypted with
