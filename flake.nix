@@ -486,6 +486,8 @@
         losos-resize = import ./nix/tests/resize.nix { inherit pkgs; };
         losos-tls = import ./nix/tests/tls.nix { inherit pkgs; };
         losos-setup = import ./nix/tests/setup.nix { inherit pkgs; };
+        # The local copy of the binary caches on /persist (modules/cache.nix).
+        losos-nix-cache = import ./nix/tests/nix-cache.nix { inherit pkgs; };
         losos-tour = import ./nix/tests/tour.nix { inherit pkgs; };
         # The wizard's last step: signed in by the page itself, the desktop
         # behind the card, and "Let's go" (nix/tests/setup-desktop.nix).
@@ -520,6 +522,9 @@
         # The banner a box off the mesh shows over every page, both states
         # and the dismissal, with the pull request's pictures (nix/tests/mesh-notice.nix).
         losos-mesh-notice = import ./nix/tests/mesh-notice.nix { inherit pkgs; };
+        # The phone's bottom bar and its sheet on a real box, with the pull
+        # request's pictures (nix/tests/bottom-nav.nix).
+        losos-bottom-nav = import ./nix/tests/bottom-nav.nix { inherit pkgs; };
         # The Mesh page while the box has paused sharing for want of an edge,
         # with the pull request's pictures (nix/tests/sharing-pause.nix).
         losos-sharing-pause = import ./nix/tests/sharing-pause.nix { inherit pkgs; };

@@ -742,7 +742,8 @@ const SHOTS = [
     viewport: { width: 390, height: 844 },
     langs: true,
     act: async (page) => {
-      await page.locator('[data-slot="sidebar-trigger"]').first().click();
+      // More, the last tab of the bottom bar, raises every section as a sheet.
+      await page.locator('[data-slot="bottom-nav"] button[aria-haspopup="dialog"]').click();
       await settle(page);
     },
   },
