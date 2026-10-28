@@ -605,6 +605,46 @@ in
           is.
         '';
       };
+      domain = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = ''
+            Hold a gateway that passes every other check to its name: it is
+            trusted only at an https:// URL whose HTTPS record validates
+            under DNSSEC and carries an Encrypted Client Hello key, which
+            the box checks with `delv` on every scan. Off, the name is not
+            looked at.
+          '';
+        };
+        server = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "192.0.2.53";
+          description = ''
+            The resolver `delv` asks for a gateway's name. `null` is the
+            system's resolver. delv validates the answer itself either way.
+          '';
+        };
+        trustAnchors = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = ''
+            A `trust-anchors { … };` file for `delv -a`. `null` is delv's
+            own copy of the DNS root's key, which is what a real gateway's
+            name validates from.
+          '';
+        };
+        trustAnchorRoot = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "boxes.example.test";
+          description = ''
+            The name `trustAnchors` holds a key for, when that is not the
+            DNS root (`delv +root=`).
+          '';
+        };
+      };
     };
 
     proxy.heartbeatInterval = lib.mkOption {

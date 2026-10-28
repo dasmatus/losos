@@ -4,7 +4,8 @@
 #   * `edge`   — losos.edge with dns.enable: Knot serving the zone the
 #                registrar renders, the reload path unit, port 53 open.
 #   * `client` — a plain machine with kdig, asking the edge over the
-#                test network as any resolver on the internet would.
+#                test network as any resolver on the internet would, and
+#                losos-ctl for the box's own check of the edge's name.
 #
 # What it asserts, in order:
 #   1. Before the edge's owner has claimed it, it serves the zone (SOA, NS,
@@ -32,7 +33,11 @@
 #      the wallet's, and a client that reads the key from that record
 #      reaches the box's name through Traefik with ECH accepted, the box's
 #      name never in the clear.
-#   6. The route table's wiring: the registrar made its relay pass key
+#   6. The box's side: `losos-ctl edge-domain`, the check lososd holds an
+#      official edge to, passes the box's name (signed, with the key), says
+#      a name the zone proves absent has no key, finds nothing signed from
+#      a trust anchor the zone's key does not match, and refuses plain HTTP.
+#   7. The route table's wiring: the registrar made its relay pass key
 #      (0600); a spoke forwarding that pass on `/relay` is answered with no
 #      routes (the box is not in this edge's mesh), but the binding is kept
 #      in relay-routes.json (0600) beside the registry, and is still there
@@ -167,6 +172,8 @@ pkgs.testers.nixosTest {
         pkgs.bind
         echProbe
         pkgs.tcpdump
+        # The box's own check of an official edge's name (`edge-domain`).
+        lososPkgs.losos-ctl
       ];
     };
   };
@@ -354,6 +361,39 @@ pkgs.testers.nixosTest {
           # against the public name, as ECH requires; the test edge has none
           # from Let's Encrypt, so Go stops there rather than at the retry.
           assert "ECH" in refused or "not register.example.test" in refused, refused
+
+      with subtest("a box holds an official edge to a signed name with an ECH key"):
+          # The check lososd runs on a gateway that passed everything else
+          # (losos.proxy.gateways.domain), pointed at this zone and its DS
+          # the way modules/daemon.nix hands it the options.
+          def domain(url, anchors="/tmp/anchor.conf"):
+              env = (
+                  "LOSOS_EDGE_DNS_SERVER=${edgeIp} "
+                  f"LOSOS_EDGE_DNS_ANCHORS={anchors} "
+                  "LOSOS_EDGE_DNS_ROOT=boxes.example.test"
+              )
+              code, out = client.execute(f"{env} losos-ctl edge-domain {url}")
+              print(url, code, out)
+              return code, out
+          code, out = domain("https://mattbox.boxes.example.test")
+          assert code == 0, out
+          assert json.loads(out) == {
+              "name": "mattbox.boxes.example.test", "signed": True, "ech": True,
+          }, out
+          # No such name: the zone proves it, signed, and there is no key.
+          code, out = domain("https://nobody.boxes.example.test")
+          assert code == 1 and json.loads(out) == {
+              "name": "nobody.boxes.example.test", "signed": True, "ech": False,
+          }, out
+          # A trust anchor the zone's key does not match: nothing validates.
+          wrong = client.succeed("cat /tmp/anchor.conf").replace(digest, digest[::-1])
+          assert wrong != client.succeed("cat /tmp/anchor.conf"), wrong
+          client.succeed(f"printf '%s' '{wrong}' > /tmp/wrong.conf")
+          code, out = domain("https://mattbox.boxes.example.test", "/tmp/wrong.conf")
+          assert code == 1 and json.loads(out)["signed"] is False, out
+          # Plain HTTP has no name to hold it to: refused before any lookup.
+          code, out = domain("http://mattbox.boxes.example.test")
+          assert code == 1 and out == "", out
 
       with subtest("the route table: the pass key, /relay, and the table file"):
           edge.succeed("stat -c %a /var/lib/losos-registrar/relay-pass.key | grep -qx 600")

@@ -276,11 +276,25 @@ the key. No released Traefik can do that yet, so an edge with the zone runs
 Traefik built from its ECH change (`nix/traefik-ech.nix`), which serves no
 dashboard.
 
+A box holds an official edge to this. An edge that passes every gateway
+check stays trusted only at an `https://` URL whose name has an HTTPS record
+that validates under DNSSEC and carries an ECH key. lososd asks `delv` on
+every scan, which validates from the DNS root's key itself, and lists an edge
+that fails as refused (`domainNotHttps`, `domainUnsigned` or `domainNoEch`)
+until it passes. `losos-ctl edge-domain <url>` runs the same check by hand.
+The URL is the one the edge's passport names, so that name belongs in the
+zone: an edge whose zone is its whole `publicDomain` gets
+`register.<publicDomain>` there with the rest. `losos.proxy.gateways.domain`
+turns the check off, or points it at another resolver and trust anchor.
+
 :::note[How this is tested]
 `nix/tests/edge-dns.nix` (`losos-edge-dns`) reads the key from the signed
 HTTPS record, validates it with `delv`, and opens TLS to a box's name with
 Go's ECH client. Traefik accepts ECH, the captured hello carries only the
 public name, and a key Traefik does not hold is turned down.
+`losos-ctl edge-domain` passes a box's name, finds no key at a name the zone
+proves absent, validates nothing from a trust anchor that does not match,
+and refuses plain HTTP.
 :::
 
 ### Custom domains

@@ -298,12 +298,27 @@ entschlüsselt damit. Noch kein veröffentlichter Traefik kann das, deshalb
 läuft auf einer Edge mit Zone ein Traefik aus seiner ECH-Änderung
 (`nix/traefik-ech.nix`), der kein Dashboard ausliefert.
 
+Eine Box hält eine offizielle Edge daran fest. Eine Edge, die jede Prüfung
+als Gateway besteht, bleibt nur unter einer `https://`-URL vertrauenswürdig,
+deren Name einen HTTPS-Eintrag hat, der sich per DNSSEC prüfen lässt und einen
+ECH-Schlüssel trägt. lososd fragt bei jeder Suche `delv`, das selbst vom
+Schlüssel der DNS-Wurzel aus prüft, und führt eine Edge, die durchfällt, als
+abgelehnt (`domainNotHttps`, `domainUnsigned` oder `domainNoEch`), bis sie
+besteht. `losos-ctl edge-domain <url>` führt dieselbe Prüfung von Hand aus.
+Die URL ist die, die der Pass der Edge nennt, also gehört dieser Name in die
+Zone: Eine Edge, deren Zone ihre ganze `publicDomain` ist, hat dort auch
+`register.<publicDomain>`. `losos.proxy.gateways.domain` schaltet die Prüfung
+ab oder richtet sie auf einen anderen Resolver und Vertrauensanker.
+
 :::note[Wie das getestet wird]
 `nix/tests/edge-dns.nix` (`losos-edge-dns`) liest den Schlüssel aus dem
 signierten HTTPS-Eintrag, prüft ihn mit `delv` und öffnet TLS zum Namen einer
 Box mit dem ECH-Client von Go. Traefik nimmt ECH an, das mitgeschnittene
 Hello trägt nur den öffentlichen Namen, und einen Schlüssel, den Traefik
-nicht hat, lehnt es ab.
+nicht hat, lehnt es ab. `losos-ctl edge-domain` lässt den Namen
+einer Box durch, findet keinen Schlüssel unter einem Namen, dessen Fehlen
+die Zone belegt, prüft mit einem falschen Vertrauensanker nichts und lehnt
+reines HTTP ab.
 :::
 
 ### Eigene Domains {#custom-domains}
