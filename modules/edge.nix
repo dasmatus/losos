@@ -315,7 +315,7 @@ let
   ];
 
   # Clusters and bans (handbook/docs/in-depth/edge-federation.md, "Three
-  # tiers"). The cluster file is runtime state (`losos-edge cluster`), the
+  # tiers"). The cluster file is runtime state (the manage page writes it), the
   # registrar re-reads it every pass; the official cluster and its peers are
   # configuration; the ban file is re-read on every uplink pass and a missing
   # one bans nothing.

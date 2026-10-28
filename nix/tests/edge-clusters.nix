@@ -6,16 +6,17 @@
 #                      peers, and carries the gateways' site (`acme`) and the
 #                      box's own row (`mattbox`).
 #   * `gwa`, `gwb`   — two gateways (losos.edge.gateway.enable) that form the
-#                      secondary cluster `office` with `losos-edge cluster`
-#                      and relay to `hub1`.
+#                      secondary cluster `office` through their manage API
+#                      (what the web UI calls) and relay to `hub1`.
 #   * `box`          — lososd with the master proxy on, configured for `hub1`.
 #
 # What it asserts, in order:
-#   1. `losos-edge cluster create` on gwa and the printed `join` on gwb make
-#      one cluster: each lists both members, and each says so at
-#      GET /cluster/secondary;
-#   2. both gateways uplink to hub1: their links are primary, in
-#      main-cluster.json on the hub and in `losos-edge main`;
+#   1. starting a cluster on gwa's manage API and joining it on gwb's with
+#      the secret gwa's page shows make one cluster: each lists both
+#      members, and each says so at GET /cluster/secondary;
+#   2. both gateways uplink to hub1 from the manage API: their links are
+#      primary, in main-cluster.json on the hub and in the gateway's own
+#      GET /manage/api/gateway;
 #   3. the box takes a secondary link through gwa (first by name), settles in
 #      `office`, and one hop through gwa reaches it;
 #   4. gwa goes away: the box fails over to gwb in the same cluster, and gwb
@@ -130,9 +131,10 @@ let
       users.users.root.initialPassword = lib.mkForce null;
       losos.edge = {
         gateway.enable = true;
-        # The manage page (the admin UI's manage/ build) is
-        # nix/tests/edge-manage.nix's business, and not this one's.
-        manage.enable = false;
+        # The gateway is set up through its manage API; the page itself
+        # (the admin UI's manage/ build) is nix/tests/edge-manage.nix's.
+        manage.enable = true;
+        manage.ui = null;
         registrarApiPort = 8443;
         ratholePortRange = "50000-50010";
         reconcileInterval = "2s";
@@ -232,15 +234,42 @@ pkgs.testers.nixosTest {
     def secondary(g):
         return json.loads(g.succeed("curl -fsS http://localhost:8443/cluster/secondary"))
 
+    # The gateway has no shell command: everything goes through the manage
+    # API the web UI uses, signed in with the key tty1 shows.
+    def manage(g, method, path, data=None):
+        key = g.succeed("cat /var/lib/losos-registrar/manage-key").strip()
+        extra = "-H 'Content-Type: application/json' --data-binary @- " if data is not None else ""
+        cmd = (
+            f"curl -s -o /tmp/body -w '%{{http_code}}' -X {method} "
+            f"-H 'Authorization: Bearer {key}' {extra}http://localhost:8443{path}"
+        )
+        if data is not None:
+            cmd = f"printf %s {shlex.quote(json.dumps(data))} | " + cmd
+        code = g.succeed(cmd).strip()
+        return code, g.succeed("cat /tmp/body")
+
+    def gateway(g):
+        code, body = manage(g, "GET", "/manage/api/gateway")
+        assert code == "200", f"{g.name}: /manage/api/gateway answered {code}: {body!r}"
+        return json.loads(body)
+
     # ── 1. Two gateways, one secondary cluster ───────────────────────────
-    assert "in no secondary cluster" in gwa.succeed("losos-edge cluster show")
-    out = gwa.succeed("losos-edge cluster create office")
-    print(out)
-    join = next(l.strip() for l in out.splitlines() if l.strip().startswith("losos-edge cluster join "))
-    assert join.endswith(" http://gwa.local:8443"), join
+    assert gateway(gwa)["cluster"] == {"joined": None}, gateway(gwa)
+    code, body = manage(gwa, "PUT", "/manage/api/gateway/cluster", {"name": "office"})
+    assert code == "200", f"create answered {code}: {body!r}"
+    made = json.loads(body)
+    print("created:", made)
+    assert made["name"] == "office" and made["member"] == "gwa", made
+    assert made["url"] == "http://gwa.local:8443", made
     assert gwa.succeed("stat -c %a /var/lib/losos-edge/cluster.json").strip() == "600"
-    gwa.fail("losos-edge cluster create office")
-    gwb.succeed(join)
+    code, body = manage(gwa, "PUT", "/manage/api/gateway/cluster", {"name": "office"})
+    assert code == "409", f"a second create answered {code}: {body!r}"
+    code, body = manage(
+        gwb, "PUT", "/manage/api/gateway/cluster",
+        {"name": "office", "secret": made["secret"], "peer": made["url"]},
+    )
+    assert code == "200", f"join answered {code}: {body!r}"
+    assert json.loads(body)["member"] == "gwb", body
 
     def members(g):
         return sorted(x["member"] for x in secondary(g)["gateways"])
@@ -249,16 +278,26 @@ pkgs.testers.nixosTest {
         retry(lambda _: members(g) == ["gwa", "gwb"], timeout_seconds=120)
         doc = secondary(g)
         assert doc["cluster"] == "office" and doc["tier"] == "secondary", doc
-    shown = gwb.succeed("losos-edge cluster show")
-    assert "cluster:   office" in shown and "member:    gwa" in shown, shown
-    assert "secondary cluster office as gwa" in gwa.succeed("losos-edge status")
+    retry(
+        lambda _: sorted(x["member"] for x in gateway(gwb)["cluster"]["joined"]["gateways"]) == ["gwa", "gwb"],
+        timeout_seconds=60,
+    )
+    joined = gateway(gwb)["cluster"]["joined"]
+    assert joined["name"] == "office" and joined["secret"] == made["secret"], joined
 
     # ── 2. Primary links into the main cluster ──────────────────────────
+    site_token = gwa.succeed("cat ${siteToken}").strip()
     for g in (gwa, gwb):
-        g.succeed(
-          "losos-edge uplink set --id acme --token-file ${siteToken} "
-          "--registrar http://hub1:8443 --rathole hub1:2333"
+        code, body = manage(
+            g, "PUT", "/manage/api/gateway/uplink",
+            {
+                "id": "acme",
+                "token": site_token,
+                "registrarUrl": "http://hub1:8443",
+                "ratholeEndpoint": "hub1:2333",
+            },
         )
+        assert code == "200", f"{g.name}: uplink answered {code}: {body!r}"
 
     def main_rows(h):
         try:
@@ -269,8 +308,13 @@ pkgs.testers.nixosTest {
     retry(lambda _: sorted(r["gateway"] for r in main_rows(hub1)) == ["gwa", "gwb"], timeout_seconds=120)
     rows = main_rows(hub1)
     assert all(r["tier"] == "primary" and r["cluster"] == "office" for r in rows), rows
-    gwa.wait_until_succeeds("losos-edge main | grep -q 'gwb.*primary'")
-    assert "primary to the hub" in gwa.succeed("losos-edge status")
+
+    def gwb_primary_on_gwa(_):
+        return any(r["gateway"] == "gwb" and r["tier"] == "primary" for r in gateway(gwa)["main"])
+
+    retry(gwb_primary_on_gwa, timeout_seconds=120)
+    up = gateway(gwa)["uplink"]
+    assert up["set"]["id"] == "acme" and up["set"]["registrarUrl"] == "http://hub1:8443", up
 
     # ── 3. The box takes a secondary link and settles in the cluster ─────
     box.start()
