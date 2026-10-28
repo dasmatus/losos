@@ -548,6 +548,9 @@
         # the pull request's pictures (nix/tests/context-menu.nix).
         losos-context-menu = import ./nix/tests/context-menu.nix { inherit pkgs; };
         losos-cloud-from-nextcloud = import ./nix/tests/cloud-from-nextcloud.nix { inherit pkgs; };
+        # Photos: the camera's details and faces read on the box, grouped
+        # into people the owner names (nix/tests/cloud-photos.nix).
+        losos-cloud-photos = import ./nix/tests/cloud-photos.nix { inherit pkgs; };
         # Notes on a kitchen garden vault, and the folder published as a
         # knowledge base, on and off the mesh (nix/tests/notes.nix).
         losos-notes = import ./nix/tests/notes.nix { inherit pkgs; };
