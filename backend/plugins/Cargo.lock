@@ -148,6 +148,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "losos-plugin-statistics"
+version = "0.1.0"
+dependencies = [
+ "losos-plugin",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "losos-pm-ci"
 version = "0.1.0"
 dependencies = [

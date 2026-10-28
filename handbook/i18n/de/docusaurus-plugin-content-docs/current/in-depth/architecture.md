@@ -53,8 +53,10 @@ LosOS Cloud (`modules/cloud.nix`, `backend/src/cloud/`) und LosOS Git
 und lauschen je auf einem Unix-Socket, den nur nginx öffnen darf. Der eigene
 k3s-Cluster der Box betreibt nur die als `shared` installierten Apps,
 solange die Box ihre Festplatte mit einem Mesh teilt; seine Pods nutzen
-`hostNetwork`. nginx ist der einzige Dienst auf öffentlichen Ports und
-routet nach Pfad.
+`hostNetwork`. nginx belegt die Webports der Box und routet nach Pfad.
+Traefik belegt die Ports der installierten Apps im lokalen Netz
+(`losos.apps.ports`) und liest die Route jeder App aus den Labels an ihren
+Containern.
 
 ## Aufbau des Repositorys {#repository-layout}
 
@@ -276,13 +278,21 @@ verstümmelte. Und eine Liste ist eine Zeile `[ "a" "b" ]`, nur Strings.
 systemd-nspawn ist weg, und mit ihm die App-Modi: LosOS Cloud und LosOS Git
 laufen auf dem Host, jeder unter einem eigenen Benutzer, und der eigene
 lokale k3s-Cluster der Box betreibt nur die als `shared` installierten Apps.
-nginx ist der einzige Prozess, der öffentliche Ports belegt. Er routet nach
+nginx belegt die Webports 80 und 443. Er routet nach
 Pfad auf dem mDNS-Namen der Appliance (`<hostName>.local/cloud/` und die
 Adressen, die die Nextcloud-Apps aufrufen, `/git/`) und liefert die
 Admin-SPA auf demselben vhost aus. Apps, die ein Besitzer als `notshared`
 installiert, und die eigenen Apps der Box laufen dagegen auf Podman ohne
 root mit Podman Compose (`modules/apps.nix`, [App-Format](app-format.md)),
-sodass eine Box, die nichts teilt, für sie keinen Cluster braucht.
+sodass eine Box, die nichts teilt, für sie keinen Cluster braucht. Jede
+installierte App öffnet Traefik (`losos-traefik`, unter einem eigenen
+Benutzer) auf einem Port aus `losos.apps.ports` im lokalen Netz. Die Routen
+liest Traefik aus den Labels, die die Box an die Container der App setzt,
+über eine Podman-API von `notshared`, die nur Traefiks Gruppe öffnen darf.
+Eine `shared`-App bekommt stattdessen eine Routendatei. Traefiks API und
+seine Prometheus-Metriken antworten auf `127.0.0.1:${losos.apps.traefikPort}`
+(8089), wo lososds Statistik-Plugin sie einmal pro Minute für
+`GET /api/statistics` liest.
 
 **LosOS Git** (`modules/git.nix`, `backend/src/forge/`, das Binary
 `losos-git` aus dem Crate von lososd). Der Git-Server der Box, unter einem

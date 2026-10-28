@@ -68,6 +68,6 @@ prichádzajúci port.
 | `<name>.<edge domain>`      | Zariadenie cez svoj edge, pre LosOS Cloud a LosOS Git    |
 | `losos-edge.dasmat.us`      | Riadiaca časť edge LosOS a stránka „find my box“         |
 | `proxy.losos.dasmat.us`     | Binárna cache, z ktorej sa zariadenie aktualizuje        |
-| `losos-cache-proxy.vercel.app` | Tá istá cache pod vlastným názvom Vercelu             |
+| `127.0.0.1:8787`            | Lokálna Nix cache z GHCR na zariadení a inštalačnom médiu |
 | `losos.dasmat.us/proxy`     | Kópia tejto cache, použije sa, keď prvá neodpovedá       |
 | `losos.dasmat.us`           | Táto príručka na webe                                    |

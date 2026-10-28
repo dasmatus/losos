@@ -84,6 +84,17 @@ export default defineMessages({
     sk: "Ktoré aplikácie toto zariadenie poskytuje a či každá z nich práve odpovedala.",
     de: "Welche Apps diese Box bereitstellt und ob jede davon gerade geantwortet hat.",
   },
+  "widgets.catalogue.statistics.name": { en: "Statistics", sk: "Štatistiky", de: "Statistik" },
+  "widgets.catalogue.statistics.blurb": {
+    en: "Requests to the apps in the last hour, minute by minute, and how many failed.",
+    sk: "Žiadosti o aplikácie za poslednú hodinu, minútu po minúte, a koľko z nich zlyhalo.",
+    de: "Anfragen an die Apps in der letzten Stunde, Minute für Minute, und wie viele fehlschlugen.",
+  },
+  "widgets.catalogue.statistics.open": {
+    en: "Open Statistics",
+    sk: "Otvoriť štatistiky",
+    de: "Statistik öffnen",
+  },
   "widgets.catalogue.rebuilds.name": { en: "Changes", sk: "Zmeny", de: "Änderungen" },
   "widgets.catalogue.rebuilds.blurb": {
     en: "Settings changes this box has applied, newest first, and whether each one took.",

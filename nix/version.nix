@@ -7,4 +7,4 @@
 # every push to main that finds it behind. A tag pushed before that commit is
 # built with its own name anyway, because the release and terminal client jobs
 # in .github/workflows/ci.yml write the tag over this value first.
-"v0.6.0"
+"v0.6.1"
