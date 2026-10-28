@@ -71,6 +71,26 @@ let
     proxy_set_header X-Losos-Edge "";
   '';
   adminEnabled = config.losos.admin.enable && adminUi != null;
+  # The pages without JavaScript (backend/plugins/basic/): the routes a
+  # visitor reaches before signing in, those of them that speak to LosOS
+  # Login for the visitor, and what every /basic/ request carries to lososd.
+  basicSession = [
+    "sign-in"
+    "sign-in/code"
+    "sign-in/key"
+    "sign-out"
+  ];
+  basicOpen = [
+    "prefs"
+    "counts.css"
+  ];
+  basicToLososd = ''
+    proxy_set_header X-Real-IP $remote_addr;
+    ${notTheEdge}
+    proxy_set_header X-Losos-Basic-Prefs $cookie_losos_basic;
+    proxy_set_header X-Losos-Basic-Flash $cookie_losos_basic_flash;
+    proxy_set_header X-Losos-Basic-Job $cookie_losos_basic_job;
+  '';
   # The owner's handbook (handbook/, built as losos-handbook with its base at
   # /handbook/). Served under the admin guard: it is part of the admin
   # surface, not a public page, and a box reached through the tunnel must not
@@ -268,6 +288,21 @@ let
     "form-action 'none'"
   ];
 
+  # The pages for a browser that runs no JavaScript (/basic/, drawn by
+  # lososd's basic plugin, backend/plugins/basic/): no script at all, the
+  # admin bundle's stylesheet and fonts, and forms that post to the box
+  # itself. Their own arm because the admin policy's form-action is 'none',
+  # and a page without a script changes things only by forms.
+  basicCsp = lib.concatStringsSep "; " [
+    "default-src 'none'"
+    "style-src 'self'"
+    "img-src 'self' data:"
+    "font-src 'self'"
+    "form-action 'self'"
+    "frame-ancestors 'none'"
+    "base-uri 'none'"
+  ];
+
   # ── The widget frame ──────────────────────────────────────────────────
   # Widgets the owner writes by hand (backend/src/look.rs) are HTML with
   # their own script, and the admin CSP above refuses inline script for
@@ -355,7 +390,8 @@ let
   # values (or the admin value, for the headers they share) under /handbook/
   # and /chat/ (and chat's for the guest call page, /calls/guest/), each
   # frame's own value (or nothing) under /widget-frame/ and /app-frame/, and
-  # a mail message's under its HTML route.
+  # a mail message's under its HTML route, and the pages without
+  # JavaScript under /basic/.
   #
   # Collabora Online's two prefixes (modules/office.nix) get nothing either,
   # only while it is on: coolwsd sends its own policy, whose frame-ancestors
@@ -365,9 +401,10 @@ let
     ~^/browser/      "";
         ~^/cool/         "";
   '';
-  adminHeaderMap = variable: value: handbookValue: chatValue: frameValue: appFrameValue: mailValue: ''
+  adminHeaderMap = variable: value: handbookValue: chatValue: frameValue: appFrameValue: mailValue: basicValue: ''
     map $uri ${variable} {
         default          "${value}";
+        ~^/basic/        "${basicValue}";
         ${officeArms}
         ~^/auth/         "";
         ~^/handbook/     "${handbookValue}";
@@ -389,6 +426,7 @@ let
       frameValue = widgetFrameCsp;
       appFrameValue = appFrameCsp;
       mailValue = mailFrameCsp;
+      basicValue = basicCsp;
     }
     {
       name = "X-Frame-Options";
@@ -417,7 +455,7 @@ let
       h.appFrameValue or h.frameValue
     ) (
       h.mailValue or h.value
-    )
+    ) (h.basicValue or h.value)
   ) adminHeaders;
 
   # `always` so the headers ride on the 403s the lanOnly guard emits too.
@@ -451,7 +489,24 @@ in
     recommendedProxySettings = true;
 
     # Header value selectors — see `adminCsp` above for why they are maps.
-    appendHttpConfig = adminHeaderMaps;
+    # Then the pages without JavaScript: the path the SPA document was asked
+    # for, for its <noscript> (letters, digits and `/_-`, anything else is
+    # the overview), the page a sign-in returns to, and the spare key as a
+    # Bearer header.
+    appendHttpConfig = adminHeaderMaps + ''
+      map $request_uri $losos_basic_here {
+          "~^(?<p>/[A-Za-z0-9/_-]*)(\?.*)?$" $p;
+          default "/";
+      }
+      map $uri $losos_basic_back {
+          "~^/basic/[A-Za-z0-9/_-]*$" $uri;
+          default "/basic/";
+      }
+      map $cookie_losos_spare $losos_basic_bearer {
+          "" "";
+          default "Bearer $cookie_losos_spare";
+      }
+    '';
 
     virtualHosts."losos-front" = {
       default = true; # default_server — master-proxy traffic arrives with a public hostname
@@ -498,7 +553,15 @@ in
           "/" = {
             index = "index.html";
             tryFiles = "$uri $uri/ /index.html";
-            extraConfig = lanOnly;
+            # With JavaScript off the document sends the browser to the same
+            # page under /basic/ (admin-ui/app/index.html's <noscript>). The
+            # path is the one the browser asked for, from $losos_basic_here,
+            # which lets letters, digits and `/_-` through and nothing else.
+            extraConfig = ''
+              ${lanOnly}
+              sub_filter_once on;
+              sub_filter 'url=/basic/"' 'url=/basic$losos_basic_here"';
+            '';
           };
           # Content-hashed filenames, so a year is safe: a changed bundle gets
           # a changed name. `expires`, not `add_header` — an add_header at
@@ -554,6 +617,26 @@ in
               proxy_send_timeout 600s;
             '';
           };
+          # The admin pages for a browser that runs no JavaScript: lososd's
+          # basic plugin draws them at /api/basic/ (backend/plugins/basic/).
+          # They keep what a script page keeps in the browser in cookies on
+          # /basic, and nginx hands lososd those cookies as headers, which it
+          # sets from the cookies alone, whatever the client sent. The spare
+          # key, once typed on the sign-in page, rides as `losos_spare` and
+          # goes on as the Bearer header the script pages send. A 401 (not
+          # signed in) is the sign-in page.
+          "/basic/" = {
+            proxyPass = "http://127.0.0.1:${toString adminApiPort}/api/basic/";
+            extraConfig = ''
+              ${lanOnly}
+              ${basicToLososd}
+              proxy_set_header Authorization $losos_basic_bearer;
+              proxy_set_header X-Losos-Login-Session "";
+              proxy_intercept_errors on;
+              error_page 401 = @losos-basic-sign-in;
+            '';
+          };
+          "@losos-basic-sign-in".extraConfig = "return 303 /basic/sign-in?next=$losos_basic_back;";
           # The owner's own disk image for a market machine: gigabytes,
           # streamed through lososd to the edge (backend/src/vm_upload.rs),
           # which holds it to its own size limit. Unbuffered, so nginx does
@@ -587,6 +670,30 @@ in
             '';
           };
         })
+        # The sign-in steps, signing out, the choices a visitor makes before
+        # signing in, and the plural words the Apply bar counts with: open to
+        # someone not signed in. Only the sign-in steps and signing out see
+        # LosOS Login's session, which they hand on to it.
+        (lib.mkIf adminEnabled (
+          lib.genAttrs (map (p: "= /basic/${p}") basicSession) (name: {
+          proxyPass = "http://127.0.0.1:${toString adminApiPort}/api${lib.removePrefix "= " name}";
+          extraConfig = ''
+            ${lanOnly}
+            ${basicToLososd}
+            proxy_set_header Authorization "";
+            proxy_set_header X-Losos-Login-Session $cookie_losos_session;
+          '';
+        })
+        // lib.genAttrs (map (p: "= /basic/${p}") basicOpen) (name: {
+          proxyPass = "http://127.0.0.1:${toString adminApiPort}/api${lib.removePrefix "= " name}";
+          extraConfig = ''
+            ${lanOnly}
+            ${basicToLososd}
+            proxy_set_header Authorization "";
+            proxy_set_header X-Losos-Login-Session "";
+          '';
+        })
+        ))
         {
           # A company edge's manage page (manage/index.html, src/manage/)
           # rides in the same bundle. The edge serves it; the box never does.

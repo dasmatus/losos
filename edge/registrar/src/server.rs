@@ -471,6 +471,12 @@ where
         None => None,
     };
     let recon = tokio::spawn(reconciler(app.state.clone()));
+    // The Statistics page's readings of Traefik (`crate::stats`).
+    let scrape = app
+        .state
+        .manage
+        .clone()
+        .map(|m| tokio::spawn(manage::scrape_loop(m)));
     // The uplink is a loop of its own: it talks to another machine and must
     // never hold up the local reconcile.
     let uplink = app
@@ -511,6 +517,10 @@ where
     // panic inside it surfaces instead of being silently detached.
     recon.abort();
     let _ = recon.await;
+    if let Some(scrape) = scrape {
+        scrape.abort();
+        let _ = scrape.await;
+    }
     if let Some(calls) = calls {
         calls.abort();
         let _ = calls.await;
