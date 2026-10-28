@@ -20,7 +20,7 @@
 # anyway, so a pattern here only decides what a pull request may skip.
 set -euo pipefail
 
-lanes=(rust wasm solana evm eval ctl ui tui images iso install discovery)
+lanes=(rust wasm solana evm eval ctl ui tui images iso discovery)
 
 # CI's own wiring and the toolchain every lane builds with: any change here
 # runs everything.
@@ -124,9 +124,6 @@ lane_iso=(
   nix/tests/iso-boot.py
   "${pkgs[@]}"
 )
-
-# nix/tests/install.nix: the installer onto virtual disks, then the boot.
-lane_install=("${installer[@]}" modules/boot.nix nix/tests/install.nix "${pkgs[@]}")
 
 # nix/tests/discovery: the box it boots (box.nix imports these modules) and
 # the parts of lososd and LosOS Cloud the claim, SMB and WebDAV go through.

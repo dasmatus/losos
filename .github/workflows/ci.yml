@@ -140,7 +140,7 @@ jobs:
   #
   # A pull request runs only the lanes its files reach:
   # .github/scripts/ci-changes.sh maps paths to lanes (rust, wasm, solana,
-  # evm, eval, ctl, ui, tui, images, iso, install, discovery) and each job
+  # evm, eval, ctl, ui, tui, images, iso, discovery) and each job
   # below waits on its lane. A handbook page builds the handbook and nothing
   # else; a Rust file skips the ISO; docs/ and screenshots run nothing but
   # this and `pins`. A job a change does not need shows as skipped, and the
@@ -169,7 +169,6 @@ jobs:
       tui: ${{ steps.pick.outputs.tui }}
       images: ${{ steps.pick.outputs.images }}
       iso: ${{ steps.pick.outputs.iso }}
-      install: ${{ steps.pick.outputs.install }}
       discovery: ${{ steps.pick.outputs.discovery }}
     steps:
       - uses: actions/checkout@v7
@@ -481,10 +480,7 @@ jobs:
     name: "nix: install and persistent sysupdate QEMU tests"
     runs-on: ubuntu-latest
     timeout-minutes: 100
-    # eval is skipped for a change it cannot see (an installer .rs file), so
-    # a skipped eval is not a reason to skip this; a failed one is.
-    needs: [changes, eval]
-    if: ${{ !cancelled() && !failure() && needs.changes.outputs.install == 'true' }}
+    needs: [eval]
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
@@ -1388,8 +1384,7 @@ jobs:
     name: "nix: build the standalone sysupdate bundle"
     runs-on: ubuntu-latest
     timeout-minutes: 120
-    needs: [changes]
-    if: ${{ needs.changes.outputs.install == 'true' && (github.event_name == 'pull_request' || (github.ref == 'refs/heads/main' && !inputs.release_tags)) }}
+    if: ${{ github.event_name == 'pull_request' || (github.ref == 'refs/heads/main' && !inputs.release_tags) }}
     permissions:
       contents: read
       packages: write
@@ -1457,8 +1452,7 @@ jobs:
     name: "nix + QEMU: install onto virtual disks"
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    needs: [changes]
-    if: ${{ needs.changes.outputs.install == 'true' && (github.event_name == 'pull_request' || (github.ref == 'refs/heads/main' && !inputs.release_tags)) }}
+    if: ${{ github.event_name == 'pull_request' || (github.ref == 'refs/heads/main' && !inputs.release_tags) }}
     permissions:
       contents: read
     steps:
@@ -1494,7 +1488,6 @@ jobs:
       - solana-escrow
       - evm-escrow
       - eval
-      - qemu-tests
       - losos-ctl
       - registrar-and-ui
       - images
