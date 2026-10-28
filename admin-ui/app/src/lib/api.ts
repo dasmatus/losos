@@ -3142,6 +3142,12 @@ export function getManagedBoxes(options: RequestOptions = {}): Promise<{ boxes: 
   return call<{ boxes: ManagedBox[] }>("/manage/api/boxes", options);
 }
 
+/** GET /manage/api/statistics on the edge: what its Traefik counted, read
+ *  by `readStatistics` (src/statistics/types.ts). */
+export function getEdgeStatistics(options: RequestOptions = {}): Promise<unknown> {
+  return call<unknown>("/manage/api/statistics", options);
+}
+
 /** How the last sync with LosOS Git went. `off`: LosOS Git is off on this
  *  box; `pending`: not synced yet; the rest are what sync_once reports. */
 export type ConfigSyncState =

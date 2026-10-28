@@ -249,7 +249,7 @@ pub struct ServeOpts {
     pub hidden: Option<crate::hidden::HiddenOpts>,
 }
 
-/// `serve --manage-key-file FILE [--manage-ui DIR]`.
+/// `serve --manage-key-file FILE [--manage-ui DIR] [--manage-traefik-metrics URL]`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ManageOpts {
     /// The key the page signs in with: 64 hex characters, 0600, made on the
@@ -578,6 +578,7 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                 manage: arg(&rest, "--manage-key-file").map(|file| ManageOpts {
                     key_file: file.to_string(),
                     ui_dir: arg(&rest, "--manage-ui").map(str::to_string),
+                    traefik_metrics: arg(&rest, "--manage-traefik-metrics").map(str::to_string),
                 }),
                 calls_relay: parse_calls_relay(&rest)?,
                 uplink: match arg(&rest, "--uplink-file") {

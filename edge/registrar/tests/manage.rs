@@ -52,6 +52,14 @@ async fn fake_box(listener: tokio::net::TcpListener) -> Seen {
 }
 
 async fn start(ui: Option<String>, port_range: Option<(u16, u16)>) -> Edge {
+    start_with(ui, port_range, None).await
+}
+
+async fn start_with(
+    ui: Option<String>,
+    port_range: Option<(u16, u16)>,
+    traefik_metrics: Option<String>,
+) -> Edge {
     Edge::start_custom(
         "manage",
         &[TenantSpec::new(
@@ -66,6 +74,7 @@ async fn start(ui: Option<String>, port_range: Option<(u16, u16)>) -> Edge {
             opts.manage = Some(ManageOpts {
                 key_file: dir.path_str("manage-key"),
                 ui_dir: ui,
+                traefik_metrics,
             });
         },
     )
@@ -307,5 +316,71 @@ async fn an_edge_without_a_key_manages_nothing() {
         )
         .await;
     assert_eq!(status, 204);
+    edge.shutdown().await;
+}
+
+/// Traefik's Prometheus answer as a stand-in serves it: one box's service,
+/// Traefik's own, and the metrics entrypoint, which is not traffic.
+const METRICS: &str = "\
+# TYPE traefik_entrypoint_requests_total counter
+traefik_entrypoint_requests_total{code=\"200\",entrypoint=\"websecure\",method=\"GET\",protocol=\"http\"} 40
+traefik_entrypoint_requests_total{code=\"404\",entrypoint=\"websecure\",method=\"GET\",protocol=\"http\"} 3
+traefik_entrypoint_requests_total{code=\"502\",entrypoint=\"websecure\",method=\"GET\",protocol=\"http\"} 2
+traefik_entrypoint_requests_total{code=\"200\",entrypoint=\"metrics\",method=\"GET\",protocol=\"http\"} 70
+traefik_entrypoint_responses_bytes_total{code=\"200\",entrypoint=\"websecure\",method=\"GET\",protocol=\"http\"} 81920
+traefik_open_connections{entrypoint=\"websecure\",protocol=\"TCP\"} 2
+traefik_service_requests_total{code=\"200\",method=\"GET\",protocol=\"http\",service=\"office-box@http\"} 40
+traefik_service_requests_total{code=\"502\",method=\"GET\",protocol=\"http\",service=\"office-box@http\"} 2
+traefik_service_requests_total{code=\"200\",method=\"GET\",protocol=\"http\",service=\"prometheus@internal\"} 70
+process_start_time_seconds 1.7926e+09
+";
+
+#[tokio::test]
+async fn statistics_are_what_traefik_counted_with_each_box_named() {
+    let traefik = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/metrics", traefik.local_addr().unwrap());
+    let app = Router::new().route("/metrics", axum::routing::get(|| async { METRICS }));
+    tokio::spawn(async move { axum::serve(traefik, app).await.unwrap() });
+
+    let edge = start_with(None, None, Some(url)).await;
+    let key = key(&edge);
+    assert_eq!(get(&edge, "/manage/api/statistics", None).await.0, 401);
+    edge.register("office-box", "office-box.example.test", TOKEN)
+        .await;
+
+    // The first reading is taken as the registrar starts.
+    let mut doc = serde_json::Value::Null;
+    for _ in 0..50 {
+        let (status, body) = get(&edge, "/manage/api/statistics", Some(&key)).await;
+        assert_eq!(status, 200, "{body}");
+        doc = serde_json::from_str(&body).unwrap();
+        if doc["available"] == true {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    assert_eq!(doc["available"], true, "{doc}");
+    assert_eq!(doc["totals"]["requests"], 45.0);
+    assert_eq!(doc["totals"]["clientErrors"], 3.0);
+    assert_eq!(doc["totals"]["serverErrors"], 2.0);
+    assert_eq!(doc["totals"]["openConnections"], 2.0);
+    assert_eq!(doc["codes"]["2xx"], 40.0);
+    assert_eq!(doc["since"], "2026-10-21T16:26:40Z");
+    let routes = doc["routes"].as_array().unwrap();
+    assert_eq!(routes.len(), 1, "{doc}");
+    assert_eq!(routes[0]["name"], "office-box");
+    assert_eq!(routes[0]["host"], "office-box.example.test");
+    assert_eq!(routes[0]["serverErrors"], 2.0);
+    edge.shutdown().await;
+}
+
+#[tokio::test]
+async fn statistics_without_traefik_say_why() {
+    let edge = start(None, None).await;
+    let (status, body) = get(&edge, "/manage/api/statistics", Some(&key(&edge))).await;
+    assert_eq!(status, 200);
+    let doc: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(doc["available"], false);
+    assert_eq!(doc["reason"], "this edge does not read Traefik's counters");
     edge.shutdown().await;
 }

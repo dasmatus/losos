@@ -88,6 +88,18 @@ impl Discovery {
         let s = self.0.read().unwrap_or_else(|p| p.into_inner());
         s.tenants.as_ref().map(Routes::hosts).unwrap_or_default()
     }
+
+    /// Each service's address, boxes and machines alike
+    /// ([`Routes::hosts_by_service`]).
+    #[must_use]
+    pub fn hosts_by_service(&self) -> std::collections::BTreeMap<String, String> {
+        let s = self.0.read().unwrap_or_else(|p| p.into_inner());
+        let mut hosts = s.vms.hosts_by_service();
+        if let Some(tenants) = &s.tenants {
+            hosts.extend(tenants.hosts_by_service());
+        }
+        hosts
+    }
 }
 
 /// The provider listener's routes.
