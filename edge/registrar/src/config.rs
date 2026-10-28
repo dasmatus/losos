@@ -119,6 +119,30 @@ impl Routes {
         hosts
     }
 
+    /// Each service's address: the name of the router named after it, else
+    /// of the first router that sends to it. What the Statistics page labels
+    /// a service's row with (`crate::stats`).
+    #[must_use]
+    pub fn hosts_by_service(&self) -> BTreeMap<String, String> {
+        let mut hosts = BTreeMap::new();
+        for (name, router) in &self.routers {
+            let Some(host) = router
+                .tls
+                .as_ref()
+                .and_then(|t| t.domains.first())
+                .map(|d| d.main.clone())
+            else {
+                continue;
+            };
+            if *name == router.service {
+                hosts.insert(router.service.clone(), host);
+            } else {
+                hosts.entry(router.service.clone()).or_insert(host);
+            }
+        }
+        hosts
+    }
+
     /// This source alone as a provider document, or `None` when it routes
     /// nothing.
     #[must_use]

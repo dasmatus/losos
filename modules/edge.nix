@@ -133,6 +133,11 @@ let
   # websecure answers HTTP/3 on UDP 443 beside TCP, and Traefik adds an
   # Alt-Svc header to every response so a browser moves to QUIC on its next
   # request; a network that blocks UDP keeps HTTP/2 on TCP.
+  #
+  # Traefik's Prometheus counters are on a loopback entrypoint of their own,
+  # read by the registrar for the manage page's Statistics (crate::stats). The
+  # buckets are finer than Traefik's four so a 95th percentile means
+  # something; the metrics entrypoint's own requests are not counted.
   tomlFmt = pkgs.formats.toml { };
   staticCfg = tomlFmt.generate "losos-traefik-static.toml" (
     lib.recursiveUpdate
@@ -142,6 +147,26 @@ let
         entryPoints.web.http.redirections.entryPoint.scheme = "https";
         entryPoints.websecure.address = ":443";
         entryPoints.websecure.http3 = { };
+        entryPoints.metrics.address = "127.0.0.1:${toString cfg.traefikMetricsPort}";
+        metrics.prometheus = {
+          entryPoint = "metrics";
+          addEntryPointsLabels = true;
+          addRoutersLabels = false;
+          addServicesLabels = true;
+          buckets = [
+            0.005
+            0.01
+            0.025
+            0.05
+            0.1
+            0.25
+            0.5
+            1.0
+            2.5
+            5.0
+            10.0
+          ];
+        };
         providers.file.directory = "/etc/traefik/dynamic";
         providers.http = {
           endpoint = "http://127.0.0.1:${toString cfg.traefikProviderPort}/traefik";
@@ -1073,6 +1098,10 @@ let
     ++ lib.optionals (cfg.manage.ui != null) [
       "--manage-ui"
       "${cfg.manage.ui}"
+    ]
+    ++ [
+      "--manage-traefik-metrics"
+      "http://127.0.0.1:${toString cfg.traefikMetricsPort}/metrics"
     ]
   );
 
