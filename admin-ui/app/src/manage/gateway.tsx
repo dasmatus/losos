@@ -296,7 +296,7 @@ function UplinkForm({
   onCancel,
   onSaved,
 }: {
-  initial: { id: string; registrarUrl: string; ratholeEndpoint: string } | null;
+  initial: { id: string; registrarUrl: string; tunnelEndpoint: string } | null;
   onCancel: () => void;
   onSaved: () => void;
 }) {
@@ -304,9 +304,8 @@ function UplinkForm({
   const base = React.useId();
   const [id, setId] = React.useState(initial?.id ?? "");
   const [registrarUrl, setRegistrarUrl] = React.useState(initial?.registrarUrl ?? "");
-  const [ratholeEndpoint, setRatholeEndpoint] = React.useState(initial?.ratholeEndpoint ?? "");
+  const [tunnelEndpoint, setTunnelEndpoint] = React.useState(initial?.tunnelEndpoint ?? "");
   const [token, setToken] = React.useState("");
-  const [bootstrapToken, setBootstrapToken] = React.useState("");
   const [problem, setProblem] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
 
@@ -319,8 +318,7 @@ function UplinkForm({
         id: id.trim(),
         token: token.trim(),
         registrarUrl: registrarUrl.trim(),
-        ratholeEndpoint: ratholeEndpoint.trim(),
-        ...(bootstrapToken.trim() !== "" ? { bootstrapToken: bootstrapToken.trim() } : {}),
+        tunnelEndpoint: tunnelEndpoint.trim(),
       });
       toast.success(t("manage.uplink.saved"), t("manage.uplink.savedDetail"));
       onSaved();
@@ -364,11 +362,10 @@ function UplinkForm({
         {field("registrar", t("manage.uplink.registrar"), registrarUrl, setRegistrarUrl, {
           placeholder: "https://register.example.com",
         })}
-        {field("rathole", t("manage.uplink.endpoint"), ratholeEndpoint, setRatholeEndpoint, {
+        {field("tunnel", t("manage.uplink.endpoint"), tunnelEndpoint, setTunnelEndpoint, {
           placeholder: "relay.example.com:2333",
         })}
         {field("token", t("manage.uplink.token"), token, setToken, { mono: true })}
-        {field("bootstrap", t("manage.uplink.bootstrap"), bootstrapToken, setBootstrapToken, { mono: true })}
         {problem !== null && (
           <Alert variant="crit" className="sm:col-span-2">
             <HugeiconsIcon icon={Alert01Icon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
@@ -381,7 +378,7 @@ function UplinkForm({
           </Button>
           <Button
             type="submit"
-            disabled={busy || id.trim() === "" || token.trim() === "" || registrarUrl.trim() === "" || ratholeEndpoint.trim() === ""}
+            disabled={busy || id.trim() === "" || token.trim() === "" || registrarUrl.trim() === "" || tunnelEndpoint.trim() === ""}
           >
             {busy && <Spinner size={14} label={t("manage.gateway.save")} />}
             {t("manage.gateway.save")}

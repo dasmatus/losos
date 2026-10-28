@@ -15,9 +15,9 @@
   <text x="235.0" y="105.0" text-anchor="middle" font-weight="650" fill="#18212a">Traefik</text>
   <text x="235.0" y="124.0" text-anchor="middle" fill="#5c6a77" font-size="13">:443</text>
   <rect x="330" y="80" width="140" height="58" rx="8" fill="#e2eff1" stroke="#0e6e7d" stroke-width="1"/>
-  <text x="400.0" y="114.0" text-anchor="middle" font-weight="650" fill="#18212a">rathole-Server</text>
+  <text x="400.0" y="114.0" text-anchor="middle" font-weight="650" fill="#18212a">Tunnel-Server</text>
   <rect x="600" y="80" width="150" height="58" rx="8" fill="#e2eff1" stroke="#0e6e7d" stroke-width="1"/>
-  <text x="675.0" y="114.0" text-anchor="middle" font-weight="650" fill="#18212a">rathole-Client</text>
+  <text x="675.0" y="114.0" text-anchor="middle" font-weight="650" fill="#18212a">Tunnel-Client</text>
   <rect x="810" y="80" width="120" height="58" rx="8" fill="#f3f5f7" stroke="#dce1e6" stroke-width="1"/>
   <text x="870.0" y="114.0" text-anchor="middle" font-weight="650" fill="#18212a">nginx</text>
   <line x1="130" y1="109.0" x2="168" y2="109.0" fill="none" stroke="#5c6a77" stroke-width="1.5" marker-end="url(#ar)"/>

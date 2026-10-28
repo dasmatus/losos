@@ -23,15 +23,17 @@
 #   5. gwb goes away too: the box falls back to a tertiary link to hub1 and
 #      lists hub2 as an official peer of cluster `eu`;
 #   6. hub1 is banned on the box: it moves to hub2 (`leftBanned`), pins
-#      hub2's key apart from hub1's, and hub2's row for it answers;
+#      hub2's tunnel certificate apart from hub1's, and hub2's row for it
+#      answers;
 #   7. gwa comes back with hub1 banned on the gateway: the box returns to its
-#      cluster, and gwa moves its uplink to hub2, which relays the box;
+#      cluster, and gwa moves its uplink to hub2, pins hub2's certificate
+#      afresh, and hub2 relays the box;
 #   8. a custom domain holds the box: POST /api/edge/cluster answers 409
 #      heldByDomain, the box stays on gwa while gwa is gone, and a ban on gwa
 #      moves it with the hold following.
 #
 # As in nix/tests/edge-federation.nix, nothing needs public DNS or TLS: the
-# data path is driven through rathole's per-service loopback ports. No edge
+# data path is driven through the tunnel's per-service loopback ports. No edge
 # is proved official (the test ships no root key), so the box's tertiary
 # choice is the configured edge first; the load-balancing weight is covered
 # by the unit tests in backend/src/edge.rs.
@@ -41,16 +43,13 @@ let
   lososPkgs = import ../packages.nix { inherit pkgs; };
 
   proxyToken = "/var/secrets/losos-proxy-token";
-  bootstrapToken = "/var/secrets/losos-rathole-bootstrap";
   siteToken = "/var/secrets/losos-tenant-acme";
   proxyTokenValue = "test-proxy-token-0123456789abcdef0123456789abcdef";
-  bootstrapTokenValue = "test-bootstrap-0123456789abcdef0123456789abcdef01";
   siteTokenValue = "test-site-token-0123456789abcdef0123456789abcdef0";
   secretFiles = {
     systemd.tmpfiles.rules = [
       "d /var/secrets 0700 root root - -"
       "f ${proxyToken} 0600 root root - ${proxyTokenValue}"
-      "f ${bootstrapToken} 0600 root root - ${bootstrapTokenValue}"
       "f ${siteToken} 0600 root root - ${siteTokenValue}"
     ];
   };
@@ -78,10 +77,9 @@ let
         acmeEmail = "test@losos.cfd";
         registrarApiBind = "::";
         registrarApiPort = 8443;
-        ratholePortRange = "50000-50010";
+        tunnelPortRange = "50000-50010";
         heartbeatTtl = "30s";
         reconcileInterval = "2s";
-        bootstrapTokenFile = bootstrapToken;
         official = {
           cluster = "eu";
           peers = [
@@ -134,7 +132,7 @@ let
         # nix/tests/edge-manage.nix's business, and not this one's.
         manage.enable = false;
         registrarApiPort = 8443;
-        ratholePortRange = "50000-50010";
+        tunnelPortRange = "50000-50010";
         reconcileInterval = "2s";
         heartbeatTtl = "30s";
         uplink.interval = "3s";
@@ -171,11 +169,10 @@ pkgs.testers.nixosTest {
         losos.proxy = {
           enable = true;
           registrarUrl = "http://hub1:8443";
-          edgeRatholeEndpoint = "hub1:2333";
+          edgeTunnelEndpoint = "hub1:2333";
           hostname = "mattbox.acme.losos.cfd";
           applianceId = "mattbox";
           tokenFile = proxyToken;
-          bootstrapTokenFile = bootstrapToken;
           heartbeatInterval = "3s";
           registrar.package = lososPkgs.losos-registrar;
         };
@@ -212,11 +209,14 @@ pkgs.testers.nixosTest {
     for h in (hub1, hub2):
         h.wait_for_unit("losos-registrar.service")
         h.wait_until_succeeds("curl -fsS http://localhost:8443/health")
-    hub_pub = {
-        h.name: h.succeed("curl -fsS http://localhost:8443/noise-public-key").strip()
+    for h in (hub1, hub2):
+        h.wait_for_unit("losos-tunnel.service")
+        h.wait_until_succeeds("curl -fsS http://localhost:8443/tunnel-pin")
+    hub_pin = {
+        h.name: h.succeed("curl -fsS http://localhost:8443/tunnel-pin").strip()
         for h in (hub1, hub2)
     }
-    assert hub_pub["hub1"] != hub_pub["hub2"], hub_pub
+    assert hub_pin["hub1"] != hub_pin["hub2"], hub_pin
 
     # An official edge says what it is to a box, and lists its cluster.
     info = json.loads(hub1.succeed("curl -fsS http://localhost:8443/cluster/secondary"))
@@ -257,7 +257,7 @@ pkgs.testers.nixosTest {
     for g in (gwa, gwb):
         g.succeed(
           "losos-edge uplink set --id acme --token-file ${siteToken} "
-          "--registrar http://hub1:8443 --rathole hub1:2333"
+          "--registrar http://hub1:8443 --tunnel hub1:2333"
         )
 
     def main_rows(h):
@@ -311,9 +311,12 @@ pkgs.testers.nixosTest {
         return machine.wait_until_succeeds(f"curl -fsS --max-time 5 http://127.0.0.1:{port}/", timeout=120)
 
     def box_port(machine, service):
-        machine.wait_until_succeeds(f"grep -F -q '[server.services.{service}]' /etc/rathole/server.toml")
-        toml = machine.succeed("cat /etc/rathole/server.toml")
-        return toml.split(f"[server.services.{service}]")[1].split('bind_addr = "127.0.0.1:')[1].split('"')[0]
+        machine.wait_until_succeeds(f"grep -F -q '\"{service}\":' /etc/losos-tunnel/server.json")
+        services = json.loads(machine.succeed("cat /etc/losos-tunnel/server.json"))["services"]
+        return services[service]["bind"].rsplit(":", 1)[1]
+
+    def client_remote(remote):
+        box.wait_until_succeeds(f"grep -F -q '\"remote\": \"{remote}\"' /run/losos-tunnel/client.json")
 
     doc = wait_path("http://gwa.local:8443", "secondary")
     print("edge:", doc)
@@ -325,19 +328,19 @@ pkgs.testers.nixosTest {
     assert box.succeed("cat /var/lib/losos/edge-cluster").strip() == "office"
     e = env()
     assert "LOSOS_EDGE_PATH_TIER=secondary\n" in e and "LOSOS_EDGE_PATH_CLUSTER=office\n" in e, e
-    box.wait_until_succeeds("systemctl is-active losos-rathole-client.service")
+    box.wait_until_succeeds("systemctl is-active losos-tunnel-client.service")
     assert through(gwa, box_port(gwa, "mattbox")).strip() == "hello-losos"
 
     # ── 4. gwa goes away: failover inside the cluster ────────────────────
     stop_gw = (
-        "systemctl stop losos-registrar.service losos-rathole.service "
+        "systemctl stop losos-registrar.service losos-tunnel.service "
         "systemd-resolved.service systemd-resolved-varlink.socket systemd-resolved-monitor.socket"
     )
-    start_gw = "systemctl start systemd-resolved.service losos-rathole.service losos-registrar.service"
+    start_gw = "systemctl start systemd-resolved.service losos-tunnel.service losos-registrar.service"
     gwa.succeed(stop_gw)
     doc = wait_path("http://gwb.local:8443", "secondary")
     assert doc["cluster"] == "office", doc
-    box.wait_until_succeeds("grep -F -q 'remote_addr = \"gwb.local:2333\"' /run/losos-rathole/client.toml")
+    client_remote("gwb.local:2333")
     # gwb learned the box from gwa's sync: the same token, no new enrolment.
     assert gwb.succeed("cat /var/lib/losos-registrar/enrolled/mattbox.token").strip() == "${proxyTokenValue}"
     assert through(gwb, box_port(gwb, "mattbox")).strip() == "hello-losos"
@@ -359,10 +362,10 @@ pkgs.testers.nixosTest {
     doc = wait_path("http://hub2:8443", "tertiary")
     assert doc["leftBanned"] == "http://hub1:8443", doc
     e = env()
-    assert "LOSOS_EDGE_PATH_RATHOLE=hub2:2333\n" in e, e
-    assert "LOSOS_EDGE_PATH_NOISE_PUB=/var/secrets/losos-edge-pins/hub2_8443.pub" in e, e
-    box.wait_until_succeeds("grep -F -q 'remote_addr = \"hub2:2333\"' /run/losos-rathole/client.toml")
-    assert box.succeed("cat /var/secrets/losos-edge-pins/hub2_8443.pub").strip() == hub_pub["hub2"]
+    assert "LOSOS_EDGE_PATH_TUNNEL=hub2:2333\n" in e, e
+    assert "LOSOS_EDGE_PATH_TUNNEL_PIN=/var/secrets/losos-edge-pins/hub2_8443.pin" in e, e
+    client_remote("hub2:2333")
+    assert box.succeed("cat /var/secrets/losos-edge-pins/hub2_8443.pin").strip() == hub_pin["hub2"]
     assert through(hub2, box_port(hub2, "mattbox")).strip() == "hello-losos"
 
     # ── 7. gwa comes back; hub1 banned on the gateway moves its uplink ───
@@ -371,10 +374,13 @@ pkgs.testers.nixosTest {
     doc = wait_path("http://gwa.local:8443", "secondary")
     assert doc["leftBanned"] is None, doc
     gwa.wait_until_succeeds("jq -e '.registrar_url == \"http://hub2:8443\"' /var/lib/losos-edge/uplink.json", timeout=120)
-    hub2.wait_until_succeeds("grep -F -q '[server.services.\"acme.mattbox\"]' /etc/rathole/server.toml", timeout=180)
+    hub2.wait_until_succeeds("grep -F -q '\"acme.mattbox\":' /etc/losos-tunnel/server.json", timeout=180)
     registry = json.loads(hub2.succeed("cat /var/lib/losos-registrar/registry.json"))
     assert registry["tenants"]["acme.mattbox"]["via"] == "acme", registry
-    gwa.wait_until_succeeds("grep -F -q 'remote_addr = \"hub2:2333\"' /etc/rathole/uplink.toml")
+    gwa.wait_until_succeeds("grep -F -q '\"remote\": \"hub2:2333\"' /etc/losos-tunnel/uplink.json")
+    uplink = json.loads(gwa.succeed("cat /etc/losos-tunnel/uplink.json"))
+    assert uplink["pin"] == hub_pin["hub2"], uplink
+    assert gwa.succeed("cat /var/lib/losos-edge/hub-tunnel.pin").strip() == hub_pin["hub2"]
 
     # ── 8. A custom domain holds the box to its edge ─────────────────────
     box.succeed("install -d /var/lib/losos-public-names && echo '[\"mattbox.example\"]' > /var/lib/losos-public-names/domains.json")

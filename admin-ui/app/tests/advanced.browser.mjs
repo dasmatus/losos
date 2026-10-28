@@ -279,20 +279,20 @@ await check('a text option set on the box shows Set here, and Use default drops 
   await page.close();
 });
 
-await check('a list is one item per line and a nullable path empties to unset', async () => {
+await check('a list is one item per line and a nullable string is written quoted', async () => {
   const { page, applies } = await open();
   const list = row(page, 'setup.finderOrigins').getByRole('textbox');
   await list.fill('https://a.example\nhttps://b.example');
   await list.blur();
-  const path = row(page, 'proxy.noisePublicKeyFile').getByRole('textbox');
-  await path.fill('/var/lib/x.pub');
-  await path.press('Enter');
+  const domain = row(page, 'mail.domain').getByRole('textbox');
+  await domain.fill('box.example.org');
+  await domain.press('Enter');
   await main(page).getByText('2 changes not applied yet').waitFor();
   await applyButton(page).click();
   await page.waitForTimeout(200);
   const lines = nixLines(applies[0]);
   assert.ok(lines.includes('  losos.setup.finderOrigins = [ "https://a.example" "https://b.example" ];'), lines.join('\n'));
-  assert.ok(lines.includes('  losos.proxy.noisePublicKeyFile = "/var/lib/x.pub";'), lines.join('\n'));
+  assert.ok(lines.includes('  losos.mail.domain = "box.example.org";'), lines.join('\n'));
   await page.close();
 });
 
