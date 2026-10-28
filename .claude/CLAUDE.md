@@ -318,6 +318,21 @@ and is never served or built by nix.
   `losos-cloud`; `losos-cloud serve --watch` scans what changed so ids and
   ETags follow. While on, `_smb._tcp` replaces the WebDAV mDNS entry so
   Finder and GNOME list the box once. `nix/tests/windows.nix` boots it.
+- `hidden-services.nix` + `hidden-lib.nix` (`losos.hidden.{tor,i2p}.enable`)
+  and `edge-hidden.nix` (`losos.edge.hidden.*`): Tor and I2P addresses.
+  Each side writes a list of services; `losos-hidden-sync` turns it into a
+  torrc fragment (`%include` of `/var/lib/losos-hidden/tor/`) and an i2pd
+  tunnels file, reloads the daemon and collects the names into
+  `/var/lib/losos-hidden/addresses.json`. The box's address lands on the
+  front vhost's loopback listeners 8480 (http) and, through nginx's stream
+  TLS on 8443, 8481 (taken as https by `$losos_proto`), never on port 80,
+  where the manage vhost trusts loopback; the leaf certificate is signed
+  by the box's own. An edge makes one address per box and routes it on
+  Traefik's loopback entry points `losos-hidden`/`losos-hidden-tls` only
+  (`edge/registrar/src/hidden.rs`), and the heartbeat's answer hands the
+  names to the box (`edge.json`). LosOS Login takes both as cookie
+  domains; `GET /api/hidden` is the `hidden` plugin.
+  `nix/tests/hidden-services.nix` boots private Tor and I2P networks.
 - `admin-ui/themes/`: the SPA's `tokens.css` is shipped byte for byte as
   `losos-tokens.css` into LosOS Login's page; LosOS Cloud and LosOS Git are
   part of the SPA's own build, so one colour change moves all of them.
@@ -456,6 +471,11 @@ and is never served or built by nix.
 - `nix/fast-build.nix`: every Rust binary links with mold and compiles
   through ccache and sccache, in shells and in `nix build` alike.
 - CI is `.github/workflows/ci.yml`, kept in step with `devenv.nix` by hand.
+  A pull request runs only the jobs its files reach: the `changes` job maps
+  them to lanes with `.github/scripts/ci-changes.sh`, and `result` is the
+  one check that sums the run up. Main, tags, the weekly run and the
+  `ci: full` label run everything. A new file a job reads from outside its
+  own folders goes into that job's lane in the script.
   `fmt-bot` pushes `cargo fmt` to main, `iso` imports `losos-ctl` as an
   artifact and boots the ISO under OVMF and SeaBIOS, tags run
   `release-media`. `history-scrub.yml` rewrites the history after every push
