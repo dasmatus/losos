@@ -174,6 +174,7 @@ async function open(path, { kb = { available: true, sites: [] }, kbSite = 'anyon
       kb.sites = [site];
       return json(route, 201, site);
     }
+    if (p === '/trash') return json(route, 200, { entries: [], days: 30 });
     if (p === '/files') {
       const entry = (name, dir) => ({ id: dir ? 7 : 8, path: name, name, dir, size: 0, mtime: 1, etag: 'x', mime: dir ? '' : 'text/plain', favorite: false });
       return json(route, 200, { folder: entry('', true), entries: [entry('Notes', true), entry('todo.txt', false)] });
@@ -474,6 +475,30 @@ await check("a box-only site sends its reader to LosOS Login, and a missing one 
 await check('no Content-Security-Policy violation under the admin policy', async () => {
   const extra = [...ALL_VIOLATIONS].filter((v) => !BASELINE.includes(v));
   assert.deepEqual(extra, [], `baseline ${JSON.stringify(BASELINE)}`);
+});
+
+/* The places of LosOS Cloud on a phone: a bar along the bottom, as on the
+ * admin pages, with More for the rest. Notes is not a tab: a vault is a
+ * page of its own, without the places, at every width. */
+await check('on a phone LosOS Cloud has a bar along the bottom and More for the other places', async () => {
+  const { page, errors } = await open('/cloud/files', { viewport: { width: 390, height: 844 } });
+  const bar = page.getByRole('navigation', { name: 'Main places', exact: true });
+  await bar.waitFor();
+  assert.deepEqual((await bar.getByRole('listitem').allInnerTexts()).map((l) => l.trim()), ['Files', 'Recent', 'Favorites', 'Photos', 'More']);
+  assert.equal(await bar.locator('a[aria-current="page"]').innerText(), 'Files');
+  await bar.getByRole('button', { name: 'More', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'Places' });
+  await sheet.waitFor();
+  await sheet.getByRole('link', { name: 'Trash' }).click();
+  await page.waitForURL(/\/cloud\/trash$/);
+  await sheet.waitFor({ state: 'detached' });
+  assert.equal(await bar.locator('a[aria-current="page"]').count(), 0);
+  assert.equal(await bar.getByRole('button', { name: 'More', exact: true }).getAttribute('data-active'), '');
+  await page.goto(origin + '/cloud/notes');
+  await page.waitForLoadState('networkidle');
+  assert.equal(await bar.count(), 0, 'a vault got the places bar');
+  assert.deepEqual(errors, []);
+  await page.close();
 });
 
 await browser.close();
