@@ -160,8 +160,12 @@ in
         # published gateway images and LosOS's payout addresses. Public
         # data, so store paths.
         LOSOS_GATEWAY_TPM_ROOTS = "${config.losos.proxy.gateways.tpmRoots}";
-        LOSOS_GATEWAY_IMAGES = "${pkgs.writeText "losos-gateway-images.json" (builtins.toJSON config.losos.proxy.gateways.images)}";
-        LOSOS_GATEWAY_PAYOUTS = "${pkgs.writeText "losos-gateway-payouts.json" (builtins.toJSON config.losos.proxy.gateways.payouts)}";
+        LOSOS_GATEWAY_IMAGES = "${pkgs.writeText "losos-gateway-images.json" (
+          builtins.toJSON config.losos.proxy.gateways.images
+        )}";
+        LOSOS_GATEWAY_PAYOUTS = "${pkgs.writeText "losos-gateway-payouts.json" (
+          builtins.toJSON config.losos.proxy.gateways.payouts
+        )}";
         # Edges and official clusters the box must not use (losos.proxy.bansFile):
         # read on every scan, a missing file bans nothing.
         LOSOS_EDGE_BANS_FILE = config.losos.proxy.bansFile;

@@ -313,15 +313,13 @@ let
   # points at a runtime path instead; the registrar re-reads either on every
   # pass and treats a missing file as "no uplink yet".
   uplinkRendered = pkgs.writeText "losos-uplink.json" (
-    builtins.toJSON (
-      {
-        registrar_url = cfg.uplink.registrarUrl;
-        tunnel_endpoint = cfg.uplink.tunnelEndpoint;
-        inherit (cfg.uplink) id;
-        token_file = toString cfg.uplink.tokenFile;
-        pin_file = toString cfg.uplink.pinFile;
-      }
-    )
+    builtins.toJSON {
+      registrar_url = cfg.uplink.registrarUrl;
+      tunnel_endpoint = cfg.uplink.tunnelEndpoint;
+      inherit (cfg.uplink) id;
+      token_file = toString cfg.uplink.tokenFile;
+      pin_file = toString cfg.uplink.pinFile;
+    }
   );
   uplinkFile =
     if cfg.uplink.configFile != null then cfg.uplink.configFile else toString uplinkRendered;

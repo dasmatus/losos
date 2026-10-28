@@ -401,20 +401,21 @@ let
     ~^/browser/      "";
         ~^/cool/         "";
   '';
-  adminHeaderMap = variable: value: handbookValue: chatValue: frameValue: appFrameValue: mailValue: basicValue: ''
-    map $uri ${variable} {
-        default          "${value}";
-        ~^/basic/        "${basicValue}";
-        ${officeArms}
-        ~^/auth/         "";
-        ~^/handbook/     "${handbookValue}";
-        ~^/chat/         "${chatValue}";
-        ~^/calls/guest/  "${chatValue}";
-        ~^/widget-frame/ "${frameValue}";
-        ~^/app-frame/    "${appFrameValue}";
-        ~^/api/mail/messages/[A-Za-z0-9_-]+/html$ "${mailValue}";
-    }
-  '';
+  adminHeaderMap =
+    variable: value: handbookValue: chatValue: frameValue: appFrameValue: mailValue: basicValue: ''
+      map $uri ${variable} {
+          default          "${value}";
+          ~^/basic/        "${basicValue}";
+          ${officeArms}
+          ~^/auth/         "";
+          ~^/handbook/     "${handbookValue}";
+          ~^/chat/         "${chatValue}";
+          ~^/calls/guest/  "${chatValue}";
+          ~^/widget-frame/ "${frameValue}";
+          ~^/app-frame/    "${appFrameValue}";
+          ~^/api/mail/messages/[A-Za-z0-9_-]+/html$ "${mailValue}";
+      }
+    '';
 
   adminHeaders = [
     {
@@ -451,11 +452,8 @@ let
 
   adminHeaderMaps = lib.concatMapStrings (
     h:
-    adminHeaderMap h.variable h.value (h.handbookValue or h.value) (h.chatValue or h.value) h.frameValue (
-      h.appFrameValue or h.frameValue
-    ) (
-      h.mailValue or h.value
-    ) (h.basicValue or h.value)
+    adminHeaderMap h.variable h.value (h.handbookValue or h.value) (h.chatValue or h.value
+    ) h.frameValue (h.appFrameValue or h.frameValue) (h.mailValue or h.value) (h.basicValue or h.value)
   ) adminHeaders;
 
   # `always` so the headers ride on the 403s the lanOnly guard emits too.
@@ -676,23 +674,23 @@ in
         # LosOS Login's session, which they hand on to it.
         (lib.mkIf adminEnabled (
           lib.genAttrs (map (p: "= /basic/${p}") basicSession) (name: {
-          proxyPass = "http://127.0.0.1:${toString adminApiPort}/api${lib.removePrefix "= " name}";
-          extraConfig = ''
-            ${lanOnly}
-            ${basicToLososd}
-            proxy_set_header Authorization "";
-            proxy_set_header X-Losos-Login-Session $cookie_losos_session;
-          '';
-        })
-        // lib.genAttrs (map (p: "= /basic/${p}") basicOpen) (name: {
-          proxyPass = "http://127.0.0.1:${toString adminApiPort}/api${lib.removePrefix "= " name}";
-          extraConfig = ''
-            ${lanOnly}
-            ${basicToLososd}
-            proxy_set_header Authorization "";
-            proxy_set_header X-Losos-Login-Session "";
-          '';
-        })
+            proxyPass = "http://127.0.0.1:${toString adminApiPort}/api${lib.removePrefix "= " name}";
+            extraConfig = ''
+              ${lanOnly}
+              ${basicToLososd}
+              proxy_set_header Authorization "";
+              proxy_set_header X-Losos-Login-Session $cookie_losos_session;
+            '';
+          })
+          // lib.genAttrs (map (p: "= /basic/${p}") basicOpen) (name: {
+            proxyPass = "http://127.0.0.1:${toString adminApiPort}/api${lib.removePrefix "= " name}";
+            extraConfig = ''
+              ${lanOnly}
+              ${basicToLososd}
+              proxy_set_header Authorization "";
+              proxy_set_header X-Losos-Login-Session "";
+            '';
+          })
         ))
         {
           # A company edge's manage page (manage/index.html, src/manage/)

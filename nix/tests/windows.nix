@@ -24,11 +24,15 @@ let
   lososPkgs = import ../packages.nix { inherit pkgs; };
   screens = import ./screens { inherit pkgs; };
 
-  plan = name: shots: pkgs.writeText "windows-${name}.json" (builtins.toJSON {
-    width = 1280;
-    height = 860;
-    inherit shots;
-  });
+  plan =
+    name: shots:
+    pkgs.writeText "windows-${name}.json" (
+      builtins.toJSON {
+        width = 1280;
+        height = 860;
+        inherit shots;
+      }
+    );
   network = {
     name = "network";
     path = "/settings/network";

@@ -52,9 +52,7 @@ let
   # person had on them.
   cloudSchema =
     let
-      after = builtins.elemAt (builtins.split ''pub const SCHEMA: &str = r#"'' (
-        builtins.readFile ../../backend/src/cloud/boards.rs
-      )) 2;
+      after = builtins.elemAt (builtins.split ''pub const SCHEMA: &str = r#"'' (builtins.readFile ../../backend/src/cloud/boards.rs)) 2;
     in
     builtins.head (builtins.split ''"#;'' after);
   cloudBoards = pkgs.writeText "cloud-boards.sql" ''

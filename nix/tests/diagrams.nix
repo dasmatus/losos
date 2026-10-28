@@ -147,7 +147,9 @@ let
             { waitFor.selector = "[data-testid=diagram] [data-node][aria-label^=\"mattbox,\"]"; }
             # The fallback setup has acme-gw; the box's own drawing does not.
             { absent.selector = "[data-testid=diagram] [data-node][aria-label^=\"acme-gw,\"]"; }
-            { absent.text = "Sign in on the admin page first, then open Diagrams from its sidebar: Diagrams reads this box with the same key."; }
+            {
+              absent.text = "Sign in on the admin page first, then open Diagrams from its sidebar: Diagrams reads this box with the same key.";
+            }
           ];
           settle = 1500;
         }
@@ -156,7 +158,9 @@ let
           path = opened;
           steps = ready ++ [
             (card "Back up the old NAS")
-            { absent.text = "Sign in on the admin page first, then open Diagrams from its sidebar: Diagrams reads this box with the same key."; }
+            {
+              absent.text = "Sign in on the admin page first, then open Diagrams from its sidebar: Diagrams reads this box with the same key.";
+            }
           ];
           settle = 1500;
         }
@@ -304,7 +308,9 @@ let
           path = opened;
           steps = ready ++ [
             (card "Back up the old NAS")
-            { absent.text = "Sign in on the admin page first, then open Diagrams from its sidebar: Diagrams reads this box with the same key."; }
+            {
+              absent.text = "Sign in on the admin page first, then open Diagrams from its sidebar: Diagrams reads this box with the same key.";
+            }
           ];
           settle = 1500;
         }
@@ -319,7 +325,9 @@ let
           path = opened;
           steps = ready ++ [
             (card "Back up the old NAS")
-            { absent.text = "Sign in on the admin page first, then open Diagrams from its sidebar: Diagrams reads this box with the same key."; }
+            {
+              absent.text = "Sign in on the admin page first, then open Diagrams from its sidebar: Diagrams reads this box with the same key.";
+            }
           ];
           settle = 1500;
         }
@@ -333,7 +341,9 @@ let
           path = opened;
           steps = ready ++ [
             (card "Back up the old NAS")
-            { absent.text = "Sign in on the admin page first, then open Diagrams from its sidebar: Diagrams reads this box with the same key."; }
+            {
+              absent.text = "Sign in on the admin page first, then open Diagrams from its sidebar: Diagrams reads this box with the same key.";
+            }
           ];
           settle = 1500;
         }
