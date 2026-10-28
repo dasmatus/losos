@@ -620,7 +620,7 @@ pkgs.testers.nixosTest {
                  "settle": 1500},
                 {"name": "calendar-event", "path": "/calendar", "waitFor": review,
                  "steps": [{"click": review},
-                           {"waitFor": {"selector": '[role=dialog] h2:has-text("Review the box")'}}],
+                           {"waitFor": {"selector": '#calendar-event-title:has-text("Review the box")'}}],
                  "settle": 1500},
             ], proxy="socks5://127.0.0.1:1080")
   '';
