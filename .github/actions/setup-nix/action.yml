@@ -1,5 +1,5 @@
 # Installs Determinate Nix with this project's substituters and enables KVM
-# where the GitHub runner exposes /dev/kvm, for the NixOS QEMU test lane.
+# where the GitHub runner exposes /dev/kvm.
 #
 # The retired Codeberg lane ran every job inside docker.io/nixos/nix and set
 # the cache through a workflow-level `NIX_CONFIG`. That worked there only
