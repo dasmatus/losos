@@ -5345,6 +5345,62 @@ fn authorize_caller(
     }
 }
 
+/// A plugin's `dispatch.call` to one of this daemon's own routes: replayed
+/// on the loopback API as the caller, the way a terminal call is
+/// ([`crate::access::forward_raw`]). A person goes as `X-Losos-As` under the
+/// admin token, the spare key and the host as the spare key, and nobody
+/// with no credential at all, so the route's own checks decide as they
+/// would for the page. The edge never reaches the host this way.
+fn host_call(port: u16, token: String) -> std::sync::Arc<crate::plugin::HostCall> {
+    use crate::plugin::bindings::losos::plugin::types::{Principal as P, Response};
+    std::sync::Arc::new(move |request| {
+        let refused = |status: u16, why: &str| Response {
+            status,
+            headers: vec![("content-type".to_string(), "application/json".to_string())],
+            body: serde_json::to_vec(&serde_json::json!({ "error": why })).unwrap_or_default(),
+        };
+        let (credential, person) = match &request.caller.principal {
+            P::Anonymous => (None, None),
+            P::Spare | P::Host => (Some(token.as_str()), None),
+            P::Person(p) => (Some(token.as_str()), Some(p.name.as_str())),
+            P::Edge => return Some(refused(403, "the edge may not use this part of the box")),
+        };
+        let path = if request.query.is_empty() {
+            request.path.clone()
+        } else {
+            format!("{}?{}", request.path, request.query)
+        };
+        let content_type = request
+            .headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+            .map(|(_, v)| v.as_str());
+        match crate::access::forward_raw(
+            port,
+            credential,
+            &request.caller.remote,
+            person,
+            &request.method,
+            &path,
+            content_type,
+            &request.body,
+        ) {
+            Ok(answer) => Some(Response {
+                status: answer.status,
+                headers: answer
+                    .content_type
+                    .map(|v| vec![("content-type".to_string(), v)])
+                    .unwrap_or_default(),
+                body: answer.body,
+            }),
+            Err(e) => {
+                tracing::error!(error = %e, path = %request.path, "a plugin's call to the host failed");
+                Some(refused(502, "the call failed on the box"))
+            }
+        }
+    })
+}
+
 /// The caller as a plugin sees it.
 fn plugin_caller(
     who: Option<&Principal>,
@@ -5428,7 +5484,7 @@ async fn plugin_route(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -
         );
         for (k, v) in &answer.headers {
             if kept_header(&k.to_ascii_lowercase()) {
-                resp.insert_header((k.as_str(), v.as_str()));
+                resp.append_header((k.as_str(), v.as_str()));
             }
         }
         resp.body(answer.body)
@@ -6112,6 +6168,8 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
         });
         api.plugins
             .set_authorize(std::sync::Arc::new(authorize_caller));
+        api.plugins
+            .set_host(host_call(api.port, api.token.clone()));
         let payload_cap = api
             .plugins
             .max_body()
