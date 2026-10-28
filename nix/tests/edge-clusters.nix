@@ -209,8 +209,11 @@ pkgs.testers.nixosTest {
     import json
     import shlex
 
+    # One after another: four machines booting at once under TCG miss the
+    # driver's wait for a shell.
     for m in (hub1, hub2, gwa, gwb):
         m.start()
+        m.succeed("true")
     for h in (hub1, hub2):
         h.wait_for_unit("losos-registrar.service")
         h.wait_until_succeeds("curl -fsS http://localhost:8443/health")
