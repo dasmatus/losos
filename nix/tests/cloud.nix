@@ -360,8 +360,16 @@ pkgs.testers.nixosTest {
             assert status == "204", (path, status)
         dav("notshared", owner_app, "PROPPATCH", "Documents/budget.ods",
             "-H 'Content-Type: application/xml' --data '<d:propertyupdate xmlns:d=\"DAV:\" xmlns:oc=\"http://owncloud.org/ns\"><d:set><d:prop><oc:favorite>1</oc:favorite></d:prop></d:set></d:propertyupdate>'")
-        # The pass the timer would start; a oneshot, so this waits for it.
-        box.succeed("systemctl start losos-cloud-photos.service")
+        # Until a pass finds nothing new. The timer's pass may already be
+        # running on a list from before the seed (start then waits for it),
+        # so only a pass from the second round on counts.
+        for round in range(10):
+            box.succeed("systemctl start losos-cloud-photos.service")
+            last = box.succeed("journalctl -u losos-cloud-photos.service -o cat | grep 'photos read' | tail -n 1")
+            if round > 0 and last.startswith("0 photos read"):
+                break
+        else:
+            raise AssertionError(f"the photos pass kept finding new photos: {last}")
         # A sign-in the desktop client has started, for the connect page.
         init = json.loads(curl(f"-f -X POST -A 'Mozilla/5.0 (Linux) mirall/3.16.0 (Nextcloud)' {BASE}/index.php/login/v2"))
         laptop.succeed(
