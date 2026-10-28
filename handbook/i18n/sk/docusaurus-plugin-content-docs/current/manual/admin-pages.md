@@ -14,7 +14,10 @@ menom a heslom v LosOS Login, prihlasovacej stránke zariadenia na
 ## Sekcie \{#the-sections}
 
 Bočný panel vľavo má šesť sekcií a pod nimi to, čo ste si pripli. Zbalený sa
-zúži na pás ikon. Na telefóne sa otvára ako vysúvací panel.
+zúži na pás ikon. Na telefóne ho nahradí lišta pri spodnom okraji obrazovky,
+na dosah palca: hlavné sekcie a potom **Viac**, ktoré vysunie celý bočný panel
+zdola. Zatvoríte ho potiahnutím nadol. Ak na zariadení beží LosOS Chat a
+LosOS Mail, zaberú dve miesta v lište.
 
 ![Prehľad: bočný panel so šiestimi sekciami vľavo, meno zariadenia a či odpovedá, dlaždice aplikácií, karta úložiska a nástenka.](@site/docs/img/overview-sk.png)
 
@@ -27,7 +30,7 @@ zúži na pás ikon. Na telefóne sa otvára ako vysúvací panel.
 | **Diagramy**     | LosOS Diagrams: diagramy, plány a tabule ako karty a sieť tohto zariadenia nakreslená a simulovaná.    |
 | **Nastavenia** | Sieť, Vzhľad, Hardvér, Zabezpečenie, Používatelia, Prístupové tokeny, Prihlasovacie údaje, Rozšírené, História, Záloha, O zariadení a Reset, každé ako samostatný panel.   |
 
-<img src={require("@site/docs/img/overview-phone-sk.png").default} alt="Prehľad na telefóne: sekcie sa zbalia do tlačidla ponuky." width="260" /> <img src={require("@site/docs/img/overview-phone-sheet-sk.png").default} alt="Ten istý telefón s ponukou otvorenou ako panel nad stránkou." width="260" />
+<img src={require("@site/docs/img/overview-phone-sk.png").default} alt="Prehľad na telefóne: Prehľad, Aplikácie, Úložisko a Mesh v lište pri spodnom okraji, všetko ostatné pod Viac." width="260" /> <img src={require("@site/docs/img/overview-phone-sheet-sk.png").default} alt="Ten istý telefón po ťuknutí na Viac: všetky sekcie v paneli, ktorý sa vysunie zdola." width="260" />
 
 ## Vyhľadávanie \{#search}
 
@@ -97,6 +100,10 @@ kláves Menu pre to, čo má práve fokus, a šípky sa ňou pohybujú.
 - **Človek v Kontaktoch**: pošta, chat, hovor alebo video, upraviť,
   exportovať ako `.vcf`, odstrániť. Človek v zozname **Na tomto boxe**
   ponúka namiesto posledných troch **Pridať do kontaktov**.
+
+![Ponuka na prázdnom mieste Prehľadu s otvoreným Vzhľadom: svetlý, tmavý a podľa prehliadača.](@site/docs/img/context-menu-page-sk.png)
+
+![Ponuka súboru v LosOS Cloud: Otvoriť, Stiahnuť, Premenovať s F2, Presunúť, Kopírovať, Verzie, Pridať do obľúbených, Zdieľať, Kopírovať odkaz, Vytvoriť úlohu a Odstrániť s Del.](@site/docs/img/context-menu-file-sk.png)
 
 Klávesy vedľa položky fungujú aj bez ponuky. V LosOS Cloud F2 premenuje
 zaškrtnutý súbor a Delete ho presunie do koša (na Macu Cmd+Backspace).

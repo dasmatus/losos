@@ -51,6 +51,9 @@ Pictures live in `handbook/docs/img/`. There are three kinds:
 - **Screens of a real machine.** The installer, the tty1 banner, the
   passphrase prompt and the Secure Boot refusals come from VM runs
   (`nix/tests/secure-boot.nix` and installs into a VM). No script retakes them.
+  The right-click menu's pictures come from a box in a VM too:
+  `nix/tests/context-menu.nix` writes them, in all three languages, to
+  `shots/after/handbook/` in its output.
 - **Diagrams.** These are hand-written SVG on a white card, in the palette
   of the admin UI (`admin-ui/app/src/styles/tokens.css`), so they read the
   same in the light and the dark theme. Edit them as text.
