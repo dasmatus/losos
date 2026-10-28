@@ -13,6 +13,7 @@ import { toast } from "@/components/ui/toast";
 import { HourStrip } from "./hour-strip";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue, StackRow, SwitchRow } from "./rows";
 import { describeWindow } from "./window";
+import { fmt } from "@/widgets/format";
 import { useEdge, type EdgeView } from "./use-edge";
 import type { SettingsForm } from "./use-settings-form";
 
@@ -84,9 +85,28 @@ function EdgeSign({ official }: { official: boolean }) {
   );
 }
 
+/* The box turns sharing off by itself after a long stretch with no edge and
+ * back on a minute after one answers (backend/src/edge.rs, `sharing_step`).
+ * While it is paused this row says so above the edges, in both states. */
+function PausedRow({ at, reachable }: { at: number; reachable: boolean }) {
+  const t = useT();
+  return (
+    <Row data-sharing="paused">
+      <RowText
+        title={t("panes.mesh.edge.paused", { date: fmt.date(at * 1000), time: fmt.time(at * 1000) })}
+        detail={t("panes.mesh.edge.pausedDetail")}
+      />
+      <RowValue className={reachable ? "text-ok" : "text-warn"}>
+        {t(reachable ? "panes.mesh.edge.resuming" : "panes.mesh.edge.waiting")}
+      </RowValue>
+    </Row>
+  );
+}
+
 export function EdgeGroup({ view }: { view: EdgeView }) {
   const t = useT();
   const { state } = view;
+  const pausedAt = state.kind === "known" ? (state.edge.sharingPausedAt ?? null) : null;
   if (state.kind === "known" && state.edge.reachable) {
     const edges = state.edge.edges;
     return (
@@ -94,6 +114,7 @@ export function EdgeGroup({ view }: { view: EdgeView }) {
         <GroupTitle>{t("panes.mesh.edge.title")}</GroupTitle>
         <TooltipProvider>
           <Group>
+            {pausedAt !== null && <PausedRow at={pausedAt} reachable />}
             {edges.map((edge, i) => (
               <Row
                 key={edge.url}
@@ -156,6 +177,7 @@ export function EdgeGroup({ view }: { view: EdgeView }) {
     <PaneSection>
       <GroupTitle>{t("panes.mesh.edge.title")}</GroupTitle>
       <Group>
+        {pausedAt !== null && <PausedRow at={pausedAt} reachable={false} />}
         <Row last data-edge={state.kind === "known" ? "none" : state.kind}>
           <RowText title={title} detail={detail} />
           <RowValue className={tone}>{value}</RowValue>

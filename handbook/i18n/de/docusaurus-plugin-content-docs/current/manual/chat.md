@@ -6,6 +6,8 @@ slug: /manual/chat
 
 # Chat
 
+![Der Raum eines Repositorys in LosOS Chat, mit dem, was LosOS Git dort geschrieben hat.](@site/docs/img/chat-room.png)
+
 LosOS Chat ist ein Messenger auf dem Gerät für alle, die ein Konto bei
 LosOS Login haben. Ihr schreibt euch Direktnachrichten und in Räumen, teilt
 Bilder und Dateien, antwortet in Threads und reagiert auf Nachrichten.
@@ -123,6 +125,8 @@ Der Chat erreicht die LosOS-Boxen in deinem Netz. Schreib von
 Box zur anderen, ohne das Netz zu verlassen. Eine Box mit einem
 `.local`-Namen antwortet anderen Chat-Servern nur aus dem Netz, in dem sie
 steht.
+
+![Derselbe Raum im Chat einer zweiten Box, von kitchenbox.local aus beigetreten.](@site/docs/img/chat-other-box.png)
 
 Um auch mit Matrix-Servern im Internet zu sprechen, braucht das Gerät eine
 eigene Domain, die sie erreichen. `losos.chat.federation.enable` unter

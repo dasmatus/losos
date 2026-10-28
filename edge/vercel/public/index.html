@@ -87,10 +87,11 @@
   </section>
 
   <section class="card">
-    <h2>What Traefik would be reloading right now</h2>
+    <h2>What Traefik would be routing right now</h2>
     <p style="margin:0 0 10px;color:var(--muted)">
-      The reconciler writes this <code>losos.yml</code> from the registry on every pass. On the VPS, Traefik's
-      file provider picks it up and routes each hostname into that box's tunnel; here it is only shown.
+      The reconciler decides these routes from the registry on every pass. On the VPS, Traefik's HTTP provider
+      reads them from the registrar every two seconds and routes each hostname into that box's tunnel; here they
+      are only shown.
     </p>
     <pre id="traefik">…</pre>
   </section>
