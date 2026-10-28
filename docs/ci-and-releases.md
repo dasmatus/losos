@@ -49,7 +49,6 @@ lanes, one per group of jobs:
 | `tui` | the static `losos` client | `admin-ui/tui/` and what its build reads |
 | `images` | the cluster's OCI image | `nix/images.nix` |
 | `iso` | the ISO and its boot legs | the modules the ISO imports, the installer, the signing tool |
-| `install` | `losos-install` on virtual disks | the installer, `boot.nix`, `disko.nix` |
 | `discovery` | the discovery box and its three runners | the modules `nix/tests/discovery/box.nix` imports, LosOS Cloud, the Windows share |
 
 `flake.nix` and `nix/packages.nix` turn on every lane that builds with Nix.
