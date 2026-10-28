@@ -109,6 +109,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "losos-plugin-hidden"
+version = "0.1.0"
+dependencies = [
+ "losos-plugin",
+ "serde_json",
+]
+
+[[package]]
 name = "losos-plugin-look"
 version = "0.1.0"
 dependencies = [

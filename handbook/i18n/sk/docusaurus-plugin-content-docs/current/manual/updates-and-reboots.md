@@ -67,6 +67,31 @@ Zariadenie, ktoré o 03:00 nemá internet, zostaví verziu, ktorú má, a skúsi
 to znova nasledujúcu noc.
 :::
 
+## Stiahnuté zostáva na zariadení \{#downloads-stay-on-the-box}
+
+Všetko, čo zariadenie pri zostavení stiahne, ide cez lokálnu kópiu na
+zariadení, uloženú na šifrovanom disku v `/var/cache/losos-nix-cache`.
+Upratovanie o 04:30 zmaže nástroje, ktoré stiahlo posledné zostavenie, a
+ďalšie zostavenie ich nájde v kópii namiesto toho, aby ich sťahovalo znova.
+Kópia prežije aj reštart o 00:07, takže zariadenie bez internetu o 03:00 sa
+vie zostaviť z toho, čo už raz stiahlo.
+
+Nič v kópii nie je dôveryhodné len preto, že tam je. Každý softvér v nej
+nesie podpis cache, z ktorej pochádza, a zariadenie tento podpis overí pri
+každej inštalácii.
+
+| Nastavenie                      | Predvolené | Čo                                                   |
+| ------------------------------- | ---------- | ---------------------------------------------------- |
+| `losos.cache.local.enable`      | zapnuté    | Kópiu uchovávať                                      |
+| `losos.cache.local.maxSize`     | `8g`       | Najviac miesta; ako prvé idú najdlhšie nepoužité     |
+| `losos.cache.local.minFree`     | `4g`       | Voľné miesto, ktoré vždy nechá pre vaše súbory       |
+| `losos.cache.local.shareOnLan`  | vypnuté    | Kópiu môžu používať iné zariadenia vo vašej sieti    |
+| `losos.cache.local.peers`       | žiadne     | Kópie iných zariadení, ktoré sa spýta ako prvé       |
+
+Ak máte doma viac zariadení, zapnite `shareOnLan` na jednom a na ostatných
+ho uveďte v `peers` ako `http://<name>.local:8790`. Každú aktualizáciu potom
+stiahnu z internetu spolu iba raz. Pustí len adresy z vašej vlastnej siete.
+
 ## Keď je zariadenie vypnuté \{#when-the-box-is-off}
 
 Nič sa nestane a nič sa nestratí. Zapnite ho a naštartuje, reštartuje sa,

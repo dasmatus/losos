@@ -2100,6 +2100,7 @@ name = "losos-registrar"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64 0.22.1",
  "curve25519-dalek 5.0.0",
  "futures-util",
  "if-addrs",

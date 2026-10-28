@@ -54,7 +54,9 @@ Die Bilder liegen in `handbook/docs/img/`. Es gibt drei Arten:
 - **Bildschirme eines echten Rechners.** Der Installer, das tty1-Banner, die
   Passphrase-Abfrage und die Ablehnungen durch Secure Boot stammen aus
   VM-Läufen (`nix/tests/secure-boot.nix` und Installationen in eine VM). Kein
-  Skript nimmt sie neu auf.
+  Skript nimmt sie neu auf. Die Bilder des Rechtsklick-Menüs stammen ebenfalls
+  von einer Box in einer VM: `nix/tests/context-menu.nix` schreibt sie in allen
+  drei Sprachen nach `shots/after/handbook/` in seiner Ausgabe.
 - **Diagramme.** Das sind von Hand geschriebene SVGs auf einer weißen Karte,
   in der Palette der Admin-UI (`admin-ui/app/src/styles/tokens.css`), sodass
   sie im hellen und im dunklen Design gleich aussehen. Bearbeite sie als

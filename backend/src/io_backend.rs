@@ -775,8 +775,21 @@ fn ensure_proxy_secrets() {
     }
 }
 
+/// Seconds without an edge before the box pauses sharing
+/// (`$LOSOS_SHARING_PAUSE_AFTER_SECS`, `losos.proxy.pauseSharingAfter`; 0 is
+/// never).
+fn sharing_pause_after() -> u64 {
+    std::env::var("LOSOS_SHARING_PAUSE_AFTER_SECS")
+        .ok()
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(crate::edge::PAUSE_AFTER_DEFAULT)
+}
+
 /// Keep the edge scan fresh: one pass now, then one every
-/// [`crate::edge::SCAN_INTERVAL`] for the life of the daemon.
+/// [`crate::edge::SCAN_INTERVAL`] for the life of the daemon. After each
+/// pass, pause or resume sharing on what it found
+/// ([`crate::losos::sharing_tick`]), under the state lock like every other
+/// writer of `state.json`.
 ///
 /// A plain thread rather than a tokio task, like the rebuild watcher: the
 /// scan is two subprocesses and a sleep, and the command core that reads the
@@ -787,8 +800,27 @@ pub fn start_edge_scanner(backend: &IoLosos) {
         .name("lososd-edge-scan".into())
         .spawn(move || {
             ensure_proxy_secrets();
+            let pause_after = sharing_pause_after();
+            let mut clock = crate::edge::OutageClock::default();
             loop {
-                backend.scan_edge();
+                let status = backend.scan_edge();
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |d| d.as_secs());
+                clock.observe(status.reachable, now);
+                match backend
+                    .serialized(|l| crate::losos::sharing_tick(l, &clock, now, pause_after))
+                {
+                    Ok(crate::edge::SharingStep::Pause) => tracing::warn!(
+                        pause_after,
+                        "no edge answered for {pause_after} s: sharing is paused until one does"
+                    ),
+                    Ok(crate::edge::SharingStep::Resume) => {
+                        tracing::info!("an edge answers again: sharing is back on");
+                    }
+                    Ok(_) => {}
+                    Err(e) => tracing::warn!(error = ?e, "could not pause or resume sharing"),
+                }
                 std::thread::sleep(crate::edge::SCAN_INTERVAL);
             }
         });
@@ -2975,6 +3007,8 @@ mod tests {
             erase: None,
             owner: Some("matus".into()),
             managed_by: Some("http://office.local:8443".into()),
+            sharing_paused_at: Some(1_700_000_000),
+            sharing_edge_seen: true,
         };
         write_state(&p, &s).unwrap();
         assert_eq!(read_state(&p), s);

@@ -11,10 +11,10 @@
 //!      prunes by TTL — the reconciler's prune never ran while no instance
 //!      was alive);
 //!   2. run one reconcile pass ([`App::reconcile`]): the real edge's prune,
-//!      whitelist repair and file rewrites, so the scratch-disk `losos.yml`
-//!      the status route shows is what Traefik would be reloading;
+//!      whitelist repair and rathole rewrite, so the routes the status route
+//!      shows are what Traefik's HTTP provider would be reading;
 //!   3. hand the request to the registrar's router, untouched, then run the
-//!      pass again so what the request changed reaches the files;
+//!      pass again so what the request changed reaches the routes;
 //!   4. save the registry to the store.
 //!
 //! One mutex serialises the four steps within an instance, which is what makes
@@ -28,7 +28,6 @@
 //! cannot be written fails a mutating request the same way, so the appliance's
 //! announce loop retries, and lets a read through, since nothing was lost.
 
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -50,7 +49,6 @@ pub struct Host {
     app: App,
     store: Option<Box<dyn Store>>,
     ttl: Duration,
-    traefik_file: PathBuf,
     /// Held for the whole of every request; see the module header.
     turn: Mutex<()>,
 }
@@ -74,7 +72,6 @@ impl Host {
             .materialise()
             .wrap_err("write whitelist and token files")?;
         let ttl = opts.heartbeat_ttl;
-        let traefik_file = PathBuf::from(&opts.traefik_dir).join("losos.yml");
         let app = build(opts).await.wrap_err("build registrar")?;
         tracing::info!(
             "edge host ready: {} tenant(s) whitelisted, ttl {}s, store {}",
@@ -86,7 +83,6 @@ impl Host {
             app,
             store,
             ttl,
-            traefik_file,
             turn: Mutex::new(()),
         })
     }
@@ -107,10 +103,14 @@ impl Host {
         Status::from_snapshot(snapshot, self.ttl, store)
     }
 
-    /// The Traefik dynamic configuration the last reconcile pass wrote, or
-    /// `None` when it removed the file (no live tenants).
-    pub async fn traefik_config(&self) -> Option<String> {
-        tokio::fs::read_to_string(&self.traefik_file).await.ok()
+    /// The document a real edge's Traefik would read from the registrar's
+    /// provider listener after the last reconcile pass: `{}` with no live
+    /// tenants.
+    pub fn traefik_config(&self) -> String {
+        self.app
+            .discovery()
+            .document()
+            .unwrap_or_else(|| "{}".to_string())
     }
 
     /// One pass, logged and not fatal, as on the real edge: the next request

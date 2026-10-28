@@ -50,19 +50,15 @@ assert must config.boot.initrd.systemd.tpm2.enable
   "boot.initrd.systemd.tpm2.enable is off: the initrd cannot read the sealed LUKS2 token and every boot stops at a passphrase prompt";
 assert must (lib.elem "tpm2-device=auto" config.boot.initrd.luks.devices.persist.crypttabExtraOpts)
   "crypttab for `persist` has no tpm2-device=auto (${toString config.boot.initrd.luks.devices.persist.crypttabExtraOpts}): the enrolled token is never consulted";
-assert must (!config.system.autoUpgrade.enable)
-  "NixOS autoUpgrade must be disabled once the signed sysupdate release channel owns the nightly update schedule";
-assert must (config.systemd.services ? losos-sysupdate)
-  "the persistent systemd-sysupdate activation service is missing";
+assert must (lib.elem "--impure" config.system.autoUpgrade.flags)
+  "system.autoUpgrade does not pass --impure (${toString config.system.autoUpgrade.flags}): a remote upgradeFlakeUri then evaluates the published tree without this box's install-target.nix and overrides.nix, flips a keyfile box to the TPM shape and resets every setting";
+assert must (lib.hasSuffix "#install" config.losos.upgradeFlakeUri)
+  "losos.upgradeFlakeUri has no #install fragment (${config.losos.upgradeFlakeUri}); nixos-rebuild would look for nixosConfigurations.<hostname>, which this flake does not export";
 assert must
-  (lib.elem "/persist/var/lib/losos-sysupdate/versions" config.systemd.services.losos-sysupdate.unitConfig.RequiresMountsFor)
-  "sysupdate does not require the persistent /persist update directory to be mounted";
-assert must
-  (lib.hasInfix "/persist/var/lib/losos-sysupdate/versions" config.environment.etc."sysupdate.d/50-losos.transfer".text)
-  "the sysupdate target no longer extracts the versioned update bundle below /persist";
-assert must
-  (lib.hasInfix "--impure" (builtins.readFile ../../tools/losos-sysupdate-apply.sh))
-  "sysupdate activation stopped passing --impure and may discard the box's install-target.nix or overrides.nix";
+  (lib.any (lib.hasSuffix "/bin/losos-ctl config --update") (
+    lib.toList (config.systemd.services.nixos-upgrade.serviceConfig.ExecStartPre or [ ])
+  ))
+  "nixos-upgrade.service no longer asks lososd to follow the published tree first (losos-ctl config --update): /etc/nixos then never changes and the nightly update rebuilds the installed version forever";
 assert must (!config.losos.bios && config.boot.loader.systemd-boot.enable)
   "the published flake is not on the UEFI/systemd-boot path; the README tells owners to boot the installer in UEFI mode";
 assert must
@@ -74,12 +70,25 @@ assert must
     && lib.hasInfix "ensure /persist/etc/rancher 0 0 0755" config.system.activationScripts.lososPersistentSources.text
   )
   "lososPersistentSources does not pre-create the persisted directories by numeric id (a home as its owner with its homeMode, a plain directory as root 0755)";
-assert must (lib.elem "http://127.0.0.1:8787" config.nix.settings.extra-substituters)
-  "the local GHCR cache is not among nix.settings.extra-substituters (${toString config.nix.settings.extra-substituters}): the installer and appliance must pull prebuilt paths directly from GHCR";
-assert must (config.systemd.services ? losos-ghcr-cache)
-  "the local GHCR cache service is not enabled: Nix would point at localhost:8787 without a process to pull cache artifacts from GHCR";
-assert must (lib.elem "https://losos.dasmat.us/proxy" config.nix.settings.extra-substituters)
-  "the GitHub Pages copy of the cache is not among nix.settings.extra-substituters (${toString config.nix.settings.extra-substituters}): it remains the static fallback when GHCR is unreachable";
+assert must
+  (
+    lib.head config.nix.settings.substituters
+    == "http://127.0.0.1:${toString config.losos.cache.local.port}"
+  )
+  "the box does not substitute through its local copy first (${toString config.nix.settings.substituters}): every nightly rebuild downloads again what the 04:30 clean-up deleted";
+assert must
+  (config.systemd.services ? losos-nix-cache && config.systemd.services ? losos-ghcr-cache)
+  "the local copy (losos-nix-cache) or the GHCR helper behind it (losos-ghcr-cache) is not on the box";
+assert must
+  (lib.all (u: lib.elem u config.losos.cache.local.upstreams) [
+    "https://cache.nixos.org"
+    "http://127.0.0.1:8787"
+    "https://losos.dasmat.us/proxy"
+  ])
+  "the local copy does not ask cache.nixos.org, the GHCR helper and the Pages copy (${toString config.losos.cache.local.upstreams}): the LosOS packages and images would be built on the box";
+assert must
+  (lib.elem "/var" (map (d: d.directory) config.environment.persistence."/persist".directories))
+  "/var is not persisted whole: the local copy in /var/cache/losos-nix-cache would vanish at the 00:07 restart";
 assert must (lib.any (lib.hasPrefix "losos-1:") config.nix.settings.extra-trusted-public-keys)
   "no losos-1 key in nix.settings.extra-trusted-public-keys: nix declines the cache's signatures and silently builds from source, the slow install the cache exists to avoid";
 assert must (lib.elem config.system.build.nixos-rebuild config.systemd.services.lososd.path)
