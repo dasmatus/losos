@@ -857,7 +857,8 @@
         "url",
         "source",
         "official",
-        "rathole"
+        "rathole",
+        "tier"
       ],
       "properties": {
         "rathole": {
@@ -881,6 +882,22 @@
         },
         "source": {
           "$ref": "#/$defs/edgeSource"
+        },
+        "tier": {
+          "$ref": "#/$defs/edgeTier",
+          "description": "Secondary for a gateway (it said so at GET /cluster/secondary, or it was found on the LAN and said nothing), tertiary for an official edge and for the configured edge unless it says it is a gateway."
+        },
+        "cluster": {
+          "type": "string",
+          "description": "The secondary cluster this gateway belongs to, as it named it (a DNS label). Absent for an official edge and for a gateway in no cluster, which counts as a cluster of its own named by its host."
+        },
+        "officialCluster": {
+          "type": "string",
+          "description": "The official cluster this official edge sits in: the official edges behind one load balancer, as the edge names it at GET /cluster/secondary (`officialCluster`). A ban may name the whole cluster. Absent for a gateway and for an edge that names none."
+        },
+        "member": {
+          "type": "string",
+          "description": "This gateway's name in its cluster."
         }
       }
     },
@@ -891,7 +908,8 @@
         "name",
         "url",
         "source",
-        "rathole"
+        "rathole",
+        "tier"
       ],
       "properties": {
         "name": {
@@ -907,6 +925,21 @@
         "rathole": {
           "type": "string",
           "description": "`host:port` the tunnel dials. Never null: an edge without one is not chosen."
+        },
+        "tier": {
+          "$ref": "#/$defs/edgeTier"
+        },
+        "cluster": {
+          "type": "string",
+          "description": "The secondary cluster the path runs through; absent on a tertiary path."
+        },
+        "officialCluster": {
+          "type": "string",
+          "description": "The official cluster of a tertiary path, as in `edges`; absent otherwise. lososd writes it to /run/losos/edge-path.env as LOSOS_EDGE_PATH_OFFICIAL_CLUSTER."
+        },
+        "member": {
+          "type": "string",
+          "description": "The gateway's name in that cluster."
         }
       }
     },
@@ -920,7 +953,9 @@
         "lanSearched",
         "configuredUrl",
         "checkedAt",
-        "path"
+        "path",
+        "clusters",
+        "cluster"
       ],
       "properties": {
         "manage": {
@@ -987,7 +1022,7 @@
               "type": "null"
             }
           ],
-          "description": "The edge this box uses, out of `edges` (handbook/docs/in-depth/edge-federation.md): the first LAN edge with a tunnel endpoint, else the configured edge, else null. With losos.proxy.enable on, lososd writes it to /run/losos/edge-path.env and restarts the tunnel and announce units when it changes; null writes /run/losos/edge-none and stops them, so a box with no edge in reach runs no tunnel. The sharing gate (`reachable`) and the market gate (`official`) are the other two bits; this one says where the traffic goes."
+          "description": "The edge this box uses, out of `edges` (handbook/docs/in-depth/edge-federation.md, \"The box\"): a gateway of the box's own secondary cluster (staying on the one in use while it answers, else the first by name), else an official edge (tertiary: the one in use while it answers, else the one a rendezvous hash of $LOSOS_APPLIANCE_ID weighs heaviest among those in reach, which spreads boxes across an official cluster's edges), else the configured edge, else null. Banned edges are dropped first (`leftBanned`), and a live custom domain holds the box to its edge (`held`). A box in no cluster settles in the one in reach with the most gateways. With losos.proxy.enable on, lososd writes it to /run/losos/edge-path.env (with LOSOS_EDGE_PATH_TIER and LOSOS_EDGE_PATH_CLUSTER) and restarts the tunnel and announce units when it changes; a move to another cluster also restarts losos-mesh-join and rke2-agent. null writes /run/losos/edge-none and stops them, so a box with no edge in reach runs no tunnel. The sharing gate (`reachable`) and the market gate (`official`) are the other two bits; this one says where the traffic goes."
         },
         "official": {
           "type": "boolean",
@@ -1021,6 +1056,51 @@
             "null"
           ],
           "description": "Unix seconds of the scan this document describes; null before the first scan."
+        },
+        "clusters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "gateways"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "gateways": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Its gateways that answered, by member name."
+              }
+            }
+          },
+          "description": "The secondary clusters in reach, by name."
+        },
+        "cluster": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The secondary cluster this box belongs to: the one the owner chose (POST /api/edge/cluster) or the one it settled in first. Kept while none of its gateways answers: the box never moves its own membership."
+        },
+        "held": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The registrar URL a live custom domain holds this box to ($LOSOS_STATE_DIR/edge-hold.env), or null. While held the box stays on that edge whether or not it answers, and POST /api/edge/cluster is refused with 409 `heldByDomain`. A ban on the edge or its official cluster breaks the hold: the box moves and the hold follows it to the new edge."
+        },
+        "leftBanned": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The banned edge this box moved off on the last choice, or null. Bans come from $LOSOS_EDGE_BANS_FILE, `{\"edges\":[<url>],\"clusters\":[<official cluster>]}`; a banned edge is never chosen, and a box on one moves to another edge of the same tier, the next official edge by load balancing for a tertiary path."
         }
       }
     },
@@ -1459,6 +1539,14 @@
           "description": "Where /etc/nixos follows the published tree from. A follow is one commit on the box's branch whose tree is the published branch's newest tree with this box's modules/overrides.nix and modules/install-target.nix kept. nixos-upgrade.service asks for one (ConfigUpdate) before the nightly build."
         }
       }
+    },
+    "edgeTier": {
+      "enum": [
+        "primary",
+        "secondary",
+        "tertiary"
+      ],
+      "description": "Which kind of link (handbook/docs/in-depth/edge-federation.md, \"Three tiers\"). primary: edge to edge, the main cluster (gateways uplinked to an official edge). secondary: a box to a local gateway of its secondary cluster. tertiary: a box straight to an official edge, used only when no gateway of the box's own cluster answers. A box's own link is never primary."
     }
   },
   "commands": {
@@ -2171,6 +2259,12 @@
         "in": "{\"enabled\": bool}",
         "out": "{\"manage\": <GET /api/edge's manage>}",
         "note": "The owner's switch that lets a company edge manage LosOS Cloud, LosOS Git and the apps (backend/src/edge.rs, management). On binds it to the edge the box uses now, which must be on the LAN and not official (409 with notManageable:true otherwise); off forgets it. lososd publishes /run/losos/edge-managed for the announce unit's heartbeat. The edge's calls arrive through the box's own tunnel at nginx's losos-manage.invalid server, with X-Losos-Via-Edge and the box's proxy token in X-Losos-Edge, and lososd lets them through only while that edge is the one in use; they reach the sections backend/sections.json lists under `edge` and GETs of signed-in routes, never an admin route. Admin. Audited."
+      },
+      "POST /api/edge/cluster": {
+        "auth": true,
+        "in": "{\"cluster\": \"<name>\"|null}",
+        "out": "{\"cluster\": \"<name>\"|null, \"path\": <GET /api/edge's path>}",
+        "note": "The owner moves the box to another secondary cluster in reach (backend/src/edge.rs, choose_path), or with null lets it settle anew. Kept in $LOSOS_STATE_DIR/edge-cluster. The path is chosen again from the last scan at once and the tunnel units follow; the mesh join runs again against the new cluster. 400 for a name that is not a DNS label or a gateway's host, 409 when no gateway of that cluster answered the last scan, and 409 `{\"error\":\"...\",\"heldByDomain\":true}` while a live custom domain holds the box to its edge (`held`). Admin."
       },
       "GET /api/options": {
         "auth": true,

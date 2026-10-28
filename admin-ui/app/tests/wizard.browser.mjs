@@ -638,84 +638,148 @@ async function throughStepTwo(page) {
   await page.getByRole('button', { name: /^Continue$/ }).click();
 }
 
-/* Step 3 on a new box: the owner signs in to LosOS Cloud in a tab of its own
- * (LosOS Login and LosOS Cloud both refuse to be framed), and the step asks
- * /cloud/api/me who this browser is until the answer is a person. While
- * LosOS Cloud is still starting nginx answers 502, which is not a session
- * and keeps the button shut; a 401 is a running app nobody is signed in to. */
-await check('step 3 waits for LosOS Cloud to start, then for a real session, and opens it in a tab of its own', async () => {
-  const { page } = await open({ claimed: false, ready: true });
-  let hits = 0;
-  let signedIn = false;
-  await page.route('**/cloud/api/me', (route) => {
-    hits += 1;
-    if (hits <= 2) return route.fulfill({ status: 502, contentType: 'text/html', body: '<html><head><title>502 Bad Gateway</title></head><body>nginx</body></html>' });
-    if (!signedIn) return route.fulfill({ status: 401, contentType: 'application/json', body: '{"error":"signed out"}' });
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ login: 'notshared', name: 'Matus' }) });
-  });
-  await throughStepTwo(page);
+/* Step 3 on a new box: the wizard signs the owner in to LosOS Login with the
+ * password step 2 set, from this page (POST /auth/api/firstfactor), and the
+ * tab swaps the spare key for that session. LosOS Login starts only after
+ * the claim, so its first answers are nginx's 502. Once the tab is the
+ * person's, the shell draws the desktop behind the card, out of reach, and
+ * "Let's go" grows it into the window. LosOS Login's cookie is https only,
+ * so these pages are served as https://mattbox.local. */
+const HTTPS_BOX = 'https://mattbox.local';
+const SPARE_ME = { name: null, displayName: null, groups: [], admin: true, spareKey: true, sections: ['storage'], standalone: true };
+const PERSON_ME = { name: 'matus', displayName: 'Matus', groups: ['losos-admins'], admin: true, spareKey: false, sections: ['storage'], standalone: true, shared: [] };
 
-  // On the 502: the starting note, the button shut, no session.
-  const link = page.getByRole('link', { name: 'Open LosOS Cloud' });
-  await page.getByText('Your files are still starting').waitFor({ timeout: 5000 });
-  assert.equal(await link.getAttribute('aria-disabled'), 'true', 'the button opened onto an error page');
-  let text = await page.locator('body').innerText();
-  assert.ok(!/You are signed in/.test(text), `an nginx error page counted as a session:\n${text}`);
-
-  // LosOS Cloud answers 401: the note goes, the button opens /cloud/ in a new tab.
-  await page.getByText('Your files are still starting').waitFor({ state: 'detached', timeout: 10_000 });
-  assert.equal(await link.getAttribute('aria-disabled'), 'false');
-  assert.equal(await link.getAttribute('href'), '/cloud/');
-  assert.equal(await link.getAttribute('target'), '_blank');
-  await page.getByText('Waiting for you to sign in').first().waitFor();
-  await page.waitForTimeout(2500);
-  text = await page.locator('body').innerText();
-  assert.ok(!/You are signed in/.test(text), 'a signed-out answer counted as a session');
-  assert.ok(await page.getByRole('button', { name: /^Finish/ }).isDisabled(), 'Finish enabled before any sign-in');
-  assert.equal(await page.locator('iframe').count(), 0, 'step 3 framed a page that refuses to be framed');
-
-  // The owner signs in in the other tab: the next answer is a person.
-  signedIn = true;
-  await page.getByRole('region', { name: 'Sign in' }).getByText('You are signed in').waitFor({ timeout: 10_000 });
-  await page.locator('[data-toast]').getByText('You are signed in').waitFor();
-  assert.ok(!(await page.getByRole('button', { name: /^Finish/ }).isDisabled()), 'Finish still disabled after signing in');
-  // It stops asking once it knows.
-  const asked = hits;
-  await page.waitForTimeout(4500);
-  assert.equal(hits, asked, 'step 3 kept asking after the sign-in');
-  await page.close();
-});
-
-await check('step 3 can be told by hand, for a browser that keeps the two tabs apart', async () => {
-  const { page } = await open({ claimed: false, ready: true });
-  await page.route('**/cloud/api/me', (route) => route.fulfill({ status: 401, contentType: 'application/json', body: '{}' }));
-  await throughStepTwo(page);
-  await page.getByRole('button', { name: 'I have signed in' }).click();
-  await page.getByRole('region', { name: 'Sign in' }).getByText('You are signed in').waitFor({ timeout: 5000 });
-  assert.ok(!(await page.getByRole('button', { name: /^Finish/ }).isDisabled()));
-  await page.close();
-});
-
-await check('Finish hands the owner to the app with the tour open, and the tour waits for them through a reload', async () => {
-  const { page, errors } = await open({ claimed: false, ready: true });
-  await page.route('**/cloud/api/me', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ login: 'notshared', name: 'Matus' }) }),
+/* LosOS Login on a box: `health` answers per call (true is up), the sign-in
+ * takes `password` and sets the session, and /api/me tells the session from
+ * the spare key by the Authorization header, as nginx and lososd do. */
+async function login(page, { health = () => true, password = 'Correct-horse battery staple 1', me = SPARE_ME } = {}) {
+  const seen = { signIns: [], session: false };
+  await page.route('**/auth/api/health', (route) =>
+    health()
+      ? route.fulfill({ status: 200, contentType: 'application/json', body: '{"status":"OK"}' })
+      : route.fulfill({ status: 502, contentType: 'text/html', body: '<html><head><title>502 Bad Gateway</title></head><body>nginx</body></html>' }),
   );
+  await page.route('**/auth/api/firstfactor', (route) => {
+    const body = JSON.parse(route.request().postData() ?? '{}');
+    seen.signIns.push(body);
+    if (body.username !== 'matus' || body.password !== password) {
+      return route.fulfill({ status: 401, contentType: 'application/json', body: '{"status":"KO","message":"Authentication failed. Check your credentials."}' });
+    }
+    seen.session = true;
+    return route.fulfill({ status: 200, contentType: 'application/json', body: '{"status":"OK"}' });
+  });
+  await page.route('**/api/me', (route) => {
+    const bearer = route.request().headers()['authorization'] !== undefined;
+    if (bearer) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(me) });
+    if (!seen.session) return route.fulfill({ status: 401, contentType: 'application/json', body: '{"error":"unauthorized"}' });
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(PERSON_ME) });
+  });
+  return seen;
+}
+
+const desktopStage = (page) => page.getByTestId('desktop').getAttribute('data-stage');
+
+await check('step 3 waits for LosOS Login, signs in with the password from step 2, and shows the desktop behind the card', async () => {
+  const { page, errors } = await open({ claimed: false, ready: true, at: HTTPS_BOX });
+  let calls = 0;
+  const seen = await login(page, { health: () => ++calls > 2 });
   await throughStepTwo(page);
-  const done = page.getByRole('button', { name: /^Finish/ });
-  await page.waitForFunction(() => {
-    const b = [...document.querySelectorAll('button')].find((x) => /^Finish/.test(x.textContent ?? ''));
-    return !!b && !b.disabled;
-  }, null, { timeout: 20_000 });
-  await done.click();
+
+  // nginx's 502 while LosOS Login starts: a note, no sign-in yet, no desktop.
+  await page.getByText('LosOS Login is still starting').waitFor({ timeout: 5000 });
+  assert.equal(seen.signIns.length, 0, 'signed in before LosOS Login answered');
+  assert.equal(await page.getByTestId('desktop').count(), 0, 'the desktop is up before anyone is signed in');
+  assert.ok(await page.getByRole('button', { name: "Let's go" }).isDisabled(), "Let's go is live before the sign-in");
+
+  // LosOS Login answers: one sign-in, with the name and password of step 2.
+  await page.getByTestId('desktop-ready').waitFor({ timeout: 10_000 });
+  assert.deepEqual(seen.signIns, [{ username: 'matus', password: 'Correct-horse battery staple 1', keepMeLoggedIn: false }]);
+  assert.equal(await page.evaluate(() => sessionStorage.getItem('losos-token')), null, 'the tab kept the spare key after the session');
+  assert.ok(!/Correct-horse/.test(await page.evaluate(() => JSON.stringify(sessionStorage))), 'the password reached storage');
+  assert.match(await page.getByTestId('desktop-ready').innerText(), /signed in as matus/);
+
+  // The real desktop behind the card, out of reach, the card at its foot.
+  assert.equal(await desktopStage(page), 'preview');
+  assert.equal(await page.getByTestId('desktop').evaluate((el) => el.inert), true, 'the preview can be clicked');
+  assert.equal(await page.getByTestId('wizard').getAttribute('data-docked'), 'true');
+  await page.getByTestId('signed-in-avatar').waitFor({ timeout: 5000 });
+  assert.ok(!(await page.getByRole('button', { name: "Let's go" }).isDisabled()));
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check("Let's go grows the desktop into the window, signed in, with the tour over it", async () => {
+  const { page, errors } = await open({ claimed: false, ready: true, at: HTTPS_BOX });
+  await login(page);
+  await throughStepTwo(page);
+  await page.getByTestId('desktop-ready').waitFor({ timeout: 10_000 });
+  await page.getByRole('button', { name: "Let's go" }).click();
+  // Growing: the wizard on its way out and out of reach.
+  assert.equal(await desktopStage(page), 'live');
   const tour = page.getByTestId('tour');
   await tour.getByRole('heading', { name: 'Your apps, on your box' }).waitFor({ timeout: 5000 });
-  // Not closed yet, so a reload brings it back rather than losing it.
+  assert.equal(await page.getByTestId('wizard').count(), 0, 'the wizard is still on the page');
+  assert.equal(await desktopStage(page), null);
+  assert.equal(await page.getByTestId('desktop').evaluate((el) => el.inert), false);
+  await page.getByTestId('signed-in-avatar').waitFor();
+  // Not closed yet, so a reload brings it back rather than losing it. The
+  // reload lands on the desktop by the session: setup is over.
   await page.reload({ waitUntil: 'networkidle' });
   await tour.waitFor({ timeout: 5000 });
+  assert.equal(await page.getByTestId('wizard').count(), 0, 'a reload went back into setup');
   await tour.getByRole('button', { name: 'Skip the tour' }).click();
   await tour.waitFor({ state: 'detached', timeout: 3000 });
   assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('a tab reloaded on step 3 asks for the password once more, and says when it is wrong', async () => {
+  const { page } = await open({ claimed: false, ready: true, at: HTTPS_BOX });
+  let up = false;
+  const seen = await login(page, { health: () => up });
+  await throughStepTwo(page);
+  await page.getByText('LosOS Login is still starting').waitFor({ timeout: 5000 });
+  // The password was in memory only: the reload forgets it.
+  await page.reload({ waitUntil: 'networkidle' });
+  up = true;
+  await page.getByText('Type it once more to sign in', { exact: false }).waitFor({ timeout: 10_000 });
+  assert.equal(seen.signIns.length, 0);
+  const field = page.getByLabel('Password', { exact: true });
+  await field.fill('not the one');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.getByText('Wrong name or password.').waitFor({ timeout: 5000 });
+  assert.equal(await field.getAttribute('aria-invalid'), 'true');
+  assert.equal(await page.evaluate(() => sessionStorage.getItem('losos-token')), '0'.repeat(64), 'a refused password lost the spare key');
+  await field.fill('Correct-horse battery staple 1');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.getByTestId('desktop-ready').waitFor({ timeout: 10_000 });
+  assert.equal(seen.signIns.length, 2);
+  assert.equal(await desktopStage(page), 'preview');
+  await page.close();
+});
+
+await check('on plain http the tab stays signed in with the spare key, and says why', async () => {
+  const { page } = await open({ claimed: false, ready: true });
+  const seen = await login(page);
+  await throughStepTwo(page);
+  const note = page.getByTestId('desktop-spare-key');
+  await note.waitFor({ timeout: 10_000 });
+  assert.match(await note.innerText(), /over https only/);
+  assert.equal(seen.signIns.length, 0, 'tried LosOS Login over http');
+  assert.equal(await page.evaluate(() => sessionStorage.getItem('losos-token')), '0'.repeat(64));
+  assert.equal(await desktopStage(page), 'preview');
+  assert.ok(!(await page.getByRole('button', { name: "Let's go" }).isDisabled()));
+  await page.close();
+});
+
+await check('a box without LosOS Login opens with the spare key', async () => {
+  const { page } = await open({ claimed: false, ready: true, at: HTTPS_BOX });
+  const seen = await login(page, { me: { ...SPARE_ME, standalone: false } });
+  await throughStepTwo(page);
+  const note = page.getByTestId('desktop-spare-key');
+  await note.waitFor({ timeout: 10_000 });
+  assert.match(await note.innerText(), /no LosOS Login/);
+  assert.equal(seen.signIns.length, 0);
   await page.close();
 });
 

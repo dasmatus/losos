@@ -237,10 +237,12 @@ impl ViewingKey {
     pub fn encode(&self) -> String {
         unified::Uivk::try_from_items(
             REVISION,
-            vec![unified::Uitem::Data(unified::Ivk::Orchard(self.ivk.to_bytes()))],
+            vec![unified::Uitem::Data(unified::Ivk::Orchard(
+                self.ivk.to_bytes(),
+            ))],
         )
-            .expect("one Orchard item is a valid unified viewing key")
-            .encode(&self.network)
+        .expect("one Orchard item is a valid unified viewing key")
+        .encode(&self.network)
     }
 
     /// The Orchard-only unified address of order number `n`.
@@ -997,8 +999,8 @@ mod tests {
             unified::Revision::R0,
             vec![unified::Uitem::Data(unified::Fvk::Orchard(fvk.to_bytes()))],
         )
-            .unwrap()
-            .encode(&network)
+        .unwrap()
+        .encode(&network)
     }
 
     #[test]
