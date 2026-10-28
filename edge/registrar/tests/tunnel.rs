@@ -189,14 +189,24 @@ async fn a_wrong_token_or_pin_gets_nothing() {
     let pinned = client_file(remote, &other_pin, &[("box", "right", web)]);
     assert!(tunnel::connect(&pinned).await.is_err());
 
-    // Nothing holds the service, so the edge closes the visitor at once.
-    let mut s = TcpStream::connect(public).await.unwrap();
-    let mut out = Vec::new();
-    let n = tokio::time::timeout(Duration::from_secs(5), s.read_to_end(&mut out))
-        .await
-        .unwrap()
-        .unwrap_or(0);
-    assert_eq!(n, 0);
+    // Nothing holds the service, so its port is closed: Traefik's dial is
+    // refused and it shows the offline page.
+    assert!(TcpStream::connect(public).await.is_err());
+
+    // The right token opens it, and a link that leaves closes it again.
+    let right = client_file(remote, &pin, &[("box", "right", web)]);
+    let up = tunnel::connect(&right).await.unwrap();
+    assert_eq!(ask(public, b"x").await, b"web:x");
+    up.close().await;
+    let mut refused = false;
+    for _ in 0..50 {
+        if TcpStream::connect(public).await.is_err() {
+            refused = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(refused, "{public} still open after the link left");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
