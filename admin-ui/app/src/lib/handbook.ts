@@ -50,6 +50,14 @@ export const HANDBOOK_ENTRIES = {
   "edge-manages-box": "types/company-edge/",
   tpm: "reference/tpm/",
   credentials: "reference/credentials/",
+  wiki: "manual/wiki/",
+  // The chapters, as LosOS Wiki lists the handbook among the box's wikis.
+  "chapter-start": "start/what-is-losos/",
+  "chapter-types": "types/",
+  "chapter-manual": "manual/admin-pages/",
+  "chapter-troubleshooting": "troubleshooting/",
+  "chapter-reference": "reference/glossary/",
+  "chapter-in-depth": "in-depth/",
 } as const;
 
 export type HandbookEntry = keyof typeof HANDBOOK_ENTRIES;
@@ -64,7 +72,20 @@ export function linkHandbookAt(next: string): void {
   base = next;
 }
 
+/** The handbook's own front page. */
+export function handbookHome(): string {
+  return base;
+}
+
 /** The address of a handbook page on this box. */
 export function handbookHref(entry: HandbookEntry): string {
   return base + HANDBOOK_ENTRIES[entry];
+}
+
+/** The handbook's own search page, for `q`, in the reader's language
+ *  where the handbook has it (English at the top, the others below their
+ *  code). */
+export function handbookSearchHref(q: string, locale: string): string {
+  const lang = locale === "sk" || locale === "de" ? `${locale}/` : "";
+  return `${base}${lang}search?q=${encodeURIComponent(q)}`;
 }

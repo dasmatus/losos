@@ -30,6 +30,7 @@ export default defineMessages({
   "git.nav.commits": { en: "Commits", sk: "Commity", de: "Commits" },
   "git.nav.branches": { en: "Branches", sk: "Vetvy", de: "Branches" },
   "git.nav.worktrees": { en: "Worktrees", sk: "Pracovné stromy", de: "Worktrees" },
+  "git.nav.wiki": { en: "Wiki", sk: "Wiki", de: "Wiki" },
   "git.nav.settings": { en: "Settings", sk: "Nastavenia", de: "Einstellungen" },
   "git.notFound.title": {
     en: "There is nothing at this address.",

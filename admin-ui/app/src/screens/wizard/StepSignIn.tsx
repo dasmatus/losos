@@ -104,7 +104,7 @@ export interface StepSignInProps {
   /** The admin key the claim released to this tab, or null when the password
    *  was set some other way. Held by the wizard so Back does not lose it. */
   adminKey: string | null;
-  onPasswordSet: (user: string, adminKey: string | null) => void;
+  onPasswordSet: (user: string, adminKey: string | null, login: string | null, password: string) => void;
 }
 
 export function StepSignIn({
@@ -136,7 +136,7 @@ function PasswordForm({
   onPasswordSet,
 }: {
   account: string | null;
-  onPasswordSet: (user: string, adminKey: string | null) => void;
+  onPasswordSet: (user: string, adminKey: string | null, login: string | null, password: string) => void;
 }) {
   const t = useT();
   const [name, setName] = React.useState("");
@@ -193,7 +193,8 @@ function PasswordForm({
       setConfirm("");
       setVisible(false);
       setLogin(result.login);
-      onPasswordSet(result.user, result.adminKey);
+      // The password goes up too, in memory only: step 3 signs in with it.
+      onPasswordSet(result.user, result.adminKey, result.login, password);
       toast.success(
         t("wizard.signin.done.title"),
         t("wizard.signin.done.toast", { name: result.user }),
@@ -457,8 +458,8 @@ async function setFirstPassword(
   }
   const claimed = await claimAgainIfTheReplyWasLost(password, name);
   saveToken(claimed.token);
-  // `user` is the LosOS Cloud account step 3 signs in to; `name` is the
-  // LosOS Login name the box made for the admin pages.
+  // `user` is the LosOS Cloud account; `name` is the LosOS Login name the
+  // box made, which step 3 signs in with.
   return { user: claimed.user ?? name, login: claimed.name ?? name, adminKey: claimed.token };
 }
 

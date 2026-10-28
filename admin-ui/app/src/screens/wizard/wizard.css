@@ -98,3 +98,32 @@
 @page {
   margin: 18mm;
 }
+
+/* ── Over the desktop ─────────────────────────────────────────────────────
+ *
+ * On the last step the card sits at the foot of the window, over the
+ * desktop the shell draws behind it (App.tsx, index.css `.desktop-stage`).
+ * It rises in after the desktop has started to, and on "Let's go" it drops
+ * away while the desktop grows. */
+
+@keyframes wizard-dock-in {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+}
+
+@keyframes wizard-dock-out {
+  to {
+    opacity: 0;
+    transform: translateY(36px);
+  }
+}
+
+.wizard-dock {
+  animation: wizard-dock-in 520ms 220ms cubic-bezier(0.2, 0.75, 0.25, 1) backwards;
+}
+
+.wizard-leave .wizard-dock {
+  animation: wizard-dock-out 320ms cubic-bezier(0.4, 0, 1, 1) forwards;
+}
