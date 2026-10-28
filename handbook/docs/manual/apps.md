@@ -125,6 +125,8 @@ of them ended in an error. You also see how much the box sent and how long
 the slowest answers took. Each app is listed with its port. The counts
 start again when the box restarts.
 
+![Settings › Statistics: the requests, server errors, data sent and open connections of the last hour, a bar for each minute, and the answers sorted by kind.](../img/statistics.png)
+
 The **Statistics** widget puts the last hour on the Overview. Add it under
 **Add a widget**, and click it to open the page.
 

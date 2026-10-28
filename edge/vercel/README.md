@@ -14,12 +14,12 @@ status page an audience can watch. It is **not** a replacement for the edge VPS
 | `losos-registrar serve`: `/register`, `/heartbeat`, `/deregister`, `/health` | yes | **yes, unmodified** |
 | Tenant whitelist + token check | `losos.edge.tenants` → `tenants.json` + `/var/secrets` files | the same files, written from `LOSOS_TENANTS` |
 | Registry persistence | `registry.json` on disk | one `jsonb` row in a Neon Postgres, over TLS; memory only if none is configured |
-| Reconciler (prune by TTL, Traefik routes, rathole config file) | timer, every 15 s | runs once per request; the rathole file lands on the function's scratch disk and `/status/traefik` shows the routes Traefik's HTTP provider would read |
-| rathole tunnel server (`:2333`, Noise) | yes | **no** — a raw TCP listener holding long-lived connections has no serverless shape |
+| Reconciler (prune by TTL, Traefik routes, tunnel config file) | timer, every 15 s | runs once per request; the tunnel file lands on the function's scratch disk and `/status/traefik` shows the routes Traefik's HTTP provider would read |
+| Tunnel server (`:2333`, QUIC with a TCP fallback) | yes | **no** — a listener holding long-lived connections has no serverless shape |
 | Traefik, per-tenant TLS, `*.publicDomain` routing | yes | **no** — nothing to forward to without the tunnel |
 | rke2 mesh control plane, `/cluster/join` | optional | **no** (`/cluster/join` → 503, as on a proxy-only edge) |
 | Stripe gate, `/market/*` | optional | **no** (`/market/*` → 503, as on an edge with the market off) |
-| `/noise-public-key` | yes | 404 (no tunnel to pin a key for) |
+| `/tunnel-pin` | yes | 404 (no tunnel to pin a certificate for) |
 | `/identity`, `/identity/public-key`, `/identity/cert` | yes | 404 (no disk to keep an identity key on; this host is never official) |
 | `/status`, `/status/traefik`, the page at `/` | — | **demo only**; the real edge has no public listing |
 
@@ -61,7 +61,6 @@ a separate crate meant to be torn down after the demonstration.
    | `LOSOS_TENANTS` | yes | The whitelist, as JSON: `{"mattbox":{"hostname":"mattbox.losos.cfd","token":"<64 hex chars>"}}`. Same shape as `losos.edge.tenants`, with the token inline instead of a file. |
    | `LOSOS_HEARTBEAT_TTL` | no | Prune a box this long after its last heartbeat. Default `120s`. |
    | `LOSOS_PORT_RANGE` | no | Tunnel ports to allot from, `lo-hi`. Default `50000-50100`. |
-   | `LOSOS_BOOTSTRAP_TOKEN` | no | rathole's `default_token`; only reaches the scratch-disk `rathole.toml`. Random when unset. |
    | `RUST_LOG` | no | e.g. `info` (default) or `losos=debug`. |
 
 3. **Database** (recommended): Storage tab → *Create Database* → **Neon**
@@ -127,9 +126,8 @@ screenshots on the PR.
 
 On a box (or the demo VM), `losos.proxy.enable = true` with the matching
 `applianceId`, `hostname` and `tokenFile`; `losos.proxy.registrarUrl`
-already defaults to `https://losos-edge.dasmat.us`. The announce service registers and heartbeats; the rathole
-client has nothing to dial and retries harmlessly (set
-`losos.proxy.edgeRatholeEndpoint` to anything). Or run the client alone from
+already defaults to `https://losos-edge.dasmat.us`. The announce service registers and heartbeats; the tunnel
+client finds no certificate to pin at `/tunnel-pin` and retries harmlessly. Or run the client alone from
 any machine:
 
 ```sh

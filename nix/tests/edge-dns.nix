@@ -40,11 +40,9 @@
 
 let
   proxyTokenValue = "test-proxy-token-0123456789abcdef";
-  bootstrapTokenValue = "test-bootstrap-0123456789abcdef0123";
   proxyToken = "/var/secrets/losos-proxy-token";
   spokeTokenValue = "test-spoke-token-0123456789abcdef0123456789abcdef";
   spokeToken = "/var/secrets/losos-tenant-acme";
-  bootstrapToken = "/var/secrets/losos-rathole-bootstrap";
   lososPkgs = import ../packages.nix { inherit pkgs; };
   registrar = "${lososPkgs.losos-registrar}/bin/losos-registrar";
   # A test wallet (private key 0x0707…07) and its personal_sign of
@@ -72,7 +70,6 @@ pkgs.testers.nixosTest {
         systemd.tmpfiles.rules = [
           "d /var/secrets 0700 root root - -"
           "f ${proxyToken} 0600 root root - ${proxyTokenValue}"
-          "f ${bootstrapToken} 0600 root root - ${bootstrapTokenValue}"
           "f ${spokeToken} 0600 root root - ${spokeTokenValue}"
         ];
 
@@ -82,7 +79,6 @@ pkgs.testers.nixosTest {
           publicDomain = "example.test";
           registrarApiBind = "::";
           reconcileInterval = "2s";
-          bootstrapTokenFile = bootstrapToken;
           tenants.mattbox = {
             hostname = "mattbox.boxes.example.test";
             tokenFile = proxyToken;

@@ -8,10 +8,11 @@
 mod common;
 
 use common::{Edge, TenantSpec, GOOD_TOKEN, OTHER_TOKEN};
+use losos_registrar::tunnel::{ClientFile, ServerFile};
 use serde_json::json;
 
 const ZONE: &str = "acme.losos.cfd";
-const HUB_NOISE_KEY: &str = "hubNoisePublicKeyBase64ForTheUplinkTest00000=";
+const HUB_PIN: &str = "4b1d4b1d4b1d4b1d4b1d4b1d4b1d4b1d4b1d4b1d4b1d4b1d4b1d4b1d4b1d4b1d";
 /// The spoke's own tenant token on the hub.
 const SPOKE_TOKEN: &str = "5p0ke5p0ke5p0ke5p0ke5p0ke5p0ke5p0ke5p0ke5p0ke5p0ke5p0ke5p0ke5p0k";
 
@@ -20,7 +21,7 @@ fn relay_body(tenants: serde_json::Value) -> serde_json::Value {
 }
 
 /// The hub side alone: a tenant with a relay zone may list boxes under it,
-/// each accepted box becomes a `<spoke>.<box>` router and rathole service
+/// each accepted box becomes a `<spoke>.<box>` router and tunnel service
 /// carrying the spoke's token, refusals are per box, and a shorter list
 /// drops what it no longer names.
 #[tokio::test]
@@ -66,7 +67,7 @@ async fn a_spoke_relays_boxes_under_its_zone_and_nothing_else() {
     let accepted = resp["accepted"].as_array().unwrap();
     assert_eq!(accepted.len(), 1, "{body}");
     assert_eq!(accepted[0]["id"], "mattbox");
-    let port = accepted[0]["rathole_port"].as_u64().unwrap();
+    let port = accepted[0]["tunnel_port"].as_u64().unwrap();
     assert!((50000..=50100).contains(&port), "{port}");
     let refused: Vec<&str> = resp["refused"]
         .as_array()
@@ -78,22 +79,19 @@ async fn a_spoke_relays_boxes_under_its_zone_and_nothing_else() {
 
     assert!(
         hub.wait_for(|| hub
-            .rathole_toml()
-            .is_some_and(|t| t.contains("[server.services.\"acme.mattbox\"]")))
+            .tunnel_json()
+            .is_some_and(|t| t.contains("\"acme.mattbox\"")))
             .await,
         "{:?}",
-        hub.rathole_toml()
+        hub.tunnel_json()
     );
-    let toml = hub.rathole_toml().unwrap();
-    let block = toml
-        .split("[server.services.\"acme.mattbox\"]")
-        .nth(1)
-        .unwrap();
-    assert!(
-        block.contains(&format!("token = \"{SPOKE_TOKEN}\"")),
-        "the relayed service carries the spoke's token: {block}"
+    let file: ServerFile = serde_json::from_str(&hub.tunnel_json().unwrap()).unwrap();
+    let svc = &file.services["acme.mattbox"];
+    assert_eq!(
+        svc.token, SPOKE_TOKEN,
+        "the relayed service carries the spoke's token"
     );
-    assert!(block.contains(&format!("bind_addr = \"127.0.0.1:{port}\"")));
+    assert_eq!(svc.bind.to_string(), format!("127.0.0.1:{port}"));
     let yaml = hub.traefik_yaml().unwrap();
     assert!(yaml.contains("Host(`mattbox.acme.losos.cfd`)"), "{yaml}");
     assert!(yaml.contains("acme.mattbox"), "{yaml}");
@@ -105,7 +103,7 @@ async fn a_spoke_relays_boxes_under_its_zone_and_nothing_else() {
     assert_eq!(status, 200);
     assert!(
         hub.wait_for(|| hub
-            .rathole_toml()
+            .tunnel_json()
             .is_some_and(|t| !t.contains("acme.mattbox")))
             .await
     );
@@ -139,7 +137,7 @@ async fn narrowing_the_zone_drops_relayed_boxes_on_the_next_tick() {
     assert_eq!(status, 200);
     assert!(
         hub.wait_for(|| hub
-            .rathole_toml()
+            .tunnel_json()
             .is_some_and(|t| t.contains("acme.mattbox")))
             .await
     );
@@ -148,11 +146,11 @@ async fn narrowing_the_zone_drops_relayed_boxes_on_the_next_tick() {
     ]);
     assert!(
         hub.wait_for(|| hub
-            .rathole_toml()
+            .tunnel_json()
             .is_some_and(|t| !t.contains("acme.mattbox")))
             .await,
         "{:?}",
-        hub.rathole_toml()
+        hub.tunnel_json()
     );
     hub.shutdown().await;
 }
@@ -163,10 +161,10 @@ async fn narrowing_the_zone_drops_relayed_boxes_on_the_next_tick() {
 /// the spoke. Removing the uplink file switches the uplink off.
 #[tokio::test]
 async fn the_uplink_relays_what_is_live_on_the_spoke() {
-    let hub = Edge::start_with_noise_public_key(
+    let hub = Edge::start_with_tunnel_pin(
         "fed-hub",
         &[TenantSpec::new("acme", "acme.losos.cfd", SPOKE_TOKEN).with_relay_zone(ZONE)],
-        HUB_NOISE_KEY,
+        HUB_PIN,
     )
     .await;
     let hub_base = hub.base.clone();
@@ -180,23 +178,23 @@ async fn the_uplink_relays_what_is_live_on_the_spoke() {
         ],
         move |opts, dir| {
             std::fs::write(dir.join("uplink.token"), SPOKE_TOKEN).unwrap();
-            // No bootstrap token file: the spoke token stands in, and the
-            // Noise key is not pinned yet, so the first pass fetches it.
+            // The hub's tunnel is not pinned yet, so the first pass fetches
+            // its pin.
             std::fs::write(
                 dir.join("uplink.json"),
                 serde_json::to_vec(&json!({
                     "registrar_url": hub_base,
-                    "rathole_endpoint": "hub.losos.cfd:2333",
+                    "tunnel_endpoint": "hub.losos.cfd:2333",
                     "id": "acme",
                     "token_file": dir.path_str("uplink.token"),
-                    "noise_public_key_file": dir.path_str("pins/hub-noise.pub"),
+                    "pin_file": dir.path_str("pins/hub.pin"),
                 }))
                 .unwrap(),
             )
             .unwrap();
             opts.uplink = Some(losos_registrar::relay::UplinkOpts {
                 file: dir.path_str("uplink.json"),
-                rathole_config: dir.path_str("uplink.toml"),
+                tunnel_config: dir.path_str("uplink-tunnel.json"),
                 interval: std::time::Duration::from_millis(100),
             });
         },
@@ -205,35 +203,24 @@ async fn the_uplink_relays_what_is_live_on_the_spoke() {
 
     // Nothing live yet: the uplink file exists, so a client config is
     // written, with no services.
-    let uplink_toml = spoke.dir.join("uplink.toml");
-    let read_uplink = || std::fs::read_to_string(&uplink_toml).ok();
+    let uplink_file = spoke.dir.join("uplink-tunnel.json");
+    let read_uplink = || std::fs::read_to_string(&uplink_file).ok();
     assert!(spoke.wait_for(|| read_uplink().is_some()).await);
-    let empty = read_uplink().unwrap();
-    assert!(
-        empty.contains("remote_addr = \"hub.losos.cfd:2333\""),
-        "{empty}"
-    );
-    assert!(empty.contains("[client.services]"), "{empty}");
-    assert!(!empty.contains("acme.mattbox"));
-    assert!(
-        empty.contains(&format!("default_token = \"{SPOKE_TOKEN}\"")),
-        "{empty}"
-    );
-    assert!(
-        empty.contains(&format!("remote_public_key = \"{HUB_NOISE_KEY}\"")),
-        "{empty}"
-    );
+    let empty: ClientFile = serde_json::from_str(&read_uplink().unwrap()).unwrap();
+    assert_eq!(empty.remote, "hub.losos.cfd:2333");
+    assert!(empty.services.is_empty(), "{empty:?}");
+    assert_eq!(empty.pin, HUB_PIN);
     assert_eq!(
-        std::fs::read_to_string(spoke.dir.join("pins/hub-noise.pub")).unwrap(),
-        HUB_NOISE_KEY,
-        "the hub's key is pinned on first contact"
+        std::fs::read_to_string(spoke.dir.join("pins/hub.pin")).unwrap(),
+        HUB_PIN,
+        "the hub's tunnel is pinned on first contact"
     );
 
     let (status, body) = spoke
         .register("mattbox", "mattbox.acme.losos.cfd", GOOD_TOKEN)
         .await;
     assert_eq!(status, 200, "{body}");
-    let spoke_port = serde_json::from_str::<serde_json::Value>(&body).unwrap()["rathole_port"]
+    let spoke_port = serde_json::from_str::<serde_json::Value>(&body).unwrap()["tunnel_port"]
         .as_u64()
         .unwrap();
     let (status, _) = spoke
@@ -243,13 +230,13 @@ async fn the_uplink_relays_what_is_live_on_the_spoke() {
 
     assert!(
         hub.wait_for(|| hub
-            .rathole_toml()
+            .tunnel_json()
             .is_some_and(|t| t.contains("acme.mattbox")))
             .await,
         "hub: {:?}",
-        hub.rathole_toml()
+        hub.tunnel_json()
     );
-    assert!(!hub.rathole_toml().unwrap().contains("stray"));
+    assert!(!hub.tunnel_json().unwrap().contains("stray"));
     assert!(hub
         .traefik_yaml()
         .unwrap()
@@ -261,20 +248,11 @@ async fn the_uplink_relays_what_is_live_on_the_spoke() {
         "spoke uplink: {:?}",
         read_uplink()
     );
-    let toml = read_uplink().unwrap();
-    let block = toml
-        .split("[client.services.\"acme.mattbox\"]")
-        .nth(1)
-        .unwrap();
-    assert!(
-        block.contains(&format!("local_addr = \"127.0.0.1:{spoke_port}\"")),
-        "{block}"
-    );
-    assert!(
-        block.contains(&format!("token = \"{SPOKE_TOKEN}\"")),
-        "{block}"
-    );
-    assert!(!toml.contains("stray"), "{toml}");
+    let file: ClientFile = serde_json::from_str(&read_uplink().unwrap()).unwrap();
+    let svc = &file.services["acme.mattbox"];
+    assert_eq!(svc.local, format!("127.0.0.1:{spoke_port}"));
+    assert_eq!(svc.token, SPOKE_TOKEN);
+    assert_eq!(file.services.len(), 1, "{file:?}");
 
     // The box leaves the spoke: the hub forgets it on the next uplink pass.
     let (status, _) = spoke
@@ -286,7 +264,7 @@ async fn the_uplink_relays_what_is_live_on_the_spoke() {
     assert_eq!(status, 204);
     assert!(
         hub.wait_for(|| hub
-            .rathole_toml()
+            .tunnel_json()
             .is_some_and(|t| !t.contains("acme.mattbox")))
             .await
     );
@@ -336,9 +314,7 @@ async fn a_lan_edge_enrols_boxes_on_first_contact() {
         GOOD_TOKEN
     );
     assert!(
-        open.wait_for(|| open
-            .rathole_toml()
-            .is_some_and(|t| t.contains("[server.services.newbox]")))
+        open.wait_for(|| open.tunnel_json().is_some_and(|t| t.contains("\"newbox\"")))
             .await
     );
 
