@@ -1,0 +1,65 @@
+[
+  {
+    "name": "sign-in",
+    "path": "/",
+    "width": 390,
+    "pageWidth": 390,
+    "csp": []
+  },
+  {
+    "name": "signed-in",
+    "path": "/",
+    "width": 390,
+    "pageWidth": 390,
+    "csp": []
+  },
+  {
+    "name": "overview",
+    "path": "/",
+    "width": 390,
+    "pageWidth": 390,
+    "csp": []
+  },
+  {
+    "name": "storage",
+    "path": "/storage",
+    "width": 390,
+    "pageWidth": 390,
+    "csp": []
+  },
+  {
+    "name": "network",
+    "path": "/settings/network",
+    "width": 390,
+    "pageWidth": 390,
+    "csp": []
+  },
+  {
+    "name": "hardware",
+    "path": "/settings/hardware",
+    "width": 390,
+    "pageWidth": 390,
+    "csp": []
+  },
+  {
+    "name": "security",
+    "path": "/settings/security",
+    "width": 390,
+    "pageWidth": 390,
+    "csp": []
+  },
+  {
+    "name": "apply-bar",
+    "path": "/settings/hardware",
+    "width": 390,
+    "pageWidth": 390,
+    "csp": []
+  },
+  {
+    "name": "menu",
+    "path": "/",
+    "width": 390,
+    "pageWidth": 390,
+    "csp": []
+  }
+]

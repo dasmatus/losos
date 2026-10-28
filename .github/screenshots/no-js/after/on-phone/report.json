@@ -1,0 +1,52 @@
+[
+  {
+    "name": "overview",
+    "path": "/",
+    "width": 390,
+    "pageWidth": 390,
+    "csp": [
+      "style-src-elem inline",
+      "style-src-elem inline"
+    ]
+  },
+  {
+    "name": "storage",
+    "path": "/storage",
+    "width": 390,
+    "pageWidth": 390,
+    "csp": [
+      "style-src-elem inline",
+      "style-src-elem inline"
+    ]
+  },
+  {
+    "name": "network",
+    "path": "/settings/network",
+    "width": 390,
+    "pageWidth": 390,
+    "csp": [
+      "style-src-elem inline",
+      "style-src-elem inline"
+    ]
+  },
+  {
+    "name": "hardware",
+    "path": "/settings/hardware",
+    "width": 390,
+    "pageWidth": 390,
+    "csp": [
+      "style-src-elem inline",
+      "style-src-elem inline"
+    ]
+  },
+  {
+    "name": "security",
+    "path": "/settings/security",
+    "width": 390,
+    "pageWidth": 390,
+    "csp": [
+      "style-src-elem inline",
+      "style-src-elem inline"
+    ]
+  }
+]
