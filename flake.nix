@@ -520,6 +520,9 @@
         # The banner a box off the mesh shows over every page, both states
         # and the dismissal, with the pull request's pictures (nix/tests/mesh-notice.nix).
         losos-mesh-notice = import ./nix/tests/mesh-notice.nix { inherit pkgs; };
+        # The phone's bottom bar and its sheet on a real box, with the pull
+        # request's pictures (nix/tests/bottom-nav.nix).
+        losos-bottom-nav = import ./nix/tests/bottom-nav.nix { inherit pkgs; };
         # LosOS Diagrams on a box with LosOS Cloud: the /lab/ move, a .canvas
         # file opened and saved back, and the pull request's pictures.
         losos-diagrams = import ./nix/tests/diagrams.nix { inherit pkgs; };

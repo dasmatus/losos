@@ -486,6 +486,23 @@
  * it, which is fine. */
 .losos-shell {
   background-color: var(--ground);
+  /* The page ends above the phone's bottom bar, and clear of a notch on a
+   * phone held sideways (the pages ask for viewport-fit=cover). */
+  padding-bottom: var(--bottom-nav);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* The phone's bottom bar (components/ui/bottom-nav.tsx) is fixed to the
+ * viewport and drawn only below md. While it is on the page its height,
+ * the home indicator's safe area included, is --bottom-nav: the shell pads
+ * its foot by it, and whatever else floats at the bottom edge (the upload
+ * list, a call in the corner, a selection's actions) sits that much higher. */
+:root {
+  --bottom-nav: 0px;
+}
+:root:has([data-slot="bottom-nav"]) {
+  --bottom-nav: calc(3.5rem + 1px + env(safe-area-inset-bottom, 0px));
 }
 html.has-bg .losos-shell {
   background-image:
