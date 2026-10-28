@@ -175,7 +175,8 @@ pkgs.testers.nixosTest {
     edge.wait_until_succeeds(f"{https}/ | grep -q hello-losos", timeout=300)
 
     with subtest("Traefik's metrics are on loopback only"):
-        edge.succeed("curl -fsS http://127.0.0.1:8091/metrics | grep -q traefik_entrypoint_requests_total")
+        # grep reads it all: -q would close the pipe early and fail curl's write.
+        edge.succeed("curl -fsS http://127.0.0.1:8091/metrics | grep traefik_entrypoint_requests_total >/dev/null")
         edge_v4 = appliance.succeed("getent ahostsv4 edge | awk 'NR==1{print $1}'").strip()
         edge_addr = edge_v4 or "[" + appliance.succeed("getent ahostsv6 edge | awk 'NR==1{print $1}'").strip() + "]"
         appliance.fail(f"curl -fsS --max-time 5 http://{edge_addr}:8091/metrics")
