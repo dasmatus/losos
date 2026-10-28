@@ -1024,25 +1024,6 @@
         }
       }
     },
-    "updatesResponse": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["output"],
-      "properties": {
-        "output": {
-          "type": "string",
-          "description": "Human-readable systemd-sysupdate listing; may be empty when no versions have been installed or are available."
-        }
-      }
-    },
-    "updatesCheckResponse": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["started"],
-      "properties": {
-        "started": { "type": "boolean", "const": true }
-      }
-    },
     "statusResponse": {
       "type": "object",
       "additionalProperties": false,
@@ -1596,16 +1577,6 @@
       "GET /api/status": {
         "auth": true,
         "out": "statusResponse"
-      },
-      "GET /api/updates": {
-        "auth": true,
-        "out": "updatesResponse",
-        "note": "Lists systemd-sysupdate transfers and source/target versions. Downloads and extracted versions are staged under persistent /persist, not tmpfs."
-      },
-      "POST /api/updates/check": {
-        "auth": true,
-        "out": "updatesCheckResponse",
-        "note": "Starts losos-sysupdate.service without waiting for completion; the service downloads, verifies and extracts on /persist and activates the per-device NixOS configuration."
       },
       "GET /api/edge": {
         "auth": true,

@@ -377,7 +377,6 @@
             ./modules/config-repo.nix
             # modules/overrides.nix is imported through onBox below, never here.
             ./modules/updates.nix
-            ./modules/sysupdate.nix
             ./modules/logs.nix
             ./modules/defaults.nix
             ./modules/proxy.nix
@@ -464,12 +463,6 @@
       # at its top what it asserts. Most boot VMs, which CI (no KVM) never
       # builds.
       checks.${system} = {
-        losos-sysupdate-proxy = pkgs.runCommand "losos-sysupdate-proxy-tests" {
-          nativeBuildInputs = [ pkgs.python3 ];
-        } ''
-          python3 ${./tools}/test_losos_sysupdate_proxy.py
-          touch $out
-        '';
         losos-install = import ./nix/tests/install.nix { inherit pkgs disko; };
         losos-tpm-unlock = import ./nix/tests/tpm.nix { inherit pkgs disko; };
         losos-admin-daemon = import ./nix/tests/admin-vm.nix { inherit pkgs; };
@@ -559,6 +552,9 @@
         # the pull request's pictures (nix/tests/context-menu.nix).
         losos-context-menu = import ./nix/tests/context-menu.nix { inherit pkgs; };
         losos-cloud-from-nextcloud = import ./nix/tests/cloud-from-nextcloud.nix { inherit pkgs; };
+        # Photos: the camera's details and faces read on the box, grouped
+        # into people the owner names (nix/tests/cloud-photos.nix).
+        losos-cloud-photos = import ./nix/tests/cloud-photos.nix { inherit pkgs; };
         # Notes on a kitchen garden vault, and the folder published as a
         # knowledge base, on and off the mesh (nix/tests/notes.nix).
         losos-notes = import ./nix/tests/notes.nix { inherit pkgs; };

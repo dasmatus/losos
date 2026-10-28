@@ -471,6 +471,11 @@ and is never served or built by nix.
 - `nix/fast-build.nix`: every Rust binary links with mold and compiles
   through ccache and sccache, in shells and in `nix build` alike.
 - CI is `.github/workflows/ci.yml`, kept in step with `devenv.nix` by hand.
+  A pull request runs only the jobs its files reach: the `changes` job maps
+  them to lanes with `.github/scripts/ci-changes.sh`, and `result` is the
+  one check that sums the run up. Main, tags, the weekly run and the
+  `ci: full` label run everything. A new file a job reads from outside its
+  own folders goes into that job's lane in the script.
   `fmt-bot` pushes `cargo fmt` to main, `iso` imports `losos-ctl` as an
   artifact and boots the ISO under OVMF and SeaBIOS, tags run
   `release-media`. `history-scrub.yml` rewrites the history after every push
