@@ -32,6 +32,48 @@ without saying so.
 - `losos-registrar` for the dev machine, a static musl build pushed to GHCR
   on every push to main and every tag and served by the proxy (below)
 
+## What a pull request runs
+
+A pull request runs only the jobs its files reach. The `changes` job lists
+the pull request's files and `.github/scripts/ci-changes.sh` maps them to
+lanes, one per group of jobs:
+
+| Lane | Jobs | Turned on by |
+|---|---|---|
+| `rust` | clippy, rustfmt, the crate suites | the ten crates, and the web UI files `admin-ui/tui/build.rs` reads |
+| `wasm` | clippy for wasm32 | `backend/plugins/`, `admin-ui/lab/` |
+| `solana`, `evm` | the escrow programs | `edge/contracts/`, `edge/registrar/` |
+| `eval` | the flake evaluation | anything but Markdown, Rust, pictures, `docs/` and `.github/` |
+| `ctl` | `losos-ctl` | the backend crate |
+| `ui` | registrar, admin UI, handbook, browser checks | `admin-ui/`, `handbook/`, `edge/registrar/` |
+| `tui` | the static `losos` client | `admin-ui/tui/` and what its build reads |
+| `images` | the cluster's OCI image | `nix/images.nix` |
+| `iso` | the ISO and its boot legs | the modules the ISO imports, the installer, the signing tool |
+| `install` | `losos-install` on virtual disks | the installer, `boot.nix`, `disko.nix` |
+| `discovery` | the discovery box and its three runners | the modules `nix/tests/discovery/box.nix` imports, LosOS Cloud, the Windows share |
+
+`flake.nix` and `nix/packages.nix` turn on every lane that builds with Nix.
+A change to CI itself or the toolchain (`ci.yml`, `.github/actions/`,
+`flake.lock`, devenv, `nix/fast-build.nix`) turns on everything. The job
+summary of `changes` names the file that turned each lane on.
+
+A skipped job is grey, not red. The `result` job at the end of the run
+passes when every job that ran passed, so it is the one check worth
+requiring on `main`.
+
+Everything runs on pushes to `main`, on tags, on the weekly run, on a manual
+run from the Actions tab, and on a pull request labelled `ci: full`. The
+label is read when the job runs, so add it and re-run the workflow.
+
+To see what a change would run before pushing it:
+
+```sh
+git diff --name-only origin/main... | .github/scripts/ci-changes.sh
+```
+
+When a new file is read by a job outside its lane (a `build.rs` reading the
+web UI, a VM test reading a Rust file), add it to that lane in the script.
+
 Beside `ci.yml`, `stale-branches.yml` deletes stale branches every Sunday:
 any branch whose last commit is older than 30 days (the `STALE_BRANCH_DAYS`
 repository variable overrides it), except the default branch, `gh-pages`,
