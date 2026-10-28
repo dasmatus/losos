@@ -357,7 +357,7 @@ images
     #
     # nix/tests/admin-ui.nix carries the SAME hash over the SAME lock file: two
     # derivations, one dependency set. Change both together.
-    npmDepsHash = "sha256-sZXMiOTmiuGvfLnAY+0SXXVKqZxUMzF5PBV8cUkaiio=";
+    npmDepsHash = "sha256-TABNk7JQdgK7xjuq4tzKhuJXoW+Mx4ABtk7zCB4SeaI=";
 
     # No postinstall scripts. playwright is a devDependency (nix/tests/admin-ui.nix
     # drives the browser check with it) and its postinstall downloads browsers:
@@ -423,7 +423,7 @@ images
     # SHA256 of the npm dependency cache built from handbook/package-lock.json,
     # same convention as losos-admin-ui above. After changing the lock file:
     # `nix run nixpkgs#prefetch-npm-deps -- handbook/package-lock.json`.
-    npmDepsHash = "sha256-Sp2yoHsttkm/QTtvp/oqwfamJku2L3grKOmzBqC/ejY=";
+    npmDepsHash = "sha256-kiDHjrfyehek5JKhsdIvsN1LZE5RsjvDO9iAIU+SGh0=";
 
     npmFlags = [ "--ignore-scripts" ];
     env.LOSOS_HANDBOOK_BASE = "/handbook/";
@@ -474,7 +474,7 @@ images
     src = lib.cleanSource ./../backend;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-ctl-rs` will print the new hash to paste here.
-    cargoHash = "sha256-iodTj1tLDfazZ4i6Lba3fCymoqSGPJN+f6yjWZNqj4o=";
+    cargoHash = "sha256-TjuD91MoAYtYM3O3kSRQ0q9Xwmx6kWCQ9Nqu3Z9SRMY=";
     # No system deps: zbus speaks the D-Bus wire protocol natively, so there is
     # no libdbus to link against.
     # doCheck is off, and the tests still run — in CI's lint job and in
