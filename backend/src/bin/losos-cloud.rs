@@ -253,7 +253,9 @@ fn main() -> anyhow::Result<()> {
             Ok(())
         }
         Cmd::Photos { owner, models } => {
-            let store = cloud::store::Store::open(&cli.root)?;
+            // Idle priority: waiting on the server is fine, failing is not.
+            let store =
+                cloud::store::Store::open_waiting(&cli.root, std::time::Duration::from_secs(300))?;
             cloud::photos::init(&store)?;
             let owners = match owner {
                 Some(o) => vec![o],
