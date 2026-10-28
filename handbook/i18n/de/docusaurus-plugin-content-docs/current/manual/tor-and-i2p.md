@@ -27,7 +27,7 @@ Sekunden und I2P in etwa einer Minute. Bis dahin steht in der Zeile **Wird
 erstellt…**. Danach erscheinen die Adressen auf derselben Seite, jede mit
 einem Knopf, der sie kopiert.
 
-![Einstellungen, Netzwerk: Tor und I2P, die eigenen .onion- und .b32.i2p-Adressen der Box und die zwei von ihrem Edge, jede mit einem Knopf zum Kopieren.](@site/docs/img/tor-and-i2p-de.png)
+![Einstellungen, Netzwerk: Tor und I2P mit beiden Schaltern an, die eigenen .onion- und .b32.i2p-Adressen der Box und die zwei von ihrem Edge, jede mit einem Knopf zum Kopieren.](@site/docs/img/tor-and-i2p-de.png)
 
 Die Box behält ihre Adressen. Schaltest du ein Netz aus und wieder ein,
 kommt dieselbe Adresse zurück, und Updates und Neustarts ändern sie nicht.
