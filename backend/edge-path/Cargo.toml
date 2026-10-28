@@ -1,0 +1,27 @@
+# The path rule: which edge proxy to use, out of the ones that answered.
+# Its own crate so that lososd (backend/) and LosOS Desktop's network machine
+# choose an edge the same way. Pure: the browse, the probes and the gateway
+# checks are the caller's I/O.
+[package]
+name = "losos-edge-path"
+version = "0.1.0"
+edition = "2021"
+publish = false
+authors = ["Matus Mastena <shadiness9530+ou1rlygj@pm.me>"]
+description = "Which LosOS edge proxy to use: the adverts, the scan and the path rule"
+license = "AGPL-3.0-or-later"
+
+# Its own workspace, like backend/access: backend/ is a package, not a
+# workspace, and this crate is also built on its own by LosOS Desktop.
+[workspace]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+# SHA-256 of the rendezvous weight. The same digest lososd took from ring,
+# without ring's C and assembly for a crate other builds pull in.
+sha2 = "0.10"
+
+[lints.rust]
+unsafe_code = "forbid"
+unreachable_pub = "warn"

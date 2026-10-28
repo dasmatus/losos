@@ -21,6 +21,9 @@ let
     # depend on by path. Its own workspace, so `cargo fmt` of either parent
     # does not reach it.
     "backend/access"
+    # lososd's edge path rule, which LosOS Desktop's network machine reads
+    # by git too. Its own workspace for the same reason as the envelope.
+    "backend/edge-path"
     # lososd's plugins (backend/plugins/README.md): the SDK, the plugins and
     # their logic, natively here; `lint-wasm` lints the wasm32 build, and
     # backend's tests/plugins.rs builds them for wasm32 to run the daemon.
