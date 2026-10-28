@@ -6204,8 +6204,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
         });
         api.plugins
             .set_authorize(std::sync::Arc::new(authorize_caller));
-        api.plugins
-            .set_host(host_call(api.port, api.token.clone()));
+        api.plugins.set_host(host_call(api.port, api.token.clone()));
         let payload_cap = api
             .plugins
             .max_body()
