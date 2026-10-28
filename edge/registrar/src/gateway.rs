@@ -464,7 +464,7 @@ pub mod cli {
     use std::process::ExitCode;
 
     use crate::opts::PassportOpts;
-    use losos_access::gateway::{check::Anchors, pe, uki};
+    use losos_access::gateway::{check::Anchors, eventlog, pe, uki};
 
     /// The statement an owner signs, for `url`, this edge key, these payouts
     /// and `days` from now.
@@ -529,6 +529,49 @@ pub mod cli {
         Ok(check::Image {
             name: name.to_string(),
             pcr11: to_hex(&uki::pcr11(uki_bytes).map_err(err)?),
+            apps: hashes,
+        })
+    }
+
+    /// This machine's image entry as it booted: PCR 11 from its TPM (the
+    /// tools' TCTI, the raw device by default) and the programs its event
+    /// log names on PCR 4. It vouches for nothing: it is what a box would
+    /// see, written down.
+    pub fn image(name: &str, event_log: &[u8]) -> Result<check::Image> {
+        let events = eventlog::parse(event_log).map_err(|e| miette!("{e}"))?;
+        let apps = eventlog::boot_applications(&events)
+            .map_err(|kind| miette!("PCR 4 holds an event of type {kind:#x} no box accepts"))?;
+        let dir = std::env::temp_dir().join(format!(
+            "losos-image-{}",
+            random_hex(8).ok_or_else(|| miette!("the system random source failed"))?
+        ));
+        std::fs::create_dir(&dir).into_diagnostic()?;
+        let out = dir.join("pcr11.bin");
+        let status = std::process::Command::new("tpm2_pcrread")
+            .args(["sha256:11", "-o"])
+            .arg(&out)
+            .env(
+                "TPM2TOOLS_TCTI",
+                std::env::var("TPM2TOOLS_TCTI").unwrap_or_else(|_| "device:/dev/tpm0".into()),
+            )
+            .stdout(std::process::Stdio::null())
+            .status()
+            .into_diagnostic()
+            .wrap_err("running tpm2_pcrread")?;
+        let pcr11 = std::fs::read(&out);
+        let _ = std::fs::remove_dir_all(&dir);
+        if !status.success() {
+            return Err(miette!("tpm2_pcrread failed"));
+        }
+        let pcr11 = pcr11.into_diagnostic()?;
+        if pcr11.len() != 32 {
+            return Err(miette!("read {} bytes of PCR 11, not 32", pcr11.len()));
+        }
+        let mut hashes: Vec<String> = apps.iter().map(|a| to_hex(a)).collect();
+        hashes.dedup();
+        Ok(check::Image {
+            name: name.to_string(),
+            pcr11: to_hex(&pcr11),
             apps: hashes,
         })
     }
@@ -632,6 +675,15 @@ pub mod cli {
                     "{}",
                     serde_json::to_string_pretty(&measure(&bytes, &name, &apps)?)
                         .into_diagnostic()?
+                );
+            }
+            PassportOpts::Image { name, event_log } => {
+                let bytes = std::fs::read(&event_log)
+                    .into_diagnostic()
+                    .wrap_err_with(|| format!("reading {event_log}"))?;
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&image(&name, &bytes)?).into_diagnostic()?
                 );
             }
             PassportOpts::Check {
