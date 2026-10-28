@@ -70,7 +70,7 @@ with your sign-in name and the new password; LosOS Cloud and LosOS Git follow.
 
 The box keeps only a hash of your password. There is no reset link, because
 the box sends no mail, and no shell to run a reset on. Before you reinstall,
-check whether another person on the box is an administrator: they can set a
+check whether another person on the box is an administrator. They can set a
 new password for anyone but the owner. For the owner, the only way back is a
 **reinstall**, which wipes the disk, and then a restore of your files from
 the other copy you keep, such as the desktop client's folder or the phone's

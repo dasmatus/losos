@@ -61,6 +61,7 @@ use std::task::{ready, Context, Poll};
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::watch;
 use tokio_rustls::client::TlsStream as TlsClientStream;
 use tokio_rustls::{TlsAcceptor, TlsConnector};
 
@@ -676,12 +677,12 @@ impl Link {
 }
 
 /// One service on this edge: its token, its port, and the link that holds
-/// it now.
+/// it now, which its listener follows.
 struct Service {
     token: String,
     bind: SocketAddr,
     listener: tokio::task::AbortHandle,
-    holder: Option<Link>,
+    holder: watch::Sender<Option<Link>>,
 }
 
 type Services = Arc<Mutex<HashMap<String, Service>>>;
@@ -826,50 +827,66 @@ fn apply(services: &Services, file: ServerFile) {
         if map.contains_key(&name) || header(&name).is_none() {
             continue;
         }
-        let listener = tokio::spawn(listen(name.clone(), f.bind, services.clone())).abort_handle();
+        let (holder, held) = watch::channel(None);
+        let listener = tokio::spawn(listen(name.clone(), f.bind, held)).abort_handle();
         map.insert(
             name,
             Service {
                 token: f.token,
                 bind: f.bind,
                 listener,
-                holder: None,
+                holder,
             },
         );
     }
 }
 
 /// Take TCP connections on a service's port and hand each to its holder.
-async fn listen(name: String, bind: SocketAddr, services: Services) {
-    let listener = loop {
-        match TcpListener::bind(bind).await {
-            Ok(l) => break l,
-            Err(e) => {
-                tracing::warn!("tunnel: cannot bind {bind} for {name}: {e}");
-                tokio::time::sleep(Duration::from_secs(2)).await;
+///
+/// The port is open only while a link holds the service. With nobody
+/// holding it Traefik's dial is refused and it answers 502, which the
+/// offline page takes. A connection accepted and closed at once instead
+/// reads to Traefik as a broken keep-alive, and about every other visitor
+/// got a bare 500.
+async fn listen(name: String, bind: SocketAddr, mut held: watch::Receiver<Option<Link>>) {
+    loop {
+        if held.wait_for(Option::is_some).await.is_err() {
+            return;
+        }
+        let listener = loop {
+            match TcpListener::bind(bind).await {
+                Ok(l) => break l,
+                Err(e) => {
+                    tracing::warn!("tunnel: cannot bind {bind} for {name}: {e}");
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                }
+            }
+        };
+        loop {
+            tokio::select! {
+                accepted = listener.accept() => {
+                    let Ok((tcp, _)) = accepted else {
+                        continue;
+                    };
+                    let holder = held.borrow().clone();
+                    let Some(link) = holder else {
+                        break;
+                    };
+                    let name = name.clone();
+                    tokio::spawn(async move {
+                        if let Some(stream) = link.open(&name).await {
+                            splice(tcp, stream).await;
+                        }
+                    });
+                }
+                live = async { held.wait_for(Option::is_none).await.is_ok() } => {
+                    if !live {
+                        return;
+                    }
+                    break;
+                }
             }
         }
-    };
-    loop {
-        let Ok((tcp, _)) = listener.accept().await else {
-            continue;
-        };
-        let holder = services
-            .lock()
-            .expect("services")
-            .get(&name)
-            .and_then(|s| s.holder.clone());
-        // Nobody holds the service: the connection closes, and Traefik
-        // answers 502 as it would for a box that is down.
-        let Some(link) = holder else {
-            continue;
-        };
-        let name = name.clone();
-        tokio::spawn(async move {
-            if let Some(stream) = link.open(&name).await {
-                splice(tcp, stream).await;
-            }
-        });
     }
 }
 
@@ -1008,7 +1025,7 @@ fn take(services: &Services, link: &Link, names: &[String]) {
             let Some(s) = map.get_mut(name) else {
                 continue;
             };
-            if let Some(old) = s.holder.replace(link.clone()) {
+            if let Some(old) = s.holder.send_replace(Some(link.clone())) {
                 if !old.same(link) && !displaced.iter().any(|d| d.same(&old)) {
                     displaced.push(old);
                 }
@@ -1023,7 +1040,7 @@ fn take(services: &Services, link: &Link, names: &[String]) {
                 .lock()
                 .expect("services")
                 .values()
-                .any(|s| s.holder.as_ref().is_some_and(|h| h.same(&old)));
+                .any(|s| s.holder.borrow().as_ref().is_some_and(|h| h.same(&old)));
             if !still {
                 old.close(b"replaced");
             }
@@ -1041,9 +1058,13 @@ async fn hold(services: &Services, link: Link, welcome: &Welcome) {
     link.closed().await;
     let mut map = services.lock().expect("services");
     for s in map.values_mut() {
-        if s.holder.as_ref().is_some_and(|h| h.same(&link)) {
-            s.holder = None;
-        }
+        s.holder.send_if_modified(|h| {
+            let mine = h.as_ref().is_some_and(|h| h.same(&link));
+            if mine {
+                *h = None;
+            }
+            mine
+        });
     }
     drop(map);
     tracing::info!("tunnel: {} left", link.peer());
@@ -1070,7 +1091,9 @@ impl Up {
         self.quic.is_none()
     }
 
-    async fn close(self) {
+    /// Close the link as SIGTERM does, so the edge lets go of its services
+    /// at once.
+    pub async fn close(self) {
         match self.quic {
             Some((endpoint, conn)) => {
                 conn.close(0u32.into(), b"reconfigured");

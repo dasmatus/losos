@@ -26,8 +26,8 @@ It shows PDF files, Visio drawings and Apple's Pages, Numbers and Keynote
 files without changing them. Older Microsoft formats open and save, but the
 OpenDocument and the newer Microsoft formats keep the most.
 
-Word, Excel and PowerPoint files from Microsoft 365 stay what they are: a
-`.docx` is saved back as a `.docx` with its styles, and a workbook keeps its
+Word, Excel and PowerPoint files from Microsoft 365 stay what they are. A
+`.docx` goes back to disk as a `.docx` with its styles, and a workbook keeps its
 formulas. Macros in `.docm`, `.xlsm` and `.pptm` files never run on the
 box.
 

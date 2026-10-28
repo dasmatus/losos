@@ -385,7 +385,7 @@
     "message": "Každé ráno čistý systém"
   },
   "losos.home.feature.self.body": {
-    "message": "Zachováva si svoj stav po reštartoch."
+    "message": "Každý reštart zostaví systém znova z jeho popisu a vaše súbory a nastavenia zostanú na šifrovanom disku."
   },
   "losos.home.feature.disk.title": {
     "message": "Šifrovaný disk"

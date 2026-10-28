@@ -62,10 +62,10 @@ group.
 | Ready   | The model answers.                                                |
 | Down    | A box dropped out. The group restarts once every box is back.     |
 
-A group that restarts more than five times, or takes longer than 30 minutes
-to load, is given up, and its boxes are left out of new groups for an hour.
-A box missing for more than 15 minutes ends the group. A group nobody has
-used for an hour is taken apart.
+The edge gives up on a group that restarts more than five times or takes
+longer than 30 minutes to load, and leaves its boxes out of new groups for an
+hour. A box missing for more than 15 minutes ends the group. The edge takes
+apart a group nobody has used for an hour.
 
 The first load sends the model's layers to every box. The RPC server keeps
 them in its cache, so the next load of the same model is faster.
