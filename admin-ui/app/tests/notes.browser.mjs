@@ -233,6 +233,9 @@ await check('a note reads with GitHub and Obsidian Markdown', async () => {
     assert.equal(await page.locator('.note-body input.task-box:checked').count(), 1);
     assert.equal(await page.locator('.note-body table tr').count(), 5);
     assert.equal(await page.getAttribute('.note-body a[href="https://www.rhs.org.uk"]', 'target'), '_blank');
+    // GitHub's www. autolink, and a file name that is not a web address.
+    assert.equal(await page.getAttribute('.note-body a[href="https://www.seedcooperative.org.uk"]', 'target'), '_blank');
+    assert.equal(await page.locator('.note-body a:text("Home.md")').count(), 0);
     assert.equal(await page.getAttribute('.note-body a.tag', 'data-tag'), 'pests');
     // Backlinks: Home links out, nothing links in.
     assert.match(await page.textContent('[data-side="outgoing"]'), /Tomatoes/);

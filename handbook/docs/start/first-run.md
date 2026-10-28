@@ -86,8 +86,8 @@ password you just set:
 
 - **Your name on LosOS Login**: your new sign-in name. It opens the admin
   pages.
-- **Your LosOS Cloud account**: the account you type in step 3 and in the
-  desktop and phone apps.
+- **Your LosOS Cloud account**: the account you type in the desktop and
+  phone apps.
 
 <img src={require("../img/wizard-step2-spare-key.png").default} alt="Step 2 after the password is set: your name on LosOS Login, your LosOS Cloud account, and the spare admin key shown once with Copy and Print." width="520" />
 
@@ -95,12 +95,21 @@ A **passkey** for LosOS Cloud, so a phone or a laptop can sign in to your
 files without typing the password, can be added later from the security
 settings inside LosOS Cloud.
 
-## Step 3: Sign in
+## Step 3: Your desktop
 
-The wizard opens LosOS Cloud inside the page, and you sign in with your
-LosOS Cloud account and the password you just set. Then the wizard takes you
-to the admin pages' overview. From here on, see [The admin
-pages](../manual/admin-pages).
+The wizard signs you in to LosOS Login with the name and password from
+step 2, so you type nothing more. On a new box LosOS Login starts only once
+the password is set, and the page waits for it with a note saying so. Then
+your desktop appears behind the card, already signed in: the admin pages'
+overview with your name in the top bar. **Let's go** grows it to the whole
+window. From here on, see [The admin pages](../manual/admin-pages).
+
+![Step 3: the signed-in desktop behind the card, which says "This is your desktop, and you are signed in as matus", with Back and Let's go.](../img/wizard-step3-desktop.png)
+
+If you reload the page on this step, it asks for the password once more,
+because it never stores it. On a page opened over plain http, or on a box
+without LosOS Login, the wizard says so and the browser stays signed in
+with the spare key instead.
 
 The first time, a short tour opens over the overview. Each step shows a
 small moving picture of the page, with the sidebar entry where that feature
@@ -119,4 +128,3 @@ itself again. **Take the tour** under Settings, About brings it back.
 
 ![The tour's third step.](../img/tour-3.png)
 
-![Step 3: You are signed in. That was the last step.](../img/wizard-step3-sign-in.png)
