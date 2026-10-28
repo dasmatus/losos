@@ -458,7 +458,7 @@ async function safety(owner, eva) {
   await report.getByTestId("report-handbook").waitFor();
   await shot(eva, "report");
   await eva.getByTestId("report-send").click();
-  await eva.getByText("The moderators have your report").waitFor();
+  await eva.getByText("The moderators have your report", { exact: true }).waitFor();
   await report.waitFor({ state: "hidden" });
   // Matus moderates: the report names the room and the event, never the text.
   const queue = await api(owner, "/api/moderation");
