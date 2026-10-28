@@ -383,8 +383,13 @@ pkgs.testers.nixosTest {
         mattbox.succeed(f"unzip -p {folder}/Plan.docx word/document.xml | grep -q 'Quarterly plan'")
 
     with subtest("save as PDF lands a new file beside the document"):
-        open_session("alice", "Plan.docx", "/tmp/alice.json")
-        mattbox.succeed(f"OFFICE_WS=ws://localhost {client} edit --session /tmp/alice.json --saveas Plan.pdf")
+        # coolwsd can still hold the last session's lock on the file for a
+        # moment; a session opened then gets lockfailed and is read-only.
+        def save_as_pdf(_):
+            open_session("alice", "Plan.docx", "/tmp/alice.json")
+            rc, _ = mattbox.execute(f"OFFICE_WS=ws://localhost {client} edit --session /tmp/alice.json --saveas Plan.pdf")
+            return rc == 0
+        retry(save_as_pdf, timeout_seconds=600)
         mattbox.succeed(f"head -c 5 {folder}/Plan.pdf | grep -q '%PDF-'")
 
     with subtest("two people edit one document together and one save keeps both"):
