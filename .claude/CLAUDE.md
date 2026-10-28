@@ -292,8 +292,9 @@ and is never served or built by nix.
 - `chat.nix` + `backend/src/chat.rs` + `admin-ui/app/src/chat/` (LosOS
   Chat, `/chat/`, its own Vite page of the admin UI): Synapse (unit
   `losos-chat`, SQLite) as `shared` in `/home/shared/data/chat/synapse`
-  (a box that ran Dendrite keeps its files beside it, unread), only while `lososInternal.sharedSide`
-  (`sharingMyStorage` and `cluster.enable`, the gate mail shares); off, nginx
+  (a box that ran Dendrite keeps its files beside it, unread), only while
+  `lososInternal.sharedSide` (`sharingMyStorage` and `cluster.enable`, the
+  gate mail shares); off, nginx
   sends `/chat/` home and `/_matrix/` 404s. No Matrix passwords: lososd is an
   application service over every user and the only way in
   (`/api/chat/session`), and nginx asks `/internal/chat/authz` before every
