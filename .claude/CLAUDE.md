@@ -254,6 +254,17 @@ and is never served or built by nix.
   Forgejo box to LosOS Git and checks every record. The old
   `losos.forgejo.*` names stay as hidden aliases (`lib.doRename`,
   `options.rs` `ALIASES`). `nix/tests/git.nix` boots it with a laptop.
+- LosOS Wiki (`backend/src/forge/wiki.rs`, `admin-ui/app/src/{wikis,wiki}/`):
+  a repository's wiki is `<name>.wiki.git` beside it, Forgejo's layout, so
+  a box moved from Forgejo keeps its wikis (`names::repo` refuses `.wiki`
+  names, adoption skips them). The repository's people read and write it;
+  a save is a commit made with plumbing, refused with 409 over a page that
+  changed meanwhile. `/wikis` in the admin SPA is the box's directory of
+  wikis (spaces, LosOS Cloud's knowledge bases from `GET /kb/api/`, the
+  handbook) and the editor; `/wiki/<owner>/<name>/` is each space as a
+  site, its own Vite page under nginx's `/wiki/` location beside `/git/`,
+  not LAN-guarded. Pictures come from `…/wiki/raw/`, raster only.
+  `nix/tests/wiki.nix` boots it.
 - `apps.nix` + `backend/src/apps.rs` + `backend/src/compose.rs`: the run-as
   user picks the runtime. `notshared` apps (a chart from the Apps pane's
   search, a Compose file in the LosOS app format from `POST
