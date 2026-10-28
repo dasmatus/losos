@@ -57,6 +57,9 @@ in
 
 pkgs.testers.nixosTest {
   name = "losos-cloud";
+  # The handbook's pictures, nineteen pages in three languages, take most
+  # of an hour on their own under TCG.
+  globalTimeout = 3 * 3600;
 
   nodes = {
     box = _: {
