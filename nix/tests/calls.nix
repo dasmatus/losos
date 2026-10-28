@@ -874,6 +874,16 @@ pkgs.testers.nixosTest {
             page.evaluate("window.scrollTo(0, 0)")
         page.screenshot(path=f"{SHOTS}/{name}.png")
 
+    def shot_end(page, name):
+        """The end of the room's timeline, where the newest notice is,
+        with the pointer off the messages so no toolbar covers them."""
+        page.mouse.move(0, 0)
+        settle(page)
+        page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)")
+        page.get_by_role("log").first.evaluate("e => { e.scrollTop = e.scrollHeight }")
+        time.sleep(1)
+        page.screenshot(path=f"{SHOTS}/{name}.png")
+
     def film(page, slug, title, action="none", targets=None, top=True):
         settle(page)
         if top:
@@ -1342,8 +1352,7 @@ pkgs.testers.nixosTest {
             assert counts["refused"] == "0", counts
         notice = jan.locator("[data-call-notice]").last
         notice.get_by_role("button", name="Join", exact=True).wait_for()
-        notice.scroll_into_view_if_needed()
-        shot(jan, "timeline-join", top=False)
+        shot_end(jan, "timeline-join")
         notice.get_by_role("button", name="Join", exact=True).click()
         for page in (owner, her, jan):
             live(page, 2, frames=0)
