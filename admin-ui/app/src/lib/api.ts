@@ -744,6 +744,12 @@ export function getStorage(options: RequestOptions = {}): Promise<StorageRespons
 
 export type EdgeSource = "lan" | "configured";
 
+/** What the box's gateway checks concluded about one edge
+ *  (backend/src/edge.rs, "gateways"). */
+export type EdgeGateway =
+  | { state: "trusted"; owner: string; fingerprint: string; image: string }
+  | { state: "refused"; code: string; reason: string }
+  | { state: "disabled"; code: string; reason: string; since: number };
 /** Which kind of link (handbook in-depth/edge-federation, "Three tiers").
  *  primary: edge to edge, the main cluster. secondary: a box to a local
  *  gateway of its secondary cluster. tertiary: a box straight to an official
@@ -754,14 +760,18 @@ export type EdgeTier = "primary" | "secondary" | "tertiary";
 export interface EdgeProxy {
   /** The advertised instance name, or the configured URL's host. */
   name: string;
-  /** Proved on this scan to be an edge LosOS runs (a certificate the LosOS
-   *  root signed, a fresh nonce answered). Only official edges may process
-   *  trading; a company's own edge is found and shares storage with this
-   *  false. */
+  /** Passed every gateway check on this scan: its TPM showed a published
+   *  LosOS image, its owner's signed passport and LosOS's fee addresses.
+   *  Only such an edge may process trading; any edge shares storage. */
   official: boolean;
+  /** The checks' outcome, when the edge showed a passport. */
+  gateway?: EdgeGateway;
   /** Base URL of its registrar API. */
   url: string;
   source: EdgeSource;
+  /** Found on the LAN with its registrar and tunnel on this box's own
+   *  networks: the only kind of edge that may manage the box. */
+  onNetwork?: boolean;
   /** Secondary for a local gateway, tertiary for an official edge. Missing
    *  on a box whose lososd predates the tiers. */
   tier?: EdgeTier;
@@ -831,9 +841,8 @@ export interface EdgeResponse {
 export interface EdgeManage {
   /** The edge in use that could manage the box, or null. */
   candidate: { name: string; url: string } | null;
-  /** Why none can: no company edge on this network, or the one in use is
-   *  official (official edges never manage boxes). */
-  refused: "noLocalEdge" | "official" | null;
+  /** Why none can: the box uses no edge on this network. */
+  refused: "noLocalEdge" | "outsideNetwork" | null;
   /** The registrar URL the owner switched management on for, or null. */
   managedBy: string | null;
   /** That edge is the one in use, so it manages the box now. */
@@ -3263,6 +3272,109 @@ export function getManagedBoxes(options: RequestOptions = {}): Promise<{ boxes: 
  *  by `readStatistics` (src/statistics/types.ts). */
 export function getEdgeStatistics(options: RequestOptions = {}): Promise<unknown> {
   return call<unknown>("/manage/api/statistics", options);
+}
+
+/** The gateway itself, as GET /manage/api/gateway on the edge reports it. */
+export interface GatewaySettings {
+  name: string;
+  /** Null on an edge that is not an open gateway (no TPM, no passport). */
+  passport: {
+    edgeKey: string;
+    claimed: boolean;
+    owner: { fingerprint: string; userId: string } | null;
+  } | null;
+  /** Null on an edge that relays to no hub. */
+  uplink: {
+    set: { id: string; registrarUrl: string; ratholeEndpoint: string } | null;
+    relaying: number;
+  } | null;
+  /** Boxes that enrolled here on first contact; only these can be forgotten. */
+  enrolled: string[];
+  /** Null on an edge that runs no secondary cluster. */
+  cluster?: { joined: GatewayCluster | null } | null;
+  /** The main cluster as the hub last answered: gateways on primary links. */
+  main?: GatewayMainRow[];
+}
+
+/** The secondary cluster this gateway is in (edge/registrar/src/secondary.rs). */
+export interface GatewayCluster {
+  name: string;
+  /** This gateway's name in it. */
+  member: string;
+  /** What another gateway of this network joins with. */
+  secret: string;
+  /** This gateway's address, which another gateway joins through. */
+  url: string;
+  /** The gateways that answer, this one first. */
+  gateways: { member: string; url: string }[];
+}
+
+export interface GatewayMainRow {
+  site: string;
+  gateway: string;
+  cluster: string | null;
+  boxes: number;
+}
+
+/** PUT /manage/api/gateway/cluster: a name alone starts a cluster; a name,
+ *  the founder's secret and its address join that one. */
+export function setGatewayCluster(form: { name: string; secret?: string; peer?: string }): Promise<GatewayCluster> {
+  return call<GatewayCluster>("/manage/api/gateway/cluster", {
+    method: "PUT",
+    body: JSON.stringify(form),
+    contentType: "application/json",
+  });
+}
+
+/** DELETE /manage/api/gateway/cluster: stand alone again. */
+export function leaveGatewayCluster(): Promise<{ joined: null }> {
+  return call<{ joined: null }>("/manage/api/gateway/cluster", { method: "DELETE" });
+}
+
+export interface UplinkForm {
+  id: string;
+  token: string;
+  registrarUrl: string;
+  ratholeEndpoint: string;
+  bootstrapToken?: string;
+}
+
+/** GET /manage/api/gateway on the edge. */
+export function getGatewaySettings(options: RequestOptions = {}): Promise<GatewaySettings> {
+  return call<GatewaySettings>("/manage/api/gateway", options);
+}
+
+/** PUT /manage/api/gateway/uplink: relay this gateway's boxes through a hub. */
+export function setGatewayUplink(form: UplinkForm): Promise<{ set: true }> {
+  return call<{ set: true }>("/manage/api/gateway/uplink", {
+    method: "PUT",
+    body: JSON.stringify(form),
+    contentType: "application/json",
+  });
+}
+
+/** DELETE /manage/api/gateway/uplink: the boxes stay reachable on the LAN only. */
+export function clearGatewayUplink(): Promise<{ set: false }> {
+  return call<{ set: false }>("/manage/api/gateway/uplink", { method: "DELETE" });
+}
+
+/** DELETE /manage/api/gateway/boxes/<id>: forget a box that enrolled here. */
+export function forgetGatewayBox(id: string): Promise<{ forgotten: string }> {
+  return call<{ forgotten: string }>(`/manage/api/gateway/boxes/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}
+
+/** POST /passport/settings on the edge: the owner's signed settings. The
+ *  signature is the proof, so no key goes with it; the gateway reboots to
+ *  measure them. */
+export function claimGateway(settings: string, signature: string): Promise<{ accepted: true }> {
+  return call<{ accepted: true }>("/passport/settings", {
+    method: "POST",
+    body: JSON.stringify({ settings, signature }),
+    contentType: "application/json",
+    anonymous: true,
+  });
 }
 
 /** How the last sync with LosOS Git went. `off`: LosOS Git is off on this

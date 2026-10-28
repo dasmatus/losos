@@ -58,6 +58,7 @@ pub mod domains;
 pub mod error;
 pub mod evm_tx;
 mod fsutil;
+pub mod gateway;
 pub mod hardware;
 pub mod hidden;
 pub mod identity;
