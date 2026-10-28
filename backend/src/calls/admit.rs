@@ -245,8 +245,12 @@ impl Calls {
         self.calls.is_empty()
     }
 
-    /// Start a call. `invited` is the room's members as the caller's client
-    /// sees them; the caller is added, duplicates fold.
+    /// Start a call, or hand back the one the room already has: a room has
+    /// one call at a time, its MatrixRTC slot, so two people who start at
+    /// once land in the same call. `invited` is the room's members as the
+    /// caller's client sees them; the caller is added, duplicates fold, and
+    /// a call already going takes them in too. The answer is the call and
+    /// whether it is new.
     pub fn create(
         &mut self,
         id: CallId,
@@ -255,7 +259,7 @@ impl Calls {
         invited: &[String],
         video: bool,
         now: Instant,
-    ) -> Result<(), Refusal> {
+    ) -> Result<(CallId, bool), Refusal> {
         if creator.server() != self.server_name {
             return Err(Refusal::NotLocal);
         }
@@ -271,11 +275,20 @@ impl Calls {
             .collect::<Result<BTreeSet<_>, _>>()?;
         set.insert(creator.clone());
         self.reap(now);
+        // A call that emptied is over, even before it is reaped.
+        if let Some((going, call)) = self
+            .calls
+            .iter_mut()
+            .find(|(_, c)| c.room == room && c.emptied.is_none())
+        {
+            call.invited.extend(set);
+            return Ok((going.clone(), false));
+        }
         if self.calls.len() >= MAX_CALLS {
             return Err(Refusal::TooManyCalls);
         }
         self.calls.insert(
-            id,
+            id.clone(),
             Call {
                 room: room.to_owned(),
                 creator,
@@ -288,7 +301,7 @@ impl Calls {
                 invites: BTreeMap::new(),
             },
         );
-        Ok(())
+        Ok((id, true))
     }
 
     /// Let `user` in as participant `pid`, or say why not.
@@ -499,6 +512,10 @@ mod tests {
 
     const ROOM: &str = "!abc:mattbox.home.arpa";
 
+    fn room(n: u8) -> String {
+        format!("!room{n}:b")
+    }
+
     #[test]
     fn user_ids_are_checked_for_shape() {
         assert!(UserId::parse("@matus:mattbox.home.arpa").is_ok());
@@ -570,6 +587,34 @@ mod tests {
     }
 
     #[test]
+    fn a_room_holds_one_call_at_a_time() {
+        let mut calls = Calls::new("b");
+        let now = Instant::now();
+        assert_eq!(
+            calls.create(cid(1), uid("@m:b"), ROOM, &[], true, now),
+            Ok((cid(1), true))
+        );
+        // Eva starts one too, before anyone is in: she gets Matus's call,
+        // and is let into it.
+        assert_eq!(
+            calls.create(cid(2), uid("@eva:b"), ROOM, &[], true, now),
+            Ok((cid(1), false))
+        );
+        assert!(calls.get(&cid(2)).is_none());
+        assert!(calls.admit(&cid(1), 1, uid("@eva:b"), "D", now).is_ok());
+        assert_eq!(
+            calls.create(cid(3), uid("@m:b"), &room(3), &[], true, now),
+            Ok((cid(3), true))
+        );
+        // Once it has emptied the call is over, and the room gets a new one.
+        calls.leave(1, now);
+        assert_eq!(
+            calls.create(cid(4), uid("@m:b"), ROOM, &[], true, now),
+            Ok((cid(4), true))
+        );
+    }
+
+    #[test]
     fn only_invited_people_get_in() {
         let mut calls = Calls::new("b");
         let now = Instant::now();
@@ -620,11 +665,11 @@ mod tests {
         let now = Instant::now();
         for n in 0..MAX_CALLS as u8 {
             calls
-                .create(cid(n), uid("@m:b"), ROOM, &[], true, now)
+                .create(cid(n), uid("@m:b"), &room(n), &[], true, now)
                 .unwrap();
         }
         assert_eq!(
-            calls.create(cid(200), uid("@m:b"), ROOM, &[], true, now),
+            calls.create(cid(200), uid("@m:b"), &room(200), &[], true, now),
             Err(Refusal::TooManyCalls)
         );
     }
@@ -637,7 +682,7 @@ mod tests {
             .create(cid(1), uid("@m:b"), ROOM, &[], true, t0)
             .unwrap();
         calls
-            .create(cid(2), uid("@m:b"), ROOM, &[], true, t0)
+            .create(cid(2), uid("@m:b"), &room(2), &[], true, t0)
             .unwrap();
         calls.admit(&cid(2), 7, uid("@m:b"), "D", t0).unwrap();
 
