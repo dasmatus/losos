@@ -257,7 +257,7 @@ matter here. `overrides.rs`'s `parse_line` cuts a value at the first `#`
 
 **Workloads and the single front door** (`modules/containers.nix`,
 `modules/cluster.nix`, `modules/cloud.nix`, `modules/git.nix`).
-systemd-nspawn is gone, and so are the app modes: LosOS Cloud and LosOS Git
+systemd-nspawn is gone, and so are the app modes. LosOS Cloud and LosOS Git
 run on the host, each as its own user, and the box's own local k3s cluster
 runs only the apps installed as `shared`. nginx holds the web ports, 80
 and 443. It routes by path on the appliance's mDNS name
@@ -451,11 +451,11 @@ runs `losos-ctl config --update`, and lososd moves `/etc/nixos` to the
 newest commit of `losos.configRepo.upstream.branch` at
 `losos.configRepo.upstream.url` (`main` of the GitHub repository by
 default). The fetch is shallow, and the result is one commit on the box's
-own branch, not a merge: its tree is the published tree with the box's
+own branch, not a merge. Its tree is the published tree with the box's
 `modules/overrides.nix` and `modules/install-target.nix` put back. Apply
-and the nightly rebuild then build the same tree, which a `github:` URI
-here would not give: an Apply would rebuild the older `/etc/nixos` and undo
-the night's update. lososd skips the step and reports `kept` when a file
+and the nightly rebuild then build the same tree. A `github:` URI here
+would not give that, and an Apply would rebuild the older `/etc/nixos` and
+undo the night's update. lososd skips the step and reports `kept` when a file
 outside those two changed since the last update, so a hand edit pushed to
 LosOS Git is never overwritten. `nix/tests/invariants.nix` pins the step.
 
