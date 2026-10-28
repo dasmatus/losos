@@ -240,6 +240,9 @@ await check('a note reads with GitHub and Obsidian Markdown', async () => {
     assert.deepEqual(await page.locator('[data-properties] dt').allTextContents(), ['title', 'tags', 'aliases', 'season']);
     // A callout with its own title, and wikilinks that resolve.
     assert.equal(await page.textContent('.callout[data-callout="tip"] .callout-title'), 'Where to begin');
+    // One dot before a callout's title, whichever way it was written.
+    const dots = (sel) => page.$eval(sel, (t) => t.querySelectorAll('.callout-icon').length + (getComputedStyle(t, '::before').content === 'none' ? 0 : 1));
+    assert.equal(await dots('.callout[data-callout="tip"] .callout-title'), 1);
     assert.equal(await page.getAttribute('a.wikilink:text("Tomatoes")', 'data-note-path'), 'Tomatoes.md');
     assert.equal(await page.getAttribute('a.wikilink:text("Aphids")', 'data-note-path'), 'Pests/Aphids.md');
     // [[Beans|runner beans]] has no note: shown as one still to write.
@@ -331,6 +334,7 @@ await check('a .note reads as MDX, its components beside Obsidian\'s syntax', as
     assert.match(await page.textContent('[data-properties]'), /season\s*2026/);
     // <Callout>, <Tabs> and <Details>, drawn by the crate.
     assert.equal(await page.textContent('aside.callout[data-callout="tip"] .callout-title'), 'Pick in the morning');
+    assert.equal(await page.$eval('aside.callout .callout-title', (t) => getComputedStyle(t, '::before').content === 'none' ? 0 : 1), 1, 'a <Callout> has its dot');
     assert.deepEqual(await page.locator('.mdx-tabs .mdx-tab').evaluateAll((els) => els.map((e) => e.dataset.label)), ['Roots', 'Fruit']);
     assert.equal(await page.locator('details.mdx-details table tr').count(), 3);
     // Obsidian's syntax inside and around them.
