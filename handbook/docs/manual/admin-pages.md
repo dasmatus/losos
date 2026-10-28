@@ -14,8 +14,11 @@ anything you can change.
 ## The sections
 
 The sidebar on the left has six sections, and under them the things you
-pinned. Collapsed, it shrinks to a rail of icons. On a phone it opens as a
-sheet.
+pinned. Collapsed, it shrinks to a rail of icons. On a phone the sidebar
+gives way to a bar along the bottom of the screen, within reach of your
+thumb: the main sections, then **More**, which brings the whole sidebar up
+from the bottom. Flick it down to close it. If the box runs LosOS Chat and
+LosOS Mail, they take two of the places in the bar.
 
 ![The Overview: the sidebar with the six sections on the left, the box's name and whether it is answering, the app tiles, the storage card and the board.](../img/overview.png)
 
@@ -28,7 +31,7 @@ sheet.
 | **Diagrams** | LosOS Diagrams: diagrams, plans and boards as cards, and this box's network drawn and simulated.          |
 | **Settings** | Network, Look, Hardware, Security, Users, Access tokens, Credentials, Advanced, History, Backup, About and Reset, each a pane.  |
 
-<img src={require("../img/overview-phone.png").default} alt="The Overview on a phone: the sections fold into a menu button." width="260" /> <img src={require("../img/overview-phone-sheet.png").default} alt="The same phone with the menu open as a sheet over the page." width="260" />
+<img src={require("../img/overview-phone.png").default} alt="The Overview on a phone: Overview, Apps, Storage and Mesh in a bar along the bottom, everything else under More." width="260" /> <img src={require("../img/overview-phone-sheet.png").default} alt="The same phone with More pressed: every section in a sheet that rises from the bottom." width="260" />
 
 ## Search
 
