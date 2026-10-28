@@ -348,8 +348,17 @@ impl Store {
     /// Open (or create) the store under `root`, with its database at
     /// `<root>/cloud.db` unless `db` names another file.
     pub fn open(root: &Path) -> Result<Store> {
+        Self::open_waiting(root, std::time::Duration::from_secs(10))
+    }
+
+    /// [`Store::open`] for a background job, which waits up to `wait` for
+    /// the server's writes (its start-up after a boot can hold the database
+    /// for a while on a slow box) rather than failing on a locked database.
+    pub fn open_waiting(root: &Path, wait: std::time::Duration) -> Result<Store> {
         fs::create_dir_all(root)?;
         let conn = Connection::open(root.join("cloud.db"))?;
+        // First, so the pragmas below wait too.
+        conn.busy_timeout(wait)?;
         Self::with_connection(root, conn)
     }
 
@@ -357,7 +366,6 @@ impl Store {
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
-        conn.busy_timeout(std::time::Duration::from_secs(10))?;
         conn.execute_batch(SCHEMA)?;
         let instance = match conn
             .query_row("SELECT value FROM meta WHERE key = 'instance'", [], |r| {
@@ -1647,6 +1655,21 @@ mod tests {
         assert_eq!(root.size, 4);
         let e = s.stat("bob", "Photos/a.jpg").unwrap();
         assert_eq!(e.mime, "image/jpeg");
+    }
+
+    #[test]
+    fn a_background_job_waits_for_the_servers_write() {
+        let dir = tempfile::tempdir().unwrap();
+        drop(Store::open(dir.path()).unwrap());
+        let server = Connection::open(dir.path().join("cloud.db")).unwrap();
+        server.execute_batch("BEGIN IMMEDIATE").unwrap();
+        let done = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            server.execute_batch("COMMIT").unwrap();
+        });
+        let s = Store::open_waiting(dir.path(), std::time::Duration::from_secs(5)).unwrap();
+        s.ensure_home("bob").unwrap();
+        done.join().unwrap();
     }
 
     #[test]

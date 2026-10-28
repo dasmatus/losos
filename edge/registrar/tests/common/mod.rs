@@ -194,6 +194,9 @@ pub type Tweak = Box<dyn FnOnce(&mut ServeOpts, &TempDir) + Send>;
 pub struct Edge {
     pub dir: TempDir,
     pub base: String,
+    /// The provider listener Traefik would poll.
+    pub provider_base: String,
+    discovery: losos_registrar::server::Discovery,
     pub client: reqwest::Client,
     stop: Option<oneshot::Sender<()>>,
     join: Option<tokio::task::JoinHandle<miette::Result<()>>>,
@@ -599,7 +602,7 @@ impl Edge {
         let mut opts = ServeOpts {
             listen: "127.0.0.1:0".to_string(),
             registry_path: dir.path_str("registry.json"),
-            traefik_dir: dir.path_str("traefik"),
+            traefik_provider_listen: "127.0.0.1:0".to_string(),
             rathole_config: dir.path_str("server.toml"),
             rathole_bind_addr: "0.0.0.0".to_string(),
             rathole_bind_port: 2333,
@@ -646,6 +649,7 @@ impl Edge {
             manage: None,
             calls_relay: None,
             ci_dir: None,
+            hidden: None,
             onramp: None,
         };
         if let Some(tweak) = tweak {
@@ -656,9 +660,20 @@ impl Edge {
             .await
             .expect("bind ephemeral port");
         let port = listener.local_addr().expect("local_addr").port();
+        let provider = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind the provider listener");
+        let provider_base = format!(
+            "http://{}",
+            provider.local_addr().expect("provider local_addr")
+        );
         let (stop, rx) = oneshot::channel::<()>();
+        let app = losos_registrar::server::build(opts)
+            .await
+            .expect("build the registrar");
+        let discovery = app.discovery();
         let join = tokio::spawn(async move {
-            losos_registrar::server::serve(listener, opts, async move {
+            losos_registrar::server::serve_app(app, listener, Some(provider), async move {
                 let _ = rx.await;
             })
             .await
@@ -667,6 +682,8 @@ impl Edge {
         let edge = Self {
             dir,
             base: format!("http://127.0.0.1:{port}"),
+            provider_base,
+            discovery,
             client: reqwest::Client::new(),
             stop: Some(stop),
             join: Some(join),
@@ -707,8 +724,10 @@ impl Edge {
         self.dir.join("tenants.json")
     }
 
+    /// What Traefik's HTTP provider would read now, or `None` while it routes
+    /// nothing (the document `{}`). JSON, which serde_yaml reads too.
     pub fn traefik_yaml(&self) -> Option<String> {
-        std::fs::read_to_string(self.dir.join("traefik").join("losos.yml")).ok()
+        self.discovery.document().filter(|d| d != "{}")
     }
 
     pub fn rathole_toml(&self) -> Option<String> {

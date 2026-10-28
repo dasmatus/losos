@@ -1024,25 +1024,6 @@
         }
       }
     },
-    "updatesResponse": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["output"],
-      "properties": {
-        "output": {
-          "type": "string",
-          "description": "Human-readable systemd-sysupdate listing; may be empty when no versions have been installed or are available."
-        }
-      }
-    },
-    "updatesCheckResponse": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["started"],
-      "properties": {
-        "started": { "type": "boolean", "const": true }
-      }
-    },
     "statusResponse": {
       "type": "object",
       "additionalProperties": false,
@@ -1597,16 +1578,6 @@
         "auth": true,
         "out": "statusResponse"
       },
-      "GET /api/updates": {
-        "auth": true,
-        "out": "updatesResponse",
-        "note": "Lists systemd-sysupdate transfers and source/target versions. Downloads and extracted versions are staged under persistent /persist, not tmpfs."
-      },
-      "POST /api/updates/check": {
-        "auth": true,
-        "out": "updatesCheckResponse",
-        "note": "Starts losos-sysupdate.service without waiting for completion; the service downloads, verifies and extracts on /persist and activates the per-device NixOS configuration."
-      },
       "GET /api/edge": {
         "auth": true,
         "out": "edgeResponse"
@@ -2155,6 +2126,11 @@
         "auth": true,
         "out": "{\"deleted\": true|false}",
         "note": "Idempotent; false when there was no such widget."
+      },
+      "GET /api/hidden": {
+        "auth": true,
+        "out": "{\"box\": {\"tor\": \"<56>.onion\"|null, \"i2p\": \"<52>.b32.i2p\"|null}, \"edge\": {\"tor\": ...|null, \"i2p\": ...|null}}",
+        "note": "This box's addresses on Tor and I2P (backend/plugins/hidden): `box` those its own Tor and I2P made for its front door (losos.hidden.tor.enable, losos.hidden.i2p.enable, read from /var/lib/losos-hidden/addresses.json), `edge` those the edge it heartbeats to made for it (losos.edge.hidden.*, /var/lib/losos-hidden/edge.json). A name is null while its network is off or its daemon has not made it yet, and when it does not have the shape of one. Section network."
       },
       "GET /api/pins": {
         "auth": true,

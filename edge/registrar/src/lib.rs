@@ -1,12 +1,12 @@
 //! losos-registrar — the stub Rust HTTP server that owns the edge's proxy config.
 //!
 //! Three subcommands share this crate:
-//!   * `serve`   — runs on the edge. An HTTP API serving exactly the four
-//!     routes the approved design lists (`/register`, `/heartbeat`,
-//!     `/deregister`, `/health`), plus a reconciler task that *constantly
-//!     updates* Traefik dynamic config (`/etc/traefik/dynamic/losos.yml`) and
-//!     rathole server config (`/etc/rathole/server.toml`) from a tenant
-//!     registry. Sole writer of both files; atomic temp+fsync+rename. rathole
+//!   * `serve`   — runs on the edge. An HTTP API (`/register`, `/heartbeat`,
+//!     `/deregister`, `/health` and the rest), a reconciler task that
+//!     *constantly updates* the routes Traefik discovers the boxes from (its
+//!     HTTP provider polls the registrar's loopback provider listener) and
+//!     rathole's server config (`/etc/rathole/server.toml`) from a tenant
+//!     registry. Sole writer of that file; atomic temp+fsync+rename. rathole
 //!     hot-reloads from its own file watcher, so no signal is sent.
 //!   * `announce` — runs on the appliance. Reads its token, POSTs `/register`
 //!     on start, then `/heartbeat` on a cadence. Stateless.
@@ -60,6 +60,7 @@ pub mod evm_tx;
 mod fsutil;
 pub mod gateway;
 pub mod hardware;
+pub mod hidden;
 pub mod identity;
 pub mod idle;
 pub mod inference;
@@ -90,7 +91,8 @@ pub mod window;
 pub mod zcash;
 pub mod zone;
 pub use config::{
-    desired_config, uplink_config, EdgeOpts, Files, TenantView, UplinkService, UplinkTarget,
+    desired_config, provider_document, uplink_config, EdgeOpts, Files, Routes, TenantView,
+    UplinkService, UplinkTarget,
 };
 pub use error::{ApiError, RegistryError};
 pub use registry::{Registry, Relayed, RelayedView, Snapshot, SnapshotTenant, Tenant};

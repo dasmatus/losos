@@ -1,0 +1,16 @@
+{
+  "name": "hidden",
+  "description": "This box's addresses on Tor and I2P, its own and those its edge made.",
+  "routes": [
+    { "method": "GET", "path": "/api/hidden" }
+  ],
+  "files": [
+    { "path": "${LOSOS_HIDDEN_DIR:-/var/lib/losos-hidden}/addresses.json", "access": "ro" },
+    { "path": "${LOSOS_HIDDEN_DIR:-/var/lib/losos-hidden}/edge.json", "access": "ro" }
+  ],
+  "limits": { "memoryMiB": 16, "timeoutSecs": 5 },
+  "config": {
+    "addressesFile": "${LOSOS_HIDDEN_DIR:-/var/lib/losos-hidden}/addresses.json",
+    "edgeFile": "${LOSOS_HIDDEN_DIR:-/var/lib/losos-hidden}/edge.json"
+  }
+}
