@@ -96,6 +96,8 @@ lane_ui=(
   "admin-ui/*" "!admin-ui/design-system/*" "!admin-ui/tui/*"
   "handbook/*"
   "edge/registrar/*" "backend/access/*"
+  # LosOS Office and Notes parse documents with losos-mdx in the page.
+  "backend/mdx/*"
   modules/options.nix nix/options-doc.nix
   nix/tests/admin-ui.nix nix/tests/fonts.nix
   "${pkgs[@]}"

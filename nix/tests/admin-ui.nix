@@ -46,6 +46,9 @@
   # The same for the GPU canvas's two modules into src/lab/render-pkg
   # (losos-admin-ui.labRenderPkg), imported lazily too.
   labRenderPkg ? "",
+  # The same for losos-mdx's browser package into src/mdx/pkg
+  # (losos-admin-ui.mdxPkg), which LosOS Office's editor reads documents with.
+  mdxPkg ? "",
   # The SFU behind calls (the losos-ctl package's losos-calls), which
   # tests/calls.browser.mjs runs a call through. Without it that file
   # cannot run, so the check needs it.
@@ -76,6 +79,7 @@ pkgs.buildNpmPackage {
   # The calls browser test starts the SFU with its edge client; curl is a
   # runtime dependency of that client and must exist in the sandbox.
   nativeBuildInputs = [ pkgs.ffmpeg-headless pkgs.curl ];
+  preConfigure = mdxPkg;
   preBuild = labCorePkg + labVirtPkg + labRenderPkg;
 
   env = {

@@ -598,9 +598,14 @@
           # fails on any row it cannot draw (tests/advanced.browser.mjs).
           optionsJson = self.checks.${system}.losos-options-doc;
           # LosOS Lab's page imports the Rust core, the GPU canvas and the
-          # libvirt client; the bundle under test copies them in the way the
-          # shipped one does.
-          inherit (self.packages.${system}.losos-admin-ui) labCorePkg labVirtPkg labRenderPkg;
+          # libvirt client, and LosOS Office losos-mdx; the bundle under test
+          # copies them in the way the shipped one does.
+          inherit (self.packages.${system}.losos-admin-ui)
+            labCorePkg
+            labVirtPkg
+            labRenderPkg
+            mdxPkg
+            ;
           callsPackage = self.packages.${system}.losos-ctl;
         };
         # Not a VM: the option document of the install configuration
