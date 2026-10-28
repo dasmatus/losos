@@ -52,8 +52,16 @@ async function open({
   if (at !== null) {
     await page.route(`${at}/**`, async (route) => {
       const url = new URL(route.request().url());
-      const response = await route.fetch({ url: origin + url.pathname + url.search });
-      await route.fulfill({ response });
+      /* A check closes its page once it has seen what it came for, often
+       * with a request still in flight here. Closing disposes the fetched
+       * response, fulfilling it then throws, and that rejection ended the
+       * whole run. Nothing waits for such a request, so it is dropped. */
+      try {
+        const response = await route.fetch({ url: origin + url.pathname + url.search });
+        await route.fulfill({ response });
+      } catch (e) {
+        if (!page.isClosed() && !/has been (disposed|closed)/.test(String(e))) throw e;
+      }
     });
   }
 
