@@ -210,22 +210,18 @@ function olmKeys(client: MatrixClient, roomId: string): KeyChannel {
       const room = client.getRoom(roomId);
       if (room === null) return;
       const inRoom = new Set(joinedUsers(room));
-      let devices = to.filter((d) => inRoom.has(d.user)).map((d) => ({ userId: d.user, deviceId: d.device }));
+      const devices = to.filter((d) => inRoom.has(d.user)).map((d) => ({ userId: d.user, deviceId: d.device }));
       if (devices.length === 0) return;
       const users = [...new Set(devices.map((d) => d.userId))];
       // Someone who has just signed in on a new device joins the call
-      // before that device is in the list, and before the others see the
-      // membership it sent; give both a few syncs.
-      const joined = (): Set<string> => new Set(rtcMembers(room).map((m) => memberId(m.user, m.device)));
+      // before that device is in the list; give it a few syncs. The SFU's
+      // list decides who is in the call: a membership can reach this page
+      // later than the person does.
       for (const until = Date.now() + DEVICE_WAIT_MS; Date.now() < until; ) {
         const known = await crypto.getUserDeviceInfo(users);
-        const members = joined();
-        if (devices.every((d) => known.get(d.userId)?.has(d.deviceId) === true && members.has(memberId(d.userId, d.deviceId)))) break;
+        if (devices.every((d) => known.get(d.userId)?.has(d.deviceId) === true)) break;
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
-      const members = joined();
-      devices = devices.filter((d) => members.has(memberId(d.userId, d.deviceId)));
-      if (devices.length === 0) return;
       const key = { index: msg.index, key: unpadded(msg.key) };
       const content: WireKey = {
         room_id: roomId,
