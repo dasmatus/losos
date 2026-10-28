@@ -706,6 +706,9 @@ export interface EdgeProxy {
   /** Base URL of its registrar API. */
   url: string;
   source: EdgeSource;
+  /** Found on the LAN with its registrar and tunnel on this box's own
+   *  networks: the only kind of edge that may manage the box. */
+  onNetwork?: boolean;
 }
 
 export interface EdgeResponse {
@@ -737,7 +740,7 @@ export interface EdgeManage {
   /** The edge in use that could manage the box, or null. */
   candidate: { name: string; url: string } | null;
   /** Why none can: the box uses no edge on this network. */
-  refused: "noLocalEdge" | null;
+  refused: "noLocalEdge" | "outsideNetwork" | null;
   /** The registrar URL the owner switched management on for, or null. */
   managedBy: string | null;
   /** That edge is the one in use, so it manages the box now. */

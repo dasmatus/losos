@@ -457,6 +457,11 @@ export default defineMessages({
     sk: "Zariadenie môže spravovať iba okrajový server v tejto sieti a toto zariadenie teraz žiadny nepoužíva.",
     de: "Nur ein Edge in diesem Netz kann die Box verwalten, und diese Box nutzt gerade keinen.",
   },
+  "panes.mesh.manage.outsideNetwork": {
+    en: "The edge this box uses is not on its own network, so it may not manage the box. Only an edge on the same local network can.",
+    sk: "Okrajový server, ktorý toto zariadenie používa, nie je v jeho vlastnej sieti, takže ho nesmie spravovať. Môže to iba server v tej istej lokálnej sieti.",
+    de: "Der Edge, den diese Box nutzt, ist nicht in ihrem eigenen Netz und darf sie daher nicht verwalten. Das kann nur ein Edge im selben lokalen Netz.",
+  },
   "panes.mesh.manage.caption": {
     en: "For a company's own edge. The switch is tied to the edge it was turned on for, so a different edge never inherits it. Turn it off and the edge loses access at once.",
     sk: "Pre vlastný okrajový server firmy. Prepínač patrí k serveru, pre ktorý bol zapnutý, takže iný server ho nikdy nezdedí. Po vypnutí server stratí prístup okamžite.",

@@ -343,7 +343,7 @@ const SETTINGS = {
 };
 const EDGE_URL = 'http://192.168.1.2:8080';
 
-async function openBox({ official = false } = {}) {
+async function openBox({ official = false, outside = false } = {}) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
   const page = await context.newPage();
   const posts = [];
@@ -357,6 +357,7 @@ async function openBox({ official = false } = {}) {
         url: EDGE_URL,
         source: 'lan',
         official,
+        onNetwork: !outside,
         ...(official ? { gateway: { state: 'trusted', owner: 'Office IT <it@office.example>', fingerprint: 'AB', image: 'gw' } } : {}),
       },
     ],
@@ -365,8 +366,8 @@ async function openBox({ official = false } = {}) {
     checkedAt: 1,
     path: { url: EDGE_URL, source: 'lan' },
     manage: {
-      candidate: { name: 'Office edge', url: EDGE_URL },
-      refused: null,
+      candidate: outside ? null : { name: 'Office edge', url: EDGE_URL },
+      refused: outside ? 'outsideNetwork' : null,
       managedBy,
       active: managedBy !== null,
     },
@@ -419,6 +420,16 @@ await check('a checked gateway on the LAN may manage the box like any other edge
   await toggle(page, name);
   await page.getByText('Office edge can manage this box now', { exact: true }).first().waitFor();
   assert.deepEqual(posts, [{ enabled: true }]);
+  await context.close();
+});
+
+await check('an edge outside the box\'s own network is never offered the switch', async () => {
+  const { page, context, posts } = await openBox({ outside: true });
+  await page.getByText(/is not on its own network, so it may not manage the box/).waitFor();
+  const sw = page.getByRole('switch', { name: 'Let the company edge manage this box', exact: true });
+  assert.equal(await sw.isDisabled(), true);
+  assert.equal(await sw.isChecked(), false);
+  assert.deepEqual(posts, []);
   await context.close();
 });
 

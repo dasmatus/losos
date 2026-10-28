@@ -867,6 +867,10 @@
           ],
           "description": "`host:port` of this edge's rathole server, where the box's tunnel would dial: the advert's `rathole=` TXT record (or the registrar's host on port 2333 for an advert without one) for a LAN edge, losos.proxy.edgeRatholeEndpoint ($LOSOS_EDGE_RATHOLE) for the configured one. null when the box was given none, in which case the edge is found but never chosen as the path."
         },
+        "onNetwork": {
+          "type": "boolean",
+          "description": "Found on the LAN, and both its registrar and its tunnel endpoint resolve only to addresses on a network this box is directly attached to (IPv4 ones private besides) (/proc/net/route, /proc/net/if_inet6). Only such an edge may manage the box."
+        },
         "official": {
           "type": "boolean",
           "description": "This edge passed every gateway check on this box (backend/src/edge.rs, \"gateways\"): its TPM, certified by a maker in losos.proxy.gateways.tpmRoots, quoted a published image (losos.proxy.gateways.images) with its owner's signed passport and LosOS's payout addresses (losos.proxy.gateways.payouts), and nothing changed since it booted. Only such an edge may process P2P storage and compute trading; discovery and sharing do not depend on it."
@@ -1001,9 +1005,10 @@
             "refused": {
               "enum": [
                 "noLocalEdge",
+                "outsideNetwork",
                 null
               ],
-              "description": "Why no edge can: none on this network is in use."
+              "description": "Why no edge can: noLocalEdge when the box uses no edge found on the LAN, outsideNetwork when the edge in use resolves to addresses outside the box's own networks."
             },
             "managedBy": {
               "type": [

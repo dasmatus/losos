@@ -1207,6 +1207,7 @@ fn manage_json(managed_by: Option<&str>, status: &crate::edge::EdgeStatus) -> Va
             Value::Null,
             json!(match e {
                 crate::edge::NotManageable::NoLocalEdge => "noLocalEdge",
+                crate::edge::NotManageable::OutsideNetwork => "outsideNetwork",
             }),
         ),
     };
