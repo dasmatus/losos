@@ -180,9 +180,10 @@ pub struct Parsed {
     pub front_matter: Option<String>,
     pub problems: Vec<Problem>,
     /// Attributes a pass adds to the element written for a node, keyed by
-    /// the node's start offset: `id`, `class` and `data-*` only, on a
-    /// paragraph, list item, heading, quote, table or code block.
-    pub attributes: BTreeMap<usize, Vec<(String, String)>>,
+    /// the node's start offset and the tag written for it (a list and its
+    /// first item start at the same offset): `id`, `class` and `data-*`
+    /// only, on a paragraph, list item, heading, quote, table or code block.
+    pub attributes: BTreeMap<(usize, String), Vec<(String, String)>>,
 }
 
 /// What a page needs to show a document.

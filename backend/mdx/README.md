@@ -109,7 +109,9 @@ Notes' own syntax (wikilinks, tags, callouts) is a pass between `parse` and
 - A `Hook` draws the reserved elements, with the `Writer`'s `raw`, `text`,
   `children` and `resolver`.
 - `Parsed::attributes` adds `id`, `class` and `data-*` to the element
-  written for a node, keyed by the node's start offset.
+  written for a node, keyed by the node's start offset and the tag
+  written for it (`(12, "li")`), since a list and its first item start at
+  the same offset.
 
 The allowlist runs over all of it.
 

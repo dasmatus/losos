@@ -391,7 +391,7 @@ fn a_hook_cannot_write_past_the_allowlist_either() {
             ));
     }
     parsed.attributes.insert(
-        0,
+        (0, "p".into()),
         vec![("onclick".into(), "x".into()), ("style".into(), "y".into())],
     );
     let r = parsed.render_with(&Plain, Some(&Evil));
