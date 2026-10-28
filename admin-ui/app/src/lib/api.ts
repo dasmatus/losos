@@ -3136,6 +3136,70 @@ export function getManagedBoxes(options: RequestOptions = {}): Promise<{ boxes: 
   return call<{ boxes: ManagedBox[] }>("/manage/api/boxes", options);
 }
 
+/** The gateway itself, as GET /manage/api/gateway on the edge reports it. */
+export interface GatewaySettings {
+  name: string;
+  /** Null on an edge that is not an open gateway (no TPM, no passport). */
+  passport: {
+    edgeKey: string;
+    claimed: boolean;
+    owner: { fingerprint: string; userId: string } | null;
+  } | null;
+  /** Null on an edge that relays to no hub. */
+  uplink: {
+    set: { id: string; registrarUrl: string; ratholeEndpoint: string } | null;
+    relaying: number;
+  } | null;
+  /** Boxes that enrolled here on first contact; only these can be forgotten. */
+  enrolled: string[];
+}
+
+export interface UplinkForm {
+  id: string;
+  token: string;
+  registrarUrl: string;
+  ratholeEndpoint: string;
+  bootstrapToken?: string;
+}
+
+/** GET /manage/api/gateway on the edge. */
+export function getGatewaySettings(options: RequestOptions = {}): Promise<GatewaySettings> {
+  return call<GatewaySettings>("/manage/api/gateway", options);
+}
+
+/** PUT /manage/api/gateway/uplink: relay this gateway's boxes through a hub. */
+export function setGatewayUplink(form: UplinkForm): Promise<{ set: true }> {
+  return call<{ set: true }>("/manage/api/gateway/uplink", {
+    method: "PUT",
+    body: JSON.stringify(form),
+    contentType: "application/json",
+  });
+}
+
+/** DELETE /manage/api/gateway/uplink: the boxes stay reachable on the LAN only. */
+export function clearGatewayUplink(): Promise<{ set: false }> {
+  return call<{ set: false }>("/manage/api/gateway/uplink", { method: "DELETE" });
+}
+
+/** DELETE /manage/api/gateway/boxes/<id>: forget a box that enrolled here. */
+export function forgetGatewayBox(id: string): Promise<{ forgotten: string }> {
+  return call<{ forgotten: string }>(`/manage/api/gateway/boxes/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}
+
+/** POST /passport/settings on the edge: the owner's signed settings. The
+ *  signature is the proof, so no key goes with it; the gateway reboots to
+ *  measure them. */
+export function claimGateway(settings: string, signature: string): Promise<{ accepted: true }> {
+  return call<{ accepted: true }>("/passport/settings", {
+    method: "POST",
+    body: JSON.stringify({ settings, signature }),
+    contentType: "application/json",
+    anonymous: true,
+  });
+}
+
 /** How the last sync with LosOS Git went. `off`: LosOS Git is off on this
  *  box; `pending`: not synced yet; the rest are what sync_once reports. */
 export type ConfigSyncState =

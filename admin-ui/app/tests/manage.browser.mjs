@@ -68,13 +68,14 @@ const violations = (page) => page.evaluate(() => [...new Set(window.__violations
 
 /* The edge's page. `signedIn` puts the key in the tab first; `refuse`
  * makes the box answer 403, as the edge does once the owner switched off. */
-async function openEdge({ path = '/manage/', signedIn = true, refuse = false } = {}) {
+async function openEdge({ path = '/manage/', signedIn = true, refuse = false, gateway = null } = {}) {
   const context = await browser.newContext({ viewport: { width: 1100, height: 900 }, locale: 'en-US' });
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   const calls = [];
   const posts = [];
+  const writes = [];
   let job = 0;
   let polls = 0;
 
@@ -84,6 +85,27 @@ async function openEdge({ path = '/manage/', signedIn = true, refuse = false } =
     calls.push({ method: request.method(), path: url.pathname + url.search, auth: request.headers()['authorization'] ?? null });
     if (request.headers()['authorization'] !== `Bearer ${KEY}`) return json(route, 401, { error: 'sign in with the manage key' });
     if (url.pathname === '/manage/api/boxes') return json(route, 200, { boxes: BOXES });
+    if (url.pathname.startsWith('/manage/api/gateway')) {
+      if (gateway === null) return json(route, 404, { error: 'no such route' });
+      if (request.method() === 'GET') return json(route, 200, gateway);
+      const body = request.postData() === null ? null : JSON.parse(request.postData());
+      writes.push({ method: request.method(), path: url.pathname, body });
+      if (url.pathname === '/manage/api/gateway/uplink' && request.method() === 'PUT') {
+        if (!/^[^:\s]+:\d+$/.test(body.ratholeEndpoint)) return json(route, 400, { error: 'the tunnel endpoint must be host:port' });
+        gateway.uplink.set = { id: body.id, registrarUrl: body.registrarUrl, ratholeEndpoint: body.ratholeEndpoint };
+        return json(route, 200, { set: true });
+      }
+      if (url.pathname === '/manage/api/gateway/uplink') {
+        gateway.uplink.set = null;
+        return json(route, 200, { set: false });
+      }
+      const forget = url.pathname.match(/^\/manage\/api\/gateway\/boxes\/([^/]+)$/);
+      if (forget !== null) {
+        gateway.enrolled = gateway.enrolled.filter((id) => id !== forget[1]);
+        return json(route, 200, { forgotten: forget[1] });
+      }
+      return json(route, 404, { error: 'no such route' });
+    }
     const box = url.pathname.match(/^\/manage\/api\/boxes\/([^/]+)(\/api\/.*)$/);
     if (box === null) return json(route, 404, { error: 'no such route' });
     const [, id, rest] = box;
@@ -105,6 +127,14 @@ async function openEdge({ path = '/manage/', signedIn = true, refuse = false } =
     return json(route, 200, {});
   });
 
+  await page.route('**/passport/settings', (route) => {
+    const request = route.request();
+    const body = JSON.parse(request.postData() ?? '{}');
+    writes.push({ method: request.method(), path: '/passport/settings', auth: request.headers()['authorization'] ?? null, body });
+    if (!body.signature.includes('BEGIN PGP SIGNATURE')) return json(route, 403, { error: 'not signed by the owner' });
+    return json(route, 200, { accepted: true, rebooting: true });
+  });
+
   await page.addInitScript(
     ([key, signedIn]) => {
       if (signedIn) window.sessionStorage.setItem('losos-token', key);
@@ -116,8 +146,17 @@ async function openEdge({ path = '/manage/', signedIn = true, refuse = false } =
     [KEY, signedIn],
   );
   await page.goto(origin + path, { waitUntil: 'networkidle' });
-  return { page, context, errors, calls, posts };
+  return { page, context, errors, calls, posts, writes };
 }
+
+/* What GET /manage/api/gateway says about an unclaimed gateway with no hub
+ * and one box that enrolled on first contact. A fresh copy per page. */
+const gatewayFixture = () => ({
+  name: 'losos-edge',
+  passport: { edgeKey: 'e'.repeat(64), claimed: false, owner: null },
+  uplink: { set: null, relaying: 0 },
+  enrolled: ['reception'],
+});
 
 console.log('admin-ui edge manage page checks');
 
@@ -193,6 +232,62 @@ await check('the apps listed from the edge have no port link and no pin', async 
 await check('a box that refuses the edge says so', async () => {
   const { page, context } = await openEdge({ path: '/manage/boxes/office-box', refuse: true });
   await page.getByText('The box refused this edge').waitFor();
+  await context.close();
+});
+
+await check('the gateway is set up from the page: its owner, its hub and the boxes that enrolled', async () => {
+  const gateway = gatewayFixture();
+  const { page, context, writes, errors } = await openEdge({ gateway });
+  const section = page.getByTestId('gateway');
+  await section.waitFor();
+  assert.match(await section.innerText(), /losos-edge/);
+  assert.match(await section.innerText(), /No owner yet/);
+  assert.match(await section.innerText(), /no console login and no SSH/);
+
+  // Claim: an unsigned paste is refused and says why; a signed one is sent
+  // without the manage key, because the signature is the proof.
+  await section.getByRole('button', { name: 'Claim' }).click();
+  await page.getByLabel('Settings file').fill('{"version":1}');
+  await page.getByLabel('Signature').fill('not a signature');
+  await section.getByRole('button', { name: 'Save' }).click();
+  await section.getByRole('alert').filter({ hasText: "not from this gateway's owner" }).waitFor();
+  await page.getByLabel('Signature').fill('-----BEGIN PGP SIGNATURE-----\nabc\n-----END PGP SIGNATURE-----');
+  await section.getByRole('button', { name: 'Save' }).click();
+  await page.getByText('Settings accepted').waitFor();
+  const claim = writes.filter((w) => w.path === '/passport/settings').at(-1);
+  assert.equal(claim.auth, null);
+  assert.equal(claim.body.settings, '{"version":1}\n');
+
+  // The hub: a malformed endpoint is refused with the edge's words, a good
+  // row is saved, then cleared.
+  const hub = page.getByTestId('uplink');
+  assert.match(await hub.innerText(), /reachable on this network only/);
+  await hub.getByRole('button', { name: 'Set up' }).click();
+  await hub.getByLabel('Tenant id').fill('acme');
+  await hub.getByLabel('Registrar URL').fill('https://register.example.test');
+  await hub.getByLabel('Tunnel endpoint').fill('relay');
+  await hub.getByLabel('Token', { exact: true }).fill('hub-token');
+  await hub.getByRole('button', { name: 'Save' }).click();
+  await hub.getByText('must be host:port').waitFor();
+  await hub.getByLabel('Tunnel endpoint').fill('relay.example.test:2333');
+  await hub.getByRole('button', { name: 'Save' }).click();
+  await hub.getByText('acme via https://register.example.test').waitFor();
+  const put = writes.filter((w) => w.method === 'PUT').at(-1);
+  assert.deepEqual(put.body, {
+    id: 'acme',
+    token: 'hub-token',
+    registrarUrl: 'https://register.example.test',
+    ratholeEndpoint: 'relay.example.test:2333',
+  });
+  await hub.getByRole('button', { name: 'Stop relaying' }).click();
+  await hub.getByText('Not relaying').waitFor();
+
+  // A box that enrolled on first contact is forgotten.
+  const enrolled = page.getByTestId('enrolled');
+  await enrolled.getByRole('button', { name: 'Forget' }).click();
+  await enrolled.waitFor({ state: 'detached' });
+  assert.ok(writes.some((w) => w.method === 'DELETE' && w.path === '/manage/api/gateway/boxes/reception'), JSON.stringify(writes));
+  assert.deepEqual(errors, []);
   await context.close();
 });
 

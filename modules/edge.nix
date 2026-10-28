@@ -964,7 +964,7 @@ let
     ]
     ++ meshServeArgs
     ++ marketServeArgs
-    ++ identityArgs
+    ++ passportArgs
     ++ dnsServeArgs
     ++ enrolArgs
     ++ uplinkArgs
@@ -1048,21 +1048,29 @@ let
     "${config.systemd.package}/bin/systemd-run"
   ];
 
-  # The official-edge identity (losos.edge.identity.*): both files or neither,
-  # asserted below. The private key is made and read by the registrar at
-  # runtime, like the Noise key; the certificate is public and arrives by
-  # `POST /identity/cert` from an allowlisted operator, so both default to
-  # the registrar's own StateDirectory, where it can write them.
-  identityArgs = lib.optionals (cfg.identity.keyFile != null) [
-    "--identity-key-file"
-    (toString cfg.identity.keyFile)
-    "--identity-cert-file"
-    "${cfg.identity.certFile}"
+  # The open gateway's passport (losos.edge.passport.enable,
+  # modules/edge-passport.nix): the edge key the registrar makes on its
+  # first start, the owner's settings it accepts and the copy measured at
+  # boot, and the TPM objects losos-gateway-tpm made.
+  passportArgs = lib.optionals cfg.passport.enable [
+    "--gateway-key-file"
+    "/var/lib/losos-registrar/edge.key"
+    "--gateway-settings-file"
+    "/var/lib/losos-gateway/settings.json"
+    "--gateway-measured-file"
+    "/run/losos-gateway/settings.json"
+    "--gateway-tpm-dir"
+    "/run/losos-gateway/tpm"
+    "--gateway-tcti"
+    "device:/dev/tpm0"
   ];
 in
 {
   # Where losos.mdns below lands (lan.advertise).
-  imports = [ ./mdns.nix ];
+  imports = [
+    ./mdns.nix
+    ./edge-passport.nix
+  ];
 
   config = lib.mkIf enabled {
     # The edge module is only imported by the edge system, so wiring the
@@ -1082,15 +1090,6 @@ in
         message = "losos.edge.tenants: an appliance id may not contain a colon.";
       }
       {
-        assertion = (cfg.identity.keyFile == null) == (cfg.identity.certFile == null);
-        message = ''
-          losos.edge.identity.keyFile and losos.edge.identity.certFile go
-          together: the key answers the nonce, the certificate is what the
-          root signed for it. Both are set by default; set both to null for
-          an edge that can never become official.
-        '';
-      }
-      {
         assertion = dnsCfg.enable -> (dnsCfg.ipv4 != [ ] || dnsCfg.ipv6 != [ ]);
         message = ''
           losos.edge.dns.enable requires losos.edge.dns.ipv4 and/or
@@ -1106,11 +1105,11 @@ in
         '';
       }
       {
-        assertion = dnsCfg.enable -> cfg.identity.keyFile != null;
+        assertion = dnsCfg.enable -> cfg.passport.enable;
         message = ''
-          losos.edge.dns.enable requires losos.edge.identity.keyFile: only an
-          edge that can become official hands out names, and the domain routes
-          answer 503 until its certificate is installed.
+          losos.edge.dns.enable requires losos.edge.passport.enable: only an
+          open gateway that boxes can check hands out names, and the domain
+          routes answer 503 until its owner has claimed it.
         '';
       }
       {
