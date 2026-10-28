@@ -441,6 +441,11 @@ await check('on a phone the list and the message take turns', async () => {
   await lake.waitFor();
   const width = await page.evaluate(() => document.documentElement.scrollWidth);
   assert.ok(width <= 390, `the page scrolls sideways: ${width}px`);
+  // Fonts differ between machines; the secondary buttons keep only their icons on a phone.
+  for (const name of ['Encryption', 'Filters']) {
+    const box = await page.getByRole('button', { name, exact: true }).boundingBox();
+    assert.ok(box.width <= 48, `${name} keeps its label on a phone: ${box.width}px`);
+  }
   await done();
 });
 

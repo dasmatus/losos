@@ -762,19 +762,20 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
         <div className="min-w-0 flex-1">
           <PaneHeader title={t("mail.title")} summary={t("mail.summary", { address: home.address })} />
         </div>
+        {/* On a phone the two secondary buttons keep only their icons, so the row fits. */}
         <div className="flex shrink-0 gap-2">
-          <Button variant="secondary" onClick={() => setKeys(true)} data-testid="mail-encryption">
+          <Button variant="secondary" className="max-sm:size-9 max-sm:p-0" onClick={() => setKeys(true)} title={t("mail.pgp.button")} data-testid="mail-encryption">
             <HugeiconsIcon
               icon={own.state === "set" ? SquareLock02Icon : Key01Icon}
               strokeWidth={1.5}
               color="currentColor"
               aria-hidden="true"
             />
-            {t("mail.pgp.button")}
+            <span className="max-sm:sr-only">{t("mail.pgp.button")}</span>
           </Button>
-          <Button variant="secondary" onClick={() => setFilters({ start: null })}>
+          <Button variant="secondary" className="max-sm:size-9 max-sm:p-0" onClick={() => setFilters({ start: null })} title={t("mail.filters")}>
             <HugeiconsIcon icon={FilterIcon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
-            {t("mail.filters")}
+            <span className="max-sm:sr-only">{t("mail.filters")}</span>
           </Button>
           <Button onClick={() => setDraft({ to: [], cc: [], subject: "", text: "" })}>
             <HugeiconsIcon icon={PencilEdit02Icon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
