@@ -5,7 +5,7 @@
 #
 # Three VMs on one network:
 #   * `edge`      — losos.edge with the manage page and the real admin UI:
-#                   Traefik, rathole, the registrar;
+#                   Traefik, the tunnel server, the registrar;
 #   * `appliance` — the tunnel and the announce loop of modules/proxy.nix,
 #                   and an nginx that answers for the box;
 #   * `laptop`    — a browser (nix/tests/screens).
@@ -40,14 +40,11 @@ let
   );
 
   proxyTokenValue = "test-proxy-token-0123456789abcdef";
-  bootstrapTokenValue = "test-bootstrap-0123456789abcdef0123";
   proxyToken = "/var/secrets/losos-proxy-token";
-  bootstrapToken = "/var/secrets/losos-rathole-bootstrap";
   secretFiles = {
     systemd.tmpfiles.rules = [
       "d /var/secrets 0700 root root - -"
       "f ${proxyToken} 0600 root root - ${proxyTokenValue}"
-      "f ${bootstrapToken} 0600 root root - ${bootstrapTokenValue}"
     ];
   };
 in
@@ -78,11 +75,10 @@ pkgs.testers.nixosTest {
           # edge's operator does; there is no certificate in a VM.
           registrarApiBind = "::";
           registrarApiPort = 8443;
-          ratholeBindPort = 2333;
-          ratholePortRange = "50000-50010";
+          tunnelBindPort = 2333;
+          tunnelPortRange = "50000-50010";
           heartbeatTtl = "120s";
           reconcileInterval = "2s";
-          bootstrapTokenFile = bootstrapToken;
           tenants.mattbox = {
             hostname = "mattbox.losos.cfd";
             tokenFile = proxyToken;
@@ -112,12 +108,11 @@ pkgs.testers.nixosTest {
           hostName = "mattbox";
           proxy = {
             enable = true;
-            edgeRatholeEndpoint = "edge:2333";
+            edgeTunnelEndpoint = "edge:2333";
             registrarUrl = "http://edge:8443";
             hostname = "mattbox.losos.cfd";
             applianceId = "mattbox";
             tokenFile = proxyToken;
-            bootstrapTokenFile = bootstrapToken;
             heartbeatInterval = "3s";
             registrar.package = lososPkgs.losos-registrar;
           };
@@ -164,7 +159,7 @@ pkgs.testers.nixosTest {
     edge.wait_for_unit("losos-registrar.service")
     edge.wait_for_unit("traefik.service")
     edge.wait_until_succeeds("curl -fsS http://localhost:8443/health")
-    appliance.wait_for_unit("losos-rathole-client.service")
+    appliance.wait_for_unit("losos-tunnel-client.service")
     appliance.wait_for_unit("losos-registrar-announce.service")
     laptop.wait_for_unit("multi-user.target")
 

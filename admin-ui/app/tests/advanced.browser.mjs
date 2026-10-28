@@ -47,7 +47,8 @@ const OWNED = {
 /* Lines of overrides.nix another pane draws its own editor for: each app's
  * box-wide settings, on the Apps pane, the
  * memory this box lends to AI models, on the Market pane, and the Windows
- * share, on the Network pane (lib/option-value.ts, ON_PANE). The Advanced
+ * share and the Tor and I2P addresses, on the Network pane
+ * (lib/option-value.ts, ON_PANE). The Advanced
  * row shows the value and links there, to the app's fold on the Apps pane. */
 const ON_PANE = Object.fromEntries(
   DOC.options.flatMap((option) =>
@@ -55,7 +56,7 @@ const ON_PANE = Object.fromEntries(
       ? [[option.name, 'apps']]
       : /^inference\.lend\.(enable|memoryMiB)$/.test(option.name)
         ? [[option.name, 'market']]
-        : option.name === 'cloud.windows.enable'
+        : option.name === 'cloud.windows.enable' || /^hidden\.(tor|i2p)\.enable$/.test(option.name)
           ? [[option.name, 'network']]
           : [],
   ),
