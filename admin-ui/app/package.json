@@ -47,7 +47,7 @@
     "matrix-js-sdk": "44.0.0",
     "onnxruntime-web": "1.30.0",
     "openpgp": "6.3.2",
-    "postal-mime": "4.0.5",
+    "postal-mime": "4.0.8",
     "qr": "0.7.2",
     "react": "^19.3.1",
     "react-aria-components": "1.22.1",
