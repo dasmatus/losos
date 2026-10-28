@@ -758,7 +758,9 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
   return (
     <TooltipProvider>
     <div className="flex flex-col">
-      <div className="flex items-start gap-3">
+      {/* Wraps: on a phone the three buttons go under the title rather
+          than past the edge of the screen. */}
+      <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">
           <PaneHeader title={t("mail.title")} summary={t("mail.summary", { address: home.address })} />
         </div>
