@@ -27,7 +27,7 @@ Click a text file in **Files**. The editor shows:
 - **Live** while your browser is connected to the box;
 - **Edited by** the last person who changed it, and when.
 
-The file on the box is saved a moment after anyone stops typing, so the
+The box saves the file a moment after anyone stops typing, so the
 desktop and phone apps see the change too. Each save is a version you can
 go back to. If an app changes the file while people have it open, the
 change appears in their editors.

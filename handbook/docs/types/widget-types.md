@@ -35,7 +35,7 @@ shape. Then you write what to show with short expressions such as
 `m.free / m.total`. **Build one** checks and previews the widget before you
 keep it. The widget lives in the browser you made it in. It changes nothing
 on the box and cannot reach the network, the page or anything but its one
-reading. That also limits it: it cannot branch across readings, loop, or
+reading. That also limits it. It cannot branch across readings, loop, or
 remember anything between runs.
 
 ![Build one: a reading, a shape, the expression to show and a preview of the tile.](../img/widget-build-one.png)
@@ -66,7 +66,7 @@ provides:
 | `losos.file(name)`          | one of the widget's files, as text                                            |
 | `losos.asset(name)`         | one of the widget's files as a `data:` URL, for an image set from script      |
 
-The editor's **Help** tab repeats this with an example. Its preview is the
+The editor's **How it works** tab repeats this with an example. Its preview is the
 real frame, so the tile shows exactly what the preview shows.
 
 :::warning[Read pasted code before you keep it]

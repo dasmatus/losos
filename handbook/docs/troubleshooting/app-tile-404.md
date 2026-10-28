@@ -29,7 +29,7 @@ Overview, or an old bookmark, opens a "Not Found" page.
 ## "Not Found" from an old bookmark
 
 Bookmarks into Nextcloud's own pages, such as
-`/nextcloud/index.php/apps/calendar/`, lead nowhere now: the box has no
+`/nextcloud/index.php/apps/calendar/`, lead nowhere now. The box has no
 Nextcloud. Open `https://<name>.local/cloud/` instead. The desktop and
 phone apps are not affected, since LosOS Cloud still answers them at the
 `/nextcloud` address they were set up with.

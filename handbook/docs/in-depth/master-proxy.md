@@ -197,12 +197,11 @@ answers `/identity` with 404 and is not official. A company's own edge looks
 like that, including the one `nix/demo/edge-lan/` boots. An edge with both
 options set to `null` serves no identity at all.
 
-What this protects: a company that runs its own edge gets a working
-on-premises deployment but cannot settle trades through it. A stranger who
-stands up an edge cannot make boxes trade through it either, because only the
-root's private key makes an edge official. What it does not protect: the
-market protocol is not hidden, and the root's private key is the whole
-secret. Losing it means shipping a release that re-keys every box's trust
+So a company that runs its own edge gets a working on-premises deployment
+but cannot settle trades through it. A stranger who stands up an edge cannot
+make boxes trade through it either, because only the root's private key makes
+an edge official. The check does not hide the market protocol, and the
+root's private key is the whole secret. Losing it means shipping a release that re-keys every box's trust
 anchor.
 
 ## DNS zone and custom domains
@@ -359,7 +358,7 @@ to give. `{}` unbinds.
 The call carries the box's token, so only the box can bind or unbind, and
 lososd asks it only for an administrator (the `network` section). The
 signature shows the wallet agreed to this box's name. It cannot stop the
-edge, which signs the zone, from serving something else: the name is as
+edge, which signs the zone, from serving something else. The name is as
 trustworthy as the edge.
 
 ENS only reads a signed zone, so Knot signs this one
