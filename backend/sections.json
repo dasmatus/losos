@@ -206,6 +206,7 @@
     "POST /api/erase": "admin",
     "POST /api/erase/cancel": "admin",
     "GET /api/recovery": "admin",
+    "POST /api/devices/backups": "signed-in",
     "POST /api/devices/{kind}": "admin",
     "GET /api/cloud/text": "admin",
     "GET /api/git/text": "admin",
