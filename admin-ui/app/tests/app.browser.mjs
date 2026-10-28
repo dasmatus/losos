@@ -420,13 +420,33 @@ const EDGE_COMPANY = {
   official: false,
   edges: [{ ...EDGE_FOUND.edges[0], official: false }],
 };
-/* Two edges at once: the company's on the LAN and the public one over the
- * internet, which is the official one. */
+/* Two edges at once: the company's on the LAN, which shows no passport, and
+ * the public one over the internet, which passed the gateway checks. */
+const TRUSTED = { state: 'trusted', owner: 'Ada Gateway <ada@example.net>', fingerprint: 'ABCDEF0123456789', image: 'losos-edge-gateway 0.6.0' };
 const EDGE_BOTH = {
   ...EDGE_FOUND,
   edges: [
     { ...EDGE_FOUND.edges[0], official: false },
-    { name: 'losos-edge.dasmat.us', url: 'https://losos-edge.dasmat.us', source: 'configured', official: true },
+    { name: 'losos-edge.dasmat.us', url: 'https://losos-edge.dasmat.us', source: 'configured', official: true, gateway: TRUSTED },
+  ],
+};
+/* A gateway this box caught tampered with, beside one whose fees changed. */
+const EDGE_TAMPERED = {
+  ...EDGE_FOUND,
+  official: false,
+  edges: [
+    {
+      ...EDGE_FOUND.edges[0],
+      official: false,
+      gateway: { state: 'disabled', code: 'tainted', reason: "the gateway's settings or state changed after it booted (PCR 15)", since: 1760000000 },
+    },
+    {
+      name: 'losos-edge.dasmat.us',
+      url: 'https://losos-edge.dasmat.us',
+      source: 'configured',
+      official: false,
+      gateway: { state: 'refused', code: 'payoutChanged', reason: 'the fee settings differ from the ones this box ships' },
+    },
   ],
 };
 /* Two secondary clusters on the LAN and the official edge over the
@@ -444,7 +464,7 @@ const EDGE_CLUSTERS = {
     gwEdge('lab', 'gw-z'),
     { name: 'losos-edge.dasmat.us', url: 'https://losos-edge.dasmat.us', source: 'configured', official: true, tier: 'tertiary' },
   ],
-  path: { name: 'gw-a', url: 'http://gw-a.local:8443', source: 'lan', rathole: 'gw-a.local:2333', tier: 'secondary', cluster: 'office', member: 'gw-a' },
+  path: { name: 'gw-a', url: 'http://gw-a.local:8443', source: 'lan', tunnel: 'gw-a.local:2333', tier: 'secondary', cluster: 'office', member: 'gw-a' },
   clusters: [{ name: 'lab', gateways: ['gw-z'] }, { name: 'office', gateways: ['gw-a', 'gw-b'] }],
   cluster: 'office',
 };
@@ -452,7 +472,7 @@ const EDGE_CLUSTERS = {
 const EDGE_TERTIARY = {
   ...EDGE_CLUSTERS,
   edges: [EDGE_CLUSTERS.edges[2], EDGE_CLUSTERS.edges[3]],
-  path: { name: 'losos-edge.dasmat.us', url: 'https://losos-edge.dasmat.us', source: 'configured', rathole: 'edge.losos.cfd:2333', tier: 'tertiary' },
+  path: { name: 'losos-edge.dasmat.us', url: 'https://losos-edge.dasmat.us', source: 'configured', tunnel: 'edge.losos.cfd:2333', tier: 'tertiary' },
   clusters: [{ name: 'lab', gateways: ['gw-z'] }],
 };
 const EDGE_NONE = {
@@ -1874,7 +1894,7 @@ await check('the Mesh pane names the edge proxy the box found, and the join swit
   await page.close();
 });
 
-await check('each edge in reach gets a row; a company edge wears a warning sign whose tooltip lists what is missing', async () => {
+await check('each edge in reach gets a row; an unchecked edge wears a warning sign whose tooltip lists what is missing', async () => {
   const { page, errors } = await open({ path: '/mesh', stored: true, edge: EDGE_BOTH, settings: JOINABLE });
   const rows = page.locator('[data-edge="found"]');
   await rows.first().waitFor();
@@ -1885,16 +1905,21 @@ await check('each edge in reach gets a row; a company edge wears a warning sign 
   assert.match(await company.innerText(), /On this network/);
   assert.match(await official.innerText(), /losos-edge\.dasmat\.us/);
   assert.match(await official.innerText(), /Over the internet/);
+  assert.match(await official.innerText(), /run by Ada Gateway <ada@example\.net>/);
 
   const warning = company.locator('[data-edge-sign="warning"]');
   assert.equal(await warning.count(), 1, 'the company edge has no warning sign');
   assert.equal(await official.locator('[data-edge-sign="official"]').count(), 1, 'the official edge has no check');
-  assert.match(await warning.getAttribute('aria-label'), /Not an official LosOS edge/);
+  assert.match(await warning.getAttribute('aria-label'), /shows no gateway passport/);
+  assert.match(
+    await official.locator('[data-edge-sign="official"]').getAttribute('aria-label'),
+    /Checked gateway, run by Ada Gateway.*losos-edge-gateway 0\.6\.0/,
+  );
   await warning.hover();
   const tip = page.locator('[data-slot="tooltip-content"]');
   await tip.waitFor({ timeout: 3000 });
   const text = await tip.innerText();
-  assert.match(text, /Not an official LosOS edge/);
+  assert.match(text, /shows no gateway passport/);
   assert.match(text, /buying storage or compute on the market/);
   assert.match(text, /selling this box's spare storage and compute/);
   assert.match(text, /Sharing storage through it works/);
@@ -1907,10 +1932,28 @@ await check('each edge in reach gets a row; a company edge wears a warning sign 
   // Only a company edge: same sign, and the caption says the market waits.
   const alone = await open({ path: '/mesh', stored: true, edge: EDGE_COMPANY });
   await alone.page.locator('[data-edge-sign="warning"]').waitFor();
-  assert.match(await body(alone.page), /None of these is run by LosOS, so the market/);
+  assert.match(await body(alone.page), /None of these passed the gateway checks, so the market/);
   assert.equal(await alone.page.locator('[data-edge-sign="official"]').count(), 0);
   assert.deepEqual(alone.errors, []);
   await alone.page.close();
+});
+
+await check('a gateway caught tampered with is marked not used, and one with changed fees says why it is not trusted', async () => {
+  const { page, errors } = await open({ path: '/mesh', stored: true, edge: EDGE_TAMPERED, settings: JOINABLE });
+  const tampered = page.locator('[data-edge-gateway="disabled"]');
+  await tampered.waitFor();
+  assert.match(await tampered.innerText(), /Not used/);
+  const stop = tampered.locator('[data-edge-sign="disabled"]');
+  assert.match(await stop.getAttribute('aria-label'), /Tampered with: the gateway's settings or state changed after it booted/);
+  assert.match(await stop.getAttribute('aria-label'), /no longer uses this edge/);
+  const refused = page.locator('[data-edge-gateway="refused"]');
+  assert.match(
+    await refused.locator('[data-edge-sign="warning"]').getAttribute('aria-label'),
+    /Not trusted with trading: the fee settings differ/,
+  );
+  assert.match(await refused.innerText(), /Over the internet/);
+  assert.deepEqual(errors, []);
+  await page.close();
 });
 
 await check('the Mesh pane says which tier the box\'s link is, and the owner moves it to another secondary cluster', async () => {
@@ -2038,7 +2081,7 @@ await check('the Network pane says why a box gets no custom domain', async () =>
   const none = await open({ path: '/settings/network', stored: true, domains: { available: false, reason: 'noOfficialEdge' } });
   const section = none.page.getByTestId('custom-domains');
   await section.getByText('Not offered to this box').waitFor();
-  assert.match(await section.innerText(), /official LosOS edge, and none is in reach/);
+  assert.match(await section.innerText(), /checked LosOS gateway, and none is in reach/);
   assert.equal(await section.getByRole('textbox').count(), 0, 'a box with no official edge got a domain field');
   assert.deepEqual(none.errors, []);
   await none.page.close();

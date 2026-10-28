@@ -43,9 +43,7 @@
 let
   inherit (pkgs) lib;
   proxyTokenValue = "test-proxy-token-0123456789abcdef";
-  bootstrapTokenValue = "test-bootstrap-0123456789abcdef0123";
   proxyToken = "/var/secrets/losos-proxy-token";
-  bootstrapToken = "/var/secrets/losos-rathole-bootstrap";
   agentToken = "/var/secrets/losos-mesh-agent-token";
   identityKey = "/var/secrets/losos-edge-identity.key";
   edgeName = "edge.losos.dasmat.us";
@@ -279,7 +277,6 @@ pkgs.testers.nixosTest {
         systemd.tmpfiles.rules = [
           "d /var/secrets 0700 root root - -"
           "f ${proxyToken} 0600 root root - ${proxyTokenValue}"
-          "f ${bootstrapToken} 0600 root root - ${bootstrapTokenValue}"
           "f ${agentToken} 0600 root root - test-agent-token"
           "C ${identityKey} 0600 root root - ${fixture}/edge.key"
         ];
@@ -288,7 +285,6 @@ pkgs.testers.nixosTest {
           acmeEmail = "test@losos.dasmat.us";
           publicDomain = "losos.dasmat.us";
           reconcileInterval = "2s";
-          bootstrapTokenFile = bootstrapToken;
           tenants.mattbox = {
             hostname = "mattbox.boxes.losos.dasmat.us";
             tokenFile = proxyToken;

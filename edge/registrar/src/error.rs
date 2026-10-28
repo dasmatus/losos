@@ -25,7 +25,7 @@ use crate::domains::DomainError;
 use crate::market::MarketError;
 use crate::onramp::OnrampError;
 
-/// Registry-layer failures: persistence IO, JSON parse, or the rathole port
+/// Registry-layer failures: persistence IO, JSON parse, or the tunnel port
 /// range being exhausted (no free port for a new tenant).
 ///
 /// `PortRangeExhausted` replaces an earlier `0`-sentinel return from port
@@ -39,7 +39,7 @@ pub enum RegistryError {
     #[error("registry parse: {0}")]
     Serde(#[from] serde_json::Error),
     /// Every port in the configured range is already assigned.
-    #[error("rathole port range {lo}-{hi} exhausted")]
+    #[error("tunnel port range {lo}-{hi} exhausted")]
     PortRangeExhausted { lo: u16, hi: u16 },
 }
 

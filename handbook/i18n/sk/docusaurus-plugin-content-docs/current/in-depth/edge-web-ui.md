@@ -59,6 +59,22 @@ Zariadenie pri každom heartbeate povie, či to vlastník dovoľuje, takže zmen
 na zariadení sa tu ukáže do jedného heartbeatu. Zariadenie, ktoré heartbeaty
 prestane posielať, zo zoznamu zmizne.
 
+## Štatistiky
+
+Karta **Štatistiky** nad zoznamom počíta požiadavky, na ktoré Traefik edge
+odpovedal za poslednú hodinu, podiel chýb servera a objem odoslaných dát, so
+stĺpcom za každú minútu. **Otvoriť** vedie na stránku Štatistiky,
+`/manage/statistics`: tá istá hodina podrobnejšie, odpovede podľa triedy
+(2xx, 3xx, 4xx, 5xx) a riadok za každé zariadenie a názov, ktoré edge
+smeruje, s počtom požiadaviek, chýb, odoslaných bajtov a 95. percentilom
+času odpovede.
+
+Registrátor číta počítadlá Prometheus z Traefiku každých 15 sekúnd na porte
+na loopbacku (`losos.edge.traefikMetricsPort`, 8091), na ktorý sa zvonka
+stroja nedostane nikto, a posledných 60 minút drží v pamäti. Reštart
+registrátora začne hodinu odznova; riadky trás počítajú od štartu Traefiku,
+ako stránka uvádza pod nimi, a čas odpovede berú z poslednej hodiny.
+
 ## Stránka zariadenia
 
 ![Stránka zariadenia: nastavenia LosOS Cloud a LosOS Git, nainštalované aplikácie a hľadanie aplikácií.](@site/docs/img/edge-manage-box-sk.png)

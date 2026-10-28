@@ -424,7 +424,10 @@ impl Manifest {
 
 /// `/api/a/{b}/c`: literal segments of URL-safe characters and whole-segment
 /// `{name}`s.
+/// A pattern may end in one `/`, the index of a prefix (`/api/basic/`); no
+/// other segment may be empty.
 fn is_route_pattern(p: &str) -> bool {
+    let p = p.strip_suffix('/').unwrap_or(p);
     p[1..].split('/').all(|seg| {
         if let Some(name) = seg.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
             !name.is_empty() && name.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')
@@ -592,6 +595,8 @@ mod tests {
             r#"{"name": "look", "filez": []}"#,
             r#"{"name": "look", "routes": [{"method": "GET", "path": "/etc/passwd"}]}"#,
             r#"{"name": "look", "routes": [{"method": "GET", "path": "/api/../x"}]}"#,
+            r#"{"name": "look", "routes": [{"method": "GET", "path": "/api//x"}]}"#,
+            r#"{"name": "look", "routes": [{"method": "GET", "path": "/api/x//"}]}"#,
             r#"{"name": "look", "routes": [{"method": "POST", "path": "/api/x", "unguarded": true}]}"#,
             r#"{"name": "look", "routes": [{"method": "GET", "path": "/api/x"}, {"method": "GET", "path": "/api/x"}]}"#,
             r#"{"name": "look", "routes": [{"method": "GET", "path": "/api/x", "maxBody": 999999999999}]}"#,
@@ -614,6 +619,15 @@ mod tests {
             r#"{"name": "look", "limits": {"memoryMiB": 0}}"#,
         ] {
             assert!(parse(bad).is_err(), "{bad} should be refused");
+        }
+    }
+
+    #[test]
+    fn a_route_may_end_in_one_slash() {
+        assert!(is_route_pattern("/api/basic/"));
+        assert!(is_route_pattern("/api/basic/{page}"));
+        for bad in ["/api//", "/api/x//", "/api//x", "/api/./"] {
+            assert!(!is_route_pattern(bad), "{bad:?}");
         }
     }
 

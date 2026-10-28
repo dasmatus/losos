@@ -153,12 +153,15 @@ in
         LOSOS_EDGE_URL = config.losos.proxy.registrarUrl;
         LOSOS_SHARING_PAUSE_AFTER_SECS = toString config.losos.proxy.pauseSharingAfter;
         # Where the tunnel goes when that configured edge is the path. An
-        # edge found on the LAN carries its own in the advert (`rathole=`).
-        LOSOS_EDGE_RATHOLE = config.losos.proxy.edgeRatholeEndpoint;
-        # The trust anchor for "official" edges (losos.proxy.officialRootKeyFile):
-        # a public key, so a store path. Without a key in it no edge is
-        # official and the market relay stays off.
-        LOSOS_EDGE_ROOT_KEY_FILE = "${config.losos.proxy.officialRootKeyFile}";
+        # edge found on the LAN carries its own in the advert (`tunnel=`).
+        LOSOS_EDGE_TUNNEL = config.losos.proxy.edgeTunnelEndpoint;
+        # What a box checks an edge against before it trusts it with
+        # trading (losos.proxy.gateways): the TPM makers' certificates, the
+        # published gateway images and LosOS's payout addresses. Public
+        # data, so store paths.
+        LOSOS_GATEWAY_TPM_ROOTS = "${config.losos.proxy.gateways.tpmRoots}";
+        LOSOS_GATEWAY_IMAGES = "${pkgs.writeText "losos-gateway-images.json" (builtins.toJSON config.losos.proxy.gateways.images)}";
+        LOSOS_GATEWAY_PAYOUTS = "${pkgs.writeText "losos-gateway-payouts.json" (builtins.toJSON config.losos.proxy.gateways.payouts)}";
         # Edges and official clusters the box must not use (losos.proxy.bansFile):
         # read on every scan, a missing file bans nothing.
         LOSOS_EDGE_BANS_FILE = config.losos.proxy.bansFile;
@@ -177,6 +180,12 @@ in
       # lososd refuses one anywhere else. Unset, it serves no plugin routes.
       // lib.optionalAttrs (config.losos.backend.plugins != null) {
         LOSOS_PLUGIN_DIR = "${config.losos.backend.plugins}";
+      }
+      # The built admin page, for the pages without JavaScript
+      # (backend/plugins/basic/): its stylesheet's name and the catalogue
+      # written out for them (basic/messages.<locale>.json).
+      // lib.optionalAttrs (config.losos.admin.ui != null) {
+        LOSOS_ADMIN_UI_DIR = "${config.losos.admin.ui}";
       }
       // lib.optionalAttrs config.losos.lab.ordering.enable {
         LOSOS_LAB_ORDERING = "1";
@@ -208,15 +217,12 @@ in
         # box; announce says so on its heartbeats (modules/proxy.nix).
         LOSOS_EDGE_MANAGED_FILE = "/run/losos/edge-managed";
         LOSOS_EDGE_PIN_DIR = "/var/secrets/losos-edge-pins";
-        # The token files the tunnel and announce read. lososd mints both
-        # (64 hex characters, 0600) when absent, so a stock box can enrol
-        # with a LAN gateway that takes any box on first contact; an
-        # official edge still has to be given the proxy token out of band.
-        LOSOS_PROXY_BOOTSTRAP_FILE = toString config.losos.proxy.bootstrapTokenFile;
-      }
-      // lib.optionalAttrs (config.losos.proxy.enable && config.losos.proxy.noisePublicKeyFile != null) {
-        # The configured edge's pin; a LAN edge's goes under LOSOS_EDGE_PIN_DIR.
-        LOSOS_EDGE_NOISE_PUB_FILE = toString config.losos.proxy.noisePublicKeyFile;
+        # The configured edge's tunnel pin; a LAN edge's goes under
+        # LOSOS_EDGE_PIN_DIR. lososd also mints the proxy token (64 hex
+        # characters, 0600) when absent, so a stock box can enrol with a LAN
+        # gateway that takes any box on first contact; an official edge
+        # still has to be given it out of band.
+        LOSOS_EDGE_TUNNEL_PIN_FILE = toString config.losos.proxy.tunnelPinFile;
       };
       # What `losos-ctl grow` shells out to. A systemd unit's default PATH does
       # not include these, and the failure is the unhelpful kind: the grow
@@ -261,7 +267,7 @@ in
         # `always`, not `on-failure`: a clean exit(0) — an unhandled shutdown
         # path, a bus disconnect the daemon treats as terminal — would
         # otherwise leave the box with no control plane and no way in (no SSH,
-        # no shell logins). The rathole/registrar units use `always` for the
+        # no shell logins). The tunnel and registrar units use `always` for the
         # same reason.
         Restart = "always";
         RestartSec = "2";

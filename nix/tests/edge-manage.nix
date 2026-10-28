@@ -1,13 +1,15 @@
 # nixos-test-vms config for a company edge managing the box behind it.
 #
-# Boots two VMs on one virtual network:
+# Boots three VMs on two virtual networks:
 #   * `edge` — losos.edge.enable with losos.edge.lan.advertise and
 #              losos.edge.manage.enable: the registrar serves the manage page
 #              and its API (edge/registrar/src/server/manage.rs) under a key
-#              it makes on first start.
+#              it makes on first start. On both networks, routing between.
+#   * `far`  — the same edge, on the second network only: as far as the box
+#              is concerned, an edge out on the internet.
 #   * `box`  — lososd (modules/daemon.nix) with its option document
 #              (modules/config-repo.nix), the mDNS the real box runs, and the
-#              edge path (modules/proxy.nix): rathole client, announce, and
+#              edge path (modules/proxy.nix): tunnel client, announce, and
 #              the loopback-only nginx server the edge's calls land on.
 #
 # Asserts what backend/src/edge.rs and backend/sections.json promise:
@@ -29,7 +31,13 @@
 #      nothing;
 #   7. the owner switches it off and the edge loses access at once, before
 #      its next heartbeat;
-#   8. the page is served under its own policy, and deep links reload.
+#   8. the page is served under its own policy, and deep links reload;
+#   9. an edge outside the box's network may not manage it, even one the box
+#      found through an advert on its own LAN and tunnels through: `far`
+#      sits on a second network behind `edge` (which routes), something on
+#      the LAN advertises it, the box picks it and dials its tunnel, and
+#      still the switch is refused ("outsideNetwork") and every call `far`
+#      relays is turned away.
 #
 # The rebuild each change queues has no flake to build in the VM and fails;
 # the test reads overrides.nix, which is what the change writes.
@@ -38,14 +46,11 @@
 let
   lososPkgs = import ../packages.nix { inherit pkgs; };
   proxyTokenValue = "test-proxy-token-0123456789abcdef";
-  bootstrapTokenValue = "test-bootstrap-0123456789abcdef0123";
   proxyToken = "/var/secrets/losos-proxy-token";
-  bootstrapToken = "/var/secrets/losos-rathole-bootstrap";
   secretFiles = {
     systemd.tmpfiles.rules = [
       "d /var/secrets 0700 root root - -"
       "f ${proxyToken} 0600 root root - ${proxyTokenValue}"
-      "f ${bootstrapToken} 0600 root root - ${bootstrapTokenValue}"
     ];
   };
   # The page the edge serves, small: the admin UI's own bundle is
@@ -59,6 +64,46 @@ let
   # The test network's /etc/hosts names both machines; mDNS finds the
   # advert, and the records it carries name the edge the same way.
   edgeUrl = "http://edge:8443";
+  farUrl = "http://far:8443";
+  anEdge =
+    name:
+    { ... }:
+    {
+      imports = [
+        ../../modules/options.nix
+        ../../modules/edge.nix
+        secretFiles
+      ];
+      _module.args.self = {
+        packages.x86_64-linux = {
+          losos-registrar = lososPkgs.losos-registrar;
+          losos-admin-ui = ui;
+        };
+      };
+      networking.hostName = name;
+      losos.edge = {
+        enable = true;
+        acmeEmail = "test@losos.cfd";
+        registrarApiPort = 8443;
+        tunnelBindPort = 2333;
+        tunnelPortRange = "50000-50010";
+        reconcileInterval = "2s";
+        heartbeatTtl = "30s";
+        tenants.office-box = {
+          hostname = "office-box.example.test";
+          tokenFile = proxyToken;
+        };
+        manage = {
+          enable = true;
+          ui = ui;
+        };
+      };
+      environment.systemPackages = [ pkgs.jq ];
+      virtualisation = {
+        memorySize = 1024;
+        cores = 2;
+      };
+    };
 in
 
 pkgs.testers.nixosTest {
@@ -68,45 +113,45 @@ pkgs.testers.nixosTest {
     edge =
       { ... }:
       {
-        imports = [
-          ../../modules/options.nix
-          ../../modules/edge.nix
-          secretFiles
+        imports = [ (anEdge "edge") ];
+        losos.edge.lan = {
+          advertise = true;
+          url = edgeUrl;
+          tunnelEndpoint = "edge:2333";
+        };
+        # The router between the box's network and far's.
+        virtualisation.vlans = [
+          1
+          2
         ];
-        _module.args.self = {
-          packages.x86_64-linux = {
-            losos-registrar = lososPkgs.losos-registrar;
-            losos-admin-ui = ui;
-          };
+        boot.kernel.sysctl = {
+          "net.ipv4.ip_forward" = 1;
+          "net.ipv6.conf.all.forwarding" = 1;
         };
-        networking.hostName = "edge";
-        losos.edge = {
-          enable = true;
-          acmeEmail = "test@losos.cfd";
-          registrarApiPort = 8443;
-          ratholeBindPort = 2333;
-          ratholePortRange = "50000-50010";
-          reconcileInterval = "2s";
-          heartbeatTtl = "30s";
-          bootstrapTokenFile = bootstrapToken;
-          tenants.office-box = {
-            hostname = "office-box.example.test";
-            tokenFile = proxyToken;
-          };
-          lan = {
-            advertise = true;
-            url = edgeUrl;
-            ratholeEndpoint = "edge:2333";
-          };
-          manage = {
-            enable = true;
-            ui = ui;
-          };
-        };
-        environment.systemPackages = [ pkgs.jq ];
-        virtualisation = {
-          memorySize = 1024;
-          cores = 2;
+      };
+
+    far =
+      { ... }:
+      {
+        imports = [ (anEdge "far") ];
+        # Not advertised (no mDNS crosses a router) but dialable.
+        losos.edge.registrarApiBind = "::";
+        virtualisation.vlans = [ 2 ];
+        networking.interfaces.eth1 = {
+          ipv4.routes = [
+            {
+              address = "192.168.1.0";
+              prefixLength = 24;
+              via = "192.168.2.2";
+            }
+          ];
+          ipv6.routes = [
+            {
+              address = "2001:db8:1::";
+              prefixLength = 64;
+              via = "2001:db8:2::2";
+            }
+          ];
         };
       };
 
@@ -129,12 +174,11 @@ pkgs.testers.nixosTest {
           mdns.enable = true;
           proxy = {
             enable = true;
-            edgeRatholeEndpoint = "edge:2333";
+            edgeTunnelEndpoint = "edge:2333";
             registrarUrl = edgeUrl;
             hostname = "office-box.example.test";
             applianceId = "office-box";
             tokenFile = proxyToken;
-            bootstrapTokenFile = bootstrapToken;
             heartbeatInterval = "3s";
             registrar.package = lososPkgs.losos-registrar;
           };
@@ -143,6 +187,23 @@ pkgs.testers.nixosTest {
         # it from the LAN.
         services.nginx.enable = true;
         networking.firewall.allowedTCPPorts = [ 80 ];
+        # far's network is one hop away, through edge.
+        networking.interfaces.eth1 = {
+          ipv4.routes = [
+            {
+              address = "192.168.2.0";
+              prefixLength = 24;
+              via = "192.168.1.2";
+            }
+          ];
+          ipv6.routes = [
+            {
+              address = "2001:db8:2::";
+              prefixLength = 64;
+              via = "2001:db8:1::2";
+            }
+          ];
+        };
         environment.systemPackages = [ pkgs.jq ];
         virtualisation = {
           memorySize = 1536;
@@ -158,6 +219,7 @@ pkgs.testers.nixosTest {
     TOKEN = "${proxyTokenValue}"
 
     edge.start()
+    far.start()
     box.start()
 
     edge.wait_for_unit("losos-registrar.service")
@@ -193,17 +255,17 @@ pkgs.testers.nixosTest {
     box.wait_until_succeeds(
       f"curl -fsS -H 'Authorization: Bearer {admin}' 127.0.0.1:8082/api/edge"
       " | jq -e '.path.source == \"lan\" and .manage.candidate != null"
-      " and .manage.refused == null and .manage.managedBy == null and .manage.active == false'",
+      " and .manage.refused == null and .manage.managedBy == null and .manage.active == false"
+      " and ([.edges[] | select(.url == \"${edgeUrl}\") | .onNetwork] == [true])'",
       timeout=600,
     )
-    box.wait_for_unit("losos-rathole-client.service")
+    box.wait_for_unit("losos-tunnel-client.service")
     box.wait_for_unit("losos-registrar-announce.service")
-    edge.wait_until_succeeds("grep -F -q '[server.services.office-box]' /etc/rathole/server.toml", timeout=300)
+    edge.wait_until_succeeds("jq -e '.services[\"office-box\"]' /etc/losos-tunnel/server.json", timeout=300)
     port = edge.succeed(
-      "grep -A3 -F '[server.services.office-box]' /etc/rathole/server.toml"
-      " | sed -n 's/.*bind_addr = \"127.0.0.1:\\([0-9]*\\)\".*/\\1/p'"
+      "jq -r '.services[\"office-box\"].bind' /etc/losos-tunnel/server.json | sed 's/.*://'"
     ).strip()
-    assert port, "no rathole port for the box"
+    assert port, "no tunnel port for the box"
     # The tunnel carries the box's own port 80.
     edge.wait_until_succeeds(f"curl -s -o /dev/null -w '%{{http_code}}' -H 'Host: losos-manage.invalid' 127.0.0.1:{port}/ | grep -q 404")
 
@@ -297,5 +359,53 @@ pkgs.testers.nixosTest {
     assert "LosOS edge" in edge.succeed("curl -fsS http://127.0.0.1:8443/manage/boxes/office-box")
     # From the LAN too: the edge's operators open it from their own machines.
     assert "LosOS edge" in box.succeed("curl -fsS ${edgeUrl}/manage/")
+
+    # 9. An edge outside the box's network. Something on the LAN advertises
+    #    far (a reflector would do the same), and edge goes quiet, so the
+    #    box's next scan finds far "on the LAN" and picks it.
+    far.wait_for_unit("losos-registrar.service")
+    far.wait_until_succeeds("curl -fsS http://localhost:8443/health")
+    far_key = far.succeed("cat /var/lib/losos-registrar/manage-key").strip()
+    box.succeed("curl -fsS ${farUrl}/health")
+    box.succeed("ip route get 192.168.2.3 | grep -q 'via 192.168.1.2'")
+    edge.succeed(
+      "printf '%s\n' '[Service]' 'Name=losos edge far away' 'Type=_losos-edge._tcp' 'Port=8443'"
+      " 'TxtText=url=${farUrl} tunnel=far:2333 enrol=closed txtvers=1'"
+      " > /etc/systemd/dnssd/far.dnssd"
+    )
+    edge.succeed("systemctl stop losos-registrar.service")
+    edge.succeed("systemctl restart systemd-resolved.service")
+    box.wait_until_succeeds(
+      f"curl -fsS -H 'Authorization: Bearer {admin}' 127.0.0.1:8082/api/edge"
+      " | jq -e '.path.url == \"${farUrl}\" and .path.source == \"lan\""
+      " and .manage.candidate == null and .manage.refused == \"outsideNetwork\""
+      " and ([.edges[] | select(.url == \"${farUrl}\") | .onNetwork] == [false])'",
+      timeout=600,
+    )
+    code, body = owner("POST", "/api/edge/manage", {"enabled": True})
+    assert code == "409", (code, body)
+    assert json.loads(body).get("notManageable") is True, body
+    box.fail("test -e /run/losos/edge-managed")
+    # The box tunnels through far all the same: far proxies its traffic.
+    far.wait_until_succeeds("jq -e '.services[\"office-box\"]' /etc/losos-tunnel/server.json", timeout=300)
+    far_port = far.succeed(
+      "jq -r '.services[\"office-box\"].bind' /etc/losos-tunnel/server.json | sed 's/.*://'"
+    ).strip()
+    assert far_port, "no tunnel port for the box on far"
+    far.wait_until_succeeds(
+      f"curl -s -o /dev/null -w '%{{http_code}}' -H 'Host: losos-manage.invalid' 127.0.0.1:{far_port}/ | grep -q 404",
+      timeout=300,
+    )
+    far.wait_until_succeeds(
+      f"curl -fsS -H 'Authorization: Bearer {far_key}' 127.0.0.1:8443/manage/api/boxes"
+      " | jq -e '[.boxes[] | select(.id == \"office-box\") | .managed] == [false]'",
+      timeout=120,
+    )
+    # And may not manage it: its relay is refused, and so is a call it
+    # forges straight through the tunnel with the box's own token.
+    code, _ = call(far, "http://127.0.0.1:8443/manage/api/boxes/office-box/api/site", headers=[f"Authorization: Bearer {far_key}"])
+    assert code == "403", code
+    code, body = call(far, f"http://127.0.0.1:{far_port}/api/site", headers=["Host: losos-manage.invalid", f"X-Losos-Edge: {TOKEN}"])
+    assert code == "401", (code, body)
   '';
 }

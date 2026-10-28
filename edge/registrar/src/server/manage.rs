@@ -19,10 +19,17 @@
 //!                                       with the admin UI's /assets/ and /theme-boot.js
 //! GET  /manage/api/boxes                Bearer <key>: every box, and whether it is managed
 //! GET|POST /manage/api/boxes/{id}/api/… Bearer <key>: relayed to the box's lososd
+//! GET  /manage/api/statistics           Bearer <key>: what Traefik counted (`crate::stats`)
+//! …      /manage/api/gateway…           Bearer <key>: the gateway's own settings
+//!                                       (`gateway`)
 //! ```
 //!
+//! The statistics need `--manage-traefik-metrics URL`, Traefik's Prometheus
+//! entrypoint on loopback; without it the route says so in `reason`.
+//!
 //! The key is 64 hex characters in `--manage-key-file`, made on the first
-//! start if missing; the gateway's console shows it (`losos-edge manage-key`).
+//! start if missing; the gateway's screen shows it, since the gateway has no
+//! shell to read it from (`modules/edge-gateway.nix`).
 
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
@@ -39,8 +46,11 @@ use miette::{miette, Context, IntoDiagnostic, Result};
 use tokio::sync::Semaphore;
 
 use super::{ct_eq, lookup_tenant, AppState};
+
+mod gateway;
 use crate::action::Action;
 use crate::opts::ManageOpts;
+use crate::stats::{self, Reading, Ring};
 
 /// The name a box's nginx serves the edge on (`modules/proxy.nix`,
 /// `manageHost`). `.invalid` never resolves, so nothing but this relay asks
@@ -70,6 +80,9 @@ pub(crate) struct Manage {
     managed: std::sync::Mutex<HashMap<String, Instant>>,
     relays: Semaphore,
     http: reqwest::Client,
+    /// Traefik's Prometheus endpoint, and what was read from it.
+    metrics: Option<String>,
+    stats: std::sync::Mutex<Ring>,
 }
 
 impl Manage {
@@ -95,6 +108,8 @@ impl Manage {
             managed: std::sync::Mutex::new(HashMap::new()),
             relays: Semaphore::new(MAX_RELAYS),
             http,
+            metrics: opts.traefik_metrics.clone(),
+            stats: std::sync::Mutex::new(Ring::default()),
         })
     }
 
@@ -201,6 +216,7 @@ pub(super) fn router(state: AppState) -> Router {
     Router::new()
         .route("/manage", get(|| async { Redirect::permanent("/manage/") }))
         .route("/manage/api/boxes", get(boxes))
+        .route("/manage/api/statistics", get(statistics))
         .route(
             "/manage/api/boxes/{id}/api/{*rest}",
             get(relay).post(relay).put(relay).delete(relay),
@@ -211,6 +227,7 @@ pub(super) fn router(state: AppState) -> Router {
         // ones, at the root as the box serves them.
         .route("/assets/{*file}", get(asset))
         .route("/theme-boot.js", get(theme_boot))
+        .merge(gateway::routes())
         .layer(DefaultBodyLimit::max(MAX_RELAY_BODY))
         .with_state(state)
 }
@@ -241,6 +258,85 @@ async fn boxes(State(st): State<AppState>, headers: HeaderMap) -> Response {
         .collect();
     rows.sort_by_key(|r| r["seenAgoSecs"].as_u64().unwrap_or(u64::MAX));
     Json(serde_json::json!({ "boxes": rows })).into_response()
+}
+
+/// Read Traefik's counters every [`stats::SCRAPE_EVERY`] for as long as the
+/// registrar runs. Spawned by `serve` when the page has a metrics URL.
+pub(super) async fn scrape_loop(manage: Arc<Manage>) {
+    let Some(url) = manage.metrics.clone() else {
+        return;
+    };
+    let mut tick = tokio::time::interval(stats::SCRAPE_EVERY);
+    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    let mut warned = false;
+    loop {
+        tick.tick().await;
+        let read = async {
+            let resp = manage
+                .http
+                .get(&url)
+                .timeout(SCRAPE_TIMEOUT)
+                .send()
+                .await
+                .and_then(reqwest::Response::error_for_status)?;
+            resp.text().await
+        }
+        .await;
+        let now = unix_now();
+        let mut ring = manage
+            .stats
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        match read {
+            Ok(text) => {
+                ring.record(Reading::from_samples(&stats::parse(&text)), now);
+                warned = false;
+            }
+            Err(e) => {
+                if !warned {
+                    tracing::warn!(target: Action::Serve.target(), "reading Traefik's metrics at {url}: {e}");
+                    warned = true;
+                }
+                ring.failed(format!("Traefik's counters could not be read at {url}"));
+            }
+        }
+    }
+}
+
+/// One read of Traefik's counters; they are a few kilobytes on loopback.
+const SCRAPE_TIMEOUT: Duration = Duration::from_secs(5);
+
+fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+}
+
+/// What Traefik counted: the Statistics page's document (`crate::stats`).
+async fn statistics(State(st): State<AppState>, headers: HeaderMap) -> Response {
+    let Some(manage) = st.manage.clone() else {
+        return off();
+    };
+    if !manage.signed_in(&headers) {
+        return unauthorized();
+    }
+    if manage.metrics.is_none() {
+        return Json(serde_json::json!({
+            "available": false,
+            "reason": "this edge does not read Traefik's counters",
+            "since": null,
+            "totals": {}, "codes": {}, "protocols": {},
+            "perMinute": [], "routes": [],
+        }))
+        .into_response();
+    }
+    let hosts = st.discovery.hosts_by_service();
+    let doc = manage
+        .stats
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .document(&hosts, unix_now());
+    Json(doc).into_response()
 }
 
 /// A path under the box's `/api/` this relay will ask for: plain segments
@@ -312,7 +408,7 @@ async fn relay(
         .await
         .into_iter()
         .find(|v| v.id == id)
-        .map(|v| v.rathole_port)
+        .map(|v| v.tunnel_port)
     else {
         return plain(StatusCode::NOT_FOUND, "no box by that name");
     };
