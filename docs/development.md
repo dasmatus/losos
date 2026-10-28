@@ -114,9 +114,14 @@ say so when they did not run.
 
 - `flake.lock` pins the nixpkgs that builds the appliance; `devenv.lock` the
   one that lints and tests it. Update them together.
-- After changing `Cargo.lock` or `admin-ui/app/package-lock.json`, update
-  `cargoHash` or `npmDepsHash` in `nix/packages.nix`. The admin UI hash is
-  also in `nix/tests/admin-ui.nix`.
+- A `Cargo.lock` or `package-lock.json` is vendored by a fixed-output
+  derivation whose hash (`cargoHash`, `npmDepsHash`, `pluginsCargoHash`) is
+  written in `nix/packages.nix` or a test under `nix/tests/`. After changing
+  a lock file, `.github/scripts/fix-hashes.py` rewrites the hashes of the
+  lock files that differ from `origin/main` (`--all` for every one, `--check`
+  to only report). On a pull request from a branch of this repository,
+  Dependabot's included, `dependency-hashes.yml` runs it and pushes the
+  result to the branch.
 
 ## Handbook
 

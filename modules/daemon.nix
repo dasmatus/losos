@@ -155,10 +155,13 @@ in
         # Where the tunnel goes when that configured edge is the path. An
         # edge found on the LAN carries its own in the advert (`tunnel=`).
         LOSOS_EDGE_TUNNEL = config.losos.proxy.edgeTunnelEndpoint;
-        # The trust anchor for "official" edges (losos.proxy.officialRootKeyFile):
-        # a public key, so a store path. Without a key in it no edge is
-        # official and the market relay stays off.
-        LOSOS_EDGE_ROOT_KEY_FILE = "${config.losos.proxy.officialRootKeyFile}";
+        # What a box checks an edge against before it trusts it with
+        # trading (losos.proxy.gateways): the TPM makers' certificates, the
+        # published gateway images and LosOS's payout addresses. Public
+        # data, so store paths.
+        LOSOS_GATEWAY_TPM_ROOTS = "${config.losos.proxy.gateways.tpmRoots}";
+        LOSOS_GATEWAY_IMAGES = "${pkgs.writeText "losos-gateway-images.json" (builtins.toJSON config.losos.proxy.gateways.images)}";
+        LOSOS_GATEWAY_PAYOUTS = "${pkgs.writeText "losos-gateway-payouts.json" (builtins.toJSON config.losos.proxy.gateways.payouts)}";
         # Edges and official clusters the box must not use (losos.proxy.bansFile):
         # read on every scan, a missing file bans nothing.
         LOSOS_EDGE_BANS_FILE = config.losos.proxy.bansFile;

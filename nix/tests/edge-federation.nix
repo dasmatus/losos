@@ -7,7 +7,8 @@
 #               the direct row it falls back to). No LAN advert.
 #   * `spoke` — the gateway: `losos.edge.gateway.enable`, i.e. LAN advert, open
 #               enrolment, the uplink read from /var/lib/losos-edge/uplink.json
-#               that `losos-edge uplink set` writes, a root console.
+#               that the manage page writes, and no shell: no login prompt,
+#               no SSH, the manage page's address and key on tty1.
 #   * `box`   — lososd with the master proxy on: the edge scanner, the path
 #               rule, and modules/proxy.nix's two units driven by it. Nginx on
 #               :80 answers a fixed page so a request through the tunnels has
@@ -20,7 +21,7 @@
 #      spoke's tunnel certificate pinned under losos-edge-pins/;
 #   2. the spoke enrolled the box on first contact (open enrolment) and
 #      routes to it: one tunnel hop answers;
-#   3. `losos-edge uplink set` on the spoke relays the box to the hub: the
+#   3. the hub row set on the spoke's manage page relays the box to the hub: the
 #      hub routes `acme.mattbox` with the spoke's token and
 #      Host(mattbox.acme.losos.cfd), the spoke's uplink tunnel file carries
 #      the service, the hub's certificate is pinned on the spoke, and a request
@@ -114,7 +115,7 @@ pkgs.testers.nixosTest {
       };
 
     spoke =
-      { lib, ... }:
+      { lib, pkgs, ... }:
       {
         imports = [
           ../../modules/options.nix
@@ -126,9 +127,11 @@ pkgs.testers.nixosTest {
         networking.hostName = "spoke";
         # The gateway preset is the feature under test; the rest is the
         # test's impatience.
-        # The test framework gives root its own password file; the preset's
-        # first password would only draw a precedence warning beside it.
-        users.users.root.initialPassword = lib.mkForce null;
+        # The test talks to the gateway's API with curl; the image has none.
+        environment.systemPackages = [ pkgs.curl ];
+        # The test framework gives root a password file; the gateway's locked
+        # root is what is under test, and the driver needs no password.
+        users.users.root.hashedPasswordFile = lib.mkForce null;
         # The screenshot below is of the banner. The test instrumentation
         # raises the console log level to 7 (plain assignment, above the
         # preset's mkDefault 3), so the image's quiet console is restored
@@ -221,13 +224,39 @@ pkgs.testers.nixosTest {
     spoke.wait_until_succeeds("curl -fsS http://localhost:8443/tunnel-pin")
     spoke_pin = spoke.succeed("curl -fsS http://localhost:8443/tunnel-pin").strip()
     assert spoke_pin != hub_pin, "two edges made the same certificate"
-    # The gateway expired the first root password; sshd is installed and
-    # not running.
-    assert spoke.succeed("chage -l root | grep -i 'last password change'").strip().lower().endswith("password must be changed")
-    assert spoke.succeed("systemctl is-active sshd.service || true").strip() == "inactive"
-    assert "not set" in spoke.succeed("losos-edge status")
-    # What a person sees on the gateway's tty1 before logging in.
+    # The gateway has no shell: no login prompt anywhere, no sshd, no root
+    # password.
+    spoke.fail("pgrep -x agetty")
+    spoke.fail("systemctl cat sshd.service")
+    assert spoke.succeed("getent shadow root | cut -d: -f2").strip() == "!"
+    for unit in ["getty@tty2.service", "serial-getty@ttyS0.service", "autovt@tty3.service"]:
+        assert spoke.succeed(f"systemctl is-enabled {unit} || true").strip() == "masked", unit
+
+    # tty1 shows the manage page and the key that signs in there.
+    spoke.wait_for_unit("losos-edge-screen.service")
+    manage_key = spoke.wait_until_succeeds("cat /var/lib/losos-registrar/manage-key").strip()
+    spoke.wait_until_succeeds(f"grep -q {manage_key[:16]} /dev/vcs1")
+    screen = spoke.succeed("cat /dev/vcs1")
+    assert "http://spoke.local:8443/manage/" in screen, screen
+    assert "no console login and no SSH" in screen, screen
     spoke.screenshot("edge-gateway-tty1")
+
+    def manage(method, path, data=None):
+        extra = "-H 'Content-Type: application/json' --data-binary @- " if data is not None else ""
+        cmd = (
+            f"curl -s -o /tmp/body -w '%{{http_code}}' -X {method} "
+            f"-H 'Authorization: Bearer {manage_key}' {extra}http://localhost:8443{path}"
+        )
+        if data is not None:
+            cmd = f"printf %s {shlex.quote(json.dumps(data))} | " + cmd
+        code = spoke.succeed(cmd).strip()
+        return code, spoke.succeed("cat /tmp/body")
+
+    code, body = manage("GET", "/manage/api/gateway")
+    assert code == "200", body
+    gateway = json.loads(body)
+    assert gateway["uplink"]["set"] is None, gateway
+    assert gateway["passport"]["claimed"] is False, gateway
 
     box.wait_for_unit("systemd-resolved.service")
     box.wait_for_unit("nginx.service")
@@ -304,13 +333,15 @@ pkgs.testers.nixosTest {
         return json.loads(machine.succeed("cat /etc/losos-tunnel/server.json"))["services"]
 
     spoke.wait_until_succeeds("grep -F -q '\"mattbox\":' /etc/losos-tunnel/server.json")
-    enrolled = spoke.succeed("losos-registrar enrol list --dir /var/lib/losos-registrar/enrolled")
-    assert enrolled.strip() == "mattbox mattbox.acme.losos.cfd", enrolled
+    enrolled = json.loads(spoke.succeed("cat /var/lib/losos-registrar/enrolled/tenants.json"))
+    assert list(enrolled) == ["mattbox"], enrolled
+    assert enrolled["mattbox"]["hostname"] == "mattbox.acme.losos.cfd", enrolled
+    assert json.loads(manage("GET", "/manage/api/gateway")[1])["enrolled"] == ["mattbox"]
     assert spoke.succeed("stat -c %a /var/lib/losos-registrar/enrolled/mattbox.token").strip() == "600"
     assert spoke.succeed("cat /var/lib/losos-registrar/enrolled/mattbox.token").strip() == "${proxyTokenValue}"
-    boxes = spoke.succeed("losos-edge boxes")
-    assert boxes.startswith("mattbox\tmattbox.acme.losos.cfd\tport "), boxes
-    spoke_port = boxes.split("port ")[1].strip()
+    spoke_registry = json.loads(spoke.succeed("cat /var/lib/losos-registrar/registry.json"))
+    assert spoke_registry["tenants"]["mattbox"]["hostname"] == "mattbox.acme.losos.cfd", spoke_registry
+    spoke_port = str(spoke_registry["tenants"]["mattbox"]["port"])
 
     def through(machine, port):
         return machine.wait_until_succeeds(f"curl -fsS --max-time 5 http://127.0.0.1:{port}/", timeout=120)
@@ -318,12 +349,14 @@ pkgs.testers.nixosTest {
     assert through(spoke, spoke_port).strip() == "hello-losos"
 
     # ── 3. The uplink: the box reaches the hub through the spoke ─────────
-    out = spoke.succeed(
-      "losos-edge uplink set --id acme --token-file ${spokeToken} "
-      "--registrar http://hub:8443 --tunnel hub:2333"
-    )
-    assert "uplink set: acme" in out, out
-    shown = json.loads(spoke.succeed("losos-edge uplink show"))
+    code, body = manage("PUT", "/manage/api/gateway/uplink", {
+      "id": "acme",
+      "token": "${spokeTokenValue}",
+      "registrarUrl": "http://hub:8443",
+      "tunnelEndpoint": "hub:2333",
+    })
+    assert code == "200", body
+    shown = json.loads(spoke.succeed("cat /var/lib/losos-edge/uplink.json"))
     assert shown["registrar_url"] == "http://hub:8443" and shown["id"] == "acme", shown
     assert shown["tunnel_endpoint"] == "hub:2333", shown
     assert spoke.succeed("stat -c %a /var/lib/losos-edge/uplink.token").strip() == "600"
@@ -343,7 +376,7 @@ pkgs.testers.nixosTest {
     assert uplink["remote"] == "hub:2333" and uplink["pin"] == hub_pin, uplink
     assert spoke.succeed("cat /var/lib/losos-edge/hub-tunnel.pin").strip() == hub_pin
     spoke.wait_for_unit("losos-tunnel-uplink.service")
-    assert "relaying: 1 box" in spoke.succeed("losos-edge status")
+    assert json.loads(manage("GET", "/manage/api/gateway")[1])["uplink"]["relaying"] == 1
 
     # Two tunnels, one request: in at the hub, out at the box's Nginx.
     assert through(hub, hub_port).strip() == "hello-losos"
@@ -417,9 +450,13 @@ pkgs.testers.nixosTest {
     spoke.wait_until_succeeds("grep -F -q '\"mattbox\":' /etc/losos-tunnel/server.json")
     assert through(spoke, spoke_port).strip() == "hello-losos"
 
-    # `losos-edge uplink clear` stops relaying and leaves nothing behind.
-    spoke.succeed("losos-edge uplink clear")
+    # Clearing the hub on the manage page stops relaying and leaves nothing
+    # behind; the path unit stops the tunnel.
+    code, body = manage("DELETE", "/manage/api/gateway/uplink")
+    assert code == "200", body
     spoke.fail("test -e /var/lib/losos-edge/uplink.json")
+    spoke.fail("test -e /var/lib/losos-edge/uplink.token")
+    spoke.fail("test -e /var/lib/losos-edge/hub-tunnel.pin")
     spoke.fail("test -e /etc/losos-tunnel/uplink.json")
     spoke.wait_until_succeeds("test \"$(systemctl is-active losos-tunnel-uplink.service)\" = inactive")
   '';
