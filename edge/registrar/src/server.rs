@@ -110,6 +110,9 @@ const PUBLIC_FILE_MODE: u32 = 0o644;
 /// rathole server config carries service tokens → owner-only. Shared with
 /// the `seed` subcommand, which writes the same file at first boot.
 pub(crate) const RATHOLE_FILE_MODE: u32 = 0o600;
+/// The box ids `losos-hidden-sync` reads, as root: the ids are on the
+/// public routes anyway, but nothing else needs them.
+const HIDDEN_SERVICES_FILE_MODE: u32 = 0o600;
 
 /// Hard cap on a request body. Every route takes a three-field JSON object;
 /// 16 KiB is orders of magnitude more than any of them needs. Enforced at the
@@ -1274,7 +1277,7 @@ fn remember_pass(st: &AppState, id: &str, pass: Option<&str>) {
 async fn heartbeat(
     State(st): State<AppState>,
     Json(req): Json<HeartbeatReq>,
-) -> Result<StatusCode, ApiError> {
+) -> Result<Response, ApiError> {
     authenticate(&st, &req.appliance_id, &req.token).await?;
     // Recorded before the liveness check so the two cannot disagree about
     // which heartbeat this was.
@@ -1289,7 +1292,18 @@ async fn heartbeat(
         if let Some(manage) = &st.manage {
             manage.record(&req.appliance_id, req.managed);
         }
-        Ok(StatusCode::NO_CONTENT)
+        // The box's Tor and I2P addresses on this edge, when it has any
+        // (crate::hidden); the box shows them and lets LosOS Login answer
+        // on them. An older box reads any 2xx as a heartbeat taken.
+        if let Some(h) = &st.opts.hidden {
+            let addresses = crate::hidden::read_addresses(Path::new(&h.addresses_file)).await;
+            if let Some(a) = addresses.get(&req.appliance_id) {
+                return Ok(
+                    (StatusCode::OK, Json(serde_json::json!({ "hidden": a }))).into_response()
+                );
+            }
+        }
+        Ok(StatusCode::NO_CONTENT.into_response())
     } else {
         // Unknown id mid-run: tell the appliance to re-register. (It will, on
         // the next announce loop, because 404 triggers re-enroll.)
@@ -3438,6 +3452,19 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
     .await
     .with_context(|| format!("write {}", st.opts.rathole_config))?;
 
+    // Tor and I2P (crate::hidden): never fatal, like the zone below. A box
+    // whose address is not made yet is routed on a later tick.
+    let changed_hidden = match &st.opts.hidden {
+        None => false,
+        Some(h) => match reconcile_hidden(h, &st.opts.traefik_dir, &enriched).await {
+            Ok(changed) => changed,
+            Err(e) => {
+                tracing::error!(target: Action::Reconcile.target(), "Tor and I2P routes: {e:?}");
+                false
+            }
+        },
+    };
+
     // No explicit reload signal: rathole 0.5 hot-reloads via its `notify`
     // file-watcher, which re-applies the config the instant server.toml is
     // rewritten above. SIGHUP has no handler in rathole 0.5 (default action
@@ -3487,6 +3514,7 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
         || repaired
         || changed_traefik
         || changed_rathole
+        || changed_hidden
         || dropped_windows
         || changed_windows
         || changed_zone
@@ -3970,6 +3998,42 @@ async fn pin_hub_noise_key(
             None
         }
     }
+}
+
+/// The live boxes for `losos-hidden-sync`, and Traefik's routes for the
+/// addresses it made (`crate::hidden`). Whether either file changed.
+async fn reconcile_hidden(
+    h: &crate::hidden::HiddenOpts,
+    traefik_dir: &str,
+    tenants: &[TenantView],
+) -> Result<bool> {
+    let ids: Vec<&str> = tenants.iter().map(|t| t.id.as_str()).collect();
+    let services = Path::new(&h.dir).join(crate::hidden::SERVICES_FILE);
+    let changed_services = write_if_changed(
+        &services,
+        &crate::hidden::services_json(&ids, h),
+        HIDDEN_SERVICES_FILE_MODE,
+    )
+    .await
+    .with_context(|| format!("write {}", services.display()))?;
+    let addresses = crate::hidden::read_addresses(Path::new(&h.addresses_file)).await;
+    let routes: Vec<crate::config::HiddenRoute> = tenants
+        .iter()
+        .filter_map(|t| {
+            addresses.get(&t.id).map(|a| crate::config::HiddenRoute {
+                id: t.id.clone(),
+                rathole_port: t.rathole_port,
+                hosts: a.hosts(),
+            })
+        })
+        .collect();
+    let path = Path::new(traefik_dir).join("hidden.yml");
+    let changed_routes = match crate::config::hidden_routes_yaml(&routes) {
+        Some(text) => write_if_changed(&path, &text, TRAEFIK_FILE_MODE).await,
+        None => remove_if_exists(&path).await,
+    }
+    .with_context(|| format!("write {}", path.display()))?;
+    Ok(changed_services || changed_routes)
 }
 
 async fn write_if_changed(path: &Path, content: &str, mode: u32) -> Result<bool> {

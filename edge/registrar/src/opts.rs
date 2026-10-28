@@ -244,6 +244,9 @@ pub struct ServeOpts {
     /// of waiting jobs in. `None` unless `--ci-dir` was given, and every
     /// `/ci/*` route answers 503.
     pub ci_dir: Option<String>,
+    /// Tor and I2P addresses for the boxes (`crate::hidden`). `None` unless
+    /// `--hidden-dir` was given.
+    pub hidden: Option<crate::hidden::HiddenOpts>,
 }
 
 /// `serve --manage-key-file FILE [--manage-ui DIR]`.
@@ -330,6 +333,10 @@ pub struct AnnounceOpts {
     /// (`losos.inference.lend`). Re-read on every heartbeat; missing,
     /// unreadable or not a number lends nothing.
     pub llm_lend_file: Option<String>,
+    /// `--hidden-file`: where to keep the Tor and I2P addresses the edge
+    /// made for this box (`crate::hidden`), from each heartbeat's answer.
+    /// Removed when the edge makes none.
+    pub hidden_file: Option<String>,
 }
 
 /// `join` options. Runs once per boot on the appliance, from
@@ -543,6 +550,23 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                 routes: parse_routes(&rest)?,
                 enrol_dir: arg(&rest, "--enrol-dir").map(str::to_string),
                 ci_dir: arg(&rest, "--ci-dir").map(str::to_string),
+                hidden: match arg(&rest, "--hidden-dir") {
+                    None => None,
+                    Some(dir) => Some(crate::hidden::HiddenOpts {
+                        dir: dir.to_string(),
+                        addresses_file: arg(&rest, "--hidden-addresses")
+                            .unwrap_or("/var/lib/losos-hidden/addresses.json")
+                            .to_string(),
+                        http_port: arg(&rest, "--hidden-http-port")
+                            .unwrap_or("8480")
+                            .parse()
+                            .map_err(|_| miette!("bad --hidden-http-port"))?,
+                        https_port: arg(&rest, "--hidden-https-port")
+                            .unwrap_or("8444")
+                            .parse()
+                            .map_err(|_| miette!("bad --hidden-https-port"))?,
+                    }),
+                },
                 operator: arg(&rest, "--access-dir").map(|dir| crate::operator::OperatorOpts {
                     access_dir: dir.to_string(),
                     keys_file: arg(&rest, "--access-keys-file")
@@ -641,6 +665,7 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
             relay_pass_file: arg(&rest, "--relay-pass-file").map(str::to_string),
             managed_file: arg(&rest, "--managed-file").map(str::to_string),
             llm_lend_file: arg(&rest, "--llm-lend-file").map(str::to_string),
+            hidden_file: arg(&rest, "--hidden-file").map(str::to_string),
         })),
         "seed" => Ok(Mode::Seed(SeedOpts {
             rathole_config: req(&rest, "--rathole-config")?.to_string(),
