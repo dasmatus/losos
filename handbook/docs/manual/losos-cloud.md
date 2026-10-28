@@ -60,7 +60,7 @@ more than one picture; click a face to see all of that person's photos and
 give them a name. Give two people the same name and they become one.
 
 All of it happens on the box, in the background and at the lowest priority,
-a few minutes after a picture arrives: two small models find and compare
+a few minutes after a picture arrives. Two small models find and compare
 faces on the box's own processor, and nothing about a picture, a face or a
 place is sent anywhere. Only you see your photos' faces, names and places;
 other people on the box see none of them.
@@ -125,7 +125,7 @@ address ending in `/nextcloud` keep working too.
 
 The files are moved, not copied, so the move needs no extra space. What
 Nextcloud kept beside them stays where it was; only an
-[erase](backup-and-erase) clears it, with everything else. If the move fails, LosOS Cloud does not open on an empty folder: the
+[erase](backup-and-erase) clears it, with everything else. If the move fails, LosOS Cloud does not open on an empty folder. The
 box tries again on the next start.
 
 ## Settings
@@ -133,5 +133,5 @@ box tries again on the next start.
 The **Apps** pane's LosOS Cloud fold sets how long the trash keeps files
 (`losos.cloud.trashDays`, 1 to 365 days). `losos.cloud.enable` on the
 **Advanced** pane turns LosOS Cloud off, and `losos.cloud.photos.faces`
-stops Photos looking for faces: the next pass deletes every face and name
+stops Photos looking for faces. The next pass deletes every face and name
 found so far, and the camera's details stay.

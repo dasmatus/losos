@@ -135,7 +135,7 @@ The **Statistics** widget puts the last hour on the Overview. Add it under
 Small apps of your own, a shopping list, a chore chart, a reading list,
 that you describe and the AI on the box writes
 ([Build with AI](../in-depth/widget-builder)). They are under **Your
-apps** on the Apps page. **Make an app** opens the editor: describe the app
+apps** on the Apps page. **Make an app** opens the editor. Describe the app
 on the **Build with AI** tab, or write its code on the **Code** tab. The
 preview beside it is the real app, so you can use it before you save it.
 It forgets what you enter; the saved app keeps its data on the box.
@@ -149,7 +149,7 @@ beyond its own data. **Change** opens it in the editor again, and
 Each app also has a private repository of its own on LosOS Git, named
 after it (`app-chores` for an app called Chores), and every save is a
 commit there. **Source** on the app's page opens it. Clone it, change
-`app.jsx` and push: within a minute the box checks the change the way it
+`app.jsx` and push. Within a minute the box checks the change the way it
 checks a save, and the app runs it. If the change does not compile, the app
 stays as it was, its page says why, and the box adds a commit that puts the
 app back, so your next `git pull` shows that too. Files you add to the
