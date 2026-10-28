@@ -137,6 +137,25 @@ pub struct Anchors {
     pub payouts: BTreeMap<String, String>,
 }
 
+impl Anchors {
+    /// The three files a box ships: TPM makers' roots (PEM), the published
+    /// gateway images (a JSON list of [`Image`]) and LosOS's payout
+    /// addresses (a JSON object, network to address).
+    pub fn from_texts(
+        roots_pem: &str,
+        images_json: &str,
+        payouts_json: &str,
+    ) -> Result<Anchors, String> {
+        Ok(Anchors {
+            tpm_roots: roots_from_pem(roots_pem).map_err(|e| format!("the TPM roots: {e}"))?,
+            images: serde_json::from_str(images_json)
+                .map_err(|e| format!("the gateway images: {e}"))?,
+            payouts: serde_json::from_str(payouts_json)
+                .map_err(|e| format!("the payout addresses: {e}"))?,
+        })
+    }
+}
+
 /// Root certificates from a PEM bundle; anything not a certificate block is
 /// skipped.
 pub fn roots_from_pem(text: &str) -> Result<Vec<Certificate>, ekcert::CertError> {
