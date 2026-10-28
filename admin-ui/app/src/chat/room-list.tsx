@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { Avatar } from "./avatar";
+import { isStartNotice } from "./rtc";
 import { directPartner, directRooms, isSpace, lastActive, memberName, plainBody, ROOM_EVENTS, roomName, spaceChildren, unread, useEmitted } from "./model";
 
 export interface RoomListProps {
@@ -26,7 +27,9 @@ const TEXT_TYPES = new Set(["m.text", "m.emote", "m.notice"]);
 /** The last message's line under the room's name. A picture, file or
  *  voice message says so rather than showing its file name. */
 function preview(room: Room, attachment: string): string {
-  const last = [...room.getLiveTimeline().getEvents()].reverse().find((ev) => ev.getType() === "m.room.message" || ev.getType() === "m.room.encrypted");
+  const last = [...room.getLiveTimeline().getEvents()]
+    .reverse()
+    .find((ev) => (ev.getType() === "m.room.message" || ev.getType() === "m.room.encrypted") && !isStartNotice(ev.getContent()));
   if (last === undefined) return "";
   const content = last.getContent();
   const text = typeof content["msgtype"] !== "string" || TEXT_TYPES.has(content["msgtype"]);

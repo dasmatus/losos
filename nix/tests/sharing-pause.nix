@@ -23,6 +23,8 @@ let
   lososPkgs = import ../packages.nix { inherit pkgs; };
   screens = import ./screens { inherit pkgs; };
   after = before == null;
+  # The same, for the test script.
+  afterPy = if after then "True" else "False";
 
   ui = import ./admin-ui-without-lab.nix (
     lososPkgs.losos-admin-ui.overrideAttrs (_: lib.optionalAttrs (!after) { src = before; })
@@ -178,7 +180,7 @@ pkgs.testers.nixosTest {
             "systemd-creds decrypt --name=admin-token /etc/credstore.encrypted/admin-token -"
         ).strip()
         edge = json.loads(box.succeed(f"curl -fsS -H 'Authorization: Bearer {token}' http://127.0.0.1:8082/api/edge"))
-        if ${lib.boolToString after}:
+        if ${afterPy}:
             assert edge["sharingPausedAt"] == ${toString pausedAt}, edge
         # No edge on this LAN: the pause holds.
         assert edge["reachable"] is False, edge
