@@ -367,6 +367,7 @@ impl Edge {
             &[],
             Some(market_state),
             gateway,
+            None,
             Some(doh_url),
             None,
         )
@@ -394,6 +395,7 @@ impl Edge {
             enrolled,
             Some(market_state),
             Some(gateway),
+            None,
             Some(doh_url),
             Some(Box::new(tweak)),
         )
@@ -461,7 +463,6 @@ impl Edge {
             None,
             Some(listener),
             None,
-            None,
             Some(Box::new(tweak)),
         )
         .await
@@ -509,6 +510,7 @@ impl Edge {
             market_state,
             None,
             None,
+            None,
             tweak,
         )
         .await
@@ -524,6 +526,7 @@ impl Edge {
         enrolled: &[(&str, bool)],
         market_state: Option<&serde_json::Value>,
         gateway: Option<GatewayOpts>,
+        listener: Option<tokio::net::TcpListener>,
         doh_url: Option<&str>,
         tweak: Option<Tweak>,
     ) -> Self {
@@ -686,9 +689,12 @@ impl Edge {
             tweak(&mut opts, &dir);
         }
 
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("bind ephemeral port");
+        let listener = match listener {
+            Some(l) => l,
+            None => tokio::net::TcpListener::bind("127.0.0.1:0")
+                .await
+                .expect("bind ephemeral port"),
+        };
         let port = listener.local_addr().expect("local_addr").port();
         let provider = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await

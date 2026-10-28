@@ -1909,7 +1909,7 @@ name = "losos-access"
 version = "0.1.0"
 dependencies = [
  "aes 0.8.4",
- "base64",
+ "base64 0.22.1",
  "cfb-mode",
  "cipher 0.4.4",
  "ed25519-dalek",

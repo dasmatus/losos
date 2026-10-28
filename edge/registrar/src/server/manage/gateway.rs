@@ -10,6 +10,9 @@
 //! DELETE /manage/api/gateway/uplink       stop relaying
 //! DELETE /manage/api/gateway/boxes/{id}   forget a box that left; it enrols
 //!                                         again on its next contact
+//! PUT    /manage/api/gateway/cluster      start a secondary cluster, or join
+//!                                         the one another gateway started
+//! DELETE /manage/api/gateway/cluster      stand alone again
 //! ```
 //!
 //! The owner's passport is claimed through `POST /passport/settings`, which
@@ -33,6 +36,7 @@ use super::{off, plain, unauthorized, AppState};
 use crate::action::Action;
 use crate::fsutil;
 use crate::relay::{dns_label, UplinkFile};
+use crate::secondary::{plain_url, ClusterFile};
 
 const TOKEN_FILE: &str = "uplink.token";
 const BOOTSTRAP_FILE: &str = "uplink-bootstrap.token";
@@ -48,6 +52,10 @@ pub(super) fn routes() -> Router<AppState> {
             put(set_uplink).delete(clear_uplink),
         )
         .route("/manage/api/gateway/boxes/{id}", delete(forget))
+        .route(
+            "/manage/api/gateway/cluster",
+            put(set_cluster).delete(leave_cluster),
+        )
 }
 
 /// The body of `PUT /manage/api/gateway/uplink`: the hub's tenant row its
@@ -180,13 +188,231 @@ async fn show(State(st): State<AppState>, headers: HeaderMap) -> Response {
             .map(|(id, _)| id)
             .collect(),
     };
+    // The secondary cluster, secret included: this page is the only place
+    // the owner reads it to join another gateway.
+    let cluster = match &st.secondary {
+        None => serde_json::Value::Null,
+        Some(sec) => {
+            let file = crate::server::read_cluster_file(&sec.opts.file).await;
+            serde_json::json!({
+                "joined": file.as_ref().map(|f| {
+                    let mut gateways = vec![serde_json::json!({
+                        "member": f.member,
+                        "url": sec.opts.self_url,
+                    })];
+                    gateways.extend(
+                        sec.peers
+                            .alive(sec.opts.interval * 3, std::time::Instant::now())
+                            .into_iter()
+                            .map(|g| serde_json::json!({ "member": g.member, "url": g.url })),
+                    );
+                    serde_json::json!({
+                        "name": f.name,
+                        "member": f.member,
+                        "secret": f.secret,
+                        "url": sec.opts.self_url,
+                        "gateways": gateways,
+                    })
+                }),
+            })
+        }
+    };
+    // The main cluster as the hub last answered: the gateways on primary
+    // links, this one among them once the uplink is set.
+    let main =
+        tokio::fs::read(Path::new(&st.opts.registry_path).with_file_name("main-cluster.json"))
+            .await
+            .ok()
+            .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+            .unwrap_or_else(|| serde_json::json!([]));
     Json(serde_json::json!({
         "name": name,
         "passport": passport,
         "uplink": uplink,
         "enrolled": enrolled,
+        "cluster": cluster,
+        "main": main,
     }))
     .into_response()
+}
+
+/// The body of `PUT /manage/api/gateway/cluster`: a name alone starts a
+/// cluster with this gateway in it; a name, the founder's secret and the URL
+/// of a gateway already in it join that cluster.
+#[derive(Debug, Deserialize)]
+pub(crate) struct ClusterForm {
+    pub name: String,
+    #[serde(default)]
+    pub secret: Option<String>,
+    #[serde(default)]
+    pub peer: Option<String>,
+}
+
+impl ClusterForm {
+    /// The file to write for `member`, or what is wrong with the form.
+    pub(crate) fn file(
+        &self,
+        member: &str,
+        fresh_secret: impl FnOnce() -> String,
+    ) -> Result<ClusterFile, &'static str> {
+        let name = self.name.trim();
+        if !dns_label(name) {
+            return Err(
+                "the cluster name must be a DNS label: lowercase letters, digits and inner hyphens",
+            );
+        }
+        let secret = self
+            .secret
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty());
+        let peer = self
+            .peer
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty());
+        let file = match (secret, peer) {
+            (None, None) => ClusterFile {
+                name: name.to_string(),
+                member: member.to_string(),
+                secret: fresh_secret(),
+                peers: Vec::new(),
+            },
+            (Some(secret), Some(peer)) => {
+                if !plain_url(peer) {
+                    return Err("the other gateway's address must be an http(s) URL");
+                }
+                ClusterFile {
+                    name: name.to_string(),
+                    member: member.to_string(),
+                    secret: secret.to_string(),
+                    peers: vec![peer.trim_end_matches('/').to_string()],
+                }
+            }
+            _ => return Err("joining needs both the secret and the other gateway's address"),
+        };
+        match file.fault() {
+            Some("the secret is not at least 32 hex characters") => {
+                Err("the secret is the hex line the first gateway's page shows")
+            }
+            Some(fault) => Err(fault),
+            None => Ok(file),
+        }
+    }
+}
+
+/// This gateway's name in a cluster: its host name, as a DNS label.
+fn member_name(host: &str) -> String {
+    let m = host.trim().to_ascii_lowercase();
+    if dns_label(&m) {
+        m
+    } else {
+        "gateway".to_string()
+    }
+}
+
+fn fresh_secret() -> String {
+    use ring::rand::SecureRandom;
+    let mut raw = [0u8; 32];
+    ring::rand::SystemRandom::new()
+        .fill(&mut raw)
+        .expect("the system's random source");
+    crate::identity::to_hex(&raw)
+}
+
+async fn set_cluster(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    Json(form): Json<ClusterForm>,
+) -> Response {
+    if let Some(r) = refused(&st, &headers) {
+        return r;
+    }
+    let Some(sec) = &st.secondary else {
+        return plain(
+            StatusCode::NOT_FOUND,
+            "this gateway runs no secondary cluster",
+        );
+    };
+    let creating = form.secret.as_deref().is_none_or(|s| s.trim().is_empty());
+    if creating {
+        if let Some(current) = crate::server::read_cluster_file(&sec.opts.file).await {
+            return plain(
+                StatusCode::CONFLICT,
+                &format!(
+                    "this gateway is in the cluster {} already: leave it first",
+                    current.name
+                ),
+            );
+        }
+    }
+    let host = tokio::fs::read_to_string("/proc/sys/kernel/hostname")
+        .await
+        .unwrap_or_default();
+    let file = match form.file(&member_name(&host), fresh_secret) {
+        Ok(f) => f,
+        Err(problem) => return plain(StatusCode::BAD_REQUEST, problem),
+    };
+    let bytes = match serde_json::to_vec_pretty(&file) {
+        Ok(b) => b,
+        Err(e) => return plain(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
+    };
+    if let Some(dir) = Path::new(&sec.opts.file).parent() {
+        if let Err(e) = tokio::fs::create_dir_all(dir).await {
+            tracing::error!(target: Action::Serve.target(), "the cluster directory: {e}");
+        }
+    }
+    match fsutil::atomic_write(Path::new(&sec.opts.file), &bytes, 0o600).await {
+        Ok(()) => {
+            tracing::info!(
+                target: Action::Serve.target(),
+                "{} cluster {} as {} from the manage page",
+                if creating { "started" } else { "joined" },
+                file.name,
+                file.member,
+            );
+            Json(serde_json::json!({
+                "name": file.name,
+                "member": file.member,
+                "secret": file.secret,
+                "url": sec.opts.self_url,
+            }))
+            .into_response()
+        }
+        Err(e) => {
+            tracing::error!(target: Action::Serve.target(), "writing the cluster file: {e}");
+            plain(
+                StatusCode::INSUFFICIENT_STORAGE,
+                "the cluster could not be saved",
+            )
+        }
+    }
+}
+
+async fn leave_cluster(State(st): State<AppState>, headers: HeaderMap) -> Response {
+    if let Some(r) = refused(&st, &headers) {
+        return r;
+    }
+    let Some(sec) = &st.secondary else {
+        return plain(
+            StatusCode::NOT_FOUND,
+            "this gateway runs no secondary cluster",
+        );
+    };
+    match remove(Path::new(&sec.opts.file)).await {
+        Ok(()) => {
+            sec.peers.clear();
+            tracing::info!(target: Action::Serve.target(), "left the cluster from the manage page");
+            Json(serde_json::json!({ "joined": null })).into_response()
+        }
+        Err(e) => {
+            tracing::error!(target: Action::Serve.target(), "removing the cluster file: {e}");
+            plain(
+                StatusCode::INSUFFICIENT_STORAGE,
+                "the cluster could not be left",
+            )
+        }
+    }
 }
 
 async fn set_uplink(
@@ -328,6 +554,67 @@ async fn forget(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_cluster_is_started_with_a_fresh_secret_or_joined_with_the_founders() {
+        let start = ClusterForm {
+            name: "office".into(),
+            secret: None,
+            peer: None,
+        };
+        let f = start.file("gw-a", || "ab".repeat(32)).unwrap();
+        assert_eq!((f.name.as_str(), f.member.as_str()), ("office", "gw-a"));
+        assert_eq!(f.secret.len(), 64);
+        assert!(f.peers.is_empty());
+
+        let join = ClusterForm {
+            name: "office".into(),
+            secret: Some("ab".repeat(32)),
+            peer: Some("http://gw-a.local:8443/".into()),
+        };
+        let f = join.file("gw-b", || unreachable!()).unwrap();
+        assert_eq!(f.peers, ["http://gw-a.local:8443"]);
+
+        for (form, why) in [
+            (
+                ClusterForm {
+                    name: "Office!".into(),
+                    secret: None,
+                    peer: None,
+                },
+                "DNS label",
+            ),
+            (
+                ClusterForm {
+                    name: "office".into(),
+                    secret: Some("ab".repeat(32)),
+                    peer: None,
+                },
+                "both",
+            ),
+            (
+                ClusterForm {
+                    name: "office".into(),
+                    secret: Some("short".into()),
+                    peer: Some("http://gw-a.local:8443".into()),
+                },
+                "hex line",
+            ),
+            (
+                ClusterForm {
+                    name: "office".into(),
+                    secret: Some("ab".repeat(32)),
+                    peer: Some("javascript:alert(1)".into()),
+                },
+                "http(s)",
+            ),
+        ] {
+            let err = form.file("gw-b", || "ab".repeat(32)).unwrap_err();
+            assert!(err.contains(why), "{err}");
+        }
+        assert_eq!(member_name("GW-A\n"), "gw-a");
+        assert_eq!(member_name("bad_name"), "gateway");
+    }
 
     fn form() -> UplinkForm {
         UplinkForm {
