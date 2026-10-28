@@ -41,7 +41,7 @@ sie behebt.
 
 | Was                                 | Warum es kein Internet braucht                                                                                   |
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Die Anmeldung an den Admin-Seiten   | Die Box prüft das Passwort gegen LosOS Cloud auf der Box selbst, über ihr eigenes Loopback. Der gedruckte Ersatzschlüssel funktioniert auch. |
+| Die Anmeldung an den Admin-Seiten   | LosOS Login prüft das Passwort auf der Box selbst, über ihr eigenes Loopback. Der gedruckte Ersatzschlüssel funktioniert auch. |
 | LosOS Cloud und LosOS Git           | Beide laufen auf der Box, also bleiben Dateien, Kalender, Kontakte, Repositorys und die Handy-Apps im selben WLAN lokal. |
 | Deine eigenen Dateien               | Sie liegen auf der verschlüsselten Festplatte der Box, in jedem Speichermodus.                                   |
 | Lokales Teilen zwischen Leuten zu Hause | Die Box entscheidet über Freigaben, Links und Berechtigungen innerhalb von LosOS Cloud.                       |
