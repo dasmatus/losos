@@ -43,6 +43,21 @@ let
   uplinkToml = "/etc/rathole/uplink.toml";
   enrolDir = "/var/lib/losos-registrar/enrolled";
   registryJson = "/var/lib/losos-registrar/registry.json";
+  mainJson = "/var/lib/losos-registrar/main-cluster.json";
+  clusterJson = edge.secondary.file;
+  # The registrar as this machine reaches it, whatever address it binds.
+  localApi =
+    let
+      b = edge.registrarApiBind;
+      host =
+        if b == "0.0.0.0" || b == "::" || b == "[::]" then
+          "127.0.0.1"
+        else if lib.hasInfix ":" b && !lib.hasPrefix "[" b then
+          "[${b}]"
+        else
+          b;
+    in
+    "http://${host}:${toString edge.registrarApiPort}";
 
   # The owner's one command. Plain bash on purpose: it is read on a console
   # by somebody who has never seen this project, so every subcommand says what
@@ -57,6 +72,8 @@ let
       pkgs.iproute2
       pkgs.systemd
       pkgs.hostname
+      pkgs.curl
+      pkgs.openssl
       edge.registrar.package
     ];
     text = ''
@@ -64,6 +81,8 @@ let
       uplink=${uplinkJson}
       enrol_dir=${enrolDir}
       registry=${registryJson}
+      cluster=${clusterJson}
+      api=${localApi}
 
       usage() {
         cat <<'USAGE'
@@ -79,11 +98,21 @@ let
                                                with the tenant row its operator gave you
         losos-edge uplink show                 the uplink as set
         losos-edge uplink clear                stop relaying
+        losos-edge cluster create <name>       start a secondary cluster with this gateway
+        losos-edge cluster join <name> <secret> <url>
+                                               join the cluster another gateway started
+        losos-edge cluster show                the cluster and the members that answer
+        losos-edge cluster leave               stand alone again
+        losos-edge main                        the main cluster: gateways on primary links
         losos-edge ssh on|off                  start or stop sshd (off at every boot)
         losos-edge manage-key                  the key the manage page signs in with
 
       Boxes on this LAN find the gateway on their own (mDNS, _losos-edge._tcp)
       and enrol on first contact; nothing is provisioned for them.
+
+      Every link has a tier: primary from this gateway to the hub (the main
+      cluster), secondary from a box to a gateway of its cluster, tertiary
+      from a box straight to an official edge.
       USAGE
       }
 
@@ -112,6 +141,16 @@ let
           else
             echo "uplink:    not set — boxes are reachable on this LAN only."
             echo "           losos-edge uplink set --id <id> --token-file <file> --registrar <url> --rathole <host:port>"
+          fi
+          if [ -s "$cluster" ]; then
+            echo "cluster:   secondary cluster $(jq -r '.name' "$cluster") as $(jq -r '.member' "$cluster")  (losos-edge cluster show)"
+          else
+            echo "cluster:   none: boxes here hold secondary links to this gateway alone  (losos-edge cluster create <name>)"
+          fi
+          if [ -s "$uplink" ]; then
+            echo "tiers:     primary to the hub; secondary from the boxes here"
+          else
+            echo "tiers:     secondary from the boxes here; no primary link"
           fi
           echo "boxes:     $("$0" boxes | grep -c . || true) registered  (losos-edge boxes)"
           echo "units:     registrar $(active losos-registrar.service), tunnel $(active losos-rathole.service), traefik $(active traefik.service)"
@@ -201,6 +240,64 @@ let
             *) usage; exit 2 ;;
           esac
           ;;
+        cluster)
+          member=$(hostname | tr '[:upper:]' '[:lower:]')
+          label='^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'
+          write_cluster() {
+            umask 077
+            install -d -m 0700 "$(dirname "$cluster")"
+            printf '%s\n' "$1" > "$cluster.new"
+            mv "$cluster.new" "$cluster"
+          }
+          case "''${2:-}" in
+            create)
+              name="''${3:-}"
+              printf '%s' "$name" | grep -Eq "$label" || { echo "the cluster name must be a DNS label" >&2; exit 2; }
+              [ -s "$cluster" ] && { echo "already in cluster $(jq -r .name "$cluster"); losos-edge cluster leave first" >&2; exit 1; }
+              secret=$(openssl rand -hex 32)
+              write_cluster "$(jq -n --arg n "$name" --arg m "$member" --arg s "$secret" \
+                '{name: $n, member: $m, secret: $s, peers: []}')"
+              echo "cluster $name started with this gateway as $member."
+              echo "On each other gateway of this network, run:"
+              echo "  losos-edge cluster join $name $secret ${edge.lan.url}"
+              ;;
+            join)
+              name="''${3:-}" secret="''${4:-}" peer="''${5:-}"
+              [ -n "$name" ] && [ -n "$secret" ] && [ -n "$peer" ] || { usage; exit 2; }
+              printf '%s' "$name" | grep -Eq "$label" || { echo "the cluster name must be a DNS label" >&2; exit 2; }
+              printf '%s' "$secret" | grep -Eq '^[0-9a-fA-F]{32,}$' || { echo "the secret is the hex line cluster create printed" >&2; exit 2; }
+              case "$peer" in http://*|https://*) ;; *) echo "the url must be the other gateway's http(s) address" >&2; exit 2 ;; esac
+              write_cluster "$(jq -n --arg n "$name" --arg m "$member" --arg s "$secret" --arg p "$peer" \
+                '{name: $n, member: $m, secret: $s, peers: [$p]}')"
+              echo "joined cluster $name as $member through $peer. The gateways sync on the next pass (about ${edge.secondary.interval})."
+              ;;
+            show)
+              if [ ! -s "$cluster" ]; then
+                echo "in no secondary cluster: boxes here hold secondary links to this gateway alone."
+                exit 0
+              fi
+              echo "cluster:   $(jq -r .name "$cluster")  (this gateway: $(jq -r .member "$cluster"))"
+              if info=$(curl -fsS --max-time 5 "$api/cluster/secondary"); then
+                echo "$info" | jq -r '.gateways[] | "member:    \(.member)  \(.url)  tunnel \(.tunnel)"'
+              else
+                echo "the registrar does not answer ($(active losos-registrar.service))" >&2
+                exit 1
+              fi
+              ;;
+            leave)
+              rm -f "$cluster"
+              echo "left the cluster: the boxes here stay on this gateway, the others no longer fail over to it."
+              ;;
+            *) usage; exit 2 ;;
+          esac
+          ;;
+        main)
+          if [ -s ${mainJson} ]; then
+            jq -r '.[] | "\(.site)\t\(if .gateway == "" then "-" else .gateway end)\t\(.cluster // "-")\t\(.boxes) box(es)\tprimary"' ${mainJson}
+          else
+            echo "no main cluster yet: set an uplink (losos-edge uplink set) to join one."
+          fi
+          ;;
         ssh)
           case "''${2:-}" in
             on)
@@ -241,6 +338,7 @@ in
       manage.enable = lib.mkDefault true;
       uplink.enable = lib.mkDefault true;
       uplink.configFile = lib.mkDefault uplinkJson;
+      secondary.enable = lib.mkDefault true;
       # Traefik's ACME needs a public name this machine does not have; the
       # failure is logged and the LAN routes work regardless, as in the LAN
       # demo. The address is a placeholder for an account that is never made.

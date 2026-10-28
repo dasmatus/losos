@@ -37,6 +37,7 @@
     "GET /api/status": "signed-in",
     "GET /api/edge": "signed-in",
     "POST /api/edge/manage": "admin",
+    "POST /api/edge/cluster": "admin",
     "GET /api/look": "signed-in",
     "GET /api/look/background": "signed-in",
     "POST /api/set-password": "signed-in",
