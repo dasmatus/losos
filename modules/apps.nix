@@ -665,13 +665,6 @@ let
 in
 {
   config = lib.mkMerge [
-    # lososd's statistics plugin reads Traefik's metrics here
-    # (backend/plugins/statistics). Set wherever lososd runs, apps or not:
-    # lososd refuses to start a plugin whose manifest names a variable it
-    # lacks, and the plugin answers "unavailable" while nothing listens.
-    (lib.mkIf (config.losos.backend.package != null) {
-      systemd.services.lososd.environment.LOSOS_TRAEFIK_URL = traefikApi;
-    })
     (lib.mkIf enabled {
       systemd.services.lososd = {
         environment = {
