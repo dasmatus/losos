@@ -76,8 +76,12 @@ in
           # The LAN, never loopback (anything on the box) and never the
           # mesh's pod network: the same rule as the admin pages'
           # (modules/lan-only.nix).
+          # IPv6 link-local and unique local addresses are the LAN too, and
+          # a Mac tries the box's link-local address first: smbd takes the
+          # connection on IPv6 before this list is read, so a refusal here
+          # is a dropped connection the Mac does not retry over IPv4.
           # EXCEPT takes everything after it, so it comes last.
-          "hosts allow" = "172.16.0.0/12 192.168.0.0/16 10. EXCEPT 10.42.";
+          "hosts allow" = "fe80::/10 fc00::/7 172.16.0.0/12 192.168.0.0/16 10. EXCEPT 10.42.";
           "hosts deny" = "ALL";
 
           # Each share touches its files as LosOS Cloud's own user; that is
