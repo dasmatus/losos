@@ -23,7 +23,7 @@ with the key `BT`. The name stays the same for the issue's whole life, so it
 is safe to write it in a commit, a chat or a mail.
 
 A repository gets its own project the first time someone opens its
-**Issues**. The key is made from the repository's name, and the project's
+**Issues**. LosOS Git makes the key from the repository's name, and the project's
 issue numbers are the repository's: `BT-12` and `backup-tool#12` are the same
 issue. A project can also stand alone, without a repository, for work that
 is not code. **New project** in the sidebar makes one. A project is either
@@ -51,7 +51,7 @@ Besides its status an issue has:
   its sub-issues are finished.
 
 Two issues can be related: one blocks the other, one duplicates the other,
-which cancels the duplicate, or they are simply related.
+which cancels the duplicate, or they are just related.
 
 Each issue keeps its history: who made it, every change of status,
 priority, person, label or cycle, every comment, and the commits and pull
@@ -109,7 +109,7 @@ list. The ones used most:
 
 ## Commits and pull requests
 
-An issue's name in a commit message or a pull request links the two: the
+An issue's name in a commit message or a pull request links the two. The
 issue lists the commit or pull request, and the inbox tells the people who
 follow it. `BT-12`, `#12` and `owner/repo#12` all work.
 
@@ -180,11 +180,10 @@ administrators change its workflow, labels, cycles and members.
 Issues carried over from Forgejo become the issues of their repository's
 project, with the same numbers, comments and labels.
 
-The boards of LosOS Cloud are taken in once, on the first start with issues:
-each board becomes a project with its columns as the workflow, its cards as
+LosOS Git takes in the boards of LosOS Cloud once, on the first start with
+issues. Each board becomes a project with its columns as the workflow, its cards as
 issues with their labels, people, due dates and comments, and its members
 as the project's members. A board that belonged to a repository fills that
 repository's project, and a card that pointed at one of its issues moves
-that issue instead of making a second one. LosOS Cloud's own copy is left as
-it was. What came over is listed in
-`/var/lib/losos-git/boards/import.json`.
+that issue instead of making a second one. LosOS Cloud's own copy stays as
+it was. `/var/lib/losos-git/boards/import.json` lists what came over.

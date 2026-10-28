@@ -59,7 +59,8 @@ const FEATURES: Feature[] = [
     ),
     body: (
       <Translate id="losos.home.feature.self.body">
-        It keeps its state across restarts.
+        Every restart builds the system again from its description, and your
+        files and settings stay on the encrypted disk.
       </Translate>
     ),
     to: '/manual/updates-and-reboots',

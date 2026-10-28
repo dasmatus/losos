@@ -77,7 +77,7 @@ the box's network, and an app password through the internet; see
 [Files on your computer](files-on-your-computer).
 
 **Log out** in LosOS Cloud also signs you out of LosOS Login. LosOS Git
-keeps no sign-in of its own: it asks LosOS Login on every page, so signing
+keeps no sign-in of its own. It asks LosOS Login on every page, so signing
 out of LosOS Login (in the admin pages or in LosOS Cloud) signs you out of
 it too. A LosOS Cloud tab that is already open stays signed in until you
 sign out of LosOS Cloud too.
@@ -244,7 +244,7 @@ LosOS Login takes passkeys. Add one on LosOS Login's page from
 [Your account](#your-account), over HTTPS once the box's certificate is
 installed. On the sign-in page, a phone or laptop then signs you in with
 its own unlock instead of your name and password, for the admin pages,
-LosOS Cloud and LosOS Git alike. A passkey is not a second spare key: it
+LosOS Cloud and LosOS Git alike. A passkey is not a second spare key. It
 opens only your own account.
 
 ## The claim window

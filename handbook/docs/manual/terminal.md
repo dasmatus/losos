@@ -22,7 +22,7 @@ It runs on 64-bit x86 Linux.
 The box only accepts requests signed by a GPG key it was given at install
 time. Nothing on a running box can add one later. If it could, anyone who
 got into the admin pages could add their own key and then make a token for
-it. So the terminal client needs a little planning: the stick you install
+it. So the terminal client needs a little planning. The stick you install
 from has to carry your key.
 
 :::warning[The release stick carries no key]
@@ -126,7 +126,7 @@ If you keep the secret key in a file, `losos key import secret.asc` does
 the same from the file.
 
 `login` takes the box's address from its screen. Plain `http://` is fine
-here: the request and the answer are encrypted end to end whatever carries
+here, because the request and the answer are encrypted end to end whatever carries
 them. `https://<name>.local` works too. The box's certificate is its own,
 so `losos` takes the one it sees at login and remembers it. If the box
 later shows a different certificate, `losos` stops and says so. Run
@@ -176,8 +176,8 @@ talks to the box, so cloning and pushing need no password:
 git clone https://mattbox.local/git/notshared/notes.git
 ```
 
-When the box has its own certificate, git is told to accept exactly that
-certificate's key, the same check `losos` makes.
+When the box has its own certificate, the client tells git to accept exactly
+that certificate's key, the same check `losos` makes.
 
 Both are named after the computer, as in "LosOS on laptop". `--device`
 picks another name. To take a computer's access away, delete its entry

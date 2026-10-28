@@ -183,7 +183,7 @@ verschlüsselt. Mail wird als PGP/MIME verschickt; **Inline, für ältere
 Mailprogramme** setzt den verschlüsselten Text stattdessen in den Inhalt,
 was den Text schützt, aber nicht die Anhänge.
 
-![Eine neue Nachricht an Eva: Ihr Schlüssel wurde auf dieser Box gefunden, Verschlüsseln und Signieren sind an.](@site/docs/img/mail-pgp-compose.png)
+![Eine neue Nachricht an Eva: Evas Schlüssel wurde auf dieser Box gefunden, Verschlüsseln und Signieren sind an.](@site/docs/img/mail-pgp-compose.png)
 
 **Lesen.** Eine verschlüsselte Nachricht hat in der Liste ein Schloss. Beim
 Öffnen wird sie in deinem Browser entschlüsselt, und eine Zeile unter den
@@ -194,7 +194,7 @@ hat, sagt das. Entschlüsselte Mail wird als Text gezeigt, nie in der
 Formatierung des Absenders, und ihre Anhänge werden wie alle anderen
 heruntergeladen.
 
-![Eva liest die Nachricht: ein Schloss in der Liste und der Hinweis, dass Matus sie verschlüsselt und signiert hat, mit seinem Fingerabdruck.](@site/docs/img/mail-pgp-opened.png)
+![Eva liest die Nachricht: ein Schloss in der Liste und der Hinweis, dass Matus sie verschlüsselt und signiert hat, mit Matus' Fingerabdruck.](@site/docs/img/mail-pgp-opened.png)
 
 **Dein öffentlicher Schlüssel für andere.** Die Box veröffentlicht den
 öffentlichen Schlüssel jeder Person in ihrem eigenen Web Key Directory

@@ -35,8 +35,8 @@ A note is drawn from its Markdown. Both kinds people write are understood:
   not shown; maths between `$` and `$$`; and the properties at the top of a
   note.
 
-Code blocks are coloured by language. Mermaid diagrams stay code: drawing
-them needs styles the box's pages do not allow.
+Code blocks are coloured by language. Mermaid diagrams stay code, because
+drawing them needs styles the box's pages do not allow.
 
 A link to a note that does not exist yet is drawn fainter. Click it to make
 the note. Tick a task box and the note is saved with the box ticked.
@@ -79,7 +79,7 @@ do. Without both, the menu item is not there and the sites are off.
 3. Press **Publish**. The window shows the site's address, for example
    `https://<name>.local/kb/kitchen-garden/`.
 
-The site follows the folder: a note you change or add shows there at once.
+The site follows the folder. A note you change or add shows there at once.
 Each note gets its own address, such as `/kb/kitchen-garden/Tomatoes`.
 Readers get the same links, embeds, search, graph and mind map, and nothing
 to change the notes with.
