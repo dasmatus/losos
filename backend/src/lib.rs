@@ -81,6 +81,7 @@ pub mod profiles;
 pub mod receipt;
 pub mod recovery;
 pub mod roles;
+pub mod schizo;
 pub mod sections;
 pub mod setup;
 pub mod signin;

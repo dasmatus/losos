@@ -32,7 +32,10 @@ const SECRET_HEX: usize = 40;
 /// not rewrite the file on every read.
 const TOUCH_SECS: i64 = 300;
 
-/// The route a directory token reads the people list at.
+/// The route a directory token reads the people list at. Schizo mode's
+/// check-in routes (`/api/login-devices/self*`) take the same token, but
+/// check it in their own handlers (`http::device_call`) and never pass the
+/// gate.
 pub const PEOPLE_ROUTE: &str = "/api/directory/people";
 /// Mesh CI's jobs for the computer (`runs-on: [losos-desktop, <computer>]`,
 /// `crate::ci::workflow::desktop_job`): asking for one, and reporting on it.
