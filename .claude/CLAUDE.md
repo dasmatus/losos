@@ -280,7 +280,9 @@ and is never served or built by nix.
   host network without root, turn claims into folders in that user's data
   domain and refuse a chart that needs more. `losos-traefik` (its own
   user) holds `losos.apps.ports`, an entrypoint `port-<n>` each, LAN only
-  through the `lan-only@file` ipAllowList (RFC 1918 minus 10.42/16). Routes
+  through the `lan-only@file` ipAllowList (RFC 1918 minus 10.42/16), IPv4
+  only (Go listens on both families, so the firewall resets IPv6 to the
+  range; an IPv6 LAN address looks like anyone's). Routes
   are labels `compose.rs` writes on every service (`app-<name>`, dropping an
   app's own `traefik.*`/`losos.*`), read through `losos-podman-api`, a
   socket-activated Podman API of `notshared` only Traefik's group opens; a
@@ -517,6 +519,11 @@ and is never served or built by nix.
   with the `HISTORY_SCRUB_DEPLOY_KEY` deploy key and tags with the CI token.
   `stale-branches.yml` deletes, each Sunday, branches with no commit in 30
   days that no open PR uses as head or base.
+  `dependency-hashes.yml` (`pull_request_target`, branches of this repository
+  only) runs `.github/scripts/fix-hashes.py` on a pull request that changes
+  a `Cargo.lock` or `package-lock.json`, Dependabot's included, and pushes the
+  new `cargoHash`/`npmDepsHash` back to the branch; run the script yourself
+  after touching a lock file.
   `discovery` boots the netboot box `nix/tests/discovery/box.nix` on Linux,
   macOS and Windows runners, and `nix/tests/discovery/check.py` has each
   find it and read and write files over SMB and WebDAV.
