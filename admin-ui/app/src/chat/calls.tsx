@@ -378,11 +378,11 @@ export function CallsProvider({ client, children }: { client: MatrixClient; chil
             if (ev.getSender() === me) setRinging((current) => (current?.eventId === declined ? null : current));
             return;
           }
-          if (ev.getType() !== EventType.RTCNotification) return;
+          if (ev.getType() !== EventType.RTCNotification || ev.getSender() === me) return;
           const content = await parseCallNotificationContent(ev, { room, userId: me });
           const said = callEvent(room, ev);
           const eventId = ev.getId();
-          if (content.slot_id !== RTC_SLOT_ID || said === null || eventId === undefined) return;
+          if (content.slot_id !== RTC_SLOT_ID || said === null || eventId === undefined) throw new Error("not a call in this room's slot");
           if (callEnded(room, said.call) || activeCall.current === said.call) return;
           setRinging({
             roomId: room.roomId,
@@ -393,7 +393,10 @@ export function CallsProvider({ client, children }: { client: MatrixClient; chil
             until: getCallNotificationExpiry(content, ev.getTs()),
           });
         })
-        .catch(() => undefined);
+        .catch((error: unknown) => {
+          // Why a call notification from someone else does not ring here.
+          if (ev.getType() === EventType.RTCNotification) console.warn(`calls: ${ev.getId() ?? ""} does not ring:`, error instanceof Error ? error.message : error);
+        });
     };
     client.on(RoomEvent.Timeline, onTimeline);
     return () => {
@@ -588,13 +591,17 @@ function CallScreen({
   }, [media, t]);
 
   React.useEffect(() => {
+    let unwatch = (): void => undefined;
     const stop = (error: unknown): void => {
       if (finished.current) return;
       finished.current = true;
       void session.current?.leave();
       const rtc = rtcSession.current;
       rtcSession.current = null;
-      if (rtc !== null) leaving = rtc.leave(5000).finally(() => rtc.stop());
+      if (rtc !== null) leaving = rtc.leave(5000).finally(() => {
+        unwatch();
+        rtc.stop();
+      });
       callbacks.current.onFail(error);
       callbacks.current.onEnd(false);
     };
@@ -644,6 +651,14 @@ function CallScreen({
       rtc.on(MatrixRTCSessionEvent.DidSendCallNotification, (sent: { event_id?: string }) => {
         notification.current = sent.event_id ?? null;
       });
+      // A session made outside the client's session manager does not watch
+      // memberships itself; without this it never sees its own and never
+      // rings anyone.
+      const recalculate = (ev: MatrixEvent): void => {
+        if (ev.getType() === EventType.GroupCallMemberPrefix) void rtc.ensureRecalculateSessionMembers();
+      };
+      room.on(RoomStateEvent.Events, recalculate);
+      unwatch = () => room.off(RoomStateEvent.Events, recalculate);
       void leaving.then(() => {
         if (rtcSession.current !== rtc) return;
         rtc.join({ userId: client.getSafeUserId(), deviceId, memberId: crypto.randomUUID() }, [transport], {
@@ -665,7 +680,10 @@ function CallScreen({
       session.current = null;
       const rtc = rtcSession.current;
       rtcSession.current = null;
-      if (rtc !== null) leaving = rtc.leave(5000).finally(() => rtc.stop());
+      if (rtc !== null) leaving = rtc.leave(5000).finally(() => {
+        unwatch();
+        rtc.stop();
+      });
     };
   }, [client, active.call, active.roomId, active.video, media, warnBackground, room]);
 
