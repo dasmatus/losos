@@ -49,7 +49,7 @@
 # The portal is Authelia's own web app built with the LosOS palette, logo
 # and name (admin-ui/themes/default.nix, `authelia`).
 #
-# LosOS Login is also the OAuth provider of one client, the LosOS companion
+# LosOS Login is also the OAuth provider of the LosOS companion
 # in people's AI tools (`losos agents install`, backend/src/companion.rs).
 # It signs in with the device code flow: the terminal shows a link and a
 # code, the person approves it here with their password, their second
@@ -58,7 +58,11 @@
 # as `Authorization: Bearer authelia_at_…`, which nginx passes on like the
 # spare key, and lososd asks LosOS Login about each token (introspection,
 # as the confidential client `lososd`) and lets it read a few routes as
-# that person. The keys and both secrets are made here on first start.
+# that person. LosOS Desktop's backups sign in the same way as a second
+# client, `losos-backups`, with a ten-minute token and no refresh, good
+# for one route that makes that person's own LosOS Cloud app password and
+# LosOS Git token (`POST /api/devices/backups`). The keys and both secrets
+# are made here on first start.
 {
   config,
   lib,
@@ -429,6 +433,9 @@ in
             access_token = "1h";
             refresh_token = "30d";
           };
+          # A computer's backups sign in once, fetch their credentials
+          # (POST /api/devices/backups) and keep nothing of LosOS Login's.
+          lifespans.custom.backups.access_token = "10m";
           # The same two marks as access_control above: a person held to
           # their own account gets no companion, and a person with a second
           # factor approves it with that factor.
@@ -467,7 +474,27 @@ in
               ];
             }
             {
-              # Introspection only: lososd asks about the companion's tokens.
+              # LosOS Desktop's backups (losos_access::BACKUPS_CLIENT_ID): the
+              # same device code sign-in as the companion, for one call that
+              # makes the person's own LosOS Cloud and LosOS Git credentials.
+              client_id = "losos-backups";
+              client_name = "LosOS Desktop backups";
+              public = true;
+              token_endpoint_auth_method = "none";
+              authorization_policy = "losos";
+              lifespan = "backups";
+              consent_mode = "explicit";
+              grant_types = [ "urn:ietf:params:oauth:grant-type:device_code" ];
+              response_types = [ ];
+              redirect_uris = [ ];
+              scopes = [
+                "openid"
+                "profile"
+              ];
+            }
+            {
+              # Introspection only: lososd asks about the companion's and the
+              # backups' tokens.
               client_id = "lososd";
               client_name = "lososd";
               client_secret = ''{{ mustEnv "CREDENTIALS_DIRECTORY" | printf "%s/oidc-lososd-digest" | secret }}'';
