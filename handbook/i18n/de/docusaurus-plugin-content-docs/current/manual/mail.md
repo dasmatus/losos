@@ -154,6 +154,8 @@ Schlüssel herunter, sperrt den Schlüssel wieder und entfernt ihn. Ein
 entfernter Schlüssel kann an ihn geschickte Mail erst wieder lesen, wenn du
 die Sicherung importierst.
 
+![Das Fenster Verschlüsselung mit einem Schlüssel: Fingerabdruck, Adresse und Datum, dazu die Tasten zum Sperren, Sichern und Entfernen.](@site/docs/img/mail-pgp-key.png)
+
 **Entsperren.** Der Schlüssel bleibt in dem Tab entsperrt, in dem du ihn
 entsperrt hast, bis du ihn sperrst oder den Tab schließt. Mail fragt nach
 der Passphrase, wenn sie gebraucht wird: um eine verschlüsselte Nachricht
@@ -181,6 +183,8 @@ verschlüsselt. Mail wird als PGP/MIME verschickt; **Inline, für ältere
 Mailprogramme** setzt den verschlüsselten Text stattdessen in den Inhalt,
 was den Text schützt, aber nicht die Anhänge.
 
+![Eine neue Nachricht an Eva: Ihr Schlüssel wurde auf dieser Box gefunden, Verschlüsseln und Signieren sind an.](@site/docs/img/mail-pgp-compose.png)
+
 **Lesen.** Eine verschlüsselte Nachricht hat in der Liste ein Schloss. Beim
 Öffnen wird sie in deinem Browser entschlüsselt, und eine Zeile unter den
 Kopfzeilen sagt, wie sie kam: verschlüsselt, signiert und von wem, signiert
@@ -189,6 +193,8 @@ nicht passt. Eine Nachricht, die jemand anderes als ihr Absender signiert
 hat, sagt das. Entschlüsselte Mail wird als Text gezeigt, nie in der
 Formatierung des Absenders, und ihre Anhänge werden wie alle anderen
 heruntergeladen.
+
+![Eva liest die Nachricht: ein Schloss in der Liste und der Hinweis, dass Matus sie verschlüsselt und signiert hat, mit seinem Fingerabdruck.](@site/docs/img/mail-pgp-opened.png)
 
 **Dein öffentlicher Schlüssel für andere.** Die Box veröffentlicht den
 öffentlichen Schlüssel jeder Person in ihrem eigenen Web Key Directory

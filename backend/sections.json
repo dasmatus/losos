@@ -36,8 +36,6 @@
     "GET /api/state": "signed-in",
     "GET /api/settings": "signed-in",
     "GET /api/status": "signed-in",
-    "GET /api/updates": "signed-in",
-    "POST /api/updates/check": "admin",
     "GET /api/edge": "signed-in",
     "POST /api/edge/manage": "admin",
     "GET /api/look": "signed-in",
@@ -54,6 +52,7 @@
     "POST /api/pictures/trust": "signed-in",
     "GET /api/pictures/sender": "signed-in",
     "GET /api/windows": "signed-in",
+    "GET /api/hidden": "network",
     "POST /api/windows": "signed-in",
 
     "GET /api/mail": "signed-in",
