@@ -7,6 +7,9 @@ on:
     # release-media job. Pushes to main build only the installer ISO gate.
     tags: ["v*"]
   pull_request:
+  # A merge queue's runs on the merged tree; `changes` runs every lane for
+  # them, as for any run that is not a pull request.
+  merge_group:
   schedule:
     # ~04:57 UTC Mondays, off the :00 mark.
     #
@@ -439,6 +442,10 @@ jobs:
           # fails before any NixOS configuration can be evaluated.
           fetch-depth: 0
       - uses: ./.github/actions/setup-nix
+      # Mirrors devenv.nix's `lint-nix` and the git hooks: nixfmt, deadnix
+      # and statix over every tracked .nix file. Without it the tree drifted
+      # until the hooks refused every commit that touched an unformatted file.
+      - run: bash nix/lint-nix.sh
       # Mirrors devenv.nix's `check-flake`. Evaluates every output — every VM
       # test derivation, every nixosConfiguration and every package, the three
       # OCI images among them; builds nothing. Which is the limit of it: an

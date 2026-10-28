@@ -17,7 +17,7 @@ and the developer notes kept out of it (`docs/development.md`,
 ## Commands
 
 ```sh
-devenv shell                 # or: direnv allow. Scripts: fmt, lint, lint-wasm,
+devenv shell                 # or: direnv allow. Scripts: fmt, lint, lint-nix, lint-wasm,
                              # test-rust, test-tui, check-flake, check-eval, check-pins,
                              # build-pkgs, build-iso, vm-tests
 devenv test                  # the gate. Everything but the VMs and the ISO
@@ -41,10 +41,20 @@ their SDK and WIT, its own workspace, linted for the host and wasm32), `edge/reg
 flake), the terminal client `admin-ui/tui`, and Diagrams' `admin-ui/lab/core`,
 `admin-ui/lab/virt-rpc` and `admin-ui/lab/render` (built for wasm32), and
 the Solana escrow program `edge/contracts/solana` (`cargo build-sbf`, outside
-the flake). All ten must pass clippy with `-D warnings` and rustfmt; the devenv pre-commit
-hooks, `lint` and CI each check it. Bevy is a wasm32-only dependency of
+the flake). All ten must pass clippy with `-D warnings` and rustfmt; the git hooks
+in `nix/hooks`, `lint` and CI each check it. Bevy is a wasm32-only dependency of
 `render`, so `lint-wasm` and CI's `clippy-wasm` lint its WebGL2 and WebGPU
 builds too, one after the other. `nix develop` is a toolchain-only shell for people without devenv.
+The git hooks (`nix/hooks`, `docs/development.md`) replay CI's lanes for
+the files a change touches: pre-commit runs rustfmt, clippy, the Nix lints,
+the pins and hashes, the admin UI typecheck and CI's whole eval job
+(`check-flake`); pre-push adds `cargo test`, wasm32 clippy, the Playwright
+check and the VM tests the change touches (TCG without KVM), logging each
+check under `.git/losos-hooks/logs/`. devenv, `nix develop` and a Claude
+Code session (`.claude/settings.json`) set `core.hooksPath`; elsewhere run
+`bash nix/hooks/install`. Never commit or push with `--no-verify` or
+`LOSOS_HOOKS_SKIP` to get past a red check you caused; skip only a check
+that is red on `main` too, and say which in the PR.
 Inside the shell `bcd` and `rcd` cd into the two in-flake crates.
 `admin-ui/design-system/react` has its own `npm run typecheck` and `npm test`
 and is never served or built by nix.
@@ -536,7 +546,7 @@ and is never served or built by nix.
    `environment.persistence."/persist".directories`, or it is gone next boot.
    `/etc/rancher` stays listed: the k3s agent's node password lives there and
    the server rejects a node that regenerates it.
-2. Run `devenv test` before trusting a change. `doCheck` is off in both
+2. Run `devenv test` before trusting a change, and let the git hooks run. `doCheck` is off in both
    crates, so a green `nix build` ran no tests.
 3. Bump `flake.lock`, the rev in `devenv.yaml` and `devenv.lock` together.
    `check-pins` and CI's `pins` job fail when they differ.

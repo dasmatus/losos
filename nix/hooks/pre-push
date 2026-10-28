@@ -8,7 +8,7 @@
 # otherwise, so a merge of main (which runs no pre-commit) is checked too.
 # What runs, and its name for LOSOS_HOOKS_SKIP:
 #
-#   pre-commit's gates    rustfmt, clippy, Nix lints, pins,  as in pre-commit
+#   pre-commit's gates    rustfmt, clippy, nix-lints, pins,  as in pre-commit
 #                         hashes, typecheck, the eval lane
 #   test:<crate>          cargo test, each crate reached     rust lane
 #   clippy-wasm           clippy for wasm32: the plugins     wasm lane
@@ -27,7 +27,9 @@
 #   LOSOS_HOOKS_VM=none         no VM tests (printed as a skip)
 #
 # A VM test counts as touched when its own file under nix/tests/ changed, or
-# a file it names (a browser script, a fixture, a helper folder) did.
+# a file it names (a browser script, a fixture, a helper folder) did. A
+# touched test whose derivation is the same as on the merge base (a change
+# that only reformats it) is not run: it would boot exactly what main boots.
 set -uo pipefail
 # shellcheck source=nix/hooks/lib.sh
 . "$(dirname "$0")/lib.sh"
@@ -86,6 +88,7 @@ for update in "${updates[@]}"; do
     fi
 
     if [ "${lane_wasm:-false}" = true ]; then
+      # shellcheck disable=SC2329 # called through run
       wasm_clippy() {
         echo "── backend/plugins (wasm32)"
         hook_cargo clippy --manifest-path backend/plugins/Cargo.toml \
@@ -150,6 +153,7 @@ for update in "${updates[@]}"; do
       "") mapfile -t vms < <(vm_touched) ;;
       *) read -r -a vms <<<"$LOSOS_HOOKS_VM" ;;
     esac
+    # shellcheck disable=SC2329 # called through run
     vm_run() {
       local check=$1 out="$hook_logdir/$1"
       if [ -e /dev/kvm ] || ! nix eval --raw "$(hook_flake)#checks.x86_64-linux.$check.driver.drvPath" >/dev/null 2>&1; then
@@ -163,12 +167,30 @@ for update in "${updates[@]}"; do
         (cd "$out" && "$driver/bin/nixos-test-driver" --no-interactive -o "$out/output")
       fi
     }
+    # The test's derivation is the merge base's: nothing to run. The base is
+    # checked out once, on first use.
+    base_dir=""
+    vm_same_as_base() {
+      local check=$1 here there
+      if [ -z "$base_dir" ]; then
+        base_dir=$(mktemp -d "${TMPDIR:-/tmp}/losos-pre-push-base.XXXXXX")
+        git worktree add -q --detach "$base_dir" "$base" || return 1
+      fi
+      here=$(nix eval --raw "$(hook_flake)#checks.x86_64-linux.$check.drvPath" 2>/dev/null) || return 1
+      there=$(nix eval --raw "$(hook_flake "$base_dir")#checks.x86_64-linux.$check.drvPath" 2>/dev/null) || return 1
+      [ "$here" = "$there" ]
+    }
     if [ ${#vms[@]} -gt 0 ]; then
       echo "  VM tests: ${vms[*]}"
       for v in "${vms[@]}"; do
+        if [ -z "${LOSOS_HOOKS_VM:-}" ] && vm_same_as_base "$v"; then
+          echo "  = vm:$v: the same derivation as on $(git rev-parse --short "$base"), not run"
+          continue
+        fi
         run "vm:$v" vm_run "$v"
       done
     fi
+    [ -n "$base_dir" ] && git worktree remove --force "$base_dir"
 
     hook_finish
   )

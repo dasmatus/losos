@@ -32,7 +32,7 @@ here too.
 | Hook | Runs |
 | --- | --- |
 | `commit-msg` | refuses an attribution trailer or a session link |
-| `pre-commit` | `cargo fmt --check` on every crate; clippy `-D warnings` on each crate the change reaches; nixfmt, deadnix and statix on the staged `.nix` files; `nix/check-pins.sh` when a lock or `devenv.yaml` changes; `fix-hashes.py --check` when a `Cargo.lock` or `package-lock.json` does; `npm run typecheck` in `admin-ui/app`; CI's eval job: `nix/check-flake.sh`, the module merge of `install`, `iso` and `edge-gateway`, the ISO and edge image derivations |
+| `pre-commit` | `cargo fmt --check` on every crate; clippy `-D warnings` on each crate the change reaches; `nix/lint-nix.sh` (nixfmt, deadnix, statix) on the staged `.nix` files; `nix/check-pins.sh` when a lock or `devenv.yaml` changes; `fix-hashes.py --check` when a `Cargo.lock` or `package-lock.json` does; `npm run typecheck` in `admin-ui/app`; CI's eval job: `nix/check-flake.sh`, the module merge of `install`, `iso` and `edge-gateway`, the ISO and edge image derivations |
 | `pre-push` | all of pre-commit over the whole branch against its merge base with `origin/main`, plus `cargo test` for each crate reached, clippy for wasm32, `.#checks.x86_64-linux.losos-admin-ui` (the built SPA and its Playwright suite), `.#losos-handbook` when the handbook changes, and the VM tests the change touches |
 
 `devenv shell` and `nix develop` set `core.hooksPath` to `nix/hooks`, and so
@@ -43,7 +43,9 @@ from PATH, or from the flake when they are not on it.
 pre-push checks the commit it sends, not the working tree: when that commit
 is not a clean `HEAD` it runs in a temporary worktree. A VM test counts as
 touched when its file under `nix/tests/` changed, or a file it names (a
-browser script, a fixture, `screens/`) did. With `/dev/kvm` it is a
+browser script, a fixture, `screens/`) did, and it runs only when its
+derivation differs from the merge base's, so a change that only reformats
+a test boots nothing. With `/dev/kvm` it is a
 `nix build`; without, the test driver runs under TCG. `LOSOS_HOOKS_VM`
 picks others: `all`, `none`, or a list of check names.
 

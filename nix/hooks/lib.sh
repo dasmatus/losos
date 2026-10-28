@@ -6,8 +6,8 @@
 # made it.
 #
 # What each hook runs is in its own header. Everything here is plumbing:
-# finding the tools (cargo is the flake's pinned toolchain; npm and the Nix
-# linters come from the flake when they are not on PATH), running one check with its output in a log file,
+# finding the tools (cargo is the flake's pinned toolchain; npm comes from
+# the flake when it is not on PATH), running one check with its output in a log file,
 # and the summary at the end.
 #
 #   LOSOS_HOOKS_SKIP=name,name   skip these checks, by the names the hook
@@ -32,13 +32,14 @@ hook_passed_base="$hook_common/losos-hooks/passed"
 # Set by a hook when what it checks is exactly one git tree.
 hook_tree=""
 
-# The flake of the tree being checked. A shallow clone, and a worktree of
-# one, evaluates only with ?shallow=1.
+# The flake of the tree being checked, or of the checkout given. A shallow
+# clone, and a worktree of one, evaluates only with ?shallow=1.
 hook_flake() {
-  if [ "$(git -C "$hook_root" rev-parse --is-shallow-repository)" = true ]; then
-    echo "git+file://$hook_root?shallow=1"
+  local dir=${1:-$hook_root}
+  if [ "$(git -C "$dir" rev-parse --is-shallow-repository)" = true ]; then
+    echo "git+file://$dir?shallow=1"
   else
-    echo "git+file://$hook_root"
+    echo "git+file://$dir"
   fi
 }
 
@@ -253,19 +254,11 @@ hook_fmt_all() {
   return "$rc"
 }
 
-# statix takes one path at a time.
-hook_statix() {
-  local f rc=0
-  for f in "$@"; do hook_tool statix statix check --config nix/statix.toml "$f" || rc=1; done
-  return "$rc"
-}
-
-# The formatters and linters devenv's hooks ran on .nix files.
+# nixfmt, deadnix and statix over these .nix files: nix/lint-nix.sh, the
+# script CI's eval job and devenv's lint-nix run over the whole tree.
 hook_nix_lints() {
   [ $# -gt 0 ] || return 0
-  run nixfmt hook_tool nixfmt nixfmt-rfc-style --check "$@"
-  run deadnix hook_tool deadnix deadnix --fail "$@"
-  run statix hook_statix "$@"
+  run nix-lints bash "$hook_root/nix/lint-nix.sh" "$@"
 }
 
 # The eval lane: CI's eval job, every step of it.

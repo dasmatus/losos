@@ -247,6 +247,11 @@ in
   '';
   scripts.lint.description = "rustfmt --check + clippy -D warnings, every crate.";
 
+  # The Nix lints over the whole tree; CI's eval job and the git hooks run
+  # the same script.
+  scripts.lint-nix.exec = ''bash "$DEVENV_ROOT/nix/lint-nix.sh" "$@"'';
+  scripts.lint-nix.description = "nixfmt --check, deadnix and statix over every tracked .nix file.";
+
   # The Lab canvas's two wasm32 builds, WebGL2 then WebGPU, with the target
   # directory removed in between: each is several gigabytes of Bevy and they
   # share none of it. CI's `clippy-wasm` job runs the same loop.
@@ -464,6 +469,7 @@ in
     set -e
     check-pins
     lint
+    lint-nix
     lint-wasm
     test-rust
     check-flake
@@ -474,6 +480,7 @@ in
     bash "$DEVENV_ROOT/nix/hooks/install"
     echo "losos dev shell"
     echo "  fmt · lint · test-rust        Rust"
+    echo "  lint-nix                      nixfmt, deadnix, statix"
     echo "  test-tui                      the static losos in a pseudo-terminal"
     echo "  test-solana-escrow            the Solana escrow program (needs Anza's tools)"
     echo "  test-evm-escrow               the EVM escrow on a local chain (fetches tools)"
