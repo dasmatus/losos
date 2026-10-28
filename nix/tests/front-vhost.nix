@@ -347,6 +347,28 @@ pkgs.testers.nixosTest {
         assert code(noadmin, "http://appliance/handbook/no-such-page/") == "404", \
             "an unknown handbook path falls through to something other than 404"
 
+    with subtest("/handbook/basic/ is the handbook without JavaScript"):
+        # The same pages built once more with every script taken out
+        # (handbook/src/plugins/basic.ts). A browser with scripts off is sent
+        # there by a <noscript> refresh in the usual page's head, to the
+        # same page; the copy refuses scripts in its policy as well as
+        # carrying none, and has its own 404 page.
+        usual = noadmin.succeed("curl -s http://appliance/handbook/troubleshooting/")
+        assert 'http-equiv="refresh" content="0; url=/handbook/basic/troubleshooting/"' in usual, \
+            "the usual handbook page does not send a browser without JavaScript to its basic copy"
+        assert code(noadmin, "http://appliance/handbook/basic/troubleshooting/") == "200", \
+            "the basic copy of a handbook page does not answer"
+        assert code(appliance, "http://127.0.0.1/handbook/basic/") == "403", \
+            "the basic handbook is served to loopback, i.e. through the tunnel"
+        plain = noadmin.succeed("curl -s http://appliance/handbook/basic/troubleshooting/")
+        assert "<script" not in plain, "the basic handbook page carries a script"
+        assert code(noadmin, "http://appliance/handbook/basic/contents/") == "200", \
+            "the basic handbook has no Contents page"
+        csp = headers(noadmin, "http://appliance/handbook/basic/troubleshooting/")["content-security-policy"]
+        assert "script-src 'none'" in csp, f"the basic handbook's policy allows scripts: {csp}"
+        assert code(noadmin, "http://appliance/handbook/basic/no-such-page/") == "404", \
+            "an unknown basic handbook path falls through to something other than 404"
+
     with subtest("/diagrams/ is the admin page, LAN-only, under the admin CSP"):
         # LosOS Diagrams is a screen of the admin SPA at /diagrams, reached
         # through the admin location's fallback, with its scripts and the Rust

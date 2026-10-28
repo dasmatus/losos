@@ -1,0 +1,129 @@
+/* The handbook without JavaScript (src/plugins/basic.ts): only what differs
+ * from custom.css, which it loads first. Nothing here hydrates, so every
+ * control that would need a script is either gone or drawn as a link or as
+ * native HTML by the components in src/theme. */
+
+/* The search box is a link to the Contents page (src/theme/SearchBar), in
+ * custom.css's .navbar__search-input box: the label sits where the
+ * placeholder would, in the placeholder's colour. */
+a.hb-basic-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 8px !important;
+  color: var(--faint);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+}
+a.hb-basic-search:hover {
+  color: var(--ink);
+  border-color: var(--accent);
+}
+/* custom.css's background picture of the glyph is drawn in black, which
+ * the search plugin's own glyph covers on the usual copy. The link has no
+ * glyph of its own, so it masks one in the label's quieter colour, as
+ * custom.css does its other icons, and so it reads in dark mode too. */
+a.hb-basic-search {
+  background-image: none !important;
+}
+a.hb-basic-search::before {
+  content: '';
+  flex: 0 0 15px;
+  height: 15px;
+  background: var(--muted);
+  -webkit-mask: var(--hb-icon-search) center / contain no-repeat;
+  mask: var(--hb-icon-search) center / contain no-repeat;
+}
+/* On a phone the top bar's copy is the folded glyph chip, without its label. */
+@media (max-width: 996px) {
+  .navbar a.hb-basic-search,
+  .navbar a.hb-basic-search:hover {
+    justify-content: center;
+    gap: 0;
+    padding: 0 !important;
+    font-size: 0;
+    color: transparent;
+    background: var(--sunk) !important;
+  }
+}
+
+/* A chapter's arrow folds it by a script. Its name is a link to the
+ * chapter's own page, where the chapter is open, so the arrow goes. */
+.menu__caret {
+  display: none;
+}
+
+/* Copy and word-wrap on a code block need a script; selecting the text
+ * still copies it. */
+.theme-code-block [class*='buttonGroup'] {
+  display: none;
+}
+
+/* "On this page" on a phone, as a <details> (src/theme/TOCCollapsible), in
+ * the box custom.css gives the folding control. */
+.hb-basic-toc {
+  margin: 0 0 1rem;
+  font-size: 13px;
+}
+.hb-basic-toc > summary {
+  padding: 0.4rem 0.75rem;
+  background: var(--sunk);
+  border: 1px solid var(--line);
+  border-radius: var(--control-radius);
+  color: var(--ink);
+  font-weight: 500;
+  cursor: pointer;
+}
+.hb-basic-toc[open] > summary {
+  border-radius: var(--control-radius) var(--control-radius) 0 0;
+}
+.hb-basic-toc > ul {
+  margin: 0;
+  padding: 0.5rem 0.75rem 0.5rem 1.75rem;
+  border: 1px solid var(--line);
+  border-top: 0;
+  border-radius: 0 0 var(--control-radius) var(--control-radius);
+}
+
+/* The Contents page (src/components/contents): the chapters as cards on the
+ * page's recess, like the article's, each page in ink and its sections in
+ * the quieter colour under it. */
+.hb-contents {
+  max-width: 52rem;
+}
+.hb-contents__languages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  font-size: 14px;
+}
+.hb-contents__chapter {
+  margin-top: 1rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--card-radius);
+  background: var(--surface);
+}
+.hb-contents__chapter > h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.2rem;
+}
+.hb-contents__chapter a {
+  color: var(--ink);
+}
+.hb-contents ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+.hb-contents__pages > li {
+  margin-top: 0.4rem;
+  font-weight: 500;
+}
+.hb-contents__sections {
+  font-size: 13px;
+  font-weight: 400;
+}
+.hb-contents__sections a {
+  color: var(--muted);
+}

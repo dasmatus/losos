@@ -2,7 +2,10 @@ name: handbook
 
 # Builds the owner's handbook (handbook/, Docusaurus) and publishes it to the
 # GitHub Pages site on every push to main. Pull requests only build, which is
-# the gate: `docusaurus build` fails on a broken link.
+# the gate: `docusaurus build` fails on a broken link. `npm run build` builds
+# the site twice, the second time without JavaScript into build/basic/
+# (https://losos.dasmat.us/basic/, handbook/src/plugins/basic.ts), so both go
+# out in the one Pages artifact.
 #
 # The site is deployed through Actions (actions/deploy-pages), not from a
 # branch: the repository's Pages source has to be set to "GitHub Actions"

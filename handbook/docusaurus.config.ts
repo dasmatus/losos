@@ -1,6 +1,7 @@
-import {themes as prismThemes} from 'prism-react-renderer';
+import {themes as prismThemes, type PrismTheme} from 'prism-react-renderer';
 import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
+import basicPlugin, {type BasicOptions} from './src/plugins/basic';
 
 /* The LosOS handbook: the owner's manual for a box, written so it can be read
  * from the local network alone.
@@ -23,11 +24,48 @@ import type * as Preset from '@docusaurus/preset-classic';
  * internet to promise and the manual is most needed exactly when nothing
  * else answers.
  *
+ * Each of the two is built once more with LOSOS_HANDBOOK_BASIC=1, into
+ * basic/ under its base (https://losos.dasmat.us/basic/,
+ * http://<box>/handbook/basic/): the same pages with no JavaScript at all,
+ * where a browser with scripts off is sent. src/plugins/basic.ts says how.
+ *
  * This runs in Node.js at build time — no browser APIs, no JSX here. */
 const url = process.env.LOSOS_HANDBOOK_URL ?? 'https://losos.dasmat.us';
-const baseUrl = process.env.LOSOS_HANDBOOK_BASE ?? '/';
+const siteBase = process.env.LOSOS_HANDBOOK_BASE ?? '/';
+const basic = process.env.LOSOS_HANDBOOK_BASIC === '1';
+const baseUrl = basic ? `${siteBase}basic/` : siteBase;
 // The box's copy is the only build under another base (nix/packages.nix).
-const landing = baseUrl === '/';
+// Decided by the site's base, so the public basic copy keeps its landing
+// page and every page sits at the same address under basic/ as without it.
+const landing = siteBase === '/';
+
+/* Prism colours a code block with inline styles, from the light theme on
+ * the server and from the dark one once the page's script sees dark mode.
+ * The basic copy has no script to make that swap, so it gets one theme whose
+ * every colour is light-dark() of the two, which the browser resolves by the
+ * color-scheme derisk-theme.css sets for the system's light or dark. */
+function bothSchemes(light: PrismTheme, dark: PrismTheme): PrismTheme {
+  type Style = PrismTheme['plain'];
+  const styleOf = (theme: PrismTheme, type: string): Style =>
+    Object.assign({}, ...theme.styles.filter((s) => s.types.includes(type)).map((s) => s.style));
+  const merge = (a: Style, b: Style, fallbackA: Style, fallbackB: Style): Style => {
+    const out: Record<string, unknown> = {...b, ...a};
+    for (const key of ['color', 'backgroundColor'] as const) {
+      const x = a[key] ?? fallbackA[key];
+      const y = b[key] ?? fallbackB[key];
+      if (x !== undefined && y !== undefined) out[key] = `light-dark(${x}, ${y})`;
+    }
+    return out as Style;
+  };
+  const types = [...new Set([...light.styles, ...dark.styles].flatMap((s) => s.types))];
+  return {
+    plain: merge(light.plain, dark.plain, {}, {}),
+    styles: types.map((type) => ({
+      types: [type],
+      style: merge(styleOf(light, type), styleOf(dark, type), light.plain, dark.plain),
+    })),
+  };
+}
 
 const config: Config = {
   title: 'LosOS handbook',
@@ -45,6 +83,10 @@ const config: Config = {
 
   url,
   baseUrl,
+
+  // Read by the few theme components that render differently without a
+  // script (src/theme), at build time: the basic copy is never hydrated.
+  customFields: {basic},
 
   organizationName: 'dasmatus',
   projectName: 'losos',
@@ -97,11 +139,15 @@ const config: Config = {
         // src/pages holds only the landing page, which the box leaves out.
         pages: landing ? {} : false,
         theme: {
-          customCss: './src/css/custom.css',
+          customCss: basic
+            ? ['./src/css/custom.css', './src/css/basic.css']
+            : './src/css/custom.css',
         },
       } satisfies Preset.Options,
     ],
   ],
+
+  plugins: [[basicPlugin, {basic, siteBase} satisfies BasicOptions]],
 
   themes: [
     [
@@ -184,7 +230,7 @@ const config: Config = {
       copyright: `LosOS. Every box serves this handbook at /handbook/, with or without the internet.`,
     },
     prism: {
-      theme: prismThemes.github,
+      theme: basic ? bothSchemes(prismThemes.github, prismThemes.dracula) : prismThemes.github,
       darkTheme: prismThemes.dracula,
       additionalLanguages: ['bash', 'nix', 'powershell', 'json'],
     },

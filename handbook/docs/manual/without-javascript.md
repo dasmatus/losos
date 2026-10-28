@@ -63,3 +63,22 @@ The pages without JavaScript use the stylesheet and the words of the usual
 pages. Menus, folding the sidebar and the dialog that asks before using the
 reserve open and close in CSS alone. Notices slide in and leave by
 themselves, also in CSS, and stay put if your system asks for less motion.
+
+## This handbook
+
+The handbook works without JavaScript too. A browser with scripts off that
+opens one of its pages is sent to the same page under `basic/`:
+`http://<box>/handbook/manual/apps` becomes
+`http://<box>/handbook/basic/manual/apps`, and the copy on the internet,
+`https://losos.dasmat.us/manual/apps`, becomes
+`https://losos.dasmat.us/basic/manual/apps`. The pages, the pictures and
+the three languages are the same, with no script at all.
+
+Three things work differently there:
+
+- **Search** needs a script, so the search box opens **Contents**: every
+  page and every section in it, on one page. Search that page with your
+  browser's Find, Ctrl+F or ⌘F.
+- **On a phone** the menu button opens the same Contents page, which also
+  has the languages at its top.
+- **Light or dark** follows your system. There is no switch for it.

@@ -269,6 +269,24 @@ let
     "form-action 'none'"
   ];
 
+  # The handbook's copy without JavaScript under /handbook/basic/, where a
+  # browser with scripts off is sent (handbook/src/plugins/basic.ts). Its
+  # build takes every script out, so its policy refuses them outright: a
+  # script that ever crept back into that build would be refused rather than
+  # run, and the colour mode needs none there (the stylesheet follows the
+  # system). The rest is the handbook's policy: its pages keep inline style
+  # attributes.
+  handbookBasicCsp = lib.concatStringsSep "; " [
+    "default-src 'none'"
+    "script-src 'none'"
+    "style-src 'self' 'unsafe-inline'"
+    "img-src 'self' data:"
+    "font-src 'self'"
+    "frame-ancestors 'none'"
+    "base-uri 'none'"
+    "form-action 'none'"
+  ];
+
   # LosOS Chat's policy (modules/chat.nix, admin-ui/app/chat/): the admin
   # policy's 'wasm-unsafe-eval' for its end-to-end encryption (matrix-js-sdk's
   # Rust crypto), plus blob: media for the voice messages and videos it
@@ -388,7 +406,7 @@ let
   # drops its `<base href>`, and every page below /auth/ then loads its scripts
   # from the wrong folder and stays blank), the handbook's and chat's own
   # values (or the admin value, for the headers they share) under /handbook/
-  # and /chat/ (and chat's for the guest call page, /calls/guest/), each
+  # (its copy without JavaScript under /handbook/basic/ first) and /chat/ (and chat's for the guest call page, /calls/guest/), each
   # frame's own value (or nothing) under /widget-frame/ and /app-frame/, and
   # a mail message's under its HTML route, and the pages without
   # JavaScript under /basic/.
@@ -401,20 +419,22 @@ let
     ~^/browser/      "";
         ~^/cool/         "";
   '';
-  adminHeaderMap = variable: value: handbookValue: chatValue: frameValue: appFrameValue: mailValue: basicValue: ''
-    map $uri ${variable} {
-        default          "${value}";
-        ~^/basic/        "${basicValue}";
-        ${officeArms}
-        ~^/auth/         "";
-        ~^/handbook/     "${handbookValue}";
-        ~^/chat/         "${chatValue}";
-        ~^/calls/guest/  "${chatValue}";
-        ~^/widget-frame/ "${frameValue}";
-        ~^/app-frame/    "${appFrameValue}";
-        ~^/api/mail/messages/[A-Za-z0-9_-]+/html$ "${mailValue}";
-    }
-  '';
+  adminHeaderMap =
+    variable: value: handbookValue: chatValue: frameValue: appFrameValue: mailValue: basicValue: handbookBasicValue: ''
+      map $uri ${variable} {
+          default          "${value}";
+          ~^/basic/        "${basicValue}";
+          ${officeArms}
+          ~^/auth/         "";
+          ~^/handbook/basic/ "${handbookBasicValue}";
+          ~^/handbook/     "${handbookValue}";
+          ~^/chat/         "${chatValue}";
+          ~^/calls/guest/  "${chatValue}";
+          ~^/widget-frame/ "${frameValue}";
+          ~^/app-frame/    "${appFrameValue}";
+          ~^/api/mail/messages/[A-Za-z0-9_-]+/html$ "${mailValue}";
+      }
+    '';
 
   adminHeaders = [
     {
@@ -422,6 +442,7 @@ let
       variable = "$losos_csp";
       value = adminCsp;
       handbookValue = handbookCsp;
+      handbookBasicValue = handbookBasicCsp;
       chatValue = chatCsp;
       frameValue = widgetFrameCsp;
       appFrameValue = appFrameCsp;
@@ -451,11 +472,11 @@ let
 
   adminHeaderMaps = lib.concatMapStrings (
     h:
-    adminHeaderMap h.variable h.value (h.handbookValue or h.value) (h.chatValue or h.value) h.frameValue (
-      h.appFrameValue or h.frameValue
-    ) (
-      h.mailValue or h.value
-    ) (h.basicValue or h.value)
+    adminHeaderMap h.variable h.value (h.handbookValue or h.value) (h.chatValue or h.value) h.frameValue
+      (h.appFrameValue or h.frameValue)
+      (h.mailValue or h.value)
+      (h.basicValue or h.value)
+      (h.handbookBasicValue or h.handbookValue or h.value)
   ) adminHeaders;
 
   # `always` so the headers ride on the 403s the lanOnly guard emits too.
@@ -790,6 +811,18 @@ in
             extraConfig = ''
               ${lanOnly}
               error_page 404 /handbook/404.html;
+            '';
+          };
+          # The copy without JavaScript (handbook/src/plugins/basic.ts), a
+          # subtree of the same store path, with its own 404 page: the usual
+          # one would only send a browser with scripts off back here.
+          "/handbook/basic/" = {
+            alias = "${handbook}/basic/";
+            index = "index.html";
+            tryFiles = "$uri $uri/ =404";
+            extraConfig = ''
+              ${lanOnly}
+              error_page 404 /handbook/basic/404.html;
             '';
           };
         })
