@@ -6891,12 +6891,14 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                     web::delete().to(delete_device_directory),
                 )
                 .route("/api/directory/people", web::get().to(get_directory_people))
+                // Written out, as every route here is, so the sections test
+                // reads them; `directory::JOBS_*_ROUTE` are the same strings.
                 .route(
-                    crate::directory::JOBS_CLAIM_ROUTE,
+                    "/api/directory/jobs/claim",
                     web::post().to(post_directory_jobs),
                 )
                 .route(
-                    crate::directory::JOBS_REPORT_ROUTE,
+                    "/api/directory/jobs/report",
                     web::post().to(post_directory_jobs),
                 )
                 .route("/api/devices/{kind}", web::post().to(post_device))
