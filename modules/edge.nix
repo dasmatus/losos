@@ -59,6 +59,20 @@ let
 
   registerDomain = "register.${cfg.publicDomain}";
 
+  # The boxes on Tor and I2P (modules/edge-hidden.nix).
+  hidden = import ./hidden-lib.nix { inherit lib pkgs; };
+  hiddenOn = cfg.hidden.tor.enable || cfg.hidden.i2p.enable;
+  hiddenArgs = lib.optionals hiddenOn [
+    "--hidden-dir"
+    "/var/lib/losos-registrar/hidden"
+    "--hidden-addresses"
+    hidden.addressesFile
+    "--hidden-http-port"
+    (toString hidden.edgePlainPort)
+    "--hidden-https-port"
+    (toString hidden.edgeTlsPort)
+  ];
+
   # ── Mesh control plane constants ────────────────────────────────────────
   meshEnabled = cfg.cluster.enable;
   # The registrar API answers off-box when it is bound to a non-loopback
@@ -144,9 +158,19 @@ let
       # own idle timeout (server/vm.rs) still drops a client that stops
       # sending.
       (
-        lib.optionalAttrs cfg.vms.enable {
-          entryPoints.websecure.transport.respondingTimeouts.readTimeout = "6h";
-        }
+        lib.recursiveUpdate
+          (lib.optionalAttrs cfg.vms.enable {
+            entryPoints.websecure.transport.respondingTimeouts.readTimeout = "6h";
+          })
+          # Where Tor and I2P deliver the boxes' addresses
+          # (modules/edge-hidden.nix): loopback only, no redirect to https,
+          # and only the registrar's routers for those names.
+          (
+            lib.optionalAttrs hiddenOn {
+              entryPoints.losos-hidden.address = "127.0.0.1:${toString hidden.edgePlainPort}";
+              entryPoints.losos-hidden-tls.address = "127.0.0.1:${toString hidden.edgeTlsPort}";
+            }
+          )
       )
   );
 
@@ -990,6 +1014,7 @@ let
     ++ callsRelayArgs
     ++ inferenceArgs
     ++ ciArgs
+    ++ hiddenArgs
   );
 
   # Call media for this edge's boxes (losos.edge.calls.relay,
