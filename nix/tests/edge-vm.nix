@@ -13,12 +13,19 @@
 # Asserts the end-to-end master-proxy data path without TLS:
 #   1. edge rathole-seed writes a declarative [server] base (bind_addr scalar);
 #   2. the registrar API (/health) comes up on the edge;
-#   3. the appliance announce service registers → the reconciler writes
-#      /etc/traefik/dynamic/losos.yml (Host rule) and /etc/rathole/server.toml
-#      ([server.services.mattbox]); rathole's file-watcher hot-reloads;
+#   3. the appliance announce service registers → the registrar publishes
+#      the Host rule on its provider listener and writes
+#      /etc/rathole/server.toml ([server.services.mattbox]); rathole's
+#      file-watcher hot-reloads;
 #   4. rathole forwards: `curl edge:127.0.0.1:<port>` reaches the appliance
-#      Nginx over the tunnel (the L4 path Traefik would use);
-#   5. POST /unregister tears the route down (curl then fails);
+#      Nginx over the tunnel, and Traefik, having discovered the box from the
+#      registrar, routes https://mattbox.losos.cfd to it over TCP and over
+#      HTTP/3 (QUIC, UDP 443), the latter from the appliance across the
+#      firewall; with the registrar stopped Traefik keeps the route; with the
+#      tunnel down a visitor gets the edge's offline page, not a bare 502;
+#      an old edge's leftover losos.yml is removed on the next switch;
+#   5. POST /unregister tears the route down (curl then fails, Traefik
+#      answers 404 for the name);
 #   6. enrollment is actually closed: an unknown appliance id, a known id with
 #      the wrong token, and a blank token are each rejected.
 #
@@ -31,9 +38,10 @@
 # boundary — that the registrar only ever serves whitelisted tenants — so the
 # coverage moves there.
 #
-# Traefik's on-demand TLS (certResolver le) is not exercised — LE can't issue
-# in a VM — so we test the L4 rathole tunnel + registrar directly. Traefik is
-# left running (its ACME failures are logged, not fatal).
+# Traefik's on-demand certificates (certResolver le) are not exercised: Let's
+# Encrypt cannot issue in a VM, so Traefik answers with its default
+# self-signed certificate and the curls below pass -k. Everything else about
+# the route is the real thing.
 { pkgs }:
 
 let
@@ -238,8 +246,10 @@ pkgs.testers.nixosTest {
       "grep -F -q '[server.services.mattbox]' /etc/rathole/server.toml"
     )
     edge.wait_until_succeeds(
-      "grep -q 'Host(`mattbox.losos.cfd`)' /etc/traefik/dynamic/losos.yml"
+      "curl -fsS http://127.0.0.1:8090/traefik | grep -q 'Host(`mattbox.losos.cfd`)'"
     )
+    # Nothing is written into Traefik's directory any more.
+    edge.fail("test -e /etc/traefik/dynamic/losos.yml")
     toml = edge.succeed("cat /etc/rathole/server.toml")
     assert "bind_addr = \"127.0.0.1:50000\"" in toml, f"rathole service bind_addr: {toml!r}"
 
@@ -250,6 +260,51 @@ pkgs.testers.nixosTest {
     #    registrar rewrote it, so the client service is now matched and the
     #    forward succeeds after the control channel settles.
     edge.wait_until_succeeds("curl -fsS http://127.0.0.1:50000/ | grep -q hello-losos")
+
+    # 4b. Traefik discovered the box: the name routes over TCP on the edge
+    #     itself, and over HTTP/3 from another machine, through the firewall's
+    #     UDP 443. Traefik advertises HTTP/3 on every TCP answer.
+    https = "curl -sSk --max-time 10 --resolve mattbox.losos.cfd:443:127.0.0.1 https://mattbox.losos.cfd/"
+    edge.wait_until_succeeds(f"{https} | grep -q hello-losos", timeout=120)
+    headers = edge.succeed(f"{https} -D - -o /dev/null")
+    assert 'alt-svc: h3=":443"' in headers.lower(), headers
+    edge_v4 = appliance.succeed("getent ahostsv4 edge | awk 'NR==1{print $1}'").strip()
+    edge_addr = edge_v4 or "[" + appliance.succeed("getent ahostsv6 edge | awk 'NR==1{print $1}'").strip() + "]"
+    h3 = (
+        "${pkgs.curl}/bin/curl -sSk --max-time 10 --http3-only "
+        f"--resolve mattbox.losos.cfd:443:{edge_addr} https://mattbox.losos.cfd/"
+    )
+    appliance.wait_until_succeeds(f"{h3} | grep -q hello-losos", timeout=120)
+    version = appliance.succeed(f"{h3} -o /dev/null -w '%{{http_version}}'").strip()
+    assert version == "3", f"not HTTP/3: {version!r}"
+
+    # Traefik keeps what it discovered while the registrar is away.
+    edge.succeed("systemctl stop losos-registrar.service")
+    edge.succeed(f"{https} | grep -q hello-losos")
+    appliance.succeed(f"{h3} | grep -q hello-losos")
+    edge.succeed("systemctl start losos-registrar.service")
+    edge.wait_until_succeeds("curl -fsS http://127.0.0.1:8090/traefik | grep -q 'Host(`mattbox.losos.cfd`)'")
+
+    # The tunnel goes down: the visitor gets the edge's page, in their
+    # language, with Traefik's status, not a bare "Bad Gateway".
+    appliance.succeed("systemctl stop losos-rathole-client.service")
+    offline = f"{https} -H 'Accept-Language: de' -o /tmp/offline.html -w '%{{http_code}}'"
+    edge.wait_until_succeeds(f"test \"$({offline})\" = 502", timeout=120)
+    page = edge.succeed("cat /tmp/offline.html")
+    assert '<html lang="de">' in page and "<strong>mattbox.losos.cfd</strong>" in page, page
+    edge.succeed(f"{https} -o /tmp/offline-en.html")
+    assert '<html lang="en">' in edge.succeed("cat /tmp/offline-en.html")
+    # Kept in the test's output, for the screenshots of the change.
+    edge.copy_from_machine("/tmp/offline.html", "offline-page")
+    edge.copy_from_machine("/tmp/offline-en.html", "offline-page")
+    appliance.succeed("systemctl start losos-rathole-client.service")
+    edge.wait_until_succeeds(f"{https} | grep -q hello-losos", timeout=120)
+
+    # An edge upgraded from the file-written routes: the leftover is taken
+    # away on the switch, so Traefik never routes a box twice.
+    edge.succeed("echo 'http: {}' > /etc/traefik/dynamic/losos.yml")
+    edge.succeed("systemctl restart systemd-tmpfiles-resetup.service")
+    edge.fail("test -e /etc/traefik/dynamic/losos.yml")
 
     # 5. /unregister tears the route down: the rathole service disappears and
     #    the forward stops. Stop the appliance's announce loop first: it
@@ -268,6 +323,7 @@ pkgs.testers.nixosTest {
     # listener.
     edge.wait_until_succeeds("! grep -F -q '[server.services.mattbox]' /etc/rathole/server.toml")
     edge.wait_until_fails("curl -fsS http://127.0.0.1:50000/")
+    edge.wait_until_succeeds(f"test \"$({https} -o /dev/null -w '%{{http_code}}')\" = 404")
 
     # 6. Enrollment is closed. options.nix calls losos.edge.tenants the
     #    security boundary — "the registrar only ever writes Traefik routers

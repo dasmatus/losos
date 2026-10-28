@@ -87,8 +87,8 @@ losos.edge = {
 };
 ```
 
-The registrar's reconciler, after it has written its own Traefik and rathole
-files, relays its **live** tenants (registered, whitelisted or enrolled,
+The registrar's reconciler, after it has decided its own Traefik routes and
+written its rathole file, relays its **live** tenants (registered, whitelisted or enrolled,
 heartbeating) to the hub and renders `/etc/rathole/uplink.toml`: a rathole
 *client* config with one service per relayed box, `local_addr =
 127.0.0.1:<that box's port on this spoke>`, token = the uplink token. A
