@@ -477,6 +477,31 @@ in
       '';
     };
 
+    # ── Tor and I2P (modules/hidden-services.nix) ─────────────────────────
+    hidden.tor.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Give the box an address on Tor, a `.onion` name people open in Tor
+        Browser. It reaches what the box's public name reaches through an
+        edge, LosOS Cloud, LosOS Git and LosOS Login, never the admin pages,
+        and needs no edge and no open port: the box connects out to Tor. The
+        address appears on the Network page once Tor has made it, and stays
+        the same across reboots.
+      '';
+    };
+
+    hidden.i2p.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Give the box an address on I2P, a `.b32.i2p` name people open
+        through an I2P router. It reaches the same pages as the Tor address
+        and, like it, needs no edge and no open port. The box takes part in
+        I2P as a router with a small bandwidth share.
+      '';
+    };
+
     # ── Compute mesh (appliance side) ───────────────────────────────────────
     # Two Kubernetes instances run on the appliance and they are deliberately
     # different clusters. See
@@ -3155,6 +3180,28 @@ in
       '';
     };
 
+    edge.hidden.tor.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Give every box this edge routes an address on Tor of its own, a
+        `.onion` name that reaches the box through its tunnel the way its
+        public name does. The addresses are made here and kept across
+        restarts; each box learns its own on its next heartbeat and shows
+        it on its Network page. The edge opens no port for it.
+      '';
+    };
+
+    edge.hidden.i2p.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Give every box this edge routes an address on I2P of its own, a
+        `.b32.i2p` name, in the same way as edge.hidden.tor.enable. The edge
+        takes part in I2P as a router with a small bandwidth share.
+      '';
+    };
+
     edge.manage.ui = lib.mkOption {
       type = lib.types.nullOr lib.types.path;
       default = null;
@@ -3424,6 +3471,16 @@ in
         description = "LosOS Cloud runs, and signs people in with LosOS Login.";
       };
     };
+
+  # Tunnel length of the box's and the edge's I2P services
+  # (modules/hidden-lib.nix); null is i2pd's own default. Only a test's
+  # private I2P network, with too few routers for three hops, sets it.
+  options.lososInternal.hidden.i2pHops = lib.mkOption {
+    type = lib.types.nullOr lib.types.ints.positive;
+    internal = true;
+    default = null;
+    description = "Hops of each I2P tunnel of the box's or edge's addresses; null for i2pd's default.";
+  };
 
   # ── The shared side ───────────────────────────────────────────────────
   # The shared user's apps (mail, chat) exist only while the box's storage

@@ -2496,6 +2496,27 @@ export function postWindowsShare(password: string, options: RequestOptions = {})
   return postJson("/api/windows", { password }, options);
 }
 
+// ── Tor and I2P ───────────────────────────────────────────────────────────
+
+/* The box's addresses on Tor and I2P (modules/hidden-services.nix,
+ * backend/plugins/hidden): those its own Tor and I2P made, and those the
+ * edge it reports to made for it (modules/edge-hidden.nix). A name is null
+ * until it is made, and while its network is off. */
+export interface HiddenPair {
+  tor: string | null;
+  i2p: string | null;
+}
+
+export interface HiddenAddresses {
+  box: HiddenPair;
+  edge: HiddenPair;
+}
+
+/** GET /api/hidden — this box's Tor and I2P addresses. */
+export function getHidden(options: RequestOptions = {}): Promise<HiddenAddresses> {
+  return call<HiddenAddresses>("/api/hidden", options);
+}
+
 // ── Profiles ──────────────────────────────────────────────────────────────
 
 /* A person's picture, banner, colour, pronouns and a line about them

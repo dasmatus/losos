@@ -136,6 +136,12 @@ in
         # seeded keys from losos.access.gpgKeys.
         LOSOS_ACCESS_DIR = "/var/lib/losos/access";
         LOSOS_ACCESS_KEYS_FILE = "/etc/losos/access-keys.asc";
+        # Traefik's metrics for the statistics plugin
+        # (backend/plugins/statistics, modules/apps.nix). Set on every box,
+        # apps or not: lososd refuses to start a plugin whose manifest names
+        # a variable it lacks, and the plugin answers "unavailable" while
+        # nothing listens there.
+        LOSOS_TRAEFIK_URL = "http://127.0.0.1:${toString config.losos.apps.traefikPort}";
       }
       # Where lososd looks for an edge proxy besides the LAN (backend/src/edge.rs):
       # the configured registrar, probed whether or not the master proxy is on,
