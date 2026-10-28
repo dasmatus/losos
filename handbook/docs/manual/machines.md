@@ -20,8 +20,8 @@ sells the replicas and creates the machines.
 
 ## Who can use it
 
-Only a box that shares its disk with the mesh is offered machines, to rent
-or to host. A box that does not share sees one greyed sentence and a link
+The box offers machines, to rent or to host, only while it shares its disk
+with the mesh. A box that does not share sees one greyed sentence and a link
 to the Market pane, where the disk-sharing switch lives. Turn sharing on
 there, apply the change, and the Machines page offers the form.
 

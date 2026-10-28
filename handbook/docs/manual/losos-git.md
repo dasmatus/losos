@@ -163,7 +163,7 @@ their chat address, the one LosOS Chat shows under their name, such as
    press **Tell `<name>.local`**.
 3. They are back on your box, signed in as `@eva:kitchenbox.local`.
 
-![Eva's own box asks before it tells mattbox.local who she is.](../img/git-other-box-vouch.png)
+![Eva's own box asks before it tells mattbox.local who Eva is.](../img/git-other-box-vouch.png)
 
 Their box tells yours only their chat address and their name. Your box
 checks the answer with their box's chat server before it believes it.

@@ -162,8 +162,8 @@ const EUROPEAN: Feature[] = [
     title: 'NixOS',
     body: (
       <Translate id="losos.companies.eu.nixos">
-        The system every box builds itself from. Stewarded by the NixOS
-        Foundation in the Netherlands.
+        The system every box builds itself from. The NixOS Foundation in the
+        Netherlands looks after it.
       </Translate>
     ),
     to: 'https://nixos.org',

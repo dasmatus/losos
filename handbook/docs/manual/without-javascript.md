@@ -7,7 +7,7 @@ slug: /manual/without-javascript
 # Without JavaScript
 
 The admin pages work in a browser with JavaScript turned off. Open the box
-at its usual address and the browser is sent to the same page under
+at its usual address and the box sends the browser to the same page under
 `/basic/`: `https://<address>/settings/network` becomes
 `https://<address>/basic/settings/network`. The box draws these pages itself
 and sends them as finished HTML, with the same sidebar, top bar, colours and
@@ -26,8 +26,8 @@ needs JavaScript, so an account that signs in with one cannot sign in here.
 Use the spare admin key instead. The browser keeps that key until you close
 it.
 
-These pages are https only, like LosOS Login. An `http://` address is sent
-to `https://`.
+These pages are https only, like LosOS Login. The box sends an `http://`
+address on to `https://`.
 
 ## What works
 

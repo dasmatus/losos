@@ -65,7 +65,7 @@ open it in LosOS Git and choose **Wiki** in its menu.
 **Edit** opens the page in a Markdown editor with a preview. Every save is a
 commit in the space's history, with your name on it and an optional note
 of what changed; **Changes** under the page lists them. If someone else
-saved the page while you were writing, the save is refused and your text
+saved the page while you were writing, the box refuses your save and your text
 stays in the editor, so you can reopen the page and add it again.
 **Delete page** removes the file in a commit too, so the text stays in the
 history.

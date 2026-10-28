@@ -151,16 +151,16 @@ lands in the box's wallet. The name gives one address, the box's wallet,
 which is the same on Ethereum, Base, Arbitrum and OP.
 
 The section **Paid by name** on the Network pane lists the box's names on
-the edge. **Bind wallet** asks the wallet to sign one short message: the
-wallet made on this box asks for its password, otherwise the browser's wallet
-extension asks. The edge checks the signature and then publishes the
+the edge. **Bind wallet** asks the wallet to sign one short message. The
+wallet made on this box asks for its password, and otherwise the browser's
+wallet extension asks. The edge checks the signature and then publishes the
 wallet's address at each name. It publishes only an address whose wallet
 signed for this box, and only the box can ask, for an administrator signed in
 to it. The edge holds the zone, so the name is as trustworthy as the edge
 itself. **Unbind** takes the address off again.
 
 The address is public once it is bound, like any address you hand out. The
-edge's zone is signed with DNSSEC, which is what lets ENS trust the record.
+edge signs its zone with DNSSEC, which is what lets ENS trust the record.
 
 Beside each name the pane says whether wallets find it yet. A wallet asks
 ENS, and ENS asks public DNS, which trusts the edge's zone only once the

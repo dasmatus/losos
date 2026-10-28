@@ -82,8 +82,8 @@ mobile and so on. **Add a photo** takes a picture from your computer.
 
 **Import** takes a `.vcf` file from your phone or from another address book:
 vCard 4.0, 3.0 or 2.1, with one contact or many. Photos inside the file come
-along. A contact that is already in your book is updated rather than added a
-second time. The file's own identifier decides when it has one, otherwise
+along. The import updates a contact that is already in your book rather than
+adding it twice. The file's own identifier decides when it has one, otherwise
 the name together with the first email address or phone number.
 
 **Export** downloads your whole book as one `.vcf` file, in vCard 3.0 (which
