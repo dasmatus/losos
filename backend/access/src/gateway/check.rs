@@ -132,13 +132,17 @@ pub struct Image {
 #[derive(Debug, Clone, Default)]
 pub struct Anchors {
     pub tpm_roots: Vec<Certificate>,
+    /// The makers' intermediate CAs, for a gateway whose TPM does not carry
+    /// its own chain.
+    pub tpm_intermediates: Vec<Certificate>,
     pub images: Vec<Image>,
     /// Network to LosOS's payout address there. Empty: no gateway passes.
     pub payouts: BTreeMap<String, String>,
 }
 
 impl Anchors {
-    /// The three files a box ships: TPM makers' roots (PEM), the published
+    /// The three files a box ships: TPM makers' certificates (PEM: the
+    /// self-signed ones are roots, the rest intermediates), the published
     /// gateway images (a JSON list of [`Image`]) and LosOS's payout
     /// addresses (a JSON object, network to address).
     pub fn from_texts(
@@ -146,8 +150,12 @@ impl Anchors {
         images_json: &str,
         payouts_json: &str,
     ) -> Result<Anchors, String> {
+        let (tpm_roots, tpm_intermediates) = roots_from_pem(roots_pem)
+            .into_iter()
+            .partition(|c| c.tbs_certificate.subject == c.tbs_certificate.issuer);
         Ok(Anchors {
-            tpm_roots: roots_from_pem(roots_pem).map_err(|e| format!("the TPM roots: {e}"))?,
+            tpm_roots,
+            tpm_intermediates,
             images: serde_json::from_str(images_json)
                 .map_err(|e| format!("the gateway images: {e}"))?,
             payouts: serde_json::from_str(payouts_json)
@@ -156,9 +164,10 @@ impl Anchors {
     }
 }
 
-/// Root certificates from a PEM bundle; anything not a certificate block is
-/// skipped.
-pub fn roots_from_pem(text: &str) -> Result<Vec<Certificate>, ekcert::CertError> {
+/// Certificates from a PEM bundle; anything not a certificate block is
+/// skipped, and so is a block this box cannot parse: the makers' bundle
+/// carries a few in encodings no EK chain here needs.
+pub fn roots_from_pem(text: &str) -> Vec<Certificate> {
     let mut out = Vec::new();
     let mut body: Option<String> = None;
     for line in text.lines().map(str::trim) {
@@ -166,15 +175,17 @@ pub fn roots_from_pem(text: &str) -> Result<Vec<Certificate>, ekcert::CertError>
             body = Some(String::new());
         } else if line == "-----END CERTIFICATE-----" {
             let b64 = body.take().unwrap_or_default();
-            let der = base64::engine::general_purpose::STANDARD
-                .decode(b64)
-                .map_err(|_| ekcert::CertError::Malformed)?;
-            out.push(ekcert::parse(&der)?);
+            let Ok(der) = base64::engine::general_purpose::STANDARD.decode(b64) else {
+                continue;
+            };
+            if let Ok(cert) = ekcert::parse(&der) {
+                out.push(cert);
+            }
         } else if let Some(b) = body.as_mut() {
             b.push_str(line);
         }
     }
-    Ok(out)
+    out
 }
 
 /// Why a gateway is not trusted.
@@ -380,7 +391,10 @@ pub fn introduce(
             unb64("an EK chain certificate", c)
                 .and_then(|der| ekcert::parse(&der).map_err(|e| Refusal::UnknownTpm(e.to_string())))
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .chain(anchors.tpm_intermediates.iter().cloned())
+        .collect::<Vec<_>>();
     ekcert::certifies(&cert, &ek).map_err(|e| Refusal::UnknownTpm(e.to_string()))?;
     ekcert::chains_to(&cert, &chain, &anchors.tpm_roots)
         .map_err(|e| Refusal::UnknownTpm(e.to_string()))?;
@@ -534,6 +548,7 @@ mod tests {
     fn anchors() -> Anchors {
         Anchors {
             tpm_roots: vec![ekcert::parse(&hex::decode(vectors::CA_CERT).unwrap()).unwrap()],
+            tpm_intermediates: vec![],
             images: vec![],
             payouts: ours(),
         }
@@ -722,6 +737,23 @@ mod tests {
             base64::engine::general_purpose::STANDARD
                 .encode(hex::decode(vectors::CA_CERT).unwrap())
         );
-        assert_eq!(roots_from_pem(&pem).unwrap().len(), 1);
+        assert_eq!(roots_from_pem(&pem).len(), 1);
+    }
+
+    /// The real bundle (Microsoft's TrustedTpm.cab as PEM, `.#losos-tpm-roots`):
+    /// `LOSOS_TPM_ROOTS=… cargo test -- --ignored`.
+    #[test]
+    #[ignore = "needs the TPM makers' bundle"]
+    fn the_makers_bundle_parses_into_roots_and_intermediates() {
+        let path = std::env::var("LOSOS_TPM_ROOTS").expect("LOSOS_TPM_ROOTS");
+        let pem = std::fs::read_to_string(path).unwrap();
+        let a = Anchors::from_texts(&pem, "[]", "{}").unwrap();
+        assert!(a.tpm_roots.len() > 30, "{} roots", a.tpm_roots.len());
+        assert!(
+            a.tpm_intermediates.len() > 2000,
+            "{} intermediates",
+            a.tpm_intermediates.len()
+        );
+        assert!(!a.tpm_intermediates.is_empty());
     }
 }
