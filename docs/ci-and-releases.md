@@ -320,7 +320,7 @@ they are `base-sepolia`, `arbitrum-sepolia`, `optimism-sepolia` and
 `LososEscrow` deployment (`edge/contracts/`), with the same treasury and the
 releaser key's address. Deploying it from a fresh key at nonce 0 gives it the
 same address on every chain. On Solana the treasury is the owner of
-the USDC account that takes the fee, and there is no contract: the buyer's
+the USDC account that takes the fee, and there is no contract. The buyer's
 transaction makes both transfers itself. `genesisHash` overrides the genesis a
 test Solana network must report, for a local validator.
 
@@ -539,8 +539,8 @@ It reaches the registrar as `--market-coin-fee-limit` (0 to 100000). While a
 seller owes more than that, or has owed anything for 30 days (fixed), the
 edge drops coins from that seller's new orders and refuses new coin
 payments. 0 stops coin payments at the first cent owed. A ledger from before
-this kept no start date: the first read stamps one, and it is written with
-the next change to the ledger.
+this kept no start date. The first read stamps one, and the edge writes it
+with the next change to the ledger.
 
 Two things move USDC to the treasury for it, both into
 `losos.edge.market.usdc.networks.<network>.treasury`:

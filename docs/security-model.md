@@ -1,6 +1,6 @@
 # Security model
 
-What losos defends against, and what it does not.
+What LosOS defends against, and what it does not.
 
 ## Trust boundaries
 
