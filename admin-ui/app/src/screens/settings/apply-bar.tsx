@@ -86,6 +86,6 @@ export function ApplyBar({ form }: { form: ApplyBarForm }) {
 }
 
 const BAR = cn(
-  "sticky bottom-4 z-30 mt-5 flex",
+  "sticky bottom-[calc(1rem+var(--bottom-nav))] z-30 mt-5 flex",
   "rounded-card border border-line bg-surface/95 p-3.5 shadow-pop backdrop-blur-sm",
 );

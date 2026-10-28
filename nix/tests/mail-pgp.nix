@@ -435,7 +435,7 @@ pkgs.testers.nixosTest {
         assert re.search(r"(?i)content-type: multipart/encrypted;\s*protocol=\"application/pgp-encrypted\"", message), message[:600]
         assert "-----BEGIN PGP MESSAGE-----" in message
         for word in ("spare", "blue pot", "door"):
-            assert word not in message.split("\n\n", 1)[1], word
+            assert word not in re.split(r"\r?\n\r?\n", message, maxsplit=1)[1], word
         # His Autocrypt header carries his public key.
         m = re.search(r"(?ims)^autocrypt:(.*?)\r?\n(?=\S)", message)
         assert m, message[:800]

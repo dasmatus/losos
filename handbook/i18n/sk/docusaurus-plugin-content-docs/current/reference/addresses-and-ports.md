@@ -41,6 +41,8 @@ vrátane prevádzky, ktorá prichádza cez tunel edge, dostane **403**.
 | 3702 (UDP), 5357 | WS-Discovery | Zobrazenie zariadenia v Sieti v Prieskumníkovi Windows, kým je priečinok zapnutý |
 | 5355    | LLMNR    | Odpoveď Windows, keď sa pýta na zariadenie jeho holým názvom, kým je priečinok zapnutý |
 | 8082    | HTTP     | Riadiace API, iba na loopbacku zariadenia; nginx naň presmeruje `/api/` |
+| 8480, 8443 | HTTP, HTTPS | Čo Tor a I2P doručia pre vlastné adresy zariadenia (`losos.hidden.tor.enable`, `losos.hidden.i2p.enable`), iba na loopbacku zariadenia. Pozri [Tor a I2P](../manual/tor-and-i2p.md) |
+| 8790    | HTTP     | Lokálna kópia binárnych cache, na loopbacku; v lokálnej sieti iba s `losos.cache.local.shareOnLan` |
 
 Kým je priečinok zapnutý, záznam mDNS pre LosOS Cloud je priečinok SMB
 (`_smb._tcp`), takže Finder a správcovia súborov v Linuxe ukážu zariadenie
@@ -59,5 +61,6 @@ prichádzajúci port.
 | `losos-edge.dasmat.us`      | Riadiaca časť edge LosOS a stránka „find my box“         |
 | `proxy.losos.dasmat.us`     | Binárna cache, z ktorej sa zariadenie aktualizuje        |
 | `127.0.0.1:8787`            | Lokálna Nix cache z GHCR na zariadení a inštalačnom médiu |
+| `127.0.0.1:8790`            | Lokálna kópia všetkých týchto cache na disku zariadenia |
 | `losos.dasmat.us/proxy`     | Kópia tejto cache, použije sa, keď prvá neodpovedá       |
 | `losos.dasmat.us`           | Táto príručka na webe                                    |

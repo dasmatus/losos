@@ -1,10 +1,10 @@
 //! The reconciler's two contracts: it keeps running when one tenant is broken,
 //! and the operator whitelist — not the registry — decides hostnames.
 //!
-//! Both are asserted against the files a real `serve` writes to a real
-//! directory, because those files *are* the product: `losos.yml` is what
-//! Traefik routes on and what it requests certificates for, and `server.toml`
-//! is what rathole binds tunnels from.
+//! Both are asserted against what a real `serve` publishes: the document its
+//! provider listener hands Traefik, which is what Traefik routes on and what
+//! it requests certificates for, and the `server.toml` it writes, which is
+//! what rathole binds tunnels from.
 
 mod common;
 
@@ -60,7 +60,7 @@ async fn one_broken_tenant_does_not_stop_the_pass() {
         rathole.contains("[server.services.alpha]"),
         "alpha lost its tunnel because of beta's fault: {rathole}"
     );
-    let traefik = edge.traefik_yaml().expect("losos.yml exists");
+    let traefik = edge.traefik_yaml().expect("routes are published");
     assert!(
         traefik.contains("alpha.losos.cfd"),
         "alpha lost its router because of beta's fault: {traefik}"
@@ -115,7 +115,7 @@ async fn a_whitelist_hostname_change_lands_without_re_registration() {
         "the whitelist hostname never took effect: {:?}",
         edge.traefik_yaml()
     );
-    let traefik = edge.traefik_yaml().expect("losos.yml exists");
+    let traefik = edge.traefik_yaml().expect("routes are published");
     assert!(
         !traefik.contains("old.losos.cfd"),
         "the stale hostname still has a router (and so still requests a cert): {traefik}"
@@ -204,11 +204,11 @@ async fn a_tenant_removed_from_the_whitelist_loses_its_route() {
     edge.shutdown().await;
 }
 
-/// With no live tenants, `losos.yml` must be absent rather than empty —
-/// Traefik's file provider rejects an empty dynamic config — while rathole
+/// With no live tenants Traefik must be handed `{}` rather than an empty
+/// `http` section, which it refuses while keeping the old routes, and rathole
 /// still gets a complete zero-tenant `[server]` block so it can start.
 #[tokio::test]
-async fn the_zero_tenant_state_removes_the_traefik_file() {
+async fn the_zero_tenant_state_routes_nothing() {
     let edge = Edge::start(
         "reconcile-zero",
         &[TenantSpec::new("mattbox", "mattbox.losos.cfd", GOOD_TOKEN)],
@@ -217,7 +217,7 @@ async fn the_zero_tenant_state_removes_the_traefik_file() {
 
     assert!(
         edge.traefik_yaml().is_none(),
-        "no appliance has registered, so there must be no losos.yml"
+        "no appliance has registered, so there must be no route"
     );
     let rathole = edge
         .rathole_toml()
@@ -236,7 +236,7 @@ async fn the_zero_tenant_state_removes_the_traefik_file() {
     );
     assert!(
         edge.wait_for(|| edge.traefik_yaml().is_some()).await,
-        "registering did not produce a Traefik config"
+        "registering did not produce a route"
     );
 
     let (status, _) = edge
@@ -248,9 +248,72 @@ async fn the_zero_tenant_state_removes_the_traefik_file() {
     assert_eq!(status, 204);
     assert!(
         edge.wait_for(|| edge.traefik_yaml().is_none()).await,
-        "losos.yml survived the last tenant leaving: {:?}",
+        "a route survived the last tenant leaving: {:?}",
         edge.traefik_yaml()
     );
+
+    edge.shutdown().await;
+}
+
+/// Traefik's side of it, over the real listener: the routes as JSON, the
+/// boxes' routers behind the offline page, and that page in the visitor's
+/// language with Traefik's status.
+#[tokio::test]
+async fn traefik_reads_the_routes_and_the_offline_page_from_the_provider_listener() {
+    let edge = Edge::start(
+        "reconcile-provider",
+        &[TenantSpec::new("mattbox", "mattbox.losos.cfd", GOOD_TOKEN)],
+    )
+    .await;
+    let get = |path: &str| {
+        let url = format!("{}{path}", edge.provider_base);
+        let client = edge.client.clone();
+        async move {
+            client
+                .get(url)
+                .header("host", "mattbox.losos.cfd")
+                .header("accept-language", "sk,en;q=0.5")
+                .send()
+                .await
+                .expect("provider answers")
+        }
+    };
+
+    // No box yet: `{}`, which Traefik takes as "no routes".
+    let r = get("/traefik").await;
+    assert_eq!(r.status(), 200);
+    assert_eq!(r.text().await.unwrap(), "{}");
+
+    let (status, body) = edge
+        .register("mattbox", "mattbox.losos.cfd", GOOD_TOKEN)
+        .await;
+    assert_eq!(status, 200, "body: {body}");
+    assert!(edge.wait_for(|| edge.traefik_yaml().is_some()).await);
+    let r = get("/traefik").await;
+    assert_eq!(r.headers()["content-type"], "application/json");
+    let doc: serde_json::Value = r.json().await.expect("the document is JSON");
+    let router = &doc["http"]["routers"]["mattbox"];
+    assert_eq!(router["rule"], "Host(`mattbox.losos.cfd`)");
+    assert_eq!(router["middlewares"][0], "losos_offline");
+    let errors = &doc["http"]["middlewares"]["losos_offline"]["errors"];
+    assert_eq!(errors["status"], serde_json::json!(["502", "504"]));
+    assert_eq!(errors["query"], "/offline/{status}");
+    assert_eq!(
+        doc["http"]["services"]["losos_offline"]["loadBalancer"]["servers"][0]["url"],
+        edge.provider_base.as_str()
+    );
+
+    let r = get("/offline/504").await;
+    assert_eq!(r.status(), 504);
+    assert_eq!(r.headers()["cache-control"], "no-store");
+    let page = r.text().await.unwrap();
+    assert!(page.contains("<html lang=\"sk\">"), "{page}");
+    assert!(
+        page.contains("<strong>mattbox.losos.cfd</strong>"),
+        "{page}"
+    );
+    // Anything else is the gateway's own error.
+    assert_eq!(get("/offline/418").await.status(), 502);
 
     edge.shutdown().await;
 }

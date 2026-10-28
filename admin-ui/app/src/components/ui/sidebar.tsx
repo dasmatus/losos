@@ -4,7 +4,7 @@ import { useRender } from "@base-ui/react/use-render";
 import { cva, type VariantProps } from "class-variance-authority";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { PanelLeftIcon } from "@hugeicons/core-free-icons";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/components/ui/drawer";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
@@ -17,7 +17,8 @@ import { cn } from "@/lib/utils";
  * narrows to a rail of icons and each entry's name moves into a Tooltip),
  * SidebarMenuButton/SidebarMenuSubButton/SidebarMenuAction with Base UI's
  * `render` prop (so a route <Link> takes the entry's look and behaviour),
- * Collapsible sub-menus, and a Sheet sliding in from the left on a phone.
+ * Collapsible sub-menus, and on a phone a sheet, which here rises from the
+ * bottom (components/ui/drawer.tsx) where shadcn's slides in from the left.
  * All of it is Base UI, which positions, measures and locks scroll through
  * CSSOM writes the admin CSP allows and never injects a <style> element,
  * which it refuses; the widths reach the page the same way, as a React
@@ -163,12 +164,14 @@ function SidebarProvider({
 
 /* The panel. `collapsible="icon"` lets it narrow to the rail; "none" pins it
  * open. Rendered as <nav> because every entry in it is a destination. On a
- * phone the same children go into a Sheet from the left, opened by a
- * SidebarTrigger placed outside it; `mobileTitle` names that sheet. */
+ * phone the same children go into a sheet from the bottom, opened by the
+ * bottom bar's More (components/ui/bottom-nav.tsx); `mobileTitle` names
+ * that sheet. */
 function Sidebar({
   collapsible = "icon",
   mobileTitle,
   mobileDescription,
+  mobileActions,
   closeLabel,
   className,
   children,
@@ -177,29 +180,34 @@ function Sidebar({
   collapsible?: "icon" | "none";
   mobileTitle: string;
   mobileDescription?: string;
+  /** Buttons on the phone sheet's title row, before its close button. */
+  mobileActions?: React.ReactNode;
   closeLabel: string;
 }) {
   const { state, isMobile, openMobile, setOpenMobile } = useSidebar();
 
   if (isMobile) {
     return (
-      <Sheet open={openMobile} onOpenChange={setOpenMobile}>
-        <SheetContent side="left" closeLabel={closeLabel} data-sidebar="sidebar" data-mobile="true">
-          <SheetHeader className="sr-only">
-            <SheetTitle>{mobileTitle}</SheetTitle>
-            {mobileDescription !== undefined && <SheetDescription>{mobileDescription}</SheetDescription>}
-          </SheetHeader>
+      <Drawer open={openMobile} onOpenChange={setOpenMobile}>
+        <DrawerContent closeLabel={closeLabel} data-sidebar="sidebar" data-mobile="true">
+          {/* The sheet's name on the close button's row, with the page's own
+              buttons for the sheet (the admin page's search) beside it. */}
+          <div className="flex h-8 shrink-0 items-center gap-1.5 pr-10 pl-2">
+            <DrawerTitle className="min-w-0 flex-1 truncate">{mobileTitle}</DrawerTitle>
+            {mobileActions}
+          </div>
+          {mobileDescription !== undefined && <DrawerDescription className="sr-only">{mobileDescription}</DrawerDescription>}
           <nav
             data-slot="sidebar"
             data-state="expanded"
             data-collapsible=""
-            className={cn("group/sidebar flex min-h-0 flex-1 flex-col overflow-y-auto", className)}
+            className={cn("group/sidebar flex min-h-0 flex-1 flex-col", className)}
             {...props}
           >
             {children}
           </nav>
-        </SheetContent>
-      </Sheet>
+        </DrawerContent>
+      </Drawer>
     );
   }
 
