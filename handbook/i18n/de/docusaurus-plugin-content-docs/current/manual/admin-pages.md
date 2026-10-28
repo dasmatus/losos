@@ -102,6 +102,10 @@ und die Pfeiltasten bewegen sich darin.
   als `.vcf` exportieren, löschen. Wer unter **Auf dieser Box** steht,
   bietet statt der letzten drei **Zu Kontakten hinzufügen**.
 
+![Das Menü auf einer leeren Fläche der Übersicht, mit geöffnetem Erscheinungsbild: hell, dunkel und wie im Browser.](@site/docs/img/context-menu-page-de.png)
+
+![Das Menü einer Datei in LosOS Cloud: Öffnen, Herunterladen, Umbenennen mit F2, Verschieben, Kopieren, Versionen, Zu Favoriten hinzufügen, Teilen, Link kopieren, Issue anlegen und Löschen mit Del.](@site/docs/img/context-menu-file-de.png)
+
 Die Tasten neben einem Eintrag funktionieren auch ohne Menü. In LosOS Cloud
 benennt F2 die markierte Datei um und Entf verschiebt sie in den Papierkorb
 (auf dem Mac Cmd+Rücktaste). Textfelder behalten das Menü des Browsers, für

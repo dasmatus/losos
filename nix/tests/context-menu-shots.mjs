@@ -17,6 +17,10 @@
 //
 // The window is 1280 x 900 (390 x 844 for the phone) at twice the pixels,
 // en-US, reduced motion.
+//
+// Without --before it also takes the handbook's pictures of the menu into
+// OUT/handbook: light, in English, Slovak and German, named the way the
+// handbook names them (`context-menu-file.png`, `-sk`, `-de`).
 
 import assert from "node:assert/strict";
 import { createHash, X509Certificate } from "node:crypto";
@@ -45,12 +49,12 @@ mkdirSync(out, { recursive: true });
 const browser = await chromium.launch({ args: [`--ignore-certificate-errors-spki-list=${spkiPin(ca)}`] });
 const steps = [];
 
-async function session(scheme, viewport, touch = false) {
+async function session(scheme, viewport, touch = false, locale = "en-US") {
   const context = await browser.newContext({
     viewport,
     deviceScaleFactor: 2,
     colorScheme: scheme,
-    locale: "en-US",
+    locale,
     reducedMotion: "reduce",
     hasTouch: touch,
     isMobile: touch,
@@ -276,8 +280,49 @@ async function phone() {
   await context.close();
 }
 
+// The handbook's pictures: the page's own menu with Appearance open, and a
+// file's menu in LosOS Cloud, in each language the handbook has.
+async function handbook(locale, suffix) {
+  const { context, page, errors } = await session("light", DESKTOP, false, locale);
+  const dir = join(out, "handbook");
+  mkdirSync(dir, { recursive: true });
+  const shoot = async (slug) => {
+    await settle(page);
+    await page.screenshot({ path: join(dir, `${slug}${suffix}.png`) });
+    console.log(`handbook/${slug}${suffix}.png`);
+  };
+
+  await page.goto(`${base}/`);
+  const main = page.getByRole("main");
+  await main.locator("h1, h2").first().waitFor();
+  await settle(page);
+  const area = await main.boundingBox();
+  await rightClick(page, main, { x: area.x + area.width - 300, y: area.y + 12 });
+  await menu(page).locator('[role="menuitem"][aria-haspopup]').first().hover();
+  await page.locator('[data-slot="context-menu"]').nth(1).waitFor();
+  await shoot("context-menu-page");
+  await close(page);
+
+  await page.goto(`${base}/cloud/files/Documents`);
+  await page.waitForSelector('[data-entry="budget.ods"]');
+  await settle(page);
+  const budget = await page.locator('[data-entry="budget.ods"]').boundingBox();
+  await rightClick(page, page.locator('[data-entry="budget.ods"]'), { x: budget.x + 420, y: budget.y + 20 });
+  await page.locator("[data-selection]").waitFor();
+  await shoot("context-menu-file");
+  await close(page);
+
+  assert.deepEqual(errors, [], "uncaught errors");
+  await context.close();
+}
+
 await desktop("light");
 await desktop("dark");
 await phone();
+if (!before) {
+  await handbook("en-US", "");
+  await handbook("sk-SK", "-sk");
+  await handbook("de-DE", "-de");
+}
 writeFileSync(join(out, "manifest.json"), JSON.stringify({ feature: "context-menu", before, steps }, null, 2) + "\n");
 await browser.close();
