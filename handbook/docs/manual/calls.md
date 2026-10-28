@@ -14,6 +14,14 @@ goes through the box, and the box cannot see or hear it. Every frame of
 picture and sound is encrypted in the browser that sends it and decrypted
 in the browsers that receive it.
 
+Calls follow MatrixRTC, Matrix's standard for calls in rooms, as LosOS's
+own call type, `org.losos.call`, with one call per room. Everyone in a call
+publishes a membership naming the box's call server, `losos-calls`, so a
+Matrix app that does not know this call type leaves it alone instead of
+offering a **Join** that cannot work. Ringing, declining and the exchange of
+encryption keys use MatrixRTC's own events. Picture and sound go through
+`losos-calls`, not LiveKit.
+
 ## When calls are there
 
 Calls are part of chat, so they need what chat needs: the box shares its
@@ -34,14 +42,24 @@ none or because you did not allow it, you join with your camera off and a
 message says so; the others hear you as usual. Without a microphone you
 join listening only, and the microphone button asks for it again.
 
-Everyone in the room gets a card in the corner of their chat page that
-rings for a minute. **Answer** joins the way the call was started. On a
-video call, **Answer without video** joins with the microphone only.
-**Decline** only hides the card.
+In a direct message the other person gets a card in the corner of their
+chat page that rings for a minute and a half. In a room everyone gets it
+when the person starting the call may notify the whole room, which by
+default means a room admin; otherwise the others see the call in the
+timeline. **Answer** joins the way the call was started. On a video call,
+**Answer without video** joins with the microphone only. **Decline** hides
+the card. In a direct message it also tells the caller, whose call then
+closes.
 
 The room's timeline says that a call started. While it lasts, the line has
 a **Join** button, so someone who missed the ring, or who left, can come
-back. When the last person leaves, the timeline says the call ended.
+back. When the last person leaves, the timeline says the call ended. Other
+Matrix apps show a short notice instead, with a link that opens the call in
+LosOS Chat, where people sign in with LosOS Login.
+
+Rooms and direct messages made in LosOS Chat are ready for calls. In a room
+made with an older LosOS, a room admin turns calls on by starting the first
+one. Until then, anyone else who tries gets a message saying so.
 
 ## During a call
 
@@ -146,8 +164,8 @@ the box carries but cannot read. The keys change while the call runs:
 Keys live in the browser's memory only and are gone when the call ends.
 Nothing is saved, so a key found later opens nothing from the call.
 
-One limit is worth knowing. A browser sends its key to the devices the
-box's chat server lists for each person in the call. Someone who had taken
+One limit is worth knowing. A browser sends its key to the devices in
+the call, as the box's chat server lists them. Someone who had taken
 over the box's software could list a device of their own. Verify each
 other's devices in chat (**Secure messages**, then **Verify**) to know that a
 device is really the other person's.

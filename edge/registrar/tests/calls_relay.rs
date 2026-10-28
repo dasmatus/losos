@@ -264,31 +264,6 @@ async fn a_reconnecting_box_replaces_its_old_connection() {
     assert!(first["addresses"].is_array() && second["addresses"].is_array());
 }
 
-/// An identity key and a certificate for it, from a throwaway root: the
-/// guest link needs no more than "a certificate is installed".
-fn official_identity(dir: &std::path::Path) -> (String, String) {
-    use losos_registrar::identity;
-    let (root_pkcs8, _) = identity::keygen().unwrap();
-    let root = identity::load_key(&root_pkcs8).unwrap();
-    let (edge_pkcs8, edge_public) = identity::keygen().unwrap();
-    let key_file = dir.join("identity.key");
-    let cert_file = dir.join("identity.cert.json");
-    std::fs::write(&key_file, edge_pkcs8).unwrap();
-    let cert = identity::issue(
-        &root,
-        "test edge",
-        "https://register.example.test",
-        &edge_public,
-        4_000_000_000,
-    )
-    .unwrap();
-    std::fs::write(&cert_file, serde_json::to_vec(&cert).unwrap()).unwrap();
-    (
-        key_file.to_string_lossy().into_owned(),
-        cert_file.to_string_lossy().into_owned(),
-    )
-}
-
 const CALL: &str = "0123456789abcdef0123456789abcdef";
 const INVITE: &str = "fedcba9876543210fedcba9876543210";
 
@@ -316,10 +291,9 @@ async fn only_an_official_edge_makes_guest_links_and_only_on_the_boxs_own_name()
 
     let scratch = std::env::temp_dir().join(format!("losos-guest-link-{}", std::process::id()));
     std::fs::create_dir_all(&scratch).unwrap();
-    let (key, cert) = official_identity(&scratch);
+    let gateway = common::claimed_gateway(&scratch);
     let edge = Edge::start_custom("guest-official", &tenants, move |opts, _| {
-        opts.identity_key_file = Some(key);
-        opts.identity_cert_file = Some(cert);
+        opts.gateway = Some(gateway);
     })
     .await;
     let (status, body) = edge
