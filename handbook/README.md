@@ -13,7 +13,7 @@ It is published twice from this one source:
 ```sh
 npm ci
 npm start                         # live preview at http://localhost:3000
-npm run build                     # the public site, into build/
+npm run build                     # the public site, into build/, and build/basic/
 LOSOS_HANDBOOK_BASE=/handbook/ npm run build   # what the box serves
 npm run typecheck
 ```
@@ -22,6 +22,16 @@ The public site opens on a landing page, `src/pages/index.tsx`, and moves
 the Welcome page to `/welcome`. The box's copy has no landing page and keeps
 the Welcome page at its root (`docusaurus.config.ts` decides by the base).
 Its strings are `losos.home.*` in each locale's `code.json`.
+
+`npm run build` builds every page twice: once as usual and once with no
+JavaScript at all, into `build/basic/` (served at `/basic/` and
+`/handbook/basic/`). A browser with scripts off is sent from a page to its
+copy there by a `<noscript>` refresh. `src/plugins/basic.ts` writes that
+refresh, adds the basic copy's Contents page (which stands in for search and
+the phone's menu) and takes the scripts out; the few components that need
+a script render a link or a `<details>` instead when
+`customFields.basic` is set (`src/lib/basic.ts`). Anything new that only
+works with a script needs the same.
 
 Pages live in `docs/`; the sidebar is generated from the folder tree, with
 `_category_.json` naming each folder. `onBrokenLinks` is `throw`, so a dead

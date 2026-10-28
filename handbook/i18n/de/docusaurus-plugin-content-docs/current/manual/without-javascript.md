@@ -69,3 +69,23 @@ Seiten. Menüs, das Einklappen der Seitenleiste und der Dialog, der vor dem
 Nutzen der Reserve nachfragt, öffnen und schließen sich allein mit CSS.
 Hinweise gleiten herein und gehen von selbst, ebenfalls mit CSS, und bleiben
 stehen, wenn dein System weniger Bewegung wünscht.
+
+## Dieses Handbuch \{#this-handbook}
+
+Auch das Handbuch funktioniert ohne JavaScript. Ein Browser mit
+ausgeschalteten Skripten, der eine seiner Seiten öffnet, wird auf dieselbe
+Seite unter `basic/` geschickt: aus `http://<box>/handbook/manual/apps` wird
+`http://<box>/handbook/basic/manual/apps`, und aus der Kopie im Internet,
+`https://losos.dasmat.us/manual/apps`, wird
+`https://losos.dasmat.us/basic/manual/apps`. Die Seiten, die Bilder und die
+drei Sprachen sind dieselben, ganz ohne Skript.
+
+Drei Dinge funktionieren dort anders:
+
+- **Die Suche** braucht ein Skript, daher öffnet das Suchfeld den
+  **Inhalt**: jede Seite und jeden Abschnitt darin, auf einer Seite.
+  Durchsuche diese Seite mit der Suche deines Browsers, Strg+F oder ⌘F.
+- **Auf dem Handy** öffnet die Menütaste dieselbe Inhaltsseite, die oben
+  auch die Sprachen hat.
+- **Hell oder dunkel** richtet sich nach deinem System. Einen Schalter dafür
+  gibt es nicht.

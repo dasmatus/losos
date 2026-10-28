@@ -3,6 +3,7 @@ import clsx from 'clsx';
 import useIsBrowser from '@docusaurus/useIsBrowser';
 import {translate} from '@docusaurus/Translate';
 import type {Props} from '@theme/ColorModeToggle';
+import {useBasic} from '@site/src/lib/basic';
 
 /* The admin UI's ThemeToggle (admin-ui/app/src/components/ui/theme-toggle.tsx):
  * a three-way segmented control, Auto / Light / Dark, rather than the stock
@@ -65,6 +66,10 @@ function ColorModeToggle({
   onChange,
 }: Props): ReactNode {
   const isBrowser = useIsBrowser();
+  // Without JavaScript nothing could keep a choice, so the copy without it
+  // follows the system's light or dark (custom.css) and shows no control.
+  const basic = useBasic();
+  if (basic) return null;
   const choices: Choice[] = respectPrefersColorScheme
     ? [null, 'light', 'dark']
     : ['light', 'dark'];

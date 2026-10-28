@@ -867,5 +867,17 @@
   },
   "losos.home.setups.companies": {
     "message": "LosOS pre firmy"
+  },
+  "losos.basic.search": {
+    "message": "Nájsť stránku"
+  },
+  "losos.basic.menu": {
+    "message": "Obsah"
+  },
+  "losos.basic.contents.title": {
+    "message": "Obsah"
+  },
+  "losos.basic.contents.lead": {
+    "message": "Každá stránka príručky a každá časť v nej. Ak nejakú hľadáte, prehľadajte túto stránku funkciou Nájsť vo vašom prehliadači, Ctrl+F alebo ⌘F."
   }
 }

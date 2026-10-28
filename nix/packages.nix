@@ -431,9 +431,12 @@ images
     # config does not ask, and there is no .git in the sandbox anyway.
     env.CI = "true";
 
-    # `npm run build` is `docusaurus build`, which fails on a broken link.
-    # $out is the built site: index.html at the top, hashed assets under
-    # assets/, one directory per page with its own index.html.
+    # `npm run build` is `docusaurus build`, which fails on a broken link,
+    # run twice: the usual site, then its copy without JavaScript into
+    # build/basic/ (handbook/src/plugins/basic.ts), served at
+    # /handbook/basic/. $out is the built site: index.html at the top,
+    # hashed assets under assets/, one directory per page with its own
+    # index.html, and the same again under basic/.
     installPhase = ''
       runHook preInstall
       cp -r build $out

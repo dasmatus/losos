@@ -62,3 +62,22 @@ Stránky bez JavaScriptu používajú štýly a texty obvyklých stránok. Ponuk
 zbalenie bočného panela a dialóg, ktorý sa pýta pred použitím rezervy, sa
 otvárajú a zatvárajú len cez CSS. Oznámenia sa vysunú a samy odídu, tiež cez
 CSS, a ostanú stáť, ak váš systém žiada menej pohybu.
+
+## Táto príručka \{#this-handbook}
+
+Príručka funguje bez JavaScriptu tiež. Prehliadač s vypnutými skriptmi, ktorý
+otvorí niektorú jej stránku, presmeruje na tú istú stránku pod `basic/`:
+z `http://<box>/handbook/manual/apps` sa stane
+`http://<box>/handbook/basic/manual/apps` a z kópie na internete,
+`https://losos.dasmat.us/manual/apps`, sa stane
+`https://losos.dasmat.us/basic/manual/apps`. Stránky, obrázky aj tri jazyky
+sú rovnaké, bez jediného skriptu.
+
+Tri veci tam fungujú inak:
+
+- **Vyhľadávanie** potrebuje skript, preto pole vyhľadávania otvorí
+  **Obsah**: každú stránku a každú jej časť na jednej stránke. Prehľadajte
+  ju funkciou Nájsť vo vašom prehliadači, Ctrl+F alebo ⌘F.
+- **Na telefóne** tlačidlo ponuky otvorí tú istú stránku Obsah, ktorá má
+  navrchu aj jazyky.
+- **Svetlý alebo tmavý režim** sa riadi vaším systémom. Prepínač preň nie je.

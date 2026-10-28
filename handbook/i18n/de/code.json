@@ -867,5 +867,17 @@
   },
   "losos.home.setups.companies": {
     "message": "LosOS für Unternehmen"
+  },
+  "losos.basic.search": {
+    "message": "Seite finden"
+  },
+  "losos.basic.menu": {
+    "message": "Inhalt"
+  },
+  "losos.basic.contents.title": {
+    "message": "Inhalt"
+  },
+  "losos.basic.contents.lead": {
+    "message": "Jede Seite des Handbuchs und jeder Abschnitt darin. Um einen zu finden, durchsuche diese Seite mit der Suche deines Browsers, Strg+F oder ⌘F."
   }
 }
