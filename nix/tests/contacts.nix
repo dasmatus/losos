@@ -37,6 +37,7 @@
 let
   inherit (pkgs) lib;
   lososPkgs = import ../packages.nix { inherit pkgs; };
+  screens = import ./screens { inherit pkgs; };
   before = beforeSrc != null;
 
   # The admin UI as it ships, without the Lab page and LosOS Cloud's page,
@@ -335,6 +336,8 @@ pkgs.testers.nixosTest {
     HOST = "mattbox.local"
     PASSWORD = "Correct-Horse-Battery-9"
     EVA_PASSWORD = "Eva-Long-Password-3"
+
+    ${screens.handbookScript}
     PEOPLE = "/var/lib/losos-identity/users.yml"
     OUT = os.environ.get("out", os.getcwd())
     SHOTS = f"{OUT}/shots"
@@ -638,5 +641,13 @@ pkgs.testers.nixosTest {
 
         with subtest("the launch film's pictures"):
             browser("film")
+
+        with subtest("the handbook's pictures"):
+            handbook_pictures(box, f"https://{HOST}", "matus", PASSWORD, [
+                {"name": "contacts", "path": "/contacts",
+                 "waitFor": {"selector": 'button:has-text("Eva Nováková")'},
+                 "steps": [{"click": {"selector": 'button:has-text("Eva Nováková")'}}],
+                 "settle": 1500},
+            ], proxy="socks5://127.0.0.1:1080")
   '';
 }

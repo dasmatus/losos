@@ -36,6 +36,7 @@
 let
   inherit (pkgs) lib;
   lososPkgs = import ../packages.nix { inherit pkgs; };
+  screens = import ./screens { inherit pkgs; };
   folder = "/var/lib/losos-office/files";
   python = pkgs.python3.withPackages (p: [ p.websocket-client ]);
   client = pkgs.writeShellScript "office-client" ''
@@ -139,6 +140,8 @@ pkgs.testers.nixosTest {
       losos = {
         hostName = "mattbox";
         backend.package = lososPkgs.losos-ctl;
+        # The pins and the look are plugins; without them the page sees 404s.
+        backend.plugins = lososPkgs.losos-plugins;
         admin.enable = true;
         admin.ui = lososPkgs.losos-admin-ui;
         office = {
@@ -168,7 +171,8 @@ pkgs.testers.nixosTest {
   nodes.laptop =
     { nodes, ... }:
     {
-      virtualisation.memorySize = 2048;
+      # The handbook's pictures start a second Chromium beside this one.
+      virtualisation.memorySize = 3072;
       virtualisation.cores = 2;
       networking.hosts.${nodes.mattbox.networking.primaryIPAddress} = [ "mattbox.local" ];
       fonts.enableDefaultPackages = true;
@@ -206,7 +210,10 @@ pkgs.testers.nixosTest {
         ];
       };
 
-      environment.systemPackages = [ pkgs.curl ];
+      environment.systemPackages = [
+        pkgs.curl
+        screens.capture
+      ];
     };
 
   testScript = ''
@@ -223,6 +230,8 @@ pkgs.testers.nixosTest {
     box = "https://mattbox.local"
     PASSWORD = "Correct-Horse-Battery-9"
     EVA_PASSWORD = "Eva-Long-Password-3"
+
+    ${screens.handbookScript}
 
     def hexid(name):
         return name.encode().hex()
@@ -595,6 +604,15 @@ pkgs.testers.nixosTest {
         mattbox.succeed(f"file -b '{folder}/Kick-off.pptx' | grep -q 'Microsoft PowerPoint 2007+'")
         browse("close", "slides")
         laptop.copy_from_machine("/tmp/shots", "office-shots")
+
+    with subtest("the handbook's pictures"):
+        handbook_pictures(laptop, box, "matus", PASSWORD, [
+            {"name": "office", "path": "/office/",
+             "waitFor": {"selector": 'main [aria-busy="false"] table'}, "settle": 1500},
+            {"name": "office-document", "path": f"/office/#file={hexid('Trip plan.docx')}",
+             "waitFor": {"selector": 'main[aria-busy="false"] iframe'},
+             "steps": [{"sleep": 15000}], "settle": 3000},
+        ])
 
     with subtest("the plain http address goes through sign-in to the same document on https"):
         # The session cookie is https only, so the plain address cannot tell

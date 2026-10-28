@@ -143,6 +143,8 @@ pkgs.testers.nixosTest {
         losos = {
           hostName = "mattbox";
           backend.package = lososPkgs.losos-ctl;
+          # The pins and the look are plugins; without them the page sees 404s.
+          backend.plugins = lososPkgs.losos-plugins;
           admin.ui = ui;
           git.enable = false;
           # The shared user's side of the box: chat's gate.

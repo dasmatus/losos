@@ -41,6 +41,7 @@
 let
   inherit (pkgs) lib;
   lososPkgs = import ../packages.nix { inherit pkgs; };
+  screens = import ./screens { inherit pkgs; };
   before = beforeSrc != null;
 
   # The admin UI as it ships, without LosOS Diagrams' three WebAssembly
@@ -271,6 +272,8 @@ pkgs.testers.nixosTest {
     DOMAIN = "mattbox.home.arpa"
     PASSWORD = "Correct-Horse-Battery-9"
     EVA_PASSWORD = "Eva-Long-Password-3"
+
+    ${screens.handbookScript}
     PEOPLE = "/var/lib/losos-identity/users.yml"
     DB = "/var/lib/losos-cloud/cloud.db"
     OUT = os.environ.get("out", os.getcwd())
@@ -608,5 +611,17 @@ pkgs.testers.nixosTest {
 
         with subtest("the launch film's pictures"):
             browser("film")
+
+        with subtest("the handbook's pictures"):
+            review = {"selector": 'button:has-text("Review the box")'}
+            handbook_pictures(box, f"https://{HOST}", "matus", PASSWORD, [
+                {"name": "calendar-week", "path": "/calendar", "waitFor": review,
+                 "steps": [{"waitFor": {"selector": 'button:has-text("Mathematics")'}}],
+                 "settle": 1500},
+                {"name": "calendar-event", "path": "/calendar", "waitFor": review,
+                 "steps": [{"click": review},
+                           {"waitFor": {"selector": '[role=dialog] h2:has-text("Review the box")'}}],
+                 "settle": 1500},
+            ], proxy="socks5://127.0.0.1:1080")
   '';
 }
