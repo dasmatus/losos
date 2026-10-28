@@ -360,6 +360,16 @@ and is never served or built by nix.
   names to the box (`edge.json`). LosOS Login takes both as cookie
   domains; `GET /api/hidden` is the `hidden` plugin.
   `nix/tests/hidden-services.nix` boots private Tor and I2P networks.
+- `edge-exit.nix` + `edge/registrar/src/exit.rs` (`losos.edge.exit.*`,
+  `handbook/docs/in-depth/edge-exit.md`): the edge as a VPN-like way out
+  for tenants marked `exit`, LosOS Desktop's network machine among them.
+  `POST /exit` enrols a WireGuard key and hands back an address on
+  `losos-exit`; the registrar only writes `/var/lib/losos-exit/peers.json`
+  and `losos-exit-sync` (root) sets the peers. The FORWARD chain lets out
+  only public addresses, never peer to peer. With `onion.enable`,
+  `losos-registrar exit-socks` (user `losos-exit`) answers SOCKS5 behind
+  the edge's own onion with the enrolment's password, public destinations
+  only, for a desktop in schizo mode.
 - `admin-ui/themes/`: the SPA's `tokens.css` is shipped byte for byte as
   `losos-tokens.css` into LosOS Login's page; LosOS Cloud and LosOS Git are
   part of the SPA's own build, so one colour change moves all of them.
