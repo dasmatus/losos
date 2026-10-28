@@ -17,7 +17,6 @@ use axum::{Json, Router};
 use common::{Edge, TenantSpec, DNS_ZONE, EDGE_IPV4, GOOD_TOKEN, OTHER_TOKEN};
 use k256::ecdsa::SigningKey;
 use losos_registrar::domains::{self, box_label, challenge_token, ens_record, wallet_message};
-use losos_registrar::identity;
 use serde_json::{json, Value};
 use sha3::{Digest, Keccak256};
 use tokio::sync::oneshot;
@@ -126,32 +125,6 @@ fn market_state() -> Value {
     })
 }
 
-/// An identity key and a certificate for it, signed by a throwaway root,
-/// written where the edge will read them. Domains need no more than "a
-/// certificate is installed and unexpired"; the root signature is the
-/// boxes' check.
-fn official_identity(dir: &std::path::Path) -> (String, String) {
-    let (root_pkcs8, _) = identity::keygen().unwrap();
-    let root = identity::load_key(&root_pkcs8).unwrap();
-    let (edge_pkcs8, edge_public) = identity::keygen().unwrap();
-    let key_file = dir.join("identity.key");
-    let cert_file = dir.join("identity.cert.json");
-    std::fs::write(&key_file, edge_pkcs8).unwrap();
-    let cert = identity::issue(
-        &root,
-        "test edge",
-        "https://register.example.test",
-        &edge_public,
-        4_000_000_000,
-    )
-    .unwrap();
-    std::fs::write(&cert_file, serde_json::to_vec(&cert).unwrap()).unwrap();
-    (
-        key_file.to_string_lossy().into_owned(),
-        cert_file.to_string_lossy().into_owned(),
-    )
-}
-
 fn scratch(tag: &str) -> std::path::PathBuf {
     let d = std::env::temp_dir().join(format!(
         "losos-domains-{tag}-{}-{}",
@@ -220,12 +193,12 @@ async fn an_edge_that_is_not_official_offers_no_domains() {
 async fn a_box_stripe_vouches_for_gets_a_name_and_a_proved_domain_goes_live() {
     let doh = Doh::start().await;
     let scratch = scratch("live");
-    let (key, cert) = official_identity(&scratch);
+    let gateway = common::claimed_gateway(&scratch);
     let edge = Edge::start_with_domains(
         "dom-live",
         &tenants(),
         &market_state(),
-        Some((&key, &cert)),
+        Some(gateway),
         &doh.url,
     )
     .await;
@@ -337,12 +310,12 @@ async fn a_box_stripe_vouches_for_gets_a_name_and_a_proved_domain_goes_live() {
 async fn a_domain_waits_until_both_records_are_there_and_says_which_is_missing() {
     let doh = Doh::start().await;
     let scratch = scratch("wait");
-    let (key, cert) = official_identity(&scratch);
+    let gateway = common::claimed_gateway(&scratch);
     let edge = Edge::start_with_domains(
         "dom-wait",
         &tenants(),
         &market_state(),
-        Some((&key, &cert)),
+        Some(gateway),
         &doh.url,
     )
     .await;
@@ -411,12 +384,12 @@ async fn a_domain_waits_until_both_records_are_there_and_says_which_is_missing()
 async fn without_a_ready_stripe_account_a_box_is_told_why_and_cannot_add() {
     let doh = Doh::start().await;
     let scratch = scratch("stripe");
-    let (key, cert) = official_identity(&scratch);
+    let gateway = common::claimed_gateway(&scratch);
     let edge = Edge::start_with_domains(
         "dom-stripe",
         &tenants(),
         &market_state(),
-        Some((&key, &cert)),
+        Some(gateway),
         &doh.url,
     )
     .await;
@@ -464,12 +437,12 @@ fn hub_tenants() -> Vec<TenantSpec> {
 }
 
 /// The official hub with a route table, `mesh` boxes enrolled.
-async fn hub(tag: &str, doh: &Doh, mesh: &[(&str, bool)], key: &str, cert: &str) -> Edge {
+async fn hub(tag: &str, doh: &Doh, mesh: &[(&str, bool)], gateway: common::GatewayOpts) -> Edge {
     Edge::start_official_hub(
         tag,
         &hub_tenants(),
         &market_state(),
-        (key, cert),
+        gateway,
         &doh.url,
         mesh,
         move |opts, dir| {
@@ -583,8 +556,8 @@ fn router_service(yaml: &str, host: &str) -> Option<String> {
 async fn a_mesh_box_behind_a_gateway_gets_its_domain_routed() {
     let doh = Doh::start().await;
     let scratch = scratch("relayed");
-    let (key, cert) = official_identity(&scratch);
-    let hub = hub("rt-hub", &doh, &[("mattbox", true)], &key, &cert).await;
+    let gateway = common::claimed_gateway(&scratch);
+    let hub = hub("rt-hub", &doh, &[("mattbox", true)], gateway).await;
     let pass = prove_domain(&hub, &doh).await;
     let spoke = spoke("rt-spoke", &hub).await;
 
@@ -681,8 +654,8 @@ async fn a_mesh_box_behind_a_gateway_gets_its_domain_routed() {
 async fn a_box_outside_the_mesh_gets_no_route_through_a_gateway() {
     let doh = Doh::start().await;
     let scratch = scratch("nomesh");
-    let (key, cert) = official_identity(&scratch);
-    let hub = hub("rt-nomesh-hub", &doh, &[], &key, &cert).await;
+    let gateway = common::claimed_gateway(&scratch);
+    let hub = hub("rt-nomesh-hub", &doh, &[], gateway).await;
     let pass = prove_domain(&hub, &doh).await;
     let spoke = spoke("rt-nomesh-spoke", &hub).await;
     let (status, body) = spoke
@@ -717,8 +690,8 @@ async fn a_box_outside_the_mesh_gets_no_route_through_a_gateway() {
 async fn a_gateway_cannot_forge_a_relay_pass() {
     let doh = Doh::start().await;
     let scratch = scratch("forged");
-    let (key, cert) = official_identity(&scratch);
-    let hub = hub("rt-forge-hub", &doh, &[("mattbox", true)], &key, &cert).await;
+    let gateway = common::claimed_gateway(&scratch);
+    let hub = hub("rt-forge-hub", &doh, &[("mattbox", true)], gateway).await;
     let real = prove_domain(&hub, &doh).await;
     // Another box's pass from the same hub.
     let third = list(&hub, "thirdbox", THIRD_TOKEN).await["relay_pass"]
@@ -793,12 +766,12 @@ fn personal_sign(key: &SigningKey, message: &str) -> String {
 async fn a_bound_wallet_is_published_at_the_box_names_and_checked_at_its_domains() {
     let doh = Doh::start().await;
     let scratch = scratch("wallet");
-    let (key, cert) = official_identity(&scratch);
+    let gateway = common::claimed_gateway(&scratch);
     let edge = Edge::start_with_domains(
         "dom-wallet",
         &tenants(),
         &market_state(),
-        Some((&key, &cert)),
+        Some(gateway),
         &doh.url,
     )
     .await;

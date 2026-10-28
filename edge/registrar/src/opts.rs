@@ -10,7 +10,7 @@ use crate::domains::{DomainsOpts, DEFAULT_DOH_URL};
 use crate::market::{
     MarketOpts, DEFAULT_FEE_BPS, MAX_COIN_FEE_LIMIT, MAX_FEE_BPS, SUPPORTED_CURRENCIES,
 };
-use crate::provision::{EdgeSpec, ProvisionGithub, GITHUB_API_URL, GITHUB_OAUTH_URL};
+use crate::provision::{ProvisionGithub, GITHUB_API_URL, GITHUB_OAUTH_URL};
 use crate::stripe_gate::GateOpts;
 
 fn arg<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
@@ -201,14 +201,12 @@ pub struct ServeOpts {
     /// `--inference-models`. Needs the market: requests are paid through
     /// its taps.
     pub inference: Option<crate::inference::InferenceOpts>,
-    /// This edge's identity (`crate::identity`): the 0600 key file (made on
-    /// the first start if missing) and the certificate the LosOS root signed
-    /// for it (installed by `POST /identity/cert`). Both or neither; with
-    /// neither, every `/identity*` route answers 404 and boxes treat the
-    /// edge as a company edge (sharing, no trading).
-    pub identity_key_file: Option<String>,
-    pub identity_cert_file: Option<String>,
-    /// Where `POST /identity/cert` asks who a GitHub token belongs to.
+    /// An open gateway's passport and TPM (`crate::gateway`). `None` unless
+    /// `--gateway-key-file` was given, and every `/passport*` route answers
+    /// 404: an edge boxes share through but never trust with the market.
+    pub gateway: Option<crate::gateway::GatewayOpts>,
+    /// Where the operator routes (`/operator/tokens*`) ask who a GitHub
+    /// token belongs to.
     /// `--github-api-url`; the default is api.github.com, the override is
     /// for the tests' fake GitHub.
     pub github_api_url: String,
@@ -254,32 +252,43 @@ pub struct ManageOpts {
     pub ui_dir: Option<String>,
 }
 
-/// `identity` options: the offline key ceremony (`crate::identity`).
+/// `passport` options: what a gateway's owner runs on their own machine
+/// (`crate::gateway::cli`), and the box's check run by hand.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum IdentityOpts {
-    /// `identity keygen --out FILE`: a new Ed25519 key, written 0600 to FILE;
-    /// the public key is printed. Used for the root key and for each edge.
-    Keygen { out: String },
-    /// `identity sign --root-key FILE --public-key HEX --name N --url U
-    /// --days D`: the root issues an edge certificate, printed as JSON.
-    Sign {
-        root_key: String,
-        public_key: String,
-        name: String,
+pub enum PassportOpts {
+    /// `passport statement --url U --edge-key HEX --payout NET=ADDR ...
+    /// [--days D]`: the text the owner signs with `gpg --detach-sign
+    /// --armor`. The edge key is `GET <U>/passport/edge-key`.
+    Statement {
         url: String,
-        days: u64,
+        edge_key: String,
+        payouts: Vec<(String, String)>,
+        days: i64,
     },
-    /// `identity show --key FILE`: print the public key of a key file.
-    Show { key: String },
-    /// `identity verify --root-public HEX --url U --nonce HEX --answer FILE`:
-    /// run the box's four checks over a `GET /identity?nonce=` answer saved
-    /// to FILE (`-` for stdin). Exit 0 and name the edge, or exit 1 with the
-    /// reason. What provisioning runs after it deployed an identity.
-    Verify {
-        root_public: String,
+    /// `passport settings --statement F --signature F --key F
+    /// --losos-payouts F`: the settings file, checked as a box checks it.
+    Settings {
+        statement: String,
+        signature: String,
+        key: String,
+        losos_payouts: String,
+    },
+    /// `passport measure --uki FILE --name N [--app FILE ...]`: the image
+    /// entry boxes ship: PCR 11 of the unified kernel image and the
+    /// Authenticode hashes of it and of each `--app` (the kernel inside it).
+    Measure {
+        uki: String,
+        name: String,
+        apps: Vec<String>,
+    },
+    /// `passport check --url U --tpm-roots F --images F --payouts F`: the
+    /// box's whole check against a running gateway. Exit 0 when it would be
+    /// trusted, 1 with the reason when not, 2 when the reason is tampering.
+    Check {
         url: String,
-        nonce: String,
-        answer: String,
+        tpm_roots: String,
+        images: String,
+        payouts: String,
     },
 }
 
@@ -370,34 +379,6 @@ pub struct JoinOpts {
 pub enum ProvisionOpts {
     /// `provision whoami`: sign in, say who and whether they are listed.
     Whoami { github: ProvisionGithub },
-    /// `provision root-keygen --out FILE [--publish] [--repo R] [--base B]`:
-    /// the root key, 0600, never overwritten; with `--publish`, the pull
-    /// request that ships the public half (asks for `public_repo`).
-    RootKeygen {
-        github: ProvisionGithub,
-        out: String,
-        publish: bool,
-        repo: String,
-        base: String,
-    },
-    /// `provision publish (--root-key FILE | --root-public HEX) [--repo R]
-    /// [--base B]`: the pull request alone.
-    Publish {
-        github: ProvisionGithub,
-        root_key: Option<String>,
-        root_public: Option<String>,
-        repo: String,
-        base: String,
-    },
-    /// `provision edge --name N --url U --root-key FILE [--days D]`: read
-    /// the edge's public key from `GET <U>/identity/public-key`, sign its
-    /// certificate, push it to `POST <U>/identity/cert` with the GitHub
-    /// token of the sign-in, then the four checks.
-    Edge {
-        github: ProvisionGithub,
-        root_key: String,
-        spec: EdgeSpec,
-    },
     /// `provision token create|list|revoke --edge U ...`: the edge's
     /// terminal tokens (`docs/edge-terminal.md`), made and revoked with the
     /// GitHub token of the sign-in.
@@ -405,13 +386,6 @@ pub enum ProvisionOpts {
         github: ProvisionGithub,
         edge: String,
         verb: TokenVerb,
-    },
-    /// `provision verify --url U (--root-key FILE | --root-public HEX)`: the
-    /// four checks alone. No sign-in: anyone may ask an edge who it is.
-    Verify {
-        url: String,
-        root_key: Option<String>,
-        root_public: Option<String>,
     },
 }
 
@@ -433,9 +407,6 @@ pub enum TokenVerb {
     },
 }
 
-/// The default repository the public key is published to.
-pub const PUBLISH_REPO: &str = "dasmatus/losos";
-
 // Parsed once at startup and matched once; the size spread between the
 // serve options and the one-shot subcommands costs nothing worth a Box.
 #[allow(clippy::large_enum_variant)]
@@ -445,7 +416,7 @@ pub enum Mode {
     Seed(SeedOpts),
     Join(JoinOpts),
     StripeGate(GateOpts),
-    Identity(IdentityOpts),
+    Passport(PassportOpts),
     Provision(ProvisionOpts),
     Enrol(EnrolOpts),
     Lab(crate::lab::LabOpts),
@@ -467,7 +438,7 @@ pub enum EnrolOpts {
 pub fn parse(args: Vec<String>) -> Result<Mode> {
     if args.is_empty() {
         return Err(miette!(
-            "usage: losos-registrar serve|announce|seed|join|stripe-gate|identity|provision|enrol|lab ..."
+            "usage: losos-registrar serve|announce|seed|join|stripe-gate|passport|provision|enrol|lab ..."
         ));
     }
     let mode = &args[0];
@@ -528,8 +499,21 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                             .to_string(),
                     }),
                 },
-                identity_key_file: arg(&rest, "--identity-key-file").map(str::to_string),
-                identity_cert_file: arg(&rest, "--identity-cert-file").map(str::to_string),
+                gateway: arg(&rest, "--gateway-key-file").map(|key| crate::gateway::GatewayOpts {
+                    key_file: key.to_string(),
+                    settings_file: arg(&rest, "--gateway-settings-file")
+                        .unwrap_or("/var/lib/losos-gateway/settings.json")
+                        .to_string(),
+                    measured_file: arg(&rest, "--gateway-measured-file")
+                        .unwrap_or("/run/losos-gateway/settings.json")
+                        .to_string(),
+                    tpm_dir: arg(&rest, "--gateway-tpm-dir")
+                        .unwrap_or("/run/losos-gateway/tpm")
+                        .to_string(),
+                    tcti: arg(&rest, "--gateway-tcti")
+                        .unwrap_or("device:/dev/tpm0")
+                        .to_string(),
+                }),
                 github_api_url: arg(&rest, "--github-api-url")
                     .unwrap_or(GITHUB_API_URL)
                     .trim_end_matches('/')
@@ -563,39 +547,7 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                 },
             }))
         }
-        "identity" => {
-            let verb = rest.first().map(String::as_str).unwrap_or("");
-            let rest: Vec<String> = rest.iter().skip(1).cloned().collect();
-            match verb {
-                "keygen" => Ok(Mode::Identity(IdentityOpts::Keygen {
-                    out: req(&rest, "--out")?.to_string(),
-                })),
-                "sign" => Ok(Mode::Identity(IdentityOpts::Sign {
-                    root_key: req(&rest, "--root-key")?.to_string(),
-                    public_key: req(&rest, "--public-key")?.to_string(),
-                    name: req(&rest, "--name")?.to_string(),
-                    url: req(&rest, "--url")?.to_string(),
-                    days: arg(&rest, "--days")
-                        .unwrap_or("365")
-                        .parse()
-                        .ok()
-                        .filter(|d| (1..=3650).contains(d))
-                        .ok_or_else(|| miette!("bad --days; expected 1..=3650"))?,
-                })),
-                "show" => Ok(Mode::Identity(IdentityOpts::Show {
-                    key: req(&rest, "--key")?.to_string(),
-                })),
-                "verify" => Ok(Mode::Identity(IdentityOpts::Verify {
-                    root_public: req(&rest, "--root-public")?.to_string(),
-                    url: req(&rest, "--url")?.to_string(),
-                    nonce: req(&rest, "--nonce")?.to_string(),
-                    answer: req(&rest, "--answer")?.to_string(),
-                })),
-                _ => Err(miette!(
-                    "usage: losos-registrar identity keygen|sign|show|verify ..."
-                )),
-            }
-        }
+        "passport" => parse_passport(&rest).map(Mode::Passport),
         "provision" => parse_provision(&rest),
         "lab" => parse_lab(&rest).map(Mode::Lab),
         "enrol" => {
@@ -773,6 +725,56 @@ fn valid_currency(c: &str) -> bool {
 /// take payment but has nowhere to send the buyer back to would be half-made.
 /// Or enabled by `--market-no-cards`: coins only, no gate and no Stripe
 /// account, which needs `--market-usdc` and takes the mode of its networks.
+fn parse_passport(args: &[String]) -> Result<PassportOpts> {
+    let verb = args.first().map(String::as_str).unwrap_or("");
+    let rest: Vec<String> = args.iter().skip(1).cloned().collect();
+    Ok(match verb {
+        "statement" => PassportOpts::Statement {
+            url: req(&rest, "--url")?.to_string(),
+            edge_key: req(&rest, "--edge-key")?.to_string(),
+            payouts: args_all(&rest, "--payout")
+                .into_iter()
+                .map(|p| {
+                    p.split_once('=')
+                        .map(|(n, a)| (n.to_string(), a.to_string()))
+                        .ok_or_else(|| miette!("--payout takes NETWORK=ADDRESS, not {p}"))
+                })
+                .collect::<Result<_>>()?,
+            days: arg(&rest, "--days")
+                .unwrap_or("365")
+                .parse()
+                .ok()
+                .filter(|d| (1..=3650).contains(d))
+                .ok_or_else(|| miette!("bad --days; expected 1..=3650"))?,
+        },
+        "settings" => PassportOpts::Settings {
+            statement: req(&rest, "--statement")?.to_string(),
+            signature: req(&rest, "--signature")?.to_string(),
+            key: req(&rest, "--key")?.to_string(),
+            losos_payouts: req(&rest, "--losos-payouts")?.to_string(),
+        },
+        "measure" => PassportOpts::Measure {
+            uki: req(&rest, "--uki")?.to_string(),
+            name: req(&rest, "--name")?.to_string(),
+            apps: args_all(&rest, "--app")
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+        },
+        "check" => PassportOpts::Check {
+            url: req(&rest, "--url")?.trim_end_matches('/').to_string(),
+            tpm_roots: req(&rest, "--tpm-roots")?.to_string(),
+            images: req(&rest, "--images")?.to_string(),
+            payouts: req(&rest, "--payouts")?.to_string(),
+        },
+        _ => {
+            return Err(miette!(
+                "usage: losos-registrar passport statement|settings|measure|check ..."
+            ))
+        }
+    })
+}
+
 fn parse_provision(args: &[String]) -> Result<Mode> {
     let verb = args.first().map(String::as_str).unwrap_or("");
     let rest: Vec<String> = args.iter().skip(1).cloned().collect();
@@ -785,67 +787,14 @@ fn parse_provision(args: &[String]) -> Result<Mode> {
             .to_string(),
         client_id: arg(&rest, "--client-id").map(str::to_string),
     };
-    let repo = arg(&rest, "--repo").unwrap_or(PUBLISH_REPO).to_string();
-    let base = arg(&rest, "--base").unwrap_or("main").to_string();
-    let root_pair = |rest: &[String]| -> Result<(Option<String>, Option<String>)> {
-        let key = arg(rest, "--root-key").map(str::to_string);
-        let public = arg(rest, "--root-public").map(str::to_string);
-        if key.is_none() && public.is_none() {
-            return Err(miette!("need --root-key FILE or --root-public HEX"));
-        }
-        Ok((key, public))
-    };
     let mode = match verb {
         "whoami" => ProvisionOpts::Whoami { github },
-        "root-keygen" => ProvisionOpts::RootKeygen {
-            github,
-            out: req(&rest, "--out")?.to_string(),
-            publish: rest.iter().any(|a| a == "--publish"),
-            repo,
-            base,
-        },
-        "publish" => {
-            let (root_key, root_public) = root_pair(&rest)?;
-            ProvisionOpts::Publish {
-                github,
-                root_key,
-                root_public,
-                repo,
-                base,
-            }
-        }
-        "edge" => ProvisionOpts::Edge {
-            github,
-            root_key: req(&rest, "--root-key")?.to_string(),
-            spec: EdgeSpec {
-                name: req(&rest, "--name")?.to_string(),
-                url: req(&rest, "--url")?.to_string(),
-                days: arg(&rest, "--days")
-                    .unwrap_or("365")
-                    .parse()
-                    .ok()
-                    .filter(|d| (1..=3650).contains(d))
-                    .ok_or_else(|| miette!("bad --days; expected 1..=3650"))?,
-            },
-        },
-        "verify" => {
-            let (root_key, root_public) = root_pair(&rest)?;
-            ProvisionOpts::Verify {
-                url: req(&rest, "--url")?.to_string(),
-                root_key,
-                root_public,
-            }
-        }
         "token" => ProvisionOpts::Token {
             github,
             edge: req(&rest, "--edge")?.trim_end_matches('/').to_string(),
             verb: parse_token_verb(&rest)?,
         },
-        _ => {
-            return Err(miette!(
-                "usage: losos-registrar provision whoami|root-keygen|publish|edge|token|verify ..."
-            ))
-        }
+        _ => return Err(miette!("usage: losos-registrar provision whoami|token ...")),
     };
     Ok(Mode::Provision(mode))
 }

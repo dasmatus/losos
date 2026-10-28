@@ -19,6 +19,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use axum::http::{Method, StatusCode, Uri};
 use axum::response::IntoResponse;
 use axum::Router;
+pub use losos_registrar::gateway::GatewayOpts;
 use losos_registrar::opts::ServeOpts;
 use tokio::sync::oneshot;
 
@@ -343,7 +344,7 @@ impl Edge {
         Self::start_inner(tag, tenants, MeshFixture::default(), Some(public_key), None).await
     }
 
-    /// An official edge (identity key and certificate in place) with a
+    /// An edge (a claimed gateway when `gateway` is given) with a
     /// market store seeded from `market_state` and the domains half on,
     /// looking records up at `doh_url`. The market's gate points nowhere:
     /// domains read the store and never ask Stripe.
@@ -351,7 +352,7 @@ impl Edge {
         tag: &str,
         tenants: &[TenantSpec],
         market_state: &serde_json::Value,
-        identity: Option<(&str, &str)>,
+        gateway: Option<GatewayOpts>,
         doh_url: &str,
     ) -> Self {
         Self::start_general(
@@ -362,9 +363,7 @@ impl Edge {
             Some("http://127.0.0.1:9".to_string()),
             &[],
             Some(market_state),
-            identity,
-            None,
-            None,
+            gateway,
             Some(doh_url),
             None,
         )
@@ -374,12 +373,11 @@ impl Edge {
     /// An official hub for the relayed-domain tests: as
     /// [`Edge::start_with_domains`], with `enrolled` boxes already in the
     /// mesh and `tweak` applied last (how a test turns `--relay-routes` on).
-    #[allow(clippy::too_many_arguments)]
     pub async fn start_official_hub(
         tag: &str,
         tenants: &[TenantSpec],
         market_state: &serde_json::Value,
-        identity: (&str, &str),
+        gateway: GatewayOpts,
         doh_url: &str,
         enrolled: &[(&str, bool)],
         tweak: impl FnOnce(&mut ServeOpts, &TempDir) + Send + 'static,
@@ -392,9 +390,7 @@ impl Edge {
             Some("http://127.0.0.1:9".to_string()),
             enrolled,
             Some(market_state),
-            Some(identity),
-            None,
-            None,
+            Some(gateway),
             Some(doh_url),
             Some(Box::new(tweak)),
         )
@@ -415,60 +411,6 @@ impl Edge {
             noise_public_key,
             stripe_api,
             &[],
-            None,
-            None,
-        )
-        .await
-    }
-
-    /// As [`Edge::start`], with `--identity-key-file` / `--identity-cert-file`
-    /// pointing at files a test (or `provision edge`) already wrote, so the
-    /// edge answers `GET /identity`. `listener` lets the test choose the port
-    /// before it starts, because a certificate names the URL it is for.
-    pub async fn start_with_identity_on(
-        tag: &str,
-        tenants: &[TenantSpec],
-        key_file: &str,
-        cert_file: &str,
-        listener: Option<tokio::net::TcpListener>,
-    ) -> Self {
-        Self::start_general(
-            tag,
-            tenants,
-            MeshFixture::default(),
-            None,
-            None,
-            &[],
-            None,
-            Some((key_file, cert_file)),
-            listener,
-            None,
-            None,
-            None,
-        )
-        .await
-    }
-
-    /// As [`Edge::start_with_identity_on`], with `POST /identity/cert`
-    /// resolving GitHub tokens against `github_api_url` (a test's fake).
-    pub async fn start_with_identity_and_github(
-        tag: &str,
-        key_file: &str,
-        cert_file: &str,
-        listener: Option<tokio::net::TcpListener>,
-        github_api_url: &str,
-    ) -> Self {
-        Self::start_general(
-            tag,
-            &[],
-            MeshFixture::default(),
-            None,
-            None,
-            &[],
-            None,
-            Some((key_file, cert_file)),
-            listener,
-            Some(github_api_url),
             None,
             None,
         )
@@ -538,8 +480,6 @@ impl Edge {
             market_state,
             None,
             None,
-            None,
-            None,
             tweak,
         )
         .await
@@ -554,9 +494,7 @@ impl Edge {
         stripe_api: Option<String>,
         enrolled: &[(&str, bool)],
         market_state: Option<&serde_json::Value>,
-        identity: Option<(&str, &str)>,
-        listener: Option<tokio::net::TcpListener>,
-        github_api_url: Option<&str>,
+        gateway: Option<GatewayOpts>,
         doh_url: Option<&str>,
         tweak: Option<Tweak>,
     ) -> Self {
@@ -669,8 +607,7 @@ impl Edge {
             bootstrap_token_file: dir.path_str("bootstrap.token"),
             noise_private_key_file: None,
             noise_public_key_file,
-            identity_key_file: identity.map(|(k, _)| k.to_string()),
-            identity_cert_file: identity.map(|(_, c)| c.to_string()),
+            gateway,
             tenants_file: dir.path_str("tenants.json"),
             reconcile_interval: Duration::from_millis(50),
             heartbeat_ttl: Duration::from_secs(300),
@@ -688,9 +625,7 @@ impl Edge {
             compute_windows_file: dir.path_str("compute-windows.json"),
             market,
             inference: None,
-            github_api_url: github_api_url
-                .unwrap_or(losos_registrar::provision::GITHUB_API_URL)
-                .to_string(),
+            github_api_url: losos_registrar::provision::GITHUB_API_URL.to_string(),
             domains: doh_url.map(|doh_url| {
                 Box::new(losos_registrar::domains::DomainsOpts {
                     state_file: dir.path_str("domains.json"),
@@ -717,12 +652,9 @@ impl Edge {
             tweak(&mut opts, &dir);
         }
 
-        let listener = match listener {
-            Some(l) => l,
-            None => tokio::net::TcpListener::bind("127.0.0.1:0")
-                .await
-                .expect("bind ephemeral port"),
-        };
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind ephemeral port");
         let port = listener.local_addr().expect("local_addr").port();
         let (stop, rx) = oneshot::channel::<()>();
         let join = tokio::spawn(async move {
@@ -1142,4 +1074,21 @@ async fn stub_handler(
         return axum::Json(serde_json::json!({ "status": { "phase": phase } })).into_response();
     }
     state.status.into_response()
+}
+
+/// An open gateway its owner has claimed, as far as the edge can tell: an
+/// edge key made on start and settings measured at boot. Guest links and
+/// domains need no more; the passport and the TPM quote are the boxes'
+/// check (`losos_access::gateway::check`).
+pub fn claimed_gateway(dir: &Path) -> GatewayOpts {
+    std::fs::create_dir_all(dir).expect("create gateway dir");
+    let measured = dir.join("measured-settings.json");
+    std::fs::write(&measured, "{\"version\":1}").expect("write measured settings");
+    GatewayOpts {
+        key_file: dir.join("edge.key").to_string_lossy().into_owned(),
+        settings_file: dir.join("settings.json").to_string_lossy().into_owned(),
+        measured_file: measured.to_string_lossy().into_owned(),
+        tpm_dir: dir.join("tpm").to_string_lossy().into_owned(),
+        tcti: "device:/dev/null".to_string(),
+    }
 }
