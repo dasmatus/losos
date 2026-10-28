@@ -41,9 +41,6 @@ miette = { version = "7", features = ["fancy"] }
 thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-# The CSPRNG for the placeholder bootstrap token; already in the tree via
-# the registrar.
-ring = "0.17"
 
 [dev-dependencies]
 http-body-util = "0.1"

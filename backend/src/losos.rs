@@ -2629,7 +2629,7 @@ mod tests {
             source: Source::Lan,
             official: false,
             gateway: None,
-            rathole: Some(format!("{member}.local:2333")),
+            tunnel: Some(format!("{member}.local:2333")),
             on_network: true,
             tier: Tier::Secondary,
             cluster: Some(cluster.into()),

@@ -353,7 +353,7 @@ mohol putovať medzi procesmi, a `import` uplatní TTL heartbeatu, pretože
 medzitým nebežal žiadny zosúlaďovač.
 
 Tunel, Traefik, mesh ani brána Stripe tam bežať nemôžu, takže na tomto
-hostiteľovi `/cluster/join` a `/market/*` odpovedajú 503 a `/noise-public-key`
+hostiteľovi `/cluster/join` a `/market/*` odpovedajú 503 a `/tunnel-pin`
 404. Zoznam `crates` v `devenv.nix` a CI ho lintujú a testujú ako ostatné dva
 crates. `nix build` ho nikdy nevidí. Jeho `tests/postgres.rs` beží iba vtedy,
 keď je nastavené `LOSOS_TEST_DATABASE_URL`, čo testovacia úloha v CI

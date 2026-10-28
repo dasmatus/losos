@@ -6,9 +6,9 @@
 #   2. /run/losos-llm/lend holds the MiB lent and nothing else, readable by
 #      everyone, and is gone once the unit stops;
 #   3. MemoryMax is the lent memory plus the server's overhead;
-#   4. on loopback only root (rathole's client) may connect to the RPC port:
+#   4. on loopback only root (the tunnel client) may connect to the RPC port:
 #      `notshared` and `shared` are refused;
-#   5. the rathole client carries `<appliance id>:llm` to the RPC port with
+#   5. the tunnel client carries `<appliance id>:llm` to the RPC port with
 #      the box's own token, and announce is handed the lend file.
 #
 # The registrar is a stand-in that only sleeps: announce's flag is asserted
@@ -17,7 +17,7 @@
 
 let
   proxyToken = "/var/secrets/losos-proxy-token";
-  bootstrapToken = "/var/secrets/losos-rathole-bootstrap";
+  pin = builtins.concatStringsSep "" (builtins.genList (_: "ab") 32);
   lentMiB = 1536;
   # modules/inference-lend.nix's overheadMiB.
   maxBytes = (lentMiB + 256) * 1024 * 1024;
@@ -42,21 +42,19 @@ pkgs.testers.nixosTest {
       systemd.tmpfiles.rules = [
         "d /var/secrets 0700 root root - -"
         "f ${proxyToken} 0600 root root - test-proxy-token-0123456789abcdef"
-        "f ${bootstrapToken} 0600 root root - test-bootstrap-0123456789abcdef0123"
+        # No edge to fetch the tunnel's pin from, so one is provisioned.
+        "f /var/secrets/losos-tunnel-pin 0600 root root - ${pin}"
       ];
 
       losos = {
         hostName = "lendbox";
         proxy = {
           enable = true;
-          edgeRatholeEndpoint = "edge.invalid:2333";
+          edgeTunnelEndpoint = "edge.invalid:2333";
           registrarUrl = "http://edge.invalid:8443";
           hostname = "lendbox.losos.cfd";
           applianceId = "lendbox";
           tokenFile = proxyToken;
-          bootstrapTokenFile = bootstrapToken;
-          # No edge to fetch a Noise key from.
-          noisePublicKeyFile = null;
           registrar.package = registrarStub;
         };
         inference.lend = {
@@ -73,6 +71,8 @@ pkgs.testers.nixosTest {
     };
 
   testScript = ''
+    import json
+
     box.start()
     box.wait_for_unit("multi-user.target")
     box.wait_for_unit("losos-llm-rpc.service")
@@ -117,13 +117,12 @@ pkgs.testers.nixosTest {
     box.succeed("systemctl is-active losos-llm-rpc.service")
 
     # 5. The tunnel service and announce's flag.
-    box.wait_until_succeeds("test -s /run/losos-rathole/client.toml")
-    client = box.succeed("cat /run/losos-rathole/client.toml")
+    box.wait_until_succeeds("test -s /run/losos-tunnel/client.json")
+    client = json.loads(box.succeed("cat /run/losos-tunnel/client.json"))
     print(client)
-    assert '[client.services."lendbox:llm"]' in client, client
-    llm = client.split('[client.services."lendbox:llm"]', 1)[1]
-    assert 'token = "test-proxy-token-0123456789abcdef"' in llm, llm
-    assert 'local_addr = "127.0.0.1:50052"' in llm, llm
+    llm = client["services"]["lendbox:llm"]
+    assert llm == {"token": "test-proxy-token-0123456789abcdef", "local": "127.0.0.1:50052"}, llm
+    assert client["services"]["lendbox"]["local"] == "127.0.0.1:80", client
     announce = box.succeed("systemctl show -p ExecStart --value losos-registrar-announce.service")
     print("announce:", announce)
     assert "--llm-lend-file /run/losos-llm/lend" in announce, announce
