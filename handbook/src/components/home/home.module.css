@@ -21,14 +21,8 @@
 
 /* ── Hero ─────────────────────────────────────────────────────────────── */
 .hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 3rem;
-  padding: 3rem 0 2.5rem;
-}
-.heroText {
   max-width: 40rem;
+  padding: 3rem 0 2rem;
 }
 .eyebrow {
   margin: 0 0 0.75rem;
@@ -37,6 +31,9 @@
   color: var(--accent);
 }
 .heroTitle {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.2em;
   margin: 0 0 0.5rem;
   font-size: clamp(2.75rem, 7vw, 4.25rem);
   font-weight: 700;
@@ -61,10 +58,13 @@
   font-size: 12.5px;
   color: var(--faint);
 }
-.logo {
-  width: 240px;
-  height: 240px;
-  filter: drop-shadow(0 18px 30px color-mix(in srgb, var(--derisk-overlay) 35%, transparent));
+/* The salmon beside the title, a mark the size of a capital letter. */
+.mark {
+  flex: none;
+  width: 0.9em;
+  height: 0.9em;
+  margin-top: 0.05em;
+  filter: drop-shadow(0 4px 8px color-mix(in srgb, var(--derisk-overlay) 30%, transparent));
 }
 
 /* ── Buttons: the SPA's primary and outline buttons, one size up ─────── */
@@ -366,13 +366,6 @@
 
 /* ── Narrower screens: the SPA's own breakpoint, then a phone ─────────── */
 @media (max-width: 996px) {
-  .hero {
-    gap: 2rem;
-  }
-  .plate {
-    width: 180px;
-    height: 180px;
-  }
   .grid,
   .steps,
   .soonGrid {
@@ -388,14 +381,7 @@
     padding: 0.5rem 1rem 3rem;
   }
   .hero {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 1rem;
-    padding: 1.5rem 0 2rem;
-  }
-  .plate {
-    order: -1;
-    width: 120px;
-    height: 120px;
+    padding: 1.25rem 0 1.5rem;
   }
   .grid,
   .steps,
