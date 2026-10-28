@@ -1,3 +1,4 @@
+import * as React from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
@@ -16,6 +17,9 @@ import { cn } from "@/lib/utils";
  * on a phone (below md, the same query that turns the sidebar into a
  * sheet). Fixed to the viewport, so it goes to <body> through a portal: an
  * ancestor with a transform or a filter would otherwise pin it to itself.
+ * The one exception is a shell drawn as a picture of itself, the wizard's
+ * desktop preview (App.tsx): that names itself as the host, and the bar
+ * goes inside it, scaled with the rest and out of reach like the rest.
  * Its height reaches the page as --bottom-nav (index.css), which pads the
  * shell's foot and lifts anything else that floats at the bottom edge.
  *
@@ -66,8 +70,12 @@ function Label({ children }: { children: string }) {
   return <span className="max-w-full truncate px-1 text-[11px] leading-none font-medium">{children}</span>;
 }
 
+/** Where the bar goes instead of <body>, when a part of the page says so. */
+export const BottomNavHost = React.createContext<HTMLElement | null>(null);
+
 export function BottomNav({ label, tabs }: { label: string; tabs: readonly BottomNavTab[] }) {
   const t = useT();
+  const host = React.useContext(BottomNavHost);
   const { isMobile, openMobile, setOpenMobile } = useSidebar();
   if (!isMobile) return null;
   // More is lit while its sheet is up, and while the page is one the tabs
@@ -108,6 +116,6 @@ export function BottomNav({ label, tabs }: { label: string; tabs: readonly Botto
         </li>
       </ul>
     </nav>,
-    document.body,
+    host ?? document.body,
   );
 }

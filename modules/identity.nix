@@ -227,6 +227,11 @@ let
     proxy_set_header Remote-Groups $losos_groups;
     proxy_set_header X-Losos-As "";
   '';
+  basicHttps = ''
+    if ($losos_proto = http) {
+      return 301 https://$host$request_uri;
+    }
+  '';
   askAuthelia = ''
     auth_request /internal/losos-authz;
     auth_request_set $losos_user $upstream_http_remote_user;
@@ -638,6 +643,9 @@ in
       LOSOS_AUTHELIA_NOTES = "/var/lib/authelia-losos/notifications.txt";
       # How lososd asks LosOS Login about a companion token.
       LOSOS_LOGIN_ADDR = "127.0.0.1:${toString port}";
+      # Where the pages without JavaScript (backend/plugins/basic/) sign
+      # people in: LosOS Login's own API, as its sign-in page would.
+      LOSOS_LOGIN_URL = "http://127.0.0.1:${toString port}";
       LOSOS_OIDC_SECRET_FILE = "%d/oidc-lososd";
     };
 
@@ -774,10 +782,42 @@ in
           '';
         };
         "@losos-authz-down".extraConfig = "return 401;";
+        # The same question for the pages without JavaScript, whose spare
+        # key is a cookie (modules/containers.nix turns it into the Bearer
+        # header). A 401 there is their own sign-in page.
+        "= /internal/losos-basic-authz" = {
+          proxyPass = "http://127.0.0.1:${toString port}/auth/api/authz/auth-request";
+          extraConfig = ''
+            internal;
+            if ($cookie_losos_spare) {
+              return 200;
+            }
+            proxy_intercept_errors on;
+            error_page 500 502 503 504 = @losos-authz-down;
+            ${askAboutRequest}
+          '';
+        };
+        "/basic/".extraConfig = ''
+          ${basicHttps}
+          auth_request /internal/losos-basic-authz;
+          auth_request_set $losos_user $upstream_http_remote_user;
+          auth_request_set $losos_groups $upstream_http_remote_groups;
+          ${passPerson}
+        '';
         "/api/".extraConfig = askAuthelia;
         "= /api/vms/images".extraConfig = askAuthelia;
         "= /api/market/llm/chat".extraConfig = askAuthelia;
       }
+      # LosOS Login's cookie is Secure, so the pages without JavaScript are
+      # https too, the sign-in steps first.
+      // lib.genAttrs (map (p: "= /basic/${p}") [
+        "sign-in"
+        "sign-in/code"
+        "sign-in/key"
+        "sign-out"
+        "prefs"
+        "counts.css"
+      ]) (_: { extraConfig = basicHttps; })
       # The public routes, past Authelia. Exact matches beat the /api/ prefix.
       // lib.genAttrs (map (p: "= ${p}") publicPaths) (_: {
         proxyPass = "http://127.0.0.1:${toString apiPort}";

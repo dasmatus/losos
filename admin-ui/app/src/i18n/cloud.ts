@@ -8,7 +8,6 @@ export default defineMessages({
   "cloud.cancel": { en: "Cancel", sk: "Zrušiť", de: "Abbrechen" },
   "cloud.close": { en: "Close", sk: "Zavrieť", de: "Schließen" },
   "cloud.download": { en: "Download", sk: "Stiahnuť", de: "Herunterladen" },
-  "cloud.signOut": { en: "Sign out", sk: "Odhlásiť sa", de: "Abmelden" },
   "cloud.crumbs": { en: "Folder path", sk: "Cesta k priečinku", de: "Ordnerpfad" },
 
   // ── Places ────────────────────────────────────────────────────────────

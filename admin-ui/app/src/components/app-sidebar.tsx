@@ -9,6 +9,7 @@ import {
   Home01Icon,
   LayoutGridIcon,
   FlowchartIcon,
+  LibraryIcon,
   Mail01Icon,
   Calendar03Icon,
   ContactBookIcon,
@@ -66,6 +67,7 @@ import { useOfficeFolder } from "@/lib/office-folder";
  *     Market                selling storage and compute, and disk sharing
  *     Machines              virtual machines on the mesh
  *   Diagrams                (LosOS Diagrams at /diagrams)
+ *   Wiki                    (LosOS Wiki at /wikis, every wiki on the box)
  *   Chat                    (LosOS Chat at /chat/, only on the shared side)
  *   Mail                    (LosOS Mail at /mail, the same)
  *   Contacts                (LosOS Contacts at /contacts, wherever LosOS Cloud runs)
@@ -155,6 +157,13 @@ const TREE: readonly Entry[] = [
   },
   {
     kind: "link",
+    key: "wiki",
+    to: "/wikis",
+    label: "shell.nav.wiki",
+    icon: LibraryIcon,
+  },
+  {
+    kind: "link",
     key: "chat",
     to: "/chat/",
     label: "shell.nav.chat",
@@ -200,7 +209,7 @@ const TREE: readonly Entry[] = [
     icon: Settings01Icon,
     railTo: "/settings",
     children: (
-      ["network", "look", "hardware", "security", "account", "users", "moderation", "access", "credentials", "advanced", "history", "backup", "about", "reset"] as const
+      ["network", "look", "hardware", "statistics", "security", "account", "users", "moderation", "access", "credentials", "advanced", "history", "backup", "about", "reset"] as const
     ).map(
       settingsLeaf,
     ),
@@ -266,6 +275,7 @@ function isCurrent(entry: LinkEntry, pathname: string): boolean {
   const path = pathname.replace(/(.)\/$/, "$1");
   if (entry.key === "ci") return path === "/ci" || path.startsWith("/ci/");
   if (entry.key === "documents") return path === "/office";
+  if (entry.key === "wiki") return path === "/wikis" || path.startsWith("/wikis/");
   return path === entry.to;
 }
 

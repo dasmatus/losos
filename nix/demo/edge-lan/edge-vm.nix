@@ -32,7 +32,6 @@ let
   lanPrefix = 24;
   dhcpRange = "10.77.0.100,10.77.0.200,12h";
   proxyToken = "/var/secrets/losos-proxy-token";
-  bootstrapToken = "/var/secrets/losos-rathole-bootstrap";
 in
 {
   networking.hostName = "edge";
@@ -43,10 +42,9 @@ in
     enable = true;
     acmeEmail = "demo@losos.cfd";
     registrarApiPort = 8443;
-    ratholePortRange = "50000-50010";
+    tunnelPortRange = "50000-50010";
     heartbeatTtl = "120s";
     reconcileInterval = "5s";
-    bootstrapTokenFile = bootstrapToken;
     tenants.mattbox = {
       hostname = "mattbox.losos.cfd";
       tokenFile = proxyToken;
@@ -61,7 +59,6 @@ in
   systemd.tmpfiles.rules = [
     "d /var/secrets 0700 root root - -"
     "f ${proxyToken} 0600 root root - demo-proxy-token-0123456789abcdef"
-    "f ${bootstrapToken} 0600 root root - demo-bootstrap-0123456789abcdef0123"
   ];
 
   # ── The LAN's router: static address, DHCP + DNS, NAT ───────────────────
