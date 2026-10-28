@@ -21,6 +21,10 @@ in
   # LosOS Cloud (modules/cloud.nix). Off in the bare option set, so a VM
   # test that imports the identity routes without the service gets neither.
   losos.cloud.enable = lib.mkDefault true;
+  # The local copy of the binary caches on /persist (modules/cache.nix). Off
+  # in the bare option set because the installer medium imports cache.nix too
+  # and has no /persist of its own to keep it on.
+  losos.cache.local.enable = lib.mkDefault true;
 
   # The Rust control plane (lososd + the losos-ctl facade) and the static admin
   # SPA the front vhost serves, so the admin endpoint works out of the box.

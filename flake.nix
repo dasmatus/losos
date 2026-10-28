@@ -486,6 +486,8 @@
         losos-resize = import ./nix/tests/resize.nix { inherit pkgs; };
         losos-tls = import ./nix/tests/tls.nix { inherit pkgs; };
         losos-setup = import ./nix/tests/setup.nix { inherit pkgs; };
+        # The local copy of the binary caches on /persist (modules/cache.nix).
+        losos-nix-cache = import ./nix/tests/nix-cache.nix { inherit pkgs; };
         losos-tour = import ./nix/tests/tour.nix { inherit pkgs; };
         # The game a long wait offers, played during a real wizard wait and a
         # real rebuild, with the pull request's pictures (nix/tests/wait-game.nix).
