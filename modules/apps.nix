@@ -665,6 +665,13 @@ let
 in
 {
   config = lib.mkMerge [
+    # lososd's statistics plugin reads Traefik's metrics here
+    # (backend/plugins/statistics). Set wherever lososd runs, apps or not:
+    # lososd refuses to start a plugin whose manifest names a variable it
+    # lacks, and the plugin answers "unavailable" while nothing listens.
+    (lib.mkIf (config.losos.backend.package != null) {
+      systemd.services.lososd.environment.LOSOS_TRAEFIK_URL = traefikApi;
+    })
     (lib.mkIf enabled {
       systemd.services.lososd = {
         environment = {
@@ -673,9 +680,6 @@ in
           LOSOS_APPS_PORTS = "${toString cfg.ports.from}-${toString cfg.ports.to}";
           LOSOS_APPS_BUILTIN = lib.concatStringsSep "," builtinNames;
           LOSOS_HELM_HOME = helmHome;
-          # lososd's statistics plugin reads Traefik's metrics here
-          # (backend/plugins/statistics).
-          LOSOS_TRAEFIK_URL = traefikApi;
         }
         # A `shared` app needs the box's own cluster (backend/src/apps.rs).
         // lib.optionalAttrs localCluster { LOSOS_APPS_KUBE = "1"; };
