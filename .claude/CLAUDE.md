@@ -166,8 +166,9 @@ and is never served or built by nix.
   MatrixRTC's own media keys are off: every frame is AES-GCM sealed by the
   browser's encoded transform (`admin-ui/app/src/calls/e2ee.ts`, worker
   `e2ee-worker.ts`), and its sender keys travel as MatrixRTC per-member
-  keys (`io.element.call.encryption_keys` over Olm) only to devices with a
-  live membership. The legacy `org.losos.call` timeline event is kept for
+  keys (`io.element.call.encryption_keys` over Olm) to the devices the
+  SFU lists in the call, since a membership can sync later than its sender
+  joins. The legacy `org.losos.call` timeline event is kept for
   end markers and old history. In Chromium a worker held
   by an `RTCRtpScriptTransform` loses its own `postMessage` and timers, so
   stats go over a MessagePort from the frame path. `--address IP=OFFERED`
