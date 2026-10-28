@@ -67,7 +67,10 @@ impl EchKey {
     }
 
     fn from_parts(private: [u8; 32], config_id: u8, public_name: &str) -> Result<Self> {
-        let name = public_name.trim().trim_end_matches('.').to_ascii_lowercase();
+        let name = public_name
+            .trim()
+            .trim_end_matches('.')
+            .to_ascii_lowercase();
         if !dns_name(&name) {
             return Err(miette!("{public_name:?} is not a DNS name for ECH"));
         }
@@ -155,14 +158,21 @@ impl EchKey {
 /// # Errors
 /// The file cannot be read or written, or holds something that is not a key.
 pub fn load_or_make(path: &Path, public_name: &str) -> Result<EchKey> {
-    let want = public_name.trim().trim_end_matches('.').to_ascii_lowercase();
+    let want = public_name
+        .trim()
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
     match std::fs::read_to_string(path) {
         Ok(text) => {
-            let key = EchKey::from_pem(&text).wrap_err_with(|| format!("read {}", path.display()))?;
+            let key =
+                EchKey::from_pem(&text).wrap_err_with(|| format!("read {}", path.display()))?;
             if key.public_name().as_deref() == Some(want.as_str()) {
                 return Ok(key);
             }
-            tracing::info!("the ECH key in {} names another public name; making a new one for {want}", path.display());
+            tracing::info!(
+                "the ECH key in {} names another public name; making a new one for {want}",
+                path.display()
+            );
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => {
@@ -210,7 +220,8 @@ fn dns_name(name: &str) -> bool {
                 && l.len() <= 63
                 && !l.starts_with('-')
                 && !l.ends_with('-')
-                && l.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+                && l.bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
         })
 }
 
@@ -292,7 +303,10 @@ AQALZXhhbXBsZS5jb20AAA==\n\
         // The example offers only AES-128-GCM.
         let ours = rebuilt.config_list_base64();
         assert_ne!(ours, key.config_list_base64());
-        assert_eq!(first_public_key(&rebuilt.config_list), first_public_key(&key.config_list));
+        assert_eq!(
+            first_public_key(&rebuilt.config_list),
+            first_public_key(&key.config_list)
+        );
         rebuilt.config_list = key.config_list.clone();
         assert_eq!(EchKey::from_pem(&rebuilt.to_pem()).unwrap(), key);
     }
@@ -328,7 +342,14 @@ AQALZXhhbXBsZS5jb20AAA==\n\
 
     #[test]
     fn a_public_name_must_be_a_dns_name() {
-        for bad in ["", "localhost", "a..b", "-a.example", "a b.example", "ä.example"] {
+        for bad in [
+            "",
+            "localhost",
+            "a..b",
+            "-a.example",
+            "a b.example",
+            "ä.example",
+        ] {
             assert!(EchKey::generate(bad).is_err(), "{bad:?}");
         }
     }

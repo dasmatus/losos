@@ -437,7 +437,9 @@ pub enum Mode {
     Serve(ServeOpts),
     Announce(AnnounceOpts),
     TunnelServer(crate::tunnel::ServerOpts),
-    TunnelClient { config: String },
+    TunnelClient {
+        config: String,
+    },
     Join(JoinOpts),
     StripeGate(GateOpts),
     Passport(PassportOpts),
@@ -574,17 +576,16 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                     traefik_metrics: arg(&rest, "--manage-traefik-metrics").map(str::to_string),
                 }),
                 calls_relay: parse_calls_relay(&rest)?,
-                ech: match (arg(&rest, "--ech-key-file"), arg(&rest, "--ech-public-name")) {
+                ech: match (
+                    arg(&rest, "--ech-key-file"),
+                    arg(&rest, "--ech-public-name"),
+                ) {
                     (None, None) => None,
                     (Some(key_file), Some(public_name)) => Some(EchOpts {
                         key_file: key_file.to_string(),
                         public_name: public_name.to_string(),
                     }),
-                    _ => {
-                        return Err(miette!(
-                            "--ech-key-file and --ech-public-name go together"
-                        ))
-                    }
+                    _ => return Err(miette!("--ech-key-file and --ech-public-name go together")),
                 },
                 secondary: match arg(&rest, "--secondary-file") {
                     None => None,

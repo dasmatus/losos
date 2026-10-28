@@ -10,7 +10,6 @@
 # nixpkgs uses carries the built dashboard), so this Traefik serves no
 # dashboard. The edge never enables it.
 {
-  lib,
   traefik,
   fetchFromGitHub,
   buildGo127Module,
@@ -19,24 +18,22 @@
 let
   rev = "0a5dbf5ac7e0846b33cc7f16dab082dd37d50f3e";
 in
-(traefik.override { buildGo126Module = buildGo127Module; }).overrideAttrs (
-  finalAttrs: old: {
-    version = "${old.version}-ech-${builtins.substring 0 7 rev}";
-    src = fetchFromGitHub {
-      owner = "traefik";
-      repo = "traefik";
-      inherit rev;
-      hash = "sha256-csc1/5lsAiXodZaTy9nyJgbQw+4WD8ayaNA4kA/h3KU=";
-    };
-    vendorHash = "sha256-Cufp+YM9eC9YDhDbTSlxV75w0jbBoouoyEiGF2Fy+PA=";
-    # Upstream's unit suite builds every package's tests a second time,
-    # several GB of build cache for a binary its own CI already ran them
-    # on; nix/tests/edge-dns.nix checks this build's ECH handshake.
-    doCheck = false;
-    # nixosTests.traefik is nixpkgs' Traefik; this one is tested by
-    # nix/tests/edge-dns.nix.
-    passthru = old.passthru // {
-      tests = { };
-    };
-  }
-)
+(traefik.override { buildGo126Module = buildGo127Module; }).overrideAttrs (old: {
+  version = "${old.version}-ech-${builtins.substring 0 7 rev}";
+  src = fetchFromGitHub {
+    owner = "traefik";
+    repo = "traefik";
+    inherit rev;
+    hash = "sha256-csc1/5lsAiXodZaTy9nyJgbQw+4WD8ayaNA4kA/h3KU=";
+  };
+  vendorHash = "sha256-Cufp+YM9eC9YDhDbTSlxV75w0jbBoouoyEiGF2Fy+PA=";
+  # Upstream's unit suite builds every package's tests a second time,
+  # several GB of build cache for a binary its own CI already ran them
+  # on; nix/tests/edge-dns.nix checks this build's ECH handshake.
+  doCheck = false;
+  # nixosTests.traefik is nixpkgs' Traefik; this one is tested by
+  # nix/tests/edge-dns.nix.
+  passthru = old.passthru // {
+    tests = { };
+  };
+})
