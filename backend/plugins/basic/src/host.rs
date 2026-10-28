@@ -143,7 +143,7 @@ impl Host for Real {
             .header("accept", "application/json")
             .timeout_ms(15_000);
         if let Some(cookie) = session {
-            req = req.header("cookie", &format!("authelia_session={cookie}"));
+            req = req.header("cookie", &format!("losos_session={cookie}"));
         }
         if let Some(body) = body {
             req = req.json(body);

@@ -251,7 +251,7 @@ fn starting_box(m: &Messages) -> Html {
 fn session_of(cookies: &[String]) -> Option<String> {
     cookies.iter().find_map(|c| {
         let first = c.split(';').next()?.trim();
-        let value = first.strip_prefix("authelia_session=")?;
+        let value = first.strip_prefix("losos_session=")?;
         (!value.is_empty()).then(|| value.to_string())
     })
 }
@@ -428,14 +428,11 @@ mod tests {
     fn the_session_is_read_off_the_cookie() {
         let cookies = vec![
             "other=1; Path=/".to_string(),
-            "authelia_session=abc123; Domain=box.local; Path=/; Secure; HttpOnly; SameSite=Lax"
+            "losos_session=abc123; Domain=box.local; Path=/; Secure; HttpOnly; SameSite=Lax"
                 .to_string(),
         ];
         assert_eq!(session_of(&cookies).as_deref(), Some("abc123"));
-        assert_eq!(
-            session_of(&["authelia_session=; Max-Age=0".to_string()]),
-            None
-        );
+        assert_eq!(session_of(&["losos_session=; Max-Age=0".to_string()]), None);
     }
 
     #[test]
