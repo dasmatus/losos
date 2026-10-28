@@ -51,8 +51,8 @@ md-5 = "0.11"
 # hyper and rustls (ring, webpki roots) reqwest already uses.
 orchard = { version = "0.16.0", default-features = false, features = ["std"] }
 zcash_note_encryption = "0.5.1"
-zcash_address = "0.13"
-zcash_protocol = "0.10"
+zcash_address = "0.14"
+zcash_protocol = "0.11"
 tonic = { version = "0.14", default-features = false, features = ["channel", "codegen", "tls-ring", "tls-webpki-roots"] }
 tonic-prost = "0.14"
 prost = "0.14"
@@ -77,8 +77,8 @@ http = "1"
 bytes = "1"
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring"] }
 # Mesh CI (`ci.rs`): a commit's archive travels in the JSON body as
-# base64. Already in the lock tree through reqwest.
-base64 = "0.22"
+# base64.
+base64 = "0.23"
 
 [dev-dependencies]
 # Paused time for the CI queue's lease and grace tests (`ci.rs`).
