@@ -306,44 +306,71 @@ fn announce_parses_its_own_flags() {
 }
 
 #[test]
-fn identity_verify_takes_the_four_facts_the_box_checks() {
-    use losos_registrar::opts::IdentityOpts;
-    let args: Vec<String> = [
-        "identity",
-        "verify",
-        "--root-public",
-        "ab",
+fn passport_statement_takes_every_payout_and_check_trims_the_url() {
+    use losos_registrar::opts::PassportOpts;
+    let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<String>>();
+    match parse(args(&[
+        "passport",
+        "statement",
         "--url",
         "https://e.example",
-        "--nonce",
-        "0011",
-        "--answer",
-        "-",
-    ]
-    .iter()
-    .map(|s| s.to_string())
-    .collect();
-    match parse(args) {
-        Ok(Mode::Identity(IdentityOpts::Verify {
-            root_public,
+        "--edge-key",
+        "ab",
+        "--payout",
+        "base=0x01",
+        "--payout",
+        "solana=So1",
+    ])) {
+        Ok(Mode::Passport(PassportOpts::Statement {
             url,
-            nonce,
-            answer,
+            edge_key,
+            payouts,
+            days,
         })) => {
-            assert_eq!(root_public, "ab");
             assert_eq!(url, "https://e.example");
-            assert_eq!(nonce, "0011");
-            assert_eq!(answer, "-");
+            assert_eq!(edge_key, "ab");
+            assert_eq!(
+                payouts,
+                vec![
+                    ("base".to_string(), "0x01".to_string()),
+                    ("solana".to_string(), "So1".to_string())
+                ]
+            );
+            assert_eq!(days, 365);
         }
-        other => panic!("expected identity verify, got {}", mode_name(&other)),
+        other => panic!("expected passport statement, got {}", mode_name(&other)),
     }
-    let missing: Vec<String> = ["identity", "verify", "--url", "https://e.example"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
+    let bad_payout = args(&[
+        "passport",
+        "statement",
+        "--url",
+        "https://e.example",
+        "--edge-key",
+        "ab",
+        "--payout",
+        "base",
+    ]);
+    assert!(parse(bad_payout).is_err(), "a payout without = parsed");
+    match parse(args(&[
+        "passport",
+        "check",
+        "--url",
+        "https://e.example/",
+        "--tpm-roots",
+        "r.pem",
+        "--images",
+        "i.json",
+        "--payouts",
+        "p.json",
+    ])) {
+        Ok(Mode::Passport(PassportOpts::Check { url, .. })) => {
+            assert_eq!(url, "https://e.example");
+        }
+        other => panic!("expected passport check, got {}", mode_name(&other)),
+    }
     assert!(
-        parse(missing).is_err(),
-        "verify without the root key parsed"
+        parse(args(&["passport", "check", "--url", "https://e.example"])).is_err(),
+        "check without its anchors parsed"
     );
 }
 
@@ -354,7 +381,7 @@ fn mode_name(mode: &miette::Result<Mode>) -> &'static str {
         Ok(Mode::Seed(_)) => "seed",
         Ok(Mode::Join(_)) => "join",
         Ok(Mode::StripeGate(_)) => "stripe-gate",
-        Ok(Mode::Identity(_)) => "identity",
+        Ok(Mode::Passport(_)) => "passport",
         Ok(Mode::Provision(_)) => "provision",
         Ok(Mode::Enrol(_)) => "enrol",
         Ok(Mode::Lab(_)) => "lab",
