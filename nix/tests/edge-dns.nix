@@ -7,15 +7,16 @@
 #                test network as any resolver on the internet would.
 #
 # What it asserts, in order:
-#   1. Before the edge holds a certificate it serves the zone (SOA, NS, glue)
-#      but no box names, and `/domains/list` answers 503: an edge that is not
-#      official hands out nothing.
-#   2. An identity certificate is installed (signed here by a throwaway root,
-#      the way `losos-registrar provision edge` would push one) and the
-#      registrar restarted: the registrar rewrites the zone with the tenant
+#   1. Before the edge's owner has claimed it, it serves the zone (SOA, NS,
+#      glue) but no box names, and `/domains/list` answers 503: an open
+#      gateway nobody claimed hands out nothing.
+#   2. A claim: the measured settings appear where the boot after
+#      `POST /passport/settings` leaves them (the test writes them, with no
+#      TPM) and the registrar restarts. It rewrites the zone with the tenant
 #      hostname inside it, the path unit reloads Knot, and the client gets
 #      the edge's address for `mattbox.boxes.example.test` over UDP and TCP,
-#      with the SOA serial the file carries.
+#      with the SOA serial the file carries. What the settings say is the
+#      boxes' to check (backend/access/src/gateway/check.rs), not this test's.
 #   3. `/domains/list` now answers 200 and says why this box may not add a
 #      domain: the edge runs no market, so there is no Stripe account to
 #      vouch for it. It carries the box's relay pass, because the edge keeps
@@ -63,7 +64,7 @@ let
     version = "0";
     src = pkgs.runCommand "ech-probe-src" { } ''
       mkdir $out
-      printf 'module echprobe\n\ngo 1.24\n' > $out/go.mod
+      printf 'module ech-probe\n\ngo 1.24\n' > $out/go.mod
       cp ${pkgs.writeText "main.go" ''
         package main
 
@@ -151,6 +152,10 @@ pkgs.testers.nixosTest {
           443
         ];
         networking.firewall.allowedUDPPorts = [ 443 ];
+        # Only a claimed open gateway's zone hands out names
+        # (modules/edge-passport.nix). No TPM here: the test stands in for
+        # the measured claim itself, below.
+        losos.edge.passport.enable = true;
         environment.systemPackages = [ pkgs.jq ];
         virtualisation.memorySize = 1024;
       };
@@ -195,7 +200,7 @@ pkgs.testers.nixosTest {
               "http://127.0.0.1:8443/domains/list"
           ).rsplit("\n", 1)
 
-      with subtest("not official: the zone answers, but holds no box names"):
+      with subtest("not claimed: the zone answers, but holds no box names"):
           edge.wait_until_succeeds("test -s /var/lib/losos-dns/boxes.example.test.zone")
           zone = edge.succeed("cat /var/lib/losos-dns/boxes.example.test.zone")
           print(zone)
@@ -205,16 +210,18 @@ pkgs.testers.nixosTest {
               "kdig @${edgeIp} boxes.example.test SOA +short | grep -q 'ns1.boxes.example.test.'"
           )
           assert dig("ns1.boxes.example.test") == "${edgeIp}"
-          assert dig("mattbox.boxes.example.test") == "", "a name before the edge is official"
+          assert dig("mattbox.boxes.example.test") == "", "a name before the edge is claimed"
           body, code = domains_list()
           assert code == "503", (code, body)
 
-      with subtest("official: the tenant's name is assigned and Knot reloads"):
+      with subtest("claimed: the tenant's name is assigned and Knot reloads"):
+          # The claim as the registrar sees it after the boot that measured
+          # the owner's settings into the TPM. The measuring and the TPM are
+          # the passport's own business; the zone only asks whether there is
+          # a claim.
           edge.succeed(
-              "${registrar} identity keygen --out /root/root.key",
-              "${registrar} identity show --key /var/lib/losos-registrar/identity.key > /root/edge.pub",
-              "${registrar} identity sign --root-key /root/root.key --public-key \"$(cat /root/edge.pub)\" "
-              "--name 'test edge' --url http://edge:8443 > /var/lib/losos-registrar/identity.cert.json",
+              "install -d -m 0755 /run/losos-gateway",
+              "echo '{\"owner\":\"test\"}' > /run/losos-gateway/settings.json",
               "systemctl restart losos-registrar.service",
           )
           edge.wait_until_succeeds(
@@ -233,7 +240,7 @@ pkgs.testers.nixosTest {
           edge.succeed("systemctl show -p Result losos-dns-reload.service | grep -qx Result=success")
           edge.succeed("journalctl -u knot.service | grep -q 'boxes.example.test'")
 
-      with subtest("official without a market: the box is told Stripe has not vouched"):
+      with subtest("claimed without a market: the box is told Stripe has not vouched"):
           body, code = domains_list()
           assert code == "200", (code, body)
           view = json.loads(body)
@@ -307,7 +314,7 @@ pkgs.testers.nixosTest {
           # The registrar reads the same key: one key, one value in the zone.
           ech = edge.succeed(
               "${registrar} ech-key --key-file /var/lib/losos-ech/ech.pem --public-name register.example.test"
-          ).strip()
+          ).strip().splitlines()[-1]
           for name in ["boxes.example.test", "mattbox.boxes.example.test"]:
               client.wait_until_succeeds(
                   f"kdig @${edgeIp} {name} HTTPS +short | grep -qF '{ech}'"
@@ -337,12 +344,16 @@ pkgs.testers.nixosTest {
           client.succeed("grep -aq 'register.example.test' /tmp/hello.pcap")
           client.fail("grep -aq mattbox /tmp/hello.pcap")
           # A key Traefik does not hold is turned down, and says so.
+          # The value is the last line; making the key logs a line first.
           other = edge.succeed(
               "${registrar} ech-key --key-file /tmp/other.pem --public-name register.example.test"
-          ).strip()
+          ).strip().splitlines()[-1]
           refused = client.fail(f"ech-probe ${edgeIp}:443 mattbox.boxes.example.test '{other}'")
           print(refused)
-          assert "ECH" in refused or "encrypted client hello" in refused.lower(), refused
+          # Turned down, the client checks the outer handshake's certificate
+          # against the public name, as ECH requires; the test edge has none
+          # from Let's Encrypt, so Go stops there rather than at the retry.
+          assert "ECH" in refused or "not register.example.test" in refused, refused
 
       with subtest("the route table: the pass key, /relay, and the table file"):
           edge.succeed("stat -c %a /var/lib/losos-registrar/relay-pass.key | grep -qx 600")

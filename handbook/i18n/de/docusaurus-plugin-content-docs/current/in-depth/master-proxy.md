@@ -259,10 +259,51 @@ ns1.boxes.losos.dasmat.us.  A   203.0.113.7
 ns1.boxes.losos.dasmat.us.  AAAA 2001:db8::7
 ```
 
-:::note[Nur mit Identitätszertifikat]
-Nichts wird vergeben, bevor die Edge ein nicht abgelaufenes
-Identitätszertifikat besitzt ([Offizielle Edges](#official-edges)). Bis dahin
+Die Zone ist mit DNSSEC signiert ([weiter unten](#wallets-at-box-names)).
+Veröffentliche ihren DS-Eintrag beim selben Registrar, damit Resolver den
+Signaturen vertrauen: `keymgr <zone> ds` auf der Edge gibt ihn aus. Solange
+der DS fehlt, behandeln Resolver die Zone als unsigniert, und ein Browser hat
+auch keinen Grund, dem ECH-Schlüssel unten zu trauen.
+
+:::note[Nur auf einem übernommenen Gateway]
+Die Zone braucht `losos.edge.passport.enable`, und nichts wird vergeben,
+bevor der Besitzer die Edge übernommen hat, mit Einstellungen, die sein
+Schlüssel signiert hat und die bei diesem Start gemessen wurden. Bis dahin
 besteht die Zone nur aus SOA, NS und Glue, und `/domains/*` antwortet mit 503.
+:::
+
+### Encrypted Client Hello {#encrypted-client-hello}
+
+Jeder Name in der Zone trägt auch einen HTTPS-Eintrag mit dem Encrypted
+Client Hello (ECH) Schlüssel der Edge:
+
+```
+mattbox IN HTTPS 1 . alpn="h3,h2" ech="AEz+DQBI…"
+```
+
+Ein Browser, der den Eintrag findet, verschlüsselt den Teil seines TLS-Hello,
+der die Box nennt, und zeigt dem Netz nur den öffentlichen Namen der Edge,
+`register.<publicDomain>`, wenn `losos.edge.dns.ech.publicName` keinen anderen
+nennt. Wer die Leitung beobachtet, sieht, dass der Browser zur Edge ging,
+nicht nach welcher Box er fragte. ECH ist mit der Zone eingeschaltet
+(`losos.edge.dns.ech.enable`), und das Modul lehnt eine Zone ohne DNSSEC oder
+ohne ECH ab: ein unsignierter Eintrag ließe sich auf dem Weg zum Browser
+ändern.
+
+Die Edge erzeugt den Schlüssel beim ersten Start (`losos-ech-key`,
+`/var/lib/losos-ech/ech.pem`, lesbar für root und Traefik) und behält ihn,
+bis sich der öffentliche Name ändert. `losos-registrar ech-key --key-file …
+--public-name …` gibt den Wert aus, den die Einträge tragen. Traefik
+entschlüsselt damit. Noch kein veröffentlichter Traefik kann das, deshalb
+läuft auf einer Edge mit Zone ein Traefik aus seiner ECH-Änderung
+(`nix/traefik-ech.nix`), der kein Dashboard ausliefert.
+
+:::note[Wie das getestet wird]
+`nix/tests/edge-dns.nix` (`losos-edge-dns`) liest den Schlüssel aus dem
+signierten HTTPS-Eintrag, prüft ihn mit `delv` und öffnet TLS zum Namen einer
+Box mit dem ECH-Client von Go. Traefik nimmt ECH an, das mitgeschnittene
+Hello trägt nur den öffentlichen Namen, und einen Schlüssel, den Traefik
+nicht hat, lehnt es ab.
 :::
 
 ### Eigene Domains {#custom-domains}
