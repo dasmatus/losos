@@ -61,6 +61,7 @@ for update in "${updates[@]}"; do
     workdir=$(mktemp -d "${TMPDIR:-/tmp}/losos-pre-push.XXXXXX")
     git worktree add -q --detach "$workdir" "$local_sha" || exit 1
     cleanup=$workdir
+    trap 'git worktree remove --force "$cleanup"' EXIT
   fi
 
   (
@@ -170,6 +171,8 @@ for update in "${updates[@]}"; do
     # The test's derivation is the merge base's: nothing to run. The base is
     # checked out once, on first use.
     base_dir=""
+    # Removed however the run ends, an interrupt included.
+    trap '[ -z "$base_dir" ] || git worktree remove --force "$base_dir"' EXIT
     vm_same_as_base() {
       local check=$1 here there
       if [ -z "$base_dir" ]; then
@@ -190,13 +193,13 @@ for update in "${updates[@]}"; do
         run "vm:$v" vm_run "$v"
       done
     fi
-    [ -n "$base_dir" ] && git worktree remove --force "$base_dir"
 
     hook_finish
   )
   rc=$?
   if [ -n "$cleanup" ]; then
     git worktree remove --force "$cleanup"
+    trap - EXIT
   fi
   [ "$rc" -eq 0 ] || exit "$rc"
 done
