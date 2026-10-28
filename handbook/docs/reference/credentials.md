@@ -48,7 +48,7 @@ No other service, and no person signed in to the box, can read it.
 
 ## Making a new value
 
-Some credentials can be made new from the pane: **Make new** asks first,
+You can make some credentials new from the pane. **Make new** asks first,
 then the box makes a random value, seals it and restarts what reads it. A
 new session key for LosOS Login, for instance, signs everyone out.
 

@@ -22,8 +22,8 @@ reserve as a hatched slice until you claim it.
 ![The three layers grown in order: the logical volume, then the encryption layer, then the filesystem.](../img/disk-growth.svg)
 
 Once the reserve is used up, the button reads **Reserve in use** and stays
-greyed, in every browser and after a reload: the box reports the reserve
-itself.
+greyed, in every browser and after a reload, because the box itself
+reports the reserve.
 
 ## Adding a disk
 

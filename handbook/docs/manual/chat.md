@@ -81,7 +81,7 @@ The lock button in the bar at the top opens **Secure messages** at any time. It 
 ## In a conversation
 
 Hover over a message to reply, reply in a thread, edit or delete it. The
-quick reactions show in a pill under it: press one to add it, and press it
+quick reactions show in a pill under it. Press one to add it, and press it
 again to take it back. Right-click a message for the same and to copy its text
 ([the right-click menu](admin-pages#the-right-click-menu)). The thread button
 in the room's header lists the room's threads.
@@ -92,8 +92,8 @@ your browser. The microphone records a voice message.
 
 With LosOS Cloud on the box, the cloud button next to the paper clip sends
 files straight from your Cloud. A file someone sends you has a cloud button
-on its card, and **Save to LosOS Cloud** in its right-click menu: it is
-saved, decrypted, in the **Chat** folder of your Cloud, and the button then
+on its card, and **Save to LosOS Cloud** in its right-click menu. Either saves it,
+decrypted, in the **Chat** folder of your Cloud, and the button then
 opens it there. From LosOS Cloud, sending a file in chat asks which
 conversation it goes to.
 

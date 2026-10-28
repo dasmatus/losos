@@ -46,8 +46,8 @@ Every log under `/var` has a cap, so logs cannot fill the disk:
   per container.
 - The web server's access log starts a new file every week, or sooner at
   20 MB, and keeps eight old ones.
-- The admin pages' audit log and the log of rebuilds they start a new file
-  at 10 MB and keep three old ones.
+- The admin pages' audit log and their log of rebuilds each start a new
+  file at 10 MB and keep three old ones.
 - The box deletes build logs from updates after 30 days.
 
 ## What a reinstall does

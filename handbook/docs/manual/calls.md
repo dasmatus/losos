@@ -119,7 +119,7 @@ A live stream is public, so it is the one part of a call that is not end
 to end encrypted. Your browser puts the picture and the sound together
 from the call it has already decrypted and sends them to your box, which
 passes them to the RTMP address. The stream key stays in your browser and
-the box: it is never written to the box's logs.
+the box, and the box never writes it to its logs.
 
 ## Guests
 

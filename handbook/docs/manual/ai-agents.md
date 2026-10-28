@@ -52,7 +52,7 @@ losos agents install --host https://mattbox.local
 Use your box's address. If the terminal client is already connected to the
 box (see [The terminal client](terminal)), you can leave `--host` out.
 
-It asks about each tool it found, one at a time. Nothing is changed in a
+It asks about each tool it found, one at a time. It changes nothing in a
 tool you say no to. Name the tools to do only those, and add `--yes` to
 skip the questions:
 
@@ -83,7 +83,7 @@ and leaves your comments and your other servers as they were. Restart a
 tool that was open so it picks the companion up.
 
 Gemini CLI asks whether you trust the folder it installs from. Your yes to
-Gemini CLI answers that too: the client adds only the companion's own
+Gemini CLI answers that too. The client adds only the companion's own
 folder to Gemini's list of trusted folders, and takes it off the list again
 when you remove the companion. Gemini CLI starts MCP servers, the companion
 among them, only in folders you trust.
@@ -121,8 +121,8 @@ for a second step or a new password cannot sign the companion in until that
 is done.
 
 The tokens are kept in your desktop's keychain, the same place the terminal
-client keeps everything else. They are never written into an AI tool's
-settings: each tool starts the companion, and the companion reads the
+client keeps everything else. The client never writes them into an AI tool's
+settings. Each tool starts the companion, and the companion reads the
 keychain.
 
 ## Take it out again
@@ -133,5 +133,5 @@ losos agents remove
 
 It asks about each tool the companion is in and takes it out, and puts each
 settings file back as it was. Once the companion is in no tool, the client
-signs it out: it hands both tokens back to LosOS Login and forgets them. The
+signs it out. It hands both tokens back to LosOS Login and forgets them. The
 box stops taking them within a minute.

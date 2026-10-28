@@ -1,7 +1,7 @@
 <h1><img src="admin-ui/themes/brand/salmon-128.png" alt="" width="56" height="56" align="center"> LosOS</h1>
 
 A NixOS appliance for a mini-PC. It runs LosOS Cloud for your own files and can
-lend spare disk and CPU to a mesh of other losos boxes. There is no SSH and no
+lend spare disk and CPU to a mesh of other LosOS boxes. There is no SSH and no
 login shell: you administer it from a web page, and it upgrades itself.
 
 <picture>
@@ -35,7 +35,7 @@ the handbook's last chapter.
    build it with
    `nix build .#nixosConfigurations.iso.config.system.build.isoImage`.
 2. Boot the target in UEFI mode, with Secure Boot off or with the LosOS
-   certificate from the release page enrolled: release ISOs are signed and
+   certificate from the release page enrolled. Release ISOs are signed, and
    a firmware that trusts the certificate verifies the stick before it
    runs. The installed box needs Secure Boot off.
 3. Boot the stick with a network connection. The installer wipes every fixed
@@ -77,7 +77,7 @@ pitfalls.
 
 | Folder      | What is in it                                                     |
 | ----------- | ----------------------------------------------------------------- |
-| `admin-ui/` | The admin pages, the `losos` terminal client and LosOS Lab        |
+| `admin-ui/` | The admin pages, the `losos` terminal client and LosOS Diagrams   |
 | `backend/`  | `lososd` and `losos-ctl`, the box's control plane (Rust)          |
 | `edge/`     | The edge registrar, its Vercel demo host and the escrow contracts |
 | `modules/`  | The NixOS modules both systems are built from                     |

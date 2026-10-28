@@ -73,7 +73,7 @@ formats (.docx, .xlsx, .pptx), and PDFs. Pictures, audio, video and archives
 are skipped, and only the first megabyte of text in each file is kept.
 Right after the first start the list says the box is still reading your
 files. The index stays on the box, a factory erase deletes it, and
-`losos.search.enable` on the Advanced pane turns it off. LosOS Git needs no index: each search reads the repositories
+`losos.search.enable` on the Advanced pane turns it off. LosOS Git needs no index. Each search reads the repositories
 directly.
 
 ## The right-click menu
@@ -106,8 +106,8 @@ it for whatever has the focus, and the arrow keys move through it.
 The keys shown beside an item work without the menu too. In LosOS Cloud,
 F2 renames the ticked file and Delete moves it to the trash (Cmd+Backspace
 on a Mac). Text fields keep the browser's own menu, for spelling and paste.
-The menu lists only what this box can do: an item for a feature the box
-does not have is left out, not greyed.
+The menu lists only what this box can do. It leaves out an item for a
+feature the box does not have, rather than greying it.
 
 ## The bar over a selection
 

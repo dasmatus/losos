@@ -9,8 +9,6 @@ slug: /manual/calendar
 
 ![Calendar's week view.](../img/calendar-week.png)
 
-![Calendar's week view.](../img/calendar-week.png)
-
 ![Calendar appears under Pinned in the sidebar when it is pinned.](../img/pins-overview.png)
 
 LosOS Calendar keeps your events and the calendars you follow. **Calendar**
@@ -83,7 +81,7 @@ An invitation that reaches you in Mail shows what it is about above the
 message, with **Yes**, **Maybe** and **No**. Your answer puts the event in
 your calendar and mails your answer to whoever invited you. When the answer
 reaches them, their copy of the event shows it as soon as they open the
-message. A cancellation works the same way: opening it marks the event as
+message. A cancellation works the same way. Opening it marks the event as
 cancelled in your calendar.
 
 ## Reminders
@@ -91,7 +89,7 @@ cancelled in your calendar.
 A reminder shows on whichever admin page you have open: the event's name,
 when it starts, and **Join the call** for a call or **Open** for anything
 else. If you allowed notifications in your browser, it also shows as a
-notification while the tab is in the background. A reminder is only shown
+notification while the tab is in the background. Reminders show only
 while a page of the box is open somewhere.
 
 ## Subscriptions
@@ -104,21 +102,21 @@ it and a colour, and Calendar reads it once before keeping it.
 - A subscription is read again on its own, every hour, six hours, day or
   week, as you chose. **Read it now** in its settings reads it at once. Events
   the publisher added, changed or took out change with it.
-- A subscription is read-only. Its events cannot be edited here or on a
-  phone; only the publisher changes them.
+- A subscription is read-only. You cannot edit its events here or on a
+  phone. Only the publisher changes them.
 - The box reads the address in a separate service that has no access to
   your files and cannot reach the services that listen only inside the box.
 - When a read fails, the calendar's settings say why and when it last
   worked. The events from the last good read stay.
 
-A box that ran Nextcloud keeps its subscriptions: the move to LosOS Cloud
+A box that ran Nextcloud keeps its subscriptions. The move to LosOS Cloud
 brings each one across as a subscription.
 
 ## Importing
 
 **Import** takes an `.ics` file, such as one a calendar app exported, into
-one of your calendars or into a new one named after the file. An event that
-is already in the calendar is updated rather than added a second time.
+one of your calendars or into a new one named after the file. The import
+updates an event that is already in the calendar rather than adding it twice.
 
 ## Publishing a calendar
 

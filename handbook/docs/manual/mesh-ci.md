@@ -30,7 +30,7 @@ where it ran: **This box**, or **Mesh** with the name of the box that took
 it. Pick a job to read its log, step by step, with each step's exit code
 and the job's outputs.
 
-**Cancel run** stops a run's jobs, and their containers are removed.
+**Cancel run** stops a run's jobs and removes their containers.
 **Run again** starts the same workflows on the same commit.
 
 **Run workflow** starts a workflow that has `workflow_dispatch` among its
@@ -89,8 +89,8 @@ so where they come up:
 - `actions/checkout` does nothing: the commit's files are already in the
   workspace;
 - `actions/cache`, `upload-artifact` and `download-artifact` keep nothing;
-- `secrets` is empty, `schedule` never fires, and reusable workflows
-  (`jobs.<id>.uses`) are refused.
+- `secrets` is empty, `schedule` never fires, and Mesh CI refuses reusable
+  workflows (`jobs.<id>.uses`).
 
 ## Containers and pm
 
@@ -112,8 +112,8 @@ A step can also build a pm recipe with the `losos-project/pm` action:
 ```
 
 pm builds the recipe in its own jail, in the job's workspace, and the `archive`
-output is the package it made. The recipe must be signed by a key under
-`trust`. `command: explain` says what the recipe would do without building
+output is the package it made. A key under `trust` must sign the
+recipe. `command: explain` says what the recipe would do without building
 it, and `permissive: true` passes pm's `--permissive`.
 
 ## Settings

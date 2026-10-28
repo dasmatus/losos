@@ -190,24 +190,6 @@ let
       "f ${proxyToken} 0600 root root - ${proxyTokenValue}"
     ];
   };
-  # The edge's identity, so it is an official edge and makes guest links:
-  # a root and one certificate, made at build time as nix/tests/edge-lan.nix
-  # does.
-  identityFixture =
-    pkgs.runCommand "losos-calls-edge-identity"
-      {
-        nativeBuildInputs = [ lososPkgs.losos-registrar ];
-      }
-      ''
-        mkdir -p $out
-        losos-registrar identity keygen --out $out/root.key > $out/root.pub
-        losos-registrar identity keygen --out $out/edge.key > $out/edge.pub
-        losos-registrar identity sign \
-          --root-key $out/root.key --public-key "$(cat $out/edge.pub)" \
-          --name "losos test edge" --url http://edge:8443 --days 30 \
-          > $out/edge.cert.json
-      '';
-  identityKey = "/var/secrets/losos-edge-identity.key";
   # The driver's browsers send to the media port on their own loopback; it
   # arrives at the forwarding machine's user-mode address. QEMU's user-mode
   # network sends every reply from a guest UDP port to whoever wrote to it
@@ -485,7 +467,14 @@ pkgs.testers.nixosTest {
           secretFiles
           peerNat
         ];
-        systemd.tmpfiles.rules = [ "C ${identityKey} 0600 root root - ${identityFixture}/edge.key" ];
+        # A claimed gateway makes guest links: the registrar asks only that
+        # owner's settings were measured at boot. With no TPM in the VM the
+        # measuring unit does not run, so the copy is laid down here;
+        # nothing in this test checks the passport itself.
+        systemd.tmpfiles.rules = [
+          "d /run/losos-gateway 0755 root root - -"
+          "f /run/losos-gateway/settings.json 0644 root root - {}"
+        ];
         _module.args.self = {
           packages.x86_64-linux.losos-registrar = lososPkgs.losos-registrar;
         };
@@ -501,10 +490,7 @@ pkgs.testers.nixosTest {
             hostname = "mattbox.losos.cfd";
             tokenFile = proxyToken;
           };
-          identity = {
-            keyFile = identityKey;
-            certFile = "${identityFixture}/edge.cert.json";
-          };
+          passport.enable = true;
           calls.relay = {
             mediaPorts = "${toString mediaPort}-${toString (mediaPort + 9)}";
             addresses = [ "10.0.2.15=127.0.0.1" ];
@@ -556,6 +542,10 @@ pkgs.testers.nixosTest {
     # The edge node, with throughEdge; looked up so the script reads the
     # same without one.
     EDGE = globals().get("edge")
+    # The film is recorded by losos-calls alone: under emulation a 2x
+    # recording of Matus's window costs the edge run, with a third machine
+    # and its relay, more than it can spare.
+    FILMING = EDGE is None
 
     start_all()
     if EDGE is not None:
@@ -809,7 +799,7 @@ pkgs.testers.nixosTest {
             timezone_id="Europe/Bratislava",
             reduced_motion="reduce",
             ignore_https_errors=True,
-            **({"record_video_dir": f"{FILM}/raw", "record_video_size": {"width": 2560, "height": 1800}} if name == "matus" else {}),
+            **({"record_video_dir": f"{FILM}/raw", "record_video_size": {"width": 2560, "height": 1800}} if name == "matus" and FILMING else {}),
         )
         if name == "matus":
             clip_start["matus"] = time.time()
@@ -886,6 +876,16 @@ pkgs.testers.nixosTest {
         # in what changed; a picture of the timeline's end stays put.
         if top:
             page.evaluate("window.scrollTo(0, 0)")
+        page.screenshot(path=f"{SHOTS}/{name}.png")
+
+    def shot_end(page, name):
+        """The end of the room's timeline, where the newest notice is,
+        with the pointer off the messages so no toolbar covers them."""
+        page.mouse.move(0, 0)
+        settle(page)
+        page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)")
+        page.get_by_role("log").first.evaluate("e => { e.scrollTop = e.scrollHeight }")
+        time.sleep(1)
         page.screenshot(path=f"{SHOTS}/{name}.png")
 
     def film(page, slug, title, action="none", targets=None, top=True):
@@ -1208,6 +1208,9 @@ pkgs.testers.nixosTest {
             guest.get_by_label("Your name").fill("Jack")
             shot(guest, "guest-join")
             guest.get_by_role("button", name="Join the call").click()
+            # Under emulation the guest's camera and its background cut take
+            # minutes to open; the call view comes after them.
+            guest.locator("[data-guest-call]").wait_for(timeout=360000)
             # Two others for the guest, and the guest for each of them.
             live(guest, 2)
             for page in (owner, her):
@@ -1361,8 +1364,7 @@ pkgs.testers.nixosTest {
             assert counts["refused"] == "0", counts
         notice = jan.locator("[data-call-notice]").last
         notice.get_by_role("button", name="Join", exact=True).wait_for()
-        notice.scroll_into_view_if_needed()
-        shot(jan, "timeline-join", top=False)
+        shot_end(jan, "timeline-join")
         notice.get_by_role("button", name="Join", exact=True).click()
         for page in (owner, her, jan):
             live(page, 2, frames=0)
@@ -1468,15 +1470,16 @@ pkgs.testers.nixosTest {
     # Matus's clip: Chromium writes it when his window closes. Under
     # emulation the page paints well below 60 frames a second, so the
     # clip is resampled to a constant 60 for the cut.
-    raw = owner.video.path()
-    owner.context.close()
-    subprocess.run(
-        ["${pkgs.ffmpeg-headless}/bin/ffmpeg", "-v", "error", "-i", raw, "-vf", "fps=60",
-         "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
-         "-movflags", "+faststart", "-y", f"{FILM}/calls-matus.mp4"],
-        check=True,
-    )
-    os.remove(raw)
+    if FILMING:
+        raw = owner.video.path()
+        owner.context.close()
+        subprocess.run(
+            ["${pkgs.ffmpeg-headless}/bin/ffmpeg", "-v", "error", "-i", raw, "-vf", "fps=60",
+             "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
+             "-movflags", "+faststart", "-y", f"{FILM}/calls-matus.mp4"],
+            check=True,
+        )
+        os.remove(raw)
 
     for b in browsers.values():
         b.close()

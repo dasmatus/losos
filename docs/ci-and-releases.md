@@ -119,6 +119,18 @@ os-release, the console banners and `losos --version` show
   `.github/scripts/sync-version.sh --dry-run` shows what it would commit.
 - The `tui` job writes the tag over the file before it builds `losos`, so
   the client published for the tag names it.
+- `desktop-pin.yml` opens a pull request on LosOS Desktop
+  (`losos-project/desktop`, or the repository the `DESKTOP_REPOSITORY`
+  variable names) that moves its pin of this repository,
+  `nixos/pkgs/losos-pin.nix`, to the tag. The desktop builds `losos` from
+  that commit and boots a box from it beside the desktop in its
+  `losos-box` VM test, so the pull request's CI is where a change here
+  that breaks the desktop shows up. `.github/scripts/desktop-pin.sh TAG
+  DIR` rewrites the file in a checkout of the desktop, hashes included.
+  Opening the pull request needs the `DESKTOP_PIN_TOKEN` secret, a
+  fine-grained token for the desktop repository with Contents and Pull
+  requests read and write; without it the job puts the file in its
+  summary. Release candidates are left out; *Run workflow* takes any tag.
 
 The release job:
 
@@ -320,7 +332,7 @@ they are `base-sepolia`, `arbitrum-sepolia`, `optimism-sepolia` and
 `LososEscrow` deployment (`edge/contracts/`), with the same treasury and the
 releaser key's address. Deploying it from a fresh key at nonce 0 gives it the
 same address on every chain. On Solana the treasury is the owner of
-the USDC account that takes the fee, and there is no contract: the buyer's
+the USDC account that takes the fee, and there is no contract. The buyer's
 transaction makes both transfers itself. `genesisHash` overrides the genesis a
 test Solana network must report, for a local validator.
 
@@ -539,8 +551,8 @@ It reaches the registrar as `--market-coin-fee-limit` (0 to 100000). While a
 seller owes more than that, or has owed anything for 30 days (fixed), the
 edge drops coins from that seller's new orders and refuses new coin
 payments. 0 stops coin payments at the first cent owed. A ledger from before
-this kept no start date: the first read stamps one, and it is written with
-the next change to the ledger.
+this kept no start date. The first read stamps one, and the edge writes it
+with the next change to the ledger.
 
 Two things move USDC to the treasury for it, both into
 `losos.edge.market.usdc.networks.<network>.treasury`:
