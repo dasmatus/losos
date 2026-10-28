@@ -166,6 +166,59 @@ pub fn list(store: &Store, owner: &str) -> Result<Vec<Site>, StoreError> {
     Ok(sites.into_iter().map(|s| s.with_folder(store)).collect())
 }
 
+/// Every site on the box, by title, for the directory of wikis.
+pub fn all(store: &Store) -> Result<Vec<Site>, StoreError> {
+    let sites = store.with_db(|db| {
+        let mut stmt = db.prepare(&format!(
+            "SELECT {COLUMNS} FROM knowledge_bases ORDER BY title COLLATE NOCASE"
+        ))?;
+        let rows = stmt.query_map([], row_site)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    })?;
+    Ok(sites.into_iter().map(|s| s.with_folder(store)).collect())
+}
+
+/// What `GET /kb/api/` answers: the sites `who` may read (all of them for
+/// someone signed in, the open ones for anyone else), each with its note
+/// count and last change, and with `q` the lines of their notes that hold
+/// it. Neither the owner nor the folder is named: a reader sees the site,
+/// not whose files it is.
+pub fn index(cloud: &Cloud, who: Option<&Who>, q: &str) -> serde_json::Value {
+    let sites = all(&cloud.store).unwrap_or_default();
+    let mut list = Vec::new();
+    let mut hits = Vec::new();
+    for site in sites {
+        if site.folder.is_none() || (site.audience == Audience::Box && who.is_none()) {
+            continue;
+        }
+        let Ok(v) = published(cloud, &site) else {
+            continue;
+        };
+        let updated = v.notes.iter().map(|n| n.mtime).max();
+        if q.trim().chars().count() >= 2 && hits.len() < 50 {
+            for h in search(cloud, &site, &v, q).into_iter().take(10) {
+                hits.push(json!({
+                    "slug": site.slug,
+                    "site": site.title,
+                    "path": h.path,
+                    "line": h.line,
+                    "text": h.text,
+                }));
+            }
+        }
+        list.push(json!({
+            "slug": site.slug,
+            "title": site.title,
+            "audience": site.audience,
+            "notes": v.notes.len(),
+            "updated": updated,
+            "mine": who.is_some_and(|w| w.login == site.owner),
+        }));
+    }
+    hits.truncate(50);
+    json!({ "sites": list, "hits": hits })
+}
+
 pub fn by_slug(store: &Store, slug: &str) -> Result<Option<Site>, StoreError> {
     let site = store.with_db(|db| {
         Ok(db
@@ -304,6 +357,14 @@ pub fn published(cloud: &Cloud, site: &Site) -> Result<Vault, StoreError> {
     Ok(v)
 }
 
+/// The site's notes that say `q`. The vault the site shows has its root
+/// cleared, so the search reads the files below the folder itself.
+fn search(cloud: &Cloud, site: &Site, v: &Vault, q: &str) -> Vec<super::Hit> {
+    let mut v = v.clone();
+    v.root = site.folder.clone().unwrap_or_default();
+    super::search(cloud, &v, &site.owner, q)
+}
+
 fn param(req: &HttpRequest, name: &str) -> Option<String> {
     url::form_urlencoded::parse(req.query_string().as_bytes())
         .find(|(k, _)| k == name)
@@ -419,6 +480,16 @@ pub async fn public(
         return not_found();
     }
     let rest = path.trim_start_matches("/kb/api/");
+    // The box's sites, for the directory of wikis (the admin UI's /wikis).
+    if rest.is_empty() {
+        let q = param(req, "q").unwrap_or_default();
+        let mut r = HttpResponse::Ok().json(index(cloud, who, &q));
+        r.headers_mut().insert(
+            actix_web::http::header::CACHE_CONTROL,
+            actix_web::http::header::HeaderValue::from_static("private, no-cache"),
+        );
+        return r;
+    }
     let (slug, call) = rest.split_once('/').unwrap_or((rest, ""));
     if !valid_slug(slug) {
         return not_found();
@@ -482,7 +553,7 @@ pub async fn public(
         }
         "search" => {
             let q = param(req, "q").unwrap_or_default();
-            HttpResponse::Ok().json(json!({ "hits": super::search(cloud, &v, &site.owner, &q) }))
+            HttpResponse::Ok().json(json!({ "hits": search(cloud, &site, &v, &q) }))
         }
         _ => return not_found(),
     };
@@ -586,6 +657,51 @@ mod tests {
         assert_eq!(list(&cloud.store, "ann").unwrap().len(), 1);
         remove(&cloud.store, "ann", a.id).unwrap();
         assert!(list(&cloud.store, "ann").unwrap().is_empty());
+    }
+
+    #[test]
+    fn the_index_lists_what_the_reader_may_read() {
+        let (_d, cloud) = cloud(true);
+        write(&cloud, "ann", "Garden/Beans.md", "Sow beans in May.");
+        write(
+            &cloud,
+            "ann",
+            "Garden/Diary.md",
+            "---\nprivate: true\n---\nbeans for me",
+        );
+        write(&cloud, "bob", "Recipes/Soup.md", "Bean soup.");
+        create(&cloud.store, "ann", "Garden", "Garden", Audience::Anyone).unwrap();
+        create(&cloud.store, "bob", "Recipes", "Recipes", Audience::Box).unwrap();
+        let who = Who {
+            login: "bob".into(),
+            name: "Bob".into(),
+            email: String::new(),
+            via: crate::cloud::auth::Via::Header,
+        };
+        let titles = |v: &serde_json::Value| -> Vec<String> {
+            v["sites"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|s| s["title"].as_str().unwrap().to_owned())
+                .collect()
+        };
+        // Nobody signed in reads the open site only.
+        let open = index(&cloud, None, "");
+        assert_eq!(titles(&open), ["Garden"]);
+        assert_eq!(open["sites"][0]["notes"], 1);
+        assert!(open["sites"][0].get("folder").is_none());
+        let signed = index(&cloud, Some(&who), "bean");
+        assert_eq!(titles(&signed), ["Garden", "Recipes"]);
+        assert_eq!(signed["sites"][1]["mine"], true);
+        let hits: Vec<&str> = signed["hits"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|h| h["path"].as_str().unwrap())
+            .collect();
+        // The private diary is no hit, though it says beans.
+        assert_eq!(hits, ["Beans.md", "Soup.md"]);
     }
 
     #[test]
