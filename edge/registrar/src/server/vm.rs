@@ -27,10 +27,7 @@ use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
-use super::{
-    kube_access, kube_create, market_of, market_tenant, remove_if_exists, write_if_changed,
-    AppState, KubeAccess, MarketAuth, TRAEFIK_FILE_MODE,
-};
+use super::{kube_access, kube_create, market_of, market_tenant, AppState, KubeAccess, MarketAuth};
 use crate::action::Action;
 use crate::error::ApiError;
 use crate::market::{namespace_for, Market, MarketError};
@@ -636,8 +633,8 @@ fn parse_range(value: &str, len: u64) -> Range {
 
 /// The machine half of the market's reconcile pass: drop uploads whose
 /// ticket ran out, create the replicas and Service of every paid order that
-/// has none, halt every replica of a lapsed order, and rewrite the Traefik
-/// file that publishes the live ones.
+/// has none, halt every replica of a lapsed order, and publish the routes
+/// of the live ones.
 ///
 /// Idempotent like the storage half: a `409` on create is an earlier pass
 /// that died before the order was marked, and a `404` on halt is a replica
@@ -677,7 +674,7 @@ pub(super) async fn fulfil(st: &AppState, market: &Market) {
             ),
         }
     }
-    publish_routes(market, &opts).await;
+    publish_routes(st, market, &opts).await;
 }
 
 async fn create_machines(kube: &KubeAccess, market: &Market, opts: &vms::VmOpts, p: &VmProvision) {
@@ -766,19 +763,15 @@ async fn halt_machines(
     }
 }
 
-/// Write `losos-vms.yml` beside the tenants' Traefik file, or remove it when
-/// no machine is live, so Traefik drops the routers of halted ones.
-async fn publish_routes(market: &Market, opts: &vms::VmOpts) {
-    let Some(file) = &opts.routes_file else {
+/// Publish the live machines' routes beside the boxes', so Traefik drops the
+/// routers of halted ones on its next poll.
+async fn publish_routes(st: &AppState, market: &Market, opts: &vms::VmOpts) {
+    if opts.domain.is_none() {
         return;
-    };
-    let path = Path::new(file);
-    let result = match crate::config::vm_routes_yaml(&market.vm_routes().await) {
-        Some(yaml) => write_if_changed(path, &yaml, TRAEFIK_FILE_MODE).await,
-        None => remove_if_exists(path).await,
-    };
-    if let Err(e) = result {
-        tracing::error!(target: Action::Market.target(), "machine routes {file}: {e:?}");
+    }
+    let routes = crate::config::vm_routes(&market.vm_routes().await);
+    if st.discovery.set_vms(routes) {
+        tracing::info!(target: Action::Market.target(), "machine routes changed");
     }
 }
 

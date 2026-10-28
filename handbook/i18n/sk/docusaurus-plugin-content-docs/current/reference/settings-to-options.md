@@ -46,6 +46,7 @@ a [Správa](/in-depth/administration.md#settings) ich opisuje úplne.
 | Platnosť certifikátu                 | `losos.tls.validityDays`           | 730                                        |
 | Prah nečinnosti pre požičiavanie CPU | `losos.cluster.idleLoadThreshold`  | 0,25 na jadro                              |
 | Binárna cache                        | `losos.cache.substituters`         | `http://127.0.0.1:8787`, potom `https://losos.dasmat.us/proxy` |
+| Veľkosť lokálnej kópie cache         | `losos.cache.local.maxSize`        | `8g`                                        |
 | Kto môže z webovej stránky čítať `/setup/state.json` | `losos.setup.finderOrigins` | stránka find na edge LosOS     |
 
 ![Panel Rozšírené, kde sa upravujú voľby, ktoré nie sú na iných paneloch, každá skontrolovaná pred stlačením Použiť.](@site/docs/img/settings-advanced-sk.png)

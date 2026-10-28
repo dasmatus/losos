@@ -144,6 +144,8 @@ a backup (still locked with your passphrase) and the public key, locks the
 key again, and removes it. A removed key cannot read mail sent to it until
 you import the backup.
 
+![The Encryption window with a key: its fingerprint, address and date, and the buttons to lock it, back it up and remove it.](../img/mail-pgp-key.png)
+
 **Unlocking.** The key stays unlocked in the tab where you unlocked it, until
 you lock it or close the tab. Mail asks for the passphrase when it needs it:
 to open an encrypted message or to sign one.
@@ -168,12 +170,16 @@ Mail is sent as PGP/MIME; **Inline, for older mail programs** puts the
 encrypted text in the body instead, which protects the text but not
 attachments.
 
+![A new message to Eva: her key was found on this box, and Encrypt and Sign are on.](../img/mail-pgp-compose.png)
+
 **Reading.** An encrypted message shows a lock in the list. Opening it
 decrypts it in your browser, and a line under the headers says how it came:
 encrypted, signed and by whom, signed by a key the box does not know, or a
 signature that does not match. A message signed by someone other than its
 sender says so. Decrypted mail is shown as text, never as the sender's
 formatting, and its attachments download like any other.
+
+![Eva reads the message: a lock in the list, and a note that it was encrypted and signed by Matus, with his fingerprint.](../img/mail-pgp-opened.png)
 
 **Your public key for others.** The box publishes everyone's public key in
 its own Web Key Directory at `/.well-known/openpgpkey/`, so mail programs
