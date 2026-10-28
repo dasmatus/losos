@@ -126,13 +126,17 @@ pub(crate) enum Principal {
     /// it in: GET on `losos_access::COMPANION_ROUTES` only, and within
     /// those what the person may read.
     Companion(crate::people::Person),
+    /// A computer's backups, as the person LosOS Login signed them in as
+    /// (`losos_access::BACKUPS_CLIENT_ID`): `POST /api/devices/backups`
+    /// only, which makes that person's own credentials and nobody else's.
+    Backups(crate::people::Person),
 }
 
 impl Principal {
     fn audit_name(&self) -> &str {
         match self {
             Principal::Spare => "spare-key",
-            Principal::Person(p) | Principal::Companion(p) => &p.name,
+            Principal::Person(p) | Principal::Companion(p) | Principal::Backups(p) => &p.name,
             Principal::Edge => "edge",
         }
     }
@@ -141,14 +145,14 @@ impl Principal {
         match self {
             Principal::Spare => true,
             Principal::Person(p) => p.is_admin(),
-            Principal::Edge | Principal::Companion(_) => false,
+            Principal::Edge | Principal::Companion(_) | Principal::Backups(_) => false,
         }
     }
 
     fn person(&self) -> Option<&crate::people::Person> {
         match self {
             Principal::Spare | Principal::Edge => None,
-            Principal::Person(p) | Principal::Companion(p) => Some(p),
+            Principal::Person(p) | Principal::Companion(p) | Principal::Backups(p) => Some(p),
         }
     }
 }
@@ -401,8 +405,13 @@ fn identify(api: &Api, req: &HttpRequest) -> Option<Principal> {
         }
         let host = header("x-forwarded-host").or_else(|| header("host"))?;
         let grant = api.companion.check(token, host)?;
-        return match lookup(&grant.person)? {
-            Principal::Person(p) => Some(Principal::Companion(p)),
+        return match (lookup(&grant.person)?, grant.client) {
+            (Principal::Person(p), crate::companion::Client::Companion) => {
+                Some(Principal::Companion(p))
+            }
+            (Principal::Person(p), crate::companion::Client::Backups) => {
+                Some(Principal::Backups(p))
+            }
             _ => None,
         };
     }
@@ -610,7 +619,20 @@ fn gate_at(
             )));
         }
     }
-    if let Principal::Person(person) | Principal::Companion(person) = &who {
+    if let Principal::Backups(person) = &who {
+        if !losos_access::backups_route(method, req.path()) {
+            audit("forbidden", Some(&person.name));
+            return Err(Box::new(HttpResponse::Forbidden().json(
+                serde_json::json!({
+                    "error": "a computer's backups only fetch their own credentials",
+                    "section": section,
+                }),
+            )));
+        }
+    }
+    if let Principal::Person(person) | Principal::Companion(person) | Principal::Backups(person) =
+        &who
+    {
         // A rule of LosOS Login holds them to their own account until they
         // comply (`crate::login`): that, and what every signed-in page
         // reads, is all they reach.
@@ -723,7 +745,7 @@ async fn get_me(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
                 "sections": all(),
                 "standalone": api.people.headers,
             })),
-            Principal::Person(p) | Principal::Companion(p) => {
+            Principal::Person(p) | Principal::Companion(p) | Principal::Backups(p) => {
                 // What holds them now, not at their last request: a page
                 // that has just added a passkey asks again to be let go.
                 let locked = if api.people.headers {
@@ -3514,6 +3536,7 @@ async fn post_set_password(
         Principal::Spare => post_set_password_inner(&api, &body),
         Principal::Edge => err(StatusCode::FORBIDDEN, "the edge has no password here"),
         Principal::Companion(_) => err(StatusCode::FORBIDDEN, "the LosOS companion only reads"),
+        Principal::Backups(_) => err(StatusCode::FORBIDDEN, "backups do not change passwords"),
     })
 }
 
@@ -3605,6 +3628,51 @@ fn post_set_password_inner(api: &Api, body: &[u8]) -> HttpResponse {
             None => out["changed"] = serde_json::Value::Bool(false),
         }
         Ok(out)
+    })
+}
+
+/// `POST /api/devices/backups`: LosOS Cloud and LosOS Git credentials of one
+/// computer's own, for the backups LosOS Login signed in as a person
+/// (`crate::losos::cmd_device_backups`). No password: the token is the
+/// sign-in, with the person's second factor and consent behind it. A person
+/// signed in through LosOS Login in the browser may ask too, for their own.
+async fn post_device_backups(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    const SHAPE: &str = r#"body must be JSON: {"device": "..."}"#;
+    guarded_as(&api, &req, "/api/devices/backups", true, |who| {
+        let (Principal::Backups(person) | Principal::Person(person)) = who else {
+            return err(
+                StatusCode::FORBIDDEN,
+                "backups sign in as a person, through LosOS Login",
+            );
+        };
+        let Some(device) = serde_json::from_slice::<serde_json::Value>(&body)
+            .ok()
+            .and_then(|d| d.get("device")?.as_str().map(str::to_string))
+        else {
+            return err(StatusCode::BAD_REQUEST, SHAPE);
+        };
+        if let Err(e) = crate::devices::validate_device(&device) {
+            return err(StatusCode::BAD_REQUEST, &e);
+        }
+        // A signed-in route lets a locked account through to its own pages;
+        // credentials wait until LosOS Login's rules are met.
+        if person.groups.iter().any(|g| g == crate::people::LOCKED) {
+            return HttpResponse::Forbidden().json(serde_json::json!({
+                "error": "finish what LosOS Login asks of your account first",
+                "locked": true,
+            }));
+        }
+        match api
+            .backend
+            .serialized(|l| crate::losos::cmd_device_backups(l, person, &device))
+        {
+            Ok(v) => HttpResponse::Ok().json(v),
+            Err(e) => error_response(e),
+        }
     })
 }
 
@@ -5451,7 +5519,7 @@ fn plugin_caller(
         // No plugin route is a companion route (`guarded_at` refuses it
         // before a plugin is asked), and a plugin's own calls would run
         // with this caller: nobody, then.
-        Some(Principal::Companion(_)) => t::Principal::Anonymous,
+        Some(Principal::Companion(_) | Principal::Backups(_)) => t::Principal::Anonymous,
         Some(Principal::Person(p)) => t::Principal::Person(t::Person {
             name: p.name.clone(),
             display_name: p.display_name.clone(),
@@ -6337,6 +6405,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                     web::post().to(post_people_profile_clear),
                 )
                 .route("/api/recovery", web::get().to(get_recovery))
+                .route("/api/devices/backups", web::post().to(post_device_backups))
                 .route("/api/devices/{kind}", web::post().to(post_device))
                 .route("/api/apps/search", web::get().to(get_apps_search))
                 .route("/api/cloud/text", web::get().to(get_cloud_text))

@@ -1908,6 +1908,12 @@
         "out": "{\"user\":\"notshared\",\"token\":\"...\",\"path\":\"/git/\"}",
         "note": "A LosOS Git access token of one computer's own, for `losos git setup` (backend/src/devices.rs). lososd checks the password against the owner's LosOS Login account, then asks LosOS Git with its admin token over loopback for a token named `LosOS on <device>` on the owner's account, replacing one of the same name, with scopes write:repository and read:user. 403 with wrongPassword:true on a wrong password; 409 with gitOff:true when LosOS Git is off on this box; 503 when it cannot be asked. HTTP-only; reached by the terminal client as a sealed call."
       },
+      "POST /api/devices/backups": {
+        "auth": true,
+        "in": "{\"device\":\"...\"}",
+        "out": "{\"cloud\": {\"user\",\"appPassword\",\"path\"}|null, \"git\": {\"user\",\"token\",\"path\"}|null, \"gitOff\"?: true, \"problems\"?: [\"...\"]}",
+        "note": "Both credentials a computer's backups need, for LosOS Desktop's `losos-backup sign-in box` (backend/src/losos.rs cmd_device_backups). The caller is a person: LosOS Login's device code sign-in as the client `losos-backups` (losos_access::BACKUPS_CLIENT_ID), whose token reaches this route and nothing else, or a person signed in in the browser. No password: LosOS Login asked for it, the second factor and consent. The person's own accounts (the owner's are notshared and the configuration repository's owner): a LosOS Cloud app password and a LosOS Git token named `LosOS on <device>`, each replacing one of that name, and a person new to LosOS Cloud is made there first. `git` is null with gitOff on a box without LosOS Git; an app that could not make one leaves its key null and says why in `problems`. 503 when neither could; 403 with locked:true for an account LosOS Login holds to its rules; 400 for a body of the wrong shape or a bad device name. Section signed-in. HTTP-only."
+      },
       "GET /api/apps/search": {
         "auth": true,
         "in": "query string: q=<search term>, 2-128 characters, no control characters",
