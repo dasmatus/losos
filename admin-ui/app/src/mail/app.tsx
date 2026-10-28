@@ -758,11 +758,13 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
   return (
     <TooltipProvider>
     <div className="flex flex-col">
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">
+      {/* On a phone the three buttons are wider than the title leaves them, so the
+          row wraps and they go under it rather than squeezing the title to a word a line. */}
+      <div className="flex flex-wrap items-start gap-x-3">
+        <div className="min-w-0 flex-1 basis-60">
           <PaneHeader title={t("mail.title")} summary={t("mail.summary", { address: home.address })} />
         </div>
-        <div className="flex shrink-0 gap-2">
+        <div className="mb-4 flex flex-wrap gap-2">
           <Button variant="secondary" onClick={() => setKeys(true)} data-testid="mail-encryption">
             <HugeiconsIcon
               icon={own.state === "set" ? SquareLock02Icon : Key01Icon}
