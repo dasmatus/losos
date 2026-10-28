@@ -219,6 +219,16 @@ pub struct Info {
     /// Whether this gateway relays to a hub, i.e. holds a primary link into
     /// the main cluster.
     pub main: bool,
+    /// The official cluster an official edge sits in (`crate::official`).
+    #[serde(
+        default,
+        rename = "officialCluster",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub official_cluster: Option<String>,
+    /// The official edges it lists, its own cluster's and the others'.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub officials: Vec<crate::official::OfficialPeer>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -494,7 +504,10 @@ mod tests {
 
         let own = file("gw-a", &[]);
         let now = 1_000_000;
-        assert_eq!(msg("gw-b", "http://gw-b.local:8443", vec![], now).fault(&own, now), None);
+        assert_eq!(
+            msg("gw-b", "http://gw-b.local:8443", vec![], now).fault(&own, now),
+            None
+        );
         assert!(msg("gw-b", "http://gw-b.local:8443", vec![], now - 301)
             .fault(&own, now)
             .unwrap()
@@ -577,7 +590,10 @@ mod tests {
     fn the_tier_follows_from_the_two_ends() {
         assert_eq!(Role::Gateway.box_tier(), Tier::Secondary);
         assert_eq!(Role::Hub.box_tier(), Tier::Tertiary);
-        assert_eq!(serde_json::to_string(&Tier::Primary).unwrap(), "\"primary\"");
+        assert_eq!(
+            serde_json::to_string(&Tier::Primary).unwrap(),
+            "\"primary\""
+        );
         let info: Info = serde_json::from_str(r#"{"role":"gateway","tier":"secondary","cluster":null,"member":null,"gateways":[],"main":false}"#).unwrap();
         assert_eq!(info.role, Role::Gateway);
     }

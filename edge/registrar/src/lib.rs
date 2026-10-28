@@ -67,6 +67,7 @@ pub mod lab;
 pub mod market;
 pub mod meter;
 pub mod monero;
+pub mod official;
 pub mod onramp;
 pub mod operator;
 pub mod opts;

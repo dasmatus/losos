@@ -95,7 +95,17 @@ function tierWord(t: ReturnType<typeof useT>, tier: EdgeTier | undefined): strin
   return t(tier === "tertiary" ? "panes.mesh.tier.tertiary" : tier === "primary" ? "panes.mesh.tier.primary" : "panes.mesh.tier.secondary");
 }
 
-function LinkRow({ path, cluster }: { path: EdgePath; cluster: string | null }) {
+function LinkRow({
+  path,
+  cluster,
+  held,
+  leftBanned,
+}: {
+  path: EdgePath;
+  cluster: string | null;
+  held: string | null;
+  leftBanned: string | null;
+}) {
   const t = useT();
   const tier = path.tier ?? "secondary";
   const title =
@@ -110,9 +120,16 @@ function LinkRow({ path, cluster }: { path: EdgePath; cluster: string | null }) 
       : cluster !== null
         ? t("panes.mesh.link.tertiaryFallback", { cluster })
         : t("panes.mesh.link.tertiaryDetail");
+  /* A live custom domain holds the box to this edge, and a ban is the one
+   * thing that moves it anyway (backend/src/edge.rs, choose_path). */
+  const notes = [
+    detail,
+    held !== null ? t("panes.mesh.link.held") : null,
+    leftBanned !== null ? t("panes.mesh.link.leftBanned", { url: leftBanned }) : null,
+  ].filter((n): n is string => n !== null);
   return (
-    <Row data-link-tier={tier}>
-      <RowText title={title} detail={detail} />
+    <Row data-link-tier={tier} data-link-held={held !== null ? "yes" : "no"}>
+      <RowText title={title} detail={notes.join(" ")} />
       <RowValue className={tier === "secondary" ? "text-ok" : undefined}>{tierWord(t, tier)}</RowValue>
     </Row>
   );
@@ -120,8 +137,9 @@ function LinkRow({ path, cluster }: { path: EdgePath; cluster: string | null }) 
 
 function edgeDetail(t: ReturnType<typeof useT>, edge: EdgeProxy): string {
   const via = t(edge.source === "configured" ? "panes.mesh.edge.viaInternet" : "panes.mesh.edge.viaLan");
-  return edge.cluster !== undefined
-    ? t("panes.mesh.edge.inCluster", { via, cluster: edge.cluster, url: edge.url })
+  const cluster = edge.cluster ?? edge.officialCluster;
+  return cluster !== undefined
+    ? t("panes.mesh.edge.inCluster", { via, cluster, url: edge.url })
     : t("panes.mesh.edge.where", { via, url: edge.url });
 }
 
@@ -136,7 +154,12 @@ export function EdgeGroup({ view }: { view: EdgeView }) {
         <GroupTitle>{t("panes.mesh.edge.title")}</GroupTitle>
         <TooltipProvider>
           <Group>
-            {path !== null ? <LinkRow path={path} cluster={state.edge.cluster ?? null} /> : null}
+            {path !== null ? <LinkRow
+                path={path}
+                cluster={state.edge.cluster ?? null}
+                held={state.edge.held ?? null}
+                leftBanned={state.edge.leftBanned ?? null}
+              /> : null}
             {edges.map((edge, i) => {
               const inUse = path !== null && path.url === edge.url;
               return (
@@ -232,6 +255,7 @@ export function ClusterGroup({ view, locked }: { view: EdgeView; locked: boolean
   if (mine !== null && !rows.some((c) => c.name === mine)) rows.push({ name: mine, gateways: [] });
   if (rows.length === 0) return null;
   const admin = me === null || me.admin;
+  const held = (state.edge.held ?? null) !== null;
   const move = async (name: string): Promise<void> => {
     setBusy(name);
     try {
@@ -269,7 +293,7 @@ export function ClusterGroup({ view, locked }: { view: EdgeView; locked: boolean
                 <Button
                   size="sm"
                   variant="secondary"
-                  disabled={locked || busy !== null}
+                  disabled={locked || held || busy !== null}
                   onClick={() => void move(c.name)}
                 >
                   {busy === c.name ? <Spinner size={14} /> : null}
@@ -281,7 +305,7 @@ export function ClusterGroup({ view, locked }: { view: EdgeView; locked: boolean
         })}
       </Group>
       <GroupCaption>
-        {t("panes.mesh.cluster.caption")} <HelpLink entry="edge-tiers" />
+        {t(held ? "panes.mesh.cluster.captionHeld" : "panes.mesh.cluster.caption")} <HelpLink entry="edge-tiers" />
       </GroupCaption>
     </PaneSection>
   );

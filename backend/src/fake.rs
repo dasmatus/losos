@@ -300,6 +300,7 @@ impl FakeLosos {
                     tier: crate::edge::Tier::Tertiary,
                     cluster: None,
                     member: None,
+                    official_cluster: None,
                 }],
                 true,
                 None,
@@ -542,7 +543,12 @@ impl Losos for FakeLosos {
         cluster: Option<&str>,
     ) -> anyhow::Result<crate::edge::EdgeStatus> {
         let current = self.edge.path.as_ref().map(|p| p.url.clone());
-        self.edge.route(cluster, current.as_deref(), None);
+        self.edge.route(&crate::edge::PathRule {
+            member_of: cluster,
+            current: current.as_deref(),
+            seed: "box",
+            ..crate::edge::PathRule::default()
+        });
         Ok(self.edge.clone())
     }
 

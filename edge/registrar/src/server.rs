@@ -82,6 +82,7 @@ use crate::market::{
     AccountView, CheckoutView, HardwareCheckoutView, Market, MarketError, NewListing, NewOrder,
     OnboardView, Provision, PublicListing, Sharing,
 };
+use crate::official;
 use crate::onramp::{Onramp, OnrampError, OrderView};
 use crate::opts::ServeOpts;
 use crate::registry::{Registry, Shared};
@@ -278,6 +279,10 @@ struct AppState {
     /// The main cluster as this edge sees it from `/relay`: every gateway
     /// that relays through it, by (site, gateway). Live state.
     main: Arc<std::sync::Mutex<BTreeMap<(String, String), MainRow>>>,
+    /// What the hub the uplink points at said about itself last
+    /// (`crate::official`): its official cluster and the official edges it
+    /// lists, which is where the uplink goes if the hub is banned.
+    hub: Arc<std::sync::Mutex<Option<HubView>>>,
 }
 
 /// A gateway of this gateway's secondary cluster, and the ids it was warned
@@ -704,6 +709,7 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
             })
         }),
         main: Arc::new(std::sync::Mutex::new(BTreeMap::new())),
+        hub: Arc::new(std::sync::Mutex::new(None)),
     };
 
     // Generate config from whatever we just loaded, so the box is serving
@@ -3880,12 +3886,20 @@ async fn take_peer_msg(st: &AppState, sec: &Secondary, msg: &SyncMsg) {
         };
         match known {
             None => {
-                if let Err(e) = enrolment.adopt(&b.id, &b.hostname, token, &msg.member).await {
+                if let Err(e) = enrolment
+                    .adopt(&b.id, &b.hostname, token, &msg.member)
+                    .await
+                {
                     tracing::warn!(target: Action::Secondary.target(), "enrol {} from {}: {e}", b.id, msg.member);
                 }
             }
             Some(entry) if enrolment.owns(Path::new(&entry.token_file)) => {
-                let ours = enrolment.token(&b.id).await.ok().flatten().unwrap_or_default();
+                let ours = enrolment
+                    .token(&b.id)
+                    .await
+                    .ok()
+                    .flatten()
+                    .unwrap_or_default();
                 if !ct_eq(&ours, token)
                     && sec
                         .conflicts
@@ -3930,6 +3944,8 @@ async fn secondary_info(State(st): State<AppState>) -> Json<secondary::Info> {
         role,
         tier: Some(role.box_tier()),
         main,
+        official_cluster: st.opts.official_cluster.clone(),
+        officials: st.opts.official_peers.clone(),
         ..secondary::Info::default()
     };
     if let (Some(sec), Some(file)) = (&st.secondary, file) {
@@ -3985,10 +4001,7 @@ async fn secondary_sync(State(st): State<AppState>, headers: HeaderMap, body: By
     let bytes = serde_json::to_vec(&answer).expect("sync message serializes");
     (
         [
-            (
-                secondary::MAC_HEADER,
-                secondary::mac(&file.secret, &bytes),
-            ),
+            (secondary::MAC_HEADER, secondary::mac(&file.secret, &bytes)),
             ("content-type", "application/json".to_string()),
         ],
         bytes,
@@ -4068,7 +4081,9 @@ async fn secondary_once(st: &AppState, sec: &Secondary, client: &reqwest::Client
         match serde_json::from_slice::<SyncMsg>(&bytes) {
             Ok(msg) => match msg.fault(&file, crate::market::now_secs()) {
                 None => take_peer_msg(st, sec, &msg).await,
-                Some(fault) => tracing::warn!(target: Action::Secondary.target(), "peer {url}: {fault}"),
+                Some(fault) => {
+                    tracing::warn!(target: Action::Secondary.target(), "peer {url}: {fault}")
+                }
             },
             Err(e) => tracing::warn!(target: Action::Secondary.target(), "peer {url}: {e}"),
         }
@@ -4115,6 +4130,114 @@ async fn uplink_loop(st: AppState) {
 }
 
 /// One uplink pass. Returns what was accepted, for the log and the tests.
+/// The hub the uplink points at, as it described itself last.
+#[derive(Debug, Clone)]
+struct HubView {
+    url: String,
+    cluster: Option<String>,
+    officials: Vec<official::OfficialPeer>,
+}
+
+/// Ask the hub what it is (`GET /cluster/secondary`) and keep its official
+/// cluster and peers. A hub that does not answer keeps what it said before:
+/// a banned hub may well stop answering, and its list is the way out.
+async fn learn_hub(st: &AppState, client: &reqwest::Client, url: &str) {
+    let answer = client
+        .get(format!("{url}/cluster/secondary"))
+        .timeout(Duration::from_secs(5))
+        .send()
+        .await;
+    let Ok(resp) = answer else { return };
+    let Ok(info) = resp.json::<secondary::Info>().await else {
+        return;
+    };
+    let view = HubView {
+        url: url.to_string(),
+        cluster: info.official_cluster.filter(|c| crate::relay::dns_label(c)),
+        officials: info
+            .officials
+            .into_iter()
+            .filter(official::OfficialPeer::well_formed)
+            .take(official::MAX_OFFICIALS)
+            .collect(),
+    };
+    *st.hub
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(view);
+}
+
+/// Move the uplink off a banned hub. With the hub (or its whole official
+/// cluster) on the ban list, the uplink goes to the official edge the hub
+/// listed that [`official::pick`] gives this gateway outside every ban, and
+/// the uplink file says so from then on. The site's token is the same on
+/// every official edge, so nothing else changes; the Noise pin is dropped so
+/// the new hub's key is pinned afresh. With no such edge known the uplink
+/// stays where it is and says why.
+async fn leave_banned_hub(
+    st: &AppState,
+    up: &relay::UplinkOpts,
+    client: &reqwest::Client,
+    target: UplinkFile,
+) -> UplinkFile {
+    learn_hub(st, client, &target.registrar_url).await;
+    let bans = official::Bans::read(st.opts.bans_file.as_deref()).await;
+    let view = st
+        .hub
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone();
+    let hub_cluster = view
+        .as_ref()
+        .filter(|v| v.url == target.registrar_url)
+        .and_then(|v| v.cluster.clone());
+    if !bans.banned(&target.registrar_url, hub_cluster.as_deref()) {
+        return target;
+    }
+    let officials = view.map(|v| v.officials).unwrap_or_default();
+    let member = match &st.secondary {
+        Some(sec) => read_cluster_file(&sec.opts.file)
+            .await
+            .map(|f| f.member)
+            .unwrap_or_default(),
+        None => String::new(),
+    };
+    let seed = format!("{}:{member}", target.id);
+    let Some(next) = official::pick(&officials, &seed, None, &bans) else {
+        tracing::warn!(
+            target: Action::Uplink.target(),
+            "the hub {} is banned and it listed no official edge outside the ban; the uplink stays",
+            target.registrar_url,
+        );
+        return target;
+    };
+    let mut moved = target.clone();
+    moved.registrar_url = next.url.clone();
+    moved.rathole_endpoint = next.tunnel.clone();
+    if let Some(pin) = &target.noise_public_key_file {
+        if let Err(e) = remove_if_exists(Path::new(pin)).await {
+            tracing::warn!(target: Action::Uplink.target(), "{e:?}");
+        }
+    }
+    let mut text = serde_json::to_string_pretty(&moved).expect("uplink serializes");
+    text.push('\n');
+    if let Err(e) = crate::fsutil::atomic_write(Path::new(&up.file), text.as_bytes(), 0o600).await {
+        tracing::warn!(
+            target: Action::Uplink.target(),
+            "could not write the moved uplink to {}: {e}",
+            up.file,
+        );
+    }
+    tracing::info!(
+        target: Action::Uplink.target(),
+        "the hub {} is banned{}; the uplink moves to {} (official cluster {})",
+        target.registrar_url,
+        hub_cluster.map_or(String::new(), |c| format!(" (official cluster {c})")),
+        next.url,
+        next.cluster,
+    );
+    moved
+}
+
 async fn uplink_once(
     st: &AppState,
     up: &relay::UplinkOpts,
@@ -4140,6 +4263,7 @@ async fn uplink_once(
                 .with_context(|| format!("read uplink file {}", up.file))
         }
     };
+    let target = leave_banned_hub(st, up, client, target).await;
     let token = tokio::fs::read_to_string(&target.token_file)
         .await
         .into_diagnostic()
@@ -4190,9 +4314,7 @@ async fn uplink_once(
         };
         if let Some((sec, file)) = &cluster {
             let ago = ages.get(&v.id).map_or(0, |t| t.seen_ago_secs);
-            let mine = now
-                .checked_sub(Duration::from_secs(ago))
-                .unwrap_or(now);
+            let mine = now.checked_sub(Duration::from_secs(ago)).unwrap_or(now);
             if !sec.peers.holds(&file.member, &v.id, mine) {
                 continue;
             }

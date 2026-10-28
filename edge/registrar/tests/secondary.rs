@@ -121,8 +121,10 @@ async fn two_gateways_share_their_boxes_and_one_relays_each() {
     assert_eq!(hub_info["tier"], "tertiary", "{hub_info}");
     for gw in [&gw_a, &gw_b] {
         assert!(
-            gw.wait_for_async(|| async { info(gw).await["gateways"].as_array().unwrap().len() == 2 })
-                .await,
+            gw.wait_for_async(|| async {
+                info(gw).await["gateways"].as_array().unwrap().len() == 2
+            })
+            .await,
             "{}",
             info(gw).await
         );
@@ -133,14 +135,20 @@ async fn two_gateways_share_their_boxes_and_one_relays_each() {
         assert_eq!(i["main"], true, "the uplink makes it a primary member");
     }
     assert_eq!(info(&gw_a).await["gateways"][0]["member"], "gw-a");
-    assert_eq!(info(&gw_a).await["gateways"][1]["tunnel"], "gw-b.local:2333");
+    assert_eq!(
+        info(&gw_a).await["gateways"][1]["tunnel"],
+        "gw-b.local:2333"
+    );
 
     // The box enrols with gw-a on first contact; gw-b takes it in with the
     // same token from the sync, without ever hearing from the box.
-    let (status, body) = gw_a.register("box1", "box1.acme.losos.cfd", GOOD_TOKEN).await;
+    let (status, body) = gw_a
+        .register("box1", "box1.acme.losos.cfd", GOOD_TOKEN)
+        .await;
     assert_eq!(status, 200, "{body}");
     assert!(
-        gw_b.wait_for(|| enrolled(&gw_b).get("box1").is_some()).await,
+        gw_b.wait_for(|| enrolled(&gw_b).get("box1").is_some())
+            .await,
         "{}",
         enrolled(&gw_b)
     );
@@ -186,13 +194,17 @@ async fn two_gateways_share_their_boxes_and_one_relays_each() {
 
     // A wrong token is still wrong at gw-b: it learned the box's token, not
     // an open door.
-    let (status, _) = gw_b.register("box1", "box1.acme.losos.cfd", OTHER_TOKEN).await;
+    let (status, _) = gw_b
+        .register("box1", "box1.acme.losos.cfd", OTHER_TOKEN)
+        .await;
     assert_eq!(status, 401);
 
     // gw-a goes quiet for the box (the box moved): it registers with gw-b,
     // which now heard it last. The route moves to gw-b's uplink and leaves
     // gw-a's; the hub keeps the same service and port.
-    let (status, body) = gw_b.register("box1", "box1.acme.losos.cfd", GOOD_TOKEN).await;
+    let (status, body) = gw_b
+        .register("box1", "box1.acme.losos.cfd", GOOD_TOKEN)
+        .await;
     assert_eq!(status, 200, "{body}");
     assert!(
         gw_b.wait_for(|| uplink(&gw_b).contains("acme.box1")).await,
@@ -217,7 +229,10 @@ async fn two_gateways_share_their_boxes_and_one_relays_each() {
     .unwrap();
     let r = reqwest::Client::new()
         .post(format!("{}{}", gw_a.base, secondary::SYNC_ROUTE))
-        .header(secondary::MAC_HEADER, secondary::mac(&"f".repeat(64), &body))
+        .header(
+            secondary::MAC_HEADER,
+            secondary::mac(&"f".repeat(64), &body),
+        )
         .body(body)
         .send()
         .await
@@ -246,7 +261,13 @@ async fn an_enrolled_box_may_join_the_mesh_of_its_secondary_cluster() {
 
     let (l, url) = listener().await;
     let hub = Edge::start("sec-hub-2", &[]).await;
-    let gw = Edge::start_custom_on("sec-member", &[], l, gateway(hub.base.clone(), url, "gw-a", vec![])).await;
+    let gw = Edge::start_custom_on(
+        "sec-member",
+        &[],
+        l,
+        gateway(hub.base.clone(), url, "gw-a", vec![]),
+    )
+    .await;
     let (status, _) = gw.register("box1", "box1.acme.losos.cfd", GOOD_TOKEN).await;
     assert_eq!(status, 200);
     let (status, body) = gw.join("box1", "box1", GOOD_TOKEN).await;
@@ -259,7 +280,10 @@ async fn an_enrolled_box_may_join_the_mesh_of_its_secondary_cluster() {
 
 fn hub_port(hub: &Edge) -> String {
     let toml = hub.rathole_toml().unwrap();
-    let block = toml.split("[server.services.\"acme.box1\"]").nth(1).unwrap();
+    let block = toml
+        .split("[server.services.\"acme.box1\"]")
+        .nth(1)
+        .unwrap();
     block
         .split("bind_addr = \"127.0.0.1:")
         .nth(1)
@@ -274,4 +298,81 @@ fn main_cluster(edge: &Edge) -> Value {
     std::fs::read_to_string(edge.dir.join("main-cluster.json"))
         .map(|t| serde_json::from_str(&t).unwrap())
         .unwrap_or(Value::Null)
+}
+
+/// Official clusters: two hubs behind two load balancers, each listing both.
+/// A gateway's uplink stays on its hub until that hub's whole official
+/// cluster is banned, then moves by itself to the other cluster's hub, which
+/// takes the box's route, and the uplink file says so from then on.
+#[tokio::test]
+async fn a_gateway_leaves_a_banned_official_cluster() {
+    let (la, url_a) = listener().await;
+    let (lb, url_b) = listener().await;
+    let peers = vec![
+        losos_registrar::official::OfficialPeer::parse(&format!("eu,{url_a},127.0.0.1:2333"))
+            .unwrap(),
+        losos_registrar::official::OfficialPeer::parse(&format!("us,{url_b},127.0.0.1:2334"))
+            .unwrap(),
+    ];
+    let site = [TenantSpec::new("acme", "acme.losos.cfd", SITE_TOKEN).with_relay_zone(ZONE)];
+    let official = |cluster: &'static str, peers: Vec<losos_registrar::official::OfficialPeer>| {
+        move |opts: &mut ServeOpts, _dir: &TempDir| {
+            opts.official_cluster = Some(cluster.to_string());
+            opts.official_peers = peers;
+        }
+    };
+    let hub_eu =
+        Edge::start_custom_on("ban-hub-eu", &site, la, official("eu", peers.clone())).await;
+    let hub_us =
+        Edge::start_custom_on("ban-hub-us", &site, lb, official("us", peers.clone())).await;
+    let i = info(&hub_eu).await;
+    assert_eq!(i["officialCluster"], "eu", "{i}");
+    assert_eq!(i["officials"][1]["cluster"], "us", "{i}");
+
+    let (lg, url_g) = listener().await;
+    let eu_base = hub_eu.base.clone();
+    let gw = Edge::start_custom_on("ban-gw", &[], lg, move |opts, dir| {
+        gateway(eu_base, url_g, "gw-a", vec![])(opts, dir);
+        opts.bans_file = Some(dir.path_str("bans.json"));
+    })
+    .await;
+    let (status, body) = gw.register("box1", "box1.acme.losos.cfd", GOOD_TOKEN).await;
+    assert_eq!(status, 200, "{body}");
+    assert!(
+        hub_eu
+            .wait_for(|| hub_eu
+                .rathole_toml()
+                .is_some_and(|t| t.contains("acme.box1")))
+            .await
+    );
+    // A ban on one edge of the other cluster moves nothing.
+    std::fs::write(
+        gw.dir.join("bans.json"),
+        format!(r#"{{"edges":["{}"]}}"#, hub_us.base),
+    )
+    .unwrap();
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert!(std::fs::read_to_string(gw.dir.join("uplink.json"))
+        .unwrap()
+        .contains(&hub_eu.base));
+
+    // The eu cluster banned: the uplink moves to us, by itself.
+    std::fs::write(gw.dir.join("bans.json"), r#"{"clusters":["eu"]}"#).unwrap();
+    assert!(
+        hub_us
+            .wait_for(|| hub_us
+                .rathole_toml()
+                .is_some_and(|t| t.contains("acme.box1")))
+            .await,
+        "{}",
+        uplink(&gw)
+    );
+    let file = std::fs::read_to_string(gw.dir.join("uplink.json")).unwrap();
+    assert!(file.contains(&hub_us.base), "{file}");
+    assert!(file.contains("127.0.0.1:2334"), "{file}");
+    assert!(uplink(&gw).contains("127.0.0.1:2334"), "{}", uplink(&gw));
+
+    gw.shutdown().await;
+    hub_us.shutdown().await;
+    hub_eu.shutdown().await;
 }

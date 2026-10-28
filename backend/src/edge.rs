@@ -145,6 +145,14 @@ pub struct Edge {
     /// The edge's name in that cluster.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub member: Option<String>,
+    /// The official cluster an official edge sits in: the load balancer in
+    /// front of it, which a ban may name as a whole ([`Bans`]).
+    #[serde(
+        default,
+        rename = "officialCluster",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub official_cluster: Option<String>,
 }
 
 /// The tier of a connection (handbook/docs/in-depth/edge-federation.md,
@@ -184,7 +192,22 @@ pub struct Described {
     pub gateway: bool,
     pub cluster: Option<String>,
     pub member: Option<String>,
+    /// An official edge's official cluster.
+    pub official_cluster: Option<String>,
+    /// The official edges it lists, its own cluster's and the others'.
+    pub officials: Vec<OfficialPeer>,
 }
+
+/// One official edge as another lists it (`edge/registrar/src/official.rs`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OfficialPeer {
+    pub cluster: String,
+    pub url: String,
+    pub tunnel: String,
+}
+
+/// Most official edges read off one answer.
+pub const MAX_OFFICIALS: usize = 64;
 
 /// Read an edge's `GET /cluster/secondary` answer. `None` for anything that
 /// is not the shape the registrar writes, which leaves the edge classified
@@ -200,10 +223,28 @@ pub fn parse_described(body: &str) -> Option<Described> {
             .filter(|s| dns_label(s))
             .map(str::to_string)
     };
+    let officials = v
+        .get("officials")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|o| {
+            let peer = OfficialPeer {
+                cluster: o.get("cluster")?.as_str()?.to_string(),
+                url: o.get("url")?.as_str()?.trim_end_matches('/').to_string(),
+                tunnel: o.get("tunnel")?.as_str()?.to_string(),
+            };
+            (dns_label(&peer.cluster) && plain_http_url(&peer.url) && plain_endpoint(&peer.tunnel))
+                .then_some(peer)
+        })
+        .take(MAX_OFFICIALS)
+        .collect();
     Some(Described {
         gateway: role == "gateway",
         cluster: label("cluster"),
         member: label("member"),
+        official_cluster: label("officialCluster"),
+        officials,
     })
 }
 
@@ -256,6 +297,88 @@ pub struct EdgePath {
     /// The gateway's name in it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub member: Option<String>,
+    /// The official cluster of an official edge.
+    #[serde(
+        default,
+        rename = "officialCluster",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub official_cluster: Option<String>,
+}
+
+impl EdgePath {
+    fn of(e: &Edge) -> Self {
+        EdgePath {
+            name: e.name.clone(),
+            url: e.url.clone(),
+            source: e.source,
+            rathole: e.rathole.clone().unwrap_or_default(),
+            tier: e.tier,
+            cluster: (e.tier == Tier::Secondary).then(|| cluster_key(e)),
+            member: e.member.clone(),
+            official_cluster: e.official_cluster.clone(),
+        }
+    }
+}
+
+/// What is banned (`edge/registrar/src/official.rs`, the same file shape):
+/// single edges by registrar URL, whole official clusters by name. Read from
+/// `$LOSOS_EDGE_BANS_FILE`, which the ban list's source writes once it has
+/// checked it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Bans {
+    #[serde(default)]
+    pub edges: Vec<String>,
+    #[serde(default)]
+    pub clusters: Vec<String>,
+}
+
+impl Bans {
+    /// Whether the edge at `url`, in official cluster `cluster`, is banned.
+    #[must_use]
+    pub fn banned(&self, url: &str, cluster: Option<&str>) -> bool {
+        let url = url.trim_end_matches('/');
+        self.edges.iter().any(|e| e.trim_end_matches('/') == url)
+            || cluster.is_some_and(|c| self.clusters.iter().any(|b| b == c))
+    }
+}
+
+/// Rendezvous weight of `url` for `seed` (this box's name): the same seed
+/// ranks the same edges the same way everywhere, and an edge going away
+/// moves only the boxes that were on it.
+#[must_use]
+pub fn weight(seed: &str, url: &str) -> [u8; 32] {
+    let mut ctx = ring::digest::Context::new(&ring::digest::SHA256);
+    ctx.update(seed.as_bytes());
+    ctx.update(b"\0");
+    ctx.update(url.as_bytes());
+    let mut out = [0u8; 32];
+    out.copy_from_slice(ctx.finish().as_ref());
+    out
+}
+
+/// What [`choose_path`] goes by besides the edges in reach.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PathRule<'a> {
+    /// The secondary cluster the box belongs to.
+    pub member_of: Option<&'a str>,
+    /// The registrar URL the box uses now.
+    pub current: Option<&'a str>,
+    /// The path a live custom domain holds the box to.
+    pub hold: Option<&'a EdgePath>,
+    /// This box's name, which spreads boxes over the official edges.
+    pub seed: &'a str,
+    pub bans: Option<&'a Bans>,
+}
+
+/// What [`choose_path`] decided.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Chosen {
+    pub path: Option<EdgePath>,
+    /// The secondary cluster the box belongs to afterwards.
+    pub cluster: Option<String>,
+    /// The banned edge the box left, when it was on one.
+    pub left_banned: Option<String>,
 }
 
 /// What the last scan found. The JSON shape is the `GET /api/edge` contract.
@@ -292,10 +415,14 @@ pub struct EdgeStatus {
     #[serde(default)]
     pub cluster: Option<String>,
     /// The registrar URL a live custom domain holds this box to, if any. A
-    /// box with a domain sticks to the edge that serves it and never fails
-    /// over on its own, to another gateway or tier alike.
+    /// box with a domain sticks to the edge that serves it and fails over to
+    /// no other gateway or tier, unless that edge or its official cluster is
+    /// banned; the hold then follows the box to the edge it moved to.
     #[serde(default)]
     pub held: Option<String>,
+    /// The banned edge this box moved off on the last choice, if it did.
+    #[serde(default)]
+    pub left_banned: Option<String>,
 }
 
 /// The cluster an edge is counted in: the one it named, or for a gateway
@@ -342,51 +469,68 @@ pub fn clusters(edges: &[Edge]) -> Vec<ClusterView> {
 ///    cluster, where the box is already known.
 /// 2. **tertiary**, straight to an official edge, when no gateway of the
 ///    box's cluster answers. Another cluster's gateway is never taken on the
-///    box's own: membership moves only when the owner moves it.
+///    box's own: membership moves only when the owner moves it. The official
+///    edges that answer share the boxes between them: a box stays on the one
+///    it uses while it answers, else takes the one its name weighs heaviest
+///    on ([`weight`]), so boxes spread over every load balancer and an edge
+///    going away moves only its own boxes. With no official edge, the
+///    configured edge.
 /// 3. none.
 ///
-/// Above all three: a box with a live custom domain is held to `hold`, the
-/// path it had when the domain went live. It stays on that edge while it
-/// answers, and keeps dialling it while it does not, rather than move: the
-/// domain's route and every connection over it run through that one edge,
-/// and a box that wandered off on its own would break them.
+/// A box with a live custom domain is held to `hold`, the path it had when
+/// the domain went live. It stays on that edge while it answers, and keeps
+/// dialling it while it does not, rather than move: the domain's route and
+/// every connection over it run through that one edge.
 ///
-/// Returns the path and the cluster the box belongs to afterwards.
+/// Above everything, a banned edge, or any edge of a banned official
+/// cluster, is never chosen ([`Bans`]). A box on one moves by itself under
+/// the rules above, a held box included: a ban outranks the hold.
 #[must_use]
-pub fn choose_path(
-    edges: &[Edge],
-    member_of: Option<&str>,
-    current: Option<&str>,
-    hold: Option<&EdgePath>,
-) -> (Option<EdgePath>, Option<String>) {
-    if let Some(held) = hold {
-        let path = edges
-            .iter()
-            .find(|e| e.url == held.url && e.rathole.is_some())
-            .map_or_else(
-                || held.clone(),
-                |e| EdgePath {
-                    name: e.name.clone(),
-                    url: e.url.clone(),
-                    source: e.source,
-                    rathole: e.rathole.clone().unwrap_or_default(),
-                    tier: e.tier,
-                    cluster: (e.tier == Tier::Secondary).then(|| cluster_key(e)),
-                    member: e.member.clone(),
-                },
-            );
-        let membership = member_of
-            .map(str::to_string)
-            .or_else(|| path.cluster.clone());
-        return (Some(path), membership);
-    }
-    let usable = |e: &&Edge| e.rathole.is_some();
-    let secondary: Vec<&Edge> = edges
+pub fn choose_path(edges: &[Edge], rule: &PathRule<'_>) -> Chosen {
+    let no_bans = Bans::default();
+    let bans = rule.bans.unwrap_or(&no_bans);
+    let open: Vec<&Edge> = edges
         .iter()
-        .filter(usable)
+        .filter(|e| e.rathole.is_some())
+        .filter(|e| !bans.banned(&e.url, e.official_cluster.as_deref()))
+        .collect();
+    let current_banned = rule.current.filter(|cur| {
+        edges
+            .iter()
+            .find(|e| e.url == *cur)
+            .map_or(bans.banned(cur, None), |e| {
+                bans.banned(&e.url, e.official_cluster.as_deref())
+            })
+    });
+    let mut left_banned = current_banned.map(str::to_string);
+    let current = rule.current.filter(|_| current_banned.is_none());
+
+    if let Some(held) = rule.hold {
+        if bans.banned(&held.url, held.official_cluster.as_deref()) {
+            left_banned = Some(held.url.clone());
+        } else {
+            let path = open
+                .iter()
+                .find(|e| e.url == held.url)
+                .map_or_else(|| held.clone(), |e| EdgePath::of(e));
+            let cluster = rule
+                .member_of
+                .map(str::to_string)
+                .or_else(|| path.cluster.clone());
+            return Chosen {
+                path: Some(path),
+                cluster,
+                left_banned: None,
+            };
+        }
+    }
+
+    let secondary: Vec<&Edge> = open
+        .iter()
+        .copied()
         .filter(|e| e.tier == Tier::Secondary)
         .collect();
-    let membership = match member_of {
+    let membership = match rule.member_of {
         Some(c) => Some(c.to_string()),
         None => clusters(edges)
             .into_iter()
@@ -399,24 +543,11 @@ pub fn choose_path(
             })
             .map(|c| c.name),
     };
-    let pick = |candidates: Vec<&Edge>| -> Option<EdgePath> {
-        let chosen = candidates
+    let stay = |candidates: &[&Edge]| -> Option<EdgePath> {
+        candidates
             .iter()
             .find(|e| Some(e.url.as_str()) == current)
-            .or_else(|| {
-                candidates
-                    .iter()
-                    .min_by_key(|e| e.member.clone().unwrap_or_else(|| e.name.clone()))
-            })?;
-        Some(EdgePath {
-            name: chosen.name.clone(),
-            url: chosen.url.clone(),
-            source: chosen.source,
-            rathole: chosen.rathole.clone().unwrap_or_default(),
-            tier: chosen.tier,
-            cluster: (chosen.tier == Tier::Secondary).then(|| cluster_key(chosen)),
-            member: chosen.member.clone(),
-        })
+            .map(|e| EdgePath::of(e))
     };
     if let Some(m) = &membership {
         let mine: Vec<&Edge> = secondary
@@ -424,27 +555,49 @@ pub fn choose_path(
             .copied()
             .filter(|e| cluster_key(e) == *m)
             .collect();
-        if let Some(path) = pick(mine) {
-            return (Some(path), membership);
+        let first = mine
+            .iter()
+            .min_by_key(|e| e.member.clone().unwrap_or_else(|| e.name.clone()))
+            .map(|e| EdgePath::of(e));
+        if let Some(path) = stay(&mine).or(first) {
+            return Chosen {
+                path: Some(path),
+                cluster: membership,
+                left_banned,
+            };
         }
     }
-    // Tertiary: the configured edge first, as it always was.
-    let tertiary: Vec<&Edge> = edges
-        .iter()
-        .filter(usable)
-        .filter(|e| e.tier == Tier::Tertiary)
-        .collect();
-    let configured: Vec<&Edge> = tertiary
+    let tertiary: Vec<&Edge> = open
         .iter()
         .copied()
-        .filter(|e| e.source == Source::Configured)
+        .filter(|e| e.tier == Tier::Tertiary)
         .collect();
-    let path = if configured.is_empty() {
-        pick(tertiary)
+    let officials: Vec<&Edge> = tertiary.iter().copied().filter(|e| e.official).collect();
+    let path = if officials.is_empty() {
+        let configured: Vec<&Edge> = tertiary
+            .iter()
+            .copied()
+            .filter(|e| e.source == Source::Configured)
+            .collect();
+        let pool = if configured.is_empty() {
+            &tertiary
+        } else {
+            &configured
+        };
+        stay(pool).or_else(|| pool.first().map(|e| EdgePath::of(e)))
     } else {
-        pick(configured)
+        stay(&officials).or_else(|| {
+            officials
+                .iter()
+                .max_by_key(|e| weight(rule.seed, &e.url))
+                .map(|e| EdgePath::of(e))
+        })
     };
-    (path, membership)
+    Chosen {
+        path,
+        cluster: membership,
+        left_banned,
+    }
 }
 
 impl EdgeStatus {
@@ -462,6 +615,7 @@ impl EdgeStatus {
             clusters: Vec::new(),
             cluster: None,
             held: None,
+            left_banned: None,
         }
     }
 
@@ -469,7 +623,7 @@ impl EdgeStatus {
     /// from the list, so the two cannot disagree.
     #[must_use]
     pub fn found(edges: Vec<Edge>, lan_searched: bool, configured_url: Option<String>) -> Self {
-        let (path, cluster) = choose_path(&edges, None, None, None);
+        let Chosen { path, cluster, .. } = choose_path(&edges, &PathRule::default());
         EdgeStatus {
             reachable: !edges.is_empty(),
             official: edges.iter().any(|e| e.official),
@@ -477,6 +631,7 @@ impl EdgeStatus {
             clusters: clusters(&edges),
             cluster,
             held: None,
+            left_banned: None,
             edges,
             lan_searched,
             configured_url,
@@ -484,19 +639,21 @@ impl EdgeStatus {
         }
     }
 
-    /// Choose the path again for a box that belongs to `member_of`, uses
-    /// the edge at `current` now, and is held to `hold` by a custom domain
-    /// ([`choose_path`]).
-    pub fn route(
-        &mut self,
-        member_of: Option<&str>,
-        current: Option<&str>,
-        hold: Option<&EdgePath>,
-    ) {
-        let (path, cluster) = choose_path(&self.edges, member_of, current, hold);
-        self.path = path;
-        self.cluster = cluster;
-        self.held = hold.map(|h| h.url.clone());
+    /// Choose the path again by `rule` ([`choose_path`]). A hold a ban
+    /// broke follows the box: `held` names the edge it moved to.
+    pub fn route(&mut self, rule: &PathRule<'_>) {
+        let chosen = choose_path(&self.edges, rule);
+        let hold_broken = rule
+            .hold
+            .is_some_and(|h| chosen.left_banned.as_deref() == Some(h.url.as_str()));
+        self.held = match rule.hold {
+            Some(_) if hold_broken => chosen.path.as_ref().map(|p| p.url.clone()),
+            Some(h) => Some(h.url.clone()),
+            None => None,
+        };
+        self.path = chosen.path;
+        self.cluster = chosen.cluster;
+        self.left_banned = chosen.left_banned;
     }
 
     #[must_use]
@@ -512,6 +669,7 @@ impl EdgeStatus {
             "clusters": self.clusters,
             "cluster": self.cluster,
             "held": self.held,
+            "leftBanned": self.left_banned,
         })
     }
 }
@@ -950,6 +1108,7 @@ pub fn candidates(adverts: &[Advert]) -> Vec<Edge> {
             tier: Tier::Secondary,
             cluster: None,
             member: None,
+            official_cluster: None,
         });
     }
     out
@@ -1065,9 +1224,15 @@ pub fn assemble_with(
                 tier: Tier::Tertiary,
                 cluster: None,
                 member: None,
+                official_cluster: None,
             });
         }
     }
+    // Each edge is asked what it is. An official edge also names the
+    // official edges it knows of, behind its own load balancer and the
+    // others': those that answer are in reach too, for the path rule to
+    // spread boxes over and to move to when one is banned.
+    let mut listed: Vec<OfficialPeer> = Vec::new();
     for edge in &mut edges {
         if let Some(d) = describe(&edge.url) {
             edge.tier = if d.gateway {
@@ -1077,7 +1242,27 @@ pub fn assemble_with(
             };
             edge.cluster = d.cluster;
             edge.member = d.member;
+            edge.official_cluster = d.official_cluster;
+            if !d.gateway {
+                listed.extend(d.officials);
+            }
         }
+    }
+    for peer in listed.into_iter().take(MAX_OFFICIALS) {
+        if edges.iter().any(|e| e.url == peer.url) || !answered(&peer.url) {
+            continue;
+        }
+        edges.push(Edge {
+            name: host_of(&peer.url),
+            url: peer.url,
+            source: Source::Configured,
+            official: false,
+            rathole: Some(peer.tunnel),
+            tier: Tier::Tertiary,
+            cluster: None,
+            member: None,
+            official_cluster: Some(peer.cluster),
+        });
     }
     // Every edge that answered is asked who it is. With no root key there
     // is no one to vouch, so nothing is official and no request is made.
@@ -1089,6 +1274,8 @@ pub fn assemble_with(
                 edge.tier = Tier::Tertiary;
                 edge.cluster = None;
                 edge.member = None;
+            } else {
+                edge.official_cluster = None;
             }
         }
     }
@@ -1124,6 +1311,9 @@ pub fn path_env(path: &EdgePath, noise_pin: Option<&str>) -> String {
     if let Some(cluster) = &path.cluster {
         out.push_str(&format!("LOSOS_EDGE_PATH_CLUSTER={cluster}\n"));
     }
+    if let Some(cluster) = &path.official_cluster {
+        out.push_str(&format!("LOSOS_EDGE_PATH_OFFICIAL_CLUSTER={cluster}\n"));
+    }
     if let Some(pin) = noise_pin {
         out.push_str(&format!("LOSOS_EDGE_PATH_NOISE_PUB={pin}\n"));
     }
@@ -1156,6 +1346,9 @@ pub fn path_from_env(env: &str) -> Option<EdgePath> {
             .filter(|c| cluster_name(c))
             .map(str::to_string),
         member: None,
+        official_cluster: env_value(env, "LOSOS_EDGE_PATH_OFFICIAL_CLUSTER")
+            .filter(|c| dns_label(c))
+            .map(str::to_string),
         url,
         source,
         rathole,
@@ -1482,6 +1675,7 @@ mod tests {
             tier: Tier::Secondary,
             cluster: None,
             member: None,
+            official_cluster: None,
         }
     }
 
@@ -1944,6 +2138,7 @@ mod tests {
                 tier: Tier::Secondary,
                 cluster: None,
                 member: None,
+                official_cluster: None,
             }],
             true,
             None,
@@ -2273,6 +2468,25 @@ mod tests {
         assert_eq!(none.to_json()["path"], Value::Null);
     }
 
+    fn route(
+        edges: &[Edge],
+        member_of: Option<&str>,
+        current: Option<&str>,
+        hold: Option<&EdgePath>,
+    ) -> (Option<EdgePath>, Option<String>) {
+        let chosen = choose_path(
+            edges,
+            &PathRule {
+                member_of,
+                current,
+                hold,
+                seed: "box",
+                bans: None,
+            },
+        );
+        (chosen.path, chosen.cluster)
+    }
+
     fn gw(cluster: &str, member: &str) -> Edge {
         Edge {
             name: member.into(),
@@ -2283,6 +2497,7 @@ mod tests {
             tier: Tier::Secondary,
             cluster: Some(cluster.into()),
             member: Some(member.into()),
+            official_cluster: None,
         }
     }
 
@@ -2296,6 +2511,7 @@ mod tests {
             tier: Tier::Tertiary,
             cluster: None,
             member: None,
+            official_cluster: None,
         }
     }
 
@@ -2311,6 +2527,7 @@ mod tests {
                 gateway: true,
                 cluster: Some("office".into()),
                 member: Some("gw-a".into()),
+                ..Described::default()
             }
         );
         let hub = parse_described(r#"{"role":"hub","tier":"tertiary"}"#).unwrap();
@@ -2341,6 +2558,7 @@ mod tests {
                     gateway: true,
                     cluster: Some("office".into()),
                     member: Some("gw-a".into()),
+                    ..Described::default()
                 })
             },
             &NO_TRUST,
@@ -2386,52 +2604,46 @@ mod tests {
             official_edge(),
         ];
         // No cluster yet: the one with the most gateways, the first gateway.
-        let (path, cluster) = choose_path(&edges, None, None, None);
+        let (path, cluster) = route(&edges, None, None, None);
         let path = path.unwrap();
         assert_eq!(cluster.as_deref(), Some("office"));
         assert_eq!(path.member.as_deref(), Some("gw-a"));
         assert_eq!(path.tier, Tier::Secondary);
         // On gw-b now: stays there while it answers.
-        let (path, _) = choose_path(&edges, Some("office"), Some("http://gw-b.local:8443"), None);
+        let (path, _) = route(&edges, Some("office"), Some("http://gw-b.local:8443"), None);
         assert_eq!(path.unwrap().member.as_deref(), Some("gw-b"));
         // The owner put it in lab: lab, even though office is bigger.
-        let (path, cluster) =
-            choose_path(&edges, Some("lab"), Some("http://gw-b.local:8443"), None);
+        let (path, cluster) = route(&edges, Some("lab"), Some("http://gw-b.local:8443"), None);
         assert_eq!(path.unwrap().member.as_deref(), Some("gw-z"));
         assert_eq!(cluster.as_deref(), Some("lab"));
         // A tie goes by name.
         let tie = vec![gw("b-site", "gw-1"), gw("a-site", "gw-2")];
-        assert_eq!(
-            choose_path(&tie, None, None, None).1.as_deref(),
-            Some("a-site")
-        );
+        assert_eq!(route(&tie, None, None, None).1.as_deref(), Some("a-site"));
     }
 
     #[test]
     fn a_failover_stays_in_the_cluster_and_then_goes_tertiary() {
         // gw-a went quiet: the box moves to gw-b of the same cluster.
         let edges = vec![gw("office", "gw-b"), gw("lab", "gw-z"), official_edge()];
-        let (path, cluster) =
-            choose_path(&edges, Some("office"), Some("http://gw-a.local:8443"), None);
+        let (path, cluster) = route(&edges, Some("office"), Some("http://gw-a.local:8443"), None);
         let path = path.unwrap();
         assert_eq!(path.member.as_deref(), Some("gw-b"));
         assert_eq!(cluster.as_deref(), Some("office"));
         // No gateway of office answers: straight to the official edge, never
         // to lab's gateway, and the box is still in office.
         let edges = vec![gw("lab", "gw-z"), official_edge()];
-        let (path, cluster) =
-            choose_path(&edges, Some("office"), Some("http://gw-b.local:8443"), None);
+        let (path, cluster) = route(&edges, Some("office"), Some("http://gw-b.local:8443"), None);
         let path = path.unwrap();
         assert_eq!(path.tier, Tier::Tertiary);
         assert_eq!(path.url, "https://edge.losos.cfd");
         assert_eq!(path.cluster, None);
         assert_eq!(cluster.as_deref(), Some("office"));
         // Nothing at all.
-        let (path, cluster) = choose_path(&[gw("lab", "gw-z")], Some("office"), None, None);
+        let (path, cluster) = route(&[gw("lab", "gw-z")], Some("office"), None, None);
         assert_eq!(path, None);
         assert_eq!(cluster.as_deref(), Some("office"));
         // Back in reach: back to secondary.
-        let (path, _) = choose_path(
+        let (path, _) = route(
             &[gw("office", "gw-a"), official_edge()],
             Some("office"),
             Some("https://edge.losos.cfd"),
@@ -2444,19 +2656,19 @@ mod tests {
     fn a_custom_domain_holds_the_box_to_its_edge() {
         let edges = vec![gw("office", "gw-a"), gw("office", "gw-b"), official_edge()];
         // The domain went live while the box used gw-b.
-        let (on_b, _) = choose_path(&edges, Some("office"), Some("http://gw-b.local:8443"), None);
+        let (on_b, _) = route(&edges, Some("office"), Some("http://gw-b.local:8443"), None);
         let held = path_from_env(&path_env(&on_b.unwrap(), None)).unwrap();
         assert_eq!(held.url, "http://gw-b.local:8443");
         assert_eq!(held.rathole, "gw-b.local:2333");
         assert_eq!(held.tier, Tier::Secondary);
         assert_eq!(held.cluster.as_deref(), Some("office"));
         // While gw-b answers: gw-b, even with gw-a first by name.
-        let (path, cluster) = choose_path(&edges, Some("office"), None, Some(&held));
+        let (path, cluster) = route(&edges, Some("office"), None, Some(&held));
         assert_eq!(path.unwrap().member.as_deref(), Some("gw-b"));
         assert_eq!(cluster.as_deref(), Some("office"));
         // gw-b is gone: no failover to gw-a, no tertiary; it keeps dialling gw-b.
         let without_b = vec![gw("office", "gw-a"), official_edge()];
-        let (path, _) = choose_path(
+        let (path, _) = route(
             &without_b,
             Some("office"),
             Some("http://gw-b.local:8443"),
@@ -2472,10 +2684,14 @@ mod tests {
         )
         .unwrap();
         assert_eq!(tertiary.tier, Tier::Tertiary);
-        let (path, _) = choose_path(&edges, None, None, Some(&tertiary));
+        let (path, _) = route(&edges, None, None, Some(&tertiary));
         assert_eq!(path.unwrap().tier, Tier::Tertiary);
         let mut status = EdgeStatus::found(edges, true, None);
-        status.route(Some("office"), None, Some(&held));
+        status.route(&PathRule {
+            member_of: Some("office"),
+            hold: Some(&held),
+            ..PathRule::default()
+        });
         assert_eq!(status.held.as_deref(), Some("http://gw-b.local:8443"));
         assert!(check_cluster_move(&status, "office")
             .unwrap_err()
@@ -2483,6 +2699,187 @@ mod tests {
             .is_some());
         assert_eq!(status.to_json()["held"], "http://gw-b.local:8443");
         assert_eq!(path_from_env("LOSOS_EDGE_PATH_URL=x\n"), None);
+    }
+
+    fn official(cluster: &str, n: u8) -> Edge {
+        Edge {
+            name: format!("edge{n}.{cluster}"),
+            url: format!("https://edge{n}.{cluster}.example"),
+            source: Source::Configured,
+            official: true,
+            rathole: Some(format!("edge{n}.{cluster}.example:2333")),
+            tier: Tier::Tertiary,
+            cluster: None,
+            member: None,
+            official_cluster: Some(cluster.into()),
+        }
+    }
+
+    fn rule<'a>(seed: &'a str, current: Option<&'a str>, bans: Option<&'a Bans>) -> PathRule<'a> {
+        PathRule {
+            seed,
+            current,
+            bans,
+            ..PathRule::default()
+        }
+    }
+
+    #[test]
+    fn boxes_spread_over_the_official_edges_and_stay_on_theirs() {
+        let edges = vec![
+            official("eu", 1),
+            official("eu", 2),
+            official("us", 1),
+            official("us", 2),
+        ];
+        let mut used = std::collections::BTreeSet::new();
+        for n in 0..64 {
+            let seed = format!("box{n}");
+            let path = choose_path(&edges, &rule(&seed, None, None)).path.unwrap();
+            assert_eq!(path.tier, Tier::Tertiary);
+            used.insert(path.url);
+        }
+        assert!(used.len() >= 3, "boxes did not spread: {used:?}");
+        // A box stays on the edge it uses while it answers.
+        for e in &edges {
+            let path = choose_path(&edges, &rule("box1", Some(&e.url), None))
+                .path
+                .unwrap();
+            assert_eq!(path.url, e.url);
+        }
+        // An edge going away moves only its own boxes.
+        let gone = &edges[0].url;
+        let rest: Vec<Edge> = edges.iter().filter(|e| &e.url != gone).cloned().collect();
+        for n in 0..64 {
+            let seed = format!("box{n}");
+            let before = choose_path(&edges, &rule(&seed, None, None))
+                .path
+                .unwrap()
+                .url;
+            let after = choose_path(&rest, &rule(&seed, Some(&before), None))
+                .path
+                .unwrap()
+                .url;
+            if &before != gone {
+                assert_eq!(after, before, "{seed} moved though its edge stayed");
+            }
+        }
+    }
+
+    #[test]
+    fn a_ban_moves_the_box_off_its_edge_and_off_a_whole_official_cluster() {
+        let edges = vec![official("eu", 1), official("eu", 2), official("us", 1)];
+        let on = "https://edge1.eu.example";
+        let one = Bans {
+            edges: vec![on.into()],
+            clusters: vec![],
+        };
+        let chosen = choose_path(&edges, &rule("box1", Some(on), Some(&one)));
+        assert_ne!(chosen.path.as_ref().unwrap().url, on);
+        assert_eq!(chosen.left_banned.as_deref(), Some(on));
+        let all_eu = Bans {
+            edges: vec![],
+            clusters: vec!["eu".into()],
+        };
+        for n in 0..32 {
+            let seed = format!("box{n}");
+            let chosen = choose_path(&edges, &rule(&seed, Some(on), Some(&all_eu)));
+            assert_eq!(chosen.path.unwrap().official_cluster.as_deref(), Some("us"));
+        }
+        // Everything banned: no path, rather than a banned one.
+        let all = Bans {
+            edges: vec![],
+            clusters: vec!["eu".into(), "us".into()],
+        };
+        assert_eq!(
+            choose_path(&edges, &rule("box1", Some(on), Some(&all))).path,
+            None
+        );
+        // A gateway of the box's cluster is still taken over any official edge.
+        let mut with_gw = edges.clone();
+        with_gw.push(gw("office", "gw-a"));
+        let chosen = choose_path(&with_gw, &rule("box1", None, Some(&all_eu)));
+        assert_eq!(chosen.path.unwrap().tier, Tier::Secondary);
+    }
+
+    #[test]
+    fn a_ban_outranks_a_custom_domain_and_the_hold_follows_the_box() {
+        let edges = vec![official("eu", 1), official("us", 1)];
+        let held = EdgePath::of(&edges[0]);
+        // Not banned: held, even with the other edge weighing more.
+        let mut status = EdgeStatus::found(edges.clone(), true, None);
+        status.route(&PathRule {
+            hold: Some(&held),
+            seed: "box1",
+            ..PathRule::default()
+        });
+        assert_eq!(status.path.as_ref().unwrap().url, held.url);
+        assert_eq!(status.held.as_deref(), Some(held.url.as_str()));
+        // Its whole official cluster banned: the box moves, and the hold
+        // names the edge it moved to.
+        let bans = Bans {
+            edges: vec![],
+            clusters: vec!["eu".into()],
+        };
+        status.route(&PathRule {
+            hold: Some(&held),
+            current: Some(&held.url),
+            seed: "box1",
+            bans: Some(&bans),
+            ..PathRule::default()
+        });
+        assert_eq!(
+            status.path.as_ref().unwrap().url,
+            "https://edge1.us.example"
+        );
+        assert_eq!(status.held.as_deref(), Some("https://edge1.us.example"));
+        assert_eq!(status.left_banned.as_deref(), Some(held.url.as_str()));
+        assert_eq!(status.to_json()["leftBanned"], held.url);
+        // The official cluster rides the env file, so a held box knows it.
+        let env = path_env(&held, None);
+        assert!(
+            env.contains("LOSOS_EDGE_PATH_OFFICIAL_CLUSTER=eu\n"),
+            "{env}"
+        );
+        assert_eq!(
+            path_from_env(&env).unwrap().official_cluster.as_deref(),
+            Some("eu")
+        );
+    }
+
+    #[test]
+    fn an_official_edge_lists_the_others_and_those_that_answer_are_in_reach() {
+        let d = parse_described(
+            r#"{"role":"hub","officialCluster":"eu","officials":[
+                {"cluster":"eu","url":"https://edge2.eu.example/","tunnel":"edge2.eu.example:2333"},
+                {"cluster":"us","url":"https://edge1.us.example","tunnel":"edge1.us.example:2333"},
+                {"cluster":"bad name","url":"https://x.example","tunnel":"x.example:2333"},
+                {"cluster":"us","url":"ftp://y.example","tunnel":"y.example:2333"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(d.official_cluster.as_deref(), Some("eu"));
+        assert_eq!(d.officials.len(), 2, "{:?}", d.officials);
+        assert_eq!(d.officials[0].url, "https://edge2.eu.example");
+        let status = assemble_with(
+            None,
+            Some("https://edge1.eu.example"),
+            Some("edge1.eu.example:2333"),
+            |url| url != "https://edge1.us.example",
+            |url| (url == "https://edge1.eu.example").then(|| d.clone()),
+            &NO_TRUST,
+            |_, _| None,
+            1,
+        );
+        let urls: Vec<&str> = status.edges.iter().map(|e| e.url.as_str()).collect();
+        assert_eq!(
+            urls,
+            ["https://edge1.eu.example", "https://edge2.eu.example"]
+        );
+        assert_eq!(
+            status.edges[1].rathole.as_deref(),
+            Some("edge2.eu.example:2333")
+        );
+        assert!(status.edges.iter().all(|e| e.tier == Tier::Tertiary));
     }
 
     #[test]
@@ -2501,6 +2898,7 @@ mod tests {
                     },
                     cluster: cluster.map(str::to_string),
                     member: None,
+                    official_cluster: None,
                 },
                 None,
             )
@@ -2541,6 +2939,7 @@ mod tests {
             tier: Tier::Secondary,
             cluster: None,
             member: None,
+            official_cluster: None,
         };
         let env = path_env(
             &path,

@@ -2393,6 +2393,7 @@ mod tests {
             tier: Tier::Secondary,
             cluster: Some(cluster.into()),
             member: Some(member.into()),
+            official_cluster: None,
         };
         let mut fake = FakeLosos::new();
         fake.edge = EdgeStatus::found(

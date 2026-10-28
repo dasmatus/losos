@@ -443,6 +443,16 @@ export default defineMessages({
     sk: "Priamo na oficiálny okrajový server cez internet, pretože žiadna brána klastra {cluster} neodpovedá. Keď niektorá odpovie, zariadenie sa k nej vráti.",
     de: "Direkt über das Internet zu einem offiziellen Edge, weil kein Gateway des Clusters {cluster} antwortet. Sobald eines antwortet, kehrt die Box dorthin zurück.",
   },
+  "panes.mesh.link.held": {
+    en: "Your custom domain is served through this edge, so the box stays on it even when another one would answer.",
+    sk: "Vaša vlastná doména je obsluhovaná cez tento okrajový server, preto na ňom zariadenie zostane, aj keď by odpovedal iný.",
+    de: "Deine eigene Domain läuft über diesen Edge, darum bleibt die Box bei ihm, auch wenn ein anderer antworten würde.",
+  },
+  "panes.mesh.link.leftBanned": {
+    en: "The box moved here because {url} is banned.",
+    sk: "Zariadenie sa sem presunulo, pretože {url} je zablokovaný.",
+    de: "Die Box ist hierher gewechselt, weil {url} gesperrt ist.",
+  },
   "panes.mesh.cluster.title": {
     en: "Secondary cluster",
     sk: "Sekundárny klaster",
@@ -482,6 +492,11 @@ export default defineMessages({
     en: "A secondary cluster is one or more local gateways that serve the same boxes, so a box keeps working when one gateway goes away. Gateways are linked to each other and to the official edges in the main cluster. This box stays in its cluster until you move it.",
     sk: "Sekundárny klaster tvorí jedna alebo viac lokálnych brán, ktoré obsluhujú tie isté zariadenia, takže zariadenie funguje ďalej, aj keď jedna brána vypadne. Brány sú navzájom a s oficiálnymi okrajovými servermi prepojené v hlavnom klastri. Zariadenie zostane vo svojom klastri, kým ho nepresuniete.",
     de: "Ein sekundärer Cluster besteht aus einem oder mehreren lokalen Gateways, die dieselben Boxen bedienen, damit eine Box weiterläuft, wenn ein Gateway ausfällt. Die Gateways sind untereinander und mit den offiziellen Edges im Hauptcluster verbunden. Diese Box bleibt in ihrem Cluster, bis du sie verschiebst.",
+  },
+  "panes.mesh.cluster.captionHeld": {
+    en: "Your custom domain is served through the edge this box uses, so the box cannot move to another cluster. It moves on its own only if that edge is banned, and the domain goes with it.",
+    sk: "Vaša vlastná doména je obsluhovaná cez okrajový server, ktorý zariadenie používa, preto ho nemožno presunúť do iného klastra. Samo sa presunie, iba ak je ten server zablokovaný, a doména ide s ním.",
+    de: "Deine eigene Domain läuft über den Edge, den diese Box nutzt, darum kann sie nicht in einen anderen Cluster wechseln. Sie wechselt nur von selbst, wenn dieser Edge gesperrt wird, und die Domain zieht mit.",
   },
   "panes.mesh.manage.title": {
     en: "Managed from the edge",

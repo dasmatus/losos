@@ -672,6 +672,18 @@ fn scan_edge_now() -> crate::edge::EdgeStatus {
 /// to stop must not delay the next scan.
 /// `$LOSOS_EDGE_PATH_FILE`, set by modules/daemon.nix with the master proxy
 /// on: the env file the tunnel units read the path from.
+/// The ban list (`crate::edge::Bans`) at `$LOSOS_EDGE_BANS_FILE`. Absent or
+/// unreadable is no bans: the file is the only thing that moves a box off an
+/// edge that answers, and a bad one must not scatter boxes.
+fn edge_bans() -> crate::edge::Bans {
+    std::env::var("LOSOS_EDGE_BANS_FILE")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .and_then(|f| std::fs::read(f).ok())
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default()
+}
+
 fn edge_path_file() -> Option<PathBuf> {
     std::env::var("LOSOS_EDGE_PATH_FILE")
         .ok()
@@ -1726,7 +1738,29 @@ impl IoLosos {
             .and_then(|env| crate::edge::env_value(env, "LOSOS_EDGE_PATH_URL"))
             .map(str::to_string);
         let hold = self.edge_hold(current_env.as_deref());
-        status.route(member_of.as_deref(), current.as_deref(), hold.as_ref());
+        let seed = std::env::var("LOSOS_APPLIANCE_ID").unwrap_or_default();
+        let bans = edge_bans();
+        status.route(&crate::edge::PathRule {
+            member_of: member_of.as_deref(),
+            current: current.as_deref(),
+            hold: hold.as_ref(),
+            seed: &seed,
+            bans: Some(&bans),
+        });
+        if let Some(left) = &status.left_banned {
+            tracing::warn!(edge = %left, to = ?status.path.as_ref().map(|p| &p.url), "the edge this box used is banned; it moves");
+            // A hold a ban broke follows the box to its new edge.
+            if hold.as_ref().is_some_and(|h| &h.url == left) {
+                let next = status.path.as_ref().map(|p| crate::edge::path_env(p, None));
+                let written = match next {
+                    Some(env) => atomic_write(&self.edge_hold_file(), env.as_bytes()),
+                    None => remove_if_present(&self.edge_hold_file()),
+                };
+                if let Err(e) = written {
+                    tracing::warn!(error = %e, "could not move the custom domain's hold");
+                }
+            }
+        }
         if member_of.is_none() {
             if let Some(cluster) = &status.cluster {
                 tracing::info!(cluster = %cluster, "this box settles in a secondary cluster");

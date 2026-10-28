@@ -731,6 +731,9 @@ export interface EdgeProxy {
   cluster?: string;
   /** The gateway's name in it. */
   member?: string;
+  /** The official cluster (edges behind one load balancer) an official
+   *  edge sits in. */
+  officialCluster?: string;
 }
 
 /** The edge this box uses (backend/src/edge.rs, choose_path). */
@@ -742,6 +745,7 @@ export interface EdgePath {
   tier?: EdgeTier;
   cluster?: string;
   member?: string;
+  officialCluster?: string;
 }
 
 /** A secondary cluster in reach and its gateways that answered. */
@@ -771,6 +775,10 @@ export interface EdgeResponse {
   /** The secondary cluster this box belongs to; kept while none of its
    *  gateways answers. */
   cluster?: string | null;
+  /** The edge a live custom domain holds this box to, or null. */
+  held?: string | null;
+  /** The banned edge this box moved off on the last choice, or null. */
+  leftBanned?: string | null;
   /** Whether a company edge may manage this box. Missing on a box whose
    *  lososd predates the switch. */
   manage?: EdgeManage;
