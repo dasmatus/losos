@@ -1198,8 +1198,8 @@ in
       }
       {
         # An edge that serves its own zone is an official one (the names
-        # answer only with an identity certificate), and an official edge's
-        # names are signed and hide which box a browser asks for.
+        # answer only on a claimed gateway), and an official edge's names
+        # are signed and hide which box a browser asks for.
         assertion = dnsCfg.enable -> (dnsCfg.dnssec.enable && dnsCfg.ech.enable);
         message = ''
           losos.edge.dns.enable requires losos.edge.dns.dnssec.enable and
