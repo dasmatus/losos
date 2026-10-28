@@ -75,12 +75,22 @@ pub fn repo(name: &str) -> Result<&str, String> {
     if lower.ends_with(".git") {
         return Err("a repository name may not end in .git".to_string());
     }
+    // `<name>.wiki.git` is the wiki of `<name>`, as on Forgejo and GitHub.
+    if lower.ends_with(".wiki") {
+        return Err("a repository name may not end in .wiki".to_string());
+    }
     if RESERVED_REPOS.contains(&lower.as_str()) {
         return Err(format!(
             "\"{name}\" is a page of LosOS Git, not a repository"
         ));
     }
     Ok(name)
+}
+
+/// `notes.wiki` → `notes`: the repository whose wiki a clone URL names.
+pub fn wiki_of(name: &str) -> Option<&str> {
+    let n = name.len().checked_sub(5)?;
+    (name.is_char_boundary(n) && name[n..].eq_ignore_ascii_case(".wiki")).then(|| &name[..n])
 }
 
 /// `losos-config.git` → `losos-config`, as git clients spell a repository.
@@ -140,6 +150,12 @@ mod tests {
         assert!(repo("losos-config").is_ok());
         assert!(repo("dots.in.name").is_ok());
         assert!(repo("x.git").is_err());
+        assert!(repo("notes.wiki").is_err());
+        assert!(repo("notes.Wiki").is_err());
+        assert_eq!(wiki_of(strip_git("notes.wiki.git")), Some("notes"));
+        assert_eq!(wiki_of("Notes.WIKI"), Some("Notes"));
+        assert_eq!(wiki_of("notes"), None);
+        assert_eq!(wiki_of("wiki"), None);
         assert!(repo("..").is_err());
         assert!(repo("../etc").is_err());
         assert!(repo("settings").is_err());

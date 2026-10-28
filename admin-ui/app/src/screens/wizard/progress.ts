@@ -12,7 +12,10 @@
  * shows the token this tab already holds. */
 
 import { getToken } from "@/lib/api";
+import type { DesktopSignIn } from "./StepDesktop";
 import { STEP_IDS, type StepId } from "./steps";
+
+const SIGN_INS: readonly DesktopSignIn[] = ["person", "plainHttp", "noLogin", "address"];
 
 const KEY = "losos-setup-progress";
 
@@ -20,9 +23,13 @@ export interface SetupProgress {
   step: StepId;
   /** The account step 2 set a password for, or null before that. */
   account: string | null;
+  /** The LosOS Login name step 2 made, for step 3 to sign in with. */
+  login: string | null;
   /** Step 2 claimed the box from this tab, so the spare key is the token. */
   keyShown: boolean;
-  signedIn: boolean;
+  /** How step 3 left this tab signed in, or null before it has. Never the
+   *  password: a tab reloaded on step 3 asks for it again. */
+  signedIn: DesktopSignIn | null;
 }
 
 export function readProgress(): SetupProgress | null {
@@ -37,8 +44,9 @@ export function readProgress(): SetupProgress | null {
     return {
       step,
       account: typeof v["account"] === "string" ? v["account"] : null,
+      login: typeof v["login"] === "string" ? v["login"] : null,
       keyShown: v["keyShown"] === true,
-      signedIn: v["signedIn"] === true,
+      signedIn: SIGN_INS.find((how) => how === v["signedIn"]) ?? null,
     };
   } catch {
     return null;
