@@ -717,6 +717,10 @@ export interface EdgeResponse {
   /** Whether a company edge may manage this box. Missing on a box whose
    *  lososd predates the switch. */
   manage?: EdgeManage;
+  /** Unix seconds when the box turned sharing off by itself because no edge
+   *  answered; it turns it back on a minute after one does. Null when not
+   *  paused, missing from an older lososd. */
+  sharingPausedAt?: number | null;
 }
 
 /** The switch that lets a company edge on this LAN manage LosOS Cloud,

@@ -72,7 +72,11 @@ die Box versucht hat:
 
 Sobald die Edge wieder antwortet, findet die nächste Suche sie innerhalb
 von 20 Sekunden, und der Bereich Mesh zeigt sie ein paar Sekunden später.
-Der Tunnel kommt ohne Neustart zurück. Ein Ausfall schaltet nichts ab, was
-du eingeschaltet hast. Solange die Box keine Edge findet, lehnt sie nur das
-*Einschalten* ab, und darum geht es unter
+Der Tunnel kommt ohne Neustart zurück. Solange die Box keine Edge findet,
+lehnt sie das *Einschalten* ab, und darum geht es unter
 [Teilen wird abgelehnt](sharing-refused).
+
+Nach zehn Minuten ohne Edge schaltet eine Box, die ihren Speicher teilt,
+das Teilen selbst aus, und der Bereich Mesh zeigt **Teilen pausiert**. Eine
+Minute nachdem eine Edge wieder antwortet, schaltet die Box das Teilen
+wieder ein, ohne dass du etwas tun musst.
