@@ -163,6 +163,20 @@ function htmlFiles(outDir: string, baseUrl: string, routesPaths: string[]): stri
   ];
 }
 
+/** The page with every <script> element and script preload taken out. Run
+ * to a fixed point, so that taking one out cannot join the pieces around it
+ * into another; the build also fails if a `<script` is left afterwards. */
+function withoutScripts(html: string): string {
+  let out = html;
+  for (;;) {
+    const next = out
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '')
+      .replace(/<link\b[^>]*\bas="script"[^>]*>/gi, '');
+    if (next === out) return out;
+    out = next;
+  }
+}
+
 /** Whether every file in `dir` is also in `other`, at the same size. */
 async function sameFiles(dir: string, other: string): Promise<boolean> {
   const names = await fs.readdir(dir).catch(() => [] as string[]);
@@ -251,9 +265,7 @@ export default function basicPlugin(context: LoadContext, options: unknown): Plu
         if (shared) html = html.replaceAll(`${plain}assets/images/`, `${usual}assets/images/`);
         // The Contents page is the one page the usual copy does not have.
         const own = rel === 'contents/index.html';
-        html = html
-          .replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, '')
-          .replace(/<link\b[^>]*\bas="script"[^>]*>/g, '')
+        html = withoutScripts(html)
           // The canonical address, its language alternates and og:url name
           // the usual copy: the two copies are one page to a search engine.
           .replace(/<(link|meta)\b[^>]*\b(rel="(canonical|alternate)"|property="og:url")[^>]*>/g, (tag) =>
@@ -261,7 +273,7 @@ export default function basicPlugin(context: LoadContext, options: unknown): Plu
               ? tag
               : tag.replaceAll(`${context.siteConfig.url}${plain}`, `${context.siteConfig.url}${usual}`),
           );
-        if (/<script\b/.test(html) || /\bsrc="[^"]*\.js"/.test(html)) {
+        if (/<script\b/i.test(html) || /\bsrc="[^"]*\.js"/.test(html)) {
           throw new Error(`basic: ${rel} still loads a script`);
         }
         await fs.writeFile(file, html);
