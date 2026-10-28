@@ -136,6 +136,8 @@ viel die Box gesendet hat und wie lange die langsamsten Antworten gedauert
 haben. Jede App steht mit ihrem Port in der Liste. Die Zähler beginnen von
 vorn, wenn die Box neu startet.
 
+![Einstellungen › Statistik: Anfragen, Serverfehler, gesendete Daten und offene Verbindungen der letzten Stunde, ein Balken je Minute und die Antworten nach Art.](@site/docs/img/statistics-de.png)
+
 Das Widget **Statistik** zeigt die letzte Stunde auf der Übersicht. Füge es
 unter **Widget hinzufügen** hinzu. Ein Klick darauf öffnet die Seite.
 
