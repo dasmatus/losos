@@ -18,6 +18,7 @@
 
 mod client;
 mod envelope;
+pub mod gateway;
 mod keys;
 mod tokens;
 
