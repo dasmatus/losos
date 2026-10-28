@@ -76,6 +76,11 @@ pub struct Tenant {
     /// rather than a whitelist row, and it is kept alive by the spoke's
     /// `/relay` calls rather than its own heartbeats.
     pub via: Option<String>,
+    /// Which of the spoke's gateways relays it (`crate::relay::RelayReq::gateway`).
+    /// Live state, not written to `registry.json`: after a restart every
+    /// gateway's next `/relay` claims its boxes again, and an entry nobody
+    /// claims expires with the heartbeat TTL.
+    pub gateway: Option<String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Default)]
@@ -233,6 +238,7 @@ impl Registry {
                     idle: None,
                     llm: None,
                     via: t.via,
+                    gateway: None,
                 },
             );
         }
@@ -284,6 +290,7 @@ impl Registry {
                         idle: None,
                         llm: None,
                         via: None,
+                        gateway: None,
                     },
                 );
                 port
@@ -293,13 +300,14 @@ impl Registry {
         Ok(port)
     }
 
-    /// Replace the set of tenants `spoke` relays with `tenants`
+    /// Replace the set of tenants `spoke`'s `gateway` relays with `tenants`
     /// (`(box id, hostname)` pairs, already validated by the handler).
     ///
     /// Each listed box is upserted under the key `<spoke>.<id>`: a known key
     /// keeps its port and gets its hostname and `last_seen` refreshed, a new
-    /// one is allocated a port. Every key this spoke relayed before and did
-    /// not list now is removed, so the hub's picture of a site is always the
+    /// one is allocated a port. Every key this gateway relayed before and did
+    /// not list now is removed, while another gateway of the same spoke keeps
+    /// its own; a listed key held by another gateway moves to this one, so the hub's picture of a site is always the
     /// spoke's latest list and nothing else — a box that left the site is
     /// gone on the next reconcile, not after the TTL. A key that belongs to
     /// a direct tenant (`via == None`) is never touched: the handler refuses
@@ -310,6 +318,7 @@ impl Registry {
     pub async fn relay(
         &self,
         spoke: &str,
+        gateway: Option<&str>,
         tenants: &[(String, String)],
     ) -> Result<Vec<Relayed>, RegistryError> {
         let mut st = self.inner.lock().await;
@@ -318,8 +327,14 @@ impl Registry {
             .iter()
             .map(|(id, _)| format!("{spoke}.{id}"))
             .collect();
-        st.tenants
-            .retain(|key, t| t.via.as_deref() != Some(spoke) || listed.contains(key));
+        // A gateway's list is the whole truth about the boxes *that gateway*
+        // relays. Another gateway of the same site keeps its own, and a box
+        // that moved here is taken over below rather than dropped.
+        st.tenants.retain(|key, t| {
+            t.via.as_deref() != Some(spoke)
+                || t.gateway.as_deref() != gateway
+                || listed.contains(key)
+        });
         let mut out = Vec::with_capacity(tenants.len());
         for (id, hostname) in tenants {
             let key = format!("{spoke}.{id}");
@@ -327,6 +342,15 @@ impl Registry {
                 Some(t) if t.via.as_deref() == Some(spoke) => {
                     t.hostname.clone_from(hostname);
                     t.last_seen = now;
+                    if t.gateway.as_deref() != gateway {
+                        tracing::info!(
+                            target: Action::Relay.target(),
+                            "{key} moves from gateway {} to {}",
+                            t.gateway.as_deref().unwrap_or("-"),
+                            gateway.unwrap_or("-"),
+                        );
+                        t.gateway = gateway.map(str::to_string);
+                    }
                     t.rathole_port
                 }
                 Some(_) => continue,
@@ -341,6 +365,7 @@ impl Registry {
                             idle: None,
                             llm: None,
                             via: Some(spoke.to_string()),
+                            gateway: gateway.map(str::to_string),
                         },
                     );
                     port
@@ -697,6 +722,7 @@ impl Registry {
                     idle,
                     llm: None,
                     via: t.via,
+                    gateway: None,
                 },
             );
         }
