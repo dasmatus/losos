@@ -320,14 +320,17 @@ async fn set_key(edge: &Edge, key: &str) -> (u16, String) {
 }
 
 fn ufvk(fvk: &FullViewingKey, network: NetworkType) -> String {
-    unified::Ufvk::try_from_items(vec![unified::Fvk::Orchard(fvk.to_bytes())])
-        .unwrap()
-        .encode(&network)
+    unified::Ufvk::try_from_items(
+        unified::Revision::R0,
+        vec![unified::Uitem::Data(unified::Fvk::Orchard(fvk.to_bytes()))],
+    )
+    .unwrap()
+    .encode(&network)
 }
 
 /// The receiver inside an Orchard-only unified address.
 fn receiver(address: &str) -> orchard::Address {
-    let (_, ua) = unified::Address::decode(address).expect("a unified address");
+    let (_, _, ua) = unified::Address::decode(address).expect("a unified address");
     let raw = zcash_address::unified::Container::items(&ua)
         .into_iter()
         .find_map(|r| match r {
