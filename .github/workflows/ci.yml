@@ -50,13 +50,11 @@ on:
 # survive that, but paying it in a double-digit job count to run commands that
 # do not need it is still waste.
 #
-# A targeted installer/sysupdate QEMU lane below uses Determinate's Nix
-# installer and its KVM setup when the hosted runner exposes /dev/kvm. The
-# broader local VM suite remains available via:
+# The nixos-test VMs stay local-only:
 #   devenv shell vm-tests
-# Neither this file nor devenv.nix needs to enumerate that full suite:
-# `vm-tests` reads the checks from `.#checks.x86_64-linux`, preventing its
-# hand-kept list from drifting away from the flake.
+# Neither this file nor devenv.nix names those VMs: `vm-tests` reads the list
+# out of `.#checks.x86_64-linux`, because the hand-kept version of it had
+# drifted to four names against six checks. Do not reintroduce a literal list.
 #
 # The substituters are written to /etc/nix/nix.conf before the daemon starts,
 # not passed as NIX_CONFIG: a multi-user daemon discards cache settings from an
@@ -136,8 +134,75 @@ jobs:
           fi
           echo "nixpkgs pin agrees across flake.lock, devenv.yaml and devenv.lock ($lock)"
 
+  # ── Which jobs a change needs ───────────────────────────────────────────────
+  #
+  # A pull request runs only the lanes its files reach:
+  # .github/scripts/ci-changes.sh maps paths to lanes (rust, wasm, solana,
+  # evm, eval, ctl, ui, tui, images, iso, discovery) and each job
+  # below waits on its lane. A handbook page builds the handbook and nothing
+  # else; a Rust file skips the ISO; docs/ and screenshots run nothing but
+  # this and `pins`. A job a change does not need shows as skipped, and the
+  # `result` job at the end is green when everything that ran passed.
+  #
+  # Everything runs on main, on tags, on the weekly run, on a manual run, when
+  # CI itself or the toolchain changes (the script's first list), and on a
+  # pull request labelled `ci: full`. The label is read when the job runs,
+  # not from the event, so adding it and re-running the workflow is enough.
+  changes:
+    name: "changes: pick the jobs this change needs"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      full: ${{ steps.pick.outputs.full }}
+      rust: ${{ steps.pick.outputs.rust }}
+      wasm: ${{ steps.pick.outputs.wasm }}
+      solana: ${{ steps.pick.outputs.solana }}
+      evm: ${{ steps.pick.outputs.evm }}
+      eval: ${{ steps.pick.outputs.eval }}
+      ctl: ${{ steps.pick.outputs.ctl }}
+      ui: ${{ steps.pick.outputs.ui }}
+      tui: ${{ steps.pick.outputs.tui }}
+      images: ${{ steps.pick.outputs.images }}
+      iso: ${{ steps.pick.outputs.iso }}
+      discovery: ${{ steps.pick.outputs.discovery }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/scripts
+      - id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          pick=.github/scripts/ci-changes.sh
+          full() { "$pick" --full "$1" | tee -a "$GITHUB_OUTPUT"; exit 0; }
+          [ "$EVENT" = pull_request ] || full "a $EVENT run checks everything"
+          # Anything that cannot be read runs everything rather than nothing.
+          labels=$(gh api "repos/$REPO/pulls/$PR" --jq '.labels[].name') \
+            || full "the pull request's labels could not be read"
+          if grep -qx 'ci: full' <<<"$labels"; then
+            full "the pull request is labelled ci: full"
+          fi
+          # A rename lists both names, so moving a file out of a lane counts.
+          files=$(gh api --paginate "repos/$REPO/pulls/$PR/files?per_page=100" \
+            --jq '.[] | .filename, (.previous_filename // empty)') \
+            || full "the pull request's files could not be listed"
+          # GitHub lists at most 3000 files of a pull request.
+          if [ "$(wc -l <<<"$files")" -ge 3000 ]; then
+            full "the pull request changes more files than GitHub lists"
+          fi
+          "$pick" <<<"$files" | tee -a "$GITHUB_OUTPUT"
+
   clippy:
     name: "rust: clippy (+ rustfmt on PRs)"
+    needs: [changes]
+    if: ${{ needs.changes.outputs.rust == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Runs in devShells.ci — a lean cargo/rustc/clippy/rustfmt shell from this
@@ -208,6 +273,8 @@ jobs:
 
   clippy-wasm:
     name: "rust: clippy lososd's plugins and the Lab canvas for wasm32"
+    needs: [changes]
+    if: ${{ needs.changes.outputs.wasm == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Mirrors devenv.nix's `lint-wasm`. admin-ui/lab/render takes Bevy only
@@ -236,6 +303,8 @@ jobs:
 
   test:
     name: "rust: test the crates"
+    needs: [changes]
+    if: ${{ needs.changes.outputs.rust == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # The suites live here rather than inside buildRustPackage. doCheck used to
@@ -299,6 +368,8 @@ jobs:
 
   solana-escrow:
     name: "solana: build and test the escrow program"
+    needs: [changes]
+    if: ${{ needs.changes.outputs.solana == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     # devenv.nix's test-solana-escrow. The program is built for the Solana VM
@@ -340,6 +411,8 @@ jobs:
 
   evm-escrow:
     name: "evm: test the escrow and pay through it on a local chain"
+    needs: [changes]
+    if: ${{ needs.changes.outputs.evm == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     # devenv.nix's test-evm-escrow. Foundry's suite for LososEscrow, then
@@ -364,6 +437,8 @@ jobs:
 
   eval:
     name: "nix: flake check + module merge + ISO derivation"
+    needs: [changes]
+    if: ${{ needs.changes.outputs.eval == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -399,27 +474,17 @@ jobs:
       # The edge gateway image (nix/disk-images.nix), for the same reason.
       - run: nix path-info --derivation .#losos-disk-edge-qcow2
 
-  qemu-tests:
-    name: "nix: install and persistent sysupdate QEMU tests"
-    runs-on: ubuntu-latest
-    timeout-minutes: 100
-    needs: [eval]
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-nix
-      # Determinate Nix configures /dev/kvm on supported hosted runners.
-      # The installer test exercises partitioning and boot on virtual disks;
-      # the sysupdate test independently asserts extraction lands on ext4 /persist.
-      - name: run installer and sysupdate VM tests
-        run: |
-          nix build --no-link -L \
-            .#checks.x86_64-linux.losos-install
-
   losos-ctl:
     name: "rust: lososd + losos-ctl build"
     # A run that only publishes media for older tags builds from those
-    # tags, not from this commit.
-    if: ${{ !inputs.release_tags }}
+    # tags, not from this commit. The iso and discovery jobs import its
+    # export, so it runs for their lanes too; with the crate unchanged it is
+    # a cache hit.
+    needs: [changes]
+    if: >-
+      ${{ !inputs.release_tags && (needs.changes.outputs.ctl == 'true'
+        || needs.changes.outputs.iso == 'true'
+        || needs.changes.outputs.discovery == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -456,7 +521,8 @@ jobs:
     name: "rust: losos-registrar + admin UI + handbook"
     # A run that only publishes media for older tags builds from those
     # tags, not from this commit.
-    if: ${{ !inputs.release_tags }}
+    needs: [changes]
+    if: ${{ !inputs.release_tags && needs.changes.outputs.ui == 'true' }}
     runs-on: ubuntu-latest
     # losos-admin-ui builds losos-lab-render, Bevy for wasm32 twice, which
     # alone takes about 20 minutes from an empty cache. With the calls
@@ -539,6 +605,8 @@ jobs:
 
   images:
     name: "nix: OCI images for the local cluster"
+    needs: [changes]
+    if: ${{ needs.changes.outputs.images == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -656,7 +724,8 @@ jobs:
   # hidden prompt, the full-screen view and the exit statuses.
   tui:
     name: "losos terminal client"
-    if: ${{ !inputs.release_tags }}
+    needs: [changes]
+    if: ${{ !inputs.release_tags && needs.changes.outputs.tui == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -867,15 +936,24 @@ jobs:
     # carries losos-admin-ui in isoImage.storeContents, and since that stopped
     # being a file copy it is the second path in this closure cache.nixos.org
     # cannot serve.
-    needs: [losos-ctl, registrar-and-ui]
+    #
+    # On a pull request either sibling may be skipped, when its lane is off:
+    # the crate or the UI did not change, so the cache has it and the export
+    # is not needed. A failed sibling still skips this job.
+    needs: [changes, losos-ctl, registrar-and-ui]
+    if: >-
+      ${{ !cancelled() && !failure() && !inputs.release_tags
+        && needs.changes.outputs.iso == 'true' }}
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
       - uses: actions/download-artifact@v8
+        if: needs.losos-ctl.result == 'success'
         with:
           name: losos-ctl-store
           path: ctl-cache
       - uses: actions/download-artifact@v8
+        if: needs.registrar-and-ui.result == 'success'
         with:
           name: losos-admin-ui-store
           path: ui-cache
@@ -895,8 +973,10 @@ jobs:
       # same step that wrote the cache, so the two cannot disagree.
       - name: import the sibling jobs' store exports
         run: |
-          xargs -r nix copy --from "file://$PWD/ctl-cache" --no-check-sigs < ctl-cache/store-paths
-          xargs -r nix copy --from "file://$PWD/ui-cache" --no-check-sigs < ui-cache/store-paths
+          for cache in ctl-cache ui-cache; do
+            [ -f "$cache/store-paths" ] || continue
+            xargs -r nix copy --from "file://$PWD/$cache" --no-check-sigs < "$cache/store-paths"
+          done
       # NOT --offline. The other 766 paths come from cache.nixos.org, and
       # blocking the network would force nix to build them from source —
       # precisely the opposite of what the import above buys us.
@@ -1018,26 +1098,33 @@ jobs:
   # jobs' exports of losos-ctl and the admin UI, like the ISO.
   discovery-box:
     name: "nix: build the discovery test box"
-    if: ${{ !inputs.release_tags }}
+    # As the iso job: a skipped sibling means the cache has it.
+    if: >-
+      ${{ !cancelled() && !failure() && !inputs.release_tags
+        && needs.changes.outputs.discovery == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    needs: [losos-ctl, registrar-and-ui]
+    needs: [changes, losos-ctl, registrar-and-ui]
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
       - uses: actions/download-artifact@v8
+        if: needs.losos-ctl.result == 'success'
         with:
           name: losos-ctl-store
           path: ctl-cache
       - uses: actions/download-artifact@v8
+        if: needs.registrar-and-ui.result == 'success'
         with:
           name: losos-admin-ui-store
           path: ui-cache
       # By path, never `--all`; see the iso job.
       - name: import the sibling jobs' store exports
         run: |
-          xargs -r nix copy --from "file://$PWD/ctl-cache" --no-check-sigs < ctl-cache/store-paths
-          xargs -r nix copy --from "file://$PWD/ui-cache" --no-check-sigs < ui-cache/store-paths
+          for cache in ctl-cache ui-cache; do
+            [ -f "$cache/store-paths" ] || continue
+            xargs -r nix copy --from "file://$PWD/$cache" --no-check-sigs < "$cache/store-paths"
+          done
       - run: nix build .#losos-disk-discovery-box -L
       - run: |
           mkdir discovery-box
@@ -1181,107 +1268,6 @@ jobs:
           name: discovery-${{ matrix.os }}-console
           path: ${{ runner.temp }}/losos-discovery-*/qemu.log
           if-no-files-found: ignore
-
-  # Build a standalone prebuilt OS closure bundle for systemd-sysupdate.
-  # This is deliberately not a dependency of the ISO job and is never packed
-  # into the installer medium. The outer tar is XZ-compressed for sysupdate;
-  # its one member is itself an XZ-compressed nix-store export, so an appliance
-  # unpacks only the small outer layer on /persist, not into its tmpfs root.
-  sysupdate-bundle:
-    name: "nix: build the standalone sysupdate bundle"
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
-    if: ${{ github.event_name == 'pull_request' || (github.ref == 'refs/heads/main' && !inputs.release_tags) }}
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v7
-      - uses: DeterminateSystems/nix-installer-action@main
-      - name: build an XZ-compressed export of the install system closure
-        id: bundle
-        run: |
-          set -euo pipefail
-          # The build label alone does not distinguish successive commits
-          # between releases. Append a zero-padded Actions run number so
-          # systemd-sysupdate sees a strictly sortable version every build.
-          version="$(nix eval --raw .#nixosConfigurations.install.config.system.nixos.label)"
-          version="${version#v}"
-          build_number="$(printf '%010d' "$GITHUB_RUN_NUMBER")"
-          name="losos-os_${version}.${build_number}"
-          top="$(nix build --no-link --print-out-paths .#nixosConfigurations.install.config.system.build.toplevel)"
-          mkdir -p update
-          # nix-store --export serializes exactly the paths passed to it;
-          # obtain the whole closure first, as required by the import protocol.
-          # Stream it through XZ so no expanded NAR export ever hits disk.
-          mapfile -t closure_paths < <(nix-store --query --requisites "$top")
-          nix-store --export "${closure_paths[@]}" | xz -T2 -6 -c > update/closure.export.xz
-          tar --format=ustar -C update -cf - closure.export.xz | xz -T2 -0 -c > "update/${name}.tar.xz"
-          (cd update && sha256sum "${name}.tar.xz" > SHA256SUMS)
-          rm update/closure.export.xz
-          printf 'name=%s\n' "$name" >> "$GITHUB_OUTPUT"
-          printf 'bundle_path=update/%s.tar.xz\n' "$name" >> "$GITHUB_OUTPUT"
-          sha256sum "update/${name}.tar.xz"
-          cat update/SHA256SUMS
-          du -h "update/${name}.tar.xz"
-          df -h
-      - name: run proxy integrity and HTTP regression tests
-        run: python3 tools/test_losos_sysupdate_proxy.py
-      - uses: actions/upload-artifact@v7
-        with:
-          name: losos-sysupdate-bundle-${{ github.sha }}
-          path: |
-            update/*.tar.xz
-            update/SHA256SUMS
-          retention-days: 7
-          compression-level: 0
-      - name: publish the standalone update bundle to GHCR
-        if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && !inputs.release_tags }}
-        env:
-          TOKEN: ${{ github.token }}
-          ACTOR: ${{ github.actor }}
-          BUNDLE_NAME: ${{ steps.bundle.outputs.name }}
-        run: |
-          set -euo pipefail
-          oras="$(nix build nixpkgs#oras --no-link --print-out-paths)"
-          repository="ghcr.io/${GITHUB_REPOSITORY,,}/os-updates"
-          printf '%s' "$TOKEN" | "$oras/bin/oras" login ghcr.io --username "$ACTOR" --password-stdin
-          "$oras/bin/oras" push --artifact-type application/vnd.losos.os-update.v1 \
-            "$repository:main" \
-            "update/$BUNDLE_NAME.tar.xz:application/x-xz" \
-            "update/SHA256SUMS:text/plain"
-          "$oras/bin/oras" logout ghcr.io
-
-  # Run the installer's existing end-to-end NixOS VM test using Determinate Nix
-  # and QEMU/KVM. The test boots a VM with multiple virtual target drives,
-  # formats the encrypted LVM layout, runs losos-install/nixos-install and
-  # verifies the installed bootloader. It complements (rather than replaces)
-  # the ISO's UEFI/BIOS boot checks above.
-  sysupdate-install:
-    name: "nix + QEMU: install onto virtual disks"
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-    if: ${{ github.event_name == 'pull_request' || (github.ref == 'refs/heads/main' && !inputs.release_tags) }}
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v7
-      - uses: DeterminateSystems/nix-installer-action@main
-      - name: verify KVM is available when the runner exposes it
-        run: |
-          set -euo pipefail
-          if [ "${DETERMINATE_NIX_KVM:-0}" != 1 ]; then
-            echo "::warning::KVM is not exposed on this runner; the VM test will use QEMU's software accelerator."
-          else
-            echo "Determinate Nix enabled KVM acceleration."
-          fi
-      - name: test the sysupdate proxy's manifest, cache and range behavior
-        run: python3 tools/test_losos_sysupdate_proxy.py
-      - name: install the NixOS appliance to virtual disks and boot it
-        run: nix build .#checks.x86_64-linux.losos-install -L --no-link
-      - name: show runner storage after QEMU test
-        if: always()
-        run: df -h
 
   # Which tags release-media builds. A tag push builds that tag. A manual run
   # with `release_tags` builds the tags it names, or with "missing" every
@@ -1781,11 +1767,6 @@ jobs:
           EDGE_SUM: ${{ steps.stage.outputs.edgeSha256 }}
           EDGE_SIZE: ${{ steps.stage.outputs.edgeSize }}
           EDGE_REF: ${{ steps.ghcr.outputs.edgeRef }}
-          SYSUPDATE_ENABLED: ${{ steps.sysupdate.outputs.enabled }}
-          SYSUPDATE_BUNDLE: ${{ steps.sysupdate.outputs.bundleName }}
-          SYSUPDATE_SHA256: ${{ steps.sysupdate.outputs.bundleSha256 }}
-          SYSUPDATE_SIZE: ${{ steps.sysupdate.outputs.bundleSize }}
-          TAG: ${{ matrix.tag }}
           REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -1848,24 +1829,9 @@ jobs:
           )
           fi
           edge_human=$(awk -v b="$EDGE_SIZE" 'BEGIN { printf "%.2f GiB", b/1073741824 }')
-          if [ "${SYSUPDATE_ENABLED:-false}" = true ]; then
-            sysupdate_human=$(awk -v b="$SYSUPDATE_SIZE" 'BEGIN { printf "%.2f GiB", b/1073741824 }')
-            update_notes=$(cat <<UPDATE_NOTES_EOF
-          **Signed, separate artifact.** ${SYSUPDATE_BUNDLE} (${sysupdate_human}; SHA-256 ${SYSUPDATE_SHA256}) is a compressed system update bundle, not part of the installer ISO. For transfer size limits, CI uploads the bundle in numbered 1,700 MiB parts; the box's local proxy verifies every part and the complete bundle against the signed manifest before serving it to systemd-sysupdate.
-
-          Download metadata: [SHA256SUMS.sysupdate](${GITHUB_SERVER_URL}/${REPO}/releases/download/${TAG}/SHA256SUMS.sysupdate) and [its signature](${GITHUB_SERVER_URL}/${REPO}/releases/download/${TAG}/SHA256SUMS.sysupdate.sig). The proxy checks the RSA signature against the LosOS release certificate before accepting any manifest, and systemd-sysupdate validates the XZ tar bundle's SHA-256 before extraction. The bundle contains the versioned Nix store closure and source tree; it is never embedded in the ISO.
-          UPDATE_NOTES_EOF
-          )
-          else
-            update_notes="This tag predates the systemd-sysupdate runtime and has no standalone OS update bundle."
-          fi
           {
             echo "body<<RELEASE_BODY_EOF"
             cat <<BODY
-          ### System updates
-
-          ${update_notes}
-
           ### Installer ISO
 
           **[${ISO_NAME}](${ISO_URL})** — ${iso_human}
@@ -1976,7 +1942,6 @@ jobs:
             ${{ steps.stage.outputs.isoName }}.sha256
             ${{ steps.stage.outputs.qcow2Name }}.sha256
             SHA256SUMS
-            ${{ steps.sysupdate.outputs.assets }}
             ${{ steps.sign.outputs.signed == 'true' && 'SHA256SUMS.sig' || '' }}
             ${{ steps.sign.outputs.signed == 'true' && 'losos-secure-boot-db.pem' || '' }}
             ${{ steps.sign.outputs.signed == 'true' && 'losos-secure-boot-db.cer' || '' }}
