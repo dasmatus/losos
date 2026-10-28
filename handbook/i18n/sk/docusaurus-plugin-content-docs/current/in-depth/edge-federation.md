@@ -31,6 +31,102 @@ Tri roviny, z ktorých sa federujú iba dve:
 | data    | tunely QUIC + Traefik                            | o jeden skok viac: hub → spoke → zariadenie                                |
 | mesh    | rke2 server + Longhorn                           | **nie**: každý edge je samostatný cluster, pozri „Čo zostáva lokálne“      |
 
+## Tri úrovne {#three-tiers}
+
+Každé spojenie, ktoré drží edge alebo zariadenie, má úroveň a zariadenie,
+brána aj hub ju hlásia:
+
+| Úroveň      | Spojenie                                                   | Klaster                      |
+| ----------- | ---------------------------------------------------------- | ---------------------------- |
+| primárne    | edge s edge: uplink brány k oficiálnemu edge               | **hlavný klaster**           |
+| sekundárne  | zariadenie s lokálnou bránou vlastného klastra             | **sekundárny klaster**       |
+| terciárne   | zariadenie priamo s oficiálnym edge                        | žiadny: záloha               |
+
+Zariadenie samo nikdy nedrží primárne spojenie. Vlastné spojenie vidí ako
+`path.tier` v `GET /api/edge` a na stránke Mesh, brána ukazuje svoje
+spojenia v `losos-edge status` a hub si brány hlavného klastra, každú na
+primárnom spojení, vedie v `main-cluster.json` vedľa registra
+(`losos-edge main` na bráne vypíše tie z vlastnej lokality).
+
+### Sekundárne klastre {#secondary-clusters}
+
+Jedna brána v sieti môže vypadnúť. **Sekundárny klaster** tvorí jedna alebo
+viac brán v tej istej sieti, ktoré obsluhujú tie isté zariadenia, takže
+zariadenie zostane dostupné, aj keď jedna z nich zmizne. Je to stav za
+behu, vytvorený na bránach:
+
+```sh
+# na prvej bráne
+losos-edge cluster create office
+# vypíše riadok, ktorý spustíte na každej ďalšej bráne:
+losos-edge cluster join office <secret> http://gwa.local:8443
+```
+
+Súbor klastra (`losos.edge.secondary.file`, predvolene
+`/var/lib/losos-edge/cluster.json`, režim 0600) obsahuje názov, meno tejto
+brány v klastri, spoločné tajomstvo a brány, cez ktoré sa pripojila.
+Registrar ho číta pri každom prechode, takže `create`, `join` ani
+`losos-edge cluster leave` nepotrebujú reštart. Členovia sa synchronizujú
+každý `losos.edge.secondary.interval` cez `POST /cluster/secondary/sync`,
+každá správa je podpísaná HMAC tajomstva: každý člen sa dozvie zariadenia,
+ktoré zapísali ostatní, takže token zariadenia platí na všetkých, a kedy
+ktorý člen naposledy počul ktoré zariadenie. Zariadenie preposiela hubu len
+člen, ktorý ho počul naposledy, takže trasa na hube ide za zariadením bez
+preskakovania. `losos-edge cluster show` vypíše členov, ktorí odpovedajú.
+
+`GET /cluster/secondary` je to, čo zariadenie číta z každého edge, ktorý
+nájde: rolu edge, úroveň spojení, ktoré obsluhuje, jeho klaster a meno
+člena, členov, ktorí odpovedajú, a na oficiálnom edge jeho oficiálny
+klaster a partnerov. Brána bez súboru klastra sa počíta ako vlastný klaster
+pomenovaný podľa svojho hostiteľa.
+
+### Oficiálne klastre a rozkladanie záťaže {#official-clusters-and-load-balancing}
+
+Oficiálne edge za jedným rozkladačom záťaže tvoria **oficiálny klaster**.
+Každý ho pomenuje a vypíše oficiálne edge, ktoré môžu zariadenia použiť:
+
+```nix
+losos.edge.official = {
+  cluster = "eu";
+  peers = [
+    { cluster = "eu"; url = "https://eu-1.losos.cfd"; tunnel = "eu-1.losos.cfd:2333"; }
+    { cluster = "eu"; url = "https://eu-2.losos.cfd"; tunnel = "eu-2.losos.cfd:2333"; }
+  ];
+};
+```
+
+Zariadenie pridá vypísaných partnerov, ktorí odpovedajú, k edge, ktoré
+našlo. Na terciárnom spojení zostane na oficiálnom edge, ktorý používa,
+kým odpovedá. Inak si vezme ten, ktorému rendezvous hash jeho id
+zariadenia dá najväčšiu váhu. Zariadenia sa tak rovnomerne rozložia po
+klastri a presunú sa len zariadenia edge, ktorý odišiel.
+
+### Zákazy {#bans}
+
+Zákaz menuje jednotlivé edge, celé oficiálne klastre alebo oboje:
+
+```json
+{ "edges": ["https://eu-1.losos.cfd"], "clusters": ["us"] }
+```
+
+Zariadenie ho číta z `losos.proxy.bansFile` pri každom skenovaní a edge z
+`losos.edge.bansFile` pri každom prechode uplinku. Chýbajúci alebo
+nečitateľný súbor nezakazuje nič. Zakázaný edge sa nikdy nevyberie.
+Zariadenie na ňom sa samo presunie na iný edge tej istej úrovne a
+`GET /api/edge` menuje edge, ktorý opustilo, ako `leftBanned`. Brána, ktorej
+hub alebo oficiálny klaster hubu je zakázaný, prepíše svoj uplink na
+oficiálneho partnera mimo zákazu a zahodí pripnutý kľúč starého hubu.
+
+### Vlastné domény držia zariadenie {#custom-domains-hold-a-box}
+
+Zariadenie so živou vlastnou doménou zostane na edge, ktorý doménu
+obsluhuje. Volá ho ďalej, aj keď je preč, a neprejde na inú bránu ani
+úroveň, pretože presun by doménu pokazil. `GET /api/edge` ukazuje edge ako
+`held` a presun zariadenia do iného klastra (`POST /api/edge/cluster`)
+odpovie 409 s `heldByDomain`. Jedinou výnimkou je zákaz: zákaz drženého
+edge alebo jeho oficiálneho klastra presunie zariadenie ako každé iné a
+držanie ide s ním na nový edge.
+
 ## Strana hubu: tenant, ktorý smie preposielať {#hub-side-a-tenant-that-may-relay}
 
 Spoke je bežný tenant hubu s jedným atribútom navyše, so zónou, pod ktorou
@@ -121,28 +217,42 @@ pre zariadenie, ktoré odišlo. Hub ponecháva zatvorený zápis.
 oficiálny podľa URL) a odmietne zapnúť zdieľanie, keď nie je žiadny. Jednu
 cestu vyberie podľa tohto pravidla:
 
-1. **najprv lokálny edge**: prvé ohlásenie v LAN, ktorého `/health`
-   odpovedá; ohlásenie teraz nesie aj `tunnel=<host:port>`, aby zariadenie vedelo,
-   kam vedie jeho tunel;
-2. **potom oficiálny edge**: `losos.proxy.registrarUrl` a
-   `losos.proxy.edgeTunnelEndpoint`, keď v LAN žiadny nie je;
-3. **žiadny**: každá funkcia závislá od edge je vypnutá: jednotky tunela a
+1. **najprv sa vyradia zakázané edge** ([Zákazy](#bans));
+2. **edge vlastnej domény**, kým ju zariadenie má a edge nie je zakázaný
+   ([Vlastné domény držia zariadenie](#custom-domains-hold-a-box));
+3. **brána vlastného sekundárneho klastra** (sekundárne): tá, ktorá sa
+   používa, kým odpovedá, inak prvá podľa mena člena. Zariadenie, ktoré
+   ešte nie je v žiadnom klastri, sa usadí v klastri v dosahu s najviac
+   bránami (pri zhode podľa názvu) a ponechá si ho, takže medzi klastrami
+   sa presunie, len keď to vlastník povie na stránke Mesh
+   (`POST /api/edge/cluster`). Brána, ktorá nemenuje žiadny klaster, sa
+   použije, ale nikdy sa nezapíše;
+4. **oficiálny edge** (terciárne), podľa
+   [rozkladania záťaže](#official-clusters-and-load-balancing), alebo
+   nakonfigurovaný edge (`losos.proxy.registrarUrl` a
+   `losos.proxy.edgeTunnelEndpoint`), keď žiadny nie je preukázane
+   oficiálny;
+5. **žiadny**: každá funkcia závislá od edge je vypnutá: jednotky tunela a
    announce sú zastavené, brána zdieľania odmieta, relay marketu odmieta.
 
-`GET /api/edge` nesie voľbu ako `path` (`{name, url, tunnel, source}` alebo
-`null`) vedľa koncového bodu `tunnel` každého edge. So zapnutým
+`GET /api/edge` nesie voľbu ako `path` (`{name, url, tunnel, source,
+tier}`, s `cluster` a `member` na sekundárnom spojení a `officialCluster` na
+terciárnom, alebo `null`) vedľa koncového bodu `tunnel` každého edge,
+klastrov v dosahu a vlastného `cluster` zariadenia. So zapnutým
 `losos.proxy.enable` zapíše `lososd` cestu do `/run/losos/edge-path.env`
-(`LOSOS_EDGE_PATH_URL`, `_TUNNEL`, `_SOURCE`, `_TUNNEL_PIN`) a podľa nej
-riadi dve jednotky tunela: zmena cesty reštartuje `losos-tunnel-client` a
-`losos-registrar-announce`, žiadna cesta zapíše `/run/losos/edge-none` a
+(`LOSOS_EDGE_PATH_URL`, `_TUNNEL`, `_SOURCE`, `_TIER`, `_CLUSTER`,
+`_OFFICIAL_CLUSTER`, `_TUNNEL_PIN`) a podľa nej riadi dve jednotky tunela:
+zmena cesty reštartuje `losos-tunnel-client` a `losos-registrar-announce`,
+presun do iného klastra reštartuje aj `losos-mesh-join` a `rke2-agent`, žiadna cesta zapíše `/run/losos/edge-none` a
 zastaví ich (obe jednotky majú `ConditionPathExists=!/run/losos/edge-none`,
 takže ich nič nereštartuje, kým sa edge nevráti). Oba súbory sú na `/run`:
 až do prvého skenovania po štarte jednotky volajú nakonfigurovaný edge, ako
 vždy. Vlastný `ExecStartPre` klienta
 pripne certifikát tunela každého edge do samostatného súboru: certifikát
-nakonfigurovaného edge v `losos.proxy.tunnelPinFile`, certifikát edge v LAN pod
-`/var/secrets/losos-edge-pins/<host>_<port>.pin`. Druhá brána preto nikdy
-nezdedí certifikát prvej. Token zariadenia je rovnaký na každej ceste. Hub ho
+nakonfigurovaného edge v `losos.proxy.tunnelPinFile`, certifikát každého
+iného edge (brány v LAN alebo oficiálneho partnera) pod
+`/var/secrets/losos-edge-pins/<host>_<port>.pin`. Druhý edge preto nikdy
+nezdedí certifikát prvého. Token zariadenia je rovnaký na každej ceste. Hub ho
 má na whiteliste, brána sa ho dozvie pri prvom kontakte a `lososd` ho
 vytvorí pri prvom štarte, keď súbor chýba. Rovnaké je aj jeho
 verejné meno:
@@ -155,7 +265,11 @@ svoj priamy riadok tenanta ponechá rovnaké meno. Relay marketu nepotrebuje
 
 `nix/tests/edge-federation.nix` spúšťa tri stroje (hub, brána, zariadenie) a prechádza
 presne tým: cesta cez LAN, zápis, uplink, návrat k oficiálnemu edge,
-vypnuté, späť.
+vypnuté, späť. `nix/tests/edge-clusters.nix` spúšťa dva oficiálne edge
+jedného oficiálneho klastra, dve brány jedného sekundárneho klastra a
+zariadenie: synchronizáciu klastra, primárne spojenia, prechod medzi
+bránami, terciárnu zálohu, zákaz edge pre zariadenie aj pre bránu a
+držanie vlastnej domény.
 
 ## Čo zostáva lokálne {#what-stays-local}
 

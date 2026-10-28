@@ -214,6 +214,18 @@ const MIGRATIONS: &[&str] = &[
     // 8: the issue tracker (`super::tracker`): projects with keys and
     // workflows, issues, cycles, relations, links, views and the inbox.
     super::tracker::MIGRATION,
+    // 9: a Forgejo wiki (`<name>.wiki.git`) that an earlier start took in
+    // as a repository of its own is its repository's wiki again
+    // (`super::wiki`); the Git data stays where it is. Only a record with
+    // nothing of its own goes.
+    "
+    DELETE FROM repos
+    WHERE lower_name LIKE '%.wiki'
+      AND EXISTS (SELECT 1 FROM repos b
+                  WHERE b.owner_id = repos.owner_id
+                    AND b.lower_name = substr(repos.lower_name, 1, length(repos.lower_name) - 5))
+      AND NOT EXISTS (SELECT 1 FROM issues i WHERE i.repo_id = repos.id);
+    ",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
