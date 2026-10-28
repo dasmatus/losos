@@ -23,6 +23,8 @@ on:
       - "admin-ui/lab/**"
       - "admin-ui/app/diagrams/**"
       - "admin-ui/app/src/lab/**"
+      - "admin-ui/app/src/mdx/**"
+      - "backend/mdx/**"
       - "admin-ui/app/package-lock.json"
       - ".github/workflows/lab.yml"
   pull_request:
@@ -30,6 +32,8 @@ on:
       - "admin-ui/lab/**"
       - "admin-ui/app/diagrams/**"
       - "admin-ui/app/src/lab/**"
+      - "admin-ui/app/src/mdx/**"
+      - "backend/mdx/**"
       - "admin-ui/app/package-lock.json"
       - ".github/workflows/lab.yml"
   workflow_dispatch:
