@@ -137,8 +137,8 @@ while it runs, so neither side can walk away with the other's share.
 - **The buyer cannot cancel a period that is being delivered**, and cannot
   start a refund. Only the edge's checks do.
 
-A card payment someone disputes with their bank is left to Stripe: the edge
-neither pays it out nor refunds it while the dispute is open.
+The edge leaves a card payment someone disputes with their bank to Stripe,
+and neither pays it out nor refunds it while the dispute is open.
 
 ## What is for sale
 
@@ -167,8 +167,8 @@ gone, because the claim still holds Longhorn capacity after the month ends.
   `longhorn`). This runs after every reconcile pass and straight after a paid
   webhook. It is idempotent, since an `AlreadyExists` answer counts as done,
   and it retries every reconcile interval if the apiserver refuses. The order
-  counts as fulfilled only once the claim is `Bound`. A claim left `Pending`
-  (no such storage class, or no capacity) is checked again on every pass.
+  counts as fulfilled only once the claim is `Bound`. The edge checks a claim
+  left `Pending` (no such storage class, or no capacity) again on every pass.
   That assumes an `Immediate`-binding class, which Longhorn's default is. A
   `WaitForFirstConsumer` class never binds, because nothing mounts the claim
   yet. The account view reports a bound claim as
@@ -260,9 +260,9 @@ Bodies are JSON.
 Every route answers 503 when the market is off. On the token routes, a
 tenant without the `market` bit gets 403. The public listing view and the
 webhook belong to no tenant, so they never do. `POST /market/account` returns the 100
-most recent purchases and sales on each side, live ones first. A closed
-listing nobody ordered from is deleted; one with orders stays as long as they
-do. Neither party learns the other's appliance id, and the public
+most recent purchases and sales on each side, live ones first. The edge
+deletes a closed listing nobody ordered from; one with orders stays as long
+as they do. Neither party learns the other's appliance id, and the public
 listing view never shows one.
 
 The edge reserves capacity when it creates the Checkout Session and holds it
@@ -306,14 +306,14 @@ that case.
    `losos.edge.market.webhookSecretSealed` (default
    `/var/secrets/losos-stripe-webhook-secret.cred`). The edge accepts either.
 4. Set `losos.edge.market.enable = true` and `losos.edge.market.returnUrl`,
-   an absolute http(s) URL with no credentials and no `#fragment` (the order
-   and status are appended as query parameters).
+   an absolute http(s) URL with no credentials and no `#fragment` (the edge
+   appends the order and status as query parameters).
 5. Set `losos.edge.tenants.<id>.market = true` for each box allowed to trade.
 
 :::tip[Start in Stripe test mode]
-Start in Stripe **test mode**. The edge has only been tested against a
-stand-in for Stripe. That checks what the edge sends and how it reacts, but
-cannot say whether Stripe accepts it. The first test-mode run settles that.
+Start in Stripe **test mode**. The edge's tests run against a stand-in for
+Stripe. That checks what the edge sends and how it reacts, but cannot say
+whether Stripe accepts it. The first test-mode run settles that.
 :::
 
 ### Test mode and live mode
@@ -341,16 +341,17 @@ that time loses nothing.
 
 ## Safety properties
 
-- The webhook is authenticated by Stripe's HMAC signature over the raw body,
-  with a five minute replay window and a larger body cap than other routes.
-- Stripe may deliver an event twice or out of order. An event the edge has
-  already applied is dropped by its id, and an `account.updated` older than
-  the account state the edge holds is ignored, so a late event cannot take a
-  ready seller off the shelf.
+- Stripe's HMAC signature over the raw body authenticates the webhook, with
+  a five minute replay window and a larger body cap than other routes.
+- Stripe may deliver an event twice or out of order. The edge drops an event
+  it has already applied by its id, and ignores an `account.updated` older
+  than the account state it holds, so a late event cannot take a ready
+  seller off the shelf.
 - A payment only counts when the session id, amount and currency equal what
-  the edge recorded for the order. A mismatch is logged and not fulfilled. If
-  the edge stopped before it wrote the session id down, the signed event's id
-  is adopted, since only this edge's gate can have named the order in it.
+  the edge recorded for the order. The edge logs a mismatch and does not
+  fulfil it. If the edge stopped before it wrote the session id down, it
+  adopts the signed event's id, since only this edge's gate can have named
+  the order in it.
 - **The registrar never holds the Stripe key.** A separate unit,
   `losos-stripe-gate` (`losos-registrar stripe-gate`), is the only process
   that has it. The registrar talks to the gate over a Unix socket
@@ -541,7 +542,7 @@ Binance decides which countries it sells to. At the time of writing
 does not take new purchases from EU residents, so a buyer in the EU is
 refused on Binance's page.
 
-The purchase is between you and Binance: a refund or a dispute goes to
+The purchase is between you and Binance. A refund or a dispute goes to
 Binance, not to the edge.
 
 ### ENS names and sending USDC
@@ -550,9 +551,9 @@ The pane can send USDC from the wallet to an address on any of the edge's
 networks. Where the edge has an ENS endpoint, the pane also shows an Ethereum
 address's primary name beside it and takes a name in place of an address when
 you send on an Ethereum network. Names are looked up on Ethereum mainnet, or on
-Sepolia for a test edge. Only names whose records are on chain resolve: the
-admin page reaches nothing but the box, so names served through an offchain
-gateway are not looked up.
+Sepolia for a test edge. Only names whose records are on chain resolve. The
+admin page reaches nothing but the box, so it does not look up names served
+through an offchain gateway.
 
 ### How you get paid
 
@@ -590,7 +591,7 @@ vpub, tpub or upub on a test edge), or a ranged output descriptor. The key
 can make addresses but cannot spend, and the edge refuses a private key.
 Each order then gets a receive address from that key that no other order has
 used, so the coins go straight to your wallet and show up there like any
-other payment. Use an account you keep for these sales: anything paid to
+other payment. Use an account you keep for these sales. Anything paid to
 its addresses after an order was given one counts toward that order.
 Wallets look about 20 unused addresses ahead; if more than 20
 orders in a row go unpaid, raise the gap limit in your wallet to see the
@@ -633,7 +634,7 @@ On the Market pane, paste two things into the Monero row: your wallet's
 primary address, the one starting with 4 (5 or 9 for a test edge), and
 its private view key. Feather, Cake Wallet and the official wallets show the
 view key next to the seed, under the wallet's keys. The view key lets the
-edge see what arrives at your addresses and nothing more: it cannot spend.
+edge see what arrives at your addresses and nothing more. It cannot spend.
 The box checks the pair before sending it and refuses the spend key by name,
 so a spend key pasted by mistake never leaves the box. Never paste the seed.
 
@@ -643,7 +644,7 @@ wallet. Your own wallet finds them too: it looks ahead for subaddresses it
 has not shown yet. If more than about 200 orders in a row go unpaid, raise
 the subaddress lookahead in your wallet to see the payments after them.
 
-As with Bitcoin, the platform fee is owed by the seller apart and the
+As with Bitcoin, the seller owes the platform fee separately, and the
 whole payment reaches the seller.
 
 ### Paying in Monero
@@ -685,7 +686,7 @@ arrives for every address of its key. Since NU6.3 a payment to an Orchard
 address lands in the Ironwood pool, which uses the same keys; the edge reads
 both.
 
-As with Bitcoin, the platform fee is owed by the seller apart and the
+As with Bitcoin, the seller owes the platform fee separately, and the
 whole payment reaches the seller.
 
 ### Paying in Zcash
@@ -705,7 +706,7 @@ as its network without a link to an explorer.
 A Bitcoin, Monero or Zcash payment reaches the seller's wallet whole, so the
 platform's 4% of those sales is a debt the edge records against the seller.
 The Market pane shows it in its own row under the coin keys, with the limits
-below. It is settled in USDC, in two ways.
+below. The seller settles it in USDC, in two ways.
 
 **From USDC sales.** While a seller owes coin fees, the edge raises the fee
 on that seller's next USDC orders by what is owed, on the Ethereum networks
@@ -740,8 +741,8 @@ from until then.
 
 ## Not covered
 
-- **Disputes, and refunds the edge did not make.** A card dispute is
-  handled in the Stripe dashboard. A refund for any other reason after the
+- **Disputes, and refunds the edge did not make.** The operator handles a
+  card dispute in the Stripe dashboard. A refund for any other reason after the
   seller was paid is the operator's call, with `reverse_transfer` so the
   seller's share comes back too.
 - **Proof that the storage is healthy.** A box counts as online while its

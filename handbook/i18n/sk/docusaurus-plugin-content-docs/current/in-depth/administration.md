@@ -373,7 +373,8 @@ nikdy nie na príkazovom riadku ani v obyčajnom súbore.
 
 **Obnova** si vyžaduje kód na obnovu zariadenia, ktoré zálohu vytvorilo.
 Vráti sa najnovší snapshot: aplikácie sa zastavia, súbory sa synchronizujú
-späť, databázy sa načítajú cez `pg_restore --clean`, aplikácie sa spustia a
+späť, databázy sa načítajú (na zariadení, ktoré ešte používa PostgreSQL, cez
+`pg_restore --clean`), aplikácie sa spustia a
 obnovené `overrides.nix` sa skontroluje ako každé apply a prestavia sa. Kód,
 ktorý zálohu otvoril, sa stane kódom na obnovu tohto zariadenia. Na
 vymazanom alebo preinštalovanom zariadení spustite sprievodcu, nastavte ten
