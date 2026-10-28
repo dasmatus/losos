@@ -1239,7 +1239,7 @@ fn manage_json(managed_by: Option<&str>, status: &crate::edge::EdgeStatus) -> Va
             Value::Null,
             json!(match e {
                 crate::edge::NotManageable::NoLocalEdge => "noLocalEdge",
-                crate::edge::NotManageable::Official => "official",
+                crate::edge::NotManageable::OutsideNetwork => "outsideNetwork",
             }),
         ),
     };
@@ -2584,19 +2584,17 @@ mod tests {
     }
 
     #[test]
-    fn only_a_company_edge_in_use_can_be_let_manage_the_box() {
-        // The fake's edge is official: never a manager.
+    fn only_a_lan_edge_in_use_can_be_let_manage_the_box() {
+        // The fake's edge passed the gateway checks, and a checked gateway
+        // manages the boxes its owner lets it like any other LAN edge.
         let mut fake = FakeLosos::new();
-        let e = cmd_edge_manage(&mut fake, true).unwrap_err();
+        cmd_edge_manage(&mut fake, true).unwrap();
         assert_eq!(
-            e.downcast_ref::<crate::edge::NotManageable>(),
-            Some(&crate::edge::NotManageable::Official)
+            fake.state.managed_by.as_deref(),
+            Some("http://edge.local:8443")
         );
+        cmd_edge_manage(&mut fake, false).unwrap();
         assert_eq!(fake.state.managed_by, None);
-        assert_eq!(
-            cmd_edge(&mut fake).unwrap()["manage"]["refused"],
-            "official"
-        );
 
         let mut fake = fake.with_company_edge();
         let doc = cmd_edge_manage(&mut fake, true).unwrap();
@@ -2630,7 +2628,9 @@ mod tests {
             url: format!("http://{member}.local:8443"),
             source: Source::Lan,
             official: false,
-            rathole: Some(format!("{member}.local:2333")),
+            gateway: None,
+            tunnel: Some(format!("{member}.local:2333")),
+            on_network: true,
             tier: Tier::Secondary,
             cluster: Some(cluster.into()),
             member: Some(member.into()),

@@ -57,6 +57,9 @@ futures-core = { version = "0.3", default-features = false }
 # client (src/access.rs). Shared with edge/registrar by path, so the box
 # and the edge speak one contract (docs/terminal-access.md).
 losos-access = { path = "access" }
+# The secret of a gateway check's TPM credential (crate::edge::Vetter) and
+# keys for the mail key store's tests; the version losos-access and rPGP use.
+rand = "0.8"
 
 # What a hand-written widget may hold, shared with the look plugin so the
 # builder and the store refuse the same things in the same words.
@@ -75,7 +78,7 @@ curve25519-dalek = "5"
 # file on disk, nothing resident between searches, and an update is a row
 # replaced in a transaction. Bundled so the index does not depend on the
 # system's sqlite build having FTS5 compiled in.
-rusqlite = { version = "0.40", features = ["bundled"] }
+rusqlite = { version = "0.41", features = ["bundled"] }
 # The text of ODF and Office Open XML documents is XML inside a zip. Only
 # deflate, the one method office suites write.
 zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"] }
@@ -177,8 +180,6 @@ pgp = { version = "0.21", default-features = false }
 sha1 = "0.11"
 
 [dev-dependencies]
-# Keys for the mail key store's tests (src/mail_pgp.rs); rPGP's own version.
-rand = "0.8"
 # The CLI book's integration-testing trio: run the real binary, assert on its
 # output, and give it a throwaway filesystem.
 assert_cmd = "2"

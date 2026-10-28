@@ -14,8 +14,9 @@ can argue with it.
 
 1. **Internet → edge.** Only the edge is internet-facing. A box opens a
    tunnel outwards and listens on nothing from outside.
-2. **Edge → box.** Noise encrypts the tunnel end to end. The box pins the
-   edge's key on first contact and refuses a changed one.
+2. **Edge → box.** TLS 1.3 encrypts the tunnel end to end, over QUIC or,
+   where UDP is blocked, over TCP. The box pins the edge's certificate on
+   first contact and refuses a changed one.
 3. **LAN → box.** The box serves HTTPS with its own certificate, which you
    trust once per computer. Until you do, someone on the same Wi-Fi who can
    intercept traffic could intercept first use.

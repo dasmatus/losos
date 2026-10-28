@@ -183,14 +183,11 @@ let
 
   # The box's edge token, as nix/tests/edge-vm.nix provisions it.
   proxyTokenValue = "test-proxy-token-0123456789abcdef";
-  bootstrapTokenValue = "test-bootstrap-0123456789abcdef0123";
   proxyToken = "/var/secrets/losos-proxy-token";
-  bootstrapToken = "/var/secrets/losos-rathole-bootstrap";
   secretFiles = {
     systemd.tmpfiles.rules = [
       "d /var/secrets 0700 root root - -"
       "f ${proxyToken} 0600 root root - ${proxyTokenValue}"
-      "f ${bootstrapToken} 0600 root root - ${bootstrapTokenValue}"
     ];
   };
   # The edge's identity, so it is an official edge and makes guest links:
@@ -247,7 +244,6 @@ let
   browserBridge = pkgs.writeText "losos-calls-browser-bridge.py" ''
     import itertools
     import os
-    import selectors
     import socket
     import sys
     import threading
@@ -291,28 +287,34 @@ let
     front = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     front.bind(("127.0.0.1", ${toString mediaPort}))
     open(ready, "w").close()
-    sel = selectors.DefaultSelector()
-    sel.register(front, selectors.EVENT_READ, None)
+
+
+    # One thread per direction and socket: a browser that is slow to read
+    # holds up its own packets only, never another browser's or its own
+    # sending side.
+    def back(up, peer):
+        while True:
+            try:
+                front.sendto(up.recv(65535), peer)
+            except OSError:
+                pass
+
+
     ups = {}
     serial = itertools.count()
     while True:
-        for key, _ in sel.select():
-            try:
-                if key.data is None:
-                    data, peer = front.recvfrom(65535)
-                    up = ups.get(peer)
-                    if up is None:
-                        up = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-                        up.bind(f"{bridge}/p{os.getpid()}-{next(serial)}")
-                        up.connect(f"{bridge}/media")
-                        ups[peer] = up
-                        sel.register(up, selectors.EVENT_READ, (up, peer))
-                    up.send(data)
-                else:
-                    sock, peer = key.data
-                    front.sendto(sock.recv(65535), peer)
-            except OSError:
-                pass
+        try:
+            data, peer = front.recvfrom(65535)
+            up = ups.get(peer)
+            if up is None:
+                up = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+                up.bind(f"{bridge}/p{os.getpid()}-{next(serial)}")
+                up.connect(f"{bridge}/media")
+                ups[peer] = up
+                threading.Thread(target=back, args=(up, peer), daemon=True).start()
+            up.send(data)
+        except OSError:
+            pass
   '';
   chromiumInOwnNetwork = pkgs.writeShellScript "chromium-in-own-network" ''
     exec ${pkgs.util-linux}/bin/unshare -rn ${pkgs.runtimeShell} -c '
@@ -374,12 +376,11 @@ pkgs.testers.nixosTest {
           calls.udpPort = mediaPort;
           proxy = lib.mkIf throughEdge {
             enable = true;
-            edgeRatholeEndpoint = "edge:2333";
+            edgeTunnelEndpoint = "edge:2333";
             registrarUrl = "http://edge:8443";
             hostname = "mattbox.losos.cfd";
             applianceId = "mattbox";
             tokenFile = proxyToken;
-            bootstrapTokenFile = bootstrapToken;
             heartbeatInterval = "3s";
             registrar.package = lososPkgs.losos-registrar;
           };
@@ -493,10 +494,9 @@ pkgs.testers.nixosTest {
           acmeEmail = "test@losos.cfd";
           registrarApiBind = "::";
           registrarApiPort = 8443;
-          ratholeBindPort = 2333;
-          ratholePortRange = "50000-50010";
+          tunnelBindPort = 2333;
+          tunnelPortRange = "50000-50010";
           reconcileInterval = "2s";
-          bootstrapTokenFile = bootstrapToken;
           tenants.mattbox = {
             hostname = "mattbox.losos.cfd";
             tokenFile = proxyToken;
@@ -561,7 +561,7 @@ pkgs.testers.nixosTest {
     if EDGE is not None:
         EDGE.wait_for_unit("losos-registrar.service")
         # lososd starts the tunnel once its scan finds the edge.
-        box.wait_until_succeeds("systemctl is-active losos-rathole-client.service", timeout=300)
+        box.wait_until_succeeds("systemctl is-active losos-tunnel-client.service", timeout=300)
     box.wait_for_unit("lososd.service")
     box.wait_for_unit("nginx.service")
     box.wait_for_unit("losos-chat.service")
@@ -665,7 +665,6 @@ pkgs.testers.nixosTest {
     os.environ.setdefault("HOME", os.environ.get("TMPDIR", "/tmp"))
     from playwright.sync_api import sync_playwright
 
-    import selectors
     import socket
     import sys
     import tempfile
@@ -703,36 +702,38 @@ pkgs.testers.nixosTest {
     def media_shim():
         """Each browser socket the bridges carry gets a forwarded port of its
         own (peerPorts in the Nix above), and the replies on it go back to
-        that socket."""
+        that socket, each on a thread of its own so that one slow browser
+        holds up nobody else."""
         front = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
         front.bind(f"{BRIDGE}/media")
-        sel = selectors.DefaultSelector()
-        sel.register(front, selectors.EVENT_READ, None)
         free = list(range(${toString shimBase}, ${toString (shimBase + peerPorts)}))
         ups = {}
-        while True:
-            for key, _ in sel.select():
+
+        def back(up, peer):
+            while True:
                 try:
-                    if key.data is None:
-                        data, peer = front.recvfrom(65535)
-                        up = ups.get(peer)
-                        if up is None:
-                            if not free:
-                                print(f"media shim: no port left for {peer}")
-                                continue
-                            up = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                            up.connect(("127.0.0.1", free.pop(0)))
-                            ups[peer] = up
-                            sel.register(up, selectors.EVENT_READ, (up, peer))
-                        up.send(data)
-                        SHIM[peer] = SHIM.get(peer, (0, 0))
-                        SHIM[peer] = (SHIM[peer][0] + 1, SHIM[peer][1])
-                    else:
-                        sock, peer = key.data
-                        front.sendto(sock.recv(65535), peer)
-                        SHIM[peer] = (SHIM[peer][0], SHIM[peer][1] + 1)
+                    front.sendto(up.recv(65535), peer)
+                    SHIM[peer] = (SHIM[peer][0], SHIM[peer][1] + 1)
                 except OSError:
                     pass
+
+        while True:
+            try:
+                data, peer = front.recvfrom(65535)
+                up = ups.get(peer)
+                if up is None:
+                    if not free:
+                        print(f"media shim: no port left for {peer}")
+                        continue
+                    up = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    up.connect(("127.0.0.1", free.pop(0)))
+                    ups[peer] = up
+                    SHIM[peer] = (0, 0)
+                    threading.Thread(target=back, args=(up, peer), daemon=True).start()
+                up.send(data)
+                SHIM[peer] = (SHIM[peer][0] + 1, SHIM[peer][1])
+            except OSError:
+                pass
 
     SHIM: dict[str, tuple[int, int]] = {}
     threading.Thread(target=socks_relay, daemon=True).start()

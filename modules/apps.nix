@@ -290,13 +290,14 @@ let
     "172.16.0.0/12"
     "192.168.0.0/16"
   ];
+  ipv6Refuse = "INPUT -p tcp --dport ${toString cfg.ports.from}:${toString cfg.ports.to} -j REJECT --reject-with tcp-reset";
   traefikMiddleware = yaml.generate "losos-traefik-middleware.yml" {
     http.middlewares.lan-only.ipAllowList.sourceRange = lanRanges;
   };
 
-  # One entrypoint per port of the range, on every address as nginx's
-  # forwards were. No read timeout: an upload to an app is as long as it
-  # is, and Traefik's default cuts a request at 60 s.
+  # One entrypoint per port of the range, on every address. No read timeout:
+  # an upload to an app is as long as it is, and Traefik's default cuts a
+  # request at 60 s.
   traefikStatic = yaml.generate "losos-traefik.yml" {
     global = {
       checkNewVersion = false;
@@ -803,11 +804,25 @@ in
         '';
       };
 
-      networking.firewall.allowedTCPPortRanges = [
-        {
-          inherit (cfg.ports) from to;
-        }
-      ];
+      networking.firewall = {
+        allowedTCPPortRanges = [
+          {
+            inherit (cfg.ports) from to;
+          }
+        ];
+        # IPv4 only, as nginx's forwards were. `lan-only` can name the LAN
+        # only there: an IPv6 neighbour has a global address like anyone
+        # else's. Go listens on both families for any wildcard, so the
+        # firewall resets IPv6 connections to the range, and a laptop that
+        # tries IPv6 first falls back to IPv4 instead of reading a 403.
+        extraCommands = lib.mkIf config.networking.firewall.enable ''
+          ip6tables -w -D ${ipv6Refuse} 2>/dev/null || true
+          ip6tables -w -I ${ipv6Refuse}
+        '';
+        extraStopCommands = lib.mkIf config.networking.firewall.enable ''
+          ip6tables -w -D ${ipv6Refuse} 2>/dev/null || true
+        '';
+      };
 
       assertions = [
         {

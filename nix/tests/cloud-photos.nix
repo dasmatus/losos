@@ -241,7 +241,10 @@ pkgs.testers.nixosTest {
         run_pass()
         print(box.succeed("journalctl -u losos-cloud-photos.service -o cat | grep 'photos read'"))
         run_pass()
-        box.succeed("journalctl -u losos-cloud-photos.service -o cat | tail -n 3 | grep -q '^0 photos read'")
+        # The last pass found nothing new (systemd's own lines come after it).
+        box.succeed("journalctl -u losos-cloud-photos.service -o cat | grep 'photos read' | tail -n 1 | grep -q '^0 photos read'")
+        # The pass right after boot waits for the server instead of failing.
+        box.fail("journalctl -u losos-cloud-photos.service -o cat | grep -q 'database is locked'")
         data = call("GET", "/photos")
         print(json.dumps(data["index"]))
         assert data["index"]["total"] == 13 and data["index"]["done"] == 13, data["index"]

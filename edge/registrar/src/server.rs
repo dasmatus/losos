@@ -29,7 +29,7 @@
 //! tenant loudly. Without that check a zero-byte token file authenticates a
 //! request carrying `"token": ""`, which is a complete tenant takeover: the
 //! caller gets the victim's Traefik router, its Let's Encrypt cert, and a
-//! rathole service provisioned with an empty token.
+//! tunnel service provisioned with an empty token.
 //!
 //! `/cluster/join` is the mesh half and reuses all of the above: the same
 //! per-appliance token, the same [`authenticate`], the same body cap and
@@ -73,13 +73,12 @@ use tokio::sync::{Mutex, Notify, Semaphore};
 
 use crate::action::Action;
 use crate::config::{
-    desired_config_with_hosts, uplink_config, vm_routes, EdgeOpts, TenantView, UplinkService,
-    UplinkTarget,
+    desired_config_with_hosts, uplink_config, vm_routes, TenantView, UplinkService, UplinkTarget,
 };
 use crate::domains::{self, Doh, DomainError, Domains, DomainsView, Vouched};
 use crate::error::ApiError;
+use crate::gateway::Gateway;
 use crate::hardware::{Catalogue, Line};
-use crate::identity::Identity;
 use crate::market::{
     AccountView, CheckoutView, HardwareCheckoutView, Market, MarketError, NewListing, NewOrder,
     OnboardView, Provision, PublicListing, Sharing,
@@ -111,9 +110,8 @@ const ZONE_FILE_MODE: u32 = 0o644;
 
 /// Files that hold nothing secret (the hub's routes beside the registry).
 const PUBLIC_FILE_MODE: u32 = 0o644;
-/// rathole server config carries service tokens → owner-only. Shared with
-/// the `seed` subcommand, which writes the same file at first boot.
-pub(crate) const RATHOLE_FILE_MODE: u32 = 0o600;
+/// The tunnel's files carry service tokens → owner-only.
+const TUNNEL_FILE_MODE: u32 = 0o600;
 /// The box ids `losos-hidden-sync` reads, as root: the ids are on the
 /// public routes anyway, but nothing else needs them.
 const HIDDEN_SERVICES_FILE_MODE: u32 = 0o600;
@@ -165,16 +163,20 @@ const COIN_ROUTES: [&str; 3] = [
     "/market/taps/confirm",
 ];
 
-/// Budget for `POST /identity/cert`, which asks GitHub who the pusher is
+/// Budget for `/operator/tokens*`, which asks GitHub who the caller is
 /// before it looks at the list: one round trip to api.github.com, bounded
 /// by [`GITHUB_TIMEOUT`], plus the file write.
-const IDENTITY_PUSH_TIMEOUT: Duration = Duration::from_secs(GITHUB_TIMEOUT.as_secs() + 3);
-const IDENTITY_PUSH_ROUTE: &str = "/identity/cert";
+const GITHUB_ROUTE_TIMEOUT: Duration = Duration::from_secs(GITHUB_TIMEOUT.as_secs() + 3);
+/// `POST /passport/attest` waits its turn at the TPM
+/// ([`crate::gateway::TPM_WAIT`]) and then runs half a dozen TPM commands.
+const PASSPORT_ATTEST_ROUTE: &str = "/passport/attest";
+const PASSPORT_ATTEST_TIMEOUT: Duration =
+    Duration::from_secs(crate::gateway::TPM_WAIT.as_secs() + 20);
 /// `POST /operator/call` may seal a secret, which runs `systemd-creds` and
 /// restarts a unit (`crate::operator`); the script has 20 s of it.
 const OPERATOR_CALL_ROUTE: &str = "/operator/call";
 const OPERATOR_CALL_TIMEOUT: Duration = Duration::from_secs(25);
-/// How long the edge waits on GitHub's `GET /user` for one push.
+/// How long the edge waits on GitHub's `GET /user` for one operator call.
 const GITHUB_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Requests allowed in flight at once. Every authenticated *and*
@@ -242,10 +244,9 @@ struct AppState {
     /// Chat requests in flight (`llm::MAX_CHATS`), which run outside
     /// [`guard`].
     chats: Arc<Semaphore>,
-    /// This edge's identity key and, once pushed, its certificate
-    /// (`crate::identity`); `None` (no `--identity-key-file`) makes every
-    /// `/identity*` route a 404, i.e. an edge that cannot become official.
-    identity: Option<Arc<Identity>>,
+    /// An open gateway's passport and TPM (`crate::gateway`); `None` (no
+    /// `--gateway-key-file`) makes every `/passport*` route a 404.
+    gateway: Option<Arc<Gateway>>,
     /// One push at a time: the handler holds this across its GitHub round
     /// trip, so a flood of bogus pushes costs GitHub one request at a time
     /// rather than [`MAX_INFLIGHT`] of them.
@@ -347,7 +348,7 @@ struct HeartbeatReq {
 
 #[derive(Debug, Serialize)]
 struct RegisterResp {
-    rathole_port: u16,
+    tunnel_port: u16,
 }
 
 /// A `/cluster/join` body. `share_compute` and the two window bounds default
@@ -470,6 +471,12 @@ where
         None => None,
     };
     let recon = tokio::spawn(reconciler(app.state.clone()));
+    // The Statistics page's readings of Traefik (`crate::stats`).
+    let scrape = app
+        .state
+        .manage
+        .clone()
+        .map(|m| tokio::spawn(manage::scrape_loop(m)));
     // The uplink is a loop of its own: it talks to another machine and must
     // never hold up the local reconcile.
     let uplink = app
@@ -510,6 +517,10 @@ where
     // panic inside it surfaces instead of being silently detached.
     recon.abort();
     let _ = recon.await;
+    if let Some(scrape) = scrape {
+        scrape.abort();
+        let _ = scrape.await;
+    }
     if let Some(calls) = calls {
         calls.abort();
         let _ = calls.await;
@@ -570,7 +581,7 @@ impl App {
     }
 
     /// One reconciler pass, as the timer would run it: prune, decide the
-    /// Traefik routes, rewrite the rathole file if anything changed, publish the compute
+    /// Traefik routes, rewrite the tunnel file if anything changed, publish the compute
     /// windows, then fulfil paid market orders.
     pub async fn reconcile(&self) -> Result<()> {
         check_domains(&self.state).await;
@@ -628,19 +639,13 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         }
     };
 
-    // Opened before the API accepts: the key is made here on the first start
-    // if the file is missing (the private half never travels), and the
-    // certificate, if one has been pushed, is checked to be for that key.
-    let identity = match (&opts.identity_key_file, &opts.identity_cert_file) {
-        (Some(key), Some(cert)) => Some(Arc::new(
-            Identity::open(Path::new(key), Path::new(cert)).wrap_err("open the edge identity")?,
+    // Opened before the API accepts: the edge key is made here on the first
+    // start if the file is missing, so the private half never travels.
+    let gateway = match &opts.gateway {
+        Some(g) => Some(Arc::new(
+            Gateway::open(g.clone()).wrap_err("open the gateway's edge key")?,
         )),
-        (None, None) => None,
-        _ => {
-            return Err(miette!(
-                "--identity-key-file and --identity-cert-file go together; one was given without the other"
-            ))
-        }
+        None => None,
     };
 
     // Opened before the API accepts, like the market: an unreadable
@@ -747,7 +752,7 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         onramp,
         inference,
         chats: llm::chats(),
-        identity,
+        gateway,
         push_lock: Arc::new(Mutex::new(())),
         http: reqwest::Client::builder()
             .timeout(GITHUB_TIMEOUT)
@@ -794,16 +799,16 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
 
     let router = Router::new()
         .route("/health", get(health))
-        .route("/noise-public-key", get(noise_public_key))
+        .route("/tunnel-pin", get(tunnel_pin))
         .route("/calls/relay", get(calls_relay_info))
         .route("/calls/guest-link", post(calls_guest_link))
-        .route("/identity", get(identity_route))
-        // The identity's other half: the public key an operator signs, and
-        // the push that installs the signed certificate. The push is the one
-        // route authenticated by a GitHub account rather than an appliance
-        // token: see `identity_push`.
-        .route("/identity/public-key", get(identity_public_key))
-        .route(IDENTITY_PUSH_ROUTE, post(identity_push))
+        // An open gateway's passport (`crate::gateway`): unauthenticated, a
+        // box asks before it trusts anything. The settings route is
+        // authenticated by the owner's OpenPGP signature over the body.
+        .route("/passport", get(passport_route))
+        .route("/passport/edge-key", get(passport_edge_key))
+        .route("/passport/attest", post(passport_attest))
+        .route("/passport/settings", post(passport_settings))
         .route("/register", post(register))
         .route("/heartbeat", post(heartbeat))
         .route("/deregister", post(deregister))
@@ -866,7 +871,7 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
             post(onramp_webhook).layer(DefaultBodyLimit::max(MAX_WEBHOOK_BYTES)),
         )
         // Custom domains (crate::domains). 503 unless the edge serves a zone
-        // and holds an installed identity certificate; appliance token like
+        // and is a claimed gateway (crate::gateway); appliance token like
         // the market. None of them looks anything up in DNS: an add kicks
         // the reconciler, which does, outside the request's 5 s budget.
         .route("/domains/list", post(domains_list))
@@ -945,10 +950,10 @@ async fn guard(State(st): State<AppState>, req: Request, next: Next) -> Response
         STRIPE_ROUTE_TIMEOUT
     } else if COIN_ROUTES.contains(&req.uri().path()) {
         COIN_ROUTE_TIMEOUT
-    } else if req.uri().path() == IDENTITY_PUSH_ROUTE
-        || req.uri().path().starts_with("/operator/tokens")
-    {
-        IDENTITY_PUSH_TIMEOUT
+    } else if req.uri().path().starts_with("/operator/tokens") {
+        GITHUB_ROUTE_TIMEOUT
+    } else if req.uri().path() == PASSPORT_ATTEST_ROUTE {
+        PASSPORT_ATTEST_TIMEOUT
     } else if req.uri().path() == OPERATOR_CALL_ROUTE {
         OPERATOR_CALL_TIMEOUT
     } else {
@@ -967,13 +972,14 @@ async fn health() -> &'static str {
     "ok"
 }
 
-/// The tunnel's Noise public key, for appliances to pin on first start.
+/// SHA-256 of the tunnel's certificate (`crate::tunnel`), for appliances to
+/// pin on first start.
 ///
-/// Unauthenticated on purpose: it is a public key, and the appliance fetches it
-/// before it holds any credential, over the TLS the edge is fronted with.
-/// 404 when Noise is off or the key has not been generated yet.
-async fn noise_public_key(State(st): State<AppState>) -> Response {
-    let Some(path) = &st.opts.noise_public_key_file else {
+/// Unauthenticated on purpose: it names a public certificate, and the
+/// appliance fetches it before it holds any credential, over the TLS the
+/// edge is fronted with. 404 when the tunnel has not made its certificate yet.
+async fn tunnel_pin(State(st): State<AppState>) -> Response {
+    let Some(path) = &st.opts.tunnel_pin_file else {
         return StatusCode::NOT_FOUND.into_response();
     };
     match tokio::fs::read_to_string(path).await {
@@ -1007,12 +1013,7 @@ async fn calls_guest_link(
     Json(req): Json<GuestLinkReq>,
 ) -> Result<Response, ApiError> {
     let tenant = authenticate(&st, &req.appliance_id, &req.token).await?;
-    let official = st
-        .identity
-        .as_ref()
-        .and_then(|i| i.cert())
-        .is_some_and(|c| c.not_after > crate::market::now_secs());
-    if !official {
+    if !claimed_gateway(&st) {
         return Ok((
             StatusCode::FORBIDDEN,
             Json(serde_json::json!({ "error": "notOfficial" })),
@@ -1045,51 +1046,130 @@ async fn calls_relay_info(State(st): State<AppState>) -> Response {
     }
 }
 
-/// `GET /identity?nonce=<hex>` — who this edge is, and proof it holds the
-/// certified key (`crate::identity`). Unauthenticated: a box asks before it
-/// trusts anything, and nothing here is secret. 404 for an edge without an
-/// identity key, or with a key but no certificate yet (a company edge, or
-/// one whose certificate has not been pushed), 400 for a nonce the edge
-/// will not sign.
-async fn identity_route(
+/// A gateway whose owner has claimed it: the settings were measured at this
+/// boot. What lets this edge offer what only a trusted edge may; each box
+/// checks for itself.
+fn claimed_gateway(st: &AppState) -> bool {
+    st.gateway.as_ref().is_some_and(|g| g.measured().is_some())
+}
+
+#[derive(Deserialize)]
+struct PassportQuery {
+    #[serde(default)]
+    nonce: String,
+}
+
+/// `GET /passport?nonce=<hex>` — the measured settings, the edge key's
+/// signature over the nonce, and the TPM's keys (`crate::gateway`). 404 on
+/// an edge that is not a gateway or not claimed yet, 400 for a nonce it will
+/// not sign.
+async fn passport_route(
     State(st): State<AppState>,
-    axum::extract::Query(q): axum::extract::Query<IdentityQuery>,
+    axum::extract::Query(q): axum::extract::Query<PassportQuery>,
 ) -> Response {
-    let Some(id) = &st.identity else {
+    let Some(gw) = &st.gateway else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    if !crate::identity::nonce_ok(&q.nonce) {
+    if !crate::gateway::nonce_ok(&q.nonce) {
         return (
             StatusCode::BAD_REQUEST,
             "nonce must be 32 to 128 hex characters",
         )
             .into_response();
     }
-    match id.answer(&q.nonce) {
-        Some(answer) => Json(answer).into_response(),
+    match gw.hello(&q.nonce) {
+        Ok(Some(hello)) => Json(hello).into_response(),
+        Ok(None) => StatusCode::NOT_FOUND.into_response(),
+        Err(e) => {
+            tracing::error!(target: Action::Passport.target(), "the TPM files: {e}");
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "the TPM identity is not ready",
+            )
+                .into_response()
+        }
+    }
+}
+
+/// `GET /passport/edge-key` — the Ed25519 public key a passport must name,
+/// 64 hex characters. 404 on an edge that is not a gateway.
+async fn passport_edge_key(State(st): State<AppState>) -> Response {
+    match &st.gateway {
+        Some(gw) => format!("{}\n", gw.public_key()).into_response(),
         None => StatusCode::NOT_FOUND.into_response(),
     }
 }
 
-#[derive(Deserialize)]
-struct IdentityQuery {
-    #[serde(default)]
-    nonce: String,
-}
-
-/// `GET /identity/public-key` — this edge's Ed25519 public key, 64 hex
-/// characters, the thing the root signs. Unauthenticated, like
-/// `/noise-public-key`: a public key is public, and `provision edge` reads
-/// it before it can issue anything. 404 for an edge with no identity key.
-async fn identity_public_key(State(st): State<AppState>) -> Response {
-    match &st.identity {
-        Some(id) => id.public_key().to_string().into_response(),
-        None => StatusCode::NOT_FOUND.into_response(),
+/// `POST /passport/attest` — open the box's credential and quote PCRs 4, 11
+/// and 15 (`crate::gateway::Gateway::attest`). One at a time; 503 when the
+/// TPM stays busy.
+async fn passport_attest(
+    State(st): State<AppState>,
+    Json(req): Json<losos_access::gateway::check::AttestRequest>,
+) -> Response {
+    let Some(gw) = &st.gateway else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    if gw.measured().is_none() {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    match gw.attest(req).await {
+        Ok(answer) => Json(answer).into_response(),
+        Err(e @ crate::gateway::AttestError::BadRequest(_)) => {
+            (StatusCode::BAD_REQUEST, e.to_string()).into_response()
+        }
+        Err(e @ crate::gateway::AttestError::Busy) => {
+            (StatusCode::SERVICE_UNAVAILABLE, e.to_string()).into_response()
+        }
+        Err(e) => {
+            tracing::error!(target: Action::Passport.target(), "attestation: {e}");
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+        }
     }
 }
 
-/// The GitHub gate the operator routes share (`POST /identity/cert` and
-/// `/operator/tokens*`): the `Authorization: Bearer` header is a GitHub
+/// `POST /passport/settings` — new settings, signed by the owner with
+/// OpenPGP (`crate::gateway::Claim`). On success the file is written and
+/// the machine reboots to measure it, so the answer is the last thing this
+/// boot says.
+async fn passport_settings(
+    State(st): State<AppState>,
+    Json(claim): Json<crate::gateway::Claim>,
+) -> Response {
+    let Some(gw) = &st.gateway else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let now = i64::try_from(crate::market::now_secs()).unwrap_or(i64::MAX);
+    match gw.claim(&claim, now) {
+        Ok(owner) => Json(serde_json::json!({
+            "accepted": true,
+            "owner": owner,
+            "rebooting": true,
+        }))
+        .into_response(),
+        // JSON like the manage page's other answers: it shows `error`.
+        Err(e @ crate::gateway::ClaimError::NotTheOwner) => (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        )
+            .into_response(),
+        Err(e @ crate::gateway::ClaimError::Write(_)) => {
+            tracing::error!(target: Action::Passport.target(), "settings: {e}");
+            (
+                StatusCode::INSUFFICIENT_STORAGE,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            )
+                .into_response()
+        }
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+/// The GitHub gate of the operator routes (`/operator/tokens*`): the `Authorization: Bearer` header is a GitHub
 /// token, GitHub says whose it is, and the account's numeric id must be on
 /// the allowlist compiled into this binary (`operators.json`). `what` names
 /// the request in the journal. The caller holds [`AppState::push_lock`], so
@@ -1118,7 +1198,7 @@ async fn github_operator(
     let operators = match crate::provision::Operators::committed() {
         Ok(o) => o,
         Err(e) => {
-            tracing::error!(target: Action::Identity.target(), "operators.json: {e}");
+            tracing::error!(target: Action::Passport.target(), "operators.json: {e}");
             return Err(Box::new(StatusCode::INTERNAL_SERVER_ERROR.into_response()));
         }
     };
@@ -1138,13 +1218,13 @@ async fn github_operator(
             } else {
                 StatusCode::BAD_GATEWAY
             };
-            tracing::warn!(target: Action::Identity.target(), "{what} refused: {e}");
+            tracing::warn!(target: Action::Passport.target(), "{what} refused: {e}");
             return Err(Box::new((status, format!("GitHub: {e}")).into_response()));
         }
     };
     let Some(operator) = operators.find(user.id).cloned() else {
         tracing::warn!(
-            target: Action::Identity.target(),
+            target: Action::Passport.target(),
             "{what} refused: {} (GitHub id {}) is not on the operator allowlist",
             user.login, user.id
         );
@@ -1160,80 +1240,6 @@ async fn github_operator(
         ));
     };
     Ok((user, operator))
-}
-
-/// `POST /identity/cert` — install the certificate the root signed for this
-/// edge's key. The body is the certificate JSON (`crate::identity::Cert`);
-/// the `Authorization: Bearer` header is a **GitHub token**, not an
-/// appliance token: the edge asks GitHub whose it is and admits the push
-/// only if that account's numeric id is on the operator allowlist compiled
-/// into this binary (`operators.json`, the same list `provision` checks on
-/// the operator's machine). The checks run cheapest first, so a flood of
-/// unauthenticated or mis-addressed pushes never reaches GitHub: the body
-/// must parse and name *this* key before the token is looked at, and one
-/// push holds [`AppState::push_lock`] across the round trip.
-///
-/// Answers: 200 with `{installed, name, url, not_after, operator}`; 400 a
-/// body that is not a certificate for this key; 401 no token, or one GitHub
-/// does not accept; 403 an account that is not listed; 404 no identity
-/// key on this edge; 502 GitHub unreachable; 507 the file could not be
-/// written. The root's signature is not checked here (the edge need not
-/// hold the root public key): the boxes check it, and `provision edge`
-/// probes `/identity` right after the push and says so.
-async fn identity_push(State(st): State<AppState>, headers: HeaderMap, body: Bytes) -> Response {
-    let Some(id) = &st.identity else {
-        return (
-            StatusCode::NOT_FOUND,
-            "this edge has no identity key (losos.edge.identity.keyFile)",
-        )
-            .into_response();
-    };
-    let cert: crate::identity::Cert = match serde_json::from_slice(&body) {
-        Ok(c) => c,
-        Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                format!("the body is not a certificate: {e}"),
-            )
-                .into_response()
-        }
-    };
-    if cert.public_key != id.public_key() {
-        return (
-            StatusCode::BAD_REQUEST,
-            crate::identity::Pushed::OtherKey.to_string(),
-        )
-            .into_response();
-    }
-    let _one_at_a_time = st.push_lock.lock().await;
-    let (user, operator) = match github_operator(&st, &headers, "push").await {
-        Ok(found) => found,
-        Err(refused) => return *refused,
-    };
-
-    let now = crate::market::now_secs();
-    match id.install(cert.clone(), now) {
-        Ok(()) => {
-            tracing::info!(
-                target: Action::Identity.target(),
-                "certificate installed by {} (GitHub id {}, listed as {}): {} at {}, until {}",
-                user.login, user.id, operator.github_login, cert.name, cert.url, cert.not_after
-            );
-            Json(serde_json::json!({
-                "installed": true,
-                "name": cert.name,
-                "url": cert.url,
-                "not_after": cert.not_after,
-                "operator": user.login,
-            }))
-            .into_response()
-        }
-        Err(e @ crate::identity::Pushed::Write(_)) => {
-            tracing::error!(target: Action::Identity.target(), "push by {}: {e}", user.login);
-            (StatusCode::INSUFFICIENT_STORAGE, e.to_string()).into_response()
-        }
-        Err(e) => (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
-    }
 }
 
 async fn register(
@@ -1266,7 +1272,7 @@ async fn register(
         tenant.hostname,
     );
     st.notify.notify_one();
-    Ok(Json(RegisterResp { rathole_port: port }))
+    Ok(Json(RegisterResp { tunnel_port: port }))
 }
 
 /// Open enrolment (`losos.edge.lan.openEnrolment`): a `/register` for an id
@@ -2158,21 +2164,15 @@ struct DomainReq {
 }
 
 /// The domain store, but only on an edge that may hand out names: one that
-/// serves a zone and holds an unexpired identity certificate an operator
-/// pushed (`POST /identity/cert`, gated by the GitHub allowlist). The root
-/// signature is checked by the boxes, which also refuse to relay domain
-/// requests to an edge that is not official; this is the edge's own half.
+/// serves a zone and is a claimed gateway. Whether to trust it is the
+/// boxes' decision (they check its passport, TPM and fees, and refuse to
+/// relay domain requests to an edge that fails); this is the edge's own half.
 fn domains_of(st: &AppState) -> Result<&Arc<Domains>, ApiError> {
     let domains = st
         .domains
         .as_ref()
         .ok_or(ApiError::Domains(DomainError::Unconfigured))?;
-    let official = st
-        .identity
-        .as_ref()
-        .and_then(|i| i.cert())
-        .is_some_and(|c| c.not_after > crate::market::now_secs());
-    if !official {
+    if !claimed_gateway(st) {
         return Err(ApiError::Domains(DomainError::Unconfigured));
     }
     Ok(domains)
@@ -3360,8 +3360,6 @@ async fn reconciler(st: AppState) {
 ///   written, and since the next tick hit the same file it aborted identically
 ///   every `reconcile_interval` forever. One tenant's missing secret froze
 ///   registration, hostname changes and pruning for every tenant on the edge.
-///   The bootstrap token stays fatal: it is not per-tenant, and rathole's
-///   `[server]` block cannot be rendered without it.
 ///
 /// It also publishes the mesh compute windows, but only *after* both proxy
 /// config files are on disk, and it logs rather than propagating a failure
@@ -3373,7 +3371,7 @@ async fn reconciler(st: AppState) {
 /// is only evidence that an appliance went away if this registrar was able
 /// to hear it: under a flood of slow anonymous requests every `/heartbeat`
 /// was answered 503, the prune then took each tenant for dead, and the pass
-/// below removed every router and rathole service on the edge. An attacker
+/// below removed every router and tunnel service on the edge. An attacker
 /// with no token at all could take every appliance's public site down for as
 /// long as the flood lasted. A dead appliance kept a little longer costs a
 /// router that answers 502.
@@ -3395,24 +3393,13 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
     };
     let views = st.reg.views().await;
     let tenants = all_tenants(st).await.context("load tenants whitelist")?;
-    let bootstrap = tokio::fs::read_to_string(&st.opts.bootstrap_token_file)
-        .await
-        .into_diagnostic()
-        .context("read bootstrap token file")?;
-    let bootstrap = bootstrap.trim();
-    if let Some(fault) = token_fault(bootstrap) {
-        return Err(miette!(
-            "bootstrap token file {} is {fault}",
-            st.opts.bootstrap_token_file
-        ));
-    }
 
     let mut enriched: Vec<TenantView> = Vec::with_capacity(views.len());
     let mut stale: Vec<String> = Vec::new();
     let mut rehome: Vec<(String, String)> = Vec::new();
     for v in &views {
         // Tenants removed from the whitelist are dropped here and pruned from
-        // the registry so their rathole service + Traefik router disappear.
+        // the registry so their tunnel service + Traefik router disappear.
         let Some(entry) = tenants.get(&v.id) else {
             stale.push(v.id.clone());
             continue;
@@ -3462,7 +3449,7 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
         enriched.push(TenantView {
             id: v.id.clone(),
             hostname: hostname.to_string(),
-            rathole_port: v.rathole_port,
+            tunnel_port: v.tunnel_port,
             token: token.to_string(),
             llm_port: None,
         });
@@ -3529,7 +3516,7 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
         enriched.push(TenantView {
             id: r.key,
             hostname: r.hostname,
-            rathole_port: r.rathole_port,
+            tunnel_port: r.tunnel_port,
             token,
             llm_port: None,
         });
@@ -3561,22 +3548,6 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
         }
     }
 
-    let opts = EdgeOpts {
-        rathole_bind_addr: st.opts.rathole_bind_addr.clone(),
-        rathole_bind_port: st.opts.rathole_bind_port,
-        bootstrap_token: bootstrap.to_string(),
-        noise_private_key: match &st.opts.noise_private_key_file {
-            None => None,
-            Some(f) => Some(
-                tokio::fs::read_to_string(f)
-                    .await
-                    .into_diagnostic()
-                    .with_context(|| format!("read noise private key file {f}"))?
-                    .trim()
-                    .to_string(),
-            ),
-        },
-    };
     // The domain half: a name in the edge's zone for each box Stripe vouches
     // for, every proved custom domain, and the zone file itself. Computed
     // before the Traefik routes so both describe the same moment.
@@ -3590,22 +3561,22 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
             .collect();
         for t in &mut enriched {
             if lending.contains(&t.id) {
-                t.llm_port = inference.llm_port(t.rathole_port);
+                t.llm_port = inference.llm_port(t.tunnel_port);
             }
         }
     }
-    let files = desired_config_with_hosts(&enriched, &opts, &extra_hosts);
+    let files = desired_config_with_hosts(&enriched, &extra_hosts);
 
     // Traefik polls the provider listener and picks this up within its poll
     // interval; nothing is written for it.
     let changed_traefik = st.discovery.set_tenants(files.traefik.clone());
-    let changed_rathole = write_if_changed(
-        Path::new(&st.opts.rathole_config),
-        &files.rathole_toml,
-        RATHOLE_FILE_MODE,
+    let changed_tunnel = write_if_changed(
+        Path::new(&st.opts.tunnel_config),
+        &files.tunnel_json,
+        TUNNEL_FILE_MODE,
     )
     .await
-    .with_context(|| format!("write {}", st.opts.rathole_config))?;
+    .with_context(|| format!("write {}", st.opts.tunnel_config))?;
 
     // Tor and I2P (crate::hidden): never fatal, like the zone below. A box
     // whose address is not made yet is routed on a later tick.
@@ -3620,13 +3591,6 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
         },
     };
 
-    // No explicit reload signal: rathole 0.5 hot-reloads via its `notify`
-    // file-watcher, which re-applies the config the instant server.toml is
-    // rewritten above. SIGHUP has no handler in rathole 0.5 (default action
-    // terminate) — sending it would kill the process and systemd's
-    // Restart=always would resurrect it ~5s later, a needless tunnel outage
-    // on every tenant change. The atomic temp+rename above is the only
-    // signal rathole needs.
     // Never fatal, like the windows below: a zone that cannot be written
     // costs DNS answers, not tunnels.
     let changed_zone = match write_zone(st, &zone_names).await {
@@ -3668,7 +3632,7 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
     if pruned
         || repaired
         || changed_traefik
-        || changed_rathole
+        || changed_tunnel
         || changed_hidden
         || dropped_windows
         || changed_windows
@@ -3676,11 +3640,11 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
     {
         tracing::info!(
             target: Action::Reconcile.target(),
-            "reconciled {} tenant(s), {} compute window(s); traefik={} rathole={} windows={}",
+            "reconciled {} tenant(s), {} compute window(s); traefik={} tunnel={} windows={}",
             enriched.len(),
             windows.len(),
             changed_traefik,
-            changed_rathole,
+            changed_tunnel,
             changed_windows,
         );
     }
@@ -4184,7 +4148,7 @@ async fn secondary_once(st: &AppState, sec: &Secondary, client: &reqwest::Client
 
 /// The spoke's uplink (crate::relay): every `interval`, and whenever the
 /// reconciler was kicked, read the uplink file, tell the hub which boxes are
-/// live here, and rewrite the uplink rathole client config.
+/// live here, and rewrite the uplink's tunnel client file.
 ///
 /// The file is re-read on every pass so the gateway image's owner can write
 /// it (or remove it) with no restart; while it is absent the uplink config is
@@ -4261,8 +4225,8 @@ async fn learn_hub(st: &AppState, client: &reqwest::Client, url: &str) {
 /// cluster) on the ban list, the uplink goes to the official edge the hub
 /// listed that [`official::pick`] gives this gateway outside every ban, and
 /// the uplink file says so from then on. The site's token is the same on
-/// every official edge, so nothing else changes; the Noise pin is dropped so
-/// the new hub's key is pinned afresh. With no such edge known the uplink
+/// every official edge, so nothing else changes; the tunnel pin is dropped so
+/// the new hub's certificate is pinned afresh. With no such edge known the uplink
 /// stays where it is and says why.
 async fn leave_banned_hub(
     st: &AppState,
@@ -4303,11 +4267,9 @@ async fn leave_banned_hub(
     };
     let mut moved = target.clone();
     moved.registrar_url = next.url.clone();
-    moved.rathole_endpoint = next.tunnel.clone();
-    if let Some(pin) = &target.noise_public_key_file {
-        if let Err(e) = remove_if_exists(Path::new(pin)).await {
-            tracing::warn!(target: Action::Uplink.target(), "{e:?}");
-        }
+    moved.tunnel_endpoint = next.tunnel.clone();
+    if let Err(e) = remove_if_exists(Path::new(&target.pin_file)).await {
+        tracing::warn!(target: Action::Uplink.target(), "{e:?}");
     }
     let mut text = serde_json::to_string_pretty(&moved).expect("uplink serializes");
     text.push('\n');
@@ -4339,7 +4301,7 @@ async fn uplink_once(
             .into_diagnostic()
             .with_context(|| format!("parse uplink file {}", up.file))?,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            if remove_if_exists(Path::new(&up.rathole_config)).await? {
+            if remove_if_exists(Path::new(&up.tunnel_config)).await? {
                 tracing::info!(
                     target: Action::Uplink.target(),
                     "no uplink file at {}; the uplink is off",
@@ -4366,20 +4328,6 @@ async fn uplink_once(
             target.token_file
         ));
     }
-    let bootstrap = match &target.bootstrap_token_file {
-        Some(path) => tokio::fs::read_to_string(path)
-            .await
-            .into_diagnostic()
-            .with_context(|| format!("read uplink bootstrap token file {path}"))?
-            .trim()
-            .to_string(),
-        None => token.clone(),
-    };
-    let noise_public_key = match &target.noise_public_key_file {
-        Some(path) => pin_hub_noise_key(client, &target.registrar_url, path).await,
-        None => None,
-    };
-
     // What is live here: the direct tenants whose token file reads, i.e.
     // exactly the set the local reconcile rendered. Hostnames come from the
     // whitelist (or the enrolled file), the same authority the local Traefik
@@ -4423,7 +4371,7 @@ async fn uplink_once(
         });
         services.push(UplinkService {
             name: format!("{}.{}", target.id, v.id),
-            local_port: v.rathole_port,
+            local_port: v.tunnel_port,
         });
     }
     if listed.len() > relay::MAX_RELAYED {
@@ -4465,24 +4413,29 @@ async fn uplink_once(
         Err(e) => return Err(miette!("hub {url}: {e}")),
     };
     // Only what the hub accepted gets a client service: a service the hub
-    // has no matching server entry for makes rathole log an auth failure
-    // every retry, for a box the hub told us it will not route anyway.
+    // has no matching service for is refused on every reconnect, for a box
+    // the hub told us it will not route anyway.
     let prefix = format!("{}.", target.id);
     services.retain(|s| {
         s.name
             .strip_prefix(&prefix)
             .is_some_and(|id| accepted.contains(id))
     });
+    let Some(pin) = pin_hub_tunnel(client, &target.registrar_url, &target.pin_file).await else {
+        return Err(miette!(
+            "no pin for the hub's tunnel yet; {} stays as it is",
+            up.tunnel_config
+        ));
+    };
     let rendered = uplink_config(
         &UplinkTarget {
-            rathole_endpoint: target.rathole_endpoint.clone(),
-            bootstrap_token: bootstrap,
+            tunnel_endpoint: target.tunnel_endpoint.clone(),
+            pin,
             token,
-            noise_public_key,
         },
         &services,
     );
-    if write_if_changed(Path::new(&up.rathole_config), &rendered, RATHOLE_FILE_MODE).await? {
+    if write_if_changed(Path::new(&up.tunnel_config), &rendered, TUNNEL_FILE_MODE).await? {
         tracing::info!(
             target: Action::Uplink.target(),
             "uplink to {} carries {} box(es)",
@@ -4523,14 +4476,12 @@ async fn record_hub_routes(st: &AppState, routes: &[RelayRoute]) {
     }
 }
 
-/// The hub's Noise public key for the uplink: the pinned file when it
-/// exists, else one fetch of the hub's `/noise-public-key`, written to the
-/// file (0600, atomically) so the next pass and rathole read the same
-/// bytes. A hub that answers 404 runs plain TCP, and nothing is written, so
-/// a hub that turns Noise on later is pinned on the first pass after. Any
-/// other failure is logged and the uplink waits for the next pass rather
-/// than rendering a config that would connect unpinned.
-async fn pin_hub_noise_key(
+/// The pin of the hub's tunnel for the uplink: the pinned file when it
+/// exists, else one fetch of the hub's `/tunnel-pin`, written to the file
+/// (0600, atomically) so every later pass reads the same bytes. Any failure
+/// is logged and the uplink waits for the next pass rather than rendering a
+/// file that would connect unpinned.
+async fn pin_hub_tunnel(
     client: &reqwest::Client,
     registrar_url: &str,
     path: &str,
@@ -4538,7 +4489,11 @@ async fn pin_hub_noise_key(
     match tokio::fs::read_to_string(path).await {
         Ok(k) => {
             let k = k.trim().to_string();
-            return if k.is_empty() { None } else { Some(k) };
+            if crate::tunnel::parse_pin(&k).is_some() {
+                return Some(k);
+            }
+            tracing::warn!(target: Action::Uplink.target(), "{path} does not hold a pin");
+            return None;
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => {
@@ -4546,9 +4501,8 @@ async fn pin_hub_noise_key(
             return None;
         }
     }
-    let url = format!("{}/noise-public-key", registrar_url.trim_end_matches('/'));
-    let key = match client.get(&url).send().await {
-        Ok(r) if r.status() == reqwest::StatusCode::NOT_FOUND => return None,
+    let url = format!("{}/tunnel-pin", registrar_url.trim_end_matches('/'));
+    let pin = match client.get(&url).send().await {
         Ok(r) if r.status().is_success() => match r.text().await {
             Ok(t) => t.trim().to_string(),
             Err(e) => {
@@ -4565,20 +4519,20 @@ async fn pin_hub_noise_key(
             return None;
         }
     };
-    if key.is_empty() || key.len() > 128 || !key.chars().all(|c| c.is_ascii_graphic()) {
-        tracing::warn!(target: Action::Uplink.target(), "{url}: not a Noise public key");
+    if crate::tunnel::parse_pin(&pin).is_none() {
+        tracing::warn!(target: Action::Uplink.target(), "{url}: not a pin");
         return None;
     }
     if let Some(parent) = Path::new(path).parent() {
         let _ = tokio::fs::create_dir_all(parent).await;
     }
-    match crate::fsutil::atomic_write(Path::new(path), key.as_bytes(), 0o600).await {
+    match crate::fsutil::atomic_write(Path::new(path), pin.as_bytes(), 0o600).await {
         Ok(()) => {
             tracing::info!(
                 target: Action::Uplink.target(),
-                "pinned the hub's Noise public key from {url} into {path}",
+                "pinned the hub's tunnel from {url} into {path}",
             );
-            Some(key)
+            Some(pin)
         }
         Err(e) => {
             tracing::warn!(target: Action::Uplink.target(), "write {path}: {e}");
@@ -4609,7 +4563,7 @@ async fn reconcile_hidden(
         .filter_map(|t| {
             addresses.get(&t.id).map(|a| crate::config::HiddenRoute {
                 id: t.id.clone(),
-                rathole_port: t.rathole_port,
+                tunnel_port: t.tunnel_port,
                 hosts: a.hosts(),
             })
         })

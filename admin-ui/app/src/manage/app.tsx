@@ -11,6 +11,7 @@ import { Toaster } from "@/components/ui/toast";
 import {
   ApiError,
   dropToken,
+  getEdgeStatistics,
   getManagedBoxes,
   getToken,
   isAbort,
@@ -36,6 +37,10 @@ import {
   StackRow,
 } from "@/screens/settings/rows";
 import { SiteSettings } from "@/screens/settings/site-settings";
+import { useStatistics } from "@/statistics/use-statistics";
+import { StatisticsView } from "@/statistics/view";
+import { StatisticsWidget } from "@/statistics/widget";
+import { GatewaySection } from "./gateway";
 import { useSiteForm } from "./use-site-form";
 
 /* A company edge's page for the boxes behind it (served by the edge at
@@ -44,7 +49,9 @@ import { useSiteForm } from "./use-site-form";
  * switched on "Let this edge manage the box" on its Mesh page. A box's page
  * is the Apps pane's own parts, with every /api/ call relayed into that box
  * (lib/api.ts routeThrough). The box decides what the edge may call: LosOS
- * cloud, LosOS Git and the apps, nothing of the owner's. */
+ * cloud, LosOS Git and the apps, nothing of the owner's. Above the boxes, the
+ * Statistics card opens /manage/statistics: what the edge's Traefik counted
+ * (edge/registrar/src/stats.rs). */
 
 export function ManageRoot() {
   return (
@@ -81,6 +88,7 @@ function Shell() {
           <Routes>
             <Route path="/" element={<BoxList />} />
             <Route path="/boxes/:id" element={<BoxView />} />
+            <Route path="/statistics" element={<EdgeStatistics />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         ) : (
@@ -187,8 +195,14 @@ function BoxList() {
     };
   }, [round]);
 
+  const statistics = useStatistics(loadStatistics);
+
   return (
     <>
+      <PaneSection>
+        <StatisticsWidget state={statistics} to="/statistics" />
+      </PaneSection>
+      <GatewaySection />
       <PaneHeader title={t("manage.boxes.title")} summary={t("manage.boxes.summary")} />
       <PaneSection>
         <Group>
@@ -228,6 +242,11 @@ function BoxList() {
   );
 }
 
+/** Stable, so `useStatistics` does not start over on every render. */
+function loadStatistics(signal: AbortSignal): Promise<unknown> {
+  return getEdgeStatistics({ signal });
+}
+
 function seenAgo(t: ReturnType<typeof useT>, secs: number): string {
   if (secs < 60) return t("manage.boxes.justNow");
   return t("manage.boxes.minutes", { count: Math.floor(secs / 60) });
@@ -265,6 +284,33 @@ function BoxRow({ box, last }: { box: ManagedBox; last: boolean }) {
   );
 }
 
+// ── Statistics ────────────────────────────────────────────────────────────
+
+function EdgeStatistics() {
+  const t = useT();
+  const statistics = useStatistics(loadStatistics);
+  return (
+    <>
+      <BackToBoxes />
+      <PaneHeader title={t("statistics.title")} summary={t("manage.statistics.summary")} />
+      <StatisticsView state={statistics} />
+    </>
+  );
+}
+
+function BackToBoxes() {
+  const t = useT();
+  return (
+    <Link
+      to="/"
+      className="mb-4 inline-flex items-center gap-1.5 text-[13px] text-accent hover:underline"
+    >
+      <HugeiconsIcon icon={ArrowLeft01Icon} size={14} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+      {t("manage.box.back")}
+    </Link>
+  );
+}
+
 // ── One box ───────────────────────────────────────────────────────────────
 
 function BoxView() {
@@ -285,13 +331,7 @@ function BoxView() {
 
   return (
     <>
-      <Link
-        to="/"
-        className="mb-4 inline-flex items-center gap-1.5 text-[13px] text-accent hover:underline"
-      >
-        <HugeiconsIcon icon={ArrowLeft01Icon} size={14} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
-        {t("manage.box.back")}
-      </Link>
+      <BackToBoxes />
       <PaneHeader title={id} summary={t("manage.box.summary")} />
       {routed === id && <BoxParts />}
     </>
