@@ -99,6 +99,10 @@ it for whatever has the focus, and the arrow keys move through it.
   `.vcf`, delete. Someone listed under **On this box** offers **Add to
   contacts** instead of the last three.
 
+![The menu on empty space of the Overview, with Appearance open on Light, Dark and the browser's choice.](../img/context-menu-page.png)
+
+![The menu of a file in LosOS Cloud: Open, Download, Rename with F2, Move, Copy, Versions, Add to favorites, Share, Copy link, Make an issue and Delete with Del.](../img/context-menu-file.png)
+
 The keys shown beside an item work without the menu too. In LosOS Cloud,
 F2 renames the ticked file and Delete moves it to the trash (Cmd+Backspace
 on a Mac). Text fields keep the browser's own menu, for spelling and paste.
