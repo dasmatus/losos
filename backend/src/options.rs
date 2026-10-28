@@ -445,7 +445,7 @@ pub(crate) mod tests {
                  "default":0.25,"current":0.25,"danger":true,"fixed":null,"readOnly":false},
                 {"name":"cache.substituters","group":"cache","editor":{"kind":"list"},"nixType":"list of string",
                  "default":["https://proxy.losos.dasmat.us"],"current":["https://proxy.losos.dasmat.us"],"danger":true,"fixed":null,"readOnly":false},
-                {"name":"proxy.noisePublicKeyFile","group":"proxy","editor":{"kind":"nullable","inner":{"kind":"str","form":"path"}},"nixType":"null or string",
+                {"name":"tls.certFile","group":"tls","editor":{"kind":"nullable","inner":{"kind":"str","form":"path"}},"nixType":"null or string",
                  "default":null,"current":"/var/secrets/x","danger":false,"fixed":null,"readOnly":false},
                 {"name":"proxy.enable","group":"proxy","editor":{"kind":"bool"},"nixType":"boolean",
                  "default":false,"current":false,"danger":true,"fixed":null,"readOnly":false},
@@ -478,7 +478,7 @@ pub(crate) mod tests {
             }
         );
         assert_eq!(
-            doc.find("proxy.noisePublicKeyFile").unwrap().editor,
+            doc.find("tls.certFile").unwrap().editor,
             Editor::Nullable {
                 inner: Box::new(Editor::Str {
                     pattern: None,
@@ -539,7 +539,7 @@ pub(crate) mod tests {
                     losos.git.site.defaultPrivate = \"private\";\n  losos.storage.fillPercent = 75;\n  \
                     losos.cluster.idleLoadThreshold = 0.5;\n  \
                     losos.cache.substituters = [ \"https://a\" \"https://b\" ];\n  \
-                    losos.proxy.noisePublicKeyFile = null;\n  losos.cfd.enable = true;\n}\n";
+                    losos.tls.certFile = null;\n  losos.cfd.enable = true;\n}\n";
         // `cfd.enable` is checked as proxy.enable, the option it became.
         assert_eq!(check_body(&doc, body), Ok(()));
         let body = body.replace("losos.cfd.enable = true", "losos.cfd.enable = 1");
@@ -593,7 +593,7 @@ pub(crate) mod tests {
                 "losos.cache.substituters = [ https://a ];",
                 "must be a list",
             ),
-            ("losos.proxy.noisePublicKeyFile = 3;", ", or null"),
+            ("losos.tls.certFile = 3;", ", or null"),
         ];
         for (line, expect) in cases {
             let err = check_body(&doc, &format!("{{ {line} }}")).unwrap_err();
@@ -645,8 +645,8 @@ pub(crate) mod tests {
             ("cluster.idleLoadThreshold", json!(0.25)),
             ("cache.substituters", json!(["https://a", "https://b"])),
             ("cache.substituters", json!([])),
-            ("proxy.noisePublicKeyFile", json!(null)),
-            ("proxy.noisePublicKeyFile", json!("/var/secrets/x")),
+            ("tls.certFile", json!(null)),
+            ("tls.certFile", json!("/var/secrets/x")),
         ];
         for (name, value) in cases {
             let editor = &doc.find(name).unwrap().editor;
