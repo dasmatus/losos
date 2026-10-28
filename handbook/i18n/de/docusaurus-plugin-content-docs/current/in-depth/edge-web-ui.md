@@ -64,6 +64,23 @@ Eine Box sagt bei jedem Heartbeat, ob ihr Besitzer es erlaubt, also zeigt
 sich eine Änderung auf der Box hier innerhalb eines Heartbeats. Eine Box,
 die keine Heartbeats mehr schickt, fällt aus der Liste.
 
+## Statistik
+
+Die Karte **Statistik** über der Liste zählt die Anfragen, die der Traefik
+der Edge in der letzten Stunde beantwortet hat, den Anteil der Serverfehler
+und die gesendete Menge, mit einem Balken pro Minute. **Öffnen** führt zur
+Seite Statistik, `/manage/statistics`: dieselbe Stunde genauer, die
+Antworten nach Klasse (2xx, 3xx, 4xx, 5xx) und eine Zeile pro Box und Name,
+die die Edge weiterleitet, mit Anfragen, Fehlern, gesendeten Bytes und dem
+95. Perzentil der Antwortzeit.
+
+Der Registrar liest die Prometheus-Zähler von Traefik alle 15 Sekunden auf
+einem Loopback-Port (`losos.edge.traefikMetricsPort`, 8091), den von
+außerhalb der Maschine niemand erreicht, und hält die letzten 60 Minuten im
+Speicher. Ein Neustart des Registrars beginnt die Stunde von vorn; die
+Zeilen der Routen zählen seit dem Start von Traefik, wie die Seite darunter
+sagt, und nehmen die Antwortzeit aus der letzten Stunde.
+
 ## Die Seite einer Box
 
 ![Die Seite einer Box: Einstellungen von LosOS Cloud und LosOS Git, die installierten Apps und die App-Suche.](@site/docs/img/edge-manage-box-de.png)
