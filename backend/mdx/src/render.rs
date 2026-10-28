@@ -20,7 +20,7 @@ const MAX_DEPTH: usize = crate::MAX_NESTING + 28;
 pub trait Hook {
     /// Writes `node`, a reserved element named `name`, and says whether it
     /// did. One it does not know is drawn as its children.
-    fn element(&self, w: &mut Writer<'_>, name: &str, node: &Node) -> bool;
+    fn element<'a>(&self, w: &mut Writer<'a>, name: &str, node: &'a Node) -> bool;
 }
 
 pub(crate) struct Output {
@@ -36,7 +36,7 @@ pub struct Writer<'a> {
     flavour: Flavour,
     resolver: &'a dyn Resolver,
     hook: Option<&'a dyn Hook>,
-    attributes: &'a BTreeMap<usize, Vec<(String, String)>>,
+    attributes: &'a BTreeMap<(usize, String), Vec<(String, String)>>,
     definitions: HashMap<String, (String, Option<String>)>,
     footnotes: Vec<(String, &'a mdast::FootnoteDefinition)>,
     footnote_numbers: HashMap<String, usize>,
@@ -252,7 +252,7 @@ impl<'a> Writer<'a> {
             }
         }
         let start = node.position().map(|p| p.start.offset);
-        if let Some(extra) = start.and_then(|s| self.attributes.get(&s)) {
+        if let Some(extra) = start.and_then(|s| self.attributes.get(&(s, tag.to_string()))) {
             for (k, v) in extra {
                 if k == "class" {
                     class.push(v.clone());
