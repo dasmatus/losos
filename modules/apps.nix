@@ -450,7 +450,7 @@ let
       # writes for a shared one. Traefik picks either up within a few
       # seconds; a minute without it is a failure the owner should see.
       wait_route() {
-        local provider=$1 port=$2 i
+        local provider=$1 port=$2
         [[ "$port" =~ ^[0-9]+$ ]] || return 0
         for _ in $(seq 1 60); do
           if curl -fsS -o /dev/null "${traefikApi}/api/http/routers/app-$release@$provider"; then
