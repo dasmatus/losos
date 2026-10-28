@@ -50,9 +50,9 @@ While nothing answers, the box refuses to turn network-dependent sharing
 on. Switching storage to mesh mode, **Join the mesh** and **Share this
 box's disk with the mesh** are greyed with "Needs an edge proxy in reach.",
 and the box refuses any apply that turns one of them on anyway, with the same
-reason. The box leaves settings that are already on alone. A box whose edge
-went away keeps its configuration, can still change everything else, and can
-always turn sharing *off*. Your own files and apps never depend on the edge.
+reason. A box whose edge went away can still change everything else and can
+always turn sharing *off*. After ten minutes with no edge it pauses sharing
+by itself, and turns it back on a minute after an edge answers. Your own files and apps never depend on the edge.
 The tunnel switch is not gated either. It reconnects when the edge answers
 again.
 

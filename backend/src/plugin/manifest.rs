@@ -568,6 +568,22 @@ mod tests {
     }
 
     #[test]
+    fn statistics_loads_on_a_box_without_traefik() {
+        // Traefik's URL is set only where apps.nix runs; a box without it
+        // must still start lososd, and the plugin then says there is
+        // nothing to count.
+        let json = include_bytes!("../../plugins/statistics/manifest.json");
+        let none = |_: &str| None;
+        let m = Manifest::parse(json, "statistics", &none).unwrap();
+        assert!(m.http.is_empty());
+        assert_eq!(m.config["traefik"], "");
+        let set = |v: &str| (v == "LOSOS_TRAEFIK_URL").then(|| "http://127.0.0.1:8089".to_string());
+        let m = Manifest::parse(json, "statistics", &set).unwrap();
+        assert_eq!(m.http, ["http://127.0.0.1:8089"]);
+        assert_eq!(m.config["traefik"], "http://127.0.0.1:8089");
+    }
+
+    #[test]
     fn what_cannot_be_granted_refuses_the_plugin() {
         for bad in [
             // A name that is not the file's.

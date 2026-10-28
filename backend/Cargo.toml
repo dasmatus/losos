@@ -129,6 +129,12 @@ mime = "0.3"
 # photo's position among them) is ever stored. Decoders only for the formats
 # phones and cameras write.
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp", "tiff"] }
+# Photos (src/cloud/photos/): every tag a camera writes, read from the EXIF
+# block the image decoder hands over, and faces found and told apart on the
+# box by two small ONNX models (YuNet and SFace, nix/face-models.nix) that
+# tract runs in plain Rust, with no native runtime to ship.
+kamadak-exif = "0.6"
+tract-onnx = "0.23"
 
 # Calls (src/calls/, the losos-calls binary): a forwarding SFU on str0m, a
 # sans-IO WebRTC stack, with its pure-Rust DTLS and SRTP so nothing links

@@ -31,11 +31,19 @@
 //! The **gate** is [`check_gate`]: a `change --mode mesh`, or an `apply` that
 //! turns on `losos.sharingMyStorage` or `losos.cluster.enable`, is refused
 //! with [`EdgeRequired`] while nothing is reachable. It refuses *turning on*
-//! only. A box that was sharing when its edge went away keeps its settings —
-//! the mesh has already paused itself, and an owner changing the hostname
-//! during an outage must not be told off about storage — and the admin UI
-//! says what the daemon knows instead. Local use keeps working throughout:
-//! nothing here touches LosOS Cloud, LosOS Git or the box's own disk.
+//! only: an owner changing the hostname during an outage must not be told
+//! off about storage. Local use keeps working throughout: nothing here
+//! touches LosOS Cloud, LosOS Git or the box's own disk.
+//!
+//! **Pausing** is [`sharing_step`]: a box that shares through an edge and
+//! then finds none for `losos.proxy.pauseSharingAfter` seconds turns sharing
+//! off by itself, the way the owner's switch would, and remembers that it
+//! did (`State::sharing_pause`). Once an edge has answered for
+//! [`RESUME_AFTER`] it turns sharing back on. Only a pause it made itself is
+//! undone: the owner switching sharing on or off in the meantime forgets the
+//! pause. A box that never reached an edge while sharing (sharing set in its
+//! configuration with no edge anywhere, as the VM tests of the shared side
+//! do) is never paused, because there is no outage to speak of.
 //!
 //! This module is the pure half: the record shapes, the Varlink framing and
 //! what resolved's replies mean, and the gate rule, all unit-tested. The
@@ -277,6 +285,111 @@ pub fn check_gate(
     match turning_on(current, desired) {
         Some(setting) if !edge.reachable => Err(EdgeRequired { setting }),
         _ => Ok(()),
+    }
+}
+
+/// How long an edge must have answered before a paused box shares again:
+/// three scans, so an edge that flaps does not cost a rebuild each way.
+pub const RESUME_AFTER: u64 = 60;
+
+/// The default of `losos.proxy.pauseSharingAfter`: ten minutes without an
+/// edge, long enough that an edge's own reboot or a router's does not pause
+/// anything, short enough that a box whose edge is gone stops waiting on it
+/// within the hour.
+pub const PAUSE_AFTER_DEFAULT: u64 = 600;
+
+/// Since when the scans have answered one way, kept by the scanner thread
+/// between scans. Both start empty, so a daemon restart counts again from
+/// its first scan.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct OutageClock {
+    unreachable_since: Option<u64>,
+    reachable_since: Option<u64>,
+}
+
+impl OutageClock {
+    /// Take one scan's answer at `now` (Unix seconds).
+    pub fn observe(&mut self, reachable: bool, now: u64) {
+        if reachable {
+            self.unreachable_since = None;
+            self.reachable_since.get_or_insert(now);
+        } else {
+            self.reachable_since = None;
+            self.unreachable_since.get_or_insert(now);
+        }
+    }
+
+    fn unreachable_for(&self, now: u64) -> Option<u64> {
+        self.unreachable_since.map(|t| now.saturating_sub(t))
+    }
+
+    fn reachable_for(&self, now: u64) -> Option<u64> {
+        self.reachable_since.map(|t| now.saturating_sub(t))
+    }
+}
+
+/// What the box's sharing looks like to [`sharing_step`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SharingNow {
+    /// `losos.sharingMyStorage` in `overrides.nix`.
+    pub on: bool,
+    /// The box paused sharing itself and has not undone it yet.
+    pub paused: bool,
+    /// An edge has answered at least once since sharing was turned on.
+    pub edge_seen: bool,
+    /// A rebuild is running: nothing is written over it.
+    pub building: bool,
+}
+
+/// What the scanner does about sharing after a scan.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SharingStep {
+    Nothing,
+    /// Sharing is on and an edge answered: remember that one did.
+    SeenEdge,
+    /// No edge for too long: turn sharing off and remember it was us.
+    Pause,
+    /// An edge is back: turn sharing on again.
+    Resume,
+    /// The owner switched sharing on during the pause: it is theirs again.
+    Forget,
+}
+
+/// The rule, with `pause_after` 0 meaning never pause. Call it after
+/// [`OutageClock::observe`].
+pub fn sharing_step(
+    sharing: SharingNow,
+    clock: &OutageClock,
+    now: u64,
+    pause_after: u64,
+) -> SharingStep {
+    if sharing.paused && sharing.on {
+        return SharingStep::Forget;
+    }
+    if sharing.building {
+        return SharingStep::Nothing;
+    }
+    if sharing.paused {
+        return match clock.reachable_for(now) {
+            Some(up) if up >= RESUME_AFTER => SharingStep::Resume,
+            _ => SharingStep::Nothing,
+        };
+    }
+    if !sharing.on {
+        return SharingStep::Nothing;
+    }
+    if clock.reachable_for(now).is_some() {
+        return if sharing.edge_seen {
+            SharingStep::Nothing
+        } else {
+            SharingStep::SeenEdge
+        };
+    }
+    match clock.unreachable_for(now) {
+        Some(down) if pause_after > 0 && sharing.edge_seen && down >= pause_after => {
+            SharingStep::Pause
+        }
+        _ => SharingStep::Nothing,
     }
 }
 
@@ -1068,6 +1181,114 @@ pub fn manager_active(managed_by: Option<&str>, status: &EdgeStatus) -> bool {
 
 #[cfg(test)]
 mod tests {
+
+    // ── sharing_step ────────────────────────────────────────────────────
+
+    fn sharing(on: bool, paused: bool) -> SharingNow {
+        SharingNow {
+            on,
+            paused,
+            edge_seen: true,
+            building: false,
+        }
+    }
+
+    fn clock(reachable: bool, since: u64) -> OutageClock {
+        let mut c = OutageClock::default();
+        c.observe(reachable, since);
+        c
+    }
+
+    #[test]
+    fn sharing_pauses_only_after_the_whole_wait() {
+        let down = clock(false, 100);
+        assert_eq!(
+            sharing_step(sharing(true, false), &down, 699, 600),
+            SharingStep::Nothing
+        );
+        assert_eq!(
+            sharing_step(sharing(true, false), &down, 700, 600),
+            SharingStep::Pause
+        );
+        // 0 is never.
+        assert_eq!(
+            sharing_step(sharing(true, false), &down, 99_999, 0),
+            SharingStep::Nothing
+        );
+    }
+
+    #[test]
+    fn one_answer_restarts_the_wait() {
+        let mut c = clock(false, 0);
+        c.observe(true, 500);
+        c.observe(false, 520);
+        assert_eq!(
+            sharing_step(sharing(true, false), &c, 700, 600),
+            SharingStep::Nothing
+        );
+        assert_eq!(
+            sharing_step(sharing(true, false), &c, 1120, 600),
+            SharingStep::Pause
+        );
+    }
+
+    #[test]
+    fn a_paused_box_resumes_after_a_minute_of_answers() {
+        let up = clock(true, 1000);
+        assert_eq!(
+            sharing_step(sharing(false, true), &up, 1059, 600),
+            SharingStep::Nothing
+        );
+        assert_eq!(
+            sharing_step(sharing(false, true), &up, 1060, 600),
+            SharingStep::Resume
+        );
+        let down = clock(false, 1000);
+        assert_eq!(
+            sharing_step(sharing(false, true), &down, 9000, 600),
+            SharingStep::Nothing
+        );
+    }
+
+    #[test]
+    fn a_rebuild_in_flight_is_never_written_over() {
+        let mut now = sharing(true, false);
+        now.building = true;
+        assert_eq!(
+            sharing_step(now, &clock(false, 0), 10_000, 600),
+            SharingStep::Nothing
+        );
+        let mut paused = sharing(false, true);
+        paused.building = true;
+        assert_eq!(
+            sharing_step(paused, &clock(true, 0), 10_000, 600),
+            SharingStep::Nothing
+        );
+    }
+
+    #[test]
+    fn the_owners_switch_ends_a_pause_and_unseen_edges_never_start_one() {
+        assert_eq!(
+            sharing_step(sharing(true, true), &clock(true, 0), 0, 600),
+            SharingStep::Forget
+        );
+        let mut unseen = sharing(true, false);
+        unseen.edge_seen = false;
+        assert_eq!(
+            sharing_step(unseen, &clock(false, 0), 10_000, 600),
+            SharingStep::Nothing
+        );
+        assert_eq!(
+            sharing_step(unseen, &clock(true, 0), 0, 600),
+            SharingStep::SeenEdge
+        );
+        // Sharing off and never paused: the owner's choice, left alone.
+        assert_eq!(
+            sharing_step(sharing(false, false), &clock(true, 0), 10_000, 600),
+            SharingStep::Nothing
+        );
+    }
+
     use super::*;
 
     fn lan_edge(url: &str, official: bool) -> Edge {

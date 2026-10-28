@@ -116,7 +116,7 @@ import {
   type Reading,
 } from "./encryption";
 import { formatBytes } from "@/lib/apps";
-import { CannotOpen, openMail, seal, type Opened } from "./pgp";
+import { CannotOpen, openMail, seal, unlockedKey, type Opened } from "./pgp";
 import { InviteCard, isCalendarFile } from "@/calendar/invite";
 import { ComposeAttachments, ReceivedAttachment, useAttached, useCloud } from "./attachments";
 import { DeleteFolderDialog, FolderDialog, explainFolder, tree, within, type Placed } from "./folders";
@@ -758,25 +758,26 @@ function Mailbox({ home, onHome }: { home: MailHome; onHome: (home: MailHome) =>
   return (
     <TooltipProvider>
     <div className="flex flex-col">
-      {/* On a phone the three buttons are wider than the title leaves them, so the
-          row wraps and they go under it rather than squeezing the title to a word a line. */}
-      <div className="flex flex-wrap items-start gap-x-3">
-        <div className="min-w-0 flex-1 basis-60">
+      {/* Wraps: on a phone the three buttons go under the title rather
+          than past the edge of the screen. */}
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="min-w-0 flex-1">
           <PaneHeader title={t("mail.title")} summary={t("mail.summary", { address: home.address })} />
         </div>
-        <div className="mb-4 flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={() => setKeys(true)} data-testid="mail-encryption">
+        {/* On a phone the two secondary buttons keep only their icons, so the row fits. */}
+        <div className="flex shrink-0 gap-2">
+          <Button variant="secondary" className="max-sm:size-9 max-sm:p-0" onClick={() => setKeys(true)} title={t("mail.pgp.button")} data-testid="mail-encryption">
             <HugeiconsIcon
               icon={own.state === "set" ? SquareLock02Icon : Key01Icon}
               strokeWidth={1.5}
               color="currentColor"
               aria-hidden="true"
             />
-            {t("mail.pgp.button")}
+            <span className="max-sm:sr-only">{t("mail.pgp.button")}</span>
           </Button>
-          <Button variant="secondary" onClick={() => setFilters({ start: null })}>
+          <Button variant="secondary" className="max-sm:size-9 max-sm:p-0" onClick={() => setFilters({ start: null })} title={t("mail.filters")}>
             <HugeiconsIcon icon={FilterIcon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
-            {t("mail.filters")}
+            <span className="max-sm:sr-only">{t("mail.filters")}</span>
           </Button>
           <Button onClick={() => setDraft({ to: [], cc: [], subject: "", text: "" })}>
             <HugeiconsIcon icon={PencilEdit02Icon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
@@ -1501,7 +1502,10 @@ function Composer({
           const inside = await Promise.all(
             files.map(async (f) => ({ name: f.name, type: f.type, bytes: new Uint8Array(await f.arrayBuffer()) })),
           );
-          made = await seal({ text, files: inside, encryptTo, signWith: sign ? unlocked : null, inline });
+          // Read now: an unlock that just happened is not in this render's `unlocked`.
+          const signWith = sign ? unlockedKey(own.key.fingerprint) : null;
+          if (sign && signWith === null) throw new Error(t("mail.pgp.unlockFailed"));
+          made = await seal({ text, files: inside, encryptTo, signWith, inline });
         } catch (error) {
           throw new Error(t("mail.pgp.compose.failed", { detail: message(error) }));
         }

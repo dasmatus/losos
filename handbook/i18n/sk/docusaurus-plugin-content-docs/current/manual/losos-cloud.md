@@ -24,8 +24,8 @@ vlastníka.
   alebo si pozrieť ich staršie verzie.
 - **Nedávne** ukazujú, čo sa naposledy zmenilo, **Obľúbené** to, čo ste
   označili hviezdičkou.
-- **Fotky** ukazujú všetky obrázky, najnovší mesiac navrchu. Kliknutím
-  obrázok zväčšíte a šípkami prechádzate ďalšie.
+- **Fotky** ukazujú všetky obrázky podľa toho, kedy boli odfotené, a ľudí
+  na nich. Pozrite [Fotky](#photos).
 - **Kôš** drží vymazané súbory 30 dní alebo tak dlho, ako určí panel
   **Aplikácie**. Súbor z neho obnovíte alebo ho vymažete natrvalo. Čo
   vymažete cez [sieťové zdieľanie](files-on-your-computer#the-network-share),
@@ -47,6 +47,29 @@ vlastníka.
   e-mailom** a **Poslať v chate**, kým má zariadenie Mail a Chat, a
   **Opýtať sa AI na toto** pri textovom súbore na zariadení s jazykovým
   modelom. AI beží na zariadení a číta len súbor, ktorý ste vybrali.
+
+## Fotky \{#photos}
+
+**Fotky** ukazujú každý obrázok z ľubovoľného priečinka, najnovšie navrchu,
+podľa mesiaca, v ktorom ho fotoaparát odfotil. **Zoskupiť podľa** ich
+namiesto toho zoradí podľa osoby, fotoaparátu alebo miesta. Kliknutím
+obrázok zväčšíte, šípkami prechádzate ďalšie a **Podrobnosti** (alebo
+<kbd>i</kbd>) ukážu, čo fotoaparát zapísal: kedy, aký fotoaparát
+a objektív, expozíciu, veľkosť, kde bol obrázok odfotený, kto je na ňom
+a každý ďalší údaj, ktorý fotoaparát uložil.
+
+![Podrobnosti fotky v LosOS Cloud: kedy bola odfotená, fotoaparát, objektív, nastavenia a miesto.](@site/docs/img/cloud-photos.png)
+
+Zariadenie nájde na vašich obrázkoch tváre a tie, ktoré sa podobajú, spojí
+do jednej osoby. **Ľudia** nad fotkami ukazujú každého, kto je na viac ako
+jednom obrázku; kliknutím na tvár uvidíte všetky fotky tejto osoby a môžete
+jej dať meno. Ak dvom osobám dáte rovnaké meno, stanú sa jednou.
+
+Všetko sa deje na zariadení, na pozadí a s najnižšou prioritou, pár minút
+po tom, ako obrázok príde: dva malé modely hľadajú a porovnávajú tváre na
+procesore zariadenia a nič o obrázku, tvári ani mieste sa nikam neposiela.
+Tváre, mená a miesta vašich fotiek vidíte len vy; ostatní ľudia na
+zariadení z nich nevidia nič.
 
 ## Aplikácie pre počítač a telefón \{#desktop-and-phone-apps}
 
@@ -115,4 +138,6 @@ priečinkom: zariadenie to skúsi znova pri ďalšom spustení.
 
 Časť LosOS Cloud na paneli **Aplikácie** určuje, ako dlho kôš drží súbory
 (`losos.cloud.trashDays`, 1 až 365 dní). `losos.cloud.enable` na paneli
-**Rozšírené** LosOS Cloud vypne.
+**Rozšírené** LosOS Cloud vypne a `losos.cloud.photos.faces` zastaví
+hľadanie tvárí vo Fotkách: ďalší prechod vymaže všetky doteraz nájdené
+tváre a mená, údaje fotoaparátu zostanú.
