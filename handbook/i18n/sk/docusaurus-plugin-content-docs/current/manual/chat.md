@@ -6,6 +6,8 @@ slug: /manual/chat
 
 # Chat
 
+![Miestnosť repozitára v LosOS Chat s tým, čo tam napísal LosOS Git.](@site/docs/img/chat-room.png)
+
 LosOS Chat je komunikátor na zariadení pre každého, kto má účet v LosOS
 Login.
 Ľudia si píšu priame správy aj v miestnostiach, posielajú si obrázky a
@@ -111,6 +113,8 @@ Chat dosiahne LosOS boxy vo vašej sieti. Napíšte z `mattbox.local` na
 `@eva:kitchenbox.local` a správa ide z jedného boxu na druhý bez toho, aby
 opustila sieť. Box s menom `.local` odpovedá iným chatovým serverom len zo
 siete, v ktorej je.
+
+![Tá istá miestnosť v chate druhého boxu, pridaná z kitchenbox.local.](@site/docs/img/chat-other-box.png)
 
 Aby sa dalo písať aj na servery Matrix na internete, zariadenie potrebuje
 vlastnú doménu, ktorú dosiahnu. `losos.chat.federation.enable` v

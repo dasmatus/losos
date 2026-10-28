@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import time
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -21,6 +22,10 @@ REPOSITORY = os.environ.get("LOSOS_GHCR_CACHE", "ghcr.io/dasmatus/losos/nix-cach
 CACHE = Path(os.environ.get("LOSOS_GHCR_CACHE_DIR", "/var/cache/losos-ghcr-cache"))
 HOST = os.environ.get("LOSOS_GHCR_CACHE_HOST", "127.0.0.1")
 PORT = int(os.environ.get("LOSOS_GHCR_CACHE_PORT", "8787"))
+# Behind the box's local copy (modules/cache.nix) this directory only bridges
+# a narinfo request and the NAR request after it; the copy keeps the lasting
+# one. Unset, artifacts are kept (the installer medium and CI).
+KEEP_SECONDS = int(os.environ.get("LOSOS_GHCR_CACHE_KEEP_SECONDS", "0"))
 STORE_HASH = re.compile(r"^[0-9a-df-np-sv-z]{32}$")
 NAR_NAME = re.compile(r"^[0-9a-df-np-sv-z]{1,64}\.nar(?:\.(?:zst|xz|bz2))?$")
 locks = {}
@@ -35,7 +40,29 @@ def cached_nar(hash_value):
     return files[0] if len(files) == 1 else None
 
 
+def sweep():
+    """Drop artifacts pulled more than KEEP_SECONDS ago."""
+    if KEEP_SECONDS <= 0 or not CACHE.is_dir():
+        return
+    cutoff = time.time() - KEEP_SECONDS
+    for info in CACHE.glob("*.narinfo"):
+        try:
+            if info.stat().st_mtime < cutoff:
+                info.unlink()
+        except FileNotFoundError:
+            pass
+    nar_root = CACHE / "nar"
+    if nar_root.is_dir():
+        for directory in nar_root.iterdir():
+            try:
+                if directory.is_dir() and directory.stat().st_mtime < cutoff:
+                    shutil.rmtree(directory, ignore_errors=True)
+            except FileNotFoundError:
+                pass
+
+
 def fetch_artifact(hash_value):
+    sweep()
     info = CACHE / (hash_value + ".narinfo")
     if info.is_file() and cached_nar(hash_value):
         return True
