@@ -907,97 +907,6 @@ jobs:
       # upload. It fits with room to spare. If it ever stops fitting, the first
       # lever is deleting the preinstalled Android SDK and .NET trees before
       # this step, not trimming the image.
-      # A separate, versioned XZ bundle: never copy it into the installer ISO.
-      # Export the install system's store closure and the tag's exact source tree,
-      # then split the resulting archive below GitHub's per-asset size limit.
-      # Newer appliance generations fetch the parts through the local signed
-      # sysupdate proxy and reassemble the logical .tar.xz on persistent /persist.
-      - name: build and sign the sysupdate bundle
-        id: sysupdate
-        env:
-          TAG: ${{ matrix.tag }}
-          SECURE_BOOT_DB_KEY: ${{ secrets.SECURE_BOOT_DB_KEY }}
-        run: |
-          set -euo pipefail
-          if [ ! -f modules/sysupdate.nix ]; then
-            echo "::notice::${TAG} predates systemd-sysupdate; it has no separate update bundle"
-            {
-              echo "enabled=false"
-              echo "assets<<LOSOS_ASSETS"
-              echo "LOSOS_ASSETS"
-            } >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if [[ ! "$TAG" =~ ^[A-Za-z0-9][A-Za-z0-9_.+-]{0,79}$ ]]; then
-            echo "::error::release tag cannot be used safely as a sysupdate version: $TAG"
-            exit 1
-          fi
-
-          cert=nix/keys/secure-boot-db.pem
-          [ -f "$cert" ] || cert=keys/secure-boot-db.pem
-          if ! grep -q '^-----BEGIN CERTIFICATE-----' "$cert"; then
-            echo "::error::${TAG} includes the sysupdate runtime but no pinned release certificate; refusing to publish unsigned system updates"
-            exit 1
-          fi
-          if [ -z "$SECURE_BOOT_DB_KEY" ]; then
-            echo "::error::${TAG} includes the sysupdate runtime but SECURE_BOOT_DB_KEY is missing; refusing to publish unsigned system updates"
-            exit 1
-          fi
-
-          rm -rf sysupdate-media
-          mkdir -p sysupdate-media
-          root="$RUNNER_TEMP/losos-sysupdate-bundle-${TAG}"
-          rm -rf "$root"
-          mkdir -p "$root/source"
-          # The git tree includes the tag stamp and any indexed release fix.
-          # The update source is data inside the bundle, never inside the ISO.
-          git archive --format=tar "$(git write-tree)" | tar -xf - -C "$root/source"
-
-          system_path="$(nix build --no-link --print-out-paths .#nixosConfigurations.install.config.system.build.toplevel)"
-          nix-store -qR "$system_path" > "$root/closure-paths"
-          mapfile -t closure < "$root/closure-paths"
-          test "${#closure[@]}" -gt 0
-          nix-store --export "${closure[@]}" | xz -T0 -6 > "$root/nix-store.export.xz"
-          jq -n --arg version "$TAG" --arg systemPath "$system_path" \
-            --arg commit "$(git rev-parse HEAD)" \
-            '{version:$version, systemPath:$systemPath, commit:$commit}' > "$root/metadata.json"
-
-          bundle="losos-update_${TAG}.tar.xz"
-          tar --use-compress-program='xz -T0 -6' -cf "$PWD/sysupdate-media/$bundle" \
-            -C "$root" source nix-store.export.xz metadata.json
-          # 1,700 MiB leaves margin under GitHub's 2 GiB release-asset cap.
-          split --bytes=1700M --numeric-suffixes=0 --suffix-length=3 \
-            "$PWD/sysupdate-media/$bundle" "$PWD/sysupdate-media/$bundle.part"
-
-          (
-            cd sysupdate-media
-            sha256sum "$bundle" "$bundle".part* > SHA256SUMS.sysupdate
-          )
-          umask 077
-          key="$RUNNER_TEMP/losos-sysupdate-signing-key.pem"
-          trap 'rm -f "$key"' EXIT
-          printf '%s\n' "$SECURE_BOOT_DB_KEY" > "$key"
-          openssl dgst -sha256 -sign "$key" \
-            -out sysupdate-media/SHA256SUMS.sysupdate.sig sysupdate-media/SHA256SUMS.sysupdate
-          openssl dgst -sha256 -verify <(openssl x509 -pubkey -noout -in "$cert") \
-            -signature sysupdate-media/SHA256SUMS.sysupdate.sig sysupdate-media/SHA256SUMS.sysupdate
-          rm -f "$key"
-          trap - EXIT
-
-          {
-            echo "enabled=true"
-            echo "bundleName=$bundle"
-            echo "bundleSha256=$(sha256sum "sysupdate-media/$bundle" | cut -d' ' -f1)"
-            echo "bundleSize=$(stat -c%s "sysupdate-media/$bundle")"
-            echo "assets<<LOSOS_ASSETS"
-            printf '%s\n' \
-              sysupdate-media/SHA256SUMS.sysupdate \
-              sysupdate-media/SHA256SUMS.sysupdate.sig \
-              sysupdate-media/"$bundle".part*
-            echo "LOSOS_ASSETS"
-          } >> "$GITHUB_OUTPUT"
-          rm -rf "$root"
       - run: nix build .#nixosConfigurations.iso.config.system.build.isoImage -L
       # Sign the medium's UEFI loader (modules/secure-boot.nix). The db key
       # is a repository secret, so this happens after the build, on a copy
@@ -1517,6 +1426,97 @@ jobs:
             echo "::notice::${TAG} is built with ${p#.ci/}"
             git apply --index "$p"
           done
+      # A separate, versioned XZ bundle: never copy it into the installer ISO.
+      # Export the install system's store closure and the tag's exact source tree,
+      # then split the resulting archive below GitHub's per-asset size limit.
+      # Newer appliance generations fetch the parts through the local signed
+      # sysupdate proxy and reassemble the logical .tar.xz on persistent /persist.
+      - name: build and sign the sysupdate bundle
+        id: sysupdate
+        env:
+          TAG: ${{ matrix.tag }}
+          SECURE_BOOT_DB_KEY: ${{ secrets.SECURE_BOOT_DB_KEY }}
+        run: |
+          set -euo pipefail
+          if [ ! -f modules/sysupdate.nix ]; then
+            echo "::notice::${TAG} predates systemd-sysupdate; it has no separate update bundle"
+            {
+              echo "enabled=false"
+              echo "assets<<LOSOS_ASSETS"
+              echo "LOSOS_ASSETS"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ ! "$TAG" =~ ^[A-Za-z0-9][A-Za-z0-9_.+-]{0,79}$ ]]; then
+            echo "::error::release tag cannot be used safely as a sysupdate version: $TAG"
+            exit 1
+          fi
+
+          cert=nix/keys/secure-boot-db.pem
+          [ -f "$cert" ] || cert=keys/secure-boot-db.pem
+          if ! grep -q '^-----BEGIN CERTIFICATE-----' "$cert"; then
+            echo "::error::${TAG} includes the sysupdate runtime but no pinned release certificate; refusing to publish unsigned system updates"
+            exit 1
+          fi
+          if [ -z "$SECURE_BOOT_DB_KEY" ]; then
+            echo "::error::${TAG} includes the sysupdate runtime but SECURE_BOOT_DB_KEY is missing; refusing to publish unsigned system updates"
+            exit 1
+          fi
+
+          rm -rf sysupdate-media
+          mkdir -p sysupdate-media
+          root="$RUNNER_TEMP/losos-sysupdate-bundle-${TAG}"
+          rm -rf "$root"
+          mkdir -p "$root/source"
+          # The git tree includes the tag stamp and any indexed release fix.
+          # The update source is data inside the bundle, never inside the ISO.
+          git archive --format=tar "$(git write-tree)" | tar -xf - -C "$root/source"
+
+          system_path="$(nix build --no-link --print-out-paths .#nixosConfigurations.install.config.system.build.toplevel)"
+          nix-store -qR "$system_path" > "$root/closure-paths"
+          mapfile -t closure < "$root/closure-paths"
+          test "${#closure[@]}" -gt 0
+          nix-store --export "${closure[@]}" | xz -T0 -6 > "$root/nix-store.export.xz"
+          jq -n --arg version "$TAG" --arg systemPath "$system_path" \
+            --arg commit "$(git rev-parse HEAD)" \
+            '{version:$version, systemPath:$systemPath, commit:$commit}' > "$root/metadata.json"
+
+          bundle="losos-update_${TAG}.tar.xz"
+          tar --use-compress-program='xz -T0 -6' -cf "$PWD/sysupdate-media/$bundle" \
+            -C "$root" source nix-store.export.xz metadata.json
+          # 1,700 MiB leaves margin under GitHub's 2 GiB release-asset cap.
+          split --bytes=1700M --numeric-suffixes=0 --suffix-length=3 \
+            "$PWD/sysupdate-media/$bundle" "$PWD/sysupdate-media/$bundle.part"
+
+          (
+            cd sysupdate-media
+            sha256sum "$bundle" "$bundle".part* > SHA256SUMS.sysupdate
+          )
+          umask 077
+          key="$RUNNER_TEMP/losos-sysupdate-signing-key.pem"
+          trap 'rm -f "$key"' EXIT
+          printf '%s\n' "$SECURE_BOOT_DB_KEY" > "$key"
+          openssl dgst -sha256 -sign "$key" \
+            -out sysupdate-media/SHA256SUMS.sysupdate.sig sysupdate-media/SHA256SUMS.sysupdate
+          openssl dgst -sha256 -verify <(openssl x509 -pubkey -noout -in "$cert") \
+            -signature sysupdate-media/SHA256SUMS.sysupdate.sig sysupdate-media/SHA256SUMS.sysupdate
+          rm -f "$key"
+          trap - EXIT
+
+          {
+            echo "enabled=true"
+            echo "bundleName=$bundle"
+            echo "bundleSha256=$(sha256sum "sysupdate-media/$bundle" | cut -d' ' -f1)"
+            echo "bundleSize=$(stat -c%s "sysupdate-media/$bundle")"
+            echo "assets<<LOSOS_ASSETS"
+            printf '%s\n' \
+              sysupdate-media/SHA256SUMS.sysupdate \
+              sysupdate-media/SHA256SUMS.sysupdate.sig \
+              sysupdate-media/"$bundle".part*
+            echo "LOSOS_ASSETS"
+          } >> "$GITHUB_OUTPUT"
+          rm -rf "$root"
       - run: nix build .#nixosConfigurations.iso.config.system.build.isoImage -L
       - run: mv result result-iso
       - run: nix build .#losos-disk-qcow2 -L
