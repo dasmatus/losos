@@ -26,6 +26,7 @@ pub mod mesh;
 pub mod nc;
 pub mod notes;
 pub mod office;
+pub mod photos;
 pub mod pim;
 pub mod preview;
 pub mod search;
