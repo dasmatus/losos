@@ -66,6 +66,12 @@ impl Loaded {
 /// rule as one that arrived.
 pub type Authorize = dyn Fn(&Caller, &str, &str) -> Result<(), String> + Send + Sync;
 
+/// One of the host's own routes, called for a plugin's `dispatch.call`
+/// that no plugin answers: `crate::http` replays it on the loopback API as
+/// the caller, so it meets the same sign-in and section checks as a call
+/// from the page. `None` when the host has no such route either.
+pub type HostCall = dyn Fn(&Request) -> Option<Response> + Send + Sync;
+
 /// What every call shares.
 pub struct Inner {
     engine: Engine,
@@ -73,6 +79,7 @@ pub struct Inner {
     locks: Locks,
     started: Instant,
     authorize: Mutex<Option<Arc<Authorize>>>,
+    host: Mutex<Option<Arc<HostCall>>>,
 }
 
 /// The loaded plugins and their routes. Cheap to clone.
@@ -241,12 +248,18 @@ impl Runtime {
             locks: Locks::default(),
             started: Instant::now(),
             authorize: Mutex::new(None),
+            host: Mutex::new(None),
         })))
     }
 
     /// The section check a dispatched call goes through.
     pub fn set_authorize(&self, f: Arc<Authorize>) {
         *self.0.authorize.lock().unwrap_or_else(|e| e.into_inner()) = Some(f);
+    }
+
+    /// Where a dispatched call goes when no plugin answers it.
+    pub fn set_host(&self, f: Arc<HostCall>) {
+        *self.0.host.lock().unwrap_or_else(|e| e.into_inner()) = Some(f);
     }
 
     pub fn plugins(&self) -> &[Arc<Loaded>] {
@@ -449,6 +462,10 @@ fn spawn_job(
 fn dispatch(rt: &Arc<Inner>, request: Request) -> Result<Response, Error> {
     let path = request.path.clone();
     let Some(matched) = route_in(rt, &request.method, &path) else {
+        let host = rt.host.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        if let Some(answer) = host.and_then(|call| call(&request)) {
+            return Ok(answer);
+        }
         return Ok(Response {
             status: 404,
             headers: vec![("content-type".to_string(), "application/json".to_string())],

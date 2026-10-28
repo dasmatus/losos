@@ -15,6 +15,13 @@
       the parse, which is after the paint. See vite.config.ts.
     -->
     <script src="/theme-boot.js"></script>
+    <!--
+      With JavaScript off, the same page drawn on the box (/basic/, the
+      basic plugin in backend/plugins/basic/). nginx writes the path the
+      browser asked for after /basic (modules/containers.nix), so a deep
+      link lands on the same page there.
+    -->
+    <noscript><meta http-equiv="refresh" content="0; url=/basic/" /></noscript>
   </head>
   <body>
     <div id="root"></div>
