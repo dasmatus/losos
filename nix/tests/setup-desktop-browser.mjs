@@ -168,6 +168,10 @@ const result = { variants: [] };
   await thaw(cdp, page);
   const tour = page.getByTestId('tour');
   await tour.waitFor({ timeout: 60000 });
+  // The scene loops; its still (what reduced motion shows) is the frame
+  // chosen to say what it is about, so the picture is that, not a frame
+  // the emulated machine happened to land on.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.waitForTimeout(1500);
   await shot(page, 'after-tour-light-desktop');
   await tour.getByRole('button', { name: WORDS['en-US'].skip }).click();
