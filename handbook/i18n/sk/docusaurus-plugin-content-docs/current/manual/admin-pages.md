@@ -101,6 +101,10 @@ kláves Menu pre to, čo má práve fokus, a šípky sa ňou pohybujú.
   exportovať ako `.vcf`, odstrániť. Človek v zozname **Na tomto boxe**
   ponúka namiesto posledných troch **Pridať do kontaktov**.
 
+![Ponuka na prázdnom mieste Prehľadu s otvoreným Vzhľadom: svetlý, tmavý a podľa prehliadača.](@site/docs/img/context-menu-page-sk.png)
+
+![Ponuka súboru v LosOS Cloud: Otvoriť, Stiahnuť, Premenovať s F2, Presunúť, Kopírovať, Verzie, Pridať do obľúbených, Zdieľať, Kopírovať odkaz, Vytvoriť úlohu a Odstrániť s Del.](@site/docs/img/context-menu-file-sk.png)
+
 Klávesy vedľa položky fungujú aj bez ponuky. V LosOS Cloud F2 premenuje
 zaškrtnutý súbor a Delete ho presunie do koša (na Macu Cmd+Backspace).
 Textové polia si nechávajú ponuku prehliadača, kvôli pravopisu a vkladaniu.
