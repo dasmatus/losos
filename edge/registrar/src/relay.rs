@@ -39,8 +39,34 @@ pub struct RelayReq {
     pub appliance_id: String,
     pub token: String,
     /// The boxes the spoke serves right now, each with the public hostname
-    /// it registered under.
+    /// it registered under. With several gateways on one site, only the boxes
+    /// this gateway holds (`crate::secondary::Peers::holds`).
     pub tenants: Vec<RelayTenant>,
+    /// This gateway's name in its secondary cluster, when it is in one. A
+    /// site with several gateways relays under one tenant row; the hub keeps
+    /// each gateway's boxes apart by this name, so one gateway's list never
+    /// drops a box another one holds. Absent is the site's only gateway.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gateway: Option<String>,
+    /// The secondary cluster the gateway serves, for the hub's member table.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cluster: Option<String>,
+}
+
+/// One gateway of the main cluster, as the hub saw it on its last `/relay`.
+/// A link from a gateway to the hub is a primary link
+/// (`crate::secondary::Tier::Primary`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MainMember {
+    /// The site's tenant id on the hub.
+    pub site: String,
+    /// The gateway's name; empty for a site's only, unnamed gateway.
+    pub gateway: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cluster: Option<String>,
+    /// How many boxes it relays.
+    pub boxes: usize,
+    pub seen_ago_secs: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -68,6 +94,10 @@ pub struct RelayResp {
     /// own hostname, so the spoke routes nothing by name.
     #[serde(default)]
     pub routes: Vec<RelayRoute>,
+    /// The site's gateways in the main cluster, this one included, so a
+    /// gateway can show its owner every primary link of the site.
+    #[serde(default)]
+    pub members: Vec<MainMember>,
 }
 
 /// One row of the hub's route table, as the spoke is told it.
@@ -246,6 +276,43 @@ impl Enrolment {
     /// writes nothing) when the id is already enrolled: a second first
     /// contact is somebody else, and the first box keeps its name.
     pub async fn enrol(&self, id: &str, hostname: &str, token: &str) -> std::io::Result<bool> {
+        self.insert(id, hostname, token, "on first contact").await
+    }
+
+    /// Record a box another gateway of this one's secondary cluster enrolled
+    /// (`crate::secondary`), so it is let in here with the token it already
+    /// holds. Same rule as [`Enrolment::enrol`]: an id this gateway knows is
+    /// never overwritten.
+    pub async fn adopt(
+        &self,
+        id: &str,
+        hostname: &str,
+        token: &str,
+        peer: &str,
+    ) -> std::io::Result<bool> {
+        self.insert(id, hostname, token, &format!("from peer gateway {peer}"))
+            .await
+    }
+
+    /// The token `id` enrolled with, when it is enrolled here.
+    pub async fn token(&self, id: &str) -> std::io::Result<Option<String>> {
+        if !self.read().await?.0.contains_key(id) {
+            return Ok(None);
+        }
+        match tokio::fs::read_to_string(self.token_path(id)).await {
+            Ok(t) => Ok(Some(t.trim().to_string())),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    async fn insert(
+        &self,
+        id: &str,
+        hostname: &str,
+        token: &str,
+        how: &str,
+    ) -> std::io::Result<bool> {
         let _guard = self.lock.lock().await;
         let mut file = self.read().await?;
         if file.0.contains_key(id) {
@@ -264,7 +331,7 @@ impl Enrolment {
         self.write(&file).await?;
         tracing::info!(
             target: Action::Enrol.target(),
-            "enrolled {id} as {hostname} on first contact",
+            "enrolled {id} as {hostname} {how}",
         );
         Ok(true)
     }

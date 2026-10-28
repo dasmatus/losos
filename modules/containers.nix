@@ -745,6 +745,21 @@ in
                   extraConfig = toGit;
                 };
           }
+          # LosOS Wiki's published sites: a repository's wiki read as a site
+          # of its own at /wiki/<owner>/<name>/ (admin-ui/app/wiki/), open to
+          # whoever LosOS Git lets read that repository, through the same
+          # API, and behind LosOS Login wherever the Git pages are.
+          // lib.optionalAttrs gitPages {
+            "/wiki/" = {
+              tryFiles = "$uri /wiki/index.html";
+              extraConfig = lib.optionalString (signInGit && config.losos.git.site.requireSignIn) ''
+                auth_request /internal/losos-app-sign-in;
+                error_page 401 = @losos-app-sign-in;
+                error_page 403 @losos-app-held;
+                error_page 500 =503 @losos-app-waiting;
+              '';
+            };
+          }
           # The pre-paint theme script the pages load, outside the LAN guard
           # of `/` for the same reason as /assets/ below.
           // lib.optionalAttrs (gitPages && signInGit) { "= /theme-boot.js" = { }; }

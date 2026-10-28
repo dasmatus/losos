@@ -168,9 +168,9 @@ export async function serve({ csp = false } = {}) {
     // A directory gets its index, as nginx's `index` directive gives it.
     const file = rel === '/' ? 'index.html' : rel.endsWith('/') ? rel + 'index.html' : rel;
     // The edge's /manage/, LosOS Cloud's /cloud/, a knowledge base's /kb/,
-    // LosOS Git's /git/ and LosOS Chat's /chat/ are pages of their own with
+    // LosOS Git's /git/, LosOS Wiki's /wiki/ and LosOS Chat's /chat/ are pages of their own with
     // their own fallback, as their nginx locations are; /diagrams is the SPA's.
-    const page = ['manage', 'cloud', 'kb', 'git', 'chat'].find((p) => rel.startsWith(`/${p}/`) || rel === `/${p}`);
+    const page = ['manage', 'cloud', 'kb', 'git', 'wiki', 'chat'].find((p) => rel.startsWith(`/${p}/`) || rel === `/${p}`);
     const fallback = page === undefined ? 'index.html' : `${page}/index.html`;
     send(file).catch(() =>
       send(fallback).catch(() => {

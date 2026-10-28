@@ -33,6 +33,7 @@ pub enum Action {
     Relay,
     Uplink,
     Enrol,
+    Secondary,
     Lab,
 }
 
@@ -62,6 +63,7 @@ impl Action {
             Action::Relay => "losos::relay",
             Action::Uplink => "losos::uplink",
             Action::Enrol => "losos::enrol",
+            Action::Secondary => "losos::secondary",
             Action::Lab => "losos::lab",
         }
     }
@@ -89,6 +91,7 @@ impl Display for Action {
             Action::Relay => f.write_str("[relay]"),
             Action::Uplink => f.write_str("[uplink]"),
             Action::Enrol => f.write_str("[enrol]"),
+            Action::Secondary => f.write_str("[secondary]"),
             Action::Lab => f.write_str("[lab]"),
         }
     }
