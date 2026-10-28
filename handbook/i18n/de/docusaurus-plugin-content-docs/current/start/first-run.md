@@ -96,8 +96,8 @@ beide nehmen das Passwort, das du gerade festgelegt hast:
 
 - **Dein Name bei LosOS Login**: dein neuer Anmeldename. Er öffnet die
   Admin-Seiten.
-- **Dein Konto in LosOS Cloud**: das Konto, das du in Schritt 3 und in den
-  Apps für Computer und Handy eingibst.
+- **Dein Konto in LosOS Cloud**: das Konto, das du in den Apps für Computer
+  und Handy eingibst.
 
 <img src={require("@site/docs/img/wizard-step2-spare-key-de.png").default} alt="Schritt 2 nach dem Setzen des Passworts: dein Name bei LosOS Login, dein Konto in LosOS Cloud und der einmal angezeigte Ersatz-Admin-Schlüssel mit Schlüssel kopieren und Drucken." width="520" />
 
@@ -105,13 +105,23 @@ Einen **Passkey** für LosOS Cloud, mit dem sich ein Handy oder Laptop bei
 deinen Dateien anmeldet, ohne das Passwort zu tippen, kannst du später in den
 Sicherheitseinstellungen von LosOS Cloud hinzufügen.
 
-## Schritt 3: Anmelden \{#step-3-sign-in}
+## Schritt 3: Dein Desktop \{#step-3-your-desktop}
 
-Der Assistent öffnet LosOS Cloud innerhalb der Seite, und du meldest dich
-mit deinem Konto in LosOS Cloud und dem Passwort an, das du gerade
-festgelegt hast. Dann bringt dich der Assistent zur Übersicht der
-Admin-Seiten. Ab hier geht es weiter unter [Die
-Admin-Seiten](../manual/admin-pages).
+Der Assistent meldet dich mit dem Namen und dem Passwort aus Schritt 2 bei
+LosOS Login an, du tippst also nichts mehr. Auf einer neuen Box startet
+LosOS Login erst, wenn das Passwort gesetzt ist, und die Seite wartet mit
+einem Hinweis darauf. Dann erscheint hinter der Karte dein Desktop, schon
+angemeldet: die Übersicht der Admin-Seiten mit deinem Namen in der oberen
+Leiste. **Los geht's** vergrößert ihn auf das ganze Fenster. Ab hier geht
+es weiter unter [Die Admin-Seiten](../manual/admin-pages).
+
+![Schritt 3: der angemeldete Desktop hinter der Karte mit „Das ist dein Desktop, und du bist als matus angemeldet“ sowie Zurück und Los geht's.](@site/docs/img/wizard-step3-desktop-de.png)
+
+Lädst du die Seite in diesem Schritt neu, fragt sie noch einmal nach dem
+Passwort, weil sie es nirgends speichert. Auf einer Seite, die über
+einfaches http geöffnet ist, oder auf einer Box ohne LosOS Login sagt der
+Assistent das, und der Browser bleibt stattdessen mit dem
+Ersatzschlüssel angemeldet.
 
 Beim ersten Mal öffnet sich über der Übersicht eine kurze Tour. Jeder
 Schritt zeigt ein kleines bewegtes Bild der Seite mit dem Eintrag in der
@@ -127,5 +137,3 @@ ohne all das zeigt die sechs Schritte.
 mehr von selbst. **Tour starten** unter Einstellungen, Über holt sie zurück.
 
 ![Der erste Schritt der Tour über der Übersicht: ein Bild der Seite mit den sechs Apps von LosOS Cloud, „1 von 6“ sowie Tour überspringen und Weiter.](@site/docs/img/tour-de.png)
-
-![Schritt 3: Du bist angemeldet. Das war der letzte Schritt.](@site/docs/img/wizard-step3-sign-in-de.png)
