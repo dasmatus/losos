@@ -47,6 +47,7 @@ them in full.
 | Certificate lifetime                 | `losos.tls.validityDays`           | 730                                         |
 | Idle threshold for lending CPU       | `losos.cluster.idleLoadThreshold`  | 0.25 per core                               |
 | The binary cache                     | `losos.cache.substituters`         | `http://127.0.0.1:8787`, then `https://losos.dasmat.us/proxy` |
+| Size of the local copy of the caches | `losos.cache.local.maxSize`        | `8g`                                        |
 | Who may read `/setup/state.json` from a web page | `losos.setup.finderOrigins` | the LosOS edge's find page             |
 
 ![The Advanced pane, where the options not on the other panes are edited, each checked before Apply.](../img/settings-advanced.png)
