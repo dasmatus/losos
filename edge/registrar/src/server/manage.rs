@@ -19,10 +19,13 @@
 //!                                       with the admin UI's /assets/ and /theme-boot.js
 //! GET  /manage/api/boxes                Bearer <key>: every box, and whether it is managed
 //! GET|POST /manage/api/boxes/{id}/api/… Bearer <key>: relayed to the box's lososd
+//! …      /manage/api/gateway…           Bearer <key>: the gateway's own settings
+//!                                       (`gateway`)
 //! ```
 //!
 //! The key is 64 hex characters in `--manage-key-file`, made on the first
-//! start if missing; the gateway's console shows it (`losos-edge manage-key`).
+//! start if missing; the gateway's screen shows it, since the gateway has no
+//! shell to read it from (`modules/edge-gateway.nix`).
 
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
@@ -39,6 +42,8 @@ use miette::{miette, Context, IntoDiagnostic, Result};
 use tokio::sync::Semaphore;
 
 use super::{ct_eq, lookup_tenant, AppState};
+
+mod gateway;
 use crate::action::Action;
 use crate::opts::ManageOpts;
 
@@ -211,6 +216,7 @@ pub(super) fn router(state: AppState) -> Router {
         // ones, at the root as the box serves them.
         .route("/assets/{*file}", get(asset))
         .route("/theme-boot.js", get(theme_boot))
+        .merge(gateway::routes())
         .layer(DefaultBodyLimit::max(MAX_RELAY_BODY))
         .with_state(state)
 }

@@ -46,6 +46,7 @@ import { useDetailsOn } from "@/components/details";
 import { blackOut } from "@/lib/sensitive";
 import { directPartner, directRooms, isSpace, plainBody, ROOM_EVENTS, roomName, unread, useEmitted } from "./model";
 import { RoomList } from "./room-list";
+import { isStartNotice, liveCall } from "./rtc";
 import { SecurityDialog, useTrust, VerificationDialog } from "./security";
 import { ChatRefused, goSignIn, type Refusal, type Signed, session, signedNow, signedOutListeners } from "./session";
 import { RoomTimeline, type RowActions } from "./timeline";
@@ -206,6 +207,8 @@ function useNotifications(client: MatrixClient, current: string | null): void {
     const me = client.getSafeUserId();
     const tell = (ev: MatrixEvent, room: Room | undefined): void => {
       if (room === undefined || ev.getSender() === me || ev.getType() !== EventType.RoomMessage) return;
+      // A call rings on its own; its notice for other apps does not.
+      if (isStartNotice(ev.getContent())) return;
       if (!document.hidden && room.roomId === current) return;
       if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
       if (client.getPushActionsForEvent(ev)?.notify !== true) return;
@@ -323,7 +326,7 @@ function ChatHome({ signed }: { signed: Signed }) {
   const navigate = useNavigate();
   const calls = useCalls();
   const linked = React.useRef(false);
-  const ring = React.useRef<{ room: string; video: boolean } | null>(null);
+  const ring = React.useRef<{ room: string; video: boolean; onlyJoin?: boolean } | null>(null);
   const [share, setShare] = React.useState<{ paths: string[]; text: string } | null>(null);
   React.useEffect(() => {
     if (linked.current) return;
@@ -332,17 +335,24 @@ function ChatHome({ signed }: { signed: Signed }) {
     const raw = search.get("with");
     const shared = readShare(search);
     // `?join=<room>` from a LosOS Git repository: that room, joined first.
+    // With `&call=voice|video`, from the notice a call leaves for other
+    // Matrix apps, the call going on there too.
     const joining = linkedRoom(window.location.search);
     if (joining !== null) {
-      navigate(withoutLink(window.location.href), { replace: true });
+      const video = linkedCall(window.location.search);
+      navigate(withoutCall(withoutLink(window.location.href)), { replace: true });
+      const open = (roomId: string): void => {
+        if (video !== null) ring.current = { room: roomId, video, onlyJoin: true };
+        setCurrent(roomId);
+      };
       const there = client.getRoom(joining.room);
       if (there !== null && there.getMyMembership() === "join") {
-        setCurrent(joining.room);
+        open(joining.room);
         return;
       }
       client
         .joinRoom(joining.room, { viaServers: joining.via })
-        .then((room) => setCurrent(room.roomId))
+        .then((room) => open(room.roomId))
         .catch((error: unknown) => failed(t, error));
       return;
     }
@@ -367,6 +377,8 @@ function ChatHome({ signed }: { signed: Signed }) {
     const linkedRoom = client.getRoom(want.room);
     if (linkedRoom === null) return;
     ring.current = null;
+    // A link to a call that is over opens the room and starts nothing.
+    if (want.onlyJoin === true && liveCall(linkedRoom) === null) return;
     if (calls.active === null && callable(linkedRoom)) calls.start(linkedRoom, want.video);
   });
 
