@@ -25,8 +25,8 @@ can argue with it.
    with its own key, which the box loads only while sharing is on.
 5. **An official edge ↔ any edge.** The box carries a root public key that
    lets it tell the LosOS edge from a company's own. Trading needs the LosOS
-   edge, and everything else works with either. The private half is made and
-   used only on the project owner's own computer. The tool that uses it signs
+   edge, and everything else works with either. The project owner makes and
+   uses the private half only on their own computer. The tool that uses it signs
    the person in with GitHub and checks the account against a committed
    allowlist. No box and no edge ever holds the private key. The signed
    certificate reaches the edge over the web, and the edge checks the
@@ -36,8 +36,8 @@ can argue with it.
 
 ## What the admin key is
 
-The 64-character spare key is as powerful as root: it can write any setting
-and rebuild the box. The box creates it and shows it once, on a wizard
+The 64-character spare key can do anything root can. It can write any
+setting and rebuild the box. The box creates it and shows it once, on a wizard
 page. After that the box hands it only to a browser that proves the owner's
 password. The control API listens on the box's loopback only, behind the
 LAN-only guard. Ten failed attempts throttle an address. The box keeps an

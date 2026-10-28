@@ -87,8 +87,8 @@ dropping UDP port 5353 on that device.
 
 - The edge has no certificate, because a private network has no public name
   to prove. A real edge with a public name gets one from Let's Encrypt.
-- The boxes' public names are pointed at the edge by the demo. On a real
-  network, DNS does that.
+- The demo points the boxes' public names at the edge. On a real network,
+  DNS does that.
 - The edge is a company edge, not an official one, so the market stays off.
 - In the light demo LosOS Cloud is not running. A small placeholder answers
   in its place, behind the box's real web server.
