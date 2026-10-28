@@ -15,7 +15,11 @@ Passwort bei LosOS Login anzumelden, der Anmeldeseite der Box unter
 
 Die Seitenleiste links hat sechs Bereiche und darunter die Dinge, die du
 angeheftet hast. Eingeklappt schrumpft sie zu einer Leiste aus Symbolen. Auf
-dem Handy öffnet sie sich als Overlay.
+dem Handy tritt an ihre Stelle eine Leiste am unteren Bildschirmrand, in
+Reichweite deines Daumens: die wichtigsten Bereiche, dann **Mehr**, das die
+ganze Seitenleiste von unten hochholt. Wisch sie nach unten, um sie zu
+schließen. Läuft auf der Box LosOS Chat und LosOS Mail, bekommen die beiden
+zwei der Plätze in der Leiste.
 
 ![Die Übersicht: links die Seitenleiste mit den sechs Bereichen, der Name der Box und ob sie antwortet, die App-Kacheln, die Speicherkarte und das Board.](@site/docs/img/overview-de.png)
 
@@ -28,7 +32,7 @@ dem Handy öffnet sie sich als Overlay.
 | **Diagramme**     | LosOS Diagrams: Diagramme, Pläne und Boards als Karten, dazu das Netzwerk dieser Box gezeichnet und simuliert. |
 | **Einstellungen** | Netzwerk, Aussehen, Hardware, Sicherheit, Benutzer, Zugriffstokens, Zugangsdaten, Erweitert, Historie, Sicherung, Über und Zurücksetzen, jeder davon ein eigener Bereich. |
 
-<img src={require("@site/docs/img/overview-phone-de.png").default} alt="Die Übersicht auf einem Handy: Die Bereiche klappen in eine Menütaste zusammen." width="260" /> <img src={require("@site/docs/img/overview-phone-sheet-de.png").default} alt="Dasselbe Handy mit dem Menü, das als Overlay über der Seite offen ist." width="260" />
+<img src={require("@site/docs/img/overview-phone-de.png").default} alt="Die Übersicht auf einem Handy: Übersicht, Apps, Speicher und Mesh in einer Leiste am unteren Rand, alles andere unter Mehr." width="260" /> <img src={require("@site/docs/img/overview-phone-sheet-de.png").default} alt="Dasselbe Handy nach einem Tipp auf Mehr: alle Bereiche in einem Blatt, das von unten aufsteigt." width="260" />
 
 ## Suche \{#search}
 
@@ -101,6 +105,10 @@ und die Pfeiltasten bewegen sich darin.
 - **Eine Person in Kontakte**: Mail, Chat, Anruf oder Video, bearbeiten,
   als `.vcf` exportieren, löschen. Wer unter **Auf dieser Box** steht,
   bietet statt der letzten drei **Zu Kontakten hinzufügen**.
+
+![Das Menü auf einer leeren Fläche der Übersicht, mit geöffnetem Erscheinungsbild: hell, dunkel und wie im Browser.](@site/docs/img/context-menu-page-de.png)
+
+![Das Menü einer Datei in LosOS Cloud: Öffnen, Herunterladen, Umbenennen mit F2, Verschieben, Kopieren, Versionen, Zu Favoriten hinzufügen, Teilen, Link kopieren, Issue anlegen und Löschen mit Del.](@site/docs/img/context-menu-file-de.png)
 
 Die Tasten neben einem Eintrag funktionieren auch ohne Menü. In LosOS Cloud
 benennt F2 die markierte Datei um und Entf verschiebt sie in den Papierkorb
