@@ -29,7 +29,11 @@
 #      unavailable (no market configured) rather than refused; with the
 #      registrar gone and only the unsigned edge left, sharing is still
 #      allowed but the market answers `reason: noOfficialEdge` and an order
-#      is 409 with `officialEdgeRequired`.
+#      is 409 with `officialEdgeRequired`;
+#   8. sharing pauses by itself: with the box sharing and every edge stopped,
+#      it turns sharing off after `losos.proxy.pauseSharingAfter` (60 s here)
+#      and `/api/edge` says since when; the edges come back and a minute
+#      later it shares again.
 #
 # Two edges are in reach at once, as a box on a company network with
 # internet would see: the registrar on the LAN (advertised, official) and the
@@ -150,6 +154,8 @@ pkgs.testers.nixosTest {
         # The unsigned second edge: see the header.
         losos.proxy.registrarUrl = "http://edge.local:8444";
         losos.proxy.officialRootKeyFile = "${identityFixture}/root.pub";
+        # Step 8: pause after a minute without an edge rather than ten.
+        losos.proxy.pauseSharingAfter = 60;
         # What modules/configuration.nix gives the real box: mDNS through
         # resolved, which lososd's scan browses and which resolves edge.local.
         losos.mdns.enable = true;
@@ -360,5 +366,48 @@ pkgs.testers.nixosTest {
     wait_edges(["http://edge.local:8443", "http://edge.local:8444"])
     code, body = api("POST", "/api/change", {"mode": "mesh"})
     assert code == "200", f"change to mesh after the edge returned answered {code}: {body!r}"
+
+    # 8. Sharing pauses by itself when every edge stays away, and comes back
+    #    when one answers (crate::edge::sharing_step). The box shares
+    #    through the edges that just came back; the rebuild that turned it on
+    #    fails on its own, and nothing is written over a running one.
+    def sharing_line():
+        return "losos.sharingMyStorage = true;" in box.succeed(
+          "cat /etc/nixos/modules/overrides.nix"
+        )
+
+    def settled():
+        box.wait_until_succeeds(
+          "losos-ctl status --json | jq -e '.state != \"building\"'", timeout=300
+        )
+
+    settled()
+    assert sharing_line()
+    assert edge_doc()["sharingPausedAt"] is None
+    edge.succeed("systemctl stop losos-plain-edge.service losos-registrar.service")
+    wait_edge(False)
+
+    def paused(_):
+        return edge_doc()["sharingPausedAt"] is not None
+    with box.nested("waiting for the box to pause sharing"):
+        retry(paused, timeout_seconds=300)
+    assert not sharing_line(), box.succeed("cat /etc/nixos/modules/overrides.nix")
+    state = json.loads(box.succeed("losos-ctl state --json"))
+    assert state["mode"] == "local" and state["sharing"] is False, state
+    box.succeed("journalctl -u lososd --no-pager | grep -F 'sharing is paused until one does'")
+    settled()
+
+    edge.succeed("systemctl start losos-plain-edge.service losos-registrar.service")
+    edge.wait_until_succeeds("curl -fsS http://localhost:8443/health")
+    wait_edge(True)
+
+    def resumed(_):
+        return edge_doc()["sharingPausedAt"] is None
+    with box.nested("waiting for the box to share again"):
+        retry(resumed, timeout_seconds=300)
+    assert sharing_line(), box.succeed("cat /etc/nixos/modules/overrides.nix")
+    state = json.loads(box.succeed("losos-ctl state --json"))
+    assert state["mode"] == "mesh" and state["sharing"] is True, state
+    box.succeed("journalctl -u lososd --no-pager | grep -F 'an edge answers again: sharing is back on'")
   '';
 }

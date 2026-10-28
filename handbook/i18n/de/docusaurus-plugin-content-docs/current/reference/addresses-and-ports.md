@@ -41,6 +41,7 @@ der durch den Tunnel einer Edge ankommt, bekommt **403**.
 | 3702 (UDP), 5357 | WS-Discovery | Die Box unter Netzwerk im Windows-Explorer zeigen, solange die Freigabe an ist |
 | 5355    | LLMNR     | Windows antworten, wenn es die Box beim bloßen Namen sucht, solange die Freigabe an ist |
 | 8082    | HTTP      | Die Steuer-API, nur auf dem Loopback der Box; nginx leitet `/api/` dorthin weiter |
+| 8480, 8443 | HTTP, HTTPS | Was Tor und I2P für die eigenen Adressen der Box zustellen (`losos.hidden.tor.enable`, `losos.hidden.i2p.enable`), nur auf dem Loopback der Box. Siehe [Tor und I2P](../manual/tor-and-i2p.md) |
 | 8790    | HTTP      | Die lokale Kopie der Binär-Caches, auf dem Loopback; im lokalen Netz nur mit `losos.cache.local.shareOnLan` |
 
 Solange die Freigabe an ist, ist der mDNS-Eintrag für LosOS Cloud die

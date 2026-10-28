@@ -141,6 +141,15 @@ pub struct State {
     /// `None`, the default, is nobody.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub managed_by: Option<String>,
+    /// When (Unix seconds) the box turned sharing off by itself because no
+    /// edge answered (`crate::edge::sharing_step`). `None` when it did not,
+    /// or once it turned sharing back on or the owner switched it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sharing_paused_at: Option<u64>,
+    /// An edge has answered since sharing was last turned on. Only then can
+    /// an outage pause sharing.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub sharing_edge_seen: bool,
 }
 
 /// See [`State::claimed`]: a state file without the field predates it.
@@ -176,6 +185,8 @@ impl Default for State {
             erase: None,
             owner: None,
             managed_by: None,
+            sharing_paused_at: None,
+            sharing_edge_seen: false,
         }
     }
 }

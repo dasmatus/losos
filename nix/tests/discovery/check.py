@@ -61,6 +61,9 @@ def run(cmd, check=True, timeout=300, quiet=False, **kw):
     if not quiet and out.strip():
         print(out.rstrip(), flush=True)
     if check and p.returncode != 0:
+        if quiet:
+            # The command carries the password; what it printed does not.
+            raise SystemExit(f"failed ({p.returncode}): {out.strip() or 'no output'}")
         raise SystemExit(f"failed ({p.returncode}): {cmd}")
     return p.returncode, out
 
@@ -237,10 +240,16 @@ class Linux:
         run(f"sudo mkdir -p {self.dav_mount}")
         secrets = WORK / "davfs-secrets"
         secrets.write_text(f"{url} {OWNER} {PASSWORD}\n")
-        run(f"sudo chown root:root {secrets} && sudo chmod 600 {secrets}")
+        # davfs2 refuses `secrets` in the system davfs2.conf ("unknown
+        # option"); a mount run as root reads /etc/davfs2/secrets instead.
+        run(f"sudo install -o root -g root -m 600 {secrets} /etc/davfs2/secrets")
+        # mount.davfs reads the certificate after it drops to its own user,
+        # which cannot enter this run's 700 work folder.
+        cert = "/etc/davfs2/certs/losos-box.pem"
+        run(f"sudo install -D -o root -g root -m 644 {self.ca} {cert}")
         run(
-            "printf 'use_locks 0\\nsecrets %s\\ntrust_server_cert %s\\n' "
-            f"{secrets} {self.ca} | sudo tee /etc/davfs2/davfs2.conf >/dev/null"
+            "printf 'use_locks 0\\ntrust_server_cert %s\\n' "
+            f"{cert} | sudo tee /etc/davfs2/davfs2.conf >/dev/null"
         )
         run(f"sudo mount -t davfs {url} {self.dav_mount} -o uid=$(id -u),gid=$(id -g)", timeout=120)
         return self.dav_mount

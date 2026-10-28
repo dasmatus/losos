@@ -67,6 +67,10 @@ nenašlo žiadny, veta pod **Žiadny okrajový proxy server sa nenašiel** hovor
 ## Zariadenie sa pripojí znova samo \{#the-box-reconnects-on-its-own}
 
 Keď edge znova odpovie, najbližšie hľadanie ho nájde do 20 sekúnd a panel
-Mesh ho o pár sekúnd neskôr ukáže. Tunel sa obnoví bez reštartu. Výpadok
-nevypne nič, čo ste zapli. Kým zariadenie nenachádza žiadny edge, odmieta
-iba *zapínanie* a to rieši stránka [Zdieľanie je odmietnuté](sharing-refused).
+Mesh ho o pár sekúnd neskôr ukáže. Tunel sa obnoví bez reštartu. Kým
+zariadenie nenachádza žiadny edge, odmieta *zapínanie* a to rieši stránka
+[Zdieľanie je odmietnuté](sharing-refused).
+
+Po desiatich minútach bez edge zariadenie, ktoré zdieľa úložisko, samo
+vypne zdieľanie a panel Mesh ukáže **Zdieľanie pozastavené**. Minútu po
+tom, ako edge znova odpovie, zariadenie zdieľanie zapne, bez vášho zásahu.

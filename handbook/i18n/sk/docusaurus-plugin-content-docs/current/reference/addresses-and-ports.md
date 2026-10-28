@@ -41,6 +41,7 @@ vrátane prevádzky, ktorá prichádza cez tunel edge, dostane **403**.
 | 3702 (UDP), 5357 | WS-Discovery | Zobrazenie zariadenia v Sieti v Prieskumníkovi Windows, kým je priečinok zapnutý |
 | 5355    | LLMNR    | Odpoveď Windows, keď sa pýta na zariadenie jeho holým názvom, kým je priečinok zapnutý |
 | 8082    | HTTP     | Riadiace API, iba na loopbacku zariadenia; nginx naň presmeruje `/api/` |
+| 8480, 8443 | HTTP, HTTPS | Čo Tor a I2P doručia pre vlastné adresy zariadenia (`losos.hidden.tor.enable`, `losos.hidden.i2p.enable`), iba na loopbacku zariadenia. Pozri [Tor a I2P](../manual/tor-and-i2p.md) |
 | 8790    | HTTP     | Lokálna kópia binárnych cache, na loopbacku; v lokálnej sieti iba s `losos.cache.local.shareOnLan` |
 
 Kým je priečinok zapnutý, záznam mDNS pre LosOS Cloud je priečinok SMB
