@@ -242,7 +242,7 @@ export function NotesPage() {
         return;
       }
       // New notes go to the vault's top, as Obsidian puts them by default.
-      rel = name.includes("/") ? (isNote(name) ? name : `${name}.md`) : vault.freeName("", name);
+      rel = name.includes("/") ? (isNote(name) ? name : `${name}.note`) : vault.freeName("", name);
     } else {
       rel = vault.freeName(path === null ? "" : folderOf(path), t("notes.untitled"));
     }

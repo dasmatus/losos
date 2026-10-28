@@ -55,7 +55,7 @@ async function get(url: string, signal?: AbortSignal): Promise<Response> {
 
 /** A note's page address. */
 function pageOf(path: string, sub = ""): string {
-  const bare = path.replace(/\.(md|markdown)$/i, "");
+  const bare = path.replace(/\.(note|md|markdown)$/i, "");
   return `${BASE}${bare.split("/").map(encodeURIComponent).join("/")}${sub === "" ? "" : `#${encodeURIComponent(sub)}`}`;
 }
 

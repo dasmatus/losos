@@ -35,7 +35,7 @@ const MAX_HITS: usize = 60;
 #[serde(rename_all = "camelCase")]
 pub struct Note {
     pub id: i64,
-    /// Relative to the vault's folder, with `.md`.
+    /// Relative to the vault's folder, with `.note` or `.md`.
     pub path: String,
     pub size: u64,
     pub mtime: i64,
@@ -86,8 +86,9 @@ fn ends_with(name: &str, ext: &str) -> bool {
             .is_some_and(|e| e.eq_ignore_ascii_case(ext))
 }
 
+/// A note is `.note`, MDX, which new notes are, or `.md` as before.
 pub fn is_note(name: &str) -> bool {
-    ends_with(name, ".md")
+    ends_with(name, ".note") || ends_with(name, ".md")
 }
 
 pub fn is_canvas(name: &str) -> bool {
@@ -373,6 +374,7 @@ mod tests {
             "Vault/Sub/Ideas.md",
             "---\naliases: [Thoughts]\n---\n![[pic.png]]",
         );
+        write(&cloud, "Vault/Plan.note", "# Plan\n<Callout>[[Home]]</Callout> #mdx\n");
         write(&cloud, "Vault/pic.png", "png");
         write(&cloud, "Vault/.obsidian/app.json", "{}");
         write(&cloud, "Vault/.trash/Old.md", "old");
@@ -380,12 +382,14 @@ mod tests {
         let cache = Cache::default();
         let v = vault(&cloud, &cache, "ann", "Vault").unwrap();
         let notes: Vec<&str> = v.notes.iter().map(|n| n.path.as_str()).collect();
-        assert_eq!(notes, ["Home.md", "Sub/Ideas.md"]);
+        assert_eq!(notes, ["Home.md", "Plan.note", "Sub/Ideas.md"]);
         assert_eq!(v.files.len(), 1);
         assert_eq!(v.files[0].path, "pic.png");
         assert_eq!(v.folders, ["Sub"]);
         assert_eq!(v.notes[0].scanned.tags, ["start"]);
-        assert_eq!(v.notes[1].scanned.aliases, ["Thoughts"]);
+        assert_eq!(v.notes[1].scanned.tags, ["mdx"]);
+        assert_eq!(v.notes[1].scanned.links[0].target, "Home");
+        assert_eq!(v.notes[2].scanned.aliases, ["Thoughts"]);
         // Read again only when the note changes.
         let first = v.notes[0].scanned.clone();
         let again = vault(&cloud, &cache, "ann", "Vault").unwrap();
