@@ -2061,14 +2061,24 @@ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 name = "losos-access"
 version = "0.1.0"
 dependencies = [
+ "aes 0.8.4",
+ "base64 0.22.1",
+ "cfb-mode",
+ "cipher 0.4.4",
+ "ed25519-dalek",
  "hex",
+ "hmac 0.12.1",
+ "p256",
+ "p384",
  "pgp",
  "rand 0.8.8",
+ "rsa",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "subtle",
  "thiserror",
+ "x509-cert",
 ]
 
 [[package]]
@@ -3193,6 +3203,7 @@ dependencies = [
  "pkcs1",
  "pkcs8 0.10.2",
  "rand_core 0.6.4",
+ "sha2 0.10.9",
  "signature 2.2.0",
  "spki 0.7.3",
  "subtle",
