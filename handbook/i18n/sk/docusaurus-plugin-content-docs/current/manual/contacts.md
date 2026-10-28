@@ -6,7 +6,7 @@ slug: /manual/contacts
 
 # Kontakty
 
-![LosOS Contacts s otvorenou Evou: Vaše kontakty a Na tomto zariadení, adresár podľa písmen a Evina karta s tlačidlami pošty, chatu, hovoru a videa nad jej adresou, telefónom, adresou v chate a adresou v sieti mesh.](@site/docs/img/contacts-sk.png)
+![LosOS Contacts s otvorenou Evou: Vaše kontakty a Na tomto boxe, adresár podľa písmen a Evina karta s tlačidlami pošty, chatu, hovoru a videa nad jej adresou, telefónom, adresou v chate a adresou v sieti mesh.](@site/docs/img/contacts-sk.png)
 
 LosOS Contacts je adresár pre každého človeka na zariadení. Položka
 **Kontakty** v bočnom paneli ho otvorí na adrese `/contacts`. Váš adresár
