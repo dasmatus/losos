@@ -720,7 +720,7 @@ fn scan_edge_now() -> crate::edge::EdgeStatus {
     let nonce = fresh_nonce();
     let mut vetter = vetter().lock().unwrap_or_else(|p| p.into_inner());
     let mut ledger_changed = false;
-    let status = crate::edge::assemble_with(
+    let mut status = crate::edge::assemble_with(
         browse_lan().as_deref(),
         configured.as_deref(),
         configured_rathole.as_deref(),
@@ -742,7 +742,26 @@ fn scan_edge_now() -> crate::edge::EdgeStatus {
             tracing::warn!(error = %e, "the disabled gateways could not be written down");
         }
     }
+    status.mark_on_network(&own_networks(), resolve_host);
     status
+}
+
+/// The prefixes on the box's own links, from the kernel's tables.
+fn own_networks() -> Vec<crate::edge::Net> {
+    let read = |p: &str| std::fs::read_to_string(p).unwrap_or_default();
+    let mut nets = crate::edge::parse_proc_route(&read("/proc/net/route"));
+    nets.extend(crate::edge::parse_if_inet6(&read("/proc/net/if_inet6")));
+    nets
+}
+
+/// Every address `host` resolves to through the system resolver (mDNS
+/// names included); nothing when it does not resolve.
+fn resolve_host(host: &str) -> Vec<std::net::IpAddr> {
+    use std::net::ToSocketAddrs;
+    (host, 0)
+        .to_socket_addrs()
+        .map(|a| a.map(|s| s.ip()).collect())
+        .unwrap_or_default()
 }
 
 /// Tell the tunnel units which edge the scan chose (modules/proxy.nix reads

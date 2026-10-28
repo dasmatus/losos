@@ -298,6 +298,7 @@ impl FakeLosos {
                     official: true,
                     gateway: None,
                     rathole: Some("edge.local:2333".to_string()),
+                    on_network: true,
                 }],
                 true,
                 None,

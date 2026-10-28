@@ -241,7 +241,9 @@ export function ManageGroup({ view, locked }: { view: EdgeView; locked: boolean 
       : t("panes.mesh.manage.elsewhere", { url: manage.managedBy ?? "" })
     : manage.refused === "noLocalEdge"
         ? t("panes.mesh.manage.noLocalEdge")
-        : t("panes.mesh.manage.offDetail");
+        : manage.refused === "outsideNetwork"
+          ? t("panes.mesh.manage.outsideNetwork")
+          : t("panes.mesh.manage.offDetail");
   const flip = async (next: boolean): Promise<void> => {
     setBusy(true);
     try {

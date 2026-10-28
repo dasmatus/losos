@@ -142,6 +142,12 @@ pub struct Edge {
     /// but not tunnelled to.
     #[serde(default)]
     pub rathole: Option<String>,
+    /// Both the registrar and the tunnel endpoint resolve only to addresses
+    /// on a network this box is directly attached to ([`on_own_network`]). Only
+    /// such an edge may manage the box; one reached through a router, or
+    /// advertised on the LAN with addresses elsewhere, never may.
+    #[serde(default, rename = "onNetwork")]
+    pub on_network: bool,
 }
 
 /// The edge this box uses, out of everything the scan found: the path
@@ -788,6 +794,7 @@ pub fn candidates(adverts: &[Advert]) -> Vec<Edge> {
             official: false,
             gateway: None,
             rathole: Some(rathole),
+            on_network: false,
         });
     }
     out
@@ -885,6 +892,7 @@ pub fn assemble_with(
                     .map(str::trim)
                     .filter(|r| plain_endpoint(r))
                     .map(str::to_string),
+                on_network: false,
             });
         }
     }
@@ -1241,6 +1249,137 @@ pub fn check_market_gate(edge: &EdgeStatus) -> Result<(), OfficialEdgeRequired> 
     }
 }
 
+// ── the box's own network ──────────────────────────────────────────────
+//
+// Management is for an edge beside the box, never one out on the internet,
+// even one that tunnels the box's traffic. The LAN advert alone does not
+// show that: its `url=` and `rathole=` records may name any host. So the
+// scan resolves both, and the edge counts as on the box's network only when
+// every address is inside a prefix the box itself has on an interface
+// (`/proc/net/route`, `/proc/net/if_inet6`), that is, reached without a
+// router in between, and every IPv4 one is private (RFC 1918, link-local).
+
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+
+/// A prefix the box is attached to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Net {
+    pub addr: IpAddr,
+    pub len: u8,
+}
+
+impl Net {
+    #[must_use]
+    pub fn contains(&self, ip: IpAddr) -> bool {
+        match (self.addr, ip) {
+            (IpAddr::V4(n), IpAddr::V4(a)) if self.len <= 32 => {
+                let mask = u32::MAX.checked_shl(32 - u32::from(self.len)).unwrap_or(0);
+                u32::from(n) & mask == u32::from(a) & mask
+            }
+            (IpAddr::V6(n), IpAddr::V6(a)) if self.len <= 128 => {
+                let mask = u128::MAX
+                    .checked_shl(128 - u32::from(self.len))
+                    .unwrap_or(0);
+                u128::from(n) & mask == u128::from(a) & mask
+            }
+            _ => false,
+        }
+    }
+}
+
+/// The IPv4 prefixes of `/proc/net/route` that have no gateway: the
+/// networks on the box's own links. The default route and loopback are
+/// left out.
+#[must_use]
+pub fn parse_proc_route(text: &str) -> Vec<Net> {
+    let hex = |s: &str| u32::from_str_radix(s, 16).ok().map(u32::from_be);
+    text.lines()
+        .skip(1)
+        .filter_map(|line| {
+            let f: Vec<&str> = line.split_whitespace().collect();
+            let (iface, dest, gw, mask) = (
+                f.first()?,
+                hex(f.get(1)?)?,
+                hex(f.get(2)?)?,
+                hex(f.get(7)?)?,
+            );
+            let len = u8::try_from(mask.count_ones()).ok()?;
+            (*iface != "lo" && gw == 0 && len > 0).then(|| Net {
+                addr: IpAddr::V4(Ipv4Addr::from(dest)),
+                len,
+            })
+        })
+        .collect()
+}
+
+/// The IPv6 prefixes of `/proc/net/if_inet6` (address, prefix length per
+/// interface), loopback left out.
+#[must_use]
+pub fn parse_if_inet6(text: &str) -> Vec<Net> {
+    text.lines()
+        .filter_map(|line| {
+            let f: Vec<&str> = line.split_whitespace().collect();
+            let (addr, len, iface) = (f.first()?, f.get(2)?, f.get(5)?);
+            let addr = u128::from_str_radix(addr, 16).ok()?;
+            let len = u8::from_str_radix(len, 16).ok()?;
+            (*iface != "lo" && len > 0).then(|| Net {
+                addr: IpAddr::V6(Ipv6Addr::from(addr)),
+                len,
+            })
+        })
+        .collect()
+}
+
+/// An IPv4 address only a local network uses. IPv6 needs no such check: a
+/// global prefix on the box's own link is still that link, and a LAN with
+/// SLAAC from its provider names its machines by such addresses.
+#[must_use]
+pub fn private_v4(ip: Ipv4Addr) -> bool {
+    ip.is_private() || ip.is_link_local()
+}
+
+/// Every one of `addrs` is on one of the box's own prefixes, and an IPv4
+/// one is private besides: a box on a public subnet shares it with
+/// strangers.
+#[must_use]
+pub fn on_own_network(addrs: &[IpAddr], nets: &[Net]) -> bool {
+    !addrs.is_empty()
+        && addrs.iter().all(|a| {
+            let local = match a {
+                IpAddr::V4(v4) => private_v4(*v4),
+                IpAddr::V6(_) => true,
+            };
+            local && nets.iter().any(|n| n.contains(*a))
+        })
+}
+
+impl EdgeStatus {
+    /// Mark the LAN edges whose registrar and tunnel endpoint resolve onto
+    /// the box's own networks. `resolve` takes a host (no port, no brackets)
+    /// and gives its addresses.
+    pub fn mark_on_network(&mut self, nets: &[Net], resolve: impl Fn(&str) -> Vec<IpAddr>) {
+        for e in &mut self.edges {
+            let hosts = std::iter::once(bracketed_host(&e.url))
+                .chain(e.rathole.as_deref().map(bracketed_host_of_endpoint));
+            e.on_network = e.source == Source::Lan
+                && hosts.into_iter().all(|h| {
+                    on_own_network(
+                        &resolve(h.trim_start_matches('[').trim_end_matches(']')),
+                        nets,
+                    )
+                });
+        }
+    }
+}
+
+/// The host of a `host:port` endpoint, an IPv6 literal kept in brackets.
+fn bracketed_host_of_endpoint(endpoint: &str) -> String {
+    endpoint
+        .rsplit_once(':')
+        .map_or(endpoint, |(h, _)| h)
+        .to_string()
+}
+
 // ── management: a company's own edge looking after this box ───────────────
 //
 // A local edge's web page can change this box's LosOS Cloud, LosOS Git and
@@ -1258,20 +1397,36 @@ pub enum NotManageable {
     /// The box reaches no edge, or only through the configured one.
     #[error("this box is not joined to an edge on its own network")]
     NoLocalEdge,
+    /// The edge in use was found on the LAN but its addresses are not on a
+    /// network this box is attached to.
+    #[error("the edge in use is not on this box's own network, so it may not manage the box")]
+    OutsideNetwork,
 }
 
 /// The edge that may manage this box right now: the path, when it is an edge
-/// on the LAN. A gateway that passed its checks is somebody's own edge like
-/// any other, so it may manage the boxes its owner lets it.
+/// found on the LAN whose registrar and tunnel endpoint are both on a network
+/// this box is directly attached to. Checked again on every call the edge
+/// makes ([`manager_active`]), so an edge whose name starts resolving
+/// elsewhere loses access with the next scan. A gateway that passed its
+/// checks is somebody's own edge like any other.
 ///
 /// # Errors
 /// What stands in the way.
 pub fn manageable(status: &EdgeStatus) -> Result<&EdgePath, NotManageable> {
-    status
+    let path = status
         .path
         .as_ref()
         .filter(|p| p.source == Source::Lan)
-        .ok_or(NotManageable::NoLocalEdge)
+        .ok_or(NotManageable::NoLocalEdge)?;
+    if status
+        .edges
+        .iter()
+        .any(|e| e.url == path.url && e.on_network)
+    {
+        Ok(path)
+    } else {
+        Err(NotManageable::OutsideNetwork)
+    }
 }
 
 /// Whether the edge the owner switched management on for (`managed_by`, its
@@ -1405,6 +1560,7 @@ mod tests {
             official,
             gateway: None,
             rathole: Some("192.168.1.2:2333".into()),
+            on_network: true,
         }
     }
 
@@ -1439,6 +1595,94 @@ mod tests {
             manageable(&company).map(|p| p.url.as_str()),
             Ok("http://office.local:8443")
         );
+    }
+
+    #[test]
+    fn an_edge_outside_the_boxs_network_may_not_manage_it() {
+        let mut outside = lan_edge("http://office.local:8443", false);
+        outside.on_network = false;
+        let status = EdgeStatus::found(vec![outside], true, None);
+        assert_eq!(manageable(&status), Err(NotManageable::OutsideNetwork));
+        assert!(!manager_active(Some("http://office.local:8443"), &status));
+    }
+
+    const ROUTE: &str =
+        "Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT\n\
+eth0\t00000000\t0101A8C0\t0003\t0\t0\t100\t00000000\t0\t0\t0\n\
+eth0\t0001A8C0\t00000000\t0001\t0\t0\t100\t00FFFFFF\t0\t0\t0\n\
+lo\t0000007F\t00000000\t0001\t0\t0\t0\t000000FF\t0\t0\t0\n";
+
+    const INET6: &str = "fe80000000000000505400fffe123456 02 40 20 80     eth0\n\
+00000000000000000000000000000001 01 80 10 80       lo\n\
+fd00000000000000505400fffe123456 02 40 00 00     eth0\n";
+
+    fn ip(s: &str) -> IpAddr {
+        s.parse().unwrap()
+    }
+
+    #[test]
+    fn the_boxs_own_networks_come_from_proc() {
+        let v4 = parse_proc_route(ROUTE);
+        assert_eq!(v4.len(), 1, "{v4:?}");
+        assert!(v4[0].contains(ip("192.168.1.2")));
+        assert!(!v4[0].contains(ip("192.168.2.2")));
+        let v6 = parse_if_inet6(INET6);
+        assert_eq!(v6.len(), 2, "{v6:?}");
+        assert!(v6.iter().any(|n| n.contains(ip("fd00::1"))));
+        assert!(v6.iter().any(|n| n.contains(ip("fe80::1"))));
+    }
+
+    #[test]
+    fn only_private_addresses_on_the_boxs_links_count_as_its_network() {
+        let nets = parse_proc_route(ROUTE);
+        assert!(on_own_network(&[ip("192.168.1.2")], &nets));
+        // Another private network, routed to: not this box's link.
+        assert!(!on_own_network(&[ip("192.168.2.2")], &nets));
+        // A public address on a link is still somebody else's network.
+        let public = vec![Net {
+            addr: ip("203.0.113.0"),
+            len: 24,
+        }];
+        assert!(!on_own_network(&[ip("203.0.113.5")], &public));
+        // A global IPv6 prefix on the box's link is that link.
+        let v6 = vec![Net {
+            addr: ip("2001:db8:1::"),
+            len: 64,
+        }];
+        assert!(on_own_network(&[ip("2001:db8:1::2")], &v6));
+        assert!(!on_own_network(&[ip("2001:db8:2::2")], &v6));
+        // Nothing resolved, or one address elsewhere, is not the network.
+        assert!(!on_own_network(&[], &nets));
+        assert!(!on_own_network(&[ip("192.168.1.2"), ip("10.0.0.2")], &nets));
+    }
+
+    #[test]
+    fn an_edge_counts_as_on_the_network_when_registrar_and_tunnel_resolve_there() {
+        let nets = parse_proc_route(ROUTE);
+        let resolve = |h: &str| -> Vec<IpAddr> {
+            match h {
+                "office.local" | "192.168.1.2" => vec![ip("192.168.1.2")],
+                "far.local" => vec![ip("192.168.2.2")],
+                _ => vec![],
+            }
+        };
+        let mut far_tunnel = lan_edge("http://office.local:8443", false);
+        far_tunnel.rathole = Some("far.local:2333".into());
+        let mut configured = lan_edge("http://office.local:8443", false);
+        configured.source = Source::Configured;
+        let mut status = EdgeStatus::found(
+            vec![
+                lan_edge("http://office.local:8443", false),
+                lan_edge("http://far.local:8443", false),
+                far_tunnel,
+                configured,
+            ],
+            true,
+            None,
+        );
+        status.mark_on_network(&nets, resolve);
+        let marks: Vec<bool> = status.edges.iter().map(|e| e.on_network).collect();
+        assert_eq!(marks, [true, false, false, false]);
     }
 
     #[test]
@@ -1858,6 +2102,7 @@ mod tests {
                 official: false,
                 gateway: None,
                 rathole: Some("edge.local:2333".into()),
+                on_network: true,
             }],
             true,
             None,
