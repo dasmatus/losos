@@ -42,8 +42,8 @@
 # The certificate is a public key and two names; publishing it leaks no secret.
 # The guard is not about the bytes:
 #
-#   * Master-proxy traffic reaches this vhost from 127.0.0.1 (rathole's
-#     local_addr), so anything *not* guarded here is on the public internet the
+#   * Master-proxy traffic reaches this vhost from 127.0.0.1 (the tunnel
+#     client's local address), so anything *not* guarded here is on the public internet the
 #     moment losos.proxy.enable is on. "Guarded" is therefore the default a new
 #     route has to argue its way out of. /cloud/ and /git/ argued their
 #     way out — carrying them is what the tunnel is for.

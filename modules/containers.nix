@@ -3,7 +3,7 @@
 # One default_server vhost on :80 carries everything the appliance publishes:
 # the admin SPA at /, lososd's JSON API at /api/*, LosOS Cloud
 # (modules/cloud.nix) and LosOS Git at /git/. default_server because
-# master-proxy (Traefik+rathole) traffic arrives with a public hostname, not
+# master-proxy (Traefik plus the edge tunnel) traffic arrives with a public hostname, not
 # <hostName>.local. Nothing but Nginx binds a public port. The admin surface
 # (/, /assets/, /setup/, /api/) is LAN-only (see `lanOnly` below); LosOS
 # Cloud and /git/ are reachable through the master-proxy tunnel.
@@ -101,8 +101,8 @@ let
 
   # Access guard for the admin surface (the SPA, its assets, the setup routes,
   # the lososd API): local network only. Master-proxy traffic must never reach
-  # these routes — and it arrives from *loopback* (proxy.nix points rathole at
-  # 127.0.0.1:80), so loopback is deliberately not allowed. That costs nothing
+  # these routes — and it arrives from *loopback* (proxy.nix points the
+  # tunnel client at 127.0.0.1:80), so loopback is deliberately not allowed. That costs nothing
   # for humans: the box has no shell logins, so no legitimate client browses
   # from localhost. The vhost only listens on 0.0.0.0, so the IPv4 ranges below
   # are exhaustive; if an IPv6 listener is ever added, these rules fail closed

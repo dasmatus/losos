@@ -45,7 +45,7 @@ const GW_B = { name: 'gw-b', url: 'http://192.168.1.3:8080', source: 'lan', offi
 const EU_1 = { name: 'eu-1.losos.dasmat.us', url: 'https://eu-1.losos.dasmat.us', source: 'configured', official: true, tier: 'tertiary', officialCluster: 'eu' };
 const EU_2 = { name: 'eu-2.losos.dasmat.us', url: 'https://eu-2.losos.dasmat.us', source: 'configured', official: true, tier: 'tertiary', officialCluster: 'eu' };
 
-const pathOf = (e) => ({ name: e.name, url: e.url, source: e.source, rathole: 'edge:2333', tier: e.tier, ...(e.cluster ? { cluster: e.cluster, member: e.member } : {}), ...(e.officialCluster ? { officialCluster: e.officialCluster } : {}) });
+const pathOf = (e) => ({ name: e.name, url: e.url, source: e.source, tunnel: 'edge:2333', tier: e.tier, ...(e.cluster ? { cluster: e.cluster, member: e.member } : {}), ...(e.officialCluster ? { officialCluster: e.officialCluster } : {}) });
 
 const STATES = {
   secondary: {

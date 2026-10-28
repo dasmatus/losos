@@ -447,7 +447,7 @@ pub struct Answer {
 pub struct Inference {
     opts: InferenceOpts,
     models: Vec<Model>,
-    rathole_lo: u16,
+    tunnel_lo: u16,
     heads: Arc<dyn Heads>,
     state_file: PathBuf,
     saved: Mutex<Saved>,
@@ -464,7 +464,7 @@ impl Inference {
     /// The catalogue does not parse, or the groups file is unreadable.
     pub async fn open(
         opts: InferenceOpts,
-        rathole_range: (u16, u16),
+        tunnel_range: (u16, u16),
         state_file: PathBuf,
         heads: Arc<dyn Heads>,
     ) -> Result<Self, String> {
@@ -473,7 +473,7 @@ impl Inference {
             .map_err(|e| format!("{}: {e}", opts.models_file))?;
         let models = parse_models(&bytes)?;
         if u32::from(opts.port_range.1).saturating_sub(u32::from(opts.port_range.0))
-            < u32::from(rathole_range.1).saturating_sub(u32::from(rathole_range.0))
+            < u32::from(tunnel_range.1).saturating_sub(u32::from(tunnel_range.0))
         {
             return Err("--llm-port-range is smaller than the tunnel port range".into());
         }
@@ -487,7 +487,7 @@ impl Inference {
         Ok(Self {
             opts,
             models,
-            rathole_lo: rathole_range.0,
+            tunnel_lo: tunnel_range.0,
             heads,
             state_file,
             saved: Mutex::new(saved),
@@ -505,10 +505,10 @@ impl Inference {
     }
 
     /// The edge port of the `:llm` service of the box on tunnel port
-    /// `rathole_port`.
+    /// `tunnel_port`.
     #[must_use]
-    pub fn llm_port(&self, rathole_port: u16) -> Option<u16> {
-        let offset = rathole_port.checked_sub(self.rathole_lo)?;
+    pub fn llm_port(&self, tunnel_port: u16) -> Option<u16> {
+        let offset = tunnel_port.checked_sub(self.tunnel_lo)?;
         let port = self.opts.port_range.0.checked_add(offset)?;
         (port <= self.opts.port_range.1).then_some(port)
     }
