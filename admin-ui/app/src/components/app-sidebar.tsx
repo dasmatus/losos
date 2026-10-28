@@ -9,6 +9,7 @@ import {
   Home01Icon,
   LayoutGridIcon,
   FlowchartIcon,
+  LibraryIcon,
   Mail01Icon,
   Calendar03Icon,
   ContactBookIcon,
@@ -19,6 +20,7 @@ import {
   Share08Icon,
   WorkflowSquare01Icon,
 } from "@hugeicons/core-free-icons";
+import { BottomNav, type BottomNavTab } from "@/components/ui/bottom-nav";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Sidebar,
@@ -65,6 +67,7 @@ import { useOfficeFolder } from "@/lib/office-folder";
  *     Market                selling storage and compute, and disk sharing
  *     Machines              virtual machines on the mesh
  *   Diagrams                (LosOS Diagrams at /diagrams)
+ *   Wiki                    (LosOS Wiki at /wikis, every wiki on the box)
  *   Chat                    (LosOS Chat at /chat/, only on the shared side)
  *   Mail                    (LosOS Mail at /mail, the same)
  *   Contacts                (LosOS Contacts at /contacts, wherever LosOS Cloud runs)
@@ -87,9 +90,11 @@ import { useOfficeFolder } from "@/lib/office-folder";
  * also the pins, apps, files in LosOS Cloud and repositories in LosOS Git.
  *
  * On a wide screen the trigger (or Ctrl/Cmd+B) narrows the panel to a rail of
- * icons, each naming itself in a tooltip; on a phone a row naming where you
- * are opens the panel as a Sheet from the left. The primitives are shadcn's
- * base registry (components/ui/sidebar.tsx, on Base UI). */
+ * icons, each naming itself in a tooltip. On a phone the panel gives way to
+ * a bar along the bottom edge (components/ui/bottom-nav.tsx): the first few
+ * entries of TABS this person may open, then More, which raises the whole
+ * panel as a sheet from the bottom. The primitives are shadcn's base
+ * registry (components/ui/sidebar.tsx, on Base UI). */
 
 interface LinkEntry {
   kind: "link";
@@ -152,6 +157,13 @@ const TREE: readonly Entry[] = [
   },
   {
     kind: "link",
+    key: "wiki",
+    to: "/wikis",
+    label: "shell.nav.wiki",
+    icon: LibraryIcon,
+  },
+  {
+    kind: "link",
     key: "chat",
     to: "/chat/",
     label: "shell.nav.chat",
@@ -197,7 +209,7 @@ const TREE: readonly Entry[] = [
     icon: Settings01Icon,
     railTo: "/settings",
     children: (
-      ["network", "look", "hardware", "security", "account", "users", "moderation", "access", "credentials", "advanced", "history", "backup", "about", "reset"] as const
+      ["network", "look", "hardware", "statistics", "security", "account", "users", "moderation", "access", "credentials", "advanced", "history", "backup", "about", "reset"] as const
     ).map(
       settingsLeaf,
     ),
@@ -234,6 +246,27 @@ function visible(entries: readonly Entry[], office: boolean): Entry[] {
   return out;
 }
 
+/* The phone's bottom bar, in this order: the first four of these this person
+ * may open. Chat and Mail come before the box's own sections because a
+ * phone is where they get used; a box without them shows Overview, Apps,
+ * Storage and Mesh. Everything else is under More. */
+const TABS = ["overview", "chat", "mail", "apps", "storage", "mesh", "lab"] as const;
+const TAB_COUNT = 4;
+
+function bottomTabs(tree: readonly Entry[], pathname: string, t: ReturnType<typeof useT>): BottomNavTab[] {
+  const links = tree.filter((entry): entry is LinkEntry => entry.kind === "link");
+  return TABS.flatMap((key) => links.filter((entry) => entry.key === key))
+    .slice(0, TAB_COUNT)
+    .map((entry) => ({
+      key: entry.key,
+      to: entry.to,
+      label: t(entry.label),
+      icon: entry.icon,
+      // Mesh lights up for Market and Machines as well, as its fold does.
+      active: isCurrent(entry, pathname) || containsCurrent(entry, pathname),
+    }));
+}
+
 function isCurrent(entry: LinkEntry, pathname: string): boolean {
   // An app of the owner's own (/apps/<id>, src/apps/) is under Apps.
   if (entry.pane === "apps" && pathname.startsWith("/apps/")) return true;
@@ -242,6 +275,7 @@ function isCurrent(entry: LinkEntry, pathname: string): boolean {
   const path = pathname.replace(/(.)\/$/, "$1");
   if (entry.key === "ci") return path === "/ci" || path.startsWith("/ci/");
   if (entry.key === "documents") return path === "/office";
+  if (entry.key === "wiki") return path === "/wikis" || path.startsWith("/wikis/");
   return path === entry.to;
 }
 
@@ -282,7 +316,7 @@ export function AppSidebar() {
     setOpenMobile(false);
   }, [pathname, setOpenMobile, tree]);
 
-  const here = React.useMemo(() => currentLabel(tree, pathname), [pathname, tree]);
+  const tabs = bottomTabs(tree, pathname, t);
   const shortcut = shortcutLabel();
   const searchLabel = t("palette.open", { shortcut });
 
@@ -301,47 +335,45 @@ export function AppSidebar() {
   const isOpen = (key: string): boolean => openFolds[key] === true;
   const setOpen = (key: string, open: boolean): void => setOpenFolds((current) => ({ ...current, [key]: open }));
 
+  // The command palette's button: a magnifier at the end of the header,
+  // under the trigger on the rail, and on the phone sheet's title row.
+  const search = (
+    <button
+      type="button"
+      onClick={() => {
+        setOpenMobile(false);
+        openPalette();
+      }}
+      aria-label={searchLabel}
+      aria-keyshortcuts={SHORTCUT_ARIA}
+      aria-haspopup="dialog"
+      title={searchLabel}
+      className={cn(
+        "ml-auto flex size-8 shrink-0 items-center justify-center rounded-control text-muted",
+        "transition-colors duration-150 hover:bg-surface hover:text-ink",
+        "focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:outline-none",
+        "group-data-[collapsible=icon]/sidebar:ml-0",
+      )}
+    >
+      <HugeiconsIcon icon={Search01Icon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+    </button>
+  );
+
   return (
     <>
-      {isMobile && (
-        // A phone: one row naming where you are; it, or the trigger, slides
-        // the panel in from the left as a Sheet.
-        <div className="flex w-full items-center gap-1.5 rounded-card border border-line bg-sunk p-2">
-          <SidebarTrigger label={t("shell.nav.expand")} />
-          <button
-            type="button"
-            onClick={() => setOpenMobile(true)}
-            className="min-w-0 flex-1 truncate text-left text-[13.5px] font-medium text-ink"
-          >
-            {here !== null ? t(here) : t("shell.nav.label")}
-          </button>
-        </div>
-      )}
-      <Sidebar aria-label={t("shell.nav.label")} mobileTitle={t("shell.nav.label")} closeLabel={t("ui.dismiss")}>
-        <SidebarHeader className={cn(isMobile && "pr-10")}>
-          {!isMobile && <SidebarTrigger label={t(rail ? "shell.nav.expand" : "shell.nav.collapse")} />}
-          {/* The command palette's button: a magnifier at the end of the
-              header, under the trigger on the rail. */}
-          <button
-            type="button"
-            onClick={() => {
-              setOpenMobile(false);
-              openPalette();
-            }}
-            aria-label={searchLabel}
-            aria-keyshortcuts={SHORTCUT_ARIA}
-            aria-haspopup="dialog"
-            title={searchLabel}
-            className={cn(
-              "ml-auto flex size-8 shrink-0 items-center justify-center rounded-control text-muted",
-              "transition-colors duration-150 hover:bg-surface hover:text-ink",
-              "focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:outline-none",
-              "group-data-[collapsible=icon]/sidebar:ml-0",
-            )}
-          >
-            <HugeiconsIcon icon={Search01Icon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
-          </button>
-        </SidebarHeader>
+      <BottomNav label={t("ui.bottomNav.label")} tabs={tabs} />
+      <Sidebar
+        aria-label={t("shell.nav.label")}
+        mobileTitle={t("shell.nav.label")}
+        mobileActions={search}
+        closeLabel={t("ui.dismiss")}
+      >
+        {!isMobile && (
+          <SidebarHeader>
+            <SidebarTrigger label={t(rail ? "shell.nav.expand" : "shell.nav.collapse")} />
+            {search}
+          </SidebarHeader>
+        )}
 
         <SidebarContent>
           <SidebarMenu>
@@ -462,15 +494,6 @@ function PinnedSection({
       )}
     </SidebarGroup>
   );
-}
-
-function currentLabel(entries: readonly Entry[], pathname: string): MessageKey | null {
-  for (const entry of entries) {
-    if (entry.kind === "link" && isCurrent(entry, pathname)) return entry.label;
-    const inner = currentLabel(entry.children ?? [], pathname);
-    if (inner !== null) return inner;
-  }
-  return null;
 }
 
 interface TopEntryProps {

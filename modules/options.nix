@@ -239,6 +239,89 @@ in
       '';
     };
 
+    # ── Local copy of the binary cache ──────────────────────────────────────
+    # modules/cache.nix. A caching proxy on the box that every Nix download
+    # goes through, keeping what it fetched under /var/cache (on /persist).
+    cache.local.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Keep a copy of every store path the box downloads, so it never fetches
+        the same one twice. Nix on the box substitutes from a local proxy
+        (`http://127.0.0.1:8790` by default) that
+        asks `losos.cache.local.peers` and then `losos.cache.local.upstreams`
+        and keeps each answer in `/var/cache/losos-nix-cache`, which lives on
+        `/persist`. Nix still checks every signature against
+        `nix.settings.trusted-public-keys`; the proxy changes where a path comes
+        from, never what is accepted.
+
+        It pays off on the nightly rebuild: the clean-up at 04:30 deletes the
+        build tools the last rebuild fetched, and the next one fetches them
+        again. On by default on the box; off on the installer medium.
+      '';
+    };
+
+    cache.local.port = lib.mkOption {
+      type = lib.types.port;
+      default = 8790;
+      description = "Port of the local cache proxy, on loopback (and on the LAN with `losos.cache.local.shareOnLan`).";
+    };
+
+    cache.local.maxSize = lib.mkOption {
+      type = lib.types.strMatching "[1-9][0-9]*[kmg]";
+      default = "8g";
+      example = "20g";
+      description = ''
+        Most disk space the local copy may take, as nginx sizes (`512m`,
+        `8g`). Past it the least recently used paths are deleted first.
+      '';
+    };
+
+    cache.local.minFree = lib.mkOption {
+      type = lib.types.strMatching "[1-9][0-9]*[kmg]";
+      default = "4g";
+      description = ''
+        Free space the local copy always leaves on `/persist`. When the disk
+        has less, the least recently used paths are deleted until it has this
+        much again, whatever `maxSize` says. Your files come first.
+      '';
+    };
+
+    cache.local.upstreams = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ "https://cache.nixos.org" ] ++ config.losos.cache.substituters;
+      defaultText = lib.literalExpression ''[ "https://cache.nixos.org" ] ++ config.losos.cache.substituters'';
+      description = ''
+        Binary caches the local proxy asks, in this order, for a path it does
+        not have. The first that has it wins. Every one is `http://` or
+        `https://`, with an optional path.
+      '';
+    };
+
+    cache.local.shareOnLan = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Answer other machines on the local network too, so several boxes in
+        one home download each update once. Only private (RFC 1918) addresses
+        are let in. What the copy holds is public software, signed by the
+        caches it came from; a box that uses it still checks every signature.
+      '';
+    };
+
+    cache.local.peers = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "http://other-box.local:8790" ];
+      description = ''
+        Local copies on other boxes (`shareOnLan` on there) to ask before
+        `upstreams`. A path one of them has is fetched over the LAN. A peer
+        that does not have a path fetches it from its own upstreams and keeps
+        it, so the next box finds it there; it never asks its own peers on
+        your behalf, which keeps two boxes that name each other out of a loop.
+      '';
+    };
+
     # ── Storage headroom ────────────────────────────────────────────────────
     storage.fillPercent = lib.mkOption {
       type = lib.types.ints.between 50 100;
@@ -369,6 +452,18 @@ in
       description = "host:port the rathole client dials (the edge rathole server's [server] bind).";
     };
 
+    proxy.bansFile = lib.mkOption {
+      type = lib.types.str;
+      default = "/var/lib/losos/edge-bans.json";
+      description = ''
+        The ban list lososd reads on every edge scan,
+        `{"edges": [<url>], "clusters": [<official cluster>]}`. A banned
+        edge is never chosen as the path, and a box on one moves to another
+        edge of the same tier; a ban also breaks the hold of a custom
+        domain, which follows the box. A missing file bans nothing.
+      '';
+    };
+
     proxy.registrarUrl = lib.mkOption {
       type = lib.types.str;
       # The demo edge (edge/vercel/, the registrar as a Vercel Function at the
@@ -447,25 +542,63 @@ in
       '';
     };
 
-    proxy.officialRootKeyFile = lib.mkOption {
-      type = lib.types.path;
-      default = ../nix/keys/official-edge-root.pub;
-      defaultText = lib.literalExpression "../nix/keys/official-edge-root.pub";
-      description = ''
-        The LosOS root **public** key (Ed25519, 64 hex characters; `#` lines
-        are comments), read by lososd on every edge scan. An edge counts as
-        *official* only if it presents a certificate signed by the matching
-        private key and answers a fresh nonce with the certificate's key
-        (`GET <url>/identity?nonce=`, backend/src/edge.rs); only official
-        edges may process P2P storage and compute trading, so the market
-        relay answers `{available: false, reason: "noOfficialEdge"}` and
-        refuses actions (409, `officialEdgeRequired`) through any other edge.
-        Discovery and storage sharing are not gated on this: a company's own
-        edge keeps working. A file with no key in it (the committed default
-        until the project owner writes the key) makes no edge official, so a
-        tree without the key fails closed. A public key, so a store path is
-        fine here.
-      '';
+    proxy.gateways = {
+      tpmRoots = lib.mkOption {
+        type = lib.types.path;
+        default = "${import ../nix/gateway/tpm-roots.nix { inherit pkgs; }}/tpm-roots.pem";
+        defaultText = lib.literalExpression ''"''${import ../nix/gateway/tpm-roots.nix { inherit pkgs; }}/tpm-roots.pem"'';
+        description = ''
+          The TPM makers' certificates (PEM; self-signed ones are roots, the
+          rest intermediates) a box checks an edge's TPM against before it
+          trusts the edge with trading (backend/src/edge.rs, "gateways").
+          The default is Microsoft's TrustedTpm bundle.
+        '';
+      };
+      images = lib.mkOption {
+        type = lib.types.listOf (
+          lib.types.submodule {
+            options = {
+              name = lib.mkOption {
+                type = lib.types.str;
+                description = "The image's name, shown beside a trusted edge.";
+              };
+              pcr11 = lib.mkOption {
+                type = lib.types.strMatching "[0-9a-fA-F]{64}";
+                description = "The SHA-256 PCR 11 its unified kernel image leaves, hex.";
+              };
+              apps = lib.mkOption {
+                type = lib.types.listOf (lib.types.strMatching "[0-9a-fA-F]{64}");
+                description = "Authenticode SHA-256 of every program the firmware may start for it, hex.";
+              };
+            };
+          }
+        );
+        default = import ../nix/gateway/images.nix;
+        defaultText = lib.literalExpression "import ../nix/gateway/images.nix";
+        description = ''
+          The published LosOS gateway images. A box trusts an edge with
+          trading only when the edge's TPM quote shows one of them booted,
+          its owner's passport holds, its fee addresses are LosOS's
+          (`payouts`) and nothing changed since it booted. An edge that
+          proves tampered is disabled on the box for good
+          (/var/lib/losos/gateways.json). Empty, no edge is trusted with
+          trading; storage sharing works through any edge regardless.
+        '';
+      };
+      payouts = lib.mkOption {
+        type = lib.types.attrsOf lib.types.str;
+        default = import ../nix/gateway/payouts.nix;
+        defaultText = lib.literalExpression "import ../nix/gateway/payouts.nix";
+        example = {
+          base = "0x0000000000000000000000000000000000000000";
+        };
+        description = ''
+          LosOS's payout address on each network, where a gateway sends
+          LosOS's 2% of a sale. A gateway whose measured settings name any
+          other address, or another split, is not trusted. Empty, no gateway
+          is.
+        '';
+      };
     };
 
     proxy.heartbeatInterval = lib.mkOption {
@@ -2076,6 +2209,16 @@ in
       '';
     };
 
+    edge.traefikMetricsPort = lib.mkOption {
+      type = lib.types.port;
+      default = 8091;
+      description = ''
+        Loopback port of Traefik's Prometheus counters. The registrar reads
+        them every 15 seconds for the Statistics page of a company edge's
+        manage page. Never reachable off the machine.
+      '';
+    };
+
     edge.registrarApiBind = lib.mkOption {
       type = lib.types.str;
       default = "127.0.0.1";
@@ -2113,40 +2256,19 @@ in
       '';
     };
 
-    edge.identity.keyFile = lib.mkOption {
-      type = lib.types.nullOr secretPath;
-      default = "/var/lib/losos-registrar/identity.key";
+    edge.passport.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
       description = ''
-        This edge's identity **private** key (PKCS#8 hex, 0600, persisted via
-        /var, never in the store). The registrar makes it on its first start
-        if the file is missing, so the private half never leaves the edge;
-        `GET /identity/public-key` serves the public half. Together with
-        `edge.identity.certFile` it is what can make the edge *official*:
-        once an operator has pushed a certificate the LosOS root signed for
-        this key (`losos-registrar provision edge`, from their own machine,
-        behind a GitHub sign-in that the edge checks too), the registrar
-        serves `GET /identity?nonce=` and boxes whose
-        losos.proxy.officialRootKeyFile matches the signer let it process
-        their market traffic. Until then the edge is found and shares
-        storage but is not official — the shape of an edge a company runs
-        for itself. `null` (with `certFile = null`) runs an edge that
-        cannot become official at all: every `/identity*` route is 404.
-      '';
-    };
-
-    edge.identity.certFile = lib.mkOption {
-      type = lib.types.nullOr lib.types.path;
-      default = "/var/lib/losos-registrar/identity.cert.json";
-      description = ''
-        Where the certificate for `edge.identity.keyFile` lives: the JSON
-        `POST /identity/cert` installs (the primitive is `losos-registrar
-        identity sign`), signed by the LosOS root key the project owner
-        holds offline. Public, and the registrar writes it, so it must be a
-        writable runtime path for the push to work; a store path is read
-        but can never be replaced by a push. Must name this edge's public
-        URL (the one boxes probe) and be unexpired, or boxes reject it; a
-        certificate that is not for the key is logged and ignored. Set
-        with `keyFile` or not at all.
+        Run this edge as an open gateway that boxes check for themselves
+        (modules/edge-passport.nix): the registrar keeps an edge key at
+        /var/lib/losos-registrar/edge.key and answers `/passport*` with the
+        owner's signed settings, measured into the TPM's PCR 15 at boot, and
+        a TPM quote over PCRs 4, 11 and 15. A box trusts the gateway when the
+        owner's OpenPGP passport names it, the quote shows a published
+        LosOS image, the TPM's maker vouches for the TPM, and the fee payout
+        addresses are LosOS's own. Needs a TPM 2.0 at /dev/tpm0; the
+        `losos-disk-edge-qcow2` image turns it on.
       '';
     };
 
@@ -3190,6 +3312,88 @@ in
       '';
     };
 
+    # ── Clusters and bans (handbook/docs/in-depth/edge-federation.md,
+    # "Three tiers") ─────────────────────────────────────────────────────
+    edge.secondary.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Let this gateway join a secondary cluster: gateways on one network
+        that serve the same boxes and fail over for each other. Which
+        cluster is runtime state, written by `losos-edge cluster
+        create|join` into losos.edge.secondary.file and re-read every pass;
+        with no file the gateway is a cluster of its own. Requires
+        losos.edge.lan.advertise, because boxes find the members by their
+        adverts.
+      '';
+    };
+
+    edge.secondary.file = lib.mkOption {
+      type = lib.types.str;
+      default = "/var/lib/losos-edge/cluster.json";
+      description = ''
+        The runtime cluster file (`{name, member, secret, peers}`,
+        edge/registrar/src/secondary.rs). Holds the cluster's shared secret,
+        so it is 0600 and never a store path.
+      '';
+    };
+
+    edge.secondary.interval = lib.mkOption {
+      type = lib.types.str;
+      default = "10s";
+      description = "How often the gateways of a secondary cluster sync their boxes. Well under losos.edge.heartbeatTtl.";
+    };
+
+    edge.official.cluster = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "eu";
+      description = ''
+        The official cluster this official edge belongs to: the official
+        edges behind one load balancer. A DNS label. Reported to boxes and
+        gateways at `GET /cluster/secondary`, and a ban may name the whole
+        cluster.
+      '';
+    };
+
+    edge.official.peers = lib.mkOption {
+      type = lib.types.listOf (
+        lib.types.submodule {
+          options = {
+            cluster = lib.mkOption {
+              type = lib.types.str;
+              description = "The official cluster of that edge.";
+            };
+            url = lib.mkOption {
+              type = lib.types.str;
+              description = "Its registrar API base URL.";
+            };
+            tunnel = lib.mkOption {
+              type = lib.types.str;
+              description = "Its tunnel endpoint, `host:port`.";
+            };
+          };
+        }
+      );
+      default = [ ];
+      description = ''
+        The official edges this edge lists for boxes and gateways to spread
+        over and to move to when one is banned, itself included or not. At
+        most 64.
+      '';
+    };
+
+    edge.bansFile = lib.mkOption {
+      type = lib.types.str;
+      default = "/var/lib/losos-registrar/bans.json";
+      description = ''
+        The ban list, `{"edges": [<url>], "clusters": [<official cluster>]}`,
+        re-read on every uplink pass. A gateway whose hub, or the hub's
+        official cluster, is banned moves its uplink to an official edge
+        outside the ban. A missing or unreadable file bans nothing.
+      '';
+    };
+
     edge.manage.enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -3627,9 +3831,6 @@ in
       }
       // lib.optionalAttrs (config.losos.edge.noisePrivateKeyFile != null) {
         "losos.edge.noisePrivateKeyFile" = config.losos.edge.noisePrivateKeyFile;
-      }
-      // lib.optionalAttrs (config.losos.edge.identity.keyFile != null) {
-        "losos.edge.identity.keyFile" = config.losos.edge.identity.keyFile;
       }
       // lib.mapAttrs' (
         id: tenant: lib.nameValuePair "losos.edge.tenants.${id}.tokenFile" tenant.tokenFile

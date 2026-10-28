@@ -132,6 +132,11 @@ let
   # websecure answers HTTP/3 on UDP 443 beside TCP, and Traefik adds an
   # Alt-Svc header to every response so a browser moves to QUIC on its next
   # request; a network that blocks UDP keeps HTTP/2 on TCP.
+  #
+  # Traefik's Prometheus counters are on a loopback entrypoint of their own,
+  # read by the registrar for the manage page's Statistics (crate::stats). The
+  # buckets are finer than Traefik's four so a 95th percentile means
+  # something; the metrics entrypoint's own requests are not counted.
   tomlFmt = pkgs.formats.toml { };
   staticCfg = tomlFmt.generate "losos-traefik-static.toml" (
     lib.recursiveUpdate
@@ -141,6 +146,26 @@ let
         entryPoints.web.http.redirections.entryPoint.scheme = "https";
         entryPoints.websecure.address = ":443";
         entryPoints.websecure.http3 = { };
+        entryPoints.metrics.address = "127.0.0.1:${toString cfg.traefikMetricsPort}";
+        metrics.prometheus = {
+          entryPoint = "metrics";
+          addEntryPointsLabels = true;
+          addRoutersLabels = false;
+          addServicesLabels = true;
+          buckets = [
+            0.005
+            0.01
+            0.025
+            0.05
+            0.1
+            0.25
+            0.5
+            1.0
+            2.5
+            5.0
+            10.0
+          ];
+        };
         providers.file.directory = "/etc/traefik/dynamic";
         providers.http = {
           endpoint = "http://127.0.0.1:${toString cfg.traefikProviderPort}/traefik";
@@ -313,6 +338,35 @@ let
     "--uplink-interval"
     cfg.uplink.interval
   ];
+
+  # Clusters and bans (handbook/docs/in-depth/edge-federation.md, "Three
+  # tiers"). The cluster file is runtime state (`losos-edge cluster`), the
+  # registrar re-reads it every pass; the official cluster and its peers are
+  # configuration; the ban file is re-read on every uplink pass and a missing
+  # one bans nothing.
+  secondaryArgs = lib.optionals cfg.secondary.enable [
+    "--secondary-file"
+    cfg.secondary.file
+    "--secondary-self-url"
+    cfg.lan.url
+    "--secondary-self-tunnel"
+    cfg.lan.ratholeEndpoint
+    "--secondary-interval"
+    cfg.secondary.interval
+  ];
+  officialArgs =
+    lib.optionals (cfg.official.cluster != null) [
+      "--official-cluster"
+      cfg.official.cluster
+    ]
+    ++ lib.concatMap (p: [
+      "--official-peer"
+      "${p.cluster},${p.url},${p.tunnel}"
+    ]) cfg.official.peers
+    ++ [
+      "--bans-file"
+      cfg.bansFile
+    ];
 
   # RBAC for the registrar's stale-node cleanup, shipped as an rke2
   # auto-deploy manifest so the cluster brings its own credentials up rather
@@ -1005,10 +1059,12 @@ let
     ]
     ++ meshServeArgs
     ++ marketServeArgs
-    ++ identityArgs
+    ++ passportArgs
     ++ dnsServeArgs
     ++ enrolArgs
     ++ uplinkArgs
+    ++ secondaryArgs
+    ++ officialArgs
     ++ accessArgs
     ++ manageArgs
     ++ callsRelayArgs
@@ -1074,6 +1130,10 @@ let
       "--manage-ui"
       "${cfg.manage.ui}"
     ]
+    ++ [
+      "--manage-traefik-metrics"
+      "http://127.0.0.1:${toString cfg.traefikMetricsPort}/metrics"
+    ]
   );
 
   # The terminal (docs/edge-terminal.md): on once a key is seeded. The key
@@ -1090,21 +1150,29 @@ let
     "${config.systemd.package}/bin/systemd-run"
   ];
 
-  # The official-edge identity (losos.edge.identity.*): both files or neither,
-  # asserted below. The private key is made and read by the registrar at
-  # runtime, like the Noise key; the certificate is public and arrives by
-  # `POST /identity/cert` from an allowlisted operator, so both default to
-  # the registrar's own StateDirectory, where it can write them.
-  identityArgs = lib.optionals (cfg.identity.keyFile != null) [
-    "--identity-key-file"
-    (toString cfg.identity.keyFile)
-    "--identity-cert-file"
-    "${cfg.identity.certFile}"
+  # The open gateway's passport (losos.edge.passport.enable,
+  # modules/edge-passport.nix): the edge key the registrar makes on its
+  # first start, the owner's settings it accepts and the copy measured at
+  # boot, and the TPM objects losos-gateway-tpm made.
+  passportArgs = lib.optionals cfg.passport.enable [
+    "--gateway-key-file"
+    "/var/lib/losos-registrar/edge.key"
+    "--gateway-settings-file"
+    "/var/lib/losos-gateway/settings.json"
+    "--gateway-measured-file"
+    "/run/losos-gateway/settings.json"
+    "--gateway-tpm-dir"
+    "/run/losos-gateway/tpm"
+    "--gateway-tcti"
+    "device:/dev/tpm0"
   ];
 in
 {
   # Where losos.mdns below lands (lan.advertise).
-  imports = [ ./mdns.nix ];
+  imports = [
+    ./mdns.nix
+    ./edge-passport.nix
+  ];
 
   config = lib.mkIf enabled {
     # The edge module is only imported by the edge system, so wiring the
@@ -1130,15 +1198,6 @@ in
         message = "losos.edge.tenants: `losos_offline` is the name of the edge's offline page.";
       }
       {
-        assertion = (cfg.identity.keyFile == null) == (cfg.identity.certFile == null);
-        message = ''
-          losos.edge.identity.keyFile and losos.edge.identity.certFile go
-          together: the key answers the nonce, the certificate is what the
-          root signed for it. Both are set by default; set both to null for
-          an edge that can never become official.
-        '';
-      }
-      {
         assertion = dnsCfg.enable -> (dnsCfg.ipv4 != [ ] || dnsCfg.ipv6 != [ ]);
         message = ''
           losos.edge.dns.enable requires losos.edge.dns.ipv4 and/or
@@ -1154,11 +1213,11 @@ in
         '';
       }
       {
-        assertion = dnsCfg.enable -> cfg.identity.keyFile != null;
+        assertion = dnsCfg.enable -> cfg.passport.enable;
         message = ''
-          losos.edge.dns.enable requires losos.edge.identity.keyFile: only an
-          edge that can become official hands out names, and the domain routes
-          answer 503 until its certificate is installed.
+          losos.edge.dns.enable requires losos.edge.passport.enable: only an
+          open gateway that boxes can check hands out names, and the domain
+          routes answer 503 until its owner has claimed it.
         '';
       }
       {
@@ -1315,6 +1374,17 @@ in
         '';
       }
       {
+        assertion = cfg.secondary.enable -> cfg.lan.advertise;
+        message = ''
+          losos.edge.secondary.enable requires losos.edge.lan.advertise: boxes
+          find the gateways of a secondary cluster by their adverts.
+        '';
+      }
+      {
+        assertion = lib.length cfg.official.peers <= 64;
+        message = "losos.edge.official.peers lists more than 64 edges.";
+      }
+      {
         assertion =
           cfg.uplink.enable
           -> (cfg.uplink.configFile != null || (cfg.uplink.registrarUrl != "" && cfg.uplink.id != ""));
@@ -1379,14 +1449,16 @@ in
     };
 
     # /etc/traefik/dynamic: real dir (0755, root) holding the static
-    # register*.yml files (symlinked from the store). The two `r` lines take
+    # register*.yml files (symlinked from the store). The `r` lines take
     # away what the registrar wrote there before Traefik discovered the boxes
-    # from it (see the top of this file).
+    # from it (see the top of this file), the boxes' Tor and I2P names
+    # included.
     systemd.tmpfiles.rules = [
       "d /etc/traefik/dynamic 0755 root root - -"
       "L+ /etc/traefik/dynamic/register.yml - - - - ${toString registerYml}"
       "r /etc/traefik/dynamic/losos.yml - - - - -"
       "r /etc/traefik/dynamic/losos-vms.yml - - - - -"
+      "r /etc/traefik/dynamic/hidden.yml - - - - -"
     ]
     ++ lib.optionals cfg.vms.enable [
       "L+ /etc/traefik/dynamic/register-vm-transfer.yml - - - - ${toString vmTransferYml}"

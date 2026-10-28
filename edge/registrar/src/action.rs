@@ -28,11 +28,12 @@ pub enum Action {
     LoadRegistry,
     Market,
     Provision,
-    Identity,
+    Passport,
     Domains,
     Relay,
     Uplink,
     Enrol,
+    Secondary,
     Lab,
 }
 
@@ -57,11 +58,12 @@ impl Action {
             Action::LoadRegistry => "losos::registry",
             Action::Market => "losos::market",
             Action::Provision => "losos::provision",
-            Action::Identity => "losos::identity",
+            Action::Passport => "losos::passport",
             Action::Domains => "losos::domains",
             Action::Relay => "losos::relay",
             Action::Uplink => "losos::uplink",
             Action::Enrol => "losos::enrol",
+            Action::Secondary => "losos::secondary",
             Action::Lab => "losos::lab",
         }
     }
@@ -84,11 +86,12 @@ impl Display for Action {
             Action::LoadRegistry => f.write_str("[load registry]"),
             Action::Market => f.write_str("[market]"),
             Action::Provision => f.write_str("[provision]"),
-            Action::Identity => f.write_str("[identity]"),
+            Action::Passport => f.write_str("[passport]"),
             Action::Domains => f.write_str("[domains]"),
             Action::Relay => f.write_str("[relay]"),
             Action::Uplink => f.write_str("[uplink]"),
             Action::Enrol => f.write_str("[enrol]"),
+            Action::Secondary => f.write_str("[secondary]"),
             Action::Lab => f.write_str("[lab]"),
         }
     }

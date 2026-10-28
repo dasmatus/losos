@@ -10,6 +10,7 @@ export default defineMessages({
   "shell.nav.lab": { en: "Diagrams", sk: "Diagramy", de: "Diagramme" },
   "shell.nav.chat": { en: "Chat", sk: "Chat", de: "Chat" },
   "shell.nav.mail": { en: "Mail", sk: "Pošta", de: "Mail" },
+  "shell.nav.wiki": { en: "Wiki", sk: "Wiki", de: "Wiki" },
   "shell.nav.contacts": { en: "Contacts", sk: "Kontakty", de: "Kontakte" },
   "shell.nav.calendar": { en: "Calendar", sk: "Kalendár", de: "Kalender" },
   "shell.nav.ci": { en: "Mesh CI", sk: "Mesh CI", de: "Mesh CI" },
@@ -226,6 +227,10 @@ export default defineMessages({
 
   "ui.working": { en: "Working", sk: "Pracujeme", de: "Wird ausgeführt" },
   "ui.dismiss": { en: "Dismiss", sk: "Zavrieť", de: "Schließen" },
+  /* The phone's bottom bar (components/ui/bottom-nav.tsx): its name, and
+   * the last tab, which raises every place as a sheet. */
+  "ui.bottomNav.label": { en: "Main places", sk: "Hlavné miesta", de: "Wichtigste Orte" },
+  "ui.bottomNav.more": { en: "More", sk: "Viac", de: "Mehr" },
   "ui.whatToDo": { en: "What to do", sk: "Čo robiť", de: "Was tun" },
   // The warning a box installed without a TPM shows (components/no-tpm-notice.tsx).
   "ui.noTpm.title": {

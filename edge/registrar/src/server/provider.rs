@@ -35,6 +35,8 @@ use crate::config::{provider_document, Routes, OFFLINE_STATUSES};
 struct Sources {
     tenants: Option<Routes>,
     vms: Routes,
+    /// The boxes' Tor and I2P names (`crate::hidden`).
+    hidden: Routes,
     /// The provider listener's own origin, once bound: the offline page's
     /// service. `None` (no listener, as on the Vercel host) leaves the
     /// routers without it.
@@ -61,6 +63,13 @@ impl Discovery {
         changed
     }
 
+    pub(super) fn set_hidden(&self, routes: Routes) -> bool {
+        let mut s = self.0.write().unwrap_or_else(|p| p.into_inner());
+        let changed = s.hidden != routes;
+        s.hidden = routes;
+        changed
+    }
+
     pub(super) fn set_offline_url(&self, url: String) {
         self.0
             .write()
@@ -79,14 +88,27 @@ impl Discovery {
             Some(url) => tenants.with_offline_page(url),
             None => tenants.clone(),
         };
-        Some(provider_document([&boxes, &s.vms]))
+        Some(provider_document([&boxes, &s.vms, &s.hidden]))
     }
 
-    /// The names the boxes are routed at, sorted (machines excluded).
+    /// The names the boxes are routed at, sorted (machines and Tor and I2P
+    /// names excluded).
     #[must_use]
     pub fn hosts(&self) -> Vec<String> {
         let s = self.0.read().unwrap_or_else(|p| p.into_inner());
         s.tenants.as_ref().map(Routes::hosts).unwrap_or_default()
+    }
+
+    /// Each service's address, boxes and machines alike
+    /// ([`Routes::hosts_by_service`]).
+    #[must_use]
+    pub fn hosts_by_service(&self) -> std::collections::BTreeMap<String, String> {
+        let s = self.0.read().unwrap_or_else(|p| p.into_inner());
+        let mut hosts = s.vms.hosts_by_service();
+        if let Some(tenants) = &s.tenants {
+            hosts.extend(tenants.hosts_by_service());
+        }
+        hosts
     }
 }
 

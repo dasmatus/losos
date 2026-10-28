@@ -150,13 +150,26 @@ and is never served or built by nix.
   SFU as `shared` on `/run/losos-calls/http.sock` (nginx's group only),
   `/calls/api/` behind LosOS Login with no spare-key bypass. nginx hands
   the SFU the signed-in person as `Remote-User` (`calls/person.rs`), the
-  Matrix id `@<name>:<server>`; Dendrite answers no OpenID check with
-  federation off, so calls take no Matrix token.
-  Every frame is AES-GCM sealed in the browser by an encoded transform
-  (`admin-ui/app/src/calls/e2ee.ts`, worker `e2ee-worker.ts`), sender keys
-  ratchet on a join and are replaced on a leave, and travel as Olm
-  to-device `org.losos.call.key`; the room gets `org.losos.call`
-  started/ended events (`src/chat/calls.tsx`). In Chromium a worker held
+  Matrix id `@<name>:<server>`. Calls are a MatrixRTC application of
+  their own, `org.losos.call`, one slot per room (`org.losos.call#room`,
+  `src/chat/rtc.ts`): `m.call` is LiveKit-only, and this one is str0m.
+  Membership is the state-event form (`org.matrix.msc3401.call.member`)
+  because Dendrite has no sticky events; each advertises an `org.losos.sfu`
+  transport, and the page always dials its own `/calls/api/ws`. The SFU
+  owns the call id: `POST /calls/api/calls` hands back the room's live call
+  (`created:false`), so two starts never split. Ringing is MSC4075
+  (`org.matrix.msc4075.rtc.notification`, the SDK's receiving rules),
+  decline MSC4310. New private rooms and DMs carry the open slot and a
+  level-0 membership in their power levels; in an older room an admin's
+  first call adds them. A start also sends an `m.notice` with a
+  `/chat/?join=` link for other Matrix apps, which LosOS Chat hides.
+  MatrixRTC's own media keys are off: every frame is AES-GCM sealed by the
+  browser's encoded transform (`admin-ui/app/src/calls/e2ee.ts`, worker
+  `e2ee-worker.ts`), and its sender keys travel as MatrixRTC per-member
+  keys (`io.element.call.encryption_keys` over Olm) to the devices the
+  SFU lists in the call, since a membership can sync later than its sender
+  joins. The legacy `org.losos.call` timeline event is kept for
+  end markers and old history. In Chromium a worker held
   by an `RTCRtpScriptTransform` loses its own `postMessage` and timers, so
   stats go over a MessagePort from the frame path. `--address IP=OFFERED`
   offers a forwarded port's address; `nix/tests/calls.nix` reaches the SFU
@@ -242,6 +255,17 @@ and is never served or built by nix.
   Forgejo box to LosOS Git and checks every record. The old
   `losos.forgejo.*` names stay as hidden aliases (`lib.doRename`,
   `options.rs` `ALIASES`). `nix/tests/git.nix` boots it with a laptop.
+- LosOS Wiki (`backend/src/forge/wiki.rs`, `admin-ui/app/src/{wikis,wiki}/`):
+  a repository's wiki is `<name>.wiki.git` beside it, Forgejo's layout, so
+  a box moved from Forgejo keeps its wikis (`names::repo` refuses `.wiki`
+  names, adoption skips them). The repository's people read and write it;
+  a save is a commit made with plumbing, refused with 409 over a page that
+  changed meanwhile. `/wikis` in the admin SPA is the box's directory of
+  wikis (spaces, LosOS Cloud's knowledge bases from `GET /kb/api/`, the
+  handbook) and the editor; `/wiki/<owner>/<name>/` is each space as a
+  site, its own Vite page under nginx's `/wiki/` location beside `/git/`,
+  not LAN-guarded. Pictures come from `…/wiki/raw/`, raster only.
+  `nix/tests/wiki.nix` boots it.
 - `apps.nix` + `backend/src/apps.rs` + `backend/src/compose.rs`: the run-as
   user picks the runtime. `notshared` apps (a chart from the Apps pane's
   search, a Compose file in the LosOS app format from `POST
@@ -256,7 +280,9 @@ and is never served or built by nix.
   host network without root, turn claims into folders in that user's data
   domain and refuse a chart that needs more. `losos-traefik` (its own
   user) holds `losos.apps.ports`, an entrypoint `port-<n>` each, LAN only
-  through the `lan-only@file` ipAllowList (RFC 1918 minus 10.42/16). Routes
+  through the `lan-only@file` ipAllowList (RFC 1918 minus 10.42/16), IPv4
+  only (Go listens on both families, so the firewall resets IPv6 to the
+  range; an IPv6 LAN address looks like anyone's). Routes
   are labels `compose.rs` writes on every service (`app-<name>`, dropping an
   app's own `traefik.*`/`losos.*`), read through `losos-podman-api`, a
   socket-activated Podman API of `notshared` only Traefik's group opens; a
@@ -493,6 +519,11 @@ and is never served or built by nix.
   with the `HISTORY_SCRUB_DEPLOY_KEY` deploy key and tags with the CI token.
   `stale-branches.yml` deletes, each Sunday, branches with no commit in 30
   days that no open PR uses as head or base.
+  `dependency-hashes.yml` (`pull_request_target`, branches of this repository
+  only) runs `.github/scripts/fix-hashes.py` on a pull request that changes
+  a `Cargo.lock` or `package-lock.json`, Dependabot's included, and pushes the
+  new `cargoHash`/`npmDepsHash` back to the branch; run the script yourself
+  after touching a lock file.
   `discovery` boots the netboot box `nix/tests/discovery/box.nix` on Linux,
   macOS and Windows runners, and `nix/tests/discovery/check.py` has each
   find it and read and write files over SMB and WebDAV.

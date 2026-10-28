@@ -6,8 +6,7 @@ slug: /manual/losos-git
 
 # LosOS Git
 
-
-![LosOS Git's repositories.](../img/apps-site-settings.png)
+![A repository in LosOS Git: its files and README, with the Chat button and the clone address in the header.](../img/git-repository.png)
 
 LosOS Git is the box's own Git server. It keeps your repositories, takes
 pushes and clones over HTTPS, and has pages for reading code, opening pull
@@ -141,6 +140,16 @@ request for that branch, if there is one. A pull request whose branch is
 pushed from a named worktree shows that worktree's name in its header.
 **Forget** takes a worktree off the list; its next push puts it back.
 
+## Wiki
+
+Every repository can have a wiki: pages of Markdown in
+`<repository>.wiki.git`, read and written by the same people as the
+repository. **Wiki** in a repository's menu opens its published site.
+[LosOS Wiki](wiki) is where the pages are written, and lists the wikis of
+every repository you may read.
+
+![A repository in LosOS Git, with Wiki in its menu.](../img/losos-git-repository.png)
+
 ## People of other boxes
 
 Someone whose account is on another LosOS box on your network can take part
@@ -153,6 +162,8 @@ their chat address, the one LosOS Chat shows under their name, such as
 2. Their own box opens and asks whether to tell yours who they are. They
    press **Tell `<name>.local`**.
 3. They are back on your box, signed in as `@eva:kitchenbox.local`.
+
+![Eva's own box asks before it tells mattbox.local who she is.](../img/git-other-box-vouch.png)
 
 Their box tells yours only their chat address and their name. Your box
 checks the answer with their box's chat server before it believes it.
@@ -171,12 +182,16 @@ git push https://<name>.local/git/notshared/site.git HEAD:eva@kitchenbox.local/h
 
 Only you and your admins merge. Sign out ends their visit on this computer.
 
+![A pull request from Eva's own branch, with an answer from the repository's owner.](../img/git-other-box-pull.png)
+
 ## A chat room for a repository
 
 With LosOS Chat on the box, **Settings** of a repository has **Talk about
 this repository in LosOS Chat**. Turn it on, and the box makes a room for
 the repository in your chat, with LosOS Git in it. LosOS Git posts every
 push, pull request, comment, merge and check result there.
+
+![A repository's settings with Talk about this repository in LosOS Chat turned on and a link to the room.](../img/git-repository-room.png)
 
 A **Chat** button then sits in the repository's header for everyone who is
 signed in. For a public repository anyone can join the room, from their own

@@ -568,32 +568,147 @@ fn edge_answers(url: &str) -> bool {
     }
 }
 
-/// `GET {url}/identity?nonce={nonce}`: the body when the edge has an
-/// identity to show, `None` on 404 (a company edge) or any failure. Same
-/// curl discipline as the health probe; the body is bounded by curl's
-/// `--max-filesize` so a hostile edge cannot feed the parser a gigabyte.
-fn edge_identity(url: &str, nonce: &str) -> Option<String> {
+/// The gateway checks' two requests over curl, with the probe's discipline:
+/// no redirects, a deadline, and a size bound so a hostile edge cannot feed
+/// the parser a gigabyte. The attestation runs the TPM, so it gets longer.
+struct CurlWire;
+
+impl CurlWire {
+    fn run(args: &[&str], body: Option<&str>) -> Result<(u16, String), String> {
+        use std::io::Write;
+        let mut cmd = std::process::Command::new("curl");
+        cmd.args(["--silent", "--show-error"])
+            .args(["--max-redirs", "0"])
+            .args(["--max-filesize", &crate::edge::GATEWAY_BODY_MAX.to_string()])
+            .args(["--write-out", "\n%{http_code}"])
+            .args(args)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .stdin(if body.is_some() {
+                std::process::Stdio::piped()
+            } else {
+                std::process::Stdio::null()
+            });
+        let mut child = cmd.spawn().map_err(|e| format!("curl: {e}"))?;
+        if let (Some(body), Some(mut stdin)) = (body, child.stdin.take()) {
+            stdin
+                .write_all(body.as_bytes())
+                .map_err(|e| format!("curl: {e}"))?;
+        }
+        let out = child.wait_with_output().map_err(|e| format!("curl: {e}"))?;
+        if !out.status.success() {
+            return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+        }
+        let text = String::from_utf8_lossy(&out.stdout);
+        let (body, code) = text.rsplit_once('\n').unwrap_or(("", &text));
+        Ok((code.trim().parse().unwrap_or(0), body.to_string()))
+    }
+}
+
+impl crate::edge::Wire for CurlWire {
+    fn hello(&self, url: &str, nonce: &str) -> Result<Option<String>, String> {
+        let deadline = crate::edge::PROBE_TIMEOUT_SECS.to_string();
+        let target = format!("{url}/passport?nonce={nonce}");
+        match Self::run(&["--max-time", &deadline, &target], None)? {
+            (200, body) => Ok(Some(body)),
+            // No passport: an edge that is not an open gateway, or one whose
+            // owner has not claimed it yet.
+            (404, _) => Ok(None),
+            (code, _) => Err(format!("{target} answered {code}")),
+        }
+    }
+
+    fn attest(&self, url: &str, body: &str) -> Result<String, String> {
+        let target = format!("{url}/passport/attest");
+        match Self::run(
+            &[
+                "--max-time",
+                "60",
+                "--header",
+                "content-type: application/json",
+                "--data-binary",
+                "@-",
+                &target,
+            ],
+            Some(body),
+        )? {
+            (200, answer) => Ok(answer),
+            (code, answer) => Err(format!("{target} answered {code}: {}", answer.trim())),
+        }
+    }
+}
+
+/// The anchors this box checks gateways against, from the three files
+/// modules/daemon.nix names: the TPM makers' certificates, the published
+/// gateway images and LosOS's payout addresses. `None`, and no edge is
+/// asked anything, when any is missing or does not parse.
+fn gateway_anchors() -> Option<crate::edge::Anchors> {
+    let read = |var: &str| {
+        let path = std::env::var(var).ok()?;
+        std::fs::read_to_string(&path)
+            .map_err(
+                |e| tracing::warn!(path, error = %e, "a gateway anchor file could not be read"),
+            )
+            .ok()
+    };
+    let (roots, images, payouts) = (
+        read("LOSOS_GATEWAY_TPM_ROOTS")?,
+        read("LOSOS_GATEWAY_IMAGES")?,
+        read("LOSOS_GATEWAY_PAYOUTS")?,
+    );
+    crate::edge::Anchors::from_texts(&roots, &images, &payouts)
+        .map_err(
+            |e| tracing::warn!(error = %e, "the gateway anchors do not parse; no edge is checked"),
+        )
+        .ok()
+}
+
+/// `/var/lib/losos/gateways.json`: the gateways this box disabled.
+fn gateways_file() -> PathBuf {
+    PathBuf::from(env_or("LOSOS_STATE_DIR", "/var/lib/losos")).join("gateways.json")
+}
+
+/// The checks' memory across scans, made on the first.
+fn vetter() -> &'static Mutex<crate::edge::Vetter> {
+    static VETTER: std::sync::OnceLock<Mutex<crate::edge::Vetter>> = std::sync::OnceLock::new();
+    VETTER.get_or_init(|| {
+        let ledger = match std::fs::read_to_string(gateways_file()) {
+            Ok(text) => serde_json::from_str(&text).map_err(|e| e.to_string()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                Ok(crate::edge::Ledger::default())
+            }
+            Err(e) => Err(e.to_string()),
+        };
+        Mutex::new(match ledger {
+            Ok(ledger) => crate::edge::Vetter::new(gateway_anchors(), ledger),
+            // A list that cannot be read is not an empty one: trusting no
+            // gateway beats trusting one this box once caught.
+            Err(e) => {
+                tracing::warn!(error = %e, "gateways.json cannot be read; no gateway is checked");
+                crate::edge::Vetter::new(None, crate::edge::Ledger::default())
+            }
+        })
+    })
+}
+
+/// `GET {url}/cluster/secondary`: what the edge says it is (a gateway or
+/// not, its secondary cluster and its name in it), or `None` when it does
+/// not say (an edge from before secondary clusters, or any failure). Same
+/// curl discipline as the health probe.
+fn edge_describe(url: &str) -> Option<crate::edge::Described> {
     let out = std::process::Command::new("curl")
         .args(["--silent", "--show-error", "--fail"])
         .args(["--max-time", &crate::edge::PROBE_TIMEOUT_SECS.to_string()])
         .args(["--max-redirs", "0"])
         .args(["--max-filesize", "65536"])
-        .arg(format!("{url}/identity?nonce={nonce}"))
+        .arg(format!("{url}/cluster/secondary"))
         .stdin(std::process::Stdio::null())
         .output()
         .ok()?;
-    out.status
-        .success()
-        .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
-}
-
-/// The LosOS root public key this box trusts, from the file
-/// `$LOSOS_EDGE_ROOT_KEY_FILE` names (`losos.proxy.officialRootKeyFile`).
-/// An absent or empty file means no edge can be official: fail closed.
-fn root_public_key() -> Option<String> {
-    let path = std::env::var("LOSOS_EDGE_ROOT_KEY_FILE").ok()?;
-    let text = std::fs::read_to_string(path).ok()?;
-    crate::edge::parse_root_key_file(&text)
+    if !out.status.success() {
+        return None;
+    }
+    crate::edge::parse_described(&String::from_utf8_lossy(&out.stdout))
 }
 
 /// A fresh 32-byte nonce, hex, for one scan's challenges.
@@ -601,17 +716,17 @@ fn fresh_nonce() -> String {
     use ring::rand::SecureRandom;
     let mut bytes = [0u8; 32];
     if ring::rand::SystemRandom::new().fill(&mut bytes).is_err() {
-        // No randomness means no challenge worth trusting: an all-zero nonce
-        // is still a valid request, and a replayed answer to it would only
-        // ever mark an edge official that the root did sign.
-        tracing::warn!("the system random source failed; this scan's nonce is not fresh");
+        // A nonce that is not fresh would let a recorded answer pass: no
+        // gateway is checked this round.
+        tracing::warn!("the system random source failed; no gateway is checked this scan");
+        return String::new();
     }
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// One complete scan: the LAN browse, the configured URL from
-/// `$LOSOS_EDGE_URL`, a probe of every candidate, and the identity
-/// challenge for the ones that answered.
+/// `$LOSOS_EDGE_URL`, a probe of every candidate, and the gateway checks
+/// for the ones that answered.
 fn scan_edge_now() -> crate::edge::EdgeStatus {
     let configured = std::env::var("LOSOS_EDGE_URL")
         .ok()
@@ -622,21 +737,52 @@ fn scan_edge_now() -> crate::edge::EdgeStatus {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
-    let root = root_public_key();
     let nonce = fresh_nonce();
-    let trust = crate::edge::Trust {
-        root_public: root.as_deref(),
-        nonce: &nonce,
-    };
-    crate::edge::assemble_with(
+    let mut vetter = vetter().lock().unwrap_or_else(|p| p.into_inner());
+    let mut ledger_changed = false;
+    let mut status = crate::edge::assemble_with(
         browse_lan().as_deref(),
         configured.as_deref(),
         configured_rathole.as_deref(),
         edge_answers,
-        &trust,
-        edge_identity,
+        edge_describe,
+        |url| {
+            if nonce.is_empty() {
+                return None;
+            }
+            let (gateway, changed) =
+                vetter.vet(url, &CurlWire, &nonce, now, &mut rand::rngs::OsRng);
+            ledger_changed |= changed;
+            gateway
+        },
         now,
-    )
+    );
+    if ledger_changed {
+        let body = serde_json::to_vec_pretty(&vetter.ledger).unwrap_or_default();
+        if let Err(e) = atomic_write(&gateways_file(), &body) {
+            tracing::warn!(error = %e, "the disabled gateways could not be written down");
+        }
+    }
+    status.mark_on_network(&own_networks(), resolve_host);
+    status
+}
+
+/// The prefixes on the box's own links, from the kernel's tables.
+fn own_networks() -> Vec<crate::edge::Net> {
+    let read = |p: &str| std::fs::read_to_string(p).unwrap_or_default();
+    let mut nets = crate::edge::parse_proc_route(&read("/proc/net/route"));
+    nets.extend(crate::edge::parse_if_inet6(&read("/proc/net/if_inet6")));
+    nets
+}
+
+/// Every address `host` resolves to through the system resolver (mDNS
+/// names included); nothing when it does not resolve.
+fn resolve_host(host: &str) -> Vec<std::net::IpAddr> {
+    use std::net::ToSocketAddrs;
+    (host, 0)
+        .to_socket_addrs()
+        .map(|a| a.map(|s| s.ip()).collect())
+        .unwrap_or_default()
 }
 
 /// Tell the tunnel units which edge the scan chose (modules/proxy.nix reads
@@ -649,14 +795,31 @@ fn scan_edge_now() -> crate::edge::EdgeStatus {
 /// the configured edge until the first scan. `systemctl` is asked not to
 /// block: this runs on the scanner thread, and a unit that takes a while
 /// to stop must not delay the next scan.
-fn drive_edge_path(status: &crate::edge::EdgeStatus) {
-    let Some(path_file) = std::env::var("LOSOS_EDGE_PATH_FILE")
+/// `$LOSOS_EDGE_PATH_FILE`, set by modules/daemon.nix with the master proxy
+/// on: the env file the tunnel units read the path from.
+/// The ban list (`crate::edge::Bans`) at `$LOSOS_EDGE_BANS_FILE`. Absent or
+/// unreadable is no bans: the file is the only thing that moves a box off an
+/// edge that answers, and a bad one must not scatter boxes.
+fn edge_bans() -> crate::edge::Bans {
+    std::env::var("LOSOS_EDGE_BANS_FILE")
         .ok()
         .filter(|v| !v.is_empty())
-    else {
+        .and_then(|f| std::fs::read(f).ok())
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default()
+}
+
+fn edge_path_file() -> Option<PathBuf> {
+    std::env::var("LOSOS_EDGE_PATH_FILE")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+}
+
+fn drive_edge_path(status: &crate::edge::EdgeStatus) {
+    let Some(path_file) = edge_path_file() else {
         return;
     };
-    let path_file = PathBuf::from(path_file);
     let none_file = std::env::var("LOSOS_EDGE_NONE_FILE")
         .ok()
         .filter(|v| !v.is_empty())
@@ -667,19 +830,25 @@ fn drive_edge_path(status: &crate::edge::EdgeStatus) {
     let configured_pin = std::env::var("LOSOS_EDGE_NOISE_PUB_FILE")
         .ok()
         .filter(|v| !v.is_empty());
+    let configured_url = std::env::var("LOSOS_EDGE_URL")
+        .ok()
+        .map(|v| v.trim_end_matches('/').to_string())
+        .filter(|v| !v.is_empty());
 
     let next = status.path.as_ref().map(|p| {
         // The pin lives with the edge it belongs to: the configured one at
-        // losos.proxy.noisePublicKeyFile, a LAN edge under the pin dir by
-        // its host, so a second gateway never inherits the first's key.
-        // Noise is on for every edge or none (the configured file is unset
-        // only when the module runs plain TCP).
-        let pin = configured_pin.as_ref().map(|configured| match p.source {
-            crate::edge::Source::Configured => configured.clone(),
-            crate::edge::Source::Lan => match &pin_dir {
-                Some(dir) => format!("{dir}/{}", crate::edge::pin_file_name(&p.url)),
-                None => configured.clone(),
-            },
+        // losos.proxy.noisePublicKeyFile, any other (a LAN gateway, or an
+        // official peer the configured edge listed) under the pin dir by its
+        // host, so a second edge never inherits the first's key. Noise is on
+        // for every edge or none (the configured file is unset only when the
+        // module runs plain TCP).
+        let pin = configured_pin.as_ref().map(|configured| {
+            let own = p.source == crate::edge::Source::Configured
+                && configured_url.as_deref() == Some(p.url.as_str());
+            match &pin_dir {
+                Some(dir) if !own => format!("{dir}/{}", crate::edge::pin_file_name(&p.url)),
+                _ => configured.clone(),
+            }
         });
         crate::edge::path_env(p, pin.as_deref())
     });
@@ -743,6 +912,16 @@ fn drive_edge_path(status: &crate::edge::EdgeStatus) {
             "systemctl {verb} of the tunnel units failed"
         ),
         Err(e) => tracing::error!(error = %e, "could not run systemctl for the tunnel units"),
+    }
+    // Into another secondary cluster: the mesh join runs again against it,
+    // and the agent follows (modules/cluster.nix). `try-restart` leaves a box
+    // whose mesh is off alone.
+    if crate::edge::moved_cluster(prev.as_deref(), next.as_deref()) {
+        tracing::info!("the box moved to another secondary cluster: joining its mesh");
+        let _ = std::process::Command::new("systemctl")
+            .args(["try-restart", "--no-block"])
+            .args(crate::edge::MESH_UNITS)
+            .output();
     }
 }
 
@@ -1647,7 +1826,8 @@ impl IoLosos {
     /// thread calls on its cadence, and what `edge_status` falls back to
     /// before the thread's first pass.
     pub fn scan_edge(&self) -> crate::edge::EdgeStatus {
-        let status = scan_edge_now();
+        let mut status = scan_edge_now();
+        self.route_edge(&mut status);
         tracing::debug!(
             reachable = status.reachable,
             edges = status.edges.len(),
@@ -1658,6 +1838,133 @@ impl IoLosos {
         drive_edge_path(&status);
         self.publish_managed();
         status
+    }
+
+    /// Where the box keeps the secondary cluster it belongs to
+    /// (`crate::edge::choose_path`): one line, beside `state.json`.
+    fn edge_cluster_file(&self) -> PathBuf {
+        self.paths.state_dir.join("edge-cluster")
+    }
+
+    fn edge_cluster(&self) -> Option<String> {
+        std::fs::read_to_string(self.edge_cluster_file())
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    }
+
+    fn edge_hold_file(&self) -> PathBuf {
+        self.paths.state_dir.join("edge-hold.env")
+    }
+
+    /// The path a live custom domain holds this box to. Taken the first time
+    /// a scan sees live domains (the path in use then, which is the edge the
+    /// domain was set up through), dropped once the box has none. Kept in
+    /// the env file's own format beside `state.json`.
+    fn edge_hold(&self, current_env: Option<&str>) -> Option<crate::edge::EdgePath> {
+        let names =
+            std::fs::read_to_string(env_or("LOSOS_PUBLIC_NAMES_FILE", DEFAULT_PUBLIC_NAMES_FILE))
+                .ok()
+                .and_then(|t| serde_json::from_str::<Vec<String>>(&t).ok())
+                .unwrap_or_default();
+        let file = self.edge_hold_file();
+        if names.is_empty() {
+            if let Err(e) = remove_if_present(&file) {
+                tracing::warn!(error = %e, "could not drop the custom domain's hold on the edge");
+            }
+            return None;
+        }
+        if let Some(held) = std::fs::read_to_string(&file)
+            .ok()
+            .and_then(|env| crate::edge::path_from_env(&env))
+        {
+            return Some(held);
+        }
+        let env = current_env?;
+        let held = crate::edge::path_from_env(env)?;
+        tracing::info!(edge = %held.url, "a custom domain holds this box to the edge it uses");
+        if let Err(e) = atomic_write(&file, env.as_bytes()) {
+            tracing::warn!(error = %e, "could not write down the custom domain's edge");
+        }
+        Some(held)
+    }
+
+    /// Choose the path for this box: in its own cluster, staying on the
+    /// gateway it uses now, or on the edge a custom domain holds it to. A
+    /// box in no cluster yet settles in the one the rule picked, and that is
+    /// written down so the next scan keeps it.
+    fn route_edge(&self, status: &mut crate::edge::EdgeStatus) {
+        let member_of = self.edge_cluster();
+        let current_env = edge_path_file().and_then(|f| std::fs::read_to_string(f).ok());
+        let current = current_env
+            .as_deref()
+            .and_then(|env| crate::edge::env_value(env, "LOSOS_EDGE_PATH_URL"))
+            .map(str::to_string);
+        let hold = self.edge_hold(current_env.as_deref());
+        let seed = std::env::var("LOSOS_APPLIANCE_ID").unwrap_or_default();
+        let bans = edge_bans();
+        status.route(&crate::edge::PathRule {
+            member_of: member_of.as_deref(),
+            current: current.as_deref(),
+            hold: hold.as_ref(),
+            seed: &seed,
+            bans: Some(&bans),
+        });
+        if let Some(left) = &status.left_banned {
+            tracing::warn!(edge = %left, to = ?status.path.as_ref().map(|p| &p.url), "the edge this box used is banned; it moves");
+            // A hold a ban broke follows the box to its new edge.
+            if hold.as_ref().is_some_and(|h| &h.url == left) {
+                let next = status.path.as_ref().map(|p| crate::edge::path_env(p, None));
+                let written = match next {
+                    Some(env) => atomic_write(&self.edge_hold_file(), env.as_bytes()),
+                    None => remove_if_present(&self.edge_hold_file()),
+                };
+                if let Err(e) = written {
+                    tracing::warn!(error = %e, "could not move the custom domain's hold");
+                }
+            }
+        }
+        // Only a cluster a gateway named is written down. A gateway in none
+        // counts as a cluster of its own named by its host, and a box pinned
+        // to that name would lose it the moment the gateway joins a real one.
+        let named = status
+            .path
+            .as_ref()
+            .and_then(|p| p.cluster.as_ref())
+            .filter(|c| status.cluster.as_ref() == Some(*c));
+        if member_of.is_none() {
+            if let Some(cluster) = named {
+                tracing::info!(cluster = %cluster, "this box settles in a secondary cluster");
+                if let Err(e) =
+                    atomic_write(&self.edge_cluster_file(), format!("{cluster}\n").as_bytes())
+                {
+                    tracing::warn!(error = %e, "could not write down the box's secondary cluster");
+                }
+            }
+        }
+    }
+
+    /// The owner moves the box to `cluster`, or lets it settle anew
+    /// (`None`): written down, then the path is chosen again from the last
+    /// scan and the tunnel units follow at once.
+    pub fn set_edge_cluster(
+        &self,
+        cluster: Option<&str>,
+    ) -> anyhow::Result<crate::edge::EdgeStatus> {
+        match cluster {
+            Some(c) => atomic_write(&self.edge_cluster_file(), format!("{c}\n").as_bytes())?,
+            None => match std::fs::remove_file(self.edge_cluster_file()) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(e.into()),
+            },
+        }
+        let mut status = self.edge_cached();
+        self.route_edge(&mut status);
+        *self.edge.lock().unwrap_or_else(|p| p.into_inner()) = Some(status.clone());
+        drive_edge_path(&status);
+        self.publish_managed();
+        Ok(status)
     }
 
     /// Whether the company edge in use may manage this box now
@@ -1743,6 +2050,13 @@ impl Losos for IoLosos {
 
     fn edge_status(&mut self) -> anyhow::Result<crate::edge::EdgeStatus> {
         Ok(self.edge_cached())
+    }
+
+    fn set_edge_cluster(
+        &mut self,
+        cluster: Option<&str>,
+    ) -> anyhow::Result<crate::edge::EdgeStatus> {
+        IoLosos::set_edge_cluster(self, cluster)
     }
 
     fn save_state(&mut self, s: &State) -> anyhow::Result<()> {

@@ -51,6 +51,7 @@ import tour from "./tour";
 import userApps from "./user-apps";
 import users from "./users";
 import widgets from "./widgets";
+import wiki from "./wiki";
 import wizard from "./wizard";
 
 export type { Entry, Plural, Text } from "./define";
@@ -103,6 +104,7 @@ export const MESSAGES = {
   ...games,
   ...together,
   ...quick,
+  ...wiki,
   ...statistics,
 };
 
