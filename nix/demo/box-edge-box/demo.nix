@@ -308,7 +308,7 @@ pkgs.testers.nixosTest {
         print(f"{name} found edge.local by mDNS at {mdns_ipv4(name, 'edge')}")
         # A company edge: nobody signed it, so sharing yes, market no.
         assert d["official"] is False, d
-    print(edge.succeed("losos-edge status"))
+    print(edge.succeed(f"curl -fsS -H 'Authorization: Bearer {key}' 127.0.0.1:8443/manage/api/gateway"))
     event("2", f"The edge is switched on: both boxes found it on the LAN by mDNS within {found_in} s. It is a company edge, not an official one.", seconds=found_in)
 
     # ── 3. Enrolled on first contact, two tunnels ────────────────────────
@@ -316,9 +316,9 @@ pkgs.testers.nixosTest {
         m.wait_until_succeeds("systemctl is-active losos-rathole-client.service", timeout=180)
         m.wait_until_succeeds("systemctl is-active losos-registrar-announce.service", timeout=180)
         edge.wait_until_succeeds(f"grep -F -q '[server.services.{name}]' /etc/rathole/server.toml", timeout=240)
-    listed = edge.succeed("losos-edge boxes")
+    listed = json.loads(edge.succeed(f"curl -fsS -H 'Authorization: Bearer {key}' 127.0.0.1:8443/manage/api/gateway"))["enrolled"]
     print(listed)
-    assert "boxa\tboxa.losos.cfd\tport " in listed and "boxb\tboxb.losos.cfd\tport " in listed, listed
+    assert sorted(listed) == ["boxa", "boxb"], listed
     event("3", "The edge enrolled both boxes the first time they called and publishes them: boxa.losos.cfd and boxb.losos.cfd, one tunnel each.")
 
     # ── 4. Box to box, through the edge ──────────────────────────────────
