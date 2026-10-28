@@ -6,6 +6,8 @@ slug: /manual/losos-git
 
 # LosOS Git
 
+![Repozitár v LosOS Git: súbory a README, v hlavičke tlačidlo Chat a adresa na klonovanie.](@site/docs/img/git-repository.png)
+
 LosOS Git je vlastný Git server zariadenia. Drží vaše repozitáre, prijíma
 pushe a klonovanie cez HTTPS a má stránky na čítanie kódu, otváranie pull
 requestov a ich review.
@@ -149,6 +151,8 @@ chatovou adresou, tou, ktorú LosOS Chat ukazuje pod jeho menom, napríklad
    Stlačí **Povedať boxu `<name>.local`**.
 3. Je späť na vašom zariadení, prihlásený ako `@eva:kitchenbox.local`.
 
+![Evin vlastný box sa pýta, skôr než povie boxu mattbox.local, kto je.](@site/docs/img/git-other-box-vouch.png)
+
 Jeho box vášmu povie len chatovú adresu a meno. Vaše zariadenie si odpoveď
 overí u chatového servera jeho boxu, skôr než jej uverí. Ľudia s účtom na
 vašom zariadení sa prihlasujú cez LosOS Login ako doteraz.
@@ -166,6 +170,8 @@ git push https://<name>.local/git/notshared/site.git HEAD:eva@kitchenbox.local/h
 Zlučujete len vy a vaši správcovia. **Odhlásiť sa** ukončí jeho návštevu na
 tomto počítači.
 
+![Pull request z Evinej vlastnej vetvy s odpoveďou vlastníka repozitára.](@site/docs/img/git-other-box-pull.png)
+
 ## Miestnosť v chate pre repozitár \{#a-chat-room-for-a-repository}
 
 Keď je na zariadení LosOS Chat, **Nastavenia** repozitára majú prepínač
@@ -173,6 +179,8 @@ Keď je na zariadení LosOS Chat, **Nastavenia** repozitára majú prepínač
 vytvorí pre repozitár miestnosť vo vašom chate, s LosOS Git v nej. LosOS
 Git tam píše každý push, pull request, komentár, zlúčenie a výsledok
 kontroly.
+
+![Nastavenia repozitára so zapnutým prepínačom Rozprávať sa o tomto repozitári v LosOS Chat a odkazom na miestnosť.](@site/docs/img/git-repository-room.png)
 
 V hlavičke repozitára potom bude tlačidlo **Chat** pre každého
 prihláseného. Do miestnosti verejného repozitára sa môže pridať ktokoľvek,
