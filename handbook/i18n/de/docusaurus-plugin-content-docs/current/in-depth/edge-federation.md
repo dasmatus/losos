@@ -33,6 +33,110 @@ Drei Ebenen, von denen nur zwei föderiert werden:
 | data    | rathole-Tunnel + Traefik                         | ein Hop mehr: Hub → Spoke → Box                                            |
 | mesh    | rke2-Server + Longhorn                           | **nein**: jede Edge ist ihr eigener Cluster, siehe „Was lokal bleibt“      |
 
+## Drei Stufen {#three-tiers}
+
+Jede Verbindung, die eine Edge oder eine Box hält, hat eine Stufe, und Box,
+Gateway und Hub melden sie alle:
+
+| Stufe     | Verbindung                                                  | Cluster                      |
+| --------- | ----------------------------------------------------------- | ---------------------------- |
+| primär    | Edge zu Edge: der Uplink eines Gateways zu einer offiziellen Edge | der **Hauptcluster**   |
+| sekundär  | Box zu einem lokalen Gateway ihres eigenen Clusters         | ein **sekundärer Cluster**   |
+| tertiär   | Box direkt zu einer offiziellen Edge                        | keiner: der Rückfall         |
+
+Eine Box hält selbst nie eine primäre Verbindung. Ihre eigene sieht sie als
+`path.tier` in `GET /api/edge` und auf der Mesh-Seite, das Gateway zeigt
+seine Verbindungen in `losos-edge status`, und der Hub führt die Gateways
+des Hauptclusters, jedes auf einer primären Verbindung, in
+`main-cluster.json` neben seiner Registry (`losos-edge main` auf einem
+Gateway gibt die des eigenen Standorts aus).
+
+### Sekundäre Cluster {#secondary-clusters}
+
+Ein Gateway in einem Netzwerk kann ausfallen. Ein **sekundärer Cluster**
+besteht aus einem oder mehreren Gateways im selben Netzwerk, die dieselben
+Boxen bedienen, damit eine Box erreichbar bleibt, wenn eines davon
+wegfällt. Er ist Laufzeitzustand und wird auf den Gateways angelegt:
+
+```sh
+# auf dem ersten Gateway
+losos-edge cluster create office
+# es gibt die Zeile aus, die du auf jedem weiteren Gateway ausführst:
+losos-edge cluster join office <secret> http://gwa.local:8443
+```
+
+Die Cluster-Datei (`losos.edge.secondary.file`, standardmäßig
+`/var/lib/losos-edge/cluster.json`, Modus 0600) enthält den Namen, den
+Mitgliedsnamen dieses Gateways, das gemeinsame Geheimnis und die Gateways,
+über die es beigetreten ist. Der Registrar liest sie bei jedem Durchlauf
+neu, deshalb brauchen `create`, `join` und `losos-edge cluster leave`
+keinen Neustart. Die Mitglieder gleichen sich alle
+`losos.edge.secondary.interval` über `POST /cluster/secondary/sync` ab,
+jede Nachricht mit einem HMAC des Geheimnisses signiert: Jedes Mitglied
+erfährt die Boxen, die die anderen eingeschrieben haben, sodass der Token
+einer Box auf allen gilt, und wann welches Mitglied welche Box zuletzt
+gehört hat. Nur das Mitglied, das eine Box zuletzt gehört hat, leitet sie
+an den Hub weiter, sodass die Route des Hubs der Box folgt, ohne zu
+springen. `losos-edge cluster show` listet die Mitglieder, die antworten.
+
+`GET /cluster/secondary` liest eine Box von jeder Edge, die sie findet: die
+Rolle der Edge, die Stufe der Verbindungen, die sie bedient, ihren Cluster
+und Mitgliedsnamen, die Mitglieder, die antworten, und bei einer
+offiziellen Edge ihren offiziellen Cluster und ihre Partner. Ein Gateway
+ohne Cluster-Datei zählt als eigener Cluster, benannt nach seinem Host.
+
+### Offizielle Cluster und Lastverteilung {#official-clusters-and-load-balancing}
+
+Die offiziellen Edges hinter einem Load Balancer bilden einen
+**offiziellen Cluster**. Jede benennt ihn und listet die offiziellen
+Edges, die Boxen nutzen dürfen:
+
+```nix
+losos.edge.official = {
+  cluster = "eu";
+  peers = [
+    { cluster = "eu"; url = "https://eu-1.losos.cfd"; tunnel = "eu-1.losos.cfd:2333"; }
+    { cluster = "eu"; url = "https://eu-2.losos.cfd"; tunnel = "eu-2.losos.cfd:2333"; }
+  ];
+};
+```
+
+Eine Box fügt die gelisteten Partner, die antworten, zu den Edges hinzu,
+die sie gefunden hat. Auf einer tertiären Verbindung bleibt sie bei der
+offiziellen Edge, die sie nutzt, solange diese antwortet. Sonst nimmt sie
+die, der ein Rendezvous-Hash ihrer Appliance-ID das größte Gewicht gibt.
+So verteilen sich die Boxen gleichmäßig über den Cluster, und es wechseln
+nur die Boxen einer Edge, die weggefallen ist.
+
+### Sperren {#bans}
+
+Eine Sperre nennt einzelne Edges, ganze offizielle Cluster oder beides:
+
+```json
+{ "edges": ["https://eu-1.losos.cfd"], "clusters": ["us"] }
+```
+
+Eine Box liest sie bei jedem Scan aus `losos.proxy.bansFile`, eine Edge bei
+jedem Uplink-Durchlauf aus `losos.edge.bansFile`. Eine fehlende oder
+unlesbare Datei sperrt nichts. Eine gesperrte Edge wird nie gewählt. Eine
+Box auf einer gesperrten Edge wechselt von selbst zu einer anderen Edge
+derselben Stufe, und `GET /api/edge` nennt die verlassene Edge als
+`leftBanned`. Ein Gateway, dessen Hub oder dessen offizieller Cluster
+gesperrt ist, schreibt seinen Uplink auf einen offiziellen Partner
+außerhalb der Sperre um und verwirft den gepinnten Key des alten Hubs.
+
+### Eigene Domains halten eine Box {#custom-domains-hold-a-box}
+
+Eine Box mit einer aktiven eigenen Domain bleibt bei der Edge, die die
+Domain bedient. Sie wählt diese Edge weiter an, auch wenn sie weg ist, und
+wechselt zu keinem anderen Gateway und keiner anderen Stufe, weil ein
+Wechsel die Domain kaputt machen würde. `GET /api/edge` zeigt die Edge als
+`held`, und ein Wechsel der Box in einen anderen Cluster
+(`POST /api/edge/cluster`) antwortet 409 mit `heldByDomain`. Die einzige
+Ausnahme ist eine Sperre: Eine Sperre der gehaltenen Edge oder ihres
+offiziellen Clusters verschiebt die Box wie jede andere, und das Halten
+zieht mit auf die neue Edge.
+
 ## Hub-Seite: ein Tenant, der weiterleiten darf {#hub-side-a-tenant-that-may-relay}
 
 Ein Spoke ist ein gewöhnlicher Tenant des Hubs mit einem zusätzlichen
@@ -130,21 +234,36 @@ gedacht, die gegangen ist. Der Hub behält die geschlossene Einschreibung.
 konfigurierte offizielle per URL) und weigert sich, das Teilen
 einzuschalten, wenn keine da ist. Es wählt einen Pfad nach dieser Regel:
 
-1. **zuerst eine lokale Edge**: die erste Ankündigung im LAN, deren
-   `/health` antwortet; die Ankündigung trägt jetzt auch
-   `rathole=<host:port>`, damit die Box weiß, wohin ihr Tunnel führt;
-2. **danach die offizielle Edge**: `losos.proxy.registrarUrl` und
-   `losos.proxy.edgeRatholeEndpoint`, wenn das LAN keine hat;
-3. **keine**: jede Funktion, die von einer Edge abhängt, ist aus: Die
+1. **gesperrte Edges fallen zuerst heraus** ([Sperren](#bans));
+2. **die Edge einer eigenen Domain**, solange die Box eine hat und die Edge
+   nicht gesperrt ist ([Eigene Domains halten eine Box](#custom-domains-hold-a-box));
+3. **ein Gateway ihres eigenen sekundären Clusters** (sekundär): das
+   genutzte, solange es antwortet, sonst das erste nach Mitgliedsnamen.
+   Eine Box, die noch in keinem Cluster ist, lässt sich im erreichbaren
+   Cluster mit den meisten Gateways nieder (bei Gleichstand nach Namen) und
+   behält ihn, sodass sie nur dann den Cluster wechselt, wenn ihr Besitzer
+   es auf der Mesh-Seite sagt (`POST /api/edge/cluster`). Ein Gateway, das
+   keinen Cluster nennt, wird genutzt, aber nie festgehalten;
+4. **eine offizielle Edge** (tertiär), per
+   [Lastverteilung](#official-clusters-and-load-balancing), oder die
+   konfigurierte Edge (`losos.proxy.registrarUrl` und
+   `losos.proxy.edgeRatholeEndpoint`), wenn keine als offiziell
+   nachgewiesen ist;
+5. **keine**: jede Funktion, die von einer Edge abhängt, ist aus: Die
    Tunnel- und Announce-Units sind gestoppt, die Freigabesperre lehnt ab,
    das Market-Relay lehnt ab.
 
-`GET /api/edge` liefert die Wahl als `path` (`{name, url, rathole, source}`
-oder `null`), neben dem `rathole`-Endpunkt jeder Edge. Mit eingeschaltetem
+`GET /api/edge` liefert die Wahl als `path` (`{name, url, rathole, source,
+tier}`, mit `cluster` und `member` auf einer sekundären Verbindung und
+`officialCluster` auf einer tertiären, oder `null`), neben dem
+`rathole`-Endpunkt jeder Edge, den erreichbaren Clustern und dem eigenen
+`cluster` der Box. Mit eingeschaltetem
 `losos.proxy.enable` schreibt `lososd` den Pfad nach
 `/run/losos/edge-path.env` (`LOSOS_EDGE_PATH_URL`, `_RATHOLE`, `_SOURCE`,
-`_NOISE_PUB`) und steuert danach die beiden Tunnel-Units: Ein Wechsel des
-Pfads startet `losos-rathole-client` und `losos-registrar-announce` neu,
+`_TIER`, `_CLUSTER`, `_OFFICIAL_CLUSTER`, `_NOISE_PUB`) und steuert danach
+die beiden Tunnel-Units: Ein Wechsel des Pfads startet `losos-rathole-client`
+und `losos-registrar-announce` neu, ein Wechsel in einen anderen Cluster
+zusätzlich `losos-mesh-join` und `rke2-agent`,
 ohne Pfad wird `/run/losos/edge-none` geschrieben und beide werden gestoppt
 (beide Units tragen `ConditionPathExists=!/run/losos/edge-none`, sodass
 nichts sie neu startet, bis wieder eine Edge da ist). Beide Dateien liegen
@@ -152,8 +271,9 @@ auf `/run`: Bis zum ersten Scan nach einem Neustart wählen die Units die
 konfigurierte Edge an, wie sie es immer getan haben. Das eigene
 `ExecStartPre` des Clients pinnt den Noise-Key jeder Edge in einer eigenen
 Datei: den der konfigurierten Edge in `losos.proxy.noisePublicKeyFile`, den
-einer LAN-Edge unter `/var/secrets/losos-edge-pins/<host>_<port>.pub`. Ein
-zweites Gateway erbt deshalb nie den Key des ersten. Der Token der Box ist
+jeder anderen Edge (eines LAN-Gateways oder eines offiziellen Partners)
+unter `/var/secrets/losos-edge-pins/<host>_<port>.pub`. Eine zweite Edge
+erbt deshalb nie den Key der ersten. Der Token der Box ist
 auf jedem Weg derselbe. Der Hub hat ihn in seiner Whitelist, ein Gateway
 erfährt ihn beim ersten Kontakt, und `lososd` erzeugt ihn (und den
 Bootstrap-Token) beim ersten Start, wenn die Dateien fehlen. Ihr öffentlicher
@@ -168,7 +288,11 @@ bereits `available: false`.
 
 `nix/tests/edge-federation.nix` betreibt die drei Maschinen (Hub, Gateway, Box)
 und geht genau das durch: LAN-Pfad, Einschreibung, Uplink, Rückfall, aus,
-wieder da.
+wieder da. `nix/tests/edge-clusters.nix` betreibt zwei offizielle Edges
+eines offiziellen Clusters, zwei Gateways eines sekundären Clusters und
+eine Box: den Abgleich im Cluster, die primären Verbindungen, den Wechsel
+zwischen den Gateways, den tertiären Rückfall, eine Sperre für die Box und
+für ein Gateway und das Halten durch eine eigene Domain.
 
 ## Was lokal bleibt {#what-stays-local}
 

@@ -121,6 +121,7 @@ in
       passport.enable = lib.mkDefault true;
       uplink.enable = lib.mkDefault true;
       uplink.configFile = lib.mkDefault uplinkJson;
+      secondary.enable = lib.mkDefault true;
       # Traefik's ACME needs a public name this machine does not have; the
       # failure is logged and the LAN routes work regardless, as in the LAN
       # demo. The address is a placeholder for an account that is never made.

@@ -87,6 +87,9 @@ const CommandPalette = React.lazy(() => import("@/palette/command-palette"));
 /* LosOS Mail (src/mail/): only on the shared side, so most boxes never
  * fetch it. */
 const Mail = React.lazy(() => import("@/mail/app"));
+/* LosOS Wiki (src/wikis/): the box's directory of wikis and the editor of
+ * LosOS Git's spaces. */
+const Wikis = React.lazy(() => import("@/wikis/app"));
 /* LosOS Contacts (src/contacts/): kept in chat's homeserver, so on the
  * shared side only, like Mail and Chat. */
 const Contacts = React.lazy(() => import("@/contacts/app"));
@@ -284,11 +287,15 @@ function Shell() {
    * says why instead of failing pane by pane. */
   const me = useMe();
   const held = signedIn && (me?.locked?.length ?? 0) > 0;
-  /* LosOS Diagrams draws on a canvas beside an inspector, and LosOS
-   * Calendar a week of seven columns, which want more room than a pane of
-   * rows: on /diagrams and /calendar the bar and the page are wider. */
+  /* LosOS Diagrams draws on a canvas beside an inspector, LosOS Calendar
+   * a week of seven columns, and LosOS Wiki a page beside its directory
+   * and page tree, which want more room than a pane of rows: on
+   * /diagrams, /calendar and /wikis the bar and the page are wider. */
   const path = useLocation().pathname;
-  const wide = path.startsWith("/diagrams") || path.startsWith("/calendar");
+  const wide =
+    path.startsWith("/diagrams") ||
+    path.startsWith("/calendar") ||
+    path.startsWith("/wikis");
   const tourOpen = React.useSyncExternalStore(subscribeTour, isTourOpen, () => false);
   const paletteOpen = React.useSyncExternalStore(subscribePalette, () => paletteState().open, () => false);
   const searchable = signedIn && !held;
@@ -454,6 +461,7 @@ function Shell() {
             <Route path="/ci" element={<Ci />} />
             <Route path="/ci/runs/:id" element={<Ci />} />
             <Route path="/diagrams/*" element={<Diagrams />} />
+            <Route path="/wikis/*" element={<Wikis />} />
             <Route path="/settings" element={<SettingsRoute />} />
             <Route path="/settings/:pane" element={<SettingsRoute />} />
             <Route path="*" element={<NotFound />} />
