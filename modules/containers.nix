@@ -681,7 +681,7 @@ in
             ${lanOnly}
             ${basicToLososd}
             proxy_set_header Authorization "";
-            proxy_set_header X-Losos-Login-Session $cookie_authelia_session;
+            proxy_set_header X-Losos-Login-Session $cookie_losos_session;
           '';
         })
         // lib.genAttrs (map (p: "= /basic/${p}") basicOpen) (name: {
