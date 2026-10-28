@@ -12,12 +12,12 @@ import {
   StarIcon,
   UserSharingIcon,
 } from "@hugeicons/core-free-icons";
+import { AppBar, AppBarSearch, type AppBarPerson } from "@/components/app-bar";
 import { ContextMenuHost, usePageMenu } from "@/components/context-menu";
+import { PersonAvatar } from "@/components/person";
 import { BottomNav } from "@/components/ui/bottom-nav";
-import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
-import { LanguagePicker } from "@/components/ui/language-picker";
 import { Progress } from "@/components/ui/progress";
 import {
   Sidebar,
@@ -31,11 +31,9 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { Toaster } from "@/components/ui/toast";
 import type { MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
-import { logoFor } from "@/lib/logo";
 import { cn } from "@/lib/utils";
 import { EditPage } from "./collab/page";
 import { ConnectPage } from "./connect";
@@ -155,7 +153,6 @@ function Shell() {
 
 function TopBar({ search, wide = false }: { search: boolean; wide?: boolean }) {
   const t = useT();
-  const logo = logoFor();
   const me = useMe();
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -166,65 +163,58 @@ function TopBar({ search, wide = false }: { search: boolean; wide?: boolean }) {
     if (pathname !== "/search") setText("");
   }, [pathname]);
 
+  const person: AppBarPerson | null =
+    me === null
+      ? null
+      : {
+          label: me.name || me.login,
+          tip: me.email || me.login,
+          avatar: <PersonAvatar size="xs" person={{ name: me.login, displayName: me.name || me.login }} />,
+          accountLink: <a href="/settings/account" />,
+        };
+
   return (
-    <header className="sticky top-0 z-40 border-b border-line bg-surface/85 backdrop-blur-sm">
-      <div className={cn("mx-auto flex w-full items-center gap-3 px-4 py-3 sm:px-6", wide ? "max-w-[96rem]" : "max-w-6xl")}>
-        <Link to="/files" className="flex shrink-0 items-center gap-2.5 rounded-control focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
-          <img src={logo.url} alt="" width={32} height={32} className="size-8" />
-          <span className="text-[15px] font-semibold tracking-tight max-sm:sr-only">{me?.product ?? "LosOS Cloud"}</span>
-        </Link>
-        {search ? (
-          <form
-            role="search"
-            className="relative mx-auto w-full max-w-md"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const q = text.trim();
-              if (q !== "") navigate(`/search?q=${encodeURIComponent(q)}`);
-            }}
-          >
-            <HugeiconsIcon
-              icon={Search01Icon}
-              size={16}
-              strokeWidth={1.5}
-              color="currentColor"
-              className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-faint"
-              aria-hidden="true"
-            />
-            <Input
-              type="search"
-              value={text}
-              onChange={(event) => setText(event.target.value)}
-              placeholder={t("cloud.search.placeholder")}
-              aria-label={t("cloud.search.label")}
-              className="pl-9"
-            />
-          </form>
-        ) : (
-          <div className="flex-1" />
-        )}
-        <div className="flex shrink-0 items-center gap-2 max-md:hidden">
-          <LanguagePicker />
-          <ThemeToggle />
-        </div>
-        {me !== null && (
-          <span className="max-w-40 truncate text-[13px] text-muted max-lg:hidden" title={me.email || me.login}>
-            {me.name || me.login}
-          </span>
-        )}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            const home = `${window.location.origin}/cloud/`;
-            window.location.assign(`${window.location.origin}/auth/logout?rd=${encodeURIComponent(home)}`);
+    <AppBar
+      name={me?.product ?? "LosOS Cloud"}
+      nameLink={<Link to="/files" />}
+      width={wide ? "wide" : "page"}
+      person={person}
+      onSignOut={signOut}
+    >
+      {search ? (
+        <AppBarSearch
+          onSubmit={(event) => {
+            event.preventDefault();
+            const q = text.trim();
+            if (q !== "") navigate(`/search?q=${encodeURIComponent(q)}`);
           }}
         >
-          {t("cloud.signOut")}
-        </Button>
-      </div>
-    </header>
+          <HugeiconsIcon
+            icon={Search01Icon}
+            size={16}
+            strokeWidth={1.5}
+            color="currentColor"
+            className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-faint"
+            aria-hidden="true"
+          />
+          <Input
+            type="search"
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            placeholder={t("cloud.search.placeholder")}
+            aria-label={t("cloud.search.label")}
+            className="pl-9"
+          />
+        </AppBarSearch>
+      ) : undefined}
+    </AppBar>
   );
+}
+
+/* Out through LosOS Login, which sends the browser back to LosOS Cloud. */
+function signOut() {
+  const home = `${window.location.origin}/cloud/`;
+  window.location.assign(`${window.location.origin}/auth/logout?rd=${encodeURIComponent(home)}`);
 }
 
 /* The phone's bottom bar: these four, then More for the rest. Notes is not
