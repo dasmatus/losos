@@ -360,6 +360,26 @@ export default defineMessages({
     sk: "Zariadenie nemohlo prehľadať svoju sieť a inde nič neodpovedalo.",
     de: "Diese Box konnte ihr Netzwerk nicht durchsuchen, und anderswo hat nichts geantwortet.",
   },
+  "panes.mesh.edge.paused": {
+    en: "Sharing paused since {date}, {time}",
+    sk: "Zdieľanie pozastavené od {date}, {time}",
+    de: "Teilen pausiert seit {date}, {time}",
+  },
+  "panes.mesh.edge.pausedDetail": {
+    en: "No edge answered for a while, so this box turned sharing off by itself. It turns sharing back on a minute after an edge answers again.",
+    sk: "Dlhší čas sa neozval žiadny edge, preto toto zariadenie zdieľanie samo vyplo. Znova ho zapne minútu po tom, ako sa edge opäť ozve.",
+    de: "Eine Weile hat kein Edge geantwortet, also hat diese Box das Teilen selbst ausgeschaltet. Sie schaltet es wieder ein, eine Minute nachdem ein Edge wieder antwortet.",
+  },
+  "panes.mesh.edge.waiting": {
+    en: "Waiting for an edge",
+    sk: "Čaká sa na edge",
+    de: "Wartet auf ein Edge",
+  },
+  "panes.mesh.edge.resuming": {
+    en: "Turning back on",
+    sk: "Znova sa zapína",
+    de: "Wird wieder eingeschaltet",
+  },
   "panes.mesh.edge.sharingOff": {
     en: "Sharing is off",
     sk: "Zdieľanie je vypnuté",

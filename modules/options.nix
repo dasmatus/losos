@@ -433,6 +433,20 @@ in
       '';
     };
 
+    proxy.pauseSharingAfter = lib.mkOption {
+      type = lib.types.ints.unsigned;
+      default = 600;
+      example = 1800;
+      description = ''
+        Seconds without any edge answering before a box that shares storage
+        through one turns sharing off by itself, as the owner's switch
+        would (backend/src/edge.rs, `sharing_step`). Once an edge has
+        answered for a minute, the box turns sharing back on. Only a pause
+        the box made itself is undone; the owner switching sharing in the
+        meantime keeps their choice. `0` never pauses.
+      '';
+    };
+
     proxy.officialRootKeyFile = lib.mkOption {
       type = lib.types.path;
       default = ../nix/keys/official-edge-root.pub;
