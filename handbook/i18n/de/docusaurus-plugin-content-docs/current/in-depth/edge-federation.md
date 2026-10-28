@@ -205,11 +205,16 @@ Box läuft (gestartet von einer Path-Unit, sobald die Datei existiert), und
 verbindet sich neu, wenn sich die Datei ändert. Das Tunnel-Zertifikat des
 Hubs wird beim ersten Kontakt gepinnt (`GET /tunnel-pin`, vom Registrar
 selbst nach `uplink.pinFile` geschrieben), so wie eine Box das ihrer Edge
-pinnt. Eine Anfrage an `https://mattbox.acme.losos.cfd/`
-terminiert also TLS auf dem Hub, betritt den Tunnel-Dienst `acme.mattbox`
-des Hubs, durchquert den Uplink zum lokalen Port des Spokes für `mattbox`,
-durchquert den Tunnel der Box und landet im Nginx der Box. Zwei Tunnel, ein
-Host-Header, keine Änderung an der Box.
+pinnt. Eine Anfrage an
+`https://mattbox.acme.losos.cfd/` erreicht also den Hub, der sie nach dem
+Namen im TLS-Hello in seinen Tunnel-Dienst `acme.mattbox` leitet. Sie
+durchquert den Uplink zum lokalen Port des Spokes für `mattbox`, durchquert
+den Tunnel der Box, und erst die Box beendet TLS mit ihrem eigenen
+Zertifikat für den Namen
+([Passthrough](master-proxy.md#the-edge-cannot-read-the-traffic)); weder Hub
+noch Spoke können sie lesen. Solange die Box dieses Zertifikat nicht hat,
+beendet der Hub TLS und die Anfrage reist als einfaches HTTP weiter. Zwei
+Tunnel, ein Name, keine Änderung an der Box.
 
 **Offene Einschreibung** (Open Enrolment) macht eine Standard-Box mit einem
 Gateway nutzbar, für das niemand Tokens bereitgestellt hat: Mit

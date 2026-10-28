@@ -73,6 +73,7 @@ pub mod official;
 pub mod onramp;
 pub mod operator;
 pub mod opts;
+pub mod passthrough;
 pub mod plans;
 pub mod provision;
 pub mod registry;

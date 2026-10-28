@@ -380,6 +380,77 @@ export default defineMessages({
     sk: "Znova sa zapína",
     de: "Wird wieder eingeschaltet",
   },
+  // Whether the edge can read what passes through it (modules/public-tls.nix).
+  "panes.mesh.tls.edgeReads": {
+    en: "The edge can read this box's traffic",
+    sk: "Edge môže čítať prevádzku tohto zariadenia",
+    de: "Das Edge kann den Verkehr dieser Box lesen",
+  },
+  "panes.mesh.tls.edgeReadsDetail": {
+    en: "This box has no certificate of its own for its public name yet, so the edge ends TLS and passes requests on unencrypted. The box asks for one every hour.",
+    sk: "Zariadenie zatiaľ nemá vlastný certifikát pre svoje verejné meno, preto TLS končí na edgi a požiadavky idú ďalej nešifrované. Zariadenie oň žiada každú hodinu.",
+    de: "Diese Box hat noch kein eigenes Zertifikat für ihren öffentlichen Namen, also beendet das Edge TLS und reicht Anfragen unverschlüsselt weiter. Die Box fragt jede Stunde danach.",
+  },
+  "panes.mesh.tls.readable": {
+    en: "Readable",
+    sk: "Čitateľná",
+    de: "Lesbar",
+  },
+  "panes.mesh.tls.sealed": {
+    en: "The edge cannot read this box's traffic",
+    sk: "Edge nemôže čítať prevádzku tohto zariadenia",
+    de: "Das Edge kann den Verkehr dieser Box nicht lesen",
+  },
+  "panes.mesh.tls.sealedDetail": {
+    en: "This box holds its own certificate for {names}. The edge passes the encrypted connection through without opening it.",
+    sk: "Zariadenie má vlastný certifikát pre {names}. Edge šifrované spojenie len preposiela a neotvára ho.",
+    de: "Diese Box hat ein eigenes Zertifikat für {names}. Das Edge reicht die verschlüsselte Verbindung durch, ohne sie zu öffnen.",
+  },
+  "panes.mesh.tls.checked": {
+    en: "Checked from outside at {time}.",
+    sk: "Overené zvonka o {time}.",
+    de: "Von außen geprüft um {time}.",
+  },
+  "panes.mesh.tls.unreachable": {
+    en: "The last check could not reach {names} from outside.",
+    sk: "Posledná kontrola sa zvonka nedostala k {names}.",
+    de: "Die letzte Prüfung hat {names} von außen nicht erreicht.",
+  },
+  "panes.mesh.tls.encrypted": {
+    en: "Encrypted to this box",
+    sk: "Šifrované až po zariadenie",
+    de: "Bis zur Box verschlüsselt",
+  },
+  "panes.mesh.tls.foreign": {
+    en: "Someone else answers for {name}",
+    sk: "Za {name} odpovedá niekto iný",
+    de: "Jemand anderes antwortet für {name}",
+  },
+  "panes.mesh.tls.foreignDetail": {
+    en: "Looking at {name} from outside, this box found a certificate it did not make. Something between visitors and this box ends their TLS and can read what they send.",
+    sk: "Pri pohľade na {name} zvonka našlo zariadenie certifikát, ktorý nevytvorilo. Niečo medzi návštevníkmi a zariadením ukončuje ich TLS a môže čítať, čo posielajú.",
+    de: "Beim Blick von außen auf {name} hat diese Box ein Zertifikat gefunden, das sie nicht erstellt hat. Etwas zwischen den Besuchern und dieser Box beendet ihr TLS und kann lesen, was sie senden.",
+  },
+  "panes.mesh.tls.intercepted": {
+    en: "Intercepted",
+    sk: "Zachytávané",
+    de: "Abgefangen",
+  },
+  "panes.mesh.tls.lapsed": {
+    en: "This box's certificate has lapsed",
+    sk: "Certifikát tohto zariadenia vypršal",
+    de: "Das Zertifikat dieser Box ist abgelaufen",
+  },
+  "panes.mesh.tls.lapsedDetail": {
+    en: "Visitors see a certificate warning until the box renews it. The edge does not take TLS back, so it still cannot read the traffic.",
+    sk: "Návštevníci uvidia varovanie o certifikáte, kým ho zariadenie neobnoví. Edge TLS späť nepreberá, takže prevádzku ani teraz čítať nemôže.",
+    de: "Besucher sehen eine Zertifikatswarnung, bis die Box es erneuert. Das Edge übernimmt TLS nicht wieder und kann den Verkehr weiterhin nicht lesen.",
+  },
+  "panes.mesh.tls.renewing": {
+    en: "Renewing",
+    sk: "Obnovuje sa",
+    de: "Wird erneuert",
+  },
   "panes.mesh.edge.sharingOff": {
     en: "Sharing is off",
     sk: "Zdieľanie je vypnuté",

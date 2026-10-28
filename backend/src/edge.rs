@@ -1835,6 +1835,84 @@ pub fn check_market_gate(edge: &EdgeStatus) -> Result<(), OfficialEdgeRequired> 
     }
 }
 
+// ── the box's own TLS on its public names ──────────────────────────────
+//
+// modules/public-tls.nix gets a certificate for each public name and writes
+// two files: the names the box ends TLS for itself (what the heartbeat asks
+// the edge to pass through), and what its hourly look at each name from
+// outside found. `GET /api/edge` carries both as `publicTls`, so the Mesh
+// pane can say whether the edge can read the box's traffic.
+
+/// What a look at one public name from outside found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TlsSeen {
+    /// The box's own certificate answered: the edge passes TLS through.
+    Ok,
+    /// Nothing answered, or not with TLS.
+    Unreachable,
+    /// A certificate the box did not make: something between the visitor
+    /// and the box ends its TLS.
+    Foreign,
+}
+
+/// `publicTls` in `GET /api/edge`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublicTls {
+    /// The names this box ends TLS for itself. `None`: the edge still ends
+    /// it for every name (no certificate yet, or passthrough is off).
+    pub own: Option<Vec<String>>,
+    /// When the last look from outside ran (RFC 3339), if one has.
+    pub checked_at: Option<String>,
+    /// What it found, by name.
+    pub seen: std::collections::BTreeMap<String, TlsSeen>,
+}
+
+/// [`PublicTls`] from the two files' bodies (`None`: no such file). Names
+/// that are not DNS names, verdicts this build does not know and a probe
+/// that is not JSON are left out rather than failing the whole status.
+#[must_use]
+pub fn public_tls_from(ready: Option<&str>, probe: Option<&str>) -> PublicTls {
+    let own = ready.map(|body| {
+        body.lines()
+            .map(str::trim)
+            .filter(|n| public_name(n))
+            .map(str::to_string)
+            .collect()
+    });
+    let probe: Option<Value> = probe.and_then(|p| serde_json::from_str(p).ok());
+    let checked_at = probe
+        .as_ref()
+        .and_then(|p| p["checkedAt"].as_str())
+        .map(str::to_string);
+    let seen = probe
+        .as_ref()
+        .and_then(|p| p["names"].as_object())
+        .map(|names| {
+            names
+                .iter()
+                .filter(|(n, _)| public_name(n))
+                .filter_map(|(n, v)| {
+                    serde_json::from_value::<TlsSeen>(v.clone())
+                        .ok()
+                        .map(|v| (n.clone(), v))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    PublicTls {
+        own,
+        checked_at,
+        seen,
+    }
+}
+
+/// A lowercase DNS name of two labels or more.
+fn public_name(n: &str) -> bool {
+    n.len() <= 253 && n.contains('.') && n.split('.').all(dns_label)
+}
+
 // ── the box's own network ──────────────────────────────────────────────
 //
 // Management is for an edge beside the box, never one out on the internet,
@@ -2028,6 +2106,47 @@ pub fn manager_active(managed_by: Option<&str>, status: &EdgeStatus) -> bool {
 
 #[cfg(test)]
 mod tests {
+
+    // ── public_tls_from ─────────────────────────────────────────────────
+
+    #[test]
+    fn no_ready_file_means_the_edge_still_ends_tls() {
+        let t = public_tls_from(None, None);
+        assert_eq!(t.own, None);
+        assert_eq!(t.checked_at, None);
+        assert!(t.seen.is_empty());
+    }
+
+    #[test]
+    fn the_box_reports_its_own_names_and_what_it_saw_from_outside() {
+        let t = public_tls_from(
+            Some("mattbox.losos.cfd\nNot A Name\nfiles.example.org\n"),
+            Some(
+                r#"{"checkedAt":"2026-10-28T21:00:00Z","names":{
+                    "mattbox.losos.cfd":"ok","files.example.org":"foreign",
+                    "../etc":"ok","x.example":"sideways"}}"#,
+            ),
+        );
+        assert_eq!(
+            t.own.as_deref(),
+            Some(
+                &[
+                    "mattbox.losos.cfd".to_string(),
+                    "files.example.org".to_string()
+                ][..]
+            )
+        );
+        assert_eq!(t.checked_at.as_deref(), Some("2026-10-28T21:00:00Z"));
+        assert_eq!(t.seen.len(), 2);
+        assert_eq!(t.seen["mattbox.losos.cfd"], TlsSeen::Ok);
+        assert_eq!(t.seen["files.example.org"], TlsSeen::Foreign);
+        // An empty file is still the box ending TLS: it lapsed, and the
+        // edge does not take it back.
+        assert_eq!(
+            public_tls_from(Some(""), Some("not json")).own,
+            Some(vec![])
+        );
+    }
 
     // ── sharing_step ────────────────────────────────────────────────────
 
