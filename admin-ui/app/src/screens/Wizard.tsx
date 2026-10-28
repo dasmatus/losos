@@ -10,12 +10,15 @@
  *                           passkey cannot be made without a secure context
  *   2  Choose how you sign in   the password (required), the passkey (offered),
  *                           and the spare admin key, shown and printable once
- *   3  Sign in              LosOS Cloud in a tab of its own, watched from here
+ *   3  Your desktop         signed in to LosOS Login with that password, from
+ *                           this page, and the desktop drawn behind the card
+ *                           until "Let's go" grows it to the whole window
  *
  * This component owns the sequence and the gates and nothing else. Each step
  * reports upward when its gate is met — `account` for step 2, `signedIn` for
  * step 3 — and the footer reads those. Steps do not move the wizard
- * themselves.
+ * themselves. The desktop itself is the shell's (App.tsx): `onPreview` says
+ * when to draw it.
  *
  * House rules, same as everywhere in this app: no inline style attributes (the
  * appliance CSP refuses them), no emoji, and nothing a user reads names a
@@ -29,13 +32,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { LanguagePicker } from "@/components/ui/language-picker";
 import { NoTpmNotice, useRunsWithoutTpm } from "@/components/no-tpm-notice";
-import { toast } from "@/components/ui/toast";
 import { t } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
+import { cn } from "@/lib/utils";
 import { StepRail } from "./wizard/StepRail";
 import { StepTrust } from "./wizard/StepTrust";
 import { StepSignIn } from "./wizard/StepSignIn";
-import { StepFirstSignIn } from "./wizard/StepFirstSignIn";
+import { StepDesktop, type Credentials, type DesktopSignIn } from "./wizard/StepDesktop";
 import { StepText } from "./wizard/parts";
 import { boxName, useSetupState, type SetupQuery } from "./wizard/useSetupState";
 import { clearProgress, readProgress, resumedKey, saveProgress } from "./wizard/progress";
@@ -53,9 +56,13 @@ export interface WizardProps {
    *  that means — routing to the overview, clearing a first-run flag. Without
    *  it the wizard shows a closing card and stops. */
   onDone?: () => void;
+  /** Called with true once the last step has signed the owner in, and with
+   *  false if they go Back from it: the shell draws the desktop behind the
+   *  card while it is true. */
+  onPreview?: (shown: boolean) => void;
 }
 
-export default function Wizard({ onDone }: WizardProps) {
+export default function Wizard({ onDone, onPreview }: WizardProps) {
   const t = useT();
   const setup = useSetupState();
 
@@ -70,15 +77,34 @@ export default function Wizard({ onDone }: WizardProps) {
    * steps so a Back-then-Forward does not reset them — retyping a password
    * because you went back to re-read the fingerprint would be its own bug. */
   const [account, setAccount] = React.useState<string | null>(resumed?.account ?? null);
+  const [login, setLogin] = React.useState<string | null>(resumed?.login ?? null);
   const [adminKey, setAdminKey] = React.useState<string | null>(() => resumedKey(resumed));
-  const [signedIn, setSignedIn] = React.useState(resumed?.signedIn ?? false);
+  const [signedIn, setSignedIn] = React.useState<DesktopSignIn | null>(resumed?.signedIn ?? null);
+
+  /* The password step 2 set, for step 3 to sign in with. A ref, in memory
+   * only: it is never in storage, nothing renders it, and it is dropped the
+   * moment step 3 is through. */
+  const credentials = React.useRef<Credentials | null>(null);
+  const readCredentials = React.useCallback(() => credentials.current, []);
 
   /* Kept from the moment step 2 has set a password: before that the box is
-   * still unclaimed and a reload lands in setup anyway. */
+   * still unclaimed and a reload lands in setup anyway. Not once the tab is
+   * the person's: it holds no spare key then, and a reload opens the desktop. */
   React.useEffect(() => {
     if (finished || account === null) return;
-    saveProgress({ step, account, keyShown: adminKey !== null, signedIn });
-  }, [step, account, adminKey, signedIn, finished]);
+    if (signedIn === "person") {
+      clearProgress();
+      return;
+    }
+    saveProgress({ step, account, login, keyShown: adminKey !== null, signedIn });
+  }, [step, account, login, adminKey, signedIn, finished]);
+
+  /* The desktop behind the card: on the last step, once there is someone
+   * signed in to show it to. */
+  const previewing = step === "finish" && signedIn !== null;
+  React.useEffect(() => {
+    onPreview?.(previewing);
+  }, [previewing, onPreview]);
 
   /* The step's own <section> takes focus on a move, not the heading inside
    * it: the section carries the aria-label, so landing on it announces which
@@ -98,13 +124,22 @@ export default function Wizard({ onDone }: WizardProps) {
     panel.current?.focus();
   }, [step]);
 
-  const onPasswordSet = React.useCallback((user: string, key: string | null) => {
-    setAccount(user);
-    // A second password set from this tab goes through set-password and
-    // carries no key; the one from the claim stays on screen.
-    if (key !== null) setAdminKey(key);
+  const onPasswordSet = React.useCallback(
+    (user: string, key: string | null, name: string | null, password: string) => {
+      setAccount(user);
+      // A second password set from this tab goes through set-password and
+      // carries no key; the one from the claim stays on screen.
+      if (key !== null) setAdminKey(key);
+      if (name !== null) setLogin(name);
+      const who = name ?? login;
+      credentials.current = who === null ? null : { login: who, password };
+    },
+    [login],
+  );
+  const onSignedIn = React.useCallback((how: DesktopSignIn) => {
+    credentials.current = null;
+    setSignedIn(how);
   }, []);
-  const onSignedIn = React.useCallback(() => setSignedIn(true), []);
 
   /* A box installed without a TPM says so here, once the password is set:
    * the claim is what puts the token in this tab, and the owner has just
@@ -126,14 +161,8 @@ export default function Wizard({ onDone }: WizardProps) {
     if (next === null) {
       clearProgress();
       setFinished(true);
-      // The shell swaps the wizard for the app on `onDone`, so this is the
-      // one line that says the sequence ended rather than vanished.
-      toast.success(
-        t("wizard.closing.toast"),
-        setup.kind === "ready"
-          ? t("wizard.closing.titleNamed", { name: setup.state.hostName })
-          : t("wizard.closing.titleUnnamed"),
-      );
+      // The shell grows the desktop behind this card to the window on
+      // `onDone`; that is what says the sequence ended.
       onDone?.();
       return;
     }
@@ -141,11 +170,22 @@ export default function Wizard({ onDone }: WizardProps) {
     setStep(next);
   };
 
-  if (finished) return <Closing setup={setup} />;
+  // With `onDone` the card stays as it was while the shell grows the desktop
+  // and takes the card away.
+  if (finished && onDone === undefined) return <Closing setup={setup} />;
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-6 sm:px-6">
-      <div className="flex flex-col gap-3">
+    <div
+      data-testid="wizard"
+      data-docked={previewing ? "true" : undefined}
+      className={cn(
+        "mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-6 sm:px-6",
+        // Over the desktop, the card moves to the foot of the window and the
+        // desktop has the rest.
+        previewing && "wizard-dock fixed inset-x-0 bottom-0 z-40 max-w-xl gap-3 pb-5 sm:pb-8",
+      )}
+    >
+      <div className={cn("flex flex-col gap-3", previewing && "sr-only")}>
         {/* The picker sits on the very first screen a new owner sees: someone
             who cannot read the browser's language has to be able to switch
             before step one asks them anything. */}
@@ -162,7 +202,7 @@ export default function Wizard({ onDone }: WizardProps) {
 
       {noTpm && <NoTpmNotice />}
 
-      <Card className="overflow-hidden">
+      <Card className={cn("overflow-hidden", previewing && "shadow-pop")}>
         {/* Keyed by step so React remounts the subtree and the enter animation
             in wizard.css runs again. The direction class is the only thing
             that says which way the move went; there is no exit half, because
@@ -182,8 +222,10 @@ export default function Wizard({ onDone }: WizardProps) {
               step={step}
               setup={setup}
               account={account}
+              login={login}
               adminKey={adminKey}
               signedIn={signedIn}
+              credentials={readCredentials}
               onPasswordSet={onPasswordSet}
               onSignedIn={onSignedIn}
             />
@@ -227,10 +269,12 @@ interface StepBodyProps {
   step: StepId;
   setup: SetupQuery;
   account: string | null;
+  login: string | null;
   adminKey: string | null;
-  signedIn: boolean;
-  onPasswordSet: (user: string, adminKey: string | null) => void;
-  onSignedIn: () => void;
+  signedIn: DesktopSignIn | null;
+  credentials: () => Credentials | null;
+  onPasswordSet: (user: string, adminKey: string | null, login: string | null, password: string) => void;
+  onSignedIn: (how: DesktopSignIn) => void;
 }
 
 function StepBody(props: StepBodyProps) {
@@ -248,8 +292,9 @@ function StepBody(props: StepBodyProps) {
       );
     case "finish":
       return (
-        <StepFirstSignIn
-          account={props.account}
+        <StepDesktop
+          login={props.login}
+          credentials={props.credentials}
           signedIn={props.signedIn}
           onSignedIn={props.onSignedIn}
         />
@@ -266,7 +311,7 @@ function StepBody(props: StepBodyProps) {
 
 interface Gates {
   account: string | null;
-  signedIn: boolean;
+  signedIn: DesktopSignIn | null;
 }
 
 interface Gate {
@@ -279,7 +324,8 @@ interface Gate {
  * Step 1 is always passable — the certificate may already be installed, and a
  * box with `losos.tls.enable` off has none to install. Step 2 waits on a
  * password because that is the bug this wizard exists to fix. Step 3 waits
- * on a real session in the embedded files app. */
+ * until this tab is signed in, as the person or, where it cannot be, with the
+ * spare key. */
 function gateFor(step: StepId, gates: Gates): Gate {
   switch (step) {
     case "trust":
@@ -287,7 +333,7 @@ function gateFor(step: StepId, gates: Gates): Gate {
     case "signin":
       return { allowed: gates.account !== null, label: t("wizard.nav.continue") };
     case "finish":
-      return { allowed: gates.signedIn, label: t("wizard.nav.finish") };
+      return { allowed: gates.signedIn !== null, label: t("wizard.nav.letsGo") };
     default: {
       const unreachable: never = step;
       return unreachable;
@@ -297,10 +343,10 @@ function gateFor(step: StepId, gates: Gates): Gate {
 
 // ── After the last step ───────────────────────────────────────────────────
 
-/* Shown when `onDone` is not wired, and briefly before it takes effect when
- * it is. Deliberately a full stop rather than a dashboard: whatever the shell
- * routes to next is its decision, and a wizard that ends in a blank frame
- * looks like a crash. */
+/* Shown when `onDone` is not wired. Deliberately a full stop rather than a
+ * dashboard: whatever a shell routes to next is its decision, and a wizard
+ * that ends in a blank frame looks like a crash. With `onDone` the shell has
+ * the desktop on screen already and grows it into the window instead. */
 function Closing({ setup }: { setup: SetupQuery }) {
   const t = useT();
   return (
