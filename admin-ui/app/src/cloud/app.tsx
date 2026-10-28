@@ -15,6 +15,7 @@ import {
 import { AppBar, AppBarSearch, type AppBarPerson } from "@/components/app-bar";
 import { ContextMenuHost, usePageMenu } from "@/components/context-menu";
 import { PersonAvatar } from "@/components/person";
+import { BottomNav } from "@/components/ui/bottom-nav";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
@@ -216,6 +217,11 @@ function signOut() {
   window.location.assign(`${window.location.origin}/auth/logout?rd=${encodeURIComponent(home)}`);
 }
 
+/* The phone's bottom bar: these four, then More for the rest. Notes is not
+ * one: a vault is a page of its own without the places, as on a wide
+ * screen. */
+const TABS = ["/files", "/recent", "/favorites", "/photos"] as const;
+
 function Places() {
   const t = useT();
   const { pathname } = useLocation();
@@ -229,18 +235,22 @@ function Places() {
   const total = me === null ? 0 : me.used + me.free;
   return (
     <>
-      {isMobile && (
-        <div className="flex w-full items-center gap-1.5 rounded-card border border-line bg-sunk p-2">
-          <SidebarTrigger label={t("cloud.nav.expand")} />
-          <button type="button" onClick={() => setOpenMobile(true)} className="min-w-0 flex-1 truncate text-left text-[13.5px] font-medium text-ink">
-            {current !== undefined ? t(current.label) : t("cloud.nav.label")}
-          </button>
-        </div>
-      )}
+      <BottomNav
+        label={t("ui.bottomNav.label")}
+        tabs={TABS.flatMap((to) => PLACES.filter((place) => place.to === to)).map((place) => ({
+          key: place.to,
+          to: place.to,
+          label: t(place.label),
+          icon: place.icon,
+          active: current === place,
+        }))}
+      />
       <Sidebar aria-label={t("cloud.nav.label")} mobileTitle={t("cloud.nav.label")} closeLabel={t("cloud.close")}>
-        <SidebarHeader className={cn(isMobile && "pr-10")}>
-          {!isMobile && <SidebarTrigger label={t(rail ? "cloud.nav.expand" : "cloud.nav.collapse")} />}
-        </SidebarHeader>
+        {!isMobile && (
+          <SidebarHeader>
+            <SidebarTrigger label={t(rail ? "cloud.nav.expand" : "cloud.nav.collapse")} />
+          </SidebarHeader>
+        )}
         <SidebarContent>
           <SidebarMenu>
             {PLACES.map((place) => {

@@ -22,7 +22,7 @@ export function UploadsPanel() {
       aria-label={t("cloud.upload.panel")}
       aria-live="polite"
       data-uploads
-      className="fixed right-4 bottom-4 z-30 flex max-h-[60dvh] w-[min(24rem,calc(100vw-2rem))] flex-col rounded-card border border-line bg-surface shadow-pop"
+      className="fixed right-4 bottom-[calc(1rem+var(--bottom-nav))] z-30 flex max-h-[60dvh] w-[min(24rem,calc(100vw-2rem))] flex-col rounded-card border border-line bg-surface shadow-pop"
     >
       <header className="flex items-center gap-2 border-b border-hair px-4 py-2.5">
         <p className="flex-1 text-[13px] font-medium">

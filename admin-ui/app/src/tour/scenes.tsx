@@ -85,7 +85,11 @@ function OverviewScene({ frame: f }: SceneProps) {
   const focus = hold(f, BEAT - 6, 10 * BEAT, 14, E.ui);
   const press = hitPulse(f - 2 * BEAT, 2, 5);
   const grow = prog(f, 2 * BEAT + 4, 3 * BEAT + 22, E.inOut) * (1 - prog(f, 8 * BEAT - 4, 9 * BEAT + 26, E.inOut));
-  const inside = hold(f, 3 * BEAT + 10, 7 * BEAT + 18, 14);
+  // What is inside the window shows whenever the window is big enough to
+  // read, growing and folding alike, cut to the window's edge, so no frame
+  // is an empty box.
+  const inside = clamp((grow - 0.4) / 0.3, 0, 1);
+  const clip = useSvgId("tour-files");
   // While it is open, the pointer walks down the files, one a beat.
   const hover = hold(f, 4 * BEAT + 12, 7 * BEAT + 12, 12);
   const hoverRow = prog(f, 5 * BEAT, 5 * BEAT + 18, E.glide) + prog(f, 6 * BEAT, 6 * BEAT + 18, E.glide);
@@ -182,7 +186,12 @@ function OverviewScene({ frame: f }: SceneProps) {
       {/* The Files app, grown out of its tile. Its fill is clear while it is
           small, so the tiles and the bar under it come and go gradually. */}
       {grow > 0.001 && (
-        <g>
+        <g data-part="files-window">
+          <defs>
+            <clipPath id={clip}>
+              <rect x={win.x} y={win.y} width={win.w} height={win.h} rx={mix(9, 8, grow)} />
+            </clipPath>
+          </defs>
           <rect
             x={win.x + 0.5}
             y={win.y + 0.5}
@@ -192,7 +201,7 @@ function OverviewScene({ frame: f }: SceneProps) {
             className="fill-surface stroke-line"
             fillOpacity={clamp((grow - 0.2) / 0.5, 0, 1)}
           />
-          <g opacity={inside}>
+          <g opacity={inside} clipPath={`url(#${clip})`}>
             <g className="text-accent">
               <Glyph icon={Folder01Icon} x={to.x + 16} y={to.y + 12} size={14} />
             </g>
@@ -202,7 +211,7 @@ function OverviewScene({ frame: f }: SceneProps) {
             <line x1={to.x + 1} y1={to.y + 36.5} x2={to.x + to.w - 1} y2={to.y + 36.5} className="stroke-hair" />
             <rect x={to.x + 8} y={to.y + 40 + hoverRow * 29} width={to.w - 16} height="27" rx="5" className="fill-sunk" opacity={hover} />
             {files.map((file, i) => {
-              const at = 3 * BEAT + 16 + i * 6;
+              const at = 2 * BEAT + 22 + i * 6;
               const o = prog(f, at, at + 16, E.out);
               const y = to.y + 40 + i * 29 + mix(6, 0, o);
               return (
@@ -679,7 +688,10 @@ function AboutScene({ frame: f }: SceneProps) {
   const ring = hold(f, BEAT - 10, 7 * BEAT + 4, 14, E.ui);
   const press = hitPulse(f - 2 * BEAT, 2, 5);
   const grow = prog(f, 2 * BEAT + 4, 3 * BEAT + 14, E.inOut) * (1 - prog(f, 6 * BEAT - 6, 7 * BEAT - 2, E.inOut));
-  const inside = hold(f, 3 * BEAT + 4, 5 * BEAT + 22, 12);
+  // Its content shows whenever it is big enough to read, cut to its edge, as
+  // in the Overview's Files window: no frame is an empty box.
+  const inside = clamp((grow - 0.4) / 0.3, 0, 1);
+  const clip = useSvgId("tour-again");
 
   const rows: { title: string; value: string; kind?: "link" | "mono" | "badge" }[] = [
     { title: t("panes.about.called"), value: "mattbox", kind: "mono" },
@@ -752,7 +764,12 @@ function AboutScene({ frame: f }: SceneProps) {
 
       {/* The tour itself, opening out of the row: this very dialog, small. */}
       {grow > 0.001 && (
-        <g>
+        <g data-part="tour-window">
+          <defs>
+            <clipPath id={clip}>
+              <rect x={box.x} y={box.y} width={box.w} height={box.h} rx="8" />
+            </clipPath>
+          </defs>
           <rect x="-166" y="-42" width="640" height="360" className="fill-black" opacity={0.4 * grow} />
           {/* Its fill comes up over the first frames of the growth, so the row
               under it fades out instead of vanishing in one frame. */}
@@ -765,7 +782,7 @@ function AboutScene({ frame: f }: SceneProps) {
             className="fill-surface stroke-line"
             fillOpacity={clamp(grow * 3, 0, 1)}
           />
-          <g opacity={inside}>
+          <g opacity={inside} clipPath={`url(#${clip})`}>
             <rect x={to.x + 10.5} y={to.y + 10.5} width={to.w - 21} height="118" rx="5" className="fill-sunk stroke-line" />
             <image href={logo.url} x={to.x + to.w / 2 - 22} y={to.y + 47} width="44" height="44" />
             <text x={to.x + 12} y={to.y + 148} fontSize="8.5" className="fill-faint font-mono">

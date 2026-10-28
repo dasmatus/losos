@@ -24,6 +24,15 @@ updates:
       prefix: "deps(cargo)"
     cooldown:
       default-days: 3
+    # Two dev-dependencies hand an RNG to a crate that takes rand_core 0.6:
+    # rand in backend (rPGP 0.21's key generation) and rand_core in
+    # edge/registrar (rsa 0.9). A newer major of either does not compile
+    # until pgp and rsa move to a newer rand_core, so it waits for them.
+    ignore:
+      - dependency-name: "rand"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "rand_core"
+        update-types: ["version-update:semver-major"]
     groups:
       cargo-minor-patch:
         applies-to: version-updates
