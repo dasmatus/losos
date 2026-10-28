@@ -139,7 +139,7 @@ das und öffnet die eingebauten Setups.
 Das Netzwerk folgt denselben Regeln wie die echte Software. Beispiele: Eine
 Box ohne erreichbare Edge startet keinen Tunnel; ein Wechsel zum Mesh wird
 mit `edgeRequired` abgelehnt; der Markt öffnet nur neben einer offiziellen
-Edge (einer, deren Zertifikat der LosOS-Root-Schlüssel signiert hat); ein
+Edge (einer, die die Gateway-Prüfung besteht); ein
 LAN-Gateway mit offener Registrierung nimmt unbekannte Boxen bei der ersten
 Nutzung auf; und die Administrationsrouten lehnen Loopback ab.
 

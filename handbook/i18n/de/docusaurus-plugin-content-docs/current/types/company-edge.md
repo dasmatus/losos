@@ -29,15 +29,18 @@ von selbst.
 
 ## Was anders ist \{#what-is-different}
 
-- **Kein Markt.** Die Edge einer Firma kann die LosOS-Signatur nicht
-  vorweisen, deshalb behandelt jede Box sie als inoffiziell;
-  [Offiziell oder nicht](official-edge#official-or-not) erklärt die Prüfung.
-  Ihre Zeile im Bereich Mesh trägt das Warnzeichen, und der Bereich Markt
-  sagt: „Der Edge-Proxy, den diese Box gefunden hat, wird nicht von LosOS
-  betrieben. Speicher darüber zu teilen funktioniert; Handel braucht einen
-  erreichbaren offiziellen LosOS-Edge.“ Die eigenen Boxen der Firma teilen
-  Speicher und Rechenleistung untereinander kostenlos, und genau darum geht
-  es.
+- **Kein Markt, außer bei einem geprüften Gateway.** Die Edge einer Firma
+  zeigt meist keinen Gateway-Pass, deshalb behandelt jede Box sie als
+  inoffiziell; [Offiziell oder nicht](official-edge#official-or-not) erklärt
+  die Prüfung. Ihre Zeile im Bereich Mesh trägt das Warnzeichen, und der
+  Bereich Markt sagt: „Der Edge-Proxy, den diese Box gefunden hat, hat die
+  Gateway-Prüfung nicht bestanden. Speicher darüber zu teilen funktioniert;
+  Handel braucht ein erreichbares geprüftes LosOS-Gateway.“ Die eigenen
+  Boxen der Firma teilen Speicher und Rechenleistung untereinander
+  kostenlos, und genau darum geht es. Eine Firma, die den Markt über ihre
+  eigene Edge will, betreibt darauf das veröffentlichte Gateway-Image auf
+  einem Rechner mit TPM und signiert einen Pass dafür; dann zahlt sie den
+  Anteil von LosOS wie jedes andere Gateway.
 - **Die Firma hält die Schlüssel.** Das Schlüsselpaar des Tunnels, das
   Cluster-Token und die Zulassungsliste der Boxen liegen auf der Edge der
   Firma. Nichts von den Daten oder dem Verkehr der Firma berührt das
@@ -96,9 +99,9 @@ entscheidet der Besitzer jeder Box.
 
 2. Setzen Sie auf der Edge `losos.edge.manage.enable` (ein Edge-Gateway-Rechner
    hat es an). Die Edge erzeugt beim ersten Start einen Verwaltungsschlüssel
-   und legt ihn in `/var/lib/losos-registrar/manage-key` ab. Auf einem
-   Edge-Gateway-Rechner gibt `losos-edge manage-key` ihn mit der Adresse der
-   Seite aus.
+   und legt ihn in `/var/lib/losos-registrar/manage-key` ab. Ein
+   Edge-Gateway-Rechner zeigt ihn mit der Adresse der Seite auf seinem
+   Bildschirm.
 3. Öffnen Sie `/manage/` unter der Adresse der Edge, zum Beispiel
    `http://<edge>.local:8443/manage/`, und melden Sie sich mit dem Schlüssel
    an. Die Seite listet die Boxen, die die Edge weiterleitet, und öffnet die,

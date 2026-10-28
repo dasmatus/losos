@@ -25,16 +25,15 @@ geschrieben, dass du ihm widersprechen kannst.
    getrennten Gruppen und Home-Verzeichnissen im Modus 700. Das Verzeichnis
    des Mesh ist mit einem eigenen Schlüssel verschlüsselt, den die Box nur
    lädt, solange das Teilen an ist.
-5. **Eine offizielle Edge ↔ irgendeine Edge.** Die Box trägt einen
-   öffentlichen Root-Schlüssel, mit dem sie die LosOS-Edge von der eigenen
-   Edge einer Firma unterscheidet. Der Handel braucht die LosOS-Edge, alles
-   andere funktioniert mit beiden. Die private Hälfte wird nur auf dem
-   eigenen Rechner des Projektinhabers erzeugt und benutzt. Das Werkzeug, das
-   sie benutzt, meldet die Person über GitHub an und prüft das Konto gegen
-   eine Liste im Repository. Keine Box und keine Edge hält je den privaten
-   Schlüssel. Das signierte Zertifikat erreicht die Edge über das Web, und
-   die Edge prüft das GitHub-Konto des Absenders gegen dieselbe Liste, bevor
-   sie es installiert.
+5. **Eine offizielle Edge ↔ irgendeine Edge.** Die Box prüft jede Edge
+   selbst, bevor sie über sie handelt: den OpenPGP-Pass ihres Betreibers,
+   ein TPM, das zeigt, dass ein veröffentlichtes LosOS-Gateway-Image
+   unverändert gestartet ist, und Einstellungen, die den Anteil von LosOS an
+   die Adressen zahlen, die die Box mitbringt. Der Handel braucht eine Edge,
+   die besteht, alles andere funktioniert mit jeder Edge. Kein
+   LosOS-Schlüssel macht eine Edge offiziell, also gibt es keinen privaten Schlüssel,
+   den man stehlen könnte. Eine Edge, die bei einer Manipulation ertappt
+   wurde, nutzt die Box, die sie ertappt hat, nie wieder.
 
 ![Die Grenzen der Box: eine Eingangstür, eine Steuer-API nur auf Loopback, der nach außen zur Edge geöffnete Tunnel und ein verschlüsseltes Volume.](@site/docs/img/box-architecture-de.svg)
 

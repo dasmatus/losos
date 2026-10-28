@@ -124,8 +124,8 @@ zostavy.
 
 Sieť sa riadi tými istými pravidlami ako skutočný softvér. Príklady: zariadenie
 bez edge v dosahu nespustí žiadny tunel; prepnutie na mesh sa odmietne s
-`edgeRequired`; trh sa otvorí iba vedľa oficiálneho edge (takého, ktorého
-certifikát podpísal koreňový kľúč LosOS); LAN brána s otvoreným zápisom
+`edgeRequired`; trh sa otvorí iba vedľa oficiálneho edge (takého, ktorý
+prejde overením brány); LAN brána s otvoreným zápisom
 prijme neznáme zariadenia pri prvom použití; a administračné routy odmietajú
 loopback.
 

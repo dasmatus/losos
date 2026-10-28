@@ -44,34 +44,33 @@ the hub all report it:
 
 A box never holds a primary link itself. It sees its own link as
 `path.tier` in `GET /api/edge` and on the Mesh page, the gateway shows its
-links in `losos-edge status`, and the hub keeps the gateways of the main
-cluster, every one on a primary link, in `main-cluster.json` beside its
-registry (`losos-edge main` on a gateway prints its own site's).
+hub and clusters on its manage page, and the hub keeps the gateways of the
+main cluster, every one on a primary link, in `main-cluster.json` beside its
+registry (a gateway's manage page lists its own site's under **Main
+cluster**).
 
 ### Secondary clusters
 
 One gateway on a network can fail. A **secondary cluster** is one or more
 gateways on the same network that serve the same boxes, so a box keeps its
-reach when one of them goes away. It is runtime state, made on the gateways:
-
-```sh
-# on the first gateway
-losos-edge cluster create office
-# it prints the line to run on each other gateway:
-losos-edge cluster join office <secret> http://gwa.local:8443
-```
+reach when one of them goes away. It is runtime state, made on the gateways'
+manage pages: **Start a cluster** on the first gateway, which then shows the
+cluster's name, its secret and its address; **Join a cluster** on each other
+gateway, with those three. The page calls `PUT /manage/api/gateway/cluster`
+(a name alone starts a cluster; a name, the secret and another member's
+address join it) and **Leave** calls `DELETE` on the same path.
 
 The cluster file (`losos.edge.secondary.file`, by default
 `/var/lib/losos-edge/cluster.json`, mode 0600) holds the name, this
 gateway's member name, the shared secret and the gateways it was joined
-through. The registrar re-reads it on every pass, so `create`, `join` and
-`losos-edge cluster leave` need no restart. The members sync every
+through. The registrar re-reads it on every pass, so starting, joining and
+leaving need no restart. The members sync every
 `losos.edge.secondary.interval` over `POST /cluster/secondary/sync`, each
 message signed with an HMAC of the secret. Every member learns the boxes the
 others enrolled, so a box's token works on all of them, and the time each
 member last heard each box. Only the member that heard a box most recently
 relays it to the hub, so the hub's route follows the box without flapping.
-`losos-edge cluster show` lists the members that answer.
+`GET /manage/api/gateway` lists the members that answer.
 
 `GET /cluster/secondary` is what a box reads from every edge it finds: the
 edge's role, the tier of the links it serves, its cluster and member name,
@@ -202,8 +201,8 @@ under `/var/lib/losos-registrar/enrolled/`, and every later request
 for that id must match. It grants proxy membership only (never `cluster` or
 `market`), it is refused on an edge that does not advertise on a LAN (a VPS
 must never set it), and the advert says so (`enrol=open`). `losos-registrar
-enrol list|forget --dir /var/lib/losos-registrar/enrolled` (on the gateway,
-`losos-edge boxes` and `losos-edge forget <id>`) shows and drops enrolled
+enrol list|forget --dir /var/lib/losos-registrar/enrolled` (on a gateway,
+**Enrolled on first contact** on its manage page) shows and drops enrolled
 boxes; a box that is still heartbeating re-enrols with the token it holds,
 so forgetting is for a box that left. The hub keeps closed enrolment.
 
@@ -272,12 +271,13 @@ ban on an edge for the box and for a gateway, and the custom domain's hold.
   bridge two sites' clusters, and nothing here forwards 9345/6443 over the
   uplink. Cross-site pooling is a follow-up with its own design.
 - **The market.** The box refuses trading unless an *official* edge is
-  in reach ([Official edges](master-proxy.md#official-edges)); a spoke is never
-  official, and a relayed box is not a hub tenant, so no `/market/*` call
+  in reach ([Official edges](master-proxy.md#official-edges)); a spoke is
+  official only if it passes the gateway checks itself, and a relayed box is not a hub tenant, so no `/market/*` call
   can be made on its behalf. The relay carries HTTP reachability, nothing
   else.
-- **The identity.** A spoke does not forward `/identity`; a box that wants
-  the market reaches the official edge itself, over its own internet.
+- **The passport.** A spoke does not forward the hub's `/passport`; a box
+  checks every edge it reaches for itself, and one that wants the market
+  through the hub reaches the hub itself, over its own internet.
 
 ## Custom domains behind a local edge
 
@@ -391,23 +391,16 @@ Two forms, one configuration:
    `nixosConfigurations.edge-gateway`: the edge module with
    `losos.edge.gateway.enable` (`modules/edge-gateway.nix`), which sets
    `lan.advertise` and `lan.openEnrolment`, reads the uplink at runtime from
-   `/var/lib/losos-edge/uplink.json` so one image serves every site, makes
-   its own tunnel certificate on first boot, gives root a console (first
-   password `losos`, change forced at first login; sshd installed but
-   stopped until `losos-edge ssh on`), and prints its address on tty1. Boot
-   it on Proxmox, libvirt or VirtualBox with a NIC on the LAN; boxes
-   installed from the stock ISO find it within a minute. Then, on its
-   console:
-
-   ```sh
-   losos-edge status
-   losos-edge uplink set --id acme --token-file /root/acme.token \
-     --registrar https://register.losos.cfd --tunnel edge.losos.cfd:2333
-   losos-edge boxes
-   ```
-
-   with the tenant row the hub operator gave you. `losos-edge uplink
-   clear` stops relaying.
+   `/var/lib/losos-edge/uplink.json` so one image serves every site, and
+   makes its own tunnel certificate on first boot. Like a box it has no
+   shell: no console login, no SSH, no root password. Its screen shows the
+   manage page's address and the key that signs in there. Boot it on
+   Proxmox, libvirt or VirtualBox with a NIC on the LAN; boxes installed from
+   the stock ISO find it within a minute. Then open the manage page and,
+   under **Hub**, enter the tenant row the hub operator gave you: the tenant
+   id, the registrar URL (for example `https://register.losos.cfd`), the
+   tunnel endpoint (`edge.losos.cfd:2333`) and the token. **Stop relaying**
+   clears it. The page calls `PUT` and `DELETE /manage/api/gateway/uplink`.
 2. **An existing NixOS machine**: import `nixosModules.edge` and either set
    `losos.edge.gateway.enable = true` (the image's shape) or write the
    options above by hand, as the two-VM demo and `nix/tests/edge-lan.nix` do.
