@@ -165,7 +165,7 @@ let
     dir = ./../backend/mdx;
     wasm = "losos_mdx";
     features = [ "wasm" ];
-    cargoHash = "sha256-/PsXCBJFqy5hJ1ov20niOX5WhMcbm30UIkCoppjWiBI=";
+    cargoHash = "sha256-hyHEBRx7gLddFz4Y/Dqir9q4NpIr5wvRwDeTA1QyTvU=";
   };
   # Copied to src/mdx/pkg (gitignored; `npm run mdx` writes it in a
   # checkout) by both npm builds, in preConfigure rather than preBuild: the
@@ -385,7 +385,7 @@ images
     #
     # nix/tests/admin-ui.nix carries the SAME hash over the SAME lock file: two
     # derivations, one dependency set. Change both together.
-    npmDepsHash = "sha256-TABNk7JQdgK7xjuq4tzKhuJXoW+Mx4ABtk7zCB4SeaI=";
+    npmDepsHash = "sha256-/cMr0OLLw6rVbDNOL04XbKuJUj+m0OCNkC/ExorRiN8=";
 
     # No postinstall scripts. playwright is a devDependency (nix/tests/admin-ui.nix
     # drives the browser check with it) and its postinstall downloads browsers:

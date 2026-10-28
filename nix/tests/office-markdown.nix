@@ -3,10 +3,11 @@
 # vhost and LosOS Login, with lososd claiming the box. The box runs LosOS
 # Cloud and no Collabora: Markdown is Office's own.
 #
-# The laptop is the owner's computer on the LAN. Chromium
-# (nix/tests/office-markdown-shots.mjs) starts a document and a presentation
-# from the files bar, writes into them with the formatting bar, and plays
-# the presentation full screen; then
+# The laptop is the owner's computer on the LAN. The test puts a Markdown
+# document and presentation in LosOS Cloud (a new one from the files bar is
+# a .paper, nix/tests/office-paper.nix); Chromium
+# (nix/tests/office-markdown-shots.mjs) writes into them with the formatting
+# bar and plays the presentation full screen; then
 #
 #   * the box holds both files, written by its shared editor: the document
 #     with the Markdown the bar wrote (bold, highlight, a task, a callout, a
@@ -148,14 +149,22 @@ pkgs.testers.nixosTest {
         box.wait_for_unit("authelia-losos.service")
         box.wait_for_open_port(9091)
 
-    with subtest("a picture for the slides arrives over WebDAV"):
+    with subtest("a picture and two Markdown files arrive over WebDAV"):
         laptop.wait_until_succeeds(
             f"curl -sf --cacert {CA} -u 'matus:{PASSWORD}' -X PROPFIND -H 'Depth: 0' {BASE}/remote.php/webdav/ -o /dev/null",
             timeout=120,
         )
         laptop.succeed(f"curl -sf --cacert {CA} -u 'matus:{PASSWORD}' -T ${picture} {BASE}/remote.php/webdav/tomato.png")
+        # The starters the files bar wrote before it made .paper files.
+        laptop.succeed("printf '# Untitled document\\n\\n' > /tmp/doc.md")
+        laptop.succeed(
+            "printf -- '---\\nslides: true\\n---\\n\\n# Untitled presentation\\n\\nYour name and the date\\n\\n"
+            "---\\n\\n## The first point\\n\\n- What it is about\\n' > /tmp/deck.md"
+        )
+        for local, name in [("/tmp/doc.md", "Untitled document.md"), ("/tmp/deck.md", "Untitled presentation.md")]:
+            laptop.succeed(f"curl -sf --cacert {CA} -u 'matus:{PASSWORD}' -T {local} '{BASE}/remote.php/webdav/{Q(name)}'")
 
-    with subtest("Chromium writes a document and a presentation, and plays it"):
+    with subtest("Chromium writes into a document and a presentation, and plays it"):
         laptop.succeed("rm -rf /tmp/shots")
         try:
             laptop.succeed(

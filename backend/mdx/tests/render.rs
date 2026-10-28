@@ -80,20 +80,49 @@ fn tables_tasks_and_footnotes() {
 }
 
 #[test]
-fn code_and_maths_stay_text() {
-    let r = mdx("```Rust\nfn main() { <x> }\n```\n\n$a<b$ and\n\n$$\nx^2\n$$");
+fn code_stays_text() {
+    let r = mdx("```Rust\nfn main() { <x> }\n```\n");
     assert!(
         r.html
             .contains("<pre><code class=\"language-rust\">fn main() { &lt;x&gt; }</code></pre>"),
         "{}",
         r.html
     );
+}
+
+#[test]
+fn maths_is_mathml_with_its_tex_beside_it() {
+    let r = mdx("$a<b$ and\n\n$$\n\\frac{1}{x^2}\n$$");
+    assert!(r.problems.is_empty(), "{:?}", r.problems);
+    // Drawn by the browser, no script: MathML Core, inline and as a block.
+    assert!(r.html.contains("<math><semantics>"), "{}", r.html);
+    assert!(r.html.contains("<math display=\"block\">"), "{}", r.html);
+    assert!(r.html.contains("<mfrac>"), "{}", r.html);
+    assert!(r.html.contains("<mo>&lt;</mo>"), "{}", r.html);
+    // The TeX rides along for Pandoc and for copying.
+    assert!(
+        r.html
+            .contains("<annotation encoding=\"application/x-tex\">a&lt;b</annotation>"),
+        "{}",
+        r.html
+    );
+    assert!(!r.html.contains("<code"), "{}", r.html);
+}
+
+#[test]
+fn an_equation_math_core_cannot_read_stays_tex() {
+    let r = mdx("$\\frac{1}{$\n\n<Equation tex=\"x^{\" />");
+    assert!(r.problems.is_empty(), "{:?}", r.problems);
     assert!(r
         .html
-        .contains("<code class=\"language-math math-inline\">a&lt;b</code>"));
+        .contains("<code class=\"language-math math-inline\">\\frac{1}{</code>"));
     assert!(r
         .html
-        .contains("<pre><code class=\"language-math math-display\">x^2</code></pre>"));
+        .contains("<pre><code class=\"language-math math-display\">x^{</code></pre>"));
+    // An unknown command keeps the rest of its equation.
+    let r = mdx("$\\nosuchthing + x$");
+    assert!(r.html.contains("<merror"), "{}", r.html);
+    assert!(r.html.contains("<mi>x</mi>"), "{}", r.html);
 }
 
 #[test]
@@ -168,9 +197,9 @@ Press <kbd>Ctrl</kbd>, H<sub>2</sub>O, x<sup>2</sup>, <u>under</u>, <mark>marked
         "<table class=\"mdx-table\"><caption>Budget</caption><tbody><tr><th>Item</th><th align=\"right\">EUR</th></tr>",
         "<td colspan=\"2\">Cabin</td>",
         "<span class=\"mdx-mention\" data-login=\"eva\">@eva</span>",
-        "<time datetime=\"2026-08-14\" data-format=\"long\" class=\"mdx-date\">2026-08-14</time>",
+        "<time datetime=\"2026-08-14\" data-format=\"long\" class=\"mdx-date\">14 August 2026</time>",
         "<span data-comment=\"Which cabin?\" data-author=\"eva\" data-date=\"2026-10-28\" class=\"mdx-comment\">the cabin</span>",
-        "<pre><code class=\"language-math math-display\">e = mc^2</code></pre>",
+        "<math display=\"block\"><semantics><mrow><mi>e</mi><mo>=</mo>",
         "<figure data-src=\"budget.sheet\" data-type=\"pie\" data-range=\"A1:B5\" class=\"mdx-chart\"><figcaption>Where it goes</figcaption></figure>",
         "<kbd>Ctrl</kbd>",
         "<sub>2</sub>",
@@ -299,4 +328,25 @@ fn the_tree_is_json_with_positions() {
     assert_eq!(json["children"][1]["type"], "mdxJsxFlowElement");
     assert_eq!(json["children"][1]["name"], "Callout");
     assert_eq!(json["children"][0]["position"]["start"]["line"], 1);
+}
+
+#[test]
+fn a_date_is_words_in_the_documents_language_then_the_readers() {
+    let doc = "<Date value=\"2026-10-28\" format=\"long\" />";
+    assert!(mdx(doc).html.contains(">28 October 2026</time>"));
+    let with_lang = format!("---\nlang: sk\n---\n{doc}");
+    assert!(mdx(&with_lang).html.contains(">28. októbra 2026</time>"));
+    let mut parsed = losos_mdx::parse(doc, Flavour::Mdx).unwrap();
+    parsed.lang = Some("de-AT".into());
+    assert!(parsed
+        .render(&Plain)
+        .html
+        .contains(">28. Oktober 2026</time>"));
+    // The document's own language wins over the reader's.
+    let mut parsed = losos_mdx::parse(&with_lang, Flavour::Mdx).unwrap();
+    parsed.lang = Some("de".into());
+    assert!(parsed
+        .render(&Plain)
+        .html
+        .contains(">28. októbra 2026</time>"));
 }
