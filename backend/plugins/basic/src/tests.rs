@@ -466,7 +466,7 @@ fn a_password_signs_in_through_losos_login() {
         LoginAnswer {
             status: 200,
             json: json!({"status": "OK"}),
-            cookies: vec!["authelia_session=s1; Path=/; Secure; HttpOnly".into()],
+            cookies: vec!["losos_session=s1; Path=/; Secure; HttpOnly".into()],
         },
     );
     f.login.insert(
@@ -487,7 +487,7 @@ fn a_password_signs_in_through_losos_login() {
     let r = handle_with(&mut f, &req, 1000);
     assert_eq!(r.status, 303);
     assert_eq!(location(&r), "/basic/storage");
-    assert!(cookies(&r).contains(&"authelia_session=s1; Path=/; Secure; HttpOnly"));
+    assert!(cookies(&r).contains(&"losos_session=s1; Path=/; Secure; HttpOnly"));
     let (_, _, body) = &f.logins[0];
     assert_eq!(body.as_ref().unwrap()["username"], "matus");
     assert_eq!(f.logins[1].1.as_deref(), Some("s1"));
@@ -500,7 +500,7 @@ fn a_second_step_asks_for_the_code() {
         "firstfactor".into(),
         LoginAnswer {
             status: 200,
-            cookies: vec!["authelia_session=s1; Path=/".into()],
+            cookies: vec!["losos_session=s1; Path=/".into()],
             ..LoginAnswer::default()
         },
     );
@@ -595,7 +595,7 @@ fn signing_out_forgets_both() {
         "logout".into(),
         LoginAnswer {
             status: 200,
-            cookies: vec!["authelia_session=; Max-Age=0".into()],
+            cookies: vec!["losos_session=; Max-Age=0".into()],
             ..LoginAnswer::default()
         },
     );
@@ -611,7 +611,7 @@ fn signing_out_forgets_both() {
     assert_eq!(location(&r), "/basic/sign-in");
     let c = cookies(&r);
     assert!(c.iter().any(|c| c.starts_with("losos_spare=;")));
-    assert!(c.contains(&"authelia_session=; Max-Age=0"));
+    assert!(c.contains(&"losos_session=; Max-Age=0"));
 }
 
 #[test]
