@@ -1225,9 +1225,12 @@ jobs:
           choco install qemu openvpn -y --no-progress
           & "$env:ProgramFiles\OpenVPN\bin\tapctl.exe" create --hwid root\tap0901 --name losos-lan
           if ($LASTEXITCODE -ne 0) { throw "tapctl failed" }
-          # tapctl creates the adapter with DHCP enabled; disable it before assigning a static address.
-          Set-NetIPInterface -InterfaceAlias losos-lan -AddressFamily IPv4 -Dhcp Disabled
-          New-NetIPAddress -InterfaceAlias losos-lan -IPAddress 192.168.77.1 -PrefixLength 24 | Out-Null
+          # The adapter has no cable until QEMU opens it, and New-NetIPAddress
+          # refuses a disconnected adapter that tapctl made with DHCP on
+          # ("Inconsistent parameters PolicyStore PersistentStore and Dhcp
+          # Enabled"). netsh writes the static address either way.
+          netsh interface ipv4 set address name=losos-lan source=static address=192.168.77.1 mask=255.255.255.0
+          if ($LASTEXITCODE -ne 0) { throw "netsh could not set the address of losos-lan" }
           # Keep the firewall enabled. Resolve the standard rules explicitly and
           # fail here if this runner image cannot configure discovery.
           Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled True

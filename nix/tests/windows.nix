@@ -250,6 +250,13 @@ pkgs.testers.nixosTest {
         rc, out = smb(f"//{box_ip}/matus -c ls", "eva", EVA)
         assert rc != 0, out
 
+    with subtest("the share answers on the box's IPv6 link-local address, which a Mac tries first"):
+        box_ll = box.succeed(
+            "ip -6 -o addr show eth1 scope link | awk '{print $4}' | cut -d/ -f1"
+        ).strip()
+        rc, out = smb(f"-L mattbox -I '{box_ll}%eth1'", "matus", PASSWORD)
+        assert rc == 0 and re.search(r"(?m)^\s+matus\s+Disk", out), out
+
     def etag(propfind):
         m = re.search(r"<d:getetag>([^<]+)</d:getetag>", propfind)
         assert m, propfind
@@ -313,6 +320,8 @@ pkgs.testers.nixosTest {
         rc, out = smb(f"//{box_ip}/matus -c ls", "matus", "not-the-password")
         assert rc != 0 and "LOGON_FAILURE" in out, out
         rc, out = box.execute(f"smbclient -U 'matus%{PASSWORD}' //127.0.0.1/matus -c ls 2>&1")
+        assert rc != 0, out
+        rc, out = box.execute(f"smbclient -U 'matus%{PASSWORD}' //mattbox/matus -I ::1 -c ls 2>&1")
         assert rc != 0, out
 
     with subtest("a new password replaces the old one on Windows too"):
