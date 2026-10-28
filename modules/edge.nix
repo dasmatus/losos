@@ -314,6 +314,35 @@ let
     cfg.uplink.interval
   ];
 
+  # Clusters and bans (handbook/docs/in-depth/edge-federation.md, "Three
+  # tiers"). The cluster file is runtime state (`losos-edge cluster`), the
+  # registrar re-reads it every pass; the official cluster and its peers are
+  # configuration; the ban file is re-read on every uplink pass and a missing
+  # one bans nothing.
+  secondaryArgs = lib.optionals cfg.secondary.enable [
+    "--secondary-file"
+    cfg.secondary.file
+    "--secondary-self-url"
+    cfg.lan.url
+    "--secondary-self-tunnel"
+    cfg.lan.ratholeEndpoint
+    "--secondary-interval"
+    cfg.secondary.interval
+  ];
+  officialArgs =
+    lib.optionals (cfg.official.cluster != null) [
+      "--official-cluster"
+      cfg.official.cluster
+    ]
+    ++ lib.concatMap (p: [
+      "--official-peer"
+      "${p.cluster},${p.url},${p.tunnel}"
+    ]) cfg.official.peers
+    ++ [
+      "--bans-file"
+      cfg.bansFile
+    ];
+
   # RBAC for the registrar's stale-node cleanup, shipped as an rke2
   # auto-deploy manifest so the cluster brings its own credentials up rather
   # than needing an operator with kubectl on first boot.
@@ -1009,6 +1038,8 @@ let
     ++ dnsServeArgs
     ++ enrolArgs
     ++ uplinkArgs
+    ++ secondaryArgs
+    ++ officialArgs
     ++ accessArgs
     ++ manageArgs
     ++ callsRelayArgs
@@ -1313,6 +1344,17 @@ in
           token it brought, which is a LAN posture. On an edge the internet
           reaches it would let anyone publish a hostname through it.
         '';
+      }
+      {
+        assertion = cfg.secondary.enable -> cfg.lan.advertise;
+        message = ''
+          losos.edge.secondary.enable requires losos.edge.lan.advertise: boxes
+          find the gateways of a secondary cluster by their adverts.
+        '';
+      }
+      {
+        assertion = lib.length cfg.official.peers <= 64;
+        message = "losos.edge.official.peers lists more than 64 edges.";
       }
       {
         assertion =
