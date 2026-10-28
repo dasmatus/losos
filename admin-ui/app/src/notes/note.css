@@ -314,7 +314,16 @@
   --callout: var(--muted);
 }
 
-/* A callout written as an MDX <Callout>: its text straight after the title. */
+/* A callout written as an MDX <Callout>: the same dot before its title,
+ * and its text straight after it. */
+.note-body aside.callout > p.callout-title::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--callout);
+  flex-shrink: 0;
+}
 .note-body aside.callout > .callout-title + * {
   margin-top: 0.4em;
 }

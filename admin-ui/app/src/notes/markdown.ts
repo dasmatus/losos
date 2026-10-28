@@ -162,8 +162,6 @@ export function notesReady(): boolean {
 
 interface CrateRendered {
   html: string;
-  properties: Record<string, unknown> | null;
-  propertiesError: string | null;
   headings: Heading[];
   problems: { place: { line: number; column: number }; message: string }[];
 }
@@ -297,7 +295,10 @@ export function renderNote(source: string, resolver: Resolver, flavour: Flavour 
     },
   };
   const problems: Problem[] = [];
-  const { body } = splitFrontMatter(source);
+  const { yaml, body } = splitFrontMatter(source);
+  // Read here rather than taken from the crate, whose JSON object sorts
+  // the keys: properties show in the order the note gives them.
+  const { properties, error } = readProperties(yaml);
   const attempt = (f: Flavour): CrateRendered | null => {
     try {
       return JSON.parse(crateRenderNote(source, f, js)) as CrateRendered;
@@ -312,13 +313,13 @@ export function renderNote(source: string, resolver: Resolver, flavour: Flavour 
   const out = attempt(flavour) ?? (flavour === "mdx" ? attempt("md") : null);
   if (out === null) {
     // Too large or too deep for either: the text as it is.
-    return { ...EMPTY, html: `<pre class="note-plain">${escapeHtml(source)}</pre>`, body, problems };
+    return { ...EMPTY, html: `<pre class="note-plain">${escapeHtml(source)}</pre>`, properties, propertiesError: error, body, problems };
   }
   for (const p of out.problems) problems.push({ line: p.place.line, message: p.message });
   return {
     html: finish(out.html, links),
-    properties: out.properties,
-    propertiesError: out.propertiesError,
+    properties,
+    propertiesError: error,
     headings: out.headings,
     body: stripComments(body),
     problems,

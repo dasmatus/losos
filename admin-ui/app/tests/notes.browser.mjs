@@ -236,6 +236,8 @@ await check('a note reads with GitHub and Obsidian Markdown', async () => {
     assert.equal(await page.textContent('[data-note-title]'), 'Home');
     // Properties from the front matter.
     assert.match(await page.textContent('[data-properties]'), /season\s*2026/);
+    // In the order the note gives them.
+    assert.deepEqual(await page.locator('[data-properties] dt').allTextContents(), ['title', 'tags', 'aliases', 'season']);
     // A callout with its own title, and wikilinks that resolve.
     assert.equal(await page.textContent('.callout[data-callout="tip"] .callout-title'), 'Where to begin');
     assert.equal(await page.getAttribute('a.wikilink:text("Tomatoes")', 'data-note-path'), 'Tomatoes.md');
