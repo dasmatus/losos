@@ -88,11 +88,12 @@ option it turns on, `losos.edge.lan.advertise`, is the one a real site sets
   opens the sharing gate; a site that wants the tunnel to terminate on its
   LAN edge sets that option to the edge's URL in its own flake. Feeding the
   discovered URL into the tunnel is not done yet.
-- The demo edge carries no identity (`losos.edge.identity.*` unset), so the
-  box shows it with a warning sign ("Not an official LosOS edge"): discovery
-  and sharing work, the market stays off. That is also what a company's own edge
-  looks like; only an edge with a certificate signed by the LosOS root key is
-  official ([Master proxy — Official edges](https://losos.dasmat.us/in-depth/master-proxy#official-edges)).
+- The demo edge is not an open gateway (`losos.edge.passport.enable` is
+  off), so the box shows it with a warning sign ("Not an official LosOS
+  edge"): discovery and sharing work, the market stays off. That is also what
+  a company's own edge looks like; only a gateway the box can check (an
+  owner's passport, a TPM showing a published image, LosOS's payout
+  addresses) is official ([Master proxy, Official edges](https://losos.dasmat.us/in-depth/master-proxy#official-edges)).
 - The VMs talk over slirp to the outside: the edge NATs the LAN to its
   own user-mode network, so a box without the edge really has no internet.
 - `publish` names the boxes `boxa` and `boxb` and turns their edge path on

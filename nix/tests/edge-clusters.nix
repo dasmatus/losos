@@ -34,14 +34,17 @@
 #      moves it with the hold following.
 #
 # As in nix/tests/edge-federation.nix, nothing needs public DNS or TLS: the
-# data path is driven through the tunnel's per-service loopback ports. No edge
-# is proved official (the test ships no root key), so the box's tertiary
-# choice is the configured edge first; the load-balancing weight is covered
+# data path is driven through the tunnel's per-service loopback ports. The two
+# hubs are open gateways the box vets for itself (nix/tests/open-gateway.nix:
+# a TPM, an owner's passport, LosOS's payout addresses), which is what makes
+# them official and their cluster `eu` count; the box's tertiary choice is
+# still the configured edge first, and the load-balancing weight is covered
 # by the unit tests in backend/src/edge.rs.
 { pkgs }:
 
 let
   lososPkgs = import ../packages.nix { inherit pkgs; };
+  openGateway = import ./open-gateway.nix { inherit pkgs lososPkgs; };
 
   proxyToken = "/var/secrets/losos-proxy-token";
   siteToken = "/var/secrets/losos-tenant-acme";
@@ -69,6 +72,7 @@ let
       imports = [
         ../../modules/options.nix
         ../../modules/edge.nix
+        (openGateway.edge "http://${name}:8443")
         secretFiles
         selfShim
       ];
@@ -164,6 +168,7 @@ pkgs.testers.nixosTest {
           ../../modules/daemon.nix
           ../../modules/proxy.nix
           ../../modules/mdns.nix
+          openGateway.box
           secretFiles
         ];
         networking.hostName = "mattbox";
@@ -202,7 +207,7 @@ pkgs.testers.nixosTest {
       };
   };
 
-  testScript = ''
+  testScript = openGateway.script + ''
     import json
     import shlex
 
@@ -324,6 +329,8 @@ pkgs.testers.nixosTest {
     box.wait_for_unit("systemd-resolved.service")
     box.wait_for_unit("nginx.service")
     box.wait_until_succeeds("curl -fsS 127.0.0.1:8082/api/health")
+    # The box vets the hubs against the image they booted.
+    trust(hub1, box)
     token = box.succeed("systemd-creds decrypt --name=admin-token /etc/credstore.encrypted/admin-token -").strip()
     hdr = f"Authorization: Bearer {token}"
 
