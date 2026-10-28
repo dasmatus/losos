@@ -522,8 +522,9 @@ and is never served or built by nix.
   `dependency-hashes.yml` (`pull_request_target`, branches of this repository
   only) runs `.github/scripts/fix-hashes.py` on a pull request that changes
   a `Cargo.lock` or `package-lock.json`, Dependabot's included, and pushes the
-  new `cargoHash`/`npmDepsHash` back to the branch; run the script yourself
-  after touching a lock file.
+  new `cargoHash`/`npmDepsHash` back to the branch, and on a push to main
+  that still carries a stale one opens a `bot/dependency-hashes-*` pull
+  request; run the script yourself after touching a lock file.
   `discovery` boots the netboot box `nix/tests/discovery/box.nix` on Linux,
   macOS and Windows runners, and `nix/tests/discovery/check.py` has each
   find it and read and write files over SMB and WebDAV.
