@@ -1085,18 +1085,29 @@ impl Up {
 /// when it drops, with a backoff up to half a minute, and reconnect at once
 /// when the file changes. On TCP, try QUIC every five minutes and move back
 /// to it when it works.
+///
+/// On SIGTERM the link is closed rather than dropped, so the edge lets go of
+/// the box's services at once instead of holding a dead link until QUIC's
+/// idle timeout, and a visitor gets the offline page in place of a wait.
 pub async fn run_client(config: PathBuf) -> Result<()> {
+    let mut stop = std::pin::pin!(crate::server::shutdown_signal());
     let mut backoff = Duration::from_secs(1);
     'connect: loop {
         let (file, bytes) = match read_client_file(&config).await {
             Ok(x) => x,
             Err(e) => {
                 tracing::warn!("{e:?}");
-                tokio::time::sleep(Duration::from_secs(5)).await;
-                continue;
+                tokio::select! {
+                    () = tokio::time::sleep(Duration::from_secs(5)) => continue,
+                    () = &mut stop => return Ok(()),
+                }
             }
         };
-        match connect(&file).await {
+        let connected = tokio::select! {
+            r = connect(&file) => r,
+            () = &mut stop => return Ok(()),
+        };
+        match connected {
             Ok(mut up) => {
                 backoff = Duration::from_secs(1);
                 loop {
@@ -1119,12 +1130,20 @@ pub async fn run_client(config: PathBuf) -> Result<()> {
                                 old.close().await;
                             });
                         }
+                        () = &mut stop => {
+                            tracing::info!("stopping; closing the tunnel to {}", file.remote);
+                            up.close().await;
+                            return Ok(());
+                        }
                     }
                 }
             }
             Err(e) => tracing::warn!("tunnel to {}: {e:?}", file.remote),
         }
-        tokio::time::sleep(backoff).await;
+        tokio::select! {
+            () = tokio::time::sleep(backoff) => {}
+            () = &mut stop => return Ok(()),
+        }
         backoff = (backoff * 2).min(Duration::from_secs(30));
     }
 }

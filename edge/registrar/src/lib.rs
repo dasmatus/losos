@@ -89,8 +89,8 @@ pub mod window;
 pub mod zcash;
 pub mod zone;
 pub use config::{
-    desired_config, provider_document, uplink_config, Files, Routes, TenantView,
-    UplinkService, UplinkTarget,
+    desired_config, provider_document, uplink_config, Files, Routes, TenantView, UplinkService,
+    UplinkTarget,
 };
 pub use error::{ApiError, RegistryError};
 pub use registry::{Registry, Relayed, RelayedView, Snapshot, SnapshotTenant, Tenant};
