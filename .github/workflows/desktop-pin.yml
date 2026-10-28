@@ -1,0 +1,150 @@
+name: desktop-pin
+
+on:
+  push:
+    # Releases, not their release candidates.
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to pin LosOS Desktop to, e.g. v0.7.0 (empty: the newest)"
+        type: string
+        required: false
+
+# ── What this is ────────────────────────────────────────────────────────────
+#
+# LosOS Desktop ships `losos`, the terminal client in admin-ui/tui, and boots
+# a box from this repository beside its desktop in a VM test
+# (nixos/tests/losos-box.nix there). Both are built from one commit, pinned in
+# nixos/pkgs/losos-pin.nix. On every release tag this opens a pull request
+# there that moves the pin to the tag, so the desktop's client keeps up with
+# the boxes people run and the desktop's CI boots the new box against it
+# before anything merges. .github/scripts/desktop-pin.sh computes the file.
+#
+# The commit is made through the GitHub API, which signs it, on a branch of
+# its own per tag, and the pull request is opened with DESKTOP_PIN_TOKEN: a
+# fine-grained token for the desktop repository with Contents and Pull
+# requests read and write. GITHUB_TOKEN cannot do either in another
+# repository, and a pull request it opened would start no CI there. Without
+# the secret the job writes the file into its summary and stops there.
+
+concurrency:
+  group: desktop-pin
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # The desktop repository, unless the variable names another.
+  DESKTOP: ${{ vars.DESKTOP_REPOSITORY || 'losos-project/desktop' }}
+
+jobs:
+  pin:
+    name: "bot: LosOS Desktop follows the release"
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - name: which tag
+        id: tag
+        env:
+          WANTED: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            tag=$GITHUB_REF_NAME
+          elif [ -n "$WANTED" ]; then
+            tag=$WANTED
+          else
+            tag=$(git tag --list 'v*' | grep -E '^v[0-9]+(\.[0-9]+)*$' | sort -V | tail -n 1)
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      # The desktop's flake fetches its components/ submodules with itself.
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ env.DESKTOP }}
+          path: desktop
+          submodules: recursive
+          persist-credentials: false
+      - uses: ./.github/actions/setup-nix
+      - name: rewrite the pin
+        id: pin
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          .github/scripts/desktop-pin.sh "$TAG" desktop | tee "$RUNNER_TEMP/pin.txt"
+          if git -C desktop diff --quiet -- nixos/pkgs/losos-pin.nix; then
+            echo "changed=" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: open or update the pull request
+        if: steps.pin.outputs.changed
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          GH_TOKEN: ${{ secrets.DESKTOP_PIN_TOKEN }}
+        run: |
+          set -euo pipefail
+          file=nixos/pkgs/losos-pin.nix
+          if [ -z "$GH_TOKEN" ]; then
+            {
+              echo "### LosOS Desktop pin for $TAG"
+              echo
+              echo "DESKTOP_PIN_TOKEN is not set, so no pull request was opened."
+              echo "This is \`$file\` for $TAG:"
+              echo
+              echo '```nix'
+              cat "desktop/$file"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning title=No DESKTOP_PIN_TOKEN::$DESKTOP was not asked to move to $TAG; the job summary has the file."
+            exit 0
+          fi
+          branch="losos/pin-$TAG"
+          base=$(gh api "repos/$DESKTOP" --jq .default_branch)
+          head=$(gh api "repos/$DESKTOP/git/ref/heads/$base" --jq .object.sha)
+          # The branch starts from the desktop's default branch every time, so
+          # a re-run replaces what an earlier one pushed.
+          if gh api "repos/$DESKTOP/git/ref/heads/$branch" > /dev/null 2>&1; then
+            gh api -X PATCH "repos/$DESKTOP/git/refs/heads/$branch" -f sha="$head" -F force=true > /dev/null
+          else
+            gh api "repos/$DESKTOP/git/refs" -f ref="refs/heads/$branch" -f sha="$head" > /dev/null
+          fi
+          message="chore(losos): pin the losos client and the box test to $TAG"
+          jq -n \
+            --arg repo "$DESKTOP" --arg branch "$branch" --arg head "$head" \
+            --arg message "$message" --arg path "$file" \
+            --arg contents "$(base64 -w0 < "desktop/$file")" \
+            '{query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
+              variables: {input: {
+                branch: {repositoryNameWithOwner: $repo, branchName: $branch},
+                expectedHeadOid: $head,
+                message: {headline: $message},
+                fileChanges: {additions: [{path: $path, contents: $contents}]}}}}' |
+            gh api graphql --input - --jq .data.createCommitOnBranch.commit.oid
+          body=$(cat <<EOF
+          ## Description
+
+          Moves the losos terminal client and the box that \`nixos/tests/losos-box.nix\` boots to LosOS $TAG ($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$TAG), opened by the release's desktop-pin workflow ($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID). \`$file\` gets the tag's commit, its version and the hashes of both fetches and of the client's vendored crates.
+
+          ## Screenshots
+
+          No visible change. The client's panes follow the box's admin pages, which the release itself shows.
+
+          ## Reviewer notes
+
+          The \`losos-box\` VM test is the check that matters: it boots the new box beside the desktop, finds it over mDNS, signs \`losos\` in to it and backs a home up to it. A failure there is a change in LosOS that the desktop has to follow before this merges.
+          EOF
+          )
+          existing=$(gh pr list --repo "$DESKTOP" --head "$branch" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh pr edit "$existing" --repo "$DESKTOP" --body "$body"
+          else
+            gh pr create --repo "$DESKTOP" --base "$base" --head "$branch" \
+              --title "$message" --body "$body"
+          fi
