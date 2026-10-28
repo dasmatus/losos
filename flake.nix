@@ -469,6 +469,7 @@
         losos-edge-proxy = import ./nix/tests/edge-vm.nix { inherit pkgs; };
         losos-edge-lan = import ./nix/tests/edge-lan.nix { inherit pkgs; };
         losos-edge-manage = import ./nix/tests/edge-manage.nix { inherit pkgs; };
+        losos-edge-statistics = import ./nix/tests/edge-statistics.nix { inherit pkgs; };
         losos-edge-federation = import ./nix/tests/edge-federation.nix { inherit pkgs; };
         losos-edge-lan-two-boxes = import ./nix/demo/edge-lan/two-boxes.nix { inherit pkgs; };
         # Two boxes and an edge gateway between them, the light mode of the
