@@ -72,7 +72,10 @@ let
   # are trusted. Output goes to the journal and tty2.
   losos-install = pkgs.writeShellScriptBin "losos-install" ''
     ${lib.optionalString autorun "export LOSOS_INSTALLER_ISO=1"}
-    if systemctl is-system-running --quiet 2>/dev/null || systemctl is-active --quiet losos-install-oneshot.service 2>/dev/null; then
+    # The oneshot runs `losos-ctl install` with no arguments, so a call that
+    # carries any (--emit-target, --no-tpm, --bios, ...) runs losos-ctl here:
+    # through the service they would be dropped and a full install started.
+    if [ "$#" -eq 0 ] && { systemctl is-system-running --quiet 2>/dev/null || systemctl is-active --quiet losos-install-oneshot.service 2>/dev/null; }; then
       systemctl start --wait losos-install-oneshot.service
     else
       # Fallback for environments without the service (VM tests, etc.)
