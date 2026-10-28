@@ -131,6 +131,8 @@ odoslalo a ako dlho trvali najpomalšie odpovede. Každá aplikácia je
 uvedená so svojím portom. Počítadlá začínajú odznova, keď sa zariadenie
 reštartuje.
 
+![Nastavenia › Štatistiky: požiadavky, chyby servera, odoslané dáta a otvorené spojenia za poslednú hodinu, stĺpec za každú minútu a odpovede podľa druhu.](@site/docs/img/statistics-sk.png)
+
 Widget **Štatistiky** ukáže poslednú hodinu na Prehľade. Pridáte ho cez
 **Pridať widget**. Kliknutím naň otvoríte celú stránku.
 

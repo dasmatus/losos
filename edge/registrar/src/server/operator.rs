@@ -230,18 +230,13 @@ async fn overview(st: &AppState) -> serde_json::Value {
             })
         })
         .collect();
-    let now = crate::market::now_secs();
-    let identity = match &st.identity {
+    let gateway = match &st.gateway {
         None => serde_json::Value::Null,
-        Some(id) => match id.cert() {
-            None => serde_json::json!({ "official": false }),
-            Some(c) => serde_json::json!({
-                "official": c.not_after > now,
-                "name": c.name,
-                "url": c.url,
-                "notAfter": c.not_after,
-            }),
-        },
+        Some(gw) => serde_json::json!({
+            "edgeKey": gw.public_key(),
+            "claimed": gw.measured().is_some(),
+            "owner": gw.owner(),
+        }),
     };
     let enrolled = match &st.enrolment {
         None => serde_json::Value::Null,
@@ -262,7 +257,7 @@ async fn overview(st: &AppState) -> serde_json::Value {
     serde_json::json!({
         "health": true,
         "version": env!("CARGO_PKG_VERSION"),
-        "identity": identity,
+        "gateway": gateway,
         "tenants": tenants,
         "enrolled": enrolled,
         "routes": routes,

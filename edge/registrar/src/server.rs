@@ -78,8 +78,8 @@ use crate::config::{
 };
 use crate::domains::{self, Doh, DomainError, Domains, DomainsView, Vouched};
 use crate::error::ApiError;
+use crate::gateway::Gateway;
 use crate::hardware::{Catalogue, Line};
-use crate::identity::Identity;
 use crate::market::{
     AccountView, CheckoutView, HardwareCheckoutView, Market, MarketError, NewListing, NewOrder,
     OnboardView, Provision, PublicListing, Sharing,
@@ -165,16 +165,20 @@ const COIN_ROUTES: [&str; 3] = [
     "/market/taps/confirm",
 ];
 
-/// Budget for `POST /identity/cert`, which asks GitHub who the pusher is
+/// Budget for `/operator/tokens*`, which asks GitHub who the caller is
 /// before it looks at the list: one round trip to api.github.com, bounded
 /// by [`GITHUB_TIMEOUT`], plus the file write.
-const IDENTITY_PUSH_TIMEOUT: Duration = Duration::from_secs(GITHUB_TIMEOUT.as_secs() + 3);
-const IDENTITY_PUSH_ROUTE: &str = "/identity/cert";
+const GITHUB_ROUTE_TIMEOUT: Duration = Duration::from_secs(GITHUB_TIMEOUT.as_secs() + 3);
+/// `POST /passport/attest` waits its turn at the TPM
+/// ([`crate::gateway::TPM_WAIT`]) and then runs half a dozen TPM commands.
+const PASSPORT_ATTEST_ROUTE: &str = "/passport/attest";
+const PASSPORT_ATTEST_TIMEOUT: Duration =
+    Duration::from_secs(crate::gateway::TPM_WAIT.as_secs() + 20);
 /// `POST /operator/call` may seal a secret, which runs `systemd-creds` and
 /// restarts a unit (`crate::operator`); the script has 20 s of it.
 const OPERATOR_CALL_ROUTE: &str = "/operator/call";
 const OPERATOR_CALL_TIMEOUT: Duration = Duration::from_secs(25);
-/// How long the edge waits on GitHub's `GET /user` for one push.
+/// How long the edge waits on GitHub's `GET /user` for one operator call.
 const GITHUB_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Requests allowed in flight at once. Every authenticated *and*
@@ -242,10 +246,9 @@ struct AppState {
     /// Chat requests in flight (`llm::MAX_CHATS`), which run outside
     /// [`guard`].
     chats: Arc<Semaphore>,
-    /// This edge's identity key and, once pushed, its certificate
-    /// (`crate::identity`); `None` (no `--identity-key-file`) makes every
-    /// `/identity*` route a 404, i.e. an edge that cannot become official.
-    identity: Option<Arc<Identity>>,
+    /// An open gateway's passport and TPM (`crate::gateway`); `None` (no
+    /// `--gateway-key-file`) makes every `/passport*` route a 404.
+    gateway: Option<Arc<Gateway>>,
     /// One push at a time: the handler holds this across its GitHub round
     /// trip, so a flood of bogus pushes costs GitHub one request at a time
     /// rather than [`MAX_INFLIGHT`] of them.
@@ -628,19 +631,13 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         }
     };
 
-    // Opened before the API accepts: the key is made here on the first start
-    // if the file is missing (the private half never travels), and the
-    // certificate, if one has been pushed, is checked to be for that key.
-    let identity = match (&opts.identity_key_file, &opts.identity_cert_file) {
-        (Some(key), Some(cert)) => Some(Arc::new(
-            Identity::open(Path::new(key), Path::new(cert)).wrap_err("open the edge identity")?,
+    // Opened before the API accepts: the edge key is made here on the first
+    // start if the file is missing, so the private half never travels.
+    let gateway = match &opts.gateway {
+        Some(g) => Some(Arc::new(
+            Gateway::open(g.clone()).wrap_err("open the gateway's edge key")?,
         )),
-        (None, None) => None,
-        _ => {
-            return Err(miette!(
-                "--identity-key-file and --identity-cert-file go together; one was given without the other"
-            ))
-        }
+        None => None,
     };
 
     // Opened before the API accepts, like the market: an unreadable
@@ -747,7 +744,7 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         onramp,
         inference,
         chats: llm::chats(),
-        identity,
+        gateway,
         push_lock: Arc::new(Mutex::new(())),
         http: reqwest::Client::builder()
             .timeout(GITHUB_TIMEOUT)
@@ -797,13 +794,13 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         .route("/noise-public-key", get(noise_public_key))
         .route("/calls/relay", get(calls_relay_info))
         .route("/calls/guest-link", post(calls_guest_link))
-        .route("/identity", get(identity_route))
-        // The identity's other half: the public key an operator signs, and
-        // the push that installs the signed certificate. The push is the one
-        // route authenticated by a GitHub account rather than an appliance
-        // token: see `identity_push`.
-        .route("/identity/public-key", get(identity_public_key))
-        .route(IDENTITY_PUSH_ROUTE, post(identity_push))
+        // An open gateway's passport (`crate::gateway`): unauthenticated, a
+        // box asks before it trusts anything. The settings route is
+        // authenticated by the owner's OpenPGP signature over the body.
+        .route("/passport", get(passport_route))
+        .route("/passport/edge-key", get(passport_edge_key))
+        .route("/passport/attest", post(passport_attest))
+        .route("/passport/settings", post(passport_settings))
         .route("/register", post(register))
         .route("/heartbeat", post(heartbeat))
         .route("/deregister", post(deregister))
@@ -866,7 +863,7 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
             post(onramp_webhook).layer(DefaultBodyLimit::max(MAX_WEBHOOK_BYTES)),
         )
         // Custom domains (crate::domains). 503 unless the edge serves a zone
-        // and holds an installed identity certificate; appliance token like
+        // and is a claimed gateway (crate::gateway); appliance token like
         // the market. None of them looks anything up in DNS: an add kicks
         // the reconciler, which does, outside the request's 5 s budget.
         .route("/domains/list", post(domains_list))
@@ -945,10 +942,10 @@ async fn guard(State(st): State<AppState>, req: Request, next: Next) -> Response
         STRIPE_ROUTE_TIMEOUT
     } else if COIN_ROUTES.contains(&req.uri().path()) {
         COIN_ROUTE_TIMEOUT
-    } else if req.uri().path() == IDENTITY_PUSH_ROUTE
-        || req.uri().path().starts_with("/operator/tokens")
-    {
-        IDENTITY_PUSH_TIMEOUT
+    } else if req.uri().path().starts_with("/operator/tokens") {
+        GITHUB_ROUTE_TIMEOUT
+    } else if req.uri().path() == PASSPORT_ATTEST_ROUTE {
+        PASSPORT_ATTEST_TIMEOUT
     } else if req.uri().path() == OPERATOR_CALL_ROUTE {
         OPERATOR_CALL_TIMEOUT
     } else {
@@ -1007,12 +1004,7 @@ async fn calls_guest_link(
     Json(req): Json<GuestLinkReq>,
 ) -> Result<Response, ApiError> {
     let tenant = authenticate(&st, &req.appliance_id, &req.token).await?;
-    let official = st
-        .identity
-        .as_ref()
-        .and_then(|i| i.cert())
-        .is_some_and(|c| c.not_after > crate::market::now_secs());
-    if !official {
+    if !claimed_gateway(&st) {
         return Ok((
             StatusCode::FORBIDDEN,
             Json(serde_json::json!({ "error": "notOfficial" })),
@@ -1045,51 +1037,130 @@ async fn calls_relay_info(State(st): State<AppState>) -> Response {
     }
 }
 
-/// `GET /identity?nonce=<hex>` — who this edge is, and proof it holds the
-/// certified key (`crate::identity`). Unauthenticated: a box asks before it
-/// trusts anything, and nothing here is secret. 404 for an edge without an
-/// identity key, or with a key but no certificate yet (a company edge, or
-/// one whose certificate has not been pushed), 400 for a nonce the edge
-/// will not sign.
-async fn identity_route(
+/// A gateway whose owner has claimed it: the settings were measured at this
+/// boot. What lets this edge offer what only a trusted edge may; each box
+/// checks for itself.
+fn claimed_gateway(st: &AppState) -> bool {
+    st.gateway.as_ref().is_some_and(|g| g.measured().is_some())
+}
+
+#[derive(Deserialize)]
+struct PassportQuery {
+    #[serde(default)]
+    nonce: String,
+}
+
+/// `GET /passport?nonce=<hex>` — the measured settings, the edge key's
+/// signature over the nonce, and the TPM's keys (`crate::gateway`). 404 on
+/// an edge that is not a gateway or not claimed yet, 400 for a nonce it will
+/// not sign.
+async fn passport_route(
     State(st): State<AppState>,
-    axum::extract::Query(q): axum::extract::Query<IdentityQuery>,
+    axum::extract::Query(q): axum::extract::Query<PassportQuery>,
 ) -> Response {
-    let Some(id) = &st.identity else {
+    let Some(gw) = &st.gateway else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    if !crate::identity::nonce_ok(&q.nonce) {
+    if !crate::gateway::nonce_ok(&q.nonce) {
         return (
             StatusCode::BAD_REQUEST,
             "nonce must be 32 to 128 hex characters",
         )
             .into_response();
     }
-    match id.answer(&q.nonce) {
-        Some(answer) => Json(answer).into_response(),
+    match gw.hello(&q.nonce) {
+        Ok(Some(hello)) => Json(hello).into_response(),
+        Ok(None) => StatusCode::NOT_FOUND.into_response(),
+        Err(e) => {
+            tracing::error!(target: Action::Passport.target(), "the TPM files: {e}");
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "the TPM identity is not ready",
+            )
+                .into_response()
+        }
+    }
+}
+
+/// `GET /passport/edge-key` — the Ed25519 public key a passport must name,
+/// 64 hex characters. 404 on an edge that is not a gateway.
+async fn passport_edge_key(State(st): State<AppState>) -> Response {
+    match &st.gateway {
+        Some(gw) => format!("{}\n", gw.public_key()).into_response(),
         None => StatusCode::NOT_FOUND.into_response(),
     }
 }
 
-#[derive(Deserialize)]
-struct IdentityQuery {
-    #[serde(default)]
-    nonce: String,
-}
-
-/// `GET /identity/public-key` — this edge's Ed25519 public key, 64 hex
-/// characters, the thing the root signs. Unauthenticated, like
-/// `/noise-public-key`: a public key is public, and `provision edge` reads
-/// it before it can issue anything. 404 for an edge with no identity key.
-async fn identity_public_key(State(st): State<AppState>) -> Response {
-    match &st.identity {
-        Some(id) => id.public_key().to_string().into_response(),
-        None => StatusCode::NOT_FOUND.into_response(),
+/// `POST /passport/attest` — open the box's credential and quote PCRs 4, 11
+/// and 15 (`crate::gateway::Gateway::attest`). One at a time; 503 when the
+/// TPM stays busy.
+async fn passport_attest(
+    State(st): State<AppState>,
+    Json(req): Json<losos_access::gateway::check::AttestRequest>,
+) -> Response {
+    let Some(gw) = &st.gateway else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    if gw.measured().is_none() {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    match gw.attest(req).await {
+        Ok(answer) => Json(answer).into_response(),
+        Err(e @ crate::gateway::AttestError::BadRequest(_)) => {
+            (StatusCode::BAD_REQUEST, e.to_string()).into_response()
+        }
+        Err(e @ crate::gateway::AttestError::Busy) => {
+            (StatusCode::SERVICE_UNAVAILABLE, e.to_string()).into_response()
+        }
+        Err(e) => {
+            tracing::error!(target: Action::Passport.target(), "attestation: {e}");
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+        }
     }
 }
 
-/// The GitHub gate the operator routes share (`POST /identity/cert` and
-/// `/operator/tokens*`): the `Authorization: Bearer` header is a GitHub
+/// `POST /passport/settings` — new settings, signed by the owner with
+/// OpenPGP (`crate::gateway::Claim`). On success the file is written and
+/// the machine reboots to measure it, so the answer is the last thing this
+/// boot says.
+async fn passport_settings(
+    State(st): State<AppState>,
+    Json(claim): Json<crate::gateway::Claim>,
+) -> Response {
+    let Some(gw) = &st.gateway else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let now = i64::try_from(crate::market::now_secs()).unwrap_or(i64::MAX);
+    match gw.claim(&claim, now) {
+        Ok(owner) => Json(serde_json::json!({
+            "accepted": true,
+            "owner": owner,
+            "rebooting": true,
+        }))
+        .into_response(),
+        // JSON like the manage page's other answers: it shows `error`.
+        Err(e @ crate::gateway::ClaimError::NotTheOwner) => (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        )
+            .into_response(),
+        Err(e @ crate::gateway::ClaimError::Write(_)) => {
+            tracing::error!(target: Action::Passport.target(), "settings: {e}");
+            (
+                StatusCode::INSUFFICIENT_STORAGE,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            )
+                .into_response()
+        }
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+/// The GitHub gate of the operator routes (`/operator/tokens*`): the `Authorization: Bearer` header is a GitHub
 /// token, GitHub says whose it is, and the account's numeric id must be on
 /// the allowlist compiled into this binary (`operators.json`). `what` names
 /// the request in the journal. The caller holds [`AppState::push_lock`], so
@@ -1118,7 +1189,7 @@ async fn github_operator(
     let operators = match crate::provision::Operators::committed() {
         Ok(o) => o,
         Err(e) => {
-            tracing::error!(target: Action::Identity.target(), "operators.json: {e}");
+            tracing::error!(target: Action::Passport.target(), "operators.json: {e}");
             return Err(Box::new(StatusCode::INTERNAL_SERVER_ERROR.into_response()));
         }
     };
@@ -1138,13 +1209,13 @@ async fn github_operator(
             } else {
                 StatusCode::BAD_GATEWAY
             };
-            tracing::warn!(target: Action::Identity.target(), "{what} refused: {e}");
+            tracing::warn!(target: Action::Passport.target(), "{what} refused: {e}");
             return Err(Box::new((status, format!("GitHub: {e}")).into_response()));
         }
     };
     let Some(operator) = operators.find(user.id).cloned() else {
         tracing::warn!(
-            target: Action::Identity.target(),
+            target: Action::Passport.target(),
             "{what} refused: {} (GitHub id {}) is not on the operator allowlist",
             user.login, user.id
         );
@@ -1160,80 +1231,6 @@ async fn github_operator(
         ));
     };
     Ok((user, operator))
-}
-
-/// `POST /identity/cert` — install the certificate the root signed for this
-/// edge's key. The body is the certificate JSON (`crate::identity::Cert`);
-/// the `Authorization: Bearer` header is a **GitHub token**, not an
-/// appliance token: the edge asks GitHub whose it is and admits the push
-/// only if that account's numeric id is on the operator allowlist compiled
-/// into this binary (`operators.json`, the same list `provision` checks on
-/// the operator's machine). The checks run cheapest first, so a flood of
-/// unauthenticated or mis-addressed pushes never reaches GitHub: the body
-/// must parse and name *this* key before the token is looked at, and one
-/// push holds [`AppState::push_lock`] across the round trip.
-///
-/// Answers: 200 with `{installed, name, url, not_after, operator}`; 400 a
-/// body that is not a certificate for this key; 401 no token, or one GitHub
-/// does not accept; 403 an account that is not listed; 404 no identity
-/// key on this edge; 502 GitHub unreachable; 507 the file could not be
-/// written. The root's signature is not checked here (the edge need not
-/// hold the root public key): the boxes check it, and `provision edge`
-/// probes `/identity` right after the push and says so.
-async fn identity_push(State(st): State<AppState>, headers: HeaderMap, body: Bytes) -> Response {
-    let Some(id) = &st.identity else {
-        return (
-            StatusCode::NOT_FOUND,
-            "this edge has no identity key (losos.edge.identity.keyFile)",
-        )
-            .into_response();
-    };
-    let cert: crate::identity::Cert = match serde_json::from_slice(&body) {
-        Ok(c) => c,
-        Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                format!("the body is not a certificate: {e}"),
-            )
-                .into_response()
-        }
-    };
-    if cert.public_key != id.public_key() {
-        return (
-            StatusCode::BAD_REQUEST,
-            crate::identity::Pushed::OtherKey.to_string(),
-        )
-            .into_response();
-    }
-    let _one_at_a_time = st.push_lock.lock().await;
-    let (user, operator) = match github_operator(&st, &headers, "push").await {
-        Ok(found) => found,
-        Err(refused) => return *refused,
-    };
-
-    let now = crate::market::now_secs();
-    match id.install(cert.clone(), now) {
-        Ok(()) => {
-            tracing::info!(
-                target: Action::Identity.target(),
-                "certificate installed by {} (GitHub id {}, listed as {}): {} at {}, until {}",
-                user.login, user.id, operator.github_login, cert.name, cert.url, cert.not_after
-            );
-            Json(serde_json::json!({
-                "installed": true,
-                "name": cert.name,
-                "url": cert.url,
-                "not_after": cert.not_after,
-                "operator": user.login,
-            }))
-            .into_response()
-        }
-        Err(e @ crate::identity::Pushed::Write(_)) => {
-            tracing::error!(target: Action::Identity.target(), "push by {}: {e}", user.login);
-            (StatusCode::INSUFFICIENT_STORAGE, e.to_string()).into_response()
-        }
-        Err(e) => (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
-    }
 }
 
 async fn register(
@@ -2158,21 +2155,15 @@ struct DomainReq {
 }
 
 /// The domain store, but only on an edge that may hand out names: one that
-/// serves a zone and holds an unexpired identity certificate an operator
-/// pushed (`POST /identity/cert`, gated by the GitHub allowlist). The root
-/// signature is checked by the boxes, which also refuse to relay domain
-/// requests to an edge that is not official; this is the edge's own half.
+/// serves a zone and is a claimed gateway. Whether to trust it is the
+/// boxes' decision (they check its passport, TPM and fees, and refuse to
+/// relay domain requests to an edge that fails); this is the edge's own half.
 fn domains_of(st: &AppState) -> Result<&Arc<Domains>, ApiError> {
     let domains = st
         .domains
         .as_ref()
         .ok_or(ApiError::Domains(DomainError::Unconfigured))?;
-    let official = st
-        .identity
-        .as_ref()
-        .and_then(|i| i.cert())
-        .is_some_and(|c| c.not_after > crate::market::now_secs());
-    if !official {
+    if !claimed_gateway(st) {
         return Err(ApiError::Domains(DomainError::Unconfigured));
     }
     Ok(domains)

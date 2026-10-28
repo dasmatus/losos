@@ -452,6 +452,9 @@ images
 
   # Photos' face models (nix/face-models.nix), read by losos-cloud-photos.
   losos-face-models = import ./face-models.nix { inherit pkgs; };
+  # The TPM makers' certificates boxes check gateways against
+  # (nix/gateway/tpm-roots.nix, losos.proxy.gateways.tpmRoots).
+  losos-tpm-roots = import ./gateway/tpm-roots.nix { inherit pkgs; };
   # The same with the probe, a plugin that tries every import, for
   # nix/tests/plugins.nix. Never on a box.
   losos-plugins-probe = lososPlugins {
@@ -471,7 +474,7 @@ images
     src = lib.cleanSource ./../backend;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-ctl-rs` will print the new hash to paste here.
-    cargoHash = "sha256-TdhnvPk+9pBfI2BYCKs3to1FIXHP9WFmx0nnUmb2KlA=";
+    cargoHash = "sha256-HKTB3deoKjUJhB5jDvRMZ01OivseOonJjYbCUOhFdY8=";
     # No system deps: zbus speaks the D-Bus wire protocol natively, so there is
     # no libdbus to link against.
     # doCheck is off, and the tests still run — in CI's lint job and in
@@ -497,7 +500,7 @@ images
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-registrar` will print the new hash to paste here.
-    cargoHash = "sha256-2vTN2U61pB/COAOVVk0i85+zJWQ8wB0hRBYRT+zan0k=";
+    cargoHash = "sha256-khEKvHp5e0toplK5b9QM638Wc0KYGEJ764UP0xDNffU=";
     # No system deps; pure Rust with rustls (no openssl).
     # Same reasoning as losos-ctl above: the suite runs via cargo test in the
     # lint job, not inside this derivation.
@@ -522,7 +525,7 @@ images
     pname = "losos-registrar-static";
     version = "0.1.0";
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
-    cargoHash = "sha256-2vTN2U61pB/COAOVVk0i85+zJWQ8wB0hRBYRT+zan0k=";
+    cargoHash = "sha256-khEKvHp5e0toplK5b9QM638Wc0KYGEJ764UP0xDNffU=";
     doCheck = false;
   };
 
@@ -532,7 +535,7 @@ images
     pname = "losos";
     version = "0.1.0";
     inherit (tuiSource) src cargoRoot buildAndTestSubdir;
-    cargoHash = "sha256-aaKB33odE4FKAVdFNMiXl2jzr25fkglKHT2bR4QZXSM=";
+    cargoHash = "sha256-0VQK6reYxlHCgLQuyAb0ttNCIRVy3PBvs9nFSAqj/7U=";
     # `losos --version` and the About pane say the release (VERSION in
     # admin-ui/tui/src/tui/panes.rs); without it they would say 0.1.0.
     env.LOSOS_VERSION = version;
@@ -545,7 +548,7 @@ images
     pname = "losos-static";
     version = "0.1.0";
     inherit (tuiSource) src cargoRoot buildAndTestSubdir;
-    cargoHash = "sha256-aaKB33odE4FKAVdFNMiXl2jzr25fkglKHT2bR4QZXSM=";
+    cargoHash = "sha256-0VQK6reYxlHCgLQuyAb0ttNCIRVy3PBvs9nFSAqj/7U=";
     env.LOSOS_VERSION = version;
     doCheck = false;
   };
