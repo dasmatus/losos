@@ -126,6 +126,9 @@ in
 
 pkgs.testers.nixosTest {
   name = "losos-chat";
+  # The handbook's pictures in three languages take most of an hour on
+  # their own under TCG.
+  globalTimeout = 3 * 3600;
 
   nodes = {
     box =
