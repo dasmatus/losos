@@ -52,6 +52,14 @@ async fn fake_box(listener: tokio::net::TcpListener) -> Seen {
 }
 
 async fn start(ui: Option<String>, port_range: Option<(u16, u16)>) -> Edge {
+    start_with(ui, port_range, None).await
+}
+
+async fn start_with(
+    ui: Option<String>,
+    port_range: Option<(u16, u16)>,
+    traefik_metrics: Option<String>,
+) -> Edge {
     Edge::start_custom(
         "manage",
         &[TenantSpec::new(
@@ -66,6 +74,7 @@ async fn start(ui: Option<String>, port_range: Option<(u16, u16)>) -> Edge {
             opts.manage = Some(ManageOpts {
                 key_file: dir.path_str("manage-key"),
                 ui_dir: ui,
+                traefik_metrics,
             });
         },
     )
@@ -100,7 +109,7 @@ async fn a_managed_box_is_listed_and_its_calls_reach_it_with_its_token() {
         .register("office-box", "office-box.example.test", TOKEN)
         .await;
     assert_eq!(status, 200, "{body}");
-    let port = serde_json::from_str::<serde_json::Value>(&body).unwrap()["rathole_port"]
+    let port = serde_json::from_str::<serde_json::Value>(&body).unwrap()["tunnel_port"]
         .as_u64()
         .unwrap() as u16;
     assert_eq!(port, box_port);
@@ -310,6 +319,73 @@ async fn an_edge_without_a_key_manages_nothing() {
     edge.shutdown().await;
 }
 
+/// Traefik's Prometheus answer as a stand-in serves it: one box's service,
+/// Traefik's own, and the metrics entrypoint, which is not traffic.
+const METRICS: &str = "\
+# TYPE traefik_entrypoint_requests_total counter
+traefik_entrypoint_requests_total{code=\"200\",entrypoint=\"websecure\",method=\"GET\",protocol=\"http\"} 40
+traefik_entrypoint_requests_total{code=\"404\",entrypoint=\"websecure\",method=\"GET\",protocol=\"http\"} 3
+traefik_entrypoint_requests_total{code=\"502\",entrypoint=\"websecure\",method=\"GET\",protocol=\"http\"} 2
+traefik_entrypoint_requests_total{code=\"200\",entrypoint=\"metrics\",method=\"GET\",protocol=\"http\"} 70
+traefik_entrypoint_responses_bytes_total{code=\"200\",entrypoint=\"websecure\",method=\"GET\",protocol=\"http\"} 81920
+traefik_open_connections{entrypoint=\"websecure\",protocol=\"TCP\"} 2
+traefik_service_requests_total{code=\"200\",method=\"GET\",protocol=\"http\",service=\"office-box@http\"} 40
+traefik_service_requests_total{code=\"502\",method=\"GET\",protocol=\"http\",service=\"office-box@http\"} 2
+traefik_service_requests_total{code=\"200\",method=\"GET\",protocol=\"http\",service=\"prometheus@internal\"} 70
+process_start_time_seconds 1.7926e+09
+";
+
+#[tokio::test]
+async fn statistics_are_what_traefik_counted_with_each_box_named() {
+    let traefik = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/metrics", traefik.local_addr().unwrap());
+    let app = Router::new().route("/metrics", axum::routing::get(|| async { METRICS }));
+    tokio::spawn(async move { axum::serve(traefik, app).await.unwrap() });
+
+    let edge = start_with(None, None, Some(url)).await;
+    let key = key(&edge);
+    assert_eq!(get(&edge, "/manage/api/statistics", None).await.0, 401);
+    edge.register("office-box", "office-box.example.test", TOKEN)
+        .await;
+
+    // The first reading is taken as the registrar starts, and the box's
+    // name joins once a reconcile pass has routed it.
+    let mut doc = serde_json::Value::Null;
+    for _ in 0..50 {
+        let (status, body) = get(&edge, "/manage/api/statistics", Some(&key)).await;
+        assert_eq!(status, 200, "{body}");
+        doc = serde_json::from_str(&body).unwrap();
+        if doc["available"] == true && doc["routes"][0]["host"].is_string() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    assert_eq!(doc["available"], true, "{doc}");
+    assert_eq!(doc["totals"]["requests"], 45.0);
+    assert_eq!(doc["totals"]["clientErrors"], 3.0);
+    assert_eq!(doc["totals"]["serverErrors"], 2.0);
+    assert_eq!(doc["totals"]["openConnections"], 2.0);
+    assert_eq!(doc["codes"]["2xx"], 40.0);
+    assert_eq!(doc["since"], "2026-10-21T16:26:40Z");
+    let routes = doc["routes"].as_array().unwrap();
+    assert_eq!(routes.len(), 1, "{doc}");
+    assert_eq!(routes[0]["name"], "office-box");
+    assert_eq!(routes[0]["host"], "office-box.example.test");
+    assert_eq!(routes[0]["serverErrors"], 2.0);
+    edge.shutdown().await;
+}
+
+#[tokio::test]
+async fn statistics_without_traefik_say_why() {
+    let edge = start(None, None).await;
+    let (status, body) = get(&edge, "/manage/api/statistics", Some(&key(&edge))).await;
+    assert_eq!(status, 200);
+    let doc: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(doc["available"], false);
+    assert_eq!(doc["reason"], "this edge does not read Traefik's counters");
+    edge.shutdown().await;
+}
+
 /// The gateway's own settings, which only the manage API changes: no key,
 /// no settings; with it, an uplink is set and cleared and an enrolled box
 /// is forgotten.
@@ -319,11 +395,12 @@ async fn the_gateway_is_set_up_from_the_page_with_the_key() {
         opts.manage = Some(ManageOpts {
             key_file: dir.path_str("manage-key"),
             ui_dir: None,
+            traefik_metrics: None,
         });
         opts.enrol_dir = Some(dir.path_str("enrolled"));
         opts.uplink = Some(losos_registrar::relay::UplinkOpts {
             file: dir.path_str("edge/uplink.json"),
-            rathole_config: dir.path_str("uplink.toml"),
+            tunnel_config: dir.path_str("uplink-tunnel.json"),
             interval: std::time::Duration::from_secs(3600),
         });
     })
@@ -347,7 +424,7 @@ async fn the_gateway_is_set_up_from_the_page_with_the_key() {
         "id": "acme",
         "token": "hub-token",
         "registrarUrl": "https://register.example.test",
-        "ratholeEndpoint": "relay.example.test:2333",
+        "tunnelEndpoint": "relay.example.test:2333",
     });
 
     assert_eq!(get(&edge, "/manage/api/gateway", None).await.0, 401);
@@ -372,7 +449,7 @@ async fn the_gateway_is_set_up_from_the_page_with_the_key() {
 
     // A malformed row is refused and writes nothing.
     let mut bad = uplink.clone();
-    bad["ratholeEndpoint"] = "relay".into();
+    bad["tunnelEndpoint"] = "relay".into();
     let (status, body) = send(
         reqwest::Method::PUT,
         "/manage/api/gateway/uplink",
@@ -445,7 +522,11 @@ async fn the_gateway_is_set_up_from_the_page_with_the_key() {
     );
 
     // Cleared: the file, its tokens and the rendered tunnel config go.
-    std::fs::write(edge.dir.join("uplink.toml"), "[client]\n").unwrap();
+    std::fs::write(
+        edge.dir.join("uplink-tunnel.json"),
+        r#"{"remote":"relay.example.test:2333","pin":"","services":{}}"#,
+    )
+    .unwrap();
     let (status, body) = send(
         reqwest::Method::DELETE,
         "/manage/api/gateway/uplink",
@@ -456,6 +537,6 @@ async fn the_gateway_is_set_up_from_the_page_with_the_key() {
     assert_eq!(status, 200, "{body}");
     assert!(!edge.dir.join("edge/uplink.json").exists());
     assert!(!edge.dir.join("edge/uplink.token").exists());
-    assert!(!edge.dir.join("uplink.toml").exists());
+    assert!(!edge.dir.join("uplink-tunnel.json").exists());
     edge.shutdown().await;
 }

@@ -26,7 +26,7 @@
 #                output has no store references, modules/cache.nix points every
 #                box through its configured proxy, and flake.nix puts this path in the
 #                ISO's storeContents.
-#   losos-registrar — the Rust edge registration + Traefik/rathole config
+#   losos-registrar — the Rust edge registration + Traefik and tunnel config
 #                reconciler (`serve`) and appliance registration client
 #                (`announce`, `join`). Built via the same buildRustPackage
 #                from edge/registrar/. See modules/edge.nix (edge) and
@@ -274,7 +274,7 @@ let
   # build a set with the probe in it.
   # backend/plugins' vendored crates: lososd's plugins and Mesh CI's pm
   # plugin are built from the one workspace.
-  pluginsCargoHash = "sha256-Je8oCWy0gsGaePeLq5GuR+omoQsjLWlRonY0pf1T+nQ=";
+  pluginsCargoHash = "sha256-QjOlI0fBfoVpVz2sFyLzyLTfEgN4IVJHnwHNsgmZrnA=";
   lososPlugins =
     {
       pname ? "losos-plugins",
@@ -286,6 +286,7 @@ let
         "ci"
         "statistics"
         "hidden"
+        "basic"
       ],
     }:
     pkgs.rustPlatform.buildRustPackage {
@@ -473,7 +474,7 @@ images
     src = lib.cleanSource ./../backend;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-ctl-rs` will print the new hash to paste here.
-    cargoHash = "sha256-HKTB3deoKjUJhB5jDvRMZ01OivseOonJjYbCUOhFdY8=";
+    cargoHash = "sha256-iodTj1tLDfazZ4i6Lba3fCymoqSGPJN+f6yjWZNqj4o=";
     # No system deps: zbus speaks the D-Bus wire protocol natively, so there is
     # no libdbus to link against.
     # doCheck is off, and the tests still run — in CI's lint job and in
@@ -499,7 +500,7 @@ images
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-registrar` will print the new hash to paste here.
-    cargoHash = "sha256-ALTRuCfTp9L4GPKhjQlVFkvYGEc/HuGjscNDDkzI/gE=";
+    cargoHash = "sha256-LedCH3lBYEFRAqqO4XKcqtmtWtbXLbqN5JEulQ9QcbY=";
     # No system deps; pure Rust with rustls (no openssl).
     # Same reasoning as losos-ctl above: the suite runs via cargo test in the
     # lint job, not inside this derivation.
@@ -524,7 +525,7 @@ images
     pname = "losos-registrar-static";
     version = "0.1.0";
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
-    cargoHash = "sha256-ALTRuCfTp9L4GPKhjQlVFkvYGEc/HuGjscNDDkzI/gE=";
+    cargoHash = "sha256-LedCH3lBYEFRAqqO4XKcqtmtWtbXLbqN5JEulQ9QcbY=";
     doCheck = false;
   };
 

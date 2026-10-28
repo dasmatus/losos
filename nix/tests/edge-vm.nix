@@ -1,29 +1,32 @@
 # nixos-test-vms config for the master-proxy edge + appliance.
 #
 # Boots two VMs:
-#   * `edge`      — losos.edge.enable: Traefik (master) + rathole server +
+#   * `edge`      — losos.edge.enable: Traefik (master) + tunnel server +
 #                   losos-registrar (serve). The registrar API is bound to
 #                   `::` (losos.edge.registrarApiBind, dual-stack) only because
 #                   there is no Traefik/TLS path in the VM (no LE, no DNS) —
 #                   the appliance dials it directly over HTTP.
-#   * `appliance` — losos.proxy.enable: rathole client (dials edge:2333) +
+#   * `appliance` — losos.proxy.enable: tunnel client (dials edge:2333) +
 #                   losos-registrar announce (register/heartbeat) + a minimal
 #                   Nginx on :80 (the slave proxy) serving a known page.
 #
 # Asserts the end-to-end master-proxy data path without TLS:
-#   1. edge rathole-seed writes a declarative [server] base (bind_addr scalar);
+#   1. the edge makes its tunnel certificate on first start, the registrar
+#      serves its pin, and the appliance pins it before its first dial;
 #   2. the registrar API (/health) comes up on the edge;
 #   3. the appliance announce service registers → the registrar publishes
 #      the Host rule on its provider listener and writes
-#      /etc/rathole/server.toml ([server.services.mattbox]); rathole's
-#      file-watcher hot-reloads;
-#   4. rathole forwards: `curl edge:127.0.0.1:<port>` reaches the appliance
-#      Nginx over the tunnel, and Traefik, having discovered the box from the
-#      registrar, routes https://mattbox.losos.cfd to it over TCP and over
-#      HTTP/3 (QUIC, UDP 443), the latter from the appliance across the
-#      firewall; with the registrar stopped Traefik keeps the route; with the
-#      tunnel down a visitor gets the edge's offline page, not a bare 502;
-#      an old edge's leftover losos.yml is removed on the next switch;
+#      /etc/losos-tunnel/server.json (the `mattbox` service), which the
+#      tunnel server re-reads within a second;
+#   4. the tunnel forwards: `curl edge:127.0.0.1:<port>` reaches the
+#      appliance Nginx over QUIC, and Traefik, having discovered the box
+#      from the registrar, routes https://mattbox.losos.cfd to it over TCP
+#      and over HTTP/3 (QUIC, UDP 443), the latter from the appliance across
+#      the firewall; with the registrar stopped Traefik keeps the route; with
+#      the tunnel down a visitor gets the edge's offline page, not a bare
+#      502; an old edge's leftover losos.yml is removed on the next switch;
+#      with UDP to the tunnel's port dropped, the client falls back to TLS
+#      on TCP and the same curl works again;
 #   5. POST /unregister tears the route down (curl then fails, Traefik
 #      answers 404 for the name);
 #   6. enrollment is actually closed: an unknown appliance id, a known id with
@@ -55,11 +58,6 @@ let
   # `nodes` because testScript is a sibling of `nodes`, not a child, and could
   # not otherwise see them.
   proxyTokenValue = "test-proxy-token-0123456789abcdef";
-  # 32 chars minimum: the registrar refuses to start on a bootstrap token
-  # shorter than that, because a short or truncated token file is a
-  # guessable secret rather than a credential. The old fixture was 18
-  # characters and crash-looped the service the moment that check landed.
-  bootstrapTokenValue = "test-bootstrap-0123456789abcdef0123";
 
   # Runtime paths, NOT pkgs.writeText store paths. options.nix now warns when
   # a secret option points into /nix/store, because the store is world-
@@ -70,12 +68,10 @@ let
   # early boot, before any unit that reads them, which is how a real appliance
   # provisions them out of band.
   proxyToken = "/var/secrets/losos-proxy-token";
-  bootstrapToken = "/var/secrets/losos-rathole-bootstrap";
   secretFiles = {
     systemd.tmpfiles.rules = [
       "d /var/secrets 0700 root root - -"
       "f ${proxyToken} 0600 root root - ${proxyTokenValue}"
-      "f ${bootstrapToken} 0600 root root - ${bootstrapTokenValue}"
     ];
   };
   lososPkgs = import ../packages.nix { inherit pkgs; };
@@ -111,19 +107,20 @@ pkgs.testers.nixosTest {
           # IPv4 fallback. Production fronts the API behind Traefik/TLS.
           registrarApiBind = "::";
           registrarApiPort = 8443;
-          ratholeBindPort = 2333;
-          ratholePortRange = "50000-50010";
+          tunnelBindPort = 2333;
+          tunnelPortRange = "50000-50010";
           heartbeatTtl = "120s";
           reconcileInterval = "2s"; # fast for the test
-          bootstrapTokenFile = bootstrapToken;
           tenants.mattbox = {
             hostname = "mattbox.losos.cfd";
             tokenFile = proxyToken;
           };
         };
 
-        # ratholeBindAddr defaults to `::` (dual-stack), so the IPv6
-        # resolution the framework gives `edge` reaches rathole — no IPv4
+        environment.systemPackages = [ pkgs.jq ];
+
+        # tunnelBindAddr defaults to `::` (dual-stack), so the IPv6
+        # resolution the framework gives `edge` reaches the tunnel — no IPv4
         # override on eth1 is needed.
 
         virtualisation = {
@@ -147,20 +144,19 @@ pkgs.testers.nixosTest {
             enable = true;
             # Dial the edge by its node name. The nixosTest framework's
             # /etc/hosts maps `edge` to an IPv6 2001:db8::/64 address, and
-            # rathole binds `::` (dual-stack) by default, so the appliance's
+            # the tunnel binds `::` (dual-stack) by default, so the appliance's
             # native resolution reaches the tunnel + registrar API directly.
-            edgeRatholeEndpoint = "edge:2333";
+            edgeTunnelEndpoint = "edge:2333";
             registrarUrl = "http://edge:8443"; # direct, no Traefik/TLS in-VM
             hostname = "mattbox.losos.cfd";
             applianceId = "mattbox";
             tokenFile = proxyToken;
-            bootstrapTokenFile = bootstrapToken;
             heartbeatInterval = "3s";
             registrar.package = lososPkgs.losos-registrar;
           };
         };
 
-        # The slave proxy: a minimal Nginx on :80 that rathole forwards to.
+        # The slave proxy: a minimal Nginx on :80 that the tunnel forwards to.
         # Serves a fixed page so the end-to-end curl through the tunnel has a
         # recognisable body to assert on.
         services.nginx = {
@@ -190,34 +186,24 @@ pkgs.testers.nixosTest {
     edge.start()
     appliance.start()
 
-    # 1. The rathole-seed wrote a declarative [server] base with the scalar
-    #    bind_addr (not a `bind` list) before rathole started.
-    edge.wait_for_unit("losos-rathole-seed.service")
-    seed = edge.succeed("cat /etc/rathole/server.toml")
-    assert "bind_addr = " in seed, f"seed missing bind_addr scalar: {seed!r}"
-    assert "default_token = " in seed, f"seed missing default_token: {seed!r}"
-    assert 'type = "noise"' in seed, f"seed missing the Noise transport: {seed!r}"
-    assert "local_private_key = " in seed, f"seed missing the Noise key: {seed!r}"
-    edge.wait_for_unit("losos-rathole.service")
+    # 1. The tunnel server made its certificate on its first start and
+    #    wrote its pin; the registrar serves it, and the appliance pinned it
+    #    before its first dial. Nothing about the tunnel's identity is
+    #    provisioned in this test.
+    edge.wait_for_unit("losos-tunnel.service")
     edge.wait_for_unit("losos-registrar.service")
-
-    # The client side of the same contract: pinned to the edge's public key,
-    # and read from a runtime file rather than baked into the config.
-    # Nothing about Noise is provisioned in this test: the edge generates the
-    # keypair, the registrar serves the public half, and the appliance pins it.
-    edge.wait_for_unit("losos-rathole-noise-keygen.service")
-    edge_pub = edge.succeed("cat /var/secrets/losos-rathole-noise-key.pub").strip()
-    assert len(edge_pub) == 44, f"edge public key looks wrong: {edge_pub!r}"
-    assert edge.succeed("stat -c %a /var/secrets/losos-rathole-noise-key").strip() == "600"
-    # The pin is the client's own ExecStartPre now (no separate unit): the
-    # key is fetched before the first dial and never again.
-    appliance.wait_for_unit("losos-rathole-client.service")
-    pinned = appliance.succeed("cat /var/secrets/losos-rathole-noise-pub").strip()
-    assert pinned == edge_pub, f"appliance pinned {pinned!r}, edge has {edge_pub!r}"
-    appliance.wait_for_unit("losos-rathole-client.service")
-    client = appliance.succeed("cat /run/losos-rathole/client.toml")
-    assert 'type = "noise"' in client, f"client not using Noise: {client!r}"
-    assert "remote_public_key = " in client, f"client missing pinned key: {client!r}"
+    edge.wait_until_succeeds("test -s /var/lib/losos-tunnel/pin")
+    edge_pin = edge.succeed("cat /var/lib/losos-tunnel/pin").strip()
+    assert len(edge_pin) == 64, f"edge pin looks wrong: {edge_pin!r}"
+    assert edge.succeed("stat -c %a /var/lib/losos-tunnel/key.der").strip() == "600"
+    edge.wait_until_succeeds("curl -fsS http://127.0.0.1:8443/tunnel-pin")
+    assert edge.succeed("curl -fsS http://127.0.0.1:8443/tunnel-pin").strip() == edge_pin
+    appliance.wait_for_unit("losos-tunnel-client.service")
+    pinned = appliance.succeed("cat /var/secrets/losos-tunnel-pin").strip()
+    assert pinned == edge_pin, f"appliance pinned {pinned!r}, edge has {edge_pin!r}"
+    client = appliance.succeed("cat /run/losos-tunnel/client.json")
+    assert edge_pin in client, f"client not pinned: {client!r}"
+    assert appliance.succeed("stat -c %a /run/losos-tunnel/client.json").strip() == "600"
 
     # 2. The registrar API is up.
     edge.wait_until_succeeds("curl -fsS http://127.0.0.1:8443/health")
@@ -226,40 +212,33 @@ pkgs.testers.nixosTest {
     # `*:2333` / `*:8443` in ss) and the appliance resolves `edge` to the IPv6
     # address the framework's /etc/hosts maps it to. (Printed so a connectivity
     # failure in a later step shows the resolution + listener state.)
-    print("edge listeners:", edge.succeed("ss -tlnp 2>/dev/null | grep -E '2333|8443' || true"))
+    print("edge listeners:", edge.succeed("ss -tulnp 2>/dev/null | grep -E '2333|8443' || true"))
     print("edge eth1 ipv6:", edge.succeed("ip -6 addr show eth1 2>/dev/null | grep inet6 || true"))
     print("appliance resolves edge:", appliance.succeed("getent hosts edge || true"))
 
     # 3. The appliance announce service registers, and the reconciler writes
-    #    the Traefik router + rathole service. Reconcile runs on a notify kick
-    #    (immediate) and every 2s; wait for the rathole service to appear.
+    #    the Traefik router + tunnel service. Reconcile runs on a notify kick
+    #    (immediate) and every 2s; wait for the tunnel service to appear.
     appliance.wait_for_unit("losos-registrar-announce.service")
-    appliance.wait_for_unit("losos-rathole-client.service")
+    appliance.wait_for_unit("losos-tunnel-client.service")
 
-    # grep -F (fixed-string) is load-bearing: `[server.services.mattbox]` is a
-    # TOML section header, and without -F the `[...]` is a regex character class
-    # that matches any line containing the letters s/e/r/v/m/a/t/b/o/x — i.e.
-    # almost every line in server.toml. That makes the positive grep a tautology
-    # and `! grep` (step 5's teardown assertion) always-false → 900s timeout.
-    # -F matches the literal header so the assertions actually test the block.
     edge.wait_until_succeeds(
-      "grep -F -q '[server.services.mattbox]' /etc/rathole/server.toml"
+      "jq -e '.services.mattbox.bind == \"127.0.0.1:50000\"' /etc/losos-tunnel/server.json"
     )
     edge.wait_until_succeeds(
       "curl -fsS http://127.0.0.1:8090/traefik | grep -q 'Host(`mattbox.losos.cfd`)'"
     )
     # Nothing is written into Traefik's directory any more.
     edge.fail("test -e /etc/traefik/dynamic/losos.yml")
-    toml = edge.succeed("cat /etc/rathole/server.toml")
-    assert "bind_addr = \"127.0.0.1:50000\"" in toml, f"rathole service bind_addr: {toml!r}"
+    assert edge.succeed("stat -c %a /etc/losos-tunnel/server.json").strip() == "600"
 
-    # 4. End-to-end over the L4 tunnel: the rathole server's per-service
-    #    bind (127.0.0.1:50000 on the edge) forwards through the tunnel to the
-    #    appliance's Nginx. (Traefik would Hit this same address.) Rathole's
-    #    `notify` file-watcher hot-reloaded server.toml the instant the
-    #    registrar rewrote it, so the client service is now matched and the
-    #    forward succeeds after the control channel settles.
+    # 4. End-to-end over the tunnel: the tunnel server's per-service bind
+    #    (127.0.0.1:50000 on the edge) forwards through the QUIC connection
+    #    to the appliance's Nginx. (Traefik would hit this same address.)
     edge.wait_until_succeeds("curl -fsS http://127.0.0.1:50000/ | grep -q hello-losos")
+    edge.wait_until_succeeds("journalctl -u losos-tunnel.service | grep -q 'holds mattbox'")
+    print(edge.succeed("journalctl -u losos-tunnel.service | grep 'holds mattbox'"))
+    assert "(quic)" in edge.succeed("journalctl -u losos-tunnel.service | grep 'holds mattbox' | tail -1")
 
     # 4b. Traefik discovered the box: the name routes over TCP on the edge
     #     itself, and over HTTP/3 from another machine, through the firewall's
@@ -287,7 +266,7 @@ pkgs.testers.nixosTest {
 
     # The tunnel goes down: the visitor gets the edge's page, in their
     # language, with Traefik's status, not a bare "Bad Gateway".
-    appliance.succeed("systemctl stop losos-rathole-client.service")
+    appliance.succeed("systemctl stop losos-tunnel-client.service")
     offline = f"{https} -H 'Accept-Language: de' -o /tmp/offline.html -w '%{{http_code}}'"
     edge.wait_until_succeeds(f"test \"$({offline})\" = 502", timeout=120)
     page = edge.succeed("cat /tmp/offline.html")
@@ -297,7 +276,7 @@ pkgs.testers.nixosTest {
     # Kept in the test's output, for the screenshots of the change.
     edge.copy_from_machine("/tmp/offline.html", "offline-page")
     edge.copy_from_machine("/tmp/offline-en.html", "offline-page")
-    appliance.succeed("systemctl start losos-rathole-client.service")
+    appliance.succeed("systemctl start losos-tunnel-client.service")
     edge.wait_until_succeeds(f"{https} | grep -q hello-losos", timeout=120)
 
     # An edge upgraded from the file-written routes: the leftover is taken
@@ -306,22 +285,39 @@ pkgs.testers.nixosTest {
     edge.succeed("systemctl restart systemd-tmpfiles-resetup.service")
     edge.fail("test -e /etc/traefik/dynamic/losos.yml")
 
-    # 5. /unregister tears the route down: the rathole service disappears and
+    # 4c. A network that drops UDP: the client gives QUIC five seconds, then
+    #     dials the same port over TCP, and the same request goes through.
+    for t in ["iptables", "ip6tables"]:
+        edge.succeed(f"{t} -I INPUT -p udp --dport 2333 -j DROP")
+    appliance.succeed("systemctl restart losos-tunnel-client.service")
+    edge.wait_until_succeeds(
+      "journalctl -u losos-tunnel.service | grep 'holds mattbox' | tail -1 | grep -q '(tcp)'",
+      timeout=120,
+    )
+    edge.wait_until_succeeds("curl -fsS http://127.0.0.1:50000/ | grep -q hello-losos")
+    appliance.succeed("journalctl -u losos-tunnel-client.service | grep -q 'on TCP'")
+    for t in ["iptables", "ip6tables"]:
+        edge.succeed(f"{t} -D INPUT -p udp --dport 2333 -j DROP")
+    appliance.succeed("systemctl restart losos-tunnel-client.service")
+    edge.wait_until_succeeds(
+      "journalctl -u losos-tunnel.service | grep 'holds mattbox' | tail -1 | grep -q '(quic)'",
+      timeout=120,
+    )
+
+    # 5. /unregister tears the route down: the tunnel service disappears and
     #    the forward stops. Stop the appliance's announce loop first: it
     #    re-registers every heartbeatInterval (3s here — a 404 heartbeat
     #    triggers re-enroll), so without stopping it mattbox would reappear
-    #    before the reconciler prunes it and the [server.services.mattbox]
-    #    block would never leave server.toml. (Auth via JSON body, same token
+    #    before the reconciler prunes it and would never leave server.json. (Auth via JSON body, same token
     #    as announce.)
     appliance.succeed("systemctl stop losos-registrar-announce.service")
     hdr_id = "Content-Type: application/json"
     body = '{"appliance_id":"mattbox","token":"${proxyTokenValue}"}'
     edge.succeed(f"curl -fsS -X POST -H '{hdr_id}' -d '{body}' http://127.0.0.1:8443/unregister")
-    # The reconciler prunes mattbox and rewrites server.toml without the
-    # [server.services.mattbox] block; rathole's `notify` file-watcher
-    # hot-reloads (no signal) and closes the per-service 127.0.0.1:50000
-    # listener.
-    edge.wait_until_succeeds("! grep -F -q '[server.services.mattbox]' /etc/rathole/server.toml")
+    # The reconciler prunes mattbox and rewrites server.json without it; the
+    # tunnel server re-reads the file within a second and closes the
+    # per-service 127.0.0.1:50000 listener.
+    edge.wait_until_succeeds("jq -e '.services.mattbox == null' /etc/losos-tunnel/server.json")
     edge.wait_until_fails("curl -fsS http://127.0.0.1:50000/")
     edge.wait_until_succeeds(f"test \"$({https} -o /dev/null -w '%{{http_code}}')\" = 404")
 

@@ -1,7 +1,7 @@
 //! The Stripe gate: the one process on the edge that holds the Stripe key.
 //!
 //! `losos-registrar serve` is internet-reachable and runs as root next to
-//! Traefik and rathole. The market only needs a few things from Stripe, so the
+//! Traefik and the tunnel. The market only needs a few things from Stripe, so the
 //! key lives in a second, small process (`losos-registrar stripe-gate`, its
 //! own systemd unit and its own dynamic user) and the registrar asks it for
 //! those few things over a Unix socket. The registrar never reads the key or

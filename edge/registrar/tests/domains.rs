@@ -468,20 +468,22 @@ async fn spoke(tag: &str, hub: &Edge) -> Edge {
         )],
         move |opts, dir| {
             std::fs::write(dir.join("uplink.token"), SPOKE_TOKEN).unwrap();
+            std::fs::write(dir.join("hub.pin"), "5e".repeat(32)).unwrap();
             std::fs::write(
                 dir.join("uplink.json"),
                 serde_json::to_vec(&json!({
                     "registrar_url": hub_base,
-                    "rathole_endpoint": "hub.example.test:2333",
+                    "tunnel_endpoint": "hub.example.test:2333",
                     "id": "acme",
                     "token_file": dir.path_str("uplink.token"),
+                    "pin_file": dir.path_str("hub.pin"),
                 }))
                 .unwrap(),
             )
             .unwrap();
             opts.uplink = Some(losos_registrar::relay::UplinkOpts {
                 file: dir.path_str("uplink.json"),
-                rathole_config: dir.path_str("uplink.toml"),
+                tunnel_config: dir.path_str("uplink-tunnel.json"),
                 interval: Duration::from_millis(100),
             });
         },

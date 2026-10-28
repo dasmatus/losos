@@ -9,7 +9,7 @@
 #              is concerned, an edge out on the internet.
 #   * `box`  — lososd (modules/daemon.nix) with its option document
 #              (modules/config-repo.nix), the mDNS the real box runs, and the
-#              edge path (modules/proxy.nix): rathole client, announce, and
+#              edge path (modules/proxy.nix): tunnel client, announce, and
 #              the loopback-only nginx server the edge's calls land on.
 #
 # Asserts what backend/src/edge.rs and backend/sections.json promise:
@@ -46,14 +46,11 @@
 let
   lososPkgs = import ../packages.nix { inherit pkgs; };
   proxyTokenValue = "test-proxy-token-0123456789abcdef";
-  bootstrapTokenValue = "test-bootstrap-0123456789abcdef0123";
   proxyToken = "/var/secrets/losos-proxy-token";
-  bootstrapToken = "/var/secrets/losos-rathole-bootstrap";
   secretFiles = {
     systemd.tmpfiles.rules = [
       "d /var/secrets 0700 root root - -"
       "f ${proxyToken} 0600 root root - ${proxyTokenValue}"
-      "f ${bootstrapToken} 0600 root root - ${bootstrapTokenValue}"
     ];
   };
   # The page the edge serves, small: the admin UI's own bundle is
@@ -88,11 +85,10 @@ let
         enable = true;
         acmeEmail = "test@losos.cfd";
         registrarApiPort = 8443;
-        ratholeBindPort = 2333;
-        ratholePortRange = "50000-50010";
+        tunnelBindPort = 2333;
+        tunnelPortRange = "50000-50010";
         reconcileInterval = "2s";
         heartbeatTtl = "30s";
-        bootstrapTokenFile = bootstrapToken;
         tenants.office-box = {
           hostname = "office-box.example.test";
           tokenFile = proxyToken;
@@ -121,7 +117,7 @@ pkgs.testers.nixosTest {
         losos.edge.lan = {
           advertise = true;
           url = edgeUrl;
-          ratholeEndpoint = "edge:2333";
+          tunnelEndpoint = "edge:2333";
         };
         # The router between the box's network and far's.
         virtualisation.vlans = [
@@ -178,12 +174,11 @@ pkgs.testers.nixosTest {
           mdns.enable = true;
           proxy = {
             enable = true;
-            edgeRatholeEndpoint = "edge:2333";
+            edgeTunnelEndpoint = "edge:2333";
             registrarUrl = edgeUrl;
             hostname = "office-box.example.test";
             applianceId = "office-box";
             tokenFile = proxyToken;
-            bootstrapTokenFile = bootstrapToken;
             heartbeatInterval = "3s";
             registrar.package = lososPkgs.losos-registrar;
           };
@@ -264,14 +259,13 @@ pkgs.testers.nixosTest {
       " and ([.edges[] | select(.url == \"${edgeUrl}\") | .onNetwork] == [true])'",
       timeout=600,
     )
-    box.wait_for_unit("losos-rathole-client.service")
+    box.wait_for_unit("losos-tunnel-client.service")
     box.wait_for_unit("losos-registrar-announce.service")
-    edge.wait_until_succeeds("grep -F -q '[server.services.office-box]' /etc/rathole/server.toml", timeout=300)
+    edge.wait_until_succeeds("jq -e '.services[\"office-box\"]' /etc/losos-tunnel/server.json", timeout=300)
     port = edge.succeed(
-      "grep -A3 -F '[server.services.office-box]' /etc/rathole/server.toml"
-      " | sed -n 's/.*bind_addr = \"127.0.0.1:\\([0-9]*\\)\".*/\\1/p'"
+      "jq -r '.services[\"office-box\"].bind' /etc/losos-tunnel/server.json | sed 's/.*://'"
     ).strip()
-    assert port, "no rathole port for the box"
+    assert port, "no tunnel port for the box"
     # The tunnel carries the box's own port 80.
     edge.wait_until_succeeds(f"curl -s -o /dev/null -w '%{{http_code}}' -H 'Host: losos-manage.invalid' 127.0.0.1:{port}/ | grep -q 404")
 
@@ -376,7 +370,7 @@ pkgs.testers.nixosTest {
     box.succeed("ip route get 192.168.2.3 | grep -q 'via 192.168.1.2'")
     edge.succeed(
       "printf '%s\n' '[Service]' 'Name=losos edge far away' 'Type=_losos-edge._tcp' 'Port=8443'"
-      " 'TxtText=url=${farUrl} rathole=far:2333 enrol=closed txtvers=1'"
+      " 'TxtText=url=${farUrl} tunnel=far:2333 enrol=closed txtvers=1'"
       " > /etc/systemd/dnssd/far.dnssd"
     )
     edge.succeed("systemctl stop losos-registrar.service")
@@ -393,12 +387,11 @@ pkgs.testers.nixosTest {
     assert json.loads(body).get("notManageable") is True, body
     box.fail("test -e /run/losos/edge-managed")
     # The box tunnels through far all the same: far proxies its traffic.
-    far.wait_until_succeeds("grep -F -q '[server.services.office-box]' /etc/rathole/server.toml", timeout=300)
+    far.wait_until_succeeds("jq -e '.services[\"office-box\"]' /etc/losos-tunnel/server.json", timeout=300)
     far_port = far.succeed(
-      "grep -A3 -F '[server.services.office-box]' /etc/rathole/server.toml"
-      " | sed -n 's/.*bind_addr = \"127.0.0.1:\\([0-9]*\\)\".*/\\1/p'"
+      "jq -r '.services[\"office-box\"].bind' /etc/losos-tunnel/server.json | sed 's/.*://'"
     ).strip()
-    assert far_port, "no rathole port for the box on far"
+    assert far_port, "no tunnel port for the box on far"
     far.wait_until_succeeds(
       f"curl -s -o /dev/null -w '%{{http_code}}' -H 'Host: losos-manage.invalid' 127.0.0.1:{far_port}/ | grep -q 404",
       timeout=300,

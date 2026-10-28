@@ -1,0 +1,211 @@
+/* ── The pages without JavaScript (/basic/) ──────────────────────────────
+ * backend/plugins/basic/ draws them on the box with this bundle's classes,
+ * and they mark their <html> with data-basic. What a script does on the
+ * other pages is done here in CSS, scoped to that mark so none of it can
+ * reach a script page:
+ *
+ *   - menus are <details>; a click outside closes them;
+ *   - the sidebar's folds, a dialog that asks first, the phone's sheet and a
+ *     toast's close button are checkboxes and their labels;
+ *   - the Apply bar shows once a field differs from what the box has, and
+ *     counts the fields in a counter whose words come from counts.css;
+ *   - LosOS Login's facts take turns, and a toast leaves by itself.
+ *
+ * Every motion here is a transition or an animation, so the reduced-motion
+ * rule in index.css turns all of it off at once. */
+
+:root[data-basic] {
+  /* components/ui/sidebar.tsx's two widths, which it sets as a style. */
+  --sidebar-width: 15rem;
+  --sidebar-width-icon: 3.25rem;
+}
+
+/* The bottom bar is always in the page and drawn only below md, so the
+ * room kept for it is too. */
+@media (width >= 48rem) {
+  :root[data-basic]:has([data-slot="bottom-nav"]) {
+    --bottom-nav: 0px;
+  }
+}
+
+/* ── Menus ─────────────────────────────────────────────────────────────── */
+
+:root[data-basic] [data-basic-menu][open] > [data-slot="basic-popup"],
+:root[data-basic] [data-basic-menu][open] > [data-slot="person-menu"] {
+  animation: pop 160ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+/* A click anywhere else lands on the open menu's summary, which closes it.
+ * The top bar blurs what is behind it, which makes it the containing block
+ * of anything fixed inside it, so the cover reaches well past the bar. */
+:root[data-basic] [data-basic-menu][open] > summary::before {
+  content: "";
+  position: fixed;
+  top: -100dvh;
+  left: -100vw;
+  width: 300vw;
+  height: 300dvh;
+  z-index: 40;
+  cursor: default;
+}
+
+/* ── The sidebar ───────────────────────────────────────────────────────── */
+
+/* It went narrow or wide on the way here: it moves from where it was. */
+:root[data-basic] [data-slot="sidebar"][data-moved="in"] {
+  animation: basic-rail-in 200ms ease-out both;
+}
+:root[data-basic] [data-slot="sidebar"][data-moved="out"] {
+  animation: basic-rail-out 200ms ease-out both;
+}
+@keyframes basic-rail-in {
+  from {
+    width: var(--sidebar-width);
+  }
+}
+@keyframes basic-rail-out {
+  from {
+    width: var(--sidebar-width-icon);
+  }
+}
+
+/* ── The phone's sheet ─────────────────────────────────────────────────── */
+
+:root[data-basic] #basic-more:checked ~ [data-slot="basic-sheet"] [data-slot="drawer-overlay"] {
+  opacity: 1;
+}
+:root[data-basic] #basic-more:checked ~ [data-slot="basic-sheet"] [data-slot="drawer-content"] {
+  translate: 0 0;
+}
+:root[data-basic]:has(#basic-more:checked) {
+  overflow: hidden;
+}
+:root[data-basic] #basic-more:focus-visible ~ [data-slot="bottom-nav"] [data-more] {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* ── Dialogs ───────────────────────────────────────────────────────────── */
+
+/* An open <dialog> with no script is not modal: no top layer and no
+ * ::backdrop. Its wrapper is both, fixed over the page. */
+:root[data-basic] [data-slot="basic-modal"] {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background-color: rgb(10 14 18 / 0.45);
+  backdrop-filter: blur(2px);
+  animation: fade-in 140ms ease-out both;
+}
+:root[data-basic] [data-slot="basic-modal"] > dialog {
+  position: relative;
+  inset: auto;
+  margin: 0;
+}
+
+/* A dialog that asks first is opened by its checkbox's label. */
+:root[data-basic] [data-basic-toggle]:not(:checked) + [data-slot="basic-modal"] {
+  display: none;
+}
+
+/* ── The Apply bar ─────────────────────────────────────────────────────── */
+
+:root[data-basic] [data-basic-form] {
+  counter-reset: basic-dirty;
+}
+:root[data-basic] [data-basic-form] input[data-was="off"]:checked,
+:root[data-basic] [data-basic-form] input[data-was="on"]:not(:checked),
+:root[data-basic] [data-basic-form] input[data-was-text]:valid {
+  counter-increment: basic-dirty;
+}
+:root[data-basic] [data-basic-apply] {
+  display: none;
+}
+:root[data-basic]
+  [data-basic-form]:has(
+    input[data-was="off"]:checked,
+    input[data-was="on"]:not(:checked),
+    input[data-was-text]:valid
+  )
+  [data-basic-apply] {
+  display: flex;
+}
+/* `basic-pending` is counts.css's: the catalogue's plural for each count. */
+:root[data-basic] [data-basic-count]::before {
+  content: counter(basic-dirty, basic-pending);
+}
+
+/* ── Toasts ────────────────────────────────────────────────────────────── */
+
+:root[data-basic] [data-basic-toast] {
+  animation:
+    toast-in 320ms cubic-bezier(0.2, 0.7, 0.3, 1) both,
+    toast-out 240ms ease-in 6s forwards,
+    basic-gone 0s linear 6.24s forwards;
+}
+:root[data-basic] [data-basic-toast][data-tone="error"] {
+  animation:
+    toast-in 320ms cubic-bezier(0.2, 0.7, 0.3, 1) both,
+    toast-out 240ms ease-in 14s forwards,
+    basic-gone 0s linear 14.24s forwards;
+}
+:root[data-basic] [data-basic-toast]:hover {
+  animation-play-state: paused;
+}
+:root[data-basic] [data-basic-toast]:has(> input:checked) {
+  display: none;
+}
+@keyframes basic-gone {
+  to {
+    visibility: hidden;
+  }
+}
+
+/* ── LosOS Login's facts, while it starts ──────────────────────────────── */
+
+/* One cell, seventeen facts, each up for six seconds in turn. */
+:root[data-basic] [data-basic-facts] > p {
+  grid-area: 1 / 1;
+  opacity: 0;
+  animation: basic-fact 102s linear infinite;
+}
+@keyframes basic-fact {
+  0% {
+    opacity: 0;
+  }
+  0.5%,
+  5.4% {
+    opacity: 1;
+  }
+  5.9%,
+  100% {
+    opacity: 0;
+  }
+}
+:root[data-basic] [data-basic-facts] > p:nth-child(2) { animation-delay: 6s; }
+:root[data-basic] [data-basic-facts] > p:nth-child(3) { animation-delay: 12s; }
+:root[data-basic] [data-basic-facts] > p:nth-child(4) { animation-delay: 18s; }
+:root[data-basic] [data-basic-facts] > p:nth-child(5) { animation-delay: 24s; }
+:root[data-basic] [data-basic-facts] > p:nth-child(6) { animation-delay: 30s; }
+:root[data-basic] [data-basic-facts] > p:nth-child(7) { animation-delay: 36s; }
+:root[data-basic] [data-basic-facts] > p:nth-child(8) { animation-delay: 42s; }
+:root[data-basic] [data-basic-facts] > p:nth-child(9) { animation-delay: 48s; }
+:root[data-basic] [data-basic-facts] > p:nth-child(10) { animation-delay: 54s; }
+:root[data-basic] [data-basic-facts] > p:nth-child(11) { animation-delay: 60s; }
+:root[data-basic] [data-basic-facts] > p:nth-child(12) { animation-delay: 66s; }
+:root[data-basic] [data-basic-facts] > p:nth-child(13) { animation-delay: 72s; }
+:root[data-basic] [data-basic-facts] > p:nth-child(14) { animation-delay: 78s; }
+:root[data-basic] [data-basic-facts] > p:nth-child(15) { animation-delay: 84s; }
+:root[data-basic] [data-basic-facts] > p:nth-child(16) { animation-delay: 90s; }
+:root[data-basic] [data-basic-facts] > p:nth-child(17) { animation-delay: 96s; }
+
+/* With motion off the first fact stays, rather than none. */
+@media (prefers-reduced-motion: reduce) {
+  :root[data-basic] [data-basic-facts] > p:first-child {
+    opacity: 1;
+  }
+}

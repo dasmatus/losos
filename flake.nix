@@ -407,7 +407,7 @@
 
       };
 
-      # The master-proxy edge: Traefik (master), a rathole server, and
+      # The master-proxy edge: Traefik (master), the QUIC tunnel server, and
       # losos-registrar (serve) on a public VPS. Exported as a module, not a
       # nixosConfiguration: the VPS flake imports this next to its own
       # hardware/bootloader config and sets losos.edge.* (a bare
@@ -467,8 +467,10 @@
         losos-tpm-unlock = import ./nix/tests/tpm.nix { inherit pkgs disko; };
         losos-admin-daemon = import ./nix/tests/admin-vm.nix { inherit pkgs; };
         losos-edge-proxy = import ./nix/tests/edge-vm.nix { inherit pkgs; };
+        losos-quic = import ./nix/tests/quic.nix { inherit pkgs; };
         losos-edge-lan = import ./nix/tests/edge-lan.nix { inherit pkgs; };
         losos-edge-manage = import ./nix/tests/edge-manage.nix { inherit pkgs; };
+        losos-edge-statistics = import ./nix/tests/edge-statistics.nix { inherit pkgs; };
         losos-edge-federation = import ./nix/tests/edge-federation.nix { inherit pkgs; };
         # Primary, secondary and tertiary links: two official edges, two
         # gateways in one secondary cluster, a box; failover, bans, the hold.
@@ -528,6 +530,9 @@
         # The phone's bottom bar and its sheet on a real box, with the pull
         # request's pictures (nix/tests/bottom-nav.nix).
         losos-bottom-nav = import ./nix/tests/bottom-nav.nix { inherit pkgs; };
+        # The admin pages with JavaScript off, from sign-in to a rebuild, with
+        # the pull request's pictures (nix/tests/no-js.nix).
+        losos-no-js = import ./nix/tests/no-js.nix { inherit pkgs; };
         # The Mesh page while the box has paused sharing for want of an edge,
         # with the pull request's pictures (nix/tests/sharing-pause.nix).
         losos-sharing-pause = import ./nix/tests/sharing-pause.nix { inherit pkgs; };

@@ -24,13 +24,13 @@
   <line x1="322" y1="106.0" x2="448" y2="106.0" fill="none" stroke="#5c6a77" stroke-width="1.5" marker-end="url(#ar)"/>
   <line x1="678" y1="106.0" x2="552" y2="106.0" fill="none" stroke="#5c6a77" stroke-width="1.5" marker-end="url(#ar)"/>
   <line x1="872" y1="106.0" x2="788" y2="106.0" fill="none" stroke="#5c6a77" stroke-width="1.5" marker-end="url(#ar)"/>
-  <text x="171" y="98.0" text-anchor="middle" fill="#5c6a77" font-size="12" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">rathole</text>
+  <text x="171" y="98.0" text-anchor="middle" fill="#5c6a77" font-size="12" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">QUIC</text>
   <text x="171" y="124.0" text-anchor="middle" fill="#5c6a77" font-size="12" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">announce</text>
-  <text x="395" y="98.0" text-anchor="middle" fill="#5c6a77" font-size="12" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">rathole uplink</text>
+  <text x="395" y="98.0" text-anchor="middle" fill="#5c6a77" font-size="12" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">QUIC uplink</text>
   <text x="395" y="124.0" text-anchor="middle" fill="#5c6a77" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">POST /relay</text>
-  <text x="605" y="98.0" text-anchor="middle" fill="#5c6a77" font-size="12" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">rathole uplink</text>
+  <text x="605" y="98.0" text-anchor="middle" fill="#5c6a77" font-size="12" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">QUIC uplink</text>
   <text x="605" y="124.0" text-anchor="middle" fill="#5c6a77" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">POST /relay</text>
-  <text x="829" y="98.0" text-anchor="middle" fill="#5c6a77" font-size="12" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">rathole</text>
+  <text x="829" y="98.0" text-anchor="middle" fill="#5c6a77" font-size="12" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">QUIC</text>
   <text x="829" y="124.0" text-anchor="middle" fill="#5c6a77" font-size="12" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">announce</text>
   <line x1="268" y1="132" x2="268" y2="218" fill="none" stroke="#5c6a77" stroke-width="1.5" marker-end="url(#ar)"/>
   <line x1="500" y1="132" x2="500" y2="218" fill="none" stroke="#5c6a77" stroke-width="1.5" marker-end="url(#ar)"/>
