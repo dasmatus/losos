@@ -190,24 +190,6 @@ let
       "f ${proxyToken} 0600 root root - ${proxyTokenValue}"
     ];
   };
-  # The edge's identity, so it is an official edge and makes guest links:
-  # a root and one certificate, made at build time as nix/tests/edge-lan.nix
-  # does.
-  identityFixture =
-    pkgs.runCommand "losos-calls-edge-identity"
-      {
-        nativeBuildInputs = [ lososPkgs.losos-registrar ];
-      }
-      ''
-        mkdir -p $out
-        losos-registrar identity keygen --out $out/root.key > $out/root.pub
-        losos-registrar identity keygen --out $out/edge.key > $out/edge.pub
-        losos-registrar identity sign \
-          --root-key $out/root.key --public-key "$(cat $out/edge.pub)" \
-          --name "losos test edge" --url http://edge:8443 --days 30 \
-          > $out/edge.cert.json
-      '';
-  identityKey = "/var/secrets/losos-edge-identity.key";
   # The driver's browsers send to the media port on their own loopback; it
   # arrives at the forwarding machine's user-mode address. QEMU's user-mode
   # network sends every reply from a guest UDP port to whoever wrote to it
@@ -485,7 +467,14 @@ pkgs.testers.nixosTest {
           secretFiles
           peerNat
         ];
-        systemd.tmpfiles.rules = [ "C ${identityKey} 0600 root root - ${identityFixture}/edge.key" ];
+        # A claimed gateway makes guest links: the registrar asks only that
+        # owner's settings were measured at boot. With no TPM in the VM the
+        # measuring unit does not run, so the copy is laid down here;
+        # nothing in this test checks the passport itself.
+        systemd.tmpfiles.rules = [
+          "d /run/losos-gateway 0755 root root - -"
+          "f /run/losos-gateway/settings.json 0644 root root - {}"
+        ];
         _module.args.self = {
           packages.x86_64-linux.losos-registrar = lososPkgs.losos-registrar;
         };
@@ -501,10 +490,7 @@ pkgs.testers.nixosTest {
             hostname = "mattbox.losos.cfd";
             tokenFile = proxyToken;
           };
-          identity = {
-            keyFile = identityKey;
-            certFile = "${identityFixture}/edge.cert.json";
-          };
+          passport.enable = true;
           calls.relay = {
             mediaPorts = "${toString mediaPort}-${toString (mediaPort + 9)}";
             addresses = [ "10.0.2.15=127.0.0.1" ];
