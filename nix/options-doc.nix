@@ -53,6 +53,13 @@ let
     keyring = "retired: every secret is in the credential store (modules/credentials.nix); accepted and ignored";
   };
 
+  # Retired options below the top level, left out the same way.
+  retired = {
+    "proxy.bootstrapTokenFile" = "retired with rathole; accepted from an older overrides.nix and ignored";
+    "proxy.noisePublicKeyFile" = "retired with rathole; the edge's certificate is pinned in proxy.tunnelPinFile";
+    "proxy.rathole" = "retired with rathole; accepted and ignored";
+  };
+
   # Options another file on the box sets at normal priority: a line in
   # overrides.nix would collide with it. `fixed` names who owns the value.
   fixed = {
@@ -86,7 +93,7 @@ let
     "tls"
     "upgradeFlakeUri"
     "proxy.tokenFile"
-    "proxy.bootstrapTokenFile"
+    "proxy.tunnelPinFile"
     "cache"
   ];
 
@@ -263,7 +270,9 @@ let
 
   walk =
     path: v:
-    if lib.isOption v then
+    if retired ? ${lib.concatStringsSep "." path} then
+      [ ]
+    else if lib.isOption v then
       [ (leaf path v) ]
     else
       lib.concatLists (
@@ -275,5 +284,5 @@ in
   version = 1;
   options = walk [ ] options.losos;
   # So a reader of the document knows what is not in it.
-  inherit excluded;
+  excluded = excluded // retired;
 }

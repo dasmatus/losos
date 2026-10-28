@@ -34,7 +34,7 @@
 #
 #   loopback (127.0.0.1)   -> admin routes 403. Deliberate, and load-bearing:
 #                             master-proxy tunnel traffic reaches this vhost
-#                             from 127.0.0.1 (rathole's local_addr), so
+#                             from 127.0.0.1 (the tunnel client's local address), so
 #                             allowing loopback would publish the entire admin
 #                             surface to the internet whenever
 #                             losos.proxy.enable is on. A version of this test

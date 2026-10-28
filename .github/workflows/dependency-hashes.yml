@@ -18,8 +18,20 @@ name: dependency-hashes
 # A push made with GITHUB_TOKEN starts no workflow. LOCKFILE_UPDATE_TOKEN, the
 # token the weekly lockfile job pushes with, does; without it the job starts
 # ci.yml on the branch itself.
+#
+# A pull request can still reach main with a stale hash: it was merged while
+# its run waited for a runner, its last push came before this workflow
+# existed, or the lock file changed in the merge itself. The `main` job checks
+# every push to main that touches a lock file and, when a hash is stale,
+# opens a pull request with the fix; main takes signed commits only, so it
+# never pushes there.
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "**/Cargo.lock"
+      - "**/package-lock.json"
   pull_request_target:
     types: [opened, synchronize, reopened]
     paths:
@@ -39,17 +51,21 @@ on:
 permissions:
   contents: write
   actions: write
+  pull-requests: write
 
+# Runs on main queue one behind the other rather than cancel: each one checks
+# the last few merges, so a run that GitHub drops from the queue loses nothing.
 concurrency:
-  group: dependency-hashes-${{ github.event.pull_request.number || inputs.branch }}
-  cancel-in-progress: true
+  group: dependency-hashes-${{ github.event.pull_request.number || inputs.branch || github.ref_name }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 
 jobs:
   fix:
     name: "bot: refresh dependency hashes"
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      github.event.pull_request.head.repo.full_name == github.repository
+      (github.event_name == 'pull_request_target' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -119,3 +135,72 @@ jobs:
           if [ "$HAS_PUSH_TOKEN" != true ]; then
             gh workflow run ci.yml --ref "$BRANCH"
           fi
+
+  main:
+    name: "bot: check dependency hashes on main"
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup-nix
+
+      # The last five merges, not only this push: a run waiting in the queue
+      # is replaced by the next one, and the scrub bot's rewrite of main makes
+      # the push's `before` an orphan.
+      - name: Recompute the hashes
+        id: fix
+        run: |
+          set -euo pipefail
+          base="$(git rev-parse --verify -q 'HEAD~5' || git rev-list --max-parents=0 HEAD | tail -n1)"
+          changed="$(python3 .github/scripts/fix-hashes.py --base "$base")"
+          {
+            echo "## Dependency hashes on main"
+            if [ -n "$changed" ]; then
+              echo "Stale on main: ${changed//$'\n'/, }. A pull request carries the fix."
+            else
+              echo "Every hash checked is current."
+            fi
+          } >>"$GITHUB_STEP_SUMMARY"
+          echo "changed=${changed//$'\n'/, }" >>"$GITHUB_OUTPUT"
+
+      - name: Open a pull request with the new hashes
+        if: steps.fix.outputs.changed != ''
+        env:
+          CHANGED: ${{ steps.fix.outputs.changed }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          TOKEN: ${{ secrets.LOCKFILE_UPDATE_TOKEN || github.token }}
+          HAS_PUSH_TOKEN: ${{ secrets.LOCKFILE_UPDATE_TOKEN != '' }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          export GH_TOKEN="$TOKEN"
+          echo "::warning::Stale dependency hashes on main: $CHANGED"
+          branch="bot/dependency-hashes-${GITHUB_SHA::8}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git commit -qam "nix: refresh the dependency hashes of $CHANGED"
+          auth="$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic ${auth}" \
+            push origin "HEAD:refs/heads/$branch"
+          body="$(mktemp)"
+          cat >"$body" <<BODY
+          A lock file reached \`$DEFAULT_BRANCH\` without the Nix hash that pins it. This
+          refreshes the hashes of $CHANGED, computed by \`.github/scripts/fix-hashes.py\`
+          on ${GITHUB_SHA::8}.
+          BODY
+          url="$(gh pr create --base "$DEFAULT_BRANCH" --head "$branch" \
+            --title "nix: refresh the dependency hashes of $CHANGED" --body-file "$body")"
+          if [ "$HAS_PUSH_TOKEN" != true ]; then
+            gh workflow run ci.yml --ref "$branch"
+          fi
+          # An older run's pull request carries values this one replaces.
+          gh pr list --base "$DEFAULT_BRANCH" --state open --json number,headRefName \
+            --jq '.[] | select(.headRefName | startswith("bot/dependency-hashes-")) | select(.headRefName != "'"$branch"'") | .number' |
+            while read -r old; do
+              gh pr close "$old" --comment "Replaced by $url."
+            done

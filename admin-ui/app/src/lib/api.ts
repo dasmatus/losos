@@ -789,7 +789,7 @@ export interface EdgePath {
   name: string;
   url: string;
   source: EdgeSource;
-  rathole: string;
+  tunnel: string;
   tier?: EdgeTier;
   cluster?: string;
   member?: string;
@@ -3279,7 +3279,7 @@ export interface GatewaySettings {
   } | null;
   /** Null on an edge that relays to no hub. */
   uplink: {
-    set: { id: string; registrarUrl: string; ratholeEndpoint: string } | null;
+    set: { id: string; registrarUrl: string; tunnelEndpoint: string } | null;
     relaying: number;
   } | null;
   /** Boxes that enrolled here on first contact; only these can be forgotten. */
@@ -3329,8 +3329,7 @@ export interface UplinkForm {
   id: string;
   token: string;
   registrarUrl: string;
-  ratholeEndpoint: string;
-  bootstrapToken?: string;
+  tunnelEndpoint: string;
 }
 
 /** GET /manage/api/gateway on the edge. */

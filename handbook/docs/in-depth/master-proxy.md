@@ -10,7 +10,7 @@ mdx:
 Optional. It makes the box reachable from the internet without opening a port
 at home.
 
-![internet → Traefik (VPS, :443) → rathole server ⇐ tunnel ⇐ rathole client (box) → nginx](/img/diagrams/master-proxy-en.svg)
+![internet → Traefik (VPS, :443) → tunnel server ⇐ QUIC tunnel ⇐ tunnel client (box) → nginx](/img/diagrams/master-proxy-en.svg)
 
 ## Edge (VPS)
 
@@ -24,7 +24,7 @@ Import the `nixosModules.edge` flake output into the VPS configuration and set
 - `losos.edge.cluster.enable` also runs the [mesh](mesh.md) control plane, an
   rke2 server with Longhorn. The proxy works without it.
 
-`losos-registrar` keeps rathole's server config in step with the registered
+`losos-registrar` keeps the tunnel server's file in step with the registered
 appliances, and Traefik finds them through the registrar.
 
 ## How Traefik finds the boxes
@@ -61,19 +61,34 @@ time.
 ## Appliance
 
 Set `losos.proxy.enable = true` and the `losos.proxy.*` options
-(`registrarUrl`, `edgeRatholeEndpoint`, `hostname`, `applianceId`,
+(`registrarUrl`, `edgeTunnelEndpoint`, `hostname`, `applianceId`,
 `tokenFile`).
+
+## The tunnel
+
+The box keeps one QUIC connection to the edge, on UDP port 2333
+(`losos.edge.tunnelBindPort`). Each visitor's connection travels as its own
+stream inside it, so a slow download does not hold up other requests, a new
+request needs no new handshake, and the connection survives the box's
+address changing. The box only dials out, so it works behind NAT and
+carrier-grade NAT with no port forward. A keepalive every 10 seconds holds
+the NAT mapping open.
+
+Where a network drops UDP, the box gives QUIC five seconds and then dials
+the same port over TCP: TLS 1.3 with the same certificate, carrying HTTP/2
+streams. It tries QUIC again every five minutes and moves back when it gets
+through. The edge's firewall opens the port for both.
 
 ## Tunnel encryption
 
-rathole uses its Noise transport. The edge generates a key pair on first
-boot. Each appliance fetches the public key from the registrar on first start
-and stores it at `losos.proxy.noisePublicKeyFile`. To pin the key out of band,
-put the file there beforehand; the appliance never overwrites it.
-
-:::warning[Keep the tunnel encrypted]
-Setting either key option to `null` falls back to plain TCP. Don't.
-:::
+The tunnel is TLS 1.3 on both transports. The edge makes a self-signed
+certificate on its first start and keeps it in `/var/lib/losos-tunnel`. Each
+appliance fetches the certificate's SHA-256 from the registrar
+(`GET /tunnel-pin`) before its first dial and stores it at
+`losos.proxy.tunnelPinFile`; from then on the tunnel accepts that
+certificate and no other. To pin it out of band, put the file there
+beforehand; the appliance never overwrites it. Each service the box serves
+is claimed with the box's token, compared in constant time.
 
 ## Admin UI stays LAN-only
 
@@ -359,7 +374,7 @@ check, as a Vercel Function at `https://losos-edge.dasmat.us`, which is the
 default `losos.proxy.registrarUrl`. The registry lives in a Neon Postgres,
 and a status page at `/` shows the registered boxes and the Traefik
 configuration the edge would write for them. It is the control plane only.
-The rathole tunnel, Traefik's TLS, the mesh and the market cannot run on a
+The tunnel, Traefik's TLS, the mesh and the market cannot run on a
 serverless host, so the data path, reaching a box through its public
 hostname, still needs the VPS. The page also lists ids and hostnames to
 anyone with the URL. It is a demonstration host, not an edge. Deployment

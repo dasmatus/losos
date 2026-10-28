@@ -7,9 +7,9 @@ What losos defends against, and what it does not.
 The appliance has no SSH and no login shell. The root filesystem is a tmpfs;
 durable secrets live on the encrypted `/persist`.
 
-1. **Internet → edge.** Only the master proxy (Traefik, rathole,
-   `losos-registrar`) faces the internet, and it runs on a separate VPS.
-2. **Edge → appliance.** A rathole tunnel. Its traffic reaches the appliance's
+1. **Internet → edge.** Only the master proxy (Traefik, the tunnel
+   server, `losos-registrar`) faces the internet, and it runs on a separate VPS.
+2. **Edge → appliance.** The tunnel, QUIC or TLS over TCP. Its traffic reaches the appliance's
    nginx from `127.0.0.1`, so the LAN-only guard on the admin routes must not
    allow loopback.
 3. **LAN → appliance.** Trusted once; see [The LAN](#the-lan).
@@ -256,16 +256,18 @@ the data. `nix/tests/tpm.nix` boots the TPM path end to end under swtpm;
 
 ### Tunnel encryption
 
-The rathole tunnel uses Noise (`Noise_NK_25519_ChaChaPoly_BLAKE2s`). The edge
-holds the private key (`losos.edge.noisePrivateKeyFile`, a 0600 file under
-`/var/secrets`); each appliance pins the public key
-(`losos.proxy.noisePublicKeyFile`).
+The tunnel is TLS 1.3 (rustls), carried by QUIC on UDP and, where a network
+drops UDP, over TCP on the same port. The edge's `losos-tunnel` unit makes a
+self-signed certificate on first start (`/var/lib/losos-tunnel/key.der`,
+mode 0600) and writes its SHA-256 to `/var/lib/losos-tunnel/pin`; each
+appliance pins that hash (`losos.proxy.tunnelPinFile`) and accepts no other
+certificate, whatever its name or issuer.
 
-The edge generates the pair on first boot. Each appliance fetches the public
-key from the registrar (`GET /noise-public-key`) on first start. That fetch is
-trust on first use, protected only by the registrar's TLS. A key file placed
-there beforehand is never overwritten, which is how to pin it out of band.
-Setting either option to `null` falls back to plain TCP.
+Each appliance fetches the pin from the registrar (`GET /tunnel-pin`) on first
+start. That fetch is trust on first use, protected only by the registrar's
+TLS. A pin file placed there beforehand is never overwritten, which is how to
+pin it out of band. Each service still needs its own token: the edge refuses
+a hello whose token does not match, on either transport.
 
 ### Throttling and audit log
 
