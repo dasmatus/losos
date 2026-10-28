@@ -34,6 +34,7 @@ an, der Anmeldung der Box selbst, in deinem Browser.
 | Windsurf | ein Eintrag in `~/.codeium/windsurf/mcp_config.json` |
 | Zed | ein Eintrag unter `context_servers` in Zeds `settings.json` |
 | LM Studio | ein Eintrag in `~/.lmstudio/mcp.json` |
+| derisk Agent, auf LosOS Desktop | ein Eintrag in `~/.config/derisk-agent/mcp.json` |
 
 Ein Werkzeug wird an seinem Programm im `PATH` oder an seinem
 Einstellungsordner erkannt. `losos agents` listet, was gefunden wurde:
