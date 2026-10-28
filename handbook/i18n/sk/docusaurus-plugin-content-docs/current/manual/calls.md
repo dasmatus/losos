@@ -50,7 +50,9 @@ jeho hovor sa zatvorí.
 
 Časová os miestnosti ukáže, že sa začal hovor. Kým hovor trvá, riadok má
 tlačidlo **Pripojiť sa**, takže sa môže pripojiť aj ten, kto zvonenie
-zmeškal alebo z hovoru odišiel. Keď odíde posledný človek, časová os ukáže,
+zmeškal alebo z hovoru odišiel. Keď sa niekomu zavrie prehliadač alebo
+stratí sieť, ostatní uvidia, že odišiel, do niekoľkých sekúnd. Keď odíde
+posledný človek, časová os ukáže,
 že sa hovor skončil. Iné aplikácie Matrix namiesto toho ukážu krátke
 oznámenie s odkazom, ktorý otvorí hovor v LosOS Chat, kde sa ľudia
 prihlásia cez LosOS Login.

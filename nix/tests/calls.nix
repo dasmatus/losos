@@ -1,7 +1,7 @@
 # nixos-test-vms config for calls in LosOS chat (modules/calls.nix,
 # backend/src/calls/, admin-ui/app/src/calls/, admin-ui/app/src/chat/calls.tsx).
 #
-# The box runs LosOS Login, lososd, nginx, Dendrite and losos-calls as they
+# The box runs LosOS Login, lososd, nginx, Synapse and losos-calls as they
 # ship. Three people call each other from the chat page in real browsers,
 # and the SFU writes a copy of every frame it forwards, so the test can show
 # what the box itself holds. What only a booted box can show:
@@ -564,7 +564,7 @@ pkgs.testers.nixosTest {
         box.wait_until_succeeds("systemctl is-active losos-rathole-client.service", timeout=300)
     box.wait_for_unit("lososd.service")
     box.wait_for_unit("nginx.service")
-    box.wait_for_unit("dendrite.service")
+    box.wait_for_unit("losos-chat.service")
     box.wait_for_unit("losos-calls.service")
     box.wait_for_open_port(443)
     laptop.wait_for_unit("socks.service")
@@ -860,7 +860,7 @@ pkgs.testers.nixosTest {
             print(f"{name} sees {page.url}:\n{page.inner_text('body')[:3000]}\n{problems}")
             print("\n".join(seen[:8] + ["…"] + seen[-20:]))
             print(box.execute("journalctl -u lososd --no-pager | grep -i 'chat\\|exchange\\|warn' | head -n 40")[1])
-            print(box.execute("journalctl -u authelia-losos -u dendrite --since -4min --no-pager | grep -v 'level=info' | tail -n 60")[1])
+            print(box.execute("journalctl -u authelia-losos -u losos-chat --since -4min --no-pager | grep -v 'level=info' | tail -n 60")[1])
             raise
         return page
 
@@ -1278,10 +1278,6 @@ pkgs.testers.nixosTest {
                           token=tokens["matus"],
                           data={"name": "Holiday", "preset": "private_chat",
                                 "invite": [f"@eva:{HOST}", f"@jan:{HOST}"],
-                                # As chat makes a private room: every member
-                                # may send a MatrixRTC membership.
-                                "power_level_content_override": {
-                                    "events": {"org.matrix.msc3401.call.member": 0}},
                                 # Calls are only for encrypted rooms: their
                                 # keys go to devices the crypto tracks. The
                                 # slot is the room's one call (MSC4143).
@@ -1322,22 +1318,31 @@ pkgs.testers.nixosTest {
             page.locator("[data-ringing]").get_by_role("button", name="Answer", exact=True).click()
         for page in (owner, her, jan):
             live(page, 2)
-        # What the room holds is MatrixRTC: the open slot, and one
-        # membership per device, each publishing the SFU and the one call.
+        # What the room holds is MatrixRTC: the open slot, and a sticky
+        # membership from each of them (MSC4354; encrypted, so the server
+        # sees only that it is sticky), each with a delayed leave waiting on
+        # the homeserver (MSC4140) for the moment its page goes quiet.
         code, body = call(f"/_matrix/client/v3/rooms/{room}/state", cookies["matus"], token=tokens["matus"])
         assert code == 200, (code, body)
         state = json.loads(body)
         slot = [e for e in state if e["type"] == "org.matrix.msc4143.rtc.slot"]
         assert [e["state_key"] for e in slot] == ["org.losos.call#room"], slot
         assert slot[0]["content"]["status"] == "open", slot
-        members = [e for e in state if e["type"] == "org.matrix.msc3401.call.member" and e["content"]]
-        assert sorted(e["sender"] for e in members) == sorted(f"@{n}:{HOST}" for n in ("matus", "eva", "jan")), members
-        for e in members:
-            c = e["content"]
-            assert c["application"] == "org.losos.call" and c["call_id"] == "room", c
-            assert e["state_key"].startswith(f"_{e['sender']}_{c['device_id']}_"), e
-            assert c["foci_preferred"][0]["type"] == "org.losos.sfu", c
-        assert len({e["content"]["foci_preferred"][0]["call"] for e in members}) == 1, members
+        assert not [e for e in state if e["type"] == "org.matrix.msc3401.call.member"], state
+        code, body = call(f"/_matrix/client/v3/rooms/{room}/messages?dir=b&limit=100", cookies["matus"],
+                          token=tokens["matus"])
+        assert code == 200, (code, body)
+        sticky = [e for e in json.loads(body)["chunk"] if "msc4354_sticky" in e]
+        assert {e["sender"] for e in sticky} == {f"@{n}:{HOST}" for n in ("matus", "eva", "jan")}, sticky
+        assert all(e["type"] == "m.room.encrypted" for e in sticky), sticky
+        def leaves(n):
+            code, body = call("/_matrix/client/unstable/org.matrix.msc4140/delayed_events", cookies[n],
+                              token=tokens[n])
+            assert code == 200, (code, body)
+            return [e for e in json.loads(body)["delayed_events"]
+                    if urllib.parse.quote(e["room_id"]) == room]
+        for n in ("matus", "eva", "jan"):
+            assert leaves(n), n
         shot(owner, "call-three")
         film(owner, "call-of-three", "a call of three in a room")
         jan.get_by_role("button", name="Leave the call").click()
@@ -1363,29 +1368,44 @@ pkgs.testers.nixosTest {
         # The link in the notice other Matrix apps show brings Eva back.
         her.get_by_role("button", name="Leave the call").click()
         her.locator("[data-call-view]").wait_for(state="detached")
-        # Her leave reaches the room before the page goes away.
-        def eva_in_call():
-            state = json.loads(call(f"/_matrix/client/v3/rooms/{room}/state", cookies["matus"], token=tokens["matus"])[1])
-            return any(e["type"] == "org.matrix.msc3401.call.member" and e["content"]
-                       and e["sender"] == f"@eva:{HOST}" for e in state)
+        # Her leave reaches the room before the page goes away: the
+        # homeserver has no delayed leave of hers left to send.
         for _ in range(60):
-            if not eva_in_call():
+            if not leaves("eva"):
                 break
             time.sleep(1)
-        assert not eva_in_call(), "Eva's membership stayed after she left"
+        assert not leaves("eva"), "Eva's delayed leave stayed after she left"
         her.goto(f"https://{HOST}/chat/?join={room}&call=video")
         for page in (owner, her, jan):
             live(page, 2, frames=0)
 
-    with subtest("hanging up ends the call for the room"):
-        for page in (jan, her):
-            page.get_by_role("button", name="Leave the call").click()
-            page.locator("[data-call-view]").wait_for(state="detached")
+    with subtest("a closed browser leaves by itself; hanging up ends the call for the room"):
+        # Jan's browser goes away without a word. The homeserver sends the
+        # leave it was holding for him (MSC4140) seconds later: a new sticky
+        # event of his, and no delayed leave left.
+        def sticky_from(n):
+            body = call(f"/_matrix/client/v3/rooms/{room}/messages?dir=b&limit=100", cookies["matus"],
+                        token=tokens["matus"])[1]
+            return len([e for e in json.loads(body)["chunk"]
+                        if "msc4354_sticky" in e and e["sender"] == f"@{n}:{HOST}"])
+        assert leaves("jan")
+        before = sticky_from("jan")
+        jan.context.close()
+        for _ in range(60):
+            if not leaves("jan") and sticky_from("jan") > before:
+                break
+            time.sleep(1)
+        assert not leaves("jan") and sticky_from("jan") > before, "Jan's leave never came"
+        for page in (owner, her):
+            until_js(page,
+                "document.querySelectorAll('[data-call-view] [data-pid]').length === 2", timeout=60000)
+        her.get_by_role("button", name="Leave the call").click()
+        her.locator("[data-call-view]").wait_for(state="detached")
         # Left alone, Matus is out of the call too, and the SFU told his
         # page it was the last one there, so it tells the room.
         owner.locator("[data-call-view]").wait_for(state="detached", timeout=60000)
         owner.get_by_role("log").get_by_text("The call ended").last.wait_for(timeout=60000)
-        jan.locator("[data-call-notice] button").wait_for(state="detached", timeout=30000)
+        her.locator("[data-call-notice] button").wait_for(state="detached", timeout=30000)
 
     with subtest("a call link from another app opens the direct chat and rings"):
         # Contacts and Mail link a person as /chat/?with=<name>&call=voice.

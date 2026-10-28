@@ -7,9 +7,8 @@
 //! (`backend/src/chat.rs`). A guest's socket gets an empty `Remote-User`
 //! and comes in on its invite alone.
 //!
-//! Chat does not federate, so nobody from another homeserver can be in a
-//! call; a Matrix OpenID token would only repeat what LosOS Login already
-//! said, and Dendrite does not answer the OpenID check with federation off.
+//! The SFU admits only people of this box, so a Matrix OpenID token would
+//! only repeat what LosOS Login already said.
 
 use super::admit::{Refusal, UserId};
 
