@@ -369,6 +369,18 @@ in
       description = "host:port the rathole client dials (the edge rathole server's [server] bind).";
     };
 
+    proxy.bansFile = lib.mkOption {
+      type = lib.types.str;
+      default = "/var/lib/losos/edge-bans.json";
+      description = ''
+        The ban list lososd reads on every edge scan,
+        `{"edges": [<url>], "clusters": [<official cluster>]}`. A banned
+        edge is never chosen as the path, and a box on one moves to another
+        edge of the same tier; a ban also breaks the hold of a custom
+        domain, which follows the box. A missing file bans nothing.
+      '';
+    };
+
     proxy.registrarUrl = lib.mkOption {
       type = lib.types.str;
       # The demo edge (edge/vercel/, the registrar as a Vercel Function at the
@@ -3117,6 +3129,88 @@ in
         enrol list|forget --dir /var/lib/losos-registrar/enrolled` on the edge
         shows and drops enrolled boxes; a box that is still heartbeating
         re-enrols with the token it holds, so forgetting is for a box that left.
+      '';
+    };
+
+    # ── Clusters and bans (handbook/docs/in-depth/edge-federation.md,
+    # "Three tiers") ─────────────────────────────────────────────────────
+    edge.secondary.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Let this gateway join a secondary cluster: gateways on one network
+        that serve the same boxes and fail over for each other. Which
+        cluster is runtime state, written by `losos-edge cluster
+        create|join` into losos.edge.secondary.file and re-read every pass;
+        with no file the gateway is a cluster of its own. Requires
+        losos.edge.lan.advertise, because boxes find the members by their
+        adverts.
+      '';
+    };
+
+    edge.secondary.file = lib.mkOption {
+      type = lib.types.str;
+      default = "/var/lib/losos-edge/cluster.json";
+      description = ''
+        The runtime cluster file (`{name, member, secret, peers}`,
+        edge/registrar/src/secondary.rs). Holds the cluster's shared secret,
+        so it is 0600 and never a store path.
+      '';
+    };
+
+    edge.secondary.interval = lib.mkOption {
+      type = lib.types.str;
+      default = "10s";
+      description = "How often the gateways of a secondary cluster sync their boxes. Well under losos.edge.heartbeatTtl.";
+    };
+
+    edge.official.cluster = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "eu";
+      description = ''
+        The official cluster this official edge belongs to: the official
+        edges behind one load balancer. A DNS label. Reported to boxes and
+        gateways at `GET /cluster/secondary`, and a ban may name the whole
+        cluster.
+      '';
+    };
+
+    edge.official.peers = lib.mkOption {
+      type = lib.types.listOf (
+        lib.types.submodule {
+          options = {
+            cluster = lib.mkOption {
+              type = lib.types.str;
+              description = "The official cluster of that edge.";
+            };
+            url = lib.mkOption {
+              type = lib.types.str;
+              description = "Its registrar API base URL.";
+            };
+            tunnel = lib.mkOption {
+              type = lib.types.str;
+              description = "Its tunnel endpoint, `host:port`.";
+            };
+          };
+        }
+      );
+      default = [ ];
+      description = ''
+        The official edges this edge lists for boxes and gateways to spread
+        over and to move to when one is banned, itself included or not. At
+        most 64.
+      '';
+    };
+
+    edge.bansFile = lib.mkOption {
+      type = lib.types.str;
+      default = "/var/lib/losos-registrar/bans.json";
+      description = ''
+        The ban list, `{"edges": [<url>], "clusters": [<official cluster>]}`,
+        re-read on every uplink pass. A gateway whose hub, or the hub's
+        official cluster, is banned moves its uplink to an official edge
+        outside the ban. A missing or unreadable file bans nothing.
       '';
     };
 

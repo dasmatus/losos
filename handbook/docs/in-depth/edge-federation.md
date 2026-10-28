@@ -31,6 +31,101 @@ Three planes, and only two of them federate:
 | data    | rathole tunnels + Traefik                        | one more hop: hub → spoke → box                                            |
 | mesh    | rke2 server + Longhorn                           | **no**: each edge is its own cluster, see "What stays local"               |
 
+## Three tiers
+
+Every link an edge or a box holds has a tier, and the box, the gateway and
+the hub all report it:
+
+| Tier      | Link                                                   | Cluster                     |
+| --------- | ------------------------------------------------------ | --------------------------- |
+| primary   | edge to edge: a gateway's uplink to an official edge   | the **main cluster**        |
+| secondary | box to a local gateway of its own cluster              | a **secondary cluster**     |
+| tertiary  | box straight to an official edge                       | none: the fallback          |
+
+A box never holds a primary link itself. It sees its own link as
+`path.tier` in `GET /api/edge` and on the Mesh page, the gateway shows its
+links in `losos-edge status`, and the hub keeps the gateways of the main
+cluster, every one on a primary link, in `main-cluster.json` beside its
+registry (`losos-edge main` on a gateway prints its own site's).
+
+### Secondary clusters
+
+One gateway on a network can fail. A **secondary cluster** is one or more
+gateways on the same network that serve the same boxes, so a box keeps its
+reach when one of them goes away. It is runtime state, made on the gateways:
+
+```sh
+# on the first gateway
+losos-edge cluster create office
+# it prints the line to run on each other gateway:
+losos-edge cluster join office <secret> http://gwa.local:8443
+```
+
+The cluster file (`losos.edge.secondary.file`, by default
+`/var/lib/losos-edge/cluster.json`, mode 0600) holds the name, this
+gateway's member name, the shared secret and the gateways it was joined
+through. The registrar re-reads it on every pass, so `create`, `join` and
+`losos-edge cluster leave` need no restart. The members sync every
+`losos.edge.secondary.interval` over `POST /cluster/secondary/sync`, each
+message signed with an HMAC of the secret: every member learns the boxes the
+others enrolled, so a box's token works on all of them, and the time each
+member last heard each box. Only the member that heard a box most recently
+relays it to the hub, so the hub's route follows the box without flapping.
+`losos-edge cluster show` lists the members that answer.
+
+`GET /cluster/secondary` is what a box reads from every edge it finds: the
+edge's role, the tier of the links it serves, its cluster and member name,
+the members that answer, and on an official edge its official cluster and
+peers. A gateway without a cluster file counts as a cluster of its own,
+named by its host.
+
+### Official clusters and load balancing
+
+The official edges behind one load balancer form an **official cluster**.
+Each names it and lists the official edges boxes may use:
+
+```nix
+losos.edge.official = {
+  cluster = "eu";
+  peers = [
+    { cluster = "eu"; url = "https://eu-1.losos.cfd"; tunnel = "eu-1.losos.cfd:2333"; }
+    { cluster = "eu"; url = "https://eu-2.losos.cfd"; tunnel = "eu-2.losos.cfd:2333"; }
+  ];
+};
+```
+
+A box adds the listed peers that answer to the edges it found. On a
+tertiary link it stays on the official edge it uses while that edge
+answers. Otherwise it takes the one that a rendezvous hash of its appliance
+id weighs heaviest, which spreads boxes evenly across the cluster and moves
+only the boxes of an edge that left.
+
+### Bans
+
+A ban names single edges, whole official clusters, or both:
+
+```json
+{ "edges": ["https://eu-1.losos.cfd"], "clusters": ["us"] }
+```
+
+A box reads it from `losos.proxy.bansFile` on every scan, and an edge from
+`losos.edge.bansFile` on every uplink pass. A missing or unreadable file
+bans nothing. A banned edge is never chosen. A box on one moves on its own
+to another edge of the same tier, and `GET /api/edge` names the edge it
+left as `leftBanned`. A gateway whose hub, or the hub's official cluster, is
+banned rewrites its uplink to an official peer outside the ban and drops the
+old hub's pinned key.
+
+### Custom domains hold a box
+
+A box with a live custom domain stays on the edge that serves the domain.
+It keeps dialling that edge while it is gone and fails over to no other
+gateway or tier, because a move would break the domain. `GET /api/edge`
+shows the edge as `held`, and moving the box to another cluster
+(`POST /api/edge/cluster`) answers 409 with `heldByDomain`. A ban is the one
+exception: a ban on the held edge, or on its official cluster, moves the box
+like any other, and the hold follows it to the new edge.
+
 ## Hub side: a tenant that may relay
 
 A spoke is an ordinary tenant of the hub with one extra attribute, the zone
@@ -120,28 +215,40 @@ so forgetting is for a box that left. The hub keeps closed enrolment.
 official one by URL) and refuses to turn sharing on when there is none. It
 picks one path by this rule:
 
-1. **a local edge first**: the first LAN advert whose `/health` answers; the
-   advert now also carries `rathole=<host:port>` so the box knows where its
-   tunnel goes;
-2. **the official edge second**: `losos.proxy.registrarUrl` and
-   `losos.proxy.edgeRatholeEndpoint`, when the LAN has none;
-3. **none**: every edge-dependent feature is off: the tunnel and announce
+1. **banned edges are dropped** first ([Bans](#bans));
+2. **a custom domain's edge**, while the box has one and the edge is not
+   banned ([Custom domains hold a box](#custom-domains-hold-a-box));
+3. **a gateway of its own secondary cluster** (secondary): the one in use
+   while it answers, else the first by member name. A box in no cluster yet
+   settles in the cluster in reach with the most gateways (ties by name) and
+   keeps it, so it moves between clusters only when its owner says so on
+   the Mesh page (`POST /api/edge/cluster`). A gateway that names no cluster
+   is used but never written down;
+4. **an official edge** (tertiary), by [load balancing](#official-clusters-and-load-balancing),
+   or the configured edge (`losos.proxy.registrarUrl` and
+   `losos.proxy.edgeRatholeEndpoint`) when none is proved official;
+5. **none**: every edge-dependent feature is off: the tunnel and announce
    units are stopped, the sharing gate refuses, the market relay refuses.
 
 `GET /api/edge` carries the choice as `path` (`{name, url, rathole,
-source}` or `null`), beside every edge's `rathole` endpoint. With
+source, tier}`, with `cluster` and `member` on a secondary link and
+`officialCluster` on a tertiary one, or `null`), beside every edge's
+`rathole` endpoint, the clusters in reach and the box's own `cluster`. With
 `losos.proxy.enable` on, `lososd` writes the path to
 `/run/losos/edge-path.env` (`LOSOS_EDGE_PATH_URL`, `_RATHOLE`, `_SOURCE`,
-`_NOISE_PUB`) and drives the two tunnel units from it: a change of path
-restarts `losos-rathole-client` and `losos-registrar-announce`, no path
+`_TIER`, `_CLUSTER`, `_OFFICIAL_CLUSTER`, `_NOISE_PUB`) and drives the two
+tunnel units from it: a change of path restarts `losos-rathole-client` and
+`losos-registrar-announce`, a move to another cluster also restarts
+`losos-mesh-join` and `rke2-agent`, no path
 writes `/run/losos/edge-none` and stops them (both units carry
 `ConditionPathExists=!/run/losos/edge-none`, so nothing restarts them until
 an edge is back). Both files are on `/run`: until the first scan after a
 boot the units dial the configured edge, as they always did. The client's own
 `ExecStartPre` pins each edge's Noise key in a file of its own: the
-configured edge's at `losos.proxy.noisePublicKeyFile`, a LAN edge's under
-`/var/secrets/losos-edge-pins/<host>_<port>.pub`. A second gateway
-therefore never inherits the first one's key. The box's token is the same on
+configured edge's at `losos.proxy.noisePublicKeyFile`, any other edge's (a
+LAN gateway, or an official peer) under
+`/var/secrets/losos-edge-pins/<host>_<port>.pub`. A second edge therefore
+never inherits the first one's key. The box's token is the same on
 every road. The hub has it in its whitelist, a gateway learns it on first
 contact, and `lososd` mints it (and the bootstrap token) on first start when
 the files are missing. Its public name is the same too: the owner's `losos.proxy.hostname` must be one
@@ -153,6 +260,10 @@ answering, and with none in reach it already says `available: false`.
 
 `nix/tests/edge-federation.nix` runs the three machines (hub, gateway, box) and
 walks exactly this: LAN path, enrolment, uplink, fall back, off, back.
+`nix/tests/edge-clusters.nix` runs two official edges of one official
+cluster, two gateways of one secondary cluster and a box: the cluster sync,
+the primary links, failover between the gateways, the tertiary fallback, a
+ban on an edge for the box and for a gateway, and the custom domain's hold.
 
 ## What stays local
 

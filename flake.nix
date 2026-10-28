@@ -474,6 +474,9 @@
         losos-edge-lan = import ./nix/tests/edge-lan.nix { inherit pkgs; };
         losos-edge-manage = import ./nix/tests/edge-manage.nix { inherit pkgs; };
         losos-edge-federation = import ./nix/tests/edge-federation.nix { inherit pkgs; };
+        # Primary, secondary and tertiary links: two official edges, two
+        # gateways in one secondary cluster, a box; failover, bans, the hold.
+        losos-edge-clusters = import ./nix/tests/edge-clusters.nix { inherit pkgs; };
         losos-edge-lan-two-boxes = import ./nix/demo/edge-lan/two-boxes.nix { inherit pkgs; };
         # Two boxes and an edge gateway between them, the light mode of the
         # demo nix/demo/box-edge-box/bootstrap.sh sets up.

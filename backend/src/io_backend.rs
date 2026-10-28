@@ -705,19 +705,25 @@ fn drive_edge_path(status: &crate::edge::EdgeStatus) {
     let configured_pin = std::env::var("LOSOS_EDGE_NOISE_PUB_FILE")
         .ok()
         .filter(|v| !v.is_empty());
+    let configured_url = std::env::var("LOSOS_EDGE_URL")
+        .ok()
+        .map(|v| v.trim_end_matches('/').to_string())
+        .filter(|v| !v.is_empty());
 
     let next = status.path.as_ref().map(|p| {
         // The pin lives with the edge it belongs to: the configured one at
-        // losos.proxy.noisePublicKeyFile, a LAN edge under the pin dir by
-        // its host, so a second gateway never inherits the first's key.
-        // Noise is on for every edge or none (the configured file is unset
-        // only when the module runs plain TCP).
-        let pin = configured_pin.as_ref().map(|configured| match p.source {
-            crate::edge::Source::Configured => configured.clone(),
-            crate::edge::Source::Lan => match &pin_dir {
-                Some(dir) => format!("{dir}/{}", crate::edge::pin_file_name(&p.url)),
-                None => configured.clone(),
-            },
+        // losos.proxy.noisePublicKeyFile, any other (a LAN gateway, or an
+        // official peer the configured edge listed) under the pin dir by its
+        // host, so a second edge never inherits the first's key. Noise is on
+        // for every edge or none (the configured file is unset only when the
+        // module runs plain TCP).
+        let pin = configured_pin.as_ref().map(|configured| {
+            let own = p.source == crate::edge::Source::Configured
+                && configured_url.as_deref() == Some(p.url.as_str());
+            match &pin_dir {
+                Some(dir) if !own => format!("{dir}/{}", crate::edge::pin_file_name(&p.url)),
+                _ => configured.clone(),
+            }
         });
         crate::edge::path_env(p, pin.as_deref())
     });
@@ -1761,8 +1767,16 @@ impl IoLosos {
                 }
             }
         }
+        // Only a cluster a gateway named is written down. A gateway in none
+        // counts as a cluster of its own named by its host, and a box pinned
+        // to that name would lose it the moment the gateway joins a real one.
+        let named = status
+            .path
+            .as_ref()
+            .and_then(|p| p.cluster.as_ref())
+            .filter(|c| status.cluster.as_ref() == Some(*c));
         if member_of.is_none() {
-            if let Some(cluster) = &status.cluster {
+            if let Some(cluster) = named {
                 tracing::info!(cluster = %cluster, "this box settles in a secondary cluster");
                 if let Err(e) =
                     atomic_write(&self.edge_cluster_file(), format!("{cluster}\n").as_bytes())
