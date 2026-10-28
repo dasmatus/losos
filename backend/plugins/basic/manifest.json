@@ -1,0 +1,35 @@
+{
+  "name": "basic",
+  "description": "The admin pages for a browser that runs no JavaScript, at /basic/.",
+  "routes": [
+    { "method": "GET", "path": "/api/basic/sign-in" },
+    { "method": "POST", "path": "/api/basic/sign-in", "maxBody": 8192 },
+    { "method": "POST", "path": "/api/basic/sign-in/code", "maxBody": 8192 },
+    { "method": "POST", "path": "/api/basic/sign-in/key", "maxBody": 8192 },
+    { "method": "POST", "path": "/api/basic/sign-out", "maxBody": 8192 },
+    { "method": "POST", "path": "/api/basic/prefs", "maxBody": 8192 },
+    { "method": "GET", "path": "/api/basic/counts.css" },
+    { "method": "GET", "path": "/api/basic/" },
+    { "method": "GET", "path": "/api/basic/{page}" },
+    { "method": "POST", "path": "/api/basic/{page}", "maxBody": 65536 },
+    { "method": "GET", "path": "/api/basic/settings/{pane}" },
+    { "method": "POST", "path": "/api/basic/settings/{pane}", "maxBody": 65536 }
+  ],
+  "files": [
+    { "path": "${LOSOS_ADMIN_UI_DIR:-}", "access": "ro" },
+    { "path": "/run/losos-cloud/http.sock", "access": "ro" },
+    { "path": "/run/losos-git/http.sock", "access": "ro" },
+    { "path": "/run/losos-office/http.sock", "access": "ro" }
+  ],
+  "http": ["${LOSOS_LOGIN_URL:-}", "http://127.0.0.1:${LOSOS_ADMIN_PORT:-8082}"],
+  "dispatch": true,
+  "limits": { "memoryMiB": 64, "timeoutSecs": 30 },
+  "config": {
+    "ui": "${LOSOS_ADMIN_UI_DIR:-}",
+    "login": "${LOSOS_LOGIN_URL:-}",
+    "api": "http://127.0.0.1:${LOSOS_ADMIN_PORT:-8082}",
+    "cloudSocket": "/run/losos-cloud/http.sock",
+    "gitSocket": "/run/losos-git/http.sock",
+    "officeSocket": "/run/losos-office/http.sock"
+  }
+}

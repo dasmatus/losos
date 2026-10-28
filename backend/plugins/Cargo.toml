@@ -8,7 +8,7 @@
 # workspace root, and these crates never link into lososd.
 [workspace]
 resolver = "2"
-members = ["sdk", "widget", "names", "look", "pins", "mail", "ci", "probe", "assistant", "pm-ci", "statistics", "hidden"]
+members = ["sdk", "page", "basic", "widget", "names", "look", "pins", "mail", "ci", "probe", "assistant", "pm-ci", "statistics", "hidden"]
 
 [workspace.package]
 version = "0.1.0"
@@ -21,6 +21,7 @@ license = "AGPL-3.0-or-later"
 losos-plugin = { path = "sdk" }
 losos-widget = { path = "widget" }
 losos-names = { path = "names" }
+losos-page = { path = "page" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 anyhow = "1"
