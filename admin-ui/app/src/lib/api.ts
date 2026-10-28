@@ -665,6 +665,31 @@ export function getStatus(options: RequestOptions = {}): Promise<StatusResponse>
   return call<StatusResponse>("/api/status", options);
 }
 
+export interface UpdatesResponse {
+  /** Human-readable systemd-sysupdate version/source/target listing. */
+  output: string;
+}
+
+export interface UpdatesCheckResponse {
+  started: true;
+}
+
+/** GET /api/updates — update source and staged-version inventory. */
+export function getUpdates(options: RequestOptions = {}): Promise<UpdatesResponse> {
+  return call<UpdatesResponse>("/api/updates", options);
+}
+
+/** POST /api/updates/check — start the persistent update-and-activate service. */
+export function postUpdatesCheck(options: RequestOptions = {}): Promise<UpdatesCheckResponse> {
+  return call<UpdatesCheckResponse>("/api/updates/check", { ...options, method: "POST" });
+}
+
+/** GET /api/statistics — what Traefik counted for the apps' LAN ports
+ *  (lososd's statistics plugin). Read with readStatistics (src/statistics). */
+export function getStatistics(options: RequestOptions = {}): Promise<unknown> {
+  return call<unknown>("/api/statistics", options);
+}
+
 export function getStorage(options: RequestOptions = {}): Promise<StorageResponse> {
   return call<StorageResponse>("/api/storage", options);
 }
@@ -3311,6 +3336,8 @@ export interface MailSummary {
   seen: boolean;
   flagged: boolean;
   hasAttachment: boolean;
+  /** OpenPGP mail: PGP/MIME, or an armoured block in the text. */
+  pgp: "encrypted" | "signed" | null;
 }
 
 export interface MailAttachment {
@@ -3357,6 +3384,38 @@ export interface MailDraft {
   /** Files the message carries, read by the page (from the computer, from
    *  LosOS Cloud, or a forwarded message's own). */
   attachments?: MailFile[];
+  /** An OpenPGP/MIME body made in the browser (src/mail/pgp.ts), sent in
+   *  place of `text`. */
+  pgp?: MailPgpBody;
+}
+
+export type MailPgpBody =
+  | { mime: "encrypted"; armored: string }
+  | { mime: "signed"; part: string; signature: string; micalg: string };
+
+/** The person's own OpenPGP key (backend/src/mail_pgp.rs). */
+export interface MailOwnKey {
+  fingerprint: string;
+  userIds: string[];
+  /** Unix seconds. */
+  created: number;
+  publicKey: string;
+  /** The private key, locked with the person's passphrase. */
+  lockedKey: string;
+  /** What the box sealed the locked key to, or null without a store. */
+  sealed: "tpm2" | "host" | null;
+  /** Where the box's Web Key Directory publishes the public key. */
+  wkd: string;
+}
+
+export type MailKeySource = "box" | "contacts" | "autocrypt" | "wkd" | "keyserver";
+
+export interface MailFoundKey {
+  source: MailKeySource;
+  fingerprint: string;
+  userIds: string[];
+  created: number;
+  publicKey: string;
 }
 
 /** One attached file on its way to lososd. */
@@ -3444,6 +3503,48 @@ export function changeMailMessage(id: string, change: MailChange): Promise<{ ok:
 /** DELETE /api/mail/messages/{id} — to the bin, or from the bin for good. */
 export function deleteMailMessage(id: string): Promise<{ ok: true }> {
   return call<{ ok: true }>(`/api/mail/messages/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+/** GET /api/mail/keys — the person's own key, or null before they set one. */
+export function getMailKey(options: RequestOptions = {}): Promise<{ key: MailOwnKey | null }> {
+  return call<{ key: MailOwnKey | null }>("/api/mail/keys", options);
+}
+
+/** PUT /api/mail/keys — keep a key; the private half must be locked. */
+export function putMailKey(publicKey: string, lockedKey: string): Promise<{ key: MailOwnKey }> {
+  return call<{ key: MailOwnKey }>("/api/mail/keys", {
+    method: "PUT",
+    contentType: "application/json",
+    body: JSON.stringify({ publicKey, lockedKey }),
+  });
+}
+
+/** DELETE /api/mail/keys — forget the key and take it out of the WKD. */
+export function deleteMailKey(): Promise<{ key: null }> {
+  return call<{ key: null }>("/api/mail/keys", { method: "DELETE" });
+}
+
+/** GET /api/mail/keys/find — keys for an address, best first. */
+export function findMailKeys(email: string, options: RequestOptions = {}): Promise<{ email: string; keys: MailFoundKey[] }> {
+  return call<{ email: string; keys: MailFoundKey[] }>(
+    `/api/mail/keys/find?${new URLSearchParams({ email }).toString()}`,
+    options,
+  );
+}
+
+/** GET /api/mail/messages/{id}/raw — the whole message, as it arrived. */
+export async function getMailRaw(id: string, options: RequestOptions = {}): Promise<Uint8Array> {
+  const headers: Record<string, string> = {};
+  const bearer = options.token ?? getToken();
+  if (bearer !== null) headers["Authorization"] = `Bearer ${bearer}`;
+  const init: RequestInit = { headers, cache: "no-store" };
+  if (options.signal !== undefined) init.signal = options.signal;
+  const response = await fetch(apiPath(`/api/mail/messages/${encodeURIComponent(id)}/raw`), init);
+  if (!response.ok) {
+    const { message } = await errorBody(response);
+    throw new ApiError(response.status, message);
+  }
+  return new Uint8Array(await response.arrayBuffer());
 }
 
 /** POST /api/mail/send. */

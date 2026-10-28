@@ -90,7 +90,8 @@ Git does.
 - The storage the chart asks for becomes folders under
   `/home/<user>/data/apps/<name>`.
 - The app gets one port of its own from `losos.apps.ports`, 30000 to 30099
-  by default, and only your local network can reach it.
+  by default, and only your local network can reach it. The port opens as
+  soon as the app runs and closes when it stops.
 
 :::note[Charts the box refuses]
 The box refuses a chart that needs more than that and says why. Typical
@@ -115,6 +116,17 @@ cluster, which runs only while the box shares its disk with a mesh
 To turn installing off, set `losos.apps.enable` to false on the
 **Advanced** pane.
 :::
+
+## Statistics
+
+**Settings › Statistics** shows how often your installed apps were asked
+for. You see the requests of the last hour, minute by minute, and how many
+of them ended in an error. You also see how much the box sent and how long
+the slowest answers took. Each app is listed with its port. The counts
+start again when the box restarts.
+
+The **Statistics** widget puts the last hour on the Overview. Add it under
+**Add a widget**, and click it to open the page.
 
 ## Your apps
 
