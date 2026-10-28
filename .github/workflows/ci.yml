@@ -136,8 +136,75 @@ jobs:
           fi
           echo "nixpkgs pin agrees across flake.lock, devenv.yaml and devenv.lock ($lock)"
 
+  # ── Which jobs a change needs ───────────────────────────────────────────────
+  #
+  # A pull request runs only the lanes its files reach:
+  # .github/scripts/ci-changes.sh maps paths to lanes (rust, wasm, solana,
+  # evm, eval, ctl, ui, tui, images, iso, discovery) and each job
+  # below waits on its lane. A handbook page builds the handbook and nothing
+  # else; a Rust file skips the ISO; docs/ and screenshots run nothing but
+  # this and `pins`. A job a change does not need shows as skipped, and the
+  # `result` job at the end is green when everything that ran passed.
+  #
+  # Everything runs on main, on tags, on the weekly run, on a manual run, when
+  # CI itself or the toolchain changes (the script's first list), and on a
+  # pull request labelled `ci: full`. The label is read when the job runs,
+  # not from the event, so adding it and re-running the workflow is enough.
+  changes:
+    name: "changes: pick the jobs this change needs"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      full: ${{ steps.pick.outputs.full }}
+      rust: ${{ steps.pick.outputs.rust }}
+      wasm: ${{ steps.pick.outputs.wasm }}
+      solana: ${{ steps.pick.outputs.solana }}
+      evm: ${{ steps.pick.outputs.evm }}
+      eval: ${{ steps.pick.outputs.eval }}
+      ctl: ${{ steps.pick.outputs.ctl }}
+      ui: ${{ steps.pick.outputs.ui }}
+      tui: ${{ steps.pick.outputs.tui }}
+      images: ${{ steps.pick.outputs.images }}
+      iso: ${{ steps.pick.outputs.iso }}
+      discovery: ${{ steps.pick.outputs.discovery }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/scripts
+      - id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          pick=.github/scripts/ci-changes.sh
+          full() { "$pick" --full "$1" | tee -a "$GITHUB_OUTPUT"; exit 0; }
+          [ "$EVENT" = pull_request ] || full "a $EVENT run checks everything"
+          # Anything that cannot be read runs everything rather than nothing.
+          labels=$(gh api "repos/$REPO/pulls/$PR" --jq '.labels[].name') \
+            || full "the pull request's labels could not be read"
+          if grep -qx 'ci: full' <<<"$labels"; then
+            full "the pull request is labelled ci: full"
+          fi
+          # A rename lists both names, so moving a file out of a lane counts.
+          files=$(gh api --paginate "repos/$REPO/pulls/$PR/files?per_page=100" \
+            --jq '.[] | .filename, (.previous_filename // empty)') \
+            || full "the pull request's files could not be listed"
+          # GitHub lists at most 3000 files of a pull request.
+          if [ "$(wc -l <<<"$files")" -ge 3000 ]; then
+            full "the pull request changes more files than GitHub lists"
+          fi
+          "$pick" <<<"$files" | tee -a "$GITHUB_OUTPUT"
+
   clippy:
     name: "rust: clippy (+ rustfmt on PRs)"
+    needs: [changes]
+    if: ${{ needs.changes.outputs.rust == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Runs in devShells.ci — a lean cargo/rustc/clippy/rustfmt shell from this
@@ -208,6 +275,8 @@ jobs:
 
   clippy-wasm:
     name: "rust: clippy lososd's plugins and the Lab canvas for wasm32"
+    needs: [changes]
+    if: ${{ needs.changes.outputs.wasm == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Mirrors devenv.nix's `lint-wasm`. admin-ui/lab/render takes Bevy only
@@ -236,6 +305,8 @@ jobs:
 
   test:
     name: "rust: test the crates"
+    needs: [changes]
+    if: ${{ needs.changes.outputs.rust == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # The suites live here rather than inside buildRustPackage. doCheck used to
@@ -299,6 +370,8 @@ jobs:
 
   solana-escrow:
     name: "solana: build and test the escrow program"
+    needs: [changes]
+    if: ${{ needs.changes.outputs.solana == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     # devenv.nix's test-solana-escrow. The program is built for the Solana VM
@@ -340,6 +413,8 @@ jobs:
 
   evm-escrow:
     name: "evm: test the escrow and pay through it on a local chain"
+    needs: [changes]
+    if: ${{ needs.changes.outputs.evm == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     # devenv.nix's test-evm-escrow. Foundry's suite for LososEscrow, then
@@ -364,6 +439,8 @@ jobs:
 
   eval:
     name: "nix: flake check + module merge + ISO derivation"
+    needs: [changes]
+    if: ${{ needs.changes.outputs.eval == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -418,8 +495,14 @@ jobs:
   losos-ctl:
     name: "rust: lososd + losos-ctl build"
     # A run that only publishes media for older tags builds from those
-    # tags, not from this commit.
-    if: ${{ !inputs.release_tags }}
+    # tags, not from this commit. The iso and discovery jobs import its
+    # export, so it runs for their lanes too; with the crate unchanged it is
+    # a cache hit.
+    needs: [changes]
+    if: >-
+      ${{ !inputs.release_tags && (needs.changes.outputs.ctl == 'true'
+        || needs.changes.outputs.iso == 'true'
+        || needs.changes.outputs.discovery == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -456,7 +539,8 @@ jobs:
     name: "rust: losos-registrar + admin UI + handbook"
     # A run that only publishes media for older tags builds from those
     # tags, not from this commit.
-    if: ${{ !inputs.release_tags }}
+    needs: [changes]
+    if: ${{ !inputs.release_tags && needs.changes.outputs.ui == 'true' }}
     runs-on: ubuntu-latest
     # losos-admin-ui builds losos-lab-render, Bevy for wasm32 twice, which
     # alone takes about 20 minutes from an empty cache. With the calls
@@ -539,6 +623,8 @@ jobs:
 
   images:
     name: "nix: OCI images for the local cluster"
+    needs: [changes]
+    if: ${{ needs.changes.outputs.images == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -656,7 +742,8 @@ jobs:
   # hidden prompt, the full-screen view and the exit statuses.
   tui:
     name: "losos terminal client"
-    if: ${{ !inputs.release_tags }}
+    needs: [changes]
+    if: ${{ !inputs.release_tags && needs.changes.outputs.tui == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -867,15 +954,24 @@ jobs:
     # carries losos-admin-ui in isoImage.storeContents, and since that stopped
     # being a file copy it is the second path in this closure cache.nixos.org
     # cannot serve.
-    needs: [losos-ctl, registrar-and-ui]
+    #
+    # On a pull request either sibling may be skipped, when its lane is off:
+    # the crate or the UI did not change, so the cache has it and the export
+    # is not needed. A failed sibling still skips this job.
+    needs: [changes, losos-ctl, registrar-and-ui]
+    if: >-
+      ${{ !cancelled() && !failure() && !inputs.release_tags
+        && needs.changes.outputs.iso == 'true' }}
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
       - uses: actions/download-artifact@v8
+        if: needs.losos-ctl.result == 'success'
         with:
           name: losos-ctl-store
           path: ctl-cache
       - uses: actions/download-artifact@v8
+        if: needs.registrar-and-ui.result == 'success'
         with:
           name: losos-admin-ui-store
           path: ui-cache
@@ -895,8 +991,10 @@ jobs:
       # same step that wrote the cache, so the two cannot disagree.
       - name: import the sibling jobs' store exports
         run: |
-          xargs -r nix copy --from "file://$PWD/ctl-cache" --no-check-sigs < ctl-cache/store-paths
-          xargs -r nix copy --from "file://$PWD/ui-cache" --no-check-sigs < ui-cache/store-paths
+          for cache in ctl-cache ui-cache; do
+            [ -f "$cache/store-paths" ] || continue
+            xargs -r nix copy --from "file://$PWD/$cache" --no-check-sigs < "$cache/store-paths"
+          done
       # NOT --offline. The other 766 paths come from cache.nixos.org, and
       # blocking the network would force nix to build them from source —
       # precisely the opposite of what the import above buys us.
@@ -1018,26 +1116,33 @@ jobs:
   # jobs' exports of losos-ctl and the admin UI, like the ISO.
   discovery-box:
     name: "nix: build the discovery test box"
-    if: ${{ !inputs.release_tags }}
+    # As the iso job: a skipped sibling means the cache has it.
+    if: >-
+      ${{ !cancelled() && !failure() && !inputs.release_tags
+        && needs.changes.outputs.discovery == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    needs: [losos-ctl, registrar-and-ui]
+    needs: [changes, losos-ctl, registrar-and-ui]
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
       - uses: actions/download-artifact@v8
+        if: needs.losos-ctl.result == 'success'
         with:
           name: losos-ctl-store
           path: ctl-cache
       - uses: actions/download-artifact@v8
+        if: needs.registrar-and-ui.result == 'success'
         with:
           name: losos-admin-ui-store
           path: ui-cache
       # By path, never `--all`; see the iso job.
       - name: import the sibling jobs' store exports
         run: |
-          xargs -r nix copy --from "file://$PWD/ctl-cache" --no-check-sigs < ctl-cache/store-paths
-          xargs -r nix copy --from "file://$PWD/ui-cache" --no-check-sigs < ui-cache/store-paths
+          for cache in ctl-cache ui-cache; do
+            [ -f "$cache/store-paths" ] || continue
+            xargs -r nix copy --from "file://$PWD/$cache" --no-check-sigs < "$cache/store-paths"
+          done
       - run: nix build .#losos-disk-discovery-box -L
       - run: |
           mkdir discovery-box
@@ -1278,6 +1383,46 @@ jobs:
       - name: show runner storage after QEMU test
         if: always()
         run: df -h
+
+  # One check for the whole run: green when every job this change needed
+  # passed and the rest were skipped, red when any failed or was cancelled.
+  # It is the check to require on main, since a required job that a change
+  # skips would otherwise have to be listed one by one.
+  result:
+    name: "result: every job this change needs passed"
+    if: always()
+    needs:
+      - pins
+      - changes
+      - clippy
+      - clippy-wasm
+      - test
+      - solana-escrow
+      - evm-escrow
+      - eval
+      - losos-ctl
+      - registrar-and-ui
+      - images
+      - publish-cache
+      - tui
+      - publish-tool
+      - fmt-bot
+      - iso
+      - discovery-box
+      - discovery
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          jq -r 'to_entries[] | "\(.value.result)\t\(.key)"' <<<"$NEEDS" | sort
+          bad=$(jq -r 'to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | .key' <<<"$NEEDS")
+          if [ -n "$bad" ]; then
+            echo "::error::failed or cancelled: $(tr '\n' ' ' <<<"$bad")"
+            exit 1
+          fi
 
   # Which tags release-media builds. A tag push builds that tag. A manual run
   # with `release_tags` builds the tags it names, or with "missing" every
