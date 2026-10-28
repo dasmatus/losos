@@ -83,7 +83,7 @@
 #
 #   * modules/edge.nix. The edge here is a hand-rolled services.rke2 server, not
 #     losos.edge.cluster.enable, because that module also brings Traefik, ACME,
-#     rathole and the registrar — four failure modes orthogonal to the question
+#     the tunnel and the registrar — four failure modes orthogonal to the question
 #     being asked, three of which nix/tests/edge-vm.nix already covers. The cost is
 #     real and worth naming: nothing asserts that edge.nix's server options and
 #     cluster.nix's agent options agree.
@@ -342,8 +342,8 @@ pkgs.testers.nixosTest {
       {
         # options.nix and cluster.nix, and nothing else. Not defaults.nix (it
         # would wire the real packages), not apps.nix (an app's image), not
-        # proxy.nix (a rathole client dialling an edge that runs
-        # no rathole server would only add a failing unit to read past).
+        # proxy.nix (a tunnel client dialling an edge that runs
+        # no tunnel server would only add a failing unit to read past).
         imports = [
           ../../modules/options.nix
           ../../modules/cluster.nix

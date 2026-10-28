@@ -318,7 +318,7 @@ async fn relay(
         .await
         .into_iter()
         .find(|v| v.id == id)
-        .map(|v| v.rathole_port)
+        .map(|v| v.tunnel_port)
     else {
         return plain(StatusCode::NOT_FOUND, "no box by that name");
     };

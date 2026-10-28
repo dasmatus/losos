@@ -14,7 +14,7 @@
   --lab-p-dhcp: oklch(from var(--accent) l c 300); --lab-p-arp: oklch(from var(--warn) l c 115);
   --lab-p-mdns: var(--ok); --lab-p-dns: oklch(from var(--accent) l c 255);
   --lab-p-http: oklch(from var(--crit) l c 50); --lab-p-icmp: var(--warn);
-  --lab-p-rathole: var(--accent); --lab-p-rke2: oklch(from var(--crit) l c 350); --lab-p-lososd: var(--muted);
+  --lab-p-tunnel: var(--accent); --lab-p-rke2: oklch(from var(--crit) l c 350); --lab-p-lososd: var(--muted);
   --lab-kit: var(--sunk); --lab-kit-face: var(--line); --lab-kit-edge: var(--faint); --lab-hole: var(--ink);
   --lab-rack: var(--ink); --lab-rack-edge: var(--ink); --lab-rack-face: var(--muted); --lab-rack-bay: var(--faint);
   --lab-rack-ink: var(--line); --lab-screen: var(--ink); --lab-screen-off: var(--muted); --lab-screen-tile: var(--muted);

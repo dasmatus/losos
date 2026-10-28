@@ -39,8 +39,7 @@ use crate::relay::{dns_label, UplinkFile};
 use crate::secondary::{plain_url, ClusterFile};
 
 const TOKEN_FILE: &str = "uplink.token";
-const BOOTSTRAP_FILE: &str = "uplink-bootstrap.token";
-const NOISE_FILE: &str = "hub-noise.pub";
+const PIN_FILE: &str = "hub-tunnel.pin";
 const MAX_TOKEN: usize = 512;
 const MAX_URL: usize = 255;
 
@@ -66,9 +65,7 @@ pub(crate) struct UplinkForm {
     pub id: String,
     pub token: String,
     pub registrar_url: String,
-    pub rathole_endpoint: String,
-    #[serde(default)]
-    pub bootstrap_token: Option<String>,
+    pub tunnel_endpoint: String,
 }
 
 impl UplinkForm {
@@ -84,18 +81,11 @@ impl UplinkForm {
         {
             return Some("the registrar must be an http(s) URL");
         }
-        if !host_port(self.rathole_endpoint.trim()) {
+        if !host_port(self.tunnel_endpoint.trim()) {
             return Some("the tunnel endpoint must be host:port");
         }
         if !token_shaped(&self.token) {
             return Some("the token must be 1 to 512 characters with no spaces");
-        }
-        if self
-            .bootstrap_token
-            .as_deref()
-            .is_some_and(|t| !t.trim().is_empty() && !token_shaped(t))
-        {
-            return Some("the bootstrap token must be 1 to 512 characters with no spaces");
         }
         None
     }
@@ -160,19 +150,16 @@ async fn show(State(st): State<AppState>, headers: HeaderMap) -> Response {
                 .await
                 .ok()
                 .and_then(|b| serde_json::from_slice::<UplinkFile>(&b).ok());
-            let relaying = tokio::fs::read_to_string(&u.rathole_config)
+            let relaying = tokio::fs::read(&u.tunnel_config)
                 .await
-                .map(|t| {
-                    t.lines()
-                        .filter(|l| l.starts_with("[client.services."))
-                        .count()
-                })
-                .unwrap_or(0);
+                .ok()
+                .and_then(|b| serde_json::from_slice::<crate::tunnel::ClientFile>(&b).ok())
+                .map_or(0, |f| f.services.len());
             serde_json::json!({
                 "set": file.as_ref().map(|f| serde_json::json!({
                     "id": f.id,
                     "registrarUrl": f.registrar_url,
-                    "ratholeEndpoint": f.rathole_endpoint,
+                    "tunnelEndpoint": f.tunnel_endpoint,
                 })),
                 "relaying": relaying,
             })
@@ -457,25 +444,14 @@ pub(crate) async fn write_uplink(file: &str, form: &UplinkForm) -> std::io::Resu
     tokio::fs::create_dir_all(&dir).await?;
     let token = dir.join(TOKEN_FILE);
     fsutil::atomic_write(&token, form.token.trim().as_bytes(), 0o600).await?;
-    let bootstrap = match form.bootstrap_token.as_deref().map(str::trim) {
-        Some(t) if !t.is_empty() => {
-            let path = dir.join(BOOTSTRAP_FILE);
-            fsutil::atomic_write(&path, t.as_bytes(), 0o600).await?;
-            Some(path)
-        }
-        _ => {
-            remove(&dir.join(BOOTSTRAP_FILE)).await?;
-            None
-        }
-    };
-    remove(&dir.join(NOISE_FILE)).await?;
+    // A new hub is pinned afresh on the next uplink pass.
+    remove(&dir.join(PIN_FILE)).await?;
     let uplink = UplinkFile {
         registrar_url: form.registrar_url.trim().trim_end_matches('/').to_string(),
-        rathole_endpoint: form.rathole_endpoint.trim().to_string(),
+        tunnel_endpoint: form.tunnel_endpoint.trim().to_string(),
         id: form.id.clone(),
         token_file: token.to_string_lossy().into_owned(),
-        bootstrap_token_file: bootstrap.map(|p| p.to_string_lossy().into_owned()),
-        noise_public_key_file: Some(dir.join(NOISE_FILE).to_string_lossy().into_owned()),
+        pin_file: dir.join(PIN_FILE).to_string_lossy().into_owned(),
     };
     let bytes = serde_json::to_vec_pretty(&uplink).map_err(std::io::Error::other)?;
     fsutil::atomic_write(Path::new(file), &bytes, 0o600).await
@@ -500,10 +476,10 @@ async fn clear_uplink(State(st): State<AppState>, headers: HeaderMap) -> Respons
     // of dialling the old hub.
     let result = async {
         remove(Path::new(&u.file)).await?;
-        for name in [TOKEN_FILE, BOOTSTRAP_FILE, NOISE_FILE] {
+        for name in [TOKEN_FILE, PIN_FILE] {
             remove(&dir.join(name)).await?;
         }
-        remove(Path::new(&u.rathole_config)).await
+        remove(Path::new(&u.tunnel_config)).await
     }
     .await;
     match result {
@@ -621,8 +597,7 @@ mod tests {
             id: "acme".into(),
             token: "t0ken".into(),
             registrar_url: "https://register.example.test/".into(),
-            rathole_endpoint: "relay.example.test:2333".into(),
-            bootstrap_token: None,
+            tunnel_endpoint: "relay.example.test:2333".into(),
         }
     }
 
@@ -637,14 +612,12 @@ mod tests {
         assert!(bad(|f| f.id = "Not A Label".into()));
         assert!(bad(|f| f.registrar_url = "ftp://x".into()));
         assert!(bad(|f| f.registrar_url = "https://x y".into()));
-        assert!(bad(|f| f.rathole_endpoint = "relay".into()));
-        assert!(bad(|f| f.rathole_endpoint = "relay:0".into()));
-        assert!(bad(|f| f.rathole_endpoint = "re lay:1".into()));
+        assert!(bad(|f| f.tunnel_endpoint = "relay".into()));
+        assert!(bad(|f| f.tunnel_endpoint = "relay:0".into()));
+        assert!(bad(|f| f.tunnel_endpoint = "re lay:1".into()));
         assert!(bad(|f| f.token = "two words".into()));
         assert!(bad(|f| f.token = String::new()));
-        assert!(bad(|f| f.bootstrap_token = Some("a b".into())));
-        assert!(!bad(|f| f.bootstrap_token = Some("  ".into())));
-        assert!(!bad(|f| f.rathole_endpoint = "[2001:db8::1]:2333".into()));
+        assert!(!bad(|f| f.tunnel_endpoint = "[2001:db8::1]:2333".into()));
     }
 
     #[tokio::test]
@@ -654,30 +627,23 @@ mod tests {
         let file = dir.join("uplink.json");
         let file_str = file.to_string_lossy().into_owned();
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join(NOISE_FILE), "old hub key").unwrap();
-        let mut f = form();
-        f.bootstrap_token = Some("boot".into());
-        write_uplink(&file_str, &f).await.unwrap();
+        std::fs::write(dir.join(PIN_FILE), "old hub pin").unwrap();
+        write_uplink(&file_str, &form()).await.unwrap();
         let u: UplinkFile = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
         assert_eq!(u.registrar_url, "https://register.example.test");
         assert_eq!(u.id, "acme");
         assert_eq!(std::fs::read_to_string(&u.token_file).unwrap(), "t0ken");
-        assert_eq!(
-            std::fs::read_to_string(u.bootstrap_token_file.unwrap()).unwrap(),
-            "boot"
-        );
-        assert!(!dir.join(NOISE_FILE).exists(), "the old hub's key was kept");
+        assert_eq!(u.tunnel_endpoint, "relay.example.test:2333");
+        assert_eq!(Path::new(&u.pin_file), dir.join(PIN_FILE));
+        assert!(!dir.join(PIN_FILE).exists(), "the old hub's pin was kept");
         use std::os::unix::fs::PermissionsExt;
-        for name in ["uplink.json", TOKEN_FILE, BOOTSTRAP_FILE] {
+        for name in ["uplink.json", TOKEN_FILE] {
             let mode = std::fs::metadata(dir.join(name))
                 .unwrap()
                 .permissions()
                 .mode();
             assert_eq!(mode & 0o777, 0o600, "{name}");
         }
-        // Without a bootstrap token the old one goes.
-        write_uplink(&file_str, &form()).await.unwrap();
-        assert!(!dir.join(BOOTSTRAP_FILE).exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -10,7 +10,7 @@ mdx:
 Voliteľné. Sprístupní zariadenie z internetu bez toho, aby ste museli doma otvárať
 port.
 
-![internet → Traefik (VPS, :443) → rathole server ⇐ tunel ⇐ rathole klient (zariadenie) → nginx](/img/diagrams/master-proxy-sk.svg)
+![internet → Traefik (VPS, :443) → tunelový server ⇐ tunel QUIC ⇐ tunelový klient (zariadenie) → nginx](/img/diagrams/master-proxy-sk.svg)
 
 ## Edge (VPS) {#edge-vps}
 
@@ -24,7 +24,7 @@ Importujte výstup flaku `nixosModules.edge` do konfigurácie VPS a nastavte
 - `losos.edge.cluster.enable` navyše spúšťa riadiacu vrstvu [mesh](/in-depth/mesh.md),
   server rke2 s Longhornom. Proxy funguje aj bez nej.
 
-`losos-registrar` udržiava serverovú konfiguráciu rathole v súlade
+`losos-registrar` udržiava súbor tunelového servera v súlade
 s registrovanými zariadeniami a Traefik ich nachádza cez registrar.
 
 ## Ako Traefik nachádza boxy {#how-traefik-finds-the-boxes}
@@ -60,21 +60,34 @@ prehliadača. Stavový kód zostáva 502, alebo 504, keď box neodpovedal včas.
 ## Zariadenie {#appliance}
 
 Nastavte `losos.proxy.enable = true` a voľby `losos.proxy.*`
-(`registrarUrl`, `edgeRatholeEndpoint`, `hostname`, `applianceId`,
+(`registrarUrl`, `edgeTunnelEndpoint`, `hostname`, `applianceId`,
 `tokenFile`).
+
+## Tunel {#the-tunnel}
+
+Zariadenie udržiava s edge jedno spojenie QUIC na porte UDP 2333
+(`losos.edge.tunnelBindPort`). Každé spojenie návštevníka ide v ňom ako
+samostatný prúd, takže pomalé sťahovanie nezdrží ostatné požiadavky, nová
+požiadavka nepotrebuje nový handshake a spojenie prežije zmenu adresy
+zariadenia. Zariadenie sa iba pripája von, takže funguje za NAT aj za
+operátorským NAT (CG-NAT) bez presmerovania portu. Udržiavací paket každých
+10 sekúnd drží záznam v NAT otvorený.
+
+Ak sieť zahadzuje UDP, zariadenie dá QUIC päť sekúnd a potom sa pripojí na
+ten istý port cez TCP: TLS 1.3 s tým istým certifikátom, v ňom prúdy HTTP/2.
+Každých päť minút skúsi QUIC znova a vráti sa k nemu, keď prejde. Firewall
+edge otvára port pre oba.
 
 ## Šifrovanie tunela {#tunnel-encryption}
 
-rathole používa svoj transport Noise. Edge si pri prvom štarte vygeneruje pár
-kľúčov. Každé zariadenie si pri prvom spustení stiahne verejný kľúč z
-registrara a uloží ho do `losos.proxy.noisePublicKeyFile`. Ak chcete kľúč
-pripnúť mimo tohto kanála, vložte súbor na to miesto vopred; zariadenie ho
-nikdy neprepíše.
-
-:::warning[Nechajte tunel šifrovaný]
-Nastavenie ktorejkoľvek z dvoch kľúčových volieb na `null`
-prepne späť na obyčajné TCP. Nerobte to.
-:::
+Tunel je pri oboch transportoch TLS 1.3. Edge si pri prvom štarte vytvorí
+vlastnoručne podpísaný certifikát a uchová ho v `/var/lib/losos-tunnel`.
+Každé zariadenie si pred prvým pripojením stiahne z registrara SHA-256
+certifikátu (`GET /tunnel-pin`) a uloží ho do `losos.proxy.tunnelPinFile`;
+odvtedy tunel prijme tento certifikát a žiadny iný. Ak ho chcete pripnúť
+mimo tohto kanála, vložte súbor na to miesto vopred; zariadenie ho nikdy
+neprepíše. Každú službu, ktorú zariadenie poskytuje, si nárokuje tokenom
+zariadenia, porovnaným v konštantnom čase.
 
 ## Administrátorské UI zostáva len v LAN {#admin-ui-stays-lan-only}
 
@@ -357,8 +370,8 @@ vyhľadanie názvu DNS zaznamenané z Ethereum mainnet a brány ENS.
 tokenu, ako Vercel Function na `https://losos-edge.dasmat.us`, čo je
 predvolená hodnota `losos.proxy.registrarUrl`. Register je uložený v Neon
 Postgres a stavová stránka na `/` ukazuje registrované zariadenia a konfiguráciu
-Traefiku, ktorú by pre ne edge zapísal. Je to iba riadiaca vrstva. Tunel
-rathole, TLS Traefiku, mesh a trh nemôžu bežať na serverless hostiteľovi,
+Traefiku, ktorú by pre ne edge zapísal. Je to iba riadiaca vrstva. Tunel,
+TLS Traefiku, mesh a trh nemôžu bežať na serverless hostiteľovi,
 takže dátová cesta, teda dosiahnutie zariadenia cez jeho verejný názov hostiteľa,
 stále potrebuje VPS. Stránka navyše ukazuje id a názvy hostiteľov
 komukoľvek, kto má URL. Je to demonštračný hostiteľ, nie edge. Kroky
