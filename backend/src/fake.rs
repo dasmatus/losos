@@ -297,7 +297,7 @@ impl FakeLosos {
                     source: crate::edge::Source::Lan,
                     official: true,
                     gateway: None,
-                    rathole: Some("edge.local:2333".to_string()),
+                    tunnel: Some("edge.local:2333".to_string()),
                     on_network: true,
                     tier: crate::edge::Tier::Tertiary,
                     cluster: None,

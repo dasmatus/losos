@@ -34,14 +34,11 @@ let
   lososPkgs = import ../packages.nix { inherit pkgs; };
 
   proxyTokenValue = "test-proxy-token-0123456789abcdef";
-  bootstrapTokenValue = "test-bootstrap-0123456789abcdef0123";
   proxyToken = "/var/secrets/losos-proxy-token";
-  bootstrapToken = "/var/secrets/losos-rathole-bootstrap";
   secretFiles = {
     systemd.tmpfiles.rules = [
       "d /var/secrets 0700 root root - -"
       "f ${proxyToken} 0600 root root - ${proxyTokenValue}"
-      "f ${bootstrapToken} 0600 root root - ${bootstrapTokenValue}"
     ];
   };
 
@@ -294,11 +291,10 @@ pkgs.testers.runNixOSTest (
             acmeEmail = "test@losos.cfd";
             registrarApiBind = "::";
             registrarApiPort = 8443;
-            ratholeBindPort = 2333;
-            ratholePortRange = "50000-50010";
+            tunnelBindPort = 2333;
+            tunnelPortRange = "50000-50010";
             heartbeatTtl = "120s";
             reconcileInterval = "2s";
-            bootstrapTokenFile = bootstrapToken;
             tenants.mattbox = {
               hostname = "mattbox.losos.cfd";
               tokenFile = proxyToken;
@@ -344,12 +340,11 @@ pkgs.testers.runNixOSTest (
             hidden.i2p.enable = true;
             proxy = {
               enable = true;
-              edgeRatholeEndpoint = "edge:2333";
+              edgeTunnelEndpoint = "edge:2333";
               registrarUrl = "http://edge:8443";
               hostname = "mattbox.losos.cfd";
               applianceId = "mattbox";
               tokenFile = proxyToken;
-              bootstrapTokenFile = bootstrapToken;
               heartbeatInterval = "3s";
               registrar.package = lososPkgs.losos-registrar;
             };

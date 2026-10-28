@@ -26,7 +26,7 @@
 # (edge/registrar/src/calls_relay.rs). The edge's certificate is pinned by
 # the hash `GET /calls/relay` gives over the registrar URL the tunnel and
 # the announce already trust, and the box proves itself with the same token.
-# The unit follows the tunnel: lososd's restarts of losos-rathole-client
+# The unit follows the tunnel: lososd's restarts of losos-tunnel-client
 # when it picks another edge reach it through PartOf, and it does not run
 # while lososd finds no edge. Without the proxy, media is UDP on
 # losos.calls.udpPort, on the box's own addresses.
@@ -94,13 +94,13 @@ in
 
     systemd.services.losos-calls = {
       description = "LosOS calls (the SFU behind chat's calls), as the shared user";
-      wantedBy = [ "multi-user.target" ] ++ lib.optional throughEdge "losos-rathole-client.service";
-      partOf = lib.optional throughEdge "losos-rathole-client.service";
+      wantedBy = [ "multi-user.target" ] ++ lib.optional throughEdge "losos-tunnel-client.service";
+      partOf = lib.optional throughEdge "losos-tunnel-client.service";
       after = [
         "network-online.target"
         "dendrite.service"
       ]
-      ++ lib.optional throughEdge "losos-rathole-client.service";
+      ++ lib.optional throughEdge "losos-tunnel-client.service";
       wants = [ "network-online.target" ];
       unitConfig = lib.optionalAttrs throughEdge {
         ConditionPathExists = "!${edgeNone}";

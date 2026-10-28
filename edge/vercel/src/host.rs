@@ -11,7 +11,7 @@
 //!      prunes by TTL — the reconciler's prune never ran while no instance
 //!      was alive);
 //!   2. run one reconcile pass ([`App::reconcile`]): the real edge's prune,
-//!      whitelist repair and rathole rewrite, so the routes the status route
+//!      whitelist repair and tunnel-file rewrite, so the routes the status route
 //!      shows are what Traefik's HTTP provider would be reading;
 //!   3. hand the request to the registrar's router, untouched, then run the
 //!      pass again so what the request changed reaches the routes;

@@ -57,8 +57,8 @@ async fn concurrent_registrations_all_survive_a_load_round_trip() {
     let views = reloaded.views().await;
 
     assert_eq!(views.len(), 32, "a registration was lost: {views:?}");
-    let ports: HashSet<u16> = views.iter().map(|v| v.rathole_port).collect();
-    assert_eq!(ports.len(), 32, "two tenants share a rathole port");
+    let ports: HashSet<u16> = views.iter().map(|v| v.tunnel_port).collect();
+    assert_eq!(ports.len(), 32, "two tenants share a tunnel port");
     assert!(
         ports.iter().all(|p| (RANGE.0..=RANGE.1).contains(p)),
         "a port landed outside {RANGE:?}"
@@ -145,7 +145,7 @@ async fn racing_writers_never_leave_a_torn_registry() {
 /// `registry.json` outlives reboots and is reachable by anything that can
 /// write the edge's state directory, so `load` treats it as data to validate,
 /// not as truth. A port outside the configured range would otherwise become a
-/// live rathole bind the operator never authorised.
+/// live tunnel bind the operator never authorised.
 #[tokio::test]
 async fn load_drops_entries_it_cannot_trust() {
     let dir = TempDir::new("registry-validate");
@@ -192,7 +192,7 @@ async fn load_treats_a_missing_file_as_empty() {
     assert!(registry.views().await.is_empty());
 }
 
-/// Re-registering keeps the assigned port so Traefik and rathole don't churn.
+/// Re-registering keeps the assigned port so Traefik and the tunnel don't churn.
 #[tokio::test]
 async fn re_registration_preserves_the_assigned_port() {
     let dir = TempDir::new("registry-stable-port");
@@ -248,7 +248,7 @@ async fn a_snapshot_round_trip_keeps_ports_and_ages_and_prunes_by_ttl() {
 
     let mut snapshot = first.export().await;
     assert_eq!(snapshot.tenants.len(), 2);
-    assert_eq!(snapshot.tenants["box-a"].rathole_port, 50000);
+    assert_eq!(snapshot.tenants["box-a"].tunnel_port, 50000);
     assert!(snapshot.tenants["box-a"].seen_ago_secs <= 1);
     assert_eq!(
         snapshot.tenants["box-a"].idle.map(|(idle, _)| idle),
@@ -276,7 +276,7 @@ async fn a_snapshot_round_trip_keeps_ports_and_ages_and_prunes_by_ttl() {
     assert_eq!(views.len(), 1, "box-b should have been pruned on import");
     assert_eq!(views[0].id, "box-a");
     assert_eq!(
-        views[0].rathole_port, 50000,
+        views[0].tunnel_port, 50000,
         "the port must survive the trip"
     );
     assert!(
@@ -306,7 +306,7 @@ async fn import_drops_what_load_would_drop() {
         "out-of-range".to_string(),
         SnapshotTenant {
             hostname: "x.losos.cfd".to_string(),
-            rathole_port: 1,
+            tunnel_port: 1,
             seen_ago_secs: 0,
             idle: None,
             via: None,
@@ -316,7 +316,7 @@ async fn import_drops_what_load_would_drop() {
         "fine".to_string(),
         SnapshotTenant {
             hostname: "fine.losos.cfd".to_string(),
-            rathole_port: 50007,
+            tunnel_port: 50007,
             seen_ago_secs: 0,
             idle: Some((true, 0)),
             via: None,
@@ -336,7 +336,7 @@ async fn import_drops_what_load_would_drop() {
     let views = registry.views().await;
     assert_eq!(views.len(), 1);
     assert_eq!(
-        (views[0].id.as_str(), views[0].rathole_port),
+        (views[0].id.as_str(), views[0].tunnel_port),
         ("fine", 50007)
     );
     assert!(registry.compute_windows().await.is_empty());

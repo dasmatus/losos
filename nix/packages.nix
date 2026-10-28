@@ -26,7 +26,7 @@
 #                output has no store references, modules/cache.nix points every
 #                box through its configured proxy, and flake.nix puts this path in the
 #                ISO's storeContents.
-#   losos-registrar — the Rust edge registration + Traefik/rathole config
+#   losos-registrar — the Rust edge registration + Traefik and tunnel config
 #                reconciler (`serve`) and appliance registration client
 #                (`announce`, `join`). Built via the same buildRustPackage
 #                from edge/registrar/. See modules/edge.nix (edge) and
@@ -500,7 +500,7 @@ images
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-registrar` will print the new hash to paste here.
-    cargoHash = "sha256-khEKvHp5e0toplK5b9QM638Wc0KYGEJ764UP0xDNffU=";
+    cargoHash = "sha256-LedCH3lBYEFRAqqO4XKcqtmtWtbXLbqN5JEulQ9QcbY=";
     # No system deps; pure Rust with rustls (no openssl).
     # Same reasoning as losos-ctl above: the suite runs via cargo test in the
     # lint job, not inside this derivation.
@@ -525,7 +525,7 @@ images
     pname = "losos-registrar-static";
     version = "0.1.0";
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
-    cargoHash = "sha256-khEKvHp5e0toplK5b9QM638Wc0KYGEJ764UP0xDNffU=";
+    cargoHash = "sha256-LedCH3lBYEFRAqqO4XKcqtmtWtbXLbqN5JEulQ9QcbY=";
     doCheck = false;
   };
 

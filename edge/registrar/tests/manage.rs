@@ -100,7 +100,7 @@ async fn a_managed_box_is_listed_and_its_calls_reach_it_with_its_token() {
         .register("office-box", "office-box.example.test", TOKEN)
         .await;
     assert_eq!(status, 200, "{body}");
-    let port = serde_json::from_str::<serde_json::Value>(&body).unwrap()["rathole_port"]
+    let port = serde_json::from_str::<serde_json::Value>(&body).unwrap()["tunnel_port"]
         .as_u64()
         .unwrap() as u16;
     assert_eq!(port, box_port);
@@ -323,7 +323,7 @@ async fn the_gateway_is_set_up_from_the_page_with_the_key() {
         opts.enrol_dir = Some(dir.path_str("enrolled"));
         opts.uplink = Some(losos_registrar::relay::UplinkOpts {
             file: dir.path_str("edge/uplink.json"),
-            rathole_config: dir.path_str("uplink.toml"),
+            tunnel_config: dir.path_str("uplink-tunnel.json"),
             interval: std::time::Duration::from_secs(3600),
         });
     })
@@ -347,7 +347,7 @@ async fn the_gateway_is_set_up_from_the_page_with_the_key() {
         "id": "acme",
         "token": "hub-token",
         "registrarUrl": "https://register.example.test",
-        "ratholeEndpoint": "relay.example.test:2333",
+        "tunnelEndpoint": "relay.example.test:2333",
     });
 
     assert_eq!(get(&edge, "/manage/api/gateway", None).await.0, 401);
@@ -372,7 +372,7 @@ async fn the_gateway_is_set_up_from_the_page_with_the_key() {
 
     // A malformed row is refused and writes nothing.
     let mut bad = uplink.clone();
-    bad["ratholeEndpoint"] = "relay".into();
+    bad["tunnelEndpoint"] = "relay".into();
     let (status, body) = send(
         reqwest::Method::PUT,
         "/manage/api/gateway/uplink",
@@ -445,7 +445,11 @@ async fn the_gateway_is_set_up_from_the_page_with_the_key() {
     );
 
     // Cleared: the file, its tokens and the rendered tunnel config go.
-    std::fs::write(edge.dir.join("uplink.toml"), "[client]\n").unwrap();
+    std::fs::write(
+        edge.dir.join("uplink-tunnel.json"),
+        r#"{"remote":"relay.example.test:2333","pin":"","services":{}}"#,
+    )
+    .unwrap();
     let (status, body) = send(
         reqwest::Method::DELETE,
         "/manage/api/gateway/uplink",
@@ -456,6 +460,6 @@ async fn the_gateway_is_set_up_from_the_page_with_the_key() {
     assert_eq!(status, 200, "{body}");
     assert!(!edge.dir.join("edge/uplink.json").exists());
     assert!(!edge.dir.join("edge/uplink.token").exists());
-    assert!(!edge.dir.join("uplink.toml").exists());
+    assert!(!edge.dir.join("uplink-tunnel.json").exists());
     edge.shutdown().await;
 }
