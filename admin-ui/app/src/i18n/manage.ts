@@ -290,6 +290,13 @@ export default defineMessages({
 
   // ── One box ───────────────────────────────────────────────────────────
   "manage.box.back": { en: "All boxes", sk: "Všetky zariadenia", de: "Alle Boxen" },
+
+  // ── Statistics ────────────────────────────────────────────────────────
+  "manage.statistics.summary": {
+    en: "Requests this edge's Traefik answered, for every box and name it routes.",
+    sk: "Požiadavky, na ktoré odpovedal Traefik tohto edge, pre každé zariadenie a názov, ktoré smeruje.",
+    de: "Anfragen, die der Traefik dieser Edge beantwortet hat, für jede Box und jeden Namen, die sie weiterleitet.",
+  },
   "manage.box.summary": {
     en: "LosOS Cloud, LosOS Git and the apps on this box. Everything else stays with its owner.",
     sk: "LosOS Cloud, LosOS Git a aplikácie na tomto zariadení. Všetko ostatné ostáva jeho vlastníkovi.",

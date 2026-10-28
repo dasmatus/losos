@@ -2234,6 +2234,16 @@ in
       '';
     };
 
+    edge.traefikMetricsPort = lib.mkOption {
+      type = lib.types.port;
+      default = 8091;
+      description = ''
+        Loopback port of Traefik's Prometheus counters. The registrar reads
+        them every 15 seconds for the Statistics page of a company edge's
+        manage page. Never reachable off the machine.
+      '';
+    };
+
     edge.registrarApiBind = lib.mkOption {
       type = lib.types.str;
       default = "127.0.0.1";
