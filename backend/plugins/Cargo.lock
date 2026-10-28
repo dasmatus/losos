@@ -82,6 +82,13 @@ name = "losos-names"
 version = "0.1.0"
 
 [[package]]
+name = "losos-page"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "losos-plugin"
 version = "0.1.0"
 dependencies = [
@@ -95,6 +102,16 @@ dependencies = [
 name = "losos-plugin-assistant"
 version = "0.1.0"
 dependencies = [
+ "losos-plugin",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "losos-plugin-basic"
+version = "0.1.0"
+dependencies = [
+ "losos-page",
  "losos-plugin",
  "serde",
  "serde_json",

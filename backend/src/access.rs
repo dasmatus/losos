@@ -138,23 +138,75 @@ pub fn forward(
     path: &str,
     body: &serde_json::Value,
 ) -> std::io::Result<Inner> {
-    let mut stream = TcpStream::connect(("127.0.0.1", port))?;
-    stream.set_read_timeout(Some(INNER_TIMEOUT))?;
-    stream.set_write_timeout(Some(INNER_TIMEOUT))?;
     // A string body goes as raw text: `/api/apply` takes Nix, not JSON, and
     // the web UI sends it as text/plain. Everything else is JSON.
     let (payload, content_type) = match body {
-        serde_json::Value::Null => (Vec::new(), ""),
-        serde_json::Value::String(text) => (text.as_bytes().to_vec(), "text/plain"),
-        other => (serde_json::to_vec(other)?, "application/json"),
+        serde_json::Value::Null => (Vec::new(), None),
+        serde_json::Value::String(text) => (text.as_bytes().to_vec(), Some("text/plain")),
+        other => (serde_json::to_vec(other)?, Some("application/json")),
     };
+    let raw = forward_raw(
+        port,
+        Some(admin_token),
+        remote,
+        person,
+        method,
+        path,
+        content_type,
+        &payload,
+    )?;
+    Ok(Inner {
+        status: raw.status,
+        body: json_or_text(&raw.body),
+    })
+}
+
+/// What [`forward_raw`] got back: the status, the content type and the
+/// body as bytes.
+pub struct RawAnswer {
+    pub status: u16,
+    pub content_type: Option<String>,
+    pub body: Vec<u8>,
+}
+
+/// [`forward`] with the body as bytes, and with no token at all for a
+/// caller who has none (a public route). A plugin's `dispatch.call` to one
+/// of this daemon's own routes goes this way (`crate::plugin`), so it is
+/// held to the same sign-in and section checks as a call from the page.
+#[allow(clippy::too_many_arguments)]
+pub fn forward_raw(
+    port: u16,
+    admin_token: Option<&str>,
+    remote: &str,
+    person: Option<&str>,
+    method: &str,
+    path: &str,
+    content_type: Option<&str>,
+    payload: &[u8],
+) -> std::io::Result<RawAnswer> {
+    // The request line and every header below are written by hand: refuse
+    // anything that could end a line.
+    let clean = |v: &str| !v.bytes().any(|b| b == b'\r' || b == b'\n');
+    if ![method, path, remote, content_type.unwrap_or("")]
+        .iter()
+        .all(|v| clean(v))
+        || !path.starts_with('/')
+        || path.contains(' ')
+    {
+        return Err(invalid("a request line or header with a line break"));
+    }
+    let mut stream = TcpStream::connect(("127.0.0.1", port))?;
+    stream.set_read_timeout(Some(INNER_TIMEOUT))?;
+    stream.set_write_timeout(Some(INNER_TIMEOUT))?;
     let mut head = format!(
         "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n\
-         Authorization: Bearer {admin_token}\r\nX-Real-IP: {remote}\r\n\
-         Connection: close\r\nContent-Length: {}\r\n",
+         X-Real-IP: {remote}\r\nConnection: close\r\nContent-Length: {}\r\n",
         payload.len()
     );
-    if !content_type.is_empty() {
+    if let Some(token) = admin_token {
+        head.push_str(&format!("Authorization: Bearer {token}\r\n"));
+    }
+    if let Some(content_type) = content_type {
         head.push_str(&format!("Content-Type: {content_type}\r\n"));
     }
     if let Some(person) = person {
@@ -167,9 +219,9 @@ pub fn forward(
     }
     head.push_str("\r\n");
     stream.write_all(head.as_bytes())?;
-    stream.write_all(&payload)?;
+    stream.write_all(payload)?;
     stream.flush()?;
-    read_response(BufReader::new(stream))
+    read_raw(BufReader::new(stream))
 }
 
 fn invalid(what: &str) -> std::io::Error {
@@ -178,7 +230,27 @@ fn invalid(what: &str) -> std::io::Error {
 
 /// Parse an HTTP/1.1 answer: status, headers, then a body by length, by
 /// chunks, or to the end of the stream.
-pub(crate) fn read_response(mut r: impl BufRead) -> std::io::Result<Inner> {
+pub(crate) fn read_response(r: impl BufRead) -> std::io::Result<Inner> {
+    let raw = read_raw(r)?;
+    Ok(Inner {
+        status: raw.status,
+        body: json_or_text(&raw.body),
+    })
+}
+
+/// A body as JSON, else as a string of its text, else null when empty.
+fn json_or_text(bytes: &[u8]) -> serde_json::Value {
+    if bytes.is_empty() {
+        serde_json::Value::Null
+    } else {
+        serde_json::from_slice(bytes).unwrap_or_else(|_| {
+            serde_json::Value::String(String::from_utf8_lossy(bytes).into_owned())
+        })
+    }
+}
+
+/// [`read_response`] without reading the body as JSON.
+fn read_raw(mut r: impl BufRead) -> std::io::Result<RawAnswer> {
     let mut line = String::new();
     r.read_line(&mut line)?;
     let status: u16 = line
@@ -187,6 +259,7 @@ pub(crate) fn read_response(mut r: impl BufRead) -> std::io::Result<Inner> {
         .and_then(|s| s.parse().ok())
         .ok_or_else(|| invalid("no status line"))?;
     let mut length: Option<u64> = None;
+    let mut content_type: Option<String> = None;
     let mut chunked = false;
     loop {
         line.clear();
@@ -199,7 +272,9 @@ pub(crate) fn read_response(mut r: impl BufRead) -> std::io::Result<Inner> {
         }
         if let Some((name, value)) = header.split_once(':') {
             let value = value.trim();
-            if name.eq_ignore_ascii_case("content-length") {
+            if name.eq_ignore_ascii_case("content-type") {
+                content_type = Some(value.to_string());
+            } else if name.eq_ignore_ascii_case("content-length") {
                 length = value.parse().ok();
             } else if name.eq_ignore_ascii_case("transfer-encoding")
                 && value.eq_ignore_ascii_case("chunked")
@@ -231,14 +306,11 @@ pub(crate) fn read_response(mut r: impl BufRead) -> std::io::Result<Inner> {
         let limit = length.unwrap_or(MAX_INNER_BYTES).min(MAX_INNER_BYTES);
         r.take(limit).read_to_end(&mut bytes)?;
     }
-    let body = if bytes.is_empty() {
-        serde_json::Value::Null
-    } else {
-        serde_json::from_slice(&bytes).unwrap_or_else(|_| {
-            serde_json::Value::String(String::from_utf8_lossy(&bytes).into_owned())
-        })
-    };
-    Ok(Inner { status, body })
+    Ok(RawAnswer {
+        status,
+        content_type,
+        body: bytes,
+    })
 }
 
 /// `GET /api/access` for the web UI.

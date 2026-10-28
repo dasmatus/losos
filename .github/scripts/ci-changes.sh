@@ -57,6 +57,8 @@ lane_rust=(
   "admin-ui/lab/*"
   # backend/src/overrides.rs include_str!s it.
   modules/overrides.nix
+  # backend/plugins/basic's tests keep it in step with the pages' sources.
+  admin-ui/app/src/styles/basic-classes.txt
   "${tui_reads[@]}"
 )
 

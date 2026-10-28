@@ -14,6 +14,16 @@
 
 @import "tailwindcss";
 @import "./tokens.css";
+@import "./basic.css";
+
+/* The pages without JavaScript (/basic/) are drawn in Rust on the box, in
+ * this stylesheet's classes. The bundle is built from this folder alone, so
+ * Tailwind reads the strings of those sources from basic-classes.txt, which
+ * a test of backend/plugins/basic keeps current. Their bars and meters are
+ * percentages, which no style attribute may set under the policy: a class
+ * for each whole percent. */
+@source "./basic-classes.txt";
+@source inline("w-[{0..100}%]");
 
 /* ── Palette ──────────────────────────────────────────────────────────────
  * Lives in tokens.css, as plain custom properties, because the Nextcloud
