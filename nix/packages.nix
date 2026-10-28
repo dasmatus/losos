@@ -167,6 +167,16 @@ let
     features = [ "wasm" ];
     cargoHash = "sha256-/PsXCBJFqy5hJ1ov20niOX5WhMcbm30UIkCoppjWiBI=";
   };
+  # Copied to src/mdx/pkg (gitignored; `npm run mdx` writes it in a
+  # checkout) by both npm builds, in preConfigure rather than preBuild: the
+  # VM tests that build the UI without the Lab replace preBuild, and LosOS
+  # Office and Notes still need the parser there. Not postPatch, which the
+  # npm dependencies' fixed-output fetch runs too.
+  mdxPkg = ''
+    mkdir -p src/mdx/pkg
+    cp ${losos-mdx-wasm}/* src/mdx/pkg/
+    chmod -R u+w src/mdx/pkg
+  '';
 
   # The Lab's libvirt client (admin-ui/lab/virt-rpc/README.md), loaded
   # lazily when a guest starts on that path.
@@ -404,8 +414,16 @@ images
     }}";
     # LosOS Lab (lab/index.html, the second Vite entry) imports the Rust core,
     # the GPU canvas and, for guests on the relay path, the libvirt client.
+    preConfigure = mdxPkg;
     preBuild = labCorePkg + labVirtPkg + labRenderPkg;
-    passthru = { inherit labCorePkg labVirtPkg labRenderPkg; };
+    passthru = {
+      inherit
+        labCorePkg
+        labVirtPkg
+        labRenderPkg
+        mdxPkg
+        ;
+    };
 
     # The default npmBuildScript is `npm run build`, which here is
     # `tsc --noEmit && vite build` — so unlike the Rust crates (doCheck = off,
