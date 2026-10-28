@@ -31,7 +31,10 @@
 // `theme` is the choice made on the page's own theme toggle (Light or Dark),
 // as against `colorScheme`, the browser's, which Auto follows. A variant can
 // also set `dpr` (device pixels per CSS pixel), `timezoneId`, and
-// `hideCaret`, which makes the text caret transparent.
+// `hideCaret`, which makes the text caret transparent. `"script": false`, on
+// the plan or a variant, is a browser with JavaScript off: the shots are
+// what such a browser is served (the pages under /basic/), and the policy's
+// refusals are read from the console, where the browser reports them.
 //
 // A shot with `"film": {"title", "action", "targets": {key: locator}}` is
 // also listed in film.json beside the pictures: its file, path, title, the
@@ -132,6 +135,7 @@ async function strip(variant, width, shot, name, storageState) {
     locale: variant.locale ?? plan.locale ?? 'en-US',
     colorScheme: variant.colorScheme ?? plan.colorScheme ?? 'light',
     reducedMotion: 'no-preference',
+    javaScriptEnabled: (variant.script ?? plan.script) !== false,
     deviceScaleFactor: variant.dpr ?? 1,
     ...(variant.timezoneId ? { timezoneId: variant.timezoneId } : {}),
     // The session and the page's storage of the context that took the
@@ -243,12 +247,14 @@ const film = [];
 try {
   for (const variant of variants) {
     const width = variant.width ?? plan.width ?? 1280;
+    const script = (variant.script ?? plan.script) !== false;
     const context = await browser.newContext({
       viewport: { width, height: variant.height ?? plan.height ?? 800 },
       ignoreHTTPSErrors: true,
       locale: variant.locale ?? plan.locale ?? 'en-US',
       colorScheme: variant.colorScheme ?? plan.colorScheme ?? 'light',
       reducedMotion: 'reduce',
+      javaScriptEnabled: script,
       deviceScaleFactor: variant.dpr ?? 1,
       ...(variant.timezoneId ? { timezoneId: variant.timezoneId } : {}),
     });
@@ -284,6 +290,13 @@ try {
       const page = await context.newPage();
       const errors = [];
       page.on('pageerror', (e) => errors.push(String(e)));
+      // Without a script the page cannot count its own refusals.
+      const refused = [];
+      if (!script) {
+        page.on('console', (m) => {
+          if (/Content Security Policy/.test(m.text())) refused.push(m.text());
+        });
+      }
       await page.goto(base + shot.path, { waitUntil: 'networkidle', timeout: 120000 });
       if (shot.waitFor) await locate(page, shot.waitFor).waitFor({ timeout: 120000 });
       for (const s of shot.steps ?? []) await step(page, s);
@@ -302,6 +315,7 @@ try {
         pageWidth: document.documentElement.scrollWidth,
         csp: window.__lososCsp ?? [],
       }));
+      if (!script) seen.csp = refused;
       report.push({ name, path: shot.path, width, ...seen });
       if (shot.film) {
         const targets = {};
