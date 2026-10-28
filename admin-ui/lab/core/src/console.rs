@@ -196,7 +196,9 @@ impl LabCore {
                     )
                 };
                 [
-                    format!("{ts} {n} losos-tunnel-client[812]: pinned the tunnel certificate of {e}"),
+                    format!(
+                        "{ts} {n} losos-tunnel-client[812]: pinned the tunnel certificate of {e}"
+                    ),
                     format!("{ts} {n} losos-tunnel-client[812]: QUIC tunnel up to {e}:2333"),
                     last,
                 ]
