@@ -114,6 +114,11 @@ let
     role = "switch";
     name = "Let apps use the graphics chip";
   };
+  # The checkbox under a switch is visually hidden and its label takes
+  # the pointer, as a person's click does.
+  gpuSwitch = {
+    selector = "label[data-slot=switch]:has(#f-gpuEnable)";
+  };
   personMenu = {
     selector = "details:has([data-slot=person-menu]) > summary";
   };
@@ -140,7 +145,7 @@ let
         path = "/settings/hardware";
         waitFor = gpu;
         steps = [
-          { click = gpu; }
+          { click = gpuSwitch; }
           { waitText = "1 change not applied yet"; }
         ];
       }
@@ -167,7 +172,7 @@ let
       path = "/settings/hardware";
       waitFor = gpu;
       steps = [
-        { click = gpu; }
+        { click = gpuSwitch; }
         {
           click = {
             role = "button";
@@ -435,7 +440,7 @@ pkgs.testers.nixosTest {
 
         with subtest("without JavaScript: apply a change, watch the rebuild, sign out"):
             capture("off-apply")
-            box.succeed("grep -q 'losos.gpu.enable = true' /etc/nixos/modules/overrides.nix")
+            box.succeed("grep -q 'losos.gpu.enable = false' /etc/nixos/modules/overrides.nix")
 
         with subtest("the handbook's picture in English, Slovak and German"):
             capture("handbook")
