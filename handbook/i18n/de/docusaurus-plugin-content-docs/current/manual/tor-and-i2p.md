@@ -27,6 +27,8 @@ Sekunden und I2P in etwa einer Minute. Bis dahin steht in der Zeile **Wird
 erstellt…**. Danach erscheinen die Adressen auf derselben Seite, jede mit
 einem Knopf, der sie kopiert.
 
+![Einstellungen, Netzwerk: Tor und I2P mit beiden Schaltern an, die eigenen .onion- und .b32.i2p-Adressen der Box und die zwei von ihrem Edge, jede mit einem Knopf zum Kopieren.](@site/docs/img/tor-and-i2p-de.png)
+
 Die Box behält ihre Adressen. Schaltest du ein Netz aus und wieder ein,
 kommt dieselbe Adresse zurück, und Updates und Neustarts ändern sie nicht.
 
@@ -58,6 +60,9 @@ ihr, so wie ihr öffentlicher Name, und die Box zeigt sie unter
 **Einstellungen** > **Netzwerk** als **Tor, über deinen Edge** und **I2P,
 über deinen Edge**. Das schaltet die Person ein, die den Edge betreibt, für
 den ganzen Edge. Auf der Box gibt es dafür keine Einstellung.
+
+Der Edge antwortet unter diesen Adressen über https mit einem Zertifikat,
+das er selbst erstellt. Dein Browser warnt deshalb beim ersten Öffnen.
 
 Der Unterschied liegt darin, wer den Verkehr trägt. Die eigenen Adressen
 der Box führen von Tor oder I2P direkt zur Box. Die Adressen eines Edge

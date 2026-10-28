@@ -24,6 +24,8 @@ Once the box has rebuilt, Tor makes its address within seconds and I2P
 within about a minute. Until then the row says **Being made…**. The
 addresses then appear on the same page, each with a button that copies it.
 
+![Settings, Network: Tor and I2P with both switches on, the box's own .onion and .b32.i2p addresses, and the two its edge made, each with a copy button.](../img/tor-and-i2p.png)
+
 The box keeps its addresses. Turning a network off and on again brings back
 the same one, and updates and restarts leave them alone.
 
@@ -53,6 +55,9 @@ Tor nor I2P for them. They reach the box through its tunnel, the same way
 its public name does, and the box lists them on **Settings** > **Network**
 as **Tor, through your edge** and **I2P, through your edge**. The edge's
 operator turns this on for the whole edge. It is not a setting on the box.
+
+The edge answers these addresses over https with a certificate it makes for
+itself, so a browser warns the first time you open one.
 
 The difference is who carries the traffic. The box's own addresses go from
 Tor or I2P straight to the box. An edge's addresses go through the edge,

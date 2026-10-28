@@ -430,10 +430,13 @@ pkgs.testers.runNixOSTest (
       I2P = "--socks5-hostname 127.0.0.1:4447"
 
       # One at a time, the heaviest first: four emulated machines booting at
-      # once can miss the driver's five minutes for a shell. The box's tunnel
-      # and Tor wait for the others and try again.
+      # once can miss the driver's five minutes for a shell. Even one at a
+      # time, a busy host can take longer than that for the third, so each
+      # waits for its shell on the console first, with no such limit. The
+      # box's tunnel and Tor wait for the others and try again.
       for m in [box, client, edge, net]:
           m.start()
+          m.wait_for_console_text("Started backdoor.service", timeout=1800)
           m.wait_for_unit("multi-user.target")
       # Every tor from a network that is there now.
       net.wait_until_succeeds("ss -Htln | grep -q ':7003 '")

@@ -25,6 +25,8 @@ Keď sa zariadenie prestavia, Tor vytvorí adresu za pár sekúnd a I2P asi za
 minútu. Dovtedy je v riadku **Vytvára sa…**. Potom sa adresy objavia na tej
 istej stránke, každá s tlačidlom, ktoré ju skopíruje.
 
+![Nastavenia, Sieť: Tor a I2P s oboma zapnutými prepínačmi, vlastné adresy zariadenia .onion a .b32.i2p a dve adresy od jeho edge, každá s tlačidlom na kopírovanie.](@site/docs/img/tor-and-i2p-sk.png)
+
 Zariadenie si adresy necháva. Keď sieť vypnete a znova zapnete, vráti sa tá
 istá adresa, a aktualizácie ani reštarty ich nemenia.
 
@@ -54,6 +56,9 @@ pre ne Tor ani I2P nespúšťa. K zariadeniu vedú cez jeho tunel, tak ako jeho
 verejné meno, a zariadenie ich ukáže v časti **Nastavenia** > **Sieť** ako
 **Tor cez váš edge** a **I2P cez váš edge**. Zapína ich prevádzkovateľ edge
 pre celý edge. Na zariadení to nastaviť nejde.
+
+Edge na týchto adresách odpovedá cez https s certifikátom, ktorý si vytvorí
+sám, takže prehliadač pri prvom otvorení ukáže varovanie.
 
 Rozdiel je v tom, kto prenáša prevádzku. Vlastné adresy zariadenia vedú z
 Toru alebo I2P priamo do zariadenia. Adresy od edge idú cez edge, ktorý
