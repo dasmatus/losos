@@ -118,7 +118,11 @@ impl Routes {
         let mut hosts: Vec<String> = self
             .routers
             .values()
-            .flat_map(|r| r.tls.domains.iter().map(|d| d.main.clone()))
+            .flat_map(|r| {
+                r.tls
+                    .iter()
+                    .flat_map(|t| t.domains.iter().map(|d| d.main.clone()))
+            })
             .collect();
         hosts.sort();
         hosts.dedup();
@@ -132,7 +136,12 @@ impl Routes {
     pub fn hosts_by_service(&self) -> BTreeMap<String, String> {
         let mut hosts = BTreeMap::new();
         for (name, router) in &self.routers {
-            let Some(host) = router.tls.domains.first().map(|d| d.main.clone()) else {
+            let Some(host) = router
+                .tls
+                .as_ref()
+                .and_then(|t| t.domains.first())
+                .map(|d| d.main.clone())
+            else {
                 continue;
             };
             if *name == router.service {
@@ -236,7 +245,10 @@ struct TraefikRouter {
     entry_points: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     middlewares: Vec<String>,
-    tls: TraefikTls,
+    /// `None` for a router on a plain entry point (a box's Tor and I2P
+    /// names on `losos-hidden`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tls: Option<TraefikTls>,
 }
 
 /// Per-router TLS: the `le` cert resolver and the hostname to obtain a cert
@@ -399,8 +411,8 @@ pub fn desired_config_with_hosts(
                 service: id.clone(),
                 entry_points: vec!["websecure".to_string()],
                 middlewares: Vec::new(),
-                tls: TraefikTls {
-                    cert_resolver: "le".to_string(),
+                tls: Some(TraefikTls {
+                    cert_resolver: Some("le".to_string()),
                     domains: vec![TraefikDomain { main: host.clone() }],
                 }),
             },
@@ -417,8 +429,8 @@ pub fn desired_config_with_hosts(
                         service: id.clone(),
                         entry_points: vec!["websecure".to_string()],
                         middlewares: Vec::new(),
-                        tls: TraefikTls {
-                            cert_resolver: "le".to_string(),
+                        tls: Some(TraefikTls {
+                            cert_resolver: Some("le".to_string()),
                             domains: vec![TraefikDomain {
                                 main: extra.clone(),
                             }],
@@ -481,8 +493,8 @@ pub fn vm_routes(routes: &[(String, String)]) -> Routes {
                 service: name.clone(),
                 entry_points: vec!["websecure".to_string()],
                 middlewares: Vec::new(),
-                tls: TraefikTls {
-                    cert_resolver: "le".to_string(),
+                tls: Some(TraefikTls {
+                    cert_resolver: Some("le".to_string()),
                     domains: vec![TraefikDomain { main: host.clone() }],
                 }),
             },
@@ -512,17 +524,16 @@ pub struct HiddenRoute {
     pub hosts: Vec<String>,
 }
 
-/// The Traefik file for the boxes' Tor and I2P addresses: per box, one
-/// router on the plain `losos-hidden` entry point and one on
-/// `losos-hidden-tls` with Traefik's default certificate, both
-/// `Host(<onion>) || Host(<b32>)`, to a service of their own at the box's
-/// tunnel port. Those entry points listen on loopback, where only Tor and
-/// I2P connect, and no other router listens there. `None` for no routes,
-/// as [`Files::traefik_yaml`].
+/// Traefik's routes for the boxes' Tor and I2P addresses, a source of the
+/// provider document of its own: per box, one router on the plain
+/// `losos-hidden` entry point and one on `losos-hidden-tls` with Traefik's
+/// default certificate, both `Host(<onion>) || Host(<b32>)`, to a service of
+/// their own at the box's tunnel port. Those entry points listen on
+/// loopback, where only Tor and I2P connect, and no other router listens
+/// there. No offline page: a visitor on Tor gets Traefik's own answer.
 #[must_use]
-pub fn hidden_routes_yaml(routes: &[HiddenRoute]) -> Option<String> {
-    let mut routers = BTreeMap::new();
-    let mut services = BTreeMap::new();
+pub fn hidden_routes(routes: &[HiddenRoute]) -> Routes {
+    let mut out = Routes::default();
     for r in routes {
         if r.hosts.is_empty() {
             continue;
@@ -536,28 +547,30 @@ pub fn hidden_routes_yaml(routes: &[HiddenRoute]) -> Option<String> {
             .collect::<Vec<_>>()
             .join(" || ");
         let service = format!("{}-hidden", r.id);
-        routers.insert(
+        out.routers.insert(
             service.clone(),
             TraefikRouter {
                 rule: rule.clone(),
                 service: service.clone(),
                 entry_points: vec![crate::hidden::PLAIN_ENTRY_POINT.to_string()],
+                middlewares: Vec::new(),
                 tls: None,
             },
         );
-        routers.insert(
+        out.routers.insert(
             format!("{}-hidden-tls", r.id),
             TraefikRouter {
                 rule,
                 service: service.clone(),
                 entry_points: vec![crate::hidden::TLS_ENTRY_POINT.to_string()],
+                middlewares: Vec::new(),
                 tls: Some(TraefikTls {
                     cert_resolver: None,
                     domains: Vec::new(),
                 }),
             },
         );
-        services.insert(
+        out.services.insert(
             service,
             TraefikService {
                 load_balancer: TraefikLoadBalancer {
@@ -568,15 +581,7 @@ pub fn hidden_routes_yaml(routes: &[HiddenRoute]) -> Option<String> {
             },
         );
     }
-    if routers.is_empty() {
-        return None;
-    }
-    Some(
-        serde_yaml::to_string(&TraefikConfig {
-            http: TraefikHttp { routers, services },
-        })
-        .expect("serializing TraefikConfig is infallible for String/Vec/BTreeMap fields"),
-    )
+    out
 }
 
 /// The hub a spoke relays through, as the uplink renderer needs it.

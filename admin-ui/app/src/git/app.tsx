@@ -17,6 +17,7 @@ import {
   Settings02Icon,
 } from "@hugeicons/core-free-icons";
 import { PersonAvatar } from "@/components/person";
+import { BottomNav, type BottomNavTab } from "@/components/ui/bottom-nav";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
@@ -358,6 +359,19 @@ function Places() {
 
   React.useEffect(() => setOpenMobile(false), [pathname, setOpenMobile]);
 
+  // The phone's bottom bar: Repositories, then inside a repository its
+  // code, pull requests and issues, elsewhere the issues; More has the rest.
+  const tab = (to: string, label: MessageKey, icon: IconSvgElement, active: boolean): BottomNavTab => ({ key: to, to, label: t(label), icon, active });
+  const byPath = (to: string) => places.find((p) => p.to === to);
+  const tabs: BottomNavTab[] = [tab("/", "git.nav.repos", Book02Icon, pathname === "/")];
+  if (base !== null) {
+    for (const p of [byPath(base), byPath(`${base}/pulls`), byPath(`${base}/issues`)]) {
+      if (p !== undefined) tabs.push(tab(p.to, p.label, p.icon, current === p));
+    }
+  } else if (!visitor) {
+    tabs.push(tab("/issues", "git.nav.issues", Task01Icon, inIssues));
+  }
+
   const item: PlaceItem = (to, label, icon, active, count) => (
     <SidebarMenuItem key={to}>
       <SidebarMenuButton isActive={active} tooltip={label} render={<Link to={to} aria-current={active ? "page" : undefined} />}>
@@ -376,18 +390,13 @@ function Places() {
 
   return (
     <>
-      {isMobile && (
-        <div className="flex w-full items-center gap-1.5 rounded-card border border-line bg-sunk p-2">
-          <SidebarTrigger label={t("git.nav.expand")} />
-          <button type="button" onClick={() => setOpenMobile(true)} className="min-w-0 flex-1 truncate text-left text-[13.5px] font-medium text-ink">
-            {current !== undefined ? t(current.label) : t("git.nav.repos")}
-          </button>
-        </div>
-      )}
+      <BottomNav label={t("ui.bottomNav.label")} tabs={tabs} />
       <Sidebar aria-label={t("git.nav.label")} mobileTitle={t("git.nav.label")} closeLabel={t("git.close")}>
-        <SidebarHeader className={cn(isMobile && "pr-10")}>
-          {!isMobile && <SidebarTrigger label={t(rail ? "git.nav.expand" : "git.nav.collapse")} />}
-        </SidebarHeader>
+        {!isMobile && (
+          <SidebarHeader>
+            <SidebarTrigger label={t(rail ? "git.nav.expand" : "git.nav.collapse")} />
+          </SidebarHeader>
+        )}
         <SidebarContent>
           <SidebarMenu>
             {item("/", t("git.nav.repos"), Book02Icon, pathname === "/")}
