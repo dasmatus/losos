@@ -1,5 +1,5 @@
 # Traefik with Encrypted Client Hello, for an official edge
-# (losos.edge.ech). No released Traefik decrypts ECH yet; this is the head
+# (losos.edge.dns.ech). No released Traefik decrypts ECH yet; this is the head
 # of traefik/traefik#13758, which adds the TLS options `echKeys` and
 # `echDecryptOnlyKeys` (RFC 9934 PEM files) on TCP and HTTP/3 and
 # `traefik ech generate`. Built the way nixpkgs builds Traefik, with the
@@ -29,8 +29,12 @@ in
       hash = "sha256-csc1/5lsAiXodZaTy9nyJgbQw+4WD8ayaNA4kA/h3KU=";
     };
     vendorHash = "sha256-Cufp+YM9eC9YDhDbTSlxV75w0jbBoouoyEiGF2Fy+PA=";
+    # Upstream's unit suite builds every package's tests a second time,
+    # several GB of build cache for a binary its own CI already ran them
+    # on; nix/tests/edge-dns.nix checks this build's ECH handshake.
+    doCheck = false;
     # nixosTests.traefik is nixpkgs' Traefik; this one is tested by
-    # nix/tests/edge-ech.nix.
+    # nix/tests/edge-dns.nix.
     passthru = old.passthru // {
       tests = { };
     };
