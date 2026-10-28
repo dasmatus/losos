@@ -27,7 +27,7 @@
 //!   * [`status`] adds two read-only routes the real edge does not have,
 //!     `/status` and `/status/traefik`, which the page in `public/` polls so an
 //!     audience can watch boxes register, heartbeat and expire, and see the
-//!     Traefik configuration the edge would be writing for them.
+//!     Traefik routes the edge would be serving for them.
 //!
 //! What is *not* here, and cannot be: the rathole tunnel (a raw TCP listener
 //! holding long-lived connections), Traefik with per-tenant Let's Encrypt

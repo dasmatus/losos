@@ -138,10 +138,10 @@ pub struct RoutesOpts {
     pub pass_key_file: String,
 }
 
-/// `serve` options. The registrar is the sole writer of `traefik_dir`'s
-/// `losos.yml` and `rathole_config`; rathole hot-reloads the latter via its
-/// `notify` file-watcher (no signal needed), so there is no rathole-service
-/// handle here.
+/// `serve` options. Traefik discovers the boxes by polling
+/// `traefik_provider_listen`; the registrar is the sole writer of
+/// `rathole_config`, which rathole hot-reloads via its `notify` file-watcher
+/// (no signal needed), so there is no rathole-service handle here.
 ///
 /// The `mesh_*` / `kube_*` fields are the `/cluster/join` half and are all
 /// optional. `modules/edge.nix` only appends their flags under
@@ -153,7 +153,10 @@ pub struct RoutesOpts {
 pub struct ServeOpts {
     pub listen: String,
     pub registry_path: String,
-    pub traefik_dir: String,
+    /// Where Traefik's HTTP provider reads the boxes' routes, and the page an
+    /// unreachable box answers with (`server::provider_router`). Loopback:
+    /// nothing but Traefik on the same machine is meant to reach it.
+    pub traefik_provider_listen: String,
     pub rathole_config: String,
     pub rathole_bind_addr: String,
     pub rathole_bind_port: u16,
@@ -491,7 +494,9 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                     .unwrap_or("127.0.0.1:8443")
                     .to_string(),
                 registry_path: req(&rest, "--registry")?.to_string(),
-                traefik_dir: req(&rest, "--traefik-dir")?.to_string(),
+                traefik_provider_listen: arg(&rest, "--traefik-provider-listen")
+                    .unwrap_or("127.0.0.1:8090")
+                    .to_string(),
                 rathole_config: req(&rest, "--rathole-config")?.to_string(),
                 rathole_bind_addr: arg(&rest, "--rathole-bind-addr")
                     .unwrap_or("0.0.0.0")
@@ -1476,15 +1481,6 @@ fn parse_vms(args: &[String]) -> Result<Option<crate::vms::VmOpts>> {
             return Err(miette!("bad --vm-domain {d:?}; expected a domain name"));
         }
     }
-    let routes_file = match &domain {
-        Some(_) => Some(
-            std::path::Path::new(req(args, "--traefik-dir")?)
-                .join("losos-vms.yml")
-                .to_string_lossy()
-                .into_owned(),
-        ),
-        None => None,
-    };
     Ok(Some(crate::vms::VmOpts {
         catalogue,
         shape,
@@ -1498,7 +1494,6 @@ fn parse_vms(args: &[String]) -> Result<Option<crate::vms::VmOpts>> {
             * 1024,
         fetch_base,
         domain,
-        routes_file,
     }))
 }
 
