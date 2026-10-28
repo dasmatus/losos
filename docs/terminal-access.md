@@ -242,6 +242,18 @@ does not mistake it for a bad token. 409 with `gitOff: true` means the box
 runs no LosOS Git, 429 that LosOS Cloud is throttling, 503 that one of the
 two cannot be asked yet.
 
+LosOS Desktop's backups ask for both at once without a password, through
+LosOS Login's device code sign-in as the client `losos-backups`:
+
+```text
+POST /api/devices/backups  {"device"}  -> {"cloud": {...}|null, "git": {...}|null, "gitOff"?, "problems"?}
+```
+
+LosOS Login has asked the person for their password, their second factor
+and their consent by then, so the route takes none. A `losos-backups` token
+lasts ten minutes, has no refresh token and reaches this route alone. It
+makes the credentials of the person it names, in their own accounts.
+
 On the computer, `git setup` writes git's global configuration for
 `<box>/git`: an empty `credential.<url>.helper` and then `!<losos> git
 credential`, so only `losos` answers for the box, and

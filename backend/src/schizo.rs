@@ -1,36 +1,35 @@
-//! Schizo mode, as the owner's account carries it to every device LosOS
-//! Login signs people in on (`handbook/docs/in-depth/schizo-mode.md`).
+//! Schizo mode, as the owner's account carries it to every computer LosOS
+//! Login manages the logins of.
 //!
 //! On LosOS Desktop schizo mode sends every connection through Tor. Here
 //! it is a setting of the owner's, kept by this daemon and handed to every
-//! computer whose logins this box's LosOS Login manages, so turning it on
-//! once turns it on on all of them. On the box itself it takes the owner
-//! off the market: no listing, no order, no payout, nothing bought or sold
-//! with this box's identity, and the box's open listings are closed.
+//! computer joined to this box, so turning it on once turns it on on all
+//! of them. On the box itself it takes the owner off the market: no
+//! listing, no order, no payout, nothing bought or sold with this box's
+//! identity, and the box's open listings are closed.
 //!
 //! Its full form also arms a duress code, as GrapheneOS has one. Typed in
 //! place of a password at a computer's login or lock screen, it wipes that
 //! computer to its factory state, and the computer tells this box, which
 //! hands the same order to each of the owner's other computers the next
-//! time it checks in. An order waits for a computer that is off or
-//! away for as long as that takes, because the box keeps it.
+//! time it checks in. An order waits for a computer that is off or away
+//! for as long as that takes, because the box keeps it.
 //!
-//! # Devices
+//! # Computers
 //!
-//! A computer joins once, signed in as one of the box's administrators
-//! (`POST /api/login-devices`), and is given a token of its own,
-//! `losos_dev_` and 64 hex digits. The box keeps only its SHA-256. With it
-//! the computer may make three calls and nothing else: read the policy,
-//! confirm a wipe, and report the duress code. The calls are open beyond
+//! The computers are the ones joined to this box's directory
+//! (`crate::directory`), with the token they read the people list with.
+//! The same token makes three more calls here, and nothing else does: check
+//! in, confirm a wipe, and report the duress code. The calls are open beyond
 //! the LAN (`modules/identity.nix`), since a computer away from the office,
 //! or one whose connections all go through Tor, still has to hear of a
 //! wipe. Reporting the duress code needs the code, which the box checks
 //! against its own hash: a stolen token can read whether schizo mode is
-//! on, and cannot wipe anything.
+//! on, and cannot start a wipe.
 //!
 //! Each computer is given the duress code's argon2id hash only while the
-//! full form is on, and seals it with its TPM; turning schizo mode off
-//! takes it back at the next check-in.
+//! full form is on; turning the full form off takes it back at the next
+//! check-in.
 //!
 //! The document lives beside lososd's state, root's only, in
 //! `/var/lib/losos/schizo.json`.
@@ -45,28 +44,20 @@ use serde_json::{json, Value};
 use crate::setup::Secret;
 
 const DEFAULT_FILE: &str = "/var/lib/losos/schizo.json";
-/// What every device token starts with, so `identify` knows whose to check.
-pub const TOKEN_PREFIX: &str = "losos_dev_";
 /// Shortest duress code. GrapheneOS asks for a PIN at least as long as the
 /// device's own; six is the floor its lock screen sets.
 pub const MIN_DURESS: usize = 6;
 const MAX_DURESS: usize = 128;
-/// Longest name a computer may give itself.
-const MAX_NAME: usize = 64;
-/// Most computers one box keeps. Each check-in reads the whole document.
-const MAX_DEVICES: usize = 256;
 
-/// One computer whose logins this box manages.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// What this box knows of one joined computer, by its directory id, from
+/// the first time it checked in.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Device {
-    /// What the computer called itself when it joined.
+    /// Its name in the directory.
+    #[serde(default)]
     pub name: String,
-    /// SHA-256 of its token, hex.
-    pub token: String,
-    /// When it joined, seconds since the epoch.
-    pub joined: u64,
-    /// When it last checked in.
+    /// When it last checked in, seconds since the epoch.
     #[serde(default)]
     pub seen: Option<u64>,
     /// When it confirmed the wipe order, which it carries out next.
@@ -86,7 +77,7 @@ pub struct Wipe {
     pub id: String,
     /// When it was entered.
     pub at: u64,
-    /// The device it was entered on.
+    /// The computer it was entered on.
     pub from: String,
 }
 
@@ -123,24 +114,11 @@ pub enum Refused {
     DuressIsPassword,
     #[error("the full form needs a duress code")]
     DuressMissing,
-    #[error(
-        "a computer's name must be 1 to {} letters, digits, spaces, dots or dashes",
-        MAX_NAME
-    )]
-    BadName,
-    #[error("this box already manages {} computers", MAX_DEVICES)]
-    TooMany,
-    #[error("no such computer")]
-    Unknown,
 }
 
 impl Refused {
     pub fn status(&self) -> u16 {
-        match self {
-            Refused::Unknown => 404,
-            Refused::TooMany => 409,
-            _ => 400,
-        }
+        400
     }
 }
 
@@ -164,7 +142,7 @@ pub struct Policy {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Peer {
-    /// `box`, or the computer's id.
+    /// `box`, or the computer's directory id.
     pub id: String,
     pub name: String,
     pub onion: String,
@@ -175,7 +153,7 @@ pub struct Peer {
 pub enum Reported {
     /// It was not the code; nothing happened.
     Wrong,
-    /// It was, and this is the first report: the owner's data goes now.
+    /// It was, and this is the first report: the order goes out now.
     Wipe,
     /// It was, and an order was already out.
     Already,
@@ -263,7 +241,6 @@ impl Schizo {
             "devices": doc.devices.iter().map(|(id, d)| json!({
                 "id": id,
                 "name": d.name,
-                "joined": d.joined,
                 "seen": d.seen,
                 "wiped": d.wiped,
                 "onion": d.onion,
@@ -297,69 +274,19 @@ impl Schizo {
             }
             doc.on = on;
             doc.full = full;
-            if full {
-                doc.duress = hash;
-            } else {
-                doc.duress = None;
-            }
+            doc.duress = hash;
             Ok(())
         })
     }
 
-    /// A computer joins: its id and the token it will check in with, shown
-    /// once.
-    pub fn register(&self, name: &str, now: u64) -> anyhow::Result<(String, String)> {
-        let name = validate_name(name)?;
-        let id = format!("dev_{}", random_hex(8));
-        let token = format!("{TOKEN_PREFIX}{}", random_hex(32));
-        self.change(|doc| {
-            if doc.devices.len() >= MAX_DEVICES {
-                return Err(Refused::TooMany.into());
-            }
-            doc.devices.insert(
-                id.clone(),
-                Device {
-                    name: name.to_string(),
-                    token: token_digest(&token),
-                    joined: now,
-                    seen: None,
-                    wiped: None,
-                    onion: None,
-                },
-            );
-            Ok(())
-        })?;
-        Ok((id, token))
-    }
-
-    /// A computer leaves, or an administrator takes it out.
-    pub fn forget(&self, id: &str) -> anyhow::Result<()> {
-        self.change(|doc| match doc.devices.remove(id) {
-            Some(_) => Ok(()),
-            None => Err(Refused::Unknown.into()),
-        })
-    }
-
-    /// The computer this token is, if it is one.
-    pub fn device(&self, token: &str) -> Option<String> {
-        if !token.starts_with(TOKEN_PREFIX) {
-            return None;
-        }
-        let digest = token_digest(token);
-        let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
-        let doc = self.read().ok()?;
-        doc.devices
-            .iter()
-            .find(|(_, d)| constant_eq(d.token.as_bytes(), digest.as_bytes()))
-            .map(|(id, _)| id.clone())
-    }
-
-    /// What `id` is told when it checks in, which also counts as seeing it.
-    /// `onion` is its own Tor address, if it has one by now; `box_onion` the
-    /// box's (`/var/lib/losos-hidden/addresses.json`).
+    /// What computer `id` (`name` in the directory) is told when it checks
+    /// in, which also counts as seeing it. `onion` is its own Tor address,
+    /// if it has one by now; `box_onion` the box's
+    /// (`/var/lib/losos-hidden/addresses.json`).
     pub fn policy(
         &self,
         id: &str,
+        name: &str,
         onion: Option<&str>,
         box_onion: Option<&str>,
         now: u64,
@@ -367,13 +294,14 @@ impl Schizo {
         let onion = onion.filter(|o| valid_onion(o));
         self.change(|doc| {
             let wipe = doc.wipe.as_ref().map(|w| w.id.clone());
-            let device = doc.devices.get_mut(id).ok_or(Refused::Unknown)?;
+            let device = doc.devices.entry(id.to_string()).or_default();
+            device.name = name.to_string();
             device.seen = Some(now);
             if let Some(onion) = onion {
                 device.onion = Some(onion.to_string());
             }
             let wipe = wipe.filter(|_| device.wiped.is_none());
-            // The addresses only while schizo mode is on: off, each device
+            // The addresses only while schizo mode is on: off, each computer
             // goes back to the network it is on, and nobody needs them.
             let mut peers = Vec::new();
             if doc.on {
@@ -408,15 +336,20 @@ impl Schizo {
         })
     }
 
-    /// `id` confirms order `wipe` and is about to carry it out.
+    /// `id` confirms order `wipe` and is about to carry it out. False when
+    /// that is not the order out, or `id` never checked in to hear it.
     pub fn ack(&self, id: &str, wipe: &str, now: u64) -> anyhow::Result<bool> {
         self.change(|doc| {
             if doc.wipe.as_ref().map(|w| w.id.as_str()) != Some(wipe) {
                 return Ok(false);
             }
-            let device = doc.devices.get_mut(id).ok_or(Refused::Unknown)?;
-            device.wiped.get_or_insert(now);
-            Ok(true)
+            Ok(match doc.devices.get_mut(id) {
+                Some(device) => {
+                    device.wiped.get_or_insert(now);
+                    true
+                }
+                None => false,
+            })
         })
     }
 
@@ -425,9 +358,6 @@ impl Schizo {
     /// as having confirmed it: it is already wiping itself.
     pub fn report(&self, id: &str, code: &Secret, now: u64) -> anyhow::Result<Reported> {
         self.change(|doc| {
-            if !doc.devices.contains_key(id) {
-                return Err(Refused::Unknown.into());
-            }
             let matches = doc.full
                 && doc
                     .duress
@@ -447,9 +377,11 @@ impl Schizo {
                     device.wiped = None;
                 }
             }
-            if let Some(device) = doc.devices.get_mut(id) {
-                device.wiped.get_or_insert(now);
-            }
+            doc.devices
+                .entry(id.to_string())
+                .or_default()
+                .wiped
+                .get_or_insert(now);
             Ok(if first {
                 Reported::Wipe
             } else {
@@ -458,7 +390,8 @@ impl Schizo {
         })
     }
 
-    /// Computers that have not confirmed the order yet, by name.
+    /// Computers that have checked in and not confirmed the order yet, by
+    /// name.
     pub fn waiting(&self) -> anyhow::Result<Vec<String>> {
         let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
         let doc = self.read()?;
@@ -526,31 +459,6 @@ pub fn with_tor(overrides: &str) -> Option<String> {
     Some(body)
 }
 
-fn validate_name(name: &str) -> Result<&str, Refused> {
-    let name = name.trim();
-    let ok = !name.is_empty()
-        && name.chars().count() <= MAX_NAME
-        && name
-            .chars()
-            .all(|c| c.is_alphanumeric() || matches!(c, ' ' | '.' | '-' | '_'));
-    if ok {
-        Ok(name)
-    } else {
-        Err(Refused::BadName)
-    }
-}
-
-fn token_digest(token: &str) -> String {
-    crate::boxid::sha256(token.as_bytes())
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
-}
-
-fn constant_eq(a: &[u8], b: &[u8]) -> bool {
-    a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
-}
-
 fn random_hex(bytes: usize) -> String {
     use ring::rand::SecureRandom;
     let mut buf = vec![0u8; bytes];
@@ -586,12 +494,15 @@ mod tests {
         Secret::new(s)
     }
 
+    fn check_in(s: &Schizo, id: &str, now: u64) -> Policy {
+        s.policy(id, id, None, None, now).unwrap()
+    }
+
     #[test]
     fn off_by_default_and_nothing_to_hand_out() {
         let (_d, s) = store();
         assert!(!s.on());
-        let (id, _) = s.register("ada-laptop", 1).unwrap();
-        let p = s.policy(&id, None, None, 2).unwrap();
+        let p = check_in(&s, "a", 2);
         assert_eq!((p.on, p.full, p.duress, p.wipe), (false, false, None, None));
     }
 
@@ -628,24 +539,22 @@ mod tests {
     }
 
     #[test]
-    fn every_device_hears_of_it_and_off_takes_the_code_back() {
+    fn every_computer_hears_of_it_and_off_takes_the_code_back() {
         let (_d, s) = store();
-        let (a, _) = s.register("a", 1).unwrap();
-        let (b, _) = s.register("b", 1).unwrap();
         s.set(true, true, Some(&code("482916")), |_| false, 5)
             .unwrap();
-        for id in [&a, &b] {
-            let p = s.policy(id, None, None, 6).unwrap();
+        for id in ["a", "b"] {
+            let p = check_in(&s, id, 6);
             assert!(p.on && p.full);
             let hash = p.duress.expect("the hash, while full");
             assert!(crate::people::verify_password(&hash, &code("482916")));
         }
         s.set(true, false, None, |_| false, 7).unwrap();
-        let p = s.policy(&a, None, None, 8).unwrap();
+        let p = check_in(&s, "a", 8);
         assert!(p.on && !p.full && p.duress.is_none());
         s.set(false, true, Some(&code("482916")), |_| false, 9)
             .unwrap();
-        let p = s.policy(&a, None, None, 10).unwrap();
+        let p = check_in(&s, "a", 10);
         assert!(
             !p.on && !p.full && p.duress.is_none(),
             "off is off, code or not"
@@ -653,83 +562,66 @@ mod tests {
     }
 
     #[test]
-    fn a_token_names_its_device_and_nothing_else_does() {
-        let (_d, s) = store();
-        let (id, token) = s.register("a", 1).unwrap();
-        assert!(token.starts_with(TOKEN_PREFIX));
-        assert_eq!(s.device(&token), Some(id.clone()));
-        assert_eq!(s.device(&format!("{token}0")), None);
-        assert_eq!(s.device("authelia_at_x"), None);
-        let raw = std::fs::read_to_string(s.path()).unwrap();
-        assert!(!raw.contains(&token), "only its digest is kept");
-        s.forget(&id).unwrap();
-        assert_eq!(s.device(&token), None);
-    }
-
-    #[test]
     fn a_wrong_code_does_nothing() {
         let (_d, s) = store();
-        let (a, _) = s.register("a", 1).unwrap();
         s.set(true, true, Some(&code("482916")), |_| false, 5)
             .unwrap();
-        assert_eq!(s.report(&a, &code("000000"), 6).unwrap(), Reported::Wrong);
-        assert_eq!(s.policy(&a, None, None, 7).unwrap().wipe, None);
+        check_in(&s, "a", 5);
+        assert_eq!(s.report("a", &code("000000"), 6).unwrap(), Reported::Wrong);
+        assert_eq!(check_in(&s, "a", 7).wipe, None);
     }
 
     #[test]
-    fn without_the_full_form_the_code_wipes_nothing() {
+    fn without_the_full_form_the_code_starts_nothing() {
         let (_d, s) = store();
-        let (a, _) = s.register("a", 1).unwrap();
         s.set(true, true, Some(&code("482916")), |_| false, 5)
             .unwrap();
         s.set(true, false, None, |_| false, 6).unwrap();
-        assert_eq!(s.report(&a, &code("482916"), 7).unwrap(), Reported::Wrong);
+        assert_eq!(s.report("a", &code("482916"), 7).unwrap(), Reported::Wrong);
     }
 
     #[test]
-    fn the_order_waits_for_every_other_device_until_it_confirms() {
+    fn the_order_waits_for_every_other_computer_until_it_confirms() {
         let (_d, s) = store();
-        let (a, _) = s.register("a", 1).unwrap();
-        let (b, _) = s.register("b", 1).unwrap();
-        let (c, _) = s.register("c", 1).unwrap();
         s.set(true, true, Some(&code("482916")), |_| false, 5)
             .unwrap();
-        assert_eq!(s.report(&a, &code("482916"), 6).unwrap(), Reported::Wipe);
-        assert_eq!(s.report(&b, &code("482916"), 6).unwrap(), Reported::Already);
+        for id in ["a", "b", "c"] {
+            check_in(&s, id, 5);
+        }
+        assert_eq!(s.report("a", &code("482916"), 6).unwrap(), Reported::Wipe);
+        assert_eq!(
+            s.report("b", &code("482916"), 6).unwrap(),
+            Reported::Already
+        );
         // a typed it and b reported it too: both are wiping already.
-        assert_eq!(s.policy(&a, None, None, 7).unwrap().wipe, None);
-        assert_eq!(s.policy(&b, None, None, 7).unwrap().wipe, None);
+        assert_eq!(check_in(&s, "a", 7).wipe, None);
+        assert_eq!(check_in(&s, "b", 7).wipe, None);
         // c was off. Days later it checks in and hears of it.
-        let order = s
-            .policy(&c, None, None, 900_000)
-            .unwrap()
-            .wipe
-            .expect("the order waited");
+        let order = check_in(&s, "c", 900_000).wipe.expect("the order waited");
         assert_eq!(s.waiting().unwrap(), vec!["c".to_string()]);
         assert!(
-            !s.ack(&c, "wipe_other", 900_001).unwrap(),
+            !s.ack("c", "wipe_other", 900_001).unwrap(),
             "only this order"
         );
-        assert!(s.ack(&c, &order, 900_001).unwrap());
-        assert_eq!(s.policy(&c, None, None, 900_002).unwrap().wipe, None);
+        assert!(s.ack("c", &order, 900_001).unwrap());
+        assert_eq!(check_in(&s, "c", 900_002).wipe, None);
         assert!(s.waiting().unwrap().is_empty());
+        // d joined later and never confirmed: it hears of it too.
+        assert!(check_in(&s, "d", 900_003).wipe.is_some());
     }
 
     #[test]
     fn onion_addresses_go_round_while_it_is_on() {
         let (_d, s) = store();
-        let (a, _) = s.register("a", 1).unwrap();
-        let (b, _) = s.register("b", 1).unwrap();
         let onion_a = format!("{}.onion", "a".repeat(56));
         let onion_box = format!("{}.onion", "b".repeat(56));
-        assert!(s
-            .policy(&a, Some(&onion_a), Some(&onion_box), 2)
-            .unwrap()
-            .peers
-            .is_empty());
+        let p = s
+            .policy("a", "a", Some(&onion_a), Some(&onion_box), 2)
+            .unwrap();
+        assert!(p.peers.is_empty());
         s.set(true, false, None, |_| false, 3).unwrap();
         let p = s
-            .policy(&b, Some("not an onion"), Some(&onion_box), 4)
+            .policy("b", "b", Some("not an onion"), Some(&onion_box), 4)
             .unwrap();
         let peers: Vec<_> = p
             .peers
@@ -738,9 +630,9 @@ mod tests {
             .collect();
         assert_eq!(
             peers,
-            [("box", onion_box.as_str()), (a.as_str(), onion_a.as_str())]
+            [("box", onion_box.as_str()), ("a", onion_a.as_str())]
         );
-        let p = s.policy(&a, None, None, 5).unwrap();
+        let p = check_in(&s, "a", 5);
         assert!(
             p.peers.is_empty(),
             "b gave no address, and the box none this time"
@@ -780,13 +672,5 @@ mod tests {
         for p in ["/api/marketing", "/api/vmsx", "/api/machines", "/api/me"] {
             assert!(!market_route(p), "{p}");
         }
-    }
-
-    #[test]
-    fn names() {
-        assert!(validate_name("Ada's laptop").is_err());
-        assert_eq!(validate_name(" desk-1.office ").unwrap(), "desk-1.office");
-        assert!(validate_name("").is_err());
-        assert!(validate_name(&"x".repeat(65)).is_err());
     }
 }

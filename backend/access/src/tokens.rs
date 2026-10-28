@@ -310,6 +310,21 @@ pub fn path_allowed(path: &str, allowed: &[&str], forbidden: &[&str]) -> bool {
 /// install`), registered with LosOS Login in `modules/identity.nix`.
 pub const COMPANION_CLIENT_ID: &str = "losos-companion";
 
+/// The OAuth client LosOS Desktop's backups sign in as, registered with
+/// LosOS Login in `modules/identity.nix`. Its token reaches
+/// [`BACKUPS_ROUTE`] and nothing else.
+pub const BACKUPS_CLIENT_ID: &str = "losos-backups";
+
+/// The one route a backups token reaches: `POST`, which hands the computer
+/// its LosOS Cloud app password and LosOS Git token
+/// (`backend/src/losos.rs`, `cmd_device_backups`).
+pub const BACKUPS_ROUTE: &str = "/api/devices/backups";
+
+/// May a backups token make this call? Only the one `POST`.
+pub fn backups_route(method: &str, path: &str) -> bool {
+    method.eq_ignore_ascii_case("POST") && path == BACKUPS_ROUTE
+}
+
 /// Every route a LosOS companion token reaches on a box, all of them reads:
 /// who it acts as, the box's health, and the person's files and
 /// repositories. Matched exactly, with any query string. A route an AI tool
