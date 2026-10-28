@@ -374,7 +374,11 @@ mod tests {
             "Vault/Sub/Ideas.md",
             "---\naliases: [Thoughts]\n---\n![[pic.png]]",
         );
-        write(&cloud, "Vault/Plan.note", "# Plan\n<Callout>[[Home]]</Callout> #mdx\n");
+        write(
+            &cloud,
+            "Vault/Plan.note",
+            "# Plan\n<Callout>[[Home]]</Callout> #mdx\n",
+        );
         write(&cloud, "Vault/pic.png", "png");
         write(&cloud, "Vault/.obsidian/app.json", "{}");
         write(&cloud, "Vault/.trash/Old.md", "old");
