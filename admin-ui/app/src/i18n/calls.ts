@@ -153,9 +153,9 @@ export default defineMessages({
   "calls.inviteAnother": { en: "Make another link", sk: "Vytvoriť ďalší odkaz", de: "Weiteren Link erstellen" },
   "calls.inviteFailed": { en: "No guest link", sk: "Žiadny odkaz pre hosťa", de: "Kein Gast-Link" },
   "calls.inviteNoEdge": {
-    en: "Guest links come from an official LosOS edge, and this box is not connected to one.",
-    sk: "Odkazy pre hostí vydáva oficiálny edge LosOS a toto zariadenie k žiadnemu nie je pripojené.",
-    de: "Gast-Links kommen von einem offiziellen LosOS-Edge, und diese Box ist mit keinem verbunden.",
+    en: "Guest links come from a checked LosOS gateway, and this box is not connected to one.",
+    sk: "Odkazy pre hostí vydáva overená brána LosOS a toto zariadenie k žiadnej nie je pripojené.",
+    de: "Gast-Links kommen von einem geprüften LosOS-Gateway, und diese Box ist mit keinem verbunden.",
   },
   "calls.inviteTooMany": {
     en: "This call has as many guest links as it can hold.",

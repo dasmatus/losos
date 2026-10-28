@@ -124,11 +124,17 @@ pub struct Edge {
     /// Base URL of its registrar API, no trailing slash.
     pub url: String,
     pub source: Source,
-    /// The edge proved an identity the LosOS root key signed (see the
-    /// `identity` section below). Only official edges may process trading;
-    /// a company's own edge is `false` here and still shares storage.
+    /// The edge passed every gateway check (see the `gateways` section
+    /// below): its TPM shows a published LosOS gateway image with its
+    /// owner's signed passport and LosOS's fee addresses. Only such an edge
+    /// may process trading; any other edge still shares storage.
     #[serde(default)]
     pub official: bool,
+    /// What the gateway checks concluded, when the edge has a passport to
+    /// check. `None` for an edge that shows none and on a box that ships no
+    /// anchors to check one against.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gateway: Option<Gateway>,
     /// Where this edge's rathole server listens, `host:port`: the advert's
     /// `rathole=` record (or its host on the default port) for a LAN edge,
     /// `losos.proxy.edgeRatholeEndpoint` for the configured one. `None` when
@@ -180,7 +186,8 @@ pub struct EdgeStatus {
 }
 
 /// The path rule: the first LAN edge that answered
-/// and can be tunnelled to, else the configured edge, else none. `edges` is
+/// and can be tunnelled to, else the configured edge, else none. An edge
+/// this box disabled for tampering is never the path. `edges` is
 /// LAN first as [`assemble`] builds it, so the first edge with an endpoint
 /// in list order is the answer.
 #[must_use]
@@ -188,7 +195,7 @@ pub fn choose_path(edges: &[Edge]) -> Option<EdgePath> {
     let pick = |source: Source| {
         edges
             .iter()
-            .find(|e| e.source == source && e.rathole.is_some())
+            .find(|e| e.source == source && e.rathole.is_some() && !e.disabled())
     };
     pick(Source::Lan)
         .or_else(|| pick(Source::Configured))
@@ -779,6 +786,7 @@ pub fn candidates(adverts: &[Advert]) -> Vec<Edge> {
             url,
             source: Source::Lan,
             official: false,
+            gateway: None,
             rathole: Some(rathole),
         });
     }
@@ -837,11 +845,10 @@ pub fn assemble(
     browse: Option<&[Advert]>,
     configured_url: Option<&str>,
     answered: impl Fn(&str) -> bool,
-    trust: &Trust<'_>,
-    prove: impl Fn(&str, &str) -> Option<String>,
+    vet: impl FnMut(&str) -> Option<Gateway>,
     now: u64,
 ) -> EdgeStatus {
-    assemble_with(browse, configured_url, None, answered, trust, prove, now)
+    assemble_with(browse, configured_url, None, answered, vet, now)
 }
 
 /// [`assemble`] with the configured edge's tunnel endpoint
@@ -852,8 +859,7 @@ pub fn assemble_with(
     configured_url: Option<&str>,
     configured_rathole: Option<&str>,
     answered: impl Fn(&str) -> bool,
-    trust: &Trust<'_>,
-    prove: impl Fn(&str, &str) -> Option<String>,
+    mut vet: impl FnMut(&str) -> Option<Gateway>,
     now: u64,
 ) -> EdgeStatus {
     let mut edges: Vec<Edge> = Vec::new();
@@ -874,6 +880,7 @@ pub fn assemble_with(
                 url: url.clone(),
                 source: Source::Configured,
                 official: false,
+                gateway: None,
                 rathole: configured_rathole
                     .map(str::trim)
                     .filter(|r| plain_endpoint(r))
@@ -881,13 +888,10 @@ pub fn assemble_with(
             });
         }
     }
-    // Every edge that answered is asked who it is. With no root key there
-    // is no one to vouch, so nothing is official and no request is made.
-    if trust.root_public.is_some() {
-        for edge in &mut edges {
-            edge.official = prove(&edge.url, trust.nonce)
-                .is_some_and(|body| verify_answer(trust, &body, &edge.url, now).is_ok());
-        }
+    // Every edge that answered is checked as a gateway ([`Vetter::vet`]).
+    for edge in &mut edges {
+        edge.gateway = vet(&edge.url);
+        edge.official = matches!(edge.gateway, Some(Gateway::Trusted { .. }));
     }
     let mut status = EdgeStatus::found(edges, browse.is_some(), configured_url);
     status.checked_at = Some(now);
@@ -966,156 +970,266 @@ pub fn drive(prev_env: Option<&str>, had_none: bool, next_env: Option<&str>) -> 
     }
 }
 
-// ── identity: an official edge, or a company's own ─────────────────────────
+// ── gateways: an edge that proves what it runs ────────────────────────────
 //
-// Any company may run an edge beside its boxes; only edges LosOS itself runs
-// may process trading. The box tells them apart with one root key whose
-// public half it carries (`losos.proxy.officialRootKeyFile`): an official
-// edge holds a *certificate* — its name, URL, Ed25519 public key and expiry,
-// signed by the root — and proves on every scan that it holds the certified
-// key by signing the nonce the box sends (`GET /identity?nonce=…`). Four
-// checks: the root's signature, the URL the box is talking to, the clock,
-// the nonce signature. The formats are the contract with
-// `edge/registrar/src/identity.rs`, byte for byte; the tests pin them.
+// Anyone may run an edge. A box trusts one with trading, and calls it
+// `official`, only when the edge proves with its TPM that it runs a LosOS
+// gateway image this box knows, under its owner's signed OpenPGP passport,
+// paying LosOS's share to the addresses this box ships, with nothing changed
+// since it booted (backend/access/src/gateway/check.rs for the checks,
+// edge/registrar/src/gateway.rs for the gateway's half). Two round trips:
+// `GET /passport?nonce=` and `POST /passport/attest`.
+//
+// A gateway that proves it was tampered with is disabled on this box for
+// good, by its URL, its TPM and its owner's key, in
+// `/var/lib/losos/gateways.json`. Every other refusal (an image or a TPM
+// maker the box does not know yet, changed payout addresses) is shown and
+// asked again on the next check. A trusted gateway is not asked again for
+// [`TRUST_SECS`].
 
-/// Domain separators, versioned. Must match the registrar's.
-pub const CERT_PREFIX: &str = "losos-edge-identity-v1";
-pub const NONCE_PREFIX: &str = "losos-edge-nonce-v1";
+pub use losos_access::gateway::check::Anchors;
+use losos_access::gateway::check::{self as gwcheck, AttestAnswer, Hello, Refusal};
 
-/// What the box trusts for one scan: the root public key (hex) and the nonce
-/// it chose for this round.
-pub struct Trust<'a> {
-    pub root_public: Option<&'a str>,
-    pub nonce: &'a str,
+/// How long a trusted gateway is believed without asking again.
+pub const TRUST_SECS: u64 = 600;
+/// The most a gateway's answer may weigh: the event log is the large part.
+pub const GATEWAY_BODY_MAX: usize = 1 << 20;
+
+/// What the box concluded about one edge's passport.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "camelCase")]
+pub enum Gateway {
+    /// Every check passed.
+    Trusted {
+        /// The owner's OpenPGP user id and key fingerprint.
+        owner: String,
+        fingerprint: String,
+        /// The published image it runs.
+        image: String,
+    },
+    /// Not trusted now; asked again next time. `code` is
+    /// [`Refusal::code`].
+    Refused { code: String, reason: String },
+    /// Proved tampered, on this check or an earlier one. Never trusted or
+    /// tunnelled through again.
+    Disabled {
+        code: String,
+        reason: String,
+        since: u64,
+    },
 }
 
-/// A certificate as the edge serves it.
+impl Edge {
+    /// This box disabled the edge for tampering.
+    #[must_use]
+    pub fn disabled(&self) -> bool {
+        matches!(self.gateway, Some(Gateway::Disabled { .. }))
+    }
+}
+
+/// One gateway this box will not use again.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Cert {
-    pub name: String,
+#[serde(rename_all = "camelCase")]
+pub struct DisabledGateway {
     pub url: String,
-    pub public_key: String,
-    pub not_after: u64,
-    pub signature: String,
+    /// The TPM's endorsement key name ([`gwcheck::Introduced::ek_id`]).
+    pub ek_id: String,
+    /// The owner's OpenPGP fingerprint.
+    pub fingerprint: String,
+    pub code: String,
+    pub reason: String,
+    pub since: u64,
 }
 
-/// The edge's answer to the challenge.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Answer {
-    pub cert: Cert,
-    pub nonce_signature: String,
+/// The disabled gateways, as `/var/lib/losos/gateways.json` keeps them.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Ledger {
+    #[serde(default)]
+    pub disabled: Vec<DisabledGateway>,
 }
 
-/// Why an answer was not accepted. Logged, never shown as a failure: a
-/// company edge answering 404 is the ordinary case and is not an error.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Rejected {
-    NotJson,
-    RootSignature,
-    Url,
-    Expired,
-    EdgeSignature,
-}
-
-#[must_use]
-pub fn cert_message(name: &str, url: &str, public_key: &str, not_after: u64) -> Vec<u8> {
-    format!("{CERT_PREFIX}\n{name}\n{url}\n{public_key}\n{not_after}\n").into_bytes()
-}
-
-#[must_use]
-pub fn nonce_message(nonce: &str) -> Vec<u8> {
-    format!("{NONCE_PREFIX}\n{nonce}\n").into_bytes()
-}
-
-fn from_hex(s: &str) -> Option<Vec<u8>> {
-    if !s.len().is_multiple_of(2) {
-        return None;
+impl Ledger {
+    /// The entry that disables `url`, or the TPM or owner key a gateway at
+    /// another URL presents.
+    #[must_use]
+    pub fn find(
+        &self,
+        url: &str,
+        ek_id: Option<&str>,
+        fingerprint: Option<&str>,
+    ) -> Option<&DisabledGateway> {
+        self.disabled.iter().find(|d| {
+            d.url == url
+                || ek_id.is_some_and(|e| e == d.ek_id)
+                || fingerprint.is_some_and(|f| f.eq_ignore_ascii_case(&d.fingerprint))
+        })
     }
-    (0..s.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).ok())
-        .collect()
 }
 
-/// The LosOS root **public** key as the box ships it: one line of 64 hex
-/// characters, in a file that may also carry `#` comment lines and blank
-/// lines, so the committed default can explain itself. `None` when the file
-/// holds no key (the shipped default is empty: no root, nothing is official,
-/// the market stays off), or more than one, or anything that is not a key.
-#[must_use]
-pub fn parse_root_key_file(text: &str) -> Option<String> {
-    let mut keys = text
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty() && !l.starts_with('#'));
-    let key = keys.next()?;
-    if keys.next().is_some() {
-        return None;
+impl From<&DisabledGateway> for Gateway {
+    fn from(d: &DisabledGateway) -> Self {
+        Gateway::Disabled {
+            code: d.code.clone(),
+            reason: d.reason.clone(),
+            since: d.since,
+        }
     }
-    (key.len() == 64 && key.bytes().all(|b| b.is_ascii_hexdigit())).then(|| key.to_lowercase())
 }
 
-/// Ed25519 verification; any malformed input is a plain `false`.
-#[must_use]
-pub fn verify(public_hex: &str, msg: &[u8], sig_hex: &str) -> bool {
-    let (Some(public), Some(sig)) = (from_hex(public_hex.trim()), from_hex(sig_hex.trim())) else {
-        return false;
-    };
-    ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, public)
-        .verify(msg, &sig)
-        .is_ok()
+/// The two requests, as the I/O layer makes them.
+pub trait Wire {
+    /// `GET {url}/passport?nonce={nonce}`: `Ok(None)` when the edge has no
+    /// passport to show (404), the body when it answered.
+    ///
+    /// # Errors
+    /// The request failed: the edge is not judged this time.
+    fn hello(&self, url: &str, nonce: &str) -> Result<Option<String>, String>;
+
+    /// `POST {url}/passport/attest` with `body`.
+    ///
+    /// # Errors
+    /// The request failed or the edge answered an error.
+    fn attest(&self, url: &str, body: &str) -> Result<String, String>;
 }
 
-/// The four checks over an `/identity` answer body.
-///
-/// # Errors
-/// The first check that failed.
-pub fn verify_answer(
-    trust: &Trust<'_>,
-    body: &str,
-    url: &str,
-    now: u64,
-) -> Result<Answer, Rejected> {
-    let Some(root) = trust.root_public else {
-        return Err(Rejected::RootSignature);
-    };
-    let answer: Answer = serde_json::from_str(body).map_err(|_| Rejected::NotJson)?;
-    let c = &answer.cert;
-    if !verify(
-        root,
-        &cert_message(&c.name, &c.url, &c.public_key, c.not_after),
-        &c.signature,
-    ) {
-        return Err(Rejected::RootSignature);
-    }
-    if c.url.trim_end_matches('/') != url.trim().trim_end_matches('/') {
-        return Err(Rejected::Url);
-    }
-    if now >= c.not_after {
-        return Err(Rejected::Expired);
-    }
-    if !verify(
-        &c.public_key,
-        &nonce_message(trust.nonce),
-        &answer.nonce_signature,
-    ) {
-        return Err(Rejected::EdgeSignature);
-    }
-    Ok(answer)
+/// The box's gateway checks across scans: what it trusts (`anchors`, `None`
+/// when it ships none, and then no edge is asked anything), what it
+/// disabled, and whom it trusted lately.
+pub struct Vetter {
+    pub anchors: Option<Anchors>,
+    pub ledger: Ledger,
+    trusted: std::collections::HashMap<String, (Gateway, u64)>,
 }
 
-/// Refused: trading was asked of a box with no official edge in reach.
+impl Vetter {
+    #[must_use]
+    pub fn new(anchors: Option<Anchors>, ledger: Ledger) -> Self {
+        Vetter {
+            anchors,
+            ledger,
+            trusted: std::collections::HashMap::new(),
+        }
+    }
+
+    /// Check the edge at `url`. Returns what to show, and whether the ledger
+    /// changed, which the caller then writes down.
+    pub fn vet(
+        &mut self,
+        url: &str,
+        wire: &impl Wire,
+        nonce: &str,
+        now: u64,
+        rng: &mut (impl rand::CryptoRng + rand::RngCore),
+    ) -> (Option<Gateway>, bool) {
+        if let Some(d) = self.ledger.find(url, None, None) {
+            return (Some(d.into()), false);
+        }
+        let Some(anchors) = &self.anchors else {
+            return (None, false);
+        };
+        if let Some((g, at)) = self.trusted.get(url) {
+            if now.saturating_sub(*at) < TRUST_SECS {
+                return (Some(g.clone()), false);
+            }
+        }
+        self.trusted.remove(url);
+
+        let body = match wire.hello(url, nonce) {
+            Ok(Some(body)) => body,
+            Ok(None) => return (None, false),
+            Err(e) => {
+                tracing::info!(url, error = %e, "the gateway's passport could not be fetched");
+                return (None, false);
+            }
+        };
+        let refused = |r: &Refusal| Gateway::Refused {
+            code: r.code().to_string(),
+            reason: r.to_string(),
+        };
+        let hello: Hello = match serde_json::from_str(&body) {
+            Ok(h) => h,
+            Err(e) => return (Some(refused(&Refusal::Malformed(e.to_string()))), false),
+        };
+        let intro = match gwcheck::introduce(
+            url,
+            nonce,
+            &hello,
+            anchors,
+            i64::try_from(now).unwrap_or(i64::MAX),
+        ) {
+            Ok(i) => i,
+            Err(r) => return (Some(refused(&r)), false),
+        };
+        if let Some(d) = self
+            .ledger
+            .find(url, Some(&intro.ek_id), Some(&intro.owner.fingerprint))
+        {
+            return (Some(d.into()), false);
+        }
+        let (challenge, req) = match gwcheck::challenge(&intro, nonce, rng) {
+            Ok(c) => c,
+            Err(r) => return (Some(refused(&r)), false),
+        };
+        let req = serde_json::to_string(&req).unwrap_or_default();
+        let answer: AttestAnswer = match wire
+            .attest(url, &req)
+            .and_then(|b| serde_json::from_str(&b).map_err(|e| e.to_string()))
+        {
+            Ok(a) => a,
+            Err(e) => {
+                tracing::info!(url, error = %e, "the gateway did not attest");
+                return (None, false);
+            }
+        };
+        match gwcheck::judge(
+            &intro,
+            nonce,
+            &challenge,
+            &answer,
+            &hello.tpm.ak_public,
+            anchors,
+        ) {
+            Ok(verdict) => {
+                let g = Gateway::Trusted {
+                    owner: intro.owner.user_id.clone(),
+                    fingerprint: intro.owner.fingerprint.clone(),
+                    image: verdict.image,
+                };
+                self.trusted.insert(url.to_string(), (g.clone(), now));
+                (Some(g), false)
+            }
+            Err(r) if r.tampered() => {
+                tracing::warn!(url, reason = %r, "the gateway is tampered with; disabled on this box");
+                let d = DisabledGateway {
+                    url: url.to_string(),
+                    ek_id: intro.ek_id.clone(),
+                    fingerprint: intro.owner.fingerprint.clone(),
+                    code: r.code().to_string(),
+                    reason: r.to_string(),
+                    since: now,
+                };
+                let g = Gateway::from(&d);
+                self.ledger.disabled.push(d);
+                (Some(g), true)
+            }
+            Err(r) => (Some(refused(&r)), false),
+        }
+    }
+}
+
+/// Refused: trading was asked of a box with no checked gateway in reach.
 /// Rendered as a 409 by the HTTP layer; the message is the sentence the
 /// owner reads.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error(
-    "no official LosOS edge is reachable from this box, so trading is off: \
-     only edges LosOS runs may process the market. Sharing storage through \
-     your own edge keeps working."
+    "no edge this box could check is in reach, so trading is off: only a \
+     gateway that proves it runs a published LosOS image and pays LosOS's \
+     share may process the market. Sharing storage through any edge keeps \
+     working."
 )]
 pub struct OfficialEdgeRequired;
 
-/// The market gate: trading needs an official edge.
+/// The market gate: trading needs a checked gateway.
 ///
 /// # Errors
 /// [`OfficialEdgeRequired`] when none is reachable.
@@ -1144,28 +1258,20 @@ pub enum NotManageable {
     /// The box reaches no edge, or only through the configured one.
     #[error("this box is not joined to an edge on its own network")]
     NoLocalEdge,
-    /// The edge it is joined to is an official LosOS edge, which never
-    /// looks after anyone's box.
-    #[error("an official LosOS edge does not manage boxes; only a company's own edge does")]
-    Official,
 }
 
 /// The edge that may manage this box right now: the path, when it is an edge
-/// on the LAN that is not official. Official edges never manage boxes.
+/// on the LAN. A gateway that passed its checks is somebody's own edge like
+/// any other, so it may manage the boxes its owner lets it.
 ///
 /// # Errors
 /// What stands in the way.
 pub fn manageable(status: &EdgeStatus) -> Result<&EdgePath, NotManageable> {
-    let path = status
+    status
         .path
         .as_ref()
         .filter(|p| p.source == Source::Lan)
-        .ok_or(NotManageable::NoLocalEdge)?;
-    let official = status.edges.iter().any(|e| e.url == path.url && e.official);
-    if official {
-        return Err(NotManageable::Official);
-    }
-    Ok(path)
+        .ok_or(NotManageable::NoLocalEdge)
 }
 
 /// Whether the edge the owner switched management on for (`managed_by`, its
@@ -1297,12 +1403,13 @@ mod tests {
             url: url.into(),
             source: Source::Lan,
             official,
+            gateway: None,
             rathole: Some("192.168.1.2:2333".into()),
         }
     }
 
     #[test]
-    fn only_a_local_unofficial_edge_can_manage() {
+    fn only_a_local_edge_can_manage_checked_or_not() {
         let none = EdgeStatus::found(vec![], true, None);
         assert_eq!(manageable(&none), Err(NotManageable::NoLocalEdge));
 
@@ -1316,9 +1423,12 @@ mod tests {
         );
         assert_eq!(manageable(&configured), Err(NotManageable::NoLocalEdge));
 
-        let official =
+        let checked =
             EdgeStatus::found(vec![lan_edge("http://office.local:8443", true)], true, None);
-        assert_eq!(manageable(&official), Err(NotManageable::Official));
+        assert_eq!(
+            manageable(&checked).map(|p| p.url.as_str()),
+            Ok("http://office.local:8443")
+        );
 
         let company = EdgeStatus::found(
             vec![lan_edge("http://office.local:8443", false)],
@@ -1347,12 +1457,6 @@ mod tests {
         let gone = EdgeStatus::found(vec![], true, None);
         assert!(!manager_active(Some("http://office.local:8443"), &gone));
     }
-
-    /// No root key: nothing can be official and no challenge is sent.
-    const NO_TRUST: Trust<'static> = Trust {
-        root_public: None,
-        nonce: "00",
-    };
 
     /// The browse of a LAN with one dual-stack edge on one link, as resolved
     /// sends it: the instance over its IPv6 and its IPv4 mDNS scope.
@@ -1658,8 +1762,7 @@ mod tests {
             Some(&browse()),
             Some("https://losos-edge.example/"),
             |_| false,
-            &NO_TRUST,
-            |_, _| None,
+            |_| None,
             7,
         );
         assert!(!status.reachable);
@@ -1675,8 +1778,7 @@ mod tests {
             Some(&browse()),
             Some("https://losos-edge.example"),
             |url| url == "http://edge.local:8443",
-            &NO_TRUST,
-            |_, _| None,
+            |_| None,
             8,
         );
         assert!(status.reachable);
@@ -1691,8 +1793,7 @@ mod tests {
             Some(&browse()),
             Some("https://losos-edge.example"),
             |_| true,
-            &NO_TRUST,
-            |_, _| None,
+            |_| None,
             1,
         );
         assert_eq!(status.edges.len(), 2);
@@ -1703,8 +1804,7 @@ mod tests {
             Some(&browse()),
             Some("http://edge.local:8443/"),
             |_| true,
-            &NO_TRUST,
-            |_, _| None,
+            |_| None,
             1,
         );
         assert_eq!(status.edges.len(), 1);
@@ -1712,7 +1812,7 @@ mod tests {
 
     #[test]
     fn a_lan_that_could_not_be_searched_says_so() {
-        let status = assemble(None, None, |_| true, &NO_TRUST, |_, _| None, 1);
+        let status = assemble(None, None, |_| true, |_| None, 1);
         assert!(!status.lan_searched);
         assert!(!status.reachable);
         assert_eq!(status.configured_url, None);
@@ -1756,6 +1856,7 @@ mod tests {
                 url: "http://edge.local:8443".into(),
                 source: Source::Lan,
                 official: false,
+                gateway: None,
                 rathole: Some("edge.local:2333".into()),
             }],
             true,
@@ -1825,179 +1926,184 @@ mod tests {
         assert!(parse_varlink_reply(b"[1]").is_err());
     }
 
-    // ── identity ───────────────────────────────────────────────────────────
+    // ── gateways ───────────────────────────────────────────────────────────
+    //
+    // The checks themselves are losos-access's (and the gateway VM test's);
+    // these are what the box does around them.
 
-    struct Signer(ring::signature::Ed25519KeyPair, String);
-
-    fn signer() -> Signer {
-        use ring::signature::KeyPair;
-        let rng = ring::rand::SystemRandom::new();
-        let pkcs8 = ring::signature::Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
-        let pair = ring::signature::Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
-        let public = pair
-            .public_key()
-            .as_ref()
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect();
-        Signer(pair, public)
+    /// A wire that answers what it is told and counts the hellos.
+    struct FakeWire {
+        hello: Result<Option<String>, String>,
+        asked: std::cell::Cell<u32>,
     }
 
-    fn hex_sig(pair: &ring::signature::Ed25519KeyPair, msg: &[u8]) -> String {
-        pair.sign(msg)
-            .as_ref()
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect()
+    impl FakeWire {
+        fn new(hello: Result<Option<String>, String>) -> Self {
+            FakeWire {
+                hello,
+                asked: std::cell::Cell::new(0),
+            }
+        }
     }
 
-    /// A certificate `root` issued to `edge` for `url`, and its answer to
-    /// `nonce`, as the registrar would serialise them.
-    fn answer_json(root: &Signer, edge: &Signer, url: &str, not_after: u64, nonce: &str) -> String {
-        let cert = Cert {
-            name: "losos edge one".into(),
-            url: url.into(),
-            public_key: edge.1.clone(),
-            not_after,
-            signature: hex_sig(
-                &root.0,
-                &cert_message("losos edge one", url, &edge.1, not_after),
-            ),
-        };
-        serde_json::to_string(&Answer {
-            cert,
-            nonce_signature: hex_sig(&edge.0, &nonce_message(nonce)),
-        })
-        .unwrap()
+    impl Wire for FakeWire {
+        fn hello(&self, _url: &str, _nonce: &str) -> Result<Option<String>, String> {
+            self.asked.set(self.asked.get() + 1);
+            self.hello.clone()
+        }
+        fn attest(&self, _url: &str, _body: &str) -> Result<String, String> {
+            Err("not asked in these tests".into())
+        }
     }
 
-    const NONCE: &str = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+    const GW: &str = "http://gw.local:8443";
 
-    #[test]
-    fn the_root_key_file_may_carry_comments_but_only_one_key() {
-        let key = "ab".repeat(32);
-        assert_eq!(parse_root_key_file(""), None);
-        assert_eq!(parse_root_key_file("# no key yet\n\n"), None);
-        assert_eq!(
-            parse_root_key_file(&format!("# the root\n{}\n", key.to_uppercase())),
-            Some(key.clone())
-        );
-        assert_eq!(parse_root_key_file(&format!("{key}\n{key}\n")), None);
-        assert_eq!(parse_root_key_file("not a key"), None);
+    fn disabled_entry() -> DisabledGateway {
+        DisabledGateway {
+            url: GW.into(),
+            ek_id: "000b".to_string() + &"aa".repeat(32),
+            fingerprint: "ABCDEF0123456789ABCDEF0123456789ABCDEF01".into(),
+            code: "tainted".into(),
+            reason: "the gateway's settings or state changed after it booted (PCR 15)".into(),
+            since: 1_900_000_000,
+        }
     }
 
     #[test]
-    fn the_message_formats_are_the_contract_with_the_registrar() {
+    fn a_box_with_no_anchors_asks_no_edge_anything() {
+        let wire = FakeWire::new(Ok(Some("{}".into())));
+        let mut v = Vetter::new(None, Ledger::default());
         assert_eq!(
-            cert_message("n", "u", "k", 7),
-            b"losos-edge-identity-v1\nn\nu\nk\n7\n".to_vec()
+            v.vet(GW, &wire, "00", 1, &mut rand::thread_rng()),
+            (None, false)
         );
-        assert_eq!(nonce_message("ab"), b"losos-edge-nonce-v1\nab\n".to_vec());
+        assert_eq!(wire.asked.get(), 0);
     }
 
     #[test]
-    fn an_edge_the_root_vouched_for_is_official_and_every_other_is_not() {
-        let root = signer();
-        let edge = signer();
-        let url = "http://edge.local:8443";
-        let trust = Trust {
-            root_public: Some(&root.1),
-            nonce: NONCE,
-        };
-        let good = answer_json(&root, &edge, url, 2_000_000_000, NONCE);
-        assert!(verify_answer(&trust, &good, url, 1_900_000_000).is_ok());
+    fn an_edge_with_no_passport_or_out_of_reach_is_not_judged() {
+        let mut v = Vetter::new(Some(Anchors::default()), Ledger::default());
+        for answer in [Ok(None), Err("timed out".to_string())] {
+            let wire = FakeWire::new(answer);
+            assert_eq!(
+                v.vet(GW, &wire, "00", 1, &mut rand::thread_rng()),
+                (None, false)
+            );
+            assert_eq!(wire.asked.get(), 1);
+        }
+    }
 
-        // Signed by someone else's root.
-        let other = signer();
-        let forged = answer_json(&other, &edge, url, 2_000_000_000, NONCE);
-        assert_eq!(
-            verify_answer(&trust, &forged, url, 1_900_000_000),
-            Err(Rejected::RootSignature)
-        );
-        // A real certificate, replayed from another edge's address.
-        assert_eq!(
-            verify_answer(&trust, &good, "http://10.0.0.9:8443", 1_900_000_000),
-            Err(Rejected::Url)
-        );
-        // Expired.
-        assert_eq!(
-            verify_answer(&trust, &good, url, 2_000_000_000),
-            Err(Rejected::Expired)
-        );
-        // A stranger holding the certificate but not the key: the nonce
-        // signature does not verify under the certified key.
-        let stranger = signer();
-        let mut a: Answer = serde_json::from_str(&good).unwrap();
-        a.nonce_signature = hex_sig(&stranger.0, &nonce_message(NONCE));
-        assert_eq!(
-            verify_answer(
-                &trust,
-                &serde_json::to_string(&a).unwrap(),
-                url,
-                1_900_000_000
-            ),
-            Err(Rejected::EdgeSignature)
-        );
-        // Yesterday's answer, replayed under today's nonce.
-        let stale = Trust {
-            root_public: Some(&root.1),
-            nonce: "ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100",
+    #[test]
+    fn a_passport_that_does_not_hold_is_refused_and_asked_again() {
+        let wire = FakeWire::new(Ok(Some("{\"settings\":1}".into())));
+        let mut v = Vetter::new(Some(Anchors::default()), Ledger::default());
+        for round in 1..=2 {
+            let (g, changed) = v.vet(GW, &wire, "00", round, &mut rand::thread_rng());
+            assert!(!changed);
+            match g {
+                Some(Gateway::Refused { code, .. }) => assert_eq!(code, "malformed"),
+                other => panic!("{other:?}"),
+            }
+            assert_eq!(wire.asked.get(), u32::try_from(round).unwrap());
+        }
+        assert!(v.ledger.disabled.is_empty());
+    }
+
+    #[test]
+    fn a_disabled_gateway_is_not_asked_and_is_never_the_path() {
+        let wire = FakeWire::new(Ok(Some("{}".into())));
+        let ledger = Ledger {
+            disabled: vec![disabled_entry()],
         };
-        assert_eq!(
-            verify_answer(&stale, &good, url, 1_900_000_000),
-            Err(Rejected::EdgeSignature)
+        let mut v = Vetter::new(Some(Anchors::default()), ledger.clone());
+        let (g, changed) = v.vet(GW, &wire, "00", 5, &mut rand::thread_rng());
+        assert!(!changed);
+        assert_eq!(wire.asked.get(), 0);
+        assert!(matches!(g, Some(Gateway::Disabled { ref code, .. }) if code == "tainted"));
+
+        // The same TPM or owner key behind another URL is the same gateway.
+        let e = disabled_entry();
+        assert!(ledger
+            .find("http://moved.local:8443", Some(&e.ek_id), None)
+            .is_some());
+        assert!(ledger
+            .find(
+                "http://moved.local:8443",
+                None,
+                Some(&e.fingerprint.to_lowercase())
+            )
+            .is_some());
+        assert!(ledger
+            .find("http://other.local:8443", Some("000b00"), Some("00"))
+            .is_none());
+
+        // The scan shows it, never tunnels through it, and falls back to the
+        // configured edge.
+        let status = assemble_with(
+            Some(&gateway("gw.local:2333")),
+            Some("https://losos-edge.example"),
+            Some("edge.losos.cfd:2333"),
+            |_| true,
+            |url| (url == GW).then(|| Gateway::from(&disabled_entry())),
+            9,
         );
+        assert!(status.edges[0].disabled());
+        assert!(!status.official);
         assert_eq!(
-            verify_answer(&trust, "not json", url, 1_900_000_000),
-            Err(Rejected::NotJson)
+            status.path.as_ref().expect("a path").source,
+            Source::Configured
+        );
+        let doc = status.to_json();
+        assert_eq!(doc["edges"][0]["gateway"]["state"], "disabled");
+        assert_eq!(doc["edges"][0]["gateway"]["code"], "tainted");
+        assert!(doc["edges"][1].get("gateway").is_none());
+    }
+
+    #[test]
+    fn the_ledger_file_keeps_its_shape() {
+        let ledger = Ledger {
+            disabled: vec![disabled_entry()],
+        };
+        let text = serde_json::to_string(&ledger).unwrap();
+        assert!(text.contains("\"ekId\""), "{text}");
+        assert_eq!(serde_json::from_str::<Ledger>(&text).unwrap(), ledger);
+        assert_eq!(
+            serde_json::from_str::<Ledger>("{}").unwrap(),
+            Ledger::default()
         );
     }
 
     #[test]
-    fn the_scan_marks_official_edges_and_asks_nothing_without_a_root_key() {
-        let root = signer();
-        let edge = signer();
-        let url = "http://edge.local:8443";
-        let good = answer_json(&root, &edge, url, 2_000_000_000, NONCE);
-        let trust = Trust {
-            root_public: Some(&root.1),
-            nonce: NONCE,
+    fn a_trusted_gateway_is_official_and_opens_the_market() {
+        let trusted = Gateway::Trusted {
+            owner: "Ada Gateway <ada@example.net>".into(),
+            fingerprint: "ABCDEF".into(),
+            image: "losos-edge-gateway 0.6.0".into(),
         };
-        // The LAN edge proves itself; the configured one answers 404.
         let status = assemble(
-            Some(&browse()),
+            Some(&gateway("gw.local:2333")),
             Some("https://losos-edge.example"),
             |_| true,
-            &trust,
-            |u, n| (u == url && n == NONCE).then(|| good.clone()),
-            1_900_000_000,
+            |url| (url == GW).then(|| trusted.clone()),
+            1,
         );
         assert!(status.official);
-        assert!(status.edges[0].official);
-        assert!(!status.edges[1].official);
-        assert_eq!(status.to_json()["official"], true);
-        assert_eq!(status.to_json()["edges"][0]["official"], true);
+        assert!(status.edges[0].official && !status.edges[1].official);
         assert!(check_market_gate(&status).is_ok());
-
-        // No root key on this box: nothing is asked and nothing is official.
-        let asked = std::cell::Cell::new(0);
-        let status = assemble(
-            Some(&browse()),
-            None,
-            |_| true,
-            &NO_TRUST,
-            |_, _| {
-                asked.set(asked.get() + 1);
-                Some(good.clone())
-            },
-            1_900_000_000,
+        let doc = status.to_json();
+        assert_eq!(doc["official"], true);
+        assert_eq!(doc["edges"][0]["gateway"]["state"], "trusted");
+        assert_eq!(
+            doc["edges"][0]["gateway"]["owner"],
+            "Ada Gateway <ada@example.net>"
         );
-        assert_eq!(asked.get(), 0);
+
+        let status = assemble(Some(&gateway("gw.local:2333")), None, |_| true, |_| None, 1);
         assert!(status.reachable && !status.official);
         assert_eq!(check_market_gate(&status), Err(OfficialEdgeRequired));
         assert!(OfficialEdgeRequired
             .to_string()
-            .contains("only edges LosOS runs may process the market"));
+            .contains("proves it runs a published LosOS image"));
     }
 
     /// A gateway edge's resolve reply, with the `rathole=` record and the
@@ -2043,8 +2149,7 @@ mod tests {
             Some("https://losos-edge.example"),
             Some("edge.losos.cfd:2333"),
             |_| true,
-            &NO_TRUST,
-            |_, _| None,
+            |_| None,
             1,
         );
         let path = both.path.clone().expect("a path");
@@ -2058,8 +2163,7 @@ mod tests {
             Some("https://losos-edge.example"),
             Some("edge.losos.cfd:2333"),
             |url| url.starts_with("https://"),
-            &NO_TRUST,
-            |_, _| None,
+            |_| None,
             1,
         );
         let path = official_only.path.expect("a path");
@@ -2072,14 +2176,13 @@ mod tests {
             None,
             Some("https://losos-edge.example"),
             |_| true,
-            &NO_TRUST,
-            |_, _| None,
+            |_| None,
             1,
         );
         assert!(no_endpoint.reachable);
         assert_eq!(no_endpoint.path, None);
 
-        let none = assemble(Some(&browse()), None, |_| false, &NO_TRUST, |_, _| None, 1);
+        let none = assemble(Some(&browse()), None, |_| false, |_| None, 1);
         assert_eq!(none.path, None);
         assert_eq!(none.to_json()["path"], Value::Null);
     }

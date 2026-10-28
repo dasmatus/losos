@@ -11,8 +11,8 @@
  * box that refuses the edge says so; a deep link reloads; and the page logs
  * no Content-Security-Policy violation under the edge's own policy beyond
  * what the admin page itself logs. On the
- * box, the switch sends POST /api/edge/manage and is off and explained when
- * the edge in use is official.
+ * box, the switch sends POST /api/edge/manage, for a checked gateway on the
+ * LAN as for any other edge there.
  *
  * Same arrangement as the other files: the real dist/ bundle under the real
  * policies, the routes stubbed with page.route(). */
@@ -351,14 +351,22 @@ async function openBox({ official = false } = {}) {
   const edge = () => ({
     reachable: true,
     official,
-    edges: [{ name: 'Office edge', url: EDGE_URL, source: 'lan', official }],
+    edges: [
+      {
+        name: 'Office edge',
+        url: EDGE_URL,
+        source: 'lan',
+        official,
+        ...(official ? { gateway: { state: 'trusted', owner: 'Office IT <it@office.example>', fingerprint: 'AB', image: 'gw' } } : {}),
+      },
+    ],
     lanSearched: true,
     configuredUrl: null,
     checkedAt: 1,
     path: { url: EDGE_URL, source: 'lan' },
     manage: {
-      candidate: official ? null : { name: 'Office edge', url: EDGE_URL },
-      refused: official ? 'official' : null,
+      candidate: { name: 'Office edge', url: EDGE_URL },
+      refused: null,
       managedBy,
       active: managedBy !== null,
     },
@@ -403,12 +411,14 @@ await check("the owner's switch lets the company edge in use manage the box, and
   await context.close();
 });
 
-await check('an official edge never manages a box: the switch is off and says why', async () => {
-  const { page, context } = await openBox({ official: true });
-  const sw = page.getByRole('switch', { name: 'Let the company edge manage this box', exact: true });
-  await sw.waitFor();
-  assert.equal(await sw.isDisabled(), true);
-  await page.getByText('LosOS never manages anyone').waitFor();
+await check('a checked gateway on the LAN may manage the box like any other edge there', async () => {
+  const { page, context, posts } = await openBox({ official: true });
+  const name = 'Let Office edge manage this box';
+  await page.getByRole('switch', { name, exact: true }).waitFor();
+  assert.equal(await page.getByRole('switch', { name, exact: true }).isDisabled(), false);
+  await toggle(page, name);
+  await page.getByText('Office edge can manage this box now', { exact: true }).first().waitFor();
+  assert.deepEqual(posts, [{ enabled: true }]);
   await context.close();
 });
 
