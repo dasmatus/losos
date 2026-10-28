@@ -4,10 +4,10 @@
   "routes": [
     { "method": "GET", "path": "/api/statistics" }
   ],
-  "http": ["${LOSOS_TRAEFIK_URL}"],
+  "http": ["${LOSOS_TRAEFIK_URL:-}"],
   "timers": [{ "name": "start" }, { "name": "sample", "every": 60 }],
   "limits": { "memoryMiB": 32, "timeoutSecs": 10 },
   "config": {
-    "traefik": "${LOSOS_TRAEFIK_URL}"
+    "traefik": "${LOSOS_TRAEFIK_URL:-}"
   }
 }
