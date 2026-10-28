@@ -10,8 +10,8 @@ mdx:
 ![Machines under Mesh.](../img/mesh-none.png)
 
 A box that shares its disk with the mesh can rent virtual machines on the
-mesh, and can host other boxes' machines. A machine is sold by the
-**replica**: each replica is one copy of the machine with its own disk,
+mesh, and can host other boxes' machines. The market sells a machine by the
+**replica**. Each replica is one copy of the machine with its own disk,
 running for a month on the box that hosts it. Payment goes through the
 [market](market.md), and every sale is split **half and half** between the
 owner of the hosting box and LosOS.
@@ -25,7 +25,7 @@ replicas and creates the machines; the admin UI's **Machines** page (under
 ## Who can use it
 
 Only a box that shares its disk (`losos.sharingMyStorage`) is offered
-machines, to rent or to host. lososd checks it on every request: a box that
+machines, to rent or to host. lososd checks it on every request. A box that
 does not share gets `{available: false, reason: "notSharing"}` from
 `GET /api/vms`, every action is refused with 409, and the page shows one
 greyed sentence instead of the form.
@@ -133,7 +133,7 @@ The Machines page shows each machine with the state of every replica
 address, and asks again every 15 seconds while a replica is still on its way
 up.
 
-**When the month runs out** every replica is halted (`runStrategy: Halted`)
+**When the month runs out** the edge halts every replica (`runStrategy: Halted`)
 and its place goes back to the host's listing. The disks stay. They hold the
 buyer's data, and removing them is the operator's decision, as it is for a
 storage order's volume.
@@ -188,8 +188,8 @@ its machine has a node and never deletes one. The registrar gets permission to
 read, create and patch `VirtualMachine`s and to create `Service`s.
 
 For `domain`, point a wildcard DNS record (`*.vms.example.net`) at the edge.
-Traefik's read timeout on the public entry point is raised to six hours while
-machines are on, so a large upload is not cut off.
+While machines are on, the edge raises Traefik's read timeout on the public
+entry point to six hours, so a large upload is not cut off.
 
 ## API
 
