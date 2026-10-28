@@ -81,7 +81,7 @@ under **Let Windows take your password**, and click **Allow**.
 
 Files you change on the share change in LosOS Cloud at once, in the
 browser and in the desktop and phone apps. A file you delete there is gone
-for good: it skips LosOS Cloud's trash, and a file you overwrite there
+for good. It skips LosOS Cloud's trash, and a file you overwrite there
 keeps no earlier version.
 
 ## The WebDAV address

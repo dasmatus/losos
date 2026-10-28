@@ -39,7 +39,7 @@ it.
 
 | What                                | Why it does not need the internet                                                                                |
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Signing in to the admin pages       | The box checks the password against LosOS Cloud on the box itself, over its own loopback. The printed spare key works too. |
+| Signing in to the admin pages       | LosOS Login checks the password on the box itself, over its own loopback. The printed spare key works too. |
 | LosOS Cloud and LosOS Git           | Both run on the box, so files, calendars, contacts, repositories and the mobile apps on the same Wi-Fi all stay local. |
 | Your own files                      | They are on the box's encrypted disk, in every storage mode.                                                     |
 | Local sharing between people at home | The box decides shares, links and permissions inside LosOS Cloud.                                             |
