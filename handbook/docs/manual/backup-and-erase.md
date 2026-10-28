@@ -7,7 +7,7 @@ slug: /manual/backup-and-erase
 # Backup and erase
 
 A box can copy everything it holds to a storage bucket you rent, and it can
-erase itself completely. The two work together: back up, erase, and the
+erase itself completely. The two work together. Back up, erase, and the
 recovery code brings it all back, on the same box or on a new one.
 
 ## The bucket
@@ -23,8 +23,8 @@ network. You need five things from the provider:
 - an **access key** and its **secret key**, allowed to read and write that
   bucket.
 
-The address must start with `https://`. Plain `http://` is accepted only for
-an address on your own network, such as a NAS. Once saved, the secret key is
+The address must start with `https://`. The box accepts plain `http://` only
+for an address on your own network, such as a NAS. Once saved, the secret key is
 never shown again. To change the bucket later, leave the secret field empty
 and the stored one is kept.
 
@@ -60,7 +60,7 @@ can be listed or opened until AWS thaws it.
 
 ## The recovery code
 
-Every backup is encrypted on the box before it leaves, with the box's
+The box encrypts every backup before it leaves, with the box's
 **recovery code** as the key. The bucket's owner sees only data that cannot
 be read without it, and nobody can open a backup without the code, LosOS
 included. **Show** under *The key to your backups* displays it. Write it down
@@ -88,7 +88,7 @@ press **Restore…**. The newest backup in the bucket comes back:
 - LosOS Cloud and LosOS Git stop while the files are put back, then start
   again. From Glacier Flexible Retrieval or Deep Archive the backup is
   thawed first, which takes hours;
-- the settings in the backup are applied, which rebuilds the box;
+- the box applies the settings in the backup and rebuilds;
 - the box keeps the code you typed from then on, so its next backup goes to
   the same place.
 
@@ -126,8 +126,8 @@ In order, the box:
 ![The countdown with Cancel erase.](../img/settings-erase-countdown.png)
 
 :::danger[No way back after step 3]
-From step 3 on, the erase cannot be stopped. A step the edge does not
-confirm is noted and the erase carries on. After the restart, Settings →
+From step 3 on, the erase cannot be stopped. The box notes any step the
+edge does not confirm and carries on. After the restart, Settings →
 Reset shows what the last erase gave up, as counts, and says when the edge
 did not confirm a step.
 :::

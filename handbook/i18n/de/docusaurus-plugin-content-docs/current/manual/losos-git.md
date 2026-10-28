@@ -171,7 +171,7 @@ unter ihrem Namen zeigt, etwa `@eva:kitchenbox.local`.
    ist. Sie drückt **`<name>.local` Bescheid geben**.
 3. Sie ist zurück auf deinem Gerät, angemeldet als `@eva:kitchenbox.local`.
 
-![Evas eigene Box fragt, bevor sie mattbox.local sagt, wer sie ist.](@site/docs/img/git-other-box-vouch.png)
+![Evas eigene Box fragt, bevor sie mattbox.local sagt, wer Eva ist.](@site/docs/img/git-other-box-vouch.png)
 
 Ihre Box sagt deiner nur die Chat-Adresse und den Namen. Dein Gerät prüft
 die Antwort beim Chat-Server ihrer Box, bevor es ihr glaubt. Wer ein Konto

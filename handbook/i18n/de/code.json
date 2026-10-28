@@ -385,7 +385,7 @@
     "message": "Jeden Morgen ein frisches System"
   },
   "losos.home.feature.self.body": {
-    "message": "Sie behält ihren Zustand über Neustarts hinweg."
+    "message": "Jeder Neustart baut das System neu aus seiner Beschreibung, und deine Dateien und Einstellungen bleiben auf der verschlüsselten Platte."
   },
   "losos.home.feature.disk.title": {
     "message": "Eine verschlüsselte Platte"
