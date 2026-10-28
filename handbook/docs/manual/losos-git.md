@@ -6,7 +6,6 @@ slug: /manual/losos-git
 
 # LosOS Git
 
-
 ![A repository in LosOS Git, with Wiki in its menu.](../img/losos-git-repository.png)
 
 LosOS Git is the box's own Git server. It keeps your repositories, takes

@@ -6,6 +6,8 @@ slug: /manual/losos-git
 
 # LosOS Git
 
+![Repozitár v LosOS Git, v jeho ponuke Wiki.](@site/docs/img/losos-git-repository-sk.png)
+
 LosOS Git je vlastný Git server zariadenia. Drží vaše repozitáre, prijíma
 pushe a klonovanie cez HTTPS a má stránky na čítanie kódu, otváranie pull
 requestov a ich review.
