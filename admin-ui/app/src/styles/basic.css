@@ -37,14 +37,16 @@
 
 /* A click anywhere else lands on the open menu's summary, which closes it.
  * The top bar blurs what is behind it, which makes it the containing block
- * of anything fixed inside it, so the cover reaches well past the bar. */
+ * of anything fixed inside it, so the cover is placed from the bar: past it
+ * up and to the left, which scrolls nothing, and down to the window's foot
+ * and the bar's right edge, so the page grows no wider or taller. */
 :root[data-basic] [data-basic-menu][open] > summary::before {
   content: "";
   position: fixed;
   top: -100dvh;
   left: -100vw;
-  width: 300vw;
-  height: 300dvh;
+  right: 0;
+  bottom: calc(100% - 100dvh);
   z-index: 40;
   cursor: default;
 }
