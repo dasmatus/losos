@@ -429,7 +429,7 @@ export function MessageRow({ client, room, item, grouped, me, actions, seenBy }:
 function CallNotice({ room, event, who }: { room: Room; event: MatrixEvent; who: string }) {
   const t = useT();
   const calls = useCalls();
-  const said = callEvent(event);
+  const said = callEvent(room, event);
   if (said === null) return null;
   if (said.state === "ended") return <p className="px-4 py-1 pl-15 text-[12.5px] text-faint">{t("calls.ended")}</p>;
   const open = calls.available && callable(room) && calls.active === null && !callEnded(room, said.call);
@@ -449,7 +449,7 @@ function NoticeRow({ room, event }: { room: Room; event: MatrixEvent }) {
   const t = useT();
   const who = memberName(room, event.getSender() ?? "");
   const content = event.getContent();
-  if (event.getType() === "org.losos.call") return <CallNotice room={room} event={event} who={who} />;
+  if (event.getType() === "org.losos.call" || event.getType() === EventType.RTCNotification) return <CallNotice room={room} event={event} who={who} />;
   let text: string | null = null;
   switch (event.getType()) {
     case EventType.RoomMember: {
