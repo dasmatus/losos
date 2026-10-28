@@ -44,7 +44,7 @@ fn components() -> &'static Vec<Built> {
             .status()
             .expect("cargo builds the plugins");
         assert!(status.success(), "building the plugins for wasm32 failed");
-        ["look", "pins", "probe"]
+        ["look", "pins", "hidden", "probe"]
             .iter()
             .map(|name| {
                 let core = std::fs::read(
@@ -426,6 +426,40 @@ fn the_pins_are_served_by_their_plugin() {
     let a = d.person("ada", "GET", "/api/pins");
     assert_eq!(a.status, 403);
     assert_eq!(d.person("root", "GET", "/api/pins").status, 200);
+}
+
+#[test]
+fn the_hidden_addresses_are_served_by_their_plugin() {
+    const ONION: &str = "abcdefghijklmnopqrstuvwxyz234567abcdefghijklmnopqrstuvwx.onion";
+    const B32: &str = "abcdefghijklmnopqrstuvwxyz234567abcdefghijklmnopqrst.b32.i2p";
+    let hidden = TempDir::new().unwrap();
+    let d = Daemon::start_with(&[("LOSOS_HIDDEN_DIR", hidden.path().to_str().unwrap())]);
+    // Neither network on: no files, no names.
+    let none = json!({"box": {"tor": null, "i2p": null}, "edge": {"tor": null, "i2p": null}});
+    let a = d.admin("GET", "/api/hidden", Value::Null);
+    assert_eq!(a.status, 200);
+    assert_eq!(a.json(), none);
+
+    // What losos-hidden-sync and the heartbeat wrote, with a name that is
+    // not one dropped on the way.
+    std::fs::write(
+        hidden.path().join("addresses.json"),
+        json!({"front": {"tor": ONION, "i2p": null}}).to_string(),
+    )
+    .unwrap();
+    std::fs::write(
+        hidden.path().join("edge.json"),
+        json!({"tor": "javascript:alert(1)", "i2p": B32}).to_string(),
+    )
+    .unwrap();
+    assert_eq!(
+        d.admin("GET", "/api/hidden", Value::Null).json(),
+        json!({"box": {"tor": ONION, "i2p": null}, "edge": {"tor": null, "i2p": B32}})
+    );
+
+    // The Network page's: sections.json says network.
+    assert_eq!(d.person("ada", "GET", "/api/hidden").status, 403);
+    assert_eq!(d.person("root", "GET", "/api/hidden").status, 200);
 }
 
 #[test]

@@ -145,6 +145,11 @@ listed in `losos.edge.tenants`.
   source address to 8 in flight, so slow anonymous requests cannot hold the
   registrar's 64 permits. While the registrar is shedding load it does not
   prune tenants for missed heartbeats.
+- Traefik reads the routes from the registrar's provider listener, which binds
+  loopback only and is not the API's listener, so the public
+  `register.<domain>` router (no path rule) cannot list every name the edge
+  serves, and neither can a LAN client of a gateway whose API is bound
+  off-box.
 
 ## System hardening
 

@@ -188,6 +188,19 @@ pub async fn run(opts: AnnounceOpts) -> Result<()> {
                 Ok(r) if r.status().is_success() => {
                     healthy = true;
                     backoff = BACKOFF_MIN;
+                    if let Some(file) = opts.hidden_file.as_deref() {
+                        let body = if r.status() == reqwest::StatusCode::OK {
+                            r.text().await.ok()
+                        } else {
+                            None
+                        };
+                        if let Err(e) = record_hidden(file, body.as_deref()).await {
+                            warn!(
+                                target: Action::Heartbeat.target(),
+                                "could not keep this box's Tor and I2P addresses in {file}: {e}",
+                            );
+                        }
+                    }
                 }
                 Ok(r) if r.status().as_u16() == 404 => {
                     // Edge forgot us (e.g. registry wiped) — re-enroll next loop.
@@ -226,6 +239,52 @@ pub async fn run(opts: AnnounceOpts) -> Result<()> {
         tokio::time::sleep(sleep).await;
         if !healthy {
             backoff = (backoff * 2).min(BACKOFF_MAX);
+        }
+    }
+}
+
+/// The addresses in a heartbeat's answer, as the file keeps them: only
+/// names that look right, `None` when there are none.
+#[must_use]
+pub fn hidden_from_answer(body: Option<&str>) -> Option<String> {
+    #[derive(serde::Deserialize)]
+    struct Answer {
+        #[serde(default)]
+        hidden: Option<crate::hidden::Addresses>,
+    }
+    let a = serde_json::from_str::<Answer>(body?)
+        .ok()?
+        .hidden?
+        .checked();
+    if a.is_empty() {
+        return None;
+    }
+    serde_json::to_string(&a).ok().map(|mut text| {
+        text.push('\n');
+        text
+    })
+}
+
+/// Keep the edge's addresses for this box in `file` for LosOS Login and the
+/// Network page, or remove it when the edge makes none. Written only when
+/// it changes, since a path unit watches it.
+async fn record_hidden(file: &str, body: Option<&str>) -> std::io::Result<()> {
+    let path = std::path::Path::new(file);
+    match hidden_from_answer(body) {
+        None => match tokio::fs::remove_file(path).await {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+            _ => Ok(()),
+        },
+        Some(text) => {
+            if tokio::fs::read_to_string(path).await.ok().as_deref() == Some(text.as_str()) {
+                return Ok(());
+            }
+            if let Some(dir) = path.parent() {
+                tokio::fs::create_dir_all(dir).await?;
+            }
+            let tmp = path.with_extension("json.tmp");
+            tokio::fs::write(&tmp, text).await?;
+            tokio::fs::rename(&tmp, path).await
         }
     }
 }
