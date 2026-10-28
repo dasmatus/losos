@@ -3,7 +3,7 @@
 # A llama.cpp RPC server (`ggml-rpc-server`) holds this box's share of a
 # model's layers and computes on them for a head that runs on the edge
 # (modules/edge-inference.nix). It listens on 127.0.0.1:50052 only. The edge
-# reaches it through this box's own rathole tunnel: the client carries a
+# reaches it through this box's own tunnel to the edge: the client carries a
 # second service, `<appliance id>:llm`, beside the box's main one
 # (modules/proxy.nix), and the announce heartbeat tells the edge how much
 # memory the box lends by reading /run/losos-llm/lend.
@@ -16,7 +16,7 @@
 #   * MemoryMax is the lent memory plus a little for the server itself, so a
 #     head that asks for more gets this unit killed, and the kernel's own OOM
 #     killer picks it before anything of the owner's;
-#   * an owner rule on loopback lets only root (rathole's client) connect to
+#   * an owner rule on loopback lets only root (the tunnel client) connect to
 #     the port, so nothing else on the box, the pods and `shared` included,
 #     can talk to the server directly.
 #

@@ -28,15 +28,11 @@ use serde::{Deserialize, Serialize};
 /// `LOSOS_TENANTS`: the operator whitelist, a JSON object keyed by appliance
 /// id. Required; an edge with no tenants answers 401 to everyone.
 pub const TENANTS_VAR: &str = "LOSOS_TENANTS";
-/// `LOSOS_BOOTSTRAP_TOKEN`: rathole's `default_token`. It only reaches the
-/// rendered `rathole.toml` on the scratch disk, which nothing on this host
-/// serves or reads, so it may be left unset: a random value is used.
-pub const BOOTSTRAP_VAR: &str = "LOSOS_BOOTSTRAP_TOKEN";
 /// `LOSOS_HEARTBEAT_TTL`: how long after its last heartbeat a box is pruned.
 /// The registrar's duration syntax (`120s`, `5m`); default `120s`.
 pub const TTL_VAR: &str = "LOSOS_HEARTBEAT_TTL";
-/// `LOSOS_PORT_RANGE`: the rathole port range (`lo-hi`) ports are allocated
-/// from; default `50000-50100`. Cosmetic here — no rathole binds them — but
+/// `LOSOS_PORT_RANGE`: the tunnel port range (`lo-hi`) ports are allocated
+/// from; default `50000-50100`. Cosmetic here — no tunnel binds them — but
 /// the registry carries a port per tenant and the range bounds it.
 pub const PORT_RANGE_VAR: &str = "LOSOS_PORT_RANGE";
 /// `LOSOS_STATE_DIR`: the scratch directory; default `/tmp/losos-edge`.
@@ -84,7 +80,6 @@ pub struct StoreSettings {
 #[derive(Debug, Clone)]
 pub struct Settings {
     pub tenants: BTreeMap<String, TenantSpec>,
-    pub bootstrap_token: String,
     pub heartbeat_ttl: String,
     pub port_range: String,
     pub state_dir: PathBuf,
@@ -105,7 +100,6 @@ impl Settings {
         let store = store_from_env()?;
         Ok(Self {
             tenants,
-            bootstrap_token: std::env::var(BOOTSTRAP_VAR).unwrap_or_else(|_| random_hex(64)),
             heartbeat_ttl: std::env::var(TTL_VAR).unwrap_or_else(|_| DEFAULT_TTL.to_string()),
             port_range: std::env::var(PORT_RANGE_VAR)
                 .unwrap_or_else(|_| DEFAULT_PORT_RANGE.to_string()),
@@ -116,12 +110,12 @@ impl Settings {
         })
     }
 
-    /// Write the whitelist, the token files and the bootstrap token under the
-    /// state directory, and build the registrar's `serve` options against them.
+    /// Write the whitelist and the token files under the state directory, and build the registrar's `serve` options against them.
     ///
     /// Paths are laid out so nothing collides with what the registrar itself
-    /// writes there (`registry.json`, `rathole.toml`, `compute-windows.json`). The listen address is a formality: the host
-    /// never binds it, Vercel's bridge delivers requests.
+    /// writes there (`registry.json`, `tunnel.json`, `compute-windows.json`).
+    /// The listen address is a formality: the host never binds it, Vercel's
+    /// bridge delivers requests.
     pub fn materialise(&self) -> Result<ServeOpts> {
         let dir = &self.state_dir;
         create_private_dir(dir)?;
@@ -131,7 +125,7 @@ impl Settings {
         let mut whitelist = serde_json::Map::new();
         for (id, spec) in &self.tenants {
             // Ids become file names. The registrar's own id rules (a DNS label
-            // for the mesh, a TOML key for rathole) are stricter than this, but
+            // for the mesh and the tunnel) are stricter than this, but
             // a path separator here would write outside the token directory.
             if id.is_empty() || id.contains('/') || id.contains('\0') || id == "." || id == ".." {
                 return Err(miette!("tenant id {id:?} cannot be a file name"));
@@ -155,8 +149,6 @@ impl Settings {
                 .into_diagnostic()?
                 .as_bytes(),
         )?;
-        let bootstrap_file = dir.join("bootstrap.token");
-        write_private_file(&bootstrap_file, self.bootstrap_token.as_bytes())?;
 
         let path = |name: &str| dir.join(name).to_string_lossy().into_owned();
         let argv: Vec<String> = [
@@ -165,12 +157,10 @@ impl Settings {
             "127.0.0.1:0",
             "--registry",
             &path("registry.json"),
-            "--rathole-config",
-            &path("rathole.toml"),
+            "--tunnel-config",
+            &path("tunnel.json"),
             "--port-range",
             &self.port_range,
-            "--bootstrap-token-file",
-            &bootstrap_file.to_string_lossy(),
             "--tenants-file",
             &tenants_file.to_string_lossy(),
             "--heartbeat-ttl",
@@ -239,23 +229,4 @@ fn write_private_file(path: &Path, bytes: &[u8]) -> Result<()> {
     f.write_all(bytes)
         .into_diagnostic()
         .wrap_err_with(|| format!("write {}", path.display()))
-}
-
-/// `n` lowercase hex characters from the system CSPRNG.
-fn random_hex(n: usize) -> String {
-    use ring::rand::{SecureRandom, SystemRandom};
-    let mut bytes = vec![0u8; n.div_ceil(2)];
-    // `fill` fails only if the OS entropy source does; there is no sensible
-    // fallback for a token, and this one is never checked by anyone, so a
-    // constant on failure is the honest, loud-in-the-log choice.
-    if SystemRandom::new().fill(&mut bytes).is_err() {
-        tracing::error!("system CSPRNG unavailable; using a fixed placeholder bootstrap token");
-        return "0".repeat(n);
-    }
-    let mut out = String::with_capacity(n);
-    for b in bytes {
-        out.push_str(&format!("{b:02x}"));
-    }
-    out.truncate(n);
-    out
 }
