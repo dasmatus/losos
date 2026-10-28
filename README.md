@@ -4,6 +4,11 @@ A NixOS appliance for a mini-PC. It runs LosOS Cloud for your own files and can
 lend spare disk and CPU to a mesh of other losos boxes. There is no SSH and no
 login shell: you administer it from a web page, and it upgrades itself.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="handbook/docs/img/overview-dark.png">
+  <img src="handbook/docs/img/overview.png" alt="The admin pages of a box: the app tiles for LosOS Cloud and LosOS Git, the storage card and a board of widgets." width="800">
+</picture>
+
 The root filesystem is a tmpfs rebuilt on every boot. Only listed directories
 survive, on an encrypted `/persist` partition.
 

@@ -226,6 +226,10 @@ export default defineMessages({
 
   "ui.working": { en: "Working", sk: "Pracujeme", de: "Wird ausgeführt" },
   "ui.dismiss": { en: "Dismiss", sk: "Zavrieť", de: "Schließen" },
+  /* The phone's bottom bar (components/ui/bottom-nav.tsx): its name, and
+   * the last tab, which raises every place as a sheet. */
+  "ui.bottomNav.label": { en: "Main places", sk: "Hlavné miesta", de: "Wichtigste Orte" },
+  "ui.bottomNav.more": { en: "More", sk: "Viac", de: "Mehr" },
   "ui.whatToDo": { en: "What to do", sk: "Čo robiť", de: "Was tun" },
   // The warning a box installed without a TPM shows (components/no-tpm-notice.tsx).
   "ui.noTpm.title": {

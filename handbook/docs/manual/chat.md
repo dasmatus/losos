@@ -7,7 +7,7 @@ slug: /manual/chat
 # Chat
 
 
-![LosOS Chat.](../img/chat-rooms.png)
+![A repository's room in LosOS Chat, with what LosOS Git posted there.](../img/chat-room.png)
 
 LosOS Chat is a messenger on the box for everyone with a LosOS Login account.
 People write to each other in direct messages and in rooms, share pictures
@@ -108,6 +108,8 @@ Chat reaches the LosOS boxes on your network. Write to `@eva:kitchenbox.local`
 from `mattbox.local` and the message goes from one box to the other, without
 leaving the network. A box named `.local` answers other chat servers only
 from the network it is on.
+
+![The same room in the chat of a second box, joined from kitchenbox.local.](../img/chat-other-box.png)
 
 To talk to Matrix servers on the internet as well, the box needs a domain of
 your own that they can reach. `losos.chat.federation.enable` in **Settings**

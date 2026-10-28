@@ -75,24 +75,19 @@ export function Hero({
   const plate = useBaseUrl('/img/plate.png');
   const logo = halloween ? plate : salmon;
   const tip = logoTip(halloween);
+  /* The salmon stays a small mark beside the title, so the first screen of
+   * a phone shows the admin pages (<Screen />, right below) and not a fish. */
   return (
     <header className={styles.hero}>
-      <div className={styles.heroText}>
-        <p className={styles.eyebrow}>{eyebrow}</p>
-        <h1 className={styles.heroTitle}>{title}</h1>
-        <p className={styles.heroLead}>{lead}</p>
-        <p className={styles.heroBody}>{body}</p>
-        <Actions primary={primary} secondary={secondary} />
-        <p className={styles.fine}>{fine}</p>
-      </div>
-      <img
-        className={styles.logo}
-        src={logo}
-        width={240}
-        height={240}
-        alt={tip}
-        title={tip}
-      />
+      <p className={styles.eyebrow}>{eyebrow}</p>
+      <h1 className={styles.heroTitle}>
+        <img className={styles.mark} src={logo} width={64} height={64} alt="" title={tip} />
+        {title}
+      </h1>
+      <p className={styles.heroLead}>{lead}</p>
+      <p className={styles.heroBody}>{body}</p>
+      <Actions primary={primary} secondary={secondary} />
+      <p className={styles.fine}>{fine}</p>
     </header>
   );
 }

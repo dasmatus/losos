@@ -71,7 +71,9 @@ fn path_param(req: &HttpRequest) -> Result<String, HttpResponse> {
     clean_path(&param(req, "path").unwrap_or_default()).map_err(|e| store_error(&e))
 }
 
-async fn json_body<T: for<'de> Deserialize<'de>>(body: web::Payload) -> Result<T, HttpResponse> {
+pub async fn json_body<T: for<'de> Deserialize<'de>>(
+    body: web::Payload,
+) -> Result<T, HttpResponse> {
     let bytes = read_body(body, MAX_JSON).await?;
     serde_json::from_slice(&bytes)
         .map_err(|e| error(StatusCode::BAD_REQUEST, "badRequest", &e.to_string()))

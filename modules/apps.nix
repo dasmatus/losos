@@ -674,9 +674,6 @@ in
           LOSOS_APPS_PORTS = "${toString cfg.ports.from}-${toString cfg.ports.to}";
           LOSOS_APPS_BUILTIN = lib.concatStringsSep "," builtinNames;
           LOSOS_HELM_HOME = helmHome;
-          # lososd's statistics plugin reads Traefik's metrics here
-          # (backend/plugins/statistics).
-          LOSOS_TRAEFIK_URL = traefikApi;
         }
         # A `shared` app needs the box's own cluster (backend/src/apps.rs).
         // lib.optionalAttrs localCluster { LOSOS_APPS_KUBE = "1"; };

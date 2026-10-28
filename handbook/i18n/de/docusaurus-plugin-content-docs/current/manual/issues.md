@@ -159,6 +159,10 @@ sind. Tippst du `@` in eine Beschreibung, einen Kommentar oder eine Karte in
 LosOS Diagrams, stehen Issues neben Personen und Dateien zur Wahl, und
 ebenso im Link-Knopf über markierten Wörtern in Office und Notizen.
 
+![Die Übersicht mit zwei angehefteten Issues in der Seitenleiste und der Kachel Issues, die drei offene Issues zählt.](@site/docs/img/issues-pins.png)
+
+![Die Suche der Admin-Seiten mit "free space", die Issue BT-6 unter den Issues in LosOS Git findet.](@site/docs/img/issues-search.png)
+
 Mail, Chat und Kontakte gibt es, wenn die Box teilt und in einem Mesh ist.
 Jedes dir zugewiesene Issue mit Fälligkeitsdatum steht auch in einem
 Kalender-Abo unter `https://<box>.local/git/api/v1/tracker/calendar.ics`.
