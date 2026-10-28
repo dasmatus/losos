@@ -504,6 +504,11 @@ and is never served or built by nix.
   with the `HISTORY_SCRUB_DEPLOY_KEY` deploy key and tags with the CI token.
   `stale-branches.yml` deletes, each Sunday, branches with no commit in 30
   days that no open PR uses as head or base.
+  `dependency-hashes.yml` (`pull_request_target`, branches of this repository
+  only) runs `.github/scripts/fix-hashes.py` on a pull request that changes
+  a `Cargo.lock` or `package-lock.json`, Dependabot's included, and pushes the
+  new `cargoHash`/`npmDepsHash` back to the branch; run the script yourself
+  after touching a lock file.
   `discovery` boots the netboot box `nix/tests/discovery/box.nix` on Linux,
   macOS and Windows runners, and `nix/tests/discovery/check.py` has each
   find it and read and write files over SMB and WebDAV.
