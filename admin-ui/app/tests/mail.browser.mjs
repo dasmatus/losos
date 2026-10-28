@@ -8,9 +8,13 @@
  * layout; then a person's own folders (the tree, made, renamed, moved by
  * menu and by drag, deleted, refused) and their filters (made, from a
  * message too, switched off, reordered), which the mail plugin answers.
- * nix/tests/mail.nix runs the same page against a real Stalwart. */
+ * Then OpenPGP: a key made in the page, an encrypted and signed message to
+ * Eva that Eva's key (made here in Node) opens, and one from Eva that the
+ * page opens after asking for the passphrase. nix/tests/mail.nix and
+ * nix/tests/mail-pgp.nix run the same page against a real Stalwart. */
 
 import assert from 'node:assert';
+import * as openpgp from 'openpgp';
 import { launch, MAIL_FRAME_CSP, runner, serve } from './harness.mjs';
 
 const { origin, close: closeServer } = await serve({ csp: true });
@@ -57,6 +61,7 @@ const LAKE = {
   seen: false,
   flagged: false,
   hasAttachment: false,
+  pgp: null,
 };
 const SALE = {
   id: 'm2',
@@ -69,11 +74,66 @@ const SALE = {
   seen: true,
   flagged: false,
   hasAttachment: false,
+  pgp: null,
 };
+const SEALED = {
+  id: 'm3',
+  threadId: 't3',
+  subject: 'The spare key',
+  from: [EVA],
+  to: [ME_ADDR],
+  receivedAt: '2026-10-18T09:30:00Z',
+  preview: 'Version: 1',
+  seen: true,
+  flagged: false,
+  hasAttachment: true,
+  pgp: 'encrypted',
+};
+
+/* OpenPGP: Eva's key is made here; Matus's in the page, and kept in
+ * `ownKey` as the box would answer for it. */
+const PASSPHRASE = 'blue heron at dawn';
+const evaPair = await openpgp.generateKey({
+  type: 'ecc',
+  curve: 'curve25519Legacy',
+  userIDs: [{ name: 'Eva', email: 'eva@mattbox.home.arpa' }],
+  format: 'object',
+});
+const evaKey = evaPair.privateKey;
+const found = (key) => ({
+  source: 'box',
+  fingerprint: key.getFingerprint().toUpperCase(),
+  userIds: key.getUserIDs(),
+  created: Math.floor(key.getCreationTime().getTime() / 1000),
+  publicKey: key.toPublic().armor(),
+});
+let ownKey = null;
+const SECRET = 'The spare key is under the blue pot.';
+/* Eva's message to Matus, as lososd's raw endpoint hands it over. */
+async function sealedRaw() {
+  const matus = await openpgp.readKey({ armoredKey: ownKey.publicKey });
+  const inner = `Content-Type: text/plain; charset=utf-8\r\n\r\n${SECRET}\r\n`;
+  const armored = await openpgp.encrypt({
+    message: await openpgp.createMessage({ binary: new TextEncoder().encode(inner) }),
+    encryptionKeys: matus,
+    signingKeys: evaKey,
+  });
+  const b = 'b1';
+  return (
+    'From: Eva <eva@mattbox.home.arpa>\r\nTo: matus@mattbox.home.arpa\r\nSubject: The spare key\r\nMIME-Version: 1.0\r\n' +
+    `Content-Type: multipart/encrypted; protocol="application/pgp-encrypted"; boundary="${b}"\r\n\r\n` +
+    `--${b}\r\nContent-Type: application/pgp-encrypted\r\n\r\nVersion: 1\r\n\r\n` +
+    `--${b}\r\nContent-Type: application/octet-stream\r\n\r\n${armored.replace(/\n/g, '\r\n')}\r\n--${b}--\r\n`
+  );
+}
 const full = (m, extra) => ({ ...m, cc: [], replyTo: [], mailboxIds: ['a'], text: '', hasHtml: false, attachments: [], ...extra });
 const MESSAGES = {
   m1: full(LAKE, { text: 'Hi Matus,\n\nThe one of the boat at sunset is my favourite.\n\nEva' }),
   m2: full(SALE, { hasHtml: true, text: 'Hello Matus' }),
+  m3: full(SEALED, {
+    text: 'Version: 1',
+    attachments: [{ blobId: 'x', name: 'encrypted.asc', type: 'application/octet-stream', size: 900 }],
+  }),
 };
 const SALE_HTML =
   '<!doctype html><meta charset="utf-8"><base target="_blank">' +
@@ -153,7 +213,7 @@ async function open({
     calls.push({ list: url.searchParams.get('mailbox'), q: url.searchParams.get('q') ?? '' });
     const q = url.searchParams.get('q') ?? '';
     const inbox = url.searchParams.get('mailbox') === 'a';
-    const messages = inbox ? [LAKE, SALE].filter((m) => q === '' || /lake/i.test(m.subject) === /lake/i.test(q)) : [];
+    const messages = inbox ? [LAKE, SALE, SEALED].filter((m) => q === '' || /lake/i.test(m.subject) === /lake/i.test(q)) : [];
     return json(route, 200, { messages, position: 0, total: messages.length });
   });
   await page.route(/\/api\/mail\/messages\/m\d$/, (route) => {
@@ -172,6 +232,28 @@ async function open({
       headers: { 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': MAIL_FRAME_CSP },
       body: SALE_HTML,
     }),
+  );
+  await page.route('**/api/mail/keys', async (route) => {
+    const method = route.request().method();
+    if (method === 'PUT') {
+      const { publicKey, lockedKey } = JSON.parse(route.request().postData());
+      const key = await openpgp.readKey({ armoredKey: publicKey });
+      const locked = await openpgp.readPrivateKey({ armoredKey: lockedKey });
+      calls.push({ putKey: { decrypted: locked.isDecrypted() } });
+      ownKey = { ...found(key), lockedKey, sealed: 'tpm2', wkd: 'https://mattbox.home.arpa/.well-known/openpgpkey/hu/x' };
+      delete ownKey.source;
+    }
+    if (method === 'DELETE') ownKey = null;
+    return json(route, 200, { key: ownKey });
+  });
+  await page.route('**/api/mail/keys/find?**', (route) => {
+    const email = new URL(route.request().url()).searchParams.get('email');
+    calls.push({ find: email });
+    const keys = email === 'eva@mattbox.home.arpa' ? [found(evaKey)] : email === ME_ADDR.email && ownKey ? [{ ...ownKey, source: 'box' }] : [];
+    return json(route, 200, { email, keys });
+  });
+  await page.route(/\/api\/mail\/messages\/m3\/raw$/, async (route) =>
+    route.fulfill({ status: 200, contentType: 'message/rfc822', body: await sealedRaw() }),
   );
   await page.route('**/api/mail/send', (route) => {
     calls.push({ send: JSON.parse(route.request().postData()) });
@@ -515,6 +597,79 @@ await check('a message\'s menu starts a filter for its sender', async () => {
   await editor.getByRole('button', { name: 'Save' }).click();
   await page.getByText('Filters saved', { exact: true }).waitFor();
   assert.equal(calls.at(-1).filters[0].markRead, true);
+  await done();
+});
+
+await check('OpenPGP: make a key, then send Eva mail only her key opens', async () => {
+  ownKey = null;
+  const { page, calls, done } = await open();
+  await page.getByRole('button', { name: 'Encryption' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByText('A new key for matus@mattbox.home.arpa', { exact: false }).waitFor();
+  await dialog.getByLabel('Passphrase').fill(PASSPHRASE);
+  await dialog.getByLabel('The same again').fill(PASSPHRASE);
+  await dialog.getByRole('button', { name: 'Make the key' }).click();
+  await dialog.getByTestId('mail-key-fingerprint').waitFor({ timeout: 30_000 });
+  assert.deepEqual(calls.find((c) => c.putKey)?.putKey, { decrypted: false }, 'the private key left the page unlocked');
+  assert.equal((await dialog.getByTestId('mail-key-fingerprint').innerText()).replace(/\s/g, ''), ownKey.fingerprint);
+  await dialog.getByText('sealed again to this box\'s TPM', { exact: false }).waitFor();
+  await dialog.getByRole('button', { name: 'Close' }).click();
+  await dialog.waitFor({ state: 'detached' });
+
+  await page.getByRole('button', { name: 'Write' }).click();
+  const compose = page.getByRole('dialog');
+  await compose.getByRole('combobox').first().fill('eva@mattbox.home.arpa');
+  await compose.locator('[data-testid=mail-recipient-key][data-state=found]').waitFor();
+  assert.match(await compose.getByTestId('mail-recipient-key').innerText(), /key on this box/);
+  // Every recipient has a key, so it encrypts by itself, and signs.
+  await page.waitForFunction(() => document.querySelector('#mail-encrypt')?.checked === true);
+  assert.equal(await compose.locator('#mail-sign').isChecked(), true);
+  await compose.getByText('The subject is not encrypted.', { exact: false }).waitFor();
+  await compose.getByLabel('Subject').fill('Lake photos');
+  await compose.locator('textarea').fill('The boat one, at sunset.');
+  await compose.getByRole('button', { name: 'Send', exact: true }).click();
+  await compose.waitFor({ state: 'detached' });
+  const sent = calls.find((c) => c.send)?.send;
+  assert.equal(sent.text, '');
+  assert.equal(sent.pgp.mime, 'encrypted');
+  assert.ok(!sent.pgp.armored.includes('sunset'));
+  const result = await openpgp.decrypt({
+    message: await openpgp.readMessage({ armoredMessage: sent.pgp.armored }),
+    decryptionKeys: evaKey,
+    verificationKeys: await openpgp.readKey({ armoredKey: ownKey.publicKey }),
+    format: 'binary',
+  });
+  assert.match(new TextDecoder().decode(result.data), /The boat one, at sunset\./);
+  await result.signatures[0].verified;
+  await done();
+});
+
+await check('OpenPGP: Eva\'s encrypted mail opens after the passphrase, signed by her', async () => {
+  const { page, done } = await open();
+  const row = page.getByRole('button', { name: /The spare key/ });
+  await row.getByLabel('Encrypted message').waitFor();
+  assert.match(await row.innerText(), /Encrypted message/);
+  assert.doesNotMatch(await row.innerText(), /Version: 1/);
+  await row.click();
+  // A new page: the key is locked again.
+  await page.getByText('Unlock your key to read it.').waitFor();
+  assert.equal(await page.getByText(SECRET).count(), 0);
+  await page.getByRole('button', { name: 'Unlock', exact: true }).click();
+  const unlock = page.getByRole('dialog');
+  await unlock.getByLabel('Passphrase').fill('not the passphrase');
+  await unlock.getByRole('button', { name: 'Unlock' }).click();
+  await unlock.getByText('That passphrase does not open the key.').waitFor();
+  await unlock.getByLabel('Passphrase').fill(PASSPHRASE);
+  await unlock.getByRole('button', { name: 'Unlock' }).click();
+  await page.getByTestId('mail-opened').getByText(SECRET).waitFor({ timeout: 30_000 });
+  const note = page.getByTestId('mail-security');
+  assert.equal(await note.getAttribute('data-state'), 'ok');
+  assert.match(await note.innerText(), /Encrypted, and signed by eva@mattbox\.home\.arpa\./);
+  // The encrypted part is not offered as an attachment.
+  assert.equal(await page.getByText('encrypted.asc').count(), 0);
+  // Reply quotes what it said, not the armour.
+  await page.getByRole('button', { name: 'Reply', exact: true }).click();
+  assert.match(await page.getByRole('dialog').locator('textarea').inputValue(), /> The spare key is under the blue pot\./);
   await done();
 });
 

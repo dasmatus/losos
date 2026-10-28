@@ -41,6 +41,10 @@ struct Cli {
     /// Ports other apps listen on, as `port=app`, comma-separated.
     #[arg(long, default_value = "")]
     taken: String,
+    /// The LAN port the app is reached on, which Traefik holds. With
+    /// --podman the app's containers carry the labels that route it there.
+    #[arg(long)]
+    front_port: Option<u16>,
     /// Where to write what the install job needs to know.
     #[arg(long)]
     report: PathBuf,
@@ -298,6 +302,7 @@ fn main() -> std::process::ExitCode {
         run_as,
         reserved: ports(&cli.reserved),
         taken: taken(&cli.taken),
+        front_port: cli.front_port,
     };
     if cli.podman {
         return podman(&cli, run_as, &ctx, docs);

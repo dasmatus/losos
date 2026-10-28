@@ -59,7 +59,13 @@ Every service runs:
 - as uid 1000 inside the container and as `notshared` outside it
   (`userns_mode: keep-id`), so what the app writes belongs to `notshared`;
 - with no capabilities and `no-new-privileges`;
-- restarted unless it was stopped, unless the file says otherwise.
+- restarted unless it was stopped, unless the file says otherwise;
+- with the labels that open the app on its LAN port. Traefik on the box
+  reads them: `traefik.http.routers.app-<name>.entrypoints` names the
+  port, `…services.app-<name>.loadbalancer.server.port` the port the app
+  listens on, and the `lan-only` middleware lets only the local network in.
+  Labels the file sets under `traefik.` or `losos.` are dropped first, so
+  an app cannot open another app's port. Other labels stay as written.
 
 Services find each other by name: each service name points at `127.0.0.1`.
 Because they share one network, they must listen on different ports, all

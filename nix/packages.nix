@@ -274,7 +274,7 @@ let
   # build a set with the probe in it.
   # backend/plugins' vendored crates: lososd's plugins and Mesh CI's pm
   # plugin are built from the one workspace.
-  pluginsCargoHash = "sha256-KfPuzfODxOgD0a1zjrob4bsYM56pwi8k3Jar5vs4+R8=";
+  pluginsCargoHash = "sha256-n4jKabybOqM8qy4bxPSDpAl7NrATbvn1kvHcC9SJh8Q=";
   lososPlugins =
     {
       pname ? "losos-plugins",
@@ -284,6 +284,7 @@ let
         "pins"
         "mail"
         "ci"
+        "statistics"
       ],
     }:
     pkgs.rustPlatform.buildRustPackage {
@@ -354,7 +355,7 @@ images
     #
     # nix/tests/admin-ui.nix carries the SAME hash over the SAME lock file: two
     # derivations, one dependency set. Change both together.
-    npmDepsHash = "sha256-ZimG01qBX7S7emmGa3GU7mrEjk71/cL9MUDsggyYAUE=";
+    npmDepsHash = "sha256-rB4klq53pPN2rjWwzfLr8gXC2aF5APl0FfwU50vu6rI=";
 
     # No postinstall scripts. playwright is a devDependency (nix/tests/admin-ui.nix
     # drives the browser check with it) and its postinstall downloads browsers:
@@ -420,7 +421,7 @@ images
     # SHA256 of the npm dependency cache built from handbook/package-lock.json,
     # same convention as losos-admin-ui above. After changing the lock file:
     # `nix run nixpkgs#prefetch-npm-deps -- handbook/package-lock.json`.
-    npmDepsHash = "sha256-h9w/FChRdSrkCg/x6QiUgTtuGaORFdHX0SA4snvAoWI=";
+    npmDepsHash = "sha256-Sp2yoHsttkm/QTtvp/oqwfamJku2L3grKOmzBqC/ejY=";
 
     npmFlags = [ "--ignore-scripts" ];
     env.LOSOS_HANDBOOK_BASE = "/handbook/";
@@ -465,7 +466,7 @@ images
     src = lib.cleanSource ./../backend;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-ctl-rs` will print the new hash to paste here.
-    cargoHash = "sha256-DdHJ1AAnXTGnz0d4X5f8c0isowMIC89tgYIU7xt78xM=";
+    cargoHash = "sha256-LX3tsCW2kR6ljcPBQOEv3jkZEiDLxWp8LlWCuorfcZk=";
     # No system deps: zbus speaks the D-Bus wire protocol natively, so there is
     # no libdbus to link against.
     # doCheck is off, and the tests still run — in CI's lint job and in

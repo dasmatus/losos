@@ -60,7 +60,15 @@ Každá služba beží:
 - ako uid 1000 v kontajneri a ako `notshared` mimo neho
   (`userns_mode: keep-id`), takže to, čo aplikácia zapíše, patrí `notshared`;
 - bez oprávnení (capabilities) a s `no-new-privileges`;
-- znova sa spustí, ak ju nik nezastavil, pokiaľ súbor nehovorí inak.
+- znova sa spustí, ak ju nik nezastavil, pokiaľ súbor nehovorí inak;
+- so štítkami (labels), ktoré aplikáciu otvoria na jej porte v lokálnej
+  sieti. Číta ich Traefik na zariadení:
+  `traefik.http.routers.app-<name>.entrypoints` určuje port,
+  `…services.app-<name>.loadbalancer.server.port` port, na ktorom aplikácia
+  počúva, a middleware `lan-only` pustí dnu iba lokálnu sieť. Štítky, ktoré
+  súbor nastaví pod `traefik.` alebo `losos.`, sa najprv zahodia, takže
+  aplikácia nemôže otvoriť port inej aplikácie. Ostatné štítky zostanú tak,
+  ako sú napísané.
 
 Služby sa navzájom nájdu menom: každý názov služby ukazuje na `127.0.0.1`.
 Keďže zdieľajú jednu sieť, musia počúvať na rôznych portoch, všetkých od

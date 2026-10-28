@@ -1,0 +1,94 @@
+name: Rust autofix
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch to format and autofix before merging
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: rust-autofix-${{ inputs.branch }}
+  cancel-in-progress: false
+
+jobs:
+  autofix:
+    name: Format, apply Clippy fixes, and rerun CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Validate target branch
+        env:
+          TARGET_BRANCH: ${{ inputs.branch }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$TARGET_BRANCH" =~ ^[A-Za-z0-9._/-]+$ || "$TARGET_BRANCH" == -* || "$TARGET_BRANCH" == *..* ]]; then
+            echo "::error::Invalid branch name"
+            exit 1
+          fi
+          if [[ "$TARGET_BRANCH" == refs/* || "$TARGET_BRANCH" == */ ]]; then
+            echo "::error::Pass a branch name, not a ref path"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.branch }}
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-nix
+
+      - name: Apply rustfmt and Clippy autofixes
+        run: |
+          set -euo pipefail
+          nix develop .#ci -c bash -euo pipefail -c '
+            cargo fmt --manifest-path backend/Cargo.toml
+            cargo fmt --manifest-path backend/access/Cargo.toml
+            cargo fmt --all --manifest-path backend/plugins/Cargo.toml
+            cargo fmt --manifest-path edge/registrar/Cargo.toml
+            cargo fmt --manifest-path edge/vercel/Cargo.toml
+            cargo fmt --manifest-path admin-ui/lab/core/Cargo.toml
+            cargo fmt --manifest-path admin-ui/lab/virt-rpc/Cargo.toml
+            cargo fmt --manifest-path admin-ui/lab/render/Cargo.toml
+            cargo fmt --manifest-path admin-ui/tui/Cargo.toml
+            cargo fmt --manifest-path edge/contracts/solana/Cargo.toml
+
+            cargo clippy --fix --allow-dirty --allow-staged --manifest-path backend/Cargo.toml --all-targets -- -D warnings
+            cargo clippy --fix --allow-dirty --allow-staged --manifest-path backend/access/Cargo.toml --all-targets -- -D warnings
+            cargo clippy --fix --allow-dirty --allow-staged --manifest-path backend/plugins/Cargo.toml --all-targets -- -D warnings
+            cargo clippy --fix --allow-dirty --allow-staged --manifest-path edge/registrar/Cargo.toml --all-targets -- -D warnings
+            cargo clippy --fix --allow-dirty --allow-staged --manifest-path edge/vercel/Cargo.toml --all-targets -- -D warnings
+            cargo clippy --fix --allow-dirty --allow-staged --manifest-path admin-ui/lab/core/Cargo.toml --all-targets -- -D warnings
+            cargo clippy --fix --allow-dirty --allow-staged --manifest-path admin-ui/lab/virt-rpc/Cargo.toml --all-targets -- -D warnings
+            cargo clippy --fix --allow-dirty --allow-staged --manifest-path admin-ui/lab/render/Cargo.toml --all-targets -- -D warnings
+            cargo clippy --fix --allow-dirty --allow-staged --manifest-path admin-ui/tui/Cargo.toml --all-targets -- -D warnings
+            cargo clippy --fix --allow-dirty --allow-staged --manifest-path edge/contracts/solana/Cargo.toml --all-targets -- -D warnings
+          '
+
+      - name: Commit fixes to the selected branch
+        env:
+          TARGET_BRANCH: ${{ inputs.branch }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "No autofixes were needed."
+            exit 0
+          fi
+          git config user.name "losos-ci-bot"
+          git config user.email "losos-ci-bot@users.noreply.github.com"
+          git add -u
+          git commit -m "style: apply Rust formatting and Clippy fixes [skip ci]"
+          git pull --rebase origin "$TARGET_BRANCH"
+          git push origin "HEAD:$TARGET_BRANCH"
+
+      - name: Dispatch CI for the updated branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TARGET_BRANCH: ${{ inputs.branch }}
+        run: gh workflow run ci.yml --ref "$TARGET_BRANCH"

@@ -95,7 +95,8 @@ upraví tak, aby bežal rovnako ako LosOS Git.
 - Úložisko, o ktoré chart žiada, sa stane priečinkami pod
   `/home/<user>/data/apps/<name>`.
 - Aplikácia dostane jeden vlastný port z `losos.apps.ports`, predvolene 30000
-  až 30099, a dostane sa k nemu iba vaša lokálna sieť.
+  až 30099, a dostane sa k nemu iba vaša lokálna sieť. Port sa otvorí, len
+  čo aplikácia beží, a zatvorí sa, keď sa zastaví.
 
 :::note[Charty, ktoré zariadenie odmietne]
 Chart, ktorý potrebuje viac, zariadenie odmietne a povie prečo. Typickými
@@ -120,6 +121,18 @@ vlastný klaster zariadenia, ktorý beží iba vtedy, keď zariadenie zdieľa
 disk s mesh ([Kde bežia aplikácie](../types/app-modes)). Inštalovanie vypnete nastavením
 `losos.apps.enable` na false na paneli **Rozšírené**.
 :::
+
+## Štatistiky \{#statistics}
+
+**Nastavenia › Štatistiky** ukazujú, ako často niekto otvoril vaše
+nainštalované aplikácie. Vidíte žiadosti za poslednú hodinu, minútu po
+minúte, a koľko z nich skončilo chybou. Vidíte aj to, koľko zariadenie
+odoslalo a ako dlho trvali najpomalšie odpovede. Každá aplikácia je
+uvedená so svojím portom. Počítadlá začínajú odznova, keď sa zariadenie
+reštartuje.
+
+Widget **Štatistiky** ukáže poslednú hodinu na Prehľade. Pridáte ho cez
+**Pridať widget**. Kliknutím naň otvoríte celú stránku.
 
 ## Vaše aplikácie \{#your-apps}
 

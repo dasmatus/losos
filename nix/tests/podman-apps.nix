@@ -25,7 +25,14 @@
 #   8. every installed notshared app's Compose file is in notshared's own
 #      Git repo, a commit per install, and nowhere a refused app's;
 #   9. removing an app stops it and closes its port, its data stays, and
-#      its folder leaves the repo in a commit of its own.
+#      its folder leaves the repo in a commit of its own;
+#  10. Traefik, not nginx, holds the apps' LAN ports: it routes each one by
+#      the labels the shaping wrote on the app's containers, turns away the
+#      box itself as the LAN guard does, and an app's port opens and closes
+#      with its containers, with no nginx file and no reload;
+#  11. GET /api/statistics (lososd's statistics plugin) counts what the
+#      laptop asked for, per app and per minute, and the Overview's
+#      Statistics tile opens Settings › Statistics.
 #
 # The front door is the real one (modules/containers.nix) with the real
 # admin UI, so `nix/demo/record.sh losos-podman-apps` photographs the Apps
@@ -307,6 +314,29 @@ pkgs.testers.nixosTest {
     def pane(name, wait=None):
         return {"name": name, "port": 18080, "path": "/apps", "token": "box.token", "wait": wait}
 
+    # The Overview with the Statistics tile on its board, which a browser
+    # keeps in localStorage (src/lib/widgets.ts).
+    board = json.dumps({"version": 1, "widgets": [
+      {"id": "w-stats", "source": {"kind": "builtin", "id": "statistics"}},
+      {"id": "w-apps", "source": {"kind": "builtin", "id": "apps"}},
+    ]})
+
+    def overview(name, wait=None):
+        return {"name": name, "port": 18080, "path": "/", "token": "box.token", "wait": wait,
+                "local": {"losos-widgets": board}}
+
+    def statistics(name, wait=None):
+        return {"name": name, "port": 18080, "path": "/settings/statistics", "token": "box.token", "wait": wait}
+
+    traefik = "http://127.0.0.1:8089"
+
+    def router(name):
+        return json.loads(box.succeed(f"curl -fsS {traefik}/api/http/routers/{name}"))
+
+    def listener(port):
+        """The process that listens on a TCP port, by name."""
+        return box.succeed(f"ss -Hltnp 'sport = :{port}'")
+
     def page(name, host_port, path="/"):
         return {"name": name, "port": host_port, "path": path}
 
@@ -377,6 +407,33 @@ pkgs.testers.nixosTest {
         users = box.succeed("ps -o user= -C httpd | sort -u").split()
         assert users and all(u == "notshared" for u in users), users
         record_port(box, 18097, front)
+
+        # The route is the containers' labels, which the shaping wrote.
+        compose = json.loads(box.succeed("cat /var/lib/losos-podman/notshared/projects/notes/compose.json"))
+        for svc in compose["services"].values():
+          labels = svc["labels"]
+          assert labels["traefik.enable"] == "true", labels
+          assert labels["traefik.http.routers.app-notes.entrypoints"] == f"port-{front}", labels
+          assert labels["traefik.http.services.app-notes.loadbalancer.server.port"] == "8097", labels
+          assert labels["losos.app"] == "notes", labels
+        r = router("app-notes@docker")
+        assert r["entryPoints"] == [f"port-{front}"] and r["status"] == "enabled", r
+        assert "lan-only@file" in r["middlewares"], r
+        # Traefik holds the port, nginx no longer does, and no nginx file
+        # was written for the app.
+        assert "traefik" in listener(front), listener(front)
+        assert "nginx" not in listener(front), listener(front)
+        box.fail("test -e /var/lib/losos-apps/nginx")
+        assert box.succeed(f"stat -c %U /run/losos-podman-api/podman.sock").strip() == "notshared"
+        assert box.succeed(f"stat -c %G:%a /run/losos-podman-api/podman.sock").strip() == "losos-traefik:660"
+        assert box.succeed("ps -o user= -C traefik").split() == ["losos-traefik"]
+        # LAN only: the box itself is turned away, the laptop is not.
+        code = box.succeed(f"curl -s -o /dev/null -w '%{{http_code}}' http://127.0.0.1:{front}/").strip()
+        assert code == "403", code
+        # The API and metrics answer on loopback only.
+        laptop.fail("curl -fsS -m 5 http://box:8089/ping")
+        box.succeed(f"curl -fsS {traefik}/ping")
+
         record("compose", "An app in the LosOS app format runs as notshared.", [
           pane("apps-made", "text=Notes"),
           page("notes", 18097),
@@ -404,9 +461,44 @@ pkgs.testers.nixosTest {
         # Two replicas asked for, one runs: they would share a port.
         assert list(compose["services"]) == ["hello-web"], compose
         record_port(box, 18096, front)
+        assert router("app-hello@docker")["entryPoints"] == [f"port-{front}"]
         record("chart", "A chart from the search runs on Podman as notshared.", [
           pane("apps-chart", "text=hello-chart"),
           page("hello", 18096),
+        ])
+
+    with subtest("GET /api/statistics counts what the laptop asked for"):
+        notes_front = apps()["notes"]["frontPort"]
+        hello_front = apps()["hello"]["frontPort"]
+        for _ in range(20):
+          laptop.succeed(f"curl -fsS -o /dev/null http://box:{notes_front}/")
+        for _ in range(5):
+          laptop.succeed(f"curl -fsS -o /dev/null http://box:{hello_front}/word")
+        for _ in range(3):
+          laptop.fail(f"curl -fsS -o /dev/null http://box:{notes_front}/missing")
+        stats = json.loads(box.succeed(f"{api}/api/statistics"))
+        print(json.dumps(stats, indent=2))
+        assert stats["available"] is True, stats
+        assert stats["totals"]["requests"] >= 28, stats["totals"]
+        assert stats["codes"]["4xx"] >= 3, stats["codes"]
+        routes = {r["name"]: r for r in stats["routes"]}
+        assert routes["notes"]["port"] == notes_front and routes["notes"]["host"] is None, routes
+        assert routes["notes"]["requests"] >= 23, routes
+        assert routes["hello"]["requests"] >= 5, routes
+        assert routes["notes"]["bytesOut"] > 0, routes
+        # A minute is the difference between two of the plugin's samples,
+        # taken once a minute: wait for one that saw the requests above.
+        def minutes():
+          s = json.loads(box.succeed(f"{api}/api/statistics"))
+          return sum(m["requests"] for m in s["perMinute"])
+        deadline = time.monotonic() + 240
+        while minutes() < 28 and time.monotonic() < deadline:
+          laptop.succeed(f"curl -fsS -o /dev/null http://box:{notes_front}/")
+          time.sleep(10)
+        assert minutes() >= 28, json.loads(box.succeed(f"{api}/api/statistics"))["perMinute"]
+        record("statistics", "Traefik's counts, on the Overview and in Settings.", [
+          overview("overview-statistics", "text=requests in the last hour"),
+          statistics("settings-statistics", "text=notes"),
         ])
 
     with subtest("the apps' Compose files are in notshared's own Git repo"):
@@ -459,7 +551,12 @@ pkgs.testers.nixosTest {
         box.wait_until_succeeds(f"! {api}/api/apps | jq -e '.apps[] | select(.release == \"notes\")'", timeout=300)
         box.fail("systemctl is-active losos-podman-app@notes.service")
         box.fail("ps -o args= -C httpd | grep -q 8097")
-        laptop.fail(f"curl -fsS -m 5 http://box:{notes_front}/")
+        # The port closed with the containers: Traefik still listens there,
+        # but routes it nowhere.
+        laptop.wait_until_succeeds(
+          f"test \"$(curl -s -o /dev/null -w '%{{http_code}}' -m 5 http://box:{notes_front}/)\" = 404", timeout=60
+        )
+        box.fail(f"curl -fsS {traefik}/api/http/routers/app-notes@docker")
         box.succeed("test -s /home/notshared/data/apps/notes/data/uid")
         box.fail("test -e /var/lib/losos-podman/notshared/projects/notes")
         assert box.succeed(f"{podman} ps --all --quiet --filter label=io.podman.compose.project=losos-notes").strip() == ""
