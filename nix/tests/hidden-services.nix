@@ -566,7 +566,8 @@ pkgs.testers.runNixOSTest (
               "jq -e '.mattbox.tor and .mattbox.i2p' /var/lib/losos-hidden/addresses.json", timeout=300
           )
           made = json.loads(edge.succeed("cat /var/lib/losos-hidden/addresses.json"))["mattbox"]
-          routes = edge.succeed("cat /etc/traefik/dynamic/hidden.yml")
+          # Traefik reads them from the registrar's provider document.
+          routes = edge.succeed("curl -fsS http://127.0.0.1:8090/traefik")
           assert made["tor"] in routes and made["i2p"] in routes, routes
           # The box hears them on its heartbeat and keeps them.
           box.wait_until_succeeds(
