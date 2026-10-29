@@ -337,7 +337,10 @@ try {
       if (variant.hideCaret) await page.evaluate(() => document.documentElement.style.setProperty('caret-color', 'transparent'));
       // Fonts and pictures, then a moment for the layout to settle.
       await page.evaluate(() => document.fonts.ready);
-      await page.waitForLoadState('networkidle');
+      // A `live` page keeps a connection busy for as long as it is open (an
+      // editor in a frame), so the network never goes quiet; its `settle`
+      // stands in.
+      if (!shot.live) await page.waitForLoadState('networkidle');
       await page.waitForTimeout(shot.settle ?? 500);
       if (errors.length > 0) throw new Error(`${name}: the page threw: ${errors.join('; ')}`);
       const path = join(args.out, `${name}.png`);

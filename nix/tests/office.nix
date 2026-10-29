@@ -619,7 +619,7 @@ pkgs.testers.nixosTest {
              "waitFor": {"selector": 'main [aria-busy="false"] table'}, "settle": 1500},
             {"name": "office-document", "path": f"/office/#file={hexid('Trip plan.docx')}",
              "waitFor": {"selector": 'main[aria-busy="false"] iframe'},
-             "steps": [{"sleep": 15000}], "settle": 3000},
+             "steps": [{"sleep": 15000}], "settle": 3000, "live": True},
         ])
 
     with subtest("the plain http address goes through sign-in to the same document on https"):
