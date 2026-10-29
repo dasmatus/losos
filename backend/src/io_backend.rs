@@ -903,13 +903,31 @@ fn drive_edge_path(status: &crate::edge::EdgeStatus) {
         .args([verb, "--no-block"])
         .args(crate::edge::PATH_UNITS)
         .output();
-    match out {
-        Ok(o) if o.status.success() => {}
-        Ok(o) => tracing::error!(
-            stderr = %String::from_utf8_lossy(&o.stderr).trim(),
-            "systemctl {verb} of the tunnel units failed"
-        ),
-        Err(e) => tracing::error!(error = %e, "could not run systemctl for the tunnel units"),
+    let done = match out {
+        Ok(o) if o.status.success() => true,
+        Ok(o) => {
+            tracing::error!(
+                stderr = %String::from_utf8_lossy(&o.stderr).trim(),
+                "systemctl {verb} of the tunnel units failed"
+            );
+            false
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "could not run systemctl for the tunnel units");
+            false
+        }
+    };
+    // What is on disk says what the units were told. A systemctl that did
+    // not finish (lososd stopped under it, say) leaves the file of a path
+    // the units never took, and the next scan would find nothing to do:
+    // take it back so that scan asks again.
+    if !done {
+        let undo = if next.is_some() {
+            &path_file
+        } else {
+            &none_file
+        };
+        let _ = std::fs::remove_file(undo);
     }
     // Into another secondary cluster: the mesh join runs again against it,
     // and the agent follows (modules/cluster.nix). `try-restart` leaves a box
