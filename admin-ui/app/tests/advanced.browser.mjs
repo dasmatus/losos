@@ -346,7 +346,7 @@ await check('search narrows the rows and says when nothing matches', async () =>
   await main(page).getByText('1 option', { exact: true }).waitFor();
   assert.equal(await page.locator('[data-option]').count(), 1);
   await search.fill('zzz-nothing');
-  await main(page).getByText('No option matches “zzz-nothing”.').waitFor();
+  await main(page).getByText('No option matches "zzz-nothing".').waitFor();
   await page.close();
 });
 
@@ -466,7 +466,7 @@ await check('the Market pane lends memory to AI models with two lines of overrid
   await lend.waitFor();
   // Lending reaches the box only through the edge's tunnel.
   assert.equal(await row(page, 'inference.lend.enable').locator('input').isDisabled(), true, 'lending can be turned on with the proxy off');
-  await lend.getByText('Turn on “Reachable from outside your home” in Network first.', { exact: false }).waitFor();
+  await lend.getByText('Turn on "Reachable from outside your home" in Network first.', { exact: false }).waitFor();
   assert.deepEqual(errors, []);
   await page.close();
 

@@ -690,7 +690,7 @@ function Person({
             size="xl"
           />
           <h2 className="mt-1 text-[19px] leading-tight font-semibold tracking-tight break-words">{nameOf(someone)}</h2>
-          {c?.nickname !== undefined && c.nickname !== "" && <p className="text-sm text-muted">“{c.nickname}”</p>}
+          {c?.nickname !== undefined && c.nickname !== "" && <p className="text-sm text-muted">"{c.nickname}"</p>}
           {subtitle !== "" && <p className="text-[13px] text-muted">{subtitle}</p>}
           <div className="mt-4 flex w-full max-w-lg gap-2.5 sm:w-auto">
             {action(Mail01Icon, t("contacts.act.mail"), reach.mail)}
