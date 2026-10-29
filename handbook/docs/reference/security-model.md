@@ -77,8 +77,11 @@ Security pane: AppArmor, a hardened memory allocator, no SMT, USBGuard.
 - **Theft of the whole box.** The TPM releases the disk key to any software
   booted on that machine, so a thief with the box can read it. The
   encryption protects only a disk taken out on its own. On a box without a
-  TPM, even the disk alone is readable. [TPM and the disk key](tpm) explains
-  the difference.
+  TPM, even the disk alone is readable. A box installed with `--tang` opens
+  only with a key server on its own network as well, and asks for the
+  recovery code anywhere else. One installed with `--tang-edge` needs its
+  edge to answer, and the owner can tell the edge to stop answering for a
+  stolen box. [TPM and the disk key](tpm) explains the difference.
 - **The audit log** does not rotate, and root can rewrite it.
 - **Throttling is per address**, so an attacker on the LAN who spoofs
   addresses gets a fresh budget each time.

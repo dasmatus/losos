@@ -256,6 +256,9 @@ pub struct ServeOpts {
     /// Tor and I2P addresses for the boxes (`crate::hidden`). `None` unless
     /// `--hidden-dir` was given.
     pub hidden: Option<crate::hidden::HiddenOpts>,
+    /// The boxes' Tang keys (`crate::tang`). `None` unless `--tang-dir` was
+    /// given.
+    pub tang: Option<crate::tang::TangOpts>,
     /// The ECH key (`crate::ech`): `--ech-key-file FILE --ech-public-name
     /// NAME`. `None` publishes no HTTPS records with an `ech` value.
     pub ech: Option<EchOpts>,
@@ -575,6 +578,13 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                             .map_err(|_| miette!("bad --hidden-https-port"))?,
                     }),
                 },
+                tang: arg(&rest, "--tang-dir").map(|dir| crate::tang::TangOpts {
+                    dir: dir.into(),
+                    tangd: arg(&rest, "--tangd").unwrap_or("tangd").into(),
+                    keygen: arg(&rest, "--tangd-keygen")
+                        .unwrap_or("tangd-keygen")
+                        .into(),
+                }),
                 operator: arg(&rest, "--access-dir").map(|dir| crate::operator::OperatorOpts {
                     access_dir: dir.to_string(),
                     keys_file: arg(&rest, "--access-keys-file")

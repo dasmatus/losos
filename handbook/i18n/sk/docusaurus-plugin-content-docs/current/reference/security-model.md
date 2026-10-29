@@ -78,7 +78,11 @@ stojí.
 - **Krádež celého zariadenia.** TPM vydá diskový kľúč akémukoľvek softvéru
   spustenému na tom počítači, takže zlodej so zariadením ho prečíta.
   Šifrovanie chráni iba disk vybratý samostatne. Na zariadení bez TPM je
-  čitateľný aj samotný disk. Rozdiel vysvetľuje [TPM a kľúč disku](tpm).
+  čitateľný aj samotný disk. Zariadenie nainštalované s `--tang` sa otvorí
+  iba s kľúčovým serverom vo vlastnej sieti a inde pýta kód na obnovu.
+  Zariadenie nainštalované s `--tang-edge` potrebuje odpoveď svojho edgeu a
+  majiteľ môže edgeu povedať, aby ukradnutému zariadeniu prestal odpovedať.
+  Rozdiel vysvetľuje [TPM a kľúč disku](tpm).
 - **Auditný log** sa nerotuje a root ho môže prepísať.
 - **Obmedzovanie (throttling) je podľa adresy**, takže útočník v LAN, ktorý
   podvrhuje adresy, dostane zakaždým nový limit.

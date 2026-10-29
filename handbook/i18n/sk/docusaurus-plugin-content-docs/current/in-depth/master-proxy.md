@@ -23,6 +23,11 @@ Importujte výstup flaku `nixosModules.edge` do konfigurácie VPS a nastavte
   identifikátory, ktoré sú uvedené tu.
 - `losos.edge.cluster.enable` navyše spúšťa riadiacu vrstvu [mesh](/in-depth/mesh.md),
   server rke2 s Longhornom. Proxy funguje aj bez nej.
+- `losos.edge.tang.enable` (predvolene zapnuté) umožní zariadeniam
+  nainštalovaným s `--tang-edge` otvoriť disk cez edge, s párom kľúčov Tang
+  pre každé zariadenie v `/var/lib/losos-registrar/tang` a stránkou
+  `/tang/lost`, kde majiteľ nahlási ukradnuté zariadenie. Stranu zariadenia
+  opisuje [TPM a kľúč disku](/reference/tpm.md).
 
 `losos-registrar` udržiava súbor tunelového servera v súlade
 s registrovanými zariadeniami a Traefik ich nachádza cez registrar.

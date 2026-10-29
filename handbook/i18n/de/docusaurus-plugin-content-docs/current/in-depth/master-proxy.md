@@ -25,6 +25,12 @@ VPS und setze `losos.edge.*`:
 - `losos.edge.cluster.enable` betreibt zusätzlich die Control Plane des
   [Mesh](/in-depth/mesh.md), einen rke2-Server mit Longhorn. Der Proxy funktioniert
   auch ohne sie.
+- `losos.edge.tang.enable` (standardmäßig an) lässt Boxen, die mit
+  `--tang-edge` installiert wurden, ihre Festplatte über die Edge öffnen,
+  mit einem Tang-Schlüsselpaar pro Box unter `/var/lib/losos-registrar/tang`
+  und einer Seite `/tang/lost`, auf der ein Besitzer eine gestohlene Box
+  meldet. Die Seite der Box beschreibt [TPM und der
+  Festplattenschlüssel](/reference/tpm.md).
 
 `losos-registrar` hält die Datei des Tunnel-Servers mit den registrierten
 Appliances im Gleichschritt, und Traefik findet sie über den Registrar.

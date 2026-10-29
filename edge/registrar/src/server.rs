@@ -101,6 +101,7 @@ mod llm;
 mod manage;
 mod operator;
 mod provider;
+mod tang;
 mod vm;
 
 pub use provider::Discovery;
@@ -281,6 +282,9 @@ struct AppState {
     calls_relay: Option<Arc<crate::calls_relay::Relay>>,
     /// Mesh CI's queue (`crate::ci`); `None` without `--ci-dir`.
     ci: Option<Arc<crate::ci::Ci>>,
+    /// The boxes' Tang keys (`crate::tang`). `None` unless `--tang-dir`
+    /// was given, and every `/tang/*` route answers 404.
+    tang: Option<Arc<crate::tang::Tang>>,
     /// The secondary cluster's peer table (`crate::secondary`); `None`
     /// without `--secondary-file`.
     secondary: Option<Arc<Secondary>>,
@@ -747,6 +751,16 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         )),
     };
 
+    let tang = match &opts.tang {
+        None => None,
+        Some(t) => Some(Arc::new(
+            crate::tang::Tang::open(t.clone())
+                .await
+                .into_diagnostic()
+                .wrap_err("open the Tang key directory")?,
+        )),
+    };
+
     // Made on the first start like the manage key, so the zone's first
     // render already carries it.
     let ech = match &opts.ech {
@@ -788,6 +802,7 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         manage,
         calls_relay,
         ci,
+        tang,
         secondary: opts_secondary.map(|opts| {
             Arc::new(Secondary {
                 opts,
@@ -816,6 +831,8 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
     }
 
     let router = Router::new()
+        // The edge as its boxes' Tang server (`tang`).
+        .merge(tang::routes())
         .route("/health", get(health))
         .route("/tunnel-pin", get(tunnel_pin))
         .route("/calls/relay", get(calls_relay_info))

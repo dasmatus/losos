@@ -23,6 +23,11 @@ Import the `nixosModules.edge` flake output into the VPS configuration and set
   ids listed here.
 - `losos.edge.cluster.enable` also runs the [mesh](mesh.md) control plane, an
   rke2 server with Longhorn. The proxy works without it.
+- `losos.edge.tang.enable` (on by default) lets boxes installed with
+  `--tang-edge` open their disk through the edge, with a Tang key pair per
+  box under `/var/lib/losos-registrar/tang` and a page at `/tang/lost` where
+  an owner reports a stolen box. [TPM and the disk key](../reference/tpm.md)
+  has the box side.
 
 `losos-registrar` keeps the tunnel server's file in step with the registered
 appliances, and Traefik finds them through the registrar.
