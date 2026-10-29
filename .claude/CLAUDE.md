@@ -29,6 +29,7 @@ nix build .#nixosConfigurations.iso.config.system.build.isoImage
 nix build .#checks.x86_64-linux.losos-admin-daemon  # lososd: D-Bus, HTTP, token
 nix build .#checks.x86_64-linux.losos-install       # installer, keyfile, BIOS
 nix build .#checks.x86_64-linux.losos-tpm-unlock    # installer, swtpm unlock
+nix build .#checks.x86_64-linux.losos-iso-install   # the real installer offline, then boot the disk
 nix build .#checks.x86_64-linux.losos-identity      # LosOS Login (Authelia), sections
 npm run dev | typecheck | test:browser              # in admin-ui/app
 cargo test --manifest-path admin-ui/tui/Cargo.toml  # losos, the terminal client
@@ -83,6 +84,8 @@ and is never served or built by nix.
   initrd on the ESP. The installer writes `modules/install-target.nix` (the
   box's drives, firmware mode, unlock mode) onto the box; it is not in the
   tree, and `flake.nix` imports the live copy from `/etc/nixos` on rebuilds.
+  `nix/tests/iso-install.nix` (CI's `install` job, and pre-push on the same
+  lane) runs that installer offline and boots the disk it wrote.
 - `configuration.nix`: `notshared` (uid 1000, the owner's apps and LosOS Cloud name) and `shared`
   (uid 1001, mesh storage), each with its own group and a `700` home, no
   passwords, `openssh` off.
@@ -663,6 +666,7 @@ run by CI, so run them locally when touching either:
 nix build .#checks.x86_64-linux.losos-admin-daemon   # lososd: D-Bus + HTTP + token
 nix build .#checks.x86_64-linux.losos-install        # installer: detect + disko + LVM (keyfile path, BIOS)
 nix build .#checks.x86_64-linux.losos-tpm-unlock     # installer: format + enrol + reboot + unlock from swtpm
+nix build .#checks.x86_64-linux.losos-iso-install    # losos-install from the medium's system onto an empty disk, offline, then that disk boots and answers on :80
 ```
 
 Inside the dev shell, `bcd` → `cd backend`, `rcd` → `cd edge/registrar`.

@@ -17,7 +17,9 @@
 #                         the built SPA (npm ci, tsc, vite)
 #                         and its Playwright suite
 #   handbook              nix build .#losos-handbook         handbook/ changed
-#   vm:<check>            the VM tests the change touches,   nix/tests/ changed
+#   vm:<check>            the VM tests the change touches,   nix/tests/ changed;
+#                         losos-iso-install too when the      install lane
+#                         installer or the boot path changed
 #                         with KVM through `nix build`, without it the
 #                         test driver under TCG; the driver's log and
 #                         output directory land in the logs
@@ -154,7 +156,14 @@ for update in "${updates[@]}"; do
     case ${LOSOS_HOOKS_VM:-} in
       none) vms=() && echo "  - VM tests: SKIPPED (LOSOS_HOOKS_VM=none)" && hook_skipped+=(vm) ;;
       all) mapfile -t vms < <(vm_all) ;;
-      "") mapfile -t vms < <(vm_touched) ;;
+      "")
+        mapfile -t vms < <(vm_touched)
+        # The install check reaches past nix/tests: the installer, the disk
+        # layout and the boot path are its inputs too (CI's install lane).
+        if [ "${lane_install:-false}" = true ] && [[ " ${vms[*]} " != *" losos-iso-install "* ]]; then
+          vms+=(losos-iso-install)
+        fi
+        ;;
       *) read -r -a vms <<<"$LOSOS_HOOKS_VM" ;;
     esac
     # shellcheck disable=SC2329 # called through run

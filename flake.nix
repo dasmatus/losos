@@ -467,6 +467,9 @@
       # builds.
       checks.${system} = {
         losos-install = import ./nix/tests/install.nix { inherit pkgs disko; };
+        # The real installer from the branch, offline, then the installed disk
+        # booted on its own (nix/tests/iso-install.nix).
+        losos-iso-install = import ./nix/tests/iso-install.nix { inherit pkgs self; };
         losos-tpm-unlock = import ./nix/tests/tpm.nix { inherit pkgs disko; };
         losos-admin-daemon = import ./nix/tests/admin-vm.nix { inherit pkgs; };
         losos-edge-proxy = import ./nix/tests/edge-vm.nix { inherit pkgs; };

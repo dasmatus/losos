@@ -47,7 +47,13 @@ browser script, a fixture, `screens/`) did, and it runs only when its
 derivation differs from the merge base's, so a change that only reformats
 a test boots nothing. With `/dev/kvm` it is a
 `nix build`; without, the test driver runs under TCG. `LOSOS_HOOKS_VM`
-picks others: `all`, `none`, or a list of check names.
+picks others: `all`, `none`, or a list of check names. A change on CI's
+install lane (the installer, the disk layout, the boot path) adds
+`losos-iso-install`, which runs the real installer from the medium's system
+onto an empty disk, offline, and boots that disk. It builds the whole
+appliance first and needs about 20 GB of free disk (the closure, and the
+installed disk with a copy of it); without KVM its two VMs run under TCG,
+about 40 minutes for the install and as long again for the first boot.
 
 Every check writes its log to `.git/losos-hooks/logs/<time>-<hook>/`, and a
 failing one prints its last 40 lines. A check that passed is remembered

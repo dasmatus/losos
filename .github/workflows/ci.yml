@@ -160,6 +160,7 @@ jobs:
       tui: ${{ steps.pick.outputs.tui }}
       images: ${{ steps.pick.outputs.images }}
       iso: ${{ steps.pick.outputs.iso }}
+      install: ${{ steps.pick.outputs.install }}
       discovery: ${{ steps.pick.outputs.discovery }}
     steps:
       - uses: actions/checkout@v7
@@ -1088,6 +1089,32 @@ jobs:
           path: iso-boot/*.png
           if-no-files-found: ignore
 
+  # The appliance installed the way an owner installs it, then booted from
+  # its own disk: nix/tests/iso-install.nix runs the real losos-install from
+  # the installer medium's system onto an empty disk, offline, from a clone
+  # of this tree, and passes when the installed box answers on port 80 and
+  # lososd answers behind it. The
+  # iso job above boots the medium itself; this is the install after it.
+  # Every path the guest needs is built here (the whole install closure, so
+  # the proxy cache carries most of it), with KVM from setup-nix.
+  install:
+    name: "nix: install from the medium and boot the installed disk"
+    needs: [changes]
+    if: ${{ !inputs.release_tags && needs.changes.outputs.install == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-nix
+      # The install closure, the VM's disk with a copy of it and the build
+      # writes do not fit the runner's default free space.
+      - name: free runner disk
+        run: |
+          set -euo pipefail
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          df -h /
+      - run: nix build .#checks.x86_64-linux.losos-iso-install -L
+
   # Does a computer find the box on its own network, and open its files?
   # nix/tests/discovery/check.py boots the box of nix/tests/discovery/box.nix
   # in QEMU on a link shared with a Linux, a macOS and a Windows runner,
@@ -1297,6 +1324,7 @@ jobs:
       - publish-tool
       - fmt-bot
       - iso
+      - install
       - discovery-box
       - discovery
     runs-on: ubuntu-latest
