@@ -247,23 +247,26 @@ let
     # The repository page is here rather than above: on a phone its menu,
     # Wiki included, is folded away.
     handbook = plan "handbook" {
-      variants = map (l: {
-        inherit (l) suffix locale;
-        colorScheme = "light";
-      }) [
-        {
-          suffix = "en";
-          locale = "en-US";
-        }
-        {
-          suffix = "sk";
-          locale = "sk-SK";
-        }
-        {
-          suffix = "de";
-          locale = "de-DE";
-        }
-      ];
+      variants =
+        map
+          (l: {
+            inherit (l) suffix locale;
+            colorScheme = "light";
+          })
+          [
+            {
+              suffix = "en";
+              locale = "en-US";
+            }
+            {
+              suffix = "sk";
+              locale = "sk-SK";
+            }
+            {
+              suffix = "de";
+              locale = "de-DE";
+            }
+          ];
       shots = [
         {
           name = "wiki-directory";
