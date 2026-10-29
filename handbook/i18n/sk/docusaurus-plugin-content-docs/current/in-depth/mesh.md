@@ -7,6 +7,8 @@ mdx:
 
 # Mesh
 
+![Panel Mesh na zariadení bez dostupného okrajového proxy servera.](@site/docs/img/mesh-none-sk.png)
+
 Zariadenie môže požičať voľný disk a CPU iným zariadeniam losos. Pripojenie je predvolene
 vypnuté. Panel Mesh má dva prepínače: pripojiť sa k sieti mesh a zdieľať výpočtový
 výkon. Tretí prepínač, zdieľanie disku tohto zariadenia, je na paneli

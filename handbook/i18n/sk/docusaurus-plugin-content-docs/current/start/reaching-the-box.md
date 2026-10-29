@@ -70,4 +70,4 @@ s [oficiálnym edge](../types/official-edge) mu dá verejnú adresu cez tunel.
 Aj vtedy zostávajú admin stránky iba pre LAN a cez tunel idú von iba LosOS
 Cloud a LosOS Git.
 
-![Nastavenia, Sieť: názov, Šifrovať pripojenie a Dostupné aj mimo domova, prepínač, ktorý otvorí tunel k edge.](@site/docs/img/settings-network-sk.png)
+![Nastavenia, Sieť: názov, Dostupné aj mimo domova, Zobraziť v Sieti na počítačoch nablízku a Tor a I2P.](@site/docs/img/settings-network-sk.png)

@@ -6,7 +6,7 @@ slug: /manual/files-on-your-computer
 
 # Files on your computer
 
-![The Storage pane.](../img/storage.png)
+![LosOS Cloud's Devices page: the server address, the WebDAV address for a file manager, and the computers signed in.](../img/cloud-devices.png)
 
 Your LosOS Cloud files are also a network folder. Any computer on the box's
 network can open it in its file manager, drag files in and out, and open
