@@ -6,8 +6,8 @@ slug: /manual/notes-and-knowledge-bases
 
 # Notizen und Wissensbasen
 
-**Notizen** in [LosOS Cloud](losos-cloud) öffnet einen Ordner mit
-Markdown-Dateien so, wie Obsidian einen Vault öffnet: die Notizen links, die
+**Notizen** in [LosOS Cloud](losos-cloud) öffnet einen Ordner mit Notizen,
+`.note`- und `.md`-Dateien, so, wie Obsidian einen Vault öffnet: die Notizen links, die
 offene Notiz in der Mitte und daneben die Notizen, die auf sie verlinken.
 Ein Obsidian-Vault, der in LosOS Cloud synchronisiert wird, öffnet sich so,
 wie er ist, mit seinen Links, Einbettungen, Tags und Canvases. Solange die
@@ -20,14 +20,55 @@ Wissensbasis veröffentlichen: eine Seite, die Leute im Browser lesen.
   Dateien. Er wird beim ersten Öffnen angelegt.
 - Klick in **Dateien** mit der rechten Maustaste auf einen Ordner und wähl
   **Als Notizen öffnen**.
-- Klick in **Dateien** auf eine `.md`-Datei. Sie öffnet sich in ihrem Vault:
+- Klick in **Dateien** auf eine `.note`- oder `.md`-Datei. Sie öffnet sich
+  in ihrem Vault:
   dem nächsten Ordner darüber, in dem ein Ordner `.obsidian` liegt, so wie
   Obsidian einen Vault findet, sonst in dem Ordner, in dem die Datei liegt.
 
+## .note und .md \{#note-and-md}
+
+Eine neue Notiz ist eine `.note`-Datei. Eine `.note` ist MDX: Markdown, das
+auch Komponenten enthalten kann, geschrieben wie HTML-Tags. Diese kann eine
+Notiz verwenden, dieselben wie die Dokumente in LosOS Office:
+
+| Komponente | Was sie zeichnet |
+| --- | --- |
+| `<Callout type="tip" title="…">` | Einen Kasten in der Farbe seines Typs: `note`, `tip`, `important`, `warning` oder `caution` |
+| `<Details summary="…">` | Einen Teil, der sich per Klick öffnet |
+| `<Tabs>` mit `<Tab label="…">` | Teile, die nacheinander gelesen werden, jeder unter seinem Namen |
+| `<Columns>` mit `<Column>` | Teile nebeneinander, auf dem Handy untereinander |
+| `<Figure src="…" caption="…">` | Ein Bild mit Bildunterschrift |
+| `<TableOfContents />` | Die Überschriften der Notiz als Links |
+| `<Table>`, `<Row>`, `<Cell>` | Eine Tabelle mit verbundenen Zellen und Beschriftung |
+| `<Mention login="…" />`, `<Date value="2026-08-14" />` | Eine Person und ein Datum |
+| `<Equation tex="…" />` | Mathematik in einer eigenen Zeile |
+
+`<kbd>`, `<sub>`, `<sup>`, `<mark>`, `<u>`, `<s>`, `<small>`, `<abbr>` und
+`<br />` funktionieren wie in HTML.
+
+Eine Notiz führt nie Code aus. MDX würde einer Datei erlauben, JavaScript
+mitzubringen, deshalb lehnt Notizen alles davon ab: Ausdrücke in `{…}`,
+`import`- und `export`-Zeilen, `<script>`, Event-Handler wie `onClick`,
+`javascript:`-Links und jeden Tag und jede Komponente, die nicht in der
+Tabelle steht. Was eine Notiz verlangt und nicht bekommen hat, steht mit
+seiner Zeile über ihr, und der Rest der Notiz wird gezeichnet. Eine
+`.note`, die kein gültiges MDX ist, etwa mit einer nicht geschlossenen
+Komponente, wird als Markdown gezeichnet, mit der Zeile, an der es hakt.
+
+`.md`-Notizen bleiben Markdown und funktionieren wie bisher. **In .note
+umwandeln** über einer `.md`-Notiz macht daraus eine `.note`, die sich
+gleich liest: geschweifte und spitze Klammern, die MDX als Code lesen
+würde, werden als Text geschrieben, und HTML-Kommentare werden zu
+`%%Kommentaren%%`. Würden die Überschriften oder Links der Notiz anders
+herauskommen, bleibt sie `.md`, und die Meldung nennt die Zeile.
+`[[Links]]` nennen eine Notiz ohne Endung und funktionieren deshalb
+weiter. Obsidian öffnet nur `.md`-Dateien, also lass Notizen, die du auch
+in Obsidian bearbeitest, als `.md`.
+
 ## Eine Notiz lesen \{#reading-a-note}
 
-Eine Notiz wird aus ihrem Markdown gezeichnet. Beide Arten, die Leute
-schreiben, werden verstanden:
+Beide Arten von Markdown, die Leute schreiben, werden verstanden, in
+`.note`- wie in `.md`-Dateien:
 
 - die von GitHub: Tabellen, Aufgabenlisten, ~~Durchstreichen~~, Fußnoten,
   Links, die mit `https://` beginnen, und Hinweise wie `> [!NOTE]`.
