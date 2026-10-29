@@ -632,6 +632,10 @@
           self.nixosConfigurations.install.config.environment.etc."losos/options.json".source;
         losos-credentials = import ./nix/tests/credentials.nix { inherit pkgs; };
         losos-erase = import ./nix/tests/erase.nix { inherit pkgs impermanence; };
+        # Backups on storage bought on the mesh: through the edge's backup
+        # door to a rest-server per order, ciphertext only on the volume and
+        # on the edge (nix/tests/mesh-backup.nix).
+        losos-mesh-backup = import ./nix/tests/mesh-backup.nix { inherit pkgs impermanence; };
         losos-console = import ./nix/tests/console.nix { inherit pkgs; };
         # The text search behind the admin palette: the cloud index pass in
         # its sandbox, PDFs, a changed file, the Git search and who may ask

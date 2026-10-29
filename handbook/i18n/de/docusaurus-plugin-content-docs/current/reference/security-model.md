@@ -29,7 +29,11 @@ geschrieben, dass du ihm widersprechen kannst.
 4. **Deine Dateien ↔ die Kopien des Mesh.** Die Box hat zwei Konten mit
    getrennten Gruppen und Home-Verzeichnissen im Modus 700. Das Verzeichnis
    des Mesh ist mit einem eigenen Schlüssel verschlüsselt, den die Box nur
-   lädt, solange das Teilen an ist.
+   lädt, solange das Teilen an ist. Dieser Schlüssel liegt auf der Box, die
+   den Platz verleiht. Willst du eigene Daten im Mesh haben, sichere sie auf
+   Speicher, den du dort gekauft hast: Deine Box verschlüsselt sie mit deinem
+   Wiederherstellungscode, bevor sie hinausgehen, und die Verleiher und die
+   Edge haben nur Chiffretext.
 5. **Eine offizielle Edge ↔ irgendeine Edge.** Die Box prüft jede Edge
    selbst, bevor sie über sie handelt: den OpenPGP-Pass ihres Betreibers,
    ein TPM, das zeigt, dass ein veröffentlichtes LosOS-Gateway-Image
