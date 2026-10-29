@@ -12,8 +12,8 @@
 //!   does only when no gateway of its own cluster answers.
 //!
 //! This module is the secondary tier. A LAN may run several gateways. Those
-//! that carry the same cluster name and secret (`losos-edge cluster create`
-//! on the first, `losos-edge cluster join` on the others, both writing the
+//! that carry the same cluster name and secret (started on the first
+//! gateway's manage page and joined on the others', both writing the
 //! runtime [`ClusterFile`]) behave as one: every pass each gateway POSTs a
 //! [`SyncMsg`] to its peers and reads theirs back. Two things travel:
 //!
@@ -60,7 +60,7 @@ pub const MIN_SECRET_LEN: usize = 32;
 /// Domain separation for the MAC. Bump with the message shape.
 const MAC_CONTEXT: &[u8] = b"losos-secondary-v1\n";
 
-/// The runtime file `losos-edge cluster create|join` writes: the cluster this
+/// The runtime file the manage page writes on a start or a join: the cluster this
 /// gateway belongs to, its own name in it, the shared secret and the peers it
 /// was told about. Absent means the gateway is in no secondary cluster, and
 /// nothing is synced.
@@ -295,8 +295,7 @@ pub fn enrollable(b: &SyncBox) -> bool {
 
 /// The rke2 server token of a cluster's control plane, derived from the
 /// cluster secret so every gateway of the cluster arrives at the same one
-/// without another value to hand around. `losos-edge cluster` writes it for
-/// rke2; this is the same derivation, for the tests to pin.
+/// without another value to hand around; the tests pin the derivation.
 #[must_use]
 pub fn rke2_token(secret: &str) -> String {
     let mut ctx = hmac::Context::with_key(&key(secret));
@@ -423,8 +422,8 @@ impl Peers {
         })
     }
 
-    /// Known peers' URLs with the boxes they hold, for `losos-edge cluster
-    /// show` (through `GET /cluster/secondary`) and the tests.
+    /// Known peers' URLs with the boxes they hold, for the manage page,
+    /// `GET /cluster/secondary` and the tests.
     #[must_use]
     pub fn members(&self) -> Vec<String> {
         self.lock().by_member.keys().cloned().collect()
