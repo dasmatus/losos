@@ -339,11 +339,25 @@ kým sa verejný názov nezmení. `losos-registrar ech-key --key-file …
 zostavený z jeho zmeny pre ECH (`nix/traefik-ech.nix`), ktorý neposkytuje
 dashboard.
 
+Zariadenie toto od oficiálneho edge vyžaduje. Edge, ktorý prejde všetkými
+kontrolami brány, zostane dôveryhodný iba na URL `https://`, ktorej názov má
+záznam HTTPS overiteľný cez DNSSEC a s kľúčom ECH. lososd sa pri každom
+hľadaní pýta `delv`, ktorý overuje sám od kľúča koreňa DNS, a edge, ktorý
+neprejde, uvádza ako odmietnutý (`domainNotHttps`, `domainUnsigned` alebo
+`domainNoEch`), kým neprejde. `losos-ctl edge-domain <url>` spustí tú istú
+kontrolu ručne. URL je tá, ktorú menuje pas edge, takže tento názov patrí do
+zóny: edge, ktorého zóna je celá `publicDomain`, v nej má aj
+`register.<publicDomain>`. `losos.proxy.gateways.domain` kontrolu vypne
+alebo ju nasmeruje na iný resolver a kotvu dôvery.
+
 :::note[Ako sa to testuje]
 `nix/tests/edge-dns.nix` (`losos-edge-dns`) prečíta kľúč z podpísaného
 záznamu HTTPS, overí ho cez `delv` a otvorí TLS k názvu zariadenia klientom
 ECH z Go. Traefik ECH prijme, zachytené hello nesie iba verejný názov a
-kľúč, ktorý Traefik nemá, odmietne.
+kľúč, ktorý Traefik nemá, odmietne. `losos-ctl edge-domain`
+prijme názov zariadenia, pri názve, ktorého neexistenciu zóna dokazuje,
+kľúč nenájde, od nesprávnej kotvy dôvery nič neoverí a obyčajné HTTP
+odmietne.
 :::
 
 Box, ktorý TLS ukončuje sám, nemá pri svojich názvoch záznam HTTPS, lebo
