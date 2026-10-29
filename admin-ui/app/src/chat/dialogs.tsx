@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 import { Avatar } from "./avatar";
 import { directPartner, directRooms, isSpace, localpart, maySend, roomName } from "./model";
 import { suggestContacts } from "@/lib/api";
-import { CALL_POWER_LEVELS, slotState } from "./rtc";
+import { slotState } from "./rtc";
 import { boxPeople } from "./session";
 
 const ENCRYPTION = { type: EventType.RoomEncryption, state_key: "", content: { algorithm: "m.megolm.v1.aes-sha2" as const } };
@@ -89,7 +89,6 @@ export function NewRoomDialog({ client, open, onOpenChange, space, asSpace = fal
         // A private room can hold calls from the start (MSC4196 asks for
         // the slot at creation); a public one cannot, until an admin
         // starts one.
-        ...(!asSpace && !open_ && encrypted ? { power_level_content_override: CALL_POWER_LEVELS } : {}),
         initial_state: asSpace || !encrypted ? [] : open_ ? [ENCRYPTION] : [ENCRYPTION, slotState],
       });
       if (space !== null) await addToSpace(client, space, room_id);
@@ -245,7 +244,6 @@ export async function openDirect(client: MatrixClient, userId: string): Promise<
     is_direct: true,
     invite: [userId],
     preset: Preset.TrustedPrivateChat,
-    power_level_content_override: CALL_POWER_LEVELS,
     initial_state: [ENCRYPTION, slotState],
   });
   const content = { ...((client.getAccountData(EventType.Direct)?.getContent() ?? {}) as Record<string, string[]>) };

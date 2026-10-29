@@ -1,7 +1,7 @@
 # nixos-test-vms config for LosOS Calendar (backend/src/cloud/calendar.rs,
 # backend/src/cloud/webcal.rs, backend/src/ical.rs, admin-ui/app/src/calendar/).
 #
-# The box runs LosOS Login, lososd, nginx, LosOS Cloud, Dendrite and
+# The box runs LosOS Login, lososd, nginx, LosOS Cloud, Synapse and
 # Stalwart as they ship. A laptop on the LAN carries the browser's traffic,
 # as in nix/tests/contacts.nix, and serves two calendar feeds over plain
 # HTTP the way a tax office or EduPage publishes one. What only a booted box
@@ -344,7 +344,7 @@ pkgs.testers.nixosTest {
     # plugins takes it a minute, and the claim would meet nginx's 502.
     box.wait_for_open_port(8082)
     box.wait_for_unit("nginx.service")
-    box.wait_for_unit("dendrite.service")
+    box.wait_for_unit("losos-chat.service")
     box.wait_for_unit("losos-mail.service")
     box.wait_for_unit("losos-cloud.service")
     box.wait_for_unit("losos-webcal.socket")
