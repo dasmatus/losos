@@ -22,6 +22,7 @@
 mod components;
 mod date;
 mod math;
+pub mod notes;
 mod render;
 mod sanitize;
 #[cfg(feature = "wasm")]

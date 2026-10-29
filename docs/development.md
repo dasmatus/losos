@@ -323,44 +323,33 @@ this is the reasoning behind it.
   other than the stock `mattbox`, the two things `modules/cluster.nix`
   asserts; lososd refuses the apply first (409 `meshNotReady`) and the Mesh
   pane greys the switch with the reason.
-  - On top of that, lososd challenges each answering edge
-    (`GET /identity?nonce=`). An edge counts as official only if its
-    certificate is signed by the LosOS root key in
-    `nix/keys/official-edge-root.pub` (`losos.proxy.officialRootKeyFile`), names
-    that URL and has not expired, and the certificate's key signed the
-    nonce. The market relay refuses everything else (`{available:false,
-    reason:"noOfficialEdge"}`, 409 `officialEdgeRequired`).
-  - The committed key file is **empty on purpose** until the owner writes
-    the public key into it. No root means nothing is official and the market
-    is off. The private key lives offline with the owner and is never
-    committed.
-  - `losos-registrar identity {keygen,sign,show,verify}` are the low-level
-    commands (`edge/registrar/src/identity.rs`). `nix/tests/edge-lan.nix`
-    uses them to build its own root at build time rather than trusting the
-    shipped file. `losos.edge.identity.{keyFile,certFile}` are the edge
-    side.
-  - The ceremony an operator runs is `losos-registrar provision
-    {whoami,root-keygen,publish,edge,verify}`
-    (`edge/registrar/src/provision.rs`), **on the operator's own
-    machine**. Every verb that makes or uses the root key first signs the
-    operator in with GitHub's OAuth device flow (public client id only, no
-    secret). It refuses unless the account's *numeric id* is in
-    `edge/registrar/operators.json`, which is compiled into the binary.
-  - `provision edge` reads the edge's own public key from
-    `GET /identity/public-key`; the registrar makes that key on its first
-    start, and the private half never leaves the edge. The tool signs the
-    certificate, pushes it to `POST /identity/cert` with the sign-in's
-    GitHub token, and runs the four checks. The edge resolves the token
-    against the same compiled-in allowlist before it installs anything
-    (`server::identity_push`). There is no SSH. `root-keygen --publish` and
-    `publish` open the PR that fills `nix/keys/official-edge-root.pub`, with the
-    same sign-in (`public_repo`). `tests/provision.rs` runs all of it
-    against a fake GitHub and a real registrar.
-  - The allowlist decides whom the tooling serves. The root key is still the
-    whole secret.
-  - The box runs no CI runner. The earlier ceremony from the box (Forgejo
-    Actions workflows plus `modules/git-runner.nix`) is gone, and
-    `docs/provisioning/edge-identity/README.md` is the operator runbook.
+  - On top of that, lososd checks each answering edge as an open gateway
+    (`GET /passport?nonce=`, then `POST /passport/attest`;
+    `backend/access/src/gateway/check.rs`, the edge's half in
+    `edge/registrar/src/gateway.rs`): the owner's OpenPGP passport, the
+    TPM's endorsement certificate against `losos.proxy.gateways.tpmRoots`,
+    a quote over PCRs 4, 11 and 15 showing a published image
+    (`losos.proxy.gateways.images`) and the measured settings, and LosOS's
+    payout addresses (`losos.proxy.gateways.payouts`). An edge counts as
+    official only if all of it passes. The market relay refuses everything
+    else (`{available:false, reason:"noOfficialEdge"}`, 409
+    `officialEdgeRequired`). Proof of tampering disables the edge on that
+    box for good (`/var/lib/losos/gateways.json`).
+  - `nix/gateway/images.nix` and `nix/gateway/payouts.nix` are **empty on
+    purpose** until a gateway image boots as a unified kernel image and
+    LosOS's addresses are written. Until then nothing is official and the
+    market is off.
+  - `losos-registrar passport {statement,settings,measure,check}` are a
+    gateway owner's tools; `nix/tests/open-gateway.nix` builds a throwaway
+    TPM maker and passports for the VM tests. `losos.edge.passport.enable`
+    is the edge side. `docs/provisioning/edge-identity/README.md` is the
+    runbook.
+  - `losos-registrar provision {whoami,token}`
+    (`edge/registrar/src/provision.rs`) runs **on the operator's own
+    machine** and signs the operator in with GitHub's OAuth device flow
+    (public client id only, no secret). It refuses unless the account's
+    *numeric id* is in `edge/registrar/operators.json`, which is compiled
+    into the binary.
   - The operator's machine has no Nix store, so `.#losos-registrar-static`
     (`pkgsStatic`, musl, same `cargoHash`) is the binary for it. CI's
     `publish-tool` job pushes it to GHCR as `images:<channel>-x86_64`

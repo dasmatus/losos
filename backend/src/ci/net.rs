@@ -344,6 +344,29 @@ pub fn unix_http(
     max: u64,
     timeout: Duration,
 ) -> anyhow::Result<(u16, Vec<u8>)> {
+    let headers: Vec<(&str, &str)> = content_type
+        .map(|ct| vec![("Content-Type", ct)])
+        .unwrap_or_default();
+    unix_http_with(socket, method, path, &headers, body, max, timeout)
+}
+
+/// [`unix_http`] with headers of the caller's. Names and values must hold
+/// no line break; the callers pass fixed names and checked values.
+pub fn unix_http_with(
+    socket: &Path,
+    method: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: &[u8],
+    max: u64,
+    timeout: Duration,
+) -> anyhow::Result<(u16, Vec<u8>)> {
+    if headers
+        .iter()
+        .any(|(n, v)| n.contains(['\r', '\n']) || v.contains(['\r', '\n']))
+    {
+        anyhow::bail!("a header holds a line break");
+    }
     let mut stream = std::os::unix::net::UnixStream::connect(socket)
         .with_context(|| format!("connecting to {}", socket.display()))?;
     stream.set_read_timeout(Some(timeout))?;
@@ -352,8 +375,8 @@ pub fn unix_http(
         "{method} {path} HTTP/1.0\r\nHost: localhost\r\nContent-Length: {}\r\n",
         body.len()
     );
-    if let Some(ct) = content_type {
-        head.push_str(&format!("Content-Type: {ct}\r\n"));
+    for (name, value) in headers {
+        head.push_str(&format!("{name}: {value}\r\n"));
     }
     head.push_str("\r\n");
     stream.write_all(head.as_bytes())?;

@@ -5,7 +5,7 @@ sidebar_position: 6
 
 # Try it in VMs
 
-![The Overview.](../img/overview.png)
+![The Overview of a box running in a virtual machine.](../img/overview.png)
 
 One line on a Linux computer sets up two LosOS boxes with an edge between
 them, as virtual machines on a private network, and walks through what they

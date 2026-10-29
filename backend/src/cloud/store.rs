@@ -204,7 +204,7 @@ pub fn mime_for(name: &str, dir: bool) -> String {
     let ext = name.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase());
     let m = match ext.as_deref() {
         Some("txt" | "log") => "text/plain",
-        Some("md" | "markdown") => "text/markdown",
+        Some("md" | "markdown" | "note") => "text/markdown",
         // LosOS Office's own documents and presentations: MDX
         // (backend/mdx), text the shared editor opens as well.
         Some("paper") => "text/vnd.losos.paper",

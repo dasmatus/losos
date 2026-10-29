@@ -88,3 +88,27 @@ pub fn mathml(tex: &str, block: bool) -> Option<String> {
 pub fn date(value: &str, long: bool, lang: &str) -> String {
     crate::format_date(value, long, lang)
 }
+
+/// A note as `Rendered` JSON: [`crate::notes::render_note`], Obsidian's
+/// syntax and all. `flavour` is "mdx" (a `.note`) or "md".
+#[wasm_bindgen(js_name = renderNote)]
+pub fn render_note(
+    source: &str,
+    flavour_name: &str,
+    resolver: Option<JsResolver>,
+) -> Result<String, JsError> {
+    let flavour = flavour(flavour_name);
+    let rendered = match &resolver {
+        Some(r) => crate::notes::render_note(source, flavour, r),
+        None => crate::notes::render_note(source, flavour, &crate::Plain),
+    }
+    .map_err(to_js)?;
+    serde_json::to_string(&rendered).map_err(to_js)
+}
+
+/// A `.md` note's text as a `.note`'s: [`crate::notes::to_note`]. Throws,
+/// with the line, when it cannot say the same thing in MDX.
+#[wasm_bindgen(js_name = toNote)]
+pub fn to_note(source: &str) -> Result<String, JsError> {
+    crate::notes::to_note(source).map_err(to_js)
+}

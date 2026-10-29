@@ -23,6 +23,11 @@ Importujte výstup flaku `nixosModules.edge` do konfigurácie VPS a nastavte
   identifikátory, ktoré sú uvedené tu.
 - `losos.edge.cluster.enable` navyše spúšťa riadiacu vrstvu [mesh](/in-depth/mesh.md),
   server rke2 s Longhornom. Proxy funguje aj bez nej.
+- `losos.edge.tang.enable` (predvolene zapnuté) umožní zariadeniam
+  nainštalovaným s `--tang-edge` otvoriť disk cez edge, s párom kľúčov Tang
+  pre každé zariadenie v `/var/lib/losos-registrar/tang` a stránkou
+  `/tang/lost`, kde majiteľ nahlási ukradnuté zariadenie. Stranu zariadenia
+  opisuje [TPM a kľúč disku](/reference/tpm.md).
 
 `losos-registrar` udržiava súbor tunelového servera v súlade
 s registrovanými zariadeniami a Traefik ich nachádza cez registrar.
@@ -50,12 +55,20 @@ cez HTTP/1.1 a HTTP/2 na porte TCP 443. Traefik ohlasuje HTTP/3 v hlavičke
 blokuje UDP, ďalej funguje cez TCP. Vo firewalle pred edge otvorte UDP 443;
 vlastný firewall edge ho otvára sám.
 
+Box, ktorý TLS ukončuje sám (pozri
+[Edge nevidí do prevádzky](#the-edge-cannot-read-the-traffic)), beží iba cez
+HTTP/2 a HTTP/1.1 na TCP. HTTP/3 zostáva na vlastných názvoch edge.
+
 ## Keď box nie je dostupný {#when-a-box-cant-be-reached}
 
 Keď sa Traefik k boxu nedostane (je vypnutý, reštartuje sa, je offline alebo
 mu nefunguje tunel), návštevník namiesto holého „Bad Gateway“ dostane stránku
 z edge, ktorá to vysvetlí, po anglicky, slovensky alebo nemecky podľa jazyka
 prehliadača. Stavový kód zostáva 502, alebo 504, keď box neodpovedal včas.
+
+Stránka potrebuje, aby TLS pre názov ukončoval edge, preto sa ukáže iba pri
+názvoch, pre ktoré ho edge ešte ukončuje. Keď box ukončuje TLS sám,
+návštevník vypnutého boxu dostane namiesto nej chybu spojenia z prehliadača.
 
 ## Zariadenie {#appliance}
 
@@ -88,6 +101,62 @@ odvtedy tunel prijme tento certifikát a žiadny iný. Ak ho chcete pripnúť
 mimo tohto kanála, vložte súbor na to miesto vopred; zariadenie ho nikdy
 neprepíše. Každú službu, ktorú zariadenie poskytuje, si nárokuje tokenom
 zariadenia, porovnaným v konštantnom čase.
+
+## Edge nevidí do prevádzky {#the-edge-cannot-read-the-traffic}
+
+Box si pre každý svoj verejný názov vybaví vlastný certifikát od Let's
+Encrypt a TLS ukončuje sám. Edge smeruje každé spojenie podľa názvu v TLS
+hello a šifrované bajty boxu len posúva ďalej bez toho, aby ich otvoril.
+Kto prevádzkuje edge alebo stroj, na ktorom beží, tak nemôže čítať
+prihlásenia, súbory ani stránky. Predvolene je to zapnuté
+(`losos.proxy.tlsPassthrough.enable`).
+
+1. Edge smeruje `http://<názov>/.well-known/acme-challenge/` na porte 80 ku
+   každému boxu, aby box mohol cez tunel odpovedať na výzvu HTTP-01 od
+   Let's Encrypt. Box o certifikát žiada cez `lego` (`losos-public-tls`,
+   každú hodinu a vždy, keď mu edge oznámi nový názov) a certifikáty drží v
+   `/var/lib/losos-public-tls/live/<názov>/`.
+2. Heartbeat boxu vymenúva názvy, pre ktoré má platný certifikát. Kým nemá
+   prvý, edge ukončuje TLS ako doteraz, takže prechod nič nevypne.
+3. Pre tieto názvy edge zruší svoj TLS router a ponechá TCP router s
+   `HostSNI` a passthrough. Sám si pre ne certifikát nevyžiada.
+4. Na boxe nginx prečíta prvé bajty každého spojenia z tunela: TLS ide na
+   vlastný certifikát boxu, obyčajné HTTP (výzvy, starší edge) na port 80
+   ako doteraz. Administrátorské UI zostáva v oboch prípadoch len v LAN.
+
+Keď box raz požiada o passthrough, certifikát, ktorý vyprší, TLS edgu
+nevráti. Návštevníci potom vidia varovanie o certifikáte, kým ho box
+neobnoví.
+
+Box tiež každú hodinu otvorí každý svoj názov zvonka, cez verejné DNS a
+edge, a porovná certifikát, ktorý dostane, so svojím. Výsledok ukazuje
+stránka Mesh: **Šifrované až po zariadenie**, keď sa zhodujú, **Čitateľná**,
+kým TLS ukončuje edge, a **Zachytávané**, keď odpovie certifikát, ktorý box
+nevytvoril. To posledné znamená, že niečo medzi návštevníkmi a boxom
+ukončuje ich TLS, napríklad edge, ktorý si pre názov vybavil vlastný
+certifikát. Taký certifikát sa objaví aj vo verejných logoch Certificate
+Transparency.
+
+Čo edge vidí aj naďalej: na aký názov sa návštevník pýta, kedy a koľko dát
+prejde. Z tunela pozná aj domácu adresu boxu. Passthrough stojí na názvoch
+boxu tri veci: stránku pre nedostupný box, HTTP/3 a Encrypted Client Hello,
+lebo každá z nich potrebuje, aby kľúče držal edge. Vlastné názvy edge si
+všetky tri ponechávajú.
+
+Rovnako sú pokryté vlastné domény, ktoré edge smeruje na box: odpoveď na
+heartbeat boxu oznámi každý názov, ktorý k nemu vedie, a box si pre každý
+vybaví certifikát. Pri [federácii](edge-federation.md) spoke zoznam boxu
+posunie ďalej a hub smeruje `<spoke>.<box>` podľa názvu na spoke, ktorý ho
+odovzdá boxu.
+
+:::note[Ako sa to testuje]
+`nix/tests/edge-passthrough.nix` (`losos-edge-passthrough`) spustí testovací
+ACME server, edge a box. Kým box nemá certifikát, záznam prevádzky na strane
+edge v tuneli ukazuje heslo, ktoré návštevník pošle. Keď si box cez edge
+vybaví certifikát, návštevník ho overí voči koreňu ACME servera, Traefik má
+pre názov iba passthrough trasu a to isté heslo v zázname nie je. Keď názov
+ukáže na iný stroj, vlastná kontrola boxu prejde na **Zachytávané**.
+:::
 
 ## Administrátorské UI zostáva len v LAN {#admin-ui-stays-lan-only}
 
@@ -156,53 +225,76 @@ otvorená registrácia v LAN a obraz VM brány sú na stránke
 
 ## Oficiálne edge {#official-edges}
 
-Každý edge sa dá nájsť a môže preposielať úložisko. Iba edge, ktoré
-prevádzkuje LosOS, smú spracúvať P2P obchodovanie s úložiskom a výpočtovým
-výkonom ([trh](/in-depth/market.md)). Zariadenie si to overuje samo, pri každom skenovaní, a
-vlastný edge firmy dostane všetko okrem trhu.
+Každý edge sa dá nájsť a môže preposielať úložisko. Iba edge, ktorý prejde
+overením brány, smie spracúvať P2P obchodovanie s úložiskom a výpočtovým
+výkonom ([trh](/in-depth/market.md)). Takýto edge, otvorenú bránu, môže
+prevádzkovať ktokoľvek, ak dokáže, čo na ňom beží. Zariadenie si to overuje
+samo, pri každom skenovaní, a edge, ktorý neprejde, dostane všetko okrem trhu.
 
-Overenie je identita Ed25519:
+Čo zariadenie od edge žiada:
 
-- **Koreňový kľúč LosOS.** Jeden pár kľúčov. Verejná polovica je súbor,
-  ktorý má každé zariadenie, `nix/keys/official-edge-root.pub` v tomto repozitári
-  (`losos.proxy.officialRootKeyFile`). Súkromnú polovicu drží vlastník
-  projektu offline. Nikdy sa nedostane do repozitára ani do žiadneho zariadenia a
-  podpisuje certifikáty edge a nič iné. Kým niekto nezapíše verejný kľúč do
-  tohto súboru, žiadny edge nie je oficiálny a trh je vypnutý na každom zariadení
-  zostavenom zo stromu. Predvolené nastavenie zlyháva do zatvoreného stavu.
-- **Certifikát edge.** Každý oficiálny edge má vlastný pár kľúčov a malý
-  JSON certifikát `{name, url, public_key, not_after, signature}` podpísaný
-  koreňom. Registrar odpovedá na `GET /identity?nonce=<hex>` certifikátom a
-  podpisom nonce kľúčom edge.
-- **Overenie na zariadení** (`backend/src/edge.rs`) beží pre každý edge, ktorého
-  `/health` odpovedal. Koreň podpísal certifikát, certifikát uvádza URL, s
-  ktorou zariadenie hovorí, neexpiroval a kľúč edge podpísal nonce, ktorý si zariadenie
-  práve vymyslelo. Prejdú všetky štyri, inak edge nie je oficiálny. Výsledok
-  je `official` pre každý edge v `GET /api/edge` a značka pri názve každého
-  edge v paneli Mesh: fajka pri oficiálnom edge, varovanie pri každom inom,
-  s tooltipom, ktorý vymenúva, čo pre zariadenie daný edge nedokáže. Zariadenie môže mať v
-  dosahu viac edge. Zdieľanie funguje cez ktorýkoľvek z nich, obchodovanie
-  iba cez oficiálny. Kým nie je v dosahu žiadny oficiálny edge, relay trhu
-  odpovedá `{available: false, reason:
-  "noOfficialEdge"}` a každú akciu odmietne s 409
-  `officialEdgeRequired`. Nič neopustí zariadenie.
+- **Pas.** Vlastník edge podpíše svojím kľúčom OpenPGP krátke vyhlásenie:
+  URL edge, vlastný kľúč Ed25519 edge (vytvorený na edge, súkromná polovica
+  ho nikdy neopustí), kam ide jeho podiel z poplatku v každej sieti, a
+  dátum platnosti. Zariadenie overí podpis aj kľúč (vlastné podpisy, nie je
+  odvolaný, nevypršal) a ako vlastníka edge zobrazí user id kľúča.
+- **Poplatky.** Nastavenia vedľa pasu delia každý predaj 2 % pre LosOS a
+  2 % pre vlastníka a adresy LosOS sú presne tie, ktoré zariadenie má
+  (`losos.proxy.gateways.payouts`).
+- **TPM.** Kľúč endorsement v TPM edge nesie certifikát výrobcu a zariadenie
+  ho overí voči výrobcom, ktorých pozná (`losos.proxy.gateways.tpmRoots`,
+  predvolene balík TrustedTpm od Microsoftu). Zariadenie vytvorí credential,
+  ktorý otvorí iba tento TPM.
+- **Quote.** TPM podpíše hodnoty PCR 4, 11 a 15 spolu s čerstvým nonce
+  zariadenia a kľúčom edge. PCR 4 a 11 musia ukazovať niektorý zo
+  zverejnených obrazov brány (`losos.proxy.gateways.images`) a PCR 15 musí
+  obsahovať hash presne tých nastavení, ktoré edge poslal. Edge svoje
+  nastavenia zmeria pri štarte, skôr ako sa spustí registrar, a PCR 15 sa
+  nedá vynulovať, takže quote ukazuje nastavenia, s ktorými tento štart
+  začal.
 
-Edge si pri prvom spustení vytvorí vlastný kľúč identity
-(`losos.edge.identity.keyFile`, predvolene
-`/var/lib/losos-registrar/identity.key`) a súkromná polovica nikdy neopustí
-edge. Pre oficiálny edge podpíše LosOS koreňom certifikát a nainštaluje ho
-tam; edge ho zapíše vedľa kľúča (`losos.edge.identity.certFile`). Kým
-certifikát nepríde, edge odpovedá na `/identity` kódom 404 a nie je
-oficiálny. Tak vyzerá vlastný edge firmy, vrátane toho, ktorý spúšťa
-`nix/demo/edge-lan/`. Edge s oboma voľbami nastavenými na `null` neposkytuje
-žiadnu identitu.
+Prenesú to dve výmeny: `GET /passport?nonce=<hex>` a `POST /passport/attest`.
+Polovica zariadenia je `backend/access/src/gateway/check.rs`, polovica edge
+`edge/registrar/src/gateway.rs`.
 
-Čo to chráni: firma, ktorá prevádzkuje vlastný edge, dostane funkčné
-nasadenie on-premises, ale nemôže cez neho zúčtovávať obchody. Cudzí, kto
-postaví edge, tiež nemôže prinútiť zariadenia obchodovať cez neho, pretože edge
-robí oficiálnym iba súkromný kľúč koreňa. Čo to nechráni: protokol trhu nie
-je skrytý a súkromný kľúč koreňa je celé tajomstvo. Jeho strata znamená
-vydať release, ktorý vymení kotvu dôvery každého zariadenia.
+Výsledok je `official` pre každý edge v `GET /api/edge`, so stavom brány
+vedľa, a značka pri názve každého edge v paneli Mesh: fajka pri overenej
+bráne, s vlastníkom a obrazom v tooltipe; varovanie pri každom inom edge, s
+tooltipom, ktorý vymenúva, čo pre zariadenie daný edge nedokáže; stopka pri
+edge, ktorý zariadenie pristihlo pri manipulácii. Zariadenie môže mať v
+dosahu viac edge. Zdieľanie funguje cez ktorýkoľvek z nich, obchodovanie iba
+cez overený. Kým žiadny nie je v dosahu, relay trhu odpovedá
+`{available: false, reason: "noOfficialEdge"}` a každú akciu odmietne s 409
+`officialEdgeRequired`. Nič neopustí zariadenie.
+
+Odmietnutie je dvojakého druhu. To, čo zariadenie ešte nepozná, napríklad
+obraz, pre ktorý nemá merania, výrobcu TPM, pre ktorého nemá koreň, alebo
+adresu poplatku, ktorá sa líši od tých, ktoré má, sa zobrazí a pri ďalšom
+skenovaní sa overí znova. Dôkaz manipulácie, napríklad sfalšovaná
+atestácia, nastavenia zmenené po štarte edge alebo firmvér, ktorý spustil
+program mimo zverejneného obrazu, edge na danom zariadení natrvalo vypne,
+podľa jeho URL, TPM a kľúča vlastníka, v `/var/lib/losos/gateways.json`.
+Zariadenie potom daný edge nepoužíva na nič, ani na zdieľanie. Overenej
+bráne zariadenie verí desať minút, potom sa pýta znova.
+
+Vlastník edge si ho prevezme cez `POST /passport/settings`, podpísané jeho
+kľúčom OpenPGP (`losos-registrar passport statement` vypíše text na
+podpis, `passport settings` zostaví súbor). Edge súbor zapíše a reštartuje
+sa, aby ho zmeral. Dovtedy odpovedá na `/passport` kódom 404 a nie je
+overený. Edge bez `losos.edge.passport.enable` pas neposkytuje vôbec; tak
+zvyčajne vyzerá vlastný edge firmy, vrátane toho, ktorý spúšťa
+`nix/demo/edge-lan/`.
+
+V tomto strome sú dva zoznamy prázdne: `nix/gateway/images.nix`, kým
+obraz brány nenaštartuje ako unified kernel image, a `nix/gateway/payouts.nix`,
+kým sa tam nezapíšu adresy LosOS. Kým je ktorýkoľvek prázdny, žiadny edge
+neprejde a trh je vypnutý na každom zariadení. Predvolené nastavenie
+zlyháva do zatvoreného stavu.
+
+Firma, ktorá prevádzkuje vlastný edge, teda dostane funkčné nasadenie
+on-premises a môže cez neho aj obchodovať, keď na ňom beží zverejnený obraz
+s jej pasom a platí podiel LosOS. Cudzí, kto zmení obraz, nastavenia alebo
+adresy poplatkov, dostane edge, cez ktorý žiadne zariadenie neobchoduje.
 
 ## DNS zóna a vlastné domény {#dns-zone-and-custom-domains}
 
@@ -295,6 +387,11 @@ prijme názov zariadenia, pri názve, ktorého neexistenciu zóna dokazuje,
 kľúč nenájde, od nesprávnej kotvy dôvery nič neoverí a obyčajné HTTP
 odmietne.
 :::
+
+Box, ktorý TLS ukončuje sám, nemá pri svojich názvoch záznam HTTPS, lebo
+hello dokáže rozšifrovať iba ten, kto drží kľúč ECH, a edge spojenia tohto
+boxu posúva neotvorené. Jeho názov potom ide v TLS hello nešifrovane, ako
+pred ECH.
 
 ### Vlastné domény {#custom-domains}
 
