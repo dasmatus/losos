@@ -63,19 +63,21 @@ cat >"$out" <<CSS
  * Bare :root is the light theme. The media arm switches to dark unless the
  * reader picked Light, and the explicit-dark rule comes last at equal
  * specificity so a picked Dark wins the other way. Docusaurus sets
- * data-theme="light|dark" on <html>. */
+ * data-theme="light|dark" on <html>. Without JavaScript nothing sets it,
+ * and the theme control's checked radio (ColorModeToggle) picks instead. */
 
 :root {
 $light
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
+  :root:not([data-theme="light"]):not(:has(.hb-theme__radio[value="light"]:checked)) {
 $dark
   }
 }
 
-:root[data-theme="dark"] {
+:root[data-theme="dark"],
+:root:not([data-theme]):has(.hb-theme__radio[value="dark"]:checked) {
 $dark_root
 }
 CSS
