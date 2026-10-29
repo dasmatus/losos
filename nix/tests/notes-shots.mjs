@@ -113,6 +113,14 @@ async function waitNote(p, path) {
 
 async function after(s, page, anon, base) {
   const p = page;
+  // Notes on a box with no notes yet: the page makes the Notes folder and
+  // offers the first note, rather than loading for ever.
+  await p.goto(`${base}/cloud/notes`);
+  await p.waitForSelector("[data-notes-empty] [data-new-note]", { timeout: 120_000 });
+  await s.take(p, "first-note", "Notes on a box with no notes yet", { kind: "none" }, {
+    empty: p.locator("[data-notes-empty]"),
+  });
+
   await p.goto(`${base}/cloud/files`);
   const folder = p.locator(`[data-entry="${VAULT}"]`);
   await folder.waitFor();
