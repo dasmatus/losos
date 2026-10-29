@@ -867,5 +867,13 @@
   },
   "losos.home.setups.companies": {
     "message": "LosOS für Unternehmen"
+  },
+  "hb.search.allPages.title": {
+    "message": "Alle Seiten",
+    "description": "The search page without JavaScript, which lists every page"
+  },
+  "hb.search.allPages.lead": {
+    "message": "Die Suche läuft im Browser und braucht JavaScript. Hier stehen stattdessen alle Seiten des Handbuchs; die Suchfunktion deines Browsers (Strg+F) durchsucht die Liste.",
+    "description": "Under the title of the search page without JavaScript"
   }
 }

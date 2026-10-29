@@ -17,7 +17,8 @@
 #              edge as a fourth tenant, and the front vhost serving the admin
 #              UI. The relay talks only https and only to an official edge,
 #              so the edge also runs nginx with a private CA mattbox trusts,
-#              and carries an identity certificate for that URL.
+#              and is an open gateway whose passport names that URL
+#              (nix/tests/open-gateway.nix).
 #   * `laptop`: Chromium through Playwright on mattbox's LAN, signed in with
 #              the spare key, driving the Market pane's AI models section
 #              (nix/tests/inference-payg-shots.mjs).
@@ -103,8 +104,8 @@ let
 
   # mattbox's market relay only talks https, and only to an official edge:
   # a private CA the box trusts, nginx on the edge terminating it in front of
-  # the registrar, and an identity certificate for that URL signed by a root
-  # the box trusts (made the way nix/tests/edge-lan.nix makes it).
+  # the registrar, and an open gateway the box vets, its passport naming
+  # that URL.
   edgeUrl = "https://edge:9443";
   edgeTls = pkgs.runCommand "losos-payg-edge-tls" { nativeBuildInputs = [ pkgs.openssl ]; } ''
     mkdir -p $out
@@ -117,18 +118,7 @@ let
     openssl x509 -req -in edge.csr -CA ca.pem -CAkey ca.key -CAcreateserial -days 3650 \
       -extfile ext -out edge.pem
   '';
-  identityFixture =
-    pkgs.runCommand "losos-payg-edge-identity" { nativeBuildInputs = [ lososPkgs.losos-registrar ]; }
-      ''
-        mkdir -p $out
-        losos-registrar identity keygen --out $out/root.key > $out/root.pub
-        losos-registrar identity keygen --out $out/edge.key > $out/edge.pub
-        losos-registrar identity sign \
-          --root-key $out/root.key --public-key "$(cat $out/edge.pub)" \
-          --name "LosOS edge" --url ${edgeUrl} --days 30 \
-          > $out/edge.cert.json
-      '';
-  identityKey = "/var/secrets/losos-edge-identity.key";
+  openGateway = import ./open-gateway.nix { inherit pkgs lososPkgs; };
 
   # The admin UI mattbox serves: the shipped package, with the Lab's GPU
   # canvas left as an empty module. No screen here opens /lab/, and the
@@ -248,6 +238,7 @@ pkgs.testers.nixosTest {
           ../../modules/options.nix
           ../../modules/edge.nix
           ../../modules/edge-inference.nix
+          (openGateway.edge edgeUrl)
         ];
         _module.args.self = {
           packages.x86_64-linux.losos-registrar = lososPkgs.losos-registrar;
@@ -281,10 +272,6 @@ pkgs.testers.nixosTest {
               };
             };
           };
-          identity = {
-            keyFile = identityKey;
-            certFile = "${identityFixture}/edge.cert.json";
-          };
           inference = {
             enable = true;
             models = [
@@ -310,7 +297,6 @@ pkgs.testers.nixosTest {
         systemd.tmpfiles.rules = [
           "d /var/secrets 0700 root root - -"
           "f ${agentToken} 0600 root root - test-agent-token"
-          "C ${identityKey} 0600 root root - ${identityFixture}/edge.key"
         ]
         ++ lib.mapAttrsToList (id: t: "f ${tokenFile id} 0600 root root - ${t}") tokens;
 
@@ -408,6 +394,7 @@ pkgs.testers.nixosTest {
           ../../modules/daemon.nix
           ../../modules/containers.nix
           ../../modules/proxy.nix
+          openGateway.box
         ];
         networking.networkmanager.enable = lib.mkForce false;
         systemd.tmpfiles.rules = [
@@ -431,7 +418,6 @@ pkgs.testers.nixosTest {
             hostname = "mattbox.losos.cfd";
             applianceId = "mattbox";
             tokenFile = proxyToken;
-            officialRootKeyFile = "${identityFixture}/root.pub";
             registrar.package = lososPkgs.losos-registrar;
           };
         };
@@ -463,7 +449,7 @@ pkgs.testers.nixosTest {
       };
   };
 
-  testScript = ''
+  testScript = openGateway.script + ''
     import json
     import shlex
     from datetime import timedelta
@@ -661,6 +647,7 @@ pkgs.testers.nixosTest {
 
     with subtest("mattbox finds the edge official over https, and the Market pane draws"):
         mattbox.wait_for_unit("lososd.service")
+        trust(edge, mattbox)
         mattbox.wait_for_unit("nginx.service")
         mattbox.wait_until_succeeds("test -s /etc/credstore.encrypted/admin-token")
         def official(_):

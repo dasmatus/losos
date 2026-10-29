@@ -17,7 +17,10 @@
 //!   at;
 //! * at both names of a box that bound its wallet, a TXT record with
 //!   [`crate::domains::ens_record`], which ENS reads to resolve the name to
-//!   the wallet. Knot signs the zone (DNSSEC), and ENS needs that.
+//!   the wallet. Knot signs the zone (DNSSEC), and ENS needs that;
+//! * with an ECH key ([`crate::ech`]), an HTTPS record at every name above
+//!   (RFC 9460, `1 . alpn="h3,h2" ech="…"`): a browser learns there that the
+//!   edge speaks HTTP/3 and how to encrypt the name it asks for.
 //!
 //! Every name resolves to the edge, because the edge is where Traefik
 //! terminates TLS and the tunnel to the box begins. A box's own address
@@ -38,6 +41,10 @@ pub struct ZoneNames {
     pub names: BTreeSet<String>,
     /// TXT records, by relative owner name; each name is in `names` too.
     pub txt: BTreeMap<String, BTreeSet<String>>,
+    /// The edge's ECHConfigList as base64 ([`crate::ech`]): with it, every
+    /// name in the zone, the apex included, gets an HTTPS record saying the
+    /// edge answers HTTP/3 and HTTP/2 there and carrying the ECH key.
+    pub ech: Option<String>,
 }
 
 impl ZoneNames {
@@ -120,6 +127,7 @@ pub fn render(opts: &DomainsOpts, names: &ZoneNames, serial: u32) -> String {
         let _ = writeln!(out, "@ IN NS {}.", ns.trim_end_matches('.'));
     }
     address_records(&mut out, "@", opts);
+    https_record(&mut out, "@", names);
 
     // Glue for name servers inside the zone, then every box name. A set, so
     // a tenant hostname that happens to equal a name server is written once.
@@ -133,6 +141,7 @@ pub fn render(opts: &DomainsOpts, names: &ZoneNames, serial: u32) -> String {
     owners.extend(names.names.iter().cloned());
     for owner in &owners {
         address_records(&mut out, owner, opts);
+        https_record(&mut out, owner, names);
         for text in names.txt.get(owner).into_iter().flatten() {
             let _ = writeln!(out, "{owner} IN TXT {}", quoted(text));
         }
@@ -147,6 +156,20 @@ fn address_records(out: &mut String, owner: &str, opts: &DomainsOpts) {
     for a in &opts.ipv6 {
         let _ = writeln!(out, "{owner} IN AAAA {a}");
     }
+}
+
+fn https_record(out: &mut String, owner: &str, names: &ZoneNames) {
+    if let Some(ech) = names.ech.as_deref().filter(|e| plain_base64(e)) {
+        let _ = writeln!(out, "{owner} IN HTTPS 1 . alpn=\"h3,h2\" ech=\"{ech}\"");
+    }
+}
+
+/// Base64 that a quoted master-file string carries as it is.
+fn plain_base64(text: &str) -> bool {
+    !text.is_empty()
+        && text
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'/' | b'='))
 }
 
 /// The serial in a zone this module rendered, if `text` is one.
@@ -259,6 +282,22 @@ mod tests {
         );
         assert!(z.contains("q IN TXT \"say \\\"hi\\\" \\\\o/\"\n"), "{z}");
         assert!(!z.contains("\nx IN"), "{z}");
+    }
+
+    #[test]
+    fn an_ech_key_puts_an_https_record_at_every_name() {
+        let mut names = ZoneNames::default();
+        names.add_fqdn("mattbox.boxes.losos.cfd", "boxes.losos.cfd");
+        names.ech = Some("AEX+DQBBAQAgACA=".to_string());
+        let z = render(&opts(), &names, 1);
+        let https = "IN HTTPS 1 . alpn=\"h3,h2\" ech=\"AEX+DQBBAQAgACA=\"\n";
+        assert!(z.contains(&format!("\n@ {https}")), "{z}");
+        assert!(z.contains(&format!("\nmattbox {https}")), "{z}");
+        // Anything that is not base64 is left out rather than quoted.
+        names.ech = Some("x\" IN TXT \"y".to_string());
+        assert!(!render(&opts(), &names, 1).contains("HTTPS"));
+        names.ech = None;
+        assert!(!render(&opts(), &names, 1).contains("HTTPS"));
     }
 
     #[test]

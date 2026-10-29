@@ -55,7 +55,7 @@ export default defineMessages({
     de: "{name} löschen?",
   },
   "userApps.deleteBody": {
-    en: "The app and everything entered into it are deleted from the box. This cannot be undone.",
+    en: "This deletes the app and everything entered into it from the box. This cannot be undone.",
     sk: "Aplikácia a všetko, čo sa do nej zadalo, sa zo zariadenia odstráni. Nedá sa to vrátiť späť.",
     de: "Die App und alles, was darin eingegeben wurde, werden von der Box gelöscht. Das lässt sich nicht rückgängig machen.",
   },
