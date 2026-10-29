@@ -71,6 +71,8 @@ let
     proxy_set_header X-Losos-Edge "";
   '';
   adminEnabled = config.losos.admin.enable && adminUi != null;
+  # The terminal's routes answer through the edge too (see their locations).
+  accessThroughEdge = config.losos.proxy.enable && config.losos.access.throughEdge;
   # The pages without JavaScript (backend/plugins/basic/): the routes a
   # visitor reaches before signing in, those of them that speak to LosOS
   # Login for the visitor, and what every /basic/ request carries to lososd.
@@ -181,9 +183,15 @@ let
   # Tor and I2P (modules/hidden-services.nix) arrive on loopback listeners
   # of their own. Loopback, so the guard above turns them away from the
   # admin surface like the tunnel.
-  hiddenListen = (import ./hidden-lib.nix { inherit lib pkgs; }).frontListen (
-    config.losos.hidden.tor.enable || config.losos.hidden.i2p.enable
-  );
+  hiddenListen =
+    (import ./hidden-lib.nix { inherit lib pkgs; }).frontListen (
+      config.losos.hidden.tor.enable || config.losos.hidden.i2p.enable
+    )
+    # And what the box's own TLS for its public names hands on
+    # (modules/public-tls.nix), loopback too.
+    ++ (import ./public-tls-lib.nix { inherit lib; }).frontListen (
+      config.losos.proxy.enable && config.losos.proxy.tlsPassthrough.enable
+    );
 
   # ── Security response headers ─────────────────────────────────────────────
   # The admin UI, /api/, /cloud/ and /git/ share one origin by design,
@@ -670,6 +678,34 @@ in
             '';
           };
         })
+        # The terminal's two routes (docs/terminal-access.md), the one part
+        # of /api/ the tunnel may reach, so that `losos` reaches the box away
+        # from its LAN through the edge (losos.access.throughEdge). They hold
+        # nothing a stranger can use: the host key is public by nature, and a
+        # call is an OpenPGP message signed by a seeded key, carrying a live
+        # token and encrypted to this box's own key, so the edge carries it
+        # without reading it, and lososd checks all three before anything
+        # runs, with its replay window and its throttle. No `lanOnly`, so
+        # Tor and I2P deliver them too, on the same terms. Through the tunnel
+        # every caller is 127.0.0.1 to lososd, so they share one throttle.
+        (lib.mkIf (adminEnabled && accessThroughEdge) (
+          lib.genAttrs [ "= /api/access/host-key" "= /api/access/call" ] (_: {
+            proxyPass = "http://127.0.0.1:${toString adminApiPort}";
+            extraConfig = ''
+              proxy_set_header X-Real-IP $remote_addr;
+              ${notTheEdge}
+              # The envelope names the person; nothing a caller sends does.
+              proxy_set_header Remote-User "";
+              proxy_set_header Remote-Groups "";
+              proxy_set_header X-Losos-As "";
+              # lososd's own cap is 1 MiB of envelope (MAX_ENVELOPE_BYTES).
+              client_max_body_size 2m;
+              # A call waits for the inner call it replays.
+              proxy_read_timeout 600s;
+              proxy_send_timeout 600s;
+            '';
+          })
+        ))
         # The sign-in steps, signing out, the choices a visitor makes before
         # signing in, and the plural words the Apply bar counts with: open to
         # someone not signed in. Only the sign-in steps and signing out see

@@ -7,7 +7,7 @@ mdx:
 
 # Mesh
 
-![The Mesh pane.](../img/mesh-none.png)
+![The Mesh pane on a box with no edge proxy in reach.](../img/mesh-none.png)
 
 A box can lend spare disk and CPU to other LosOS boxes. Joining is off by
 default. The Mesh pane has two switches: join the mesh, and share compute. The

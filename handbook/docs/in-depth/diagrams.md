@@ -7,7 +7,7 @@ mdx:
 
 # Diagrams
 
-![Diagrams.](../img/diagrams-cloud.png)
+![Diagrams with a flowchart opened from LosOS Cloud: the views and the file picker, the canvas with its cards and arrows, and the panel about this diagram.](../img/diagrams.png)
 
 LosOS Diagrams is a diagram editor: flowcharts, plans, mind maps, boards
 and network drawings, written as cards on a canvas. Its files are JSON

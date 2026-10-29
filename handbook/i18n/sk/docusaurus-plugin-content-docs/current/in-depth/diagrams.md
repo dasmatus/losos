@@ -7,6 +7,8 @@ mdx:
 
 # Diagramy
 
+![Diagramy s vývojovým diagramom otvoreným z LosOS Cloud: pohľady a výber súboru, plátno s kartami a šípkami a panel o tomto diagrame.](@site/docs/img/diagrams-sk.png)
+
 LosOS Diagrams je editor diagramov: vývojové diagramy, plány, myšlienkové
 mapy, tabule a nákresy sietí, písané ako karty na plátne. Jeho súbory sú
 JSON Canvas, formát, ktorý používa Obsidian Canvas, takže súbor `.canvas`

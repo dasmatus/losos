@@ -73,6 +73,8 @@ pub struct FakeLosos {
     /// The live custom domains last handed to LosOS Cloud; `None` until the
     /// first write.
     pub public_names: Option<Vec<String>>,
+    /// What `public_tls` answers.
+    pub public_tls: crate::edge::PublicTls,
     /// The last relay pass written: `None` never written, `Some(None)`
     /// removed.
     pub relay_pass: Option<Option<String>>,
@@ -289,6 +291,7 @@ impl FakeLosos {
             market_routes: std::collections::BTreeMap::new(),
             market_ops: Vec::new(),
             public_names: None,
+            public_tls: crate::edge::PublicTls::default(),
             relay_pass: None,
             edge: crate::edge::EdgeStatus::found(
                 vec![crate::edge::Edge {
@@ -571,6 +574,10 @@ impl Losos for FakeLosos {
     fn write_public_names(&mut self, names: &[String]) -> anyhow::Result<()> {
         self.public_names = Some(names.to_vec());
         Ok(())
+    }
+
+    fn public_tls(&mut self) -> anyhow::Result<crate::edge::PublicTls> {
+        Ok(self.public_tls.clone())
     }
 
     fn cloud_request(

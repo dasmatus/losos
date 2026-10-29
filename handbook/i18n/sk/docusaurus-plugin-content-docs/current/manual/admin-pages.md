@@ -19,7 +19,7 @@ na dosah palca: hlavné sekcie a potom **Viac**, ktoré vysunie celý bočný pa
 zdola. Zatvoríte ho potiahnutím nadol. Ak na zariadení beží LosOS Chat a
 LosOS Mail, zaberú dve miesta v lište.
 
-![Prehľad: bočný panel so šiestimi sekciami vľavo, meno zariadenia a či odpovedá, dlaždice aplikácií, karta úložiska a nástenka.](@site/docs/img/overview-sk.png)
+![Prehľad: bočný panel vľavo, meno zariadenia a či odpovedá, dlaždice aplikácií, karta úložiska a nástenka.](@site/docs/img/overview-sk.png)
 
 | Sekcia         | Čo tam je                                                                                                   |
 | -------------- | ----------------------------------------------------------------------------------------------------------- |

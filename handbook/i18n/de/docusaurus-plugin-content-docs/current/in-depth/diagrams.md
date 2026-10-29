@@ -7,6 +7,8 @@ mdx:
 
 # Diagramme
 
+![Diagramme mit einem Flussdiagramm aus LosOS Cloud: die Ansichten und die Dateiauswahl, die Zeichenfläche mit Karten und Pfeilen und die Leiste zu diesem Diagramm.](@site/docs/img/diagrams-de.png)
+
 LosOS Diagrams ist ein Diagrammeditor: Flussdiagramme, Pläne, Mindmaps,
 Boards und Netzwerkzeichnungen, geschrieben als Karten auf einer
 Zeichenfläche. Seine Dateien sind JSON Canvas, das Format von Obsidian
