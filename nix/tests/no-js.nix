@@ -124,52 +124,51 @@ let
   };
 
   # JavaScript off: from the first address to signing out.
-  withoutScript =
-    [
-      {
-        name = "sign-in";
-        path = "/";
-        waitFor = signInPage;
-      }
-      {
-        name = "signed-in";
-        path = "/";
-        waitFor = signInPage;
-        steps = signIn;
-      }
-    ]
-    ++ pages
-    ++ [
-      {
-        name = "apply-bar";
-        path = "/settings/hardware";
-        waitFor = gpu;
-        steps = [
-          { click = gpuSwitch; }
-          # The count is the stylesheet's own text (a counter), which
-          # no locator reads; the bar showing is what the change did.
-          {
-            waitFor = {
-              selector = "[data-basic-apply]";
-            };
-          }
-        ];
-      }
-      {
-        name = "menu";
-        path = "/";
-        waitFor = overview;
-        steps = [
-          { click = personMenu; }
-          {
-            waitFor = {
-              role = "menuitem";
-              name = "Sign out";
-            };
-          }
-        ];
-      }
-    ];
+  withoutScript = [
+    {
+      name = "sign-in";
+      path = "/";
+      waitFor = signInPage;
+    }
+    {
+      name = "signed-in";
+      path = "/";
+      waitFor = signInPage;
+      steps = signIn;
+    }
+  ]
+  ++ pages
+  ++ [
+    {
+      name = "apply-bar";
+      path = "/settings/hardware";
+      waitFor = gpu;
+      steps = [
+        { click = gpuSwitch; }
+        # The count is the stylesheet's own text (a counter), which
+        # no locator reads; the bar showing is what the change did.
+        {
+          waitFor = {
+            selector = "[data-basic-apply]";
+          };
+        }
+      ];
+    }
+    {
+      name = "menu";
+      path = "/";
+      waitFor = overview;
+      steps = [
+        { click = personMenu; }
+        {
+          waitFor = {
+            role = "menuitem";
+            name = "Sign out";
+          };
+        }
+      ];
+    }
+  ];
 
   # Applying a change, its rebuild and its end, then signing out.
   applying = [
@@ -267,23 +266,26 @@ let
         # The handbook's picture, in each of its languages.
         handbook = plan "handbook" {
           script = false;
-          variants = map (l: {
-            suffix = l.suffix;
-            locale = l.locale;
-          }) [
-            {
-              suffix = "en";
-              locale = "en-US";
-            }
-            {
-              suffix = "sk";
-              locale = "sk-SK";
-            }
-            {
-              suffix = "de";
-              locale = "de-DE";
-            }
-          ];
+          variants =
+            map
+              (l: {
+                inherit (l) suffix;
+                inherit (l) locale;
+              })
+              [
+                {
+                  suffix = "en";
+                  locale = "en-US";
+                }
+                {
+                  suffix = "sk";
+                  locale = "sk-SK";
+                }
+                {
+                  suffix = "de";
+                  locale = "de-DE";
+                }
+              ];
           shots = [
             {
               name = "overview";

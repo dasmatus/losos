@@ -3846,9 +3846,10 @@ async fn all_tenants(st: &AppState) -> Result<Arc<HashMap<String, TenantEntry>>>
 }
 
 /// The secondary cluster this gateway belongs to, from the runtime file
-/// `losos-edge cluster create|join` writes. `None` when there is no file,
-/// and also when it does not parse or fails [`ClusterFile::fault`], which is
-/// logged: a broken file must not sync with anyone.
+/// the manage page writes when a cluster is started or joined. `None` when
+/// there is no file, and also when it does not parse or fails
+/// [`ClusterFile::fault`], which is logged: a broken file must not sync
+/// with anyone.
 async fn read_cluster_file(path: &str) -> Option<ClusterFile> {
     let bytes = match tokio::fs::read(path).await {
         Ok(b) => b,
@@ -3964,7 +3965,7 @@ async fn take_peer_msg(st: &AppState, sec: &Secondary, msg: &SyncMsg) {
                 {
                     tracing::warn!(
                         target: Action::Secondary.target(),
-                        "{} enrolled {} with another token than this gateway did; keeping this gateway's (losos-edge forget {} on one of them)",
+                        "{} enrolled {} with another token than this gateway did; keeping this gateway's (forget {} on one of their manage pages)",
                         msg.member,
                         b.id,
                         b.id,
