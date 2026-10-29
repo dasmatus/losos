@@ -8,10 +8,10 @@ import { RTC_SLOT_ENCRYPTION_PER_MEMBER } from "matrix-js-sdk/lib/matrixrtc";
  * `org.losos.call#room`. MSC4196's `m.call` is defined for the LiveKit
  * transport only, and these calls go through the box's SFU: other clients
  * ignore an application they do not know instead of offering a Join that
- * cannot work. Membership is the state-event form matrix-js-sdk sends
- * (`org.matrix.msc3401.call.member`), because Dendrite has no sticky
- * events; each one publishes an `org.losos.sfu` transport naming the SFU's
- * call. */
+ * cannot work. A membership is a sticky `org.matrix.msc4143.rtc.member`
+ * event (MSC4354) that publishes an `org.losos.sfu` transport naming the
+ * SFU's call; the homeserver holds a delayed leave (MSC4140) that ends it
+ * when the page stops answering. */
 
 export const RTC_APPLICATION = "org.losos.call";
 export const RTC_SLOT = { application: RTC_APPLICATION, id: "room" } as const;
@@ -51,30 +51,41 @@ export function sfuTransport(raw: unknown): SfuTransport | null {
 export interface RtcMember {
   user: string;
   device: string;
-  /** When this membership began, by the homeserver's clock unless the
-   *  member's client carried it over from an earlier event. */
+  /** When this membership was sent, by the homeserver's clock. */
   since: number;
   video: boolean;
   transport: SfuTransport;
   event: MatrixEvent;
 }
 
-/** Whether `content` is a joined membership of this slot, and its parts.
- *  Expired memberships are left: a device that vanished without leaving
- *  stops counting once its `expires` runs out. */
-function joinedMember(room: Room, ev: MatrixEvent, now: number): RtcMember | null {
+const record = (raw: unknown): Record<string, unknown> | null =>
+  typeof raw === "object" && raw !== null && !Array.isArray(raw) ? (raw as Record<string, unknown>) : null;
+
+/** The call and kind a membership of this slot names, read from its
+ *  content alone. */
+function membershipCall(ev: MatrixEvent): { member: Record<string, unknown>; transport: SfuTransport; video: boolean } | null {
+  if (ev.getType() !== EventType.RTCMembership) return null;
   const content = ev.getContent();
-  if (content["application"] !== RTC_APPLICATION || content["call_id"] !== RTC_SLOT.id) return null;
-  const user = ev.getSender();
-  const device = content["device_id"];
-  if (user === undefined || typeof device !== "string" || !room.hasMembershipState(user, KnownMembership.Join)) return null;
-  const since = typeof content["created_ts"] === "number" ? content["created_ts"] : ev.getTs();
-  const expires = content["expires"];
-  if (typeof expires !== "number" || !Number.isFinite(since) || now >= since + expires) return null;
-  const preferred = content["foci_preferred"];
-  const transport = Array.isArray(preferred) ? preferred.map(sfuTransport).find((t) => t !== null) : undefined;
+  const application = record(content["application"]);
+  const member = record(content["member"]);
+  if (content["slot_id"] !== RTC_SLOT_ID || application?.["type"] !== RTC_APPLICATION || member === null) return null;
+  const published = record(content["transports"])?.["published"];
+  const transport = Array.isArray(published) ? published.map(sfuTransport).find((t) => t !== null) : undefined;
   if (transport === undefined) return null;
-  return { user, device, since, video: content["m.call.intent"] === "video", transport, event: ev };
+  return { member, transport, video: application["m.call.intent"] === "video" };
+}
+
+/** Whether `ev` is a joined membership of this slot, and its parts. A
+ *  withdrawn one (the sticky key alone) names nothing and is left, and the
+ *  member must be its sender, a device of theirs, and in the room. */
+function joinedMember(room: Room, ev: MatrixEvent): RtcMember | null {
+  const said = membershipCall(ev);
+  const user = ev.getSender();
+  if (said === null || user === undefined) return null;
+  const device = said.member["device_id"];
+  if (said.member["user_id"] !== user || typeof device !== "string" || typeof said.member["id"] !== "string") return null;
+  if (!room.hasMembershipState(user, KnownMembership.Join)) return null;
+  return { user, device, since: ev.getTs(), video: said.video, transport: said.transport, event: ev };
 }
 
 /** The slot's state event, if the room has one and it is open for calls. */
@@ -85,12 +96,12 @@ export function slotOpen(room: Room): boolean {
 }
 
 /** Everyone in the room's call, oldest first. MSC4143 counts a member only
- *  while the slot is open. */
-export function rtcMembers(room: Room, now = Date.now()): RtcMember[] {
+ *  while the slot is open; the room keeps a sticky event only until it
+ *  runs out. */
+export function rtcMembers(room: Room): RtcMember[] {
   if (!slotOpen(room)) return [];
-  return room.currentState
-    .getStateEvents(EventType.GroupCallMemberPrefix)
-    .map((ev) => joinedMember(room, ev, now))
+  return [...room._unstable_getStickyEvents()]
+    .map((ev) => joinedMember(room, ev))
     .filter((m): m is RtcMember => m !== null)
     .sort((a, b) => a.since - b.since);
 }
@@ -109,28 +120,19 @@ export const callLive = (room: Room, call: string): boolean => rtcMembers(room).
 
 /** The call a membership event names, for a notification that refers to it. */
 export function callOfMembership(room: Room, eventId: string): { call: string; video: boolean } | null {
-  const ev =
-    room.currentState.getStateEvents(EventType.GroupCallMemberPrefix).find((e) => e.getId() === eventId) ?? room.findEventById(eventId);
-  if (ev === undefined || ev.getType() !== EventType.GroupCallMemberPrefix) return null;
-  const content = ev.getContent();
-  if (content["application"] !== RTC_APPLICATION) return null;
-  const preferred = content["foci_preferred"];
-  const transport = Array.isArray(preferred) ? preferred.map(sfuTransport).find((t) => t !== null) : undefined;
-  return transport === undefined ? null : { call: transport.call, video: content["m.call.intent"] === "video" };
+  const ev = [...room._unstable_getStickyEvents()].find((e) => e.getId() === eventId) ?? room.findEventById(eventId);
+  const said = ev === undefined ? null : membershipCall(ev);
+  return said === null ? null : { call: said.transport.call, video: said.video };
 }
 
 /** What `user` needs to take part: the open slot, and the right to send a
- *  membership. */
+ *  membership, which any member has by default. */
 export function mayCall(room: Room, user: string): boolean {
-  return slotOpen(room) && room.currentState.maySendStateEvent(EventType.GroupCallMemberPrefix, user);
+  return slotOpen(room) && room.currentState.maySendEvent(EventType.RTCMembership, user);
 }
 
-/** Whether `user` can open the slot and let everyone in the room send a
- *  membership, as an admin of an older room. */
-export function mayEnableCalls(room: Room, user: string): boolean {
-  const state = room.currentState;
-  return state.maySendStateEvent(EventType.RoomPowerLevels, user) && state.maySendStateEvent(EventType.RTCSlot, user);
-}
+/** Whether `user` can open the slot of an older room. */
+export const mayOpenSlot = (room: Room, user: string): boolean => room.currentState.maySendStateEvent(EventType.RTCSlot, user);
 
 /** The slot event for an encrypted room (MSC4143 asks for encryption in
  *  the slot whenever the room is encrypted). */
@@ -141,25 +143,6 @@ export const SLOT_CONTENT = {
 } as const;
 
 export const slotState = { type: EventType.RTCSlot, state_key: RTC_SLOT_ID, content: SLOT_CONTENT };
-
-/* The event levels a new room has anyway, restated because a homeserver
- * may take `events` in an override as the whole map; and a membership any
- * member may send. */
-export const CALL_POWER_LEVELS = {
-  events: {
-    [EventType.RoomName]: 50,
-    [EventType.RoomAvatar]: 50,
-    [EventType.RoomCanonicalAlias]: 50,
-    [EventType.RoomTopic]: 50,
-    [EventType.RoomPowerLevels]: 100,
-    [EventType.RoomHistoryVisibility]: 100,
-    [EventType.RoomEncryption]: 100,
-    [EventType.RoomServerAcl]: 100,
-    [EventType.RoomTombstone]: 100,
-    [EventType.RTCSlot]: 100,
-    [EventType.GroupCallMemberPrefix]: 0,
-  },
-};
 
 /** The plain notice a new call also puts in the room, for Matrix apps that
  *  do not know these calls (calls.tsx, `announceStart`). LosOS Chat draws
