@@ -1069,6 +1069,7 @@ let
     ++ inferenceArgs
     ++ ciArgs
     ++ hiddenArgs
+    ++ tangArgs
   );
 
   # Call media for this edge's boxes (losos.edge.calls.relay,
@@ -1100,6 +1101,18 @@ let
   ciArgs = lib.optionals cfg.ci.enable [
     "--ci-dir"
     "/var/lib/losos-registrar/ci"
+  ];
+
+  # The boxes' Tang keys (losos.edge.tang, edge/registrar/src/tang.rs): a
+  # key pair per box in the registrar's StateDirectory, answered by Tang's
+  # own tangd, one run per request.
+  tangArgs = lib.optionals cfg.tang.enable [
+    "--tang-dir"
+    "/var/lib/losos-registrar/tang"
+    "--tangd"
+    "${pkgs.tang}/libexec/tangd"
+    "--tangd-keygen"
+    "${pkgs.tang}/libexec/tangd-keygen"
   ];
 
   # Models split across boxes (losos.edge.inference,
