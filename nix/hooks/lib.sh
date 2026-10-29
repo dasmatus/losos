@@ -82,7 +82,19 @@ hook_skipping() {
   return 1
 }
 
-# run <name> <command…>: one check, its output in <logdir>/<name>.log.
+# git exports the repository to its hooks: GIT_DIR (in a linked worktree)
+# and GIT_INDEX_FILE (in pre-commit). The hook's own git calls want them; a
+# check must not see them. A test that makes a repository of its own (the
+# backend's text search, config repo and forge suites) would otherwise
+# commit into, and reconfigure, the repository being checked.
+hook_git_env=(GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_PREFIX
+  GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_NAMESPACE)
+hook_unexport_git() {
+  unset "${hook_git_env[@]}"
+}
+
+# run <name> <command…>: one check, its output in <logdir>/<name>.log,
+# without git's repository variables.
 run() {
   local name=$1
   shift
@@ -110,10 +122,10 @@ run() {
     echo
   } >"$log"
   if [ "${LOSOS_HOOKS_VERBOSE:-}" = 1 ]; then
-    "$@" 2>&1 | tee -a "$log"
+    (hook_unexport_git && "$@") 2>&1 | tee -a "$log"
     rc=${PIPESTATUS[0]}
   else
-    "$@" >>"$log" 2>&1
+    (hook_unexport_git && "$@") >>"$log" 2>&1
     rc=$?
   fi
   local dt=$(($(date +%s) - t0))

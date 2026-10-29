@@ -66,6 +66,9 @@ for update in "${updates[@]}"; do
 
   (
     cd "$workdir" || exit 1
+    # From a linked worktree git exports its GIT_DIR, which would point
+    # every git call below at that worktree rather than the one checked.
+    hook_unexport_git
     hook_root=$workdir
     hook_tree=$(git rev-parse "$local_sha^{tree}")
     hook_start pre-push
