@@ -552,6 +552,10 @@
         # The admin pages with JavaScript off, from sign-in to a rebuild, with
         # the pull request's pictures (nix/tests/no-js.nix).
         losos-no-js = import ./nix/tests/no-js.nix { inherit pkgs; };
+        # The pages as MDX: an administrator's page and stylesheet saved as
+        # commits, drawn with JavaScript on and off, and the editor beside
+        # the page, with the pull request's pictures (nix/tests/pages.nix).
+        losos-pages = import ./nix/tests/pages.nix { inherit pkgs; };
         # The Mesh page while the box has paused sharing for want of an edge,
         # with the pull request's pictures (nix/tests/sharing-pause.nix).
         losos-sharing-pause = import ./nix/tests/sharing-pause.nix { inherit pkgs; };

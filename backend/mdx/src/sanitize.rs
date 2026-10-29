@@ -121,9 +121,20 @@ fn id_ok(id: &str) -> bool {
 
 fn builder() -> &'static ammonia::Builder<'static> {
     static B: OnceLock<ammonia::Builder<'static>> = OnceLock::new();
-    B.get_or_init(|| {
+    B.get_or_init(|| make(&[]))
+}
+
+/// The page allowlist: the document's, and the placeholder a page's
+/// blocks become (`crate::page`), which only that module writes.
+fn page_builder() -> &'static ammonia::Builder<'static> {
+    static B: OnceLock<ammonia::Builder<'static>> = OnceLock::new();
+    B.get_or_init(|| make(&[crate::page::PLACEHOLDER]))
+}
+
+fn make(extra: &[&'static str]) -> ammonia::Builder<'static> {
+    {
         let mut b = ammonia::Builder::empty();
-        b.tags(TAGS.iter().copied().collect::<HashSet<_>>())
+        b.tags(TAGS.iter().chain(extra).copied().collect::<HashSet<_>>())
             .tag_attributes(
                 TAG_ATTRIBUTES
                     .iter()
@@ -155,10 +166,15 @@ fn builder() -> &'static ammonia::Builder<'static> {
                 _ => Some(value.into()),
             });
         b
-    })
+    }
 }
 
 /// HTML with everything outside the allowlist taken out.
 pub(crate) fn clean(html: &str) -> String {
     builder().clean(html).to_string()
+}
+
+/// A page's HTML, its block placeholders kept.
+pub(crate) fn clean_page(html: &str) -> String {
+    page_builder().clean(html).to_string()
 }

@@ -37,6 +37,7 @@ import menu from "./menu";
 import moderation from "./moderation";
 import notes from "./notes";
 import office from "./office";
+import pages from "./pages";
 import palette from "./palette";
 import panes from "./panes";
 import pictures from "./pictures";
@@ -90,6 +91,7 @@ export const MESSAGES = {
   ...lab,
   ...diagrams,
   ...tour,
+  ...pages,
   ...palette,
   ...pins,
   ...calls,

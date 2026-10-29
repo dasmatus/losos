@@ -739,6 +739,38 @@ impl<'a> Writer<'a> {
                     self.raw("</p>");
                 }
             }
+            "Button" => {
+                // A link drawn as LosOS's button: plain HTML, no script
+                // behind it. The page swaps the classes for its own button's.
+                let target = get("href");
+                let href = self.href(node, &target, false);
+                let variant = props
+                    .get("variant")
+                    .cloned()
+                    .unwrap_or_else(|| "primary".into());
+                let size = props.get("size").cloned().unwrap_or_else(|| "md".into());
+                if flow {
+                    self.raw("<p>");
+                }
+                self.open(
+                    "a",
+                    node,
+                    &[
+                        (
+                            "class",
+                            format!("mdx-button mdx-button-{variant} mdx-button-{size}"),
+                        ),
+                        ("href", href),
+                    ],
+                );
+                let label = plain_text(node);
+                let label = label.trim();
+                self.text(if label.is_empty() { &target } else { label });
+                self.close("a");
+                if flow {
+                    self.raw("</p>");
+                }
+            }
             "Slide" => {
                 let mut attrs = vec![("class", "mdx-slide".to_string())];
                 if let Some(layout) = props.get("layout") {
@@ -1033,6 +1065,7 @@ fn toc(headings: &[Heading]) -> String {
 
 /// Components that sit inside a line of text; the rest are blocks.
 const INLINE: &[&str] = &[
+    "Button",
     "Comment",
     "Date",
     "Embed",

@@ -336,6 +336,85 @@ fn the_end_of_our_rebuild_is_a_toast_once() {
     assert!(!html(&again).contains("data-basic-toast"));
 }
 
+/// What the pages plugin answers GET /api/pages with for `pages` (id to
+/// source): each page as losos-mdx draws it against the admin page's
+/// blocks.json.
+fn changed_pages(pages: &[(&str, &str)], style: Option<&str>) -> Value {
+    let registry = losos_mdx::page::Registry::from_json(include_str!(
+        "../../../../admin-ui/app/src/pages/blocks.json"
+    ))
+    .unwrap();
+    let mut out = serde_json::Map::new();
+    for (id, source) in pages {
+        let rendered = losos_mdx::page::render_page(source, registry.page(id).unwrap()).unwrap();
+        assert!(rendered.problems.is_empty(), "{:?}", rendered.problems);
+        out.insert(
+            (*id).to_string(),
+            json!({ "html": rendered.html, "at": "2026-10-29T10:00:00Z", "by": "matus" }),
+        );
+    }
+    json!({ "pages": out, "style": style })
+}
+
+#[test]
+fn a_changed_overview_draws_its_text_button_and_kept_blocks() {
+    let mut f = Fake::owner();
+    f.set(
+        "/api/pages",
+        changed_pages(
+            &[(
+                "overview",
+                "# Office box\n\nAsk first.\n\n<Button href=\"/apps\" variant=\"secondary\">Apps</Button>\n\n<Apps hideStorage />\n",
+            )],
+            Some("4"),
+        ),
+    );
+    let page = html(&get(&mut f, "/api/basic/", "/api/basic/"));
+    no_script(&page);
+    assert!(page.contains("Office box</h1>"), "{page}");
+    assert!(page.contains("mdx-page-text"));
+    assert!(!page.contains(">losos</h1>"), "BoxName was left out");
+    assert!(page.contains("data-app=\"files\""), "the apps are kept");
+    assert!(!page.contains("w-[25%]"), "the storage strip was hidden");
+    assert!(
+        !page.contains("losos-block"),
+        "a placeholder reached the page"
+    );
+    assert!(page.contains(&losos_page::ui::button_classes(
+        losos_page::ui::Variant::Secondary,
+        losos_page::ui::Size::Md
+    )));
+    // The stylesheet comes last, after the bundle's.
+    let bundle = page.find("href=\"/assets/index-AB.css\"").unwrap();
+    let theirs = page.find("href=\"/api/pages/style.css?v=4\"").unwrap();
+    assert!(bundle < theirs);
+}
+
+#[test]
+fn a_page_nobody_changed_draws_as_before() {
+    let mut f = Fake::owner();
+    let before = html(&get(&mut f, "/api/basic/{page}", "/api/basic/storage"));
+    f.set(
+        "/api/pages",
+        changed_pages(&[("overview", "<BoxName />\n")], None),
+    );
+    let after = html(&get(&mut f, "/api/basic/{page}", "/api/basic/storage"));
+    assert_eq!(before, after);
+    f.set(
+        "/api/pages",
+        changed_pages(
+            &[("settings.storage", "Ask before you grow it.\n\n<Disk />\n")],
+            None,
+        ),
+    );
+    let changed = html(&get(&mut f, "/api/basic/{page}", "/api/basic/storage"));
+    assert!(changed.contains("Ask before you grow it."));
+    assert!(
+        changed.contains("for=\"basic-grow\""),
+        "the disk block is kept"
+    );
+}
+
 #[test]
 fn the_reserve_is_used_after_asking() {
     let mut f = Fake::owner();

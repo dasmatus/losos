@@ -301,7 +301,7 @@ let
   # build a set with the probe in it.
   # backend/plugins' vendored crates: lososd's plugins and Mesh CI's pm
   # plugin are built from the one workspace.
-  pluginsCargoHash = "sha256-QjOlI0fBfoVpVz2sFyLzyLTfEgN4IVJHnwHNsgmZrnA=";
+  pluginsCargoHash = "sha256-ojS1z5u/8Jl+AzzR4aquE0DFK3/cL+DnuLJc4cvDdQI=";
   lososPlugins =
     {
       pname ? "losos-plugins",
@@ -314,12 +314,13 @@ let
         "statistics"
         "hidden"
         "basic"
+        "pages"
       ],
     }:
     pkgs.rustPlatform.buildRustPackage {
       inherit pname;
       version = "0.1.0";
-      src = lib.cleanSource ./../backend/plugins;
+      inherit (import ./plugins-src.nix { inherit lib; }) src sourceRoot;
       cargoHash = pluginsCargoHash;
       nativeBuildInputs = [
         pkgs.wasm-tools

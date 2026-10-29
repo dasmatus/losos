@@ -25,6 +25,8 @@
 /basic/sign-out
 07:00
 23:00
+</losos-block>
+<losos-block
 @counter-style
 Max-Age=0
 Max-Age=0;
@@ -57,6 +59,7 @@ Max-Age=86400;
 [--tone:var(--ok)]
 [0-9]{6}
 [0-9a-fA-F]{64}
+[A]after
 [animation-delay:0ms]
 [animation-delay:105ms]
 [animation-delay:140ms]
@@ -68,6 +71,7 @@ Max-Age=86400;
 [animation-delay:35ms]
 [animation-delay:70ms]
 [overflow-wrap:anywhere]
+[{name}{}]
 \\u{{{:x}}}
 a-
 accept-language
@@ -168,6 +172,8 @@ change","few":"{count}
 changes"},"hi":"Hi
 charset=\"utf-8\"><meta
 charset=utf-8
+class=\"mdx-button
+class=\"mdx-document
 class=\"text-ink\"
 col-start-2
 collapsible-content
@@ -200,6 +206,11 @@ data-basic-toast
 data-basic-toasts
 data-basic-toggle
 data-basic=\"\"><head>{}</head><body>{}</body></html>
+data-block
+data-block=\"A\"
+data-block=\"Apps\"
+data-block=\"B\"
+data-block=\"BoxName\"
 data-collapsible
 data-disabled
 data-fact
@@ -211,6 +222,11 @@ data-moved
 data-notice
 data-orientation
 data-pins
+data-props
+data-props=\"{&quot;hideStorage&quot;:true}\"></losos-block>
+data-props=\"{}\"></losos-block></losos-block>after
+data-props=\"{}\"></losos-block>\n
+data-props=\"{}\"><p>x</p><losos-block
 data-size
 data-slot
 data-state
@@ -429,6 +445,12 @@ md:gap-5
 md:gap-6
 md:hidden
 md:p-10
+mdx-button-secondary
+mdx-button-sm\">Apps</a></p>
+mdx-button-{name}
+mdx-button-{s}\"
+mdx-page-text\"><h1>Hi</h1></div>\n
+mdx-page-text\"><h1>Hi</h1></div>\n[BoxName]\n[Apps
 min-h-0
 min-h-4
 min-h-[42px]
@@ -682,6 +704,7 @@ z-[2147483000]
 zmeny","other":"{count}
 {"x":{"one":"{count}
 {BASE}/sign-out
+{\"hideStorage\":true}]
 {id}-description
 {kind}:{key}
 {path}:

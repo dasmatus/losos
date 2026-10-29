@@ -15,6 +15,11 @@
 @import "tailwindcss";
 @import "./tokens.css";
 @import "./basic.css";
+/* Text an administrator writes on a page (src/pages/), and the document
+ * components it may use: in the main sheet, so the pages without a script
+ * (backend/plugins/basic) draw it too. */
+@import "../mdx/document.css";
+@import "../pages/pages.css";
 
 /* The pages without JavaScript (/basic/) are drawn in Rust on the box, in
  * this stylesheet's classes. The bundle is built from this folder alone, so

@@ -7,6 +7,7 @@
 //! in ([`host`]), and works by links and forms alone: menus are `<details>`,
 //! dialogs open from a checkbox's label, and what moves, moves in CSS.
 
+pub mod custom;
 pub mod format;
 pub mod host;
 pub mod pages;
@@ -270,6 +271,16 @@ fn page(host: &mut dyn Host, req: &Request, cookies: &Cookies, now: u64) -> Resp
     assets
         .styles
         .push(format!("/basic/counts.css?lang={}", locale.code()));
+    // The pages an administrator changed, and their stylesheet, last so an
+    // equal rule of theirs wins (crate::custom).
+    let changed = if me.locked {
+        None
+    } else {
+        host.get("/api/pages")
+    };
+    if let Some(href) = custom::style_href(changed.as_ref()) {
+        assets.styles.push(href);
+    }
     let office = !me.locked && host.office_folder();
     let nav = view::nav(&me, &m, &path, office);
     let person = me.person(&m);
@@ -472,7 +483,11 @@ fn page(host: &mut dyn Host, req: &Request, cookies: &Cookies, now: u64) -> Resp
             (
                 200,
                 ctx.m.t("shell.nav.overview"),
-                pages::overview(&ctx, &o),
+                pages::overview(
+                    &ctx,
+                    &o,
+                    custom::changed(changed.as_ref(), "overview").as_deref(),
+                ),
             )
         }
         ("/search", _) => {
@@ -497,7 +512,12 @@ fn page(host: &mut dyn Host, req: &Request, cookies: &Cookies, now: u64) -> Resp
             (
                 200,
                 ctx.m.t("settings.panes.storage.label"),
-                pages::storage(&ctx, st.as_ref(), r),
+                pages::storage(
+                    &ctx,
+                    st.as_ref(),
+                    r,
+                    custom::changed(changed.as_ref(), "settings.storage").as_deref(),
+                ),
             )
         }
         (_, Some("network")) => {

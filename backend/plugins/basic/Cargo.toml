@@ -16,5 +16,9 @@ losos-page.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
+[dev-dependencies]
+# The checks draw a changed page from the HTML the pages plugin makes of it.
+losos-mdx = { path = "../../mdx" }
+
 [lints]
 workspace = true
