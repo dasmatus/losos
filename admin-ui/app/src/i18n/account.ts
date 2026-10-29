@@ -213,7 +213,7 @@ export default defineMessages({
     de: "Das hat nicht geklappt. Versuch es gleich noch einmal.",
   },
   "account.windows.caption": {
-    en: "On a computer on the same network as this box, open Network in File Explorer, or Network in Finder or your Linux file manager, and open the box. Sign in with your LosOS name and password. Files you change there change in LosOS Cloud too. Something you delete there is gone for good: it skips LosOS Cloud's trash.",
+    en: "On a computer on the same network as this box, open Network in File Explorer, or Network in Finder or your Linux file manager, and open the box. Sign in with your LosOS name and password. Files you change there change in LosOS Cloud too. Something you delete there is gone for good. It skips LosOS Cloud's trash.",
     sk: "Na počítači v rovnakej sieti ako toto zariadenie otvorte Sieť v Prieskumníkovi, vo Finderi alebo v správcovi súborov v Linuxe a otvorte zariadenie. Prihláste sa svojím menom a heslom LosOS. Súbory, ktoré tam zmeníte, sa zmenia aj v LosOS Cloud. Čo tam vymažete, zmizne natrvalo: obíde kôš LosOS Cloud.",
     de: "Öffne auf einem Computer im selben Netz wie diese Box Netzwerk im Explorer, im Finder oder in deinem Linux-Dateimanager und öffne die Box. Melde dich mit deinem LosOS-Namen und -Passwort an. Dateien, die du dort änderst, ändern sich auch in LosOS Cloud. Was du dort löschst, ist endgültig weg: Es landet nicht im Papierkorb von LosOS Cloud.",
   },

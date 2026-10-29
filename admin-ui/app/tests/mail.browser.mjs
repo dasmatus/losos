@@ -345,7 +345,7 @@ await check('search asks lososd with the words typed', async () => {
   await page.getByRole('button', { name: /Autumn sale/ }).waitFor();
   await page.getByRole('searchbox', { name: 'Search mail' }).fill('lake');
   await page.getByRole('searchbox', { name: 'Search mail' }).press('Enter');
-  await page.getByText('Results for “lake”').waitFor();
+  await page.getByText('Results for "lake"').waitFor();
   assert.ok(calls.some((c) => c.q === 'lake'), `no search sent: ${JSON.stringify(calls)}`);
   await page.getByRole('button', { name: /Autumn sale/ }).waitFor({ state: 'detached' });
   await done();
@@ -552,7 +552,7 @@ await check('filters are made, switched off and reordered, and saved whole', asy
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByText('the first one that matches decides', { exact: false }).waitFor();
-  await dialog.getByText('Subject contains “sale” → Bin, Mark it as read').waitFor();
+  await dialog.getByText('Subject contains "sale" → Bin, Mark it as read').waitFor();
 
   await dialog.getByRole('button', { name: 'New filter' }).click();
   const editor = page.getByRole('dialog');
@@ -578,9 +578,9 @@ await check('filters are made, switched off and reordered, and saved whole', asy
     markRead: false,
     flag: true,
   });
-  await dialog.getByText('From contains “eva@” or Subject contains “lake” → LosOS box, Flag it').waitFor();
+  await dialog.getByText('From contains "eva@" or Subject contains "lake" → LosOS box, Flag it').waitFor();
 
-  await dialog.getByRole('switch', { name: 'Use “News”' }).click({ force: true });
+  await dialog.getByRole('switch', { name: 'Use "News"' }).click({ force: true });
   await dialog.getByText('Off', { exact: true }).waitFor();
   assert.equal(calls.at(-1).filters[0].enabled, false);
   await dialog.locator('[data-filter="Eva"]').getByRole('button', { name: 'Move up' }).click();

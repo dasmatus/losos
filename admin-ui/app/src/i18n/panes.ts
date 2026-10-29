@@ -418,7 +418,7 @@ export default defineMessages({
     de: "{url} · betrieben von {owner}",
   },
   "panes.mesh.edge.captionCompany": {
-    en: "The edge proxy is the box in the middle: it holds the mesh together and makes yours reachable from outside. Several can be in reach at once; sharing works through any of them. None of these passed the gateway checks, so the market (buying and selling storage and compute) stays off until a checked gateway answers. Your own files and apps work either way.",
+    en: "The edge proxy is the box in the middle. It holds the mesh together and makes yours reachable from outside. Several can be in reach at once; sharing works through any of them. None of these passed the gateway checks, so the market (buying and selling storage and compute) stays off until a checked gateway answers. Your own files and apps work either way.",
     sk: "Okrajový proxy server je zariadenie uprostred: drží sieť mesh pohromade a sprístupňuje to vaše zvonku. Dostupných ich môže byť viac naraz; zdieľanie funguje cez ktorýkoľvek. Žiadny z týchto neprešiel overením brány, takže trh (nákup a predaj úložiska a výpočtov) zostane vypnutý, kým sa neozve overená brána. Vaše vlastné súbory a aplikácie fungujú tak či tak.",
     de: "Der Edge-Proxy ist die Box in der Mitte: Er hält das Mesh zusammen und macht deine von außen erreichbar. Mehrere können zugleich erreichbar sein; Teilen funktioniert über jeden davon. Keiner davon hat die Gateway-Prüfung bestanden, darum bleibt der Markt (Speicher und Rechenleistung kaufen und verkaufen) aus, bis ein geprüftes Gateway antwortet. Deine eigenen Dateien und Apps laufen so oder so.",
   },
@@ -604,7 +604,7 @@ export default defineMessages({
     de: "Braucht einen erreichbaren Edge-Proxy.",
   },
   "panes.mesh.edge.caption": {
-    en: "The edge proxy is the box in the middle: it holds the mesh together and makes yours reachable from outside. This box looks for one on its own network and at its usual address every few seconds, and anything that shares your storage over the network stays off until one answers. Your own files and apps work either way.",
+    en: "The edge proxy is the box in the middle. It holds the mesh together and makes yours reachable from outside. This box looks for one on its own network and at its usual address every few seconds, and anything that shares your storage over the network stays off until one answers. Your own files and apps work either way.",
     sk: "Okrajový proxy server je zariadenie uprostred: drží sieť mesh pohromade a sprístupňuje to vaše zvonku. Toto zariadenie ho každých pár sekúnd hľadá vo vlastnej sieti aj na svojej obvyklej adrese, a čokoľvek, čo zdieľa vaše úložisko cez sieť, zostane vypnuté, kým sa niektorý neozve. Vaše vlastné súbory a aplikácie fungujú tak či tak.",
     de: "Der Edge-Proxy ist die Box in der Mitte: Er hält das Mesh zusammen und macht deine von außen erreichbar. Diese Box sucht alle paar Sekunden in ihrem eigenen Netzwerk und an ihrer üblichen Adresse nach einem, und alles, was deinen Speicher über das Netzwerk teilt, bleibt aus, bis einer antwortet. Deine eigenen Dateien und Apps laufen so oder so.",
   },
@@ -614,12 +614,12 @@ export default defineMessages({
     de: "Andere Boxen",
   },
   "panes.mesh.needsProxy": {
-    en: "Turn on “Reachable from outside your home” in Network first. The box signs in to the edge with the same key.",
+    en: "Turn on \"Reachable from outside your home\" in Network first. The box signs in to the edge with the same key.",
     sk: "Najprv v Sieti zapnite „Dostupné aj mimo domova“. Zariadenie sa na okrajový server prihlasuje tým istým kľúčom.",
     de: "Schalte zuerst unter Netzwerk „Auch von außerhalb erreichbar“ ein. Die Box meldet sich mit demselben Schlüssel beim Edge an.",
   },
   "panes.mesh.needsName": {
-    en: "Give this box a name of its own in Network first. Every box starts as “mattbox”, and the edge turns away a second one by that name.",
+    en: "Give this box a name of its own in Network first. Every box starts as \"mattbox\", and the edge turns away a second one by that name.",
     sk: "Najprv v Sieti dajte zariadeniu vlastný názov. Každé zariadenie začína ako „mattbox“ a okrajový server druhé s rovnakým názvom odmietne.",
     de: "Gib der Box zuerst unter Netzwerk einen eigenen Namen. Jede Box heißt anfangs „mattbox“, und der Edge weist eine zweite mit demselben Namen ab.",
   },
@@ -1275,7 +1275,7 @@ export default defineMessages({
   "panes.backup.code.show": { en: "Show", sk: "Zobraziť", de: "Anzeigen" },
   "panes.backup.code.hide": { en: "Hide", sk: "Skryť", de: "Verbergen" },
   "panes.backup.code.caption": {
-    en: "Every backup is encrypted with this code, and nobody can open one without it, LosOS included. Keep it on paper or in a password manager. After a restore the box keeps the code of the backup it came from.",
+    en: "The box encrypts every backup with this code, and nobody can open one without it, LosOS included. Keep it on paper or in a password manager. After a restore the box keeps the code of the backup it came from.",
     sk: "Každá záloha je zašifrovaná týmto kódom a bez neho ju nikto neotvorí, ani LosOS. Uschovajte si ho na papieri alebo v správcovi hesiel. Po obnove si zariadenie ponechá kód zálohy, z ktorej pochádza.",
     de: "Jede Sicherung ist mit diesem Code verschlüsselt, und ohne ihn kann niemand sie öffnen, auch LosOS nicht. Bewahre ihn auf Papier oder in einem Passwortmanager auf. Nach einer Wiederherstellung behält die Box den Code der Sicherung, aus der sie kam.",
   },
@@ -1359,7 +1359,7 @@ export default defineMessages({
     de: "Wiederhergestellt",
   },
   "panes.backup.restore.doneDetail": {
-    en: "The box now keeps the recovery code you typed. The restored settings are applied by themselves.",
+    en: "The box now keeps the recovery code you typed. The box applies the restored settings by itself.",
     sk: "Zariadenie si teraz ponecháva kód obnovy, ktorý ste zadali. Obnovené nastavenia sa použijú samy.",
     de: "Die Box behält jetzt den Wiederherstellungscode, den du eingegeben hast. Die wiederhergestellten Einstellungen werden von selbst übernommen.",
   },
@@ -1551,12 +1551,12 @@ export default defineMessages({
     de: "Du hast {grace}, es dir anders zu überlegen. Danach lässt es sich nicht mehr aufhalten.",
   },
   "panes.erase.goes": {
-    en: "Your files, repositories, the shared folder, every setting, the password, the spare key and the recovery code are erased.",
+    en: "The box erases your files, repositories, the shared folder, every setting, the password, the spare key and the recovery code.",
     sk: "Vymažú sa vaše súbory, repozitáre, zdieľaný priečinok, všetky nastavenia, heslo, náhradný kľúč a kód obnovy.",
     de: "Gelöscht werden deine Dateien, Repositorys, der geteilte Ordner, jede Einstellung, das Passwort, der Ersatzschlüssel und der Wiederherstellungscode.",
   },
   "panes.erase.outside": {
-    en: "Your custom domains, market listings and the box's place on the edge are given up.",
+    en: "The box gives up your custom domains, market listings and its place on the edge.",
     sk: "Vaše vlastné domény, ponuky na trhu a miesto zariadenia na okrajovom serveri sa uvoľnia.",
     de: "Deine eigenen Domains, Marktangebote und der Platz der Box auf dem Edge werden aufgegeben.",
   },
@@ -2773,7 +2773,7 @@ export default defineMessages({
     de: "Die Zahlung kam nach Ablauf des Preises an und reicht für den aktuellen Preis von {due} {ticker} nicht. Sende den Rest an dieselbe Adresse.",
   },
   "panes.market.coins.state.repricing": {
-    en: "The payment arrived after the price lapsed. It is checked against the price now as soon as the edge has one.",
+    en: "The payment arrived after the price lapsed. The edge checks it against the current price as soon as it has one.",
     sk: "Platba prišla po vypršaní ceny. Porovná sa s dnešnou cenou, hneď ako ju edge bude mať.",
     de: "Die Zahlung kam nach Ablauf des Preises an. Sie wird mit dem aktuellen Preis verglichen, sobald der Edge einen hat.",
   },
@@ -2783,17 +2783,17 @@ export default defineMessages({
     de: "Zahlungen in {coin}",
   },
   "panes.market.coins.keyDetail": {
-    en: "Paste your wallet's extended public key (xpub or zpub) or a descriptor. Each order gets a fresh address from it, so the coins go straight to your wallet: the edge can see them arrive but can never spend them. Use an account you keep for these sales, since anything paid to its addresses counts toward orders. The platform's fee on these sales comes out of your next USDC sales, or you pay it in USDC.",
+    en: "Paste your wallet's extended public key (xpub or zpub) or a descriptor. Each order gets a fresh address from it, so the coins go straight to your wallet. The edge can see them arrive but can never spend them. Use an account you keep for these sales, since anything paid to its addresses counts toward orders. The platform's fee on these sales comes out of your next USDC sales, or you pay it in USDC.",
     sk: "Vložte rozšírený verejný kľúč vašej peňaženky (xpub alebo zpub) alebo deskriptor. Každá objednávka z neho dostane novú adresu, takže mince idú priamo do vašej peňaženky: edge vidí, že prišli, ale nikdy ich nemôže minúť. Použite účet, ktorý držíte len na tieto predaje, lebo všetko zaplatené na jeho adresy sa počíta k objednávkam. Poplatok platformy z týchto predajov sa strhne z vašich ďalších predajov v USDC, alebo ho zaplatíte v USDC.",
     de: "Füge den erweiterten öffentlichen Schlüssel deiner Wallet (xpub oder zpub) oder einen Deskriptor ein. Jede Bestellung bekommt daraus eine neue Adresse, die Coins gehen also direkt in deine Wallet: Der Edge sieht sie ankommen, kann sie aber nie ausgeben. Nimm ein Konto nur für diese Verkäufe, denn alles, was an seine Adressen geht, zählt für Bestellungen. Die Gebühr der Plattform auf diese Verkäufe geht von deinen nächsten USDC-Verkäufen ab, oder du zahlst sie in USDC.",
   },
   "panes.market.coins.keyDetailXmr": {
-    en: "Paste your wallet's primary address (it starts with 4) and its private view key, which wallets show under their keys or seed settings. Each order gets a fresh subaddress of your wallet, so the coins go straight to you: the view key lets the edge see them arrive but never spend them. Never paste the spend key or the seed. The platform's fee on these sales comes out of your next USDC sales, or you pay it in USDC.",
+    en: "Paste your wallet's primary address (it starts with 4) and its private view key, which wallets show under their keys or seed settings. Each order gets a fresh subaddress of your wallet, so the coins go straight to you. The view key lets the edge see them arrive but never spend them. Never paste the spend key or the seed. The platform's fee on these sales comes out of your next USDC sales, or you pay it in USDC.",
     sk: "Vložte hlavnú adresu vašej peňaženky (začína sa na 4) a jej súkromný kľúč na prezeranie (view key), ktorý peňaženky ukazujú v nastaveniach kľúčov alebo seedu. Každá objednávka dostane novú podadresu vašej peňaženky, takže mince idú priamo k vám: kľúč na prezeranie dovolí edgu vidieť, že prišli, ale nikdy ich nemôže minúť. Nikdy nevkladajte kľúč na míňanie (spend key) ani seed. Poplatok platformy z týchto predajov sa strhne z vašich ďalších predajov v USDC, alebo ho zaplatíte v USDC.",
     de: "Füge die Hauptadresse deiner Wallet (sie beginnt mit 4) und ihren privaten View-Key ein, den Wallets in den Einstellungen zu Schlüsseln oder Seed zeigen. Jede Bestellung bekommt eine neue Subadresse deiner Wallet, die Coins gehen also direkt an dich: Mit dem View-Key sieht der Edge sie ankommen, kann sie aber nie ausgeben. Füge nie den Spend-Key oder den Seed ein. Die Gebühr der Plattform auf diese Verkäufe geht von deinen nächsten USDC-Verkäufen ab, oder du zahlst sie in USDC.",
   },
   "panes.market.coins.keyDetailZec": {
-    en: "Paste your wallet's unified viewing key (uview…), or better its incoming viewing key (uivk…), which wallets show under their export or backup settings. Each order gets a fresh shielded address of your wallet, so the coins go straight to you: the edge keeps only the part that sees payments arrive, never spends them and never sees what you send. Never paste the spending key or the seed phrase. The platform's fee on these sales comes out of your next USDC sales, or you pay it in USDC.",
+    en: "Paste your wallet's unified viewing key (uview…), or better its incoming viewing key (uivk…), which wallets show under their export or backup settings. Each order gets a fresh shielded address of your wallet, so the coins go straight to you. The edge keeps only the part that sees payments arrive, never spends them and never sees what you send. Never paste the spending key or the seed phrase. The platform's fee on these sales comes out of your next USDC sales, or you pay it in USDC.",
     sk: "Vložte zjednotený kľúč na prezeranie vašej peňaženky (uview…), alebo lepšie jeho časť pre prichádzajúce platby (uivk…), ktorú peňaženky ukazujú v nastaveniach exportu alebo zálohy. Každá objednávka dostane novú tienenú adresu vašej peňaženky, takže mince idú priamo k vám: edge si nechá len časť, ktorá vidí prichádzajúce platby, nikdy ich nemôže minúť a nikdy nevidí, čo posielate vy. Nikdy nevkladajte kľúč na míňanie ani seed. Poplatok platformy z týchto predajov sa strhne z vašich ďalších predajov v USDC, alebo ho zaplatíte v USDC.",
     de: "Füge den Unified Viewing Key deiner Wallet ein (uview…), besser noch den Incoming Viewing Key (uivk…), den Wallets in den Einstellungen zu Export oder Sicherung zeigen. Jede Bestellung bekommt eine neue abgeschirmte Adresse deiner Wallet, die Coins gehen also direkt an dich: Der Edge behält nur den Teil, der Zahlungen ankommen sieht, kann sie nie ausgeben und sieht nie, was du sendest. Füge nie den Spending Key oder den Seed ein. Die Gebühr der Plattform auf diese Verkäufe geht von deinen nächsten USDC-Verkäufen ab, oder du zahlst sie in USDC.",
   },
