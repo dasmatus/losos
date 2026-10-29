@@ -409,11 +409,11 @@ function Shell() {
       ref={holdStage}
       data-testid="desktop"
       data-stage={stage}
+      data-page-editor={editingPage ? "" : undefined}
       inert={stage === "preview"}
       className={cn(
         "losos-shell min-h-dvh text-ink",
         editing && "flex h-dvh flex-col",
-        editingPage && "max-md:pb-[55dvh] md:pr-[30rem]",
         stage !== undefined && "desktop-stage h-dvh overflow-hidden",
       )}
     >

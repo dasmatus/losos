@@ -245,6 +245,9 @@ await check('the editor docks beside the page, previews each change and saves it
   await page.waitForURL(origin + '/');
   const dock = page.getByTestId('page-editor');
   await dock.waitFor();
+  // The page moves out from under the dock rather than being covered by it.
+  const [main, docked] = await Promise.all([page.locator('main').boundingBox(), dock.boundingBox()]);
+  assert.ok(main.x + main.width <= docked.x, `the page runs under the editor: ${JSON.stringify({ main, docked })}`);
   const box = dock.getByRole('textbox', { name: 'Source of the Overview page' });
   await box.waitFor();
   await box.click();

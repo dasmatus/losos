@@ -301,6 +301,7 @@ fn page(host: &mut dyn Host, req: &Request, cookies: &Cookies, now: u64) -> Resp
         rail_moved: cookies.flash.as_deref() == Some("rail"),
         refresh: None,
         pins,
+        page: None,
     };
 
     let mut toasts: Vec<Toast> = Vec::new();
@@ -480,6 +481,7 @@ fn page(host: &mut dyn Host, req: &Request, cookies: &Cookies, now: u64) -> Resp
             if o.status.building() {
                 ctx.refresh = Some(5);
             }
+            ctx.page = Some("overview");
             (
                 200,
                 ctx.m.t("shell.nav.overview"),
@@ -509,6 +511,7 @@ fn page(host: &mut dyn Host, req: &Request, cookies: &Cookies, now: u64) -> Resp
         }
         (_, Some("storage")) => {
             let st = host.get("/api/storage");
+            ctx.page = Some("settings.storage");
             (
                 200,
                 ctx.m.t("settings.panes.storage.label"),

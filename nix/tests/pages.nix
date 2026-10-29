@@ -170,6 +170,15 @@ let
                 name = "Edit Overview";
               };
             }
+            # The dock and its editor are lazy chunks, slow to arrive on an
+            # emulated laptop.
+            {
+              waitFor = {
+                role = "textbox";
+                name = "Source of the Overview page";
+              };
+              timeout = 240000;
+            }
             {
               click = {
                 role = "textbox";
@@ -178,7 +187,10 @@ let
             }
             { press = "Control+End"; }
             { type = "\n## A line typed just now\n"; }
-            { waitFor = heading "A line typed just now"; }
+            {
+              waitFor = heading "A line typed just now";
+              timeout = 240000;
+            }
           ];
         }
       ];
@@ -325,7 +337,7 @@ pkgs.testers.nixosTest {
             assert page["csp"] == [], f"{plan}: the policy refused something: {page}"
         return seen
 
-    def log():
+    def commits_made():
         return box.succeed(f"git -C {REPO} log --format='%an|%ae|%s'").strip().splitlines()
 
     with subtest("claim the box"):
@@ -379,7 +391,7 @@ pkgs.testers.nixosTest {
             assert listed["pages"]["overview"]["by"] == "${user}", listed
             assert api("/api/pages/settings.storage", cookie, "PUT", {"source": storage})[0] == 200
             assert api("/api/pages/style.css", cookie, "PUT", {"source": style})[0] == 200
-            commits = log()
+            commits = commits_made()
             assert commits[:3] == [
                 "${user}|${user}@losos.invalid|Add a stylesheet for the pages",
                 "${user}|${user}@losos.invalid|Change the Storage page",
@@ -427,7 +439,7 @@ pkgs.testers.nixosTest {
                 data = {"source": "# Mine\n"} if method == "PUT" else None
                 code, body = api(path, eva, method, data)
                 assert code == 403, (path, method, code, body)
-            assert len(log()) == len(commits), log()
+            assert len(commits_made()) == len(commits), commits_made()
 
         with subtest("the changed pages and the stylesheet, script on and off"):
             capture("changed")
@@ -436,11 +448,14 @@ pkgs.testers.nixosTest {
             assert "Welcome to the office box" in page, page[:800]
             assert "/api/pages/style.css?v=" in page, page[:800]
             assert "losos-block" not in page, page[:800]
+            # Named as the script page names it, so the stylesheet's page
+            # selectors hold with JavaScript off too.
+            assert 'data-page="overview"' in page, page[:800]
 
         with subtest("a reset is a commit too, and the page is LosOS's again"):
             code, body = api("/api/pages/settings.storage", cookie, "DELETE")
             assert code == 200 and "settings.storage" not in json.loads(body)["pages"], (code, body)
-            assert log()[0] == "${user}|${user}@losos.invalid|Put the Storage page back to LosOS's default", log()
+            assert commits_made()[0] == "${user}|${user}@losos.invalid|Put the Storage page back to LosOS's default", commits_made()
             box.fail(f"test -e {REPO}/settings.storage.mdx")
 
     laptop.copy_from_machine("/tmp/screens", "")

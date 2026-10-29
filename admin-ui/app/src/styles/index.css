@@ -508,6 +508,20 @@
   padding-right: env(safe-area-inset-right, 0px);
 }
 
+/* The page editor (src/pages/editor.tsx) docks at the right edge, or at the
+ * foot on a phone, and the page it previews moves out from under it. Here
+ * rather than as utilities, which the rule above would outweigh. */
+@media (width >= 48rem) {
+  .losos-shell[data-page-editor] {
+    padding-right: calc(30rem + env(safe-area-inset-right, 0px));
+  }
+}
+@media (width < 48rem) {
+  .losos-shell[data-page-editor] {
+    padding-bottom: calc(55dvh + var(--bottom-nav));
+  }
+}
+
 /* The phone's bottom bar (components/ui/bottom-nav.tsx) is fixed to the
  * viewport and drawn only below md. While it is on the page its height,
  * the home indicator's safe area included, is --bottom-nav: the shell pads

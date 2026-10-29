@@ -384,6 +384,11 @@ fn a_changed_overview_draws_its_text_button_and_kept_blocks() {
         losos_page::ui::Variant::Secondary,
         losos_page::ui::Size::Md
     )));
+    // Named as the script page names it, for the stylesheet's selectors.
+    assert!(
+        page.contains("<html lang=\"en\" data-page=\"overview\""),
+        "{page}"
+    );
     // The stylesheet comes last, after the bundle's.
     let bundle = page.find("href=\"/assets/index-AB.css\"").unwrap();
     let theirs = page.find("href=\"/api/pages/style.css?v=4\"").unwrap();
@@ -394,6 +399,10 @@ fn a_changed_overview_draws_its_text_button_and_kept_blocks() {
 fn a_page_nobody_changed_draws_as_before() {
     let mut f = Fake::owner();
     let before = html(&get(&mut f, "/api/basic/{page}", "/api/basic/storage"));
+    assert!(
+        before.contains("data-page=\"settings.storage\""),
+        "{before}"
+    );
     f.set(
         "/api/pages",
         changed_pages(&[("overview", "<BoxName />\n")], None),

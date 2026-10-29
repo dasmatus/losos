@@ -221,6 +221,7 @@ data-more
 data-moved
 data-notice
 data-orientation
+data-page=\"{p}\"
 data-pins
 data-props
 data-props=\"{&quot;hideStorage&quot;:true}\"></losos-block>

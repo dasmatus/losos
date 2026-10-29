@@ -44,7 +44,7 @@ fn components() -> &'static Vec<Built> {
             .status()
             .expect("cargo builds the plugins");
         assert!(status.success(), "building the plugins for wasm32 failed");
-        ["look", "pins", "hidden", "probe"]
+        ["look", "pins", "hidden", "pages", "probe"]
             .iter()
             .map(|name| {
                 let core = std::fs::read(
@@ -426,6 +426,43 @@ fn the_pins_are_served_by_their_plugin() {
     let a = d.person("ada", "GET", "/api/pins");
     assert_eq!(a.status, 403);
     assert_eq!(d.person("root", "GET", "/api/pins").status, 200);
+}
+
+#[test]
+fn the_pages_answer_on_a_box_where_nothing_was_saved_yet() {
+    // The build's blocks.json and defaults, and a repository directory
+    // that does not exist yet, as on a box nobody customized.
+    let ui = TempDir::new().unwrap();
+    let pages = Path::new(env!("CARGO_MANIFEST_DIR")).join("../admin-ui/app/src/pages");
+    std::fs::create_dir_all(ui.path().join("pages")).unwrap();
+    for file in ["blocks.json", "overview.mdx", "settings.storage.mdx"] {
+        std::fs::copy(pages.join(file), ui.path().join("pages").join(file)).unwrap();
+    }
+    let repo = ui.path().join("repo");
+    let d = Daemon::start_with(&[
+        ("LOSOS_ADMIN_UI_DIR", ui.path().to_str().unwrap()),
+        ("LOSOS_PAGES_DIR", repo.to_str().unwrap()),
+    ]);
+
+    let a = d.admin("GET", "/api/pages", Value::Null);
+    assert_eq!(a.status, 200, "{}", String::from_utf8_lossy(&a.body));
+    assert_eq!(a.json(), json!({"pages": {}, "style": null}));
+    let a = d.admin("GET", "/api/pages/overview", Value::Null);
+    assert_eq!(a.status, 200, "{}", String::from_utf8_lossy(&a.body));
+    let shipped = std::fs::read_to_string(pages.join("overview.mdx")).unwrap();
+    assert_eq!(a.json()["source"], json!(shipped));
+    assert_eq!(a.json()["custom"], json!(false));
+    assert_eq!(a.json()["history"], json!([]));
+    assert!(!repo.exists(), "a read made the repository");
+
+    let source = "<BoxName />\n\n## Welcome\n\n<Apps hideStorage />\n";
+    let a = d.admin("PUT", "/api/pages/overview", json!({"source": source}));
+    assert_eq!(a.status, 200, "{}", String::from_utf8_lossy(&a.body));
+    assert!(repo.join(".git").is_dir());
+    let a = d.admin("GET", "/api/pages/overview", Value::Null);
+    assert_eq!(a.json()["source"], json!(source));
+    assert_eq!(a.json()["custom"], json!(true));
+    assert_eq!(a.json()["history"].as_array().map(Vec::len), Some(1));
 }
 
 #[test]

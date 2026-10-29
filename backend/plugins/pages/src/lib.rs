@@ -61,12 +61,20 @@ impl GitStore {
         Ok(out)
     }
 
+    /// Whether anything was ever saved. The host refuses a path below a
+    /// root that is not a directory yet, so the root is asked first.
+    fn started(&self) -> anyhow::Result<bool> {
+        Ok(fs::exists(&self.repo)? && fs::exists(&fs::join(&self.repo, ".git"))?)
+    }
+
     /// Makes the repository the first time anything is saved.
     fn ensure_repo(&self) -> anyhow::Result<()> {
-        if fs::exists(&fs::join(&self.repo, ".git"))? {
+        if self.started()? {
             return Ok(());
         }
-        fs::create_dir(&self.repo, Some(0o700))?;
+        if !fs::exists(&self.repo)? {
+            fs::create_dir(&self.repo, Some(0o700))?;
+        }
         self.git_ok(&["init", "-q"])?;
         fs::write(
             &fs::join(&self.repo, "README.md"),
@@ -102,6 +110,9 @@ impl Store for GitStore {
     }
 
     fn read(&mut self, file: &str) -> anyhow::Result<Option<String>> {
+        if !fs::exists(&self.repo)? {
+            return Ok(None);
+        }
         Ok(fs::read_string_optional(&self.path(file))?)
     }
 
@@ -132,7 +143,7 @@ impl Store for GitStore {
     }
 
     fn history(&mut self, file: &str, max: usize) -> anyhow::Result<Vec<Commit>> {
-        if !fs::exists(&fs::join(&self.repo, ".git"))? {
+        if !self.started()? {
             return Ok(Vec::new());
         }
         let n = format!("-n{max}");
