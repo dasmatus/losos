@@ -217,6 +217,17 @@ export default defineMessages({
     sk: "git commit história záznam repozitár klonovať synchronizácia",
     de: "Git Commit Verlauf Protokoll Repository klonen Abgleich",
   },
+  "settings.panes.logs.label": { en: "Logs", sk: "Záznamy", de: "Protokolle" },
+  "settings.panes.logs.summary": {
+    en: "What the box's services wrote down, with passwords and keys hidden.",
+    sk: "Čo si služby zariadenia zapísali, so skrytými heslami a kľúčmi.",
+    de: "Was die Dienste der Box aufgeschrieben haben, mit ausgeblendeten Passwörtern und Schlüsseln.",
+  },
+  "settings.panes.logs.keywords": {
+    en: "",
+    sk: "záznam záznamy denník chyba chyby upozornenie služba jadro zlyhanie hlásenie",
+    de: "Protokoll Log Logs Journal Fehler Warnung Dienst Kernel Absturz Fehlerbericht",
+  },
   "settings.panes.backup.label": { en: "Backup", sk: "Záloha", de: "Sicherung" },
   "settings.panes.backup.summary": {
     en: "Copies of your files and settings in a bucket you rent, encrypted before they leave the box.",

@@ -2922,6 +2922,7 @@ dependencies = [
  "kamadak-exif",
  "losos-access",
  "losos-names",
+ "losos-page",
  "losos-widget",
  "mime",
  "oxc",
@@ -2931,6 +2932,7 @@ dependencies = [
  "quick-xml",
  "quinn",
  "rand 0.8.8",
+ "regex",
  "ring",
  "rusqlite",
  "rustix",
@@ -2962,6 +2964,13 @@ dependencies = [
 [[package]]
 name = "losos-names"
 version = "0.1.0"
+
+[[package]]
+name = "losos-page"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
 
 [[package]]
 name = "losos-widget"

@@ -67,6 +67,13 @@ losos-widget = { path = "plugins/widget" }
 # The names the pins plugin takes as well (release, Git owner and repository,
 # LosOS Cloud path), so the two cannot drift apart.
 losos-names = { path = "plugins/names" }
+# Settings › Logs without JavaScript, drawn by the log reader
+# (src/logs/, the losos-logs binary) in the same markup as lososd's basic
+# plugin, so the page and its sidebar look alike while lososd is down.
+losos-page = { path = "plugins/page" }
+# The log reader's redaction (src/logs/redact.rs). Already in the lock
+# file through other crates.
+regex = "1"
 
 # The Monero key check (`monero_key.rs`): the key the owner pasted must be
 # the address's view key, never its spend key, before it goes to the edge.
@@ -238,3 +245,7 @@ path = "src/bin/losos-git.rs"
 [[bin]]
 name = "losos-ci"
 path = "src/bin/losos-ci.rs"
+
+[[bin]]
+name = "losos-logs"
+path = "src/bin/losos-logs.rs"

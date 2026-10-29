@@ -384,6 +384,9 @@
             # modules/overrides.nix is imported through onBox below, never here.
             ./modules/updates.nix
             ./modules/logs.nix
+            # Settings › Logs: the journal for the admin pages, apart from
+            # lososd (backend/src/logs/).
+            ./modules/log-reader.nix
             ./modules/defaults.nix
             ./modules/proxy.nix
             # The box on Tor and I2P (losos.hidden.*).
@@ -551,6 +554,9 @@
         # The admin pages with JavaScript off, from sign-in to a rebuild, with
         # the pull request's pictures (nix/tests/no-js.nix).
         losos-no-js = import ./nix/tests/no-js.nix { inherit pkgs; };
+        # Settings › Logs: the journal, its redaction and the page that works
+        # while lososd is down (nix/tests/logs.nix).
+        losos-logs = import ./nix/tests/logs.nix { inherit pkgs; };
         # The Mesh page while the box has paused sharing for want of an edge,
         # with the pull request's pictures (nix/tests/sharing-pause.nix).
         losos-sharing-pause = import ./nix/tests/sharing-pause.nix { inherit pkgs; };

@@ -63,6 +63,7 @@ pub mod io_backend;
 pub mod jsx;
 pub mod lab;
 pub mod login;
+pub mod logs;
 pub mod losos;
 pub mod mail;
 pub mod mail_pgp;
