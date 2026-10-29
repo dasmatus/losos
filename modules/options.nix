@@ -605,6 +605,46 @@ in
           is.
         '';
       };
+      domain = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = ''
+            Hold a gateway that passes every other check to its name: it is
+            trusted only at an https:// URL whose HTTPS record validates
+            under DNSSEC and carries an Encrypted Client Hello key, which
+            the box checks with `delv` on every scan. Off, the name is not
+            looked at.
+          '';
+        };
+        server = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "192.0.2.53";
+          description = ''
+            The resolver `delv` asks for a gateway's name. `null` is the
+            system's resolver. delv validates the answer itself either way.
+          '';
+        };
+        trustAnchors = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = ''
+            A `trust-anchors { … };` file for `delv -a`. `null` is delv's
+            own copy of the DNS root's key, which is what a real gateway's
+            name validates from.
+          '';
+        };
+        trustAnchorRoot = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "boxes.example.test";
+          description = ''
+            The name `trustAnchors` holds a key for, when that is not the
+            DNS root (`delv +root=`).
+          '';
+        };
+      };
     };
 
     proxy.heartbeatInterval = lib.mkOption {
@@ -3263,6 +3303,31 @@ in
         from a signed zone. Signing does nothing for resolvers until the
         parent zone publishes the zone's DS record, which
         `keymgr <zone> ds` prints on the edge.
+      '';
+    };
+
+    edge.dns.ech.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Encrypted Client Hello: an HTTPS record at every name in the zone
+        carries the edge's ECH key, and Traefik decrypts with it, so the
+        network between a browser and the edge sees only the public name,
+        not which box was asked for. The key is made on the first start in
+        /var/lib/losos-ech. No released Traefik decrypts ECH yet, so this
+        runs Traefik built from its ECH change (nix/traefik-ech.nix).
+      '';
+    };
+
+    edge.dns.ech.publicName = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "edge.example.org";
+      description = ''
+        The name the outer, unencrypted handshake shows. It needs a
+        certificate on the edge, because a browser checks it whenever the
+        edge turns ECH down. `null` is `register.<publicDomain>`, which has
+        one from the start.
       '';
     };
 
