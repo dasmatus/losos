@@ -7,6 +7,8 @@ mdx:
 
 # Installation im Detail
 
+![Einstellungen, Netzwerk auf einer installierten Box: ihr Name und wie man sie erreicht.](@site/docs/img/settings-network-de.png)
+
 ## Den Installer besorgen {#get-the-installer}
 
 Lade das ISO und seine `.sha256` aus dem

@@ -76,4 +76,4 @@ gibt ihr über einen Tunnel eine öffentliche Adresse. Selbst dann bleiben die
 Admin-Seiten nur im LAN erreichbar, und nur LosOS Cloud und LosOS Git gehen
 durch den Tunnel nach außen.
 
-![Einstellungen, Netzwerk: der Name, Verbindung verschlüsseln und Auch von außerhalb erreichbar, der Schalter, der den Tunnel zu einer Edge öffnet.](@site/docs/img/settings-network-de.png)
+![Einstellungen, Netzwerk: der Name, Auch von außerhalb erreichbar, Unter Netzwerk auf Computern in der Nähe zeigen, sowie Tor und I2P.](@site/docs/img/settings-network-de.png)

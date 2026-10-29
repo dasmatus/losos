@@ -6,6 +6,8 @@ slug: /manual/files-on-your-computer
 
 # Súbory vo vašom počítači
 
+![Stránka Zariadenia v LosOS Cloud: adresa servera, adresa WebDAV pre správcu súborov a prihlásené počítače.](@site/docs/img/cloud-devices-sk.png)
+
 Vaše súbory v LosOS Cloud sú aj sieťovým priečinkom. Každý počítač v sieti
 zariadenia ho otvorí vo svojom správcovi súborov, môže doň súbory preťahovať,
 brať ich odtiaľ a otvárať ich priamo na mieste, bez inštalácie čohokoľvek.

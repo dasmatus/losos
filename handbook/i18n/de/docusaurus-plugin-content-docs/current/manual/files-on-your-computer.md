@@ -6,6 +6,8 @@ slug: /manual/files-on-your-computer
 
 # Dateien auf deinem Computer
 
+![Die Seite Geräte in LosOS Cloud: die Serveradresse, die WebDAV-Adresse für einen Dateimanager und die angemeldeten Computer.](@site/docs/img/cloud-devices-de.png)
+
 Deine Dateien in LosOS Cloud sind auch ein Netzwerkordner. Jeder Computer im
 Netz der Box öffnet ihn im Dateimanager, zieht Dateien hinein und heraus und
 öffnet sie an Ort und Stelle, ohne etwas zu installieren. Es gibt zwei Wege

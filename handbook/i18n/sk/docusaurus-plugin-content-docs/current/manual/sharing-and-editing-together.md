@@ -6,6 +6,8 @@ slug: /manual/sharing-and-editing-together
 
 # Zdieľanie a spoločné úpravy
 
+![Súbory v LosOS Cloud.](@site/docs/img/cloud-files-sk.png)
+
 V [LosOS Cloud](losos-cloud) sa textové súbory otvárajú v editore, do
 ktorého môže písať viac ľudí naraz. Každý vidí hore tváre ostatných, ich
 kurzory v ich vlastnej farbe s menom vedľa a pod textom, kto ho upravil
