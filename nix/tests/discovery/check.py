@@ -24,6 +24,7 @@ Every step prints what it saw; the first that fails ends the run non-zero.
 
 import argparse
 import base64
+import errno
 import json
 import os
 import platform
@@ -46,6 +47,10 @@ OWNER = "matus"
 PASSWORD = "Correct-Horse-Battery-9"
 SERIAL_PORT = 4555
 WORK = Path(tempfile.mkdtemp(prefix="losos-discovery-"))
+
+
+class NoDavClient(Exception):
+    """The computer has no WebDAV file system to mount the address with."""
 
 
 def say(msg):
@@ -331,6 +336,12 @@ class MacOS:
         )
         os.close(r)
         print((p.stdout + p.stderr).rstrip(), flush=True)
+        if p.returncode == errno.ENODEV:
+            # mount_webdav exits with the errno it met. ENODEV is the
+            # kernel turning the webdav file system down, which a hosted
+            # runner's virtual Mac does in under a second, before any
+            # request reaches the box.
+            raise NoDavClient(f"mount_webdav: no WebDAV file system on this Mac (errno {p.returncode})")
         if p.returncode != 0:
             raise SystemExit(f"mount_webdav failed ({p.returncode})")
         return self.dav_mount
@@ -521,16 +532,21 @@ def main():
         finally:
             client.unmount_smb()
 
-        mount_dav = not args.no_webdav_mount and client.dav_client()
-        if not mount_dav:
+        mount = None
+        if args.no_webdav_mount or not client.dav_client():
             say("no WebDAV client on this computer: WebDAV checked over HTTP")
+        else:
+            try:
+                mount = client.mount_dav(dav)
+            except NoDavClient as e:
+                say(f"{e}: WebDAV checked over HTTP")
+        if mount is None:
             status, _ = http("PUT", dav + "from-webdav.txt", ca, body=f"Written over WebDAV by {args.os}\n".encode(), auth=(OWNER, PASSWORD), headers={"Content-Type": "text/plain"})
             assert status in (201, 204), status
             status, body = http("PROPFIND", dav, ca, auth=(OWNER, PASSWORD), headers={"Depth": "1"})
             assert status == 207 and b"from-webdav.txt" in body, (status, body[:500])
             say("WebDAV: PUT and PROPFIND as the owner")
         else:
-            mount = client.mount_dav(dav)
             try:
                 roundtrip(mount, "from-webdav.txt", f"Written over WebDAV by {args.os}\n")
             finally:

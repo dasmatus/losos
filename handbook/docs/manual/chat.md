@@ -15,7 +15,10 @@ and files, reply in threads and react to messages. Direct messages and new
 rooms are end-to-end encrypted, so the box stores only what it cannot read.
 
 Chat uses Matrix, an open standard for messaging, and runs on the box
-itself. Nothing goes to an outside service.
+itself. Nothing goes to an outside service. The Matrix server on the box is
+Synapse. A box that had chat before it moved to Synapse starts with an empty
+chat: the old conversations stay in the shared storage, but chat no longer
+reads them.
 
 ## When chat is there
 

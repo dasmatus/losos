@@ -2,6 +2,7 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 import { renderNote, type Resolver } from "./markdown";
 import { isNote, noteName } from "./links";
+import { useNotesReady } from "./note-view";
 import "./note.css";
 
 /* An Obsidian canvas (.canvas, JSON Canvas 1.0) read as a page: its cards
@@ -83,6 +84,8 @@ export interface CanvasViewProps {
 
 export function CanvasView({ text, resolver, onOpen, className, labels }: CanvasViewProps) {
   const nodes = React.useMemo(() => parse(text), [text]);
+  // The cards render again once the renderer has loaded.
+  useNotesReady();
   if (nodes === null) return <p className="text-[13px] text-muted">{labels.unreadable}</p>;
   const cards = order(nodes);
   const groups = new Map(nodes.filter((n) => n.type === "group").map((g) => [g.id, g.label ?? ""]));
@@ -109,7 +112,8 @@ export function CanvasView({ text, resolver, onOpen, className, labels }: Canvas
 function CanvasCard({ node, resolver, onOpen }: { node: CanvasNode; resolver: Resolver; onOpen: (path: string, sub: string) => void }) {
   const box = "rounded-card border border-hair bg-surface p-4";
   if (node.type === "text") {
-    const html = renderNote(node.text ?? "", resolver).html;
+    // A card's text is Markdown, as Obsidian writes it.
+    const html = renderNote(node.text ?? "", resolver, "md").html;
     return (
       <div
         className={cn(box, "note-body text-[14px]")}

@@ -1,9 +1,9 @@
-//! LosOS Chat: the box's Matrix homeserver (Dendrite, `modules/chat.nix`)
+//! LosOS Chat: the box's Matrix homeserver (Synapse, `modules/chat.nix`)
 //! and the parts of it lososd owns.
 //!
-//! Dendrite keeps the rooms, the messages, the devices and their keys.
+//! Synapse keeps the rooms, the messages, the devices and their keys.
 //! lososd decides who may use it, because nobody signs in to chat with a
-//! Matrix password: there are none. lososd is registered with Dendrite as
+//! Matrix password: there are none. lososd is registered with Synapse as
 //! an application service whose namespace is every user on the box, and
 //! that is the only way an account is made or a device signed in:
 //!
@@ -22,25 +22,15 @@
 //!     at their next request, and a token copied out of one person's browser
 //!     opens nothing in another's.
 //!   * Removing a person ([`Chat::close`]) also signs every one of their
-//!     devices out of Dendrite, so nothing they held keeps working anywhere.
+//!     devices out of Synapse, so nothing they held keeps working anywhere.
 //!
-//! Dendrite has no thread list (`GET /_matrix/client/v1/rooms/{room}/threads`)
-//! and no thread summaries. [`Chat::threads`] answers that route from
-//! Dendrite's own relations table, and fetches every event it returns
-//! through Dendrite with the caller's token, so Dendrite still decides what
-//! the caller may see.
-//!
-//! Chat belongs to the `shared` user: Dendrite runs as it and keeps
+//! Chat belongs to the `shared` user: Synapse runs as it and keeps
 //! everything in the shared data domain, which is unlocked only while the
-//! box shares its storage. lososd runs with `ProtectHome=true` and cannot
-//! read that domain, so the relations table is read by `losos-chat-threads`
-//! (`src/bin/losos-chat-threads.rs`), a socket-activated helper that runs as
-//! `shared` and answers one question per connection ([`read_threads`]); its
-//! socket is root's alone.
+//! box shares its storage.
 //!
-//! Everything goes over loopback as one HTTP/1.0 exchange (Go answers 1.0
-//! without chunked encoding), behind the two traits below so the logic is
-//! tested without either server.
+//! Everything goes over loopback as one HTTP/1.0 exchange (an answer to 1.0
+//! is never chunked), behind the two traits below so the logic is tested
+//! without either server.
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -48,7 +38,6 @@ use std::path::PathBuf;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
-use anyhow::Context;
 use serde_json::{json, Value};
 
 /// How long a token's owner is remembered. A token never changes owner, so
@@ -56,10 +45,6 @@ use serde_json::{json, Value};
 const WHOAMI_TTL: Duration = Duration::from_secs(300);
 /// How many tokens are remembered at once.
 const WHOAMI_MAX: usize = 1024;
-/// The most threads one page of `/threads` returns.
-const THREADS_MAX: u32 = 100;
-/// What a page of `/threads` returns when the client names no limit.
-const THREADS_DEFAULT: u32 = 25;
 /// The longest device name a page may give.
 const DEVICE_NAME_MAX: usize = 64;
 
@@ -181,14 +166,12 @@ pub trait LoginGate: Send + Sync {
 /// How the box runs chat, from the environment `modules/chat.nix` sets.
 #[derive(Debug, Clone)]
 pub struct Config {
-    /// `host:port` of Dendrite on loopback.
+    /// `host:port` of Synapse on loopback.
     pub homeserver: String,
     /// The part after the colon in every user ID.
     pub server_name: String,
     /// The application service token, read at each use.
     pub as_token_file: PathBuf,
-    /// The socket of `losos-chat-threads`, which reads the relations table.
-    pub threads_socket: PathBuf,
     /// `host:port` of LosOS Login (Authelia) on loopback.
     pub login: String,
     /// Whether other servers may reach this one.
@@ -205,16 +188,12 @@ impl Config {
         }
         let server_name = std::env::var("LOSOS_CHAT_SERVER_NAME").ok()?;
         let as_token_file = PathBuf::from(std::env::var_os("LOSOS_CHAT_AS_TOKEN_FILE")?);
-        let threads_socket = std::env::var_os("LOSOS_CHAT_THREADS_SOCKET")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("/run/losos-chat/threads.sock"));
         let login = std::env::var("LOSOS_CHAT_LOGIN").unwrap_or_else(|_| "127.0.0.1:9091".into());
         let federation = std::env::var("LOSOS_CHAT_FEDERATION").is_ok_and(|v| v == "1");
         Some(Config {
             homeserver,
             server_name: server_name.trim().to_string(),
             as_token_file,
-            threads_socket,
             login,
             federation,
         })
@@ -250,7 +229,6 @@ struct Inner {
     config: Config,
     homeserver: Box<dyn Homeserver>,
     gate: Box<dyn LoginGate>,
-    threads: Box<dyn ThreadSource>,
     /// Token hash to (user ID, when it was learned).
     owners: Mutex<HashMap<[u8; 32], (String, Instant)>>,
     /// Sign-in names whose account is made, with the display name it has.
@@ -328,26 +306,19 @@ impl Chat {
             Some(config) => {
                 let homeserver = Box::new(Loopback(config.homeserver.clone()));
                 let gate = Box::new(Authelia(config.login.clone()));
-                let threads = Box::new(ThreadSocket(config.threads_socket.clone()));
-                Chat::new(config, homeserver, gate, threads)
+                Chat::new(config, homeserver, gate)
             }
             None => Chat::off(),
         }
     }
 
     #[must_use]
-    pub fn new(
-        config: Config,
-        homeserver: Box<dyn Homeserver>,
-        gate: Box<dyn LoginGate>,
-        threads: Box<dyn ThreadSource>,
-    ) -> Chat {
+    pub fn new(config: Config, homeserver: Box<dyn Homeserver>, gate: Box<dyn LoginGate>) -> Chat {
         Chat {
             inner: Some(Inner {
                 config,
                 homeserver,
                 gate,
-                threads,
                 owners: Mutex::new(HashMap::new()),
                 accounts: Mutex::new(HashMap::new()),
                 asking: Flights::default(),
@@ -598,9 +569,9 @@ impl Chat {
             .and_then(Value::as_str)
             .filter(|_| login.status == 200)
         else {
-            // Refused: nothing to sign out. (Dendrite signs in even a name
-            // that never used chat; logout/all below then ends that device
-            // too, so either way nothing is left signed in.)
+            // Refused: nothing to sign out. (A homeserver that signs in even
+            // a name that never used chat has that device ended by
+            // logout/all below, so either way nothing is left signed in.)
             return Ok(());
         };
         let out = hs.call(
@@ -679,7 +650,7 @@ impl Chat {
     /// box checks it at this one's federation API
     /// (`/_matrix/federation/v1/openid/userinfo`) and learns their chat
     /// address and nothing else; LosOS Git signs people of other boxes in
-    /// that way (`crate::forge::matrix`). It lasts as long as Dendrite says,
+    /// that way (`crate::forge::matrix`). It lasts as long as Synapse says,
     /// an hour.
     pub fn openid(&self, person: &crate::people::Person) -> Result<Value, ChatError> {
         let inner = self.inner()?;
@@ -820,89 +791,6 @@ impl Chat {
         }
         Ok(())
     }
-
-    /// `GET /_matrix/client/v1/rooms/{room}/threads`, which Dendrite lacks:
-    /// the room's threads, the most recently active first, each root event
-    /// with its summary under `unsigned["m.relations"]["m.thread"]`.
-    pub fn threads(
-        &self,
-        token: &str,
-        room: &str,
-        query: &ThreadsQuery,
-    ) -> Result<Reply, ChatError> {
-        let inner = self.inner()?;
-        let hs = &*inner.homeserver;
-        let whoami = hs.call("GET", "/_matrix/client/v3/account/whoami", token, None)?;
-        if whoami.status != 200 {
-            return Ok(whoami);
-        }
-        let Some(me) = whoami.body.get("user_id").and_then(Value::as_str) else {
-            return Err(ChatError::Homeserver {
-                status: 200,
-                errcode: "whoami named nobody".to_string(),
-            });
-        };
-        let rows = inner.threads.rows(room, me, query).map_err(|e| {
-            tracing::warn!(error = ?e, "could not read the thread list");
-            ChatError::NotUp
-        })?;
-        let mut chunk = Vec::new();
-        let mut last = None;
-        for row in &rows {
-            last = Some(row.latest);
-            let get = |id: &str| {
-                hs.call(
-                    "GET",
-                    &format!(
-                        "/_matrix/client/v3/rooms/{}/event/{}",
-                        encode(room),
-                        encode(id)
-                    ),
-                    token,
-                    None,
-                )
-            };
-            let root = get(&row.root)?;
-            if root.status != 200 {
-                // Not the caller's to see.
-                continue;
-            }
-            let latest = get(&row.latest_event)?;
-            let mut event = root.body;
-            let participated =
-                row.participated || event.get("sender").and_then(Value::as_str) == Some(me);
-            if query.participated && !participated {
-                continue;
-            }
-            let summary = json!({
-                "latest_event": if latest.status == 200 { latest.body } else { Value::Null },
-                "count": row.count,
-                "current_user_participated": participated,
-            });
-            if !event.get("unsigned").is_some_and(Value::is_object) {
-                event["unsigned"] = json!({});
-            }
-            if !event["unsigned"]
-                .get("m.relations")
-                .is_some_and(Value::is_object)
-            {
-                event["unsigned"]["m.relations"] = json!({});
-            }
-            event["unsigned"]["m.relations"]["m.thread"] = summary;
-            chunk.push(event);
-        }
-        let mut body = json!({ "chunk": chunk });
-        if rows.len() as u32 == query.limit {
-            if let Some(last) = last {
-                body["next_batch"] = json!(last.to_string());
-            }
-        }
-        Ok(Reply {
-            status: 200,
-            headers: Vec::new(),
-            body,
-        })
-    }
 }
 
 impl Inner {
@@ -956,132 +844,8 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-/// Who reads the relations table for [`Chat::threads`].
-pub trait ThreadSource: Send + Sync {
-    fn rows(&self, room: &str, me: &str, query: &ThreadsQuery) -> anyhow::Result<Vec<ThreadRow>>;
-}
-
-/// The question `losos-chat-threads` answers, one JSON line per connection.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ThreadsAsk {
-    pub room: String,
-    pub me: String,
-    pub limit: u32,
-    pub from: Option<i64>,
-}
-
-/// `losos-chat-threads` behind its socket.
-pub struct ThreadSocket(pub PathBuf);
-
-impl ThreadSource for ThreadSocket {
-    fn rows(&self, room: &str, me: &str, query: &ThreadsQuery) -> anyhow::Result<Vec<ThreadRow>> {
-        use std::os::unix::net::UnixStream;
-        let mut stream = UnixStream::connect(&self.0)
-            .with_context(|| format!("connecting to {}", self.0.display()))?;
-        stream.set_read_timeout(Some(Duration::from_secs(10)))?;
-        let ask = ThreadsAsk {
-            room: room.to_string(),
-            me: me.to_string(),
-            limit: query.limit.min(THREADS_MAX),
-            from: query.from,
-        };
-        let mut line = serde_json::to_vec(&ask)?;
-        line.push(b'\n');
-        stream.write_all(&line)?;
-        stream.shutdown(std::net::Shutdown::Write)?;
-        let mut raw = Vec::new();
-        stream.take(4 * 1024 * 1024).read_to_end(&mut raw)?;
-        let answer: Value = serde_json::from_slice(&raw).context("the thread list was not JSON")?;
-        if let Some(e) = answer.get("error").and_then(Value::as_str) {
-            anyhow::bail!("losos-chat-threads: {e}");
-        }
-        Ok(serde_json::from_value(
-            answer.get("rows").cloned().unwrap_or_default(),
-        )?)
-    }
-}
-
-/// The query of a `/threads` request.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ThreadsQuery {
-    pub limit: u32,
-    /// Threads whose latest reply is older than this position.
-    pub from: Option<i64>,
-    /// `include=participated`: only threads the caller wrote in.
-    pub participated: bool,
-}
-
-impl ThreadsQuery {
-    #[must_use]
-    pub fn parse(q: &HashMap<String, String>) -> ThreadsQuery {
-        let limit = q
-            .get("limit")
-            .and_then(|l| l.parse::<u32>().ok())
-            .unwrap_or(THREADS_DEFAULT)
-            .clamp(1, THREADS_MAX);
-        ThreadsQuery {
-            limit,
-            from: q.get("from").and_then(|f| f.parse().ok()),
-            participated: q.get("include").is_some_and(|i| i == "participated"),
-        }
-    }
-}
-
-/// One thread, as the relations table has it.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ThreadRow {
-    pub root: String,
-    pub latest: i64,
-    pub latest_event: String,
-    pub count: u64,
-    /// Whether the caller wrote a reply in it (the root is checked apart).
-    pub participated: bool,
-}
-
-/// The room's threads from Dendrite's sync database, newest activity first.
-pub fn read_threads(db: &std::path::Path, ask: &ThreadsAsk) -> anyhow::Result<Vec<ThreadRow>> {
-    use rusqlite::{params, OpenFlags};
-    let conn = rusqlite::Connection::open_with_flags(
-        db,
-        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )
-    .with_context(|| format!("opening {}", db.display()))?;
-    conn.busy_timeout(Duration::from_secs(5))?;
-    let mut stmt = conn.prepare(
-        "SELECT r.event_id, MAX(r.id) AS latest, COUNT(*),
-                (SELECT c.child_event_id FROM syncapi_relations c
-                  WHERE c.room_id = r.room_id AND c.event_id = r.event_id
-                    AND c.rel_type = 'm.thread' ORDER BY c.id DESC LIMIT 1),
-                EXISTS (SELECT 1 FROM syncapi_relations p
-                          JOIN syncapi_output_room_events e ON e.event_id = p.child_event_id
-                         WHERE p.room_id = r.room_id AND p.event_id = r.event_id
-                           AND p.rel_type = 'm.thread' AND e.sender = ?2)
-           FROM syncapi_relations r
-          WHERE r.room_id = ?1 AND r.rel_type = 'm.thread'
-          GROUP BY r.event_id
-         HAVING ?3 IS NULL OR latest < ?3
-          ORDER BY latest DESC
-          LIMIT ?4",
-    )?;
-    let rows = stmt
-        .query_map(
-            params![ask.room, ask.me, ask.from, ask.limit.min(THREADS_MAX)],
-            |row| {
-                Ok(ThreadRow {
-                    root: row.get(0)?,
-                    latest: row.get(1)?,
-                    count: row.get::<_, i64>(2)?.max(0) as u64,
-                    latest_event: row.get(3)?,
-                    participated: row.get(4)?,
-                })
-            },
-        )?
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(rows)
-}
-
-/// A device ID a page may ask for again: what Dendrite makes (URL-safe
-/// base64, `6ZsB-2Hy`), and no more.
+/// A device ID a page may ask for again: what a homeserver makes (letters,
+/// digits, `-` and `_`), and no more.
 fn valid_device_id(d: &str) -> bool {
     (1..=32).contains(&d.len())
         && d.bytes()
@@ -1204,7 +968,7 @@ fn header_safe(v: &str) -> bool {
     !v.bytes().any(|b| b == b'\r' || b == b'\n' || b == 0)
 }
 
-/// Dendrite on loopback.
+/// Synapse on loopback.
 pub struct Loopback(pub String);
 
 impl Homeserver for Loopback {
@@ -1498,46 +1262,22 @@ mod tests {
         gate: Arc<Gate>,
         _dir: assert_fs::TempDir,
         people: crate::people::People,
-        db: PathBuf,
-    }
-
-    /// The helper's own function, on a file, as the socket would run it.
-    struct File(PathBuf);
-    impl ThreadSource for File {
-        fn rows(&self, room: &str, me: &str, q: &ThreadsQuery) -> anyhow::Result<Vec<ThreadRow>> {
-            read_threads(
-                &self.0,
-                &ThreadsAsk {
-                    room: room.into(),
-                    me: me.into(),
-                    limit: q.limit,
-                    from: q.from,
-                },
-            )
-        }
     }
 
     fn rig() -> Rig {
         let dir = assert_fs::TempDir::new().unwrap();
         let as_file = dir.path().join("as_token");
         std::fs::write(&as_file, format!("{AS}\n")).unwrap();
-        let db = dir.path().join("syncserver.db");
         let hs = Arc::new(Fake::default());
         let gate = Arc::new(Gate(Mutex::new(None)));
         let config = Config {
             homeserver: "127.0.0.1:8008".into(),
             server_name: SERVER.into(),
             as_token_file: as_file,
-            threads_socket: dir.path().join("threads.sock"),
             login: "127.0.0.1:9091".into(),
             federation: false,
         };
-        let chat = Chat::new(
-            config,
-            Box::new(hs.clone()),
-            Box::new(gate.clone()),
-            Box::new(File(db.clone())),
-        );
+        let chat = Chat::new(config, Box::new(hs.clone()), Box::new(gate.clone()));
         let people = crate::people::People::new(dir.path().join("users.yml"), None);
         Rig {
             chat,
@@ -1545,7 +1285,6 @@ mod tests {
             gate,
             _dir: dir,
             people,
-            db,
         }
     }
 
@@ -1943,136 +1682,5 @@ mod tests {
         assert_eq!(encode("@matus:mattbox.local"), "%40matus%3Amattbox.local");
         assert_eq!(encode("!abc:h"), "%21abc%3Ah");
         assert_eq!(encode("$ev/../x"), "%24ev%2F..%2Fx");
-    }
-
-    fn sync_db(path: &std::path::Path) -> rusqlite::Connection {
-        let c = rusqlite::Connection::open(path).unwrap();
-        c.execute_batch(
-            "CREATE TABLE syncapi_relations (id BIGINT PRIMARY KEY, room_id TEXT NOT NULL,
-               event_id TEXT NOT NULL, child_event_id TEXT NOT NULL, child_event_type TEXT NOT NULL,
-               rel_type TEXT NOT NULL, UNIQUE (room_id, event_id, child_event_id, rel_type));
-             CREATE TABLE syncapi_output_room_events (id INTEGER PRIMARY KEY AUTOINCREMENT,
-               event_id TEXT NOT NULL UNIQUE, room_id TEXT NOT NULL, headered_event_json TEXT NOT NULL,
-               type TEXT NOT NULL, sender TEXT NOT NULL, contains_url BOOL NOT NULL,
-               add_state_ids TEXT, remove_state_ids TEXT, session_id BIGINT, transaction_id TEXT,
-               exclude_from_sync BOOL NOT NULL DEFAULT FALSE, history_visibility SMALLINT NOT NULL DEFAULT 2);",
-        )
-        .unwrap();
-        c
-    }
-
-    fn event(c: &rusqlite::Connection, id: &str, sender: &str) {
-        c.execute(
-            "INSERT INTO syncapi_output_room_events (event_id, room_id, headered_event_json, type, sender, contains_url)
-             VALUES (?1, '!r:h', '{}', 'm.room.message', ?2, 0)",
-            rusqlite::params![id, sender],
-        )
-        .unwrap();
-    }
-
-    fn reply(c: &rusqlite::Connection, pos: i64, root: &str, child: &str, rel: &str) {
-        c.execute(
-            "INSERT INTO syncapi_relations VALUES (?1, '!r:h', ?2, ?3, 'm.room.message', ?4)",
-            rusqlite::params![pos, root, child, rel],
-        )
-        .unwrap();
-    }
-
-    #[test]
-    fn threads_come_newest_first_with_their_summaries() {
-        let r = rig();
-        add(&r.people, "eva");
-        let eva = r
-            .chat
-            .session(&person("eva", "Eva", &[]), None, None)
-            .unwrap();
-        let c = sync_db(&r.db);
-        for (id, sender) in [
-            ("$a", "@matus:h"),
-            ("$a1", "@matus:h"),
-            ("$a2", "@eva:mattbox.local"),
-            ("$b", "@matus:h"),
-            ("$b1", "@matus:h"),
-            ("$hidden", "@matus:h"),
-            ("$h1", "@matus:h"),
-        ] {
-            event(&c, id, sender);
-        }
-        reply(&c, 1, "$a", "$a1", "m.thread");
-        reply(&c, 2, "$b", "$b1", "m.thread");
-        reply(&c, 3, "$a", "$a2", "m.thread");
-        reply(&c, 4, "$hidden", "$h1", "m.thread");
-        // A reaction is a relation but not a thread.
-        reply(&c, 5, "$b", "$like", "m.annotation");
-        {
-            let mut s = r.hs.state.lock().unwrap();
-            for id in ["$a", "$a1", "$a2", "$b", "$b1", "$h1", "$hidden"] {
-                s.events.insert(
-                    id.into(),
-                    json!({ "event_id": id, "sender": if id == "$a2" { "@eva:mattbox.local" } else { "@matus:h" } }),
-                );
-            }
-            // Eva may not see this one.
-            s.hidden.push("$hidden".into());
-        }
-
-        let all = ThreadsQuery::parse(&HashMap::new());
-        let page = r.chat.threads(&eva.access_token, "!r:h", &all).unwrap();
-        assert_eq!(page.status, 200);
-        let chunk = page.body["chunk"].as_array().unwrap();
-        let ids: Vec<_> = chunk
-            .iter()
-            .map(|e| e["event_id"].as_str().unwrap())
-            .collect();
-        assert_eq!(ids, ["$a", "$b"]);
-        let a = &chunk[0]["unsigned"]["m.relations"]["m.thread"];
-        assert_eq!(a["count"], 2);
-        assert_eq!(a["latest_event"]["event_id"], "$a2");
-        assert_eq!(a["current_user_participated"], true);
-        assert_eq!(
-            chunk[1]["unsigned"]["m.relations"]["m.thread"]["current_user_participated"],
-            false
-        );
-        assert!(page.body.get("next_batch").is_none());
-
-        let mine = ThreadsQuery {
-            participated: true,
-            ..all.clone()
-        };
-        let page = r.chat.threads(&eva.access_token, "!r:h", &mine).unwrap();
-        assert_eq!(page.body["chunk"].as_array().unwrap().len(), 1);
-
-        // One a page, then the next.
-        let one = ThreadsQuery {
-            limit: 1,
-            ..all.clone()
-        };
-        let first = r.chat.threads(&eva.access_token, "!r:h", &one).unwrap();
-        assert_eq!(first.body["next_batch"], "4");
-        let next = ThreadsQuery {
-            from: Some(3),
-            ..one
-        };
-        let second = r.chat.threads(&eva.access_token, "!r:h", &next).unwrap();
-        assert_eq!(second.body["chunk"][0]["event_id"], "$b");
-
-        // A token the homeserver does not know gets its own answer back.
-        let page = r.chat.threads("nope", "!r:h", &all).unwrap();
-        assert_eq!(page.status, 401);
-    }
-
-    #[test]
-    fn the_threads_query_is_bounded() {
-        let mut q = HashMap::new();
-        q.insert("limit".to_string(), "100000".to_string());
-        q.insert("include".to_string(), "participated".to_string());
-        q.insert("from".to_string(), "17".to_string());
-        let p = ThreadsQuery::parse(&q);
-        assert_eq!(
-            (p.limit, p.from, p.participated),
-            (THREADS_MAX, Some(17), true)
-        );
-        q.insert("limit".to_string(), "0".to_string());
-        assert_eq!(ThreadsQuery::parse(&q).limit, 1);
     }
 }
