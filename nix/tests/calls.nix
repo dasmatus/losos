@@ -1325,7 +1325,9 @@ pkgs.testers.nixosTest {
         # What the room holds is MatrixRTC: the open slot, and a sticky
         # membership from each of them (MSC4354; encrypted, so the server
         # sees only that it is sticky), each with a delayed leave waiting on
-        # the homeserver (MSC4140) for the moment its page goes quiet.
+        # the homeserver (MSC4140) for the moment its page goes quiet. A
+        # leave is sent plain, since the homeserver sends it later, and
+        # names only the slot and the device: earlier calls here left some.
         code, body = call(f"/_matrix/client/v3/rooms/{room}/state", cookies["matus"], token=tokens["matus"])
         assert code == 200, (code, body)
         state = json.loads(body)
@@ -1337,8 +1339,11 @@ pkgs.testers.nixosTest {
                           token=tokens["matus"])
         assert code == 200, (code, body)
         sticky = [e for e in json.loads(body)["chunk"] if "msc4354_sticky" in e]
-        assert {e["sender"] for e in sticky} == {f"@{n}:{HOST}" for n in ("matus", "eva", "jan")}, sticky
-        assert all(e["type"] == "m.room.encrypted" for e in sticky), sticky
+        sealed = [e for e in sticky if e["type"] == "m.room.encrypted"]
+        assert {e["sender"] for e in sealed} == {f"@{n}:{HOST}" for n in ("matus", "eva", "jan")}, sticky
+        assert all(e in sealed or (e["type"] == "org.matrix.msc4143.rtc.member"
+                                   and set(e["content"]) == {"slot_id", "msc4354_sticky_key"})
+                   for e in sticky), sticky
         def leaves(n):
             code, body = call("/_matrix/client/unstable/org.matrix.msc4140/delayed_events", cookies[n],
                               token=tokens[n])

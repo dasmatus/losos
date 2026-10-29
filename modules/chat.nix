@@ -153,7 +153,14 @@ let
       per_second = 1;
       burst_count = 20;
     };
-    caches.global_factor = 0.5;
+    caches = {
+      global_factor = 0.5;
+      # A page keeps its device (src/chat/session.ts), and Synapse keeps a
+      # finished sync for two minutes by default and hands it to the same
+      # device's next identical request: a reload within that time started
+      # from the old first sync, without the rooms joined since.
+      sync_response_cache_duration = 0;
+    };
     # Only matrix.org's keys are trusted for other servers' keys, and only
     # when this box federates beyond its LAN: the boxes of a LAN hand out
     # their own keys.
