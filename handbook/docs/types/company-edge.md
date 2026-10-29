@@ -107,6 +107,37 @@ call is refused.
 
 [Edge web page](../in-depth/edge-web-ui.md) goes through the page in full.
 
+## LosOS Desktop computers \{#losos-desktop-computers}
+
+The company's people can log in to its LosOS Desktop computers with their
+LosOS Login name and password. One box behind the company's edge gateway
+holds the people, and an administrator of that box joins each computer to it
+once, from the computer:
+
+```sh
+losos-login-bridge fingerprint <box>.local
+losos-login-bridge join <box>.local <fingerprint> <your name>
+```
+
+Compare the fingerprint with the one the box shows in its setup pages before
+you join. Joining asks for your LosOS Login password and only works for
+someone in `losos-admins`. The box must also go through the company's edge
+on its own network. A box that reaches the LosOS edge directly is refused.
+
+Each person's first login on the computer makes their account there, with an
+encrypted home. Later logins keep their name, e-mail and administrator rights
+in step with the box, and a laptop away from the office logs in with the
+password the box last accepted. The joined computer also reads the people
+list from the box every few minutes, while it is on the office network, and
+locks the accounts of people you remove or disable here. It reads names,
+e-mail addresses, groups and who is disabled, never a password.
+
+To take a computer out, remove it from the box with `DELETE
+/api/devices/directory/<id>`; `GET /api/devices/directory` lists them. The
+accounts already on the computer stay and keep logging in offline.
+[Company accounts](https://losos-project.github.io/desktop/company) in the
+LosOS Desktop documentation describes the computer's side.
+
 ## Who this is for
 
 Small companies that want the "one box per team, one pool for all" setup

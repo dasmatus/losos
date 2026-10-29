@@ -1,10 +1,12 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import { renderNote, section, type Rendered, type Resolver } from "./markdown";
+import "@/mdx/document.css";
+import { flavourOf, loadNotes, notesReady, renderNote, section, type Rendered, type Resolver } from "./markdown";
 import "./note.css";
 
 /* A rendered note on a page: its properties, then its text. The HTML comes
- * from markdown.ts, already sanitised; this fills in the ![[embeds]] (the
+ * from markdown.ts, already sanitised, with what the note asked for and
+ * did not get listed above it; this fills in the ![[embeds]] (the
  * note embedded, or the part of it a heading or block names, three deep at
  * most and never itself), and turns clicks on links, tags and task boxes
  * into the page's own calls. */
@@ -23,7 +25,24 @@ export interface NoteViewProps {
   /** A task box clicked: its line in the file and whether it is now done. */
   onTask?: (line: number, done: boolean) => void;
   className?: string;
-  labels: { properties: string; embedLoading: string; embedMissing: string };
+  labels: { properties: string; embedLoading: string; embedMissing: string; problems?: string; line?: (line: number) => string };
+}
+
+/** Whether notes can be drawn yet: the renderer is WebAssembly, loaded once
+ * per page. A component that renders notes re-renders when it is. */
+export function useNotesReady(): boolean {
+  const [ready, setReady] = React.useState(notesReady);
+  React.useEffect(() => {
+    if (ready) return;
+    let live = true;
+    void loadNotes().then(() => {
+      if (live) setReady(true);
+    });
+    return () => {
+      live = false;
+    };
+  }, [ready]);
+  return ready;
 }
 
 const MAX_DEPTH = 3;
@@ -59,7 +78,7 @@ async function fillEmbeds(
       }
       if (cancelled()) return;
       const part = section(text, sub);
-      const html = renderNote(part, props.resolverFor(path)).html;
+      const html = renderNote(part, props.resolverFor(path), flavourOf(path)).html;
       const box = document.createElement("div");
       box.className = "embed-body";
       // Sanitised by renderNote, like the page's own HTML.
@@ -132,7 +151,7 @@ export function NoteView({ path, rendered, resolverFor, load, onOpen, onTag, onM
         event.preventDefault();
         return;
       }
-      onTask(line + rendered.frontLines, box.checked);
+      onTask(line, box.checked);
       return;
     }
     const a = target.closest<HTMLAnchorElement>("a");
@@ -157,6 +176,15 @@ export function NoteView({ path, rendered, resolverFor, load, onOpen, onTag, onM
     <article className={cn("note", className)} data-note={path}>
       {rendered.properties !== null && <Properties properties={rendered.properties} label={labels.properties} />}
       {rendered.propertiesError !== null && <pre className="note-properties-raw">{rendered.propertiesError}</pre>}
+      {rendered.problems.length > 0 && (
+        <ul className="note-problems" aria-label={labels.problems} data-problems>
+          {rendered.problems.map((p, i) => (
+            <li key={i}>
+              <span className="note-problem-line">{labels.line?.(p.line) ?? p.line}</span> {p.message}
+            </li>
+          ))}
+        </ul>
+      )}
       {/* The HTML is sanitised by markdown.ts (DOMPurify, no style). */}
       <div ref={ref} className="note-body" onClick={click} dangerouslySetInnerHTML={{ __html: rendered.html }} />
     </article>

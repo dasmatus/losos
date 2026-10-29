@@ -54,10 +54,14 @@ let
     export PLAYWRIGHT_CORE=${pkgs.playwright-driver}
     exec ${pkgs.nodejs}/bin/node ${./mail-screens.mjs} "$@"
   '';
+  pictures = import ./screens { inherit pkgs; };
 in
 
 pkgs.testers.nixosTest {
   name = if screens then "losos-mail-screens" else "losos-mail";
+  # The handbook's pictures in three languages take most of an hour on
+  # their own under TCG.
+  globalTimeout = 3 * 3600;
 
   nodes = {
     box =
@@ -126,7 +130,10 @@ pkgs.testers.nixosTest {
           pkgs.curl
           pkgs.jq
         ]
-        ++ lib.optional screens shots;
+        ++ lib.optionals screens [
+          shots
+          pictures.capture
+        ];
         # What a laptop's mDNS would answer.
         networking.extraHosts = "192.168.1.1 mattbox.local";
         environment.variables = lib.mkIf screens {
@@ -160,6 +167,9 @@ pkgs.testers.nixosTest {
     BOX = "192.168.1.1"
     PASSWORD = "Correct-Horse-Battery-9"
     EVA_PASSWORD = "Eva-Long-Password-3"
+
+    ${pictures.handbookScript}
+
     DOMAIN = "mattbox.home.arpa"
     CSP = (
         "sandbox allow-popups allow-popups-to-escape-sandbox; default-src 'none'; "
@@ -472,7 +482,9 @@ pkgs.testers.nixosTest {
         wait_for(matus, folder(mhome, "inbox"), "Fix the backup script")
         wait_for(matus, folder(mhome, "inbox"), "Photos from the lake")
 
-    secret = box.succeed("cat /var/lib/losos-mail/master-secret").strip()
+    secret = box.succeed(
+        "systemd-creds decrypt --name=mail-master /etc/credstore.encrypted/mail-master -"
+    ).strip()
 
     def jmap_as(name, calls, using=("core", "mail")):
         """A JMAP request straight to Stalwart as `name`, from the box: no lososd."""
@@ -687,6 +699,15 @@ pkgs.testers.nixosTest {
 
     with subtest("Matus's folders and filters in the browser"):
         screens("folders", "20")
+
+    if SCREENS:
+        with subtest("the handbook's pictures"):
+            lake = {"text": "Photos from the lake"}
+            handbook_pictures(laptop, "https://mattbox.local", "matus", PASSWORD, [
+                {"name": "mail-inbox", "path": "/mail", "waitFor": lake},
+                {"name": "mail-message", "path": "/mail", "waitFor": lake,
+                 "steps": [{"click": lake}, {"sleep": 3000}]},
+            ])
 
     if SCREENS:
         laptop.succeed("mail-screens manifest losos-mail-screens")

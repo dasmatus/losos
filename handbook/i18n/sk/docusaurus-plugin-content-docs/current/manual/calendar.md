@@ -6,6 +6,8 @@ slug: /manual/calendar
 
 # Kalendár
 
+![Týždeň v LosOS Calendar: vľavo vaše kalendáre a dva odbery, rozvrh hodín a daňový termín z odberov a Review the box, udalosť s videohovorom v LosOS Chat.](@site/docs/img/calendar-week-sk.png)
+
 LosOS Calendar uchováva vaše udalosti a kalendáre, ktoré sledujete. Položka
 **Kalendár** v bočnom paneli ho otvorí na adrese `/calendar`. Vaše kalendáre
 patria len vám. Ostatní ľudia na zariadení, ani správcovia, ich nedokážu
@@ -67,6 +69,8 @@ len ten deň, alebo všetky dni.
 Keď telefón zmenil udalosť počas toho, ako ste ju upravovali, uloženie to
 oznámi a zmenu z telefónu neprepíše. Zatvorte editor a otvorte udalosť
 znova, aby ste videli, čo sa zmenilo.
+
+![Otvorená udalosť: Review the box, s videohovorom v LosOS Chat a tlačidlom Pripojiť sa k hovoru, kalendár, pripomienka, Matus ako organizátor a Eva, ktorá príde, a dole Napísať hosťom a Poslať pozvánky.](@site/docs/img/calendar-event-sk.png)
 
 ## Pozvánky \{#invitations}
 

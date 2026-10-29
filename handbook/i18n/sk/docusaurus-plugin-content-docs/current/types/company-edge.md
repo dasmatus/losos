@@ -108,6 +108,38 @@ edge zariadenie odmietne.
 
 Stránku celú opisuje [Webová stránka edge](/in-depth/edge-web-ui.md).
 
+## Počítače s LosOS Desktop \{#losos-desktop-computers}
+
+Ľudia firmy sa môžu na jej počítače s LosOS Desktop prihlásiť menom a heslom
+z LosOS Login. Ľudí drží jedno zariadenie za firemnou edge bránou a jeho
+správca k nemu každý počítač raz pripojí, priamo z počítača:
+
+```sh
+losos-login-bridge fingerprint <zariadenie>.local
+losos-login-bridge join <zariadenie>.local <odtlačok> <vaše meno>
+```
+
+Pred pripojením porovnajte odtlačok s tým, ktorý zariadenie ukazuje na
+stránkach nastavenia. Pripojenie si pýta vaše heslo do LosOS Login a funguje
+len pre niekoho v `losos-admins`. Zariadenie musí navyše ísť cez firemný edge
+vo vlastnej sieti. Zariadenie, ktoré sa k edge LosOS pripája priamo, je
+odmietnuté.
+
+Prvé prihlásenie človeka na počítači mu tam vytvorí účet so šifrovaným
+domovským priečinkom. Ďalšie prihlásenia udržiavajú jeho meno, e-mail a
+práva správcu v súlade so zariadením a notebook mimo kancelárie sa prihlási
+heslom, ktoré zariadenie naposledy prijalo. Pripojený počítač si navyše
+každých pár minút, kým je v kancelárskej sieti, načíta zo zariadenia zoznam
+ľudí a zamkne účty ľudí, ktorých tu odstránite alebo vypnete. Číta mená,
+e-mailové adresy, skupiny a kto je vypnutý, nikdy heslo.
+
+Počítač odpojíte tak, že ho zo zariadenia odstránite cez `DELETE
+/api/devices/directory/<id>`; `GET /api/devices/directory` ich vypíše. Účty,
+ktoré už na počítači sú, zostanú a ďalej sa prihlasujú aj offline. Stranu
+počítača opisuje stránka
+[Company accounts](https://losos-project.github.io/desktop/company) v
+dokumentácii LosOS Desktop.
+
 ## Pre koho je to \{#who-this-is-for}
 
 Pre malé firmy, ktoré chcú nasadenie „jedno zariadenie na tím, jeden

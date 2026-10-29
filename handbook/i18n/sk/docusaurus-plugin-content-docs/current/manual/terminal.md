@@ -6,6 +6,8 @@ slug: /manual/terminal
 
 # Terminálový klient
 
+![Prehľad v prehliadači; terminálový klient ukazuje tie isté panely.](@site/docs/img/overview-sk.png)
+
 `losos` je terminálový program, ktorý spravuje zariadenie z iného počítača.
 Ukazuje tie isté panely ako správcovské stránky, tými istými slovami a v
 tých istých farbách, a nepotrebuje SSH, pretože zariadenie ho nemá. Každú

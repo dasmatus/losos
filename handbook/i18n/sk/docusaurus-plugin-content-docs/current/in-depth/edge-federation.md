@@ -193,10 +193,14 @@ súbor vznikne), a keď sa súbor zmení, pripojí sa nanovo. Certifikát tunela
 hubu sa pripne pri prvom kontakte (`GET /tunnel-pin`, zapíše ho do
 `uplink.pinFile` sám registrar), tak ako zariadenie pripína certifikát
 svojho edge. Požiadavka na
-`https://mattbox.acme.losos.cfd/` teda ukončí TLS na hube, vstúpi do služby
-tunela hubu `acme.mattbox`, prejde uplinkom na lokálny port spoke pre
-`mattbox`, prejde tunelom zariadenia a skončí v Nginxe zariadenia. Dva tunely, jedna
-hlavička Host, žiadna zmena na zariadení.
+`https://mattbox.acme.losos.cfd/` teda príde na hub, ktorý ju podľa názvu v
+TLS hello nasmeruje do služby tunela hubu `acme.mattbox`. Prejde uplinkom na
+lokálny port spoke pre `mattbox`, prejde tunelom zariadenia a TLS ukončí až
+zariadenie vlastným certifikátom pre tento názov
+([passthrough](master-proxy.md#the-edge-cannot-read-the-traffic)); hub ani
+spoke ju čítať nemôžu. Kým zariadenie taký certifikát nemá, TLS ukončuje hub
+a požiadavka ide ďalej ako obyčajné HTTP. Dva tunely, jeden názov, žiadna
+zmena na zariadení.
 
 **Otvorený zápis** (open enrolment) umožňuje použiť bežné zariadenie s bránou, pre
 ktorú nikto nepripravil tokeny: s `lan.openEnrolment` sa neznáme id

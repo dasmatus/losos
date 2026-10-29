@@ -18,6 +18,11 @@ geschrieben, dass du ihm widersprechen kannst.
 2. **Edge → Box.** TLS 1.3 verschlüsselt den Tunnel durchgehend, über
    QUIC oder, wo UDP gesperrt ist, über TCP. Die Box merkt sich das
    Zertifikat der Edge beim ersten Kontakt und lehnt ein geändertes ab.
+   Im Tunnel bleiben die Verbindungen der Besucher bis zum eigenen
+   Zertifikat der Box verschlüsselt: Die Edge leitet sie nach dem Namen
+   weiter und kann sie nicht lesen. Sie sieht aber, welcher Name angefragt
+   wurde, wann, wie viele Daten flossen und die Adresse der Box zu Hause.
+   Siehe [Die Edge kann den Verkehr nicht lesen](../in-depth/master-proxy.md#the-edge-cannot-read-the-traffic).
 3. **LAN → Box.** Die Box liefert HTTPS mit ihrem eigenen Zertifikat aus,
    dem du einmal pro Rechner vertraust. Bis dahin könnte jemand im selben
    WLAN, der Verkehr abfangen kann, die erste Nutzung abfangen.
@@ -81,8 +86,12 @@ beschreibt jeden Schalter und was er kostet.
   jede Software heraus, die auf diesem Rechner gestartet wird, also kann ein
   Dieb mit der Box ihn lesen. Die Verschlüsselung schützt nur eine einzeln
   ausgebaute Festplatte. Auf einer Box ohne TPM ist sogar die Festplatte
-  allein lesbar. [TPM und der Festplattenschlüssel](tpm) erklärt den
-  Unterschied.
+  allein lesbar. Eine mit `--tang` installierte Box öffnet sich nur mit einem
+  Schlüsselserver in ihrem eigenen Netz und fragt anderswo nach dem
+  Wiederherstellungscode. Eine mit `--tang-edge` installierte Box braucht
+  die Antwort ihrer Edge, und der Besitzer kann der Edge sagen, einer
+  gestohlenen Box nicht mehr zu antworten. [TPM und der
+  Festplattenschlüssel](tpm) erklärt den Unterschied.
 - **Das Audit-Log** rotiert nicht, und root kann es umschreiben.
 - **Die Drosselung gilt pro Adresse**, sodass ein Angreifer im LAN, der
   Adressen fälscht, jedes Mal ein neues Kontingent bekommt.

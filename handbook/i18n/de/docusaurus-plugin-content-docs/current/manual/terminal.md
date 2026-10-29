@@ -6,6 +6,8 @@ slug: /manual/terminal
 
 # Der Terminal-Client
 
+![Die Übersicht im Browser; der Terminal-Client zeigt dieselben Bereiche.](@site/docs/img/overview-de.png)
+
 `losos` ist ein Terminalprogramm, das eine Box von einem anderen Rechner aus
 verwaltet. Es zeigt dieselben Bereiche wie die Admin-Seiten, mit denselben
 Worten und Farben, und braucht kein SSH, weil die Box keines hat. Jede

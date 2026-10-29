@@ -283,6 +283,8 @@ pkgs.testers.nixosTest {
     AFTER = ${if after then "True" else "False"}
     BOX = "192.168.1.1"
     PASSWORD = "Correct-Horse-Battery-9"
+
+    ${screens.handbookScript}
     STORE = "/etc/credstore.encrypted"
     RUN = "/run/losos-credentials"
 
@@ -703,6 +705,11 @@ pkgs.testers.nixosTest {
         for plan in ["light", "dark"] + (["phone"] if AFTER else []):
             capture(plan)
         laptop.copy_from_machine("/tmp/screens", "")
+        if AFTER:
+            handbook_pictures(laptop, f"https://{BOX}", "matus", PASSWORD, [
+                {"name": "settings-credentials", "path": "/settings/credentials",
+                 "waitFor": {"selector": '[data-testid="credential"][data-name="backup-bucket"]'}},
+            ])
 
     if AFTER:
         with subtest("the values survive a power cycle unchanged"):

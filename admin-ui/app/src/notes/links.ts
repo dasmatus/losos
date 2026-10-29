@@ -1,7 +1,7 @@
 /* What a link names, and which note or file in a vault that is, the way
  * Obsidian finds it: by the whole path when the link has one, else by the
  * file's name, nearest to the linking note first, then the shortest path;
- * then by a note's aliases. Notes are .md files; anything else in the
+ * then by a note's aliases. Notes are .note (MDX) and .md files; anything else in the
  * vault is an attachment named with its extension. */
 
 export interface LinkParts {
@@ -46,13 +46,21 @@ export function baseName(path: string): string {
   return path.slice(path.lastIndexOf("/") + 1);
 }
 
-/** The name a note goes by: its file name without .md. */
+/** A note's extension: `.note`, MDX, which new notes get, or `.md`. */
+export const NOTE_EXT = /\.(note|md)$/i;
+
+/** The name a note goes by: its file name without the extension. */
 export function noteName(path: string): string {
-  return baseName(path).replace(/\.md$/i, "");
+  return baseName(path).replace(NOTE_EXT, "");
 }
 
 export function isNote(path: string): boolean {
-  return /\.md$/i.test(path);
+  return NOTE_EXT.test(path);
+}
+
+/** A note in MDX, read with its components, rather than plain Markdown. */
+export function isMdx(path: string): boolean {
+  return /\.note$/i.test(path);
 }
 
 /** `a/./b/../c` to `a/c`; null when it climbs out of the vault. */
@@ -83,7 +91,7 @@ export class LinkIndex<N extends Named, F extends { path: string }> {
 
   constructor(notes: readonly N[], files: readonly F[]) {
     for (const n of notes) {
-      const key = n.path.toLowerCase().replace(/\.md$/, "");
+      const key = n.path.toLowerCase().replace(NOTE_EXT, "");
       this.byPath.set(key, n);
       push(this.byName, noteName(n.path).toLowerCase(), n);
       for (const a of n.aliases ?? []) push(this.byAlias, a.toLowerCase(), n);
@@ -96,7 +104,7 @@ export class LinkIndex<N extends Named, F extends { path: string }> {
 
   /** The note `target` names, linked from the note at `from`. */
   note(target: string, from = ""): N | null {
-    const t = target.replace(/^\/+/, "").replace(/\.md$/i, "").toLowerCase();
+    const t = target.replace(/^\/+/, "").replace(NOTE_EXT, "").toLowerCase();
     if (t === "") return null;
     // A relative path, as a Markdown link writes one.
     if (t.startsWith("./") || t.startsWith("../")) {
@@ -111,7 +119,7 @@ export class LinkIndex<N extends Named, F extends { path: string }> {
       if (near !== undefined) return near;
     }
     const name = t.slice(t.lastIndexOf("/") + 1);
-    const candidates = (this.byName.get(name) ?? []).filter((n) => !t.includes("/") || n.path.toLowerCase().replace(/\.md$/, "").endsWith(`/${t}`));
+    const candidates = (this.byName.get(name) ?? []).filter((n) => !t.includes("/") || n.path.toLowerCase().replace(NOTE_EXT, "").endsWith(`/${t}`));
     const best = nearest(candidates, from);
     if (best !== null) return best;
     return nearest(this.byAlias.get(t) ?? [], from);

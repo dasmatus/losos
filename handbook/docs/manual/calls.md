@@ -53,7 +53,9 @@ closes.
 
 The room's timeline says that a call started. While it lasts, the line has
 a **Join** button, so someone who missed the ring, or who left, can come
-back. When the last person leaves, the timeline says the call ended. Other
+back. If someone's browser closes or loses the network, the others see them
+leave within half a minute. When the last person leaves, the timeline says the
+call ended. Other
 Matrix apps show a short notice instead, with a link that opens the call in
 LosOS Chat, where people sign in with LosOS Login.
 

@@ -124,7 +124,7 @@ V tom istom zozname je aj rola zariadenia vytvorená vo **Vlastné roly**.
 Tabuľku toho, čo môže každá rola, nájdete v časti
 [Roly a moderovanie](moderation).
 
-![Panel Používatelia: všetci so svojou rolou, tabuľka toho, čo môže každá rola, a úplne dole formulár Pridať človeka.](@site/docs/img/settings-users-sk.png)
+![Panel Používatelia: všetci so svojou rolou a tabuľka toho, čo môže každá rola.](@site/docs/img/settings-users-sk.png)
 
 Nový človek má **Vlastný účet** zapnutý. Meno a heslo mu odovzdajte sami. Prihlási sa cez LosOS Login. LosOS Cloud aj
 LosOS Git mu pri prvom otvorení vytvoria vlastný účet.
@@ -160,7 +160,7 @@ ponechá aspoň jedného správcu.
 časťou Vlastný účet, aj správcovia, a nikdy nie náhradný kľúč, ktorý účet
 nemá.
 
-![Váš účet: vaše údaje, heslo, dvojstupňové prihlásenie a jednorazový kód.](@site/docs/img/settings-account-sk.png)
+![Váš účet: hore profil; heslo a dvojstupňové prihlásenie sú nižšie.](@site/docs/img/settings-account-sk.png)
 
 - **Profil**: fotka, banner, farba, vaše zámená a riadok o vás. Každý, kto
   je prihlásený do zariadenia, ich vidí vedľa vášho mena: v hornej lište, v

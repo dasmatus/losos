@@ -6,6 +6,8 @@ slug: /manual/contacts
 
 # Kontakte
 
+![LosOS Contacts mit Eva geöffnet: Deine Kontakte und Auf dieser Box, das Adressbuch nach Buchstaben und Evas Karte mit Mail, Chat, Anruf und Video über ihrer Adresse, Telefonnummer, Chat-Adresse und Mesh-Adresse.](@site/docs/img/contacts-de.png)
+
 LosOS Contacts ist ein Adressbuch für jede Person auf der Box. **Kontakte**
 in der Seitenleiste öffnet es unter `/contacts`. Dein Adressbuch gehört nur
 dir. Die anderen Personen auf der Box, auch Administratoren, können es

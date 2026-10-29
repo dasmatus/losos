@@ -16,7 +16,11 @@ can argue with it.
    tunnel outwards and listens on nothing from outside.
 2. **Edge → box.** TLS 1.3 encrypts the tunnel end to end, over QUIC or,
    where UDP is blocked, over TCP. The box pins the edge's certificate on
-   first contact and refuses a changed one.
+   first contact and refuses a changed one. Inside the tunnel, visitors'
+   connections stay encrypted to the box's own certificate: the edge routes
+   them by name and cannot read them. It still sees which name was asked
+   for, when, how much data passed, and the box's home address. See
+   [The edge cannot read the traffic](../in-depth/master-proxy.md#the-edge-cannot-read-the-traffic).
 3. **LAN → box.** The box serves HTTPS with its own certificate, which you
    trust once per computer. Until you do, someone on the same Wi-Fi who can
    intercept traffic could intercept first use.
@@ -73,8 +77,11 @@ Security pane: AppArmor, a hardened memory allocator, no SMT, USBGuard.
 - **Theft of the whole box.** The TPM releases the disk key to any software
   booted on that machine, so a thief with the box can read it. The
   encryption protects only a disk taken out on its own. On a box without a
-  TPM, even the disk alone is readable. [TPM and the disk key](tpm) explains
-  the difference.
+  TPM, even the disk alone is readable. A box installed with `--tang` opens
+  only with a key server on its own network as well, and asks for the
+  recovery code anywhere else. One installed with `--tang-edge` needs its
+  edge to answer, and the owner can tell the edge to stop answering for a
+  stolen box. [TPM and the disk key](tpm) explains the difference.
 - **The audit log** does not rotate, and root can rewrite it.
 - **Throttling is per address**, so an attacker on the LAN who spoofs
   addresses gets a fresh budget each time.

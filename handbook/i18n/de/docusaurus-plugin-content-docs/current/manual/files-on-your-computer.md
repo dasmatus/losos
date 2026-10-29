@@ -38,6 +38,8 @@ Internet. Eine Administratorin oder ein Administrator schaltet sie unter
 **Einstellungen** > **Netzwerk** > **Windows, Mac und Linux** ein und aus.
 Sie ist von Anfang an an.
 
+![Einstellungen, Netzwerk: Unter Netzwerk auf Computern in der Nähe zeigen, eingeschaltet.](@site/docs/img/settings-network-windows-de.png)
+
 ### Windows \{#windows}
 
 1. Öffne den Explorer und klicke auf **Netzwerk**. Meldet eine Leiste, dass
@@ -82,6 +84,8 @@ LosOS die Seite **Dein Konto**, such **Deine Dateien unter Windows, Mac und
 Linux**, gib dein Passwort unter **Windows dein Passwort erlauben** ein und
 klicke auf **Erlauben**.
 
+![Dein Konto: Deine Dateien unter Windows, Mac und Linux, mit der Adresse für den Explorer und Bereit, sobald die Box dein Passwort gesehen hat.](@site/docs/img/settings-account-windows-de.png)
+
 ### Was die Freigabe anders macht \{#what-the-share-does-differently}
 
 Dateien, die du in der Freigabe änderst, ändern sich sofort auch in LosOS
@@ -95,6 +99,8 @@ Version.
 ```text
 https://<name>.local/remote.php/webdav/
 ```
+
+![Die Seite Geräte in LosOS Cloud: die Serveradresse, die WebDAV-Adresse für einen Dateimanager und die angemeldeten Computer.](@site/docs/img/cloud-devices-de.png)
 
 ### Bevor du anfängst \{#before-you-start}
 

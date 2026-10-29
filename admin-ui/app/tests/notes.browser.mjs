@@ -1,7 +1,11 @@
 /* Notes in LosOS Cloud (src/cloud/notes/, src/notes/) and a knowledge base
  * (src/kb/), on the kitchen garden vault in tests/fixtures/vault/.
  *
- * What is checked: the renderer draws GitHub's Markdown (tables, task
+ * What is checked: the renderer (losos-mdx in WebAssembly) draws a .note
+ * as MDX, its components beside Obsidian's syntax, and runs nothing a
+ * .note carries (no script, handler, expression or javascript: link, each
+ * named among the note's problems); a .md converts to a .note that reads
+ * the same; and it draws GitHub's Markdown (tables, task
  * lists, strikethrough, footnotes, autolinks, alerts) and Obsidian's
  * (wikilinks with aliases, headings and blocks, embeds of a section and of
  * a picture, callouts that fold, tags, ==highlights==, %%comments%%, maths,
@@ -106,7 +110,7 @@ function index({ root, name, published = false }) {
   for (const [p, text] of files) {
     if (p.includes('/')) folders.add(p.slice(0, p.lastIndexOf('/')));
     const row = { id: idOf(p), path: p, size: text.length, mtime: 1, etag: etagOf(p) };
-    if (p.endsWith('.md')) {
+    if (p.endsWith('.md') || p.endsWith('.note')) {
       const s = scan(p, text);
       if (published && s.private) continue;
       notes.push({ ...row, ...s });
@@ -120,7 +124,7 @@ function search(q) {
   const words = q.toLowerCase().split(/\s+/).filter(Boolean);
   const hits = [];
   for (const [p, text] of files) {
-    if (!p.endsWith('.md')) continue;
+    if (!p.endsWith('.md') && !p.endsWith('.note')) continue;
     text.split('\n').forEach((line, i) => {
       if (words.every((w) => line.toLowerCase().includes(w))) hits.push({ path: p, line: i, text: line.trim() });
     });
@@ -143,6 +147,7 @@ async function open(path, { kb = { available: true, sites: [] }, kbSite = 'anyon
   });
   const writes = [];
   const posts = [];
+  const moves = [];
   await page.route('**/cloud/api/**', async (route) => {
     const req = route.request();
     const url = new URL(req.url());
@@ -165,6 +170,16 @@ async function open(path, { kb = { available: true, sites: [] }, kbSite = 'anyon
       const text = files.get(rel);
       if (text === undefined) return json(route, 404, { code: 'notFound', error: 'no such file' });
       return route.fulfill({ status: 200, contentType: rel.endsWith('.svg') ? 'image/svg+xml' : 'text/markdown', headers: { etag: `"${etagOf(rel)}"` }, body: text });
+    }
+    if (p === '/files/move' && req.method() === 'POST') {
+      const body = JSON.parse(req.postData() ?? '{}');
+      moves.push(body);
+      const from = body.from.replace(/^Notes\//, '');
+      const to = body.to.replace(/^Notes\//, '');
+      if (files.has(to) && !body.overwrite) return json(route, 409, { code: 'exists', error: 'already there' });
+      files.set(to, files.get(from));
+      files.delete(from);
+      return json(route, 200, { id: idOf(to), path: body.to, name: to, dir: false, size: 0, mtime: 1, etag: 'x', mime: 'text/markdown', favorite: false });
     }
     if (p === '/kb' && req.method() === 'GET') return json(route, 200, kb);
     if (p === '/kb' && req.method() === 'POST') {
@@ -196,15 +211,15 @@ async function open(path, { kb = { available: true, sites: [] }, kbSite = 'anyon
   });
   await page.route('**/auth/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '<p>LosOS Login</p>' }));
   await page.goto(origin + path);
-  return { page, context, errors, writes, posts };
+  return { page, context, errors, writes, posts, moves };
 }
 
 const violations = (page) => page.evaluate(() => [...new Set(window.__violations)].sort());
 
 const ALL_VIOLATIONS = new Set();
 
-/* What a plain load of the file list logs (Sonner's refused copy of its
- * stylesheet): Notes and the knowledge base must not add to it. */
+/* What a plain load of the file list logs, which should be nothing: Notes
+ * and the knowledge base must not add to it. */
 const BASELINE = await (async () => {
   const { page, context } = await open('/cloud/files');
   await page.waitForSelector('[data-entry="Notes"]');
@@ -221,8 +236,13 @@ await check('a note reads with GitHub and Obsidian Markdown', async () => {
     assert.equal(await page.textContent('[data-note-title]'), 'Home');
     // Properties from the front matter.
     assert.match(await page.textContent('[data-properties]'), /season\s*2026/);
+    // In the order the note gives them.
+    assert.deepEqual(await page.locator('[data-properties] dt').allTextContents(), ['title', 'tags', 'aliases', 'season']);
     // A callout with its own title, and wikilinks that resolve.
     assert.equal(await page.textContent('.callout[data-callout="tip"] .callout-title'), 'Where to begin');
+    // One dot before a callout's title, whichever way it was written.
+    const dots = (sel) => page.$eval(sel, (t) => t.querySelectorAll('.callout-icon').length + (getComputedStyle(t, '::before').content === 'none' ? 0 : 1));
+    assert.equal(await dots('.callout[data-callout="tip"] .callout-title'), 1);
     assert.equal(await page.getAttribute('a.wikilink:text("Tomatoes")', 'data-note-path'), 'Tomatoes.md');
     assert.equal(await page.getAttribute('a.wikilink:text("Aphids")', 'data-note-path'), 'Pests/Aphids.md');
     // [[Beans|runner beans]] has no note: shown as one still to write.
@@ -267,7 +287,7 @@ await check('links, embeds, folds, footnotes and backlinks', async () => {
     assert.equal(await page.locator('details.callout[data-callout="warning"]').count(), 1);
     assert.equal(await page.locator('details.callout[open]').count(), 0);
     // Strikethrough, footnote, the picture from the attachments folder.
-    assert.equal(await page.textContent('.note-body s'), '12 kg');
+    assert.equal(await page.textContent('.note-body del'), '12 kg');
     assert.equal(await page.locator('.note-body .footnotes li').count(), 1);
     assert.match(await page.getAttribute('.note-body img', 'src'), /files\/content\?path=Notes%2Fattachments%2Ftomato\.svg/);
     // Who links here.
@@ -275,7 +295,7 @@ await check('links, embeds, folds, footnotes and backlinks', async () => {
     for (const name of ['Home', 'Compost', 'Planting calendar', 'Aphids', 'Slugs']) assert.match(back, new RegExp(name));
     // The outline jumps to a heading.
     await page.click('[data-side="outline"] button:text("Problems")');
-    await page.waitForFunction(() => location.hash === '#h-problems');
+    await page.waitForFunction(() => location.hash === '#problems');
     assert.deepEqual(errors, []);
     for (const v of await violations(page)) ALL_VIOLATIONS.add(v);
   } finally {
@@ -302,6 +322,115 @@ await check('maths, code, alerts, block ids, highlights and comments', async () 
     assert.deepEqual(errors, []);
     for (const v of await violations(page)) ALL_VIOLATIONS.add(v);
   } finally {
+    await context.close();
+  }
+});
+
+await check('a .note reads as MDX, its components beside Obsidian\'s syntax', async () => {
+  const { page, context, errors, writes } = await open('/cloud/notes?vault=Notes&note=Harvest.note');
+  try {
+    await page.waitForSelector('[data-note="Harvest.note"] .note-body h1');
+    assert.equal(await page.textContent('[data-note-title]'), 'Harvest');
+    assert.match(await page.textContent('[data-properties]'), /season\s*2026/);
+    // <Callout>, <Tabs> and <Details>, drawn by the crate.
+    assert.equal(await page.textContent('aside.callout[data-callout="tip"] .callout-title'), 'Pick in the morning');
+    assert.equal(await page.$eval('aside.callout .callout-title', (t) => getComputedStyle(t, '::before').content === 'none' ? 0 : 1), 1, 'a <Callout> has its dot');
+    assert.deepEqual(await page.locator('.mdx-tabs .mdx-tab').evaluateAll((els) => els.map((e) => e.dataset.label)), ['Roots', 'Fruit']);
+    assert.equal(await page.locator('details.mdx-details table tr').count(), 3);
+    // Obsidian's syntax inside and around them.
+    assert.equal(await page.getAttribute('a.wikilink:text("the varieties")', 'data-note-path'), 'Tomatoes.md');
+    assert.equal(await page.getAttribute('a.wikilink:text("the varieties")', 'data-sub'), 'Varieties');
+    assert.equal(await page.getAttribute('aside.callout a.tag', 'data-tag'), 'harvest');
+    assert.equal(await page.textContent('.note-body mark'), 'tomatoes');
+    assert.equal(await page.locator('[data-problems]').count(), 0);
+    assert.equal(await page.locator('.note-body input.task-box:checked').count(), 1);
+    // A box below the front matter writes its own line of the file.
+    const written = page.waitForResponse((r) => r.request().method() === 'PUT' && r.url().includes('/files/content'));
+    await page.locator('.note-body input.task-box').nth(1).click();
+    await written;
+    assert.equal(writes[0].path, 'Harvest.note');
+    assert.equal(writes[0].body.split('\n')[38], '- [x] Dry the bean seed for next year');
+    // The outline is the note's headings.
+    assert.match(await page.textContent('[data-side="outline"]'), /Stores[\s\S]*Still to do/);
+    assert.deepEqual(errors, []);
+    for (const v of await violations(page)) ALL_VIOLATIONS.add(v);
+  } finally {
+    files.set('Harvest.note', await readFile(join(FIXTURE, 'Harvest.note'), 'utf8'));
+    etags.delete('Harvest.note');
+    await context.close();
+  }
+});
+
+await check('a .note runs nothing it carries and says what it refused', async () => {
+  files.set(
+    'Unsafe.note',
+    [
+      '# Unsafe',
+      '',
+      'import x from "./x.js"',
+      '',
+      'export const y = 1',
+      '',
+      '<script>window.__ran = "script"</script>',
+      '',
+      'Sum {window.__ran = "expression"} here.',
+      '',
+      '<Callout type="tip" onClick="window.__ran = \'handler\'">Hi</Callout>',
+      '',
+      '<Figure src="javascript:window.__ran=1" alt="x" />',
+      '',
+      '[click](javascript:window.__ran="link") and <Losos />',
+      '',
+      '<losos:wikilink link="Home">forged</losos:wikilink>',
+    ].join('\n'),
+  );
+  files.set('Broken.note', '# Broken\n\n<Callout type="tip">\nnever closed\n');
+  const { page, context, errors } = await open('/cloud/notes?vault=Notes&note=Unsafe.note');
+  try {
+    await page.waitForSelector('[data-note="Unsafe.note"] .note-body h1');
+    await page.waitForSelector('[data-problems]');
+    await page.click('.note-body a:text("click")').catch(() => {});
+    await page.waitForTimeout(300);
+    assert.equal(await page.evaluate(() => window.__ran), undefined, 'nothing ran');
+    assert.equal(await page.locator('.note-body script, .note-body [onclick], .note-body a[href^="javascript"], .note-body img[src^="javascript"]').count(), 0);
+    assert.equal(await page.locator('.note-body a[data-note-path]').count(), 0, 'no forged wikilink');
+    const problems = await page.textContent('[data-problems]');
+    for (const what of [/import/i, /export/i, /script/i, /\{/, /onClick/, /javascript/, /Losos/, /reserved/]) assert.match(problems, what);
+    // A .note that is not MDX at all is still drawn, as Markdown, and says why.
+    await page.goto(`${origin}/cloud/notes?vault=Notes&note=Broken.note`);
+    await page.waitForSelector('[data-note="Broken.note"] .note-body h1');
+    assert.match(await page.textContent('[data-problems]'), /Line \d/);
+    assert.match(await page.textContent('.note-body'), /never closed/);
+    assert.deepEqual(errors, []);
+    for (const v of await violations(page)) ALL_VIOLATIONS.add(v);
+  } finally {
+    files.delete('Unsafe.note');
+    files.delete('Broken.note');
+    await context.close();
+  }
+});
+
+await check('a .md note converts to a .note that reads the same', async () => {
+  const before = files.get('Compost.md');
+  const { page, context, writes, moves } = await open('/cloud/notes?vault=Notes&note=Compost.md');
+  try {
+    await page.waitForSelector('[data-note="Compost.md"] .note-body h1');
+    const headings = await page.locator('.note-body :is(h1, h2, h3)').allTextContents();
+    const maths = await page.locator('.note-body math').count();
+    await page.click('[data-convert-note]');
+    await page.waitForFunction(() => location.search.includes('note=Compost.note'));
+    await page.waitForSelector('[data-note="Compost.note"] .note-body h1');
+    // Written over the .md with the version it read, then moved.
+    assert.ok(writes.every((w) => w.path === 'Compost.md' && w.ifMatch === 'e1'), JSON.stringify(writes));
+    assert.deepEqual(moves.map((m) => [m.from, m.to]), [['Notes/Compost.md', 'Notes/Compost.note']]);
+    assert.equal(await page.locator('[data-convert-note]').count(), 0, 'a .note has nothing to convert');
+    assert.deepEqual(await page.locator('.note-body :is(h1, h2, h3)').allTextContents(), headings);
+    assert.equal(await page.locator('.note-body math').count(), maths);
+    assert.equal(await page.locator('[data-problems]').count(), 0);
+  } finally {
+    files.delete('Compost.note');
+    files.set('Compost.md', before);
+    etags.delete('Compost.md');
     await context.close();
   }
 });
@@ -333,12 +462,13 @@ await check('a link to a note not written yet makes it', async () => {
   const { page, context, writes } = await open('/cloud/notes?vault=Notes');
   try {
     await page.click('a.is-unresolved');
-    await page.waitForFunction(() => location.search.includes('note=Beans.md') && location.search.includes('view=edit'));
+    // A new note is a .note.
+    await page.waitForFunction(() => location.search.includes('note=Beans.note') && location.search.includes('view=edit'));
     assert.equal(writes.length, 1);
-    assert.equal(writes[0].path, 'Beans.md');
+    assert.equal(writes[0].path, 'Beans.note');
     assert.equal(writes[0].ifNew, '1');
   } finally {
-    files.delete('Beans.md');
+    files.delete('Beans.note');
     await context.close();
   }
 });
@@ -361,7 +491,7 @@ await check('tags, search, the mind map and the graph', async () => {
     const map = await page.textContent('[data-mindmap]');
     for (const word of ['Tomatoes', 'Varieties', 'Sungold', 'Sowing', 'Problems']) assert.match(map, new RegExp(word));
     await page.click('[data-mindmap] [role="link"][aria-label="Problems"]');
-    await page.waitForFunction(() => !location.search.includes('view=map') && location.hash === '#h-problems');
+    await page.waitForFunction(() => !location.search.includes('view=map') && location.hash === '#problems');
 
     await page.click('[data-graph-button]');
     await page.waitForSelector('[data-vault-graph] [data-graph]');
@@ -450,7 +580,11 @@ await check('a knowledge base reads without signing in and leaves private notes 
     await page.click('[data-view="graph"]');
     await page.waitForSelector('[data-vault-graph] [data-graph]');
     const nodes = Number(await page.getAttribute('[data-vault-graph] [data-graph]', 'data-nodes'));
-    assert.equal(nodes, 7, 'six public notes and the canvas');
+    assert.equal(nodes, 8, 'seven public notes and the canvas');
+    // A .note on the site is MDX too.
+    await page.goto(`${origin}/kb/kitchen-garden/Harvest`);
+    await page.waitForSelector('[data-note="Harvest.note"] aside.callout');
+    assert.equal(await page.locator('[data-note="Harvest.note"] .mdx-tab').count(), 2);
     assert.deepEqual(errors, []);
     for (const v of await violations(page)) ALL_VIOLATIONS.add(v);
   } finally {

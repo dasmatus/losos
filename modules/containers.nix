@@ -183,9 +183,15 @@ let
   # Tor and I2P (modules/hidden-services.nix) arrive on loopback listeners
   # of their own. Loopback, so the guard above turns them away from the
   # admin surface like the tunnel.
-  hiddenListen = (import ./hidden-lib.nix { inherit lib pkgs; }).frontListen (
-    config.losos.hidden.tor.enable || config.losos.hidden.i2p.enable
-  );
+  hiddenListen =
+    (import ./hidden-lib.nix { inherit lib pkgs; }).frontListen (
+      config.losos.hidden.tor.enable || config.losos.hidden.i2p.enable
+    )
+    # And what the box's own TLS for its public names hands on
+    # (modules/public-tls.nix), loopback too.
+    ++ (import ./public-tls-lib.nix { inherit lib; }).frontListen (
+      config.losos.proxy.enable && config.losos.proxy.tlsPassthrough.enable
+    );
 
   # ── Security response headers ─────────────────────────────────────────────
   # The admin UI, /api/, /cloud/ and /git/ share one origin by design,
