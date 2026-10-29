@@ -665,8 +665,15 @@ function CallScreen({
         const me = client.getSafeUserId();
         rtc.join({ userId: me, deviceId, memberId: memberId(me, deviceId) }, [transport], {
           // A sticky membership (MSC4354) and a delayed leave (MSC4140): the
-          // homeserver withdraws it seconds after this page stops answering.
+          // homeserver withdraws it half a minute after this page stops answering.
           unstableSendStickyEvents: true,
+          // A small box's homeserver can take seconds to answer, and a
+          // restart given up after the default 2 s let the leave go out
+          // under a page still in the call, which then joined again in a
+          // loop. The leave waits 30 s for a page gone quiet instead of 8.
+          delayedLeaveEventDelayMs: 30_000,
+          delayedLeaveEventRestartMs: 5_000,
+          delayedLeaveEventRestartLocalTimeoutMs: 10_000,
           callIntent: active.video ? "video" : "audio",
           callCapabilities: ["m.render_audio", "m.render_video"],
           // A direct chat rings; a room gets a notification, as Element does.

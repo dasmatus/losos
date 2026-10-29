@@ -1401,7 +1401,7 @@ pkgs.testers.nixosTest {
 
     with subtest("a closed browser leaves by itself; hanging up ends the call for the room"):
         # Jan's browser goes away without a word. The homeserver sends the
-        # leave it was holding for him (MSC4140) seconds later: a new sticky
+        # leave it was holding for him (MSC4140) half a minute later: a new sticky
         # event of his, and no delayed leave left.
         def sticky_from(n):
             body = call(f"/_matrix/client/v3/rooms/{room}/messages?dir=b&limit=100", cookies["matus"],
