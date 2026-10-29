@@ -6,8 +6,8 @@ slug: /manual/notes-and-knowledge-bases
 
 # Notes and knowledge bases
 
-**Notes** in [LosOS Cloud](losos-cloud) opens a folder of Markdown files the
-way Obsidian opens a vault: the notes on the left, the open note in the
+**Notes** in [LosOS Cloud](losos-cloud) opens a folder of notes, `.note`
+and `.md` files, the way Obsidian opens a vault: the notes on the left, the open note in the
 middle, and beside it the notes that link to it. An Obsidian vault synced
 into LosOS Cloud opens as it is, with its links, embeds, tags and canvases.
 While the box shares and is in a mesh, a folder of notes can also be
@@ -18,13 +18,51 @@ published as a knowledge base: a site that people read in a browser.
 - **Notes** in the sidebar opens the folder `Notes` in your files. It is
   made the first time you open it.
 - Right-click any folder in **Files** and choose **Open as notes**.
-- Click a `.md` file in **Files**. It opens in its vault: the nearest folder
+- Click a `.note` or `.md` file in **Files**. It opens in its vault: the nearest folder
   above it with an `.obsidian` folder inside, as Obsidian finds a vault, or
   else the folder the file is in.
 
+## .note and .md
+
+A new note is a `.note` file. A `.note` is MDX: Markdown that can also hold
+components, written like HTML tags. These are the ones a note can use, the
+same as in LosOS Office's documents:
+
+| Component | What it draws |
+| --- | --- |
+| `<Callout type="tip" title="…">` | A box in the colour of its type: `note`, `tip`, `important`, `warning` or `caution` |
+| `<Details summary="…">` | A part that opens when clicked |
+| `<Tabs>` with `<Tab label="…">` | Parts read one after the other, each under its label |
+| `<Columns>` with `<Column>` | Parts side by side, one under the other on a phone |
+| `<Figure src="…" caption="…">` | A picture with a caption |
+| `<TableOfContents />` | The note's headings, as links |
+| `<Table>`, `<Row>`, `<Cell>` | A table with merged cells and a caption |
+| `<Mention login="…" />`, `<Date value="2026-08-14" />` | A person and a date |
+| `<Equation tex="…" />` | Maths on a line of its own |
+
+`<kbd>`, `<sub>`, `<sup>`, `<mark>`, `<u>`, `<s>`, `<small>`, `<abbr>` and
+`<br />` work as in HTML.
+
+A note never runs code. MDX would let a file carry JavaScript, so Notes
+refuses all of it: `{…}` expressions, `import` and `export` lines,
+`<script>`, event handlers such as `onClick`, `javascript:` links, and any
+tag or component not in the table. What a note asked for and did not get
+is listed above it with its line, and the rest of the note is drawn. A
+`.note` that is not valid MDX, such as one with a component left open, is
+drawn as Markdown with the line that broke it.
+
+`.md` notes stay Markdown and keep working as before. **Convert to .note**,
+above a `.md` note, makes it a `.note` that reads the same: braces and
+angle brackets that MDX would read as code are escaped, and HTML comments
+become `%%comments%%`. If the note's headings or links would come out
+differently, it stays `.md` and the message says which line. `[[Links]]`
+name a note without its ending, so they keep working. Obsidian opens only
+`.md` files, so keep notes you also edit in Obsidian as `.md`.
+
 ## Reading a note
 
-A note is drawn from its Markdown. Both kinds people write are understood:
+Both kinds of Markdown people write are understood, in `.note` and `.md`
+files alike:
 
 - GitHub's: tables, task lists, ~~strikethrough~~, footnotes, links that
   start with `https://`, and alerts such as `> [!NOTE]`.
