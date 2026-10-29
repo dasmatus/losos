@@ -30,7 +30,6 @@ nix build .#checks.x86_64-linux.losos-admin-daemon  # lososd: D-Bus, HTTP, token
 nix build .#checks.x86_64-linux.losos-install       # installer, keyfile, BIOS
 nix build .#checks.x86_64-linux.losos-tpm-unlock    # installer, swtpm unlock
 nix build .#checks.x86_64-linux.losos-iso-install   # the real installer offline, then boot the disk
-nix build .#checks.x86_64-linux.losos-network-unlock # --tang: TPM2 + Tang, recovery code
 nix build .#checks.x86_64-linux.losos-identity      # LosOS Login (Authelia), sections
 bun run dev | typecheck | test:browser              # in admin-ui/app
 cargo test --manifest-path admin-ui/tui/Cargo.toml  # losos, the terminal client
