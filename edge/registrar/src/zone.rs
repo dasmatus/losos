@@ -20,7 +20,9 @@
 //!   the wallet. Knot signs the zone (DNSSEC), and ENS needs that;
 //! * with an ECH key ([`crate::ech`]), an HTTPS record at every name above
 //!   (RFC 9460, `1 . alpn="h3,h2" ech="…"`): a browser learns there that the
-//!   edge speaks HTTP/3 and how to encrypt the name it asks for.
+//!   edge speaks HTTP/3 and how to encrypt the name it asks for; except at
+//!   the names of a box that ends TLS itself ([`crate::passthrough`]), which
+//!   get none.
 //!
 //! Every name resolves to the edge, because the edge is where Traefik
 //! terminates TLS and the tunnel to the box begins. A box's own address
@@ -45,9 +47,24 @@ pub struct ZoneNames {
     /// name in the zone, the apex included, gets an HTTPS record saying the
     /// edge answers HTTP/3 and HTTP/2 there and carrying the ECH key.
     pub ech: Option<String>,
+    /// Names, relative like `names`, that get no HTTPS record: the boxes
+    /// that end TLS themselves (`crate::passthrough`). The edge cannot hand
+    /// such a box a decrypted ClientHello, and Traefik has no HTTP/3 to
+    /// pass through, so neither `ech` nor `h3` would be true there.
+    pub no_https: BTreeSet<String>,
 }
 
 impl ZoneNames {
+    /// Leave the HTTPS record off `fqdn`, if it lies strictly inside `zone`.
+    pub fn skip_https(&mut self, fqdn: &str, zone: &str) {
+        let fqdn = fqdn.trim().trim_end_matches('.').to_ascii_lowercase();
+        if let Some(rel) = fqdn.strip_suffix(&format!(".{zone}")) {
+            if !rel.is_empty() {
+                self.no_https.insert(rel.to_string());
+            }
+        }
+    }
+
     /// Add `fqdn` if it lies strictly inside `zone`; returns whether it did.
     pub fn add_fqdn(&mut self, fqdn: &str, zone: &str) -> bool {
         let fqdn = fqdn.trim().trim_end_matches('.').to_ascii_lowercase();
@@ -159,6 +176,9 @@ fn address_records(out: &mut String, owner: &str, opts: &DomainsOpts) {
 }
 
 fn https_record(out: &mut String, owner: &str, names: &ZoneNames) {
+    if names.no_https.contains(owner) {
+        return;
+    }
     if let Some(ech) = names.ech.as_deref().filter(|e| plain_base64(e)) {
         let _ = writeln!(out, "{owner} IN HTTPS 1 . alpn=\"h3,h2\" ech=\"{ech}\"");
     }
@@ -298,6 +318,21 @@ mod tests {
         assert!(!render(&opts(), &names, 1).contains("HTTPS"));
         names.ech = None;
         assert!(!render(&opts(), &names, 1).contains("HTTPS"));
+    }
+
+    #[test]
+    fn a_box_that_ends_tls_itself_gets_no_https_record() {
+        let mut names = ZoneNames::default();
+        names.add_fqdn("mattbox.boxes.losos.cfd", "boxes.losos.cfd");
+        names.add_fqdn("other.boxes.losos.cfd", "boxes.losos.cfd");
+        names.skip_https("mattbox.boxes.losos.cfd", "boxes.losos.cfd");
+        names.ech = Some("AEX+DQBBAQAgACA=".to_string());
+        let z = render(&opts(), &names, 1);
+        assert!(z.contains("\nother IN HTTPS "), "{z}");
+        assert!(z.contains("\n@ IN HTTPS "), "{z}");
+        assert!(!z.contains("\nmattbox IN HTTPS"), "{z}");
+        // Its address records stay: the name still resolves to the edge.
+        assert!(z.contains("\nmattbox IN A "), "{z}");
     }
 
     #[test]

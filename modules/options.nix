@@ -127,6 +127,67 @@ in
       '';
     };
 
+    tpm.tang = lib.mkOption {
+      type = lib.types.listOf (
+        lib.types.submodule {
+          options = {
+            url = lib.mkOption {
+              type = lib.types.strMatching "https?://[^[:space:]\"'$`\\]+";
+              example = "http://tang.lan:7500";
+              description = "The Tang server's address, reachable from the box's own network.";
+            };
+            thumbprint = lib.mkOption {
+              type = lib.types.strMatching "[A-Za-z0-9_-]{20,}";
+              description = ''
+                The thumbprint of the Tang server's signing key (`tang-show-keys`
+                on the server). The installer binds to that key and no other, so
+                a server that answers at the address with another key unlocks
+                nothing.
+              '';
+            };
+            edge = lib.mkOption {
+              type = lib.types.bool;
+              default = false;
+              description = ''
+                This server is the box's edge (`losos-install --tang-edge`,
+                losos.edge.tang), at `<registrar>/tang/<id>`: a key made for
+                this box alone, which the edge stops answering for once the
+                owner reports the box stolen there. It is required on its
+                own, not one of the servers any one of which will do.
+              '';
+            };
+          };
+        }
+      );
+      default = [ ];
+      example = [
+        {
+          url = "http://tang.lan:7500";
+          thumbprint = "x3ZDsT7uAzTcJiJ9qZ7f0wJ8Kq0pEJ2O5b5b7l7XyZk";
+        }
+      ];
+      description = ''
+        Unlock /persist only on the box's own network. Empty (the default):
+        the TPM2 alone opens the volume, so a box carried away still boots
+        with its data readable. With one or more Tang servers, the installer
+        seals the disk key to the TPM2 AND any one of these servers (Clevis,
+        `sss` with a threshold of two) instead of the TPM alone, and the
+        initrd asks a server over the network at every boot. A box taken off
+        its network, or whose servers have forgotten it, does not open; at
+        the console it then asks for the box's recovery code, which the box
+        adds as a passphrase once it has one.
+
+        With the box's edge as a server (`losos-install --tang-edge`), the
+        disk also needs the edge's answer, and the owner can make the edge
+        refuse it from the edge's `/tang/lost` page with the box's recovery
+        code: a stolen box then does not open anywhere.
+
+        Set by the installer (`losos-install --tang URL#THUMBPRINT`,
+        `--tang-edge [URL]`) into install-target.nix, like `tpm.enable`.
+        Needs `tpm.enable`.
+      '';
+    };
+
     bios = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -532,6 +593,33 @@ in
         /var/secrets/losos-edge-pins/ (lososd names it in
         /run/losos/edge-path.env).
       '';
+    };
+
+    proxy.tlsPassthrough = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          End TLS for this box's public names on the box itself, with a
+          Let's Encrypt certificate it gets for each, so the edge passes the
+          encrypted bytes through and cannot read them (modules/public-tls.nix,
+          edge/registrar/src/passthrough.rs). Off, the edge ends TLS with a
+          certificate of its own and can read everything that goes through it.
+          On, a switched-off box is a connection error rather than the edge's
+          offline page, and its public names have no HTTP/3 or ECH.
+        '';
+      };
+      acmeServer = lib.mkOption {
+        type = lib.types.str;
+        default = "https://acme-v02.api.letsencrypt.org/directory";
+        description = "The ACME directory the box gets its public certificates from.";
+      };
+      acmeEmail = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "owner@example.org";
+        description = "The contact address given to the ACME server, if any. None is sent by default.";
+      };
     };
 
     proxy.pauseSharingAfter = lib.mkOption {
@@ -2415,6 +2503,24 @@ in
         GitHub-style workflows to it with POST /ci/submit, and boxes that
         lend their compute claim them. Only boxes listed as tenants with
         `cluster` may use it. Off, every /ci/* route answers 503.
+      '';
+    };
+
+    edge.tang.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Be the Tang server of the boxes installed with
+        `losos-install --tang-edge`: each gets a key pair of its own here,
+        and its disk opens only with its TPM2 and an answer from this edge
+        (modules/network-unlock.nix). The answer is half of a blinded
+        exchange, so the edge learns when the box boots and never sees the
+        key. An owner whose box was stolen reports it at `/tang/lost` with
+        the box's recovery code, which never leaves their browser, and the
+        edge answers for that box no more until they take it back. Anyone
+        may ask for a key, as of any public Tang server; the edge keeps at
+        most 100 000 and makes at most 30 a minute. Off, every /tang/* route
+        answers 404 and those boxes ask for their recovery code at boot.
       '';
     };
 

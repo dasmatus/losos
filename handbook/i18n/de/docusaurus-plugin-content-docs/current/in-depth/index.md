@@ -9,6 +9,8 @@ mdx:
 
 # Im Detail
 
+![Die Übersicht einer Box namens mattbox.](@site/docs/img/overview-de.png)
+
 Der Rest dieses Handbuchs richtet sich an die Besitzer einer Box. Dieses
 Kapitel ist für die Leute, die LosOS bauen, eine Edge betreiben oder ein
 Release erstellen: wie die Teile zusammenspielen, warum jedes dort sitzt, wo

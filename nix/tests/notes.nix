@@ -243,7 +243,7 @@ pkgs.testers.nixosTest {
         assert v["name"] == VAULT, v["name"]
         assert set(notes) == {
             "Home.md", "Tomatoes.md", "Compost.md", "Planting calendar.md",
-            "Pests/Aphids.md", "Pests/Slugs.md", "Private diary.md",
+            "Pests/Aphids.md", "Pests/Slugs.md", "Private diary.md", "Harvest.note",
         }, sorted(notes)
         assert [c["path"] for c in v["canvases"]] == ["Garden plan.canvas"], v["canvases"]
         assert [f["path"] for f in v["files"]] == ["attachments/tomato.svg"], v["files"]
@@ -257,6 +257,11 @@ pkgs.testers.nixosTest {
         assert {"target": "Planting calendar", "embed": True} in tomatoes["links"], tomatoes["links"]
         assert "vegetables/fruiting" in tomatoes["tags"], tomatoes["tags"]
         assert notes["Private diary.md"]["private"] is True
+        # A .note (MDX) is read like any other note: tags inside a
+        # component, a wikilink to a heading.
+        harvest = notes["Harvest.note"]
+        assert set(harvest["tags"]) >= {"garden", "harvest"}, harvest["tags"]
+        assert {"target": "Tomatoes", "embed": False} in harvest["links"], harvest["links"]
         # Comments and code are not text to scan.
         assert not any("shade" in l["target"] for l in notes["Planting calendar.md"]["links"])
         root = get_json(f"{me} '{BASE}/cloud/api/notes/root?path={Q(VAULT + "/Pests/Aphids.md")}'")
@@ -274,6 +279,12 @@ pkgs.testers.nixosTest {
         # What was typed in the editor is in the file, written by the box.
         text = curl(f"-f -u 'matus:{PASSWORD}' '{BASE}/remote.php/webdav/{Q(VAULT)}/{Q("Planting calendar.md")}'")
         assert "Feed with [[Compost]]" in text, text
+        # Convert to .note moved Compost.md, and the box reads it as a note.
+        v = get_json(f"{me} '{BASE}/cloud/api/notes/vault?path={Q(VAULT)}'")
+        paths = {n["path"] for n in v["notes"]}
+        assert "Compost.note" in paths and "Compost.md" not in paths, sorted(paths)
+        note = curl(f"-f -u 'matus:{PASSWORD}' '{BASE}/remote.php/webdav/{Q(VAULT)}/Compost.note'")
+        assert note.startswith("---\ntags: soil\n---") and "\n# Compost\n" in note, note[:200]
         laptop.copy_from_machine("/tmp/shots/after", "shots")
 
     sites = get_json(f"{me} {BASE}/cloud/api/kb")["sites"]

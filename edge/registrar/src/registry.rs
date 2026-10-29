@@ -81,6 +81,13 @@ pub struct Tenant {
     /// gateway's next `/relay` claims its boxes again, and an entry nobody
     /// claims expires with the heartbeat TTL.
     pub gateway: Option<String>,
+    /// The names this box ends TLS for itself, from its last heartbeat
+    /// (`crate::passthrough`), or `None` for a box that leaves TLS to the
+    /// edge. Written to `registry.json`, unlike `idle`: an edge that
+    /// restarted and forgot it would route the box's names with a
+    /// certificate of its own until the next heartbeat, which is exactly
+    /// what the box asked it never to hold.
+    pub tls: Option<Vec<String>>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Default)]
@@ -101,6 +108,10 @@ struct RegistryFileTenant {
     /// existed still loads; absent means a direct tenant.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     via: Option<String>,
+    /// `#[serde(default)]` so a `registry.json` written before passthrough
+    /// still loads; absent means the edge ends the box's TLS.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tls: Option<Vec<String>>,
 }
 
 /// The wire form of [`Registry::export`] / [`Registry::import`]. Ages, not
@@ -150,6 +161,8 @@ pub struct RelayedView {
     pub via: String,
     pub hostname: String,
     pub tunnel_port: u16,
+    /// What the box said through its spoke about ending TLS itself.
+    pub tls: Option<Vec<String>>,
 }
 
 /// Everything the registry mutates, under one lock. Two `Mutex`es would need a
@@ -241,6 +254,7 @@ impl Registry {
                     llm: None,
                     via: t.via,
                     gateway: None,
+                    tls: t.tls.map(crate::passthrough::clean),
                 },
             );
         }
@@ -293,6 +307,7 @@ impl Registry {
                         llm: None,
                         via: None,
                         gateway: None,
+                        tls: None,
                     },
                 );
                 port
@@ -368,6 +383,7 @@ impl Registry {
                             llm: None,
                             via: Some(spoke.to_string()),
                             gateway: gateway.map(str::to_string),
+                            tls: None,
                         },
                     );
                     port
@@ -396,6 +412,7 @@ impl Registry {
                     via: via.clone(),
                     hostname: t.hostname.clone(),
                     tunnel_port: t.tunnel_port,
+                    tls: t.tls.clone(),
                 })
             })
             .collect();
@@ -530,6 +547,28 @@ impl Registry {
         out
     }
 
+    /// Record what `id` said about the names it ends TLS for itself
+    /// (`crate::passthrough`). Persisted when it changed, so the routes
+    /// after a restart are the ones the box last asked for. Returns whether
+    /// it changed; an unknown id changes nothing.
+    ///
+    /// # Errors
+    /// `registry.json` could not be written.
+    pub async fn record_tls(
+        &self,
+        id: &str,
+        tls: Option<Vec<String>>,
+    ) -> Result<bool, RegistryError> {
+        let tls = tls.map(crate::passthrough::clean);
+        let mut st = self.inner.lock().await;
+        match st.tenants.get_mut(id) {
+            Some(t) if t.tls != tls => t.tls = tls,
+            _ => return Ok(false),
+        }
+        self.persist_locked(&st).await?;
+        Ok(true)
+    }
+
     pub async fn heartbeat(&self, id: &str) -> bool {
         let mut st = self.inner.lock().await;
         if let Some(t) = st.tenants.get_mut(id) {
@@ -603,6 +642,7 @@ impl Registry {
                 // Token is enriched by the reconciler; placeholder here.
                 token: String::new(),
                 llm_port: None,
+                tls: t.tls.clone(),
             })
             .collect();
         v.sort_by(|a, b| a.id.cmp(&b.id));
@@ -725,6 +765,9 @@ impl Registry {
                     llm: None,
                     via: t.via,
                     gateway: None,
+                    // Not carried by a snapshot: the Vercel host it serves
+                    // has no Traefik to pass TLS through.
+                    tls: None,
                 },
             );
         }
@@ -761,6 +804,7 @@ impl Registry {
                             hostname: t.hostname.clone(),
                             port: t.tunnel_port,
                             via: t.via.clone(),
+                            tls: t.tls.clone(),
                         },
                     )
                 })

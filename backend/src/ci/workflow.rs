@@ -459,6 +459,9 @@ pub struct Planned {
     pub timeout_minutes: u32,
     /// `runs-on` names `self-hosted`: the job stays on this box.
     pub self_hosted: bool,
+    /// `runs-on: [losos-desktop, <computer>]`: the job waits on this box
+    /// for that joined LosOS Desktop computer ([`desktop_job`]).
+    pub desktop: Option<String>,
     /// `continue-on-error`: a failure does not fail the run.
     pub continue_on_error: bool,
 }
@@ -535,6 +538,114 @@ pub fn expand_matrix(matrix: &Value) -> Result<Vec<Map<String, Value>>, String> 
         return Err("a matrix has at most 256 combinations".into());
     }
     Ok(combos)
+}
+
+/// The label of a job for a LosOS Desktop computer joined to this box
+/// (`crate::directory`): `runs-on: [losos-desktop, <computer>]`.
+pub const DESKTOP_LABEL: &str = "losos-desktop";
+
+/// What a job on a company's desktop may do, and the `with:` each step
+/// takes. Nothing else: no `run:`, no other action, no container. The
+/// computer checks the same list again before it does anything
+/// (LosOS Desktop's `losos-login-bridge manage`), so a box that planned
+/// something else gets an error, not a shell.
+pub const DESKTOP_ACTIONS: &[(&str, &[&str])] = &[
+    ("losos/desktop-status", &[]),
+    ("losos/desktop-update", &[]),
+    ("losos/desktop-reboot", &[]),
+    ("losos/desktop-channel", &["channel"]),
+    ("losos/desktop-lock", &["user"]),
+    ("losos/desktop-unlock", &["user"]),
+];
+
+/// A `with:` value of a desktop step: a channel or an account name.
+fn desktop_value(v: &str) -> bool {
+    !v.is_empty()
+        && v.len() <= 64
+        && v.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+}
+
+/// A desktop job's computer and its steps, worked out on this box: the
+/// computer runs no expressions, so every `${{ }}` is filled in here.
+/// `Ok(None)` when `labels` do not name `losos-desktop`.
+pub fn desktop_job(
+    labels: &[String],
+    job: &Value,
+    scope: &Scope,
+) -> Result<Option<(String, Vec<Value>)>, String> {
+    if !labels.iter().any(|l| l.eq_ignore_ascii_case(DESKTOP_LABEL)) {
+        return Ok(None);
+    }
+    let others: Vec<&String> = labels
+        .iter()
+        .filter(|l| !l.eq_ignore_ascii_case(DESKTOP_LABEL))
+        .collect();
+    let [computer] = others.as_slice() else {
+        return Err(format!(
+            "runs-on: [{DESKTOP_LABEL}, <computer>] names one joined computer; \
+             a matrix over computers reaches several"
+        ));
+    };
+    if job.get("container").is_some() || job.get("services").is_some() {
+        return Err("a LosOS Desktop job has no container or services".into());
+    }
+    let steps = job.get("steps").and_then(Value::as_array).cloned();
+    let Some(steps) = steps.filter(|s| !s.is_empty()) else {
+        return Err("a LosOS Desktop job needs steps".into());
+    };
+    let mut out = Vec::new();
+    for (i, step) in steps.iter().enumerate() {
+        let at = |e: &str| format!("steps[{i}]: {e}");
+        let Some(fields) = step.as_object() else {
+            return Err(at("a step is a mapping"));
+        };
+        if let Some(key) = fields
+            .keys()
+            .find(|k| !matches!(k.as_str(), "uses" | "with" | "name" | "id"))
+        {
+            return Err(at(&format!(
+                "a LosOS Desktop step takes only uses, with, name and id, not {key}"
+            )));
+        }
+        let uses = fields.get("uses").map(expr::to_text).unwrap_or_default();
+        let Some((action, takes)) = DESKTOP_ACTIONS.iter().find(|(a, _)| *a == uses) else {
+            let known: Vec<&str> = DESKTOP_ACTIONS.iter().map(|(a, _)| *a).collect();
+            return Err(at(&format!(
+                "a LosOS Desktop step uses one of {}",
+                known.join(", ")
+            )));
+        };
+        let with = match fields.get("with") {
+            Some(w) => expr::interpolate_value(w, scope).map_err(|e| at(&e))?,
+            None => json!({}),
+        };
+        let Some(with) = with.as_object() else {
+            return Err(at("with is a mapping"));
+        };
+        let mut filled = Map::new();
+        for (k, v) in with {
+            let v = expr::to_text(v);
+            if !takes.contains(&k.as_str()) {
+                return Err(at(&format!("{action} takes no {k}")));
+            }
+            if !desktop_value(&v) {
+                return Err(at(&format!(
+                    "{k} is letters, digits, dots, dashes and underscores"
+                )));
+            }
+            filled.insert(k.clone(), Value::String(v));
+        }
+        if let Some(missing) = takes.iter().find(|k| !filled.contains_key(**k)) {
+            return Err(at(&format!("{action} needs with.{missing}")));
+        }
+        let name = match fields.get("name") {
+            Some(n) => expr::interpolate(&expr::to_text(n), scope).map_err(|e| at(&e))?,
+            None => action.to_string(),
+        };
+        out.push(json!({ "uses": action, "with": filled, "name": name }));
+    }
+    Ok(Some(((*computer).clone(), out)))
 }
 
 fn labels(runs_on: &Value) -> Vec<String> {
@@ -632,6 +743,7 @@ pub fn plan_job(
         if labels.is_empty() && job.get("container").is_none() {
             return Err(format!("jobs.{id}: runs-on names no runner"));
         }
+        let desktop = desktop_job(&labels, job, &s).map_err(|e| format!("jobs.{id}: {e}"))?;
         let container = match job.get("container") {
             Some(c) => expr::interpolate_value(c, &s).map_err(|e| at("container", e))?,
             None => Value::Null,
@@ -668,7 +780,7 @@ pub fn plan_job(
         }
         let mut github = github.clone();
         github["job"] = json!(id);
-        let payload = json!({
+        let mut payload = json!({
             "workflow": wf.name,
             "workflowFile": wf.file,
             "jobId": id,
@@ -691,8 +803,23 @@ pub fn plan_job(
                 "secrets": { "GITHUB_TOKEN": "" },
             },
         });
+        // The computer gets the steps filled in, and nothing it does not
+        // use: no environment, no contexts.
+        let desktop = desktop.map(|(computer, steps)| {
+            payload = json!({
+                "workflow": wf.name,
+                "jobId": id,
+                "name": name,
+                "desktop": computer,
+                "steps": steps,
+                "timeoutMinutes": timeout_minutes,
+            });
+            computer
+        });
         out.push(Planned {
-            self_hosted: labels.iter().any(|l| l.eq_ignore_ascii_case("self-hosted")),
+            self_hosted: desktop.is_none()
+                && labels.iter().any(|l| l.eq_ignore_ascii_case("self-hosted")),
+            desktop,
             name,
             matrix,
             payload,
@@ -875,6 +1002,74 @@ jobs:
         );
         let only = expand_matrix(&json!({ "include": [{ "a": 1 }, { "a": 2 }] })).unwrap();
         assert_eq!(only.len(), 2);
+    }
+
+    #[test]
+    fn desktop_jobs_take_only_fixed_steps_filled_in() {
+        let wf = |steps: &str, runs_on: &str| {
+            parse(
+                "f.yml",
+                &format!("on: push\njobs:\n  a:\n    runs-on: {runs_on}\n    steps: {steps}\n"),
+            )
+            .unwrap()
+        };
+        let github = json!({ "actor": "ada" });
+        let plan = |w: &Workflow| plan_job(w, "a", &github, &Map::new(), false, false);
+
+        let ok = wf(
+            "[{uses: losos/desktop-lock, with: {user: '${{ github.actor }}'}, name: Lock}]",
+            "[losos-desktop, reception]",
+        );
+        let planned = plan(&ok).unwrap().unwrap();
+        assert_eq!(planned[0].desktop.as_deref(), Some("reception"));
+        assert!(!planned[0].self_hosted);
+        assert_eq!(
+            planned[0].payload["steps"],
+            json!([{ "uses": "losos/desktop-lock", "with": { "user": "ada" }, "name": "Lock" }])
+        );
+
+        for (steps, runs_on, why) in [
+            ("[{run: id}]", "[losos-desktop, reception]", "not run"),
+            (
+                "[{uses: actions/checkout@v4}]",
+                "[losos-desktop, reception]",
+                "uses one of",
+            ),
+            (
+                "[{uses: losos/desktop-update}]",
+                "[losos-desktop]",
+                "one joined computer",
+            ),
+            (
+                "[{uses: losos/desktop-update}]",
+                "[losos-desktop, a, b]",
+                "one joined computer",
+            ),
+            (
+                "[{uses: losos/desktop-lock}]",
+                "[losos-desktop, r]",
+                "needs with.user",
+            ),
+            (
+                "[{uses: losos/desktop-update, with: {x: y}}]",
+                "[losos-desktop, r]",
+                "takes no x",
+            ),
+            (
+                "[{uses: losos/desktop-lock, with: {user: 'a b'}}]",
+                "[losos-desktop, r]",
+                "letters",
+            ),
+            (
+                "[{uses: losos/desktop-update, env: {A: b}}]",
+                "[losos-desktop, r]",
+                "not env",
+            ),
+            ("[]", "[losos-desktop, r]", "needs steps"),
+        ] {
+            let e = plan(&wf(steps, runs_on)).unwrap_err();
+            assert!(e.contains(why), "{steps} on {runs_on}: {e}");
+        }
     }
 
     #[test]
