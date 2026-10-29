@@ -49,7 +49,7 @@
 # The portal is Authelia's own web app built with the LosOS palette, logo
 # and name (admin-ui/themes/default.nix, `authelia`).
 #
-# LosOS Login is also the OAuth provider of one client, the LosOS companion
+# LosOS Login is also the OAuth provider of the LosOS companion
 # in people's AI tools (`losos agents install`, backend/src/companion.rs).
 # It signs in with the device code flow: the terminal shows a link and a
 # code, the person approves it here with their password, their second
@@ -58,7 +58,11 @@
 # as `Authorization: Bearer authelia_at_…`, which nginx passes on like the
 # spare key, and lososd asks LosOS Login about each token (introspection,
 # as the confidential client `lososd`) and lets it read a few routes as
-# that person. The keys and both secrets are made here on first start.
+# that person. LosOS Desktop's backups sign in the same way as a second
+# client, `losos-backups`, with a ten-minute token and no refresh, good
+# for one route that makes that person's own LosOS Cloud app password and
+# LosOS Git token (`POST /api/devices/backups`). The keys and both secrets
+# are made here on first start.
 {
   config,
   lib,
@@ -71,11 +75,18 @@ let
   themes = import ../admin-ui/themes { inherit pkgs; };
   sections = lib.importJSON ../backend/sections.json;
   # The paths of the public routes, each once.
-  publicPaths = lib.unique (
+  allPublic = lib.unique (
     lib.mapAttrsToList (route: _: lib.last (lib.splitString " " route)) (
       lib.filterAttrs (_: section: section == "public") sections.routes
     )
   );
+  # A computer whose logins this box manages checks in here
+  # (backend/src/schizo.rs): from the office, from home through the edge,
+  # and over the box's Tor address once schizo mode sends everything through
+  # Tor. So these are the public routes the LAN guard does not hold; the
+  # computer's own token is the whole check, and lososd throttles a wrong one.
+  devicePaths = lib.filter (lib.hasPrefix "/api/login-devices/self") allPublic;
+  publicPaths = lib.subtractLists devicePaths allPublic;
 
   enabled = cfg.enable && config.losos.admin.enable && config.losos.admin.ui != null;
   fqdn = "${config.losos.hostName}.local";
@@ -242,6 +253,9 @@ let
   '';
   toLososd = ''
     ${lanOnly}
+    ${toLososdAnywhere}
+  '';
+  toLososdAnywhere = ''
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Losos-Via-Edge "";
     proxy_set_header X-Losos-Edge "";
@@ -421,6 +435,9 @@ in
             access_token = "1h";
             refresh_token = "30d";
           };
+          # A computer's backups sign in once, fetch their credentials
+          # (POST /api/devices/backups) and keep nothing of LosOS Login's.
+          lifespans.custom.backups.access_token = "10m";
           # The same two marks as access_control above: a person held to
           # their own account gets no companion, and a person with a second
           # factor approves it with that factor.
@@ -459,7 +476,27 @@ in
               ];
             }
             {
-              # Introspection only: lososd asks about the companion's tokens.
+              # LosOS Desktop's backups (losos_access::BACKUPS_CLIENT_ID): the
+              # same device code sign-in as the companion, for one call that
+              # makes the person's own LosOS Cloud and LosOS Git credentials.
+              client_id = "losos-backups";
+              client_name = "LosOS Desktop backups";
+              public = true;
+              token_endpoint_auth_method = "none";
+              authorization_policy = "losos";
+              lifespan = "backups";
+              consent_mode = "explicit";
+              grant_types = [ "urn:ietf:params:oauth:grant-type:device_code" ];
+              response_types = [ ];
+              redirect_uris = [ ];
+              scopes = [
+                "openid"
+                "profile"
+              ];
+            }
+            {
+              # Introspection only: lososd asks about the companion's and the
+              # backups' tokens.
               client_id = "lososd";
               client_name = "lososd";
               client_secret = ''{{ mustEnv "CREDENTIALS_DIRECTORY" | printf "%s/oidc-lososd-digest" | secret }}'';
@@ -825,6 +862,15 @@ in
       // lib.genAttrs (map (p: "= ${p}") publicPaths) (_: {
         proxyPass = "http://127.0.0.1:${toString apiPort}";
         extraConfig = toLososd;
+      })
+      # The check-ins of the computers this box manages, from anywhere
+      # (devicePaths above). Their bodies are a few words of JSON.
+      // lib.genAttrs (map (p: "= ${p}") devicePaths) (_: {
+        proxyPass = "http://127.0.0.1:${toString apiPort}";
+        extraConfig = ''
+          ${toLososdAnywhere}
+          client_max_body_size 4k;
+        '';
       });
   };
 }

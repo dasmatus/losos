@@ -27,7 +27,8 @@
 #
 #   /run/losos-ci-events/events.sock   LosOS Git (group losos-ci-events)
 #   /run/losos-ci-runner/runner.sock   the runner (group shared)
-#   /run/losos-ci/api.sock             lososd's `ci` plugin (root)
+#   /run/losos-ci/api.sock             lososd: its `ci` plugin, and joined
+#                                      LosOS Desktop computers' jobs (root)
 #
 # A job of another box must not reach this box's network: an owner rule
 # refuses every new connection of uid `shared` to a private, link-local or
