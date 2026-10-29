@@ -25,6 +25,8 @@ You can't turn the switch on while Build with AI is off on the box
 downloads the model once, the first time it is online. Until the download
 finishes, reviews wait in the queue and the pull request says so.
 
+![A repository's Settings with AI review turned on: LosOS Reviewer comments on every pull request and never approves or merges.](../img/git-settings.png)
+
 ## What it does
 
 When someone opens or reopens a pull request, LosOS Reviewer reviews all
@@ -47,6 +49,8 @@ request can do this.
 While it works, the pull request's checks show a **LosOS Reviewer** row
 with its progress, for example "Reviewing: 2 of 5 files done", and the
 number of comments when it is finished.
+
+![Files changed of a pull request: LosOS Reviewer, marked Bot, comments on a shell line that deletes a path without quotes, with the quoted line as a suggested change.](../img/git-ai-review.png)
 
 ## What it can find
 

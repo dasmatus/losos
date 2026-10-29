@@ -6,7 +6,7 @@ slug: /manual/mesh-ci
 
 # Mesh CI
 
-![Mesh CI.](../img/mesh-ci.png)
+![Mesh CI: this box's runner and when it takes other boxes' jobs, then the runs, one running, one cancelled and two passed, with Run workflow at the top.](../img/mesh-ci.png)
 
 Mesh CI runs the GitHub Actions workflows in your
 [LosOS Git](losos-git) repositories. A push or a pull request starts the
@@ -36,6 +36,8 @@ and the job's outputs.
 **Run workflow** starts a workflow that has `workflow_dispatch` among its
 triggers. Give the repository as `owner/name`, a branch (the default branch
 if you leave it empty), press **Find workflows** and pick one.
+
+![A run that passed: its two jobs, each with the box of the mesh it ran on, and the steps of one with their output and how long each took.](../img/mesh-ci-run.png)
 
 ## Where a job runs
 

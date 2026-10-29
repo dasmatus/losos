@@ -7,6 +7,8 @@ mdx:
 
 # Inštalácia podrobne
 
+![Nastavenia, Sieť na nainštalovanom zariadení: jeho názov a ako sa k nemu dostať.](@site/docs/img/settings-network-sk.png)
+
 ## Získajte inštalátor {#get-the-installer}
 
 Stiahnite si ISO a jeho `.sha256` z
