@@ -129,6 +129,9 @@ pkgs.testers.nixosTest {
 
     start_all()
     box.wait_for_unit("lososd.service")
+    # lososd's unit is up before its API: under emulation loading the
+    # plugins takes it a minute, and the claim would meet nginx's 502.
+    box.wait_for_open_port(8082)
     box.wait_for_unit("nginx.service")
     box.wait_for_open_port(443)
     laptop.wait_for_unit("multi-user.target")
