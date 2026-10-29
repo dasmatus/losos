@@ -519,6 +519,8 @@ and is never served or built by nix.
   with the `HISTORY_SCRUB_DEPLOY_KEY` deploy key and tags with the CI token.
   `stale-branches.yml` deletes, each Sunday, branches with no commit in 30
   days that no open PR uses as head or base.
+  `failed-runs.yml` deletes, each day, unsuccessful workflow runs whose
+  commit is no longer a branch tip or an open PR's head.
   `dependency-hashes.yml` (`pull_request_target`, branches of this repository
   only) runs `.github/scripts/fix-hashes.py` on a pull request that changes
   a `Cargo.lock` or `package-lock.json`, Dependabot's included, and pushes the
