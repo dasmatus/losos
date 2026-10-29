@@ -128,6 +128,32 @@ export function callEnded(room: Room, call: string): boolean {
     });
 }
 
+/* A notification can come in the same sync as the membership it refers
+ * to, and the room counts that membership only once it is decrypted, after
+ * the timeline has been told about both. So a notification whose call is
+ * not live yet waits a little for the room's sticky events to catch up. */
+function liveCallOf(room: Room, ev: MatrixEvent, waitMs = 10_000): Promise<{ call: string; video: boolean } | null> {
+  const now = (): { call: string; video: boolean } | null => {
+    const said = callEvent(room, ev);
+    return said !== null && !callEnded(room, said.call) ? { call: said.call, video: said.video } : null;
+  };
+  const found = now();
+  if (found !== null) return Promise.resolve(found);
+  return new Promise((resolve) => {
+    const done = (said: { call: string; video: boolean } | null): void => {
+      clearTimeout(timer);
+      room.off(RoomStickyEventsEvent.Update, check);
+      resolve(said);
+    };
+    const check = (): void => {
+      const said = now();
+      if (said !== null) done(said);
+    };
+    const timer = setTimeout(() => done(null), waitMs);
+    room.on(RoomStickyEventsEvent.Update, check);
+  });
+}
+
 const joinedUsers = (room: Room): string[] =>
   room
     .getMembers()
@@ -358,10 +384,10 @@ export function CallsProvider({ client, children }: { client: MatrixClient; chil
           }
           if (ev.getType() !== EventType.RTCNotification || ev.getSender() === me) return;
           const content = await parseCallNotificationContent(ev, { room, userId: me });
-          const said = callEvent(room, ev);
           const eventId = ev.getId();
-          if (content.slot_id !== RTC_SLOT_ID || said === null || eventId === undefined) throw new Error("not a call in this room's slot");
-          if (callEnded(room, said.call) || activeCall.current === said.call) return;
+          if (content.slot_id !== RTC_SLOT_ID || callEvent(room, ev) === null || eventId === undefined) throw new Error("not a call in this room's slot");
+          const said = await liveCallOf(room, ev);
+          if (said === null || activeCall.current === said.call) return;
           setRinging({
             roomId: room.roomId,
             call: said.call,

@@ -372,8 +372,11 @@ pkgs.testers.nixosTest {
         again = json.loads(call("/api/chat/session", matus, method="POST",
                                 data={"device": m["deviceId"]})[1])
         assert again["deviceId"] == m["deviceId"], (again, m)
-        # with a new token, and the old one is gone.
-        assert whoami(matus, m["accessToken"])[0] == 401
+        # with a new token of that device. Synapse keeps the earlier one as
+        # well, so the page holds on to its own and asks for a new one only
+        # once that stops working (src/chat/session.ts).
+        assert again["accessToken"] != m["accessToken"], (again, m)
+        assert json.loads(whoami(matus, again["accessToken"])[1])["device_id"] == m["deviceId"]
         m = again
         # Everyone on the box can be found.
         code, body = call("/api/chat/people", matus)
