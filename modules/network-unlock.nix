@@ -18,6 +18,15 @@
 #
 # The JWE goes into the initrd on the ESP. That is fine: it is ciphertext only
 # the TPM of this machine together with a Tang server can open.
+#
+# The box's edge can be one of the servers (`edge = true`, from
+# `losos-install --tang-edge`; edge/registrar/src/tang.rs). Its key is this
+# box's alone, and it is required on its own: the disk needs the TPM2, the
+# edge, and one home server when any are listed. Once the box has a recovery
+# code, losos-tang-edge-owner below tells the edge the hash of a secret made
+# from it; the owner of a stolen box types the code on the edge's /tang/lost
+# page, the browser makes the same secret, and the edge answers for the box
+# no more. Neither the code nor the disk key ever reaches the edge.
 {
   pkgs,
   lib,
@@ -33,6 +42,12 @@ let
   jwe = "/etc/keys/persist.jwe";
   codeFile = "/var/secrets/losos-recovery-code";
   stateDir = "/var/lib/losos-unlock";
+  edges = builtins.filter (t: t.edge) tang;
+  # The installer's {"url", "claim"}: the edge key's address and the secret
+  # that names this box's owner to it.
+  edgeFile = "/etc/keys/tang-edge.json";
+  https = builtins.any (t: lib.hasPrefix "https://" t.url) tang;
+  caBundle = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
 in
 {
   config = lib.mkIf on {
@@ -40,6 +55,10 @@ in
       {
         assertion = config.losos.tpm.enable;
         message = "losos.tpm.tang needs losos.tpm.enable: the disk key is sealed to the TPM2 AND a Tang server.";
+      }
+      {
+        assertion = builtins.length edges <= 1;
+        message = "losos.tpm.tang: one entry at most is the box's edge.";
       }
     ];
 
@@ -74,6 +93,13 @@ in
     # within a minute either way. An empty key file is what that fallback
     # expects: it is what a failed `clevis decrypt` leaves, as in nixpkgs'
     # own test.
+    # An edge is reached over https: the CA bundle in stage 1 for curl. The
+    # initrd's clock is the firmware's, which is right on a box whose clock
+    # battery is alive; Tang itself would not need TLS, the edge's router does.
+    boot.initrd.systemd.storePaths = lib.mkIf https [ caBundle ];
+    boot.initrd.systemd.services.cryptsetup-clevis-persist.environment = lib.mkIf https {
+      CURL_CA_BUNDLE = caBundle;
+    };
     boot.initrd.systemd.services.cryptsetup-clevis-persist.script = lib.mkForce ''
       mkdir -p /clevis-persist
       mount -t ramfs none /clevis-persist
@@ -160,6 +186,71 @@ in
         exit 1
       '';
     };
+    # The edge learns the hash of the owner's lost-box secret, made from the
+    # recovery code exactly as the edge's /tang/lost page makes it in the
+    # owner's browser (edge/registrar/src/tang.rs, `lost_secret`). The claim
+    # secret the installer left in /persist proves this is the box the key
+    # was made for. Sent again whenever the code changes, and retried while
+    # the edge does not answer.
+    systemd.services.losos-tang-edge-owner = lib.mkIf (edges != [ ]) {
+      description = "Tell the edge how this box's owner can report it stolen";
+      after = [
+        "lososd.service"
+        "network-online.target"
+      ];
+      wants = [ "network-online.target" ];
+      unitConfig.ConditionPathExists = [
+        codeFile
+        edgeFile
+      ];
+      path = [
+        pkgs.curl
+        pkgs.coreutils
+        pkgs.jq
+      ];
+      serviceConfig = {
+        Type = "oneshot";
+        StateDirectory = "losos-unlock";
+        StateDirectoryMode = "0700";
+        UMask = "0077";
+        Restart = "on-failure";
+        RestartSec = "5min";
+      };
+      script = ''
+        code=$(tr -d '[:space:]' < ${codeFile} | tr 'A-Z' 'a-z')
+        [ -n "$code" ] || exit 0
+        secret=$(printf 'losos-tang-lost\n%s' "$code" | sha256sum | cut -d' ' -f1)
+        lost=$(printf '%s' "$secret" | sha256sum | cut -d' ' -f1)
+        if [ "$(cat ${stateDir}/edge-owner 2>/dev/null)" = "$lost" ]; then
+          exit 0
+        fi
+        url=$(jq -er .url ${edgeFile})
+        case "$url" in
+          http://*/tang/* | https://*/tang/*) ;;
+          *) echo "${edgeFile} names no edge key: $url" >&2; exit 1 ;;
+        esac
+        jq -c --arg lost "$lost" '{claim: .claim, lost: $lost}' ${edgeFile} \
+          | curl -sS --fail-with-body --connect-timeout 10 --max-time 30 \
+              -H 'Content-Type: application/json' --data-binary @- "$url/owner"
+        printf '%s\n' "$lost" > ${stateDir}/edge-owner
+        echo "the edge knows how this box's owner reports it stolen"
+      '';
+    };
+    systemd.paths.losos-tang-edge-owner = lib.mkIf (edges != [ ]) {
+      wantedBy = [ "multi-user.target" ];
+      pathConfig = {
+        PathExists = codeFile;
+        PathChanged = codeFile;
+      };
+    };
+    systemd.timers.losos-tang-edge-owner = lib.mkIf (edges != [ ]) {
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        OnBootSec = "10min";
+        OnUnitActiveSec = "1d";
+      };
+    };
+
     systemd.paths.losos-unlock-recovery = {
       wantedBy = [ "multi-user.target" ];
       pathConfig = {

@@ -139,6 +139,47 @@ Wie das TPM selbst steht die Einstellung in `modules/install-target.nix`
 (`tpm.tang`). Ein- oder ausschalten lässt sie sich also nur durch eine
 Neuinstallation.
 
+## Die Festplatte über die Edge öffnen \{#opening-the-disk-with-the-edge}
+
+Die [Edge](/in-depth/master-proxy.md) kann statt eines Servers zu Hause oder
+zusätzlich dazu der Schlüsselserver sein:
+
+```sh
+losos-ctl install --tang-edge
+```
+
+Ohne Adresse nimmt der Installer die Edge, für die das Medium eingerichtet
+ist. Mit einer Adresse (`--tang-edge https://edge.example.org`) nimmt er eine
+andere. Der Installer holt sich von der Edge ein Schlüsselpaar nur für diese
+Box und versiegelt den Festplattenschlüssel dann an das TPM und die Edge
+zusammen. Mit `--tang` dazu braucht die Festplatte das TPM, den Server zu
+Hause und die Edge.
+
+Bei jedem Start holt sich die Box eine Adresse im kabelgebundenen Netz und
+fragt die Edge über HTTPS. Die Edge sieht den Festplattenschlüssel nie. Sie
+erfährt, dass die Box gestartet ist, und die Adresse, von der sie gefragt
+hat. Die sieht sie ohnehin, sobald der Tunnel steht.
+
+Was die Edge gegenüber einem Server zu Hause dazugibt:
+
+- **Ein Schalter für eine gestohlene Box.** Öffne `/tang/lost` auf der Edge,
+  zum Beispiel `https://edge.example.org/tang/lost`, gib den
+  Wiederherstellungscode der Box ein und wähle „Meine Box wurde gestohlen“.
+  Der Code bleibt im Browser: Die Seite schickt der Edge nur einen Wert, der
+  daraus berechnet wird. Ab dann verweigert die Edge den Schlüssel dieser
+  Box, also öffnet sie sich nirgends, auch nicht zu Hause, bis du auf
+  derselben Seite „Ich habe sie zurück“ wählst. Am eigenen Bildschirm der
+  Box öffnet der Wiederherstellungscode sie weiterhin.
+- Die Box teilt der Edge diesen Wert mit, sobald Einstellungen, Sicherung
+  einen Wiederherstellungscode hat, und erneut, wenn er sich ändert. Das kann
+  nur die Box, die den Schlüssel angelegt hat, mit einem Geheimnis, das der
+  Installer auf der verschlüsselten Festplatte abgelegt hat.
+
+Die Edge muss antworten, wann immer die Box startet, auch beim nächtlichen
+Neustart um 00:07. Sind die Edge oder die Internetverbindung der Box dann
+weg, wartet die Box an der Abfrage, bis jemand den Wiederherstellungscode
+eingibt.
+
 ## Wie man erkennt, in welchem Modus eine Box läuft \{#how-to-tell-which-mode-a-box-is-in}
 
 - Der Installer gibt `unlock: TPM2` oder `unlock: keyfile in the initrd`
