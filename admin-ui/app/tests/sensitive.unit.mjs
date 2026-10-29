@@ -3,23 +3,12 @@
  * Security numbers it must catch, and the look-alikes it must leave alone.
  * Every number here is a published test or specimen value.
  *
- *   node tests/sensitive.node.mjs
+ *   bun tests/sensitive.unit.mjs
  */
 
-import assert from 'node:assert/strict';
-import { fileURLToPath } from 'node:url';
-import * as esbuild from 'esbuild';
+import assert from './assert.mjs';
 
-const built = await esbuild.build({
-  entryPoints: [fileURLToPath(new URL('../src/lib/sensitive.ts', import.meta.url))],
-  bundle: true,
-  format: 'esm',
-  platform: 'node',
-  write: false,
-});
-const { findDetails, detailSpans, blackOut, luhn, ibanValid, mrzCheck, birthNumberValid } = await import(
-  `data:text/javascript;base64,${Buffer.from(built.outputFiles[0].text).toString('base64')}`
-);
+const { findDetails, detailSpans, blackOut, luhn, ibanValid, mrzCheck, birthNumberValid } = await import('../src/lib/sensitive.ts');
 
 const kinds = (text) => findDetails(text).map((d) => `${d.kind}:${d.last}`);
 

@@ -55,6 +55,9 @@ let
     chmod -R u+w tree
     cd tree
     git init -q -b main
+    # A commit starts `git maintenance run --auto --detach`, whose repack
+    # renames packs under the clone below ("failed to copy file to …tmp_pack").
+    git config maintenance.auto false
     git add -A
     git -c user.name=losos -c user.email=losos@local commit -qm tree
     git clone -q --bare . $out

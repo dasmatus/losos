@@ -11,8 +11,8 @@
 #   nix-lints             nixfmt, deadnix, statix over the    any .nix staged
 #                         staged .nix files (nix/lint-nix.sh)
 #   pins                  nix/check-pins.sh                   a lock or devenv.yaml
-#   hashes                fix-hashes.py --check               a Cargo.lock or package-lock.json
-#   typecheck:<package>   npm run typecheck                   admin-ui/app, design-system/react
+#   hashes                fix-hashes.py --check               a Cargo.lock or bun.lock
+#   typecheck:<package>   bun run typecheck                   admin-ui/app, design-system/react
 #   check-flake, eval-*   CI's eval job: every flake output   eval lane
 #                         evaluated, the three systems'
 #                         module merge, the ISO and edge
@@ -52,7 +52,7 @@ if grep -qxE 'flake.lock|devenv.yaml|devenv.lock' <<<"$staged"; then
   run pins bash nix/check-pins.sh
 fi
 
-if grep -qE '(^|/)(Cargo.lock|package-lock.json)$' <<<"$staged"; then
+if grep -qE '(^|/)(Cargo.lock|bun.lock)$' <<<"$staged"; then
   run hashes python3 .github/scripts/fix-hashes.py --check --base HEAD
 fi
 
@@ -61,9 +61,9 @@ for pkg in admin-ui/app admin-ui/design-system/react; do
   # shellcheck disable=SC2329 # called through run
   typecheck() {
     cd "$hook_root/$1" || return 1
-    [ "$1" != admin-ui/app ] || hook_lab_pkgs || return 1
-    [ -d node_modules ] || hook_npm ci --no-audit --no-fund || return 1
-    hook_npm run typecheck
+    [ "$1" != admin-ui/app ] || hook_wasm_pkgs || return 1
+    [ -d node_modules ] || hook_bun install --frozen-lockfile --ignore-scripts || return 1
+    hook_bun run typecheck
   }
   run "typecheck:$pkg" typecheck "$pkg"
 done

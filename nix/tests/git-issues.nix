@@ -45,7 +45,7 @@ let
       }
     }
     export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
-    exec ${pkgs.nodejs}/bin/node ${./issue-shots.mjs} "$@"
+    exec ${pkgs.bun}/bin/bun ${./issue-shots.mjs} "$@"
   '';
 
   # LosOS Cloud's boards as backend/src/cloud/boards.rs keeps them, its

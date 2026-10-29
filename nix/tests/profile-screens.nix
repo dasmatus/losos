@@ -21,23 +21,17 @@
 }:
 
 let
-  # Pillow for the size check, and Chromium from nixpkgs with the
-  # playwright-core admin-ui/app's lock file pins (the version
-  # nix/tests/admin-ui.nix holds to nixpkgs' playwright-driver).
+  # Pillow for the size check, and Chromium and playwright-core from
+  # nixpkgs' playwright-driver (the version nix/tests/admin-ui.nix holds
+  # admin-ui/app's pin to), run by Bun.
   python = pkgs.python3.withPackages (ps: [ ps.pillow ]);
   browsers = pkgs.playwright-driver.browsers.override {
     withFirefox = false;
     withWebkit = false;
   };
-  lock = builtins.fromJSON (builtins.readFile ../../admin-ui/app/package-lock.json);
-  core = lock.packages."node_modules/playwright-core";
-  playwrightCore = pkgs.fetchurl {
-    url = core.resolved;
-    hash = core.integrity;
-  };
   scripts = pkgs.runCommand "profile-screens-scripts" { } ''
-    mkdir -p $out/node_modules/playwright-core
-    tar -xzf ${playwrightCore} -C $out/node_modules/playwright-core --strip-components=1
+    mkdir -p $out/node_modules
+    ln -s ${pkgs.playwright-driver} $out/node_modules/playwright-core
     cp ${./screens.mjs} $out/screens.mjs
     cp ${./profile-screens.mjs} $out/profile-screens.mjs
   '';
@@ -109,7 +103,7 @@ pkgs.testers.nixosTest {
     laptop = _: {
       environment.systemPackages = [
         pkgs.curl
-        pkgs.nodejs
+        pkgs.bun
         python
       ];
       environment.variables.PLAYWRIGHT_BROWSERS_PATH = "${browsers}";
@@ -190,7 +184,7 @@ pkgs.testers.nixosTest {
         with subtest(f"the profile screens, {scheme}"):
             reset()
             laptop.succeed(
-                f"cd ${scripts} && node profile-screens.mjs ${mode} {scheme} /tmp/shots/{scheme} ${pictures}"
+                f"cd ${scripts} && bun profile-screens.mjs ${mode} {scheme} /tmp/shots/{scheme} ${pictures}"
                 " >&2"
             )
             steps = json.loads(laptop.succeed(f"cat /tmp/shots/{scheme}/manifest.json"))["steps"]

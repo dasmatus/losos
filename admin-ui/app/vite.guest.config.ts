@@ -1,8 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { segmenterQuiet } from "./vite.segmenter-quiet";
 
 /* The guest call page (guest.html, src/calls/guest-main.tsx), built on its
@@ -11,7 +9,7 @@ import { segmenterQuiet } from "./vite.segmenter-quiet";
  * needs rather than the LAN-only /assets/. The segmenter's files are not
  * copied again: nginx serves dist/chat/calls-ml/ under the guest path too
  * (modules/calls.nix), which is where background.ts looks. */
-const root = fileURLToPath(new URL(".", import.meta.url));
+const root = import.meta.dirname;
 
 export default defineConfig({
   plugins: [react(), tailwindcss(), segmenterQuiet()],
@@ -27,7 +25,7 @@ export default defineConfig({
     sourcemap: false,
     modulePreload: { polyfill: false },
     rolldownOptions: {
-      input: { guest: join(root, "guest.html") },
+      input: { guest: `${root}/guest.html` },
     },
   },
 });

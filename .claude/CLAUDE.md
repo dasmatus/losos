@@ -30,8 +30,9 @@ nix build .#checks.x86_64-linux.losos-admin-daemon  # lososd: D-Bus, HTTP, token
 nix build .#checks.x86_64-linux.losos-install       # installer, keyfile, BIOS
 nix build .#checks.x86_64-linux.losos-tpm-unlock    # installer, swtpm unlock
 nix build .#checks.x86_64-linux.losos-iso-install   # the real installer offline, then boot the disk
+nix build .#checks.x86_64-linux.losos-network-unlock # --tang: TPM2 + Tang, recovery code
 nix build .#checks.x86_64-linux.losos-identity      # LosOS Login (Authelia), sections
-npm run dev | typecheck | test:browser              # in admin-ui/app
+bun run dev | typecheck | test:browser              # in admin-ui/app
 cargo test --manifest-path admin-ui/tui/Cargo.toml  # losos, the terminal client
 ```
 
@@ -59,8 +60,19 @@ Code session (`.claude/settings.json`) set `core.hooksPath`; elsewhere run
 `LOSOS_HOOKS_SKIP` to get past a red check you caused; skip only a check
 that is red on `main` too, and say which in the PR.
 Inside the shell `bcd` and `rcd` cd into the two in-flake crates.
-`admin-ui/design-system/react` has its own `npm run typecheck` and `npm test`
+`admin-ui/design-system/react` has its own `bun run typecheck` and `bun run test`
 and is never served or built by nix.
+The JS workspaces (`admin-ui/app`, `handbook/`, the design system) are Bun
+workspaces with a `bun.lock`, and their code uses no Node API: no `node:`
+module, `process`, `Buffer` or `require`, but Bun's (`Bun.file`, `Bun.serve`,
+`Bun.spawn`, `Bun.$`) and the web's. Every script runs on Bun's runtime
+(`bun --bun`, `bunx --bun`), and `src/` typechecks without Bun's or Node's
+types (the Vite configs have `tsconfig.tools.json`). Nix installs each
+`node_modules` from its `bun.lock` alone (`nix/bun-deps.nix`, one hash per
+workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
+`node:` import. Playwright's API wants a Node `Buffer` for bytes
+(`setInputFiles`, `route.fulfill`, a WebSocket route): hand it a file path
+(`stash` in `tests/harness.mjs`) or `wsBytes`.
 
 ## Layout
 
@@ -146,8 +158,8 @@ and is never served or built by nix.
   tracing without time, ratatui) with the web UI's panes, catalogue and
   palette, read from `admin-ui/app` by its `build.rs`. It pins a box's
   self-signed certificate by SHA-256 at login. `.#losos-static` (musl) is
-  installed by `curl … /updates/<channel>/x86_64/install.sh | sh` (CI's
-  `tui` and `publish-tool` jobs). Each call is one OpenPGP
+  installed by `install.sh` out of CI's `losos-pages-updates` artifact,
+  linked through nightly.link (CI's `tui` and `publish-tool` jobs). Each call is one OpenPGP
   message signed by a key seeded at install (`losos.access.gpgKeys`,
   installer-fixed, never added at runtime) and encrypted to the host's own
   key, carrying a personal access token from the Access tokens pane;
@@ -543,8 +555,8 @@ and is never served or built by nix.
   commit is no longer a branch tip or an open PR's head.
   `dependency-hashes.yml` (`pull_request_target`, branches of this repository
   only) runs `.github/scripts/fix-hashes.py` on a pull request that changes
-  a `Cargo.lock` or `package-lock.json`, Dependabot's included, and pushes the
-  new `cargoHash`/`npmDepsHash` back to the branch, and on a push to main
+  a `Cargo.lock` or `bun.lock`, Dependabot's included, and pushes the
+  new `cargoHash` or node_modules `hash` back to the branch, and on a push to main
   that still carries a stale one opens a `bot/dependency-hashes-*` pull
   request; run the script yourself after touching a lock file.
   `discovery` boots the netboot box `nix/tests/discovery/box.nix` on Linux,
@@ -677,14 +689,14 @@ nix build .#checks.x86_64-linux.losos-iso-install    # losos-install from the me
 Inside the dev shell, `bcd` → `cd backend`, `rcd` → `cd edge/registrar`.
 
 `admin-ui/app` is the shipped SPA and **is** built by nix
-(`nix build .#losos-admin-ui` runs `npm ci` then `tsc --noEmit && vite build`,
-so the typecheck is part of the package). For an iteration loop it also has
-`npm run dev` (with `LOSOS_API_ORIGIN` pointed at a real box), `npm run
-typecheck`, and `npm run test:browser` — the last is the playwright check that
-`.#checks.x86_64-linux.losos-admin-ui` wraps.
+(`nix build .#losos-admin-ui` installs `node_modules` from `bun.lock`, then runs
+`tsc --noEmit && vite build` on Bun, so the typecheck is part of the package).
+For an iteration loop it also has `bun run dev` (with `LOSOS_API_ORIGIN`
+pointed at a real box), `bun run typecheck`, and `bun run test:browser` — the
+last is the playwright check that `.#checks.x86_64-linux.losos-admin-ui` wraps.
 
-`admin-ui/design-system/react` has its own `npm run typecheck` / `npm test`
-(esbuild + tsc, no nix, no CI) — dev-machine-only, run manually from
+`admin-ui/design-system/react` has its own `bun run typecheck` / `bun run test`
+(Bun + tsc, no CI) — dev-machine-only, run manually from
 `admin-ui/design-system/react/` when touching the React wrapper. It is not
 what the appliance serves.
 
@@ -778,7 +790,7 @@ thin **facade** CLI that keeps the old subcommand/JSON surface
 `factory-reset`; `--json` no-op) and relays each call to lososd over D-Bus.
 `losos-ctl install` stays a local subcommand (the ISO installer runs as root,
 no bus needed). The admin UI (`admin-ui/app/`, packaged as `losos-admin-ui`
-with `buildNpmPackage`) is a React 19 + Vite + Tailwind v4 SPA on real paths
+with Bun) is a React 19 + Vite + Tailwind v4 SPA on real paths
 (`/`, `/apps`, `/storage`, `/mesh`, `/settings/<pane>`), whose built `dist/`
 **is** the front Nginx vhost's document root — served with
 `try_files $uri $uri/ /index.html`, without which every deep link and every

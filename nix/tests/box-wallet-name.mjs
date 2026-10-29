@@ -18,11 +18,11 @@
 //
 // Playwright is nixpkgs' playwright-driver, named by $PLAYWRIGHT_CORE.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { parseArgs } from "node:util";
+const exists = (file) => Bun.file(file).exists();
+const join = (...parts) => parts.join("/");
+const dirname = (file) => file.slice(0, file.lastIndexOf("/"));
 
-const { chromium } = await import(join(process.env.PLAYWRIGHT_CORE, "index.mjs"));
+const { chromium } = await import(join(Bun.env.PLAYWRIGHT_CORE, "index.mjs"));
 
 const BASE = "https://mattbox.local";
 const PHRASE = "test test test test test test test test test test test junk";
@@ -31,14 +31,19 @@ const WALLET_PASSWORD = "right horse battery";
 const VIEWPORT = { width: 1280, height: 900 };
 const NAME = "mattbox.boxes.losos.dasmat.us";
 
-const { values: args } = parseArgs({
-  options: {
-    mode: { type: "string" },
-    out: { type: "string" },
-    user: { type: "string" },
-    password: { type: "string" },
-  },
-});
+/* `--name value` or `--name=value`, for each of `names`; anything else is refused. */
+function flags(names) {
+  const out = {};
+  const argv = Bun.argv.slice(2);
+  for (let i = 0; i < argv.length; i++) {
+    const m = /^--([^=]+)(?:=(.*))?$/.exec(argv[i]);
+    if (!m || !names.includes(m[1])) throw new Error(`unknown argument ${argv[i]}`);
+    out[m[1]] = m[2] ?? argv[++i];
+  }
+  return out;
+}
+
+const args = flags(["mode", "out", "user", "password"]);
 
 async function seal({ phrase, address, password }) {
   const enc = new TextEncoder();
@@ -90,15 +95,15 @@ async function settle(page) {
 
 async function save(page, path) {
   const full = join(args.out, path);
-  mkdirSync(dirname(full), { recursive: true });
+  Bun.spawnSync(["mkdir", "-p", dirname(full)]);
   await page.screenshot({ path: full });
 }
 
 const MANIFEST = () => join(args.out, "film/name-pay/manifest.json");
 // A later mode adds to the steps an earlier one filmed.
-const steps = existsSync(MANIFEST()) ? JSON.parse(readFileSync(MANIFEST(), "utf8")).steps : [];
-function writeManifest() {
-  writeFileSync(
+const steps = await exists(MANIFEST()) ? (await Bun.file(MANIFEST()).json()).steps : [];
+async function writeManifest() {
+  await Bun.write(
     MANIFEST(),
     `${JSON.stringify({ feature: "name-pay", viewport: VIEWPORT, dpr: 2, commit: "unknown", test: "losos-box-wallet-name", steps }, null, 2)}\n`,
   );
@@ -205,7 +210,7 @@ async function bind(browser) {
   if (!after.includes(NAME) || !after.includes(ADDRESS.toLowerCase())) throw new Error(`not bound: ${after}`);
   await film(page, "bound", `Bound to ${NAME}; wallets do not find the name until public DNS vouches for the zone`,
     { kind: "none" }, { section, name });
-  writeManifest();
+  await writeManifest();
   await ctx.close();
 }
 
@@ -219,7 +224,7 @@ async function found(browser) {
   await settle(page);
   await film(page, "wallets-find-it", `${NAME} resolves: wallets find it and pay this box`, { kind: "none" },
     { section, name });
-  writeManifest();
+  await writeManifest();
   await ctx.close();
 }
 

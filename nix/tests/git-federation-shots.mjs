@@ -25,9 +25,8 @@
 // The window is 1280 x 900 at twice the pixels, dark, en-US, reduced motion,
 // Europe/Bratislava.
 
-import { createHash, X509Certificate } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+const exists = (file) => Bun.file(file).exists();
+const join = (...parts) => parts.join("/");
 
 const VIEW = { width: 1280, height: 900 };
 const MATT = "https://mattbox.local";
@@ -36,21 +35,44 @@ const REPO = "/git/notshared/site";
 const MATUS = ["matus", "Correct-Horse-Battery-9"];
 const EVA = ["eva", "Eva-Long-Password-3"];
 
-const { chromium } = await import(process.env.PLAYWRIGHT_CORE ?? "playwright-core");
+const { chromium } = await import(Bun.env.PLAYWRIGHT_CORE ?? "playwright-core");
 
-function spkiPin(pemFile) {
-  const cert = new X509Certificate(readFileSync(pemFile));
-  const der = cert.publicKey.export({ type: "spki", format: "der" });
-  return createHash("sha256").update(der).digest("base64");
+async function spkiPin(pemFile) {
+  const pem = await Bun.file(pemFile).text();
+  const der = Uint8Array.fromBase64(/-----BEGIN CERTIFICATE-----([^-]+)-----END CERTIFICATE-----/.exec(pem)[1].replace(/\s/g, ""));
+  // One DER element at `at`: where its contents start and where it ends.
+  const element = (at) => {
+    let len = der[at + 1];
+    let start = at + 2;
+    if (len & 0x80) {
+      const n = len & 0x7f;
+      len = 0;
+      for (let i = 0; i < n; i++) len = len * 256 + der[start + i];
+      start += n;
+    }
+    return { start, end: start + len };
+  };
+  // Certificate > tbsCertificate > [0] version, serial, signature, issuer,
+  // validity, subject, then the subjectPublicKeyInfo Chromium hashes.
+  let at = element(element(0).start).start;
+  if (der[at] === 0xa0) at = element(at).end;
+  for (let i = 0; i < 5; i++) at = element(at).end;
+  const spki = der.subarray(at, element(at).end);
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", spki)).toBase64();
 }
 
 class Shots {
-  constructor(out, meta) {
+  constructor(out, meta, steps) {
     this.out = out;
     this.meta = meta;
-    mkdirSync(out, { recursive: true });
-    const manifest = join(out, "manifest.json");
-    this.steps = existsSync(manifest) ? JSON.parse(readFileSync(manifest, "utf8")).steps : [];
+    this.steps = steps;
+  }
+
+  /** A run that goes on from the manifest an earlier phase left in `out`. */
+  static async open(out, meta) {
+    const manifest = Bun.file(join(out, "manifest.json"));
+    const steps = (await manifest.exists()) ? (await manifest.json()).steps : [];
+    return new Shots(out, meta, steps);
   }
 
   async settle(p) {
@@ -91,9 +113,9 @@ class Shots {
     console.log(file, title);
   }
 
-  save() {
+  async save() {
     const manifest = { feature: "git-federation", viewport: VIEW, dpr: 2, ...this.meta, steps: this.steps };
-    writeFileSync(join(this.out, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
+    await Bun.write(join(this.out, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
   }
 }
 
@@ -209,13 +231,13 @@ function parse(argv) {
     else pos.push(a);
   }
   if (pos.length < 2 || !["room", "eva", "chat", "before"].includes(pos[1])) {
-    console.error("usage: git-federation-shots.mjs OUT room|eva|chat|before [--old] [--commit SHA] [--test NAME]");
-    process.exit(2);
+    // Thrown: an uncaught error is what makes Bun exit non-zero.
+    throw new Error("usage: git-federation-shots.mjs OUT room|eva|chat|before [--old] [--commit SHA] [--test NAME]");
   }
   return { out: pos[0], phase: pos[1], opts };
 }
 
-const { out, phase, opts } = parse(process.argv.slice(2));
+const { out, phase, opts } = parse(Bun.argv.slice(2));
 const pins = ["/etc/losos-mattbox.pem", "/etc/losos-kitchenbox.pem"].map(spkiPin).join(",");
 const browser = await chromium.launch({ args: [`--ignore-certificate-errors-spki-list=${pins}`] });
 // The boxes share but never join a real mesh here, so the admin pages would
@@ -261,7 +283,7 @@ const watch = (p) => {
   });
 };
 
-const s = new Shots(out, { commit: opts.commit ?? "", test: opts.test ?? "" });
+const s = await Shots.open(out, { commit: opts.commit ?? "", test: opts.test ?? "" });
 let last = null;
 try {
   if (phase === "before") {
@@ -287,16 +309,16 @@ try {
   if (last !== null) {
     await last.screenshot({ path: join(out, `failed-${phase}.png`) }).catch(() => {});
     const html = await last.content().catch(() => "");
-    writeFileSync(join(out, `failed-${phase}.html`), html);
+    await Bun.write(join(out, `failed-${phase}.html`), html);
     console.error(`failed at ${last.url()}`);
   }
   if (problems.length > 0) console.error(`the pages reported errors:\n${problems.join("\n")}`);
   throw e;
 } finally {
-  s.save();
+  await s.save();
 }
 await browser.close();
 if (problems.length > 0 && opts.old !== true) {
-  console.error(`the pages reported errors:\n${problems.join("\n")}`);
-  process.exit(1);
+  // Thrown: an uncaught error is what makes Bun exit non-zero.
+  throw new Error(`the pages reported errors:\n${problems.join("\n")}`);
 }
