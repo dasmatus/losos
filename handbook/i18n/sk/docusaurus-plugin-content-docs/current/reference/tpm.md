@@ -83,9 +83,83 @@ z toho dalo zotaviť.
 :::warning[Zlodej s celým zariadením]
 Čip vydá kľúč čomukoľvek, čo sa na tom počítači naštartuje, vrátane
 USB kľúča zlodeja. TPM zabezpečí, že samotný disk je nečitateľný. Nepomôže
-však, keď má niekto celé zariadenie. [Bezpečnostný model](/reference/security-model.md)
-to uvádza ako známe obmedzenie.
+však, keď má niekto celé zariadenie, pokiaľ zariadenie na otvorenie disku
+nepotrebuje aj server vo vlastnej sieti (ďalšia časť).
+[Bezpečnostný model](/reference/security-model.md) to uvádza ako známe
+obmedzenie.
 :::
+
+## Disk sa otvorí iba doma \{#opening-the-disk-only-at-home}
+
+Zariadenie sa dá nastaviť tak, aby samotný čip nestačil. Dajte inštalátoru
+jeden alebo viac serverov Tang vo vlastnej sieti zariadenia:
+
+```sh
+losos-ctl install --tang 'http://192.168.1.1:7500#THUMBPRINT'
+```
+
+Tang je malý server kľúčov. OpenWrt má balík `tang` a NixOS má
+`services.tang`. Odtlačok (thumbprint) vypíše na serveri
+`tang-show-keys 7500`. Inštalátor podľa neho server overí, takže pri prvom
+kontakte ničomu nedôveruje.
+
+Inštalátor potom zapečatí diskový kľúč cez Clevis k TPM a serveru Tang
+spolu, nie iba k TPM. Pri každom štarte si zariadenie vezme adresu v
+káblovej sieti, opýta sa servera a disk otvorí iba s oboma odpoveďami.
+Server kľúč nikdy nevidí. Dozvie sa iba to, že zariadenie naštartovalo.
+
+Čo to mení:
+
+- Zariadenie odnesené zo svojej siete sa neotvorí, rovnako ani zariadenie,
+  ktorého server zmizol. Zlodej s celým zariadením uvidí výzvu na heslo.
+- Zariadenie sa pýta servera najviac minútu, potom obrazovka vypýta heslo.
+  Zadajte kód na obnovu zariadenia, ktorý ukáže Nastavenia, Záloha.
+  Zariadenie si kód pridá ako heslo hneď, ako ho má, a vymení ho, keď sa
+  kód zmení.
+- Server musí odpovedať vždy, keď zariadenie štartuje, aj pri nočnom
+  reštarte o 00:07. Ak je vtedy vypnutý, zariadenie čaká na výzve, kým
+  niekto kód nezadá.
+- Samotný disk zostáva nečitateľný ako na každom zariadení s TPM.
+
+Ako samotné TPM, aj toto nastavenie je v `modules/install-target.nix`
+(`tpm.tang`), takže zapnúť alebo vypnúť ho možno iba novou inštaláciou.
+
+## Disk sa otvorí cez edge \{#opening-the-disk-with-the-edge}
+
+Serverom kľúčov môže byť [edge](/in-depth/master-proxy.md), namiesto servera
+doma alebo popri ňom:
+
+```sh
+losos-ctl install --tang-edge
+```
+
+Bez adresy inštalátor použije edge, pre ktorý je médium nastavené. Iný edge
+zadáte adresou (`--tang-edge https://edge.example.org`). Inštalátor si od
+edgeu vypýta pár kľúčov len pre toto zariadenie a potom zapečatí diskový
+kľúč k TPM a edgeu spolu. Ak zadáte aj `--tang`, disk potrebuje TPM, server
+doma aj edge.
+
+Pri každom štarte si zariadenie vezme adresu v káblovej sieti a opýta sa
+edgeu cez HTTPS. Edge diskový kľúč nikdy nevidí. Dozvie sa, že zariadenie
+naštartovalo, a adresu, z ktorej sa pýtalo, ktorú vidí aj vždy, keď beží
+tunel.
+
+Čo edge pridáva oproti serveru doma:
+
+- **Vypínač pre ukradnuté zariadenie.** Otvorte na edgei `/tang/lost`,
+  napríklad `https://edge.example.org/tang/lost`, zadajte kód na obnovu
+  zariadenia a zvoľte „Zariadenie mi ukradli“. Kód zostane v prehliadači:
+  stránka pošle edgeu iba hodnotu, ktorá sa z neho vypočíta. Odvtedy edge
+  kľúč toho zariadenia odmieta, takže sa zariadenie neotvorí nikde, ani
+  doma, kým na tej istej stránke nezvolíte „Zariadenie mám späť“. Na vlastnej
+  obrazovke zariadenia ho kód na obnovu stále otvorí.
+- Zariadenie túto hodnotu edgeu oznámi, hneď ako má Nastavenia, Záloha kód
+  na obnovu, a znova, keď sa kód zmení. Môže to urobiť iba zariadenie, ktoré
+  kľúč vytvorilo, s tajomstvom, ktoré inštalátor uložil na šifrovaný disk.
+
+Edge musí odpovedať vždy, keď zariadenie štartuje, aj pri nočnom reštarte o
+00:07. Ak je vtedy edge alebo internetové pripojenie zariadenia nedostupné,
+zariadenie čaká na výzve, kým niekto nezadá kód na obnovu.
 
 ## Ako zistiť, v akom režime zariadenie je \{#how-to-tell-which-mode-a-box-is-in}
 

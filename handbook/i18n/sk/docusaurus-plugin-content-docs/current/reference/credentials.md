@@ -16,6 +16,8 @@ ho odovzdá iba službám, ktoré ho čítajú.
 čo ho číta, pre čo je zapečatený a kedy sa naposledy zmenil. Hodnotu nikdy
 neukážu a nič na stránke ju nemôže prezradiť.
 
+![Nastavenia, Prihlasovacie údaje: k čomu sú tajomstvá zapečatené, potom každé s tým, na čo slúži, ako vzniklo, kedy sa zmenilo a čo ho číta, a Vytvoriť nový pri tých, ktoré sa dajú vymeniť.](@site/docs/img/settings-credentials-sk.png)
+
 ## Kde sú uložené
 
 Každý prihlasovací údaj je jeden súbor v `/etc/credstore.encrypted`,

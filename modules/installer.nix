@@ -37,7 +37,9 @@ let
   # The tools losos-ctl install shells out to at runtime: disko + git for the
   # full path, util-linux for lsblk (drive detection), coreutils for cp/chmod
   # (laying the flake), systemd for systemd-cryptenroll (sealing the disk key
-  # to the TPM2 right after the format). nixos-install comes from the installer
+  # to the TPM2 right after the format), clevis for `--tang` (the same key
+  # sealed to the TPM2 and a Tang server), curl for `--tang-edge` (asking
+  # the edge for the box's Tang key). nixos-install comes from the installer
   # medium's own PATH (--prefix preserves the rest of PATH). cryptsetup/lvm2
   # mirror the old wrap in case disko reaches for them directly.
   tools = lib.makeBinPath [
@@ -47,6 +49,8 @@ let
     pkgs.coreutils
     pkgs.cryptsetup
     pkgs.lvm2
+    pkgs.clevis
+    pkgs.curl
     config.systemd.package
   ];
 
@@ -119,7 +123,8 @@ let
       ''
         install -Dm755 ${lib.getExe inner} $out/bin/${binName}
         wrapProgram $out/bin/${binName} --prefix PATH : ${tools} \
-          --set-default LOSOS_FLAKE_BRANCH ${lib.escapeShellArg config.losos.configRepo.upstream.branch}${
+          --set-default LOSOS_FLAKE_BRANCH ${lib.escapeShellArg config.losos.configRepo.upstream.branch} \
+          --set-default LOSOS_REGISTRAR_URL ${lib.escapeShellArg config.losos.proxy.registrarUrl}${
           lib.optionalString (seededKeys != [ ]) " --set LOSOS_INSTALL_GPG_KEYS_FILE ${seededKeysFile}"
         }
       '';

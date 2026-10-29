@@ -6,6 +6,8 @@ slug: /manual/issues
 
 # Issues in LosOS Git
 
+![Das Projekt backup-tool in LosOS Git: seine Issues nach Status gruppiert, jedes mit Kürzel, Priorität, Labels, Fälligkeit und zuständiger Person, und in der Seitenleiste Posteingang, Meine Issues und die Projekte.](@site/docs/img/git-issues-de.png)
+
 LosOS Git hält die Issues der Box: Fehler, Aufgaben und Ideen, für Code und
 für alles andere. Du findest sie unter **Issues** in der Seitenleiste von
 LosOS Git, in einer Liste für alle Projekte der Box. Die Adresse ist
@@ -57,6 +59,8 @@ Jedes Issue behält seinen Verlauf: wer es angelegt hat, jede Änderung von
 Status, Priorität, Person, Label oder Zyklus, jeden Kommentar und die
 Commits und Pull-Requests, die es genannt haben.
 
+![Issue BT-7 neben der Liste geöffnet: Status, Priorität, zuständige Person, Label, Zyklus, Schätzung und Repository, Aufteilen, die Unter-Issues und ein Kommentarfeld.](@site/docs/img/git-issue-de.png)
+
 ## Listen, das Board und Ansichten \{#lists-the-board-and-views}
 
 **Meine Issues** zeigt, was dir zugewiesen ist, über alle Projekte.
@@ -75,6 +79,8 @@ für dich oder teilst sie mit allen, die das Projekt sehen.
 
 Markierst du Issues mit ihren Kästchen oder mit `X`, öffnet sich eine
 Leiste, die Status, Priorität, Person oder Labels aller auf einmal ändert.
+
+![Dasselbe Projekt als Board: eine Spalte je Status, die Issues als Karten und Ansicht speichern.](@site/docs/img/git-issues-board-de.png)
 
 ## Zyklen \{#cycles}
 

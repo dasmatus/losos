@@ -9,6 +9,8 @@ mdx:
 
 # Do hĺbky
 
+![Prehľad zariadenia s názvom mattbox.](@site/docs/img/overview-sk.png)
+
 Zvyšok tejto príručky je pre vlastníka zariadenia. Táto kapitola je pre ľudí,
 ktorí LosOS vyvíjajú, prevádzkujú edge alebo pripravujú vydanie: ako do seba
 časti zapadajú, prečo je každá tam, kde je, a ako ich meniť.

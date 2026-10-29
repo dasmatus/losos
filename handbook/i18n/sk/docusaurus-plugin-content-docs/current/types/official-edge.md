@@ -60,36 +60,36 @@ pripojí, keď edge opäť odpovie.
 ## Oficiálny alebo nie \{#official-or-not}
 
 Zdieľanie otvorí akýkoľvek edge, ktorý odpovie. Trh smie prevádzkovať iba
-edge LosOS, takže ho zariadenie musí vedieť rozlíšiť od akéhokoľvek iného
-edge. Nájsť edge a zveriť mu peniaze sú dve rôzne otázky. Každé zariadenie
-nesie koreňový verejný kľúč LosOS. Oficiálny edge sa preukazuje pri každom
-prehľadávaní. Predloží certifikát podpísaný zodpovedajúcim súkromným kľúčom,
-ktorý má iba projekt, a to offline. Okrem toho kľúčom samotného certifikátu
-podpíše čerstvú výzvu, ktorú si zariadenie práve vymyslelo. Zariadenie
-urobí štyri kontroly a edge je oficiálny iba vtedy, ak prejdú všetky štyri.
+edge, ktorý prejde overením brány, takže ho zariadenie musí vedieť rozlíšiť
+od akéhokoľvek iného edge. Nájsť edge a zveriť mu peniaze sú dve rôzne
+otázky. Takýto edge môže prevádzkovať ktokoľvek. Preukazuje sa pri každom
+prehľadávaní: menuje ho pas podpísaný jeho vlastníkom, jeho TPM ukazuje, že
+nezmenený naštartoval zverejnený obraz brány LosOS, a jeho nastavenia
+posielajú podiel LosOS na adresy, ktoré má každé zariadenie. Zariadenie to
+overí celé a edge je oficiálny iba vtedy, ak prejde všetkým.
 
-Panel Mesh ukazuje výsledok ako znak vedľa názvu každého edge. Oficiálny edge
-dostane fajku. Každý iný edge dostane výstrahu s popisom, ktorý vymenúva, čo
-tento edge pre zariadenie urobiť nedokáže: nakupovať na trhu ani predávať
-voľné úložisko a výpočtový výkon tohto zariadenia. Zariadenie, ktoré podpis
-nedokáže overiť, berie edge ako [firemný edge](company-edge). Vyhľadávanie,
-vzdialený prístup a zdieľanie fungujú, obchodovanie nie, a panel Trh hlási
-„Okrajový proxy server, ktorý toto zariadenie našlo, neprevádzkuje LosOS.“
-Nič, čo firma nastaví, nedokáže z jej vlastného edge urobiť oficiálny. Je to
-zámer.
+Panel Mesh ukazuje výsledok ako znak vedľa názvu každého edge. Overená brána
+dostane fajku, s vlastníkom a obrazom v popise. Každý iný edge dostane
+výstrahu s popisom, ktorý vymenúva, čo tento edge pre zariadenie urobiť
+nedokáže: nakupovať na trhu ani predávať voľné úložisko a výpočtový výkon
+tohto zariadenia. Edge, ktorý zariadenie pristihlo pri manipulácii, dostane
+stopku a zariadenie ho už na nič nepoužíva. Edge, ktorý neukazuje pas, berie
+zariadenie ako [firemný edge](company-edge). Vyhľadávanie, vzdialený prístup
+a zdieľanie fungujú, obchodovanie nie, a panel Trh hlási „Okrajový proxy
+server, ktorý toto zariadenie našlo, neprešiel overením brány.“
 
 ![Výstražný znak vedľa edge, ktorý nie je oficiálny, s popisom, ktorý vymenúva, čo tento edge pre zariadenie urobiť nedokáže.](@site/docs/img/mesh-warning-tooltip-sk.png)
 
-:::note[Kým nie je kľúč zverejnený]
-Každé zariadenie sa dodáva s prázdnym súborom koreňového kľúča, kým projekt
-nezverejní verejný kľúč. Dovtedy nie je žiadny edge oficiálny, každý edge má
-výstražný znak a trh je na každom zariadení vypnutý. Toto je bezpečný smer,
-ktorým zlyhať.
+:::note[Kým nie sú obraz a adresy zverejnené]
+Každé zariadenie sa dodáva s prázdnym zoznamom obrazov brány a prázdnym
+zoznamom výplatných adries LosOS, kým ich projekt nezverejní. Dovtedy žiadny
+edge neprejde, každý edge má výstražný znak a trh je na každom zariadení
+vypnutý. Toto je bezpečný smer, ktorým zlyhať.
 :::
 
-Vlastník projektu uchováva koreňový kľúč offline, nikdy nie na zariadení ani
-na edge. Každý oficiálny edge má vlastný kľúč, ktorý edge nikdy neopustí,
-a certifikát, ktorý mu podpísal koreňový kľúč.
+Žiadny kľúč LosOS z edge oficiálny neurobí. Zariadenie dôveruje obrazu,
+na ktorom edge beží a za ktorý ručí jeho TPM, a pasu, ktorý podpísal jeho
+vlastník.
 
 Registrácia na edge, ktorá rozhoduje, ktoré zariadenie cez neho smie
 tunelovať, je samostatná vec. Edge vedie zoznam povolených zariadení, každé

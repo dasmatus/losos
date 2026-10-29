@@ -114,6 +114,7 @@ pub struct Job {
     pub matrix: Map<String, Value>,
     pub state: String,
     /// `box`: this box's own runner. `mesh`: the edge's queue, any box.
+    /// `desktop:<computer>`: a LosOS Desktop computer joined to this box.
     pub placement: String,
     #[serde(skip)]
     pub edge_id: Option<String>,
@@ -408,6 +409,26 @@ impl Store {
                              ORDER BY id LIMIT 1)
                  RETURNING id",
                 params![runner, now()],
+                |r| r.get(0),
+            )
+            .optional()?;
+        drop(conn);
+        match id {
+            Some(id) => self.job(id),
+            None => Ok(None),
+        }
+    }
+
+    /// The oldest queued job placed `placement`, now running on `runner`.
+    pub fn take_placed_job(&self, placement: &str, runner: &str) -> anyhow::Result<Option<Job>> {
+        let conn = self.conn();
+        let id: Option<i64> = conn
+            .query_row(
+                "UPDATE jobs SET state = 'running', runner = ?2, started = ?3
+                 WHERE id = (SELECT id FROM jobs WHERE state = 'queued' AND placement = ?1
+                             ORDER BY id LIMIT 1)
+                 RETURNING id",
+                params![placement, runner, now()],
                 |r| r.get(0),
             )
             .optional()?;

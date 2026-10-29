@@ -23,7 +23,7 @@ Einstellungen, die Schlüssel und die Identität der Box, die Mitgliedschaft
 im Mesh. Alles andere ist um 00:07 weg. Die
 [Referenzseite](../reference/what-survives-a-reboot) hat die Liste.
 
-![Der Bereich Über, der die Zeiten für Neustart und Update zeigt und wann jedes zuletzt lief.](@site/docs/img/settings-about-de.png)
+![Der Bereich Historie: der Branch, von dem die Box neue Versionen holt, und wann sie zuletzt nachgesehen hat, dann die Änderungen.](@site/docs/img/settings-history-de.png)
 
 ## Während sie arbeitet \{#while-it-works}
 

@@ -5,6 +5,8 @@ sidebar_position: 6
 
 # Vyskúšajte vo virtuálnych strojoch
 
+![Prehľad zariadenia, ktoré beží vo virtuálnom stroji.](@site/docs/img/overview-sk.png)
+
 Jeden riadok na počítači s Linuxom pripraví dve zariadenia LosOS a medzi
 nimi edge, ako virtuálne stroje na súkromnej sieti, a prejde s vami tým, čo
 robia spolu:
