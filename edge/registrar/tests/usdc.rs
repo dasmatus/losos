@@ -35,13 +35,21 @@ use sha3::{Digest, Keccak256};
 
 const PAY: &str = "0x1111111111111111111111111111111111111111";
 const TREASURY: &str = "0x4444444444444444444444444444444444444444";
-const HELD_TOPIC: &str = "Held(uint256,bytes32,address,address,uint256,uint256,uint64)";
+const HELD_TOPIC: &str =
+    "Held(uint256,bytes32,address,address,uint256,uint256,uint64,address,address)";
 /// Anvil's first key, as the edge's releaser.
 const RELEASER_KEY: &str = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 const RELEASER: &str = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266";
-const RELEASE: &str = "37bdc99b";
-const REFUND: &str = "278ecde1";
-const SETTLE: &str = "9a9c29f6";
+/// `release(uint256,bytes[])`, `refund(uint256,bytes[])`,
+/// `settle(uint256,uint256,bytes[])`.
+const RELEASE: &str = "1aa4c26a";
+const REFUND: &str = "1df60d97";
+const SETTLE: &str = "0e0f4b0c";
+/// The two boxes, each with its escrow key's wallet seed.
+const BOXES: [(&str, &str, u8); 2] = [
+    ("seller-box", GOOD_TOKEN, 201),
+    ("buyer-box", OTHER_TOKEN, 202),
+];
 const DAY: u64 = 24 * 60 * 60;
 const SOL_TREASURY: &str = "5ZWj7a1f8tWkjBESHKgrLmXshuXxqeY9SYcfbshpAqPG";
 const SOL_BUYER: &str = "HN7cABqLq46Es1jh92dQQisAq662SmxELLLsHHe4YWrH";
@@ -210,11 +218,13 @@ async fn start_full(
     btc: bool,
     kube: &KubeStub,
 ) -> Edge {
-    start_opts(tag, rpc_url, state, cards, btc, kube, true).await
+    start_opts(tag, rpc_url, state, cards, btc, kube, true, true).await
 }
 
 /// As [`start_full`]; `direct_pay: false` is the default edge, which takes
-/// only payments it can hold for a slot.
+/// only payments it can hold for a slot. `boxes: false` leaves the two
+/// boxes' signing to the test ([`box_pass`]).
+#[allow(clippy::too_many_arguments)]
 async fn start_opts(
     tag: &str,
     rpc_url: &str,
@@ -223,6 +233,7 @@ async fn start_opts(
     btc: bool,
     kube: &KubeStub,
     direct_pay: bool,
+    boxes: bool,
 ) -> Edge {
     let stripe = start_stripe().await;
     let rpc_url = rpc_url.to_string();
@@ -289,7 +300,82 @@ async fn start_opts(
     if !cards {
         edge.stop_gate().await;
     }
+    register_boxes(&edge.client, &edge.base).await;
+    if boxes {
+        let (client, base) = (edge.client.clone(), edge.base.clone());
+        tokio::spawn(async move {
+            loop {
+                box_pass(&client, &base).await;
+                tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+            }
+        });
+    }
     edge
+}
+
+/// Each box registers its escrow key, as lososd does on its first pass.
+async fn register_boxes(client: &reqwest::Client, base: &str) {
+    for (id, token, seed) in BOXES {
+        let (_, address) = wallet(seed);
+        let r = client
+            .post(format!("{base}/market/escrow/decisions"))
+            .json(&with(auth(id, token), json!({ "evm": address })))
+            .send()
+            .await
+            .expect("the edge answers");
+        assert_eq!(r.status(), 200, "{}", r.text().await.unwrap_or_default());
+    }
+}
+
+/// One pass of both boxes: each signs every decision the edge has waiting
+/// for it, the way lososd's market loop does. Returns how many it signed.
+async fn box_pass(client: &reqwest::Client, base: &str) -> usize {
+    let mut signed = 0;
+    for (id, token, seed) in BOXES {
+        let (key, address) = wallet(seed);
+        let Ok(r) = client
+            .post(format!("{base}/market/escrow/decisions"))
+            .json(&with(auth(id, token), json!({ "evm": address })))
+            .send()
+            .await
+        else {
+            continue;
+        };
+        let Ok(decisions) = r.json::<Vec<Value>>().await else {
+            continue;
+        };
+        for d in decisions {
+            let escrow =
+                losos_registrar::stablecoin::address_bytes(d["escrow"].as_str().unwrap()).unwrap();
+            let refund: u64 = d["refund"].as_str().unwrap().parse().unwrap();
+            let deposit = d["deposit"].as_u64().unwrap();
+            let digest = losos_registrar::escrow_boxes::evm_digest(
+                d["chainId"].as_u64().unwrap(),
+                escrow,
+                deposit,
+                u128::from(refund),
+            );
+            let (sig, recid) = key.sign_prehash_recoverable(&digest);
+            let signature = format!("0x{}{:02x}", hex(&sig.to_bytes()), u8::from(recid) + 27);
+            let r = client
+                .post(format!("{base}/market/escrow/sign"))
+                .json(&with(
+                    auth(id, token),
+                    json!({
+                        "network": d["network"],
+                        "deposit": deposit,
+                        "refund": refund,
+                        "signature": signature,
+                    }),
+                ))
+                .send()
+                .await;
+            if r.is_ok_and(|r| r.status() == 204) {
+                signed += 1;
+            }
+        }
+    }
+    signed
 }
 
 fn auth(id: &str, token: &str) -> Value {
@@ -392,6 +478,14 @@ fn receipt(invoice: &Value, seller: &str, block: u64, deposit: u8) -> Value {
     let gross: u128 = invoice["gross"].as_str().unwrap().parse().unwrap();
     let fee: u128 = invoice["fee"].as_str().unwrap().parse().unwrap();
     let deadline = u128::from(invoice["deadline"].as_u64().unwrap());
+    let boxes = invoice["chains"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["buyer_box"].is_string())
+        .expect("an escrowed network");
+    let buyer_box = boxes["buyer_box"].as_str().unwrap();
+    let seller_box = boxes["seller_box"].as_str().unwrap();
     json!({
         "status": "0x1",
         "blockNumber": format!("0x{block:x}"),
@@ -404,11 +498,13 @@ fn receipt(invoice: &Value, seller: &str, block: u64, deposit: u8) -> Value {
                 "0x0000000000000000000000003333333333333333333333333333333333333333",
             ],
             "data": format!(
-                "0x000000000000000000000000{}{}{}{}",
+                "0x000000000000000000000000{}{}{}{}000000000000000000000000{}000000000000000000000000{}",
                 &seller[2..],
                 word_u(gross),
                 word_u(fee),
                 word_u(deadline),
+                &buyer_box[2..],
+                &seller_box[2..],
             ),
         }],
     })
@@ -715,6 +811,126 @@ async fn a_payment_counts_once_it_has_a_block_on_top() {
     assert!(order["escrow"]["tx"].is_null(), "{order}");
     assert_eq!(sent_calls(&chain).len(), 1);
     assert_eq!(close(&edge, &listing).await.0, 204);
+    edge.shutdown().await;
+}
+
+/// The edge's key is one of three: it decides, but sends nothing until the
+/// box the decision pays has signed it, and that box sees only its own.
+#[tokio::test]
+async fn the_edge_alone_moves_no_deposit() {
+    let (chain, url) = start_chain().await;
+    let kube = mesh("Bound").await;
+    let edge = start_opts(
+        "usdc-two-of-three",
+        &url,
+        None,
+        true,
+        false,
+        kube,
+        true,
+        false,
+    )
+    .await;
+    let seller = set_payout(&edge, 7).await;
+    let invoice = order(&edge, 40).await;
+    let order_id = invoice["order_id"].as_str().unwrap().to_string();
+    let (_, seller_box) = wallet(201);
+    let (_, buyer_box) = wallet(202);
+    for c in invoice["chains"].as_array().unwrap() {
+        assert_eq!(c["buyer_box"], buyer_box.as_str(), "{c}");
+        assert_eq!(c["seller_box"], seller_box.as_str(), "{c}");
+    }
+    chain.set(|c| {
+        c.receipts.insert(tx(1), receipt(&invoice, &seller, 100, 1));
+        c.head = 101;
+    });
+    assert_eq!(confirm(&edge, &order_id, &tx(1)).await.0, 204);
+    wait_volume(&edge, &order_id).await;
+    // A month on, as `later` does it, but with boxes that sign only when
+    // this test says so.
+    let ledger = aged(ledger(&edge), 30 * DAY + 60);
+    edge.shutdown().await;
+    let edge = start_opts(
+        "usdc-two-of-three-later",
+        &url,
+        Some(&ledger),
+        true,
+        false,
+        kube,
+        true,
+        false,
+    )
+    .await;
+    assert_eq!(release(&edge).await.0, 200);
+    assert_eq!(
+        purchase(&edge, &order_id).await["escrow"]["step"],
+        "release"
+    );
+    sends_nothing(&chain).await;
+    // The buyer's box is not asked to agree to the seller being paid.
+    let decisions = |id: &'static str, token: &'static str, seed: u8| {
+        let edge = &edge;
+        async move {
+            let (_, address) = wallet(seed);
+            let (status, body) = edge
+                .post(
+                    "/market/escrow/decisions",
+                    with(auth(id, token), json!({ "evm": address })),
+                )
+                .await;
+            assert_eq!(status, 200, "{body}");
+            parse(&body)
+        }
+    };
+    assert_eq!(decisions("buyer-box", OTHER_TOKEN, 202).await, json!([]));
+    let mine = decisions("seller-box", GOOD_TOKEN, 201).await;
+    assert_eq!(mine.as_array().unwrap().len(), 1, "{mine}");
+    assert_eq!(mine[0]["side"], "seller");
+    assert_eq!(mine[0]["refund"], "0");
+    assert_eq!(mine[0]["deposit"], 1);
+    assert_eq!(mine[0]["orderId"], order_id.as_str());
+    // A signature over another decision, or by another key, is refused.
+    let (key, _) = wallet(201);
+    let (stranger, _) = wallet(203);
+    let sign = |key: &SigningKey, refund: u128| {
+        let digest = losos_registrar::escrow_boxes::evm_digest(
+            BASE_SEPOLIA,
+            losos_registrar::stablecoin::address_bytes(PAY).unwrap(),
+            1,
+            refund,
+        );
+        let (sig, recid) = key.sign_prehash_recoverable(&digest);
+        format!("0x{}{:02x}", hex(&sig.to_bytes()), u8::from(recid) + 27)
+    };
+    let post_sign = |signature: String, refund: u64| {
+        let edge = &edge;
+        async move {
+            edge.post(
+                "/market/escrow/sign",
+                with(
+                    auth("seller-box", GOOD_TOKEN),
+                    json!({ "network": "base-sepolia", "deposit": 1, "refund": refund, "signature": signature }),
+                ),
+            )
+            .await
+        }
+    };
+    let (status, body) = post_sign(sign(&key, 5), 5).await;
+    assert_eq!(status, 409, "{body}");
+    let (status, body) = post_sign(sign(&key, 5), 0).await;
+    assert_eq!(status, 400, "{body}");
+    let (status, body) = post_sign(sign(&stranger, 0), 0).await;
+    assert_eq!(status, 400, "{body}");
+    sends_nothing(&chain).await;
+    // The seller's box agrees: now it is two of three, and the call goes.
+    let (status, body) = post_sign(sign(&key, 0), 0).await;
+    assert_eq!(status, 204, "{body}");
+    assert_eq!(wait_sent(&chain, 1).await, [(RELEASE.to_string(), 1)]);
+    let raw = chain.inner.lock().unwrap().sent[0].clone();
+    assert!(
+        raw.contains(&sign(&key, 0)[2..]),
+        "the call carries the box's signature"
+    );
     edge.shutdown().await;
 }
 
@@ -1082,6 +1298,13 @@ async fn a_payout_change_after_the_order_does_not_refuse_its_payment() {
 }
 
 /// A ledger with one USDC order made an hour ago, long past its hold.
+/// Both boxes' keys as an order records them.
+fn order_boxes() -> Value {
+    let (_, seller_box) = wallet(201);
+    let (_, buyer_box) = wallet(202);
+    json!({ "buyer": { "evm": buyer_box }, "seller": { "evm": seller_box } })
+}
+
 fn lapsed_ledger(capacity: u64, quantity: u64, seller: &str) -> Value {
     let now = losos_registrar::market::now_secs();
     json!({
@@ -1097,6 +1320,7 @@ fn lapsed_ledger(capacity: u64, quantity: u64, seller: &str) -> Value {
             "unit_price": 5, "amount": quantity * 5, "fee": 0, "currency": "usd",
             "status": "pending", "session_id": null, "created_at": now - 3600,
             "paid_at": null, "expires_at": null, "rail": "usdc", "pay_to": seller,
+            "boxes": order_boxes(),
         }},
     })
 }
@@ -1108,6 +1332,10 @@ fn late_invoice(quantity: u64, ledger: &Value) -> Value {
         "gross": (u128::from(quantity) * 5 * 10_000).to_string(),
         "fee": "0",
         "deadline": refund_deadline(created + 15 * 60),
+        "chains": [{
+            "buyer_box": order_boxes()["buyer"]["evm"],
+            "seller_box": order_boxes()["seller"]["evm"],
+        }],
     })
 }
 
@@ -1924,6 +2152,7 @@ async fn an_edge_takes_only_payments_it_can_hold_unless_told_otherwise() {
         true,
         mesh("Bound").await,
         false,
+        true,
     )
     .await;
     // A seller with only a Solana payout cannot be paid in a way the edge

@@ -17,7 +17,7 @@ contract LososEscrowForkTest is Test {
 
     function _one(LososEscrow escrow, uint256 key, uint256 id, uint256 refund)
         internal
-        pure
+        view
         returns (bytes[] memory sigs)
     {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(key, escrow.decisionDigest(id, refund));

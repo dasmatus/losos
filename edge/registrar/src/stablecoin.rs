@@ -328,6 +328,11 @@ pub struct ExpectedPayment {
     /// When the payer may take the deposit back alone. The invoice names it,
     /// so the edge knows it has until then to release.
     pub deadline: u64,
+    /// The keys the buyer's and the seller's boxes registered
+    /// (`crate::escrow_boxes`): two of these and the edge's move the
+    /// deposit, so a payment that names others is not counted.
+    pub buyer_box: [u8; 20],
+    pub seller_box: [u8; 20],
 }
 
 /// How long after an order's hold the payer may take an unreleased deposit
@@ -548,6 +553,13 @@ pub struct InvoiceChain {
     pub chain: ChainPublic,
     /// The seller's payout address on this network's family.
     pub seller: String,
+    /// The buyer's and the seller's box keys on this network's family, the
+    /// two arguments of the escrow's `pay` after the deadline. Absent on a
+    /// network that pays the seller directly.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub buyer_box: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seller_box: Option<String>,
 }
 
 /// What the buyer's wallet pays. Amounts are decimal strings of USDC base
@@ -604,6 +616,7 @@ pub fn invoice(
     opts: &UsdcOpts,
     order_id: &str,
     pay_to: PayTo<'_>,
+    boxes: Option<&crate::escrow_boxes::OrderBoxes>,
     gross_cents: u64,
     fee_cents: u64,
     pay_before: u64,
@@ -620,9 +633,22 @@ pub fn invoice(
             .chains
             .iter()
             .filter_map(|c| {
-                pay_to.of(c.network.family).map(|seller| InvoiceChain {
+                let seller = pay_to.of(c.network.family)?;
+                // An escrowed network needs both box keys; without them the
+                // edge could not count the payment.
+                let keys = |side: &crate::escrow_boxes::BoxKeys| {
+                    side.of(c.network.family).map(str::to_string)
+                };
+                let (buyer_box, seller_box) = match (c.pay.is_some(), boxes) {
+                    (false, _) => (None, None),
+                    (true, Some(b)) => (Some(keys(&b.buyer)?), Some(keys(&b.seller)?)),
+                    (true, None) => return None,
+                };
+                Some(InvoiceChain {
                     chain: c.public(),
                     seller: seller.to_string(),
+                    buyer_box,
+                    seller_box,
                 })
             })
             .collect(),
@@ -1188,7 +1214,7 @@ pub fn fee_transfer(
 }
 
 /// The event `LososEscrow.pay` emits.
-const HELD: &[u8] = b"Held(uint256,bytes32,address,address,uint256,uint256,uint64)";
+const HELD: &[u8] = b"Held(uint256,bytes32,address,address,uint256,uint256,uint64,address,address)";
 
 /// Whether `receipt` is a successful `LososEscrow.pay` that holds exactly
 /// `expected`. Returns the deposit's id, which `release` and `refund` take.
@@ -1230,7 +1256,7 @@ pub fn payment_matches(receipt: &Value, expected: &ExpectedPayment) -> Result<u6
             return Err("the payment log is short");
         };
         let data = decode_hex(log["data"].as_str().unwrap_or("")).unwrap_or_default();
-        if data.len() < 4 * 32 {
+        if data.len() < 6 * 32 {
             return Err("the payment log is short");
         }
         if data[12..32] != expected.seller || data[..12].iter().any(|b| *b != 0) {
@@ -1244,6 +1270,18 @@ pub fn payment_matches(receipt: &Value, expected: &ExpectedPayment) -> Result<u6
         }
         if word_u128(&data, 3) != Some(u128::from(expected.deadline)) {
             return Err("the payment's refund deadline is not the invoice's");
+        }
+        let address_word = |i: usize| -> Option<[u8; 20]> {
+            let w = data.get(i * 32..i * 32 + 32)?;
+            w[..12]
+                .iter()
+                .all(|b| *b == 0)
+                .then(|| w[12..].try_into().expect("20 bytes"))
+        };
+        if address_word(4) != Some(expected.buyer_box)
+            || address_word(5) != Some(expected.seller_box)
+        {
+            return Err("the payment names other boxes than the invoice");
         }
         return Ok(deposit);
     }
@@ -1564,7 +1602,22 @@ mod tests {
         assert_eq!(selector("releaser()"), "0x02691bcb");
     }
 
+    const BUYER_BOX: &str = "0x6666666666666666666666666666666666666666";
+    const SELLER_BOX: &str = "0x7777777777777777777777777777777777777777";
+
     fn held_receipt(deposit: u64, order: [u8; 32], seller: &str, gross: u128, fee: u128) -> Value {
+        held_receipt_boxes(deposit, order, seller, gross, fee, BUYER_BOX, SELLER_BOX)
+    }
+
+    fn held_receipt_boxes(
+        deposit: u64,
+        order: [u8; 32],
+        seller: &str,
+        gross: u128,
+        fee: u128,
+        buyer_box: &str,
+        seller_box: &str,
+    ) -> Value {
         let topic0 = format!("0x{}", to_hex(&keccak256(HELD)));
         json!({
             "status": "0x1",
@@ -1577,11 +1630,13 @@ mod tests {
                     "0x0000000000000000000000003333333333333333333333333333333333333333",
                 ],
                 "data": format!(
-                    "0x000000000000000000000000{}{}{}{}",
+                    "0x000000000000000000000000{}{}{}{}000000000000000000000000{}000000000000000000000000{}",
                     &seller[2..],
                     to_hex(&pad_u128(gross)),
                     to_hex(&pad_u128(fee)),
                     to_hex(&pad_u128(1_700_086_400)),
+                    &buyer_box[2..],
+                    &seller_box[2..],
                 ),
             }],
         })
@@ -1597,10 +1652,26 @@ mod tests {
             gross: 20_000_000,
             fee: 800_000,
             deadline: 1_700_086_400,
+            buyer_box: decode_address(BUYER_BOX).unwrap(),
+            seller_box: decode_address(SELLER_BOX).unwrap(),
         };
         let seller = "0x2222222222222222222222222222222222222222";
         let receipt = held_receipt(7, order, seller, 20_000_000, 800_000);
         assert_eq!(payment_matches(&receipt, &expected), Ok(7), "{receipt}");
+        // A buyer who names a key of their own for the seller's box would
+        // hold two of the three; one who swaps the two, the same.
+        let stranger = "0x8888888888888888888888888888888888888888";
+        for (b, s) in [
+            (BUYER_BOX, stranger),
+            (stranger, SELLER_BOX),
+            (SELLER_BOX, BUYER_BOX),
+        ] {
+            let other = held_receipt_boxes(7, order, seller, 20_000_000, 800_000, b, s);
+            assert_eq!(
+                payment_matches(&other, &expected),
+                Err("the payment names other boxes than the invoice")
+            );
+        }
 
         let short = held_receipt(7, order, seller, 1, 800_000);
         assert_eq!(
@@ -1681,18 +1752,22 @@ mod tests {
             ],
             releaser_file: None,
         };
-        let i = invoice(
-            &usdc,
-            "ord_1",
-            PayTo {
-                evm: Some("0x2222222222222222222222222222222222222222"),
-                solana: None,
-            },
-            100,
-            4,
-            1_000,
-        );
+        let pay_to = PayTo {
+            evm: Some("0x2222222222222222222222222222222222222222"),
+            solana: None,
+        };
+        let boxes = crate::escrow_boxes::OrderBoxes {
+            buyer: crate::escrow_boxes::BoxKeys::parse(BUYER_BOX, None).unwrap(),
+            seller: crate::escrow_boxes::BoxKeys::parse(SELLER_BOX, None).unwrap(),
+        };
+        let i = invoice(&usdc, "ord_1", pay_to, Some(&boxes), 100, 4, 1_000);
         assert_eq!(i.deadline, 1_000 + ESCROW_REFUND_AFTER_SECS);
+        assert_eq!(i.chains[0].buyer_box.as_deref(), Some(BUYER_BOX));
+        assert_eq!(i.chains[0].seller_box.as_deref(), Some(SELLER_BOX));
+        // Without the boxes' keys an escrowed network cannot be paid.
+        assert!(invoice(&usdc, "ord_1", pay_to, None, 100, 4, 1_000)
+            .chains
+            .is_empty());
     }
 
     fn pad_u128(n: u128) -> [u8; 32] {
@@ -1719,6 +1794,8 @@ mod tests {
             gross: meta["gross"].as_str().unwrap().parse().unwrap(),
             fee: meta["fee"].as_str().unwrap().parse().unwrap(),
             deadline: meta["deadline"].as_u64().unwrap(),
+            buyer_box: decode_address(meta["buyer_box"].as_str().unwrap()).unwrap(),
+            seller_box: decode_address(meta["seller_box"].as_str().unwrap()).unwrap(),
         };
         let deposit = payment_matches(receipt, &expected).unwrap();
         assert_eq!(Some(deposit), meta["deposit"].as_u64());

@@ -238,9 +238,12 @@ pub fn base58_encode(bytes: &[u8]) -> String {
     out
 }
 
+/// Base58 to bytes. Long enough for a whole transaction's worth of
+/// instruction data (1232 bytes), which a `pay` naming both boxes' keys
+/// needs; the work grows with the square of the length, so no more.
 #[must_use]
 pub fn base58_decode(raw: &str) -> Option<Vec<u8>> {
-    if raw.is_empty() || raw.len() > 128 {
+    if raw.is_empty() || raw.len() > 1700 {
         return None;
     }
     let zeros = raw.bytes().take_while(|b| *b == b'1').count();
