@@ -4,7 +4,8 @@
 #   * `edge`   — losos.edge with dns.enable: Knot serving the zone the
 #                registrar renders, the reload path unit, port 53 open.
 #   * `client` — a plain machine with kdig, asking the edge over the
-#                test network as any resolver on the internet would.
+#                test network as any resolver on the internet would, and
+#                losos-ctl for the box's own check of the edge's name.
 #
 # What it asserts, in order:
 #   1. Before the edge's owner has claimed it, it serves the zone (SOA, NS,
@@ -27,7 +28,16 @@
 #      the ENS record at the box's name, signed, and validated by `delv`
 #      against the zone's own DS as the trust anchor. A signature for another
 #      box is refused; unbinding takes the record away.
-#   5. The route table's wiring: the registrar made its relay pass key
+#   5. Encrypted Client Hello: the edge made its key (0640, group traefik),
+#      every name carries an HTTPS record with it, signed and validated like
+#      the wallet's, and a client that reads the key from that record
+#      reaches the box's name through Traefik with ECH accepted, the box's
+#      name never in the clear.
+#   6. The box's side: `losos-ctl edge-domain`, the check lososd holds an
+#      official edge to, passes the box's name (signed, with the key), says
+#      a name the zone proves absent has no key, finds nothing signed from
+#      a trust anchor the zone's key does not match, and refuses plain HTTP.
+#   7. The route table's wiring: the registrar made its relay pass key
 #      (0600); a spoke forwarding that pass on `/relay` is answered with no
 #      routes (the box is not in this edge's mesh), but the binding is kept
 #      in relay-routes.json (0600) beside the registry, and is still there
@@ -45,12 +55,56 @@ let
   spokeTokenValue = "test-spoke-token-0123456789abcdef0123456789abcdef";
   spokeToken = "/var/secrets/losos-tenant-acme";
   lososPkgs = import ../packages.nix { inherit pkgs; };
+  registrar = "${lososPkgs.losos-registrar}/bin/losos-registrar";
   # A test wallet (private key 0x0707…07) and its personal_sign of
   # "LosOS box name v1\nzone: boxes.example.test\nbox: mattbox\naddress: <it>\n",
   # as viem's signMessage makes it in the admin page.
   walletAddress = "0x4a62316623ad457f02cdc5d997ded67a383ec569";
   walletSignature = "0xf60bb8dd608847e9d8dcc4f85fc660e541f7b9050677dac6cf472873b4d01e622718b441f44b85d93219309bb09f4ab3a19894ef759bf155655b84c51c8370301c";
   ensRecord = "ENS1 dnsname.ens.eth ${walletAddress}";
+  # An ECH client: Go's crypto/tls with the ECHConfigList it is handed,
+  # printing whether the server decrypted the inner hello.
+  echProbe = pkgs.buildGoModule {
+    pname = "ech-probe";
+    version = "0";
+    src = pkgs.runCommand "ech-probe-src" { } ''
+      mkdir $out
+      printf 'module ech-probe\n\ngo 1.24\n' > $out/go.mod
+      cp ${pkgs.writeText "main.go" ''
+        package main
+
+        import (
+        	"crypto/tls"
+        	"encoding/base64"
+        	"fmt"
+        	"os"
+        )
+
+        // ech-probe ADDR NAME ECHCONFIGLIST
+        func main() {
+        	list, err := base64.StdEncoding.DecodeString(os.Args[3])
+        	if err != nil {
+        		fmt.Println("error:", err)
+        		os.Exit(2)
+        	}
+        	c, err := tls.Dial("tcp", os.Args[1], &tls.Config{
+        		ServerName:                     os.Args[2],
+        		EncryptedClientHelloConfigList: list,
+        		// The test edge has no certificate from Let's Encrypt.
+        		InsecureSkipVerify: true,
+        	})
+        	if err != nil {
+        		fmt.Println("error:", err)
+        		os.Exit(1)
+        	}
+        	defer c.Close()
+        	st := c.ConnectionState()
+        	fmt.Printf("ech=%v tls=%x\n", st.ECHAccepted, st.Version)
+        }
+      ''} $out/main.go
+    '';
+    vendorHash = null;
+  };
 in
 
 pkgs.testers.nixosTest {
@@ -98,7 +152,11 @@ pkgs.testers.nixosTest {
             relayRoutes.enable = true;
           };
         };
-        networking.firewall.allowedTCPPorts = [ 8443 ];
+        networking.firewall.allowedTCPPorts = [
+          8443
+          443
+        ];
+        networking.firewall.allowedUDPPorts = [ 443 ];
         # Only a claimed open gateway's zone hands out names
         # (modules/edge-passport.nix). No TPM here: the test stands in for
         # the measured claim itself, below.
@@ -112,6 +170,10 @@ pkgs.testers.nixosTest {
         pkgs.knot-dns
         # delv: a validating lookup against a trust anchor of our choosing.
         pkgs.bind
+        echProbe
+        pkgs.tcpdump
+        # The box's own check of an official edge's name (`edge-domain`).
+        lososPkgs.losos-ctl
       ];
     };
   };
@@ -251,6 +313,87 @@ pkgs.testers.nixosTest {
           client.wait_until_succeeds(
               "test -z \"$(kdig @${edgeIp} mattbox.boxes.example.test TXT +short)\""
           )
+
+      with subtest("Encrypted Client Hello: the key, the HTTPS records, a handshake"):
+          edge.succeed("systemctl show -p Result losos-ech-key.service | grep -qx Result=success")
+          edge.succeed("stat -c '%a %G' /var/lib/losos-ech/ech.pem | grep -qx '640 traefik'")
+          edge.succeed("grep -q 'BEGIN ECHCONFIG' /var/lib/losos-ech/ech.pem")
+          # The registrar reads the same key: one key, one value in the zone.
+          ech = edge.succeed(
+              "${registrar} ech-key --key-file /var/lib/losos-ech/ech.pem --public-name register.example.test"
+          ).strip().splitlines()[-1]
+          for name in ["boxes.example.test", "mattbox.boxes.example.test"]:
+              client.wait_until_succeeds(
+                  f"kdig @${edgeIp} {name} HTTPS +short | grep -qF '{ech}'"
+              )
+          https = client.succeed("kdig @${edgeIp} mattbox.boxes.example.test HTTPS +short")
+          print(https)
+          assert "alpn=h3,h2" in https.replace('"', ""), https
+          signed = client.succeed("kdig @${edgeIp} mattbox.boxes.example.test HTTPS +dnssec +norec")
+          assert re.search(r"RRSIG\s+HTTPS\s+13\s", signed), signed
+          valid = client.succeed(
+              "delv @${edgeIp} -a /tmp/anchor.conf +root=boxes.example.test "
+              "mattbox.boxes.example.test HTTPS 2>&1"
+          )
+          print(valid)
+          assert "fully validated" in valid, valid
+
+          # Traefik loaded the key without complaint, and decrypts with it.
+          edge.wait_for_open_port(443)
+          edge.fail("journalctl -u traefik.service | grep -i 'ech key'")
+          client.succeed("tcpdump -i eth1 -w /tmp/hello.pcap -U 'tcp port 443' >/dev/null 2>&1 & echo $! > /tmp/tcpdump.pid")
+          client.sleep(2)
+          probe = client.succeed(f"ech-probe ${edgeIp}:443 mattbox.boxes.example.test '{ech}'").strip()
+          print(probe)
+          assert probe == "ech=true tls=304", probe
+          client.succeed("sleep 1; kill $(cat /tmp/tcpdump.pid)")
+          # On the wire the hello names the public name, never the box.
+          client.succeed("grep -aq 'register.example.test' /tmp/hello.pcap")
+          client.fail("grep -aq mattbox /tmp/hello.pcap")
+          # A key Traefik does not hold is turned down, and says so.
+          # The value is the last line; making the key logs a line first.
+          other = edge.succeed(
+              "${registrar} ech-key --key-file /tmp/other.pem --public-name register.example.test"
+          ).strip().splitlines()[-1]
+          refused = client.fail(f"ech-probe ${edgeIp}:443 mattbox.boxes.example.test '{other}'")
+          print(refused)
+          # Turned down, the client checks the outer handshake's certificate
+          # against the public name, as ECH requires; the test edge has none
+          # from Let's Encrypt, so Go stops there rather than at the retry.
+          assert "ECH" in refused or "not register.example.test" in refused, refused
+
+      with subtest("a box holds an official edge to a signed name with an ECH key"):
+          # The check lososd runs on a gateway that passed everything else
+          # (losos.proxy.gateways.domain), pointed at this zone and its DS
+          # the way modules/daemon.nix hands it the options.
+          def domain(url, anchors="/tmp/anchor.conf"):
+              env = (
+                  "LOSOS_EDGE_DNS_SERVER=${edgeIp} "
+                  f"LOSOS_EDGE_DNS_ANCHORS={anchors} "
+                  "LOSOS_EDGE_DNS_ROOT=boxes.example.test"
+              )
+              code, out = client.execute(f"{env} losos-ctl edge-domain {url}")
+              print(url, code, out)
+              return code, out
+          code, out = domain("https://mattbox.boxes.example.test")
+          assert code == 0, out
+          assert json.loads(out) == {
+              "name": "mattbox.boxes.example.test", "signed": True, "ech": True,
+          }, out
+          # No such name: the zone proves it, signed, and there is no key.
+          code, out = domain("https://nobody.boxes.example.test")
+          assert code == 1 and json.loads(out) == {
+              "name": "nobody.boxes.example.test", "signed": True, "ech": False,
+          }, out
+          # A trust anchor the zone's key does not match: nothing validates.
+          wrong = client.succeed("cat /tmp/anchor.conf").replace(digest, digest[::-1])
+          assert wrong != client.succeed("cat /tmp/anchor.conf"), wrong
+          client.succeed(f"printf '%s' '{wrong}' > /tmp/wrong.conf")
+          code, out = domain("https://mattbox.boxes.example.test", "/tmp/wrong.conf")
+          assert code == 1 and json.loads(out)["signed"] is False, out
+          # Plain HTTP has no name to hold it to: refused before any lookup.
+          code, out = domain("http://mattbox.boxes.example.test")
+          assert code == 1 and out == "", out
 
       with subtest("the route table: the pass key, /relay, and the table file"):
           edge.succeed("stat -c %a /var/lib/losos-registrar/relay-pass.key | grep -qx 600")

@@ -11,7 +11,13 @@ import type {Props} from '@theme/ColorModeToggle';
  * and the same three Hugeicons glyphs, inlined so the handbook adds no icon
  * dependency. Which segment is "on" is drawn from the html element's
  * data-theme-choice (set by Docusaurus before React runs), so the control
- * is right before hydration and the server HTML needs no state. */
+ * is right before hydration and the server HTML needs no state.
+ *
+ * Without JavaScript nothing sets data-theme, so the server HTML draws each
+ * segment as a label around a radio button instead, and custom.css picks the
+ * palette from whichever radio is checked (`:has()`). The choice holds for
+ * the page it was made on; only the script remembers it. Once React runs,
+ * the segments become the buttons above. */
 
 type Choice = Props['value'];
 
@@ -32,6 +38,24 @@ const ICONS: Record<'system' | 'light' | 'dark', ReactNode> = {
     <path d="M21.5 14.0784C20.3003 14.7189 18.9301 15.0821 17.4751 15.0821C12.7491 15.0821 8.91792 11.2509 8.91792 6.52485C8.91792 5.06986 9.28105 3.69968 9.92163 2.5C5.66765 3.49698 2.5 7.31513 2.5 11.8731C2.5 17.1899 6.8101 21.5 12.1269 21.5C16.6849 21.5 20.503 18.3324 21.5 14.0784Z" />
   ),
 };
+
+function icon(key: 'system' | 'light' | 'dark'): ReactNode {
+  return (
+    <svg
+      aria-hidden="true"
+      width={16}
+      height={16}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {ICONS[key]}
+    </svg>
+  );
+}
 
 function label(choice: Choice): string {
   switch (choice) {
@@ -104,33 +128,35 @@ function ColorModeToggle({
       {choices.map((choice) => {
         const key = choice ?? 'system';
         const on = value === choice;
+        if (!isBrowser) {
+          return (
+            <label key={key} data-choice={key} title={label(choice)} className="hb-theme__item">
+              <input
+                type="radio"
+                name="hb-theme"
+                value={key}
+                defaultChecked={key === 'system'}
+                aria-label={label(choice)}
+                className="hb-theme__radio"
+              />
+              {icon(key)}
+            </label>
+          );
+        }
         return (
           <button
             key={key}
             type="button"
             role="radio"
             data-choice={key}
-            aria-checked={isBrowser ? on : undefined}
-            tabIndex={isBrowser ? (on ? 0 : -1) : -1}
-            disabled={!isBrowser}
+            aria-checked={on}
+            tabIndex={on ? 0 : -1}
             title={label(choice)}
             aria-label={label(choice)}
             className="hb-theme__item"
             onClick={() => onChange(choice)}
           >
-            <svg
-              aria-hidden="true"
-              width={16}
-              height={16}
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.5}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              {ICONS[key]}
-            </svg>
+            {icon(key)}
           </button>
         );
       })}
