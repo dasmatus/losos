@@ -37,6 +37,10 @@ struct Sources {
     vms: Routes,
     /// The boxes' Tor and I2P names (`crate::hidden`).
     hidden: Routes,
+    /// Every public name of each live box, by tenant id, as the last
+    /// reconcile pass decided: what a box that ends TLS itself is told to
+    /// get certificates for (`crate::passthrough`).
+    names: std::collections::BTreeMap<String, Vec<String>>,
     /// The provider listener's own origin, once bound: the offline page's
     /// service. `None` (no listener, as on the Vercel host) leaves the
     /// routers without it.
@@ -54,6 +58,23 @@ impl Discovery {
         let changed = s.tenants.as_ref() != Some(&routes);
         s.tenants = Some(routes);
         changed
+    }
+
+    pub(super) fn set_names(&self, names: std::collections::BTreeMap<String, Vec<String>>) {
+        self.0.write().unwrap_or_else(|p| p.into_inner()).names = names;
+    }
+
+    /// The public names of box `id`, sorted; empty for one this edge does
+    /// not route.
+    #[must_use]
+    pub fn names_of(&self, id: &str) -> Vec<String> {
+        self.0
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .names
+            .get(id)
+            .cloned()
+            .unwrap_or_default()
     }
 
     pub(super) fn set_vms(&self, routes: Routes) -> bool {
@@ -179,7 +200,7 @@ async fn offline(Path(status): Path<String>, headers: HeaderMap) -> Response {
 
 /// The page's three languages, the handbook's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Lang {
+pub(super) enum Lang {
     En,
     Sk,
     De,
@@ -188,7 +209,7 @@ enum Lang {
 impl Lang {
     /// The first of Slovak, German and English in `Accept-Language`, in the
     /// visitor's order; English otherwise.
-    fn from_headers(headers: &HeaderMap) -> Self {
+    pub(super) fn from_headers(headers: &HeaderMap) -> Self {
         let Some(accept) = headers
             .get(header::ACCEPT_LANGUAGE)
             .and_then(|h| h.to_str().ok())
@@ -212,7 +233,7 @@ impl Lang {
         Self::En
     }
 
-    fn code(self) -> &'static str {
+    pub(super) fn code(self) -> &'static str {
         match self {
             Self::En => "en",
             Self::Sk => "sk",

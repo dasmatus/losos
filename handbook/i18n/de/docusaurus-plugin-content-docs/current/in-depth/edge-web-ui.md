@@ -27,9 +27,9 @@ Beim ersten Start erzeugt die Edge einen Verwaltungsschlüssel: 64 Zeichen,
 `0` bis `9` und `a` bis `f`, abgelegt in
 `/var/lib/losos-registrar/manage-key`. Wer den Schlüssel hat, kann die Seite
 benutzen, also bewahren Sie ihn bei den anderen Admin-Passwörtern der Firma
-auf. Auf einem Edge-Gateway-Rechner gibt `losos-edge manage-key` auf der
-Konsole den Schlüssel mit der Adresse der Seite aus. Um den Schlüssel zu
-wechseln, löschen Sie die Datei und starten den Registrar neu. Die Edge
+auf. Ein Edge-Gateway-Rechner zeigt den Schlüssel mit der Adresse der Seite
+auf seinem Bildschirm; eine Konsolenanmeldung hat er nicht. Um den Schlüssel
+auf einer einfachen Edge zu wechseln, löschen Sie die Datei und starten den Registrar neu. Die Edge
 erzeugt einen neuen, und der alte gilt nicht mehr.
 
 Die Seite antwortet unter der Adresse der Edge im lokalen Netz, unter der

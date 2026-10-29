@@ -79,6 +79,12 @@ pub struct RelayTenant {
     /// that has none (no custom domains, or a hub without a route table).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pass: Option<String>,
+    /// The names the box ends TLS for itself (`crate::passthrough`), as it
+    /// told its spoke; absent leaves its TLS to the hub. Passthrough on the
+    /// hub hands the same bytes to the spoke's uplink, which hands them to
+    /// the box's tunnel, so neither edge reads them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tls: Option<Vec<String>>,
 }
 
 /// The hub's answer: what it will route, and what it refused and why. A
@@ -461,6 +467,7 @@ mod tests {
             id: "mattbox".into(),
             hostname: "mattbox.acme.losos.cfd".into(),
             pass: None,
+            tls: None,
         };
         assert_eq!(refusal(&ok, "acme.losos.cfd", false), None);
         assert!(refusal(&ok, "acme.losos.cfd", true)

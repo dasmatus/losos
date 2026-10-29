@@ -63,6 +63,10 @@ struct HeartbeatReq<'a> {
     /// Left out when it lends none.
     #[serde(skip_serializing_if = "Option::is_none")]
     llm_mib: Option<u64>,
+    /// The names this box ends TLS for itself (`crate::passthrough`). Left
+    /// out when it leaves TLS to the edge.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tls: Option<Vec<String>>,
 }
 
 /// The MiB in the lend file, re-read every heartbeat: the file is there only
@@ -183,21 +187,32 @@ pub async fn run(opts: AnnounceOpts) -> Result<()> {
                     None => false,
                 },
                 llm_mib: read_lend(opts.llm_lend_file.as_deref()).await,
+                tls: crate::passthrough::read_ready(opts.tls_ready_file.as_deref()).await,
             };
             match client.post(&heartbeat_url).json(&req).send().await {
                 Ok(r) if r.status().is_success() => {
                     healthy = true;
                     backoff = BACKOFF_MIN;
+                    let body = if r.status() == reqwest::StatusCode::OK {
+                        r.text().await.ok()
+                    } else {
+                        None
+                    };
                     if let Some(file) = opts.hidden_file.as_deref() {
-                        let body = if r.status() == reqwest::StatusCode::OK {
-                            r.text().await.ok()
-                        } else {
-                            None
-                        };
                         if let Err(e) = record_hidden(file, body.as_deref()).await {
                             warn!(
                                 target: Action::Heartbeat.target(),
                                 "could not keep this box's Tor and I2P addresses in {file}: {e}",
+                            );
+                        }
+                    }
+                    if let Some(file) = opts.tls_names_file.as_deref() {
+                        if let Err(e) =
+                            crate::passthrough::record_names(file, body.as_deref()).await
+                        {
+                            warn!(
+                                target: Action::Heartbeat.target(),
+                                "could not keep this box's public names in {file}: {e}",
                             );
                         }
                     }

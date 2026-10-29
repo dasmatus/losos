@@ -25,9 +25,9 @@ Na edge nastavte `losos.edge.manage.enable`. Počítač s
 Edge si pri prvom spustení vytvorí kľúč na správu: 64 znakov, `0` až `9` a
 `a` až `f`, uložený v `/var/lib/losos-registrar/manage-key`. Stránku môže
 používať každý, kto kľúč má, preto ho držte spolu s ostatnými
-administrátorskými heslami firmy. Na počítači s edge bránou ho
-`losos-edge manage-key` na konzole vypíše spolu s adresou stránky. Ak chcete
-kľúč zmeniť, súbor zmažte a registrar reštartujte. Edge vytvorí nový kľúč a
+administrátorskými heslami firmy. Počítač s edge bránou ho ukazuje na
+obrazovke spolu s adresou stránky; prihlásenie na konzolu nemá. Ak chcete
+kľúč na obyčajnom edge zmeniť, súbor zmažte a registrar reštartujte. Edge vytvorí nový kľúč a
 starý prestane platiť.
 
 Stránka odpovedá na adrese edge v lokálnej sieti, na tej, podľa ktorej ho

@@ -3,7 +3,9 @@
 # The appliance keeps its no-SSH/no-public-ports invariant: it opens zero
 # inbound ports. A tunnel client (`losos-registrar tunnel-client`, QUIC)
 # dials out to an edge; the edge carries public traffic back to this box's
-# Nginx on :80 (the slave proxy) as streams of that one connection. A
+# Nginx as streams of that one connection: the browser's own TLS, which
+# this box ends with its own certificate (modules/public-tls.nix), or plain
+# HTTP on :80 where the box leaves TLS to the edge. A
 # losos-registrar `announce` service registers this appliance with the edge
 # (POST /register) and heartbeats so the edge keeps the Traefik route alive.
 #
@@ -38,6 +40,12 @@ let
   enabled = cfg.enable;
   registrar = cfg.registrar.package;
   lend = config.losos.inference.lend.enable;
+
+  # The box ends TLS for its public names itself (modules/public-tls.nix):
+  # the tunnel delivers to nginx's stream splitter instead of port 80.
+  publicTls = import ./public-tls-lib.nix { inherit lib; };
+  passthrough = cfg.tlsPassthrough.enable && config.services.nginx.enable;
+  tunnelLocal = if passthrough then "127.0.0.1:${toString publicTls.splitPort}" else "127.0.0.1:80";
 
   # Runtime, 0700, root. Holds the generated client.json (with the token).
   confDir = "/run/losos-tunnel";
@@ -99,7 +107,7 @@ let
         remote: $remote,
         pin: $pin,
         services: {
-          ${builtins.toJSON cfg.applianceId}: { token: $token, local: "127.0.0.1:80" }
+          ${builtins.toJSON cfg.applianceId}: { token: $token, local: ${builtins.toJSON tunnelLocal} }
     ${lib.optionalString lend ''
       , ${builtins.toJSON "${cfg.applianceId}:llm"}: { token: $token, local: "127.0.0.1:50052" }
     ''}
@@ -113,42 +121,52 @@ let
   # is systemd's own `${VAR}` expansion of the path lososd wrote, with the
   # configured edge as the unit's Environment= default (EnvironmentFile=
   # overrides Environment=, in that order, by systemd.exec(5)).
-  announceArgs = lib.concatStringsSep " " [
-    "announce"
-    "--registrar-url"
-    "\${LOSOS_EDGE_PATH_URL}"
-    "--appliance-id"
-    (lib.escapeShellArg cfg.applianceId)
-    "--hostname"
-    (lib.escapeShellArg cfg.hostname)
-    "--token-file"
-    (lib.escapeShellArg cfg.tokenFile)
-    "--heartbeat-interval"
-    (lib.escapeShellArg cfg.heartbeatInterval)
-    # Read from losos.cluster.* rather than losos.proxy.*: the announce loop is
-    # the appliance's only regular conversation with the edge, so the mesh's
-    # idle signal rides on it, but the knob belongs to the mesh feature that
-    # uses it. An appliance with the proxy on and the mesh off sends the bit
-    # and nothing reads it, which costs one boolean per heartbeat.
-    "--idle-load-threshold"
-    (lib.escapeShellArg (toString config.losos.cluster.idleLoadThreshold))
-    # The relay pass lososd fetches from the official edge with the domains
-    # view (backend/src/losos.rs, record_view): a local edge forwards it so
-    # the official edge routes this box's custom domains through it. Read on
-    # every heartbeat; no file sends none.
-    "--relay-pass-file"
-    "/run/losos/relay-pass"
-    # lososd's marker for "the owner let this edge manage the box"
-    # (backend/src/io_backend.rs, publish_managed). Read on every heartbeat,
-    # so the edge's page lists the box within one interval of the switch.
-    "--managed-file"
-    managedMarker
-    # The Tor and I2P addresses the edge made for this box, when it makes
-    # any (modules/edge-hidden.nix): kept for LosOS Login and the Network
-    # page (modules/hidden-lib.nix), removed when the edge makes none.
-    "--hidden-file"
-    (import ./hidden-lib.nix { inherit lib pkgs; }).edgeFile
-  ];
+  announceArgs = lib.concatStringsSep " " (
+    [
+      "announce"
+      "--registrar-url"
+      "\${LOSOS_EDGE_PATH_URL}"
+      "--appliance-id"
+      (lib.escapeShellArg cfg.applianceId)
+      "--hostname"
+      (lib.escapeShellArg cfg.hostname)
+      "--token-file"
+      (lib.escapeShellArg cfg.tokenFile)
+      "--heartbeat-interval"
+      (lib.escapeShellArg cfg.heartbeatInterval)
+      # Read from losos.cluster.* rather than losos.proxy.*: the announce loop is
+      # the appliance's only regular conversation with the edge, so the mesh's
+      # idle signal rides on it, but the knob belongs to the mesh feature that
+      # uses it. An appliance with the proxy on and the mesh off sends the bit
+      # and nothing reads it, which costs one boolean per heartbeat.
+      "--idle-load-threshold"
+      (lib.escapeShellArg (toString config.losos.cluster.idleLoadThreshold))
+      # The relay pass lososd fetches from the official edge with the domains
+      # view (backend/src/losos.rs, record_view): a local edge forwards it so
+      # the official edge routes this box's custom domains through it. Read on
+      # every heartbeat; no file sends none.
+      "--relay-pass-file"
+      "/run/losos/relay-pass"
+      # lososd's marker for "the owner let this edge manage the box"
+      # (backend/src/io_backend.rs, publish_managed). Read on every heartbeat,
+      # so the edge's page lists the box within one interval of the switch.
+      "--managed-file"
+      managedMarker
+      # The Tor and I2P addresses the edge made for this box, when it makes
+      # any (modules/edge-hidden.nix): kept for LosOS Login and the Network
+      # page (modules/hidden-lib.nix), removed when the edge makes none.
+      "--hidden-file"
+      (import ./hidden-lib.nix { inherit lib pkgs; }).edgeFile
+    ]
+    # The names this box holds its own certificate for, and where to keep
+    # the names the edge routes here (modules/public-tls.nix).
+    ++ lib.optionals passthrough [
+      "--tls-ready-file"
+      publicTls.readyFile
+      "--tls-names-file"
+      publicTls.namesFile
+    ]
+  );
 
   # What the box lends to models split across boxes, written by
   # losos-llm-rpc while it runs (modules/inference-lend.nix). Read on every
@@ -156,6 +174,9 @@ let
   lendArgs = lib.optionalString lend " --llm-lend-file /run/losos-llm/lend";
 in
 {
+  # Wherever the tunnel goes, the box's own TLS for it goes too.
+  imports = [ ./public-tls.nix ];
+
   config = lib.mkIf enabled {
     # Hard requirements: the registrar binary must be available,
     # and the secrets must be readable. (We can't assert file *contents* at

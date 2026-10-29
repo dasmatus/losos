@@ -8,7 +8,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Alert02Icon, Cancel01Icon, CheckmarkBadge01Icon } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 import { Rich, useT } from "@/lib/i18n-react";
-import { postEdgeCluster, postEdgeManage, useMe, type EdgePath, type EdgeProxy, type EdgeTier } from "@/lib/api";
+import { postEdgeCluster, postEdgeManage, useMe, type EdgePath, type EdgeProxy, type EdgeTier, type PublicTls } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { HourStrip } from "./hour-strip";
@@ -176,6 +176,53 @@ function PausedRow({ at, reachable }: { at: number; reachable: boolean }) {
   );
 }
 
+/* Whether the edge can read what passes through it: the box ends TLS for its
+ * public names itself once it holds a certificate for them, and looks at
+ * each from outside every hour (modules/public-tls.nix). */
+function TlsRow({ tls }: { tls: PublicTls }) {
+  const t = useT();
+  const seen = Object.entries(tls.seen);
+  const foreign = seen.find(([, v]) => v === "foreign")?.[0];
+  const unreachable = seen.filter(([, v]) => v === "unreachable").map(([n]) => n);
+  let title: string;
+  let detail: string;
+  let value: string;
+  let tone: string;
+  if (tls.own === null) {
+    title = t("panes.mesh.tls.edgeReads");
+    detail = t("panes.mesh.tls.edgeReadsDetail");
+    value = t("panes.mesh.tls.readable");
+    tone = "text-warn";
+  } else if (foreign !== undefined) {
+    title = t("panes.mesh.tls.foreign", { name: foreign });
+    detail = t("panes.mesh.tls.foreignDetail", { name: foreign });
+    value = t("panes.mesh.tls.intercepted");
+    tone = "text-danger";
+  } else if (tls.own.length === 0) {
+    title = t("panes.mesh.tls.lapsed");
+    detail = t("panes.mesh.tls.lapsedDetail");
+    value = t("panes.mesh.tls.renewing");
+    tone = "text-warn";
+  } else {
+    title = t("panes.mesh.tls.sealed");
+    const notes = [t("panes.mesh.tls.sealedDetail", { names: tls.own.join(", ") })];
+    if (tls.checkedAt !== null) {
+      const at = Date.parse(tls.checkedAt);
+      if (!Number.isNaN(at)) notes.push(t("panes.mesh.tls.checked", { time: fmt.time(at) }));
+    }
+    if (unreachable.length > 0) notes.push(t("panes.mesh.tls.unreachable", { names: unreachable.join(", ") }));
+    detail = notes.join(" ");
+    value = t("panes.mesh.tls.encrypted");
+    tone = "text-ok";
+  }
+  return (
+    <Row data-public-tls={tls.own === null ? "edge" : foreign !== undefined ? "foreign" : "box"}>
+      <RowText title={title} detail={detail} />
+      <RowValue className={tone}>{value}</RowValue>
+    </Row>
+  );
+}
+
 function edgeDetail(t: ReturnType<typeof useT>, edge: EdgeProxy): string {
   const via = t(edge.source === "configured" ? "panes.mesh.edge.viaInternet" : "panes.mesh.edge.viaLan");
   const cluster = edge.cluster ?? edge.officialCluster;
@@ -203,6 +250,9 @@ export function EdgeGroup({ view }: { view: EdgeView }) {
                 held={state.edge.held ?? null}
                 leftBanned={state.edge.leftBanned ?? null}
               /> : null}
+            {path !== null && state.edge.publicTls !== undefined ? (
+              <TlsRow tls={state.edge.publicTls} />
+            ) : null}
             {edges.map((edge, i) => {
               const inUse = path !== null && path.url === edge.url;
               const detail = edgeDetail(t, edge);

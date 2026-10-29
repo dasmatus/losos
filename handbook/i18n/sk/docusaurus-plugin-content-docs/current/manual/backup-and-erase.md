@@ -29,7 +29,7 @@ adresu vo vašej vlastnej sieti, napríklad NAS. Po uložení sa tajný kľúč 
 nikdy neukáže. Keď budete neskôr bucket meniť, nechajte pole tajného kľúča
 prázdne a uložený kľúč zostane.
 
-![Nastavenia, Záloha: bucket, kód obnovy za tlačidlom Zobraziť, posledná záloha a pole na obnovu.](@site/docs/img/settings-backup-sk.png)
+![Nastavenia, Záloha: kam idú zálohy, s adresou a kľúčmi bucketu, a kód obnovy za tlačidlom Zobraziť.](@site/docs/img/settings-backup-sk.png)
 
 ### Glacier na Amazon S3 \{#glacier-on-amazon-s3}
 

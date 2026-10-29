@@ -287,9 +287,9 @@ source must be "GitHub Actions" (Settings, Pages), as for the handbook.
 
 ## The dev-machine tool
 
-The key ceremony ([edge-identity runbook](./provisioning/edge-identity/README.md))
-runs `losos-registrar provision` on the operator's own computer, which has no
-Nix store. `.#losos-registrar-static` is the same crate linked statically
+A gateway's owner and an operator ([gateway runbook](./provisioning/edge-identity/README.md))
+run `losos-registrar passport` and `provision` on their own computer, which
+has no Nix store. `.#losos-registrar-static` is the same crate linked statically
 against musl. The `registrar-and-ui` job builds it and the `publish-tool` job
 pushes it to GHCR as the OCI artifact
 `ghcr.io/dasmatus/losos/images:<channel>-x86_64`, one layer per file:

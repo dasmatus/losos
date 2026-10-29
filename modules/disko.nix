@@ -27,6 +27,9 @@
 
 let
   useTpm = config.losos.tpm.enable;
+  # With Tang servers the chip is one of two Clevis pins (network-unlock.nix)
+  # and the header carries no systemd TPM2 token for crypttab to use.
+  tpmToken = useTpm && config.losos.tpm.tang == [ ];
   drives = config.losos.targetDrives;
   firstDrive = builtins.head drives;
 
@@ -143,7 +146,9 @@ in
             # stay exclusive: systemd-cryptsetup given both a key file and
             # tpm2-device= reads the file as a sealed TPM2 blob, not as a
             # LUKS key, so "keyfile first, chip second" is not expressible.
-            crypttabExtraOpts = if useTpm then [ "tpm2-device=auto" ] else [ ];
+            # With losos.tpm.tang the key file is Clevis's output instead
+            # (modules/network-unlock.nix), so the token option goes too.
+            crypttabExtraOpts = if tpmToken then [ "tpm2-device=auto" ] else [ ];
           };
           # ext4, not btrfs, and the choice is load-bearing: fscrypt needs a
           # filesystem that implements it, and btrfs does not (the feature is

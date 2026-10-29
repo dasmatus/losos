@@ -34,6 +34,7 @@ let
   lososPkgs = import ../packages.nix { inherit pkgs; };
   # The pages never open Diagrams, so its WebAssembly is left out.
   ui = import ./admin-ui-without-lab.nix lososPkgs.losos-admin-ui;
+  screens = import ./screens { inherit pkgs; };
 
   shots = pkgs.writeShellScriptBin "issue-shots" ''
     export PLAYWRIGHT_CORE=${pkgs.playwright-driver}/index.mjs
@@ -97,6 +98,7 @@ pkgs.testers.nixosTest {
       losos = {
         hostName = "mattbox";
         backend.package = lososPkgs.losos-ctl;
+        # The pins and the look are plugins; without them the page sees 404s.
         backend.plugins = lososPkgs.losos-plugins;
         admin.ui = ui;
         git.enable = true;
@@ -125,6 +127,7 @@ pkgs.testers.nixosTest {
         pkgs.jq
         pkgs.gitMinimal
         shots
+        screens.capture
       ];
       environment.variables.GIT_TERMINAL_PROMPT = "0";
       fonts.packages = [ pkgs.dejavu_fonts ];
@@ -146,6 +149,8 @@ pkgs.testers.nixosTest {
     PASSWORD = "Correct-Horse-Battery-9"
     REPO = "notshared/backup-tool"
     DB = "/var/lib/losos-git/git.db"
+
+    ${screens.handbookScript}
 
     # One VM after the other: two TCG guests started together can miss the
     # driver's wait for a shell.
@@ -394,5 +399,16 @@ pkgs.testers.nixosTest {
                 if i["title"] == "Rotate the backup key every year"]
         assert len(made) == 1, made
         assert made[0]["state"]["category"] in ("unstarted", "started"), made
+
+    with subtest("the handbook's pictures"):
+        bt7 = {"selector": '[data-issue-key="BT-7"]'}
+        handbook_pictures(laptop, BASE, "matus", PASSWORD, [
+            {"name": "git-issues", "path": "/git/issues/p/BT", "waitFor": bt7, "settle": 1500},
+            {"name": "git-issue", "path": "/git/issues/p/BT", "waitFor": bt7,
+             "steps": [{"click": bt7}, {"waitFor": {"selector": "[data-timeline]"}}],
+             "settle": 1500},
+            {"name": "git-issues-board", "path": "/git/issues/p/BT?layout=board",
+             "waitFor": {"selector": "[data-board]"}, "settle": 1500},
+        ])
   '';
 }
