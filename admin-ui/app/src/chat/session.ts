@@ -8,10 +8,12 @@
  * Login cookie must still be valid and name the same person as the token, so
  * signing out of LosOS Login, or being removed from the box, ends chat too.
  *
- * The device ID is kept in localStorage per person, so a reload signs the
- * same device back in and the end-to-end keys in IndexedDB stay its keys. A
- * device the homeserver no longer has keys for (signed out everywhere,
- * removed and added again) starts over as a new device. */
+ * The device ID and its token are kept in localStorage per person, so a
+ * reload goes on with the same device and the end-to-end keys in IndexedDB
+ * stay its keys. Synapse keeps every token a device was given, so the page
+ * asks lososd for a new one only once its own stops working. A device the
+ * homeserver no longer has keys for (signed out everywhere, removed and
+ * added again) starts over as a new device. */
 
 import {
   ClientEvent,
@@ -91,6 +93,37 @@ function storeDevice(name: string, device: string | null): void {
   } catch {
     /* a private window: the next load is a new device */
   }
+}
+
+const tokenKey = (name: string): string => `losos-chat-token:${name}`;
+
+function storeToken(name: string, token: string | null): void {
+  try {
+    if (token === null) localStorage.removeItem(tokenKey(name));
+    else localStorage.setItem(tokenKey(name), token);
+  } catch {
+    /* a private window: the next load asks for a token again */
+  }
+}
+
+/** The device this page had, with its own token, while the homeserver
+ *  (and nginx's question to LosOS Login) still takes that token. */
+async function keptSession(name: string, device: string): Promise<SessionReply | null> {
+  let token: string | null;
+  try {
+    token = localStorage.getItem(tokenKey(name));
+  } catch {
+    return null;
+  }
+  if (token === null) return null;
+  const response = await fetch("/_matrix/client/v3/account/whoami", {
+    credentials: "same-origin",
+    headers: { Authorization: `Bearer ${token}` },
+  }).catch(() => null);
+  if (response === null || !response.ok) return null;
+  const body = (await response.json().catch(() => ({}))) as { user_id?: unknown; device_id?: unknown };
+  if (typeof body.user_id !== "string" || body.device_id !== device) return null;
+  return { userId: body.user_id, accessToken: token, deviceId: device, homeserver: "/" };
 }
 
 /** The IndexedDB prefix of one device's end-to-end keys. */
@@ -201,13 +234,14 @@ export async function signIn(): Promise<Signed> {
   if (!view.available) throw new ChatRefused(view.reason === "off" ? "off" : "starting");
 
   const had = storedDevice(me.name);
-  let session = await askSession(had);
+  let session = (had !== null ? await keptSession(me.name, had) : null) ?? (await askSession(had));
   if (had !== null && session.deviceId === had && !(await deviceHasKeys(session))) {
     // The homeserver forgot this device's keys; so does the page.
     await dropCryptoStore(cryptoPrefix(session.userId, had));
     session = await askSession(null);
   }
   storeDevice(me.name, session.deviceId);
+  storeToken(me.name, session.accessToken);
 
   const keys = new SecretKeys();
   const client = createClient({
@@ -296,6 +330,7 @@ export function session(): Promise<Signed> {
   const attempt: Promise<Signed> = (async () => {
     const signed = await signIn();
     onSignedOut(signed.client, () => {
+      storeToken(signed.name, null);
       if (ready === signed) ready = null;
       if (pending === attempt) pending = null;
       for (const listener of signedOutListeners) listener();

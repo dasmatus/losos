@@ -147,7 +147,9 @@ let
             { waitFor.selector = "[data-testid=diagram] [data-node][aria-label^=\"mattbox,\"]"; }
             # The fallback setup has acme-gw; the box's own drawing does not.
             { absent.selector = "[data-testid=diagram] [data-node][aria-label^=\"acme-gw,\"]"; }
-            { absent.text = "Sign in on the admin page first, then open Diagrams from its sidebar: Diagrams reads this box with the same key."; }
+            {
+              absent.text = "Sign in on the admin page first, then open Diagrams from its sidebar: Diagrams reads this box with the same key.";
+            }
           ];
           settle = 1500;
         }
@@ -156,7 +158,9 @@ let
           path = opened;
           steps = ready ++ [
             (card "Back up the old NAS")
-            { absent.text = "Sign in on the admin page first, then open Diagrams from its sidebar: Diagrams reads this box with the same key."; }
+            {
+              absent.text = "Sign in on the admin page first, then open Diagrams from its sidebar: Diagrams reads this box with the same key.";
+            }
           ];
           settle = 1500;
         }
@@ -304,7 +308,9 @@ let
           path = opened;
           steps = ready ++ [
             (card "Back up the old NAS")
-            { absent.text = "Sign in on the admin page first, then open Diagrams from its sidebar: Diagrams reads this box with the same key."; }
+            {
+              absent.text = "Sign in on the admin page first, then open Diagrams from its sidebar: Diagrams reads this box with the same key.";
+            }
           ];
           settle = 1500;
         }
@@ -319,7 +325,9 @@ let
           path = opened;
           steps = ready ++ [
             (card "Back up the old NAS")
-            { absent.text = "Sign in on the admin page first, then open Diagrams from its sidebar: Diagrams reads this box with the same key."; }
+            {
+              absent.text = "Sign in on the admin page first, then open Diagrams from its sidebar: Diagrams reads this box with the same key.";
+            }
           ];
           settle = 1500;
         }
@@ -333,7 +341,9 @@ let
           path = opened;
           steps = ready ++ [
             (card "Back up the old NAS")
-            { absent.text = "Sign in on the admin page first, then open Diagrams from its sidebar: Diagrams reads this box with the same key."; }
+            {
+              absent.text = "Sign in on the admin page first, then open Diagrams from its sidebar: Diagrams reads this box with the same key.";
+            }
           ];
           settle = 1500;
         }
@@ -404,6 +414,8 @@ pkgs.testers.nixosTest {
 
     BOX = "192.168.1.1"
     PASSWORD = "Correct-Horse-Battery-9"
+
+    ${screens.handbookScript}
     AFTER = ${if after then "True" else "False"}
 
     start_all()
@@ -474,6 +486,13 @@ pkgs.testers.nixosTest {
     with subtest("the pictures"):
         for plan in ${builtins.toJSON (builtins.attrNames plans)}:
             capture(plan)
+        if AFTER:
+            handbook_pictures(laptop, f"https://{BOX}", "matus", PASSWORD, [
+                {"name": "diagrams", "path": "${opened}",
+                 "steps": ${
+                   builtins.toJSON (ready ++ [ (card "Back up the old NAS") ])
+                 }, "settle": 1500},
+            ])
 
     if AFTER:
         with subtest("the save from the page is in LosOS Cloud, other tools' keys kept"):

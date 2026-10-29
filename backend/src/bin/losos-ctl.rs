@@ -13,10 +13,10 @@
 use clap::{Args, Parser, Subcommand};
 use losos_ctl::facade::{call_backend, BackendFailure};
 use losos_ctl::install_screen;
-use losos_ctl::installer::resolve_tpm;
+use losos_ctl::installer::{parse_tang, resolve_tpm, staged_claim, Tang};
 use losos_ctl::installer_io::{
-    booted_in_bios, load_gpg_keys, options_from_env, run_install, secure_boot_state, tpm_present,
-    Splash,
+    booted_in_bios, load_gpg_keys, options_from_env, request_edge_tang, run_install,
+    secure_boot_state, tpm_present, Splash,
 };
 use losos_ctl::model::Mode;
 use losos_ctl::overrides::validate_apply;
@@ -158,6 +158,18 @@ struct InstallArgs {
     /// TPM2 chip, even where one exists.
     #[arg(long)]
     no_tpm: bool,
+    /// Open the disk only with the TPM2 AND this Tang server on the box's
+    /// network (Clevis). URL#THUMBPRINT, the thumbprint from tang-show-keys
+    /// on the server. Repeat for more servers; any one of them will do.
+    #[arg(long = "tang", value_name = "URL#THUMBPRINT", value_parser = parse_tang, conflicts_with = "no_tpm")]
+    tang: Vec<Tang>,
+    /// Open the disk only with the TPM2 AND this box's edge, which makes a
+    /// Tang key for this box alone and stops answering once its owner
+    /// reports it stolen. URL: the edge's registrar; without one, the
+    /// medium's (losos.proxy.registrarUrl). With --tang as well, the disk
+    /// needs the TPM2, a home server and the edge.
+    #[arg(long = "tang-edge", value_name = "URL", num_args = 0..=1, default_missing_value = "", conflicts_with = "no_tpm")]
+    tang_edge: Option<String>,
     /// Install for legacy BIOS (GRUB). Default: whatever firmware booted this
     /// medium.
     #[arg(long, conflicts_with = "uefi")]
@@ -423,8 +435,9 @@ fn main() -> ExitCode {
             Ok(keys) => keys,
             Err(e) => return install_failed(splash, &e),
         };
-        let opts = options_from_env(
+        let mut opts = options_from_env(
             tpm,
+            args.tang.clone(),
             bios,
             args.drives.clone().map(|d| d.0),
             args.no_install,
@@ -432,6 +445,23 @@ fn main() -> ExitCode {
             args.emit_target.clone(),
             gpg_keys,
         );
+        if let Some(edge) = &args.tang_edge {
+            if !opts.tpm {
+                return install_failed(
+                    splash,
+                    "--tang-edge needs the TPM2: the disk key is sealed to the chip AND the edge",
+                );
+            }
+            let edge = if edge.is_empty() {
+                std::env::var("LOSOS_REGISTRAR_URL").unwrap_or_default()
+            } else {
+                edge.clone()
+            };
+            match request_edge_tang(&edge, &staged_claim(&opts.keyfile)) {
+                Ok(t) => opts.tang.push(t),
+                Err(e) => return install_failed(splash, &format!("{e:#}")),
+            }
+        }
         return match run_install(&opts, splash) {
             Ok(()) => {
                 if let Some(splash) = splash {

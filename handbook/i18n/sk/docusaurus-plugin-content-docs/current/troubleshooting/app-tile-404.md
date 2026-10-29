@@ -13,7 +13,7 @@ Prehľade, alebo stará záložka, otvorí stránku „Not Found“.
 
 </div>
 
-![Panel Aplikácie s LosOS Cloud a LosOS Git; dlaždice aplikácií na Prehľade otvárajú tie isté aplikácie.](@site/docs/img/apps-sk.png)
+![Panel Aplikácie: LosOS Cloud, LosOS Git, Vaše aplikácie s tlačidlom Vytvoriť aplikáciu a pod nimi Nájsť ďalšie.](@site/docs/img/apps-sk.png)
 
 ## „Not Found“ z dlaždice aplikácie \{#not-found-from-an-app-tile}
 

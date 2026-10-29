@@ -190,10 +190,14 @@ uplink token. The unit `losos-tunnel-uplink` runs the same client a box runs
 file changes. The hub's tunnel certificate is pinned on first contact (`GET
 /tunnel-pin`, written to `uplink.pinFile` by the registrar itself), as a box
 pins its edge's. So a request for
-`https://mattbox.acme.losos.cfd/` terminates TLS on the hub, enters the
-hub's tunnel service `acme.mattbox`, crosses the uplink to the spoke's local
-port for `mattbox`, crosses the box's tunnel, and lands on the box's Nginx.
-Two tunnels, one Host header, no change on the box.
+`https://mattbox.acme.losos.cfd/` reaches the hub, which routes it by the
+name in the TLS hello into the hub's tunnel service `acme.mattbox`. It
+crosses the uplink to the spoke's local port for `mattbox`, crosses the
+box's tunnel, and the box ends TLS with its own certificate for the name
+([passthrough](master-proxy.md#the-edge-cannot-read-the-traffic)); neither
+the hub nor the spoke can read it. Until the box has that certificate the
+hub ends TLS and the request travels on as plain HTTP. Two tunnels, one
+name, no change on the box.
 
 **Open enrolment** lets a stock box use a gateway nobody provisioned tokens
 for. With `lan.openEnrolment`, the gateway enrols an unknown appliance id

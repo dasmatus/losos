@@ -7,6 +7,8 @@ mdx:
 
 # Architektúra
 
+![Prehľad, admin stránka, ktorú posiela nginx a za ktorú odpovedá lososd.](@site/docs/img/overview-sk.png)
+
 ## Systémy vo flaku {#systems-in-the-flake}
 
 | Výstup                        | Čo to je                                         |

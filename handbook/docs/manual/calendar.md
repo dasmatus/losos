@@ -6,10 +6,7 @@ slug: /manual/calendar
 
 # Calendar
 
-
-![Calendar's week view.](../img/calendar-week.png)
-
-![Calendar appears under Pinned in the sidebar when it is pinned.](../img/pins-overview.png)
+![LosOS Calendar's week: your calendars and two subscriptions on the left, a school timetable and a tax deadline from the subscriptions, and Review the box, an event with a video call in LosOS Chat.](../img/calendar-week.png)
 
 LosOS Calendar keeps your events and the calendars you follow. **Calendar**
 in the sidebar opens it at `/calendar`. Your calendars are yours alone.
@@ -68,6 +65,8 @@ repeating event asks whether to delete that day or every day.
 When a phone changed an event while you were editing it, saving says so
 instead of overwriting the phone's change. Close the editor and open the
 event again to see what changed.
+
+![An event open: Review the box, with its video call in LosOS Chat and Join the call, the calendar, the reminder, Matus as organiser and Eva going, and Email guests and Send invitations below.](../img/calendar-event.png)
 
 ## Invitations
 

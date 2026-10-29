@@ -30,7 +30,7 @@ zeigt sie den geheimen Schlüssel nie wieder. Willst du den Bucket später
 ändern, lass das Feld für den geheimen Schlüssel leer, dann bleibt der
 gespeicherte erhalten.
 
-![Einstellungen, Sicherung: der Bucket, der Wiederherstellungscode hinter Anzeigen, die letzte Sicherung und das Feld zum Wiederherstellen.](@site/docs/img/settings-backup-de.png)
+![Einstellungen, Sicherung: wohin Sicherungen gehen, mit Adresse und Schlüsseln des Buckets, und der Wiederherstellungscode hinter Anzeigen.](@site/docs/img/settings-backup-de.png)
 
 ### Glacier bei Amazon S3 \{#glacier-on-amazon-s3}
 

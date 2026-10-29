@@ -25,6 +25,8 @@ das Modell. Eine neue Box lädt das Modell einmal herunter, wenn sie zum
 ersten Mal online ist. Bis der Download fertig ist, warten Reviews in der
 Warteschlange, und der Pull-Request sagt das.
 
+![Die Einstellungen eines Repositorys mit eingeschaltetem KI-Review: LosOS Reviewer kommentiert jeden Pull-Request und genehmigt oder mergt nie.](@site/docs/img/git-settings-de.png)
+
 ## Was er tut \{#what-it-does}
 
 Wird ein Pull-Request geöffnet oder wieder geöffnet, prüft LosOS Reviewer
@@ -50,6 +52,8 @@ der in dem Pull-Request um Reviews bitten darf.
 Während er arbeitet, zeigen die Prüfungen des Pull-Requests eine Zeile
 **LosOS Reviewer** mit seinem Fortschritt, zum Beispiel „Reviewing: 2 of 5
 files done“, und am Ende die Zahl der Kommentare.
+
+![Geänderte Dateien eines Pull-Requests: LosOS Reviewer, als Bot markiert, kommentiert eine Shell-Zeile, die einen Pfad ohne Anführungszeichen löscht, und schlägt die Zeile mit Anführungszeichen vor.](@site/docs/img/git-ai-review-de.png)
 
 ## Was er finden kann \{#what-it-can-find}
 

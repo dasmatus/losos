@@ -7,6 +7,8 @@ mdx:
 
 # Mesh
 
+![Der Bereich Mesh auf einer Box ohne erreichbaren Edge-Proxy.](@site/docs/img/mesh-none-de.png)
+
 Eine Box kann freien Speicherplatz und CPU an andere LosOS-Boxen verleihen.
 Der Beitritt ist standardmäßig aus. Der Bereich Mesh hat zwei Schalter: dem
 Mesh beitreten und Rechenleistung teilen. Der dritte Schalter, das Teilen der

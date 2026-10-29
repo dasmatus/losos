@@ -16,7 +16,10 @@ miestnosti sú šifrované od konca po koniec, takže zariadenie ukladá len to,
 čo samo nevie prečítať.
 
 Chat používa Matrix, otvorený štandard na posielanie správ, a beží priamo na
-zariadení. Nič neodchádza do cudzej služby.
+zariadení. Nič neodchádza do cudzej služby. Server Matrix na zariadení je
+Synapse. Zariadenie, ktoré malo chat ešte pred prechodom na Synapse, začína
+s prázdnym chatom: staré konverzácie zostávajú v zdieľanom úložisku, ale chat
+ich už nečíta.
 
 ## Kedy je chat k dispozícii
 
