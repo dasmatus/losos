@@ -83,8 +83,10 @@ beschreibt jeden Schalter und was er kostet.
   ausgebaute Festplatte. Auf einer Box ohne TPM ist sogar die Festplatte
   allein lesbar. Eine mit `--tang` installierte Box öffnet sich nur mit einem
   Schlüsselserver in ihrem eigenen Netz und fragt anderswo nach dem
-  Wiederherstellungscode. [TPM und der Festplattenschlüssel](tpm) erklärt den
-  Unterschied.
+  Wiederherstellungscode. Eine mit `--tang-edge` installierte Box braucht
+  die Antwort ihrer Edge, und der Besitzer kann der Edge sagen, einer
+  gestohlenen Box nicht mehr zu antworten. [TPM und der
+  Festplattenschlüssel](tpm) erklärt den Unterschied.
 - **Das Audit-Log** rotiert nicht, und root kann es umschreiben.
 - **Die Drosselung gilt pro Adresse**, sodass ein Angreifer im LAN, der
   Adressen fälscht, jedes Mal ein neues Kontingent bekommt.
