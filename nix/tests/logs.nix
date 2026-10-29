@@ -173,6 +173,19 @@ let
           script = false;
           shots = map (p: removeAttrs p [ "waitFor" ] // { settle = 3000; }) basicPages;
         };
+        on-phone = plan "on-phone" (
+          phone
+          // {
+            shots = map (p: removeAttrs p [ "waitFor" ] // { settle = 5000; }) pages;
+          }
+        );
+        off-phone = plan "off-phone" (
+          phone
+          // {
+            script = false;
+            shots = map (p: removeAttrs p [ "waitFor" ] // { settle = 3000; }) basicPages;
+          }
+        );
       };
 in
 
@@ -310,8 +323,8 @@ pkgs.testers.nixosTest {
 
     if not AFTER:
         with subtest("before: what the same addresses showed"):
-            capture("on-desktop", who=("${user}", PASSWORD))
-            capture("off-desktop", who=("${user}", PASSWORD))
+            for plan in ["on-desktop", "on-phone", "off-desktop", "off-phone"]:
+                capture(plan, who=("${user}", PASSWORD))
         laptop.copy_from_machine("/tmp/screens", "")
     else:
         SECRETS = {
@@ -388,6 +401,17 @@ pkgs.testers.nixosTest {
             )
             assert "visible-marker-42" in excerpt, excerpt
             no_secrets("the excerpt", excerpt)
+
+        with subtest("lososd's warnings are filed as warnings"):
+            # The VM has no /persist, so reading the storage warns.
+            assert call("/api/storage", spare)[0] == 200
+            box.wait_until_succeeds("journalctl -u lososd.service -p warning -o cat | grep -q 'storage: no'")
+            code, body = call("/api/logs?unit=lososd&priority=4&span=boot", spare)
+            warned = [l for l in json.loads(body)["lines"] if "storage: no" in l["message"]]
+            assert warned and all(l["priority"] == 4 for l in warned), body[:1500]
+            assert not any(l["message"].startswith("<") for l in warned), warned
+            code, body = call("/api/logs?unit=lososd&priority=3&span=boot", spare)
+            assert not [l for l in json.loads(body)["lines"] if "storage: no" in l["message"]], body[:1500]
 
         with subtest("a search cannot find a secret by its letters"):
             for value in ["hunter2", SECRETS["bearer"][:12], SECRETS["spare"][:16], "ghp_A1b2"]:

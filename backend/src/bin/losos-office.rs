@@ -46,11 +46,7 @@ struct Cli {
 }
 
 fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_writer(std::io::stderr)
-        .with_ansi(false)
-        .without_time()
-        .init();
+    losos_ctl::trace::init("info");
     let cli = Cli::parse();
     let key = TokenKey::load_or_create(&cli.key_file)?;
     let store = Arc::new(DirStore::new(&cli.root));

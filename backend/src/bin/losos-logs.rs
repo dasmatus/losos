@@ -39,11 +39,7 @@ struct Cli {
 }
 
 fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_writer(std::io::stderr)
-        .with_ansi(false)
-        .without_time()
-        .init();
+    losos_ctl::trace::init("info");
     let cli = Cli::parse();
     let reader = web::Data::new(Reader {
         journalctl: cli.journalctl,

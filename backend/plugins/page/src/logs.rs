@@ -200,7 +200,7 @@ fn filters(p: &Pane<'_>) -> Html {
         .attr("action", PATH)
         .attr("role", "search")
         .attr("data-slot", "log-filters")
-        .class("mb-4 grid gap-3 rounded-card border border-line bg-surface p-3.5 shadow-card sm:grid-cols-2 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)]")
+        .class("mb-4 grid gap-3 rounded-card border border-line bg-surface p-3.5 shadow-card sm:grid-cols-2 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,0.85fr)]")
         .child(field(
             "logs-unit",
             &m.t("logs.filter.source"),

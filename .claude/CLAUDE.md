@@ -486,7 +486,11 @@ and is never served or built by nix.
   downloaded or handed to lososd's problem reports at
   `/internal/logs/excerpt`, which refuses anything nginx forwards
   (`X-Losos-Front`). The Service list is `/etc/losos/log-units.json`, the
-  units this box runs. `nix/tests/logs.nix` boots it and stops lososd.
+  units this box runs. The backend's services log through
+  `losos_ctl::trace::init`, which prefixes each line on a journal stream
+  with its syslog level (`<3>`, `<4>`) so journald files it at that
+  priority; a plain `tracing_subscriber::fmt()` lands every error as
+  info. `nix/tests/logs.nix` boots it and stops lososd.
 - `grow.rs`: `losos-ctl grow` runs lvextend, `cryptsetup resize`, `resize2fs`
   online, asserted against the plan and in `nix/tests/resize.nix`.
 - `backup.nix` + `backup.rs` + `erase.rs`: restic backups to an S3 bucket,

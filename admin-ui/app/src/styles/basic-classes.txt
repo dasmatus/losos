@@ -414,7 +414,7 @@ leading-relaxed
 leading-snug
 leading-tight
 left-0
-lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)]
+lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,0.85fr)]
 list-none
 log-day
 log-filters

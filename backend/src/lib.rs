@@ -89,6 +89,7 @@ pub mod signin;
 pub mod site;
 pub mod supervisor;
 pub mod textsearch;
+pub mod trace;
 pub mod user_apps;
 pub mod vcard;
 pub mod vm_upload;
