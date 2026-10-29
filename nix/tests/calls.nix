@@ -1339,11 +1339,17 @@ pkgs.testers.nixosTest {
         assert [e["state_key"] for e in slot] == ["org.losos.call#room"], slot
         assert slot[0]["content"]["status"] == "open", slot
         assert not [e for e in state if e["type"] == "org.matrix.msc3401.call.member"], state
-        code, body = call(f"/_matrix/client/v3/rooms/{room}/messages?dir=b&limit=100", cookies["matus"],
-                          token=tokens["matus"])
-        assert code == 200, (code, body)
-        sticky = [e for e in json.loads(body)["chunk"] if "msc4354_sticky" in e]
-        sealed = [e for e in sticky if e["type"] == "m.room.encrypted"]
+        # The media is up before the last membership is: a page sends its
+        # delayed leave first, and on a slow homeserver that takes a while.
+        for _ in range(30):
+            code, body = call(f"/_matrix/client/v3/rooms/{room}/messages?dir=b&limit=100", cookies["matus"],
+                              token=tokens["matus"])
+            assert code == 200, (code, body)
+            sticky = [e for e in json.loads(body)["chunk"] if "msc4354_sticky" in e]
+            sealed = [e for e in sticky if e["type"] == "m.room.encrypted"]
+            if len({e["sender"] for e in sealed}) == 3:
+                break
+            time.sleep(2)
         assert {e["sender"] for e in sealed} == {f"@{n}:{HOST}" for n in ("matus", "eva", "jan")}, sticky
         assert all(e in sealed or (e["type"] == "org.matrix.msc4143.rtc.member"
                                    and set(e["content"]) == {"slot_id", "msc4354_sticky_key"})
