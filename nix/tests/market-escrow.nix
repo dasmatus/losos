@@ -361,12 +361,35 @@ pkgs.testers.nixosTest {
             f"{invoice['deadline']} {chain['buyer_box']} {chain['seller_box']} --private-key {BUYER_KEY}"
         ))
         assert sent["status"] in ("0x1", 1), sent
+        # The edge counts a payment once a block is on top of it.
+        cast("rpc anvil_mine 1")
         return sent["transactionHash"], chain
 
 
     def boot_lososd(machine):
         machine.succeed("systemctl start lososd.service")
         machine.wait_until_succeeds("curl -fsS 127.0.0.1:8082/api/health")
+        official(machine)
+
+
+    def official(machine):
+        """Wait until the box's own scan finds the edge official again: it
+        checks every 20 s, and a restarted registrar or lososd starts over."""
+        def check(_):
+            out = machine.succeed(
+                "curl -sS -H \"Authorization: Bearer $(systemd-creds decrypt --name=admin-token /etc/credstore.encrypted/admin-token -)\" "
+                "http://127.0.0.1:8082/api/edge"
+            )
+            return json.loads(out).get("official") is True
+        retry(check, timeout=timedelta(seconds=600))
+
+
+    def restart_registrar():
+        edge.succeed("systemctl start losos-registrar.service")
+        edge.wait_until_succeeds(f"curl -fsS {API}/health")
+        for b in [sellerbox, buyerbox]:
+            if b.succeed("systemctl is-active lososd.service || true").strip() == "active":
+                official(b)
 
 
     edge.start()
@@ -381,6 +404,8 @@ pkgs.testers.nixosTest {
         for b in [sellerbox, buyerbox]:
             b.wait_for_unit("lososd.service")
         trust(edge, sellerbox, buyerbox)
+        for b in [sellerbox, buyerbox]:
+            official(b)
         for b in [sellerbox, buyerbox]:
             b.wait_until_succeeds("test -s /etc/credstore.encrypted/market-escrow-key")
         retry(lambda _: set(box_keys()) >= {"sellerbox", "buyerbox"}, timeout=timedelta(seconds=600))
@@ -401,8 +426,7 @@ pkgs.testers.nixosTest {
             "| jq '.compute_windows.sellerbox = {share_compute: true, window_start: \"00:00\", window_end: \"00:00\", tz: \"UTC\"}' "
             f"> /tmp/registry && install -m 600 /tmp/registry {REGISTRY}"
         )
-        edge.succeed("systemctl start losos-registrar.service")
-        edge.wait_until_succeeds(f"curl -fsS {API}/health")
+        restart_registrar()
         message = f"LosOS market payout v1\nchain: 84532\naddress: {seller}\n"
         sig = cast(f"wallet sign --private-key {SELLER_KEY} {shlex.quote(message)}", rpc=False)
         ok("/market/payout", "sellerbox", {"address": seller, "signature": sig})
@@ -454,8 +478,7 @@ pkgs.testers.nixosTest {
             f"(if .{k} then .{k} - {month} else .{k} end) as $v | .{k} = $v" for k in ["created_at", "paid_at", "expires_at"]
         )
         edge.succeed(f"jq '.orders |= map_values({shift})' {LEDGER} > /tmp/ledger && install -m 600 /tmp/ledger {LEDGER}")
-        edge.succeed("systemctl start losos-registrar.service")
-        edge.wait_until_succeeds(f"curl -fsS {API}/health")
+        restart_registrar()
         released = ok("/market/sales/release", "sellerbox")
         print("release:", released)
         # The buyer's box is not asked to agree to the seller being paid.
@@ -466,7 +489,11 @@ pkgs.testers.nixosTest {
         assert balance(seller) == 0 and balance(TREASURY) == 0
         boot_lososd(sellerbox)
         retry(lambda _: deposit_state(1) == RELEASED, timeout=timedelta(seconds=600))
-        retry(lambda _: ledger()["orders"][order_id]["escrow"]["step"] == "released", timeout=timedelta(seconds=300))
+        # The edge records the release once a block is on top of it.
+        def recorded(_):
+            cast("rpc anvil_mine 1")
+            return ledger()["orders"][order_id]["escrow"]["step"] == "released"
+        retry(recorded, timeout=timedelta(seconds=300))
         print(f"seller {balance(seller)}, treasury {balance(TREASURY)}, gross {gross}, fee {fee}")
         assert balance(seller) == gross - fee
         assert balance(TREASURY) == fee
