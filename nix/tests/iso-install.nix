@@ -56,8 +56,11 @@ let
     cd tree
     git init -q -b main
     git add -A
-    git -c user.name=losos -c user.email=losos@local commit -qm tree
-    git clone -q --bare . $out
+    # A local clone copies object files one by one and fails when one
+    # goes away under it, as a repack the commit starts in the background
+    # can make happen. No maintenance, and a clone over the pack protocol.
+    git -c maintenance.auto=false -c gc.auto=0 -c user.name=losos -c user.email=losos@local commit -qm tree
+    git clone -q --bare --no-local . $out
   '';
 
   # Every input's source, inputs of inputs included.
