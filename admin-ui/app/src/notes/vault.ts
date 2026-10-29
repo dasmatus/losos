@@ -283,7 +283,7 @@ export class Vault {
     const clean = base.replace(/[\\/:*?"<>|#^[\]]+/g, " ").trim() || "Untitled";
     const prefix = folder === "" ? "" : `${folder}/`;
     for (let i = 1; ; i++) {
-      const name = `${prefix}${i === 1 ? clean : `${clean} ${i}`}.md`;
+      const name = `${prefix}${i === 1 ? clean : `${clean} ${i}`}.note`;
       if (!this.byPath.has(name)) return name;
     }
   }

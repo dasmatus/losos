@@ -6,6 +6,8 @@ slug: /manual/office
 
 # Office-Dokumente
 
+![Dokumente, die Liste von LosOS Office: die Dokumente im LosOS-Office-Ordner der Box, mit letzter Änderung und Größe.](@site/docs/img/office-de.png)
+
 LosOS Office öffnet Textdokumente, Tabellen und Präsentationen im Browser und
 speichert sie zurück auf die Box. Mehrere Personen können gleichzeitig in
 einem Dokument arbeiten, und jede sieht, wo die anderen gerade schreiben.

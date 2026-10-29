@@ -13,7 +13,7 @@ slug: /troubleshooting/app-tile-404
 
 </div>
 
-![Der Bereich Apps mit LosOS Cloud und LosOS Git; die App-Kacheln der Übersicht öffnen dieselben Apps.](@site/docs/img/apps-de.png)
+![Der Bereich Apps: LosOS Cloud, LosOS Git, Deine Apps mit App erstellen und darunter Mehr finden.](@site/docs/img/apps-de.png)
 
 ## „Not Found“ von einer App-Kachel \{#not-found-from-an-app-tile}
 

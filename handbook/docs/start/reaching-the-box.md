@@ -68,4 +68,4 @@ By default, nowhere. A box is reachable from the local network only. The
 through a tunnel. Even then the admin pages stay LAN-only, and only LosOS
 Cloud and LosOS Git go out through the tunnel.
 
-![Settings, Network: the name, Encrypt the connection, and Reachable from outside your home, the switch that opens the tunnel to an edge.](../img/settings-network.png)
+![Settings, Network: the name, Reachable from outside your home, Show under Network on computers nearby, and Tor and I2P.](../img/settings-network.png)

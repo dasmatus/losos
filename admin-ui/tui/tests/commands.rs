@@ -553,3 +553,42 @@ fn says_so_in_one_sentence_when_there_is_no_secret_service() {
     assert_eq!(r.code, 1);
     assert!(r.err.contains("secret-tool"), "{}", r.err);
 }
+
+#[test]
+fn away_from_its_network_a_box_is_called_through_its_edge() {
+    use losos::keychain::MemoryKeychain;
+    use losos::vault::Vault;
+
+    let me = owner();
+    let host = mock(false, me.key.armored_public(), box_handler());
+    let keychain = Arc::new(MemoryKeychain::new());
+    let client = Client::with(keychain.clone());
+    client.run(&["key", "import", me.file.path().to_str().unwrap()], "");
+    let r = client.run(
+        &["login", &host.url, "--fingerprint", &host.fingerprint()],
+        TOKEN,
+    );
+    assert_eq!(r.code, 0, "{}", r.err);
+    assert!(r.out.contains(common::EDGE_URL), "{}", r.out);
+    let vault = Vault::new(keychain);
+    let mut record = vault.get_host(&host.url).unwrap().unwrap();
+    assert_eq!(record.edge_url.as_deref(), Some(common::EDGE_URL));
+    assert!(client.run(&["hosts"], "").out.contains(common::EDGE_URL));
+
+    // The box's own address leads nowhere (nothing listens on the discard
+    // port), and the mock stands in for the edge that carries the call.
+    vault.remove_host(&host.url).unwrap();
+    record.url = "http://127.0.0.1:9".into();
+    record.edge_url = Some(host.url.clone());
+    vault.put_host(&record).unwrap();
+    let r = client.run(&["call", "GET", "/api/state"], "");
+    assert_eq!(r.code, 0, "{}", r.err);
+    let body: Value = serde_json::from_str(&r.out).unwrap();
+    assert_eq!(body["mode"], "local");
+
+    // Without an edge it stays out of reach.
+    record.edge_url = None;
+    vault.put_host(&record).unwrap();
+    let r = client.run(&["call", "GET", "/api/state"], "");
+    assert_ne!(r.code, 0, "{}", r.out);
+}

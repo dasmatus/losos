@@ -13,7 +13,7 @@ registerOpener({
   id: "notes",
   label: "notes.open",
   icon: NoteIcon,
-  accepts: (entry) => /\.(md|markdown)$/i.test(entry.name),
+  accepts: (entry) => /\.(note|md|markdown)$/i.test(entry.name),
   href: (entry) => `/cloud/notes/open?file=${encodeURIComponent(entry.path)}`,
 });
 

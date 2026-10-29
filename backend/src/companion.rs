@@ -18,6 +18,11 @@
 //! Answers are kept for a minute at most, and never past the token's own
 //! expiry, so a busy AI tool does not cost LosOS Login a password hash per
 //! call; a token revoked at LosOS Login stops working within that minute.
+//!
+//! LosOS Desktop's backups sign in the same way as a second public client,
+//! [`losos_access::BACKUPS_CLIENT_ID`], whose token reaches one route only
+//! ([`losos_access::BACKUPS_ROUTE`]): the grant says which client it was
+//! issued to, and the HTTP layer holds each to its own routes.
 
 use std::collections::HashMap;
 use std::io::{BufReader, Write};
@@ -26,7 +31,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use base64::Engine;
-use losos_access::COMPANION_CLIENT_ID;
+use losos_access::{BACKUPS_CLIENT_ID, COMPANION_CLIENT_ID};
 
 /// LosOS Login's own address, under its `/auth` path.
 const DEFAULT_LOGIN: &str = "127.0.0.1:9091";
@@ -44,8 +49,19 @@ const MAX_KEPT: usize = 256;
 /// What LosOS Login said about one token.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Grant {
-    /// The sign-in name of the person who approved the companion.
+    /// The sign-in name of the person who approved the client.
     pub person: String,
+    /// Which client LosOS Login issued it to.
+    pub client: Client,
+}
+
+/// The public clients of LosOS Login whose tokens lososd takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Client {
+    /// The LosOS companion in someone's AI tools.
+    Companion,
+    /// LosOS Desktop's backups.
+    Backups,
 }
 
 pub struct Companion {
@@ -92,7 +108,7 @@ impl Companion {
     }
 
     /// The person `token` acts for, when LosOS Login says it is a live
-    /// companion token issued at `host`.
+    /// token of the companion's or the backups' issued at `host`.
     pub fn check(&self, token: &str, host: &str) -> Option<Grant> {
         if !Self::is_login_token(token) || !valid_host(host) {
             return None;
@@ -166,14 +182,17 @@ impl Companion {
 }
 
 /// The grant in an introspection answer, and how many seconds it has
-/// left, when it is an active token of the companion's.
+/// left, when it is an active token of the companion's or the backups'.
 pub fn judge(answer: &serde_json::Value, now_secs: i64) -> Option<(Grant, u64)> {
     let field = |name: &str| answer.get(name).and_then(serde_json::Value::as_str);
-    if answer.get("active").and_then(serde_json::Value::as_bool) != Some(true)
-        || field("client_id") != Some(COMPANION_CLIENT_ID)
-    {
+    if answer.get("active").and_then(serde_json::Value::as_bool) != Some(true) {
         return None;
     }
+    let client = match field("client_id")? {
+        COMPANION_CLIENT_ID => Client::Companion,
+        BACKUPS_CLIENT_ID => Client::Backups,
+        _ => return None,
+    };
     let person = field("username")?;
     crate::people::validate_name(person).ok()?;
     let exp = answer.get("exp").and_then(serde_json::Value::as_i64)?;
@@ -181,6 +200,7 @@ pub fn judge(answer: &serde_json::Value, now_secs: i64) -> Option<(Grant, u64)> 
     Some((
         Grant {
             person: person.to_string(),
+            client,
         },
         left,
     ))
@@ -218,7 +238,15 @@ mod tests {
     fn an_active_companion_token_names_its_person() {
         let (grant, left) = judge(&active("losos-companion"), 1_500).unwrap();
         assert_eq!(grant.person, "matus");
+        assert_eq!(grant.client, Client::Companion);
         assert_eq!(left, 500);
+    }
+
+    #[test]
+    fn a_backups_token_says_it_is_the_backups() {
+        let (grant, _) = judge(&active("losos-backups"), 1_500).unwrap();
+        assert_eq!(grant.person, "matus");
+        assert_eq!(grant.client, Client::Backups);
     }
 
     #[test]

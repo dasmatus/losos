@@ -94,9 +94,91 @@ hat keine Shell, um sich davon zu erholen.
 :::warning[Ein Dieb mit der ganzen Box]
 Der Chip gibt den Schlüssel an alles heraus, was auf diesem Rechner
 startet, auch an den USB-Stick eines Diebes. Ein TPM macht die Festplatte
-allein unlesbar. Es hilft nicht mehr, sobald jemand die ganze Box hat. Das
-[Sicherheitsmodell](/reference/security-model.md) führt das als bekannte Einschränkung.
+allein unlesbar. Es hilft nicht mehr, sobald jemand die ganze Box hat, außer
+die Box braucht zum Öffnen der Festplatte auch einen Server in ihrem eigenen
+Netz (nächster Abschnitt). Das [Sicherheitsmodell](/reference/security-model.md)
+führt das als bekannte Einschränkung.
 :::
+
+## Die Festplatte nur zu Hause öffnen \{#opening-the-disk-only-at-home}
+
+Du kannst eine Box so einrichten, dass der Chip allein nicht reicht. Gib dem
+Installer einen oder mehrere Tang-Server im eigenen Netz der Box:
+
+```sh
+losos-ctl install --tang 'http://192.168.1.1:7500#THUMBPRINT'
+```
+
+Tang ist ein kleiner Schlüsselserver. OpenWrt hat ein Paket `tang`, NixOS
+hat `services.tang`. Den Fingerabdruck (Thumbprint) zeigt
+`tang-show-keys 7500` auf dem Server. Der Installer prüft den Server daran,
+vertraut also beim ersten Kontakt nichts.
+
+Der Installer versiegelt den Festplattenschlüssel dann mit Clevis an das TPM
+und den Tang-Server zusammen, statt nur an das TPM. Bei jedem Start holt
+sich die Box eine Adresse im kabelgebundenen Netz, fragt den Server und
+öffnet die Festplatte nur mit beiden Antworten. Der Server sieht den
+Schlüssel nie. Er erfährt nur, dass die Box gestartet ist.
+
+Was sich dadurch ändert:
+
+- Eine Box, die aus ihrem Netz weggetragen wird, öffnet sich nicht, und
+  eine Box, deren Server fehlt, auch nicht. Ein Dieb mit der ganzen Box
+  bekommt eine Passwortabfrage.
+- Die Box fragt den Server bis zu einer Minute lang, dann fragt der
+  Bildschirm nach einem Passwort. Gib den Wiederherstellungscode der Box
+  ein, den Einstellungen, Sicherung anzeigt. Die Box fügt den Code als
+  Passwort hinzu, sobald sie einen hat, und tauscht ihn aus, wenn er sich
+  ändert.
+- Der Server muss antworten, wann immer die Box startet, auch beim
+  nächtlichen Neustart um 00:07. Ist er dann aus, wartet die Box an der
+  Abfrage, bis jemand den Code eingibt.
+- Die Festplatte allein bleibt unlesbar wie auf jeder Box mit TPM.
+
+Wie das TPM selbst steht die Einstellung in `modules/install-target.nix`
+(`tpm.tang`). Ein- oder ausschalten lässt sie sich also nur durch eine
+Neuinstallation.
+
+## Die Festplatte über die Edge öffnen \{#opening-the-disk-with-the-edge}
+
+Die [Edge](/in-depth/master-proxy.md) kann statt eines Servers zu Hause oder
+zusätzlich dazu der Schlüsselserver sein:
+
+```sh
+losos-ctl install --tang-edge
+```
+
+Ohne Adresse nimmt der Installer die Edge, für die das Medium eingerichtet
+ist. Mit einer Adresse (`--tang-edge https://edge.example.org`) nimmt er eine
+andere. Der Installer holt sich von der Edge ein Schlüsselpaar nur für diese
+Box und versiegelt den Festplattenschlüssel dann an das TPM und die Edge
+zusammen. Mit `--tang` dazu braucht die Festplatte das TPM, den Server zu
+Hause und die Edge.
+
+Bei jedem Start holt sich die Box eine Adresse im kabelgebundenen Netz und
+fragt die Edge über HTTPS. Die Edge sieht den Festplattenschlüssel nie. Sie
+erfährt, dass die Box gestartet ist, und die Adresse, von der sie gefragt
+hat. Die sieht sie ohnehin, sobald der Tunnel steht.
+
+Was die Edge gegenüber einem Server zu Hause dazugibt:
+
+- **Ein Schalter für eine gestohlene Box.** Öffne `/tang/lost` auf der Edge,
+  zum Beispiel `https://edge.example.org/tang/lost`, gib den
+  Wiederherstellungscode der Box ein und wähle „Meine Box wurde gestohlen“.
+  Der Code bleibt im Browser: Die Seite schickt der Edge nur einen Wert, der
+  daraus berechnet wird. Ab dann verweigert die Edge den Schlüssel dieser
+  Box, also öffnet sie sich nirgends, auch nicht zu Hause, bis du auf
+  derselben Seite „Ich habe sie zurück“ wählst. Am eigenen Bildschirm der
+  Box öffnet der Wiederherstellungscode sie weiterhin.
+- Die Box teilt der Edge diesen Wert mit, sobald Einstellungen, Sicherung
+  einen Wiederherstellungscode hat, und erneut, wenn er sich ändert. Das kann
+  nur die Box, die den Schlüssel angelegt hat, mit einem Geheimnis, das der
+  Installer auf der verschlüsselten Festplatte abgelegt hat.
+
+Die Edge muss antworten, wann immer die Box startet, auch beim nächtlichen
+Neustart um 00:07. Sind die Edge oder die Internetverbindung der Box dann
+weg, wartet die Box an der Abfrage, bis jemand den Wiederherstellungscode
+eingibt.
 
 ## Wie man erkennt, in welchem Modus eine Box läuft \{#how-to-tell-which-mode-a-box-is-in}
 

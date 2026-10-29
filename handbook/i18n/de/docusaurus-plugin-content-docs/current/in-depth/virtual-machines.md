@@ -7,6 +7,8 @@ mdx:
 
 # Virtuelle Maschinen
 
+![Der Bereich Mesh auf einer Box ohne Edge; Maschinen liegt unter Mesh.](@site/docs/img/mesh-none-de.png)
+
 Eine Box, die ihre Festplatte mit dem Mesh teilt, kann im Mesh virtuelle
 Maschinen mieten und Maschinen anderer Boxen betreiben. Eine Maschine wird
 **pro Replikat** verkauft: Jedes Replikat ist eine Kopie der Maschine mit
