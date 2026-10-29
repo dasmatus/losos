@@ -7,7 +7,6 @@ import { defineMessages } from "./define";
 export default defineMessages({
   "git.cancel": { en: "Cancel", sk: "Zrušiť", de: "Abbrechen" },
   "git.close": { en: "Close", sk: "Zavrieť", de: "Schließen" },
-  "git.signOut": { en: "Sign out", sk: "Odhlásiť sa", de: "Abmelden" },
   "git.bot": { en: "Bot", sk: "Bot", de: "Bot" },
   "git.error.network": {
     en: "The box did not answer. Check the connection and try again.",

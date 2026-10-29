@@ -21,19 +21,22 @@ nichts.
 
 ## Einstellungen → Aussehen \{#settings--look}
 
-Dieser Bereich ändert, wie die Admin-Seiten in jedem Browser aussehen, der
-die Box öffnet. Eine Änderung wirkt, sobald du sie speicherst, ohne
+Diesen Bereich haben alle, die angemeldet sind. Der Hintergrund darauf
+gehört nur dir: Alle auf der Box wählen ihren eigenen, und deiner begleitet
+dich in jeden Browser, in dem du dich anmeldest, LosOS Cloud und LosOS Git
+eingeschlossen. Eine Änderung wirkt, sobald du sie speicherst, ohne
 Neuaufbau.
 
 ![Einstellungen, Aussehen: die Hintergründe Schlicht, Gezeiten, Raster, Abenddämmerung und dein eigenes Bild, der Schieberegler für den Schleier und die von Hand geschriebenen Widgets auf dieser Box.](@site/docs/img/settings-look-de.png)
 
-- **Hintergrund**: eines von drei mitgelieferten Bildern (Gezeiten, Raster,
-  Abenddämmerung), ein eigenes hochgeladenes Bild (PNG, JPEG, WebP, GIF oder
-  SVG, bis 8 MiB) oder Schlicht.
+- **Dein Hintergrund**: eines von drei mitgelieferten Bildern (Gezeiten,
+  Raster, Abenddämmerung), ein eigenes hochgeladenes Bild (PNG, JPEG, WebP
+  oder GIF, bis 8 MiB) oder Schlicht.
 - **Schleier**: legt die Seitenfarbe über das Bild, von 20 % bis 90 %, damit
   Text im hellen und im dunklen Design lesbar bleibt.
 - **Von Hand geschriebene Widgets**: die von Hand geschriebenen Widgets, die
-  auf dieser Box gespeichert sind. Du kannst jedes bearbeiten oder löschen.
+  auf dieser Box gespeichert sind, für die Leute, die das Aussehen der Box
+  ändern dürfen. Du kannst jedes bearbeiten oder löschen.
 
 ## Ein Widget schreiben \{#writing-a-widget}
 

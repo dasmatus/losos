@@ -40,22 +40,35 @@ LAN) a obyčajné stiahnutie (`/setup/losos-ca.crt`). Pozri [Inštalácia podrob
 
 ## Vzhľad {#look}
 
-**Nastavenia, Vzhľad** mení vzhľad administrátorských stránok pre každý
-prehliadač, ktorý zariadenie otvorí. Nič z toho nie je nastavenie v zmysle
-Nixu. Je to dokument, ktorý lososd drží v `/var/lib/losos/look.json`, takže
-zmena platí v okamihu uloženia, bez prestavby.
+**Nastavenia, Vzhľad** mení vzhľad administrátorských stránok. Každý
+prihlásený ho otvorí kvôli vlastnému pozadiu; widgety na ňom sú pre ľudí v
+sekcii vzhľadu. Nič z toho nie je nastavenie v zmysle Nixu. Widgety drží
+lososd v `/var/lib/losos/look.json` a pozadie každého človeka v
+`/var/lib/losos/looks/<meno>.json`, takže zmena platí v okamihu uloženia,
+bez prestavby.
 
 ### Pozadie {#background}
 
-Vyberte jeden z troch dodaných obrázkov alebo nahrajte vlastný (PNG, JPEG,
-WebP, GIF alebo SVG, do 8 MiB). Posuvník **Závoj** kladie farbu
-stránky cez obrázok, od 20 % do 90 %, aby text zostal čitateľný vo svetlej
-aj tmavej téme. *Bez obrázka* obrázok opäť odstráni.
+Každý si vyberá vlastné a sprevádza ho v každom prehliadači, kde sa
+prihlási; voľba nikoho iného jeho stránku nezmení. Vyberte jeden z troch
+dodaných obrázkov alebo nahrajte vlastný (PNG, JPEG, WebP alebo GIF, do
+8 MiB). Posuvník **Závoj** kladie farbu stránky cez obrázok, od 20 % do
+90 %, aby text zostal čitateľný vo svetlej aj tmavej téme. *Bez obrázka*
+obrázok opäť odstráni. LosOS Cloud a LosOS Git ho ukazujú za svojimi
+stránkami tiež.
 
-:::note[Prečo obrázok nepotrebuje token]
-Nahraný obrázok servíruje lososd na `/api/look/background` bez tokenu, lebo
-CSS `background-image` ho poslať nevie. Cesta je za tou istou ochranou „len
-LAN“ ako zvyšok administrátorských stránok a tapeta nie je tajomstvo.
+Náhradný kľúč nie je nikto, preto vidí a nastavuje vlastné pozadie
+zariadenia. Na zariadení, ktoré malo pozadie ešte predtým, ako sa pozadia
+stali osobnými, je to pozadie zariadenia a vlastník dostane jeho kópiu pri
+prvom prihlásení. Odstránením človeka sa odstráni aj jeho pozadie.
+
+:::note[Kto môže obrázok čítať]
+Nahraný obrázok človeka servíruje lososd na `/api/look/background/<meno>`
+len tomuto človeku, čítaný s jeho súborom cookie LosOS Login. Vlastný
+obrázok zariadenia je na `/api/look/background` bez tokenu, lebo karta s
+náhradným kľúčom drží kľúč v stránke a CSS `background-image` ho poslať
+nevie. Obe cesty sú za tou istou ochranou „len LAN“ ako zvyšok
+administrátorských stránok.
 :::
 
 ### Ručne písané widgety {#widgets-written-by-hand}

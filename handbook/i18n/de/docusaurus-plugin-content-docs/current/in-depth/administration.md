@@ -42,23 +42,38 @@ Einzeiler-Installer für macOS, Linux und Windows (`/setup/trust.sh`,
 
 ## Aussehen {#look}
 
-**Einstellungen, Aussehen** ändert das Aussehen der Admin-Seiten, für jeden Browser,
-der die Box öffnet. Nichts davon ist eine Einstellung im Sinne von Nix. Es
-ist ein Dokument, das lososd unter `/var/lib/losos/look.json` führt, daher
-wirkt eine Änderung sofort beim Speichern, ohne Rebuild.
+**Einstellungen, Aussehen** ändert das Aussehen der Admin-Seiten. Alle,
+die angemeldet sind, öffnen es für ihren eigenen Hintergrund; die Widgets
+darauf sind für die Leute im Bereich Aussehen. Nichts davon ist eine
+Einstellung im Sinne von Nix. lososd führt die Widgets unter
+`/var/lib/losos/look.json` und den Hintergrund jeder Person unter
+`/var/lib/losos/looks/<name>.json`, daher wirkt eine Änderung sofort beim
+Speichern, ohne Rebuild.
 
 ### Hintergrund {#background}
 
-Wähle eines der drei mitgelieferten Bilder oder lade ein eigenes
-hoch (PNG, JPEG, WebP, GIF oder SVG, bis 8 MiB). Der Regler **Schleier**
-legt die Seitenfarbe über das Bild, von 20 % bis 90 %, damit Text im hellen
-wie im dunklen Theme lesbar bleibt. *Schlicht* entfernt das Bild wieder.
+Alle wählen ihren eigenen, und er begleitet sie in jeden Browser, in dem sie
+sich anmelden; die Wahl von jemand anderem ändert ihre Seite nicht. Wähle
+eines der drei mitgelieferten Bilder oder lade ein eigenes hoch (PNG, JPEG,
+WebP oder GIF, bis 8 MiB). Der Regler **Schleier** legt die Seitenfarbe
+über das Bild, von 20 % bis 90 %, damit Text im hellen wie im dunklen Theme
+lesbar bleibt. *Schlicht* entfernt das Bild wieder. LosOS Cloud und LosOS
+Git zeigen ihn auch hinter ihren Seiten.
 
-:::note[Warum das Bild kein Token braucht]
-lososd liefert ein hochgeladenes Bild unter `/api/look/background` ohne
-Token aus, weil ein CSS-`background-image` keinen senden kann. Die Route
-liegt hinter demselben Nur-LAN-Schutz wie der Rest der Admin-Seiten, und ein
-Hintergrundbild ist kein Geheimnis.
+Der Ersatzschlüssel ist niemand, darum sieht und setzt er den eigenen
+Hintergrund der Box. Auf einer Box, die schon einen Hintergrund hatte, bevor
+Hintergründe persönlich wurden, ist das der Hintergrund der Box, und der
+Besitzer bekommt beim ersten Anmelden eine Kopie davon. Wer eine Person
+entfernt, entfernt auch ihren Hintergrund.
+
+:::note[Wer ein Bild lesen kann]
+Das hochgeladene Bild einer Person liefert lososd unter
+`/api/look/background/<name>` nur an diese Person aus, gelesen mit ihrem
+Cookie von LosOS Login. Das eigene Bild der Box liegt unter
+`/api/look/background` ohne Token, weil ein Tab mit dem Ersatzschlüssel den
+Schlüssel in der Seite hält und ein CSS-`background-image` keinen senden
+kann. Beide Routen liegen hinter demselben Nur-LAN-Schutz wie der Rest der
+Admin-Seiten.
 :::
 
 ### Selbst geschriebene Widgets {#widgets-written-by-hand}

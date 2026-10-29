@@ -4,9 +4,8 @@ import { Search01Icon, SidebarLeftIcon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
-import { LanguagePicker } from "@/components/ui/language-picker";
+import { DisplayMenu } from "@/components/preferences-menu";
 import { Spinner } from "@/components/ui/spinner";
-import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useLocale, useT } from "@/lib/i18n-react";
 import { logoFor } from "@/lib/logo";
@@ -165,8 +164,7 @@ function Header({ title, go }: { title: string; go: (url: string) => void }) {
           </span>
         </a>
         <div className="flex-1" />
-        <LanguagePicker />
-        <ThemeToggle />
+        <DisplayMenu />
       </div>
     </header>
   );

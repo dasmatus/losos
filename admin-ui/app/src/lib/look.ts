@@ -1,4 +1,9 @@
-/* The look: the box's background picture and the widgets written by hand.
+/* The look: the signed-in person's background picture and the widgets
+ * written by hand.
+ *
+ * The background is each person's own (backend/plugins/look keeps one per
+ * sign-in name); the spare key, being nobody, gets the box's own. The
+ * widgets are the box's and the same for everyone.
  *
  * One module-level store read through useSyncExternalStore, the shape the
  * auth state in lib/api.ts and the board in lib/widgets.ts use. It is loaded
@@ -14,10 +19,11 @@
  * opacity, so the same picture reads in light and in dark, and every card on
  * top of it keeps its opaque surface.
  *
- * `img-src 'self'` is why the picture is a URL and not bytes: an uploaded
- * picture is fetched from /api/look/background?v=N without a token (look.rs
- * says why that is the accepted shape), a shipped one from /backgrounds/,
- * and both are this origin.
+ * `img-src 'self'` is why the picture is a URL and not bytes: a person's
+ * uploaded picture is fetched from /api/look/background/<name>?v=N with
+ * their LosOS Login cookie, the box's own from /api/look/background?v=N
+ * without a token (the plugin says why that is the accepted shape), a
+ * shipped one from /backgrounds/, and all of them are this origin.
  */
 
 import {
@@ -148,7 +154,8 @@ function revive(doc: unknown): LookResponse {
     ? record["shipped"].filter((name): name is string => typeof name === "string")
     : [...SHIPPED_BACKGROUNDS];
   const limits = reviveLimits(record["limits"]);
-  return { version: 1, background, veil, widgets, shipped, limits };
+  const personal = record["personal"] === true;
+  return { version: 1, background, veil, personal, widgets, shipped, limits };
 }
 
 function reviveBackground(value: unknown): LookBackground {
@@ -269,6 +276,21 @@ export function followAuth(): void {
     void loadLook();
   });
   void loadLook();
+}
+
+/* LosOS Cloud and LosOS Git are pages of their own, outside the shell that
+ * runs `followAuth`, with no token: the person is signed in by their LosOS
+ * Login cookie alone. They paint that person's background too, from one
+ * read, with no store and nothing that changes it. A page the box answers
+ * from outside its network (the admin routes are LAN-only) stays plain. */
+export async function paintOwnLook(): Promise<void> {
+  try {
+    const response = await fetch("/api/look", { cache: "no-store", credentials: "same-origin" });
+    if (!response.ok) return;
+    applyBackground(revive(await response.json()));
+  } catch {
+    /* no background is not worth a word */
+  }
 }
 
 // ── Painting the background ───────────────────────────────────────────────

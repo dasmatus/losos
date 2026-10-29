@@ -19,7 +19,7 @@ pub const PANES: &[(&str, &str, &str)] = &[
     ("apps", icons::LAYOUT_GRID, "apps"),
     ("statistics", icons::CHART_LINE_DATA_01, "apps"),
     ("network", icons::GLOBE_02, "network"),
-    ("look", icons::PAINT_BOARD, "look"),
+    ("look", icons::PAINT_BOARD, "signed-in"),
     ("hardware", icons::CPU, "admin"),
     ("security", icons::SHIELD_01, "admin"),
     ("account", icons::USER_CIRCLE, "account"),
@@ -143,7 +143,7 @@ impl Me {
             .iter()
             .find(|(id, _, _)| *id == pane)
             .map_or("admin", |p| p.2);
-        self.can_use(section)
+        section == "signed-in" || self.can_use(section)
     }
 
     /// The top bar's person (App.tsx's TopBar).
@@ -431,6 +431,78 @@ pub fn assets(host: &mut dyn Host) -> Assets {
 }
 
 /// Everything a signed-in page draws around itself.
+/// What sits behind the page, read off `GET /api/look`: the picture's
+/// address and the veil over it, or `None` for the plain ground.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Backdrop {
+    pub url: String,
+    /// Percent, 20 to 90.
+    pub veil: u8,
+}
+
+impl Backdrop {
+    #[must_use]
+    pub fn of(look: &Value) -> Option<Backdrop> {
+        let b = &look["background"];
+        let url = match b["kind"].as_str()? {
+            "shipped" => format!("/backgrounds/{}.svg", b["name"].as_str()?),
+            "upload" => b["url"].as_str()?.to_string(),
+            _ => return None,
+        };
+        let veil = u8::try_from(look["veil"].as_u64().unwrap_or(60)).ok()?;
+        let backdrop = Backdrop { url, veil };
+        backdrop.sound().then_some(backdrop)
+    }
+
+    /// An address this page may put in a stylesheet: a shipped picture, or
+    /// one of the look plugin's, versioned; a veil in its range.
+    #[must_use]
+    pub fn sound(&self) -> bool {
+        let shipped = self
+            .url
+            .strip_prefix("/backgrounds/")
+            .and_then(|n| n.strip_suffix(".svg"))
+            .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_lowercase()));
+        let uploaded = self
+            .url
+            .strip_prefix("/api/look/background")
+            .and_then(|rest| rest.split_once("?v="))
+            .is_some_and(|(who, v)| {
+                (who.is_empty()
+                    || who.strip_prefix('/').is_some_and(|n| {
+                        !n.is_empty()
+                            && n.bytes().all(|b| {
+                                b.is_ascii_lowercase() || b.is_ascii_digit() || b"._-".contains(&b)
+                            })
+                    }))
+                    && !v.is_empty()
+                    && v.bytes().all(|b| b.is_ascii_digit())
+            });
+        (shipped || uploaded) && (20..=90).contains(&self.veil)
+    }
+
+    /// The page's stylesheet for it, `/basic/look.css?…`, which says the
+    /// same as its query: the page cannot set a style itself.
+    #[must_use]
+    pub fn sheet(&self) -> String {
+        format!(
+            "/basic/look.css?bg={}&veil={}",
+            crate::encode(&self.url),
+            self.veil
+        )
+    }
+
+    /// styles/index.css's `html.has-bg .losos-shell`, for this picture.
+    #[must_use]
+    pub fn css(&self) -> String {
+        let veil = f64::from(self.veil) / 100.0;
+        format!(
+            ":root[data-basic] .losos-shell {{ background-image: linear-gradient(rgba(var(--ground-rgb), {veil}), rgba(var(--ground-rgb), {veil})), url(\"{}\"); background-size: cover; background-position: center; background-attachment: fixed; }}\n",
+            self.url
+        )
+    }
+}
+
 pub struct Ctx {
     pub m: Messages,
     pub prefs: Prefs,
@@ -495,7 +567,8 @@ mod tests {
         assert_eq!(keys, ["overview", "storage", "mail", "settings"]);
         let settings = nav(&me, &m, "/settings/network", false).pop().unwrap();
         let inner: Vec<&str> = settings.children.iter().map(|e| e.key.as_str()).collect();
-        assert_eq!(inner, ["network"]);
+        // Look is everyone's: their own background is there.
+        assert_eq!(inner, ["network", "look"]);
         assert!(settings.holds_current());
     }
 

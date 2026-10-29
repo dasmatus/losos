@@ -1,23 +1,26 @@
 {
   "name": "look",
-  "description": "The owner's look: a background picture and the widgets they wrote by hand.",
+  "description": "Each person's background picture, and the widgets the owner wrote by hand.",
   "routes": [
     { "method": "GET", "path": "/api/look" },
     { "method": "POST", "path": "/api/look" },
     { "method": "PUT", "path": "/api/look/background", "maxBody": 8650752 },
     { "method": "DELETE", "path": "/api/look/background" },
     { "method": "GET", "path": "/api/look/background", "unguarded": true },
+    { "method": "GET", "path": "/api/look/background/{name}" },
     { "method": "POST", "path": "/api/look/widgets" },
     { "method": "DELETE", "path": "/api/look/widgets/{id}" }
   ],
   "files": [
     { "path": "${LOSOS_STATE_DIR:-/var/lib/losos}/look.json", "access": "rw" },
-    { "path": "${LOSOS_STATE_DIR:-/var/lib/losos}/background.img", "access": "rw" }
+    { "path": "${LOSOS_STATE_DIR:-/var/lib/losos}/background.img", "access": "rw" },
+    { "path": "${LOSOS_STATE_DIR:-/var/lib/losos}/looks", "access": "rw" }
   ],
   "locks": ["look"],
   "limits": { "memoryMiB": 64, "timeoutSecs": 10 },
   "config": {
     "lookFile": "${LOSOS_STATE_DIR:-/var/lib/losos}/look.json",
-    "backgroundFile": "${LOSOS_STATE_DIR:-/var/lib/losos}/background.img"
+    "backgroundFile": "${LOSOS_STATE_DIR:-/var/lib/losos}/background.img",
+    "looksDir": "${LOSOS_STATE_DIR:-/var/lib/losos}/looks"
   }
 }

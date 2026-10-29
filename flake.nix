@@ -551,6 +551,10 @@
         # The admin pages with JavaScript off, from sign-in to a rebuild, with
         # the pull request's pictures (nix/tests/no-js.nix).
         losos-no-js = import ./nix/tests/no-js.nix { inherit pkgs; };
+        # Each person's own look: the theme and the language in the person
+        # menu, a background picture each, with the pull request's pictures
+        # (nix/tests/person-look.nix).
+        losos-person-look = import ./nix/tests/person-look.nix { inherit pkgs; };
         # The Mesh page while the box has paused sharing for want of an edge,
         # with the pull request's pictures (nix/tests/sharing-pause.nix).
         losos-sharing-pause = import ./nix/tests/sharing-pause.nix { inherit pkgs; };

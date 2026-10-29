@@ -9,6 +9,7 @@
     { "method": "POST", "path": "/api/basic/sign-out", "maxBody": 8192 },
     { "method": "POST", "path": "/api/basic/prefs", "maxBody": 8192 },
     { "method": "GET", "path": "/api/basic/counts.css" },
+    { "method": "GET", "path": "/api/basic/look.css" },
     { "method": "GET", "path": "/api/basic/" },
     { "method": "GET", "path": "/api/basic/{page}" },
     { "method": "POST", "path": "/api/basic/{page}", "maxBody": 65536 },

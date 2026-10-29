@@ -34,6 +34,7 @@ import {
 import { Toaster } from "@/components/ui/toast";
 import type { MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
+import { paintOwnLook } from "@/lib/look";
 import { cn } from "@/lib/utils";
 import { EditPage } from "./collab/page";
 import { ConnectPage } from "./connect";
@@ -91,6 +92,10 @@ function Shell() {
   const noting = pathname === "/notes" || pathname.startsWith("/notes/");
   const navigate = useNavigate();
   const pageMenu = usePageMenu();
+  // The background the person picked, as on every page of the box.
+  React.useEffect(() => {
+    void paintOwnLook();
+  }, []);
   return (
     <div className={cn("losos-shell min-h-dvh text-ink", office && "flex h-dvh flex-col")}>
       <TopBar search={!connecting && !editing && !noting && !office} wide={noting || office} />

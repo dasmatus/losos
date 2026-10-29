@@ -39,8 +39,11 @@ address on to `https://`.
   your own domains: add one, see its two records and remove it.
 - **Hardware** and **Security.** Every switch on those panes.
 - **Search.** Finds a page of the box by its name.
-- **Theme, language and the sidebar.** Light, dark or the browser's choice,
-  the language, and the sidebar folded to icons. The browser keeps these.
+- **Look.** Your own background, plain or a picture the box ships, and the
+  veil over it. A picture of your own is uploaded with JavaScript on.
+- **Theme, language and the sidebar.** Light, dark or the browser's choice
+  and the language, in your menu at the top right, and the sidebar folded
+  to icons. The browser keeps these.
 
 A change you make shows in the Apply bar at the foot of the pane, which
 counts the changes. **Apply** rebuilds the box as it does on the usual

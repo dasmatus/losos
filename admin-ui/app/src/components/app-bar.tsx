@@ -5,8 +5,7 @@ import { ArrowDown01Icon, Logout01Icon, UserCircleIcon } from "@hugeicons/core-f
 import { Button } from "@/components/ui/button";
 import { KbdGroup } from "@/components/ui/kbd";
 import { popupMotion } from "@/components/ui/motion";
-import { LanguagePicker } from "@/components/ui/language-picker";
-import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { DisplayMenu, menuItemClass, PreferenceItems } from "@/components/preferences-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useT } from "@/lib/i18n-react";
 import { logoFor } from "@/lib/logo";
@@ -21,9 +20,10 @@ import { cn } from "@/lib/utils";
  *
  * Left to right: the logo, which goes to the box's home; the app's name,
  * which goes to the app's first page; whatever the app puts in (a search, a
- * Compose button); then the language, the theme and the person's menu, which
- * holds Your account and Sign out. On a phone the app's name and the person's
- * name drop out first.
+ * Compose button); then the person's menu, which holds the appearance, the
+ * language, Your account and Sign out. With nobody signed in, the appearance
+ * and the language sit in a menu of their own (components/preferences-menu.tsx).
+ * On a phone the app's name and the person's name drop out first.
  *
  * Sign out is also Alt+Shift+Q (lib/shortcuts.ts) on every page that draws
  * this bar with `onSignOut`; the menu shows the keys.
@@ -135,16 +135,17 @@ export function AppBar({
           )}
         {badge !== undefined && <span className="hidden shrink-0 sm:inline-flex">{badge}</span>}
         {children ?? <div className="flex-1" />}
-        <LanguagePicker />
-        <ThemeToggle />
         {person != null ? (
           <PersonMenu person={person} onSignOut={onSignOut} />
         ) : (
-          onSignOut !== undefined && (
-            <Button variant="ghost" size="sm" onClick={onSignOut}>
-              {t("shell.signOut")}
-            </Button>
-          )
+          <>
+            <DisplayMenu />
+            {onSignOut !== undefined && (
+              <Button variant="ghost" size="sm" onClick={onSignOut}>
+                {t("shell.signOut")}
+              </Button>
+            )}
+          </>
         )}
       </div>
     </header>
@@ -157,11 +158,20 @@ export function AppBarSearch({ className, ...props }: React.ComponentPropsWithou
 }
 
 /* Who this tab is signed in as, and the menu under them: who they are in
- * full, Your account, Sign out with its keys. shadcn's base-registry
+ * full, the appearance and the language, Your account, Sign out with its
+ * keys. shadcn's base-registry
  * Dropdown Menu on Base UI, like the pin menu: its positioner and scroll lock
  * write CSSOM, which the admin CSP allows. The name hides on a phone, where
  * the picture stays. */
-function PersonMenu({ person, onSignOut }: { person: AppBarPerson; onSignOut: (() => void) | undefined }) {
+export function PersonMenu({
+  person,
+  onSignOut,
+  className,
+}: {
+  person: AppBarPerson;
+  onSignOut: (() => void) | undefined;
+  className?: string;
+}) {
   const t = useT();
   return (
     <Menu.Root>
@@ -172,6 +182,7 @@ function PersonMenu({ person, onSignOut }: { person: AppBarPerson; onSignOut: ((
           "group/person inline-flex h-[34px] min-w-0 shrink items-center gap-1.5 rounded-control px-2 text-sm text-ink",
           "hover:bg-sunk data-popup-open:bg-sunk",
           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+          className,
         )}
       >
         {person.avatar ?? (
@@ -203,14 +214,16 @@ function PersonMenu({ person, onSignOut }: { person: AppBarPerson; onSignOut: ((
               <span className="text-[12px] leading-snug text-muted">{person.tip}</span>
             </div>
             <Menu.Separator className="my-1 h-px bg-hair" />
+            <PreferenceItems />
+            <Menu.Separator className="my-1 h-px bg-hair" />
             {person.accountLink !== undefined && (
-              <Menu.LinkItem render={person.accountLink} className={itemClass}>
+              <Menu.LinkItem render={person.accountLink} className={menuItemClass}>
                 <ItemIcon icon={UserCircleIcon} />
                 <span className="flex-1">{t("settings.panes.account.label")}</span>
               </Menu.LinkItem>
             )}
             {onSignOut !== undefined && (
-              <Menu.Item onClick={onSignOut} className={itemClass} data-testid="sign-out">
+              <Menu.Item onClick={onSignOut} className={menuItemClass} data-testid="sign-out">
                 <ItemIcon icon={Logout01Icon} />
                 <span className="flex-1">{t("shell.signOut")}</span>
                 <KbdGroup keys={signOutKeys()} />
@@ -222,11 +235,6 @@ function PersonMenu({ person, onSignOut }: { person: AppBarPerson; onSignOut: ((
     </Menu.Root>
   );
 }
-
-const itemClass = cn(
-  "flex cursor-default items-center gap-2 rounded-control px-2 py-1.5 text-[13px] text-ink outline-none select-none",
-  "transition-colors duration-100 data-highlighted:bg-accent-wash",
-);
 
 function ItemIcon({ icon }: { icon: IconSvgElement }) {
   return <HugeiconsIcon icon={icon} size={14} strokeWidth={1.5} color="currentColor" aria-hidden="true" />;

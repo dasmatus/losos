@@ -90,9 +90,9 @@ export default defineMessages({
   },
   "settings.panes.look.label": { en: "Look", sk: "Vzhľad", de: "Aussehen" },
   "settings.panes.look.summary": {
-    en: "A picture behind this page, and widgets you write yourself.",
-    sk: "Obrázok za touto stránkou a widgety, ktoré si napíšete sami.",
-    de: "Ein Bild hinter dieser Seite, und Widgets, die du selbst schreibst.",
+    en: "Your own picture behind every page, and widgets written by hand.",
+    sk: "Váš vlastný obrázok za každou stránkou a widgety napísané ručne.",
+    de: "Dein eigenes Bild hinter jeder Seite, und Widgets, von Hand geschrieben.",
   },
   "settings.panes.look.keywords": {
     en: "",

@@ -279,6 +279,11 @@ export default defineMessages({
     sk: "Jazyk prehliadača",
     de: "Browsersprache",
   },
+  "ui.display.label": {
+    en: "Appearance and language",
+    sk: "Vzhľad a jazyk",
+    de: "Erscheinungsbild und Sprache",
+  },
 
   // ── Toasts the shell raises ───────────────────────────────────────────────
   "shell.signIn.unlocked": { en: "Unlocked", sk: "Odomknuté", de: "Entsperrt" },

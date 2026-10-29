@@ -242,8 +242,12 @@ bewegt. Deinen besten Wert pro Spiel merkt sich dieser Browser.
 
 ## Design und Sprache \{#theme-and-language}
 
-Die Leiste oben schaltet zwischen Englisch, Slowakisch und Deutsch um und
-zwischen „Wie im Browser“, hell und dunkel. Dieser Browser merkt sich beides.
+Dein Menü oben rechts, unter deinem Namen, hat **Erscheinungsbild** („Wie
+im Browser“, hell oder dunkel) und **Sprache** (die des Browsers, Englisch,
+Slowakisch oder Deutsch). Es ist dasselbe Menü auf jeder Seite der Box: den
+Admin-Seiten, LosOS Cloud, Office, Mail, Chat und LosOS Git. Eine Seite,
+auf der du nicht angemeldet bist, hat beides hinter einem Knopf in ihrer
+Leiste. Dieser Browser merkt sich beides.
 
 ![Die Übersicht auf Deutsch und im dunklen Design.](@site/docs/img/overview-de-dark.png)
 

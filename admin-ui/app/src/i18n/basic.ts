@@ -72,4 +72,10 @@ export default defineMessages({
     sk: "Skúste kratšie slovo. Súbory, repozitáre a úlohy sa hľadajú so zapnutým JavaScriptom.",
     de: "Versuch ein kürzeres Wort. Dateien, Repositorys und Issues werden mit eingeschaltetem JavaScript durchsucht.",
   },
+  "basic.look.saveVeil": { en: "Save", sk: "Uložiť", de: "Speichern" },
+  "basic.look.upload": {
+    en: "A picture of your own is uploaded with JavaScript on; one you uploaded stays here.",
+    sk: "Vlastný obrázok sa nahráva so zapnutým JavaScriptom; ten, ktorý ste už nahrali, tu zostáva.",
+    de: "Ein eigenes Bild lädst du mit eingeschaltetem JavaScript hoch; eins, das du hochgeladen hast, bleibt hier.",
+  },
 });

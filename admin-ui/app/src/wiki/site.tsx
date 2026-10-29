@@ -14,9 +14,8 @@ import { LibraryIcon, PencilEdit02Icon, Search01Icon, SidebarLeftIcon } from "@h
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
-import { LanguagePicker } from "@/components/ui/language-picker";
+import { DisplayMenu } from "@/components/preferences-menu";
 import { Spinner } from "@/components/ui/spinner";
-import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { git, GitError, type Wiki, type WikiHit, type WikiPage, type WikiSpace } from "@/git/api";
 import { useLocale, useT } from "@/lib/i18n-react";
 import { logoFor } from "@/lib/logo";
@@ -127,8 +126,7 @@ function Header({ title, home, go, signedIn }: { title: string; home: string; go
             {t("wiki.site.signIn")}
           </Button>
         )}
-        <LanguagePicker />
-        <ThemeToggle />
+        <DisplayMenu />
       </div>
     </header>
   );
