@@ -365,7 +365,14 @@ in
             # 500. ProtectProc=invisible still hides every other process.
             # nix/tests/invariants.nix pins this.
             ProtectProc = "invisible";
-            MemoryDenyWriteExecute = true;
+            # No MemoryDenyWriteExecute either: lososd compiles its WebAssembly
+            # plugins (backend/src/plugin/) with Wasmtime's Cranelift at start,
+            # which writes machine code and then makes it executable. Under
+            # MemoryDenyWriteExecute that mprotect is refused, lososd exits
+            # with "unable to make memory executable" and restarts forever, and
+            # the box answers 502 on every /api/ path. The plugins are store
+            # paths lososd verifies before compiling (losos.backend.plugins).
+            # nix/tests/invariants.nix pins this.
             RestrictAddressFamilies = [
               "AF_UNIX"
               "AF_INET"

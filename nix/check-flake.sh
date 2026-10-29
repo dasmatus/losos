@@ -26,6 +26,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 flake="git+file://$PWD"
+# A shallow clone (CI's checkout, a linked worktree of one) evaluates only
+# with ?shallow=1: without it Nix looks for the history and fails on a
+# missing object.
+if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+  flake="$flake?shallow=1"
+fi
 jobs=${CHECK_FLAKE_JOBS:-$(nproc)}
 logs=$(mktemp -d)
 trap 'rm -rf "$logs"' EXIT
@@ -52,21 +58,21 @@ outputs=$(nix eval --impure --raw --expr \
 for output in $outputs; do
   case $output in
     checks | packages | devShells)
-      for system in $(names "${@}" ".#$output"); do
-        for name in $(names "${@}" ".#$output.$system"); do
-          check "$output.$system.$name" "${@}" --raw ".#$output.$system.\"$name\".drvPath"
+      for system in $(names "${@}" "$flake#$output"); do
+        for name in $(names "${@}" "$flake#$output.$system"); do
+          check "$output.$system.$name" "${@}" --raw "$flake#$output.$system.\"$name\".drvPath"
         done
       done
       ;;
     nixosConfigurations)
-      for name in $(names "${@}" ".#$output"); do
-        check "$output.$name" "${@}" ".#$output.\"$name\".config.system.build.toplevel" \
+      for name in $(names "${@}" "$flake#$output"); do
+        check "$output.$name" "${@}" "$flake#$output.\"$name\".config.system.build.toplevel" \
           --apply 'd: if d.type or null == "derivation" then true else throw "toplevel is not a derivation"'
       done
       ;;
     nixosModules)
-      for name in $(names "${@}" ".#$output"); do
-        check "$output.$name" "${@}" ".#$output.\"$name\"" \
+      for name in $(names "${@}" "$flake#$output"); do
+        check "$output.$name" "${@}" "$flake#$output.\"$name\"" \
           --apply 'm: if builtins.isFunction m || builtins.isAttrs m then true else throw "not a module"'
       done
       ;;

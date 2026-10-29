@@ -861,14 +861,19 @@ in
       }
       # LosOS Login's cookie is Secure, so the pages without JavaScript are
       # https too, the sign-in steps first.
-      // lib.genAttrs (map (p: "= /basic/${p}") [
-        "sign-in"
-        "sign-in/code"
-        "sign-in/key"
-        "sign-out"
-        "prefs"
-        "counts.css"
-      ]) (_: { extraConfig = basicHttps; })
+      //
+        lib.genAttrs
+          (map (p: "= /basic/${p}") [
+            "sign-in"
+            "sign-in/code"
+            "sign-in/key"
+            "sign-out"
+            "prefs"
+            "counts.css"
+          ])
+          (_: {
+            extraConfig = basicHttps;
+          })
       # The public routes, past Authelia. Exact matches beat the /api/ prefix.
       // lib.genAttrs (map (p: "= ${p}") lanPublicPaths) (_: {
         proxyPass = "http://127.0.0.1:${toString apiPort}";

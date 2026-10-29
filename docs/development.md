@@ -7,19 +7,68 @@ devenv shell        # or: direnv allow
 devenv test         # pin checks, lint, rust tests, flake eval (no builds)
 ```
 
-`nix develop` gives the toolchain only, for people without devenv.
+`nix develop` gives the toolchain only, for people without devenv. Both
+install the [git hooks](#git-hooks).
 
 | Script                         | Does |
 | ------------------------------ | ---- |
 | `fmt` · `lint` · `test-rust`   | Format, lint and test both Rust crates |
 | `check-flake` · `check-eval`   | Evaluate the flake; force the full module merge |
-| `check-pins`                   | Fail if `flake.lock` and `devenv.lock` pin different nixpkgs |
+| `check-pins`                   | Fail if `flake.lock`, `devenv.yaml` and `devenv.lock` pin different nixpkgs |
 | `build-pkgs` · `build-iso`     | Build the packages; build the installer ISO |
 | `build-images` · `build-media` | OCI images; demo QCOW2 and closure ISO (large, opt-in) |
 | `vm-tests`                     | All NixOS VM tests (needs `/dev/kvm`) |
 
 `devenv test` does not build packages or the installer ISO, or run VM tests.
 Those are separate opt-in scripts.
+
+## Git hooks
+
+`nix/hooks/` holds three git hooks that replay CI's gates on the machine
+that makes a change, for the files it touches. The paths pick CI's lanes
+through `.github/scripts/ci-changes.sh`, so a lane CI would skip is skipped
+here too.
+
+| Hook | Runs |
+| --- | --- |
+| `commit-msg` | refuses an attribution trailer or a session link |
+| `pre-commit` | `cargo fmt --check` on every crate; clippy `-D warnings` on each crate the change reaches; `nix/lint-nix.sh` (nixfmt, deadnix, statix) on the staged `.nix` files; `nix/check-pins.sh` when a lock or `devenv.yaml` changes; `fix-hashes.py --check` when a `Cargo.lock` or `package-lock.json` does; `npm run typecheck` in `admin-ui/app` (a checkout without the Diagrams WebAssembly packages gets them from `.#losos-lab-{core,virt,render}`); CI's eval job: `nix/check-flake.sh`, the module merge of `install`, `iso` and `edge-gateway`, the ISO and edge image derivations |
+| `pre-push` | all of pre-commit over the whole branch against its merge base with `origin/main`, plus `cargo test` for each crate reached, clippy for wasm32, `.#checks.x86_64-linux.losos-admin-ui` (the built SPA and its Playwright suite), `.#losos-handbook` when the handbook changes, and the VM tests the change touches |
+
+`devenv shell` and `nix develop` set `core.hooksPath` to `nix/hooks`, and so
+does a Claude Code session (`.claude/settings.json`). Anywhere else, run
+`bash nix/hooks/install` once per clone. cargo, npm and the Nix linters come
+from PATH, or from the flake when they are not on it.
+
+pre-push checks the commit it sends, not the working tree: when that commit
+is not a clean `HEAD` it runs in a temporary worktree. A VM test counts as
+touched when its file under `nix/tests/` changed, or a file it names (a
+browser script, a fixture, `screens/`) did, and it runs only when its
+derivation differs from the merge base's, so a change that only reformats
+a test boots nothing. With `/dev/kvm` it is a
+`nix build`; without, the test driver runs under TCG. `LOSOS_HOOKS_VM`
+picks others: `all`, `none`, or a list of check names. A change on CI's
+install lane (the installer, the disk layout, the boot path) adds
+`losos-iso-install`, which runs the real installer from the medium's system
+onto an empty disk, offline, and boots that disk. It builds the whole
+appliance first and needs about 20 GB of free disk (the closure, and the
+installed disk with a copy of it); without KVM its two VMs run under TCG,
+about 40 minutes for the install and as long again for the first boot.
+
+Every check writes its log to `.git/losos-hooks/logs/<time>-<hook>/`, and a
+failing one prints its last 40 lines. A check that passed is remembered
+against the git tree it ran on, so pushing a commit pre-commit already
+checked does not repeat it. `LOSOS_HOOKS_SKIP=check-flake,test:backend`
+skips checks by the names the hook prints, and says so; `LOSOS_HOOKS_VERBOSE=1`
+streams every check. `git commit --no-verify` skips everything, so the hooks
+are a first line. The required `result` check on `main` is the one that
+holds (see [CI and releases](ci-and-releases.md#merging)).
+
+A pre-commit with the eval lane on takes about five minutes on four cores,
+most of it `check-flake`. Behind a proxy that refuses GitHub's tarball
+endpoint, `nix/hooks/flake-inputs.py` fetches disko, impermanence and
+home-manager over git and adds them to the store under the hashes
+`flake.lock` pins, so the evaluation finds them.
 
 ## Rust
 
