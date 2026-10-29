@@ -2,7 +2,7 @@
 //! `tangd` and `tangd-keygen`. Runs when `LOSOS_TEST_TANG` names a Tang
 //! package (its `libexec/`), as CI's test job and devenv's `test-rust` set it:
 //!
-//! LOSOS_TEST_TANG=$(nix build --no-link --print-out-paths nixpkgs#tang) cargo test --test tang
+//! LOSOS_TEST_TANG=$(nix build --no-link --print-out-paths 'nixpkgs#tang^out') cargo test --test tang
 
 use std::path::PathBuf;
 
