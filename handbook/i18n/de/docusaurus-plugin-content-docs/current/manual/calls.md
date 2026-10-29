@@ -55,7 +55,7 @@ Die Zeitleiste des Raums zeigt, dass ein Anruf begonnen hat. Solange er
 läuft, hat die Zeile einen Knopf **Beitreten**, damit auch zurückkommen
 kann, wer das Klingeln verpasst oder den Anruf verlassen hat. Schließt sich
 der Browser von jemandem oder verliert er das Netz, sehen die anderen diese
-Person nach wenigen Sekunden gehen. Wenn die letzte Person geht, zeigt die Zeitleiste, dass der Anruf beendet ist.
+Person nach höchstens einer halben Minute gehen. Wenn die letzte Person geht, zeigt die Zeitleiste, dass der Anruf beendet ist.
 Andere Matrix-Apps zeigen stattdessen einen kurzen Hinweis mit einem Link,
 der den Anruf in LosOS Chat öffnet, wo man sich mit LosOS Login anmeldet.
 
