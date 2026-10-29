@@ -218,8 +218,8 @@ const violations = (page) => page.evaluate(() => [...new Set(window.__violations
 
 const ALL_VIOLATIONS = new Set();
 
-/* What a plain load of the file list logs (Sonner's refused copy of its
- * stylesheet): Notes and the knowledge base must not add to it. */
+/* What a plain load of the file list logs, which should be nothing: Notes
+ * and the knowledge base must not add to it. */
 const BASELINE = await (async () => {
   const { page, context } = await open('/cloud/files');
   await page.waitForSelector('[data-entry="Notes"]');
