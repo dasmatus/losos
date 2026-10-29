@@ -342,9 +342,14 @@ mod tests {
             step: String::new(),
             ..spike()
         };
-        assert_eq!(early.line(), "Memory use reached 96% for 14 s before the first step.");
+        assert_eq!(
+            early.line(),
+            "Memory use reached 96% for 14 s before the first step."
+        );
         let report = spike_report(&[early], &System::default(), true).unwrap();
-        assert!(report.title.starts_with("Installer: memory use reached 96% before the first step"));
+        assert!(report
+            .title
+            .starts_with("Installer: memory use reached 96% before the first step"));
     }
 
     #[test]

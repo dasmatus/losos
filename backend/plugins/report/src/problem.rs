@@ -371,7 +371,9 @@ mod tests {
         };
         let names = ["box".to_owned(), "matus".to_owned()];
         let report = build(&crash(), &System::default(), &evidence, &names);
-        assert!(report.body.contains("eva-sync on [name]: [name] asked [IP]"));
+        assert!(report
+            .body
+            .contains("eva-sync on [name]: [name] asked [IP]"));
         assert!(report.body.contains("Sent from a LosOS box."));
         assert!(!report.body.contains("matus") && !report.body.contains("on box"));
     }

@@ -695,9 +695,7 @@ mod tests {
 
     #[test]
     fn the_report_client_id_goes_to_the_box_only_when_the_medium_has_one() {
-        let handover = |a: &InstallAction| {
-            matches!(a, InstallAction::WriteTarget(p, _) if p == Path::new(REPORT_CLIENT_ID_HANDOVER))
-        };
+        let handover = |a: &InstallAction| matches!(a, InstallAction::WriteTarget(p, _) if p == Path::new(REPORT_CLIENT_ID_HANDOVER));
         let acts = plan_install(&opts(), &targets()).unwrap();
         assert!(!acts.iter().any(handover));
 
