@@ -302,6 +302,9 @@
             ./modules/impermanence.nix
             ./modules/disko.nix
             ./modules/boot.nix
+            # losos.tpm.tang: the disk opens only with the TPM2 and a Tang
+            # server on the box's own network.
+            ./modules/network-unlock.nix
             # LosOS and its release tag in the boot menu, os-release and the
             # console banners.
             ./modules/branding.nix
@@ -333,7 +336,7 @@
             ./modules/credentials.nix
             ./modules/daemon.nix
             ./modules/identity.nix
-            # LosOS Chat: Dendrite as the shared user while the box shares
+            # LosOS Chat: Synapse as the shared user while the box shares
             # its storage in a mesh, behind LosOS Login (backend/src/chat.rs).
             ./modules/chat.nix
             # Calls from chat rooms and DMs: the SFU, as the shared user, which
@@ -465,6 +468,12 @@
       checks.${system} = {
         losos-install = import ./nix/tests/install.nix { inherit pkgs disko; };
         losos-tpm-unlock = import ./nix/tests/tpm.nix { inherit pkgs disko; };
+        # losos.tpm.tang: the TPM2 and a Tang server on the network, the
+        # recovery code at the console without one.
+        losos-network-unlock = import ./nix/tests/network-unlock.nix { inherit pkgs disko; };
+        # losos-install --tang-edge: the edge is the box's Tang server, and
+        # refuses it once the owner reports it stolen.
+        losos-edge-unlock = import ./nix/tests/edge-unlock.nix { inherit pkgs disko; };
         losos-admin-daemon = import ./nix/tests/admin-vm.nix { inherit pkgs; };
         losos-edge-proxy = import ./nix/tests/edge-vm.nix { inherit pkgs; };
         losos-quic = import ./nix/tests/quic.nix { inherit pkgs; };
@@ -522,6 +531,9 @@
         losos-profile-screens = import ./nix/tests/profile-screens.nix { inherit pkgs; };
         losos-plugins = import ./nix/tests/plugins.nix { inherit pkgs; };
         losos-hidden-services = import ./nix/tests/hidden-services.nix { inherit pkgs; };
+        # The box ends its own TLS and the edge passes it through unread
+        # (modules/public-tls.nix, edge/registrar/src/passthrough.rs).
+        losos-edge-passthrough = import ./nix/tests/edge-passthrough.nix { inherit pkgs; };
         losos-design = import ./nix/tests/design.nix { inherit pkgs; };
         losos-agents = import ./nix/tests/agents.nix { inherit pkgs; };
         # The banner a box off the mesh shows over every page, both states

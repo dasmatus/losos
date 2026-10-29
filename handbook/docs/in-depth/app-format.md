@@ -7,7 +7,7 @@ mdx:
 
 # App format
 
-![The Apps pane.](../img/apps.png)
+![The Apps pane: LosOS Cloud, LosOS Git, your own apps and Find more.](../img/apps.png)
 
 An app for a LosOS box is one Compose file and the files beside it. The box
 runs it as `notshared` on rootless Podman, with Podman Compose, and needs no

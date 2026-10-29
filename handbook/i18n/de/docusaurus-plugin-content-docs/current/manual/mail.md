@@ -6,6 +6,10 @@ slug: /manual/mail
 
 # Mail
 
+![LosOS Mail: die Ordner, der Posteingang mit drei Nachrichten und oben Verschlüsselung, Filter und Schreiben.](@site/docs/img/mail-inbox-de.png)
+
+![Eine Nachricht von Eva, neben dem Posteingang geöffnet, darüber die Tasten zum Antworten, Weiterleiten, Verschieben und Löschen.](@site/docs/img/mail-message-de.png)
+
 LosOS Mail ist ein Mail-Programm für die Personen auf der Box. Wer über
 LosOS Login angemeldet ist, hat ein Postfach, und **Mail** in der
 Seitenleiste öffnet es unter `/mail`. Der Mailserver ist Stalwart 1.0. Er

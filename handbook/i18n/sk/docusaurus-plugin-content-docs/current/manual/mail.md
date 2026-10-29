@@ -6,6 +6,10 @@ slug: /manual/mail
 
 # Pošta
 
+![LosOS Mail: priečinky, doručená pošta s tromi správami a hore Šifrovanie, Filtre a Napísať.](@site/docs/img/mail-inbox-sk.png)
+
+![Správa od Evy otvorená vedľa doručenej pošty, nad ňou tlačidlá na odpoveď, preposlanie, presun a zmazanie.](@site/docs/img/mail-message-sk.png)
+
 LosOS Mail je poštový klient pre ľudí na zariadení. Každý, kto je
 prihlásený cez LosOS Login, má schránku a položka **Pošta** v bočnom paneli
 ju otvorí na adrese `/mail`. Poštový server je Stalwart 1.0. Beží na

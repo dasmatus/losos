@@ -6,10 +6,9 @@ slug: /manual/mail
 
 # Mail
 
+![LosOS Mail: the folders, the inbox with three messages, and Encryption, Filters and Write at the top.](../img/mail-inbox.png)
 
-![LosOS Mail's inbox.](../img/mail-inbox.png)
-
-![A message.](../img/mail-message.png)
+![A message from Eva, open beside the inbox, with the buttons to reply, forward, move and delete it above.](../img/mail-message.png)
 
 LosOS Mail is a mail client for the people on the box. Each person signed in
 through LosOS Login has a mailbox, and **Mail** in the sidebar opens it at

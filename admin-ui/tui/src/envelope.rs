@@ -11,7 +11,7 @@
 use losos_access::{open_call, seal_call, AnswerError, Request, SeededKey, Unlocked};
 use serde_json::Value;
 
-use crate::http::{Http, HttpError};
+use crate::http::{Http, HttpError, Trust};
 use crate::problem::{Problem, Result};
 use crate::tr;
 use crate::vault::{HostKind, HostRecord};
@@ -90,7 +90,7 @@ pub fn new_nonce() -> String {
 
 pub fn unreachable(url: &str, error: HttpError) -> Problem {
     match error {
-        HttpError::Unreachable(detail) => Problem::new(
+        HttpError::Unreachable(detail) | HttpError::NoConnection(detail) => Problem::new(
             "losos::unreachable",
             tr!("tui.envelope.unreachable", url = url, detail = detail),
         ),
@@ -112,6 +112,10 @@ pub struct Session {
     pub token: String,
     pub user: Unlocked,
     pub http: Http,
+    /// The box's edge address, tried when its own address cannot be
+    /// reached at all, with a client that takes only a certificate the web
+    /// trusts (`HostRecord::edge_url`).
+    pub away: Option<(String, Http)>,
 }
 
 impl Session {
@@ -129,6 +133,11 @@ impl Session {
             token: record.token.clone(),
             user,
             http,
+            away: record
+                .edge_url
+                .clone()
+                .filter(|_| record.kind == HostKind::Box)
+                .map(|url| (url, Http::new(Trust::Public))),
         })
     }
 
@@ -175,18 +184,31 @@ impl Session {
 
 impl Transport for Session {
     fn request(&self, method: &str, path: &str, body: Value) -> Result<Answer> {
-        let nonce = new_nonce();
-        let armored = self.seal(method, path, body, losos_access::now_secs(), &nonce)?;
+        let mut nonce = new_nonce();
+        let armored = self.seal(method, path, body.clone(), losos_access::now_secs(), &nonce)?;
         let _span = tracing::debug_span!("call", %method, %path).entered();
-        let response = self
-            .http
-            .post(
-                &call_url(&self.url, self.kind),
-                PGP_TYPE,
-                &format!("{PGP_TYPE}, application/json"),
-                &armored,
-            )
-            .map_err(|e| unreachable(&self.url, e))?;
+        let accept = format!("{PGP_TYPE}, application/json");
+        let response =
+            match self
+                .http
+                .post(&call_url(&self.url, self.kind), PGP_TYPE, &accept, &armored)
+            {
+                // Away from the box's network its own address leads nowhere,
+                // and the call never left this computer, so it goes through
+                // the edge instead, sealed again for its own nonce. Any other
+                // failure (a timeout, a changed certificate) may have reached
+                // the box, and stands.
+                Err(HttpError::NoConnection(detail)) if self.away.is_some() => {
+                    let (edge, http) = self.away.as_ref().expect("checked above");
+                    tracing::info!(%detail, %edge, "the box is out of reach; through its edge");
+                    nonce = new_nonce();
+                    let armored =
+                        self.seal(method, path, body, losos_access::now_secs(), &nonce)?;
+                    http.post(&call_url(edge, self.kind), PGP_TYPE, &accept, &armored)
+                        .map_err(|e| unreachable(edge, e))?
+                }
+                other => other.map_err(|e| unreachable(&self.url, e))?,
+            };
         if response
             .content_type
             .to_ascii_lowercase()

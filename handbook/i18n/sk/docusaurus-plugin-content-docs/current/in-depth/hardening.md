@@ -7,6 +7,8 @@ mdx:
 
 # Hardening
 
+![Nastavenia, Zabezpečenie: štyri ochrany, ktoré sú predvolene vypnuté, každá s tým, čo stojí.](@site/docs/img/settings-security-sk.png)
+
 `losos.hardening.enable` je predvolene zapnuté. Nastavuje:
 
 - parametre kernelu podľa KSPP

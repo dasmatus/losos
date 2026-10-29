@@ -36,16 +36,16 @@
   <rect x="740" y="66" width="230" height="116" rx="8" fill="#f3f5f7" stroke="#dce1e6"/>
   <text x="756" y="92" font-weight="650">Jeden Edge prüfen</text>
   <text x="756" y="114" fill="#5c6a77" font-size="13">die Box erzeugt eine neue</text>
-  <text x="756" y="132" fill="#5c6a77" font-size="13">Nonce; der Edge schickt sein</text>
-  <text x="756" y="150" fill="#5c6a77" font-size="13">Zertifikat und signiert die</text>
-  <text x="756" y="168" fill="#5c6a77" font-size="13">Nonce mit eigenem Schlüssel</text>
+  <text x="756" y="132" fill="#5c6a77" font-size="13">Nonce; der Edge schickt seinen</text>
+  <text x="756" y="150" fill="#5c6a77" font-size="13">Pass, und sein TPM nimmt</text>
+  <text x="756" y="168" fill="#5c6a77" font-size="13">die Nonce in ein Quote auf</text>
 
   <rect x="690" y="225" width="280" height="132" rx="8" fill="#f3f5f7" stroke="#dce1e6"/>
   <text x="706" y="250" font-weight="650">Vier Prüfungen, alle oder keine</text>
-  <text x="706" y="274" font-size="13">1. vom LosOS-Root-Schlüssel signiert</text>
-  <text x="706" y="294" font-size="13">2. nennt die angefragte Adresse</text>
-  <text x="706" y="314" font-size="13">3. nicht abgelaufen</text>
-  <text x="706" y="334" font-size="13">4. die Signatur der Nonce ist gültig</text>
+  <text x="706" y="274" font-size="13">1. der Pass des Betreibers gilt</text>
+  <text x="706" y="294" font-size="13">2. TPM von bekanntem Hersteller</text>
+  <text x="706" y="314" font-size="13">3. veröffentlichtes Image gebootet</text>
+  <text x="706" y="334" font-size="13">4. Gebührenadressen von LosOS</text>
 
   <text x="230" y="255" fill="#5c6a77" font-size="13">Die Box fragt weiter, also wird ein Edge, der zurückkommt,</text>
   <text x="230" y="274" fill="#5c6a77" font-size="13">von selbst wiedergefunden. Kein Neustart nötig.</text>
@@ -63,7 +63,7 @@
   <text x="361" y="487" font-size="13">Der Markt nicht.</text>
 
   <rect x="690" y="400" width="280" height="104" rx="8" fill="#e5f1ec" stroke="#2e7357" stroke-width="1.5"/>
-  <text x="706" y="426" font-weight="650" fill="#2e7357">✓ Offizieller LosOS-Edge</text>
+  <text x="706" y="426" font-weight="650" fill="#2e7357">✓ Geprüftes Gateway</text>
   <text x="706" y="449" font-size="13">Teilen und Fernzugriff gehen.</text>
   <text x="706" y="468" font-size="13">Der Markt kann laufen, sobald</text>
   <text x="706" y="487" font-size="13">er öffnet.</text>

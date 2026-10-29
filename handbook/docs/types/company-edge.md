@@ -27,13 +27,16 @@ their own.
 
 ## What is different
 
-- **No market.** A company's edge cannot present the LosOS signature, so
-  every box treats it as unofficial;
+- **No market, unless it is a checked gateway.** A company's edge usually
+  shows no gateway passport, so every box treats it as unofficial;
   [official or not](official-edge#official-or-not) explains the check. Its
-  row on the Mesh pane wears the warning sign, and the Market pane says "The edge proxy this box found is not run by LosOS.
-  Sharing storage through it works; trading needs an official LosOS edge in
-  reach." The company's own boxes share storage and compute among themselves
-  for free, which is the point.
+  row on the Mesh pane wears the warning sign, and the Market pane says "The
+  edge proxy this box found did not pass the gateway checks. Sharing storage
+  through it works; trading needs a checked LosOS gateway in reach." The
+  company's own boxes share storage and compute among themselves for free,
+  which is the point. A company that wants the market through its own edge
+  runs the published gateway image on a machine with a TPM and signs a
+  passport for it; it then pays LosOS's share like any other gateway.
 - **The company holds the keys.** The tunnel key pair, the cluster token and
   the allow-list of boxes live on the company's edge. Nothing about the
   company's data or traffic touches the LosOS project.
@@ -86,8 +89,8 @@ whether that edge may.
 
 2. On the edge, set `losos.edge.manage.enable` (an edge gateway machine has
    it on). The edge makes a manage key on its first start and keeps it in
-   `/var/lib/losos-registrar/manage-key`. On an edge gateway machine,
-   `losos-edge manage-key` prints it with the page's address.
+   `/var/lib/losos-registrar/manage-key`. An edge gateway machine shows it on
+   its screen with the page's address.
 3. Open `/manage/` at the edge's address, for example
    `http://<edge>.local:8443/manage/`, and sign in with the key. The page
    lists the boxes the edge routes and opens the ones whose owner turned the
@@ -106,6 +109,37 @@ manage anyone's box. When the owner turns the switch off, the edge's next
 call is refused.
 
 [Edge web page](../in-depth/edge-web-ui.md) goes through the page in full.
+
+## LosOS Desktop computers \{#losos-desktop-computers}
+
+The company's people can log in to its LosOS Desktop computers with their
+LosOS Login name and password. One box behind the company's edge gateway
+holds the people, and an administrator of that box joins each computer to it
+once, from the computer:
+
+```sh
+losos-login-bridge fingerprint <box>.local
+losos-login-bridge join <box>.local <fingerprint> <your name>
+```
+
+Compare the fingerprint with the one the box shows in its setup pages before
+you join. Joining asks for your LosOS Login password and only works for
+someone in `losos-admins`. The box must also go through the company's edge
+on its own network. A box that reaches the LosOS edge directly is refused.
+
+Each person's first login on the computer makes their account there, with an
+encrypted home. Later logins keep their name, e-mail and administrator rights
+in step with the box, and a laptop away from the office logs in with the
+password the box last accepted. The joined computer also reads the people
+list from the box every few minutes, while it is on the office network, and
+locks the accounts of people you remove or disable here. It reads names,
+e-mail addresses, groups and who is disabled, never a password.
+
+To take a computer out, remove it from the box with `DELETE
+/api/devices/directory/<id>`; `GET /api/devices/directory` lists them. The
+accounts already on the computer stay and keep logging in offline.
+[Company accounts](https://losos-project.github.io/desktop/company) in the
+LosOS Desktop documentation describes the computer's side.
 
 ## Who this is for
 

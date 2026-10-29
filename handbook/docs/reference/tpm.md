@@ -81,9 +81,83 @@ update, and the box has no shell to recover from that.
 :::warning[A thief with the whole box]
 The chip hands the key to anything booted on that machine, including a
 thief's USB stick. A TPM keeps the disk on its own unreadable. It does not
-help once someone has the whole box. The [security model](security-model.md)
-lists this as a known limitation.
+help once someone has the whole box, unless the box also needs a server on
+its own network to open the disk (next section). The
+[security model](security-model.md) lists this as a known limitation.
 :::
+
+## Opening the disk only at home
+
+A box can be set up so that the chip alone is not enough. Give the installer
+one or more Tang servers on the box's own network:
+
+```sh
+losos-ctl install --tang 'http://192.168.1.1:7500#THUMBPRINT'
+```
+
+Tang is a small key server. OpenWrt has a `tang` package, and NixOS has
+`services.tang`. Run `tang-show-keys 7500` on the server for the thumbprint.
+The installer checks the server against it, so it trusts nothing on first
+contact.
+
+The installer then seals the disk key with Clevis to the TPM and the Tang
+server together, instead of to the TPM alone. At every boot the box takes an
+address on the wired network, asks the server, and opens the disk only with
+both answers. The server never sees the key. It learns only that the box
+started.
+
+What that changes:
+
+- A box carried away from its network does not open, and neither does a box
+  whose server is gone. A thief with the whole box gets a passphrase prompt.
+- The box asks the server for up to a minute, then the screen asks for
+  a passphrase. Type the box's recovery code, which Settings, Backup shows.
+  The box adds the code as a passphrase as soon as it has one, and swaps it
+  when the code changes.
+- The server has to answer whenever the box starts, including the nightly
+  restart at 00:07. If it is off then, the box waits at the prompt until
+  someone types the code.
+- The disk alone is still unreadable, as on any TPM box.
+
+Like the TPM itself, the setting is in `modules/install-target.nix`
+(`tpm.tang`), so the way to turn it on or off is a reinstall.
+
+## Opening the disk with the edge
+
+The [edge](../in-depth/master-proxy.md) can be the key server instead of, or
+as well as, a server at home:
+
+```sh
+losos-ctl install --tang-edge
+```
+
+With no address the installer uses the edge the medium is set up for. Give
+one (`--tang-edge https://edge.example.org`) to use another. The installer
+asks the edge for a key pair of the box's own, then seals the disk key to the
+TPM and the edge together. With `--tang` as well, the disk needs the TPM, the
+home server and the edge.
+
+At every boot the box takes an address on the wired network and asks the edge
+over HTTPS. The edge never sees the disk key. It learns that the box started
+and the address it asked from, which it already sees whenever the tunnel is
+up.
+
+What the edge adds over a server at home:
+
+- **A switch for a stolen box.** Open `/tang/lost` on the edge, for example
+  `https://edge.example.org/tang/lost`, type the box's recovery code and
+  choose "My box was stolen". The code stays in the browser: the page sends
+  the edge only a value made from it. From then on the edge refuses that
+  box's key, so the box does not open anywhere, at home included, until the
+  owner chooses "I have it back" on the same page. The recovery code still
+  opens it at the box's own screen.
+- The box tells the edge that value once Settings, Backup has a recovery
+  code, and again when the code changes. Only the box that made the key can
+  do that, with a secret the installer kept inside the encrypted disk.
+
+The edge has to answer whenever the box starts, including the nightly restart
+at 00:07. If the edge or the box's internet connection is down then, the box
+waits at the prompt until someone types the recovery code.
 
 ## How to tell which mode a box is in
 

@@ -1,7 +1,7 @@
 # nixos-test-vms config for calls in LosOS chat (modules/calls.nix,
 # backend/src/calls/, admin-ui/app/src/calls/, admin-ui/app/src/chat/calls.tsx).
 #
-# The box runs LosOS Login, lososd, nginx, Dendrite and losos-calls as they
+# The box runs LosOS Login, lososd, nginx, Synapse and losos-calls as they
 # ship. Three people call each other from the chat page in real browsers,
 # and the SFU writes a copy of every frame it forwards, so the test can show
 # what the box itself holds. What only a booted box can show:
@@ -229,7 +229,6 @@ let
   browserBridge = pkgs.writeText "losos-calls-browser-bridge.py" ''
     import itertools
     import os
-    import selectors
     import socket
     import sys
     import threading
@@ -273,28 +272,34 @@ let
     front = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     front.bind(("127.0.0.1", ${toString mediaPort}))
     open(ready, "w").close()
-    sel = selectors.DefaultSelector()
-    sel.register(front, selectors.EVENT_READ, None)
+
+
+    # One thread per direction and socket: a browser that is slow to read
+    # holds up its own packets only, never another browser's or its own
+    # sending side.
+    def back(up, peer):
+        while True:
+            try:
+                front.sendto(up.recv(65535), peer)
+            except OSError:
+                pass
+
+
     ups = {}
     serial = itertools.count()
     while True:
-        for key, _ in sel.select():
-            try:
-                if key.data is None:
-                    data, peer = front.recvfrom(65535)
-                    up = ups.get(peer)
-                    if up is None:
-                        up = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-                        up.bind(f"{bridge}/p{os.getpid()}-{next(serial)}")
-                        up.connect(f"{bridge}/media")
-                        ups[peer] = up
-                        sel.register(up, selectors.EVENT_READ, (up, peer))
-                    up.send(data)
-                else:
-                    sock, peer = key.data
-                    front.sendto(sock.recv(65535), peer)
-            except OSError:
-                pass
+        try:
+            data, peer = front.recvfrom(65535)
+            up = ups.get(peer)
+            if up is None:
+                up = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+                up.bind(f"{bridge}/p{os.getpid()}-{next(serial)}")
+                up.connect(f"{bridge}/media")
+                ups[peer] = up
+                threading.Thread(target=back, args=(up, peer), daemon=True).start()
+            up.send(data)
+        except OSError:
+            pass
   '';
   chromiumInOwnNetwork = pkgs.writeShellScript "chromium-in-own-network" ''
     exec ${pkgs.util-linux}/bin/unshare -rn ${pkgs.runtimeShell} -c '
@@ -532,6 +537,10 @@ pkgs.testers.nixosTest {
     # The edge node, with throughEdge; looked up so the script reads the
     # same without one.
     EDGE = globals().get("edge")
+    # The film is recorded by losos-calls alone: under emulation a 2x
+    # recording of Matus's window costs the edge run, with a third machine
+    # and its relay, more than it can spare.
+    FILMING = EDGE is None
 
     start_all()
     if EDGE is not None:
@@ -540,7 +549,7 @@ pkgs.testers.nixosTest {
         box.wait_until_succeeds("systemctl is-active losos-tunnel-client.service", timeout=300)
     box.wait_for_unit("lososd.service")
     box.wait_for_unit("nginx.service")
-    box.wait_for_unit("dendrite.service")
+    box.wait_for_unit("losos-chat.service")
     box.wait_for_unit("losos-calls.service")
     box.wait_for_open_port(443)
     laptop.wait_for_unit("socks.service")
@@ -641,7 +650,6 @@ pkgs.testers.nixosTest {
     os.environ.setdefault("HOME", os.environ.get("TMPDIR", "/tmp"))
     from playwright.sync_api import sync_playwright
 
-    import selectors
     import socket
     import sys
     import tempfile
@@ -679,36 +687,38 @@ pkgs.testers.nixosTest {
     def media_shim():
         """Each browser socket the bridges carry gets a forwarded port of its
         own (peerPorts in the Nix above), and the replies on it go back to
-        that socket."""
+        that socket, each on a thread of its own so that one slow browser
+        holds up nobody else."""
         front = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
         front.bind(f"{BRIDGE}/media")
-        sel = selectors.DefaultSelector()
-        sel.register(front, selectors.EVENT_READ, None)
         free = list(range(${toString shimBase}, ${toString (shimBase + peerPorts)}))
         ups = {}
-        while True:
-            for key, _ in sel.select():
+
+        def back(up, peer):
+            while True:
                 try:
-                    if key.data is None:
-                        data, peer = front.recvfrom(65535)
-                        up = ups.get(peer)
-                        if up is None:
-                            if not free:
-                                print(f"media shim: no port left for {peer}")
-                                continue
-                            up = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                            up.connect(("127.0.0.1", free.pop(0)))
-                            ups[peer] = up
-                            sel.register(up, selectors.EVENT_READ, (up, peer))
-                        up.send(data)
-                        SHIM[peer] = SHIM.get(peer, (0, 0))
-                        SHIM[peer] = (SHIM[peer][0] + 1, SHIM[peer][1])
-                    else:
-                        sock, peer = key.data
-                        front.sendto(sock.recv(65535), peer)
-                        SHIM[peer] = (SHIM[peer][0], SHIM[peer][1] + 1)
+                    front.sendto(up.recv(65535), peer)
+                    SHIM[peer] = (SHIM[peer][0], SHIM[peer][1] + 1)
                 except OSError:
                     pass
+
+        while True:
+            try:
+                data, peer = front.recvfrom(65535)
+                up = ups.get(peer)
+                if up is None:
+                    if not free:
+                        print(f"media shim: no port left for {peer}")
+                        continue
+                    up = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    up.connect(("127.0.0.1", free.pop(0)))
+                    ups[peer] = up
+                    SHIM[peer] = (0, 0)
+                    threading.Thread(target=back, args=(up, peer), daemon=True).start()
+                up.send(data)
+                SHIM[peer] = (SHIM[peer][0] + 1, SHIM[peer][1])
+            except OSError:
+                pass
 
     SHIM: dict[str, tuple[int, int]] = {}
     threading.Thread(target=socks_relay, daemon=True).start()
@@ -784,7 +794,7 @@ pkgs.testers.nixosTest {
             timezone_id="Europe/Bratislava",
             reduced_motion="reduce",
             ignore_https_errors=True,
-            **({"record_video_dir": f"{FILM}/raw", "record_video_size": {"width": 2560, "height": 1800}} if name == "matus" else {}),
+            **({"record_video_dir": f"{FILM}/raw", "record_video_size": {"width": 2560, "height": 1800}} if name == "matus" and FILMING else {}),
         )
         if name == "matus":
             clip_start["matus"] = time.time()
@@ -836,7 +846,7 @@ pkgs.testers.nixosTest {
             print(f"{name} sees {page.url}:\n{page.inner_text('body')[:3000]}\n{problems}")
             print("\n".join(seen[:8] + ["…"] + seen[-20:]))
             print(box.execute("journalctl -u lososd --no-pager | grep -i 'chat\\|exchange\\|warn' | head -n 40")[1])
-            print(box.execute("journalctl -u authelia-losos -u dendrite --since -4min --no-pager | grep -v 'level=info' | tail -n 60")[1])
+            print(box.execute("journalctl -u authelia-losos -u losos-chat --since -4min --no-pager | grep -v 'level=info' | tail -n 60")[1])
             raise
         return page
 
@@ -861,6 +871,16 @@ pkgs.testers.nixosTest {
         # in what changed; a picture of the timeline's end stays put.
         if top:
             page.evaluate("window.scrollTo(0, 0)")
+        page.screenshot(path=f"{SHOTS}/{name}.png")
+
+    def shot_end(page, name):
+        """The end of the room's timeline, where the newest notice is,
+        with the pointer off the messages so no toolbar covers them."""
+        page.mouse.move(0, 0)
+        settle(page)
+        page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)")
+        page.get_by_role("log").first.evaluate("e => { e.scrollTop = e.scrollHeight }")
+        time.sleep(1)
         page.screenshot(path=f"{SHOTS}/{name}.png")
 
     def film(page, slug, title, action="none", targets=None, top=True):
@@ -1183,6 +1203,9 @@ pkgs.testers.nixosTest {
             guest.get_by_label("Your name").fill("Jack")
             shot(guest, "guest-join")
             guest.get_by_role("button", name="Join the call").click()
+            # Under emulation the guest's camera and its background cut take
+            # minutes to open; the call view comes after them.
+            guest.locator("[data-guest-call]").wait_for(timeout=360000)
             # Two others for the guest, and the guest for each of them.
             live(guest, 2)
             for page in (owner, her):
@@ -1254,10 +1277,6 @@ pkgs.testers.nixosTest {
                           token=tokens["matus"],
                           data={"name": "Holiday", "preset": "private_chat",
                                 "invite": [f"@eva:{HOST}", f"@jan:{HOST}"],
-                                # As chat makes a private room: every member
-                                # may send a MatrixRTC membership.
-                                "power_level_content_override": {
-                                    "events": {"org.matrix.msc3401.call.member": 0}},
                                 # Calls are only for encrypted rooms: their
                                 # keys go to devices the crypto tracks. The
                                 # slot is the room's one call (MSC4143).
@@ -1294,26 +1313,58 @@ pkgs.testers.nixosTest {
                 if attempt == 5:
                     raise
         owner.get_by_role("button", name="Video call").click()
-        for page in (her, jan):
-            page.locator("[data-ringing]").get_by_role("button", name="Answer", exact=True).click()
+        for who, page in (("eva", her), ("jan", jan)):
+            try:
+                page.locator("[data-ringing]").get_by_role("button", name="Answer", exact=True).click()
+            except Exception:
+                stuck(who, page)
+                raise
         for page in (owner, her, jan):
             live(page, 2)
-        # What the room holds is MatrixRTC: the open slot, and one
-        # membership per device, each publishing the SFU and the one call.
+        # What the room holds is MatrixRTC: the open slot, and a sticky
+        # membership from each of them (MSC4354; encrypted, so the server
+        # sees only that it is sticky), each with a delayed leave waiting on
+        # the homeserver (MSC4140) for the moment its page goes quiet. A
+        # leave is sent plain, since the homeserver sends it later, and
+        # names only the slot and the device: earlier calls here left some.
         code, body = call(f"/_matrix/client/v3/rooms/{room}/state", cookies["matus"], token=tokens["matus"])
         assert code == 200, (code, body)
         state = json.loads(body)
         slot = [e for e in state if e["type"] == "org.matrix.msc4143.rtc.slot"]
         assert [e["state_key"] for e in slot] == ["org.losos.call#room"], slot
         assert slot[0]["content"]["status"] == "open", slot
-        members = [e for e in state if e["type"] == "org.matrix.msc3401.call.member" and e["content"]]
-        assert sorted(e["sender"] for e in members) == sorted(f"@{n}:{HOST}" for n in ("matus", "eva", "jan")), members
-        for e in members:
-            c = e["content"]
-            assert c["application"] == "org.losos.call" and c["call_id"] == "room", c
-            assert e["state_key"].startswith(f"_{e['sender']}_{c['device_id']}_"), e
-            assert c["foci_preferred"][0]["type"] == "org.losos.sfu", c
-        assert len({e["content"]["foci_preferred"][0]["call"] for e in members}) == 1, members
+        assert not [e for e in state if e["type"] == "org.matrix.msc3401.call.member"], state
+        # The media is up before the last membership is: a page sends its
+        # delayed leave first, and on a slow homeserver that takes a while.
+        for _ in range(30):
+            code, body = call(f"/_matrix/client/v3/rooms/{room}/messages?dir=b&limit=100", cookies["matus"],
+                              token=tokens["matus"])
+            assert code == 200, (code, body)
+            sticky = [e for e in json.loads(body)["chunk"] if "msc4354_sticky" in e]
+            sealed = [e for e in sticky if e["type"] == "m.room.encrypted"]
+            if len({e["sender"] for e in sealed}) == 3:
+                break
+            time.sleep(2)
+        assert {e["sender"] for e in sealed} == {f"@{n}:{HOST}" for n in ("matus", "eva", "jan")}, sticky
+        assert all(e in sealed or (e["type"] == "org.matrix.msc4143.rtc.member"
+                                   and set(e["content"]) == {"slot_id", "msc4354_sticky_key"})
+                   for e in sticky), sticky
+        def leaves(n):
+            code, body = call("/_matrix/client/unstable/org.matrix.msc4140/delayed_events", cookies[n],
+                              token=tokens[n])
+            assert code == 200, (code, body)
+            return [e for e in json.loads(body)["delayed_events"]
+                    if urllib.parse.quote(e["room_id"]) == room]
+        for n, page in (("matus", owner), ("eva", her), ("jan", jan)):
+            for _ in range(20):
+                if leaves(n):
+                    break
+                time.sleep(1)
+            else:
+                print(call("/_matrix/client/unstable/org.matrix.msc4140/delayed_events", cookies[n],
+                           token=tokens[n])[1])
+                stuck(n, page)
+                raise AssertionError(f"{n} has no delayed leave in the room")
         shot(owner, "call-three")
         film(owner, "call-of-three", "a call of three in a room")
         jan.get_by_role("button", name="Leave the call").click()
@@ -1331,37 +1382,53 @@ pkgs.testers.nixosTest {
             assert counts["refused"] == "0", counts
         notice = jan.locator("[data-call-notice]").last
         notice.get_by_role("button", name="Join", exact=True).wait_for()
-        notice.scroll_into_view_if_needed()
-        shot(jan, "timeline-join", top=False)
+        shot_end(jan, "timeline-join")
         notice.get_by_role("button", name="Join", exact=True).click()
         for page in (owner, her, jan):
             live(page, 2, frames=0)
         # The link in the notice other Matrix apps show brings Eva back.
         her.get_by_role("button", name="Leave the call").click()
         her.locator("[data-call-view]").wait_for(state="detached")
-        # Her leave reaches the room before the page goes away.
-        def eva_in_call():
-            state = json.loads(call(f"/_matrix/client/v3/rooms/{room}/state", cookies["matus"], token=tokens["matus"])[1])
-            return any(e["type"] == "org.matrix.msc3401.call.member" and e["content"]
-                       and e["sender"] == f"@eva:{HOST}" for e in state)
+        # Her leave reaches the room before the page goes away: the
+        # homeserver has no delayed leave of hers left to send.
         for _ in range(60):
-            if not eva_in_call():
+            if not leaves("eva"):
                 break
             time.sleep(1)
-        assert not eva_in_call(), "Eva's membership stayed after she left"
+        assert not leaves("eva"), "Eva's delayed leave stayed after she left"
         her.goto(f"https://{HOST}/chat/?join={room}&call=video")
         for page in (owner, her, jan):
             live(page, 2, frames=0)
 
-    with subtest("hanging up ends the call for the room"):
-        for page in (jan, her):
-            page.get_by_role("button", name="Leave the call").click()
-            page.locator("[data-call-view]").wait_for(state="detached")
+    with subtest("a closed browser leaves by itself; hanging up ends the call for the room"):
+        # Jan's browser goes away without a word. The homeserver sends the
+        # leave it was holding for him (MSC4140) half a minute later: a new sticky
+        # event of his, and no delayed leave left.
+        def sticky_from(n):
+            body = call(f"/_matrix/client/v3/rooms/{room}/messages?dir=b&limit=100", cookies["matus"],
+                        token=tokens["matus"])[1]
+            return len([e for e in json.loads(body)["chunk"]
+                        if "msc4354_sticky" in e and e["sender"] == f"@{n}:{HOST}"])
+        assert leaves("jan")
+        before = sticky_from("jan")
+        jan.context.close()
+        for _ in range(60):
+            if not leaves("jan") and sticky_from("jan") > before:
+                break
+            time.sleep(1)
+        assert not leaves("jan") and sticky_from("jan") > before, "Jan's leave never came"
+        for page in (owner, her):
+            until_js(page,
+                "document.querySelectorAll('[data-call-view] [data-pid]').length === 2", timeout=60000)
+        her.get_by_role("button", name="Leave the call").click()
+        her.locator("[data-call-view]").wait_for(state="detached")
         # Left alone, Matus is out of the call too, and the SFU told his
         # page it was the last one there, so it tells the room.
         owner.locator("[data-call-view]").wait_for(state="detached", timeout=60000)
         owner.get_by_role("log").get_by_text("The call ended").last.wait_for(timeout=60000)
-        jan.locator("[data-call-notice] button").wait_for(state="detached", timeout=30000)
+        until_js(her, "document.querySelectorAll('[data-call-notice] button').length === 0", timeout=30000)
+        # The call rang the room once, however many joined it.
+        assert her.locator("[data-call-notice]").count() == 1, her.locator("[data-call-notice]").count()
 
     with subtest("a call link from another app opens the direct chat and rings"):
         # Contacts and Mail link a person as /chat/?with=<name>&call=voice.
@@ -1421,15 +1488,16 @@ pkgs.testers.nixosTest {
     # Matus's clip: Chromium writes it when his window closes. Under
     # emulation the page paints well below 60 frames a second, so the
     # clip is resampled to a constant 60 for the cut.
-    raw = owner.video.path()
-    owner.context.close()
-    subprocess.run(
-        ["${pkgs.ffmpeg-headless}/bin/ffmpeg", "-v", "error", "-i", raw, "-vf", "fps=60",
-         "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
-         "-movflags", "+faststart", "-y", f"{FILM}/calls-matus.mp4"],
-        check=True,
-    )
-    os.remove(raw)
+    if FILMING:
+        raw = owner.video.path()
+        owner.context.close()
+        subprocess.run(
+            ["${pkgs.ffmpeg-headless}/bin/ffmpeg", "-v", "error", "-i", raw, "-vf", "fps=60",
+             "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
+             "-movflags", "+faststart", "-y", f"{FILM}/calls-matus.mp4"],
+            check=True,
+        )
+        os.remove(raw)
 
     for b in browsers.values():
         b.close()
