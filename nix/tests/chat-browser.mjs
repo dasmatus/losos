@@ -146,7 +146,7 @@ async function handbook(key) {
     await page.getByRole("button", { name: button, exact: true }).click();
     await page.getByRole("log").getByText("Hi Eva, chat is up on mattbox.").waitFor();
     await page.getByRole("log").getByText("Nice. Can we plan the holiday here?").waitFor();
-    mkdirSync(`${out}/handbook/${lang}`, { recursive: true });
+    Bun.spawnSync(["mkdir", "-p", `${out}/handbook/${lang}`]);
     await settle(page);
     await page.screenshot({ path: `${out}/handbook/${lang}/chat.png`, timeout: 300_000 });
     await context.close();

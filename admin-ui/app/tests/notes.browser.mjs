@@ -345,7 +345,7 @@ await check('a .note reads as MDX, its components beside Obsidian\'s syntax', as
     assert.deepEqual(errors, []);
     for (const v of await violations(page)) ALL_VIOLATIONS.add(v);
   } finally {
-    files.set('Harvest.note', await readFile(join(FIXTURE, 'Harvest.note'), 'utf8'));
+    files.set('Harvest.note', await Bun.file(`${FIXTURE}/Harvest.note`).text());
     etags.delete('Harvest.note');
     await context.close();
   }
