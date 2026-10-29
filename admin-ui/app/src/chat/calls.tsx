@@ -128,25 +128,22 @@ export function callEnded(room: Room, call: string): boolean {
     });
 }
 
-/* A notification can come in the same sync as the membership it refers
- * to, and the room counts that membership only once it is decrypted, after
- * the timeline has been told about both. So a notification whose call is
- * not live yet waits a little for the room's sticky events to catch up. */
-function liveCallOf(room: Room, ev: MatrixEvent, waitMs = 10_000): Promise<{ call: string; video: boolean } | null> {
-  const now = (): { call: string; video: boolean } | null => {
-    const said = callEvent(room, ev);
-    return said !== null && !callEnded(room, said.call) ? { call: said.call, video: said.video } : null;
-  };
-  const found = now();
-  if (found !== null) return Promise.resolve(found);
+/* Sticky events reach the room's store after the timeline has been told
+ * about them, and an encrypted one only once it is decrypted. A
+ * notification waits a little for the store to catch up: for itself, which
+ * MSC4075 checks is its sender's current one, and for the membership it
+ * refers to. */
+function whenSticky<T>(room: Room, found: () => T | null, waitMs = 10_000): Promise<T | null> {
+  const now = found();
+  if (now !== null) return Promise.resolve(now);
   return new Promise((resolve) => {
-    const done = (said: { call: string; video: boolean } | null): void => {
+    const done = (said: T | null): void => {
       clearTimeout(timer);
       room.off(RoomStickyEventsEvent.Update, check);
       resolve(said);
     };
     const check = (): void => {
-      const said = now();
+      const said = found();
       if (said !== null) done(said);
     };
     const timer = setTimeout(() => done(null), waitMs);
@@ -383,10 +380,17 @@ export function CallsProvider({ client, children }: { client: MatrixClient; chil
             return;
           }
           if (ev.getType() !== EventType.RTCNotification || ev.getSender() === me) return;
+          const key = ev.getContent()["msc4354_sticky_key"];
+          if (ev.unstableStickyInfo !== undefined && typeof key === "string") {
+            await whenSticky(room, () => (room._unstable_getKeyedStickyEvent(ev.getSender() ?? "", ev.getType(), key)?.getId() === ev.getId() ? true : null));
+          }
           const content = await parseCallNotificationContent(ev, { room, userId: me });
           const eventId = ev.getId();
           if (content.slot_id !== RTC_SLOT_ID || callEvent(room, ev) === null || eventId === undefined) throw new Error("not a call in this room's slot");
-          const said = await liveCallOf(room, ev);
+          const said = await whenSticky(room, () => {
+            const said = callEvent(room, ev);
+            return said !== null && !callEnded(room, said.call) ? { call: said.call, video: said.video } : null;
+          });
           if (said === null || activeCall.current === said.call) return;
           setRinging({
             roomId: room.roomId,

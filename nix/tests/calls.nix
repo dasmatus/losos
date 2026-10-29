@@ -1318,8 +1318,12 @@ pkgs.testers.nixosTest {
                 if attempt == 5:
                     raise
         owner.get_by_role("button", name="Video call").click()
-        for page in (her, jan):
-            page.locator("[data-ringing]").get_by_role("button", name="Answer", exact=True).click()
+        for who, page in (("eva", her), ("jan", jan)):
+            try:
+                page.locator("[data-ringing]").get_by_role("button", name="Answer", exact=True).click()
+            except Exception:
+                stuck(who, page)
+                raise
         for page in (owner, her, jan):
             live(page, 2)
         # What the room holds is MatrixRTC: the open slot, and a sticky
