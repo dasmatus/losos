@@ -15,6 +15,24 @@ Der größte Teil dieses Handbuchs ist für Besitzer. LosOS bauen, testen und
   Repository: die Build-Befehle, die dateiübergreifende Architektur und die
   Liste der Fehler, die man leicht noch einmal macht.
 
+## Vor dem Commit \{#before-you-commit}
+
+Das Repository bringt in `nix/hooks/` Git-Hooks mit, die vor einem Commit
+oder Push die Prüfungen der CI für die Dateien ausführen, die du änderst.
+`devenv shell` und `nix develop` schalten sie ein. Ohne beides führst du in
+deinem Klon einmal Folgendes aus:
+
+```sh
+bash nix/hooks/install
+```
+
+Der Commit-Hook formatiert und prüft das Rust und Nix, das du angefasst
+hast, prüft die Typen der Weboberfläche und wertet jede Ausgabe des Flakes
+aus. Der Push-Hook ergänzt die Rust-Tests, die Browsertests der
+Weboberfläche und die VM-Tests der geänderten Dateien. Die Protokolle jedes
+Laufs liegen in `.git/losos-hooks/logs/`. Die Entwicklernotizen in
+`docs/development.md` nennen jede Prüfung.
+
 ## Dieses Handbuch ändern \{#changing-this-handbook}
 
 Die Quelle ist `handbook/` im Repository, eine
