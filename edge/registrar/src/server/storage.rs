@@ -14,14 +14,16 @@
 //! in the buyer's `market-<id>` namespace with the claim mounted, pinned to
 //! the edge's own node (the one node every edge has, and the one that holds
 //! the image), and a Service in front. Every request after that is
-//! forwarded to the Service.
+//! forwarded to the Service, signed in as the edge with a password made for
+//! that order alone (`Door::upstream`), because every mesh node can reach a
+//! Service's cluster address and none of them should reach the repository.
 //!
 //! # The door's key
 //!
 //! A request carries HTTP Basic credentials: the order id and a secret the
 //! box derives from its recovery code and the order id
 //! (`backend/src/backup.rs`, `door_secret`). The edge keeps only the
-//! secret's SHA-256 (`MarketState::doors`), set by the buyer through
+//! secret's SHA-256 (`Door::key`), set by the buyer through
 //! `POST /market/storage-door` with its appliance token. Not the token
 //! itself, on purpose: the day the backup is needed the box that bought the
 //! storage may be gone, and a new box knows the recovery code but holds no
@@ -53,7 +55,7 @@ use serde::Deserialize;
 use super::{kube_access, kube_create, market_of, market_tenant, AppState, KubeAccess, MarketAuth};
 use crate::action::Action;
 use crate::error::ApiError;
-use crate::market::{MarketError, StorageVolume};
+use crate::market::{MarketError, OpenDoor, StorageVolume};
 
 /// Requests forwarded at once, across every box.
 pub(super) const MAX_REQUESTS: usize = 8;
@@ -224,7 +226,9 @@ async fn serve(
     if user != order || !order_ok(order) || secret.is_empty() {
         return unauthorised();
     }
-    let Some(volume) = market.door_volume(order, &key_of(&secret)).await else {
+    let Some(OpenDoor { volume, upstream: password }) =
+        market.door_volume(order, &key_of(&secret)).await
+    else {
         tracing::warn!(target: Action::Market.target(), "storage {order}: wrong door key");
         return unauthorised();
     };
@@ -235,7 +239,7 @@ async fn serve(
         return busy("busy with other backups; retry later");
     };
 
-    let address = match upstream(st, order, &volume, &image).await {
+    let address = match upstream(st, order, &volume, &image, &password).await {
         Ok(Some(a)) => a,
         Ok(None) => return busy("the storage is starting; retry in a few seconds"),
         Err(e) => return e.into_response(),
@@ -250,7 +254,12 @@ async fn serve(
         url.push('?');
         url.push_str(&q);
     }
-    let mut request = st.storage.client.request(method, &url).body(bytes);
+    let mut request = st
+        .storage
+        .client
+        .request(method, &url)
+        .basic_auth(UPSTREAM_USER, Some(&password))
+        .body(bytes);
     for name in [header::CONTENT_TYPE, header::ACCEPT, header::RANGE] {
         if let Some(v) = headers.get(&name) {
             request = request.header(name, v);
@@ -337,6 +346,7 @@ async fn upstream(
     order: &str,
     volume: &StorageVolume,
     image: &str,
+    password: &str,
 ) -> Result<Option<String>, ApiError> {
     if let Some(a) = st.storage.upstream.lock().await.get(order) {
         return Ok(Some(a.clone()));
@@ -352,7 +362,7 @@ async fn upstream(
             .insert(order.to_string(), address.clone());
         return Ok(Some(address));
     }
-    start_server(&kube, image, volume).await?;
+    start_server(&kube, image, volume, password).await?;
     tracing::info!(
         target: Action::Market.target(),
         "started the backup server for {}/{}",
@@ -392,14 +402,23 @@ async fn service_ip(
     }
 }
 
-/// Create the order's Deployment, then its Service. Both are idempotent:
-/// an object that exists is a `409`, which counts as done.
+/// Create the order's password Secret, its Deployment, then its Service.
+/// Each is idempotent: an object that exists is a `409`, which counts as
+/// done. The password never changes for an order, so an old Secret is the
+/// right one.
 async fn start_server(
     kube: &KubeAccess,
     image: &str,
     volume: &StorageVolume,
+    password: &str,
 ) -> Result<(), ApiError> {
     let ns = &volume.namespace;
+    kube_create(
+        kube,
+        &format!("{}/api/v1/namespaces/{ns}/secrets", kube.api),
+        &secret(volume, password),
+    )
+    .await?;
     kube_create(
         kube,
         &format!("{}/apis/apps/v1/namespaces/{ns}/deployments", kube.api),
@@ -414,10 +433,42 @@ async fn start_server(
     .await
 }
 
+/// The user the edge signs in to every order's server as.
+const UPSTREAM_USER: &str = "edge";
+
+/// The server's htpasswd line for `password`: rest-server's `{SHA}` form,
+/// SHA-1 in base64. SHA-1 is enough here: the password is 32 random bytes,
+/// so there is nothing to guess.
+pub(super) fn htpasswd(password: &str) -> String {
+    let digest = ring::digest::digest(&ring::digest::SHA1_FOR_LEGACY_USE_ONLY, password.as_bytes());
+    format!(
+        "{UPSTREAM_USER}:{{SHA}}{}\n",
+        base64::engine::general_purpose::STANDARD.encode(digest.as_ref())
+    )
+}
+
+/// The Secret that holds the server's one account, the edge's.
+pub(super) fn secret(volume: &StorageVolume, password: &str) -> serde_json::Value {
+    serde_json::json!({
+        "apiVersion": "v1",
+        "kind": "Secret",
+        "metadata": {
+            "name": server_name(&volume.pvc),
+            "namespace": volume.namespace,
+            "labels": {
+                "losos.market/managed": "true",
+                "losos.market/order": volume.pvc,
+            },
+        },
+        "type": "Opaque",
+        "stringData": { "htpasswd": htpasswd(password) },
+    })
+}
+
 /// `rest-server` with the claim mounted, on the edge's node, as nobody, with
-/// no service account, no capabilities and a read-only root. It keeps no
-/// accounts of its own (`--no-auth`): the edge in front decides who comes in,
-/// and nothing else can reach a ClusterIP Service from outside the mesh.
+/// no service account, no capabilities and a read-only root. Its one account
+/// is the edge's, from the order's Secret: every mesh node can reach a
+/// ClusterIP Service, and none of them knows the password.
 pub(super) fn deployment(image: &str, volume: &StorageVolume) -> serde_json::Value {
     let name = server_name(&volume.pvc);
     serde_json::json!({
@@ -470,7 +521,7 @@ pub(super) fn deployment(image: &str, volume: &StorageVolume) -> serde_json::Val
                             "/bin/rest-server",
                             "--path", "/data",
                             "--listen", format!(":{PORT}"),
-                            "--no-auth",
+                            "--htpasswd-file", "/etc/rest-server/htpasswd",
                         ],
                         "ports": [{ "containerPort": PORT }],
                         "readinessProbe": { "tcpSocket": { "port": PORT } },
@@ -479,12 +530,21 @@ pub(super) fn deployment(image: &str, volume: &StorageVolume) -> serde_json::Val
                             "readOnlyRootFilesystem": true,
                             "capabilities": { "drop": ["ALL"] },
                         },
-                        "volumeMounts": [{ "name": "data", "mountPath": "/data" }],
+                        "volumeMounts": [
+                            { "name": "data", "mountPath": "/data" },
+                            { "name": "auth", "mountPath": "/etc/rest-server", "readOnly": true },
+                        ],
                     }],
-                    "volumes": [{
-                        "name": "data",
-                        "persistentVolumeClaim": { "claimName": volume.pvc },
-                    }],
+                    "volumes": [
+                        {
+                            "name": "data",
+                            "persistentVolumeClaim": { "claimName": volume.pvc },
+                        },
+                        {
+                            "name": "auth",
+                            "secret": { "secretName": name, "defaultMode": 0o440 },
+                        },
+                    ],
                 },
             },
         },
@@ -579,6 +639,12 @@ mod tests {
     }
 
     #[test]
+    fn the_password_is_in_rest_servers_sha_form() {
+        // `printf password | openssl sha1 -binary | base64`
+        assert_eq!(htpasswd("password"), "edge:{SHA}W6ph5Mm5Pz8GgiULbPgzG37mj9g=\n");
+    }
+
+    #[test]
     fn the_server_runs_unprivileged_on_the_edge_with_the_claim() {
         let v = StorageVolume {
             namespace: "market-b".to_string(),
@@ -597,10 +663,22 @@ mod tests {
             pod["volumes"][0]["persistentVolumeClaim"]["claimName"],
             "ord-ab12"
         );
+        assert_eq!(pod["volumes"][1]["secret"]["secretName"], "rest-ord-ab12");
         let c = &pod["containers"][0];
+        let command: Vec<&str> = c["command"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|a| a.as_str().unwrap())
+            .collect();
+        assert!(!command.contains(&"--no-auth"), "{command:?}");
+        assert!(command.contains(&"/etc/rest-server/htpasswd"), "{command:?}");
         assert_eq!(c["imagePullPolicy"], "Never");
         assert_eq!(c["securityContext"]["readOnlyRootFilesystem"], true);
         assert_eq!(c["securityContext"]["capabilities"]["drop"][0], "ALL");
+        let k = secret(&v, "pw");
+        assert_eq!(k["metadata"]["name"], "rest-ord-ab12");
+        assert_eq!(k["stringData"]["htpasswd"], htpasswd("pw"));
         let s = service(&v);
         assert_eq!(s["spec"]["selector"]["losos.market/backup"], "ord-ab12");
         assert_eq!(

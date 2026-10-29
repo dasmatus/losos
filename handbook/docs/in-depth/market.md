@@ -181,7 +181,9 @@ gone, because the claim still holds Longhorn capacity after the month ends.
   `/market/storage/<order>/`, which serves restic's REST protocol. The
   edge starts one `rest-server` per order beside the claim on first use,
   from an image it carries (`losos.edge.market.backups.enable`, on by
-  default) and never pulls. The edge opens that path only to a key it
+  default) and never pulls. The server's one account is the edge's, with a
+  password made for that order, so the mesh boxes that can reach its
+  cluster address cannot open it. The edge opens that path only to a key it
   stores as a SHA-256 hash, which the buyer's box sets with
   `POST /market/storage-door` and derives from its recovery code and the
   order id. A new box with the same recovery code therefore reaches the
@@ -206,7 +208,8 @@ Limits to know about, none of which are enforced yet:
   its units back on sale once the apiserver answers 404 for it.
 - The registrar's ServiceAccount gains cluster-wide `get`/`create` on
   namespaces and PersistentVolumeClaims when the market is enabled, and on
-  Deployments and Services when backups on bought storage are on.
+  Deployments and Services (and `create` on Secrets) when backups on bought
+  storage are on.
   Kubernetes RBAC cannot scope any of them to `market-*` names.
 :::
 

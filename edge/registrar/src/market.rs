@@ -601,14 +601,33 @@ pub struct MarketState {
     /// Pay as you go: meters and their taps (`crate::meter`).
     #[serde(default, skip_serializing_if = "crate::meter::Taps::is_empty")]
     pub taps: crate::meter::Taps,
-    /// The backup door's key of each bought volume a box keeps its backups
-    /// on (`server/storage.rs`), by order id: the SHA-256, in hex, of a
-    /// secret the box derives from its recovery code and the order id. The
-    /// secret itself is never sent here. Only the buyer sets it; whoever
-    /// knows the recovery code (the buyer's box, or a new box the owner
-    /// restores onto) can then open the door with it.
+    /// The backup door of each bought volume a box keeps its backups on
+    /// (`server/storage.rs`), by order id.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub doors: BTreeMap<String, String>,
+    pub doors: BTreeMap<String, Door>,
+}
+
+/// One bought volume's backup door.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Door {
+    /// The SHA-256, in hex, of a secret the buyer's box derives from its
+    /// recovery code and the order id. The secret itself is never sent here.
+    /// Only the buyer sets it; whoever knows the recovery code (the buyer's
+    /// box, or a new box the owner restores onto) can then open the door.
+    pub key: String,
+    /// The password the edge alone uses to reach the order's server, made
+    /// here once and kept for the life of the order. Every mesh node can
+    /// reach a Service's cluster address; without this, any of them could
+    /// read or delete the backups there.
+    pub upstream: String,
+}
+
+/// What is behind an opened door: the volume, and how the edge reaches its
+/// server.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpenDoor {
+    pub volume: StorageVolume,
+    pub upstream: String,
 }
 
 /// A seller's watch-only keys for coin orders (`crate::coins`), and the
@@ -1271,17 +1290,20 @@ pub fn door_hash_ok(hash: &str) -> bool {
     hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
-/// The volume behind `order_id`'s backup door, when `hash` is its key. The
+/// What is behind `order_id`'s backup door, when `hash` is its key. The
 /// comparison takes the same time however much of the key matches.
 #[must_use]
-pub fn door_volume(state: &MarketState, order_id: &str, hash: &str) -> Option<StorageVolume> {
+pub fn door_volume(state: &MarketState, order_id: &str, hash: &str) -> Option<OpenDoor> {
     use subtle::ConstantTimeEq;
-    let key = state.doors.get(order_id)?;
-    if !bool::from(key.as_bytes().ct_eq(hash.as_bytes())) {
+    let door = state.doors.get(order_id)?;
+    if !bool::from(door.key.as_bytes().ct_eq(hash.as_bytes())) {
         return None;
     }
     let buyer = &state.orders.get(order_id)?.buyer;
-    storage_volume(state, order_id, buyer)
+    Some(OpenDoor {
+        volume: storage_volume(state, order_id, buyer)?,
+        upstream: door.upstream.clone(),
+    })
 }
 
 /// Paid, live machine orders whose replicas do not exist yet, resolved to
@@ -3468,13 +3490,14 @@ impl Market {
     }
 
     /// See [`door_volume`].
-    pub async fn door_volume(&self, order_id: &str, hash: &str) -> Option<StorageVolume> {
+    pub async fn door_volume(&self, order_id: &str, hash: &str) -> Option<OpenDoor> {
         door_volume(&*self.state.lock().await, order_id, hash)
     }
 
     /// Set the backup door's key of `buyer`'s bought volume `order_id`. A new
     /// key replaces the old one: the box's recovery code changed (an erase),
     /// and the old backups, encrypted under the old code, are no longer its.
+    /// The upstream password is made with the first key and kept.
     ///
     /// # Errors
     /// [`MarketError::NotFound`] for anything but the buyer's own bound
@@ -3487,11 +3510,22 @@ impl Market {
         if storage_volume(&state, order_id, buyer).is_none() {
             return Err(MarketError::NotFound);
         }
-        if state.doors.get(order_id).map(String::as_str) == Some(hash) {
+        if state.doors.get(order_id).is_some_and(|d| d.key == hash) {
             return Ok(());
         }
+        let upstream = match state.doors.get(order_id) {
+            Some(d) => d.upstream.clone(),
+            None => crate::identity::random_hex(32)
+                .ok_or_else(|| MarketError::Store("no randomness for the door".to_string()))?,
+        };
         let mut next = state.clone();
-        next.doors.insert(order_id.to_string(), hash.to_string());
+        next.doors.insert(
+            order_id.to_string(),
+            Door {
+                key: hash.to_string(),
+                upstream,
+            },
+        );
         self.commit(&mut state, next).await
     }
 
@@ -5574,11 +5608,16 @@ mod tests {
         let mut st = state_of(vec![bound]);
         let key = "ab".repeat(32);
         assert_eq!(door_volume(&st, "ord_a", &key), None, "no key set yet");
-        st.doors.insert("ord_a".to_string(), key.clone());
-        assert_eq!(
-            door_volume(&st, "ord_a", &key).map(|v| v.pvc),
-            Some("ord-a".to_string())
+        st.doors.insert(
+            "ord_a".to_string(),
+            Door {
+                key: key.clone(),
+                upstream: "cd".repeat(32),
+            },
         );
+        let open = door_volume(&st, "ord_a", &key).expect("the right key opens it");
+        assert_eq!(open.volume.pvc, "ord-a");
+        assert_eq!(open.upstream, "cd".repeat(32));
         assert_eq!(door_volume(&st, "ord_a", &"ac".repeat(32)), None);
         assert_eq!(door_volume(&st, "ord_b", &key), None);
         assert!(door_hash_ok(&key));
@@ -6167,7 +6206,9 @@ mod tests {
             Err(MarketError::Invalid(_))
         ));
         market.set_door("ord_a", "b", &key).await.unwrap();
-        assert!(market.door_volume("ord_a", &key).await.is_some());
+        let upstream = market.door_volume("ord_a", &key).await.unwrap().upstream;
+        assert!(door_hash_ok(&upstream), "{upstream}");
+        assert_ne!(upstream, key);
 
         let again = Market::open(opts_at(&file)).await.unwrap();
         again.use_mode(StripeMode::Test).await.unwrap();
@@ -6175,6 +6216,8 @@ mod tests {
         let other = "1e".repeat(32);
         again.set_door("ord_a", "b", &other).await.unwrap();
         assert!(again.door_volume("ord_a", &key).await.is_none());
+        // A new key keeps the server's password: the server keeps running.
+        assert_eq!(again.door_volume("ord_a", &other).await.unwrap().upstream, upstream);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

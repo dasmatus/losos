@@ -427,8 +427,9 @@ let
         }
       ]
       # The backup door (edge/registrar/src/server/storage.rs): one
-      # rest-server Deployment and a Service per bought volume that a box
-      # backs up to, in the buyer's namespace. Create and get only.
+      # rest-server Deployment, a Service and the Secret with its one
+      # password per bought volume that a box backs up to, in the buyer's
+      # namespace. Create and get only, and never a read of a Secret.
       ++ lib.optionals backupsOn [
         {
           apiGroups = [ "apps" ];
@@ -445,6 +446,11 @@ let
             "get"
             "create"
           ];
+        }
+        {
+          apiGroups = [ "" ];
+          resources = [ "secrets" ];
+          verbs = [ "create" ];
         }
       ]
       # Machine fulfilment (edge/registrar/src/server/vm.rs): one

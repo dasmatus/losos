@@ -180,7 +180,10 @@ claim zmizne, pretože claim drží kapacitu v Longhorne aj po skončení mesiac
   protokol REST nástroja restic. Edge pri prvom použití spustí pre každú
   objednávku jeden `rest-server` vedľa claimu, z obrazu, ktorý nesie so
   sebou (`losos.edge.market.backups.enable`, predvolene zapnuté) a nikdy
-  ho nesťahuje. Edge túto cestu otvorí len kľúču, ktorý ukladá ako hash
+  ho nesťahuje. Jediný účet servera patrí edge, s heslom vytvoreným pre
+  túto objednávku, takže zariadenia mesh siete, ktoré dosiahnu jeho adresu
+  v klastri, ho neotvoria. Edge túto cestu otvorí len kľúču, ktorý ukladá
+  ako hash
   SHA-256. Zariadenie kupujúceho ho nastaví cez `POST /market/storage-door`
   a odvodí ho zo svojho kódu obnovy a id objednávky. Nové zariadenie
   s tým istým kódom obnovy sa preto dostane k tomu istému zväzku. Zariadenia,
@@ -204,7 +207,8 @@ Obmedzenia, o ktorých treba vedieť a z ktorých sa zatiaľ žiadne nevynucuje:
   a jeho jednotky vráti do predaja, keď naň apiserver odpovie 404.
 - ServiceAccount registrara získa po zapnutí trhu `get`/`create` na
   namespaces a PersistentVolumeClaims v celom klastri a pri zapnutých
-  zálohách na kúpenom úložisku aj na Deployments a Services. Kubernetes RBAC
+  zálohách na kúpenom úložisku aj na Deployments a Services (a `create` na
+  Secrets). Kubernetes RBAC
   nedokáže žiadne z nich obmedziť na mená `market-*`.
 :::
 

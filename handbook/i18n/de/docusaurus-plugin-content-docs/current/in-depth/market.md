@@ -202,7 +202,10 @@ nach Monatsende weiterhin Longhorn-Kapazität.
   restics REST-Protokoll bedient. Die Edge startet beim ersten Zugriff einen
   `rest-server` pro Bestellung neben dem Claim, aus einem Image, das sie
   mitbringt (`losos.edge.market.backups.enable`, standardmäßig an) und nie
-  zieht. Die Edge öffnet diesen Pfad nur für einen Schlüssel, den sie als
+  zieht. Das einzige Konto des Servers ist das der Edge, mit einem Passwort
+  nur für diese Bestellung, also öffnen ihn die Mesh-Boxen nicht, die seine
+  Cluster-Adresse erreichen. Die Edge öffnet diesen Pfad nur für einen
+  Schlüssel, den sie als
   SHA-256-Hash speichert. Die Box des Käufers setzt ihn mit
   `POST /market/storage-door` und leitet ihn aus ihrem
   Wiederherstellungscode und der Bestell-ID ab. Eine neue Box mit demselben
@@ -228,8 +231,8 @@ Grenzen, die du kennen solltest und von denen noch keine durchgesetzt wird:
   Einheiten wieder in den Verkauf, sobald der Apiserver für ihn 404 antwortet.
 - Der ServiceAccount des Registrars erhält clusterweit `get`/`create` auf
   Namespaces und PersistentVolumeClaims, wenn der Marktplatz aktiviert ist,
-  und auf Deployments und Services, wenn Backups auf gekauftem Speicher an
-  sind. Kubernetes-RBAC kann keines davon auf `market-*`-Namen einschränken.
+  und auf Deployments und Services (und `create` auf Secrets), wenn Backups
+  auf gekauftem Speicher an sind. Kubernetes-RBAC kann keines davon auf `market-*`-Namen einschränken.
 :::
 
 ## Admin-UI {#admin-ui}

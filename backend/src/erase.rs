@@ -216,8 +216,10 @@ pub fn cmd_backup_target<L: Losos>(
 /// `POST /api/backup/target/bought`: keep the backups on storage bought on
 /// the mesh instead of a bucket. The door's key is set at the edge first,
 /// from this box's recovery code. An order the edge does not let this box
-/// key (another box bought it: a new box restoring the old one's backups)
-/// is kept all the same, for the restore, whose code opens the door.
+/// key (another box bought it: a new box restoring the old one's backups),
+/// or one chosen while no official edge is in reach, is kept all the same:
+/// a restore's code opens a door keyed before, and choosing it again keys
+/// it once the edge answers.
 pub fn cmd_backup_target_bought<L: Losos>(l: &mut L, order: &str) -> anyhow::Result<Value> {
     if l.load_state()?
         .backup_job
@@ -241,7 +243,12 @@ pub fn cmd_backup_target_bought<L: Losos>(l: &mut L, order: &str) -> anyhow::Res
     };
     let keyed = match crate::losos::cmd_market_op(l, &op) {
         Ok(_) => true,
-        Err(e) if e.downcast_ref::<crate::market::Refused>().is_some() => false,
+        Err(e)
+            if e.downcast_ref::<crate::market::Refused>().is_some()
+                || e.downcast_ref::<crate::edge::OfficialEdgeRequired>().is_some() =>
+        {
+            false
+        }
         Err(e) => return Err(e),
     };
     l.write_backup_target(Some(&target))?;
@@ -784,6 +791,17 @@ mod tests {
         assert_eq!(
             f.backup_target.as_ref().unwrap().bought.as_ref().unwrap().order,
             "ord_cd34"
+        );
+
+        // No official edge in reach: nothing is sent, and the choice stays.
+        f.edge.official = false;
+        let asked = f.market_ops.len();
+        let out = cmd_backup_target_bought(&mut f, "ord_ef56").unwrap();
+        assert_eq!(out["keyed"], false);
+        assert_eq!(f.market_ops.len(), asked);
+        assert_eq!(
+            f.backup_target.as_ref().unwrap().bought.as_ref().unwrap().order,
+            "ord_ef56"
         );
     }
 
