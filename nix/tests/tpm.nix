@@ -44,6 +44,9 @@ pkgs.testers.nixosTest {
     in
     {
       imports = [
+        # nix/tests/virtiofs.nix: the closure this node installs is too many
+        # inodes for virtiofsd under a 20000-descriptor limit.
+        ./virtiofs.nix
         disko.nixosModules.disko
         ../../modules/options.nix
         ../../modules/disko.nix
