@@ -36,7 +36,6 @@ let
   keyDir = "/var/lib/losos-exit-key";
   peersFile = "${dir}/peers.json";
   publicKeyFile = "${dir}/public.key";
-  onionDir = "/var/lib/tor/onion/losos-exit";
 
   # The edge takes the subnet's first address. The registrar refuses a
   # subnet with host bits set, so the base ends in a zero to add one to.
