@@ -7,6 +7,9 @@ on:
     # release-media job. Pushes to main build only the installer ISO gate.
     tags: ["v*"]
   pull_request:
+  # A merge queue's runs on the merged tree; `changes` runs every lane for
+  # them, as for any run that is not a pull request.
+  merge_group:
   schedule:
     # ~04:57 UTC Mondays, off the :00 mark.
     #
@@ -91,13 +94,16 @@ on:
 # binaries and runs no suites; the suites run in the `test` job. A bare
 # `nix build` is therefore not a test gate.
 
-# Superseded runs are cancelled on pull requests and branches, where only the
-# newest push matters. Never on tags or on a run that publishes release media
+# Superseded runs are cancelled on pull requests only, where the newest push
+# is all that matters. Never on tags or on a run that publishes release media
 # for older tags: the release-media job is not something to interrupt half way
-# through multi-gigabyte builds and uploads.
+# through multi-gigabyte builds and uploads. A newer push to a pull request's branch cancels the run before it. On main
+# every merge runs to the end: when one merge cancelled the last, merges a
+# few minutes apart left main with no finished run for an afternoon, and two
+# broken merges went unseen.
 concurrency:
   group: ci-${{ github.ref }}${{ inputs.release_tags && format('-release-{0}', inputs.release_tags) || '' }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') && !inputs.release_tags }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Read-only by default; the jobs that write ask for contents: write themselves.
 # A fork's pull request gets a read-only token and no secrets whatever this
@@ -110,7 +116,8 @@ jobs:
     name: "pins: flake.lock = devenv.yaml = devenv.lock"
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    # Mirrors devenv.nix's `check-pins`, and this is the gate CI did not have:
+    # nix/check-pins.sh, as devenv.nix's `check-pins` and the pre-commit hook
+    # run it, and this is the gate CI did not have:
     # flake.lock pins the nixpkgs that builds the appliance, devenv.yaml and
     # devenv.lock the one that lints and tests it, and nothing but this
     # comparison keeps them on one tree. Dependabot bumped flake.lock alone
@@ -118,27 +125,13 @@ jobs:
     # ran it. No nix needed: jq ships on the runner image.
     steps:
       - uses: actions/checkout@v7
-      - run: |
-          set -eu
-          lock=$(jq -r '.nodes.nixpkgs.locked.rev' flake.lock)
-          yaml=$(grep -oE '[0-9a-f]{40}' devenv.yaml | head -1)
-          dlock=$(jq -r '.nodes.nixpkgs.locked.rev' devenv.lock)
-          if [ "$lock" != "$yaml" ] || [ "$lock" != "$dlock" ]; then
-            echo "nixpkgs pins disagree:" >&2
-            echo "  flake.lock  $lock" >&2
-            echo "  devenv.yaml $yaml" >&2
-            echo "  devenv.lock $dlock" >&2
-            echo "Bump all three together: nix flake update nixpkgs, copy the rev into" >&2
-            echo "devenv.yaml, then devenv update." >&2
-            exit 1
-          fi
-          echo "nixpkgs pin agrees across flake.lock, devenv.yaml and devenv.lock ($lock)"
+      - run: bash nix/check-pins.sh
 
   # ── Which jobs a change needs ───────────────────────────────────────────────
   #
   # A pull request runs only the lanes its files reach:
   # .github/scripts/ci-changes.sh maps paths to lanes (rust, wasm, solana,
-  # evm, eval, ctl, ui, tui, images, mail, iso, discovery) and each job
+  # evm, eval, ctl, ui, tui, images, mail, iso, install, discovery) and each job
   # below waits on its lane. A handbook page builds the handbook and nothing
   # else; a Rust file skips the ISO; docs/ and screenshots run nothing but
   # this and `pins`. A job a change does not need shows as skipped, and the
@@ -168,6 +161,7 @@ jobs:
       images: ${{ steps.pick.outputs.images }}
       mail: ${{ steps.pick.outputs.mail }}
       iso: ${{ steps.pick.outputs.iso }}
+      install: ${{ steps.pick.outputs.install }}
       discovery: ${{ steps.pick.outputs.discovery }}
     steps:
       - uses: actions/checkout@v7
@@ -352,11 +346,12 @@ jobs:
       # The registrar's Bitcoin and Monero orders run against real regtest
       # nodes (edge/registrar/tests/{bitcoin,monero}.rs), and its Tang keys
       # against Tang's own tangd (tests/tang.rs), from the flake's nixpkgs;
-      # devenv.nix's test-rust points at the same packages.
+      # devenv.nix's test-rust points at the same packages. tang also builds a
+      # -man output, and --print-out-paths would print both, so take ^out.
       - run: |
           export LOSOS_TEST_BITCOIND="$(nix build --no-link --print-out-paths --inputs-from . nixpkgs#bitcoind)/bin/bitcoind"
           export LOSOS_TEST_MONEROD="$(nix build --no-link --print-out-paths --inputs-from . nixpkgs#monero-cli)/bin/monerod"
-          export LOSOS_TEST_TANG="$(nix build --no-link --print-out-paths --inputs-from . nixpkgs#tang)"
+          export LOSOS_TEST_TANG="$(nix build --no-link --print-out-paths --inputs-from . 'nixpkgs#tang^out')"
           nix develop .#ci -c bash -euo pipefail -c '
             cargo test --manifest-path backend/Cargo.toml
             cargo test --manifest-path backend/access/Cargo.toml
@@ -458,6 +453,10 @@ jobs:
           # fails before any NixOS configuration can be evaluated.
           fetch-depth: 0
       - uses: ./.github/actions/setup-nix
+      # Mirrors devenv.nix's `lint-nix` and the git hooks: nixfmt, deadnix
+      # and statix over every tracked .nix file. Without it the tree drifted
+      # until the hooks refused every commit that touched an unformatted file.
+      - run: bash nix/lint-nix.sh
       # Mirrors devenv.nix's `check-flake`. Evaluates every output — every VM
       # test derivation, every nixosConfiguration and every package, the three
       # OCI images among them; builds nothing. Which is the limit of it: an
@@ -1130,6 +1129,32 @@ jobs:
           path: iso-boot/*.png
           if-no-files-found: ignore
 
+  # The appliance installed the way an owner installs it, then booted from
+  # its own disk: nix/tests/iso-install.nix runs the real losos-install from
+  # the installer medium's system onto an empty disk, offline, from a clone
+  # of this tree, and passes when the installed box answers on port 80 and
+  # lososd answers behind it. The
+  # iso job above boots the medium itself; this is the install after it.
+  # Every path the guest needs is built here (the whole install closure, so
+  # the proxy cache carries most of it), with KVM from setup-nix.
+  install:
+    name: "nix: install from the medium and boot the installed disk"
+    needs: [changes]
+    if: ${{ !inputs.release_tags && needs.changes.outputs.install == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-nix
+      # The install closure, the VM's disk with a copy of it and the build
+      # writes do not fit the runner's default free space.
+      - name: free runner disk
+        run: |
+          set -euo pipefail
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          df -h /
+      - run: nix build .#checks.x86_64-linux.losos-iso-install -L
+
   # Does a computer find the box on its own network, and open its files?
   # nix/tests/discovery/check.py boots the box of nix/tests/discovery/box.nix
   # in QEMU on a link shared with a Linux, a macOS and a Windows runner,
@@ -1316,6 +1341,48 @@ jobs:
           name: discovery-${{ matrix.os }}-console
           path: ${{ runner.temp }}/losos-discovery-*/qemu.log
           if-no-files-found: ignore
+
+  # One check for the whole run: green when every job this change needed
+  # passed and the rest were skipped, red when any failed or was cancelled.
+  # It is the check to require on main, since a required job that a change
+  # skips would otherwise have to be listed one by one.
+  result:
+    name: "result: every job this change needs passed"
+    if: always()
+    needs:
+      - pins
+      - changes
+      - clippy
+      - clippy-wasm
+      - test
+      - solana-escrow
+      - evm-escrow
+      - eval
+      - losos-ctl
+      - registrar-and-ui
+      - images
+      - stalwart
+      - publish-cache
+      - tui
+      - publish-tool
+      - fmt-bot
+      - iso
+      - install
+      - discovery-box
+      - discovery
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          jq -r 'to_entries[] | "\(.value.result)\t\(.key)"' <<<"$NEEDS" | sort
+          bad=$(jq -r 'to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | .key' <<<"$NEEDS")
+          if [ -n "$bad" ]; then
+            echo "::error::failed or cancelled: $(tr '\n' ' ' <<<"$bad")"
+            exit 1
+          fi
 
   # Which tags release-media builds. A tag push builds that tag. A manual run
   # with `release_tags` builds the tags it names, or with "missing" every

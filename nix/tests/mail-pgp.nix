@@ -145,36 +145,34 @@ pkgs.testers.nixosTest {
         };
       };
 
-    laptop =
-      { lib, ... }:
-      {
-        environment.systemPackages = [
-          pkgs.curl
-          pkgs.jq
-          pkgs.gnupg
-          shots
-        ];
-        networking.extraHosts = "192.168.1.1 mattbox.local mattbox.home.arpa\n${outsideHosts}";
-        environment.variables = {
-          PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers.override {
-            withFirefox = false;
-            withWebkit = false;
-          }}";
-          PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "true";
-        };
-        fonts = {
-          packages = [
-            pkgs.roboto
-            pkgs.dejavu_fonts
-          ];
-          fontconfig.defaultFonts.sansSerif = [ "Roboto" ];
-        };
-        virtualisation = {
-          memorySize = 3072;
-          cores = 2;
-          vlans = [ 1 ];
-        };
+    laptop = _: {
+      environment.systemPackages = [
+        pkgs.curl
+        pkgs.jq
+        pkgs.gnupg
+        shots
+      ];
+      networking.extraHosts = "192.168.1.1 mattbox.local mattbox.home.arpa\n${outsideHosts}";
+      environment.variables = {
+        PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers.override {
+          withFirefox = false;
+          withWebkit = false;
+        }}";
+        PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "true";
       };
+      fonts = {
+        packages = [
+          pkgs.roboto
+          pkgs.dejavu_fonts
+        ];
+        fontconfig.defaultFonts.sansSerif = [ "Roboto" ];
+      };
+      virtualisation = {
+        memorySize = 3072;
+        cores = 2;
+        vlans = [ 1 ];
+      };
+    };
 
     elsewhere = {
       networking.firewall.allowedTCPPorts = [ 443 ];
