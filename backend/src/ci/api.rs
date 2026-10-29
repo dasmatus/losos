@@ -98,6 +98,69 @@ async fn report(ci: Shared, body: web::Json<ReportReq>) -> HttpResponse {
     }
 }
 
+// ── joined LosOS Desktop computers ────────────────────────────────────────
+
+/// The computer lososd relays for (`X-Losos-Desktop`, from the directory
+/// token it checked). The ci plugin never sends that header and always
+/// sends `X-Losos-Person`, so a person relayed through `/api/ci/*` is
+/// never taken for a computer.
+fn computer(req: &HttpRequest) -> Option<String> {
+    if req.headers().contains_key("x-losos-person") {
+        return None;
+    }
+    let name = req.headers().get("x-losos-desktop")?.to_str().ok()?.trim();
+    (!name.is_empty()).then(|| name.to_string())
+}
+
+async fn desktop_claim(ci: Shared, req: HttpRequest, body: web::Json<ClaimReq>) -> HttpResponse {
+    let Some(computer) = computer(&req) else {
+        return say(StatusCode::FORBIDDEN, "only lososd asks for a computer");
+    };
+    let ci = ci.get_ref().clone();
+    let wait = body.wait.min(30);
+    match blocking(move || ci.claim_desktop(&computer, wait)).await {
+        Ok(Some(w)) => HttpResponse::Ok().json(json!({
+            "id": w.id,
+            "name": w.name,
+            "payload": w.payload,
+            "timeoutSecs": w.timeout_secs,
+        })),
+        Ok(None) => HttpResponse::NoContent().finish(),
+        Err(e) => failed(e),
+    }
+}
+
+#[derive(Deserialize)]
+struct DesktopReportReq {
+    id: String,
+    #[serde(flatten)]
+    report: Report,
+}
+
+async fn desktop_report(
+    ci: Shared,
+    req: HttpRequest,
+    body: web::Json<DesktopReportReq>,
+) -> HttpResponse {
+    let Some(computer) = computer(&req) else {
+        return say(StatusCode::FORBIDDEN, "only lososd reports for a computer");
+    };
+    let body = body.into_inner();
+    let Some(id) = body
+        .id
+        .parse::<i64>()
+        .ok()
+        .filter(|n| *n > 0 && n.to_string() == body.id)
+    else {
+        return say(StatusCode::BAD_REQUEST, "invalid job id");
+    };
+    let ci = ci.get_ref().clone();
+    match blocking(move || ci.report_desktop(&computer, id, &body.report)).await {
+        Ok(stop) => HttpResponse::Ok().json(json!({ "stop": stop })),
+        Err(e) => say(StatusCode::FORBIDDEN, &format!("{e:#}")),
+    }
+}
+
 // ── the admin pages ───────────────────────────────────────────────────────
 
 /// Who the plugin says is asking.
@@ -448,7 +511,9 @@ fn page_routes(cfg: &mut web::ServiceConfig) {
         .route("/ci/runs/{id}/rerun", web::post().to(rerun))
         .route("/ci/jobs/{id}/log", web::get().to(log))
         .route("/ci/workflows", web::get().to(workflows))
-        .route("/ci/dispatch", web::post().to(dispatch));
+        .route("/ci/dispatch", web::post().to(dispatch))
+        .route("/ci/desktop/claim", web::post().to(desktop_claim))
+        .route("/ci/desktop/report", web::post().to(desktop_report));
 }
 
 /// Where `serve` listens.

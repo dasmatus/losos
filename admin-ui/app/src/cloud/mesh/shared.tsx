@@ -29,6 +29,7 @@ function mimeOf(name: string): string {
   const ext = name.slice(name.lastIndexOf(".") + 1).toLowerCase();
   const known: Record<string, string> = {
     md: "text/markdown",
+    note: "text/markdown",
     txt: "text/plain",
     csv: "text/csv",
     pdf: "application/pdf",

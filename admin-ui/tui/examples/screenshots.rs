@@ -58,6 +58,7 @@ fn host(kind: HostKind) -> HostRecord {
         token: String::new(),
         key_fingerprint: "8E41D07CB2A95F3361C0E7AD4B19F2C805D6A3E7".into(),
         tls_pin: None,
+        edge_url: None,
     }
 }
 

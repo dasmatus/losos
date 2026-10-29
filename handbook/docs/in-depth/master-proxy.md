@@ -23,6 +23,11 @@ Import the `nixosModules.edge` flake output into the VPS configuration and set
   ids listed here.
 - `losos.edge.cluster.enable` also runs the [mesh](mesh.md) control plane, an
   rke2 server with Longhorn. The proxy works without it.
+- `losos.edge.tang.enable` (on by default) lets boxes installed with
+  `--tang-edge` open their disk through the edge, with a Tang key pair per
+  box under `/var/lib/losos-registrar/tang` and a page at `/tang/lost` where
+  an owner reports a stolen box. [TPM and the disk key](../reference/tpm.md)
+  has the box side.
 
 `losos-registrar` keeps the tunnel server's file in step with the registered
 appliances, and Traefik finds them through the registrar.
@@ -50,6 +55,11 @@ HTTP/1.1 and HTTP/2 on TCP port 443. Traefik announces HTTP/3 in an
 network that blocks UDP keeps working over TCP. Open UDP 443 in any
 firewall in front of the edge; the edge's own firewall opens it.
 
+A box that ends TLS itself (see
+[The edge cannot read the traffic](#the-edge-cannot-read-the-traffic)) is
+served over HTTP/2 and HTTP/1.1 on TCP only. HTTP/3 stays on the edge's own
+names.
+
 ## When a box can't be reached
 
 When Traefik cannot reach a box (it is switched off, restarting or offline,
@@ -57,6 +67,10 @@ or its tunnel is down), the visitor gets a page from the edge that says so,
 in English, Slovak or German after the browser's language, instead of a bare
 "Bad Gateway". The status stays 502, or 504 when the box did not answer in
 time.
+
+The page needs the edge to end TLS for the name, so it is shown only for
+names the edge still ends TLS for. Once a box ends TLS itself, a visitor to
+a box that is off gets the browser's own connection error instead.
 
 ## Appliance
 
@@ -89,6 +103,64 @@ appliance fetches the certificate's SHA-256 from the registrar
 certificate and no other. To pin it out of band, put the file there
 beforehand; the appliance never overwrites it. Each service the box serves
 is claimed with the box's token, compared in constant time.
+
+## The edge cannot read the traffic
+
+The box gets its own Let's Encrypt certificate for each of its public names
+and ends TLS itself. The edge routes each connection by the name in the TLS
+hello and passes the encrypted bytes through to the box without opening
+them, so whoever runs the edge, or the machine it runs on, cannot read
+sign-ins, files or pages. This is on by default
+(`losos.proxy.tlsPassthrough.enable`).
+
+1. The edge routes `http://<name>/.well-known/acme-challenge/` on port 80
+   to every box, so the box can answer Let's Encrypt's HTTP-01 challenge
+   through the tunnel. The box asks with `lego` (`losos-public-tls`, every
+   hour and whenever the edge names a new name) and keeps the certificates
+   in `/var/lib/losos-public-tls/live/<name>/`.
+2. The box's heartbeat lists the names it holds a valid certificate for.
+   Until the first one is there, the edge keeps ending TLS as before, so the
+   move costs no downtime.
+3. For those names the edge drops its own TLS router and keeps a TCP router
+   with `HostSNI` and passthrough. It asks for no certificate of its own.
+4. On the box, nginx reads the first bytes of each tunnel connection: TLS
+   goes to the box's own certificate, plain HTTP (the challenges, an older
+   edge) to port 80 as before. The admin UI stays LAN-only on both.
+
+Once a box has asked for passthrough, a certificate that lapses does not
+hand TLS back to the edge. Visitors then see a certificate warning until
+the box renews it.
+
+Every hour the box also opens each of its names from outside, through
+public DNS and the edge, and compares the certificate it gets with its own.
+The Mesh page shows the result: **Encrypted to this box** when they match,
+**Readable** while the edge still ends TLS, and **Intercepted** when a
+certificate the box did not make answers. That last one means something
+between visitors and the box is ending their TLS, for example an edge that
+got a certificate of its own for the name. Such a certificate also shows up
+in the public Certificate Transparency logs.
+
+What the edge still sees: the name each visitor asks for, when, and how
+much data passes. It also learns the box's home address from the tunnel.
+Passthrough costs three things on the box's names: the offline page,
+HTTP/3, and Encrypted Client Hello, since each of them needs the edge to
+hold the keys. The edge's own names keep all three.
+
+Custom domains an edge routes to a box are covered the same way: the
+heartbeat's answer tells the box every name routed to it, and the box asks
+for a certificate for each. Across [federation](edge-federation.md) the
+spoke forwards the box's list, and the hub routes `<spoke>.<box>` by name to
+the spoke, which passes it on to the box.
+
+:::note[How this is tested]
+`nix/tests/edge-passthrough.nix` (`losos-edge-passthrough`) runs a test ACME
+server, an edge and a box. Before the box has a certificate, a capture of
+the edge's side of the tunnel shows a password a visitor posts. After the
+box gets its certificate through the edge, the visitor checks it against
+the ACME server's root, Traefik has only a passthrough route for the name,
+and the same password is nowhere in the capture. Pointing the name at
+another machine turns the box's own check to **Intercepted**.
+:::
 
 ## Admin UI stays LAN-only
 
@@ -319,6 +391,11 @@ public name, and a key Traefik does not hold is turned down.
 proves absent, validates nothing from a trust anchor that does not match,
 and refuses plain HTTP.
 :::
+
+A box that ends TLS itself gets no HTTPS record at its names, because only
+the holder of the ECH key can decrypt the hello and the edge passes that
+box's connections through unopened. Its name then travels in the clear in
+the TLS hello, as it did before ECH.
 
 ### Custom domains
 

@@ -156,6 +156,9 @@ in
       ]
       ++ (import ./hidden-lib.nix { inherit lib pkgs; }).frontListen (
         config.losos.hidden.tor.enable || config.losos.hidden.i2p.enable
+      )
+      ++ (import ./public-tls-lib.nix { inherit lib; }).frontListen (
+        config.losos.proxy.enable && config.losos.proxy.tlsPassthrough.enable
       );
       # GSO hands the kernel a burst of QUIC packets in one call, and a
       # stream buffer bigger than nginx's 64k default lets a download keep

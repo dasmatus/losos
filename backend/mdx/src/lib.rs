@@ -20,6 +20,7 @@
 //! allowlist.
 
 mod components;
+pub mod notes;
 mod render;
 mod sanitize;
 #[cfg(feature = "wasm")]

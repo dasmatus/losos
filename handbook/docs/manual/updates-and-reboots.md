@@ -22,7 +22,7 @@ own store, the settings you chose, the box's keys and identity, the mesh
 membership. Everything else is gone at 00:07. The
 [reference page](../reference/what-survives-a-reboot) has the list.
 
-![The About pane, which shows the restart and the update times and when each last ran.](../img/settings-about.png)
+![The History pane: the branch the box takes new versions from and when it last checked, then the changes.](../img/settings-history.png)
 
 ## While it works
 

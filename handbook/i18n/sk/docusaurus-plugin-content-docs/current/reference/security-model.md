@@ -17,6 +17,11 @@ mohli polemizovať.
 2. **Edge → zariadenie.** TLS 1.3 šifruje tunel od konca po koniec, cez QUIC
    alebo, kde je UDP zablokované, cez TCP. Zariadenie si pri prvom spojení
    zapamätá certifikát edge a zmenený certifikát odmietne.
+   V tuneli zostávajú spojenia návštevníkov šifrované až po vlastný
+   certifikát zariadenia: edge ich smeruje podľa názvu a čítať ich nemôže.
+   Vidí však, na aký názov sa návštevník pýtal, kedy, koľko dát prešlo a
+   domácu adresu zariadenia. Pozri
+   [Edge nevidí do prevádzky](../in-depth/master-proxy.md#the-edge-cannot-read-the-traffic).
 3. **LAN → zariadenie.** Zariadenie poskytuje HTTPS s vlastným certifikátom,
    ktorému na každom počítači raz dôverujete. Kým to neurobíte, niekto na tej
    istej Wi-Fi, kto dokáže zachytávať prevádzku, môže zachytiť prvé použitie.
@@ -73,7 +78,11 @@ stojí.
 - **Krádež celého zariadenia.** TPM vydá diskový kľúč akémukoľvek softvéru
   spustenému na tom počítači, takže zlodej so zariadením ho prečíta.
   Šifrovanie chráni iba disk vybratý samostatne. Na zariadení bez TPM je
-  čitateľný aj samotný disk. Rozdiel vysvetľuje [TPM a kľúč disku](tpm).
+  čitateľný aj samotný disk. Zariadenie nainštalované s `--tang` sa otvorí
+  iba s kľúčovým serverom vo vlastnej sieti a inde pýta kód na obnovu.
+  Zariadenie nainštalované s `--tang-edge` potrebuje odpoveď svojho edgeu a
+  majiteľ môže edgeu povedať, aby ukradnutému zariadeniu prestal odpovedať.
+  Rozdiel vysvetľuje [TPM a kľúč disku](tpm).
 - **Auditný log** sa nerotuje a root ho môže prepísať.
 - **Obmedzovanie (throttling) je podľa adresy**, takže útočník v LAN, ktorý
   podvrhuje adresy, dostane zakaždým nový limit.

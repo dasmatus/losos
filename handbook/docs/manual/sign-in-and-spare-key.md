@@ -121,7 +121,7 @@ A role of the box's own, made under **Roles of your own**, is in the same
 list. [Roles and moderation](moderation) has the table of what each role can
 do.
 
-![The Users pane: everyone with their role, the table of what each role can do, and the Add a person form at the bottom.](../img/settings-users.png)
+![The Users pane: everyone with their role, and the table of what each role can do.](../img/settings-users.png)
 
 A new person starts with **Own account** switched on. Give them the name and
 password yourself. They sign in on LosOS Login.
@@ -160,7 +160,7 @@ keeps at least one administrator.
 anyone with the Own account part, administrators included, and never for
 the spare key, which has no account.
 
-![Your account: your details, your password, two-factor sign-in and the one-time code.](../img/settings-account.png)
+![Your account: the profile at the top; the password and two-factor sign-in are further down.](../img/settings-account.png)
 
 - **Profile**: a picture, a banner, a colour, your pronouns and a line
   about you. Everyone signed in to the box sees them next to your name: in

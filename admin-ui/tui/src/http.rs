@@ -133,8 +133,12 @@ pub struct Response {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HttpError {
-    /// No answer: DNS, refused, a timeout, a certificate nobody vouches for.
+    /// No answer: a timeout, a certificate nobody vouches for, a broken
+    /// connection.
     Unreachable(String),
+    /// No connection at all: the name did not resolve, or nothing took the
+    /// connection. Nothing was sent.
+    NoConnection(String),
     /// The pinned certificate was replaced.
     CertificateChanged,
 }
@@ -236,8 +240,17 @@ impl Http {
                     return Err(HttpError::CertificateChanged);
                 }
                 let mut detail = t.to_string();
+                // ureq counts a refused handshake as a failed connection, but
+                // the handshake means something answered; only a connection
+                // that never opened is safe to try elsewhere.
+                let mut handshake = false;
                 let mut source = std::error::Error::source(&t);
                 while let Some(cause) = source {
+                    handshake |= cause.is::<rustls::Error>()
+                        || cause
+                            .downcast_ref::<std::io::Error>()
+                            .and_then(|io| io.get_ref())
+                            .is_some_and(|inner| inner.is::<rustls::Error>());
                     let more = cause.to_string();
                     if !detail.contains(&more) {
                         detail = format!("{detail}: {more}");
@@ -245,7 +258,12 @@ impl Http {
                     source = cause.source();
                 }
                 tracing::debug!(%url, %detail, "no answer");
-                return Err(HttpError::Unreachable(detail));
+                return Err(match t.kind() {
+                    ureq::ErrorKind::Dns | ureq::ErrorKind::ConnectionFailed if !handshake => {
+                        HttpError::NoConnection(detail)
+                    }
+                    _ => HttpError::Unreachable(detail),
+                });
             }
         };
         let status = response.status();

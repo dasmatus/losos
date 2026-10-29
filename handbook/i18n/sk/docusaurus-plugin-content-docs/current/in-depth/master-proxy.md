@@ -23,6 +23,11 @@ Importujte výstup flaku `nixosModules.edge` do konfigurácie VPS a nastavte
   identifikátory, ktoré sú uvedené tu.
 - `losos.edge.cluster.enable` navyše spúšťa riadiacu vrstvu [mesh](/in-depth/mesh.md),
   server rke2 s Longhornom. Proxy funguje aj bez nej.
+- `losos.edge.tang.enable` (predvolene zapnuté) umožní zariadeniam
+  nainštalovaným s `--tang-edge` otvoriť disk cez edge, s párom kľúčov Tang
+  pre každé zariadenie v `/var/lib/losos-registrar/tang` a stránkou
+  `/tang/lost`, kde majiteľ nahlási ukradnuté zariadenie. Stranu zariadenia
+  opisuje [TPM a kľúč disku](/reference/tpm.md).
 
 `losos-registrar` udržiava súbor tunelového servera v súlade
 s registrovanými zariadeniami a Traefik ich nachádza cez registrar.
@@ -50,12 +55,20 @@ cez HTTP/1.1 a HTTP/2 na porte TCP 443. Traefik ohlasuje HTTP/3 v hlavičke
 blokuje UDP, ďalej funguje cez TCP. Vo firewalle pred edge otvorte UDP 443;
 vlastný firewall edge ho otvára sám.
 
+Box, ktorý TLS ukončuje sám (pozri
+[Edge nevidí do prevádzky](#the-edge-cannot-read-the-traffic)), beží iba cez
+HTTP/2 a HTTP/1.1 na TCP. HTTP/3 zostáva na vlastných názvoch edge.
+
 ## Keď box nie je dostupný {#when-a-box-cant-be-reached}
 
 Keď sa Traefik k boxu nedostane (je vypnutý, reštartuje sa, je offline alebo
 mu nefunguje tunel), návštevník namiesto holého „Bad Gateway“ dostane stránku
 z edge, ktorá to vysvetlí, po anglicky, slovensky alebo nemecky podľa jazyka
 prehliadača. Stavový kód zostáva 502, alebo 504, keď box neodpovedal včas.
+
+Stránka potrebuje, aby TLS pre názov ukončoval edge, preto sa ukáže iba pri
+názvoch, pre ktoré ho edge ešte ukončuje. Keď box ukončuje TLS sám,
+návštevník vypnutého boxu dostane namiesto nej chybu spojenia z prehliadača.
 
 ## Zariadenie {#appliance}
 
@@ -88,6 +101,62 @@ odvtedy tunel prijme tento certifikát a žiadny iný. Ak ho chcete pripnúť
 mimo tohto kanála, vložte súbor na to miesto vopred; zariadenie ho nikdy
 neprepíše. Každú službu, ktorú zariadenie poskytuje, si nárokuje tokenom
 zariadenia, porovnaným v konštantnom čase.
+
+## Edge nevidí do prevádzky {#the-edge-cannot-read-the-traffic}
+
+Box si pre každý svoj verejný názov vybaví vlastný certifikát od Let's
+Encrypt a TLS ukončuje sám. Edge smeruje každé spojenie podľa názvu v TLS
+hello a šifrované bajty boxu len posúva ďalej bez toho, aby ich otvoril.
+Kto prevádzkuje edge alebo stroj, na ktorom beží, tak nemôže čítať
+prihlásenia, súbory ani stránky. Predvolene je to zapnuté
+(`losos.proxy.tlsPassthrough.enable`).
+
+1. Edge smeruje `http://<názov>/.well-known/acme-challenge/` na porte 80 ku
+   každému boxu, aby box mohol cez tunel odpovedať na výzvu HTTP-01 od
+   Let's Encrypt. Box o certifikát žiada cez `lego` (`losos-public-tls`,
+   každú hodinu a vždy, keď mu edge oznámi nový názov) a certifikáty drží v
+   `/var/lib/losos-public-tls/live/<názov>/`.
+2. Heartbeat boxu vymenúva názvy, pre ktoré má platný certifikát. Kým nemá
+   prvý, edge ukončuje TLS ako doteraz, takže prechod nič nevypne.
+3. Pre tieto názvy edge zruší svoj TLS router a ponechá TCP router s
+   `HostSNI` a passthrough. Sám si pre ne certifikát nevyžiada.
+4. Na boxe nginx prečíta prvé bajty každého spojenia z tunela: TLS ide na
+   vlastný certifikát boxu, obyčajné HTTP (výzvy, starší edge) na port 80
+   ako doteraz. Administrátorské UI zostáva v oboch prípadoch len v LAN.
+
+Keď box raz požiada o passthrough, certifikát, ktorý vyprší, TLS edgu
+nevráti. Návštevníci potom vidia varovanie o certifikáte, kým ho box
+neobnoví.
+
+Box tiež každú hodinu otvorí každý svoj názov zvonka, cez verejné DNS a
+edge, a porovná certifikát, ktorý dostane, so svojím. Výsledok ukazuje
+stránka Mesh: **Šifrované až po zariadenie**, keď sa zhodujú, **Čitateľná**,
+kým TLS ukončuje edge, a **Zachytávané**, keď odpovie certifikát, ktorý box
+nevytvoril. To posledné znamená, že niečo medzi návštevníkmi a boxom
+ukončuje ich TLS, napríklad edge, ktorý si pre názov vybavil vlastný
+certifikát. Taký certifikát sa objaví aj vo verejných logoch Certificate
+Transparency.
+
+Čo edge vidí aj naďalej: na aký názov sa návštevník pýta, kedy a koľko dát
+prejde. Z tunela pozná aj domácu adresu boxu. Passthrough stojí na názvoch
+boxu tri veci: stránku pre nedostupný box, HTTP/3 a Encrypted Client Hello,
+lebo každá z nich potrebuje, aby kľúče držal edge. Vlastné názvy edge si
+všetky tri ponechávajú.
+
+Rovnako sú pokryté vlastné domény, ktoré edge smeruje na box: odpoveď na
+heartbeat boxu oznámi každý názov, ktorý k nemu vedie, a box si pre každý
+vybaví certifikát. Pri [federácii](edge-federation.md) spoke zoznam boxu
+posunie ďalej a hub smeruje `<spoke>.<box>` podľa názvu na spoke, ktorý ho
+odovzdá boxu.
+
+:::note[Ako sa to testuje]
+`nix/tests/edge-passthrough.nix` (`losos-edge-passthrough`) spustí testovací
+ACME server, edge a box. Kým box nemá certifikát, záznam prevádzky na strane
+edge v tuneli ukazuje heslo, ktoré návštevník pošle. Keď si box cez edge
+vybaví certifikát, návštevník ho overí voči koreňu ACME servera, Traefik má
+pre názov iba passthrough trasu a to isté heslo v zázname nie je. Keď názov
+ukáže na iný stroj, vlastná kontrola boxu prejde na **Zachytávané**.
+:::
 
 ## Administrátorské UI zostáva len v LAN {#admin-ui-stays-lan-only}
 
@@ -318,6 +387,11 @@ prijme názov zariadenia, pri názve, ktorého neexistenciu zóna dokazuje,
 kľúč nenájde, od nesprávnej kotvy dôvery nič neoverí a obyčajné HTTP
 odmietne.
 :::
+
+Box, ktorý TLS ukončuje sám, nemá pri svojich názvoch záznam HTTPS, lebo
+hello dokáže rozšifrovať iba ten, kto drží kľúč ECH, a edge spojenia tohto
+boxu posúva neotvorené. Jeho názov potom ide v TLS hello nešifrovane, ako
+pred ECH.
 
 ### Vlastné domény {#custom-domains}
 

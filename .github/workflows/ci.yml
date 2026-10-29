@@ -349,11 +349,13 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-test-compiler-cache-
       # The registrar's Bitcoin and Monero orders run against real regtest
-      # nodes (edge/registrar/tests/{bitcoin,monero}.rs), from the flake's
-      # nixpkgs; devenv.nix's test-rust points at the same packages.
+      # nodes (edge/registrar/tests/{bitcoin,monero}.rs), and its Tang keys
+      # against Tang's own tangd (tests/tang.rs), from the flake's nixpkgs;
+      # devenv.nix's test-rust points at the same packages.
       - run: |
           export LOSOS_TEST_BITCOIND="$(nix build --no-link --print-out-paths --inputs-from . nixpkgs#bitcoind)/bin/bitcoind"
           export LOSOS_TEST_MONEROD="$(nix build --no-link --print-out-paths --inputs-from . nixpkgs#monero-cli)/bin/monerod"
+          export LOSOS_TEST_TANG="$(nix build --no-link --print-out-paths --inputs-from . nixpkgs#tang)"
           nix develop .#ci -c bash -euo pipefail -c '
             cargo test --manifest-path backend/Cargo.toml
             cargo test --manifest-path backend/access/Cargo.toml
@@ -1259,7 +1261,9 @@ jobs:
             if ($service.Status -ne 'Running') { throw "Discovery service $s is $($service.Status)" }
           }
           Install-WindowsFeature WebDAV-Redirector -ErrorAction SilentlyContinue | Format-List
-          Get-Service fdPHost, FDResPub, SSDPSRV, upnphost, WebClient | Format-Table Name, Status
+          # WebClient comes with the redirector only after a restart, which a
+          # runner cannot take; check.py then tests WebDAV over HTTP.
+          Get-Service fdPHost, FDResPub, SSDPSRV, upnphost, WebClient -ErrorAction SilentlyContinue | Format-Table Name, Status
       - name: Windows, check
         if: runner.os == 'Windows'
         shell: pwsh

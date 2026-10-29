@@ -6,6 +6,8 @@ slug: /manual/terminal
 
 # Der Terminal-Client
 
+![Die Übersicht im Browser; der Terminal-Client zeigt dieselben Bereiche.](@site/docs/img/overview-de.png)
+
 `losos` ist ein Terminalprogramm, das eine Box von einem anderen Rechner aus
 verwaltet. Es zeigt dieselben Bereiche wie die Admin-Seiten, mit denselben
 Worten und Farben, und braucht kein SSH, weil die Box keines hat. Jede
@@ -160,6 +162,21 @@ vor dem Neuaufbau nach, wie es die Admin-Seiten tun.
 Zugriffstokens, der Markt, Diagramme und alles, was Daten löscht, bleiben
 auf den Admin-Seiten.
 :::
+
+## Unterwegs \{#away-from-home}
+
+Erreicht die Box das Internet über eine Edge, merkt sich `login` auch die
+Adresse der Box auf der Edge, und `losos hosts` zeigt sie als **unterwegs**.
+Führt die eigene Adresse der Box ins Leere, weil dieser Rechner in einem
+anderen Netz ist, schickt `losos` den Aufruf stattdessen an diese Adresse.
+Die Edge reicht ihn weiter, ohne ihn zu lesen: Er ist weiterhin mit deinem
+Schlüssel signiert und an den Schlüssel der Box verschlüsselt, und die Box
+antwortet genauso. Die Edge hat ein Zertifikat, dem das Web vertraut, also
+gibt es nichts weiter festzuhalten.
+
+Nur die Aufrufe des Terminals gehen so über die Edge. Die übrigen
+Admin-Seiten bleiben im eigenen Netz der Box. Soll auch das Terminal dort
+bleiben, schalte `losos.access.throughEdge` im Bereich „Erweitert“ aus.
 
 ## LosOS Cloud und LosOS Git von diesem Rechner aus nutzen \{#use-losos-cloud-and-losos-git-from-this-computer}
 
