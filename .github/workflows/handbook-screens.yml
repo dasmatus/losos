@@ -61,6 +61,7 @@ jobs:
           npm ci --no-audit --no-fund
           npm run lab:core
           npm run lab:virt
+          npm run mdx
           # render is large and only needed for the Lab page; stub it for screens
           mkdir -p src/lab/render-pkg/webgl2 src/lab/render-pkg/webgpu
           echo "export default {};" > src/lab/render-pkg/webgl2/losos_lab_render.js
