@@ -17,7 +17,7 @@ and the developer notes kept out of it (`docs/development.md`,
 ## Commands
 
 ```sh
-devenv shell                 # or: direnv allow. Scripts: fmt, lint, lint-wasm,
+devenv shell                 # or: direnv allow. Scripts: fmt, lint, lint-nix, lint-wasm,
                              # test-rust, test-tui, check-flake, check-eval, check-pins,
                              # build-pkgs, build-iso, vm-tests
 devenv test                  # the gate. Everything but the VMs and the ISO
@@ -29,7 +29,7 @@ nix build .#nixosConfigurations.iso.config.system.build.isoImage
 nix build .#checks.x86_64-linux.losos-admin-daemon  # lososd: D-Bus, HTTP, token
 nix build .#checks.x86_64-linux.losos-install       # installer, keyfile, BIOS
 nix build .#checks.x86_64-linux.losos-tpm-unlock    # installer, swtpm unlock
-nix build .#checks.x86_64-linux.losos-network-unlock # --tang: TPM2 + Tang, recovery code
+nix build .#checks.x86_64-linux.losos-iso-install   # the real installer offline, then boot the disk
 nix build .#checks.x86_64-linux.losos-identity      # LosOS Login (Authelia), sections
 npm run dev | typecheck | test:browser              # in admin-ui/app
 cargo test --manifest-path admin-ui/tui/Cargo.toml  # losos, the terminal client
@@ -44,10 +44,20 @@ their SDK and WIT, its own workspace, linted for the host and wasm32), `edge/reg
 flake), the terminal client `admin-ui/tui`, and Diagrams' `admin-ui/lab/core`,
 `admin-ui/lab/virt-rpc` and `admin-ui/lab/render` (built for wasm32), and
 the Solana escrow program `edge/contracts/solana` (`cargo build-sbf`, outside
-the flake). All eleven must pass clippy with `-D warnings` and rustfmt; the devenv pre-commit
-hooks, `lint` and CI each check it. Bevy is a wasm32-only dependency of
+the flake). All eleven must pass clippy with `-D warnings` and rustfmt; the git hooks
+in `nix/hooks`, `lint` and CI each check it. Bevy is a wasm32-only dependency of
 `render`, so `lint-wasm` and CI's `clippy-wasm` lint its WebGL2 and WebGPU
 builds too, one after the other. `nix develop` is a toolchain-only shell for people without devenv.
+The git hooks (`nix/hooks`, `docs/development.md`) replay CI's lanes for
+the files a change touches: pre-commit runs rustfmt, clippy, the Nix lints,
+the pins and hashes, the admin UI typecheck and CI's whole eval job
+(`check-flake`); pre-push adds `cargo test`, wasm32 clippy, the Playwright
+check and the VM tests the change touches (TCG without KVM), logging each
+check under `.git/losos-hooks/logs/`. devenv, `nix develop` and a Claude
+Code session (`.claude/settings.json`) set `core.hooksPath`; elsewhere run
+`bash nix/hooks/install`. Never commit or push with `--no-verify` or
+`LOSOS_HOOKS_SKIP` to get past a red check you caused; skip only a check
+that is red on `main` too, and say which in the PR.
 Inside the shell `bcd` and `rcd` cd into the two in-flake crates.
 `admin-ui/design-system/react` has its own `npm run typecheck` and `npm test`
 and is never served or built by nix.
@@ -77,6 +87,8 @@ and is never served or built by nix.
   console passphrase. The installer writes `modules/install-target.nix` (the
   box's drives, firmware mode, unlock mode) onto the box; it is not in the
   tree, and `flake.nix` imports the live copy from `/etc/nixos` on rebuilds.
+  `nix/tests/iso-install.nix` (CI's `install` job, and pre-push on the same
+  lane) runs that installer offline and boots the disk it wrote.
 - `configuration.nix`: `notshared` (uid 1000, the owner's apps and LosOS Cloud name) and `shared`
   (uid 1001, mesh storage), each with its own group and a `700` home, no
   passwords, `openssh` off.
@@ -557,7 +569,7 @@ and is never served or built by nix.
    `environment.persistence."/persist".directories`, or it is gone next boot.
    `/etc/rancher` stays listed: the k3s agent's node password lives there and
    the server rejects a node that regenerates it.
-2. Run `devenv test` before trusting a change. `doCheck` is off in both
+2. Run `devenv test` before trusting a change, and let the git hooks run. `doCheck` is off in both
    crates, so a green `nix build` ran no tests.
 3. Bump `flake.lock`, the rev in `devenv.yaml` and `devenv.lock` together.
    `check-pins` and CI's `pins` job fail when they differ.
@@ -670,6 +682,7 @@ run by CI, so run them locally when touching either:
 nix build .#checks.x86_64-linux.losos-admin-daemon   # lososd: D-Bus + HTTP + token
 nix build .#checks.x86_64-linux.losos-install        # installer: detect + disko + LVM (keyfile path, BIOS)
 nix build .#checks.x86_64-linux.losos-tpm-unlock     # installer: format + enrol + reboot + unlock from swtpm
+nix build .#checks.x86_64-linux.losos-iso-install    # losos-install from the medium's system onto an empty disk, offline, then that disk boots and answers on :80
 ```
 
 Inside the dev shell, `bcd` → `cd backend`, `rcd` → `cd edge/registrar`.

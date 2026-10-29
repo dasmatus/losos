@@ -85,11 +85,29 @@ in
       (alias [ "edge" "uplink" "ratholeEndpoint" ] [ "edge" "uplink" "tunnelEndpoint" ])
     ]
     ++ map gone [
-      [ "edge" "bootstrapTokenFile" ]
-      [ "edge" "noisePrivateKeyFile" ]
-      [ "edge" "rathole" "package" ]
-      [ "edge" "uplink" "bootstrapTokenFile" ]
-      [ "edge" "uplink" "noisePublicKeyFile" ]
+      [
+        "edge"
+        "bootstrapTokenFile"
+      ]
+      [
+        "edge"
+        "noisePrivateKeyFile"
+      ]
+      [
+        "edge"
+        "rathole"
+        "package"
+      ]
+      [
+        "edge"
+        "uplink"
+        "bootstrapTokenFile"
+      ]
+      [
+        "edge"
+        "uplink"
+        "noisePublicKeyFile"
+      ]
     ];
 
   options.losos = {
@@ -1712,7 +1730,10 @@ in
     configRepo.upstream.branch = lib.mkOption {
       type = lib.types.str;
       default =
-        if config.losos.updates.channel == "main" then "main" else "channel/${config.losos.updates.channel}";
+        if config.losos.updates.channel == "main" then
+          "main"
+        else
+          "channel/${config.losos.updates.channel}";
       defaultText = lib.literalExpression ''"channel/''${config.losos.updates.channel}", or "main" for the main channel'';
       description = ''
         The branch of losos.configRepo.upstream.url the box follows. Set

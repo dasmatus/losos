@@ -106,6 +106,8 @@ assert must (lib.any (lib.hasPrefix "losos-1:") config.nix.settings.extra-truste
   "no losos-1 key in nix.settings.extra-trusted-public-keys: nix declines the cache's signatures and silently builds from source, the slow install the cache exists to avoid";
 assert must (lib.elem config.system.build.nixos-rebuild config.systemd.services.lososd.path)
   "nixos-rebuild is not on lososd's unit path: systemd-run resolves the rebuild command against the caller's PATH, so every Apply, storage-mode change and factory reset fails before the rebuild unit exists";
+assert must (!(config.systemd.services.lososd.serviceConfig.MemoryDenyWriteExecute or false))
+  "lososd runs with MemoryDenyWriteExecute: Wasmtime cannot make its compiled plugins executable, lososd exits at start and restarts forever, and every /api/ request on the installed box answers 502";
 assert must ((config.systemd.services.lososd.serviceConfig.ProcSubset or "all") != "pid")
   "lososd runs with ProcSubset=pid: that hides /proc/devices and /proc/mounts, lvm2's vgs exits 4 without them, and every `losos-ctl grow` (the Storage pane's Use reserve) fails at its first step";
 assert must (lib.elem "/git/" (frontRoutes config) && config.systemd.services ? losos-git)
