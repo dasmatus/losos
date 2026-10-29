@@ -158,8 +158,8 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   tracing without time, ratatui) with the web UI's panes, catalogue and
   palette, read from `admin-ui/app` by its `build.rs`. It pins a box's
   self-signed certificate by SHA-256 at login. `.#losos-static` (musl) is
-  installed by `curl … /updates/<channel>/x86_64/install.sh | sh` (CI's
-  `tui` and `publish-tool` jobs). Each call is one OpenPGP
+  installed by `install.sh` out of CI's `losos-pages-updates` artifact,
+  linked through nightly.link (CI's `tui` and `publish-tool` jobs). Each call is one OpenPGP
   message signed by a key seeded at install (`losos.access.gpgKeys`,
   installer-fixed, never added at runtime) and encrypted to the host's own
   key, carrying a personal access token from the Access tokens pane;
