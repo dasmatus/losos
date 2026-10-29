@@ -1,8 +1,9 @@
 # nixos-test for buying USDC with euros at Binance, from the box's wallet.
 #
 # Three VMs on one network:
-#   * `edge`   — an official edge with a coins-only market settling USDC on
-#                Base, and Binance's onramp (losos.edge.market.usdc.binance)
+#   * `edge`   — an official edge (an open gateway the box vets,
+#                nix/tests/open-gateway.nix) with a coins-only market
+#                settling USDC on Base, and Binance's onramp (losos.edge.market.usdc.binance)
 #                pointed at a stand-in for Binance Connect on loopback. The
 #                partner key and token are sealed with systemd-creds the way
 #                an operator seals them, and the registrar reads them through
@@ -45,7 +46,6 @@ let
   proxyTokenValue = "test-proxy-token-0123456789abcdef";
   proxyToken = "/var/secrets/losos-proxy-token";
   agentToken = "/var/secrets/losos-mesh-agent-token";
-  identityKey = "/var/secrets/losos-edge-identity.key";
   edgeName = "edge.losos.dasmat.us";
   registrarUrl = "https://${edgeName}:8444";
   password = "Correct-Horse-Battery-9";
@@ -55,26 +55,19 @@ let
   wallet = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266";
   validDays = "3650";
 
-  # The edge's identity, TLS for its name, the partner's key pair (Binance
+  # The edge is an open gateway whose passport names the URL the box uses.
+  openGateway = import ./open-gateway.nix { inherit pkgs lososPkgs; };
+
+  # TLS for the edge's name, the partner's key pair (Binance
   # holds the public half), Binance's own pair for its notifications, and a
   # third key a forger signs with.
   fixture =
     pkgs.runCommand "losos-binance-onramp-fixture"
       {
-        nativeBuildInputs = [
-          lososPkgs.losos-registrar
-          pkgs.openssl
-        ];
+        nativeBuildInputs = [ pkgs.openssl ];
       }
       ''
         mkdir -p $out
-        losos-registrar identity keygen --out $out/root.key > $out/root.pub
-        losos-registrar identity keygen --out $out/edge.key > $out/edge.pub
-        losos-registrar identity sign \
-          --root-key $out/root.key --public-key "$(cat $out/edge.pub)" \
-          --name "losos test edge" --url ${registrarUrl} --days ${validDays} \
-          > $out/edge.cert.json
-
         # Python's TLS checks are strict: the CA carries its key usage, the
         # leaf names its issuer's key.
         openssl req -x509 -newkey rsa:2048 -nodes -days ${validDays} -subj "/CN=test CA" \
@@ -270,6 +263,7 @@ pkgs.testers.nixosTest {
           ../../modules/options.nix
           ../../modules/edge.nix
           ../../modules/edge-credentials.nix
+          (openGateway.edge registrarUrl)
         ];
         _module.args.self = {
           packages.x86_64-linux.losos-registrar = lososPkgs.losos-registrar;
@@ -278,7 +272,6 @@ pkgs.testers.nixosTest {
           "d /var/secrets 0700 root root - -"
           "f ${proxyToken} 0600 root root - ${proxyTokenValue}"
           "f ${agentToken} 0600 root root - test-agent-token"
-          "C ${identityKey} 0600 root root - ${fixture}/edge.key"
         ];
         losos.edge = {
           enable = true;
@@ -289,10 +282,6 @@ pkgs.testers.nixosTest {
             hostname = "mattbox.boxes.losos.dasmat.us";
             tokenFile = proxyToken;
             market = true;
-          };
-          identity = {
-            keyFile = identityKey;
-            certFile = "${fixture}/edge.cert.json";
           };
           cluster = {
             enable = true;
@@ -385,6 +374,7 @@ pkgs.testers.nixosTest {
           ../../modules/tls.nix
           ../../modules/daemon.nix
           ../../modules/identity.nix
+          openGateway.box
         ];
         losos = {
           hostName = "mattbox";
@@ -393,7 +383,6 @@ pkgs.testers.nixosTest {
           proxy = {
             enable = true;
             inherit registrarUrl;
-            officialRootKeyFile = "${fixture}/root.pub";
           };
         };
         systemd.tmpfiles.rules = [
@@ -438,7 +427,8 @@ pkgs.testers.nixosTest {
     let
       boxIp = nodes.box.networking.primaryIPAddress;
     in
-    ''
+    openGateway.script
+    + ''
       import json
 
       # One at a time: three VMs booting at once under emulation can miss
@@ -451,6 +441,7 @@ pkgs.testers.nixosTest {
       edge.wait_for_open_port(8444)
       edge.wait_for_open_port(9100)
       box.wait_for_unit("lososd.service")
+      trust(edge, box)
       box.wait_for_unit("nginx.service")
       box.wait_for_open_port(443)
       laptop.wait_for_unit("multi-user.target")

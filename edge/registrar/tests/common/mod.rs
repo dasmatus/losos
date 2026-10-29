@@ -661,6 +661,7 @@ impl Edge {
             calls_relay: None,
             ci_dir: None,
             hidden: None,
+            ech: None,
             onramp: None,
         };
         if let Some(tweak) = tweak {
