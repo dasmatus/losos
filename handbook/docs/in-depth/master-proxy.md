@@ -228,53 +228,76 @@ LAN enrolment and the gateway VM image are on [Edge federation](edge-federation.
 
 ## Official edges
 
-Any edge can be found and can relay storage. Only edges LosOS runs may
-process P2P storage and compute trading (the [market](market.md)). The box
-checks that itself, on every scan, and a company's own edge gets everything
-except the market.
+Any edge can be found and can relay storage. Only an edge that passes the
+gateway checks may process P2P storage and compute trading (the
+[market](market.md)). Anyone may run such an edge, an open gateway, as long
+as it proves what it runs. The box checks that itself, on every scan, and an
+edge that does not pass gets everything except the market.
 
-The check is an Ed25519 identity:
+What a box asks of an edge:
 
-- **The LosOS root key.** One keypair. The public half is a file every box
-  ships, `nix/keys/official-edge-root.pub` in this repository
-  (`losos.proxy.officialRootKeyFile`). The project owner holds the private
-  half offline. It never enters the repository or any box, and signs edge
-  certificates and nothing else. Until someone writes the public key into
-  that file, no edge is official and the market is off on every box built
-  from the tree. The default fails closed.
-- **An edge certificate.** Each official edge has its own keypair and a small
-  JSON certificate `{name, url, public_key, not_after, signature}` signed by
-  the root. The registrar answers `GET /identity?nonce=<hex>` with the
-  certificate and a signature over the nonce by the edge's key.
-- **The box's check** (`backend/src/edge.rs`) runs for every edge whose
-  `/health` answered. The root signed the certificate, the certificate names
-  the URL the box is talking to, it has not expired, and the edge's key
-  signed the nonce the box just made up. All four pass or the edge is not
-  official. The result is `official` per edge on `GET /api/edge`, and a sign
-  beside each edge's name on the Mesh pane: a check for an official edge, a
-  warning for any other, with a tooltip listing what that edge cannot do for
-  the box. A box may have several edges in reach. Sharing works through any
-  of them, trading only through an official one. While no official edge is
-  in reach, the market relay answers `{available: false, reason:
-  "noOfficialEdge"}` and refuses every action with 409
-  `officialEdgeRequired`. Nothing leaves the box.
+- **A passport.** The edge's owner signs a short statement with their
+  OpenPGP key: the edge's URL, the edge's own Ed25519 key (made on the edge;
+  the private half never leaves it), where the owner's share of the fee goes
+  on each network, and an expiry. The box checks the signature and the key
+  (self-signatures, not revoked, not expired) and shows the key's user id as
+  the edge's owner.
+- **The fees.** The settings beside the passport split each sale 2% to LosOS
+  and 2% to the owner, and LosOS's addresses are exactly the ones the box
+  ships (`losos.proxy.gateways.payouts`).
+- **A TPM.** The edge's TPM endorsement key carries its maker's certificate,
+  and the box checks it against the makers it ships
+  (`losos.proxy.gateways.tpmRoots`, Microsoft's TrustedTpm bundle by
+  default). The box makes a credential only that TPM can open.
+- **A quote.** The TPM quotes PCRs 4, 11 and 15 over the box's fresh nonce
+  and the edge's key. PCRs 4 and 11 must show one of the published gateway
+  images (`losos.proxy.gateways.images`), and PCR 15 must hold the hash of
+  exactly the settings the edge sent. The edge measures its settings at boot,
+  before the registrar starts, and PCR 15 cannot be reset, so the quote shows
+  the settings that boot started with.
 
-An edge makes its own identity key on its first start
-(`losos.edge.identity.keyFile`, default
-`/var/lib/losos-registrar/identity.key`), and the private half never leaves
-the edge. For an official edge, LosOS signs a certificate with the root and
-installs it there; the edge writes it beside the key
-(`losos.edge.identity.certFile`). Until a certificate arrives, the edge
-answers `/identity` with 404 and is not official. A company's own edge looks
-like that, including the one `nix/demo/edge-lan/` boots. An edge with both
-options set to `null` serves no identity at all.
+Two round trips carry it: `GET /passport?nonce=<hex>` and
+`POST /passport/attest`. The box's half is `backend/access/src/gateway/check.rs`,
+the edge's half `edge/registrar/src/gateway.rs`.
 
-So a company that runs its own edge gets a working on-premises deployment
-but cannot settle trades through it. A stranger who stands up an edge cannot
-make boxes trade through it either, because only the root's private key makes
-an edge official. The check does not hide the market protocol, and the
-root's private key is the whole secret. Losing it means shipping a release that re-keys every box's trust
-anchor.
+The result is `official` per edge on `GET /api/edge`, with the gateway's
+state beside it, and a sign beside each edge's name on the Mesh pane: a
+check for a checked gateway, with its owner and image in the tooltip; a
+warning for any other edge, with a tooltip listing what that edge cannot do
+for the box; a stop sign for an edge the box caught tampered. A box may have
+several edges in reach. Sharing works through any of them, trading only
+through a checked one. While none is in reach, the market relay answers
+`{available: false, reason: "noOfficialEdge"}` and refuses every action with
+409 `officialEdgeRequired`. Nothing leaves the box.
+
+A refusal is one of two kinds. Something the box does not know yet, such as
+an image it has no measurements for, a TPM maker it has no root for or a fee
+address that differs from the ones it ships, is shown and asked again on the
+next scan. Proof of tampering, such as a forged attestation, settings that
+changed after the edge booted, or firmware that started a program outside
+the published image, disables the edge
+on that box for good, by its URL, its TPM and its owner's key, in
+`/var/lib/losos/gateways.json`. The box then uses that edge for nothing,
+sharing included. A checked gateway is believed for ten minutes before the
+box asks again.
+
+The owner of an edge claims it with `POST /passport/settings`, signed with
+their OpenPGP key (`losos-registrar passport statement` prints the text to
+sign, `passport settings` assembles the file). The edge writes the file and
+reboots to measure it. Until then it answers `/passport` with 404 and is not
+checked. An edge without `losos.edge.passport.enable` serves no passport at
+all; a company's own edge usually looks like that, including the one
+`nix/demo/edge-lan/` boots.
+
+Two lists ship empty in this tree: `nix/gateway/images.nix` until a gateway
+image boots as a unified kernel image, and `nix/gateway/payouts.nix` until
+LosOS's addresses are written there. While either is empty no edge passes,
+and the market is off on every box. The default fails closed.
+
+So a company that runs its own edge gets a working on-premises deployment,
+and it can trade through that edge too once the edge runs the published
+image under its passport and pays LosOS's share. A stranger who changes the
+image, the settings or the fee addresses gets an edge no box trades through.
 
 ## DNS zone and custom domains
 

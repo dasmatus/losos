@@ -87,10 +87,11 @@ the wait in seconds, and `0` turns the pause off.
 
 Finding an edge and trusting it with money are two different questions. Any
 edge that answers opens sharing. Trading on the market is allowed only
-through an **official** edge, one that presents a certificate signed by the
-LosOS root key and answers the box's fresh nonce with it. The box checks this
-on every scan. Each edge's row carries a sign beside its name, a check for an
-official edge and a warning for any other. The warning's tooltip lists what
+through an **official** edge, a gateway that passes the box's checks: its
+owner's signed passport, a TPM that shows a published LosOS gateway image
+booted untouched, and LosOS's fee addresses. The box checks this on every
+scan. Each edge's row carries a sign beside its name, a check for a checked
+gateway and a warning for any other. The warning's tooltip lists what
 that edge cannot do for this box: buying on the market, and selling this
 box's spare storage and compute. A company's own edge wears the warning, and
 that is not a fault. See [Master proxy, Official

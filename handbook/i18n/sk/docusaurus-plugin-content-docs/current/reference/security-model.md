@@ -28,14 +28,14 @@ mohli polemizovať.
 4. **Vaše súbory ↔ kópie mesh siete.** Zariadenie má dva účty s oddelenými
    skupinami a domovskými adresármi v režime 700. Adresár mesh siete je
    šifrovaný vlastným kľúčom, ktorý zariadenie načíta iba počas zdieľania.
-5. **Oficiálny edge ↔ akýkoľvek edge.** Zariadenie nesie koreňový verejný
-   kľúč, podľa ktorého rozozná edge LosOS od firemného. Obchodovanie
-   potrebuje edge LosOS, všetko ostatné funguje s oboma. Súkromná polovica
-   vzniká a používa sa iba na vlastnom počítači vlastníka projektu. Nástroj,
-   ktorý ju používa, prihlási človeka cez GitHub a overí účet voči
-   zoznamu povolených v repozitári. Žiadne zariadenie ani edge súkromný kľúč
-   nikdy nemá. Podpísaný certifikát sa k edge dostane cez web a edge pred
-   inštaláciou overí GitHub účet odosielateľa voči tomu istému zoznamu.
+5. **Oficiálny edge ↔ akýkoľvek edge.** Zariadenie si každý edge overí
+   samo, skôr ako cez neho obchoduje: pas OpenPGP jeho vlastníka, TPM, ktorý
+   ukazuje, že nezmenený naštartoval zverejnený obraz brány LosOS, a
+   nastavenia, ktoré posielajú podiel LosOS na adresy, ktoré zariadenie má.
+   Obchodovanie potrebuje edge, ktorý prejde, všetko ostatné funguje s
+   akýmkoľvek edge. Žiadny kľúč LosOS z edge oficiálny neurobí, takže niet
+   súkromného kľúča, ktorý by sa dal ukradnúť. Edge pristihnutý pri
+   manipulácii zariadenie, ktoré ho pristihlo, už nikdy nepoužije.
 
 ![Hranice zariadenia: jedny vstupné dvere, riadiace API iba na loopbacku, tunel otvorený smerom von k edge a jeden šifrovaný zväzok.](@site/docs/img/box-architecture-sk.svg)
 

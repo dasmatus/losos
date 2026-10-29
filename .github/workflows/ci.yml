@@ -555,7 +555,7 @@ jobs:
       # qemu-wasm engine.
       - run: nix build .#losos-registrar .#losos-admin-ui .#losos-handbook .#losos-lab-virt -L
       # The same crate linked statically against musl, for the operator's own
-      # machine (the key ceremony, docs/provisioning/edge-identity/README.md): the
+      # machine (a gateway's passport, docs/provisioning/edge-identity/README.md): the
       # glibc build above only runs where /nix/store exists. It is built here,
       # where the registrar's cargo vendor tarball is already realised, and
       # handed to the publish-tool job as a plain file: that job pushes it to
@@ -1910,10 +1910,11 @@ jobs:
 
           A LosOS edge for your own network: boot it on Proxmox, libvirt or
           VirtualBox with a NIC on the LAN, and boxes installed from the ISO
-          find it on their own and are reachable through it. Log in on its
-          console as \`root\` (first password \`losos\`, changed at first
-          login) and run \`losos-edge uplink set ...\` with the tenant row an
-          official edge gave you to reach them from anywhere. See the
+          find it on their own and are reachable through it. It has no
+          console login and no SSH: its screen shows the address of its
+          manage page and the key that signs in there. Enter the tenant row
+          an official edge gave you under Hub on that page to reach them
+          from anywhere. See the
           [Edge federation](https://losos.dasmat.us/in-depth/edge-federation)
           page. Also on GHCR: \`oras pull ${EDGE_REF}\`.
 

@@ -27,13 +27,16 @@ their own.
 
 ## What is different
 
-- **No market.** A company's edge cannot present the LosOS signature, so
-  every box treats it as unofficial;
+- **No market, unless it is a checked gateway.** A company's edge usually
+  shows no gateway passport, so every box treats it as unofficial;
   [official or not](official-edge#official-or-not) explains the check. Its
-  row on the Mesh pane wears the warning sign, and the Market pane says "The edge proxy this box found is not run by LosOS.
-  Sharing storage through it works; trading needs an official LosOS edge in
-  reach." The company's own boxes share storage and compute among themselves
-  for free, which is the point.
+  row on the Mesh pane wears the warning sign, and the Market pane says "The
+  edge proxy this box found did not pass the gateway checks. Sharing storage
+  through it works; trading needs a checked LosOS gateway in reach." The
+  company's own boxes share storage and compute among themselves for free,
+  which is the point. A company that wants the market through its own edge
+  runs the published gateway image on a machine with a TPM and signs a
+  passport for it; it then pays LosOS's share like any other gateway.
 - **The company holds the keys.** The tunnel key pair, the cluster token and
   the allow-list of boxes live on the company's edge. Nothing about the
   company's data or traffic touches the LosOS project.
@@ -86,8 +89,8 @@ whether that edge may.
 
 2. On the edge, set `losos.edge.manage.enable` (an edge gateway machine has
    it on). The edge makes a manage key on its first start and keeps it in
-   `/var/lib/losos-registrar/manage-key`. On an edge gateway machine,
-   `losos-edge manage-key` prints it with the page's address.
+   `/var/lib/losos-registrar/manage-key`. An edge gateway machine shows it on
+   its screen with the page's address.
 3. Open `/manage/` at the edge's address, for example
    `http://<edge>.local:8443/manage/`, and sign in with the key. The page
    lists the boxes the edge routes and opens the ones whose owner turned the

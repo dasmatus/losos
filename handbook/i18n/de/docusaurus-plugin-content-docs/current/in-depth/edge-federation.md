@@ -46,38 +46,36 @@ Gateway und Hub melden sie alle:
 
 Eine Box hält selbst nie eine primäre Verbindung. Ihre eigene sieht sie als
 `path.tier` in `GET /api/edge` und auf der Mesh-Seite, das Gateway zeigt
-seine Verbindungen in `losos-edge status`, und der Hub führt die Gateways
-des Hauptclusters, jedes auf einer primären Verbindung, in
-`main-cluster.json` neben seiner Registry (`losos-edge main` auf einem
-Gateway gibt die des eigenen Standorts aus).
+seinen Hub und seine Cluster auf seiner Verwaltungsseite, und der Hub führt
+die Gateways des Hauptclusters, jedes auf einer primären Verbindung, in
+`main-cluster.json` neben seiner Registry (die Verwaltungsseite eines
+Gateways listet die des eigenen Standorts unter **Hauptcluster**).
 
 ### Sekundäre Cluster {#secondary-clusters}
 
 Ein Gateway in einem Netzwerk kann ausfallen. Ein **sekundärer Cluster**
 besteht aus einem oder mehreren Gateways im selben Netzwerk, die dieselben
 Boxen bedienen, damit eine Box erreichbar bleibt, wenn eines davon
-wegfällt. Er ist Laufzeitzustand und wird auf den Gateways angelegt:
-
-```sh
-# auf dem ersten Gateway
-losos-edge cluster create office
-# es gibt die Zeile aus, die du auf jedem weiteren Gateway ausführst:
-losos-edge cluster join office <secret> http://gwa.local:8443
-```
+wegfällt. Er ist Laufzeitzustand und wird auf den Verwaltungsseiten der
+Gateways angelegt: **Cluster gründen** auf dem ersten Gateway, das danach
+den Namen des Clusters, sein Geheimnis und seine Adresse zeigt; **Cluster
+beitreten** auf jedem weiteren Gateway, mit diesen dreien. Die Seite ruft
+`PUT /manage/api/gateway/cluster` auf (ein Name allein gründet einen
+Cluster; Name, Geheimnis und die Adresse eines anderen Mitglieds treten ihm
+bei), und **Verlassen** ruft `DELETE` auf demselben Pfad auf.
 
 Die Cluster-Datei (`losos.edge.secondary.file`, standardmäßig
 `/var/lib/losos-edge/cluster.json`, Modus 0600) enthält den Namen, den
 Mitgliedsnamen dieses Gateways, das gemeinsame Geheimnis und die Gateways,
 über die es beigetreten ist. Der Registrar liest sie bei jedem Durchlauf
-neu, deshalb brauchen `create`, `join` und `losos-edge cluster leave`
-keinen Neustart. Die Mitglieder gleichen sich alle
+neu, deshalb brauchen Gründen, Beitreten und Verlassen keinen Neustart. Die Mitglieder gleichen sich alle
 `losos.edge.secondary.interval` über `POST /cluster/secondary/sync` ab,
 jede Nachricht mit einem HMAC des Geheimnisses signiert: Jedes Mitglied
 erfährt die Boxen, die die anderen eingeschrieben haben, sodass der Token
 einer Box auf allen gilt, und wann welches Mitglied welche Box zuletzt
 gehört hat. Nur das Mitglied, das eine Box zuletzt gehört hat, leitet sie
 an den Hub weiter, sodass die Route des Hubs der Box folgt, ohne zu
-springen. `losos-edge cluster show` listet die Mitglieder, die antworten.
+springen. `GET /manage/api/gateway` listet die Mitglieder, die antworten.
 
 `GET /cluster/secondary` liest eine Box von jeder Edge, die sie findet: die
 Rolle der Edge, die Stufe der Verbindungen, die sie bedient, ihren Cluster
@@ -225,8 +223,8 @@ Anfrage für diese ID muss damit übereinstimmen. Sie gewährt nur die
 Mitgliedschaft im Proxy (nie `cluster` oder `market`), wird auf einer Edge
 abgelehnt, die sich nicht in einem LAN ankündigt (ein VPS darf sie nie
 setzen), und die Ankündigung sagt es (`enrol=open`). `losos-registrar enrol
-list|forget --dir /var/lib/losos-registrar/enrolled` (auf dem Gateway
-`losos-edge boxes` und `losos-edge forget <id>`) zeigt eingeschriebene Boxen
+list|forget --dir /var/lib/losos-registrar/enrolled` (auf einem Gateway
+**Beim ersten Kontakt aufgenommen** auf seiner Verwaltungsseite) zeigt eingeschriebene Boxen
 an und entfernt sie; eine Box, die noch Heartbeats sendet, schreibt sich mit
 dem Token, den sie hält, neu ein, daher ist das Vergessen für eine Box
 gedacht, die gegangen ist. Der Hub behält die geschlossene Einschreibung.
@@ -307,12 +305,13 @@ für ein Gateway und das Halten durch eine eigene Domain.
   Entwurf.
 - **Der Market.** Handel lehnt die Box ab, solange keine *offizielle* Edge
   erreichbar ist ([Offizielle Edges](/in-depth/master-proxy.md#official-edges)); ein
-  Spoke ist nie offiziell, und eine weitergeleitete Box ist kein Tenant des
+  Spoke ist nur offiziell, wenn er die Gateway-Prüfung selbst besteht, und
+  eine weitergeleitete Box ist kein Tenant des
   Hubs, daher kann kein `/market/*`-Aufruf in ihrem Namen erfolgen. Das
   Relay transportiert Erreichbarkeit per HTTP, sonst nichts.
-- **Die Identität.** Ein Spoke leitet `/identity` nicht weiter; eine Box,
-  die den Market will, erreicht die offizielle Edge selbst, über ihren
-  eigenen Internetzugang.
+- **Der Pass.** Ein Spoke leitet `/passport` des Hubs nicht weiter; eine Box
+  prüft jede Edge, die sie erreicht, selbst, und eine, die den Market über
+  den Hub will, erreicht den Hub selbst, über ihren eigenen Internetzugang.
 
 ## Eigene Domains hinter einer lokalen Edge {#custom-domains-behind-a-local-edge}
 
@@ -436,23 +435,18 @@ Zwei Formen, eine Konfiguration:
    `losos.edge.gateway.enable` (`modules/edge-gateway.nix`), das
    `lan.advertise` und `lan.openEnrolment` setzt, den Uplink zur Laufzeit
    aus `/var/lib/losos-edge/uplink.json` liest, sodass ein Image jedem
-   Standort dient, beim ersten Booten sein eigenes Tunnel-Zertifikat
-   erzeugt, root eine Konsole gibt (erstes Passwort `losos`, Änderung beim
-   ersten Login erzwungen; sshd installiert, aber gestoppt bis
-   `losos-edge ssh on`) und seine Adresse auf tty1 ausgibt. Boote es
-   auf Proxmox, libvirt oder VirtualBox mit einer Netzwerkkarte im LAN; vom
-   Standard-ISO installierte Boxen finden es innerhalb einer Minute. Dann,
-   auf seiner Konsole:
-
-   ```sh
-   losos-edge status
-   losos-edge uplink set --id acme --token-file /root/acme.token \
-     --registrar https://register.losos.cfd --tunnel edge.losos.cfd:2333
-   losos-edge boxes
-   ```
-
-   mit der Tenant-Zeile, die dir der Betreiber des Hubs gegeben hat.
-   `losos-edge uplink clear` beendet das Weiterleiten.
+   Standort dient, und beim ersten Booten sein eigenes Tunnel-Zertifikat
+   erzeugt. Wie eine Box hat es keine Shell: keine Konsolenanmeldung, kein
+   SSH, kein root-Passwort. Sein Bildschirm zeigt die Adresse der
+   Verwaltungsseite und den Schlüssel, mit dem du dich dort anmeldest. Boote
+   es auf Proxmox, libvirt oder VirtualBox mit einer Netzwerkkarte im LAN;
+   vom Standard-ISO installierte Boxen finden es innerhalb einer Minute.
+   Öffne dann die Verwaltungsseite und trage unter **Hub** die Tenant-Zeile
+   ein, die dir der Betreiber des Hubs gegeben hat: die Mandanten-ID, die
+   Registrar-URL (zum Beispiel `https://register.losos.cfd`), den
+   Tunnel-Endpunkt (`edge.losos.cfd:2333`) und den Token. **Weiterleitung
+   beenden** löscht sie. Die Seite ruft `PUT` und
+   `DELETE /manage/api/gateway/uplink` auf.
 2. **Eine bestehende NixOS-Maschine**: Importiere `nixosModules.edge`
    und setze entweder `losos.edge.gateway.enable = true` (die Form des
    Images) oder schreib die Optionen oben von Hand, wie es die

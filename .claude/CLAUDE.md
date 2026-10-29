@@ -1159,37 +1159,27 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   `sharingPausedAt`); only its own pause is undone, and a box that never
   reached an edge while sharing (the shared side's VM tests) is never
   paused. On top of that,
-  each answering edge is challenged (`GET /identity?nonce=`) and counts as
-  official only if its certificate is signed by the LosOS root key in
-  `nix/keys/official-edge-root.pub` (`losos.proxy.officialRootKeyFile`), names
-  that URL, is unexpired, and the nonce is signed by the certificate's key.
-  The market relay refuses everything else (`{available:false,
-  reason:"noOfficialEdge"}`, 409 `officialEdgeRequired`). The committed key
-  file is **empty on purpose** until the owner writes the public key: no
-  root, nothing official, market off. The private key lives offline with the
-  owner and is never committed; `losos-registrar identity
-  {keygen,sign,show,verify}` are the primitives (`edge/registrar/src/identity.rs`,
-  used by `nix/tests/edge-lan.nix`, which builds its own root at build time
-  rather than trusting the shipped file), `losos.edge.identity.{keyFile,certFile}`
-  the edge side. The ceremony an operator runs is `losos-registrar provision
-  {whoami,root-keygen,publish,edge,verify}` (`edge/registrar/src/provision.rs`),
-  **on the operator's own machine**: every verb that makes or uses the root
-  key first signs the operator in with GitHub's OAuth device flow (public
-  client id only, no secret) and refuses unless the account's *numeric id*
-  is in `edge/registrar/operators.json`, which is compiled into the
-  binary. `provision edge` reads the edge's own public key from
-  `GET /identity/public-key` (the registrar makes the key on its first
-  start; the private half never leaves the edge), signs the certificate
-  and pushes it to `POST /identity/cert` with the sign-in's GitHub token,
-  which the edge resolves against the same compiled-in allowlist before it
-  installs anything (`server::identity_push`), then runs the four checks;
-  no SSH; `root-keygen --publish` / `publish` open
-  the PR that fills `nix/keys/official-edge-root.pub` with the same sign-in
-  (`public_repo`). `tests/provision.rs` runs all of it against a fake GitHub
-  and a real registrar. The gate decides whom the tooling serves; the root
-  key stays the whole secret. The box runs no CI runner: the earlier
-  from-the-box ceremony
-  (Actions workflows plus `modules/git-runner.nix`) is gone, and
+  each answering edge is checked as an open gateway (`GET /passport?nonce=`,
+  `POST /passport/attest`; `backend/access/src/gateway/check.rs`, the edge's
+  half `edge/registrar/src/gateway.rs`, `losos.edge.passport.enable`) and
+  counts as official only if its owner's OpenPGP passport holds, its TPM's
+  endorsement certificate chains to `losos.proxy.gateways.tpmRoots`, its
+  quote over PCRs 4, 11 and 15 shows a published image
+  (`losos.proxy.gateways.images`) and the settings it measured at boot, and
+  those settings pay LosOS's 2% to `losos.proxy.gateways.payouts`. The
+  market relay refuses everything else (`{available:false,
+  reason:"noOfficialEdge"}`, 409 `officialEdgeRequired`); proof of
+  tampering disables the edge on that box for good
+  (`/var/lib/losos/gateways.json`). `nix/gateway/images.nix` and
+  `payouts.nix` are **empty on purpose** until the image and the addresses
+  are published: nothing official, market off. There is no root key.
+  `nix/tests/open-gateway.nix` is the VM tests' fixture (a throwaway TPM
+  maker, swtpm EK certificates, passports). `losos-registrar provision
+  {whoami,token}` (`edge/registrar/src/provision.rs`) runs **on the
+  operator's own machine** behind GitHub's OAuth device flow (public client
+  id only, no secret) and refuses unless the account's *numeric id* is in
+  `edge/registrar/operators.json`, which is compiled into the binary. The
+  box runs no CI runner, and
   `docs/provisioning/edge-identity/README.md` is the operator runbook. The
   operator's machine has no Nix store, so `.#losos-registrar-static`
   (`pkgsStatic`, musl, same `cargoHash`) is the binary for it: CI's

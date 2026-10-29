@@ -123,8 +123,8 @@ If nobody is signed in, it says so and opens the built-in setups.
 
 The network follows the same rules as the real software. Examples: a box
 with no edge in reach starts no tunnel; a mesh switch is refused with
-`edgeRequired`; the market opens only next to an official edge (one whose
-certificate the LosOS root key signed); a LAN gateway with open enrolment
+`edgeRequired`; the market opens only next to an official edge (one that
+passes the gateway checks); a LAN gateway with open enrolment
 takes unknown boxes on first use; and the admin routes refuse loopback.
 
 ## The two copies

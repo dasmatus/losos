@@ -27,14 +27,13 @@ can argue with it.
 4. **Your files ↔ the mesh's copies.** The box has two accounts with
    separate groups and mode-700 homes. The mesh's directory is encrypted
    with its own key, which the box loads only while sharing is on.
-5. **An official edge ↔ any edge.** The box carries a root public key that
-   lets it tell the LosOS edge from a company's own. Trading needs the LosOS
-   edge, and everything else works with either. The project owner makes and
-   uses the private half only on their own computer. The tool that uses it signs
-   the person in with GitHub and checks the account against a committed
-   allowlist. No box and no edge ever holds the private key. The signed
-   certificate reaches the edge over the web, and the edge checks the
-   pusher's GitHub account against the same list before it installs it.
+5. **An official edge ↔ any edge.** The box checks each edge for itself
+   before it trades through it: the owner's OpenPGP passport, a TPM that
+   shows a published LosOS gateway image booted untouched, and settings that
+   pay LosOS's share to the addresses the box ships. Trading needs an edge
+   that passes, and everything else works with any edge. No LosOS key
+   makes an edge official, so there is no private key to steal. An edge caught
+   tampered with is never used again by the box that caught it.
 
 ![The box's boundaries: one front door, a control API on loopback only, the tunnel opened outwards to the edge, and one encrypted volume.](../img/box-architecture.svg)
 

@@ -250,60 +250,85 @@ unter [Edge-Föderation](/in-depth/edge-federation.md).
 
 ## Offizielle Edges {#official-edges}
 
-Jede Edge kann gefunden werden und Speicher weiterleiten. Nur Edges, die
-LosOS betreibt, dürfen den P2P-Handel mit Speicher und Rechenleistung
-abwickeln (den [Marktplatz](/in-depth/market.md)). Die Box prüft das selbst, bei jedem
-Scan, und die eigene Edge einer Firma bekommt alles außer dem Marktplatz.
+Jede Edge kann gefunden werden und Speicher weiterleiten. Nur eine Edge, die
+die Gateway-Prüfung besteht, darf den P2P-Handel mit Speicher und
+Rechenleistung abwickeln (den [Marktplatz](/in-depth/market.md)). Eine solche
+Edge, ein offenes Gateway, darf jeder betreiben, solange sie nachweist, was
+auf ihr läuft. Die Box prüft das selbst, bei jedem Scan, und eine Edge, die
+nicht besteht, bekommt alles außer dem Marktplatz.
 
-Die Prüfung ist eine Ed25519-Identität:
+Was eine Box von einer Edge verlangt:
 
-- **Der LosOS-Root-Schlüssel.** Ein Schlüsselpaar. Die öffentliche Hälfte
-  ist eine Datei, die jede Box mitbringt, `nix/keys/official-edge-root.pub` in
-  diesem Repository (`losos.proxy.officialRootKeyFile`). Der Projektinhaber
-  verwahrt die private Hälfte offline. Sie gelangt nie in das Repository
-  oder auf eine Box und signiert Edge-Zertifikate und sonst nichts. Bis
-  jemand den öffentlichen Schlüssel in diese Datei schreibt, ist keine Edge
-  offiziell und der Marktplatz ist auf jeder aus dem Baum gebauten Box aus.
-  Der Standard schlägt geschlossen fehl.
-- **Ein Edge-Zertifikat.** Jede offizielle Edge hat ein eigenes
-  Schlüsselpaar und ein kleines JSON-Zertifikat
-  `{name, url, public_key, not_after, signature}`, signiert vom Root. Der
-  Registrar beantwortet `GET /identity?nonce=<hex>` mit dem Zertifikat und
-  einer Signatur über die Nonce mit dem Schlüssel der Edge.
-- **Die Prüfung auf der Box** (`backend/src/edge.rs`) läuft für jede Edge,
-  deren `/health` geantwortet hat. Der Root hat das Zertifikat signiert, das
-  Zertifikat nennt die URL, mit der die Box spricht, es ist nicht abgelaufen,
-  und der Schlüssel der Edge hat die Nonce signiert, die sich die Box gerade
-  ausgedacht hat. Alle vier bestehen, oder die Edge ist nicht offiziell. Das
-  Ergebnis ist `official` pro Edge in `GET /api/edge` und ein Zeichen neben
-  dem Namen jeder Edge im Mesh-Bereich: ein Häkchen bei einer offiziellen
-  Edge, eine Warnung bei jeder anderen, mit einem Tooltip, der auflistet, was
-  diese Edge für die Box nicht leisten kann. Eine Box kann mehrere Edges in
-  Reichweite haben. Teilen funktioniert über jede von ihnen, Handel nur über
-  eine offizielle. Solange keine offizielle Edge in Reichweite ist,
-  antwortet das Marktplatz-Relay mit `{available: false, reason:
-  "noOfficialEdge"}` und lehnt jede Aktion mit 409
-  `officialEdgeRequired` ab. Nichts verlässt die Box.
+- **Einen Pass.** Der Betreiber der Edge signiert mit seinem
+  OpenPGP-Schlüssel eine kurze Erklärung: die URL der Edge, den eigenen
+  Ed25519-Schlüssel der Edge (auf der Edge erzeugt, die private Hälfte
+  verlässt sie nie), wohin sein Anteil an der Gebühr in jedem Netz geht, und
+  ein Ablaufdatum. Die Box prüft die Signatur und den Schlüssel
+  (Selbstsignaturen, nicht widerrufen, nicht abgelaufen) und zeigt die User-ID
+  des Schlüssels als Betreiber der Edge.
+- **Die Gebühren.** Die Einstellungen neben dem Pass teilen jeden Verkauf
+  2 % für LosOS und 2 % für den Betreiber, und die Adressen von LosOS sind
+  genau die, die die Box mitbringt (`losos.proxy.gateways.payouts`).
+- **Ein TPM.** Der Endorsement-Schlüssel im TPM der Edge trägt das
+  Zertifikat seines Herstellers, und die Box prüft es gegen die Hersteller,
+  die sie mitbringt (`losos.proxy.gateways.tpmRoots`, standardmäßig das
+  TrustedTpm-Bündel von Microsoft). Die Box erzeugt ein Credential, das nur
+  dieses TPM öffnen kann.
+- **Ein Quote.** Das TPM signiert PCR 4, 11 und 15 zusammen mit der frischen
+  Nonce der Box und dem Schlüssel der Edge. PCR 4 und 11 müssen eines der
+  veröffentlichten Gateway-Images zeigen (`losos.proxy.gateways.images`), und
+  PCR 15 muss den Hash genau der Einstellungen enthalten, die die Edge
+  geschickt hat. Die Edge misst ihre Einstellungen beim Start, bevor der
+  Registrar läuft, und PCR 15 lässt sich nicht zurücksetzen, also zeigt das
+  Quote die Einstellungen, mit denen dieser Start begann.
 
-Die Edge erzeugt ihren Identitätsschlüssel beim ersten Start
-(`losos.edge.identity.keyFile`, Standard
-`/var/lib/losos-registrar/identity.key`), und die private Hälfte verlässt die
-Edge nie. Für eine offizielle Edge signiert LosOS mit dem Root ein Zertifikat
-und installiert es dort; die Edge schreibt es neben den Schlüssel
-(`losos.edge.identity.certFile`). Bis ein Zertifikat eintrifft, beantwortet
-die Edge `/identity` mit 404 und ist nicht offiziell. So sieht die eigene Edge
-einer Firma aus, einschließlich der, die `nix/demo/edge-lan/` bootet. Eine Edge,
-bei der beide Optionen auf `null` stehen, stellt überhaupt keine Identität
-bereit.
+Zwei Runden tragen das: `GET /passport?nonce=<hex>` und
+`POST /passport/attest`. Die Hälfte der Box ist
+`backend/access/src/gateway/check.rs`, die der Edge
+`edge/registrar/src/gateway.rs`.
 
-Was das schützt: Eine Firma, die ihre eigene Edge betreibt, erhält einen
-funktionierenden On-Premises-Betrieb, kann darüber aber keine Geschäfte
-abrechnen. Ein Fremder, der eine Edge aufsetzt, kann Boxen ebenfalls nicht
-dazu bringen, darüber zu handeln, denn nur der private Schlüssel des Roots
-macht eine Edge offiziell. Was es nicht schützt: Das Marktplatz-Protokoll ist
-nicht geheim, und der private Schlüssel des Roots ist das gesamte
-Geheimnis. Geht er verloren, muss ein Release ausgeliefert werden, das den
-Vertrauensanker jeder Box durch einen neuen Schlüssel ersetzt.
+Das Ergebnis ist `official` pro Edge in `GET /api/edge`, mit dem Zustand des
+Gateways daneben, und ein Zeichen neben dem Namen jeder Edge im
+Mesh-Bereich: ein Häkchen bei einem geprüften Gateway, mit Betreiber und
+Image im Tooltip; eine Warnung bei jeder anderen Edge, mit einem Tooltip, der
+auflistet, was diese Edge für die Box nicht kann; ein Stoppzeichen bei einer
+Edge, die die Box bei einer Manipulation ertappt hat. Eine Box kann mehrere
+Edges in Reichweite haben. Teilen funktioniert über jede davon, Handel nur
+über eine geprüfte. Solange keine in Reichweite ist, antwortet das
+Marktplatz-Relay mit `{available: false, reason: "noOfficialEdge"}` und lehnt
+jede Aktion mit 409 `officialEdgeRequired` ab. Nichts verlässt die Box.
+
+Eine Ablehnung gibt es in zwei Arten. Was die Box noch nicht kennt, etwa ein
+Image, für das sie keine Messwerte hat, einen TPM-Hersteller, für den sie
+keine Wurzel hat, oder eine Gebührenadresse, die von ihren abweicht, wird
+angezeigt und beim nächsten Scan erneut geprüft. Ein Beweis für Manipulation,
+etwa eine gefälschte Attestierung, Einstellungen, die sich nach dem Start der
+Edge geändert haben, oder Firmware, die ein Programm außerhalb des
+veröffentlichten Images gestartet hat, schaltet die Edge auf dieser Box für
+immer ab, nach ihrer URL, ihrem TPM und dem Schlüssel ihres Betreibers, in
+`/var/lib/losos/gateways.json`. Die Box nutzt diese Edge dann für nichts
+mehr, auch nicht zum Teilen. Einem geprüften Gateway glaubt die Box zehn
+Minuten, dann fragt sie erneut.
+
+Der Betreiber einer Edge übernimmt sie mit `POST /passport/settings`,
+signiert mit seinem OpenPGP-Schlüssel (`losos-registrar passport statement`
+gibt den Text zum Signieren aus, `passport settings` baut die Datei). Die
+Edge schreibt die Datei und startet neu, um sie zu messen. Bis dahin
+beantwortet sie `/passport` mit 404 und ist nicht geprüft. Eine Edge ohne
+`losos.edge.passport.enable` bietet gar keinen Pass an; so sieht die eigene
+Edge einer Firma meist aus, auch die, die `nix/demo/edge-lan/` startet.
+
+Zwei Listen sind in diesem Baum leer: `nix/gateway/images.nix`, bis ein
+Gateway-Image als Unified Kernel Image startet, und `nix/gateway/payouts.nix`,
+bis die Adressen von LosOS dort stehen. Solange eine davon leer ist, besteht
+keine Edge, und der Marktplatz ist auf jeder Box aus. Der Standard schlägt
+geschlossen fehl.
+
+Eine Firma, die ihre eigene Edge betreibt, bekommt also eine funktionierende
+On-Premises-Installation und kann darüber auch handeln, sobald die Edge das
+veröffentlichte Image unter ihrem Pass betreibt und den Anteil von LosOS
+zahlt. Wer als Fremder das Image, die Einstellungen oder die
+Gebührenadressen ändert, bekommt eine Edge, über die keine Box handelt.
 
 ## DNS-Zone und eigene Domains {#dns-zone-and-custom-domains}
 

@@ -95,11 +95,12 @@ Sekunden fest, `0` schaltet die Pause ab.
 
 Eine Edge zu finden und ihr Geld anzuvertrauen sind zwei verschiedene
 Fragen. Jede Edge, die antwortet, öffnet das Teilen. Handel auf dem Market
-ist nur über eine **offizielle** Edge erlaubt, eine, die ein vom
-LosOS-Root-Schlüssel signiertes Zertifikat vorlegt und damit auf eine frische
-Nonce der Box antwortet. Die Box prüft das bei jedem Scan. Die Zeile jeder
-Edge trägt neben ihrem Namen ein Zeichen, einen Haken für eine offizielle
-Edge und eine Warnung für jede andere. Der Tooltip der Warnung listet auf,
+ist nur über eine **offizielle** Edge erlaubt, ein Gateway, das die Prüfung
+der Box besteht: den Pass, den sein Betreiber signiert hat, ein TPM, das
+zeigt, dass ein veröffentlichtes LosOS-Gateway-Image unverändert gestartet
+ist, und die Gebührenadressen von LosOS. Die Box prüft das bei jedem Scan.
+Die Zeile jeder Edge trägt neben ihrem Namen ein Zeichen, einen Haken für ein
+geprüftes Gateway und eine Warnung für jede andere Edge. Der Tooltip der Warnung listet auf,
 was diese Edge für diese Box nicht tun kann: auf dem Market kaufen sowie den
 freien Speicher und die Rechenleistung dieser Box verkaufen. Die eigene Edge
 einer Firma trägt die Warnung, und das ist kein Fehler. Siehe [Master-Proxy,

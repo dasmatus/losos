@@ -27,13 +27,16 @@ počítač v LAN a zariadenia ho nájdu samy.
 
 ## Čo je iné \{#what-is-different}
 
-- **Žiadny trh.** Firemný edge nedokáže predložiť podpis LosOS, takže ho
-  každé zariadenie považuje za neoficiálny. Kontrolu vysvetľuje časť
-  [oficiálny alebo nie](official-edge#official-or-not). Jeho riadok na paneli
-  Mesh nesie výstražný znak a panel Trh hlási „Okrajový proxy server, ktorý toto zariadenie našlo, neprevádzkuje LosOS.
-  Zdieľanie úložiska cez neho funguje; obchodovanie vyžaduje dostupný oficiálny okrajový server LosOS.“
-  Vlastné zariadenia firmy si medzi sebou zdieľajú úložisko aj výpočtový
-  výkon zadarmo, o čo tu ide.
+- **Žiadny trh, ak nejde o overenú bránu.** Firemný edge zvyčajne neukazuje
+  pas brány, takže ho každé zariadenie považuje za neoficiálny. Kontrolu
+  vysvetľuje časť [oficiálny alebo nie](official-edge#official-or-not). Jeho
+  riadok na paneli Mesh nesie výstražný znak a panel Trh hlási „Okrajový
+  proxy server, ktorý toto zariadenie našlo, neprešiel overením brány.
+  Zdieľanie úložiska cez neho funguje; obchodovanie vyžaduje dostupnú
+  overenú bránu LosOS.“ Vlastné zariadenia firmy si medzi sebou zdieľajú
+  úložisko aj výpočtový výkon zadarmo, o čo tu ide. Firma, ktorá chce trh
+  cez vlastný edge, na ňom spustí zverejnený obraz brány na počítači s TPM a
+  podpíše preň pas; potom platí podiel LosOS ako každá iná brána.
 - **Kľúče drží firma.** Pár kľúčov tunela, token klastra a zoznam povolených
   zariadení sú na firemnom edge. Nič z dát ani prevádzky firmy sa projektu
   LosOS nedotkne.
@@ -87,8 +90,8 @@ vlastník každého zariadenia.
 
 2. Na edge nastavte `losos.edge.manage.enable` (počítač s edge bránou ho má
    zapnuté). Edge si pri prvom spustení vytvorí kľúč na správu a uloží ho do
-   `/var/lib/losos-registrar/manage-key`. Na počítači s edge bránou ho
-   `losos-edge manage-key` vypíše spolu s adresou stránky.
+   `/var/lib/losos-registrar/manage-key`. Počítač s edge bránou ho ukazuje na
+   obrazovke spolu s adresou stránky.
 3. Otvorte `/manage/` na adrese edge, napríklad
    `http://<edge>.local:8443/manage/`, a prihláste sa kľúčom. Stránka ukáže
    zariadenia, ktoré edge smeruje, a otvorí tie, ktorých vlastník prepínač
