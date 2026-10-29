@@ -71,6 +71,8 @@ Hat ein Handy den Termin geändert, während du ihn bearbeitet hast, sagt das
 Speichern das, statt die Änderung des Handys zu überschreiben. Schließ den
 Editor und öffne den Termin erneut, um zu sehen, was sich geändert hat.
 
+![Ein geöffneter Termin: Review the box, mit seinem Videoanruf in LosOS Chat und Anruf beitreten, dem Kalender, der Erinnerung, Matus als Organisator und Eva, die kommt, und unten Gästen schreiben und Einladungen senden.](@site/docs/img/calendar-event-de.png)
+
 ## Einladungen \{#invitations}
 
 Speicherst du einen Termin mit neuen Gästen, bietet der Kalender an, jedem

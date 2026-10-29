@@ -70,6 +70,8 @@ Keď telefón zmenil udalosť počas toho, ako ste ju upravovali, uloženie to
 oznámi a zmenu z telefónu neprepíše. Zatvorte editor a otvorte udalosť
 znova, aby ste videli, čo sa zmenilo.
 
+![Otvorená udalosť: Review the box, s videohovorom v LosOS Chat a tlačidlom Pripojiť sa k hovoru, kalendár, pripomienka, Matus ako organizátor a Eva, ktorá príde, a dole Napísať hosťom a Poslať pozvánky.](@site/docs/img/calendar-event-sk.png)
+
 ## Pozvánky \{#invitations}
 
 Keď uložíte udalosť s novými hosťami, Kalendár ponúkne, že každému z nich
