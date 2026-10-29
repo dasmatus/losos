@@ -47,7 +47,7 @@ tui_reads=(
   admin-ui/themes/brand/salmon-128.png
 )
 
-# clippy, rustfmt and the suites of the ten crates.
+# clippy, rustfmt and the suites of the eleven crates.
 lane_rust=(
   "backend/*"
   "edge/registrar/*"
@@ -62,8 +62,8 @@ lane_rust=(
   "${tui_reads[@]}"
 )
 
-# clippy for wasm32: lososd's plugins and the Diagrams canvas.
-lane_wasm=("backend/plugins/*" "admin-ui/lab/*")
+# clippy for wasm32: lososd's plugins, losos-mdx and the Diagrams canvas.
+lane_wasm=("backend/plugins/*" "backend/mdx/*" "admin-ui/lab/*")
 
 # The escrow programs and the registrar that pays through them.
 lane_solana=("edge/contracts/solana/*" "edge/registrar/*" "backend/access/*")
@@ -96,6 +96,8 @@ lane_ui=(
   "admin-ui/*" "!admin-ui/design-system/*" "!admin-ui/tui/*"
   "handbook/*"
   "edge/registrar/*" "backend/access/*"
+  # LosOS Office and Notes parse documents with losos-mdx in the page.
+  "backend/mdx/*"
   modules/options.nix nix/options-doc.nix
   nix/tests/admin-ui.nix nix/tests/fonts.nix
   "${pkgs[@]}"

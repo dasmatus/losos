@@ -238,10 +238,62 @@ ns1.boxes.losos.dasmat.us.  A   203.0.113.7
 ns1.boxes.losos.dasmat.us.  AAAA 2001:db8::7
 ```
 
-:::note[Iba s certifikátom identity]
-Nič sa neprideľuje, kým edge nemá neexpirovaný certifikát identity
-([Oficiálne edge](#official-edges)). Dovtedy zónu tvoria iba SOA, NS a
-glue a `/domains/*` odpovedá 503.
+Zóna je podpísaná DNSSEC ([nižšie](#wallets-at-box-names)). Jej záznam DS
+zverejnite u toho istého registrátora, aby resolvery podpisom dôverovali:
+vypíše ho `keymgr <zone> ds` na edge. Kým tam DS nie je, resolvery berú
+zónu ako nepodpísanú a prehliadač nemá dôvod veriť ani kľúču ECH nižšie.
+
+:::note[Iba na prevzatej bráne]
+Zóna potrebuje `losos.edge.passport.enable` a nič sa neprideľuje, kým edge
+neprevezme jeho vlastník nastaveniami podpísanými jeho kľúčom a zmeranými
+pri tomto štarte. Dovtedy zónu tvoria iba SOA, NS a glue a `/domains/*`
+odpovedá 503.
+:::
+
+### Encrypted Client Hello {#encrypted-client-hello}
+
+Každý názov v zóne nesie aj záznam HTTPS s kľúčom Encrypted Client Hello
+(ECH) tohto edge:
+
+```
+mattbox IN HTTPS 1 . alpn="h3,h2" ech="AEz+DQBI…"
+```
+
+Prehliadač, ktorý záznam nájde, zašifruje tú časť svojho TLS hello, ktorá
+menuje zariadenie, a sieti ukáže iba verejný názov edge,
+`register.<publicDomain>`, ak `losos.edge.dns.ech.publicName` neurčuje iný.
+Kto sleduje linku, vidí, že prehliadač išiel na edge, nie na ktoré
+zariadenie. ECH je zapnuté so zónou (`losos.edge.dns.ech.enable`) a modul
+odmietne zónu bez DNSSEC alebo bez ECH: nepodpísaný záznam by sa dal cestou
+k prehliadaču zmeniť.
+
+Edge si kľúč vytvorí pri prvom štarte (`losos-ech-key`,
+`/var/lib/losos-ech/ech.pem`, čitateľný pre root a Traefik) a ponechá si ho,
+kým sa verejný názov nezmení. `losos-registrar ech-key --key-file …
+--public-name …` vypíše hodnotu, ktorú záznamy nesú. Traefik ním dešifruje.
+Žiadny vydaný Traefik to zatiaľ nevie, preto edge so zónou spúšťa Traefik
+zostavený z jeho zmeny pre ECH (`nix/traefik-ech.nix`), ktorý neposkytuje
+dashboard.
+
+Zariadenie toto od oficiálneho edge vyžaduje. Edge, ktorý prejde všetkými
+kontrolami brány, zostane dôveryhodný iba na URL `https://`, ktorej názov má
+záznam HTTPS overiteľný cez DNSSEC a s kľúčom ECH. lososd sa pri každom
+hľadaní pýta `delv`, ktorý overuje sám od kľúča koreňa DNS, a edge, ktorý
+neprejde, uvádza ako odmietnutý (`domainNotHttps`, `domainUnsigned` alebo
+`domainNoEch`), kým neprejde. `losos-ctl edge-domain <url>` spustí tú istú
+kontrolu ručne. URL je tá, ktorú menuje pas edge, takže tento názov patrí do
+zóny: edge, ktorého zóna je celá `publicDomain`, v nej má aj
+`register.<publicDomain>`. `losos.proxy.gateways.domain` kontrolu vypne
+alebo ju nasmeruje na iný resolver a kotvu dôvery.
+
+:::note[Ako sa to testuje]
+`nix/tests/edge-dns.nix` (`losos-edge-dns`) prečíta kľúč z podpísaného
+záznamu HTTPS, overí ho cez `delv` a otvorí TLS k názvu zariadenia klientom
+ECH z Go. Traefik ECH prijme, zachytené hello nesie iba verejný názov a
+kľúč, ktorý Traefik nemá, odmietne. `losos-ctl edge-domain`
+prijme názov zariadenia, pri názve, ktorého neexistenciu zóna dokazuje,
+kľúč nenájde, od nesprávnej kotvy dôvery nič neoverí a obyčajné HTTP
+odmietne.
 :::
 
 ### Vlastné domény {#custom-domains}

@@ -40,8 +40,8 @@ lanes, one per group of jobs:
 
 | Lane | Jobs | Turned on by |
 |---|---|---|
-| `rust` | clippy, rustfmt, the crate suites | the ten crates, and the web UI files `admin-ui/tui/build.rs` reads |
-| `wasm` | clippy for wasm32 | `backend/plugins/`, `admin-ui/lab/` |
+| `rust` | clippy, rustfmt, the crate suites | the eleven crates, and the web UI files `admin-ui/tui/build.rs` reads |
+| `wasm` | clippy for wasm32 | `backend/plugins/`, `backend/mdx/`, `admin-ui/lab/` |
 | `solana`, `evm` | the escrow programs | `edge/contracts/`, `edge/registrar/` |
 | `eval` | the flake evaluation | anything but Markdown, Rust, pictures, `docs/` and `.github/` |
 | `ctl` | `losos-ctl` | the backend crate |
@@ -102,6 +102,15 @@ Each deletion is leased to the tip it judged, so a branch pushed to during
 the run survives. The job summary lists what went, with the
 `git push origin <hash>:refs/heads/<branch>` line that restores each one. Run
 it by hand from the Actions tab for a dry run.
+
+`failed-runs.yml` deletes unsuccessful workflow runs every day: any completed
+run that ended in failure, cancelled, timed out or failed to start, unless its
+commit is still live, the tip of a branch or the head of an open pull request,
+so a red `main` or a red PR keeps the run that says why. One pass deletes at
+most 800 (`GITHUB_TOKEN` has 1000 calls an hour) and the next day takes the
+rest. A deleted run's logs and artifacts are gone for good; the job summary
+lists each one. Run it by hand from the Actions tab for a dry run, or untick
+`dry_run` to clear the backlog at once.
 
 ## Merging
 
