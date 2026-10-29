@@ -16,7 +16,7 @@ dvojicu: plná výplň pre toto zariadenie, šrafovanie pre mesh.
 Všetko, čo máte na zariadení, zostáva na zariadení. Zariadenie nič
 nekopíruje nikam inam. Disk má dve časti:
 
-![Panel Úložisko na zariadení, ktoré si disk nechává pre seba: použité miesto, voľné miesto a rezerva, s tlačidlom Použiť rezervu.](@site/docs/img/storage-sk.png)
+![Panel Úložisko: disk zariadenia a miesto odložené na neskôr, s tlačidlom Použiť rezervu.](@site/docs/img/storage-sk.png)
 
 - **použité miesto**, ktoré zaberá LosOS Cloud, LosOS Git a systém;
 - **rezerva**, časť, ktorú inštalátor odložil bokom. Panel Úložisko ju môže

@@ -6,6 +6,8 @@ slug: /manual/losos-cloud
 
 # LosOS Cloud
 
+![Súbory v LosOS Cloud: priečinok Documents, vľavo miesta.](@site/docs/img/cloud-files-sk.png)
+
 LosOS Cloud je vlastná súborová služba zariadenia: vaše súbory v
 prehliadači, sieťový priečinok pre správcu súborov, server, s ktorým sa
 synchronizujú aplikácie Nextcloud pre počítač a telefón, a vaše kalendáre a
@@ -58,7 +60,7 @@ obrázok zväčšíte, šípkami prechádzate ďalšie a **Podrobnosti** (alebo
 a objektív, expozíciu, veľkosť, kde bol obrázok odfotený, kto je na ňom
 a každý ďalší údaj, ktorý fotoaparát uložil.
 
-![Podrobnosti fotky v LosOS Cloud: kedy bola odfotená, fotoaparát, objektív, nastavenia a miesto.](@site/docs/img/cloud-photos.png)
+![Fotky v LosOS Cloud: všetky obrázky podľa mesiacov.](@site/docs/img/cloud-photos-sk.png)
 
 Zariadenie nájde na vašich obrázkoch tváre a tie, ktoré sa podobajú, spojí
 do jednej osoby. **Ľudia** nad fotkami ukazujú každého, kto je na viac ako
@@ -84,6 +86,8 @@ Aplikácia otvorí LosOS Login v prehliadači. Prihláste sa, na ďalšej
 stránke stlačte **Povoliť** a aplikácia dostane vlastné heslo. Potom sa
 objaví v **Zariadeniach**, kde ju odhlásite bez toho, aby ste menili heslo
 do LosOS Login.
+
+![Stránka, ktorú otvorí aplikácia v počítači pri prihlásení: Pripojiť aplikáciu, s tlačidlami Povoliť a Teraz nie.](@site/docs/img/cloud-connect-sk.png)
 
 ## Kalendáre a kontakty \{#calendars-and-contacts}
 

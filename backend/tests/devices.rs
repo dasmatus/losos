@@ -11,7 +11,8 @@
 
 use losos_ctl::devices::{GitOff, GIT_SCOPES};
 use losos_ctl::fake::FakeLosos;
-use losos_ctl::losos::{cmd_device_cloud, cmd_device_git};
+use losos_ctl::losos::{cmd_device_backups, cmd_device_cloud, cmd_device_git};
+use losos_ctl::people::{Person, OWNER};
 use losos_ctl::setup::NotReady;
 use losos_ctl::signin::WrongPassword;
 
@@ -141,4 +142,77 @@ fn a_refused_token_is_not_now_rather_than_wrong() {
     );
     let err = cmd_device_git(&mut f, true, "laptop").unwrap_err();
     assert!(err.downcast_ref::<NotReady>().is_some(), "{err:#}");
+}
+
+fn person(name: &str, groups: &[&str]) -> Person {
+    Person {
+        name: name.to_string(),
+        display_name: String::new(),
+        groups: groups.iter().map(|g| g.to_string()).collect(),
+    }
+}
+
+#[test]
+fn the_owners_backups_get_both_credentials_of_the_owners_accounts() {
+    let mut f = git_box();
+    f.cloud_answers = cloud_box().cloud_answers;
+    let out = cmd_device_backups(&mut f, &person("matus", &[OWNER]), "laptop").unwrap();
+    assert_eq!(out["cloud"]["user"], "notshared");
+    assert_eq!(out["cloud"]["appPassword"], "AbCd-EfGh-1234");
+    assert_eq!(out["git"]["user"], "notshared");
+    assert_eq!(out["git"]["token"], "9f8e7d6c5b4a");
+    assert!(out.get("problems").is_none(), "{out}");
+    // The owner's cloud account is always there: no arrival.
+    assert_eq!(f.cloud_calls, vec!["mint notshared LosOS on laptop"]);
+    assert!(
+        f.git_calls.contains(&CREATE.to_string()),
+        "{:?}",
+        f.git_calls
+    );
+}
+
+#[test]
+fn someone_elses_backups_get_their_own_accounts() {
+    let mut f = git_box();
+    f.cloud_answers.push_back((200, b"{}".to_vec()));
+    f.cloud_answers.extend(cloud_box().cloud_answers);
+    f.git_routes.insert(
+        "PUT /api/v1/admin/users/ada".to_string(),
+        (200, r#"{"login":"ada"}"#.to_string()),
+    );
+    f.git_routes.insert(
+        "POST /api/v1/admin/users/ada/tokens".to_string(),
+        (
+            201,
+            r#"{"id":4,"name":"LosOS on laptop","token":"ada-token"}"#.to_string(),
+        ),
+    );
+    let out = cmd_device_backups(&mut f, &person("ada", &[]), "laptop").unwrap();
+    assert_eq!(out["cloud"]["user"], "ada");
+    assert_eq!(out["git"]["user"], "ada");
+    assert_eq!(out["git"]["token"], "ada-token");
+    assert_eq!(
+        f.cloud_calls,
+        vec!["arrive ada", "mint ada LosOS on laptop"]
+    );
+    assert!(!f.git_calls.contains(&CREATE.to_string()));
+}
+
+#[test]
+fn backups_on_a_box_without_losos_git_get_the_cloud_alone() {
+    let mut f = cloud_box();
+    let out = cmd_device_backups(&mut f, &person("matus", &[OWNER]), "laptop").unwrap();
+    assert_eq!(out["cloud"]["user"], "notshared");
+    assert!(out["git"].is_null());
+    assert_eq!(out["gitOff"], true);
+}
+
+#[test]
+fn backups_with_neither_app_up_are_not_now() {
+    let mut f = FakeLosos::new().with_config_repo();
+    f.state.claimed = true;
+    let err = cmd_device_backups(&mut f, &person("matus", &[OWNER]), "laptop").unwrap_err();
+    assert!(err.downcast_ref::<NotReady>().is_some(), "{err:#}");
+    let err = cmd_device_backups(&mut f, &person("matus", &[OWNER]), "../x").unwrap_err();
+    assert!(err.downcast_ref::<NotReady>().is_none(), "{err:#}");
 }

@@ -29,15 +29,18 @@ von selbst.
 
 ## Was anders ist \{#what-is-different}
 
-- **Kein Markt.** Die Edge einer Firma kann die LosOS-Signatur nicht
-  vorweisen, deshalb behandelt jede Box sie als inoffiziell;
-  [Offiziell oder nicht](official-edge#official-or-not) erklärt die Prüfung.
-  Ihre Zeile im Bereich Mesh trägt das Warnzeichen, und der Bereich Markt
-  sagt: „Der Edge-Proxy, den diese Box gefunden hat, wird nicht von LosOS
-  betrieben. Speicher darüber zu teilen funktioniert; Handel braucht einen
-  erreichbaren offiziellen LosOS-Edge.“ Die eigenen Boxen der Firma teilen
-  Speicher und Rechenleistung untereinander kostenlos, und genau darum geht
-  es.
+- **Kein Markt, außer bei einem geprüften Gateway.** Die Edge einer Firma
+  zeigt meist keinen Gateway-Pass, deshalb behandelt jede Box sie als
+  inoffiziell; [Offiziell oder nicht](official-edge#official-or-not) erklärt
+  die Prüfung. Ihre Zeile im Bereich Mesh trägt das Warnzeichen, und der
+  Bereich Markt sagt: „Der Edge-Proxy, den diese Box gefunden hat, hat die
+  Gateway-Prüfung nicht bestanden. Speicher darüber zu teilen funktioniert;
+  Handel braucht ein erreichbares geprüftes LosOS-Gateway.“ Die eigenen
+  Boxen der Firma teilen Speicher und Rechenleistung untereinander
+  kostenlos, und genau darum geht es. Eine Firma, die den Markt über ihre
+  eigene Edge will, betreibt darauf das veröffentlichte Gateway-Image auf
+  einem Rechner mit TPM und signiert einen Pass dafür; dann zahlt sie den
+  Anteil von LosOS wie jedes andere Gateway.
 - **Die Firma hält die Schlüssel.** Das Schlüsselpaar des Tunnels, das
   Cluster-Token und die Zulassungsliste der Boxen liegen auf der Edge der
   Firma. Nichts von den Daten oder dem Verkehr der Firma berührt das
@@ -96,9 +99,9 @@ entscheidet der Besitzer jeder Box.
 
 2. Setzen Sie auf der Edge `losos.edge.manage.enable` (ein Edge-Gateway-Rechner
    hat es an). Die Edge erzeugt beim ersten Start einen Verwaltungsschlüssel
-   und legt ihn in `/var/lib/losos-registrar/manage-key` ab. Auf einem
-   Edge-Gateway-Rechner gibt `losos-edge manage-key` ihn mit der Adresse der
-   Seite aus.
+   und legt ihn in `/var/lib/losos-registrar/manage-key` ab. Ein
+   Edge-Gateway-Rechner zeigt ihn mit der Adresse der Seite auf seinem
+   Bildschirm.
 3. Öffnen Sie `/manage/` unter der Adresse der Edge, zum Beispiel
    `http://<edge>.local:8443/manage/`, und melden Sie sich mit dem Schlüssel
    an. Die Seite listet die Boxen, die die Edge weiterleitet, und öffnet die,
@@ -117,6 +120,41 @@ sie verwalten, nie die LosOS-Edge: LosOS verwaltet keine fremde Box. Schaltet
 der Besitzer den Schalter aus, lehnt die Box den nächsten Aufruf der Edge ab.
 
 [Webseite der Edge](/in-depth/edge-web-ui.md) beschreibt die Seite vollständig.
+
+## Rechner mit LosOS Desktop \{#losos-desktop-computers}
+
+Die Leute der Firma können sich an ihren Rechnern mit LosOS Desktop mit
+Namen und Passwort aus LosOS Login anmelden. Eine Box hinter dem
+Edge-Gateway der Firma hält die Leute, und ein Administrator dieser Box
+verbindet jeden Rechner einmal mit ihr, vom Rechner aus:
+
+```sh
+losos-login-bridge fingerprint <box>.local
+losos-login-bridge join <box>.local <Fingerabdruck> <Ihr Name>
+```
+
+Vergleichen Sie den Fingerabdruck vor dem Verbinden mit dem, den die Box auf
+ihren Einrichtungsseiten zeigt. Das Verbinden fragt nach Ihrem Passwort für
+LosOS Login und klappt nur für jemanden in `losos-admins`. Außerdem muss die
+Box über die Edge der Firma im eigenen Netz gehen. Eine Box, die die
+LosOS-Edge direkt erreicht, wird abgelehnt.
+
+Die erste Anmeldung einer Person am Rechner legt dort ihr Konto mit
+verschlüsseltem Home-Verzeichnis an. Spätere Anmeldungen halten Name, E-Mail
+und Administratorrechte mit der Box im Gleichschritt, und ein Laptop außerhalb
+des Büros meldet sich mit dem Passwort an, das die Box zuletzt angenommen
+hat. Der verbundene Rechner liest außerdem alle paar Minuten, solange er im
+Büronetz ist, die Liste der Leute von der Box und sperrt die Konten der
+Leute, die Sie hier entfernen oder deaktivieren. Er liest Namen,
+E-Mail-Adressen, Gruppen und wer deaktiviert ist, nie ein Passwort.
+
+Einen Rechner nehmen Sie heraus, indem Sie ihn mit `DELETE
+/api/devices/directory/<id>` von der Box entfernen; `GET
+/api/devices/directory` listet sie auf. Die Konten, die schon auf dem Rechner
+sind, bleiben und melden sich weiter offline an. Die Seite des Rechners
+beschreibt
+[Company accounts](https://losos-project.github.io/desktop/company) in der
+Dokumentation von LosOS Desktop.
 
 ## Für wen das ist \{#who-this-is-for}
 

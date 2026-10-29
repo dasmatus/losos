@@ -37,15 +37,15 @@
   <text x="756" y="92" font-weight="650">Challenge each edge</text>
   <text x="756" y="114" fill="#5c6a77" font-size="13">the box makes up a fresh</text>
   <text x="756" y="132" fill="#5c6a77" font-size="13">nonce; the edge returns its</text>
-  <text x="756" y="150" fill="#5c6a77" font-size="13">certificate and signs the</text>
-  <text x="756" y="168" fill="#5c6a77" font-size="13">nonce with its own key</text>
+  <text x="756" y="150" fill="#5c6a77" font-size="13">passport, and its TPM</text>
+  <text x="756" y="168" fill="#5c6a77" font-size="13">quotes the nonce</text>
 
   <rect x="690" y="225" width="280" height="132" rx="8" fill="#f3f5f7" stroke="#dce1e6"/>
   <text x="706" y="250" font-weight="650">Four checks, all or nothing</text>
-  <text x="706" y="274" font-size="13">1. signed by the LosOS root key</text>
-  <text x="706" y="294" font-size="13">2. names the address that was asked</text>
-  <text x="706" y="314" font-size="13">3. not expired</text>
-  <text x="706" y="334" font-size="13">4. the nonce signature is valid</text>
+  <text x="706" y="274" font-size="13">1. the owner's passport holds</text>
+  <text x="706" y="294" font-size="13">2. a known maker made the TPM</text>
+  <text x="706" y="314" font-size="13">3. a published image booted</text>
+  <text x="706" y="334" font-size="13">4. LosOS's fee addresses</text>
 
   <text x="230" y="255" fill="#5c6a77" font-size="13">The box keeps asking, so an edge that comes back</text>
   <text x="230" y="274" fill="#5c6a77" font-size="13">is found again on its own. Nothing needs a restart.</text>
@@ -63,7 +63,7 @@
   <text x="361" y="487" font-size="13">The market does not.</text>
 
   <rect x="690" y="400" width="280" height="104" rx="8" fill="#e5f1ec" stroke="#2e7357" stroke-width="1.5"/>
-  <text x="706" y="426" font-weight="650" fill="#2e7357">✓ Official LosOS edge</text>
+  <text x="706" y="426" font-weight="650" fill="#2e7357">✓ Checked gateway</text>
   <text x="706" y="449" font-size="13">Sharing and remote access work.</text>
   <text x="706" y="468" font-size="13">The market may run, once it</text>
   <text x="706" y="487" font-size="13">opens.</text>

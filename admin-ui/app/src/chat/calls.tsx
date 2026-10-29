@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ClientEvent, EventType, type MatrixClient, type MatrixEvent, type Room, RoomEvent, RoomStateEvent, KnownMembership } from "matrix-js-sdk";
+import { ClientEvent, EventType, type MatrixClient, type MatrixEvent, type Room, RoomEvent, RoomStickyEventsEvent, KnownMembership } from "matrix-js-sdk";
 import {
   getCallNotificationExpiry,
   MatrixRTCSession,
@@ -25,11 +25,10 @@ import { Avatar } from "./avatar";
 import { roomName } from "./model";
 import {
   CALL_ID,
-  CALL_POWER_LEVELS,
   callLive,
   callOfMembership,
   mayCall,
-  mayEnableCalls,
+  mayOpenSlot,
   RTC_APPLICATION,
   RTC_SLOT,
   RTC_SLOT_ID,
@@ -58,7 +57,6 @@ export const CALL_EVENT = "org.losos.call";
 const KEY_EVENT = EventType.CallEncryptionKeysPrefix;
 /* How long a ring lasts, as MSC4075 recommends; it caps any at two minutes. */
 const RING_FOR_MS = 90_000;
-const MEMBERSHIP_EXPIRY_MS = 5 * 60_000;
 
 export interface Active {
   roomId: string;
@@ -130,6 +128,29 @@ export function callEnded(room: Room, call: string): boolean {
     });
 }
 
+/* Sticky events reach the room's store after the timeline has been told
+ * about them, and an encrypted one only once it is decrypted. A
+ * notification waits a little for the store to catch up: for itself, which
+ * MSC4075 checks is its sender's current one, and for the membership it
+ * refers to. */
+function whenSticky<T>(room: Room, found: () => T | null, waitMs = 10_000): Promise<T | null> {
+  const now = found();
+  if (now !== null) return Promise.resolve(now);
+  return new Promise((resolve) => {
+    const done = (said: T | null): void => {
+      clearTimeout(timer);
+      room.off(RoomStickyEventsEvent.Update, check);
+      resolve(said);
+    };
+    const check = (): void => {
+      const said = found();
+      if (said !== null) done(said);
+    };
+    const timer = setTimeout(() => done(null), waitMs);
+    room.on(RoomStickyEventsEvent.Update, check);
+  });
+}
+
 const joinedUsers = (room: Room): string[] =>
   room
     .getMembers()
@@ -139,45 +160,29 @@ const joinedUsers = (room: Room): string[] =>
 /** Whether this person can have a call in `room`. Call keys go to the
  *  members' devices over Olm, and the crypto keeps device lists only for
  *  the members of encrypted rooms: in any other room a key would go to
- *  nobody. Then the slot has to be open and the person allowed a
- *  membership, or able to arrange both as an admin of an older room. */
+ *  nobody. Then the slot has to be open, or the person able to open it as
+ *  an admin of an older room. */
 export function callable(room: Room): boolean {
   if (!room.hasEncryptionStateEvent()) return false;
-  return mayCall(room, room.myUserId) || mayEnableCalls(room, room.myUserId);
+  const me = room.myUserId;
+  return slotOpen(room) ? mayCall(room, me) : mayOpenSlot(room, me);
 }
 
-/* An older room has no slot, and its members may not send a membership.
- * An admin who starts a call there opens the slot and lets every member
- * in, as a room made now has from the start. */
-function openToEveryone(room: Room): boolean {
-  const levels = room.currentState.getStateEvents(EventType.RoomPowerLevels, "")?.getContent() ?? {};
-  const events = (levels["events"] ?? {}) as Record<string, unknown>;
-  const need = events[EventType.GroupCallMemberPrefix] ?? levels["state_default"] ?? 50;
-  const everyone = levels["users_default"] ?? 0;
-  return slotOpen(room) && typeof need === "number" && typeof everyone === "number" && need <= everyone;
-}
-
+/* An older room has no slot. An admin who starts a call there opens it,
+ * as a room made now has from the start. */
 async function enableCalls(client: MatrixClient, room: Room): Promise<void> {
   const me = client.getSafeUserId();
-  if (openToEveryone(room) || !mayEnableCalls(room, me)) {
-    if (mayCall(room, me)) return;
-    throw new CallError("calls.notAllowed");
+  if (!slotOpen(room)) {
+    if (!mayOpenSlot(room, me)) throw new CallError("calls.notAllowed");
+    await client.sendStateEvent(room.roomId, EventType.RTCSlot, SLOT_CONTENT as never, RTC_SLOT_ID);
   }
-  const levels = room.currentState.getStateEvents(EventType.RoomPowerLevels, "")?.getContent() ?? {};
-  const events = (levels["events"] ?? {}) as Record<string, number>;
-  if (events[EventType.GroupCallMemberPrefix] !== 0 || events[EventType.RTCSlot] === undefined) {
-    await client.sendStateEvent(room.roomId, EventType.RoomPowerLevels, {
-      ...levels,
-      events: { ...events, [EventType.GroupCallMemberPrefix]: 0, [EventType.RTCSlot]: CALL_POWER_LEVELS.events[EventType.RTCSlot] },
-    } as never);
-  }
-  if (!slotOpen(room)) await client.sendStateEvent(room.roomId, EventType.RTCSlot, SLOT_CONTENT as never, RTC_SLOT_ID);
+  if (!mayCall(room, me)) throw new CallError("calls.notAllowed");
 }
 
 /* The sender keys, as MatrixRTC's `m.per_member` keys (MSC4143): an
  * Olm-encrypted to-device message per device. A key goes only to a device
- * the SFU put in the call, whose person is in the room and which has a
- * membership in the room's slot; a key is taken only when Olm says which
+ * the SFU put in the call whose person is in the room; a key is taken only
+ * when Olm says which
  * device sent it and the message names that same member. What the SFU
  * needs on top (the call, the sender's place in it, and the guests' invite
  * secrets) rides under `org.losos.call`. */
@@ -375,11 +380,18 @@ export function CallsProvider({ client, children }: { client: MatrixClient; chil
             return;
           }
           if (ev.getType() !== EventType.RTCNotification || ev.getSender() === me) return;
+          const key = ev.getContent()["msc4354_sticky_key"];
+          if (ev.unstableStickyInfo !== undefined && typeof key === "string") {
+            await whenSticky(room, () => (room._unstable_getKeyedStickyEvent(ev.getSender() ?? "", ev.getType(), key)?.getId() === ev.getId() ? true : null));
+          }
           const content = await parseCallNotificationContent(ev, { room, userId: me });
-          const said = callEvent(room, ev);
           const eventId = ev.getId();
-          if (content.slot_id !== RTC_SLOT_ID || said === null || eventId === undefined) throw new Error("not a call in this room's slot");
-          if (callEnded(room, said.call) || activeCall.current === said.call) return;
+          if (content.slot_id !== RTC_SLOT_ID || callEvent(room, ev) === null || eventId === undefined) throw new Error("not a call in this room's slot");
+          const said = await whenSticky(room, () => {
+            const said = callEvent(room, ev);
+            return said !== null && !callEnded(room, said.call) ? { call: said.call, video: said.video } : null;
+          });
+          if (said === null || activeCall.current === said.call) return;
           setRinging({
             roomId: room.roomId,
             call: said.call,
@@ -407,14 +419,13 @@ export function CallsProvider({ client, children }: { client: MatrixClient; chil
     const stop = (): void => setRinging((current) => (current === ringing ? null : current));
     const room = client.getRoom(ringing.roomId);
     if (room === null) return;
-    const check = (ev: MatrixEvent): void => {
-      if (ev.getType() !== EventType.GroupCallMemberPrefix) return;
+    const check = (): void => {
       if (callEnded(room, ringing.call) || rtcMembers(room).some((m) => m.user === me)) stop();
     };
-    room.on(RoomStateEvent.Events, check);
+    room.on(RoomStickyEventsEvent.Update, check);
     const timer = setTimeout(stop, Math.max(0, ringing.until - Date.now()));
     return () => {
-      room.off(RoomStateEvent.Events, check);
+      room.off(RoomStickyEventsEvent.Update, check);
       clearTimeout(timer);
     };
   }, [client, me, ringing]);
@@ -587,17 +598,13 @@ function CallScreen({
   }, [media, t]);
 
   React.useEffect(() => {
-    let unwatch = (): void => undefined;
     const stop = (error: unknown): void => {
       if (finished.current) return;
       finished.current = true;
       void session.current?.leave();
       const rtc = rtcSession.current;
       rtcSession.current = null;
-      if (rtc !== null) leaving = rtc.leave(5000).finally(() => {
-        unwatch();
-        rtc.stop();
-      });
+      if (rtc !== null) leaving = rtc.leave(5000).finally(() => rtc.stop());
       callbacks.current.onFail(error);
       callbacks.current.onEnd(false);
     };
@@ -639,7 +646,10 @@ function CallScreen({
       // This device's membership in the room's slot, published with the
       // SFU and the call it is in. It rings the room when it is the first.
       const transport: SfuTransport & Record<string, unknown> = { type: SFU_TRANSPORT, url: sfuUrl(), call: active.call };
-      const rtc = MatrixRTCSession.sessionForSlot(client, room, RTC_SLOT);
+      const rtc = MatrixRTCSession.sessionForSlot(client, room, RTC_SLOT, {
+        listenForStickyEvents: true,
+        listenForMemberStateEvents: false,
+      });
       rtcSession.current = rtc;
       rtc.on(MatrixRTCSessionEvent.MembershipManagerError, (error: unknown) => {
         stop(new CallError(`MatrixRTC membership failed: ${String(error)}`));
@@ -647,23 +657,28 @@ function CallScreen({
       rtc.on(MatrixRTCSessionEvent.DidSendCallNotification, (sent: { event_id?: string }) => {
         notification.current = sent.event_id ?? null;
       });
-      // A session made outside the client's session manager does not watch
-      // memberships itself; without this it never sees its own and never
-      // rings anyone.
-      const recalculate = (ev: MatrixEvent): void => {
-        if (ev.getType() === EventType.GroupCallMemberPrefix) void rtc.ensureRecalculateSessionMembers();
-      };
-      room.on(RoomStateEvent.Events, recalculate);
-      unwatch = () => room.off(RoomStateEvent.Events, recalculate);
-      void leaving.then(() => {
+      // Join once the session knows who is already in the call: a session
+      // that still counts nobody takes this device for the first and rings
+      // the room a second time.
+      void leaving.then(() => rtc.initialMembershipCalculated).then(() => {
         if (rtcSession.current !== rtc) return;
-        rtc.join({ userId: client.getSafeUserId(), deviceId, memberId: crypto.randomUUID() }, [transport], {
+        const me = client.getSafeUserId();
+        rtc.join({ userId: me, deviceId, memberId: memberId(me, deviceId) }, [transport], {
+          // A sticky membership (MSC4354) and a delayed leave (MSC4140): the
+          // homeserver withdraws it half a minute after this page stops answering.
+          unstableSendStickyEvents: true,
+          // A small box's homeserver can take seconds to answer, and a
+          // restart given up after the default 2 s let the leave go out
+          // under a page still in the call, which then joined again in a
+          // loop. The leave waits 30 s for a page gone quiet instead of 8.
+          delayedLeaveEventDelayMs: 30_000,
+          delayedLeaveEventRestartMs: 5_000,
+          delayedLeaveEventRestartLocalTimeoutMs: 10_000,
           callIntent: active.video ? "video" : "audio",
           callCapabilities: ["m.render_audio", "m.render_video"],
           // A direct chat rings; a room gets a notification, as Element does.
           notificationType: room.getJoinedMemberCount() <= 2 ? "ring" : "notification",
           notificationLifetimeMs: RING_FOR_MS,
-          membershipEventExpiryMs: MEMBERSHIP_EXPIRY_MS,
           // The keys are this page's own (olmKeys), in MatrixRTC's format.
           manageMediaKeys: false,
         });
@@ -676,10 +691,7 @@ function CallScreen({
       session.current = null;
       const rtc = rtcSession.current;
       rtcSession.current = null;
-      if (rtc !== null) leaving = rtc.leave(5000).finally(() => {
-        unwatch();
-        rtc.stop();
-      });
+      if (rtc !== null) leaving = rtc.leave(5000).finally(() => rtc.stop());
     };
   }, [client, active.call, active.roomId, active.video, media, warnBackground, room]);
 

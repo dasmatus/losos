@@ -7,6 +7,8 @@ mdx:
 
 # App-Format
 
+![Der Bereich Apps: LosOS Cloud, LosOS Git, deine eigenen Apps und Mehr finden.](@site/docs/img/apps-de.png)
+
 Eine App für eine LosOS-Box ist eine Compose-Datei und die Dateien daneben.
 Die Box führt sie als `notshared` auf Podman ohne root aus, mit Podman
 Compose, und braucht dafür keinen Cluster. Dasselbe Format dient zwei

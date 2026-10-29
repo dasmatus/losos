@@ -240,6 +240,8 @@ pub struct Ci {
     pub window: Option<(String, String)>,
     /// Box jobs whose run was cancelled while they ran.
     cancel: Mutex<HashSet<i64>>,
+    /// When each running desktop job's computer last reported.
+    heard: Mutex<HashMap<i64, std::time::Instant>>,
     /// The status last written for each job, so a tick writes only changes.
     posted: Mutex<HashMap<i64, String>>,
     /// One tick at a time.
@@ -247,6 +249,21 @@ pub struct Ci {
     /// One planner at a time: two that both find a job unplanned both add it,
     /// and the run then has every job twice.
     advancing: Mutex<()>,
+}
+
+/// How long a desktop job waits for its computer to ask for it.
+pub const DESKTOP_WAIT_SECS: i64 = 24 * 3600;
+/// The longest a computer running a job may go without reporting.
+pub const DESKTOP_LEASE: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// The placement of a job for the joined computer `computer`.
+pub fn desktop_placement(computer: &str) -> String {
+    format!("desktop:{}", computer.to_lowercase())
+}
+
+/// The computer a `desktop:` placement names.
+pub fn desktop_of(placement: &str) -> Option<&str> {
+    placement.strip_prefix("desktop:")
 }
 
 /// The state a job's status takes on the commit.
@@ -295,6 +312,7 @@ impl Ci {
             private_on_mesh,
             window,
             cancel: Mutex::new(HashSet::new()),
+            heard: Mutex::new(HashMap::new()),
             posted: Mutex::new(HashMap::new()),
             ticking: Mutex::new(()),
             advancing: Mutex::new(()),
@@ -586,6 +604,13 @@ impl Ci {
                         .unwrap_or_else(|e| e.into_inner())
                         .insert(job.id);
                 }
+                // The computer hears it on its next report and stops.
+                (p, "running") if desktop_of(p).is_some() => {
+                    self.cancel
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .insert(job.id);
+                }
                 ("mesh", _) => {
                     if let Some(edge) = &job.edge_id {
                         if let Err(e) = self.mesh.cancel(edge) {
@@ -706,19 +731,29 @@ impl Ci {
                     }
                     Ok(Some(list)) => {
                         for p in list {
-                            let placement = self.placement(&run, p.self_hosted);
+                            let placement = match &p.desktop {
+                                Some(computer) => desktop_placement(computer),
+                                None => self.placement(&run, p.self_hosted).to_string(),
+                            };
                             let job = self.store.add_job(
                                 run_id,
                                 key,
                                 &p.name,
                                 &p.matrix,
                                 "queued",
-                                placement,
+                                &placement,
                                 &p.payload,
                                 p.continue_on_error,
                             )?;
                             if placement == "mesh" {
                                 self.submit(&run, job, &p.name, &p.payload, p.timeout_minutes);
+                            } else if let Some(computer) = &p.desktop {
+                                self.append_log(
+                                    job,
+                                    &format!(
+                                        "Waiting for the LosOS Desktop computer {computer}.\n"
+                                    ),
+                                );
                             } else if p.self_hosted {
                                 self.append_log(
                                     job,
@@ -788,7 +823,7 @@ impl Ci {
             }
             for j in rows.iter().filter(|j| !db::finished(&j.state)) {
                 match (j.placement.as_str(), j.state.as_str(), &j.edge_id) {
-                    ("box", "running", _) => {
+                    (p, "running", _) if p == "box" || desktop_of(p).is_some() => {
                         self.cancel
                             .lock()
                             .unwrap_or_else(|e| e.into_inner())
@@ -872,6 +907,7 @@ impl Ci {
                 Err(e) => tracing::warn!(target: "ci", "asking the edge about jobs: {e:#}"),
             }
         }
+        self.expire_desktop_jobs()?;
         for run in self.store.active_runs()? {
             if let Err(e) = self.advance(run.id) {
                 tracing::warn!(target: "ci", "run {}: {e:#}", run.id);
@@ -916,6 +952,10 @@ impl Ci {
             let state = status_state(&job.state);
             let description = match job.state.as_str() {
                 "queued" if job.placement == "mesh" => "Waiting for a box of the mesh".to_string(),
+                "queued" if desktop_of(&job.placement).is_some() => format!(
+                    "Waiting for {}",
+                    desktop_of(&job.placement).unwrap_or_default()
+                ),
                 "queued" => "Waiting for this box's runner".to_string(),
                 "running" if !job.runner.is_empty() => format!("Running on {}", job.runner),
                 "running" => "Running".to_string(),
@@ -1065,12 +1105,135 @@ impl Ci {
         }
     }
 
+    // ── joined LosOS Desktop computers ────────────────────────────────────
+
+    /// Work for the joined computer `computer`, as lososd relays its ask
+    /// (`/api/directory/jobs/claim`), for up to `wait_secs`. The payload is
+    /// the computer's alone: its steps are fixed actions, filled in.
+    pub fn claim_desktop(&self, computer: &str, wait_secs: u32) -> anyhow::Result<Option<Work>> {
+        let placement = desktop_placement(computer);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(wait_secs.into());
+        loop {
+            if let Some(job) = self.store.take_placed_job(&placement, computer)? {
+                let run = self
+                    .store
+                    .run(job.run_id)?
+                    .ok_or_else(|| anyhow::anyhow!("job {} has no run", job.id))?;
+                self.heard
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .insert(job.id, std::time::Instant::now());
+                self.append_log(job.id, &format!("Taken by {computer}.\n"));
+                let _ = self.post_statuses(&run);
+                let timeout = job
+                    .payload
+                    .get("timeoutMinutes")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(360) as u32;
+                return Ok(Some(Work {
+                    kind: "desktop",
+                    id: job.id.to_string(),
+                    origin: self.box_id.clone(),
+                    name: format!("{} / {}", run.workflow_name, job.name),
+                    payload: job.payload,
+                    timeout_secs: timeout * 60,
+                    archive: Vec::new(),
+                }));
+            }
+            let left = deadline.saturating_duration_since(std::time::Instant::now());
+            if left.is_zero() {
+                return Ok(None);
+            }
+            std::thread::sleep(std::time::Duration::from_secs(1).min(left));
+        }
+    }
+
+    /// A joined computer's report on a job it took. Returns whether to
+    /// stop. A computer reports only on its own jobs, and only while they
+    /// run.
+    pub fn report_desktop(&self, computer: &str, id: i64, report: &Report) -> anyhow::Result<bool> {
+        let Some(job) = self.store.job(id)? else {
+            return Ok(true);
+        };
+        if job.placement != desktop_placement(computer) {
+            anyhow::bail!("job {id} is not {computer}'s");
+        }
+        if job.state != "running" {
+            return Ok(true);
+        }
+        self.heard
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(id, std::time::Instant::now());
+        self.append_log(job.id, &report.log);
+        if let Some(state) = &report.state {
+            let state = match state.as_str() {
+                s @ ("success" | "failure" | "cancelled" | "error") => s,
+                _ => "error",
+            };
+            self.store
+                .set_job_state(id, state, None, report.exit_code, report.outputs.as_ref())?;
+            self.heard
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(&id);
+            self.cancel
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(&id);
+            if let Err(e) = self.advance(job.run_id) {
+                tracing::warn!(target: "ci", "run {}: {e:#}", job.run_id);
+            }
+            return Ok(false);
+        }
+        Ok(self
+            .cancel
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains(&id))
+    }
+
+    /// A desktop job whose computer never asked for it in a day, or went
+    /// quiet while running it, ends as an error rather than holding its run
+    /// open.
+    fn expire_desktop_jobs(&self) -> anyhow::Result<()> {
+        let now = db::now();
+        for run in self.store.active_runs()? {
+            for job in self.store.jobs(run.id)? {
+                let Some(computer) = desktop_of(&job.placement) else {
+                    continue;
+                };
+                let why = match job.state.as_str() {
+                    "queued" if now - job.created > DESKTOP_WAIT_SECS => {
+                        format!("{computer} did not ask for this job in a day.")
+                    }
+                    "running" => {
+                        let mut heard = self.heard.lock().unwrap_or_else(|e| e.into_inner());
+                        let last = *heard.entry(job.id).or_insert_with(std::time::Instant::now);
+                        if last.elapsed() <= DESKTOP_LEASE {
+                            continue;
+                        }
+                        heard.remove(&job.id);
+                        format!("{computer} stopped reporting on this job.")
+                    }
+                    _ => continue,
+                };
+                self.append_log(job.id, &format!("\n{why}\n"));
+                self.store
+                    .set_job_state(job.id, "error", None, None, None)?;
+            }
+        }
+        Ok(())
+    }
+
     /// After a restart: a box job the runner had is lost with the runner,
     /// so it ends as an error rather than reading `running` forever.
     pub fn recover(&self) -> anyhow::Result<()> {
         for run in self.store.active_runs()? {
             for job in self.store.jobs(run.id)? {
-                if job.placement == "box" && job.state == "running" {
+                if (job.placement == "box" || desktop_of(&job.placement).is_some())
+                    && job.state == "running"
+                {
                     self.append_log(job.id, "\nThis box restarted while the job ran.\n");
                     self.store
                         .set_job_state(job.id, "error", None, None, None)?;
@@ -1252,6 +1415,10 @@ jobs:
 ";
 
     fn setup(up: bool) -> (Ci, Arc<FakeMesh>, Arc<FakeForge>, PathBuf) {
+        setup_with(up, WF)
+    }
+
+    fn setup_with(up: bool, wf: &str) -> (Ci, Arc<FakeMesh>, Arc<FakeForge>, PathBuf) {
         let dir = std::env::temp_dir().join(format!(
             "losos-ci-test-{}-{}",
             std::process::id(),
@@ -1263,7 +1430,7 @@ jobs:
             ..FakeMesh::default()
         });
         let forge = Arc::new(FakeForge {
-            archive: archive(&[(".github/workflows/ci.yml", WF), ("README", "hi")]),
+            archive: archive(&[(".github/workflows/ci.yml", wf), ("README", "hi")]),
             statuses: Mutex::new(Vec::new()),
         });
         let ci = Ci::new(
@@ -1297,6 +1464,80 @@ jobs:
                 pusher: "matus".into(),
             },
         }
+    }
+
+    const FLEET: &str = "
+name: Fleet
+on: [push]
+jobs:
+  update:
+    runs-on: [losos-desktop, '${{ matrix.computer }}']
+    strategy:
+      matrix:
+        computer: [reception, Laptop-7]
+    steps:
+      - uses: losos/desktop-update
+      - uses: losos/desktop-lock
+        with:
+          user: bob
+  shell:
+    runs-on: [losos-desktop, reception]
+    steps:
+      - run: rm -rf /
+";
+
+    #[test]
+    fn desktop_jobs_wait_for_their_computer_and_take_only_fixed_steps() {
+        let (ci, mesh, _forge, dir) = setup_with(true, FLEET);
+        let run = ci.on_event(&push()).unwrap()[0];
+        assert!(mesh.names().is_empty(), "no desktop job goes to the edge");
+        let jobs = ci.store.jobs(run).unwrap();
+        let placed: Vec<&str> = jobs.iter().map(|j| j.placement.as_str()).collect();
+        assert!(placed.contains(&"desktop:reception"));
+        assert!(placed.contains(&"desktop:laptop-7"));
+        let shell = jobs.iter().find(|j| j.job_key == "shell").unwrap();
+        assert_eq!(shell.state, "error");
+        assert!(ci.read_log(shell.id, 0).contains("not run"));
+
+        // This box's own runner never takes them, nor another computer.
+        assert!(ci.store.take_box_job("box-1").unwrap().is_none());
+        assert!(ci.claim_desktop("front-desk", 0).unwrap().is_none());
+
+        let work = ci.claim_desktop("Reception", 0).unwrap().unwrap();
+        assert_eq!(work.kind, "desktop");
+        assert_eq!(work.payload["desktop"], "reception");
+        assert_eq!(
+            work.payload["steps"],
+            json!([
+                { "uses": "losos/desktop-update", "with": {}, "name": "losos/desktop-update" },
+                { "uses": "losos/desktop-lock", "with": { "user": "bob" }, "name": "losos/desktop-lock" },
+            ])
+        );
+        assert!(work.payload.get("env").is_none() && work.payload.get("contexts").is_none());
+        let id: i64 = work.id.parse().unwrap();
+
+        // Only its own computer reports on it.
+        let log = Report {
+            log: "updating\n".into(),
+            ..Report::default()
+        };
+        assert!(ci.report_desktop("laptop-7", id, &log).is_err());
+        assert!(!ci.report_desktop("reception", id, &log).unwrap());
+
+        ci.cancel_run(run, "matus").unwrap();
+        assert!(
+            ci.report_desktop("reception", id, &log).unwrap(),
+            "told to stop"
+        );
+        let done = Report {
+            state: Some("cancelled".into()),
+            ..Report::default()
+        };
+        assert!(!ci.report_desktop("reception", id, &done).unwrap());
+        assert_eq!(ci.store.job(id).unwrap().unwrap().state, "cancelled");
+        // Over is over: a late report changes nothing.
+        assert!(ci.report_desktop("reception", id, &log).unwrap());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

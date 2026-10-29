@@ -6,6 +6,8 @@ slug: /manual/calendar
 
 # Kalender
 
+![Eine Woche in LosOS Calendar: links deine Kalender und zwei Abos, ein Stundenplan und eine Steuerfrist aus den Abos und Review the box, ein Termin mit Videoanruf in LosOS Chat.](@site/docs/img/calendar-week-de.png)
+
 LosOS Calendar bewahrt deine Termine und die Kalender auf, denen du folgst.
 **Kalender** in der Seitenleiste öffnet ihn unter `/calendar`. Deine
 Kalender gehören nur dir. Die anderen Personen auf der Box, auch
@@ -68,6 +70,8 @@ alle Tage gelöscht werden.
 Hat ein Handy den Termin geändert, während du ihn bearbeitet hast, sagt das
 Speichern das, statt die Änderung des Handys zu überschreiben. Schließ den
 Editor und öffne den Termin erneut, um zu sehen, was sich geändert hat.
+
+![Ein geöffneter Termin: Review the box, mit seinem Videoanruf in LosOS Chat und Anruf beitreten, dem Kalender, der Erinnerung, Matus als Organisator und Eva, die kommt, und unten Gästen schreiben und Einladungen senden.](@site/docs/img/calendar-event-de.png)
 
 ## Einladungen \{#invitations}
 

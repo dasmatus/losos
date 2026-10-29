@@ -22,7 +22,7 @@ Iba to, čo je na krátkom zozname: vaše súbory a dáta LosOS Git, vlastné
 zariadenia, členstvo v mesh. Všetko ostatné o 00:07 zmizne. Zoznam je na
 [referenčnej stránke](../reference/what-survives-a-reboot).
 
-![Panel O zariadení, ktorý ukazuje časy reštartu a aktualizácie a kedy každý naposledy prebehol.](@site/docs/img/settings-about-sk.png)
+![Panel História: vetva, z ktorej zariadenie berie nové verzie, a kedy ju naposledy skontrolovalo, potom zmeny.](@site/docs/img/settings-history-sk.png)
 
 ## Počas práce \{#while-it-works}
 
