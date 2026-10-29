@@ -103,6 +103,15 @@ the run survives. The job summary lists what went, with the
 `git push origin <hash>:refs/heads/<branch>` line that restores each one. Run
 it by hand from the Actions tab for a dry run.
 
+`failed-runs.yml` deletes unsuccessful workflow runs every day: any completed
+run that ended in failure, cancelled, timed out or failed to start, unless its
+commit is still live, the tip of a branch or the head of an open pull request,
+so a red `main` or a red PR keeps the run that says why. One pass deletes at
+most 800 (`GITHUB_TOKEN` has 1000 calls an hour) and the next day takes the
+rest. A deleted run's logs and artifacts are gone for good; the job summary
+lists each one. Run it by hand from the Actions tab for a dry run, or untick
+`dry_run` to clear the backlog at once.
+
 ## Releases
 
 Push a `v*` tag, or draft a release with a new `v*` tag in the web UI.
