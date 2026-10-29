@@ -12,7 +12,6 @@ import {
   postMarketPayout,
   type FeePayment,
   type StablecoinInvoice,
-  type UsdcChain,
   type UsdcPublic,
   type Coin,
 } from "@/lib/api";
@@ -93,12 +92,22 @@ const PAY = [
       { name: "gross", type: "uint256" },
       { name: "fee", type: "uint256" },
       { name: "deadline", type: "uint64" },
+      { name: "buyerBox", type: "address" },
+      { name: "sellerBox", type: "address" },
     ],
     outputs: [{ name: "depositId", type: "uint256" }],
   },
 ] as const;
 
 type Mode = "none" | "local" | "injected";
+
+/** A box's escrow key from the invoice. An escrowed payment always names
+ *  both; one without them would be a deposit the edge alone could move,
+ *  which the contract refuses anyway. */
+function boxKey(key: string | undefined): string {
+  if (!key) throw new Error("the invoice names no escrow key");
+  return key;
+}
 
 /** A paid invoice's transaction and the network it is on, kept until the
  *  edge has counted it, so a failed confirmation is retried with the same
@@ -733,7 +742,7 @@ export function UsdcWallet({
   /** Pay on an EVM chain: approve USDC for LososEscrow when short, then
    *  pay into it. The edge checks the seller's address and releases the
    *  deposit, or sends it back. */
-  const payEvm = async (chain: UsdcChain & { seller: string }, words: string | null) => {
+  const payEvm = async (chain: StablecoinInvoice["chains"][number], words: string | null) => {
     if (!invoice || !address) return;
     const viemChain = evmChain(chain.network);
     const account = words !== null ? accountFromPhrase(words) : undefined;
@@ -777,6 +786,8 @@ export function UsdcWallet({
         gross,
         BigInt(invoice.fee),
         BigInt(invoice.deadline),
+        boxKey(chain.buyer_box) as Address,
+        boxKey(chain.seller_box) as Address,
       ],
       account: account ?? owner,
       chain: viemChain,
@@ -797,7 +808,7 @@ export function UsdcWallet({
   /** Pay on Solana: into the escrow program when the edge has one, which
    *  holds the payment until the slot is over; else the seller's share and
    *  the fee in one transaction, with the order in a memo. */
-  const paySolana = async (chain: UsdcChain & { seller: string }, words: string | null) => {
+  const paySolana = async (chain: StablecoinInvoice["chains"][number], words: string | null) => {
     if (!invoice) return;
     const signer: SolanaSigner =
       words !== null
@@ -815,6 +826,8 @@ export function UsdcWallet({
           gross,
           fee,
           deadline: BigInt(invoice.deadline),
+          buyerBox: boxKey(chain.buyer_box),
+          sellerBox: boxKey(chain.seller_box),
         })
       : await sendUsdc(chain.network, signer, {
           mint: chain.usdc,

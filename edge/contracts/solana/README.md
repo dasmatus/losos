@@ -3,9 +3,10 @@
 The Solana twin of `LososEscrow`: one USDC payment held per deposit for as
 long as what it bought runs. The edge then releases it to the seller and the
 treasury recorded at payment, refunds it to the buyer, or splits it between
-the two when the seller stopped delivering partway. The edge's key can do
-nothing else, and if the edge never answers, the buyer takes the deposit
-back after its deadline. It also keeps prepaid balances that the edge
+the two when the seller stopped delivering partway. Each of those needs two
+of three keys, the edge's, the buyer's box's and the seller's box's, so the
+edge's key alone moves nothing, and if no two agree, the buyer takes the
+deposit back after its deadline. It also keeps prepaid balances that the edge
 draws on as the buyer uses something, through rate-capped taps. Written with [pinocchio](https://github.com/anza-xyz/pinocchio),
 no Anchor, about 65 KB built.
 
@@ -14,7 +15,7 @@ no Anchor, about 65 KB built.
 | Account | Address | Holds |
 | ------- | ------- | ----- |
 | Config  | `["config", treasury, mint]` | the mint, the treasury, the releaser |
-| Deposit | `["deposit", config, nonce]` | payer, seller, order, gross, fee, deadline, paid at |
+| Deposit | `["deposit", config, nonce]` | payer, seller, order, gross, fee, deadline, paid at, buyer's box, seller's box |
 | Vault   | `["vault", deposit]` | the USDC, in a token account the deposit owns |
 | Balance | `["balance", config, buyer]` | config, buyer, asked amount, not before |
 | Vault   | `["vault", balance]` | the buyer's prepaid USDC, in a token account the balance owns |
@@ -31,10 +32,10 @@ program only uses it as a seed. Every integer is little-endian;
 | Tag | Call | Signer | What it does |
 | --- | ---- | ------ | ------------ |
 | 0 | `initialize(releaser)` | treasury | Makes the config, once per treasury and mint. |
-| 1 | `pay(nonce, order, gross, fee, deadline)` | payer | Opens the deposit and its vault and moves the gross in. |
-| 2 | `release` | releaser | Fee to the treasury, the rest to the seller; closes both accounts. |
-| 3 | `refund` | releaser, or the payer after the deadline | Everything back to the payer; closes both. |
-| 4 | `settle(back)` | releaser | `back` to the payer, the rest released with the fee scaled down. |
+| 1 | `pay(nonce, order, gross, fee, deadline, buyer_box, seller_box)` | payer | Opens the deposit and its vault and moves the gross in. |
+| 2 | `release` | two of the three keys | Fee to the treasury, the rest to the seller; closes both accounts. |
+| 3 | `refund` | two of the three keys, or the payer after the deadline | Everything back to the payer; closes both. |
+| 4 | `settle(back)` | two of the three keys | `back` to the payer, the rest released with the fee scaled down. |
 | 5 | `set_releaser(releaser)` | treasury | Names another releaser. |
 | 6 | `top_up(amount)` | buyer | Opens the buyer's balance and its vault on first use, moves `amount` in. |
 | 7 | `open_tap(tap_id, rate, fee_bps)` | buyer | Opens one tap against the buyer's balance, billable from an hour before now; several fit in one transaction. |
@@ -49,10 +50,10 @@ Each instruction is its tag byte, then the data below. Signers are marked
 | Tag | Data | Accounts, in order |
 | --- | ---- | ------------------ |
 | 0 | `releaser: 32` | treasury (s, w), config (w), mint, system program |
-| 1 | `nonce: 32, order: 32, gross: u64, fee: u64, deadline: i64` | payer (s, w), payer's token account (w), config, deposit (w), vault (w), seller, mint, token program, system program |
-| 2 | none | releaser (s), config, deposit (w), vault (w), seller's token account (w), treasury's token account (w), payer (w), mint, token program |
-| 3 | none | releaser or payer (s), config, deposit (w), vault (w), payer's token account (w), payer (w), mint, token program |
-| 4 | `refund: u64` | releaser (s), config, deposit (w), vault (w), payer's token account (w), seller's token account (w), treasury's token account (w), payer (w), mint, token program |
+| 1 | `nonce: 32, order: 32, gross: u64, fee: u64, deadline: i64, buyer_box: 32, seller_box: 32` | payer (s, w), payer's token account (w), config, deposit (w), vault (w), seller, mint, token program, system program |
+| 2 | none | authority (s), config, deposit (w), vault (w), seller's token account (w), treasury's token account (w), payer (w), mint, token program, instructions sysvar |
+| 3 | none | authority or payer (s), config, deposit (w), vault (w), payer's token account (w), payer (w), mint, token program, instructions sysvar |
+| 4 | `refund: u64` | authority (s), config, deposit (w), vault (w), payer's token account (w), seller's token account (w), treasury's token account (w), payer (w), mint, token program, instructions sysvar |
 | 5 | `next: 32` | treasury (s), config (w) |
 | 6 | `amount: u64` | buyer (s, w), buyer's token account (w), config, balance (w), vault (w), mint, token program, system program |
 | 7 | `tap_id: 32, rate: u64, fee_bps: u16` | buyer (s, w), config, balance, tap (w), seller, system program |
@@ -60,6 +61,18 @@ Each instruction is its tag byte, then the data below. Signers are marked
 | 9 | `amount: u64` | releaser (s), config, tap (w), balance, vault (w), seller's token account (w), treasury's token account (w), buyer (w), mint, token program |
 | 10 | `amount: u64` | buyer (s), config, balance (w) |
 | 11 | none | buyer (s), config, balance (w), vault (w), buyer's token account (w), mint, token program |
+
+For tags 2 to 4 the authority, one of the three keys, signs the transaction,
+and the second key agrees through an Ed25519 program instruction earlier in
+the same transaction, which the program reads back through the instructions
+sysvar (`Sysvar1nstructions1111111111111111111111111`). That instruction must
+carry one signature with its key, signature and message all in its own data,
+over the 64 bytes `"losos-escrow decision v1"`, the deposit's address and the
+refund as a little-endian u64: 0 for a release, the gross for a refund, `back`
+for a split. The edge signs as the authority, and the box the move pays
+supplies the Ed25519 check: the seller's for a release, the buyer's for a
+refund or a split. `pay` refuses box keys that are zero, equal, or the
+releaser.
 
 The rules are the EVM contract's: a fee of at most half the gross, a deadline
 from one hour to 35 days after payment, a seller that is not the treasury,

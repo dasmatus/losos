@@ -181,6 +181,10 @@ export interface EscrowPay {
   fee: bigint;
   /** Unix seconds: after it the payer may take an unreleased deposit back. */
   deadline: bigint;
+  /** The two boxes' escrow keys from the invoice: with the edge's, the
+   *  program moves the deposit only when two of the three agree. */
+  buyerBox: string;
+  sellerBox: string;
   nonce: Uint8Array;
   recentBlockhash: string;
 }
@@ -216,7 +220,7 @@ export function escrowPayMessage(p: EscrowPay): Uint8Array {
   if (p.nonce.length !== 32) throw new Error("nonce");
   const config = escrowConfigAddress(p.program, p.treasury, p.mint);
   const deposit = escrowDepositAddress(p.program, config, p.nonce);
-  const data = new Uint8Array(89);
+  const data = new Uint8Array(153);
   const view = new DataView(data.buffer);
   data[0] = 1;
   data.set(p.nonce, 1);
@@ -224,6 +228,8 @@ export function escrowPayMessage(p: EscrowPay): Uint8Array {
   view.setBigUint64(65, p.gross, true);
   view.setBigUint64(73, p.fee, true);
   view.setBigInt64(81, p.deadline, true);
+  data.set(pubkey(p.buyerBox), 89);
+  data.set(pubkey(p.sellerBox), 121);
   const ix: Instruction = {
     program: p.program,
     accounts: [

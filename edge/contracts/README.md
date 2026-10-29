@@ -77,25 +77,39 @@ through `LososPay` on a fork of `https://sepolia.base.org`.
 
 # LososEscrow
 
-The held version of `LososPay`. A buyer approves USDC and calls `pay` as
-before, with a deadline. Instead of forwarding the money, the contract holds
-it as one deposit and emits `Held`. The edge keeps it there for as long as
-what was bought runs, watching that the seller delivers it, and then either:
+The held version of `LososPay`. A buyer approves USDC and calls
+`pay(orderId, seller, gross, fee, deadline, buyerBox, sellerBox)`. Instead of
+forwarding the money, the contract holds it as one deposit and emits `Held`,
+which names the two box keys. The edge keeps it there for as long as what was
+bought runs, watching that the seller delivers it, and then one of three
+moves ends it:
 
-- calls `release`, which sends the fee to `treasury` and the rest to the
+- `release(depositId, sigs)` sends the fee to `treasury` and the rest to the
   seller recorded in `pay`,
-- calls `refund`, which sends the whole deposit back to the payer, or
-- calls `settle(depositId, refundAmount)` when the seller stopped
+- `refund(depositId, sigs)` sends the whole deposit back to the payer, or
+- `settle(depositId, refundAmount, sigs)`, when the seller stopped
   delivering partway: `refundAmount` goes back to the payer, and the rest
   is released, with the fee scaled down to the seller's share and rounded
   down. It emits `Settled`, and the deposit ends in the `Split` state.
 
-The edge's key, `releaser`, can do only those three things. It cannot change
-a deposit's seller, amount or payer. If the edge never answers, the payer
-calls `refund` after the deadline, which must lie between one hour and 35
-days after the payment: a month of storage or machines, plus the days the
-edge has to settle once the month is over. Paying the same order twice
-makes two deposits.
+Each move needs two of three keys: the edge's (`releaser`), the buyer's box
+(`buyerBox`) and the seller's box (`sellerBox`). The sender counts as one key
+when it is one of the three, and `sigs` carries the others: EIP-712
+signatures of `Decision(uint256 depositId,uint256 refund)` in the domain
+`LososEscrow`, version `2`, where `refund` is 0 for a release, the gross for
+a refund and `refundAmount` for a split (`decisionDigest` computes it). A
+signature is 65 bytes, `r ‖ s ‖ v`, with a low `s` and `v` 27 or 28; a
+signature from any other key reverts. The edge sends the transaction and the
+box that the move pays signs it: the seller's for a release, the buyer's for
+a refund or a split. The two boxes together can also end a deposit without
+the edge.
+
+No key can change a deposit's seller, amount or payer, and `pay` refuses box
+keys that are zero, equal, or the releaser. If no two keys agree in time, the
+payer calls `reclaim(depositId)` after the deadline, which must lie between
+one hour and 35 days after the payment: a month of storage or machines, plus
+the days the edge has to settle once the month is over. Paying the same order
+twice makes two deposits.
 
 `treasury` is the only account that can replace `releaser` or call `rescue`.
 `rescue` moves tokens that arrived by plain transfer instead of `pay`, and for
