@@ -226,10 +226,10 @@ pub fn cmd_backup_target_bought<L: Losos>(l: &mut L, order: &str) -> anyhow::Res
         .as_ref()
         .is_some_and(Job::running)
     {
-        return Err(
-            Busy("a backup or restore is running; change where backups go when it is done")
-                .into(),
-        );
+        return Err(Busy(
+            "a backup or restore is running; change where backups go when it is done",
+        )
+        .into());
     }
     let Some(config) = l.market_config() else {
         return Err(Invalid("this box has no edge to keep backups on").into());
@@ -245,7 +245,8 @@ pub fn cmd_backup_target_bought<L: Losos>(l: &mut L, order: &str) -> anyhow::Res
         Ok(_) => true,
         Err(e)
             if e.downcast_ref::<crate::market::Refused>().is_some()
-                || e.downcast_ref::<crate::edge::OfficialEdgeRequired>().is_some() =>
+                || e.downcast_ref::<crate::edge::OfficialEdgeRequired>()
+                    .is_some() =>
         {
             false
         }
@@ -789,7 +790,13 @@ mod tests {
         let out = cmd_backup_target_bought(&mut f, "ord_cd34").unwrap();
         assert_eq!(out["keyed"], false);
         assert_eq!(
-            f.backup_target.as_ref().unwrap().bought.as_ref().unwrap().order,
+            f.backup_target
+                .as_ref()
+                .unwrap()
+                .bought
+                .as_ref()
+                .unwrap()
+                .order,
             "ord_cd34"
         );
 
@@ -800,7 +807,13 @@ mod tests {
         assert_eq!(out["keyed"], false);
         assert_eq!(f.market_ops.len(), asked);
         assert_eq!(
-            f.backup_target.as_ref().unwrap().bought.as_ref().unwrap().order,
+            f.backup_target
+                .as_ref()
+                .unwrap()
+                .bought
+                .as_ref()
+                .unwrap()
+                .order,
             "ord_ef56"
         );
     }

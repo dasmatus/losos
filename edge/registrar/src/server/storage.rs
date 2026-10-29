@@ -134,7 +134,10 @@ fn refuse(status: StatusCode, why: &'static str) -> Response {
 }
 
 fn unauthorised() -> Response {
-    let mut r = refuse(StatusCode::UNAUTHORIZED, "sign in with the order and its door key");
+    let mut r = refuse(
+        StatusCode::UNAUTHORIZED,
+        "sign in with the order and its door key",
+    );
     r.headers_mut().insert(
         header::WWW_AUTHENTICATE,
         HeaderValue::from_static("Basic realm=\"losos\""),
@@ -226,8 +229,10 @@ async fn serve(
     if user != order || !order_ok(order) || secret.is_empty() {
         return unauthorised();
     }
-    let Some(OpenDoor { volume, upstream: password }) =
-        market.door_volume(order, &key_of(&secret)).await
+    let Some(OpenDoor {
+        volume,
+        upstream: password,
+    }) = market.door_volume(order, &key_of(&secret)).await
     else {
         tracing::warn!(target: Action::Market.target(), "storage {order}: wrong door key");
         return unauthorised();
@@ -254,6 +259,7 @@ async fn serve(
         url.push('?');
         url.push_str(&q);
     }
+    let head = method == Method::HEAD;
     let mut request = st
         .storage
         .client
@@ -276,20 +282,8 @@ async fn serve(
         }
     };
     let status = answer.status();
-    let mut out = HeaderMap::new();
-    for name in [
-        header::CONTENT_TYPE,
-        header::CONTENT_RANGE,
-        header::ACCEPT_RANGES,
-    ] {
-        if let Some(v) = answer.headers().get(&name) {
-            out.insert(name, v.clone());
-        }
-    }
-    if answer
-        .content_length()
-        .is_some_and(|n| n > MAX_BODY as u64)
-    {
+    let out = answer_headers(head, answer.headers());
+    if answer.content_length().is_some_and(|n| n > MAX_BODY as u64) {
         return refuse(StatusCode::BAD_GATEWAY, "the storage answered too much");
     }
     match answer.bytes().await {
@@ -299,6 +293,28 @@ async fn serve(
             busy("the storage stopped answering; retry in a few seconds")
         }
     }
+}
+
+/// The headers of the server's answer the door passes on. A HEAD answer
+/// keeps the server's Content-Length, which is how restic learns a file's
+/// size: without it the empty body reads as a zero-byte `config` and restic
+/// calls the repository invalid.
+fn answer_headers(head: bool, from: &HeaderMap) -> HeaderMap {
+    let mut out = HeaderMap::new();
+    let length = head.then_some(header::CONTENT_LENGTH);
+    for name in [
+        header::CONTENT_TYPE,
+        header::CONTENT_RANGE,
+        header::ACCEPT_RANGES,
+    ]
+    .into_iter()
+    .chain(length)
+    {
+        if let Some(v) = from.get(&name) {
+            out.insert(name, v.clone());
+        }
+    }
+    out
 }
 
 /// The door key of a secret: its SHA-256 in lowercase hex.
@@ -639,9 +655,33 @@ mod tests {
     }
 
     #[test]
+    fn a_head_answer_keeps_the_size_of_the_file() {
+        let mut from = HeaderMap::new();
+        from.insert(header::CONTENT_LENGTH, "155".parse().unwrap());
+        from.insert(
+            header::CONTENT_TYPE,
+            "application/octet-stream".parse().unwrap(),
+        );
+        from.insert(header::SERVER, "rest-server".parse().unwrap());
+        let head = answer_headers(true, &from);
+        assert_eq!(head.get(header::CONTENT_LENGTH).unwrap(), "155");
+        assert!(head.get(header::SERVER).is_none());
+        // A body answer gets its length from the body the door sends.
+        let get = answer_headers(false, &from);
+        assert!(get.get(header::CONTENT_LENGTH).is_none());
+        assert_eq!(
+            get.get(header::CONTENT_TYPE).unwrap(),
+            "application/octet-stream"
+        );
+    }
+
+    #[test]
     fn the_password_is_in_rest_servers_sha_form() {
         // `printf password | openssl sha1 -binary | base64`
-        assert_eq!(htpasswd("password"), "edge:{SHA}W6ph5Mm5Pz8GgiULbPgzG37mj9g=\n");
+        assert_eq!(
+            htpasswd("password"),
+            "edge:{SHA}W6ph5Mm5Pz8GgiULbPgzG37mj9g=\n"
+        );
     }
 
     #[test]
@@ -672,7 +712,10 @@ mod tests {
             .map(|a| a.as_str().unwrap())
             .collect();
         assert!(!command.contains(&"--no-auth"), "{command:?}");
-        assert!(command.contains(&"/etc/rest-server/htpasswd"), "{command:?}");
+        assert!(
+            command.contains(&"/etc/rest-server/htpasswd"),
+            "{command:?}"
+        );
         assert_eq!(c["imagePullPolicy"], "Never");
         assert_eq!(c["securityContext"]["readOnlyRootFilesystem"], true);
         assert_eq!(c["securityContext"]["capabilities"]["drop"][0], "ALL");

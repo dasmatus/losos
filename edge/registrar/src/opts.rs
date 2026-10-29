@@ -1069,9 +1069,9 @@ fn image_ref_ok(image: &str) -> bool {
         && !tag.is_empty()
         && image.len() <= 200
         && !name.starts_with(['/', '.', '-'])
-        && name
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'-' | b'_' | b'/'))
+        && name.bytes().all(|b| {
+            b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'-' | b'_' | b'/')
+        })
         && tag
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'))

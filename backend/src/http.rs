@@ -3247,7 +3247,10 @@ async fn post_backup_target_bought(
             .await
         }
         None => guarded(&api, &req, "/api/backup/target/bought", true, || {
-            err(StatusCode::BAD_REQUEST, r#"body must be JSON: {"order": "ord_…"}"#)
+            err(
+                StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"order": "ord_…"}"#,
+            )
         }),
     }
 }

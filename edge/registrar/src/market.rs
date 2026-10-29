@@ -1287,7 +1287,10 @@ pub fn storage_volume(state: &MarketState, order_id: &str, buyer: &str) -> Optio
 /// Whether `hash` is the shape of a door key: 64 lowercase hex characters.
 #[must_use]
 pub fn door_hash_ok(hash: &str) -> bool {
-    hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    hash.len() == 64
+        && hash
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 /// What is behind `order_id`'s backup door, when `hash` is its key. The
@@ -3502,7 +3505,12 @@ impl Market {
     /// # Errors
     /// [`MarketError::NotFound`] for anything but the buyer's own bound
     /// storage, [`MarketError::Invalid`] for a key of the wrong shape.
-    pub async fn set_door(&self, order_id: &str, buyer: &str, hash: &str) -> Result<(), MarketError> {
+    pub async fn set_door(
+        &self,
+        order_id: &str,
+        buyer: &str,
+        hash: &str,
+    ) -> Result<(), MarketError> {
         if !door_hash_ok(hash) {
             return Err(MarketError::Invalid("the door key is not a SHA-256 in hex"));
         }
@@ -6217,7 +6225,10 @@ mod tests {
         again.set_door("ord_a", "b", &other).await.unwrap();
         assert!(again.door_volume("ord_a", &key).await.is_none());
         // A new key keeps the server's password: the server keeps running.
-        assert_eq!(again.door_volume("ord_a", &other).await.unwrap().upstream, upstream);
+        assert_eq!(
+            again.door_volume("ord_a", &other).await.unwrap().upstream,
+            upstream
+        );
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

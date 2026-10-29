@@ -1227,17 +1227,28 @@ async fn the_backup_door_opens_with_the_buyers_key_and_starts_a_server() {
     // A wrong key, the key on another order's path, or a path that is not
     // restic's are refused before anything reaches the cluster.
     let before = kube.seen().len();
-    assert_eq!(door(&edge, &config, Some((&order_id, "guess"))).await.0, 401);
     assert_eq!(
-        door(&edge, "/market/storage/ord_00/config", Some(("ord_00", secret)))
-            .await
-            .0,
+        door(&edge, &config, Some((&order_id, "guess"))).await.0,
         401
     );
     assert_eq!(
-        door(&edge, &format!("/market/storage/{order_id}/admin"), Some((&order_id, secret)))
-            .await
-            .0,
+        door(
+            &edge,
+            "/market/storage/ord_00/config",
+            Some(("ord_00", secret))
+        )
+        .await
+        .0,
+        401
+    );
+    assert_eq!(
+        door(
+            &edge,
+            &format!("/market/storage/{order_id}/admin"),
+            Some((&order_id, secret))
+        )
+        .await
+        .0,
         404
     );
     assert_eq!(kube.seen().len(), before, "{:?}", kube.seen());
