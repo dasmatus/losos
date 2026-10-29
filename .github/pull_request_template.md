@@ -45,7 +45,7 @@ the line out. A bare `nix build` is not a test gate (see .claude/CLAUDE.md).
 -->
 
 - `devenv test` (pins, lint, `cargo test`, flake eval):
-- `admin-ui/app`: `npm run typecheck`, `npm run test:browser`:
+- `admin-ui/app`: `bun run typecheck`, `bun run test:browser`:
 - VM tests (`nix build .#checks.x86_64-linux.<name>`, KVM only):
 - Install toplevel (`nix build .#nixosConfigurations.install.config.system.build.toplevel`):
 - Screenshots taken in (browser, VM, or ISO under QEMU):

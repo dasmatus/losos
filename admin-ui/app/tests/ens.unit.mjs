@@ -9,32 +9,19 @@
  * publishes at a box's names, so it walks the path a buyer's lookup of
  * mattbox.<zone> walks.
  *
- *   node tests/ens.node.mjs
- *   LOSOS_ENS_RECORD=https://ethereum-rpc.publicnode.com node tests/ens.node.mjs
+ *   bun tests/ens.unit.mjs
+ *   LOSOS_ENS_RECORD=https://ethereum-rpc.publicnode.com bun tests/ens.unit.mjs
  *
  * The second form asks mainnet and the gateway live and rewrites the fixture.
  */
 
-import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import * as esbuild from 'esbuild';
+import assert from './assert.mjs';
 
-const built = await esbuild.build({
-  entryPoints: [fileURLToPath(new URL('../src/wallet/chains.ts', import.meta.url))],
-  bundle: true,
-  format: 'esm',
-  platform: 'node',
-  write: false,
-  alias: { '@': fileURLToPath(new URL('../src', import.meta.url)) },
-});
-const chains = await import(
-  `data:text/javascript;base64,${Buffer.from(built.outputFiles[0].text).toString('base64')}`
-);
+const chains = await import('../src/wallet/chains.ts');
 
-const fixture = new URL('./fixtures/ens.json', import.meta.url);
-const live = process.env.LOSOS_ENS_RECORD;
-const answers = live ? {} : JSON.parse(readFileSync(fixture, 'utf8'));
+const fixture = `${import.meta.dir}/fixtures/ens.json`;
+const live = Bun.env.LOSOS_ENS_RECORD;
+const answers = live ? {} : await Bun.file(fixture).json();
 const seen = [];
 
 // What the relay would ask upstream, by the call the page made.
@@ -95,5 +82,5 @@ await assert.rejects(
 );
 assert.deepEqual(seen, []);
 
-if (live) writeFileSync(fixture, `${JSON.stringify(answers, null, 2)}\n`);
+if (live) await Bun.write(fixture, `${JSON.stringify(answers, null, 2)}\n`);
 console.log('ens: ok');

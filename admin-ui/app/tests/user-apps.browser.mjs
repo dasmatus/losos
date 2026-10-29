@@ -10,12 +10,11 @@
  * what the app frame's own try found (src/app-frame/runtime.tsx), so the
  * checks here read that report as the box would. */
 
-import assert from 'node:assert';
-import { readFileSync } from 'node:fs';
+import assert from './assert.mjs';
 import { launch, runner, serve } from './harness.mjs';
 
 const TOKEN = 'a'.repeat(64);
-const APP = JSON.parse(readFileSync(new URL('./fixtures/user-app.json', import.meta.url), 'utf8'));
+const APP = await Bun.file(`${import.meta.dir}/fixtures/user-app.json`).json();
 const { origin, close: closeServer } = await serve({ csp: true });
 const browser = await launch();
 const { check, finish } = runner();

@@ -2,25 +2,13 @@
  * memberships count, which transport a page may follow, and the notice
  * left for other Matrix apps.
  *
- *   node tests/chat-rtc.node.mjs
+ *   bun tests/chat-rtc.unit.mjs
  */
 
-import assert from 'node:assert/strict';
-import { fileURLToPath } from 'node:url';
-import * as esbuild from 'esbuild';
+import assert from './assert.mjs';
 
-const built = await esbuild.build({
-  entryPoints: [fileURLToPath(new URL('../src/chat/rtc.ts', import.meta.url))],
-  bundle: true,
-  format: 'esm',
-  platform: 'node',
-  write: false,
-  logLevel: 'error',
-  // matrix-js-sdk's dependencies require Node's own modules.
-  banner: { js: `import { createRequire as nodeRequire } from 'node:module'; const require = nodeRequire(${JSON.stringify(import.meta.url)});` },
-});
 globalThis.location = new URL('https://mattbox.local/chat/');
-const rtc = await import(`data:text/javascript;base64,${Buffer.from(built.outputFiles[0].text).toString('base64')}`);
+const rtc = await import('../src/chat/rtc.ts');
 
 const MEMBER = 'org.matrix.msc4143.rtc.member';
 const SLOT = 'org.matrix.msc4143.rtc.slot';

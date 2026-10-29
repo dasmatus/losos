@@ -15,7 +15,7 @@
 #                         losos-mdx and the Lab canvas
 #                         (WebGL2, WebGPU)
 #   admin-ui              nix build .#checks…losos-admin-ui: ui lane
-#                         the built SPA (npm ci, tsc, vite)
+#                         the built SPA (bun.lock, tsc, vite)
 #                         and its Playwright suite
 #   handbook              nix build .#losos-handbook         handbook/ changed
 #   vm:<check>            the VM tests the change touches,   nix/tests/ changed;
@@ -120,7 +120,7 @@ for update in "${updates[@]}"; do
     if grep -qxE 'flake.lock|devenv.yaml|devenv.lock' <<<"$changed"; then
       run pins bash nix/check-pins.sh
     fi
-    if grep -qE '(^|/)(Cargo.lock|package-lock.json)$' <<<"$changed"; then
+    if grep -qE '(^|/)(Cargo.lock|bun.lock)$' <<<"$changed"; then
       run hashes python3 .github/scripts/fix-hashes.py --check --base "$base"
     fi
 

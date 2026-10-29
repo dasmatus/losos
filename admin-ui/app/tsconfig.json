@@ -6,7 +6,7 @@
     "moduleResolution": "bundler",
     "moduleDetection": "force",
     "jsx": "react-jsx",
-    "types": ["vite/client", "node"],
+    "types": ["vite/client"],
 
     "strict": true,
     "noUncheckedIndexedAccess": true,
@@ -28,5 +28,5 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src", "vite.config.ts", "vite.guest.config.ts", "vite.segmenter-quiet.ts", "vite.sonner-quiet.ts"]
+  "include": ["src"]
 }
