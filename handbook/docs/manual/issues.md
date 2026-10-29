@@ -6,10 +6,7 @@ slug: /manual/issues
 
 # Issues in LosOS Git
 
-
-![My issues in LosOS Git.](../img/issues-list.png)
-
-![An issue.](../img/issue-detail.png)
+![The backup-tool project in LosOS Git: its issues grouped by status, each with its key, priority, labels, due date and assignee, and Inbox, My issues and the projects in the sidebar.](../img/git-issues.png)
 
 LosOS Git keeps the box's issues: bugs, tasks and ideas, for code and for
 anything else. They live at **Issues** in LosOS Git's sidebar, at
@@ -57,6 +54,8 @@ Each issue keeps its history: who made it, every change of status,
 priority, person, label or cycle, every comment, and the commits and pull
 requests that named it.
 
+![Issue BT-7 opened beside the list: its status, priority, assignee, label, cycle, estimate and repository, Break it down, the sub-issues and a comment box.](../img/git-issue.png)
+
 ## Lists, the board and views
 
 **My issues** shows what is given to you, across all projects. **All issues**
@@ -73,6 +72,8 @@ shared with everyone who may see the project.
 
 Selecting issues with their check boxes, or with `X`, opens a bar to change
 the status, priority, person or labels of all of them at once.
+
+![The same project as a board: a column for each status, the issues as cards, and Save view.](../img/git-issues-board.png)
 
 ## Cycles
 

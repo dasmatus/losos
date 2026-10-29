@@ -115,6 +115,36 @@ Notes' own syntax (wikilinks, tags, callouts) is a pass between `parse` and
 
 The allowlist runs over all of it.
 
+### Notes
+
+`notes::render_note(source, flavour, resolver)` is that pass, in this
+crate (`src/notes/`), for both flavours. On top of CommonMark and GFM it
+reads Obsidian's syntax:
+
+| Syntax | HTML |
+|---|---|
+| `[[Note#Heading\|shown]]` | `a.wikilink` with `data-note-path` and `data-sub`; `.is-unresolved` with `data-note-target` when the vault has no such note, `.is-file` for an attachment, `.is-internal` for `[[#Heading]]` |
+| `![[picture.png\|300]]` | `img.embed-image` with `data-width`; audio and video as `span.embed-media` with `data-kind` and `data-src`; a note as an empty `span.note-embed` with `data-embed-path` |
+| `#tag`, `#nested/tag` | `a.tag` with `data-tag` |
+| `==highlight==` | `mark` |
+| `%%comment%%` | nothing; its lines stay, as blank |
+| `> [!tip]- Title` (and GitHub's `> [!NOTE]`) | `aside.callout.callout-tip`, or `details` when it folds, with `data-callout` |
+| `- [ ]`, `- [x]`, `- [/]` and Obsidian's other marks | `li.task-list-item` with `data-task`, and `span.task-box` with `data-line` |
+| `^block-id` | `id="^block-id"` on the block |
+| one line break | `br` |
+
+The page turns a `span.task-box` into a checkbox and a `span.embed-media`
+into a player, since no document may write a form field or a media
+element.
+
+`notes::to_note(source)` turns a `.md` note into a `.note` that says the
+same: braces and `<` outside code escaped, HTML comments as `%%comments%%`,
+`<br>` and the other plain elements kept, any other HTML as text,
+`<https://…>` as a link, indented code fenced. It is refused, with the
+line, unless the result reads without a problem and keeps the note's
+headings and links.
+
 In the browser, `render(source, "mdx" | "md", resolver?)` returns the same
-result as JSON, and `tree(source, flavour)` the mdast (positions kept) the
-WYSIWYG editor builds its document from.
+result as JSON, `tree(source, flavour)` the mdast (positions kept) the
+WYSIWYG editor builds its document from, and `renderNote` and `toNote` the
+two above.

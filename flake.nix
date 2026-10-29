@@ -336,7 +336,7 @@
             ./modules/credentials.nix
             ./modules/daemon.nix
             ./modules/identity.nix
-            # LosOS Chat: Dendrite as the shared user while the box shares
+            # LosOS Chat: Synapse as the shared user while the box shares
             # its storage in a mesh, behind LosOS Login (backend/src/chat.rs).
             ./modules/chat.nix
             # Calls from chat rooms and DMs: the SFU, as the shared user, which
@@ -531,6 +531,9 @@
         losos-profile-screens = import ./nix/tests/profile-screens.nix { inherit pkgs; };
         losos-plugins = import ./nix/tests/plugins.nix { inherit pkgs; };
         losos-hidden-services = import ./nix/tests/hidden-services.nix { inherit pkgs; };
+        # The box ends its own TLS and the edge passes it through unread
+        # (modules/public-tls.nix, edge/registrar/src/passthrough.rs).
+        losos-edge-passthrough = import ./nix/tests/edge-passthrough.nix { inherit pkgs; };
         losos-design = import ./nix/tests/design.nix { inherit pkgs; };
         losos-agents = import ./nix/tests/agents.nix { inherit pkgs; };
         # The banner a box off the mesh shows over every page, both states

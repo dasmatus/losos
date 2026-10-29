@@ -100,7 +100,7 @@ async function kbNotes(slug: string, signal?: AbortSignal): Promise<KbNote[]> {
 }
 
 const kbPage = (slug: string, path: string) =>
-  `/kb/${encodeURIComponent(slug)}/${path.replace(/\.(md|markdown)$/iu, "").split("/").map(encodeURIComponent).join("/")}`;
+  `/kb/${encodeURIComponent(slug)}/${path.replace(/\.(note|md|markdown)$/iu, "").split("/").map(encodeURIComponent).join("/")}`;
 
 /** The handbook's chapters, in its own order. */
 const CHAPTERS: { entry: HandbookEntry; label: MessageKey }[] = [
@@ -485,7 +485,7 @@ function Results({
                   className="block rounded-control px-2 py-1.5 hover:bg-sunk focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:outline-none"
                   data-hit={`${h.slug}/${h.path}`}
                 >
-                  <span className="block truncate text-[13px] font-medium text-ink">{titleOf(h.path.replace(/\.(md|markdown)$/iu, ""))}</span>
+                  <span className="block truncate text-[13px] font-medium text-ink">{titleOf(h.path.replace(/\.(note|md|markdown)$/iu, ""))}</span>
                   <span className="block truncate text-[12px] text-muted">{h.site}</span>
                   {h.text !== "" && <span className="line-clamp-2 text-[12px] text-muted">{h.text}</span>}
                 </a>
@@ -747,7 +747,7 @@ function KnowledgeBase({ site, slug, hidden, onBack }: { site: KbSite | null; sl
                   rel="noopener"
                   className="block truncate rounded-control px-2 py-1.5 text-[13px] text-muted hover:bg-sunk hover:text-ink"
                 >
-                  {n.title ?? titleOf(n.path.replace(/\.(md|markdown)$/iu, ""))}
+                  {n.title ?? titleOf(n.path.replace(/\.(note|md|markdown)$/iu, ""))}
                 </a>
               </li>
             ))}

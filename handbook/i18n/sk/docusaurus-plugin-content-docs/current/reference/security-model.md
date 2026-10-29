@@ -17,6 +17,11 @@ mohli polemizovať.
 2. **Edge → zariadenie.** TLS 1.3 šifruje tunel od konca po koniec, cez QUIC
    alebo, kde je UDP zablokované, cez TCP. Zariadenie si pri prvom spojení
    zapamätá certifikát edge a zmenený certifikát odmietne.
+   V tuneli zostávajú spojenia návštevníkov šifrované až po vlastný
+   certifikát zariadenia: edge ich smeruje podľa názvu a čítať ich nemôže.
+   Vidí však, na aký názov sa návštevník pýtal, kedy, koľko dát prešlo a
+   domácu adresu zariadenia. Pozri
+   [Edge nevidí do prevádzky](../in-depth/master-proxy.md#the-edge-cannot-read-the-traffic).
 3. **LAN → zariadenie.** Zariadenie poskytuje HTTPS s vlastným certifikátom,
    ktorému na každom počítači raz dôverujete. Kým to neurobíte, niekto na tej
    istej Wi-Fi, kto dokáže zachytávať prevádzku, môže zachytiť prvé použitie.

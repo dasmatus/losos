@@ -119,6 +119,9 @@ pub trait Losos {
         &mut self,
         cluster: Option<&str>,
     ) -> anyhow::Result<crate::edge::EdgeStatus>;
+    /// The box's own TLS on its public names (`crate::edge::PublicTls`):
+    /// what modules/public-tls.nix wrote. Absent files are a status.
+    fn public_tls(&mut self) -> anyhow::Result<crate::edge::PublicTls>;
 
     /// Record the custom domains that are live for this box on its edge, for
     /// LosOS Cloud to trust (`trusted_domains`) and to build its links from
@@ -1204,6 +1207,8 @@ pub fn cmd_edge<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
     // Sharing the box turned off itself while no edge answered, and turns
     // back on once one does (`sharing_tick`).
     out["sharingPausedAt"] = json!(state.sharing_paused_at);
+    // Whether the edge can read what passes through it.
+    out["publicTls"] = serde_json::to_value(l.public_tls()?)?;
     Ok(out)
 }
 
@@ -2091,6 +2096,9 @@ mod tests {
             fn edge_status(&mut self) -> anyhow::Result<crate::edge::EdgeStatus> {
                 self.0.edge_status()
             }
+            fn public_tls(&mut self) -> anyhow::Result<crate::edge::PublicTls> {
+                self.0.public_tls()
+            }
             fn set_edge_cluster(
                 &mut self,
                 cluster: Option<&str>,
@@ -2471,6 +2479,27 @@ mod tests {
         assert_eq!(cmd_edge(&mut fake).unwrap()["sharingPausedAt"], Value::Null);
         fake.state.sharing_paused_at = Some(42);
         assert_eq!(cmd_edge(&mut fake).unwrap()["sharingPausedAt"], json!(42));
+    }
+
+    #[test]
+    fn edge_status_says_whether_the_edge_can_read_the_traffic() {
+        let mut fake = FakeLosos::new();
+        assert_eq!(
+            cmd_edge(&mut fake).unwrap()["publicTls"],
+            json!({ "own": null, "checkedAt": null, "seen": {} })
+        );
+        fake.public_tls = crate::edge::public_tls_from(
+            Some("box.losos.cfd\n"),
+            Some(r#"{"checkedAt":"2026-10-28T21:00:00Z","names":{"box.losos.cfd":"ok"}}"#),
+        );
+        assert_eq!(
+            cmd_edge(&mut fake).unwrap()["publicTls"],
+            json!({
+                "own": ["box.losos.cfd"],
+                "checkedAt": "2026-10-28T21:00:00Z",
+                "seen": { "box.losos.cfd": "ok" },
+            })
+        );
     }
 
     #[test]

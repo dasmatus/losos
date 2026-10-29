@@ -13,7 +13,7 @@ Overview, or an old bookmark, opens a "Not Found" page.
 
 </div>
 
-![The Apps pane with LosOS Cloud and LosOS Git; the Overview's app tiles open the same apps.](../img/apps.png)
+![The Apps pane: LosOS Cloud, LosOS Git, Your apps with Make an app, and Find more below.](../img/apps.png)
 
 ## "Not Found" from an app tile
 

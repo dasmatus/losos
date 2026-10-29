@@ -351,6 +351,10 @@ struct HeartbeatReq {
     /// The box's owner lets this edge manage it (`manage`). Absent is no.
     #[serde(default)]
     managed: bool,
+    /// The names the box ends TLS for itself (`crate::passthrough`); absent
+    /// leaves its TLS to this edge, as before.
+    #[serde(default)]
+    tls: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1385,18 +1389,39 @@ async fn heartbeat(
         if let Some(manage) = &st.manage {
             manage.record(&req.appliance_id, req.managed);
         }
+        // A box that ends TLS itself: its routes change with what it holds,
+        // so the reconciler runs now rather than at its next tick.
+        match st.reg.record_tls(&req.appliance_id, req.tls.clone()).await {
+            Ok(true) => st.notify.notify_one(),
+            Ok(false) => {}
+            Err(e) => tracing::warn!(
+                target: Action::Heartbeat.target(),
+                "could not keep what {} said about its TLS: {e}",
+                req.appliance_id,
+            ),
+        }
+        let mut answer = serde_json::Map::new();
         // The box's Tor and I2P addresses on this edge, when it has any
         // (crate::hidden); the box shows them and lets LosOS Login answer
         // on them. An older box reads any 2xx as a heartbeat taken.
         if let Some(h) = &st.opts.hidden {
             let addresses = crate::hidden::read_addresses(Path::new(&h.addresses_file)).await;
             if let Some(a) = addresses.get(&req.appliance_id) {
-                return Ok(
-                    (StatusCode::OK, Json(serde_json::json!({ "hidden": a }))).into_response()
-                );
+                answer.insert("hidden".into(), serde_json::json!(a));
             }
         }
-        Ok(StatusCode::NO_CONTENT.into_response())
+        // Every public name this edge routes to a box that ends TLS itself,
+        // so it can get a certificate for each (crate::passthrough).
+        if req.tls.is_some() {
+            let names = st.discovery.names_of(&req.appliance_id);
+            if !names.is_empty() {
+                answer.insert("names".into(), serde_json::json!(names));
+            }
+        }
+        if answer.is_empty() {
+            return Ok(StatusCode::NO_CONTENT.into_response());
+        }
+        Ok((StatusCode::OK, Json(serde_json::Value::Object(answer))).into_response())
     } else {
         // Unknown id mid-run: tell the appliance to re-register. (It will, on
         // the next announce loop, because 404 triggers re-enroll.)
@@ -1601,6 +1626,21 @@ async fn relay_route(
         .reg
         .relay(&req.appliance_id, req.gateway.as_deref(), &accepted)
         .await?;
+    // What each relayed box said through its spoke about ending TLS itself
+    // (crate::passthrough), kept like a direct box's heartbeat says it.
+    let mut tls_changed = false;
+    for r in &relayed {
+        let tls = req
+            .tenants
+            .iter()
+            .find(|t| t.id == r.id)
+            .and_then(|t| t.tls.clone());
+        let key = format!("{}.{}", req.appliance_id, r.id);
+        tls_changed |= st.reg.record_tls(&key, tls).await?;
+    }
+    if tls_changed {
+        st.notify.notify_one();
+    }
     let routes = match &st.routes {
         None => Vec::new(),
         Some(rt) => {
@@ -3483,6 +3523,7 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
             tunnel_port: v.tunnel_port,
             token: token.to_string(),
             llm_port: None,
+            tls: v.tls.clone(),
         });
     }
     // The relayed half (crate::relay): a `<spoke>.<box>` tenant stays only
@@ -3550,6 +3591,7 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
             tunnel_port: r.tunnel_port,
             token,
             llm_port: None,
+            tls: r.tls,
         });
     }
     for id in &stale {
@@ -3582,7 +3624,40 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
     // The domain half: a name in the edge's zone for each box Stripe vouches
     // for, every proved custom domain, and the zone file itself. Computed
     // before the Traefik routes so both describe the same moment.
-    let (extra_hosts, zone_names) = domain_hosts(st, &enriched, &tenants).await;
+    let (extra_hosts, mut zone_names) = domain_hosts(st, &enriched, &tenants).await;
+    // On a spoke, the names the hub routes to a box behind it: the box needs
+    // a certificate for those too when it ends TLS itself, though this edge
+    // routes nothing by them. `record_hub_routes` keeps them; no file is
+    // none.
+    let mut hub_hosts: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let hub_routes = Path::new(&st.opts.registry_path).with_file_name("hub-routes.json");
+    if let Ok(text) = tokio::fs::read(&hub_routes).await {
+        let rows: Vec<RelayRoute> = serde_json::from_slice(&text).unwrap_or_default();
+        for r in rows {
+            hub_hosts.entry(r.id).or_default().push(r.domain);
+        }
+    }
+    // Every public name of each live box, for the heartbeat's answer to a
+    // box that ends TLS itself (crate::passthrough), and no HTTPS record at
+    // those names: the edge can offer neither ECH nor HTTP/3 there.
+    let zone = domains_of(st).ok().map(|store| store.opts.zone.clone());
+    let mut box_names: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for t in &enriched {
+        let mut names = vec![t.hostname.clone()];
+        names.extend(extra_hosts.get(&t.id).into_iter().flatten().cloned());
+        let names = crate::passthrough::clean(names);
+        if t.tls.is_some() {
+            if let Some(zone) = &zone {
+                for name in &names {
+                    zone_names.skip_https(name, zone);
+                }
+            }
+        }
+        let mut told = names;
+        told.extend(hub_hosts.get(&t.id).into_iter().flatten().cloned());
+        box_names.insert(t.id.clone(), crate::passthrough::clean(told));
+    }
+    st.discovery.set_names(box_names);
     // A box lending memory to AI models gets its second tunnel service.
     if let Some(inference) = &st.inference {
         let lending: HashSet<String> = llm::lenders_of(st)
@@ -4403,6 +4478,7 @@ async fn uplink_once(
             id: v.id.clone(),
             hostname: entry.hostname.trim().to_string(),
             pass,
+            tls: v.tls.clone(),
         });
         services.push(UplinkService {
             name: format!("{}.{}", target.id, v.id),

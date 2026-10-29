@@ -6,6 +6,8 @@ slug: /manual/mesh-ci
 
 # Mesh CI
 
+![Mesh CI: der Runner dieser Box und wann er Jobs anderer Boxen nimmt, dann die Läufe, einer läuft, einer abgebrochen und zwei bestanden, oben Workflow ausführen.](@site/docs/img/mesh-ci-de.png)
+
 Mesh CI führt die GitHub-Actions-Workflows in deinen Repositorys in
 [LosOS Git](losos-git) aus. Ein Push oder ein Pull-Request startet die
 Workflows im Ordner `.github/workflows/` des Commits, die Boxen deines
@@ -39,6 +41,8 @@ Commit.
 unter seinen Auslösern hat. Gib das Repository als `besitzer/name` an,
 einen Branch (den Standard-Branch, wenn du das Feld leer lässt), drücke
 **Workflows suchen** und wähle einen aus.
+
+![Ein bestandener Lauf: seine zwei Jobs, jeder mit der Box im Mesh, auf der er lief, und die Schritte eines Jobs mit Ausgabe und Dauer.](@site/docs/img/mesh-ci-run-de.png)
 
 ## Wo ein Job läuft \{#where-a-job-runs}
 
