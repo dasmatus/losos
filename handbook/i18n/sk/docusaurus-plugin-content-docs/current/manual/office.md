@@ -6,6 +6,8 @@ slug: /manual/office
 
 # Kancelárske dokumenty
 
+![Dokumenty, zoznam LosOS Office: dokumenty v priečinku LosOS Office na zariadení, s tým, kedy sa každý zmenil, a jeho veľkosťou.](@site/docs/img/office-sk.png)
+
 LosOS Office otvára textové dokumenty, tabuľky a prezentácie v prehliadači a
 ukladá ich späť na zariadenie. Na jednom dokumente môže naraz pracovať
 viac ľudí a každý vidí, kde práve píšu ostatní. Editor je Collabora

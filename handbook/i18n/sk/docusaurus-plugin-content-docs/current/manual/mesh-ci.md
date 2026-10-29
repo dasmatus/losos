@@ -6,6 +6,8 @@ slug: /manual/mesh-ci
 
 # Mesh CI
 
+![Mesh CI: runner tohto boxu a kedy berie úlohy iných boxov, potom behy, jeden beží, jeden zrušený a dva prešli, a hore Spustiť workflow.](@site/docs/img/mesh-ci-sk.png)
+
 Mesh CI spúšťa workflowy GitHub Actions vo vašich repozitároch v
 [LosOS Git](losos-git). Push alebo pull request spustí workflowy z
 priečinka `.github/workflows/` v danom commite, boxy vašej siete si úlohy
@@ -36,6 +38,8 @@ kódom každého kroku a výstupmi úlohy.
 `workflow_dispatch`. Zadajte repozitár ako `vlastník/názov`, vetvu
 (predvolenú, ak pole necháte prázdne), stlačte **Nájsť workflowy** a jeden
 vyberte.
+
+![Beh, ktorý prešiel: jeho dve úlohy, každá s boxom mesh siete, na ktorom bežala, a kroky jednej s výstupom a trvaním.](@site/docs/img/mesh-ci-run-sk.png)
 
 ## Kde úloha beží \{#where-a-job-runs}
 

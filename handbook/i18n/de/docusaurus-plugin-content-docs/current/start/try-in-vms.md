@@ -5,6 +5,8 @@ sidebar_position: 6
 
 # In VMs ausprobieren
 
+![Die Übersicht einer Box, die in einer virtuellen Maschine läuft.](@site/docs/img/overview-de.png)
+
 Eine Zeile auf einem Linux-Rechner richtet zwei LosOS-Boxen mit einer Edge
 dazwischen ein, als virtuelle Maschinen in einem privaten Netz, und zeigt,
 was sie zusammen tun:

@@ -7,7 +7,7 @@ mdx:
 
 # Hardening
 
-![Settings, Hardware.](../img/settings-hardware.png)
+![Settings, Security: the four protections that are off by default, each with what it costs.](../img/settings-security.png)
 
 `losos.hardening.enable` is on by default. It sets:
 

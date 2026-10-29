@@ -125,6 +125,9 @@ in
 
 pkgs.testers.nixosTest {
   name = "losos-chat";
+  # The handbook's pictures in three languages take most of an hour on
+  # their own under TCG.
+  globalTimeout = 3 * 3600;
 
   nodes = {
     box =
@@ -142,6 +145,8 @@ pkgs.testers.nixosTest {
         losos = {
           hostName = "mattbox";
           backend.package = lososPkgs.losos-ctl;
+          # The pins and the look are plugins; without them the page sees 404s.
+          backend.plugins = lososPkgs.losos-plugins;
           admin.ui = ui;
           git.enable = false;
           # The shared user's side of the box: chat's gate.
@@ -231,6 +236,9 @@ pkgs.testers.nixosTest {
     box.wait_for_unit("losos-chat.service")
     box.wait_for_open_port(443)
     box.wait_for_open_port(8008)
+    # lososd loads its plugins before it listens; the unit is active
+    # earlier than that.
+    box.wait_for_open_port(8082)
     laptop.wait_for_unit("socks.service")
 
     def curl(args):
@@ -272,6 +280,7 @@ pkgs.testers.nixosTest {
         box.succeed(f"{path}/bin/switch-to-configuration test >&2")
         box.wait_for_unit("lososd.service")
         box.wait_for_unit("nginx.service")
+        box.wait_for_open_port(8082)
 
     def saved(shared):
         """Write the box's saved settings to match the switch, as an Apply
