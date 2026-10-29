@@ -19,7 +19,7 @@
  * The box's live-editing room is tests/yroom.mjs, reached through
  * page.routeWebSocket; the HTTP routes are stubbed with page.route(). */
 
-import assert from 'node:assert';
+import assert from './assert.mjs';
 import { launch, runner, serve } from './harness.mjs';
 import { yroom } from './yroom.mjs';
 

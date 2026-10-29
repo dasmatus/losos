@@ -1,8 +1,8 @@
 name: dependency-hashes
 
 # A lock file that changes without the Nix hash that pins it breaks the package
-# that vendors it: Dependabot bumps Cargo.lock or package-lock.json and leaves
-# cargoHash and npmDepsHash as they were. This workflow runs
+# that vendors it: Dependabot bumps Cargo.lock or bun.lock and leaves
+# cargoHash and the node_modules hash as they were. This workflow runs
 # .github/scripts/fix-hashes.py on every pull request from a branch of this
 # repository that touches a lock file, Dependabot's included, and pushes the
 # new hashes back to the branch as one commit. A branch whose hashes are
@@ -31,12 +31,12 @@ on:
     branches: [main]
     paths:
       - "**/Cargo.lock"
-      - "**/package-lock.json"
+      - "**/bun.lock"
   pull_request_target:
     types: [opened, synchronize, reopened]
     paths:
       - "**/Cargo.lock"
-      - "**/package-lock.json"
+      - "**/bun.lock"
   workflow_dispatch:
     inputs:
       branch:

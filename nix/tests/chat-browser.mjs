@@ -11,28 +11,28 @@
 // <out>/film/ (the launch film's states, numbered, with manifest.json) and
 // <out>/pr/ (the pull request's). It exits non-zero at the first step that
 // does not happen, after a picture of every open page.
-import { createRequire } from "node:module";
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 
-const { chromium } = createRequire(import.meta.url)(process.env.CHAT_PLAYWRIGHT ?? "playwright");
+const exists = (file) => Bun.file(file).exists();
 
-const [phase, out] = process.argv.slice(2);
-const HOST = process.env.CHAT_HOST ?? "mattbox.local";
+const { chromium } = await import(Bun.env.CHAT_PLAYWRIGHT ?? "playwright");
+
+const [phase, out] = Bun.argv.slice(2);
+const HOST = Bun.env.CHAT_HOST ?? "mattbox.local";
 const ORIGIN = `https://${HOST}`;
-const PROXY = process.env.CHAT_PROXY ?? "socks5://127.0.0.1:1080";
-const PICTURE = process.env.CHAT_PICTURE;
+const PROXY = Bun.env.CHAT_PROXY ?? "socks5://127.0.0.1:1080";
+const PICTURE = Bun.env.CHAT_PICTURE;
 // A plain red square and a plain green one: the stand-in nudity model the
 // test builds flags the first and passes the second.
-const RED = process.env.CHAT_RED;
-const GREEN = process.env.CHAT_GREEN;
+const RED = Bun.env.CHAT_RED;
+const GREEN = Bun.env.CHAT_GREEN;
 const PEOPLE = {
-  matus: process.env.CHAT_MATUS_PASSWORD,
-  eva: process.env.CHAT_EVA_PASSWORD,
+  matus: Bun.env.CHAT_MATUS_PASSWORD,
+  eva: Bun.env.CHAT_EVA_PASSWORD,
 };
-mkdirSync(`${out}/film`, { recursive: true });
-mkdirSync(`${out}/pr`, { recursive: true });
+Bun.spawnSync(["mkdir", "-p", `${out}/film`]);
+Bun.spawnSync(["mkdir", "-p", `${out}/pr`]);
 const stepsFile = `${out}/film/steps.json`;
-const steps = existsSync(stepsFile) ? JSON.parse(readFileSync(stepsFile, "utf8")) : [];
+const steps = await exists(stepsFile) ? (await Bun.file(stepsFile).json()) : [];
 
 const browser = await chromium.launch({
   chromiumSandbox: false,
@@ -146,7 +146,7 @@ async function handbook(key) {
     await page.getByRole("button", { name: button, exact: true }).click();
     await page.getByRole("log").getByText("Hi Eva, chat is up on mattbox.").waitFor();
     await page.getByRole("log").getByText("Nice. Can we plan the holiday here?").waitFor();
-    mkdirSync(`${out}/handbook/${lang}`, { recursive: true });
+    Bun.spawnSync(["mkdir", "-p", `${out}/handbook/${lang}`]);
     await settle(page);
     await page.screenshot({ path: `${out}/handbook/${lang}/chat.png`, timeout: 300_000 });
     await context.close();
@@ -317,7 +317,7 @@ async function on() {
   await second.getByRole("log").getByText("Hi Eva, chat is up on mattbox.").waitFor();
   await shot(second, "second-device");
   // A picture the handbook lacks is no reason to fail the test.
-  if (process.env.LOSOS_HANDBOOK_SHOTS === "1") await handbook(key).catch((e) => console.error(`handbook: ${e}`));
+  if (Bun.env.LOSOS_HANDBOOK_SHOTS === "1") await handbook(key).catch((e) => console.error(`handbook: ${e}`));
 
   // Contacts, Mail and Cloud link a person as /chat/?with=<sign-in name>:
   // Eva's link to Matus opens the conversation they already have, not a
@@ -522,6 +522,9 @@ async function safety(owner, eva) {
   await shot(eva, "account-pictures-adult");
 }
 
+// Thrown at the very end, after the pictures of the failure are saved:
+// an uncaught error is what makes Bun exit non-zero.
+let failed = false;
 try {
   if (phase === "off") await off();
   else if (phase === "on") await on();
@@ -536,13 +539,14 @@ try {
   console.error(network.filter((l) => !/ 200 /.test(l)).slice(-60).join("\n"));
   console.error(network.slice(-60).join("\n"));
   console.error(error);
-  process.exitCode = 1;
+  failed = true;
 } finally {
-  writeFileSync(`${out}/network-${phase}.log`, network.join("\n") + "\n");
-  writeFileSync(stepsFile, JSON.stringify(steps, null, 2));
-  writeFileSync(
+  await Bun.write(`${out}/network-${phase}.log`, network.join("\n") + "\n");
+  await Bun.write(stepsFile, JSON.stringify(steps, null, 2));
+  await Bun.write(
     `${out}/film/manifest.json`,
     JSON.stringify({ feature: "chat", viewport: { width: 1280, height: 900 }, dpr: 2, test: "losos-chat", steps }, null, 2),
   );
   await browser.close();
 }
+if (failed) throw new Error(`the ${phase} phase failed, see above`);

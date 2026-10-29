@@ -57,42 +57,26 @@ let
         done
         cat > vite.contacts-test.config.ts <<'EOF'
         import base from "./vite.config";
-        import { join } from "node:path";
-        import { fileURLToPath } from "node:url";
-        const root = fileURLToPath(new URL(".", import.meta.url));
+        const root = import.meta.dirname;
         const config = base as Record<string, any>;
         config.build.rolldownOptions.input = {
-          main: join(root, "index.html"),
-          chat: join(root, "chat/index.html"),
-          manage: join(root, "manage/index.html"),
+          main: `''${root}/index.html`,
+          chat: `''${root}/chat/index.html`,
+          manage: `''${root}/manage/index.html`,
         };
         export default config;
         EOF
       '';
       buildPhase = ''
         runHook preBuild
-        npx vite build --config vite.contacts-test.config.ts
+        bun --bun vite build --config vite.contacts-test.config.ts
         runHook postBuild
       '';
     }
     // lib.optionalAttrs before { src = beforeSrc; }
   );
 
-  playwright =
-    (pkgs.buildNpmPackage {
-      pname = "losos-contacts-test-playwright";
-      version = "0.1.0";
-      src = ../../admin-ui/app;
-      inherit (lososPkgs.losos-admin-ui) npmDepsHash;
-      npmFlags = [ "--ignore-scripts" ];
-      env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
-      dontNpmBuild = true;
-      installPhase = ''
-        mkdir -p $out/node_modules
-        cp -r node_modules/playwright node_modules/playwright-core $out/node_modules/
-      '';
-    })
-    + "/node_modules/playwright";
+  playwright = "${lososPkgs.losos-admin-ui.nodeModules}/node_modules/playwright";
   browsers = pkgs.playwright-driver.browsers.override {
     withFirefox = false;
     withWebkit = false;
@@ -433,7 +417,7 @@ pkgs.testers.nixosTest {
 
     def browser(phase):
         run = subprocess.run(
-            ["${pkgs.nodejs}/bin/node", "${./contacts-browser.mjs}", phase, SHOTS],
+            ["${pkgs.bun}/bin/bun", "${./contacts-browser.mjs}", phase, SHOTS],
             env=browser_env, capture_output=True, text=True, timeout=2400,
         )
         print(run.stdout)

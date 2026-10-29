@@ -63,7 +63,7 @@ let
       }
     }
     export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
-    exec ${pkgs.nodejs}/bin/node ${./office-paper-shots.mjs} "$@"
+    exec ${pkgs.bun}/bin/bun ${./office-paper-shots.mjs} "$@"
   '';
 in
 

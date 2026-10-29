@@ -516,7 +516,7 @@ nothing, an unsigned record and a validated one as the test delegates the
 zone and publishes its DS, and the pane follows each step.
 `edge/registrar/tests/domains.rs` drives the claim and wallet flows against a
 real registrar and a fake DNS-over-HTTPS server.
-`admin-ui/app/tests/ens.node.mjs` replays, through the relay, a DNS name's
+`admin-ui/app/tests/ens.unit.mjs` replays, through the relay, a DNS name's
 lookup recorded from Ethereum mainnet and ENS's gateway.
 :::
 

@@ -16,8 +16,8 @@
  * The shared editor's WebSocket has no box here, so it stays offline and
  * the text is what is typed; the routes are stubbed with page.route(). */
 
-import assert from 'node:assert';
-import { launch, runner, serve } from './harness.mjs';
+import assert from './assert.mjs';
+import { launch, runner, serve, stash } from './harness.mjs';
 
 const { origin, close: closeServer } = await serve({ csp: true });
 const browser = await launch();
@@ -26,10 +26,8 @@ const { check, finish } = runner();
 const json = (route, status, body) =>
   route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
-const PNG = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR4nGNk+M/AwMDAxMDAwMDAAAAiHgMBvU2hBwAAAABJRU5ErkJggg==',
-  'base64',
-);
+const PNG = Uint8Array.fromBase64('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR4nGNk+M/AwMDAxMDAwMDAAAAiHgMBvU2hBwAAAABJRU5ErkJggg==');
+const PNG_FILE = await stash('picture.png', PNG);
 
 const entry = (id, path, mime = 'text/markdown') => ({
   id,
@@ -66,7 +64,7 @@ async function openCloud(path, { files = [], taken = [], byId = {} } = {}) {
       byId[e.id] = e;
       return json(route, 201, e);
     }
-    if (p === '/files/content') return route.fulfill({ status: 200, contentType: 'image/png', body: PNG });
+    if (p === '/files/content') return route.fulfill({ status: 200, contentType: 'image/png', path: PNG_FILE });
     const m = /^\/files\/by-id\/(\d+)$/.exec(p);
     if (m) return byId[m[1]] ? json(route, 200, byId[m[1]]) : json(route, 404, { code: 'notFound', error: 'no' });
     if (p === '/collab/doc') {

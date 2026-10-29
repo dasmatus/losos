@@ -10,17 +10,14 @@
  *
  * SCREENSHOTS=<dir> also writes the screens the pull request shows. */
 
-import assert from 'node:assert';
-import { mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import assert from './assert.mjs';
 import { launch, runner, serve } from './harness.mjs';
 
 const TOKEN = 'a'.repeat(64);
-const SHOTS = process.env.SCREENSHOTS ?? null;
+const SHOTS = Bun.env.SCREENSHOTS ?? null;
 const { origin, close: closeServer } = await serve({ csp: true });
 const browser = await launch();
 const { check, finish } = runner();
-if (SHOTS !== null) await mkdir(SHOTS, { recursive: true });
 
 const SETTINGS = {
   sharingMyStorage: false,
@@ -187,7 +184,7 @@ const clean = async (page, errors) => {
   assert.deepEqual(await violations(page), [], 'CSP violations: ' + JSON.stringify(await violations(page)));
 };
 const shot = async (page, name, target = page) => {
-  if (SHOTS !== null) await target.screenshot({ path: join(SHOTS, `${name}.png`) });
+  if (SHOTS !== null) await target.screenshot({ path: `${SHOTS}/${name}.png` });
 };
 
 const RUNNING = {

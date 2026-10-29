@@ -8,8 +8,8 @@
 #
 #   nix/demo/record.sh CHECK [OUTDIR]     e.g. nix/demo/record.sh losos-podman-apps
 #
-# OUTDIR defaults to nix/demo/recording/CHECK. Needs: nix with flakes; node
-# with the app's dependencies installed (`npm ci` in admin-ui/app, for
+# OUTDIR defaults to nix/demo/recording/CHECK. Needs: nix with flakes; bun
+# with the app's dependencies installed (`bun install` in admin-ui/app, for
 # playwright); a chromium Playwright can run (its own, or
 # LOSOS_CHROMIUM=/path/to/chromium). LOSOS_NIX=<command> replaces `nix`
 # (a wrapper that adds input overrides, say); LOSOS_NIX_ARGS passes extra
@@ -31,7 +31,7 @@ log "building the driver of $check"
 $nix build "${nix_args[@]}" -o "$out/driver" "$repo#checks.x86_64-linux.$check.driver"
 
 log "starting the recorder"
-(cd "$repo/admin-ui/app" && LOSOS_RECORD_DIR="$out" node "$here/record.mjs" >"$out/recorder.log" 2>&1) &
+(cd "$repo/admin-ui/app" && LOSOS_RECORD_DIR="$out" bun "$here/record.mjs" >"$out/recorder.log" 2>&1) &
 recorder=$!
 
 log "running $check (log in $out/driver.log)"

@@ -5,7 +5,7 @@
  * in the editor are written here, in the plainest form losos-mdx reads:
  * Markdown where Markdown says it (`**bold**`, `- item`, a pipe table) and
  * a component where it does not (`<Callout>`, `<Table>` with merged
- * cells). tests/mdx-editor.node.mjs reads every form back. */
+ * cells). tests/mdx-editor.unit.mjs reads every form back. */
 
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { escapeText } from "./escape";

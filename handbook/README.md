@@ -11,11 +11,11 @@ It is published twice from this one source:
   manual is readable when only the local network is.
 
 ```sh
-npm ci
-npm start                         # live preview at http://localhost:3000
-npm run build                     # the public site, into build/
-LOSOS_HANDBOOK_BASE=/handbook/ npm run build   # what the box serves
-npm run typecheck
+bun install --frozen-lockfile --ignore-scripts
+bun run start                     # live preview at http://localhost:3000
+bun run build                     # the public site, into build/
+LOSOS_HANDBOOK_BASE=/handbook/ bun run build   # what the box serves
+bun run typecheck
 ```
 
 The public site opens on a landing page, `src/pages/index.tsx`, and moves
@@ -30,8 +30,9 @@ own "For developers" page for the two commands.
 
 The colours, fonts and radii are the LosOS desktop's theme:
 `src/css/derisk-theme.css` is generated from an mcsapi checkout by
-`npm run theme -- /path/to/mcsapi` (needs cargo), and `src/css/palette.css`
+`bun run theme /path/to/mcsapi` (needs cargo), and `src/css/palette.css`
 names its values for `custom.css`.
 
-After changing `package-lock.json`, refresh `npmDepsHash` in
-`nix/packages.nix` (`nix run nixpkgs#prefetch-npm-deps -- handbook/package-lock.json`).
+Docusaurus runs on Bun's runtime (`bunx --bun`), not Node. After changing
+`bun.lock`, refresh the handbook's node_modules `hash` in `nix/packages.nix`
+(`python3 .github/scripts/fix-hashes.py`).

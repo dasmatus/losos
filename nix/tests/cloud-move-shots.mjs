@@ -14,17 +14,16 @@
 // Playwright comes from PLAYWRIGHT_CORE (a path to playwright-core, as
 // nixpkgs' playwright-driver is) or the `playwright-core` package.
 
-import { mkdirSync } from "node:fs";
-import { join } from "node:path";
+const join = (...parts) => parts.join("/");
 
-const { chromium } = await import(process.env.PLAYWRIGHT_CORE ?? "playwright-core");
+const { chromium } = await import(Bun.env.PLAYWRIGHT_CORE ?? "playwright-core");
 
-const [which, out, login, password, lan] = process.argv.slice(2);
+const [which, out, login, password, lan] = Bun.argv.slice(2);
 if (!["nextcloud", "cloud"].includes(which) || !password || (which === "cloud" && !lan)) {
-  console.error("usage: cloud-move-shots.mjs nextcloud|cloud OUT LOGIN PASSWORD [ADDRESS]");
-  process.exit(2);
+  // Thrown: an uncaught error is what makes Bun exit non-zero.
+  throw new Error("usage: cloud-move-shots.mjs nextcloud|cloud OUT LOGIN PASSWORD [ADDRESS]");
 }
-mkdirSync(out, { recursive: true });
+Bun.spawnSync(["mkdir", "-p", out]);
 
 const rules = ["MAP nextcloud.test 127.0.0.1", lan && `MAP mattbox.local ${lan}`].filter(Boolean);
 const browser = await chromium.launch({ args: [`--host-resolver-rules=${rules.join(", ")}`] });
@@ -103,6 +102,6 @@ try {
   await browser.close();
 }
 if (errors.length > 0) {
-  console.error(`the page threw:\n${errors.join("\n")}`);
-  process.exit(1);
+  // Thrown: an uncaught error is what makes Bun exit non-zero.
+  throw new Error(`the page threw:\n${errors.join("\n")}`);
 }

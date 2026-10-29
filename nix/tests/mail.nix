@@ -52,7 +52,7 @@ let
 
   shots = pkgs.writeShellScriptBin "mail-screens" ''
     export PLAYWRIGHT_CORE=${pkgs.playwright-driver}
-    exec ${pkgs.nodejs}/bin/node ${./mail-screens.mjs} "$@"
+    exec ${pkgs.bun}/bin/bun ${./mail-screens.mjs} "$@"
   '';
   pictures = import ./screens { inherit pkgs; };
 in
