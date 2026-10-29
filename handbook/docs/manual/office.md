@@ -6,7 +6,7 @@ slug: /manual/office
 
 # Office documents
 
-![LosOS Office.](../img/office-docs.png)
+![Documents, LosOS Office's list: the documents in the box's LosOS Office folder, with when each changed and its size.](../img/office.png)
 
 LosOS Office opens text documents, spreadsheets and presentations in the browser
 and saves them back on the box. Several people can work in one document at

@@ -35,6 +35,7 @@ box's own sign-in, in your browser.
 | Windsurf | an entry in `~/.codeium/windsurf/mcp_config.json` |
 | Zed | an entry under `context_servers` in Zed's `settings.json` |
 | LM Studio | an entry in `~/.lmstudio/mcp.json` |
+| derisk Agent, on LosOS Desktop | an entry in `~/.config/derisk-agent/mcp.json` |
 
 A tool is found by its program on your `PATH` or by its settings folder.
 `losos agents` lists what it found:
