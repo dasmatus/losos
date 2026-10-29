@@ -386,9 +386,9 @@ async fn statistics_without_traefik_say_why() {
     edge.shutdown().await;
 }
 
-/// The gateway's own settings, which the console's `losos-edge` command
-/// used to change: no key, no settings; with it, an uplink is set and
-/// cleared and an enrolled box is forgotten.
+/// The gateway's own settings, which only the manage API changes: no key,
+/// no settings; with it, an uplink is set and cleared and an enrolled box
+/// is forgotten.
 #[tokio::test]
 async fn the_gateway_is_set_up_from_the_page_with_the_key() {
     let edge = Edge::start_custom("manage-gateway", &[], |opts, dir| {
