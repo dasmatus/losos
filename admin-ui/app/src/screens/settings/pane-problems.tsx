@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Dialog,
+  DialogBody,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -294,18 +295,20 @@ function ReportDialog({
       </DialogHeader>
 
       {report.kind === "loading" && (
-        <div className="flex items-center gap-2 py-6 text-sm text-muted">
+        <DialogBody className="flex items-center gap-2 py-6 text-sm text-muted">
           <Spinner size={16} />
           {t("problems.report.writing")}
-        </div>
+        </DialogBody>
       )}
       {report.kind === "failed" && (
-        <p className="py-4 text-sm text-crit" role="alert">
-          {t("problems.report.failed")} {report.message}
-        </p>
+        <DialogBody>
+          <p className="text-sm text-crit" role="alert">
+            {t("problems.report.failed")} {report.message}
+          </p>
+        </DialogBody>
       )}
       {report.kind === "ready" && (
-        <div className="flex flex-col gap-3">
+        <DialogBody className="flex flex-col gap-3">
           <pre
             className="max-h-[45vh] overflow-auto rounded-control border border-line bg-sunk p-3 font-mono text-[12px] leading-snug whitespace-pre-wrap break-words text-ink"
             data-testid="problem-report-body"
@@ -326,7 +329,7 @@ function ReportDialog({
             </label>
           )}
           <SendingState sending={sending} />
-        </div>
+        </DialogBody>
       )}
 
       <DialogFooter>
