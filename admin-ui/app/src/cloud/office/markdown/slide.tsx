@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { renderNote, type Resolver } from "@/notes/markdown";
+import { useNotesReady } from "@/notes/note-view";
 import { layOut, type Slide } from "./slides";
 import "@/notes/note.css";
 import "./markdown.css";
@@ -26,7 +27,8 @@ export function SlideView({
   className?: string;
   current?: boolean;
 }) {
-  const laid = React.useMemo(() => layOut(renderNote(slide.source, resolver).html), [slide.source, resolver]);
+  const ready = useNotesReady();
+  const laid = React.useMemo(() => layOut(ready ? renderNote(slide.source, resolver).html : ""), [ready, slide.source, resolver]);
   const pictures = laid.pictures.length > 0;
   return (
     <div className={cn("md-slide", className)} data-current={current ? "" : undefined}>

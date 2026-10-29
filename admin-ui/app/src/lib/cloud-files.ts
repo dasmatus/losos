@@ -105,7 +105,7 @@ export async function readCloudText(entry: Entry, max: number, signal?: AbortSig
 /** Whether a file is text a person could read in a plain editor. */
 export function textual(name: string, mime: string): boolean {
   if (mime.startsWith("text/") || /json|xml|yaml|toml|javascript|x-sh/.test(mime)) return true;
-  return /\.(md|markdown|txt|csv|tsv|json|ya?ml|toml|ini|conf|log|canvas|html?|css|js|jsx|ts|tsx|rs|py|go|nix|sh|c|h|cpp|java|kt|rb|php|sql|tex|org|rst)$/i.test(
+  return /\.(note|md|markdown|txt|csv|tsv|json|ya?ml|toml|ini|conf|log|canvas|html?|css|js|jsx|ts|tsx|rs|py|go|nix|sh|c|h|cpp|java|kt|rb|php|sql|tex|org|rst)$/i.test(
     name,
   );
 }

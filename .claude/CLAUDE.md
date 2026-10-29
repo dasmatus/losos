@@ -159,15 +159,15 @@ and is never served or built by nix.
   Matrix id `@<name>:<server>`. Calls are a MatrixRTC application of
   their own, `org.losos.call`, one slot per room (`org.losos.call#room`,
   `src/chat/rtc.ts`): `m.call` is LiveKit-only, and this one is str0m.
-  Membership is the state-event form (`org.matrix.msc3401.call.member`)
-  because Dendrite has no sticky events; each advertises an `org.losos.sfu`
-  transport, and the page always dials its own `/calls/api/ws`. The SFU
+  A membership is a sticky `org.matrix.msc4143.rtc.member` event (MSC4354)
+  with a delayed leave (MSC4140), both of which only Synapse has; each
+  publishes an `org.losos.sfu` transport, and the page always dials its own
+  `/calls/api/ws`. The SFU
   owns the call id: `POST /calls/api/calls` hands back the room's live call
   (`created:false`), so two starts never split. Ringing is MSC4075
   (`org.matrix.msc4075.rtc.notification`, the SDK's receiving rules),
-  decline MSC4310. New private rooms and DMs carry the open slot and a
-  level-0 membership in their power levels; in an older room an admin's
-  first call adds them. A start also sends an `m.notice` with a
+  decline MSC4310. New private rooms and DMs carry the open slot; in an
+  older room an admin's first call opens it. A start also sends an `m.notice` with a
   `/chat/?join=` link for other Matrix apps, which LosOS Chat hides.
   MatrixRTC's own media keys are off: every frame is AES-GCM sealed by the
   browser's encoded transform (`admin-ui/app/src/calls/e2ee.ts`, worker
@@ -298,15 +298,17 @@ and is never served or built by nix.
   the Overview's Statistics tile draw `src/statistics/` (shared with the
   edge's manage page). `nix/tests/podman-apps.nix` boots it.
 - `chat.nix` + `backend/src/chat.rs` + `admin-ui/app/src/chat/` (LosOS
-  Chat, `/chat/`, its own Vite page of the admin UI): Dendrite as `shared` in
-  `/home/shared/data/chat`, only while `lososInternal.sharedSide`
-  (`sharingMyStorage` and `cluster.enable`, the gate mail shares); off, nginx
+  Chat, `/chat/`, its own Vite page of the admin UI): Synapse (unit
+  `losos-chat`, SQLite) as `shared` in `/home/shared/data/chat/synapse`
+  (a box that ran Dendrite keeps its files beside it, unread), only while
+  `lososInternal.sharedSide` (`sharingMyStorage` and `cluster.enable`, the
+  gate mail shares); off, nginx
   sends `/chat/` home and `/_matrix/` 404s. No Matrix passwords: lososd is an
   application service over every user and the only way in
   (`/api/chat/session`), and nginx asks `/internal/chat/authz` before every
   client and media request (LosOS Login cookie plus a token of that same
-  person). Dendrite has no thread list; lososd answers it through
-  `losos-chat-threads` as `shared`. The client is matrix-js-sdk with its Rust
+  person). The application service's user namespace is not exclusive:
+  Synapse leaves an exclusive one's users out of its directory. The client is matrix-js-sdk with its Rust
   crypto under the Lab's CSP arm. `nix/tests/chat.nix` boots it and drives
   two browsers (`chat-browser.mjs`); its output holds the screenshots.
 - `mail.nix` + `backend/src/mail.rs` (`losos.mail.*`): LosOS Mail. Stalwart

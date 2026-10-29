@@ -6,6 +6,8 @@ slug: /manual/losos-cloud
 
 # LosOS Cloud
 
+![Die Dateien in LosOS Cloud: der Ordner Documents, links die Orte.](@site/docs/img/cloud-files-de.png)
+
 LosOS Cloud ist der eigene Dateidienst der Box: deine Dateien im Browser,
 ein Netzwerkordner für den Dateimanager, ein Server, mit dem sich die
 Nextcloud-Apps für Computer und Telefon synchronisieren, und deine Kalender
@@ -60,7 +62,7 @@ sehen, blättere mit den Pfeiltasten weiter und drück **Details** (oder
 und welches Objektiv, die Belichtung, die Größe, wo es aufgenommen wurde,
 wer darauf ist und jede weitere Angabe der Kamera.
 
-![Die Details eines Fotos in LosOS Cloud: wann es aufgenommen wurde, die Kamera, das Objektiv, die Einstellungen und der Ort.](@site/docs/img/cloud-photos.png)
+![Fotos in LosOS Cloud: alle Bilder nach Monat.](@site/docs/img/cloud-photos-de.png)
 
 Die Box findet die Gesichter auf deinen Bildern und fasst die, die sich
 ähneln, zu einer Person zusammen. **Personen** über den Fotos zeigt alle,
@@ -88,6 +90,8 @@ Die App öffnet LosOS Login im Browser. Melde dich an, drück auf der
 folgenden Seite **Erlauben**, und die App bekommt ein eigenes Passwort.
 Danach steht sie unter **Geräte**, wo du sie abmelden kannst, ohne dein
 Passwort für LosOS Login zu ändern.
+
+![Die Seite, die eine Desktop-App zum Anmelden öffnet: App verbinden, mit Erlauben und Jetzt nicht.](@site/docs/img/cloud-connect-de.png)
 
 ## Kalender und Kontakte \{#calendars-and-contacts}
 

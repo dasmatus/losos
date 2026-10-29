@@ -36,6 +36,8 @@ Stránky repozitára sú v bočnom paneli:
 - **Nastavenia** premenujú repozitár, zmenia jeho popis a to, kto ho vidí.
   Vidí ich len vlastník repozitára a jeho správcovia.
 
+![Prvá stránka LosOS Git: repozitáre, každý s odznakom, kto ho vidí, a tlačidlo Nový repozitár.](@site/docs/img/git-repos-sk.png)
+
 ### Kto vidí repozitár \{#who-can-see-a-repository}
 
 Každý repozitár má jedno z troch nastavení, ktoré ukazuje odznak pri jeho
@@ -50,6 +52,8 @@ mene:
 Pri každom nastavení môžete pushovať len vy a ľudia, ktorých pridáte. Kto
 otvorí `/git/` bez prihlásenia, uvidí verejné repozitáre a tlačidlo
 **Prihlásiť sa**.
+
+![Nastavenia repozitára: názov a popis, Kto ho vidí nastavené na Tento box a prepínač kontroly s AI.](@site/docs/img/git-settings-sk.png)
 
 ## Klonovanie a push \{#clone-and-push}
 
@@ -118,6 +122,8 @@ konfliktmi zariadenie odmietne; zlúčte základnú vetvu do svojej, pushnite
 a skúste znova. **Zatvoriť bez zlúčenia** odloží pull request bokom a
 **Znova otvoriť** ho vráti.
 
+![Zlúčený pull request na karte Rozhovor: popis, schvaľujúce review s jedným komentárom k riadku, úspešné kontroly a zlúčenie, vpravo recenzent.](@site/docs/img/git-pull-sk.png)
+
 ## Pracovné stromy \{#worktrees}
 
 Pracovný strom je jeden checkout repozitára na jednom počítači, vytvorený
@@ -137,6 +143,8 @@ git push -u origin fix-backup
 requestom pre túto vetvu, ak nejaký je. Pull request, ktorého vetvu pushuje
 pomenovaný pracovný strom, ukáže meno toho stromu vo svojej hlavičke.
 **Zabudnúť** strom zo zoznamu vyradí; ďalší push ho tam vráti.
+
+![Stránka Pracovné stromy: dva stromy s počítačom, vetvou, vlastníkom a posledným pushom, jeden už zlúčený a jeho vetva zmazaná, a príkazy, ktoré strom pomenujú.](@site/docs/img/git-worktrees-sk.png)
 
 ## Wiki \{#wiki}
 

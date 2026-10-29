@@ -595,6 +595,33 @@ in
       '';
     };
 
+    proxy.tlsPassthrough = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          End TLS for this box's public names on the box itself, with a
+          Let's Encrypt certificate it gets for each, so the edge passes the
+          encrypted bytes through and cannot read them (modules/public-tls.nix,
+          edge/registrar/src/passthrough.rs). Off, the edge ends TLS with a
+          certificate of its own and can read everything that goes through it.
+          On, a switched-off box is a connection error rather than the edge's
+          offline page, and its public names have no HTTP/3 or ECH.
+        '';
+      };
+      acmeServer = lib.mkOption {
+        type = lib.types.str;
+        default = "https://acme-v02.api.letsencrypt.org/directory";
+        description = "The ACME directory the box gets its public certificates from.";
+      };
+      acmeEmail = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "owner@example.org";
+        description = "The contact address given to the ACME server, if any. None is sent by default.";
+      };
+    };
+
     proxy.pauseSharingAfter = lib.mkOption {
       type = lib.types.ints.unsigned;
       default = 600;

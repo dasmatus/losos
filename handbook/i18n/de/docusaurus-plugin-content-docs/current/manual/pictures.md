@@ -6,6 +6,8 @@ slug: /manual/pictures
 
 # Bilder und Meldungen
 
+![Einstellungen, Aussehen: die Hintergründe und dein eigenes Bild.](@site/docs/img/settings-look-de.png)
+
 Bilder, die dir andere in [Chat](chat) und [Mail](mail) schicken, bleiben
 verborgen, bis du darauf drückst. Du entscheidest, welche Absender daran
 vorbeikommen, und du kannst eine Nacktheitswarnung einschalten, die auf
