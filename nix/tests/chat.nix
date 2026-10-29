@@ -237,6 +237,9 @@ pkgs.testers.nixosTest {
     box.wait_for_unit("dendrite.service")
     box.wait_for_open_port(443)
     box.wait_for_open_port(8008)
+    # lososd loads its plugins before it listens; the unit is active
+    # earlier than that.
+    box.wait_for_open_port(8082)
     laptop.wait_for_unit("socks.service")
 
     def curl(args):
@@ -278,6 +281,7 @@ pkgs.testers.nixosTest {
         box.succeed(f"{path}/bin/switch-to-configuration test >&2")
         box.wait_for_unit("lososd.service")
         box.wait_for_unit("nginx.service")
+        box.wait_for_open_port(8082)
 
     def saved(shared):
         """Write the box's saved settings to match the switch, as an Apply
