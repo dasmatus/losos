@@ -6,8 +6,8 @@ slug: /manual/notes-and-knowledge-bases
 
 # Poznámky a znalostné bázy
 
-**Poznámky** v [LosOS Cloud](losos-cloud) otvárajú priečinok súborov
-Markdown tak, ako Obsidian otvára trezor (vault): poznámky vľavo, otvorenú
+**Poznámky** v [LosOS Cloud](losos-cloud) otvárajú priečinok poznámok,
+súborov `.note` a `.md`, tak, ako Obsidian otvára trezor (vault): poznámky vľavo, otvorenú
 poznámku v strede a vedľa nej poznámky, ktoré na ňu odkazujú. Trezor
 Obsidianu synchronizovaný do LosOS Cloud sa otvorí taký, aký je, s
 odkazmi, vloženými časťami, štítkami aj plátnami (canvas). Kým zariadenie
@@ -20,14 +20,54 @@ aj ako znalostnú bázu: stránku, ktorú ľudia čítajú v prehliadači.
   súboroch. Vytvorí sa pri prvom otvorení.
 - V časti **Súbory** kliknite pravým tlačidlom na ľubovoľný priečinok a
   vyberte **Otvoriť ako poznámky**.
-- V časti **Súbory** kliknite na súbor `.md`. Otvorí sa vo svojom trezore:
+- V časti **Súbory** kliknite na súbor `.note` alebo `.md`. Otvorí sa vo
+  svojom trezore:
   v najbližšom nadradenom priečinku, v ktorom je priečinok `.obsidian`,
   ako trezor hľadá Obsidian, inak v priečinku, v ktorom súbor je.
 
+## .note a .md \{#note-and-md}
+
+Nová poznámka je súbor `.note`. Súbor `.note` je MDX: Markdown, ktorý môže
+obsahovať aj komponenty, písané ako značky HTML. Poznámka môže použiť
+tieto, rovnaké ako dokumenty v LosOS Office:
+
+| Komponent | Čo vykreslí |
+| --- | --- |
+| `<Callout type="tip" title="…">` | Rámček vo farbe svojho typu: `note`, `tip`, `important`, `warning` alebo `caution` |
+| `<Details summary="…">` | Časť, ktorá sa otvorí kliknutím |
+| `<Tabs>` s `<Tab label="…">` | Časti čítané jedna za druhou, každá pod svojím názvom |
+| `<Columns>` s `<Column>` | Časti vedľa seba, na telefóne pod sebou |
+| `<Figure src="…" caption="…">` | Obrázok s popisom |
+| `<TableOfContents />` | Nadpisy poznámky ako odkazy |
+| `<Table>`, `<Row>`, `<Cell>` | Tabuľka so zlúčenými bunkami a popisom |
+| `<Mention login="…" />`, `<Date value="2026-08-14" />` | Človek a dátum |
+| `<Equation tex="…" />` | Matematika na samostatnom riadku |
+
+`<kbd>`, `<sub>`, `<sup>`, `<mark>`, `<u>`, `<s>`, `<small>`, `<abbr>` a
+`<br />` fungujú ako v HTML.
+
+Poznámka nikdy nespúšťa kód. MDX by súboru dovolilo niesť JavaScript, a
+preto ho Poznámky odmietajú celý: výrazy `{…}`, riadky `import` a
+`export`, `<script>`, obsluhy udalostí ako `onClick`, odkazy `javascript:`
+a každú značku či komponent, ktorý nie je v tabuľke. Čo si poznámka
+pýtala a nedostala, sa vypíše nad ňou aj s riadkom a zvyšok poznámky sa
+vykreslí. Súbor `.note`, ktorý nie je platné MDX, napríklad s
+neuzavretým komponentom, sa vykreslí ako Markdown s riadkom, na ktorom sa
+pokazil.
+
+Poznámky `.md` zostávajú Markdownom a fungujú ako doteraz. Tlačidlo
+**Previesť na .note** nad poznámkou `.md` z nej urobí `.note`, ktorá sa
+číta rovnako: zložené a lomené zátvorky, ktoré by MDX čítalo ako kód, sa
+zapíšu ako obyčajný text a komentáre HTML sa zmenia na `%%komentáre%%`. Ak by nadpisy
+alebo odkazy poznámky vyšli inak, zostane `.md` a správa povie, na ktorom
+riadku. `[[Odkazy]]` menujú poznámku bez prípony, takže fungujú ďalej.
+Obsidian otvára iba súbory `.md`, preto poznámky, ktoré upravujete aj v
+Obsidiane, nechajte ako `.md`.
+
 ## Čítanie poznámky \{#reading-a-note}
 
-Poznámka sa vykreslí z jej Markdownu. Rozumie obom druhom, ktoré ľudia
-píšu:
+Poznámky rozumejú obom druhom Markdownu, ktoré ľudia píšu, v súboroch
+`.note` aj `.md`:
 
 - GitHubu: tabuľky, zoznamy úloh, ~~prečiarknutie~~, poznámky pod čiarou,
   odkazy začínajúce `https://` a upozornenia ako `> [!NOTE]`.

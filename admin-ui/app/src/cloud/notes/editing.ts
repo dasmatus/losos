@@ -1,7 +1,7 @@
 import { autocompletion, type Completion, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
 import type { Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { baseName, noteName } from "@/notes/links";
+import { NOTE_EXT, baseName, noteName } from "@/notes/links";
 import type { Vault } from "@/notes/vault";
 
 /* What Notes adds to the editor: `[[` offers the vault's notes and files,
@@ -14,7 +14,7 @@ import type { Vault } from "@/notes/vault";
 export function linkName(vault: Vault, path: string): string {
   const name = noteName(path);
   const same = vault.notes.filter((n) => noteName(n.path).toLowerCase() === name.toLowerCase());
-  return same.length > 1 ? path.replace(/\.md$/i, "") : name;
+  return same.length > 1 ? path.replace(NOTE_EXT, "") : name;
 }
 
 function notesFor(vault: Vault): Completion[] {
