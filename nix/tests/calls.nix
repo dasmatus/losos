@@ -190,24 +190,9 @@ let
       "f ${proxyToken} 0600 root root - ${proxyTokenValue}"
     ];
   };
-  # The edge's identity, so it is an official edge and makes guest links:
-  # a root and one certificate, made at build time as nix/tests/edge-lan.nix
-  # does.
-  identityFixture =
-    pkgs.runCommand "losos-calls-edge-identity"
-      {
-        nativeBuildInputs = [ lososPkgs.losos-registrar ];
-      }
-      ''
-        mkdir -p $out
-        losos-registrar identity keygen --out $out/root.key > $out/root.pub
-        losos-registrar identity keygen --out $out/edge.key > $out/edge.pub
-        losos-registrar identity sign \
-          --root-key $out/root.key --public-key "$(cat $out/edge.pub)" \
-          --name "losos test edge" --url http://edge:8443 --days 30 \
-          > $out/edge.cert.json
-      '';
-  identityKey = "/var/secrets/losos-edge-identity.key";
+  # The edge is an open gateway with its owner's passport measured, so it
+  # makes guest links (nix/tests/open-gateway.nix).
+  openGateway = import ./open-gateway.nix { inherit pkgs lososPkgs; };
   # The driver's browsers send to the media port on their own loopback; it
   # arrives at the forwarding machine's user-mode address. QEMU's user-mode
   # network sends every reply from a guest UDP port to whoever wrote to it
@@ -479,8 +464,8 @@ pkgs.testers.nixosTest {
           ../../modules/edge.nix
           secretFiles
           peerNat
+          (openGateway.edge "http://edge:8443")
         ];
-        systemd.tmpfiles.rules = [ "C ${identityKey} 0600 root root - ${identityFixture}/edge.key" ];
         _module.args.self = {
           packages.x86_64-linux.losos-registrar = lososPkgs.losos-registrar;
         };
@@ -495,10 +480,6 @@ pkgs.testers.nixosTest {
           tenants.mattbox = {
             hostname = "mattbox.losos.cfd";
             tokenFile = proxyToken;
-          };
-          identity = {
-            keyFile = identityKey;
-            certFile = "${identityFixture}/edge.cert.json";
           };
           calls.relay = {
             mediaPorts = "${toString mediaPort}-${toString (mediaPort + 9)}";

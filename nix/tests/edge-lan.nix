@@ -23,11 +23,12 @@
 #      that turns `losos.cluster.enable` on is 409, an apply that changes only
 #      the hostname is accepted, and state.json still says what it said;
 #   6. the edge returns and the gate reopens;
-#   7. the official-edge identity: the registrar carries a certificate a
-#      test root key signed (made at build time with `losos-registrar
-#      identity`), so `/api/edge` says `official` and `/api/market` is merely
+#   7. the open gateway: the registrar is one the box vets for itself
+#      (nix/tests/open-gateway.nix: a TPM vouched for by a test maker, an
+#      owner's passport for the advertised URL, LosOS's payout addresses),
+#      so `/api/edge` says `official` and `/api/market` is merely
 #      unavailable (no market configured) rather than refused; with the
-#      registrar gone and only the unsigned edge left, sharing is still
+#      registrar gone and only the plain edge left, sharing is still
 #      allowed but the market answers `reason: noOfficialEdge` and an order
 #      is 409 with `officialEdgeRequired`;
 #   8. sharing pauses by itself: with the box sharing and every edge stopped,
@@ -38,7 +39,7 @@
 # Two edges are in reach at once, as a box on a company network with
 # internet would see: the registrar on the LAN (advertised, official) and the
 # configured URL, which here is a plain HTTP server on the edge VM that
-# answers /health and nothing else — the shape of an edge nobody signed. So
+# answers /health and nothing else, the shape of an edge with no passport. So
 # `/api/edge` lists two, sharing is allowed through either, and when the
 # registrar alone is stopped the box still has an edge (the gate stays open)
 # but no official one (the market is refused). Stopping both is "no edge".
@@ -50,27 +51,9 @@ let
   lososPkgs = import ../packages.nix { inherit pkgs; };
   proxyTokenValue = "test-proxy-token-0123456789abcdef";
   proxyToken = "/var/secrets/losos-proxy-token";
-  # A root key and one edge certificate, made the way the project owner makes
-  # the real ones (edge/registrar/src/identity.rs), at build time: the
-  # test's trust anchor is this root, not the committed nix/keys/ file, which
-  # ships empty until the owner writes the production key.
-  identityFixture =
-    pkgs.runCommand "losos-edge-identity-fixture"
-      {
-        nativeBuildInputs = [ lososPkgs.losos-registrar ];
-      }
-      ''
-        mkdir -p $out
-        losos-registrar identity keygen --out $out/root.key > $out/root.pub
-        losos-registrar identity keygen --out $out/edge.key > $out/edge.pub
-        losos-registrar identity sign \
-          --root-key $out/root.key --public-key "$(cat $out/edge.pub)" \
-          --name "losos test edge" --url http://edge.local:8443 --days 30 \
-          > $out/edge.cert.json
-      '';
-  identityKey = "/var/secrets/losos-edge-identity.key";
-  # The second, unsigned edge: a directory with a `health` file, served by
-  # Python's http.server on 8444. GET /health is 200; /identity is 404.
+  openGateway = import ./open-gateway.nix { inherit pkgs lososPkgs; };
+  # The second, plain edge: a directory with a `health` file, served by
+  # Python's http.server on 8444. GET /health is 200; /passport is 404.
   plainEdgeRoot = pkgs.runCommand "plain-edge-root" { } ''
     mkdir -p $out
     echo ok > $out/health
@@ -79,7 +62,6 @@ let
     systemd.tmpfiles.rules = [
       "d /var/secrets 0700 root root - -"
       "f ${proxyToken} 0600 root root - ${proxyTokenValue}"
-      "C ${identityKey} 0600 root root - ${identityFixture}/edge.key"
     ];
   };
 in
@@ -94,6 +76,8 @@ pkgs.testers.nixosTest {
         imports = [
           ../../modules/options.nix
           ../../modules/edge.nix
+          # Step 7: an open gateway, its passport naming the advertised URL.
+          (openGateway.edge "http://edge.local:8443")
           secretFiles
         ];
         _module.args.self = {
@@ -113,16 +97,10 @@ pkgs.testers.nixosTest {
           # The feature under test. The url defaults to the edge's own
           # mDNS name; the box resolves it through resolved.
           lan.advertise = true;
-          # Step 7: this edge is "official" to a box that trusts the fixture's
-          # root. The certificate names the advertised URL, as it must.
-          identity = {
-            keyFile = identityKey;
-            certFile = "${identityFixture}/edge.cert.json";
-          };
         };
-        # The unsigned second edge (see the header).
+        # The plain second edge (see the header).
         systemd.services.losos-plain-edge = {
-          description = "a bare /health responder standing in for an unsigned edge";
+          description = "a bare /health responder standing in for an edge with no passport";
           wantedBy = [ "multi-user.target" ];
           after = [ "network.target" ];
           serviceConfig = {
@@ -144,12 +122,12 @@ pkgs.testers.nixosTest {
           ../../modules/options.nix
           ../../modules/daemon.nix
           ../../modules/mdns.nix
+          openGateway.box
         ];
         networking.hostName = "mattbox";
         losos.backend.package = lososPkgs.losos-ctl;
-        # The unsigned second edge: see the header.
+        # The plain second edge: see the header.
         losos.proxy.registrarUrl = "http://edge.local:8444";
-        losos.proxy.officialRootKeyFile = "${identityFixture}/root.pub";
         # Step 8: pause after a minute without an edge rather than ten.
         losos.proxy.pauseSharingAfter = 60;
         # What modules/configuration.nix gives the real box: mDNS through
@@ -163,7 +141,7 @@ pkgs.testers.nixosTest {
       };
   };
 
-  testScript = ''
+  testScript = openGateway.script + ''
     import json
     import shlex
 
@@ -179,6 +157,7 @@ pkgs.testers.nixosTest {
     box.wait_for_unit("systemd-resolved.service")
     box.wait_until_succeeds("losos-ctl state --json")
     box.wait_until_succeeds("curl -fsS 127.0.0.1:8082/api/health")
+    trust(edge, box)
     token = box.succeed("systemd-creds decrypt --name=admin-token /etc/credstore.encrypted/admin-token -").strip()
     hdr = f"Authorization: Bearer {token}"
 
@@ -216,7 +195,7 @@ pkgs.testers.nixosTest {
             retry(probe, timeout_seconds=90)
 
     def wait_edges(urls):
-        # A scan probes /health first and challenges /identity after, so a
+        # A scan probes /health first and challenges /passport after, so a
         # stop that lands between the two shows the edge reachable but not
         # official for one period. Wait for the list itself to settle.
         def probe(_):
@@ -239,16 +218,19 @@ pkgs.testers.nixosTest {
     facade = json.loads(box.succeed("losos-ctl edge --json"))
     assert facade["reachable"] is True and facade["official"] is True, facade
 
-    # 7a. The identity: the registrar answers the challenge, the box verified
-    #     it on this scan, and the market gate is open (the market itself is
-    #     not configured here, so "unavailable" with no reason is the answer).
+    # 7a. The passport: the registrar answers with its owner's settings and
+    #     its TPM's keys, the box vetted it on this scan, and the market gate
+    #     is open (the market itself is not configured here, so "unavailable"
+    #     with no reason is the answer).
     answer = json.loads(box.succeed(
-      "curl -fsS 'http://edge.local:8443/identity?nonce=" + "ab" * 32 + "'"
+      "curl -fsS 'http://edge.local:8443/passport?nonce=" + "ab" * 32 + "'"
     ))
-    assert answer["cert"]["url"] == "http://edge.local:8443", answer
-    assert answer["cert"]["name"] == "losos test edge", answer
-    box.fail("curl -fsS 'http://edge.local:8443/identity?nonce=zz'")
-    box.fail("curl -fsS 'http://edge.local:8444/identity?nonce=" + "ab" * 32 + "'")
+    settings = json.loads(answer["settings"])
+    assert "url: http://edge.local:8443\n" in settings["passport"]["statement"], settings
+    assert settings["fees"]["losos"] == json.loads(${builtins.toJSON (builtins.toJSON openGateway.losos)}), settings
+    assert answer["tpm"]["ek_cert"], answer
+    box.fail("curl -fsS 'http://edge.local:8443/passport?nonce=zz'")
+    box.fail("curl -fsS 'http://edge.local:8444/passport?nonce=" + "ab" * 32 + "'")
     code, body = api("GET", "/api/market")
     assert code == "200", f"/api/market answered {code}: {body!r}"
     assert json.loads(body) == {"available": False}, body
@@ -266,7 +248,7 @@ pkgs.testers.nixosTest {
     code, body = api("POST", "/api/change", {"mode": "local"})
     assert code == "200", f"change to local answered {code}: {body!r}"
 
-    # 7b. The official edge goes away but the unsigned one stays: an edge is
+    # 7b. The official edge goes away but the plain one stays: an edge is
     #     in reach, so sharing is still allowed, but no official one, so the
     #     market says why and an action is refused before anything leaves
     #     the box.
@@ -281,9 +263,9 @@ pkgs.testers.nixosTest {
     assert code == "409", f"a market order with no official edge answered {code}: {body!r}"
     refused = json.loads(body)
     assert refused["officialEdgeRequired"] is True, refused
-    assert "only edges LosOS runs" in refused["error"], refused
+    assert "no edge this box could check is in reach" in refused["error"], refused
     code, body = api("POST", "/api/change", {"mode": "mesh"})
-    assert code == "200", f"change to mesh through an unsigned edge answered {code}: {body!r}"
+    assert code == "200", f"change to mesh through a plain edge answered {code}: {body!r}"
     code, body = api("POST", "/api/change", {"mode": "local"})
     assert code == "200", f"change to local answered {code}: {body!r}"
 

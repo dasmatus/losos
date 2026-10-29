@@ -59,6 +59,7 @@ ENTRIES = [
     ("losos-lab-core", f"packages.{SYSTEM}.losos-lab-core.{CARGO}", [], ["admin-ui/lab/core/Cargo.lock"]),
     ("losos-lab-virt", f"packages.{SYSTEM}.losos-lab-virt.{CARGO}", [], ["admin-ui/lab/virt-rpc/Cargo.lock"]),
     ("losos-lab-render", f"packages.{SYSTEM}.losos-lab-render.{CARGO}", [], ["admin-ui/lab/render/Cargo.lock"]),
+    ("losos-mdx-wasm", f"packages.{SYSTEM}.losos-mdx-wasm.{CARGO}", [], ["backend/mdx/Cargo.lock"]),
     (
         "losos-admin-ui",
         f"packages.{SYSTEM}.losos-admin-ui.{NPM}",
