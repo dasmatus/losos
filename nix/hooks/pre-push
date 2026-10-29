@@ -11,8 +11,9 @@
 #   pre-commit's gates    rustfmt, clippy, nix-lints, pins,  as in pre-commit
 #                         hashes, typecheck, the eval lane
 #   test:<crate>          cargo test, each crate reached     rust lane
-#   clippy-wasm           clippy for wasm32: the plugins     wasm lane
-#                         and the Lab canvas (WebGL2, WebGPU)
+#   clippy-wasm           clippy for wasm32: the plugins,    wasm lane
+#                         losos-mdx and the Lab canvas
+#                         (WebGL2, WebGPU)
 #   admin-ui              nix build .#checks…losos-admin-ui: ui lane
 #                         the built SPA (npm ci, tsc, vite)
 #                         and its Playwright suite
@@ -99,6 +100,9 @@ for update in "${updates[@]}"; do
         echo "── backend/plugins (wasm32)"
         hook_cargo clippy --manifest-path backend/plugins/Cargo.toml \
           --target wasm32-unknown-unknown --all-targets -- -D warnings || return 1
+        echo "── backend/mdx (wasm32)"
+        hook_cargo clippy --manifest-path backend/mdx/Cargo.toml \
+          --target wasm32-unknown-unknown --features wasm -- -D warnings || return 1
         local b
         for b in webgl2 webgpu; do
           echo "── admin-ui/lab/render ($b, wasm32)"

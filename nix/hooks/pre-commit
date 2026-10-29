@@ -61,7 +61,7 @@ for pkg in admin-ui/app admin-ui/design-system/react; do
   # shellcheck disable=SC2329 # called through run
   typecheck() {
     cd "$hook_root/$1" || return 1
-    [ "$1" != admin-ui/app ] || hook_lab_pkgs || return 1
+    [ "$1" != admin-ui/app ] || hook_wasm_pkgs || return 1
     [ -d node_modules ] || hook_npm ci --no-audit --no-fund || return 1
     hook_npm run typecheck
   }
