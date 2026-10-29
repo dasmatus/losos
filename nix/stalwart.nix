@@ -9,6 +9,12 @@
 # LosOS does not ship. The release's test suites are kept private upstream;
 # LosOS's own VM tests (nix/tests/mail*.nix) are the check.
 #
+# 1.0.1 rather than 1.0.0: 1.0.0 locks a git fork of opentelemetry-rust that
+# upstream has since deleted, so its vendor step can no longer fetch, and
+# 1.0.1 drops OpenTelemetry for exporters of its own. Its RocksDB is 11.8.1
+# (a fix for spurious compare-and-swap failures), newer than nixpkgs', so
+# librocksdb-sys builds the copy it carries instead of linking nixpkgs'.
+#
 # CI builds it in the `stalwart` job and pushes it to the LosOS cache, so a
 # box substitutes it and never compiles it.
 {
@@ -20,13 +26,12 @@
   bzip2,
   openssl,
   zstd,
-  rocksdb,
   stalwart_0_16,
 }:
 
 rustPlatform.buildRustPackage (finalAttrs: {
   pname = "losos-stalwart";
-  version = "1.0.0";
+  version = "1.0.1";
 
   __structuredAttrs = true;
 
@@ -34,18 +39,16 @@ rustPlatform.buildRustPackage (finalAttrs: {
     owner = "stalwartlabs";
     repo = "stalwart";
     tag = "v${finalAttrs.version}";
-    hash = "sha256-LqqXdkbJwEF/Pmw/aCNFPuw0dGrH+3evcEATYXv75tU=";
+    hash = "sha256-i2Ng4tyo4aIlOc99z6xq+hZbJ/1xpEPdkSfGtEOhD8s=";
   };
 
-  cargoHash = "sha256-iGbpHgtLvKBO/YUB0LOuxRRIny9RONkTNpMjjOvWI2M=";
+  cargoHash = "sha256-0xu4FVCv+UJehsDzJUVVvY/SC8c0PxXRaWLRinqMLgo=";
 
   env = {
     OPENSSL_NO_VENDOR = true;
     OPENSSL_DIR = lib.getDev openssl;
     OPENSSL_LIB_DIR = "${lib.getLib openssl}/lib";
     ZSTD_SYS_USE_PKG_CONFIG = true;
-    ROCKSDB_INCLUDE_DIR = "${rocksdb}/include";
-    ROCKSDB_LIB_DIR = "${rocksdb}/lib";
     # Upstream's release profile is fat LTO in one codegen unit: the last
     # crate alone ran past an hour and a half of one core without
     # finishing. Thin LTO over 16 units builds it in a fraction of that on
@@ -77,7 +80,6 @@ rustPlatform.buildRustPackage (finalAttrs: {
   doCheck = false;
 
   passthru = {
-    inherit rocksdb;
     # The spam filter's rules, read from the store instead of GitHub.
     inherit (stalwart_0_16) spam-filter;
   };
