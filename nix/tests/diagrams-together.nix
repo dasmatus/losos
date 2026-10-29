@@ -18,7 +18,6 @@
 { pkgs }:
 
 let
-  inherit (pkgs) lib;
   lososPkgs = import ../packages.nix { inherit pkgs; };
   common = import ./diagrams-common.nix {
     inherit pkgs;
