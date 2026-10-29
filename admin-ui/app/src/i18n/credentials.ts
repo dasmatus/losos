@@ -177,7 +177,7 @@ export default defineMessages({
   "credentials.name.marketEscrowKey.detail": {
     en: "Agrees, with the edge, to pay out what this box sold and to give back what it bought. Without it a held payment waits for its deadline.",
     sk: "Spolu s edge súhlasí s vyplatením toho, čo zariadenie predalo, a s vrátením toho, čo kúpilo. Bez neho držaná platba čaká na svoj termín.",
-    de: "Stimmt zusammen mit dem Edge zu, dass Verkauftes ausgezahlt und Gekauftes zurückgegeben wird. Ohne ihn wartet eine gehaltene Zahlung auf ihre Frist.",
+    de: "Stimmt zusammen mit der Edge zu, dass Verkauftes ausgezahlt und Gekauftes zurückgegeben wird. Ohne ihn wartet eine gehaltene Zahlung auf ihre Frist.",
   },
   "credentials.name.marketEscrowKey.rotate": {
     en: "Payments still held keep waiting on the old key.",
