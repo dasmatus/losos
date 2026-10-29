@@ -260,11 +260,11 @@ async function open({
     return json(route, 200, { ok: true });
   });
   await page.goto(origin + path, { waitUntil: 'networkidle' });
-  /* Sonner's refused copy of its own stylesheet is logged at load, as on
-   * the admin page (tests/app.browser.mjs); its rules come from the bundle.
-   * Nothing after that may add a violation. */
+  /* Nothing is refused at load: Sonner's injected copy of its stylesheet is
+   * dropped at build (vite.sonner-quiet.ts) and the bundle carries the file.
+   * Nothing after that may add a violation either. */
   const atLoad = await page.evaluate(() => window.__violations);
-  assert.ok(atLoad.every((d) => d === 'style-src-elem'), `CSP violations at load: ${JSON.stringify(atLoad)}`);
+  assert.deepEqual(atLoad, [], `CSP violations at load: ${JSON.stringify(atLoad)}`);
   const done = async () => {
     const violations = (await page.evaluate(() => window.__violations)).slice(atLoad.length);
     assert.deepEqual(violations, [], `CSP violations on the mail page: ${JSON.stringify(violations)}`);
