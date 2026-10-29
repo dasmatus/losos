@@ -1,0 +1,144 @@
+name: failed-runs
+
+on:
+  schedule:
+    # ~06:23 UTC daily, clear of stale-branches (Sundays 05:41) and the
+    # Monday 04:xx jobs.
+    - cron: "23 6 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "List the runs that would be deleted, but delete nothing."
+        type: boolean
+        default: true
+      limit:
+        description: "Most runs to delete in one go. Empty: 800."
+        type: string
+        default: ""
+
+# ── What this is ────────────────────────────────────────────────────────────
+#
+# Every red push leaves a failed, cancelled or timed-out run in the Actions
+# tab, and the list fills with them. Once a day this deletes every completed
+# run whose conclusion is failure, cancelled, timed_out or startup_failure,
+# except a run on a commit that is still live:
+#
+#   - the tip of any branch, the default branch included, so a red main
+#     stays red where everyone can see it;
+#   - the head of any open pull request, forks included, so a PR never loses
+#     the check that says why it is red.
+#
+# What goes is the history of commits something newer has replaced. A
+# deleted run takes its logs and artifacts with it and cannot be brought
+# back; the job summary lists each one by workflow, branch and commit.
+#
+# GITHUB_TOKEN has 1000 API calls an hour, and listing every run takes one
+# per hundred, so one pass deletes at most `limit` (800) and the next day's
+# run takes the rest.
+#
+# Scheduled runs delete. A manual run is a dry run unless `dry_run` is
+# unticked.
+
+concurrency:
+  group: failed-runs
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  prune:
+    name: "bot: delete failed runs"
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      DRY_RUN: ${{ inputs.dry_run == true }}
+      LIMIT: ${{ inputs.limit || '800' }}
+    steps:
+      - name: find failed runs
+        run: |
+          set -euo pipefail
+          case "$LIMIT" in
+            ''|*[!0-9]*) echo "limit must be a whole number, got '${LIMIT}'" >&2; exit 1 ;;
+          esac
+
+          # Commits that are still live: branch tips and open PR heads.
+          {
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/branches?per_page=100" \
+              --jq '.[].commit.sha'
+            gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 1000 \
+              --json headRefOid --jq '.[].headRefOid'
+          } | sort -u >live
+
+          # id, workflow, branch, commit, conclusion, created, oldest first.
+          # The unfiltered listing is the one without the 1000-result cap.
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs?per_page=100" \
+            --jq '.workflow_runs[]
+              | select(.status == "completed")
+              | select(.conclusion as $c
+                  | ["failure", "cancelled", "timed_out", "startup_failure"] | index($c))
+              | [.id, (.name // "-"), (.head_branch // "-"), .head_sha, .conclusion, .created_at]
+              | @tsv' \
+            | sort -t $'\t' -k6,6 >failed
+
+          : >doomed
+          while IFS=$'\t' read -r id name branch sha conclusion created; do
+            if grep -qxF -- "$sha" live; then
+              continue
+            fi
+            printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$name" "$branch" "$sha" "$conclusion" "$created" >>doomed
+          done <failed
+          head -n "$LIMIT" doomed >batch
+
+          echo "$(wc -l <failed) unsuccessful runs, $(wc -l <live) live commits, $(wc -l <doomed) to delete, $(wc -l <batch) this pass"
+          {
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "### Unsuccessful runs (dry run, nothing deleted)"
+            else
+              echo "### Unsuccessful runs deleted"
+            fi
+            echo
+            echo "$(wc -l <doomed) found on replaced commits, $(wc -l <batch) in this pass (limit ${LIMIT})."
+            echo
+            if [ -s batch ]; then
+              echo "| Run | Workflow | Branch | Commit | Conclusion | Started |"
+              echo "| --- | --- | --- | --- | --- | --- |"
+              while IFS=$'\t' read -r id name branch sha conclusion created; do
+                echo "| ${id} | ${name} | \`${branch}\` | \`${sha:0:12}\` | ${conclusion} | ${created} |"
+              done <batch
+            else
+              echo "None."
+            fi
+          } >>"$GITHUB_STEP_SUMMARY"
+
+      - name: delete them
+        run: |
+          set -euo pipefail
+          if [ ! -s batch ]; then
+            exit 0
+          fi
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "dry run: deleting nothing"
+            exit 0
+          fi
+
+          deleted=0 failed=0
+          while IFS=$'\t' read -r id _; do
+            # A run deleted meanwhile answers 404; count it and move on.
+            if gh api -X DELETE "repos/${GITHUB_REPOSITORY}/actions/runs/${id}" --silent; then
+              deleted=$((deleted + 1))
+            else
+              failed=$((failed + 1))
+            fi
+          done <batch
+          echo "deleted ${deleted}, refused ${failed}"
+          if [ "$deleted" -eq 0 ]; then
+            echo "Nothing was deleted. Check that GITHUB_TOKEN has actions: write" >&2
+            echo "and that the hourly API limit was not spent already." >&2
+            exit 1
+          fi

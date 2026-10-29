@@ -24,7 +24,7 @@ export default defineMessages({
     de: "{box} ist nicht erreichbar. Was du tippst, bleibt auf {here} und wird in die Datei übernommen, sobald {box} wieder da ist.",
   },
   "collab.hint.offline": {
-    en: "This page lost its connection to the box. Keep it open: it reconnects by itself and sends what you typed.",
+    en: "This page lost its connection to the box. Keep it open. It reconnects by itself and sends what you typed.",
     sk: "Stránka stratila spojenie so zariadením. Nechajte ju otvorenú: pripojí sa sama a pošle, čo ste napísali.",
     de: "Diese Seite hat die Verbindung zur Box verloren. Lass sie offen: Sie verbindet sich von selbst und sendet, was du getippt hast.",
   },
@@ -59,7 +59,7 @@ export default defineMessages({
     de: "Diese Datei kann nicht gemeinsam bearbeitet werden",
   },
   "collab.error.notText": {
-    en: "Only text files are edited together here. Office documents open in LosOS Office.",
+    en: "Editing together here works for text files only. Office documents open in LosOS Office.",
     sk: "Spoločne sa tu upravujú len textové súbory. Dokumenty Office sa otvárajú v LosOS Office.",
     de: "Gemeinsam bearbeitet werden hier nur Textdateien. Office-Dokumente öffnen sich in LosOS Office.",
   },
