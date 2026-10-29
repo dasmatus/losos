@@ -341,8 +341,21 @@ pre {
   position: relative;
   z-index: 1;
 }
-.hb-theme__item:disabled {
-  cursor: default;
+/* Without JavaScript each segment is a label around a radio button
+ * (ColorModeToggle). The radio stays in the tab order and answers the
+ * arrow keys, but only its label is drawn. */
+.hb-theme__radio {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.hb-theme__item:has(.hb-theme__radio:focus-visible) {
+  box-shadow: 0 0 0 2px rgb(from var(--accent) r g b / 0.4);
+  position: relative;
+  z-index: 1;
 }
 .hb-theme__item svg {
   pointer-events: none;
@@ -351,7 +364,7 @@ pre {
 html[data-theme-choice='system'] .hb-theme__item[data-choice='system'],
 html[data-theme-choice='light'] .hb-theme__item[data-choice='light'],
 html[data-theme-choice='dark'] .hb-theme__item[data-choice='dark'],
-html:not([data-theme-choice]) .hb-theme__item[data-choice='system'] {
+html:not([data-theme-choice]) .hb-theme__item:has(.hb-theme__radio:checked) {
   background: var(--surface);
   color: var(--ink);
   box-shadow: var(--elev-card);
@@ -928,7 +941,8 @@ article {
 .theme-doc-toc-mobile {
   background: transparent !important;
 }
-.theme-doc-toc-mobile > button {
+.theme-doc-toc-mobile > button,
+.theme-doc-toc-mobile > summary {
   background: var(--sunk);
   border: 1px solid var(--line);
   border-radius: var(--control-radius);
@@ -936,7 +950,8 @@ article {
   font-size: 13px;
   font-weight: 500;
 }
-.theme-doc-toc-mobile > button::after {
+.theme-doc-toc-mobile > button::after,
+.theme-doc-toc-mobile > summary::after {
   opacity: 0.6;
 }
 .theme-doc-toc-mobile > div {
@@ -1009,6 +1024,274 @@ article {
     margin: 0;
     background: transparent;
   }
+}
+
+/* ── Without JavaScript ────────────────────────────────────────────────
+ * The server HTML is all a reader without JavaScript gets. The swizzled
+ * components put links and native controls where the script draws buttons
+ * (src/theme/), and these rules make them look and move the same. Nothing
+ * sets data-theme on <html> until the script runs, which is what
+ * html:not([data-theme]) means below. */
+
+/* Infima's chevrons are dark glyphs it inverts under [data-theme='dark'];
+ * without the script the inversion follows the palette's own two arms
+ * (derisk-theme.css). */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]):not(:has(.hb-theme__radio[value='light']:checked)) {
+    --ifm-menu-link-sublist-icon-filter: invert(100%) sepia(94%) saturate(17%)
+      hue-rotate(223deg) brightness(104%) contrast(98%);
+  }
+}
+:root:not([data-theme]):has(.hb-theme__radio[value='dark']:checked) {
+  --ifm-menu-link-sublist-icon-filter: invert(100%) sepia(94%) saturate(17%)
+    hue-rotate(223deg) brightness(104%) contrast(98%);
+}
+
+/* A closed chapter's list is not in the server HTML, so its caret could
+ * only fail. The chapter's link reaches under the caret instead, and the
+ * chapter's page opens with the chapter unfolded. */
+html:not([data-theme]) .menu__list-item-collapsible {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+html:not([data-theme]) .menu__list-item-collapsible > .menu__link {
+  grid-area: 1 / 1 / 2 / 3;
+  padding-right: 2.25rem;
+}
+html:not([data-theme]) .menu__list-item-collapsible > .menu__caret {
+  grid-area: 1 / 2;
+  pointer-events: none;
+}
+
+/* The language menu opens on hover (Infima) and on keyboard focus. Its
+ * trigger is a link to "#", which would only jump to the top. */
+html:not([data-theme]) .dropdown--hoverable > .navbar__link {
+  pointer-events: none;
+}
+html:not([data-theme]) .dropdown--hoverable:focus-within > .dropdown__menu {
+  opacity: 1;
+  pointer-events: all;
+  transform: translateY(-1px);
+  visibility: visible;
+}
+
+/* The search box is a link to the search page, drawn as the box, with the
+ * search theme's glyph over it (SearchBar.module.css's .searchIcon). */
+.hb-search {
+  position: relative;
+}
+.hb-search__icon {
+  position: absolute;
+  top: 50%;
+  left: 0.75rem;
+  width: 1rem;
+  height: 1rem;
+  color: var(--ifm-navbar-search-input-color);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+.hb-search__link {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  color: var(--faint) !important;
+  text-decoration: none !important;
+  cursor: text;
+}
+@media (max-width: 996px) {
+  .navbar .hb-search__link span {
+    display: none;
+  }
+}
+
+/* The phone's "On this page" fold as a <details>, opening by its height. */
+.hb-toc {
+  margin: 1rem 0;
+  border-radius: var(--control-radius);
+  interpolate-size: allow-keywords;
+}
+.hb-toc > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.8rem;
+  line-height: normal;
+  list-style: none;
+  cursor: pointer;
+}
+.hb-toc > summary::-webkit-details-marker {
+  display: none;
+}
+.hb-toc > summary::after {
+  content: '';
+  width: 1.25rem;
+  height: 1.25rem;
+  background: var(--ifm-menu-link-sublist-icon) 50% 50% / 2rem 2rem no-repeat;
+  filter: var(--ifm-menu-link-sublist-icon-filter);
+  transform: rotate(180deg);
+  transition: transform var(--ifm-transition-fast);
+}
+.hb-toc[open] > summary::after {
+  transform: none;
+}
+.hb-toc::details-content {
+  block-size: 0;
+  overflow: clip;
+  /* Longhands: the minifier drops the shorthand with allow-discrete. */
+  transition-property: block-size, content-visibility;
+  transition-duration: 200ms;
+  transition-timing-function: ease;
+  transition-behavior: allow-discrete;
+}
+.hb-toc[open]::details-content {
+  block-size: auto;
+}
+.hb-toc__content > ul {
+  border-left: none;
+  border-top: 1px solid var(--ifm-color-emphasis-300);
+  padding: 0.2rem 0 0.2rem 0.75rem;
+}
+.hb-toc__content ul li {
+  margin: 0.4rem 0.8rem;
+}
+.hb-toc__content a {
+  display: block;
+}
+
+/* The phone menu: the docs sidebar opens as the sheet from the left when
+ * the address ends in #hb-nav, over a backdrop that closes it, as the
+ * script's sheet does. */
+.hb-nav__anchor,
+.hb-nav__backdrop,
+.hb-nav__head,
+.hb-nav__more,
+html:not(:has(#hb-nav)) .hb-nav-open--here,
+html:has(#hb-nav) .hb-nav-open--away {
+  display: none;
+}
+@keyframes hb-sheet-in {
+  from {
+    transform: translateX(-100%);
+  }
+}
+@keyframes hb-backdrop-in {
+  from {
+    background-color: transparent;
+  }
+}
+@media (max-width: 996px) {
+  html:has(#hb-nav:target) {
+    overflow: hidden;
+  }
+  .theme-doc-sidebar-container:has(#hb-nav:target) {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: calc(var(--ifm-z-index-fixed) + 1);
+    width: auto;
+    background: rgb(0 0 0 / 0.6);
+    animation: hb-backdrop-in 250ms ease-out;
+  }
+  .theme-doc-sidebar-container:has(#hb-nav:target) > div {
+    position: static;
+  }
+  .theme-doc-sidebar-container:has(#hb-nav:target) div[class*='sidebar_'] {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: var(--ifm-navbar-sidebar-width) !important;
+    max-height: none;
+    padding: 0 !important;
+    border: 0;
+    border-radius: 0;
+    background: var(--surface);
+    box-shadow: var(--elev-pop);
+    animation: hb-sheet-in 250ms ease-out;
+  }
+  .theme-doc-sidebar-container:has(#hb-nav:target) .hb-nav__backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+  }
+  /* The sheet's head is the script's sheet's brand row: the salmon and a
+   * close link. (Not .navbar-sidebar__brand: the card's own rule above
+   * matches any div whose class holds "sidebar_".) */
+  .theme-doc-sidebar-container:has(#hb-nav:target) .hb-nav__head {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    height: var(--ifm-navbar-height);
+    padding: var(--ifm-navbar-padding-vertical) var(--ifm-navbar-padding-horizontal);
+    border-bottom: 1px solid var(--line);
+  }
+  .hb-nav__close {
+    display: flex;
+    margin-left: auto;
+  }
+  .theme-doc-sidebar-container:has(#hb-nav:target) .hb-sidebar-search {
+    display: none;
+  }
+  .theme-doc-sidebar-container:has(#hb-nav:target) .menu {
+    padding: 0.5rem;
+  }
+  .theme-doc-sidebar-container:has(#hb-nav:target) .hb-nav__more {
+    display: flex;
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 0.5rem;
+    border-top: 1px solid var(--line);
+  }
+}
+.hb-nav__label {
+  color: var(--muted);
+  cursor: default;
+}
+.hb-nav__label:hover {
+  background: transparent;
+}
+
+/* The search page without JavaScript: every page, by chapter. */
+.hb-pages__lead {
+  max-width: 40rem;
+  color: var(--muted);
+}
+.hb-pages__groups {
+  columns: 2 18rem;
+  column-gap: 2rem;
+  margin-top: 1.5rem;
+}
+.hb-pages__group {
+  break-inside: avoid;
+  margin-bottom: 1.5rem;
+}
+.hb-pages__group h2 {
+  margin-bottom: 0.5rem;
+  font-size: 1rem;
+}
+.hb-pages a {
+  color: var(--ink);
+}
+.hb-pages a:hover {
+  color: var(--accent);
+}
+.hb-pages__group ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+}
+.hb-pages__group li {
+  padding: 2px 0;
+}
+.hb-pages__depth-1 {
+  padding-left: 1rem !important;
+}
+.hb-pages__depth-2 {
+  padding-left: 2rem !important;
+}
+.hb-pages__depth-3 {
+  padding-left: 3rem !important;
 }
 
 /* Motion follows the reader's setting, as index.css does. */

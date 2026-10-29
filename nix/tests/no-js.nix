@@ -269,8 +269,8 @@ let
           variants =
             map
               (l: {
-                suffix = l.suffix;
-                locale = l.locale;
+                inherit (l) suffix;
+                inherit (l) locale;
               })
               [
                 {
