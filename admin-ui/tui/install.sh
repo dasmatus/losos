@@ -5,9 +5,11 @@
 #
 #   1. checks that this is a 64-bit x86 Linux computer, the one kind the
 #      client is built for;
-#   2. downloads two files from
-#        https://proxy.losos.dasmat.us/updates/<channel>/x86_64/
-#      the program, losos, and SHA256SUMS, the list of their checksums;
+#   2. takes the program, losos, and SHA256SUMS, the list of their
+#      checksums, from beside this script when it came out of the build's
+#      zip, and otherwise downloads that zip, the newest successful build of
+#      the channel's branch, through nightly.link:
+#        https://nightly.link/dasmatus/losos/workflows/ci/<channel>/losos-pages-updates.zip
 #   3. checks the program's SHA-256 against that list, with sha256sum or
 #      shasum, and stops if they differ;
 #   4. puts it in ~/.local/bin, or in /usr/local/bin when run as root;
@@ -18,15 +20,17 @@
 # It never asks for a password and never runs sudo. Run it as root yourself
 # if you want the program in /usr/local/bin.
 #
-#   curl -fsSL https://proxy.losos.dasmat.us/updates/main/x86_64/install.sh | sh
+#   curl -fsSLO https://nightly.link/dasmatus/losos/workflows/ci/main/losos-pages-updates.zip
+#   unzip -o losos-pages-updates.zip -d losos-pages-updates
+#   sh losos-pages-updates/install.sh
 #
-# LOSOS_CHANNEL picks the channel (main unless set). To undo it, delete the
-# file it names at the end.
+# LOSOS_CHANNEL picks the branch a download comes from (main unless set). To
+# undo it, delete the file it names at the end.
 
 set -eu
 
 CHANNEL=${LOSOS_CHANNEL:-main}
-BASE="https://proxy.losos.dasmat.us/updates/$CHANNEL"
+ARTIFACT="https://nightly.link/dasmatus/losos/workflows/ci/$CHANNEL/losos-pages-updates.zip"
 
 say() { printf '%s\n' "$*"; }
 warn() { printf '%s\n' "$*" >&2; }
@@ -43,18 +47,9 @@ case "$os" in
   *) die "The losos client is built for Linux only, and this computer runs $os. Nothing was installed." ;;
 esac
 case "$arch" in
-  x86_64 | amd64) arch=x86_64 ;;
+  x86_64 | amd64) ;;
   *) die "The losos client is built for x86_64 only, and this computer is $arch. Nothing was installed." ;;
 esac
-URL="$BASE/$arch"
-
-if command -v curl >/dev/null 2>&1; then
-  fetch() { curl -fsSL --proto '=https' --tlsv1.2 -o "$2" "$1"; }
-elif command -v wget >/dev/null 2>&1; then
-  fetch() { wget -q --https-only -O "$2" "$1"; }
-else
-  die "Neither curl nor wget is installed, so nothing can be downloaded. Install one and run this again."
-fi
 
 if command -v sha256sum >/dev/null 2>&1; then
   sha256() { sha256sum "$1" | cut -d' ' -f1; }
@@ -76,17 +71,48 @@ fi
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT INT TERM
 
-say "Installing losos from the $CHANNEL channel."
-say "  from $URL/"
-
-fetch "$URL/SHA256SUMS" "$tmp/SHA256SUMS" || die "Could not download $URL/SHA256SUMS. Check the channel name and your connection. Nothing was installed."
-fetch "$URL/losos" "$tmp/losos" || die "Could not download $URL/losos. Nothing was installed."
+# ── Where the program comes from ─────────────────────────────────────────
+# Run as `sh <folder>/install.sh` out of the unzipped build, the program and
+# its sums are beside the script. Piped into sh, $0 is the shell, and the
+# build's zip is downloaded instead.
+here=
+case "$0" in
+  install.sh | */install.sh) here=$(dirname -- "$0") ;;
+esac
+if [ -n "$here" ] && [ -f "$here/losos" ] && [ -f "$here/SHA256SUMS" ]; then
+  src=$here
+  say "Installing losos from $src/."
+else
+  if command -v curl >/dev/null 2>&1; then
+    fetch() { curl -fsSL --proto '=https' --tlsv1.2 -o "$2" "$1"; }
+  elif command -v wget >/dev/null 2>&1; then
+    fetch() { wget -q --https-only -O "$2" "$1"; }
+  else
+    die "Neither curl nor wget is installed, so nothing can be downloaded. Install one and run this again."
+  fi
+  if command -v unzip >/dev/null 2>&1; then
+    unpack() { unzip -q -o "$1" -d "$2"; }
+  elif command -v bsdtar >/dev/null 2>&1; then
+    unpack() { mkdir -p "$2" && bsdtar -xf "$1" -C "$2"; }
+  elif command -v python3 >/dev/null 2>&1; then
+    unpack() { python3 -m zipfile -e "$1" "$2"; }
+  else
+    die "Neither unzip, bsdtar nor python3 is installed, so the download cannot be opened. Install unzip and run this again."
+  fi
+  say "Installing losos from the $CHANNEL branch."
+  say "  from $ARTIFACT"
+  fetch "$ARTIFACT" "$tmp/build.zip" || die "Could not download $ARTIFACT. Check the channel name and your connection. Nothing was installed."
+  unpack "$tmp/build.zip" "$tmp/build" || die "Could not open the downloaded zip. Nothing was installed."
+  src=$tmp/build
+fi
+[ -f "$src/SHA256SUMS" ] || die "The build has no SHA256SUMS. Nothing was installed."
+[ -f "$src/losos" ] || die "The build has no losos. Nothing was installed."
 
 # The list names each file once: "<sha256>  <name>". A download cut short,
 # or a file that is not the one published, stops here.
-want=$(awk '$2 == "losos" || $2 == "*losos" { print $1; exit }' "$tmp/SHA256SUMS")
+want=$(awk '$2 == "losos" || $2 == "*losos" { print $1; exit }' "$src/SHA256SUMS")
 [ -n "$want" ] || die "SHA256SUMS does not list losos. Nothing was installed."
-got=$(sha256 "$tmp/losos")
+got=$(sha256 "$src/losos")
 if [ "$got" != "$want" ]; then
   warn "The download does not match its checksum."
   warn "  expected $want"
@@ -95,9 +121,11 @@ if [ "$got" != "$want" ]; then
 fi
 say "  checksum $got matches"
 
+# Copied, not moved: the unzipped folder is the owner's, and stays whole.
 mkdir -p "$dest"
-chmod 0755 "$tmp/losos"
-mv -f "$tmp/losos" "$dest/losos"
+cp "$src/losos" "$tmp/losos.new"
+chmod 0755 "$tmp/losos.new"
+mv -f "$tmp/losos.new" "$dest/losos"
 say "Installed $dest/losos. It says: $("$dest/losos" --version 2>/dev/null || say "nothing, it did not start")"
 
 case ":$PATH:" in
