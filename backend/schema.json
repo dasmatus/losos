@@ -1914,6 +1914,39 @@
         "out": "{\"cloud\": {\"user\",\"appPassword\",\"path\"}|null, \"git\": {\"user\",\"token\",\"path\"}|null, \"gitOff\"?: true, \"problems\"?: [\"...\"]}",
         "note": "Both credentials a computer's backups need, for LosOS Desktop's `losos-backup sign-in box` (backend/src/losos.rs cmd_device_backups). The caller is a person: LosOS Login's device code sign-in as the client `losos-backups` (losos_access::BACKUPS_CLIENT_ID), whose token reaches this route and nothing else, or a person signed in in the browser. No password: LosOS Login asked for it, the second factor and consent. The person's own accounts (the owner's are notshared and the configuration repository's owner): a LosOS Cloud app password and a LosOS Git token named `LosOS on <device>`, each replacing one of that name, and a person new to LosOS Cloud is made there first. `git` is null with gitOff on a box without LosOS Git; an app that could not make one leaves its key null and says why in `problems`. 503 when neither could; 403 with locked:true for an account LosOS Login holds to its rules; 400 for a body of the wrong shape or a bad device name. Section signed-in. HTTP-only."
       },
+      "POST /api/devices/directory": {
+        "auth": true,
+        "in": "{\"device\":\"...\"}",
+        "out": "{\"token\":\"losos_dir_<id>_<secret>\",\"computer\":{\"id\",\"device\",\"joinedBy\"?,\"created\",\"lastUsed\"}}",
+        "note": "Joins a LosOS Desktop computer to this box (backend/src/directory.rs), for its `losos-login-bridge join`. Admin only: the administrator's LosOS Login session or the spare key. The answer carries the computer's token, the only time it exists outside the computer; only its SHA-256 is kept, in directory.json in the state directory. Joining again under the same `device` replaces the old token. 400 for a bad device name, 409 when 256 computers are joined. HTTP-only."
+      },
+      "GET /api/devices/directory": {
+        "auth": true,
+        "out": "{\"computers\":[{\"id\",\"device\",\"joinedBy\"?,\"created\",\"lastUsed\"}]}",
+        "note": "The joined LosOS Desktop computers, without tokens. Admin only. HTTP-only."
+      },
+      "DELETE /api/devices/directory/{id}": {
+        "auth": true,
+        "out": "{\"removed\":true}",
+        "note": "Takes a joined computer out: its token stops at once. The company accounts already on it stay and log in offline. Admin only; 404 for an unknown id. HTTP-only."
+      },
+      "GET /api/directory/people": {
+        "auth": true,
+        "out": "{\"people\":[{\"name\",\"displayName\",\"email\",\"groups\",\"disabled\"}]}",
+        "note": "The people list a joined LosOS Desktop computer reads on a timer, to lock the accounts this box removed or disabled. The caller is the computer's `Authorization: Bearer losos_dir_...` token, which reaches this route and nothing else and is nobody everywhere else (403), or an administrator. No password hash or second factor leaves the box. 409 when LosOS Login does not run here. HTTP-only."
+      },
+      "POST /api/directory/jobs/claim": {
+        "auth": true,
+        "in": "nothing (the body is ignored)",
+        "out": "{\"id\",\"name\",\"payload\":{\"desktop\",\"steps\":[{\"uses\",\"with\",\"name\"}],\"timeoutMinutes\"},\"timeoutSecs\"} or 204",
+        "note": "A joined LosOS Desktop computer asks for its next Mesh CI job (`runs-on: [losos-desktop, <computer>]`, backend/src/ci/workflow.rs `desktop_job`): waits up to 15 s (inside a client's 20 s read timeout), relayed to losos-ci as the computer its `losos_dir_` token names. The steps are fixed actions (`losos/desktop-*`) with their `with:` filled in on the box. 204 when there is nothing, or no Mesh CI on this box. Only a directory token; 403 for anyone else. HTTP-only."
+      },
+      "POST /api/directory/jobs/report": {
+        "auth": true,
+        "in": "{\"id\": \"<job id>\", \"log\": \"...\", \"state\"?: \"success|failure|cancelled|error\", \"exitCode\"?, \"outputs\"?}",
+        "out": "{\"stop\": bool}",
+        "note": "The computer's log and result for a job it took; `stop` says the run was cancelled. A computer reports only on its own running jobs (403 otherwise). Only a directory token. HTTP-only."
+      },
       "GET /api/apps/search": {
         "auth": true,
         "in": "query string: q=<search term>, 2-128 characters, no control characters",

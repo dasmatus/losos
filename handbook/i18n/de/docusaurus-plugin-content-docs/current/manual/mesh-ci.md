@@ -50,7 +50,50 @@ Ein Job geht ins Mesh, wo jede Box, die ihren Runner verleiht, ihn
   andere Box würde den Code sehen;
 - die Box keine Edge in Reichweite hat.
 
-Dann läuft er auf dieser Box.
+Dann läuft er auf dieser Box. Ein Job, dessen `runs-on` `losos-desktop`
+nennt, geht stattdessen an einen Firmenrechner: siehe [Firmenrechner](#company-computers).
+
+## Firmenrechner \{#company-computers}
+
+Ein LosOS-Desktop-Rechner, der mit dieser Box verbunden ist (siehe
+[LosOS-Desktop-Rechner](../types/company-edge.md#losos-desktop-computers)),
+nimmt die Jobs, deren `runs-on` `losos-desktop` und den Namen des Rechners
+nennt. So ein Job wartet auf dieser Box, bis der Rechner nach ihm fragt, was
+er alle paar Sekunden tut, solange er im Firmennetz ist, und geht nie ins
+Mesh.
+
+Ein Firmenrechner führt keine Shell und keine anderen Actions aus. Seine
+Schritte sind nur diese, jeweils mit dem gezeigten `with:`:
+
+| Schritt | `with:` | Was der Rechner tut |
+|---|---|---|
+| `losos/desktop-status` | | Nennt seine Version, seinen Update-Kanal und die Firmenkonten |
+| `losos/desktop-update` | | Aktualisiert sich sofort |
+| `losos/desktop-reboot` | | Startet eine Minute nach dem Job neu |
+| `losos/desktop-channel` | `channel` | Folgt einem anderen Update-Kanal |
+| `losos/desktop-lock` | `user` | Sperrt ein Firmenkonto |
+| `losos/desktop-unlock` | `user` | Entsperrt ein Firmenkonto |
+
+Alles andere (`run:`, eine andere Action, ein Container, `env:`) lässt den
+Job scheitern, bevor er den Rechner erreicht, und der Rechner prüft die
+Liste vor jedem Schritt noch einmal. `${{ }}`-Ausdrücke in `with:` werden
+auf dieser Box ausgewertet. Eine Matrix erreicht mehrere Rechner:
+
+```yaml
+on: workflow_dispatch
+jobs:
+  update:
+    strategy:
+      matrix:
+        computer: [reception, laptop-7]
+    runs-on: [losos-desktop, '${{ matrix.computer }}']
+    steps:
+      - uses: losos/desktop-update
+      - uses: losos/desktop-reboot
+```
+
+Ein Job, nach dem sein Rechner einen Tag lang nicht gefragt hat oder dessen
+Rechner zwei Minuten lang nichts meldet, endet mit einem Fehler.
 
 ## Den Runner dieser Box verleihen \{#lending-this-boxs-runner}
 
