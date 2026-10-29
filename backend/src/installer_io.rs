@@ -10,7 +10,7 @@
 
 use crate::install_screen::{self, Progress, Row};
 use crate::installer::{
-    execute, plan_install, resolve_drives, BlockDev, Install, LsblkOutput, Options,
+    execute, plan_install, resolve_drives, BlockDev, Install, LsblkOutput, Options, Tang,
 };
 use crate::io_backend::{atomic_write, env_or};
 use anyhow::{bail, Context};
@@ -507,6 +507,42 @@ impl Install for IoInstall {
         )
     }
 
+    /// Seal the keyfile with Clevis to the TPM2 and a Tang server.
+    ///
+    /// The keyfile goes in on stdin and the JWE comes out on stdout into a
+    /// 0600 file, so the key is never an argument. The policy carries each
+    /// server's thumbprint, so Clevis checks the advertisement against it and
+    /// asks nothing; `-y` only covers the TPM2 pin's own question. A server
+    /// that cannot be reached fails the install here, before the long copy.
+    fn bind_tang(&mut self, keyfile: &Path, jwe: &Path, policy: &str) -> anyhow::Result<()> {
+        use std::os::unix::fs::OpenOptionsExt;
+        if let Some(dir) = jwe.parent() {
+            owner_only_dir(dir)?;
+        }
+        let out = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(jwe)
+            .with_context(|| format!("creating {}", jwe.display()))?;
+        let input = std::fs::File::open(keyfile)
+            .with_context(|| format!("opening {}", keyfile.display()))?;
+        self.set_activity(Some("Sealing the disk key to the TPM and a Tang server"));
+        let status = Command::new("clevis")
+            .args(["encrypt", "sss", policy, "-y"])
+            .stdin(input)
+            .stdout(out)
+            .status();
+        self.set_activity(None);
+        let status = status.context("running clevis")?;
+        if !status.success() {
+            let _ = std::fs::remove_file(jwe);
+            bail!("clevis encrypt failed ({status}): is a Tang server reachable at the address given?");
+        }
+        Ok(())
+    }
+
     fn log_info(&mut self, msg: &str) {
         log_line(msg);
     }
@@ -689,8 +725,10 @@ pub fn tpm_present() -> bool {
 }
 
 /// Fill in the environment-overridable defaults around the parsed CLI flags.
+#[allow(clippy::too_many_arguments)]
 pub fn options_from_env(
     tpm: bool,
+    tang: Vec<Tang>,
     bios: Option<bool>,
     drives: Option<Vec<String>>,
     no_install: bool,
@@ -700,6 +738,7 @@ pub fn options_from_env(
 ) -> Options {
     Options {
         tpm,
+        tang,
         bios: bios.unwrap_or_else(booted_in_bios),
         drives,
         no_install,
@@ -713,6 +752,78 @@ pub fn options_from_env(
         gpg_keys,
         report_client_id: crate::install_report::client_id(),
     }
+}
+
+/// Ask the edge at `base` for a Tang key of this box's own
+/// (`--tang-edge`, edge/registrar/src/tang.rs). The secret that later names
+/// the box's owner to the edge is made here and written with the key's
+/// address to `claim` (0600, `{"url", "claim"}`); the edge keeps only its
+/// SHA-256. Runs before anything is planned, so an
+/// edge that does not answer stops the install before any disk is touched.
+pub fn request_edge_tang(base: &str, claim: &Path) -> anyhow::Result<Tang> {
+    use rand::RngCore;
+    use std::os::unix::fs::OpenOptionsExt;
+    let base = crate::installer::edge_base(base).map_err(anyhow::Error::msg)?;
+    let mut bytes = [0u8; 32];
+    rand::rngs::OsRng.fill_bytes(&mut bytes);
+    let secret: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    let digest = ring::digest::digest(&ring::digest::SHA256, secret.as_bytes());
+    let hash: String = digest.as_ref().iter().map(|b| format!("{b:02x}")).collect();
+    let mut child = Command::new("curl")
+        .args([
+            "-sS",
+            "--fail-with-body",
+            "--connect-timeout",
+            "10",
+            "--max-time",
+            "30",
+            "--retry",
+            "3",
+            "-H",
+            "Content-Type: application/json",
+            "--data-binary",
+            "@-",
+        ])
+        .arg(format!("{base}/tang/keys"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .context("running curl")?;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(format!(r#"{{"claim":"{hash}"}}"#).as_bytes())?;
+    }
+    let out = child.wait_with_output().context("running curl")?;
+    if !out.status.success() {
+        bail!(
+            "the edge at {base} gave no Tang key ({}): {}{}",
+            out.status,
+            String::from_utf8_lossy(&out.stdout).trim(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
+    }
+    let tang = crate::installer::edge_tang(&base, &String::from_utf8_lossy(&out.stdout))
+        .map_err(anyhow::Error::msg)?;
+    if let Some(dir) = claim.parent() {
+        owner_only_dir(dir)?;
+    }
+    let mut f = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(claim)
+        .with_context(|| format!("creating {}", claim.display()))?;
+    f.write_all(
+        serde_json::json!({ "url": tang.url, "claim": secret })
+            .to_string()
+            .as_bytes(),
+    )?;
+    log_line(&format!(
+        "losos-install: the edge {base} made a Tang key for this box ({})",
+        tang.thumbprint
+    ));
+    Ok(tang)
 }
 
 /// The GPG keys to seed: every `--gpg-key FILE`, then the medium's own

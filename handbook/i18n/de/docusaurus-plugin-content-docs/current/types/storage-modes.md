@@ -17,7 +17,7 @@ Mesh.
 Alles, was du auf der Box ablegst, bleibt auf der Box. Die Box kopiert nichts
 woandershin. Die Festplatte hat zwei Teile:
 
-![Der Bereich Speicher auf einer Box, die ihre Festplatte für sich behält: belegter Platz, freier Platz und die Reserve, mit Reserve nutzen.](@site/docs/img/storage-de.png)
+![Der Bereich Speicher: die Festplatte der Box und der für später zurückgehaltene Platz, mit Reserve nutzen.](@site/docs/img/storage-de.png)
 
 - der **belegte Platz** von LosOS Cloud, LosOS Git und dem System;
 - die **Reserve**, der Teil, den der Installer zurückgehalten hat. Der

@@ -6,6 +6,8 @@ slug: /manual/terminal
 
 # Terminálový klient
 
+![Prehľad v prehliadači; terminálový klient ukazuje tie isté panely.](@site/docs/img/overview-sk.png)
+
 `losos` je terminálový program, ktorý spravuje zariadenie z iného počítača.
 Ukazuje tie isté panely ako správcovské stránky, tými istými slovami a v
 tých istých farbách, a nepotrebuje SSH, pretože zariadenie ho nemá. Každú
@@ -153,6 +155,20 @@ opýta, rovnako ako správcovské stránky.
 Prístupové tokeny, trh, Diagramy a všetko, čo maže dáta, zostáva v správcovských
 stránkach.
 :::
+
+## Mimo domova \{#away-from-home}
+
+Keď sa zariadenie dostane na internet cez edge, `login` si zapamätá aj
+adresu zariadenia na edgi a `losos hosts` ju ukáže ako **mimo domova**. Keď
+vlastná adresa zariadenia nikam nevedie, lebo tento počítač je v inej
+sieti, `losos` pošle volanie na túto adresu. Edge ho odovzdá ďalej bez
+toho, aby ho čítal: stále je podpísané vaším kľúčom a zašifrované pre kľúč
+zariadenia, a zariadenie odpovedá rovnako. Edge má certifikát, ktorému web
+dôveruje, takže nie je čo ďalšie pripínať.
+
+Takto cez edge idú iba volania terminálu. Ostatné správcovské stránky
+zostávajú vo vlastnej sieti zariadenia. Ak má aj terminál zostať tam,
+vypnite `losos.access.throughEdge` na paneli Rozšírené.
 
 ## LosOS Cloud a LosOS Git z tohto počítača \{#use-losos-cloud-and-losos-git-from-this-computer}
 

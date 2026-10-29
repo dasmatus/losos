@@ -1,7 +1,7 @@
 # nixos-test-vms config for LosOS Chat (modules/chat.nix, backend/src/chat.rs,
 # admin-ui/app/src/chat/).
 #
-# The box runs LosOS Login, lososd, nginx and Dendrite as they ship; a laptop
+# The box runs LosOS Login, lososd, nginx and Synapse as they ship; a laptop
 # on the LAN carries the browser's traffic. What only a booted box can show:
 #
 #   * chat is there only while the box shares its storage in a mesh: with
@@ -12,10 +12,9 @@
 #     homeserver needs that sign-in and a token of that same person;
 #   * signing out of LosOS Login ends chat at the next request, and removing
 #     a person signs their devices out of the homeserver;
-#   * Dendrite runs as `shared`, keeps everything in the shared data domain,
+#   * Synapse runs as `shared`, keeps everything in the shared data domain,
 #     and only root, nginx and `shared` may open its port;
-#   * messages, uploads and the thread list (which lososd answers, because
-#     Dendrite has none) work through nginx;
+#   * messages, uploads and the thread list work through nginx;
 #   * a moderator's hide redacts a reported message as its sender, and a
 #     muted person reads on but sends nothing until unmuted;
 #   * the chat page itself: two people in two browsers, an end-to-end
@@ -126,6 +125,9 @@ in
 
 pkgs.testers.nixosTest {
   name = "losos-chat";
+  # The handbook's pictures in three languages take most of an hour on
+  # their own under TCG.
+  globalTimeout = 3 * 3600;
 
   nodes = {
     box =
@@ -143,6 +145,8 @@ pkgs.testers.nixosTest {
         losos = {
           hostName = "mattbox";
           backend.package = lososPkgs.losos-ctl;
+          # The pins and the look are plugins; without them the page sees 404s.
+          backend.plugins = lososPkgs.losos-plugins;
           admin.ui = ui;
           git.enable = false;
           # The shared user's side of the box: chat's gate.
@@ -229,9 +233,12 @@ pkgs.testers.nixosTest {
     start_all()
     box.wait_for_unit("lososd.service")
     box.wait_for_unit("nginx.service")
-    box.wait_for_unit("dendrite.service")
+    box.wait_for_unit("losos-chat.service")
     box.wait_for_open_port(443)
     box.wait_for_open_port(8008)
+    # lososd loads its plugins before it listens; the unit is active
+    # earlier than that.
+    box.wait_for_open_port(8082)
     laptop.wait_for_unit("socks.service")
 
     def curl(args):
@@ -273,6 +280,7 @@ pkgs.testers.nixosTest {
         box.succeed(f"{path}/bin/switch-to-configuration test >&2")
         box.wait_for_unit("lososd.service")
         box.wait_for_unit("nginx.service")
+        box.wait_for_open_port(8082)
 
     def saved(shared):
         """Write the box's saved settings to match the switch, as an Apply
@@ -316,18 +324,24 @@ pkgs.testers.nixosTest {
         time.sleep(5)
         eva = sign_in("eva", EVA_PASSWORD)
 
-    with subtest("Dendrite runs as shared, inside the shared data domain"):
-        assert box.succeed("ps -o user= -C dendrite").split() == ["shared"]
+    with subtest("Synapse runs as shared, inside the shared data domain"):
+        pid = box.succeed("systemctl show -P MainPID losos-chat.service").strip()
+        assert box.succeed(f"ps -o user= -p {pid}").split() == ["shared"]
         assert box.succeed("stat -c '%U %a' /home/shared/data/chat").strip() == "shared 700"
-        box.wait_until_succeeds("test -s /home/shared/data/chat/roomserver.db")
-        assert "shared" in box.succeed("stat -c '%U' /home/shared/data/chat/roomserver.db")
+        assert box.succeed("stat -c '%U %a' /home/shared/data/chat/synapse").strip() == "shared 700"
+        box.wait_until_succeeds("test -s /home/shared/data/chat/synapse/homeserver.db")
+        assert "shared" in box.succeed("stat -c '%U' /home/shared/data/chat/synapse/homeserver.db")
+        # Sticky and delayed events, which calls need.
+        versions = json.loads(box.succeed("curl -sf http://127.0.0.1:8008/_matrix/client/versions"))
+        assert versions["unstable_features"].get("org.matrix.msc4354") is True, versions
+        assert versions["unstable_features"].get("org.matrix.msc4140") is True, versions
         # Only root, nginx and shared may open its port on loopback.
         box.succeed("curl -sf http://127.0.0.1:8008/_matrix/client/versions")
         box.fail("runuser -u nobody -- curl -sf -m 5 http://127.0.0.1:8008/_matrix/client/versions")
         # Nothing but loopback.
         laptop.fail(f"curl -sf -m 5 http://{HOST}:8008/_matrix/client/versions")
 
-    with subtest("there are no chat passwords: Dendrite refuses every other sign-in"):
+    with subtest("there are no chat passwords: Synapse refuses every other sign-in"):
         code, body = call(
             "/_matrix/client/v3/login", matus, method="POST",
             data={"type": "m.login.password", "identifier": {"type": "m.id.user", "user": "matus"},
@@ -367,8 +381,11 @@ pkgs.testers.nixosTest {
         again = json.loads(call("/api/chat/session", matus, method="POST",
                                 data={"device": m["deviceId"]})[1])
         assert again["deviceId"] == m["deviceId"], (again, m)
-        # with a new token, and the old one is gone.
-        assert whoami(matus, m["accessToken"])[0] == 401
+        # with a new token of that device. Synapse keeps the earlier one as
+        # well, so the page holds on to its own and asks for a new one only
+        # once that stops working (src/chat/session.ts).
+        assert again["accessToken"] != m["accessToken"], (again, m)
+        assert json.loads(whoami(matus, again["accessToken"])[1])["device_id"] == m["deviceId"]
         m = again
         # Everyone on the box can be found.
         code, body = call("/api/chat/people", matus)
@@ -396,7 +413,6 @@ pkgs.testers.nixosTest {
         assert code == 200, (code, body)
         code, body = call(f"/_matrix/client/v3/rooms/{q}/messages?dir=b&limit=10", eva, token=et)
         assert "Rent is due Friday." in body, body
-        # Dendrite has no thread list; lososd answers it from Dendrite's tables.
         code, body = call(f"/_matrix/client/v1/rooms/{q}/threads", matus, token=mt)
         assert code == 200, (code, body)
         chunk = json.loads(body)["chunk"]
@@ -416,7 +432,7 @@ pkgs.testers.nixosTest {
         assert code == 200 and "rent,900" in body, (code, body)
         code, body = call(f"/_matrix/client/v1/media/download/{server}/{media}", token=et)
         assert code == 401, (code, body)
-        assert box.succeed("find /home/shared/data/chat/media -type f | wc -l").strip() != "0"
+        assert box.succeed("find /home/shared/data/chat/synapse/media -type f | wc -l").strip() != "0"
 
     with subtest("a moderator hides a reported message and mutes someone in chat"):
         code, body = call(f"/_matrix/client/v3/rooms/{q}/send/m.room.message/t3", eva, method="PUT",
@@ -503,7 +519,7 @@ pkgs.testers.nixosTest {
             print(box.execute(
                 "uptime; free -m | sed -n 2p; top -bn1 -o %CPU | sed -n 8,13p; "
                 "${pkgs.redis}/bin/redis-cli -s /run/redis-*/redis.sock info clients | grep connected_clients; "
-                "curl -so /dev/null -w 'dendrite versions %{time_total}s\\n' http://127.0.0.1:8008/_matrix/client/versions"
+                "curl -so /dev/null -w 'synapse versions %{time_total}s\\n' http://127.0.0.1:8008/_matrix/client/versions"
             )[1])
             time.sleep(15)
         out, err = run.communicate(timeout=60)
@@ -511,14 +527,14 @@ pkgs.testers.nixosTest {
         print(done.stdout)
         print(done.stderr)
         if done.returncode != 0:
-            print(box.execute("journalctl -b --no-pager -o cat -n 1500 -u lososd -u dendrite -u authelia-losos -u nginx")[1])
+            print(box.execute("journalctl -b --no-pager -o cat -n 1500 -u lososd -u losos-chat -u authelia-losos -u nginx")[1])
         assert done.returncode == 0, f"the chat page, {phase}: {done.stderr[-2000:]}"
 
     with subtest("with sharing off there is no chat anywhere"):
         switch("unshared")
         saved(False)
-        box.wait_until_fails("systemctl is-active dendrite.service")
-        box.fail("systemctl cat dendrite.service")
+        box.wait_until_fails("systemctl is-active losos-chat.service")
+        box.fail("systemctl cat losos-chat.service")
         code, body = call("/api/chat", matus)
         assert code == 404, (code, body)
         assert "chat" not in json.loads(call("/api/me", matus)[1])["shared"]
@@ -533,7 +549,7 @@ pkgs.testers.nixosTest {
     with subtest("with sharing on, two people use the chat page"):
         switch(None)
         saved(True)
-        box.wait_for_unit("dendrite.service")
+        box.wait_for_unit("losos-chat.service")
         box.wait_until_succeeds("curl -sf http://127.0.0.1:8008/_matrix/client/versions")
         assert "chat" in json.loads(call("/api/me", matus)[1])["shared"]
         browser("on")

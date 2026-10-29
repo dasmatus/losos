@@ -23,6 +23,8 @@ Prepínač sa nedá zapnúť, kým je na zariadení vypnuté Vytvoriť s AI
 zariadenie si model stiahne raz, keď je prvýkrát online. Kým sťahovanie
 neskončí, kontroly čakajú vo fronte a pull request to uvádza.
 
+![Nastavenia repozitára so zapnutou kontrolou s AI: LosOS Reviewer komentuje každý pull request a nikdy ho neschváli ani nezlúči.](@site/docs/img/git-settings-sk.png)
+
 ## Čo robí \{#what-it-does}
 
 Keď sa pull request otvorí alebo znova otvorí, LosOS Reviewer skontroluje
@@ -46,6 +48,8 @@ urobiť každý, kto smie na pull requeste žiadať o kontrolu.
 Kým pracuje, kontroly pull requestu ukazujú riadok **LosOS Reviewer** s
 jeho postupom, napríklad „Reviewing: 2 of 5 files done“, a po skončení
 počet komentárov.
+
+![Zmenené súbory pull requestu: LosOS Reviewer, označený ako Bot, komentuje riadok shellu, ktorý maže cestu bez úvodzoviek, a navrhuje riadok s úvodzovkami.](@site/docs/img/git-ai-review-sk.png)
 
 ## Čo dokáže nájsť \{#what-it-can-find}
 
