@@ -107,7 +107,7 @@ export default defineMessages({
   "notes.publish.manage": { en: "Knowledge base", sk: "Znalostná báza", de: "Wissensbasis" },
   "notes.publish.title": { en: "Publish {name}", sk: "Zverejniť {name}", de: "{name} veröffentlichen" },
   "notes.publish.what": {
-    en: "The notes in this folder become a site to read, with links, search and the graph. It follows the folder: what you write here shows there.",
+    en: "The notes in this folder become a site to read, with links, search and the graph. It follows the folder, so what you write here shows there.",
     sk: "Poznámky v tomto priečinku sa stanú stránkou na čítanie s odkazmi, hľadaním a grafom. Stránka sleduje priečinok: čo tu napíšete, ukáže sa aj tam.",
     de: "Die Notizen in diesem Ordner werden zu einer Seite zum Lesen, mit Links, Suche und Graph. Sie folgt dem Ordner: Was du hier schreibst, erscheint dort.",
   },
