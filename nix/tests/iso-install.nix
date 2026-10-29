@@ -69,6 +69,9 @@ let
 in
 pkgs.testers.runNixOSTest {
   name = "losos-iso-install";
+  # The installed closure is too many inodes for virtiofsd under a
+  # 20000-descriptor limit (nix/tests/virtiofs.nix).
+  defaults.imports = [ ./virtiofs.nix ];
   # installation-device.nix adds an overlay, as the medium's system does.
   node.pkgsReadOnly = false;
 
