@@ -345,11 +345,12 @@ jobs:
       # The registrar's Bitcoin and Monero orders run against real regtest
       # nodes (edge/registrar/tests/{bitcoin,monero}.rs), and its Tang keys
       # against Tang's own tangd (tests/tang.rs), from the flake's nixpkgs;
-      # devenv.nix's test-rust points at the same packages.
+      # devenv.nix's test-rust points at the same packages. tang also builds a
+      # -man output, and --print-out-paths would print both, so take ^out.
       - run: |
           export LOSOS_TEST_BITCOIND="$(nix build --no-link --print-out-paths --inputs-from . nixpkgs#bitcoind)/bin/bitcoind"
           export LOSOS_TEST_MONEROD="$(nix build --no-link --print-out-paths --inputs-from . nixpkgs#monero-cli)/bin/monerod"
-          export LOSOS_TEST_TANG="$(nix build --no-link --print-out-paths --inputs-from . nixpkgs#tang)"
+          export LOSOS_TEST_TANG="$(nix build --no-link --print-out-paths --inputs-from . 'nixpkgs#tang^out')"
           nix develop .#ci -c bash -euo pipefail -c '
             cargo test --manifest-path backend/Cargo.toml
             cargo test --manifest-path backend/access/Cargo.toml
