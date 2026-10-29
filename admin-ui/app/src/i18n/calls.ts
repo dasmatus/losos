@@ -37,7 +37,7 @@ export default defineMessages({
     de: "Ende-zu-Ende-verschlüsselt",
   },
   "calls.encryptedDetail": {
-    en: "Every frame is encrypted on the sender's device and only the people in the call can open it. The box forwards the call without being able to see or hear it.",
+    en: "The sender's device encrypts every frame, and only the people in the call can open it. The box forwards the call without being able to see or hear it.",
     sk: "Každý snímok sa zašifruje v zariadení odosielateľa a otvoriť ho môžu len ľudia v hovore. Zariadenie LosOS hovor len preposiela a nevidí ani nepočuje ho.",
     de: "Jedes Bild wird auf dem Gerät des Absenders verschlüsselt und nur die Leute im Anruf können es öffnen. Die Box leitet den Anruf weiter, ohne ihn sehen oder hören zu können.",
   },
@@ -177,7 +177,7 @@ export default defineMessages({
   "calls.guestNamed": { en: "{name} (guest)", sk: "{name} (hosť)", de: "{name} (Gast)" },
   "calls.guestTitle": { en: "Join a call", sk: "Pripojiť sa k hovoru", de: "Einem Anruf beitreten" },
   "calls.guestIntro": {
-    en: "You were invited to a call on a LosOS box. It is end-to-end encrypted: the box passes your picture and voice on without being able to see or hear them.",
+    en: "You were invited to a call on a LosOS box. It is end-to-end encrypted. The box passes your picture and voice on without being able to see or hear them.",
     sk: "Dostali ste pozvánku na hovor na zariadení LosOS. Je šifrovaný end-to-end: zariadenie posiela váš obraz a hlas ďalej, no nevidí ich ani nepočuje.",
     de: "Du wurdest zu einem Anruf auf einer LosOS-Box eingeladen. Er ist Ende-zu-Ende-verschlüsselt: Die Box leitet Bild und Ton weiter, ohne sie sehen oder hören zu können.",
   },

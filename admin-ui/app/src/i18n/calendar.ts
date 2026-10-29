@@ -63,7 +63,7 @@ export default defineMessages({
     de: "In den nächsten sechs Wochen steht nichts an.",
   },
   "calendar.readOnly": {
-    en: "From a subscription: it changes where it was published.",
+    en: "From a subscription. Only its publisher can change it.",
     sk: "Z odberu: mení sa tam, kde bol zverejnený.",
     de: "Aus einem Abonnement: Es ändert sich dort, wo es veröffentlicht wurde.",
   },
@@ -337,7 +337,7 @@ export default defineMessages({
     de: "Diesen Kalender nicht mehr lesen? Seine Termine verschwinden aus deinem Kalender; das Original bleibt, wo es ist.",
   },
   "calendar.settings.lastOne": {
-    en: "Your last calendar stays: events need somewhere to go.",
+    en: "Your last calendar stays, because events need somewhere to go.",
     sk: "Posledný kalendár zostáva: udalosti potrebujú kam ísť.",
     de: "Dein letzter Kalender bleibt: Termine brauchen einen Ort.",
   },
@@ -372,7 +372,7 @@ export default defineMessages({
     de: "Du bist zu {summary} eingeladen.",
   },
   "calendar.invite.call": {
-    en: "It is a video call in LosOS Chat: join it from the event in your calendar.",
+    en: "It is a video call in LosOS Chat. Join it from the event in your calendar.",
     sk: "Je to videohovor v LosOS Chat: pripojte sa z udalosti vo svojom kalendári.",
     de: "Es ist ein Videoanruf in LosOS Chat: Tritt aus dem Termin in deinem Kalender bei.",
   },

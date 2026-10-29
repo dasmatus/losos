@@ -208,7 +208,7 @@ export default defineMessages({
   },
   "settings.panes.history.label": { en: "History", sk: "História", de: "Historie" },
   "settings.panes.history.summary": {
-    en: "Every change to this box’s configuration, committed and kept on LosOS Git.",
+    en: "Every change to this box's configuration, committed and kept on LosOS Git.",
     sk: "Každá zmena konfigurácie tohto zariadenia, uložená a uchovaná na LosOS Git.",
     de: "Jede Änderung an der Konfiguration dieser Box, festgehalten und auf LosOS Git aufbewahrt.",
   },

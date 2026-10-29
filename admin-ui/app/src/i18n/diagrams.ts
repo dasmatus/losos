@@ -72,7 +72,7 @@ export default defineMessages({
     de: "Ziehe von der Seite eines Geräts zu einem anderen, um ein {kind}-Kabel zu legen, oder klicke zwei Geräte an.",
   },
   "dg.hint.arrow": {
-    en: "Drag from a card's side: between two devices it draws a plain arrow, not a cable.",
+    en: "Drag from a card's side. Between two devices it draws a plain arrow, not a cable.",
     sk: "Potiahnite z boku karty: medzi dvoma zariadeniami nakreslí obyčajnú šípku, nie kábel.",
     de: "Ziehe von der Seite einer Karte: Zwischen zwei Geräten entsteht ein einfacher Pfeil, kein Kabel.",
   },
@@ -336,7 +336,7 @@ export default defineMessages({
 
   // ── edited together ──
   "dg.live.together": {
-    en: "Everyone who opens this file edits it with you. Changes are saved as you make them.",
+    en: "Everyone who opens this file edits it with you. Diagrams saves changes as you make them.",
     sk: "Každý, kto tento súbor otvorí, ho upravuje spolu s vami. Zmeny sa ukladajú priebežne.",
     de: "Alle, die diese Datei öffnen, bearbeiten sie mit dir. Änderungen werden sofort gespeichert.",
   },

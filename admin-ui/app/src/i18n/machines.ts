@@ -148,7 +148,7 @@ export default defineMessages({
     de: "Bezahle auf der Seite von Stripe im anderen Tab. Die Replikate starten, sobald die Zahlung da ist, und diese Seite zeigt sie, wie sie hochfahren.",
   },
   "machines.start.caption": {
-    en: "Each replica runs for a month on the box you pick and is stopped when the month runs out. Its disk is kept.",
+    en: "Each replica runs for a month on the box you pick and stops when the month runs out. The box keeps its disk.",
     sk: "Každá replika beží mesiac na zariadení, ktoré vyberiete, a po uplynutí mesiaca sa zastaví. Jej disk zostane.",
     de: "Jedes Replikat läuft einen Monat auf der gewählten Box und wird danach angehalten. Seine Festplatte bleibt erhalten.",
   },
