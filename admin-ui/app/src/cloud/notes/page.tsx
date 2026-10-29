@@ -62,7 +62,9 @@ function signature(index: VaultIndex): string {
 function useVault(root: string) {
   const [vault, setVault] = React.useState<Vault | null>(null);
   const [error, setError] = React.useState<unknown>(null);
-  const seen = React.useRef("");
+  // The listing last drawn; null until the first, so an empty vault (a new
+  // box's Notes, whose signature is "") is drawn too.
+  const seen = React.useRef<string | null>(null);
 
   const reload = React.useCallback(
     async (signal?: AbortSignal) => {
@@ -77,7 +79,7 @@ function useVault(root: string) {
   );
 
   React.useEffect(() => {
-    seen.current = "";
+    seen.current = null;
     setVault(null);
     setError(null);
     const controller = new AbortController();

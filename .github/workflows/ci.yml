@@ -345,11 +345,12 @@ jobs:
       # The registrar's Bitcoin and Monero orders run against real regtest
       # nodes (edge/registrar/tests/{bitcoin,monero}.rs), and its Tang keys
       # against Tang's own tangd (tests/tang.rs), from the flake's nixpkgs;
-      # devenv.nix's test-rust points at the same packages.
+      # devenv.nix's test-rust points at the same packages. tang also builds a
+      # -man output, and --print-out-paths would print both, so take ^out.
       - run: |
           export LOSOS_TEST_BITCOIND="$(nix build --no-link --print-out-paths --inputs-from . nixpkgs#bitcoind)/bin/bitcoind"
           export LOSOS_TEST_MONEROD="$(nix build --no-link --print-out-paths --inputs-from . nixpkgs#monero-cli)/bin/monerod"
-          export LOSOS_TEST_TANG="$(nix build --no-link --print-out-paths --inputs-from . nixpkgs#tang)"
+          export LOSOS_TEST_TANG="$(nix build --no-link --print-out-paths --inputs-from . 'nixpkgs#tang^out')"
           nix develop .#ci -c bash -euo pipefail -c '
             cargo test --manifest-path backend/Cargo.toml
             cargo test --manifest-path backend/access/Cargo.toml
@@ -791,7 +792,7 @@ jobs:
           name: losos-registrar-dev-machine
           path: dev-machine
       # The terminal client and its installer, beside it in the same
-      # artifact: `curl -fsSL <proxy>/updates/<channel>/x86_64/install.sh | sh`.
+      # artifact: `sh install.sh` out of the unzipped losos-pages-updates.
       - uses: actions/download-artifact@v8
         with:
           name: losos-tui
@@ -846,17 +847,20 @@ jobs:
               echo "- ${PROXY_URL}/updates/${channel}/x86_64/losos-registrar"
               echo "- ${PROXY_URL}/updates/${channel}/x86_64/install.sh"
             fi
+            echo "- https://nightly.link/${REPO}/workflows/ci/${REF_NAME}/losos-pages-updates.zip (once this run is green)"
             echo "- $(cat SHA256SUMS)"
           } >> "$GITHUB_STEP_SUMMARY"
-      # The same two files for the GitHub Pages copy of the proxy, which
-      # serves them at /proxy/updates/main/x86_64/. Main only: that copy
-      # carries one channel.
+      # The same files as one zip: the GitHub Pages copy of the proxy serves
+      # main's at /proxy/updates/main/x86_64/, and the README and the
+      # handbook link nightly.link's
+      # workflows/ci/<branch>/losos-pages-updates.zip, which is the newest
+      # successful run's. 90 days, so the link outlives a long red stretch
+      # on main.
       - uses: actions/upload-artifact@v7
-        if: github.ref == 'refs/heads/main'
         with:
           name: losos-pages-updates
           path: dev-machine
-          retention-days: 30
+          retention-days: 90
 
   fmt-bot:
     name: "bot: cargo fmt, push back"
