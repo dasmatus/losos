@@ -16,7 +16,7 @@ let
   nodeModules = import ../bun-deps.nix { inherit pkgs; } {
     pname = "losos-ds";
     src = ../../admin-ui/design-system/react;
-    hash = "sha256-E59wyhPZX0qu9z/sw1SWiSatG3OUiKAfcUdU/F77lGY=";
+    hash = "sha256-uqZQDnSRq8dXFCFCZavaVZW0GyT/8isrhfAccmG5KFE=";
   };
   pinnedPlaywright =
     (builtins.fromJSON (builtins.readFile ../../admin-ui/design-system/react/package.json))
