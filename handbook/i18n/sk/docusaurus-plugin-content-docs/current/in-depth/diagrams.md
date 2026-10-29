@@ -7,6 +7,8 @@ mdx:
 
 # Diagramy
 
+![Diagramy s vývojovým diagramom otvoreným z LosOS Cloud: pohľady a výber súboru, plátno s kartami a šípkami a panel o tomto diagrame.](@site/docs/img/diagrams-sk.png)
+
 LosOS Diagrams je editor diagramov: vývojové diagramy, plány, myšlienkové
 mapy, tabule a nákresy sietí, písané ako karty na plátne. Jeho súbory sú
 JSON Canvas, formát, ktorý používa Obsidian Canvas, takže súbor `.canvas`
@@ -124,8 +126,8 @@ zostavy.
 
 Sieť sa riadi tými istými pravidlami ako skutočný softvér. Príklady: zariadenie
 bez edge v dosahu nespustí žiadny tunel; prepnutie na mesh sa odmietne s
-`edgeRequired`; trh sa otvorí iba vedľa oficiálneho edge (takého, ktorého
-certifikát podpísal koreňový kľúč LosOS); LAN brána s otvoreným zápisom
+`edgeRequired`; trh sa otvorí iba vedľa oficiálneho edge (takého, ktorý
+prejde overením brány); LAN brána s otvoreným zápisom
 prijme neznáme zariadenia pri prvom použití; a administračné routy odmietajú
 loopback.
 

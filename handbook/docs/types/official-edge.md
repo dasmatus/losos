@@ -58,35 +58,36 @@ again.
 
 ## Official or not
 
-Any edge that answers opens sharing. Only the LosOS edge may run the market,
-so a box has to tell it apart from any other edge. Finding an edge and
-trusting it with money are separate questions. Every box carries a LosOS root
-public key. An official edge proves itself on every scan. It presents a
-certificate signed with the matching private key, which only the project
-holds, offline. It also signs a fresh challenge the box just made up, using
-the certificate's own key. The box makes four checks, and the edge counts as
-official only if all four pass.
+Any edge that answers opens sharing. Only an edge that passes the gateway
+checks may run the market, so a box has to tell it apart from any other
+edge. Finding an edge and trusting it with money are separate questions.
+Anyone may run such an edge. It proves itself on every scan: its owner's
+signed passport names it, its TPM shows that a published LosOS gateway image
+booted untouched, and its settings pay LosOS's share to the addresses every
+box ships. The box checks all of it, and the edge counts as official only if
+everything passes.
 
-The Mesh pane shows the result as a sign beside each edge's name. An
-official edge gets a check. Any other edge gets a warning, with a tooltip
-listing what that edge cannot do for this box: buy on the market, or sell
-this box's spare storage and compute. A box that cannot verify the signature
-treats the edge as a [company edge](company-edge). Discovery, remote access
-and sharing work, trading does not, and the Market pane says "The edge proxy
-this box found is not run by LosOS." Nothing a company configures can make
-its own edge official. That is deliberate.
+The Mesh pane shows the result as a sign beside each edge's name. A checked
+gateway gets a check, with its owner and image in the tooltip. Any other edge
+gets a warning, with a tooltip listing what that edge cannot do for this box:
+buy on the market, or sell this box's spare storage and compute. An edge the
+box caught tampered with gets a stop sign, and the box no longer uses it for
+anything. An edge that shows no passport is treated as a
+[company edge](company-edge). Discovery, remote access and sharing work,
+trading does not, and the Market pane says "The edge proxy this box found did
+not pass the gateway checks."
 
 ![The warning sign beside an edge that is not official, with its tooltip listing what that edge cannot do for this box.](../img/mesh-warning-tooltip.png)
 
-:::note[Until the key is published]
-Every box ships with an empty root key file until the project publishes the
-public key. Until then no edge is official, every edge wears the warning sign
-and the market is off on every box. That is the safe direction to fail in.
+:::note[Until the image and the addresses are published]
+Every box ships with an empty list of gateway images and an empty list of
+LosOS's payout addresses until the project publishes them. Until then no edge
+passes, every edge wears the warning sign and the market is off on every box.
+That is the safe direction to fail in.
 :::
 
-The project owner keeps the root key offline, never on a box or an edge.
-Each official edge has a key of its own, which never leaves the edge, and a
-certificate the root signed for it.
+No LosOS key makes an edge official. What a box trusts is the image
+the edge runs, which its TPM vouches for, and the passport its owner signed.
 
 Enrolment at the edge, which decides which box may tunnel through it, is a
 separate matter. The edge keeps an allow-list of boxes, each with a token,

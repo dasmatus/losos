@@ -7,6 +7,8 @@ mdx:
 
 # Mesh
 
+![Panel Mesh na zariadení bez dostupného okrajového proxy servera.](@site/docs/img/mesh-none-sk.png)
+
 Zariadenie môže požičať voľný disk a CPU iným zariadeniam losos. Pripojenie je predvolene
 vypnuté. Panel Mesh má dva prepínače: pripojiť sa k sieti mesh a zdieľať výpočtový
 výkon. Tretí prepínač, zdieľanie disku tohto zariadenia, je na paneli
@@ -87,10 +89,11 @@ nastavuje čakanie v sekundách a `0` pozastavenie vypína.
 
 Nájsť edge a zveriť mu peniaze sú dve rôzne otázky. Zdieľanie otvorí
 ktorýkoľvek edge, ktorý odpovedá. Obchodovať na markete sa dá iba cez
-**oficiálny** edge, ktorý predloží certifikát podpísaný koreňovým kľúčom
-LosOS a odpovie ním na čerstvý nonce zariadenia. Zariadenie to kontroluje pri každom
-skenovaní. Riadok každého edge nesie vedľa mena značku, fajku pre oficiálny
-edge a varovanie pre akýkoľvek iný. Tooltip varovania vypíše, čo tento edge
+**oficiálny** edge, bránu, ktorá prejde overením zariadenia: pas podpísaný
+jej vlastníkom, TPM, ktorý ukazuje, že nezmenený naštartoval zverejnený
+obraz brány LosOS, a adresy poplatkov LosOS. Zariadenie to kontroluje pri
+každom skenovaní. Riadok každého edge nesie vedľa mena značku, fajku pre
+overenú bránu a varovanie pre akýkoľvek iný edge. Tooltip varovania vypíše, čo tento edge
 pre toto zariadenie urobiť nemôže: nakupovať na markete a predávať voľné
 úložisko a výpočtový výkon tohto zariadenia. Vlastný edge firmy nesie varovanie a
 nie je to chyba. Pozri [Master proxy, oficiálne

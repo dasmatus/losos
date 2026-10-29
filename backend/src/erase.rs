@@ -486,6 +486,40 @@ pub fn cmd_erase_cancel<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
     Ok(json!({ "erase": null }))
 }
 
+/// The ids of the box's open market listings, `None` with no market.
+fn open_listings<L: Losos>(l: &mut L) -> Result<Option<Vec<String>>, ()> {
+    match l.market_request(&Op::Account) {
+        Ok(Outcome::Reply(account)) => Ok(Some(
+            account["listings"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|x| x["active"].as_bool() == Some(true))
+                .filter_map(|x| x["id"].as_str().map(str::to_string))
+                .collect(),
+        )),
+        Ok(Outcome::Unavailable) => Ok(None),
+        Err(_) => Err(()),
+    }
+}
+
+/// Close every open listing of the box's, for schizo mode
+/// (`crate::schizo`): how many closed, and whether that was all of them.
+pub fn close_listings<L: Losos>(l: &mut L) -> (u32, bool) {
+    let Ok(open) = open_listings(l) else {
+        return (0, false);
+    };
+    let mut closed = 0;
+    let mut all = true;
+    for listing_id in open.unwrap_or_default() {
+        match l.market_request(&Op::Close { listing_id }) {
+            Ok(Outcome::Reply(_)) => closed += 1,
+            _ => all = false,
+        }
+    }
+    (closed, all)
+}
+
 /// Give up what the box holds on its edge: domains, listings, the registry
 /// entry. Every step is tried whatever the one before it did.
 fn leave_edge<L: Losos>(l: &mut L) -> Outside {
@@ -523,16 +557,9 @@ fn leave_edge<L: Losos>(l: &mut L) -> Outside {
         Ok(Outcome::Unavailable) => {}
         Err(_) => push_once(&mut out.problems, "domains"),
     }
-    match l.market_request(&Op::Account) {
-        Ok(Outcome::Reply(account)) => {
+    match open_listings(l) {
+        Ok(Some(open)) => {
             out.had_edge = true;
-            let open: Vec<String> = account["listings"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter(|x| x["active"].as_bool() == Some(true))
-                .filter_map(|x| x["id"].as_str().map(str::to_string))
-                .collect();
             for listing_id in open {
                 match l.market_request(&Op::Close { listing_id }) {
                     Ok(Outcome::Reply(_)) => out.listings_closed += 1,
@@ -540,8 +567,8 @@ fn leave_edge<L: Losos>(l: &mut L) -> Outside {
                 }
             }
         }
-        Ok(Outcome::Unavailable) => {}
-        Err(_) => push_once(&mut out.problems, "listings"),
+        Ok(None) => {}
+        Err(()) => push_once(&mut out.problems, "listings"),
     }
     match l.market_request(&Op::Deregister) {
         Ok(Outcome::Reply(_)) => {

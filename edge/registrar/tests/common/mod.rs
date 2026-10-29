@@ -683,6 +683,7 @@ impl Edge {
             manage: None,
             calls_relay: None,
             ci_dir: None,
+            tang: None,
             hidden: None,
             ech: None,
             onramp: None,

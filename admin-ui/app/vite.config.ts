@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { segmenterQuiet } from "./vite.segmenter-quiet";
+import { sonnerQuiet } from "./vite.sonner-quiet";
 
 /* The theme has to be on the <html> element BEFORE the first paint, or a box
  * whose owner picked Dark while the browser reports Light flashes white for a
@@ -279,7 +280,7 @@ function labMeme(): Plugin {
 const root = fileURLToPath(new URL(".", import.meta.url));
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), themeBoot(), appFrame(), basicMessages(), labMeme(), segmenterFiles(), nudityFiles(), segmenterQuiet()],
+  plugins: [react(), tailwindcss(), themeBoot(), appFrame(), basicMessages(), labMeme(), segmenterFiles(), nudityFiles(), segmenterQuiet(), sonnerQuiet()],
   // Served from the vhost root by nginx.
   base: "/",
   resolve: {

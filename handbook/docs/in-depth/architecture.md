@@ -7,7 +7,7 @@ mdx:
 
 # Architecture
 
-![The Overview.](../img/overview.png)
+![The Overview, the admin page that nginx serves and lososd answers for.](../img/overview.png)
 
 ## Systems in the flake
 

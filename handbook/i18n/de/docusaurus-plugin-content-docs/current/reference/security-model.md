@@ -18,6 +18,11 @@ geschrieben, dass du ihm widersprechen kannst.
 2. **Edge → Box.** TLS 1.3 verschlüsselt den Tunnel durchgehend, über
    QUIC oder, wo UDP gesperrt ist, über TCP. Die Box merkt sich das
    Zertifikat der Edge beim ersten Kontakt und lehnt ein geändertes ab.
+   Im Tunnel bleiben die Verbindungen der Besucher bis zum eigenen
+   Zertifikat der Box verschlüsselt: Die Edge leitet sie nach dem Namen
+   weiter und kann sie nicht lesen. Sie sieht aber, welcher Name angefragt
+   wurde, wann, wie viele Daten flossen und die Adresse der Box zu Hause.
+   Siehe [Die Edge kann den Verkehr nicht lesen](../in-depth/master-proxy.md#the-edge-cannot-read-the-traffic).
 3. **LAN → Box.** Die Box liefert HTTPS mit ihrem eigenen Zertifikat aus,
    dem du einmal pro Rechner vertraust. Bis dahin könnte jemand im selben
    WLAN, der Verkehr abfangen kann, die erste Nutzung abfangen.
@@ -29,16 +34,15 @@ geschrieben, dass du ihm widersprechen kannst.
    Speicher, den du dort gekauft hast: Deine Box verschlüsselt sie mit deinem
    Wiederherstellungscode, bevor sie hinausgehen, und die Verleiher und die
    Edge haben nur Chiffretext.
-5. **Eine offizielle Edge ↔ irgendeine Edge.** Die Box trägt einen
-   öffentlichen Root-Schlüssel, mit dem sie die LosOS-Edge von der eigenen
-   Edge einer Firma unterscheidet. Der Handel braucht die LosOS-Edge, alles
-   andere funktioniert mit beiden. Die private Hälfte wird nur auf dem
-   eigenen Rechner des Projektinhabers erzeugt und benutzt. Das Werkzeug, das
-   sie benutzt, meldet die Person über GitHub an und prüft das Konto gegen
-   eine Liste im Repository. Keine Box und keine Edge hält je den privaten
-   Schlüssel. Das signierte Zertifikat erreicht die Edge über das Web, und
-   die Edge prüft das GitHub-Konto des Absenders gegen dieselbe Liste, bevor
-   sie es installiert.
+5. **Eine offizielle Edge ↔ irgendeine Edge.** Die Box prüft jede Edge
+   selbst, bevor sie über sie handelt: den OpenPGP-Pass ihres Betreibers,
+   ein TPM, das zeigt, dass ein veröffentlichtes LosOS-Gateway-Image
+   unverändert gestartet ist, und Einstellungen, die den Anteil von LosOS an
+   die Adressen zahlen, die die Box mitbringt. Der Handel braucht eine Edge,
+   die besteht, alles andere funktioniert mit jeder Edge. Kein
+   LosOS-Schlüssel macht eine Edge offiziell, also gibt es keinen privaten Schlüssel,
+   den man stehlen könnte. Eine Edge, die bei einer Manipulation ertappt
+   wurde, nutzt die Box, die sie ertappt hat, nie wieder.
 
 ![Die Grenzen der Box: eine Eingangstür, eine Steuer-API nur auf Loopback, der nach außen zur Edge geöffnete Tunnel und ein verschlüsseltes Volume.](@site/docs/img/box-architecture-de.svg)
 
@@ -85,8 +89,12 @@ beschreibt jeden Schalter und was er kostet.
   jede Software heraus, die auf diesem Rechner gestartet wird, also kann ein
   Dieb mit der Box ihn lesen. Die Verschlüsselung schützt nur eine einzeln
   ausgebaute Festplatte. Auf einer Box ohne TPM ist sogar die Festplatte
-  allein lesbar. [TPM und der Festplattenschlüssel](tpm) erklärt den
-  Unterschied.
+  allein lesbar. Eine mit `--tang` installierte Box öffnet sich nur mit einem
+  Schlüsselserver in ihrem eigenen Netz und fragt anderswo nach dem
+  Wiederherstellungscode. Eine mit `--tang-edge` installierte Box braucht
+  die Antwort ihrer Edge, und der Besitzer kann der Edge sagen, einer
+  gestohlenen Box nicht mehr zu antworten. [TPM und der
+  Festplattenschlüssel](tpm) erklärt den Unterschied.
 - **Das Audit-Log** rotiert nicht, und root kann es umschreiben.
 - **Die Drosselung gilt pro Adresse**, sodass ein Angreifer im LAN, der
   Adressen fälscht, jedes Mal ein neues Kontingent bekommt.

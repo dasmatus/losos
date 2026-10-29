@@ -18,6 +18,9 @@ use losos::keychain::{Keychain, MemoryKeychain};
 use losos_access::{open, seal, HostKey, Keyring, Replay};
 use serde_json::{json, Value};
 
+/// Where every mock box says it is reached through its edge.
+pub const EDGE_URL: &str = "https://mattbox.losos.example";
+
 pub const TOKEN: &str = "losos_pat_0123abcd_00112233445566778899aabbccddeeff00112233";
 
 /// What a host does with a call that opened: status and body.
@@ -274,7 +277,11 @@ fn serve(
                     }
                 } else if path == key_path {
                     let host = host.lock().unwrap();
-                    let doc = json!({ "fingerprint": host.fingerprint(), "publicKey": host.armored_public() });
+                    let mut doc = json!({ "fingerprint": host.fingerprint(), "publicKey": host.armored_public() });
+                    // A box behind an edge names it (losos.access.throughEdge).
+                    if !edge {
+                        doc["edgeUrl"] = json!(EDGE_URL);
+                    }
                     (200, "application/json", doc.to_string())
                 } else if path == call_path {
                     let host = host.lock().unwrap();

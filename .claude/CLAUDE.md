@@ -29,6 +29,7 @@ nix build .#nixosConfigurations.iso.config.system.build.isoImage
 nix build .#checks.x86_64-linux.losos-admin-daemon  # lososd: D-Bus, HTTP, token
 nix build .#checks.x86_64-linux.losos-install       # installer, keyfile, BIOS
 nix build .#checks.x86_64-linux.losos-tpm-unlock    # installer, swtpm unlock
+nix build .#checks.x86_64-linux.losos-network-unlock # --tang: TPM2 + Tang, recovery code
 nix build .#checks.x86_64-linux.losos-identity      # LosOS Login (Authelia), sections
 npm run dev | typecheck | test:browser              # in admin-ui/app
 cargo test --manifest-path admin-ui/tui/Cargo.toml  # losos, the terminal client
@@ -70,7 +71,10 @@ and is never served or built by nix.
 - `impermanence.nix` + `disko.nix` + `boot.nix`: tmpfs root, LUKS ext4
   `/persist` formatted unattended from `/etc/keys/persist-keyfile`. Unlock is
   TPM2 with no PCR binding by default; without a TPM the keyfile rides in the
-  initrd on the ESP. The installer writes `modules/install-target.nix` (the
+  initrd on the ESP. With `losos.tpm.tang` (`--tang URL#THP`) the key is a
+  Clevis JWE sealed to the TPM2 AND a Tang server instead
+  (`network-unlock.nix`, initrd DHCP), and the recovery code is added as the
+  console passphrase. The installer writes `modules/install-target.nix` (the
   box's drives, firmware mode, unlock mode) onto the box; it is not in the
   tree, and `flake.nix` imports the live copy from `/etc/nixos` on rebuilds.
 - `configuration.nix`: `notshared` (uid 1000, the owner's apps and LosOS Cloud name) and `shared`
@@ -155,15 +159,15 @@ and is never served or built by nix.
   Matrix id `@<name>:<server>`. Calls are a MatrixRTC application of
   their own, `org.losos.call`, one slot per room (`org.losos.call#room`,
   `src/chat/rtc.ts`): `m.call` is LiveKit-only, and this one is str0m.
-  Membership is the state-event form (`org.matrix.msc3401.call.member`)
-  because Dendrite has no sticky events; each advertises an `org.losos.sfu`
-  transport, and the page always dials its own `/calls/api/ws`. The SFU
+  A membership is a sticky `org.matrix.msc4143.rtc.member` event (MSC4354)
+  with a delayed leave (MSC4140), both of which only Synapse has; each
+  publishes an `org.losos.sfu` transport, and the page always dials its own
+  `/calls/api/ws`. The SFU
   owns the call id: `POST /calls/api/calls` hands back the room's live call
   (`created:false`), so two starts never split. Ringing is MSC4075
   (`org.matrix.msc4075.rtc.notification`, the SDK's receiving rules),
-  decline MSC4310. New private rooms and DMs carry the open slot and a
-  level-0 membership in their power levels; in an older room an admin's
-  first call adds them. A start also sends an `m.notice` with a
+  decline MSC4310. New private rooms and DMs carry the open slot; in an
+  older room an admin's first call opens it. A start also sends an `m.notice` with a
   `/chat/?join=` link for other Matrix apps, which LosOS Chat hides.
   MatrixRTC's own media keys are off: every frame is AES-GCM sealed by the
   browser's encoded transform (`admin-ui/app/src/calls/e2ee.ts`, worker
@@ -294,15 +298,17 @@ and is never served or built by nix.
   the Overview's Statistics tile draw `src/statistics/` (shared with the
   edge's manage page). `nix/tests/podman-apps.nix` boots it.
 - `chat.nix` + `backend/src/chat.rs` + `admin-ui/app/src/chat/` (LosOS
-  Chat, `/chat/`, its own Vite page of the admin UI): Dendrite as `shared` in
-  `/home/shared/data/chat`, only while `lososInternal.sharedSide`
-  (`sharingMyStorage` and `cluster.enable`, the gate mail shares); off, nginx
+  Chat, `/chat/`, its own Vite page of the admin UI): Synapse (unit
+  `losos-chat`, SQLite) as `shared` in `/home/shared/data/chat/synapse`
+  (a box that ran Dendrite keeps its files beside it, unread), only while
+  `lososInternal.sharedSide` (`sharingMyStorage` and `cluster.enable`, the
+  gate mail shares); off, nginx
   sends `/chat/` home and `/_matrix/` 404s. No Matrix passwords: lososd is an
   application service over every user and the only way in
   (`/api/chat/session`), and nginx asks `/internal/chat/authz` before every
   client and media request (LosOS Login cookie plus a token of that same
-  person). Dendrite has no thread list; lososd answers it through
-  `losos-chat-threads` as `shared`. The client is matrix-js-sdk with its Rust
+  person). The application service's user namespace is not exclusive:
+  Synapse leaves an exclusive one's users out of its directory. The client is matrix-js-sdk with its Rust
   crypto under the Lab's CSP arm. `nix/tests/chat.nix` boots it and drives
   two browsers (`chat-browser.mjs`); its output holds the screenshots.
 - `mail.nix` + `backend/src/mail.rs` (`losos.mail.*`): LosOS Mail. Stalwart
@@ -1160,37 +1166,27 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   `sharingPausedAt`); only its own pause is undone, and a box that never
   reached an edge while sharing (the shared side's VM tests) is never
   paused. On top of that,
-  each answering edge is challenged (`GET /identity?nonce=`) and counts as
-  official only if its certificate is signed by the LosOS root key in
-  `nix/keys/official-edge-root.pub` (`losos.proxy.officialRootKeyFile`), names
-  that URL, is unexpired, and the nonce is signed by the certificate's key.
-  The market relay refuses everything else (`{available:false,
-  reason:"noOfficialEdge"}`, 409 `officialEdgeRequired`). The committed key
-  file is **empty on purpose** until the owner writes the public key: no
-  root, nothing official, market off. The private key lives offline with the
-  owner and is never committed; `losos-registrar identity
-  {keygen,sign,show,verify}` are the primitives (`edge/registrar/src/identity.rs`,
-  used by `nix/tests/edge-lan.nix`, which builds its own root at build time
-  rather than trusting the shipped file), `losos.edge.identity.{keyFile,certFile}`
-  the edge side. The ceremony an operator runs is `losos-registrar provision
-  {whoami,root-keygen,publish,edge,verify}` (`edge/registrar/src/provision.rs`),
-  **on the operator's own machine**: every verb that makes or uses the root
-  key first signs the operator in with GitHub's OAuth device flow (public
-  client id only, no secret) and refuses unless the account's *numeric id*
-  is in `edge/registrar/operators.json`, which is compiled into the
-  binary. `provision edge` reads the edge's own public key from
-  `GET /identity/public-key` (the registrar makes the key on its first
-  start; the private half never leaves the edge), signs the certificate
-  and pushes it to `POST /identity/cert` with the sign-in's GitHub token,
-  which the edge resolves against the same compiled-in allowlist before it
-  installs anything (`server::identity_push`), then runs the four checks;
-  no SSH; `root-keygen --publish` / `publish` open
-  the PR that fills `nix/keys/official-edge-root.pub` with the same sign-in
-  (`public_repo`). `tests/provision.rs` runs all of it against a fake GitHub
-  and a real registrar. The gate decides whom the tooling serves; the root
-  key stays the whole secret. The box runs no CI runner: the earlier
-  from-the-box ceremony
-  (Actions workflows plus `modules/git-runner.nix`) is gone, and
+  each answering edge is checked as an open gateway (`GET /passport?nonce=`,
+  `POST /passport/attest`; `backend/access/src/gateway/check.rs`, the edge's
+  half `edge/registrar/src/gateway.rs`, `losos.edge.passport.enable`) and
+  counts as official only if its owner's OpenPGP passport holds, its TPM's
+  endorsement certificate chains to `losos.proxy.gateways.tpmRoots`, its
+  quote over PCRs 4, 11 and 15 shows a published image
+  (`losos.proxy.gateways.images`) and the settings it measured at boot, and
+  those settings pay LosOS's 2% to `losos.proxy.gateways.payouts`. The
+  market relay refuses everything else (`{available:false,
+  reason:"noOfficialEdge"}`, 409 `officialEdgeRequired`); proof of
+  tampering disables the edge on that box for good
+  (`/var/lib/losos/gateways.json`). `nix/gateway/images.nix` and
+  `payouts.nix` are **empty on purpose** until the image and the addresses
+  are published: nothing official, market off. There is no root key.
+  `nix/tests/open-gateway.nix` is the VM tests' fixture (a throwaway TPM
+  maker, swtpm EK certificates, passports). `losos-registrar provision
+  {whoami,token}` (`edge/registrar/src/provision.rs`) runs **on the
+  operator's own machine** behind GitHub's OAuth device flow (public client
+  id only, no secret) and refuses unless the account's *numeric id* is in
+  `edge/registrar/operators.json`, which is compiled into the binary. The
+  box runs no CI runner, and
   `docs/provisioning/edge-identity/README.md` is the operator runbook. The
   operator's machine has no Nix store, so `.#losos-registrar-static`
   (`pkgsStatic`, musl, same `cargoHash`) is the binary for it: CI's

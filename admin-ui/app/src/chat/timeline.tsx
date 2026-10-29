@@ -23,6 +23,7 @@ import {
   type Room,
   RoomEvent,
   RoomMemberEvent,
+  RoomStickyEventsEvent,
 } from "matrix-js-sdk";
 import { Masked } from "@/components/details";
 import { openReport } from "@/components/report-dialog";
@@ -50,6 +51,8 @@ export const TIMELINE_EVENTS = [
   RoomEvent.Receipt,
   MatrixEventEvent.Decrypted,
   ClientEvent.Event,
+  // Who is in the room's call (rtc.ts).
+  RoomStickyEventsEvent.Update,
 ] as const;
 
 export interface RowActions {

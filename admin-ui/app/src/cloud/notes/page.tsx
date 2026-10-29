@@ -17,9 +17,9 @@ import { cn } from "@/lib/utils";
 import { CanvasView } from "@/notes/canvas-view";
 import { GraphView } from "@/notes/graph";
 import { folderOf, isNote } from "@/notes/links";
-import { anchorFor, renderNote, type Rendered } from "@/notes/markdown";
+import { anchorFor, flavourOf, renderNote, toNote, type Rendered } from "@/notes/markdown";
 import { MindMap, outline } from "@/notes/mindmap";
-import { NoteView } from "@/notes/note-view";
+import { NoteView, useNotesReady } from "@/notes/note-view";
 import { NoteSide } from "@/notes/side";
 import { VaultTree } from "@/notes/tree";
 import { DEFAULT_GRAPH, displayName, Vault, type GraphOptions, type Hit, type VaultIndex } from "@/notes/vault";
@@ -201,15 +201,22 @@ export function NotesPage() {
     setTree(false);
   };
 
+  const notesReady = useNotesReady();
   const rendered: Rendered | null = React.useMemo(() => {
-    if (shown === null || vault === null || path === null || canvas) return null;
-    return renderNote(shown, vault.resolver(path, source));
-  }, [shown, vault, path, source, canvas]);
+    if (!notesReady || shown === null || vault === null || path === null || canvas) return null;
+    return renderNote(shown, vault.resolver(path, source), flavourOf(path));
+  }, [notesReady, shown, vault, path, source, canvas]);
 
   const resolverFor = React.useCallback((p: string) => (vault === null ? NO_RESOLVER : vault.resolver(p, source)), [vault, source]);
   const load = React.useCallback((p: string) => source.text(p), [source]);
   const labels = React.useMemo(
-    () => ({ properties: t("notes.properties"), embedLoading: t("notes.embed.loading"), embedMissing: t("notes.embed.missing") }),
+    () => ({
+      properties: t("notes.properties"),
+      embedLoading: t("notes.embed.loading"),
+      embedMissing: t("notes.embed.missing"),
+      problems: t("notes.problems"),
+      line: (line: number) => t("notes.problems.line", { line }),
+    }),
     [t],
   );
 
@@ -242,7 +249,7 @@ export function NotesPage() {
         return;
       }
       // New notes go to the vault's top, as Obsidian puts them by default.
-      rel = name.includes("/") ? (isNote(name) ? name : `${name}.md`) : vault.freeName("", name);
+      rel = name.includes("/") ? (isNote(name) ? name : `${name}.note`) : vault.freeName("", name);
     } else {
       rel = vault.freeName(path === null ? "" : folderOf(path), t("notes.untitled"));
     }
@@ -258,6 +265,41 @@ export function NotesPage() {
       open(rel, "", "edit");
     } catch (err) {
       toast.error(t("notes.error.create"), explain(err), { help: "index" });
+    }
+  };
+
+  // A .md note as a .note: the same text in MDX, written over the .md
+  // (refused if it changed meanwhile), then moved to the new name, so the
+  // file keeps its history and its shares.
+  const [converting, setConverting] = React.useState(false);
+  const convert = async () => {
+    if (path === null || vault === null || !/\.md$/i.test(path)) return;
+    const name = displayName({ path, title: null });
+    const next = path.replace(/\.md$/i, ".note");
+    if (vault.index.notes.some((n) => n.path === next)) {
+      toast.error(t("notes.convert.refused", { name }), t("notes.convert.taken"), { help: "index" });
+      return;
+    }
+    setConverting(true);
+    try {
+      const file = joinPath(root, path);
+      const now = await readText(file);
+      let text: string;
+      try {
+        text = await toNote(now.text);
+      } catch (err) {
+        toast.error(t("notes.convert.refused", { name }), err instanceof Error ? err.message : String(err), { help: "index" });
+        return;
+      }
+      if (text !== now.text) await writeText(file, text, { etag: now.etag });
+      await cloud.move(file, joinPath(root, next));
+      await reload();
+      open(next);
+      toast.success(t("notes.convert.done", { name }));
+    } catch (err) {
+      toast.error(t("notes.error.save"), explain(err), { help: "index" });
+    } finally {
+      setConverting(false);
     }
   };
 
@@ -361,17 +403,25 @@ export function NotesPage() {
             </h1>
           </div>
           {!canvas && (
-            <ToggleGroup variant="outline" value={view} onValueChange={(v) => v !== "" && setView(v as View)} aria-label={t("notes.view.label")}>
-              <ToggleGroupItem value="read" data-view="read">
-                {t("notes.view.read")}
-              </ToggleGroupItem>
-              <ToggleGroupItem value="edit" data-view="edit">
-                {t("notes.view.edit")}
-              </ToggleGroupItem>
-              <ToggleGroupItem value="map" data-view="map">
-                {t("notes.view.map")}
-              </ToggleGroupItem>
-            </ToggleGroup>
+            <div className="flex flex-wrap items-center gap-2">
+              {/\.md$/i.test(path) && view === "read" && (
+                <Button variant="outline" size="sm" onClick={() => void convert()} disabled={converting} title={t("notes.convert.what")} data-convert-note>
+                  {converting && <Spinner />}
+                  {t("notes.convert.action")}
+                </Button>
+              )}
+              <ToggleGroup variant="outline" value={view} onValueChange={(v) => v !== "" && setView(v as View)} aria-label={t("notes.view.label")}>
+                <ToggleGroupItem value="read" data-view="read">
+                  {t("notes.view.read")}
+                </ToggleGroupItem>
+                <ToggleGroupItem value="edit" data-view="edit">
+                  {t("notes.view.edit")}
+                </ToggleGroupItem>
+                <ToggleGroupItem value="map" data-view="map">
+                  {t("notes.view.map")}
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </div>
           )}
         </header>
         {textError !== null && !editing && (

@@ -45,6 +45,13 @@ pub struct HostRecord {
     /// certificate. Absent for a host with a certificate the web trusts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tls_pin: Option<String>,
+    /// Where a box is reached away from its LAN, through its edge, when it
+    /// named one at login (`edgeUrl`, losos.access.throughEdge): an
+    /// `https://` address with a certificate the web trusts. The host key
+    /// pinned above is what every call through it is sealed to, so the
+    /// edge carries calls without reading them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edge_url: Option<String>,
 }
 
 /// One spelling per host: scheme and host lower case, no trailing slash, no

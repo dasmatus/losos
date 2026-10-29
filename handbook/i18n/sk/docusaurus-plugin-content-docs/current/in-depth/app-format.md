@@ -7,6 +7,8 @@ mdx:
 
 # Formát aplikácií
 
+![Panel Aplikácie: LosOS Cloud, LosOS Git, vaše vlastné aplikácie a Nájsť ďalšie.](@site/docs/img/apps-sk.png)
+
 Aplikácia pre zariadenie LosOS je jeden súbor Compose a súbory vedľa neho.
 Zariadenie ju spúšťa ako `notshared` na Podmane bez roota, cez Podman
 Compose, a nepotrebuje na to žiadny klaster. Ten istý formát slúži dvom

@@ -242,7 +242,7 @@ async function open(path, { locale = 'en-US', viewport = { width: 1280, height: 
    * stylesheet is in the bundle; see tests/mail.browser.mjs). Nothing
    * after that may add a violation. */
   const atLoad = await page.evaluate(() => window.__violations);
-  assert.ok(atLoad.every((d) => d === 'style-src-elem'), `CSP violations at load: ${JSON.stringify(atLoad)}`);
+  assert.deepEqual(atLoad, [], `CSP violations at load: ${JSON.stringify(atLoad)}`);
   const settle = async () => {
     const violations = (await page.evaluate(() => window.__violations)).slice(atLoad.length);
     assert.deepEqual(violations, [], `CSP violations: ${violations.join(', ')}`);

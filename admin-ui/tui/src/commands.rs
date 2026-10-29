@@ -379,6 +379,17 @@ struct Served {
     fingerprint: String,
     public_key: String,
     tls_pin: Option<String>,
+    /// Where a box says it is reached through its edge.
+    edge_url: Option<String>,
+}
+
+/// The edge address a box's host key answer names, when it is a web
+/// address with TLS; anything else is not kept.
+fn edge_url(kind: HostKind, doc: &Value) -> Option<String> {
+    let raw = doc.get("edgeUrl").and_then(Value::as_str)?;
+    (kind == HostKind::Box && raw.starts_with("https://"))
+        .then(|| normalize_url(raw).ok())
+        .flatten()
 }
 
 fn fetch_host_key(url: &str) -> Result<Served> {
@@ -388,7 +399,8 @@ fn fetch_host_key(url: &str) -> Result<Served> {
         let at = host_key_url(url, kind);
         tracing::info!(url = %at, "asking for the host key");
         let response = http.get(&at, "application/json").map_err(|e| match e {
-            crate::http::HttpError::Unreachable(detail) => Problem::new(
+            crate::http::HttpError::Unreachable(detail)
+            | crate::http::HttpError::NoConnection(detail) => Problem::new(
                 "losos::unreachable",
                 tr!("tui.login.unreachable", url = url, detail = detail),
             ),
@@ -431,6 +443,7 @@ fn fetch_host_key(url: &str) -> Result<Served> {
             fingerprint: key.fingerprint,
             public_key: public_key.to_string(),
             tls_pin,
+            edge_url: edge_url(kind, &doc),
         });
     }
     Err(Problem::new(
@@ -536,6 +549,7 @@ fn ci_session(io: &Io) -> Result<Session> {
         token: need("LOSOS_EDGE_TOKEN")?.trim().to_string(),
         key_fingerprint: key.fingerprint().to_string(),
         tls_pin: None,
+        edge_url: None,
     };
     Session::new(&record, key.unlock("")?, Http::new(Trust::Public))
 }
@@ -696,10 +710,14 @@ fn login(
         token,
         key_fingerprint: key_fingerprint.expect("a key was chosen"),
         tls_pin: served.tls_pin.clone(),
+        edge_url: served.edge_url.clone(),
     })?;
     io.line(tr!("tui.login.done", url = &url, kind = served.kind.word()));
     if let Some(pin) = served.tls_pin {
         io.line(tr!("tui.login.certificatePinned", pin = group_pin(&pin)));
+    }
+    if let Some(edge) = served.edge_url {
+        io.line(tr!("tui.login.edgeUrl", url = &edge));
     }
     Ok(0)
 }
@@ -735,6 +753,9 @@ fn hosts(io: &mut Io) -> Result<u8> {
             tr!("tui.about.userKey"),
             group_fingerprint(&h.key_fingerprint)
         ));
+        if let Some(edge) = &h.edge_url {
+            io.line(format!("  {}: {edge}", tr!("tui.host.edgeUrl")));
+        }
     }
     Ok(0)
 }
