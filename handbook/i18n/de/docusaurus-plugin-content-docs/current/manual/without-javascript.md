@@ -69,3 +69,13 @@ Seiten. Menüs, das Einklappen der Seitenleiste und der Dialog, der vor dem
 Nutzen der Reserve nachfragt, öffnen und schließen sich allein mit CSS.
 Hinweise gleiten herein und gehen von selbst, ebenfalls mit CSS, und bleiben
 stehen, wenn dein System weniger Bewegung wünscht.
+
+## Dieses Handbuch \{#this-handbook}
+
+Das Handbuch lässt sich auch ohne JavaScript lesen, auf der Box und im Web.
+Auf dem Handy öffnet der Menüknopf die Kapitel als Seitenblatt. Ein Kapitel
+in der Seitenleiste öffnet seine eigene Seite, und **Auf dieser Seite**, das
+Sprachmenü und Hell, Dunkel oder die Wahl des Browsers funktionieren. Ein
+gewähltes Aussehen gilt nur für die Seite, auf der du es gewählt hast. Die
+Suche braucht JavaScript, darum öffnet das Suchfeld stattdessen eine Liste
+aller Seiten, die die Suchfunktion deines Browsers durchsucht.
