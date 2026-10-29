@@ -21,8 +21,10 @@
     description = "Keep the guest's cache of the host store small";
     wantedBy = [ "multi-user.target" ];
     script = ''
+      # 3 is the page cache and the slab; 4 keeps the kernel from logging
+      # each drop to the console.
       while sleep 1; do
-        echo 3 >/proc/sys/vm/drop_caches
+        echo 7 >/proc/sys/vm/drop_caches
       done
     '';
   };
