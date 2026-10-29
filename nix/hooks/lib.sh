@@ -237,6 +237,24 @@ hook_tool() {
 
 hook_npm() { hook_tool npm nodejs "$@"; }
 
+# LosOS Diagrams' three WebAssembly packages, which admin-ui/app imports and
+# git ignores (src/lab/{core,virt,render}-pkg). tsc needs them, so a checkout
+# without one gets the package the flake builds (`npm run lab:<name>` would
+# need cargo for wasm32 and the pinned wasm-bindgen).
+hook_lab_pkgs() {
+  local name out dir
+  for name in core virt render; do
+    dir=$hook_root/admin-ui/app/src/lab/$name-pkg
+    [ -d "$dir" ] && continue
+    hook_need_nix || return 1
+    echo "── src/lab/$name-pkg from .#losos-lab-$name"
+    out=$(nix build --no-link --print-out-paths "$(hook_flake)#losos-lab-$name") || return 1
+    mkdir -p "$dir"
+    cp -r "$out"/. "$dir"/
+    chmod -R u+w "$dir"
+  done
+}
+
 hook_need_nix() {
   if ! command -v nix >/dev/null 2>&1; then
     echo "nix is not installed; this check evaluates or builds the flake" >&2
