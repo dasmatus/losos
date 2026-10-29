@@ -68,6 +68,8 @@ pub struct FakeLosos {
     /// Registrar answers by `METHOD path`, as `(status, body)`. A route with no
     /// entry models a box with no registrar configured.
     pub market_routes: std::collections::BTreeMap<String, (u16, String)>,
+    /// The edge `market_config` reports; `None`, no master proxy.
+    pub market_config: Option<crate::market::Config>,
     /// Every operation asked for, in order.
     pub market_ops: Vec<crate::market::Op>,
     /// The live custom domains last handed to LosOS Cloud; `None` until the
@@ -287,6 +289,7 @@ impl FakeLosos {
             app_jobs: Vec::new(),
             app_jobs_active: Vec::new(),
             market_routes: std::collections::BTreeMap::new(),
+            market_config: None,
             market_ops: Vec::new(),
             public_names: None,
             relay_pass: None,
@@ -552,6 +555,10 @@ impl Losos for FakeLosos {
             ..crate::edge::PathRule::default()
         });
         Ok(self.edge.clone())
+    }
+
+    fn market_config(&mut self) -> Option<crate::market::Config> {
+        self.market_config.clone()
     }
 
     fn market_request(&mut self, op: &crate::market::Op) -> anyhow::Result<crate::market::Outcome> {

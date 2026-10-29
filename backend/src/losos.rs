@@ -107,6 +107,12 @@ pub trait Losos {
     /// any other error is a fault for the journal.
     fn market_request(&mut self, op: &crate::market::Op) -> anyhow::Result<crate::market::Outcome>;
 
+    /// The edge this box trades through and its id there, or `None` with no
+    /// master proxy configured.
+    fn market_config(&mut self) -> Option<crate::market::Config> {
+        crate::market::Config::from_env()
+    }
+
     // ── Finding an edge proxy ───────────────────────────────────────────
     /// What the last scan for an edge proxy found (`crate::edge`). The real
     /// daemon answers from its scanner's cache; the fake answers what a test

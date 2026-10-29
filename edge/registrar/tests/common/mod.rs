@@ -335,6 +335,28 @@ impl Edge {
         .await
     }
 
+    /// As [`Edge::start_with_market_and_mesh`], with a last change to the
+    /// options: how the backup door's tests name its image.
+    pub async fn start_market_and_mesh_tweaked(
+        tag: &str,
+        tenants: &[TenantSpec],
+        stripe_api: &str,
+        mesh: MeshFixture,
+        tweak: impl FnOnce(&mut ServeOpts, &TempDir) + Send + 'static,
+    ) -> Self {
+        Self::start_inner_seeded(
+            tag,
+            tenants,
+            mesh,
+            None,
+            Some(stripe_api.to_string()),
+            &[("seller-box", true)],
+            None,
+            Some(Box::new(tweak)),
+        )
+        .await
+    }
+
     /// As [`Edge::start`], serving `pin` at `/tunnel-pin`.
     pub async fn start_with_tunnel_pin(tag: &str, tenants: &[TenantSpec], pin: &str) -> Self {
         Self::start_inner(tag, tenants, MeshFixture::default(), Some(pin), None).await
@@ -597,6 +619,7 @@ impl Edge {
                 currency: "eur".to_string(),
                 fee_bps: losos_registrar::market::DEFAULT_FEE_BPS,
                 storage_class: losos_registrar::market::DEFAULT_STORAGE_CLASS.to_string(),
+                storage_image: None,
                 hardware_catalogue: Some(dir.path_str("hardware.json")),
                 vms: None,
                 usdc: None,

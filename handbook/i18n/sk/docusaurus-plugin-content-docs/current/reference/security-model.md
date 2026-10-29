@@ -23,6 +23,10 @@ mohli polemizovať.
 4. **Vaše súbory ↔ kópie mesh siete.** Zariadenie má dva účty s oddelenými
    skupinami a domovskými adresármi v režime 700. Adresár mesh siete je
    šifrovaný vlastným kľúčom, ktorý zariadenie načíta iba počas zdieľania.
+   Tento kľúč je na zariadení, ktoré miesto požičiava. Ak chcete mať v mesh
+   sieti vlastné dáta, zálohujte ich na úložisko, ktoré ste si tam kúpili:
+   vaše zariadenie ich pred odoslaním zašifruje vaším kódom obnovy
+   a požičiavatelia aj edge majú len šifrovaný text.
 5. **Oficiálny edge ↔ akýkoľvek edge.** Zariadenie nesie koreňový verejný
    kľúč, podľa ktorého rozozná edge LosOS od firemného. Obchodovanie
    potrebuje edge LosOS, všetko ostatné funguje s oboma. Súkromná polovica

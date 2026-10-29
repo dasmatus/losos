@@ -37,6 +37,7 @@ fn opts(state: &Path) -> MarketOpts {
         currency: "eur".to_string(),
         fee_bps: DEFAULT_FEE_BPS,
         storage_class: "longhorn".to_string(),
+        storage_image: None,
         hardware_catalogue: None,
         vms: None,
         usdc: None,

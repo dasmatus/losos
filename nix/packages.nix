@@ -48,6 +48,9 @@
 #                because that is how it reaches a binary cache: the appliance
 #                substitutes it, it never builds it (see the header of
 #                nix/images.nix).
+#   losos-image-rest-server — restic's REST server, which an edge runs on a
+#                buyer's bought volume; modules/edge.nix hands it to the
+#                edge's rke2 and names it to the registrar.
 #   losos-lab-core — LosOS Diagrams' core in Rust (admin-ui/lab/core/),
 #                built for wasm32 and run through wasm-bindgen. The page is
 #                the admin UI's second page (admin-ui/app/diagrams/), served

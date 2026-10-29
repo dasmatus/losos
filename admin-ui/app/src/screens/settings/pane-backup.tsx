@@ -14,11 +14,14 @@ import { Input, MonoInput } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Spinner } from "@/components/ui/progress";
 import {
+  getMarket,
   getRecoveryCode,
+  isAbort,
   isUnauthorized,
   type BackupResponse,
   type BackupTarget,
   type BackupTargetInput,
+  type MarketOrder,
   type StorageClass,
 } from "@/lib/api";
 import { intlTag, type MessageKey } from "@/lib/i18n";
@@ -51,7 +54,12 @@ import { useBackup, type BackupData } from "./use-backup";
  *
  * On Amazon S3 the owner can put the backups in Glacier. The two cold
  * classes make a restore wait hours while AWS thaws the data, so the pane
- * says so beside the choice and again before and during a restore. */
+ * says so beside the choice and again before and during a restore.
+ *
+ * Storage this box bought on the mesh is the other place backups can go.
+ * The edge that sold it opens the volume to the key the recovery code
+ * makes (backup.rs, `door_secret`), so the same code reaches it from a new
+ * box, and the volume holds the same ciphertext a bucket would. */
 
 export function BackupPane({ locked, rebuilding }: { locked: boolean; rebuilding: boolean }) {
   const t = useT();
@@ -87,6 +95,23 @@ export function BackupPane({ locked, rebuilding }: { locked: boolean; rebuilding
 
   const { view } = state;
   const running = view.job?.state === "running";
+  return <Ready view={view} backup={backup} locked={locked} rebuilding={rebuilding} running={running} />;
+}
+
+function Ready({
+  view,
+  backup,
+  locked,
+  rebuilding,
+  running,
+}: {
+  view: BackupResponse;
+  backup: BackupData;
+  locked: boolean;
+  rebuilding: boolean;
+  running: boolean;
+}) {
+  const volumes = useBoughtVolumes(!locked);
   const disabled = locked || backup.busy || view.erase !== null;
   /* lososd refuses a backup or a restore while a change is being applied
    * (erase.rs, ensure_idle); the buttons say so before anyone clicks. */
@@ -94,7 +119,12 @@ export function BackupPane({ locked, rebuilding }: { locked: boolean; rebuilding
   return (
     <>
       {waiting && <WaitingForChange />}
-      <TargetSection view={view} backup={backup} disabled={disabled || running} />
+      <TargetSection
+        view={view}
+        backup={backup}
+        volumes={volumes}
+        disabled={disabled || running}
+      />
       <CodeSection locked={locked} />
       <BackupsSection view={view} backup={backup} disabled={disabled || running || waiting} />
       <RestoreSection view={view} backup={backup} disabled={disabled || running || waiting} />
@@ -139,6 +169,8 @@ function useClassName(): (id: StorageClass) => string {
   return (id) => CLASSES.find((c) => c.id === id)?.name ?? t("panes.backup.target.classStandard");
 }
 
+const GIB = 1024 ** 3;
+
 const EMPTY: BackupTargetInput = {
   endpoint: "",
   bucket: "",
@@ -150,10 +182,39 @@ const EMPTY: BackupTargetInput = {
 };
 
 function draftOf(target: BackupTarget | null): BackupTargetInput {
-  if (target === null) return EMPTY;
+  if (target === null || isBought(target)) return EMPTY;
   return { ...target, secretAccessKey: "", storageClass: classOf(target) };
 }
 
+function isBought(target: BackupTarget | null): boolean {
+  return target?.bought !== undefined && target.bought !== null;
+}
+
+/* The storage orders of this box's that have their volume and have not
+ * lapsed, from the market account. A box with no market sees none, and the
+ * pane is the bucket form alone, as before. */
+function useBoughtVolumes(enabled: boolean): MarketOrder[] {
+  const [orders, setOrders] = React.useState<MarketOrder[]>([]);
+  React.useEffect(() => {
+    if (!enabled) return;
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const market = await getMarket({ signal: controller.signal });
+        if (!market.available) return;
+        setOrders(
+          market.account.purchases.filter(
+            (o) => o.kind === "storage" && o.status === "paid" && o.volume !== null && !o.expired,
+          ),
+        );
+      } catch (error) {
+        if (!isAbort(error)) setOrders([]);
+      }
+    })();
+    return () => controller.abort();
+  }, [enabled]);
+  return orders;
+}
 
 /* A change is being applied: backups, restores and the erase wait for it. */
 function WaitingForChange() {
@@ -173,10 +234,12 @@ function WaitingForChange() {
 function TargetSection({
   view,
   backup,
+  volumes,
   disabled,
 }: {
   view: BackupResponse;
   backup: BackupData;
+  volumes: MarketOrder[];
   disabled: boolean;
 }) {
   const t = useT();
@@ -197,6 +260,54 @@ function TargetSection({
     setDraft((d) => ({ ...d, [field]: event.target.value }));
 
   const target = view.target;
+  if (!editing && target?.bought) {
+    const bought = target.bought;
+    const order = volumes.find((o) => o.id === bought.order);
+    return (
+      <PaneSection data-testid="backup-bought">
+        <GroupTitle>{t("panes.backup.target.title")}</GroupTitle>
+        <Group>
+          <Row>
+            <RowText
+              title={t("panes.backup.bought.current")}
+              detail={
+                order === undefined
+                  ? undefined
+                  : t("panes.backup.bought.size", { size: formatBytes(order.quantity * GIB) })
+              }
+            />
+            <RowValue className="truncate select-all">{bought.order}</RowValue>
+          </Row>
+          <Row>
+            <RowText title={t("panes.backup.bought.edge")} />
+            <RowValue className="truncate select-all">{bought.edge}</RowValue>
+          </Row>
+          <Row last className="justify-end">
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={disabled}
+              onClick={() => void backup.forgetTarget()}
+            >
+              {t("panes.backup.bought.forget")}
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={disabled}
+              onClick={() => {
+                setDraft(EMPTY);
+                setEditing(true);
+              }}
+            >
+              {t("panes.backup.bought.toBucket")}
+            </Button>
+          </Row>
+        </Group>
+        <GroupCaption>{t("panes.backup.bought.caption")}</GroupCaption>
+      </PaneSection>
+    );
+  }
   if (!editing && target !== null) {
     return (
       <PaneSection data-testid="backup-target">
@@ -268,9 +379,35 @@ function TargetSection({
     if (await backup.saveTarget(input)) setEditing(false);
   };
 
+  const offered = volumes.filter((o) => o.id !== target?.bought?.order);
   return (
+    <>
+      {offered.length > 0 && (
+        <PaneSection data-testid="backup-bought-offer">
+          <GroupTitle>{t("panes.backup.bought.title")}</GroupTitle>
+          <Group>
+            {offered.map((o, i) => (
+              <Row key={o.id} last={i === offered.length - 1}>
+                <RowText
+                  title={t("panes.backup.bought.size", { size: formatBytes(o.quantity * GIB) })}
+                  detail={o.id}
+                />
+                <Button
+                  size="sm"
+                  disabled={disabled}
+                  data-testid="backup-bought-use"
+                  onClick={() => void backup.useBought(o.id).then((ok) => ok && setEditing(false))}
+                >
+                  {t("panes.backup.bought.use")}
+                </Button>
+              </Row>
+            ))}
+          </Group>
+          <GroupCaption>{t("panes.backup.bought.caption")}</GroupCaption>
+        </PaneSection>
+      )}
     <PaneSection data-testid="backup-target-form">
-      <GroupTitle>{t("panes.backup.target.title")}</GroupTitle>
+      <GroupTitle>{t(offered.length > 0 ? "panes.backup.target.orBucket" : "panes.backup.target.title")}</GroupTitle>
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -378,15 +515,17 @@ function TargetSection({
           <Row last className="justify-end">
             {target !== null && (
               <>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={disabled}
-                  onClick={() => void backup.forgetTarget()}
-                >
-                  {t("panes.backup.target.forget")}
-                </Button>
+                {!isBought(target) && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={disabled}
+                    onClick={() => void backup.forgetTarget()}
+                  >
+                    {t("panes.backup.target.forget")}
+                  </Button>
+                )}
                 <Button
                   type="button"
                   variant="secondary"
@@ -406,6 +545,7 @@ function TargetSection({
       </form>
       <GroupCaption>{t("panes.backup.target.caption")}</GroupCaption>
     </PaneSection>
+    </>
   );
 }
 

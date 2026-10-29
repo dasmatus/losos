@@ -1,4 +1,4 @@
-# The OCI image the LOCAL k3s cluster runs.
+# The OCI images LosOS builds for its clusters.
 #
 # One of them now: the sandbox (pause) image every pod on the local cluster is
 # built around. The box's own apps used to run here as pods too; LosOS Cloud
@@ -34,6 +34,25 @@ let
   };
 in
 {
+  # restic's REST server, which an edge runs on a buyer's bought volume
+  # (edge/registrar/src/server/storage.rs) so the buyer's box can keep its
+  # restic backups there. It is the one image here the LOCAL cluster never
+  # sees: the edge's own rke2 imports it, and the registrar names it in a
+  # Deployment with imagePullPolicy Never. The tag is the server's version
+  # rather than the output hash, because the registrar is told the name by
+  # modules/edge.nix and a box on another build may ask: the version is the
+  # contract, and two builds of one version serve the same protocol.
+  losos-image-rest-server = pkgs.dockerTools.buildLayeredImage {
+    name = "losos.local/rest-server";
+    tag = pkgs.restic-rest-server.version;
+    compressor = "zstd";
+    contents = [ pkgs.restic-rest-server ];
+    config = {
+      Entrypoint = [ "/bin/rest-server" ];
+      User = "65534:65534";
+    };
+  };
+
   losos-image-pause = pkgs.dockerTools.buildLayeredImage {
     name = "losos.local/pause";
     compressor = "zstd";

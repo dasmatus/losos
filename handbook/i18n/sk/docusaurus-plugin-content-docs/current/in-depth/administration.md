@@ -365,6 +365,16 @@ vyžadovalo rozmrazenie. Pravidlo životného cyklu, ktoré presunie bucket do
 Glacier, by so sebou vzalo aj metadáta resticu, preto sa trieda vyberá na
 paneli.
 
+Panel ponúka aj každú objednávku úložiska, ktorú zariadenie kúpilo na
+[trhu](/in-depth/market.md), keď je jej zväzok naviazaný. Zálohy potom idú
+cez edge, ktorý ho predal, protokolom REST nástroja restic na
+`/market/storage/<order>/`, s rovnakým šifrovaním ako pri buckete. Edge
+otvorí zväzok len kľúču, ktorý zariadenie vytvorí zo svojho kódu obnovy
+a id objednávky (`POST /api/backup/target/bought`), takže zálohu neprečíta
+edge ani zariadenia, ktoré držia repliky zväzku, a nové zariadenie s tým
+istým kódom z nej dokáže obnoviť. Zariadenie pre tento cieľ nedrží žiadne
+tajomstvo: úloha zálohy vytvorí kľúč z kódu zakaždým znova.
+
 Bucket drží posledných sedem. lososd spúšťa každú zálohu a obnovu ako
 prechodnú jednotku `losos-backup-<job>`, spustenú systemd mimo sandboxu
 `ProtectHome=true` lososd. Kľúče bucketu sú zapečatené v úložisku
