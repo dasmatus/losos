@@ -12,13 +12,18 @@ for an edge, [docs/edge-terminal.md](../../docs/edge-terminal.md).
 On a 64-bit x86 Linux computer:
 
 ```sh
-curl -fsSL https://proxy.losos.dasmat.us/updates/main/x86_64/install.sh | sh
+curl -fsSLO https://nightly.link/dasmatus/losos/workflows/ci/main/losos-pages-updates.zip
+unzip -o losos-pages-updates.zip -d losos-pages-updates
+sh losos-pages-updates/install.sh
 ```
 
-The script downloads `losos` and `SHA256SUMS`, checks one against the
-other, and puts the program in `~/.local/bin`, or in `/usr/local/bin` when
-run as root. It never runs sudo. `LOSOS_CHANNEL` picks another channel. Read
-[install.sh](install.sh) before piping it anywhere. It is short.
+The zip is the newest successful CI build of `main`, through
+[nightly.link](https://nightly.link): `losos`, `losos-registrar`,
+`install.sh` and `SHA256SUMS`. The script checks `losos` against the sums,
+and puts it in `~/.local/bin`, or in `/usr/local/bin` when run as root. It
+never runs sudo. Piped into `sh` on its own, it downloads the zip itself,
+and `LOSOS_CHANNEL` then picks another branch. Read
+[install.sh](install.sh) before you run it. It is short.
 
 `losos` keeps your keys and tokens in the desktop's keychain through
 `secret-tool`. The package is `libsecret-tools` on Debian and Ubuntu and

@@ -100,12 +100,15 @@ revoke tokens, and none can reach the setup wizard or the sign-in.
 ## Install the client
 
 ```sh
-curl -fsSL https://proxy.losos.dasmat.us/updates/main/x86_64/install.sh | sh
+curl -fsSLO https://nightly.link/dasmatus/losos/workflows/ci/main/losos-pages-updates.zip
+unzip -o losos-pages-updates.zip -d losos-pages-updates
+sh losos-pages-updates/install.sh
 ```
 
-The script downloads the program and its checksum, checks one against the
-other, and puts `losos` in `~/.local/bin`, or in `/usr/local/bin` when you
-run it as root. It never asks for a password. Read it first if you like.
+The zip is the newest build of the client from LosOS's GitHub, with the
+program, its checksum and the script. The script checks the program against
+the checksum and puts `losos` in `~/.local/bin`, or in `/usr/local/bin` when
+you run it as root. It never asks for a password. Read it first if you like.
 It is short and says what it does at the top.
 
 `losos` keeps your key and tokens in the desktop's keychain (GNOME
