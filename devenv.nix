@@ -208,7 +208,7 @@ in
       lld
       wasm-tools
 
-      # Nix tooling the git hooks below call.
+      # Nix tooling the git hooks call (nix/hooks).
       nixfmt-rfc-style
       deadnix
       statix
@@ -228,63 +228,16 @@ in
       starship
     ]);
 
-  # ── Pre-commit hooks ─────────────────────────────────────────────────────
-  # These are the gate CI runs, moved to before the commit instead of after
-  # the push. Until the `lint` CI job was added, nothing enforced clippy or
-  # rustfmt anywhere, and edge/registrar had drifted to 17 rustfmt hunks
-  # plus a clippy error without anyone noticing.
-  #
-  # The stock `rustfmt`/`clippy` hooks are not used: they assume one crate at
-  # the repo root, and this tree has two crates in subdirectories with no
-  # workspace linking them. Custom entries pass --manifest-path for each.
-  git-hooks.hooks = {
-    rustfmt-both = {
-      enable = true;
-      name = "rustfmt (both crates)";
-      entry = "${pkgs.writeShellScript "rustfmt-both" ''
-        set -e
-        ${forEachLinted (c: "cargo fmt${fmtAll c} --manifest-path ${c}/Cargo.toml --check")}
-      ''}";
-      files = "\\.rs$";
-      pass_filenames = false;
-    };
-
-    clippy-both = {
-      enable = true;
-      name = "clippy -D warnings (both crates)";
-      entry = "${pkgs.writeShellScript "clippy-both" ''
-        set -e
-        ${forEachLinted (c: "cargo clippy --manifest-path ${c}/Cargo.toml --all-targets -- -D warnings")}
-      ''}";
-      files = "\\.(rs|toml)$";
-      pass_filenames = false;
-    };
-
-    nixfmt-rfc-style.enable = true;
-    deadnix.enable = true;
-    statix = {
-      enable = true;
-      settings.config = "nix/statix.toml";
-    };
-
-    # Codeberg's Terms of Use ban repos that mostly consist of generated code,
-    # and an attribution trailer is the cheapest thing to flag on. Keep the
-    # history free of them.
-    no-attribution-trailers = {
-      enable = true;
-      name = "no attribution trailers in the commit message";
-      entry = "${pkgs.writeShellScript "no-attribution-trailers" ''
-        set -e
-        msg="$1"
-        [ -n "$msg" ] && [ -f "$msg" ] || exit 0
-        if grep -qiE '^(co-authored-by|generated[- ]with):' "$msg"; then
-          echo "commit message carries an attribution trailer; drop it" >&2
-          exit 1
-        fi
-      ''}";
-      stages = [ "commit-msg" ];
-    };
-  };
+  # ── Git hooks ────────────────────────────────────────────────────────────
+  # The hooks are plain scripts in nix/hooks (pre-commit, commit-msg,
+  # pre-push), not devenv's git-hooks, so a clone without devenv runs the
+  # same ones: `nix develop` and a Claude Code session install them too
+  # (flake.nix, .claude/settings.json), and anyone else runs
+  # `bash nix/hooks/install` once. enterShell below points this clone's
+  # core.hooksPath at them. They replay CI's gates for the files a commit or
+  # a push touches; nix/hooks/pre-commit and nix/hooks/pre-push say which.
+  # devenv's git-hooks would install pre-commit's own runner into
+  # .git/hooks, which git ignores once core.hooksPath is set.
 
   # ── Scripts ──────────────────────────────────────────────────────────────
   # `nix` is invoked as `command nix` throughout: on the maintainer's machine
@@ -301,6 +254,11 @@ in
     ${forEachLinted (c: "cargo clippy --manifest-path ${c}/Cargo.toml --all-targets -- -D warnings")}
   '';
   scripts.lint.description = "rustfmt --check + clippy -D warnings, every crate.";
+
+  # The Nix lints over the whole tree; CI's eval job and the git hooks run
+  # the same script.
+  scripts.lint-nix.exec = ''bash "$DEVENV_ROOT/nix/lint-nix.sh" "$@"'';
+  scripts.lint-nix.description = "nixfmt --check, deadnix and statix over every tracked .nix file.";
 
   # The Lab canvas's two wasm32 builds, WebGL2 then WebGPU, with the target
   # directory removed in between: each is several gigabytes of Bevy and they
@@ -324,11 +282,13 @@ in
   scripts.lint-wasm.description = "clippy -D warnings on lososd's plugins, losos-mdx's browser build and the Lab canvas's WebGL2 and WebGPU builds, all wasm32.";
 
   # The registrar's Bitcoin and Monero orders run against real regtest
-  # nodes (edge/registrar/tests/{bitcoin,monero}.rs); CI's test job
-  # builds the same packages from the flake's nixpkgs.
+  # nodes (edge/registrar/tests/{bitcoin,monero}.rs), and its Tang keys
+  # against Tang's own tangd (tests/tang.rs); CI's test job builds the
+  # same packages from the flake's nixpkgs.
   scripts.test-rust.exec = ''
     export LOSOS_TEST_BITCOIND=${pkgs.bitcoind}/bin/bitcoind
     export LOSOS_TEST_MONEROD=${pkgs.monero-cli}/bin/monerod
+    export LOSOS_TEST_TANG=${pkgs.tang}
     ${forEachCrate (c: "cargo test --manifest-path ${c}/Cargo.toml")}
   '';
   scripts.test-rust.description = "Unit tests for every Rust crate.";
@@ -393,22 +353,7 @@ in
   # from the build toolchain for two weeks after dependabot bumped flake.lock
   # (PR #4) and nobody bumped the other two. CI runs the same comparison in
   # its `pins` job; keep the two in step by hand, like every other gate here.
-  scripts.check-pins.exec = ''
-    set -eu
-    lock=$(${lib.getExe pkgs.jq} -r '.nodes.nixpkgs.locked.rev' flake.lock)
-    yaml=$(${pkgs.gnugrep}/bin/grep -oE '[0-9a-f]{40}' devenv.yaml | head -1)
-    dlock=$(${lib.getExe pkgs.jq} -r '.nodes.nixpkgs.locked.rev' devenv.lock)
-    if [ "$lock" != "$yaml" ] || [ "$lock" != "$dlock" ]; then
-      echo "nixpkgs pins disagree:" >&2
-      echo "  flake.lock  $lock" >&2
-      echo "  devenv.yaml $yaml" >&2
-      echo "  devenv.lock $dlock" >&2
-      echo "Bump all three together: nix flake update nixpkgs, copy the rev into" >&2
-      echo "devenv.yaml, then devenv update." >&2
-      exit 1
-    fi
-    echo "nixpkgs pin agrees across flake.lock, devenv.yaml and devenv.lock ($lock)"
-  '';
+  scripts.check-pins.exec = ''bash "$DEVENV_ROOT/nix/check-pins.sh"'';
   scripts.check-pins.description = "Assert flake.lock, devenv.yaml and devenv.lock pin the same nixpkgs.";
 
   # flake check only forces each nixosConfiguration's toplevel *derivation*;
@@ -537,6 +482,7 @@ in
     set -e
     check-pins
     lint
+    lint-nix
     lint-wasm
     test-rust
     check-flake
@@ -544,8 +490,10 @@ in
   '';
 
   enterShell = ''
+    bash "$DEVENV_ROOT/nix/hooks/install"
     echo "losos dev shell"
     echo "  fmt · lint · test-rust        Rust"
+    echo "  lint-nix                      nixfmt, deadnix, statix"
     echo "  test-tui                      the static losos in a pseudo-terminal"
     echo "  test-solana-escrow            the Solana escrow program (needs Anza's tools)"
     echo "  test-evm-escrow               the EVM escrow on a local chain (fetches tools)"

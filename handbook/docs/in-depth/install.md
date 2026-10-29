@@ -7,7 +7,7 @@ mdx:
 
 # Install in depth
 
-![Settings, Network.](../img/settings-network.png)
+![Settings, Network on an installed box: its name and how it is reached.](../img/settings-network.png)
 
 ## Get the installer
 

@@ -1090,6 +1090,11 @@ pub fn start_edge_scanner(backend: &IoLosos) {
 /// are public anyway; they are in public DNS.
 pub const DEFAULT_PUBLIC_NAMES_FILE: &str = "/var/lib/losos-public-names/domains.json";
 
+/// Where modules/public-tls.nix keeps the box's own certificates and writes
+/// `ready` (the names it ends TLS for) and `probe.json` (its look at them
+/// from outside) (`$LOSOS_PUBLIC_TLS_DIR`).
+pub const DEFAULT_PUBLIC_TLS_DIR: &str = "/var/lib/losos-public-tls";
+
 /// Where the relay pass goes for `losos-registrar announce --relay-pass-file`
 /// (modules/proxy.nix). On `/run`: a pass is good for hours, so there is
 /// nothing to keep across a reboot, and the next sync writes a fresh one.
@@ -2133,6 +2138,22 @@ impl Losos for IoLosos {
         cluster: Option<&str>,
     ) -> anyhow::Result<crate::edge::EdgeStatus> {
         IoLosos::set_edge_cluster(self, cluster)
+    }
+
+    fn public_tls(&mut self) -> anyhow::Result<crate::edge::PublicTls> {
+        let dir = std::path::PathBuf::from(env_or("LOSOS_PUBLIC_TLS_DIR", DEFAULT_PUBLIC_TLS_DIR));
+        let read = |name: &str| -> anyhow::Result<Option<String>> {
+            let path = dir.join(name);
+            match std::fs::read_to_string(&path) {
+                Ok(body) => Ok(Some(body)),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+                Err(e) => Err(e).with_context(|| format!("reading {}", path.display())),
+            }
+        };
+        Ok(crate::edge::public_tls_from(
+            read("ready")?.as_deref(),
+            read("probe.json")?.as_deref(),
+        ))
     }
 
     fn save_state(&mut self, s: &State) -> anyhow::Result<()> {

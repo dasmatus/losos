@@ -17,6 +17,7 @@ fn tenant(id: &str, hostname: &str, port: u16, token: &str) -> TenantView {
         tunnel_port: port,
         token: token.to_string(),
         llm_port: None,
+        tls: None,
     }
 }
 
@@ -146,4 +147,97 @@ fn a_lending_box_gets_a_second_tunnel_service_on_its_llm_port() {
     let yaml = files.traefik.document().unwrap();
     assert!(!yaml.contains("23001"), "{yaml}");
     assert!(!yaml.contains("box-a:llm"), "{yaml}");
+}
+
+#[test]
+fn a_box_that_ends_tls_itself_is_routed_by_sni_and_the_edge_holds_no_certificate() {
+    let mut b = tenant("mattbox", "mattbox.losos.cfd", 50000, "TOK");
+    b.tls = Some(vec!["mattbox.losos.cfd".to_string()]);
+    let mut extra = std::collections::BTreeMap::new();
+    extra.insert("mattbox".to_string(), vec!["files.example.org".to_string()]);
+    let files = losos_registrar::config::desired_config_with_hosts(&[b], &extra);
+    let doc: serde_json::Value = serde_json::from_str(&files.traefik.document().unwrap()).unwrap();
+
+    // The name it holds a certificate for: passthrough on websecure, to the
+    // same tunnel port.
+    let r = &doc["tcp"]["routers"]["mattbox"];
+    assert_eq!(r["rule"], "HostSNI(`mattbox.losos.cfd`)");
+    assert_eq!(r["entryPoints"][0], "websecure");
+    assert_eq!(r["tls"]["passthrough"], true);
+    assert_eq!(
+        doc["tcp"]["services"]["mattbox"]["loadBalancer"]["servers"][0]["address"],
+        "127.0.0.1:50000"
+    );
+    // The one it does not hold yet: no websecure route at all, and above
+    // all no router with the edge's own certificate for either name.
+    assert!(doc["tcp"]["routers"]["mattbox-host-0"].is_null());
+    let http = doc["http"]["routers"].as_object().unwrap();
+    assert!(
+        http.values().all(|r| r["tls"].is_null()),
+        "an http router with TLS for a passthrough box: {doc}"
+    );
+    // Both names get the HTTP-01 path on web, and only that path.
+    for (name, host) in [
+        ("mattbox-acme", "mattbox.losos.cfd"),
+        ("mattbox-host-0-acme", "files.example.org"),
+    ] {
+        let r = &http[name];
+        assert_eq!(r["entryPoints"][0], "web");
+        assert_eq!(
+            r["rule"],
+            format!("Host(`{host}`) && PathPrefix(`/.well-known/acme-challenge/`)")
+        );
+        assert_eq!(r["service"], "mattbox");
+    }
+    assert_eq!(files.traefik.hosts(), vec!["mattbox.losos.cfd".to_string()]);
+    assert_eq!(
+        files.traefik.passthrough_hosts(),
+        vec!["mattbox.losos.cfd".to_string()]
+    );
+}
+
+#[test]
+fn passthrough_with_no_certificate_yet_routes_only_the_acme_path() {
+    let mut b = tenant("mattbox", "mattbox.losos.cfd", 50000, "TOK");
+    b.tls = Some(Vec::new());
+    let files = desired_config(&[b]);
+    let doc: serde_json::Value = serde_json::from_str(&files.traefik.document().unwrap()).unwrap();
+    // A tcp section with a service and no router is still valid for
+    // Traefik; what matters is that nothing answers on websecure.
+    assert!(doc["tcp"]["routers"].is_null());
+    assert!(doc["http"]["routers"]["mattbox"].is_null());
+    assert_eq!(
+        doc["http"]["routers"]["mattbox-acme"]["entryPoints"][0],
+        "web"
+    );
+}
+
+#[test]
+fn a_box_that_leaves_tls_to_the_edge_still_gets_the_acme_path() {
+    let files = desired_config(&[tenant("mattbox", "mattbox.losos.cfd", 50000, "TOK")]);
+    let doc: serde_json::Value = serde_json::from_str(&files.traefik.document().unwrap()).unwrap();
+    assert_eq!(
+        doc["http"]["routers"]["mattbox-acme"]["entryPoints"][0],
+        "web"
+    );
+    assert_eq!(
+        doc["http"]["routers"]["mattbox"]["tls"]["certResolver"],
+        "le"
+    );
+    assert!(doc["tcp"].is_null());
+}
+
+#[test]
+fn the_offline_page_stays_on_websecure_routers() {
+    let mut a = tenant("a", "a.losos.cfd", 50000, "TOK");
+    a.tls = Some(vec!["a.losos.cfd".to_string()]);
+    let b = tenant("b", "b.losos.cfd", 50001, "TOK");
+    let files = desired_config(&[a, b]);
+    let routes = files.traefik.with_offline_page("http://127.0.0.1:8090");
+    let doc: serde_json::Value = serde_json::from_str(&routes.document().unwrap()).unwrap();
+    assert_eq!(
+        doc["http"]["routers"]["b"]["middlewares"][0],
+        "losos_offline"
+    );
+    assert!(doc["http"]["routers"]["a-acme"]["middlewares"].is_null());
 }

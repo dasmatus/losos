@@ -63,41 +63,41 @@ Edge wieder antwortet.
 
 ## Offiziell oder nicht \{#official-or-not}
 
-Jede Edge, die antwortet, öffnet das Teilen. Nur die LosOS-Edge darf den
-Markt betreiben, also muss eine Box sie von jeder anderen Edge
-unterscheiden. Eine Edge zu finden und ihr Geld anzuvertrauen sind zwei
-verschiedene Fragen. Jede Box trägt einen öffentlichen Root-Schlüssel von
-LosOS. Eine offizielle Edge weist sich bei jedem Suchlauf aus. Sie legt ein
-Zertifikat vor, das mit dem passenden privaten Schlüssel signiert ist, den
-nur das Projekt hält, und zwar offline. Außerdem signiert sie mit dem
-eigenen Schlüssel des Zertifikats eine frische Herausforderung, die sich die
-Box gerade ausgedacht hat. Die Box macht vier Prüfungen, und die Edge gilt
-nur dann als offiziell, wenn alle vier bestehen.
+Jede Edge, die antwortet, öffnet das Teilen. Nur eine Edge, die die
+Gateway-Prüfung besteht, darf den Markt betreiben, also muss eine Box sie von
+jeder anderen Edge unterscheiden. Eine Edge zu finden und ihr Geld
+anzuvertrauen sind zwei verschiedene Fragen. Eine solche Edge darf jeder
+betreiben. Sie weist sich bei jedem Suchlauf aus: Ein Pass, den ihr Betreiber
+signiert hat, nennt sie, ihr TPM zeigt, dass ein veröffentlichtes
+LosOS-Gateway-Image unverändert gestartet ist, und ihre Einstellungen zahlen
+den Anteil von LosOS an die Adressen, die jede Box mitbringt. Die Box prüft
+all das, und die Edge gilt nur dann als offiziell, wenn alles besteht.
 
 Der Bereich Mesh zeigt das Ergebnis als Zeichen neben dem Namen jeder Edge.
-Eine offizielle Edge bekommt ein Häkchen. Jede andere Edge bekommt eine
-Warnung, mit einem Tooltip, der auflistet, was diese Edge für diese Box nicht
-tun kann: auf dem Markt kaufen oder den freien Speicher und die freie
-Rechenleistung dieser Box verkaufen. Eine Box, die die Signatur nicht prüfen
-kann, behandelt die Edge als [Firmen-Edge](company-edge). Erkennung,
-Fernzugriff und Teilen funktionieren, Handel nicht, und der Bereich Markt
-sagt: „Der Edge-Proxy, den diese Box gefunden hat, wird nicht von LosOS
-betrieben.“ Nichts, was eine Firma konfiguriert, kann ihre eigene Edge
-offiziell machen. Das ist Absicht.
+Ein geprüftes Gateway bekommt ein Häkchen, mit Betreiber und Image im
+Tooltip. Jede andere Edge bekommt eine Warnung, mit einem Tooltip, der
+auflistet, was diese Edge für diese Box nicht tun kann: auf dem Markt kaufen
+oder den freien Speicher und die freie Rechenleistung dieser Box verkaufen.
+Eine Edge, die die Box bei einer Manipulation ertappt hat, bekommt ein
+Stoppzeichen, und die Box nutzt sie für nichts mehr. Eine Edge ohne Pass
+behandelt die Box als [Firmen-Edge](company-edge). Erkennung, Fernzugriff und
+Teilen funktionieren, Handel nicht, und der Bereich Markt sagt: „Der
+Edge-Proxy, den diese Box gefunden hat, hat die Gateway-Prüfung nicht
+bestanden.“
 
 ![Das Warnzeichen neben einer Edge, die nicht offiziell ist, mit seinem Tooltip, der auflistet, was diese Edge für diese Box nicht tun kann.](@site/docs/img/mesh-warning-tooltip-de.png)
 
-:::note[Bis der Schlüssel veröffentlicht ist]
-Jede Box wird mit einer leeren Root-Schlüsseldatei ausgeliefert, bis das
-Projekt den öffentlichen Schlüssel veröffentlicht. Bis dahin ist keine Edge
-offiziell, jede Edge trägt das Warnzeichen, und der Markt ist auf jeder Box
-aus. Das ist die sichere Richtung, in die es scheitern kann.
+:::note[Bis Image und Adressen veröffentlicht sind]
+Jede Box wird mit einer leeren Liste von Gateway-Images und einer leeren
+Liste der Auszahlungsadressen von LosOS ausgeliefert, bis das Projekt sie
+veröffentlicht. Bis dahin besteht keine Edge, jede Edge trägt das
+Warnzeichen, und der Markt ist auf jeder Box aus. Das ist die sichere
+Richtung, in die es scheitern kann.
 :::
 
-Der Projektinhaber bewahrt den Root-Schlüssel offline auf, nie auf einer Box
-oder einer Edge. Jede offizielle Edge hat einen eigenen Schlüssel, der die
-Edge nie verlässt, und ein Zertifikat, das der Root-Schlüssel für sie
-signiert hat.
+Kein LosOS-Schlüssel macht eine Edge offiziell. Die Box vertraut dem
+Image, auf dem die Edge läuft und für das ihr TPM bürgt, und dem Pass, den
+ihr Betreiber signiert hat.
 
 Die Aufnahme bei der Edge, die entscheidet, welche Box durch sie tunneln
 darf, ist eine eigene Sache. Die Edge führt eine Zulassungsliste von Boxen,

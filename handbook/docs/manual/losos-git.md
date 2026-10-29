@@ -36,6 +36,8 @@ A repository's pages are in the sidebar:
 - **Settings** renames the repository, changes its description and who
   can see it. Only the repository's owner and its admins see it.
 
+![LosOS Git's first page: the repositories, each with a badge for who can see it, and New repository.](../img/git-repos.png)
+
 ### Who can see a repository
 
 Every repository has one of three settings, shown as a badge beside its
@@ -51,6 +53,8 @@ name:
 Whatever the setting, only you and the people you add can push. Someone
 who opens `/git/` without signing in sees the public repositories and a
 **Sign in** button.
+
+![A repository's Settings: its name and description, Who can see it set to This box, and the AI review switch.](../img/git-settings.png)
 
 ## Clone and push
 
@@ -120,6 +124,8 @@ box refuses a merge that has conflicts; merge the base branch into yours,
 push, and try again. **Close without merging** sets a pull request aside, and **Reopen**
 brings it back.
 
+![A merged pull request on the Conversation tab: the description, an approving review with one line comment, the passed checks and the merge, with the reviewer on the right.](../img/git-pull.png)
+
 ## Worktrees
 
 A worktree is one checkout of a repository on one computer, made with
@@ -139,6 +145,8 @@ git push -u origin fix-backup
 request for that branch, if there is one. A pull request whose branch is
 pushed from a named worktree shows that worktree's name in its header.
 **Forget** takes a worktree off the list; its next push puts it back.
+
+![The Worktrees page: two worktrees with their computer, branch, owner and last push, one of them merged and its branch deleted, and the commands that name a worktree.](../img/git-worktrees.png)
 
 ## Wiki
 

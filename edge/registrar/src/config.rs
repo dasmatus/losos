@@ -47,6 +47,12 @@ pub struct TenantView {
     /// forwards to the box's llama.cpp RPC server; only the model head on this
     /// edge connects to it. Populated by the reconciler like `token`.
     pub llm_port: Option<u16>,
+    /// The names this box ends TLS for itself (`crate::passthrough`), or
+    /// `None` for a box that leaves TLS to the edge. `Some` with a name
+    /// missing means the box asked for passthrough and has no certificate
+    /// for that name yet. Populated by the reconciler from the box's last
+    /// heartbeat, like `llm_port`.
+    pub tls: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,11 +79,14 @@ pub struct Files {
 // Traefik doesn't understand is a compile error against these structs, not a
 // runtime "unknown field" from Traefik.
 
-/// Root of the provider document: `{"http": {...}}`, or `{}` with no routes.
+/// Root of the provider document: `{"http": {...}, "tcp": {...}}`, each
+/// section only when it routes something, or `{}` with no routes.
 #[derive(Debug, Serialize, Deserialize)]
 struct TraefikConfig {
     #[serde(default, skip_serializing_if = "Routes::is_empty")]
     http: Routes,
+    #[serde(default, skip_serializing_if = "TcpRoutes::is_empty")]
+    tcp: TcpRoutes,
 }
 
 /// The `http:` section of a dynamic config: routers, the middlewares they
@@ -93,13 +102,86 @@ pub struct Routes {
     middlewares: BTreeMap<String, TraefikMiddleware>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     services: BTreeMap<String, TraefikService>,
+    /// The `tcp:` section beside this one: the boxes that end TLS
+    /// themselves. Not part of the `http` document; [`provider_document`]
+    /// puts it beside it.
+    #[serde(skip)]
+    tcp: TcpRoutes,
+}
+
+/// The `tcp:` section of a dynamic config: one router per name a box holds
+/// a certificate for, `HostSNI(<name>)` on `websecure` with
+/// `tls.passthrough`, so Traefik reads the name from the ClientHello and
+/// hands the TLS bytes on unopened, and one service per box at the same
+/// tunnel port its `http` service uses.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TcpRoutes {
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    routers: BTreeMap<String, TcpRouter>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    services: BTreeMap<String, TcpService>,
+}
+
+impl TcpRoutes {
+    fn is_empty(&self) -> bool {
+        self.routers.is_empty() && self.services.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TcpRouter {
+    rule: String,
+    service: String,
+    entry_points: Vec<String>,
+    tls: TcpTls,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct TcpTls {
+    passthrough: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TcpService {
+    load_balancer: TcpLoadBalancer,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct TcpLoadBalancer {
+    servers: Vec<TcpServer>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct TcpServer {
+    address: String,
 }
 
 impl Routes {
     /// No router, middleware or service.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.routers.is_empty() && self.middlewares.is_empty() && self.services.is_empty()
+        self.routers.is_empty()
+            && self.middlewares.is_empty()
+            && self.services.is_empty()
+            && self.tcp.is_empty()
+    }
+
+    /// The names routed by passthrough: the box behind each holds its own
+    /// certificate for it, and this edge holds none. Sorted.
+    #[must_use]
+    pub fn passthrough_hosts(&self) -> Vec<String> {
+        let mut hosts: Vec<String> = self
+            .tcp
+            .routers
+            .values()
+            .filter_map(|r| host_sni(&r.rule))
+            .collect();
+        hosts.sort();
+        hosts.dedup();
+        hosts
     }
 
     /// The hostnames routed, sorted: what the boxes are reachable at.
@@ -113,6 +195,7 @@ impl Routes {
                     .iter()
                     .flat_map(|t| t.domains.iter().map(|d| d.main.clone()))
             })
+            .chain(self.passthrough_hosts())
             .collect();
         hosts.sort();
         hosts.dedup();
@@ -132,6 +215,16 @@ impl Routes {
                 .and_then(|t| t.domains.first())
                 .map(|d| d.main.clone())
             else {
+                continue;
+            };
+            if *name == router.service {
+                hosts.insert(router.service.clone(), host);
+            } else {
+                hosts.entry(router.service.clone()).or_insert(host);
+            }
+        }
+        for (name, router) in &self.tcp.routers {
+            let Some(host) = host_sni(&router.rule) else {
                 continue;
             };
             if *name == router.service {
@@ -161,6 +254,20 @@ impl Routes {
         );
         self.services
             .extend(other.services.iter().map(|(k, v)| (k.clone(), v.clone())));
+        self.tcp.routers.extend(
+            other
+                .tcp
+                .routers
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone())),
+        );
+        self.tcp.services.extend(
+            other
+                .tcp
+                .services
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone())),
+        );
     }
 
     /// Put [`OFFLINE_MIDDLEWARE`] in front of every router: a box Traefik
@@ -174,7 +281,9 @@ impl Routes {
         }
         let mut out = self.clone();
         for r in out.routers.values_mut() {
-            r.middlewares.push(OFFLINE_MIDDLEWARE.to_string());
+            if r.entry_points.iter().any(|e| e == "websecure") {
+                r.middlewares.push(OFFLINE_MIDDLEWARE.to_string());
+            }
         }
         out.middlewares.insert(
             OFFLINE_MIDDLEWARE.to_string(),
@@ -221,7 +330,8 @@ pub fn provider_document<'a>(parts: impl IntoIterator<Item = &'a Routes>) -> Str
     for part in parts {
         http.extend(part);
     }
-    serde_json::to_string(&TraefikConfig { http })
+    let tcp = std::mem::take(&mut http.tcp);
+    serde_json::to_string(&TraefikConfig { http, tcp })
         .expect("serializing TraefikConfig is infallible for String/Vec/BTreeMap fields")
 }
 
@@ -345,40 +455,76 @@ pub fn desired_config_with_hosts(
     let mut routers: BTreeMap<String, TraefikRouter> = BTreeMap::new();
     let mut services: BTreeMap<String, TraefikService> = BTreeMap::new();
 
+    let mut tcp = TcpRoutes::default();
+
     for t in sorted {
         let id = t.id.clone();
         let host = t.hostname.clone();
-        routers.insert(
-            id.clone(),
-            TraefikRouter {
-                rule: format!("Host(`{host}`)"),
-                service: id.clone(),
-                entry_points: vec!["websecure".to_string()],
-                middlewares: Vec::new(),
-                tls: Some(TraefikTls {
-                    cert_resolver: Some("le".to_string()),
-                    domains: vec![TraefikDomain { main: host.clone() }],
-                }),
-            },
-        );
+        // The router names, each with its host: `<id>` for the box's own
+        // name, `<id>-host-<n>` for each extra one in sorted order.
+        let mut names: Vec<(String, String)> = vec![(id.clone(), host.clone())];
         if let Some(hosts) = extra_hosts.get(&t.id) {
             let mut hosts: Vec<&String> = hosts.iter().filter(|h| **h != host).collect();
             hosts.sort();
             hosts.dedup();
             for (n, extra) in hosts.into_iter().enumerate() {
-                routers.insert(
-                    format!("{id}-host-{n}"),
-                    TraefikRouter {
-                        rule: format!("Host(`{extra}`)"),
-                        service: id.clone(),
-                        entry_points: vec!["websecure".to_string()],
-                        middlewares: Vec::new(),
-                        tls: Some(TraefikTls {
-                            cert_resolver: Some("le".to_string()),
-                            domains: vec![TraefikDomain {
-                                main: extra.clone(),
+                names.push((format!("{id}-host-{n}"), extra.clone()));
+            }
+        }
+        let upstream = format!("http://127.0.0.1:{port}", port = t.tunnel_port);
+        match &t.tls {
+            // The edge ends TLS for the box, with a certificate of its own.
+            // The HTTP-01 path is routed to it all the same, so a box can
+            // get its own certificates before it asks for passthrough and
+            // the move costs no moment without https.
+            None => {
+                for (name, host) in names {
+                    routers.insert(format!("{name}-acme"), acme_router(&host, &id));
+                    routers.insert(
+                        name,
+                        TraefikRouter {
+                            rule: format!("Host(`{host}`)"),
+                            service: id.clone(),
+                            entry_points: vec!["websecure".to_string()],
+                            middlewares: Vec::new(),
+                            tls: Some(TraefikTls {
+                                cert_resolver: Some("le".to_string()),
+                                domains: vec![TraefikDomain { main: host }],
+                            }),
+                        },
+                    );
+                }
+            }
+            // The box ends TLS itself (`crate::passthrough`). Per name: the
+            // ACME HTTP-01 path on `web`, so the box can prove the name and
+            // renew its own certificate, and where the box says it holds
+            // one, a passthrough router on `websecure`. A name the box holds no
+            // certificate for yet gets no `websecure` router at all, rather
+            // than one with the edge's certificate: an edge that never holds
+            // a certificate for the name cannot read its traffic.
+            Some(ready) => {
+                for (name, host) in names {
+                    routers.insert(format!("{name}-acme"), acme_router(&host, &id));
+                    if ready.iter().any(|r| r.eq_ignore_ascii_case(&host)) {
+                        tcp.routers.insert(
+                            name,
+                            TcpRouter {
+                                rule: format!("HostSNI(`{host}`)"),
+                                service: id.clone(),
+                                entry_points: vec!["websecure".to_string()],
+                                tls: TcpTls { passthrough: true },
+                            },
+                        );
+                    }
+                }
+                tcp.services.insert(
+                    id.clone(),
+                    TcpService {
+                        load_balancer: TcpLoadBalancer {
+                            servers: vec![TcpServer {
+                                address: format!("127.0.0.1:{}", t.tunnel_port),
                             }],
-                        }),
+                        },
                     },
                 );
             }
@@ -387,9 +533,7 @@ pub fn desired_config_with_hosts(
             id.clone(),
             TraefikService {
                 load_balancer: TraefikLoadBalancer {
-                    servers: vec![TraefikServer {
-                        url: format!("http://127.0.0.1:{port}", port = t.tunnel_port),
-                    }],
+                    servers: vec![TraefikServer { url: upstream }],
                 },
             },
         );
@@ -400,9 +544,34 @@ pub fn desired_config_with_hosts(
             routers,
             middlewares: BTreeMap::new(),
             services,
+            tcp,
         },
         tunnel_json,
     }
+}
+
+/// The router on plain `web` for Let's Encrypt's HTTP-01 requests for
+/// `host`, to the box's service: the one path of a box's name the edge
+/// carries without TLS (`crate::passthrough::ACME_PATH`).
+fn acme_router(host: &str, service: &str) -> TraefikRouter {
+    TraefikRouter {
+        rule: format!(
+            "Host(`{host}`) && PathPrefix(`{}`)",
+            crate::passthrough::ACME_PATH
+        ),
+        service: service.to_string(),
+        entry_points: vec!["web".to_string()],
+        middlewares: Vec::new(),
+        tls: None,
+    }
+}
+
+/// The name in a `HostSNI(`<name>`)` rule, the only shape the registrar
+/// writes.
+fn host_sni(rule: &str) -> Option<String> {
+    rule.strip_prefix("HostSNI(`")?
+        .strip_suffix("`)")
+        .map(str::to_string)
 }
 
 /// The tunnel's service file: `<id>` on the tenant's port, and `<id>:llm` on
@@ -470,6 +639,7 @@ pub fn vm_routes(routes: &[(String, String)]) -> Routes {
         routers,
         middlewares: BTreeMap::new(),
         services,
+        tcp: TcpRoutes::default(),
     }
 }
 

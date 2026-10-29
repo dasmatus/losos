@@ -17,6 +17,8 @@ ist, was es liest, woran es gebunden ist und wann es sich zuletzt geändert
 hat. Ein Wert wird nie angezeigt, und nichts auf der Seite kann einen
 offenlegen.
 
+![Einstellungen, Zugangsdaten: woran die Geheimnisse versiegelt sind, dann jedes mit seinem Zweck, seiner Herkunft, seiner letzten Änderung und wer es liest, und Neu erzeugen bei denen, die sich ersetzen lassen.](@site/docs/img/settings-credentials-de.png)
+
 ## Wo sie liegen
 
 Jedes Zugangsdatum ist eine Datei in `/etc/credstore.encrypted`,

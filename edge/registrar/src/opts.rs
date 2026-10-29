@@ -259,6 +259,9 @@ pub struct ServeOpts {
     /// The edge as a way out (`crate::exit`). `None` unless `--exit-dir`
     /// was given.
     pub exit: Option<crate::exit::ExitOpts>,
+    /// The boxes' Tang keys (`crate::tang`). `None` unless `--tang-dir` was
+    /// given.
+    pub tang: Option<crate::tang::TangOpts>,
     /// The ECH key (`crate::ech`): `--ech-key-file FILE --ech-public-name
     /// NAME`. `None` publishes no HTTPS records with an `ech` value.
     pub ech: Option<EchOpts>,
@@ -367,6 +370,14 @@ pub struct AnnounceOpts {
     /// made for this box (`crate::hidden`), from each heartbeat's answer.
     /// Removed when the edge makes none.
     pub hidden_file: Option<String>,
+    /// `--tls-ready-file`: the public names this box holds its own
+    /// certificate for, one per line (`crate::passthrough`), re-read on every
+    /// heartbeat. Present, even empty, asks the edge to pass TLS through;
+    /// missing leaves TLS to the edge.
+    pub tls_ready_file: Option<String>,
+    /// `--tls-names-file`: where to keep the public names the edge routes to
+    /// this box, from each heartbeat's answer, for the certificate unit.
+    pub tls_names_file: Option<String>,
 }
 
 /// `join` options. Runs once per boot on the appliance, from
@@ -588,6 +599,13 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                             .map_err(|_| miette!("bad --exit-onion-port"))?,
                     }),
                 },
+                tang: arg(&rest, "--tang-dir").map(|dir| crate::tang::TangOpts {
+                    dir: dir.into(),
+                    tangd: arg(&rest, "--tangd").unwrap_or("tangd").into(),
+                    keygen: arg(&rest, "--tangd-keygen")
+                        .unwrap_or("tangd-keygen")
+                        .into(),
+                }),
                 operator: arg(&rest, "--access-dir").map(|dir| crate::operator::OperatorOpts {
                     access_dir: dir.to_string(),
                     keys_file: arg(&rest, "--access-keys-file")
@@ -706,6 +724,8 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
             managed_file: arg(&rest, "--managed-file").map(str::to_string),
             llm_lend_file: arg(&rest, "--llm-lend-file").map(str::to_string),
             hidden_file: arg(&rest, "--hidden-file").map(str::to_string),
+            tls_ready_file: arg(&rest, "--tls-ready-file").map(str::to_string),
+            tls_names_file: arg(&rest, "--tls-names-file").map(str::to_string),
         })),
         "ech-key" => Ok(Mode::EchKey(EchOpts {
             key_file: req(&rest, "--key-file")?.to_string(),

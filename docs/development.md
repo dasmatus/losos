@@ -7,19 +7,68 @@ devenv shell        # or: direnv allow
 devenv test         # pin checks, lint, rust tests, flake eval (no builds)
 ```
 
-`nix develop` gives the toolchain only, for people without devenv.
+`nix develop` gives the toolchain only, for people without devenv. Both
+install the [git hooks](#git-hooks).
 
 | Script                         | Does |
 | ------------------------------ | ---- |
 | `fmt` · `lint` · `test-rust`   | Format, lint and test both Rust crates |
 | `check-flake` · `check-eval`   | Evaluate the flake; force the full module merge |
-| `check-pins`                   | Fail if `flake.lock` and `devenv.lock` pin different nixpkgs |
+| `check-pins`                   | Fail if `flake.lock`, `devenv.yaml` and `devenv.lock` pin different nixpkgs |
 | `build-pkgs` · `build-iso`     | Build the packages; build the installer ISO |
 | `build-images` · `build-media` | OCI images; demo QCOW2 and closure ISO (large, opt-in) |
 | `vm-tests`                     | All NixOS VM tests (needs `/dev/kvm`) |
 
 `devenv test` does not build packages or the installer ISO, or run VM tests.
 Those are separate opt-in scripts.
+
+## Git hooks
+
+`nix/hooks/` holds three git hooks that replay CI's gates on the machine
+that makes a change, for the files it touches. The paths pick CI's lanes
+through `.github/scripts/ci-changes.sh`, so a lane CI would skip is skipped
+here too.
+
+| Hook | Runs |
+| --- | --- |
+| `commit-msg` | refuses an attribution trailer or a session link |
+| `pre-commit` | `cargo fmt --check` on every crate; clippy `-D warnings` on each crate the change reaches; `nix/lint-nix.sh` (nixfmt, deadnix, statix) on the staged `.nix` files; `nix/check-pins.sh` when a lock or `devenv.yaml` changes; `fix-hashes.py --check` when a `Cargo.lock` or `package-lock.json` does; `npm run typecheck` in `admin-ui/app` (a checkout without the Diagrams WebAssembly packages gets them from `.#losos-lab-{core,virt,render}`); CI's eval job: `nix/check-flake.sh`, the module merge of `install`, `iso` and `edge-gateway`, the ISO and edge image derivations |
+| `pre-push` | all of pre-commit over the whole branch against its merge base with `origin/main`, plus `cargo test` for each crate reached, clippy for wasm32, `.#checks.x86_64-linux.losos-admin-ui` (the built SPA and its Playwright suite), `.#losos-handbook` when the handbook changes, and the VM tests the change touches |
+
+`devenv shell` and `nix develop` set `core.hooksPath` to `nix/hooks`, and so
+does a Claude Code session (`.claude/settings.json`). Anywhere else, run
+`bash nix/hooks/install` once per clone. cargo, npm and the Nix linters come
+from PATH, or from the flake when they are not on it.
+
+pre-push checks the commit it sends, not the working tree: when that commit
+is not a clean `HEAD` it runs in a temporary worktree. A VM test counts as
+touched when its file under `nix/tests/` changed, or a file it names (a
+browser script, a fixture, `screens/`) did, and it runs only when its
+derivation differs from the merge base's, so a change that only reformats
+a test boots nothing. With `/dev/kvm` it is a
+`nix build`; without, the test driver runs under TCG. `LOSOS_HOOKS_VM`
+picks others: `all`, `none`, or a list of check names. A change on CI's
+install lane (the installer, the disk layout, the boot path) adds
+`losos-iso-install`, which runs the real installer from the medium's system
+onto an empty disk, offline, and boots that disk. It builds the whole
+appliance first and needs about 20 GB of free disk (the closure, and the
+installed disk with a copy of it); without KVM its two VMs run under TCG,
+about 40 minutes for the install and as long again for the first boot.
+
+Every check writes its log to `.git/losos-hooks/logs/<time>-<hook>/`, and a
+failing one prints its last 40 lines. A check that passed is remembered
+against the git tree it ran on, so pushing a commit pre-commit already
+checked does not repeat it. `LOSOS_HOOKS_SKIP=check-flake,test:backend`
+skips checks by the names the hook prints, and says so; `LOSOS_HOOKS_VERBOSE=1`
+streams every check. `git commit --no-verify` skips everything, so the hooks
+are a first line. The required `result` check on `main` is the one that
+holds (see [CI and releases](ci-and-releases.md#merging)).
+
+A pre-commit with the eval lane on takes about five minutes on four cores,
+most of it `check-flake`. Behind a proxy that refuses GitHub's tarball
+endpoint, `nix/hooks/flake-inputs.py` fetches disko, impermanence and
+home-manager over git and adds them to the store under the hashes
+`flake.lock` pins, so the evaluation finds them.
 
 ## Rust
 
@@ -323,44 +372,33 @@ this is the reasoning behind it.
   other than the stock `mattbox`, the two things `modules/cluster.nix`
   asserts; lososd refuses the apply first (409 `meshNotReady`) and the Mesh
   pane greys the switch with the reason.
-  - On top of that, lososd challenges each answering edge
-    (`GET /identity?nonce=`). An edge counts as official only if its
-    certificate is signed by the LosOS root key in
-    `nix/keys/official-edge-root.pub` (`losos.proxy.officialRootKeyFile`), names
-    that URL and has not expired, and the certificate's key signed the
-    nonce. The market relay refuses everything else (`{available:false,
-    reason:"noOfficialEdge"}`, 409 `officialEdgeRequired`).
-  - The committed key file is **empty on purpose** until the owner writes
-    the public key into it. No root means nothing is official and the market
-    is off. The private key lives offline with the owner and is never
-    committed.
-  - `losos-registrar identity {keygen,sign,show,verify}` are the low-level
-    commands (`edge/registrar/src/identity.rs`). `nix/tests/edge-lan.nix`
-    uses them to build its own root at build time rather than trusting the
-    shipped file. `losos.edge.identity.{keyFile,certFile}` are the edge
-    side.
-  - The ceremony an operator runs is `losos-registrar provision
-    {whoami,root-keygen,publish,edge,verify}`
-    (`edge/registrar/src/provision.rs`), **on the operator's own
-    machine**. Every verb that makes or uses the root key first signs the
-    operator in with GitHub's OAuth device flow (public client id only, no
-    secret). It refuses unless the account's *numeric id* is in
-    `edge/registrar/operators.json`, which is compiled into the binary.
-  - `provision edge` reads the edge's own public key from
-    `GET /identity/public-key`; the registrar makes that key on its first
-    start, and the private half never leaves the edge. The tool signs the
-    certificate, pushes it to `POST /identity/cert` with the sign-in's
-    GitHub token, and runs the four checks. The edge resolves the token
-    against the same compiled-in allowlist before it installs anything
-    (`server::identity_push`). There is no SSH. `root-keygen --publish` and
-    `publish` open the PR that fills `nix/keys/official-edge-root.pub`, with the
-    same sign-in (`public_repo`). `tests/provision.rs` runs all of it
-    against a fake GitHub and a real registrar.
-  - The allowlist decides whom the tooling serves. The root key is still the
-    whole secret.
-  - The box runs no CI runner. The earlier ceremony from the box (Forgejo
-    Actions workflows plus `modules/git-runner.nix`) is gone, and
-    `docs/provisioning/edge-identity/README.md` is the operator runbook.
+  - On top of that, lososd checks each answering edge as an open gateway
+    (`GET /passport?nonce=`, then `POST /passport/attest`;
+    `backend/access/src/gateway/check.rs`, the edge's half in
+    `edge/registrar/src/gateway.rs`): the owner's OpenPGP passport, the
+    TPM's endorsement certificate against `losos.proxy.gateways.tpmRoots`,
+    a quote over PCRs 4, 11 and 15 showing a published image
+    (`losos.proxy.gateways.images`) and the measured settings, and LosOS's
+    payout addresses (`losos.proxy.gateways.payouts`). An edge counts as
+    official only if all of it passes. The market relay refuses everything
+    else (`{available:false, reason:"noOfficialEdge"}`, 409
+    `officialEdgeRequired`). Proof of tampering disables the edge on that
+    box for good (`/var/lib/losos/gateways.json`).
+  - `nix/gateway/images.nix` and `nix/gateway/payouts.nix` are **empty on
+    purpose** until a gateway image boots as a unified kernel image and
+    LosOS's addresses are written. Until then nothing is official and the
+    market is off.
+  - `losos-registrar passport {statement,settings,measure,check}` are a
+    gateway owner's tools; `nix/tests/open-gateway.nix` builds a throwaway
+    TPM maker and passports for the VM tests. `losos.edge.passport.enable`
+    is the edge side. `docs/provisioning/edge-identity/README.md` is the
+    runbook.
+  - `losos-registrar provision {whoami,token}`
+    (`edge/registrar/src/provision.rs`) runs **on the operator's own
+    machine** and signs the operator in with GitHub's OAuth device flow
+    (public client id only, no secret). It refuses unless the account's
+    *numeric id* is in `edge/registrar/operators.json`, which is compiled
+    into the binary.
   - The operator's machine has no Nix store, so `.#losos-registrar-static`
     (`pkgsStatic`, musl, same `cargoHash`) is the binary for it. CI's
     `publish-tool` job pushes it to GHCR as `images:<channel>-x86_64`

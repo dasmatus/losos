@@ -41,8 +41,10 @@
 # tunnel-server`) is QUIC, TLS 1.3 under a certificate the edge makes on its
 # first start in /var/lib/losos-tunnel and keeps. Boxes pin its SHA-256,
 # served by the registrar at /tunnel-pin, and prove their tenant token per
-# service. It carries post-TLS-termination HTTP, one QUIC stream per
-# connection. Where UDP is blocked a box reaches the same port over TCP
+# service. It carries one QUIC stream per connection: the box's own TLS for
+# a box that ends TLS itself (the default, edge/registrar/src/passthrough.rs,
+# which this edge cannot read), plain HTTP after Traefik's TLS for an older
+# box. Where UDP is blocked a box reaches the same port over TCP
 # (TLS, then HTTP/2 streams).
 {
   config,
@@ -167,6 +169,13 @@ let
         entryPoints.web.address = ":80";
         entryPoints.web.http.redirections.entryPoint.to = "websecure";
         entryPoints.web.http.redirections.entryPoint.scheme = "https";
+        # The redirect is a router Traefik makes on `web`, by default at the
+        # highest priority, which would take a box's Let's Encrypt HTTP-01
+        # requests too. A box that ends TLS itself gets its own certificate
+        # that way (edge/registrar/src/passthrough.rs), so the registrar puts
+        # a router for that one path on `web`, and the redirect takes
+        # everything else at the lowest priority.
+        entryPoints.web.http.redirections.entryPoint.priority = 1;
         entryPoints.websecure.address = ":443";
         entryPoints.websecure.http3 = { };
         entryPoints.metrics.address = "127.0.0.1:${toString cfg.traefikMetricsPort}";
@@ -1088,6 +1097,7 @@ let
     ++ ciArgs
     ++ hiddenArgs
     ++ exitArgs
+    ++ tangArgs
   );
 
   # Call media for this edge's boxes (losos.edge.calls.relay,
@@ -1119,6 +1129,18 @@ let
   ciArgs = lib.optionals cfg.ci.enable [
     "--ci-dir"
     "/var/lib/losos-registrar/ci"
+  ];
+
+  # The boxes' Tang keys (losos.edge.tang, edge/registrar/src/tang.rs): a
+  # key pair per box in the registrar's StateDirectory, answered by Tang's
+  # own tangd, one run per request.
+  tangArgs = lib.optionals cfg.tang.enable [
+    "--tang-dir"
+    "/var/lib/losos-registrar/tang"
+    "--tangd"
+    "${pkgs.tang}/libexec/tangd"
+    "--tangd-keygen"
+    "${pkgs.tang}/libexec/tangd-keygen"
   ];
 
   # Models split across boxes (losos.edge.inference,
