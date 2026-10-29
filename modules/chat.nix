@@ -59,7 +59,7 @@ let
   secretsDir = "/var/secrets/losos-chat";
   credentials = "/run/credentials/losos-chat.service";
   asTokenFile = "${secretsDir}/as_token";
-  serverName = cfg.serverName;
+  inherit (cfg) serverName;
   federation = cfg.federation.enable;
   # A .local name is this network's: federate with the boxes on it alone.
   lanName = lib.hasSuffix ".local" serverName;

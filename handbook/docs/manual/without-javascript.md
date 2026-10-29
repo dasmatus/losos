@@ -63,3 +63,12 @@ The pages without JavaScript use the stylesheet and the words of the usual
 pages. Menus, folding the sidebar and the dialog that asks before using the
 reserve open and close in CSS alone. Notices slide in and leave by
 themselves, also in CSS, and stay put if your system asks for less motion.
+
+## This handbook
+
+The handbook reads without JavaScript too, on the box and on the web. On a
+phone the menu button opens the chapters as a sheet. A chapter in the
+sidebar opens its own page, and **On this page**, the language menu and
+Light, Dark or the browser's choice all work. A theme you pick holds only
+for the page you picked it on. Search needs JavaScript, so the search box
+opens a list of every page instead, and your browser's Find searches it.

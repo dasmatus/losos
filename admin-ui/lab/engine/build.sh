@@ -107,6 +107,12 @@ for pkg in core virt render; do
   cp -r "$WORK/lab-$pkg"/* "$APP/src/lab/$pkg-pkg/"
   chmod -R u+w "$APP/src/lab/$pkg-pkg"
 done
+# losos-mdx, which the page's documents are drawn with, the same way.
+nix build "$ROOT#losos-mdx-wasm" --out-link "$WORK/mdx"
+rm -rf "$APP/src/mdx/pkg"
+mkdir -p "$APP/src/mdx/pkg"
+cp -r "$WORK/mdx"/* "$APP/src/mdx/pkg/"
+chmod -R u+w "$APP/src/mdx/pkg"
 # The main build only: `npm run build -- --outDir` would hand the flags to
 # the guest call page's build, the script's last step, which then empties
 # the folder Diagrams was just built into.
