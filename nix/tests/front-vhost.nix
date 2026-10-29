@@ -130,6 +130,10 @@ pkgs.testers.nixosTest {
       losos.admin.enable = true;
       losos.admin.ui = lososPkgs.losos-admin-ui;
       losos.admin.handbook = lososPkgs.losos-handbook;
+      # Behind an edge, so the terminal's two routes take the tunnel's
+      # loopback connections (losos.access.throughEdge). modules/proxy.nix
+      # is not imported: nothing else here reads the flag.
+      losos.proxy.enable = true;
     };
 
     # Same box with the dashboard switched off. losos.admin.ui stays null,
@@ -195,6 +199,17 @@ pkgs.testers.nixosTest {
         # nginx over loopback looks exactly like tunnel traffic and lands in the
         # same `deny all`.
         for path in ADMIN:
+            got = code(appliance, f"http://127.0.0.1{path}")
+            assert got == "403", f"loopback {path}: expected 403, got {got}"
+
+    with subtest("the terminal's two routes alone answer through the tunnel"):
+        got = code(appliance, "http://127.0.0.1/api/access/host-key")
+        assert got == "200", f"loopback /api/access/host-key: expected 200, got {got}"
+        got = appliance.succeed(
+            "curl -s -o /dev/null -w '%{http_code}' -X POST --data x http://127.0.0.1/api/access/call"
+        ).strip()
+        assert got == "200", f"loopback POST /api/access/call: expected 200, got {got}"
+        for path in ["/api/access", "/api/access/tokens", "/api/access/host-key/x"]:
             got = code(appliance, f"http://127.0.0.1{path}")
             assert got == "403", f"loopback {path}: expected 403, got {got}"
 

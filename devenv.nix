@@ -271,11 +271,13 @@ in
   scripts.lint-wasm.description = "clippy -D warnings on lososd's plugins, losos-mdx's browser build and the Lab canvas's WebGL2 and WebGPU builds, all wasm32.";
 
   # The registrar's Bitcoin and Monero orders run against real regtest
-  # nodes (edge/registrar/tests/{bitcoin,monero}.rs); CI's test job
-  # builds the same packages from the flake's nixpkgs.
+  # nodes (edge/registrar/tests/{bitcoin,monero}.rs), and its Tang keys
+  # against Tang's own tangd (tests/tang.rs); CI's test job builds the
+  # same packages from the flake's nixpkgs.
   scripts.test-rust.exec = ''
     export LOSOS_TEST_BITCOIND=${pkgs.bitcoind}/bin/bitcoind
     export LOSOS_TEST_MONEROD=${pkgs.monero-cli}/bin/monerod
+    export LOSOS_TEST_TANG=${pkgs.tang}
     ${forEachCrate (c: "cargo test --manifest-path ${c}/Cargo.toml")}
   '';
   scripts.test-rust.description = "Unit tests for every Rust crate.";

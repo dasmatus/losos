@@ -113,6 +113,46 @@ async function shot(page, name) {
   await page.screenshot({ path: `${out}/pr/${name}.png` });
 }
 
+/** The handbook's picture of the conversation (handbook/docs/img/chat*.png),
+ *  light, in each of its languages, on a device of Matus's unlocked with the
+ *  recovery key. The labels are src/i18n/chat.ts's. */
+const UNLOCK = {
+  en: ["Unlock this device to read encrypted messages", "Recovery key", "Unlock"],
+  sk: ["Odomknite toto zariadenie na čítanie šifrovaných správ", "Kľúč na obnovenie", "Odomknúť"],
+  de: ["Entsperre dieses Gerät, um verschlüsselte Nachrichten zu lesen", "Wiederherstellungsschlüssel", "Entsperren"],
+};
+async function handbook(key) {
+  for (const [lang, locale] of [["en", "en-US"], ["sk", "sk-SK"], ["de", "de-DE"]]) {
+    const [unlock, field, button] = UNLOCK[lang];
+    const context = await browser.newContext({
+      viewport: { width: 1280, height: 900 },
+      deviceScaleFactor: 2,
+      colorScheme: "light",
+      locale,
+      timezoneId: "Europe/Bratislava",
+      reducedMotion: "reduce",
+      ignoreHTTPSErrors: true,
+    });
+    const page = await context.newPage();
+    page.setDefaultTimeout(120_000);
+    const answer = await context.request.post(`${ORIGIN}/auth/api/firstfactor`, {
+      data: { username: "matus", password: PEOPLE.matus },
+    });
+    if (!answer.ok()) throw new Error(`matus could not sign in: ${answer.status()}`);
+    await page.goto(`${ORIGIN}/chat/`);
+    await page.getByRole("button", { name: /Eva/ }).first().click();
+    await page.getByRole("button", { name: unlock }).click();
+    await page.getByRole("textbox", { name: field }).fill(key);
+    await page.getByRole("button", { name: button, exact: true }).click();
+    await page.getByRole("log").getByText("Hi Eva, chat is up on mattbox.").waitFor();
+    await page.getByRole("log").getByText("Nice. Can we plan the holiday here?").waitFor();
+    mkdirSync(`${out}/handbook/${lang}`, { recursive: true });
+    await settle(page);
+    await page.screenshot({ path: `${out}/handbook/${lang}/chat.png`, timeout: 300_000 });
+    await context.close();
+  }
+}
+
 const chatLink = (page) => page.getByRole("link", { name: "Chat", exact: true });
 
 async function off() {
@@ -276,6 +316,8 @@ async function on() {
   await second.getByRole("button", { name: "Unlock", exact: true }).click();
   await second.getByRole("log").getByText("Hi Eva, chat is up on mattbox.").waitFor();
   await shot(second, "second-device");
+  // A picture the handbook lacks is no reason to fail the test.
+  if (Bun.env.LOSOS_HANDBOOK_SHOTS === "1") await handbook(key).catch((e) => console.error(`handbook: ${e}`));
 
   // Contacts, Mail and Cloud link a person as /chat/?with=<sign-in name>:
   // Eva's link to Matus opens the conversation they already have, not a

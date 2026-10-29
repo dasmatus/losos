@@ -377,6 +377,8 @@ let
     BOX = "192.168.1.1"
     PASSWORD = "${PASSWORD}"
 
+    ${shots.handbookScript}
+
     def claim():
         laptop.wait_for_unit("multi-user.target")
         boxa.wait_for_open_port(443)
@@ -574,6 +576,14 @@ let
             )
             for frame in film_dir.glob(f"{n}-clip-*.png"):
                 frame.unlink()
+
+    with subtest("the handbook's pictures"):
+        handbook_pictures(laptop, f"https://{BOX}", "matus", PASSWORD, [
+            {"name": "mesh-ci", "path": "/ci",
+             "waitFor": {"selector": f"a[href='/ci/runs/{site_run}']"}, "settle": 1500},
+            {"name": "mesh-ci-run", "path": f"/ci/runs/{site_run}", "waitFor": {"text": "services"},
+             "steps": run_plan["shots"][0]["steps"]},
+        ])
   '';
 
   mainScript = ''

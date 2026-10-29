@@ -180,7 +180,7 @@ pkgs.testers.nixosTest {
     for b in (mattbox, kitchenbox):
         b.wait_for_unit("lososd.service")
         b.wait_for_unit("nginx.service")
-        b.wait_for_unit("dendrite.service")
+        b.wait_for_unit("losos-chat.service")
         b.wait_for_open_port(443)
     mattbox.wait_for_unit("losos-git.service")
     mattbox.wait_for_open_port(3000)
@@ -293,7 +293,7 @@ pkgs.testers.nixosTest {
         for b, other in ((mattbox, "kitchenbox.local"), (kitchenbox, "mattbox.local")):
             b.succeed(f"curl -sfk https://{other}/.well-known/matrix/server | jq -e '.\"m.server\" == \"{other}:443\"'")
             b.succeed(f"curl -sfk https://{other}/_matrix/key/v2/server | jq -e '.server_name == \"{other}\"'")
-            # ...or, as Dendrite does when the well-known's certificate is a
+            # ...or, as a Matrix server does when the well-known's certificate is a
             # box's own, at <name>:8448, which carries federation and keys only.
             b.succeed(f"curl -sfk https://{other}:8448/_matrix/key/v2/server | jq -e '.server_name == \"{other}\"'")
             b.fail(f"curl -sfk https://{other}:8448/git/")

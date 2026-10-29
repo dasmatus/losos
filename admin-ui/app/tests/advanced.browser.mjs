@@ -147,10 +147,10 @@ async function open({ path = '/settings/advanced', overrides = {}, stray = [], o
   });
   await page.addInitScript((t) => window.sessionStorage.setItem('losos-token', t), TOKEN);
   await page.goto(origin + path, { waitUntil: 'networkidle' });
-  /* The bundle raises two style-src-elem reports at first paint on every
-   * page (app.browser.mjs measures the same baseline); what this file guards
-   * is that the two panes add none. */
+  /* The page loads with no violation (app.browser.mjs checks the same at
+   * the Overview), and the two panes must add none. */
   page.atLoad = await page.evaluate(() => window.__violations.length);
+  assert.equal(page.atLoad, 0, 'CSP violations at load');
   return { page, errors, applies, syncs };
 }
 

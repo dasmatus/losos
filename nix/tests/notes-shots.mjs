@@ -231,6 +231,25 @@ async function after(s, page, anon, base) {
   await waitNote(p, "Pests/Aphids.md");
   await s.take(p, "found", "the note the search found", { kind: "none" });
 
+  // A .note: MDX components beside Obsidian's syntax.
+  await p.goto(vaultUrl(base, "Harvest.note"));
+  await waitNote(p, "Harvest.note");
+  await s.take(p, "note-mdx", "a .note, its callout, tabs and details drawn by losos-mdx", { kind: "none" }, {
+    callout: p.locator("aside.callout").first(),
+    tabs: p.locator(".mdx-tabs"),
+    details: p.locator("details.mdx-details"),
+  });
+
+  // A .md note turned into a .note.
+  await p.goto(vaultUrl(base, "Compost.md"));
+  await waitNote(p, "Compost.md");
+  const convert = p.locator("[data-convert-note]");
+  await s.take(p, "convert", "a .md note, with Convert to .note", { kind: "click", target: "convert" }, { convert });
+  await convert.click();
+  await p.waitForFunction(() => new URLSearchParams(location.search).get("note") === "Compost.note");
+  await waitNote(p, "Compost.note");
+  await s.take(p, "converted", "the same note as a .note", { kind: "none" });
+
   // Publish the folder.
   await p.goto(`${base}/cloud/files`);
   await folder.waitFor();

@@ -1,7 +1,7 @@
 # nixos-test-vms config for LosOS Calendar (backend/src/cloud/calendar.rs,
 # backend/src/cloud/webcal.rs, backend/src/ical.rs, admin-ui/app/src/calendar/).
 #
-# The box runs LosOS Login, lososd, nginx, LosOS Cloud, Dendrite and
+# The box runs LosOS Login, lososd, nginx, LosOS Cloud, Synapse and
 # Stalwart as they ship. A laptop on the LAN carries the browser's traffic,
 # as in nix/tests/contacts.nix, and serves two calendar feeds over plain
 # HTTP the way a tax office or EduPage publishes one. What only a booted box
@@ -41,6 +41,7 @@
 let
   inherit (pkgs) lib;
   lososPkgs = import ../packages.nix { inherit pkgs; };
+  screens = import ./screens { inherit pkgs; };
   before = beforeSrc != null;
 
   # The admin UI as it ships, without LosOS Diagrams' three WebAssembly
@@ -255,6 +256,8 @@ pkgs.testers.nixosTest {
     DOMAIN = "mattbox.home.arpa"
     PASSWORD = "Correct-Horse-Battery-9"
     EVA_PASSWORD = "Eva-Long-Password-3"
+
+    ${screens.handbookScript}
     PEOPLE = "/var/lib/losos-identity/users.yml"
     DB = "/var/lib/losos-cloud/cloud.db"
     OUT = os.environ.get("out", os.getcwd())
@@ -328,7 +331,7 @@ pkgs.testers.nixosTest {
     # plugins takes it a minute, and the claim would meet nginx's 502.
     box.wait_for_open_port(8082)
     box.wait_for_unit("nginx.service")
-    box.wait_for_unit("dendrite.service")
+    box.wait_for_unit("losos-chat.service")
     box.wait_for_unit("losos-mail.service")
     box.wait_for_unit("losos-cloud.service")
     box.wait_for_unit("losos-webcal.socket")
@@ -592,5 +595,17 @@ pkgs.testers.nixosTest {
 
         with subtest("the launch film's pictures"):
             browser("film")
+
+        with subtest("the handbook's pictures"):
+            review = {"selector": 'button:has-text("Review the box")'}
+            handbook_pictures(box, f"https://{HOST}", "matus", PASSWORD, [
+                {"name": "calendar-week", "path": "/calendar", "waitFor": review,
+                 "steps": [{"waitFor": {"selector": 'button:has-text("Mathematics")'}}],
+                 "settle": 1500},
+                {"name": "calendar-event", "path": "/calendar", "waitFor": review,
+                 "steps": [{"click": review},
+                           {"waitFor": {"selector": '#calendar-event-title:has-text("Review the box")'}}],
+                 "settle": 1500},
+            ], proxy="socks5://127.0.0.1:1080")
   '';
 }

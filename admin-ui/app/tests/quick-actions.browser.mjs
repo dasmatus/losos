@@ -247,7 +247,7 @@ await check('in a note being read the bar copies and links to the section', asyn
   assert.equal(await action(page, 'bold').count(), 0, 'nothing that edits while reading');
   await action(page, 'copy-link').click();
   const copied = await page.evaluate(() => navigator.clipboard.readText());
-  assert.match(copied, /\/cloud\/notes\?vault=Notes&note=Garden\.md#h-watering$/);
+  assert.match(copied, /\/cloud\/notes\?vault=Notes&note=Garden\.md#watering$/);
   await action(page, 'copy').click();
   assert.match(await page.evaluate(() => navigator.clipboard.readText()), /Water the tomatoes every morning/);
   assert.deepEqual(errors, []);

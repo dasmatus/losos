@@ -7,6 +7,8 @@ mdx:
 
 # Diagramme
 
+![Diagramme mit einem Flussdiagramm aus LosOS Cloud: die Ansichten und die Dateiauswahl, die Zeichenfläche mit Karten und Pfeilen und die Leiste zu diesem Diagramm.](@site/docs/img/diagrams-de.png)
+
 LosOS Diagrams ist ein Diagrammeditor: Flussdiagramme, Pläne, Mindmaps,
 Boards und Netzwerkzeichnungen, geschrieben als Karten auf einer
 Zeichenfläche. Seine Dateien sind JSON Canvas, das Format von Obsidian
@@ -139,7 +141,7 @@ das und öffnet die eingebauten Setups.
 Das Netzwerk folgt denselben Regeln wie die echte Software. Beispiele: Eine
 Box ohne erreichbare Edge startet keinen Tunnel; ein Wechsel zum Mesh wird
 mit `edgeRequired` abgelehnt; der Markt öffnet nur neben einer offiziellen
-Edge (einer, deren Zertifikat der LosOS-Root-Schlüssel signiert hat); ein
+Edge (einer, die die Gateway-Prüfung besteht); ein
 LAN-Gateway mit offener Registrierung nimmt unbekannte Boxen bei der ersten
 Nutzung auf; und die Administrationsrouten lehnen Loopback ab.
 

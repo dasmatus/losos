@@ -6,6 +6,8 @@ slug: /manual/mesh-ci
 
 # Mesh CI
 
+![Mesh CI: runner tohto boxu a kedy berie úlohy iných boxov, potom behy, jeden beží, jeden zrušený a dva prešli, a hore Spustiť workflow.](@site/docs/img/mesh-ci-sk.png)
+
 Mesh CI spúšťa workflowy GitHub Actions vo vašich repozitároch v
 [LosOS Git](losos-git). Push alebo pull request spustí workflowy z
 priečinka `.github/workflows/` v danom commite, boxy vašej siete si úlohy
@@ -37,6 +39,8 @@ kódom každého kroku a výstupmi úlohy.
 (predvolenú, ak pole necháte prázdne), stlačte **Nájsť workflowy** a jeden
 vyberte.
 
+![Beh, ktorý prešiel: jeho dve úlohy, každá s boxom mesh siete, na ktorom bežala, a kroky jednej s výstupom a trvaním.](@site/docs/img/mesh-ci-run-sk.png)
+
 ## Kde úloha beží \{#where-a-job-runs}
 
 Úloha ide do siete, kde ju môže prevziať ktorýkoľvek box, ktorý požičiava
@@ -47,7 +51,49 @@ svoj runner, okrem prípadov, keď:
   Iný box by videl kód;
 - box nemá na dosah žiadny edge.
 
-Vtedy beží na tomto boxe.
+Vtedy beží na tomto boxe. Úloha, ktorej `runs-on` uvádza `losos-desktop`,
+ide namiesto toho na firemný počítač: pozri [Firemné počítače](#company-computers).
+
+## Firemné počítače \{#company-computers}
+
+Počítač s LosOS Desktop pripojený k tomuto boxu (pozri
+[Počítače s LosOS Desktop](../types/company-edge.md#losos-desktop-computers))
+berie úlohy, ktorých `runs-on` uvádza `losos-desktop` a názov počítača.
+Taká úloha čaká na tomto boxe, kým si o ňu počítač nepovie, čo robí každých
+pár sekúnd, kým je vo firemnej sieti, a nikdy nejde do meshu.
+
+Firemný počítač nespúšťa shell ani iné akcie. Jeho kroky sú iba tieto,
+každý s uvedeným `with:`:
+
+| Krok | `with:` | Čo počítač urobí |
+|---|---|---|
+| `losos/desktop-status` | | Povie svoju verziu, kanál aktualizácií a firemné účty |
+| `losos/desktop-update` | | Hneď sa aktualizuje |
+| `losos/desktop-reboot` | | Reštartuje sa minútu po skončení úlohy |
+| `losos/desktop-channel` | `channel` | Prejde na iný kanál aktualizácií |
+| `losos/desktop-lock` | `user` | Zamkne firemný účet |
+| `losos/desktop-unlock` | `user` | Odomkne firemný účet |
+
+Čokoľvek iné (`run:`, iná akcia, kontajner, `env:`) úlohu zlyhá skôr, než sa
+dostane k počítaču, a počítač zoznam pred každým krokom skontroluje znova.
+Výrazy `${{ }}` vo `with:` sa vyhodnotia na tomto boxe. Matica obslúži
+viac počítačov:
+
+```yaml
+on: workflow_dispatch
+jobs:
+  update:
+    strategy:
+      matrix:
+        computer: [reception, laptop-7]
+    runs-on: [losos-desktop, '${{ matrix.computer }}']
+    steps:
+      - uses: losos/desktop-update
+      - uses: losos/desktop-reboot
+```
+
+Úloha, o ktorú si jej počítač za deň nepovedal, alebo ktorej počítač dve
+minúty nič nehlási, skončí chybou.
 
 ## Požičiavanie runnera tohto boxu \{#lending-this-boxs-runner}
 

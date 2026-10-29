@@ -93,11 +93,11 @@ async function open({
   await page.getByTestId('lab-splash').waitFor({ state: 'detached', timeout: 15000 });
   // A built-in example in place of this box, for the checks written against it.
   if (setup) await page.getByTestId('setup-picker').selectOption(setup);
-  /* Sonner's refused copy of its own stylesheet is logged at load, as on
-   * every admin page (tests/app.browser.mjs); its rules come from the
-   * bundle. Nothing after that may add a violation. */
+  /* Nothing is refused at load: Sonner's injected copy of its stylesheet is
+   * dropped at build (vite.sonner-quiet.ts) and the bundle carries the file.
+   * Nothing after that may add a violation either. */
   const atLoad = await page.evaluate(() => window.__violations);
-  assert.ok(atLoad.length <= 2 && atLoad.every((v) => v === 'style-src-elem inline'), `CSP violations at load: ${atLoad.join(', ')}`);
+  assert.deepEqual(atLoad, [], `CSP violations at load: ${atLoad.join(', ')}`);
   const clean = async () => {
     const violations = (await page.evaluate(() => window.__violations)).slice(atLoad.length);
     assert.deepStrictEqual(violations, [], `CSP violations: ${violations.join(', ')}`);

@@ -4,7 +4,10 @@
  * What is checked: a link through a gateway reads as secondary and names its
  * cluster; a box on an official edge reads as tertiary and lists the edge's
  * official cluster; a box held by its custom domain says so and offers no
- * move to another cluster; a box that left a banned edge names it.
+ * move to another cluster; a box that left a banned edge names it. And the
+ * row under the link says whether the edge can read the box's traffic: the
+ * box ending TLS itself, the edge still ending it, a lapsed certificate, and
+ * a certificate the box did not make seen from outside.
  *
  * LOSOS_SHOTS=<dir> also saves one picture per state there, for the PR.
  * Same arrangement as the other files: the real dist/ bundle under the real
@@ -92,6 +95,25 @@ const STATES = {
   },
 };
 
+const TLS_BASE = STATES.banned;
+const TLS = {
+  edgeReads: { own: null, checkedAt: null, seen: {} },
+  sealed: {
+    own: ['mattbox.losos.dasmat.us'],
+    checkedAt: '2026-10-28T21:00:00Z',
+    seen: { 'mattbox.losos.dasmat.us': 'ok' },
+  },
+  lapsed: { own: [], checkedAt: '2026-10-28T21:00:00Z', seen: {} },
+  foreign: {
+    own: ['mattbox.losos.dasmat.us'],
+    checkedAt: '2026-10-28T21:00:00Z',
+    seen: { 'mattbox.losos.dasmat.us': 'foreign' },
+  },
+};
+for (const [name, publicTls] of Object.entries(TLS)) {
+  STATES[`tls-${name}`] = { ...TLS_BASE, leftBanned: null, publicTls };
+}
+
 async function open(state) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
   const page = await context.newPage();
@@ -139,6 +161,41 @@ await check('a box that left a banned official edge names it and its official cl
   await page.getByText(`The box moved here because ${EU_1.url} is banned.`).waitFor();
   await page.getByText(/cluster eu/).first().waitFor();
   await shoot(page, 'banned');
+  await context.close();
+});
+
+await check('the box ends TLS itself: the edge cannot read its traffic', async () => {
+  const { page, context } = await open('tls-sealed');
+  await page.getByText("The edge cannot read this box's traffic").waitFor();
+  await page.getByText(/holds its own certificate for mattbox\.losos\.dasmat\.us/).waitFor();
+  await page.getByText('Encrypted to this box').waitFor();
+  assert.equal(await page.locator('[data-public-tls="box"]').count(), 1);
+  await shoot(page, 'tls-sealed');
+  await context.close();
+});
+
+await check('no certificate of its own yet: the edge reads the traffic, and the row says so', async () => {
+  const { page, context } = await open('tls-edgeReads');
+  await page.getByText("The edge can read this box's traffic").waitFor();
+  await page.getByText('Readable').waitFor();
+  assert.equal(await page.locator('[data-public-tls="edge"]').count(), 1);
+  await shoot(page, 'tls-edge-reads');
+  await context.close();
+});
+
+await check('a lapsed certificate stays with the box', async () => {
+  const { page, context } = await open('tls-lapsed');
+  await page.getByText("This box's certificate has lapsed").waitFor();
+  await page.getByText(/The edge does not take TLS back/).waitFor();
+  await context.close();
+});
+
+await check('a certificate the box did not make, seen from outside, is named', async () => {
+  const { page, context } = await open('tls-foreign');
+  await page.getByText('Someone else answers for mattbox.losos.dasmat.us').waitFor();
+  await page.getByText('Intercepted').waitFor();
+  assert.equal(await page.locator('[data-public-tls="foreign"]').count(), 1);
+  await shoot(page, 'tls-foreign');
   await context.close();
 });
 

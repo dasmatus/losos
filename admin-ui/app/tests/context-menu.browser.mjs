@@ -38,7 +38,7 @@ async function open({ path = '/', viewport = { width: 1280, height: 900 }, touch
   await page.addInitScript((t) => window.sessionStorage.setItem('losos-token', t), TOKEN);
   await page.goto(origin + path, { waitUntil: 'networkidle' });
   const atLoad = await page.evaluate(() => window.__violations);
-  assert.ok(atLoad.every((d) => d === 'style-src-elem'), `CSP violations at load: ${JSON.stringify(atLoad)}`);
+  assert.deepEqual(atLoad, [], `CSP violations at load: ${JSON.stringify(atLoad)}`);
   const done = async () => {
     const violations = (await page.evaluate(() => window.__violations)).slice(atLoad.length);
     assert.deepEqual(violations, [], `the menu added CSP violations: ${JSON.stringify(violations)}`);

@@ -457,10 +457,12 @@ const listen = (sink) => {
   };
   const onError = (e) => sink(String(e));
   // The pages ask for the repository's AI review, which a LosOS Git
-  // without LosOS Reviewer does not serve: its 404 is that answer.
+  // without LosOS Reviewer does not serve, and whether LosOS Chat runs
+  // here, which a box without it answers the same way: each 404 is that
+  // answer.
   const onResponse = (r) => {
     const path = new URL(r.url()).pathname;
-    if (r.status() === 404 && path.endsWith("/ai-review")) return;
+    if (r.status() === 404 && (path.endsWith("/ai-review") || path === "/api/chat")) return;
     if (r.status() >= 400) sink(`${r.status()} ${r.request().method()} ${path}`);
   };
   page.on("console", onConsole);

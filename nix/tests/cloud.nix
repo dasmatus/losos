@@ -52,10 +52,14 @@ let
     export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
     exec ${pkgs.bun}/bin/bun ${./cloud-shots.mjs} "$@"
   '';
+  screens = import ./screens { inherit pkgs; };
 in
 
 pkgs.testers.nixosTest {
   name = "losos-cloud";
+  # The handbook's pictures, nineteen pages in three languages, take most
+  # of an hour on their own under TCG.
+  globalTimeout = 3 * 3600;
 
   nodes = {
     box = _: {
@@ -115,6 +119,7 @@ pkgs.testers.nixosTest {
         flows
         seed
         shots
+        screens.capture
       ];
       fonts.packages = [ pkgs.dejavu_fonts ];
       virtualisation = {
@@ -137,6 +142,8 @@ pkgs.testers.nixosTest {
     CA = "/etc/losos-box.pem"
     PASSWORD = "Correct-Horse-Battery-9"
     EVA = "Eva-Long-Password-3"
+
+    ${screens.handbookScript}
 
     # One after the other: two VMs booting at once under TCG can miss the
     # driver's wait for a shell.
@@ -379,6 +386,45 @@ pkgs.testers.nixosTest {
         got = json.loads(curl(f"-f -X POST {BASE}/index.php/login/v2/poll -d token={init['poll']['token']}"))
         assert got["loginName"] == "notshared", got
         laptop.copy_from_machine("/tmp/shots/after", "shots")
+
+    with subtest("the handbook's pictures"):
+        pending = json.loads(curl(f"-f -X POST -A 'Mozilla/5.0 (Linux) mirall/3.16.0 (Nextcloud)' {BASE}/index.php/login/v2"))
+        handbook_pictures(laptop, BASE, "matus", PASSWORD, [
+            {"name": "cloud-files", "path": "/cloud/files/Documents",
+             "waitFor": {"selector": '[data-entry="budget.ods"]'}},
+            {"name": "cloud-photos", "path": "/cloud/photos",
+             "waitFor": {"selector": "[data-photos] img"}, "settle": 1500},
+            {"name": "cloud-devices", "path": "/cloud/devices",
+             "waitFor": {"selector": "[data-devices]"}},
+            {"name": "cloud-connect", "path": pending["login"].removeprefix(BASE),
+             "waitFor": {"selector": "[data-connect]"}},
+            # The admin pages around it, on a box with LosOS Cloud.
+            {"name": "overview", "path": "/", "waitFor": {"role": "heading", "name": "mattbox"},
+             "storage": {"losos-widgets": json.dumps({"version": 1, "widgets": [
+                 {"id": f"w{i}", "source": {"kind": "builtin", "id": w}}
+                 for i, w in enumerate(["disk", "apps", "rebuilds"])]})},
+             "settle": 1500},
+            {"name": "apps", "path": "/apps", "waitFor": {"selector": "[data-testid=accordion-cloud]"},
+             "settle": 1500},
+        ] + [
+            {"name": f"{name}", "path": path, "waitFor": {"selector": "main h1"}, "settle": 1500}
+            for name, path in [
+                ("storage", "/storage"),
+                ("settings-about", "/settings/about"),
+                ("settings-account", "/settings/account"),
+                ("settings-users", "/settings/users"),
+                ("settings-security", "/settings/security"),
+                ("settings-network", "/settings/network"),
+                ("settings-look", "/settings/look"),
+                ("settings-backup", "/settings/backup"),
+                ("settings-history", "/settings/history"),
+                ("settings-advanced", "/settings/advanced"),
+                ("settings-reset", "/settings/reset"),
+                ("settings-hardware", "/settings/hardware"),
+                # No edge in this test, so the pane says none was found.
+                ("mesh-none", "/mesh"),
+            ]
+        ])
 
     with subtest("the pictures: the same addresses before LosOS Cloud"):
         box.succeed("/run/current-system/specialisation/before/bin/switch-to-configuration test")

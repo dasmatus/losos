@@ -967,6 +967,39 @@ await check('a flick down closes the phone sheet', async () => {
   await page.close();
 });
 
+/* The signed-in Overview, the first page anyone sees, logs no violation
+ * under the real policy at either width. Sonner used to inject its
+ * stylesheet as a <style> element at load, which the policy refused on
+ * every page; vite.sonner-quiet.ts drops that copy and main.tsx bundles
+ * the file. */
+await check('under the appliance CSP the signed-in Overview logs no violation', async () => {
+  const { origin: strict, close } = await serve({ csp: true });
+  const watch = () => {
+    window.__violations = [];
+    document.addEventListener('securitypolicyviolation', (e) =>
+      window.__violations.push(`${e.violatedDirective} ${e.target?.nodeName ?? ''} ${e.sourceFile}:${e.columnNumber}`),
+    );
+  };
+  try {
+    for (const viewport of [{ width: 1280, height: 900 }, { width: 375, height: 800 }]) {
+      const { page, errors } = await open({
+        path: '/',
+        viewport,
+        person: { name: 'matus', displayName: 'Matus', groups: ['losos-admins'], admin: true, spareKey: false, sections: ['storage'] },
+        base: strict,
+        init: [watch],
+      });
+      await page.getByRole('region', { name: 'At a glance' }).waitFor();
+      await page.waitForTimeout(500);
+      assert.deepEqual(await page.evaluate(() => window.__violations), [], `${viewport.width}px: the Overview broke the admin CSP`);
+      assert.deepEqual(errors, []);
+      await page.close();
+    }
+  } finally {
+    await close();
+  }
+});
+
 await check('a box with chat and mail puts them in the bar', async () => {
   const { page, errors } = await open({ path: '/', viewport: { width: 375, height: 800 }, person: { name: 'matus', displayName: 'Matus', groups: ['losos-admins'], admin: true, spareKey: false, sections: [], shared: ['chat', 'mail'] } });
   await bottomBar(page).waitFor();
@@ -1014,8 +1047,7 @@ for (const { name, now, file, tip } of [
  * slide and scroll lock, the folds' measured height), chosen because Base
  * UI styles through CSSOM, which the appliance CSP allows, and never through
  * an injected <style> element or a style attribute, which it refuses. Under
- * the real policy, using all of them must add no violation to the ones
- * already logged at load (Sonner's refused copy of its stylesheet). */
+ * the real policy, using all of them must add no violation. */
 await check('under the appliance CSP the rail tooltip, the folds, the bottom bar and the phone sheet add no violation', async () => {
   const { origin: strict, close } = await serve({ csp: true });
   try {
@@ -2893,8 +2925,7 @@ await check('AI models: Start asks for an hourly limit and a top-up, refuses a l
 });
 
 /* Under the real policy the Market pane, a running model and an opened Start
- * form log only the two violations every page logs at load (Sonner's
- * refused copy of its stylesheet). */
+ * form log no violation, at load or after. */
 await check('under the appliance CSP the AI models section adds no violation', async () => {
   const { origin: strict, close } = await serve({ csp: true });
   try {
@@ -2907,7 +2938,7 @@ await check('under the appliance CSP the AI models section adds no violation', a
     const { page, errors } = await open({ path: '/settings/market', stored: true, market: AI_MARKET, llm: LLM, base: strict, init: [watch] });
     await page.getByTestId('ai-meters').waitFor();
     const atLoad = await page.evaluate(() => window.__violations);
-    assert.deepEqual(atLoad, ['style-src-elem STYLE', 'style-src-elem STYLE'], `unexpected violations at load: ${atLoad.join(', ')}`);
+    assert.deepEqual(atLoad, [], `unexpected violations at load: ${atLoad.join(', ')}`);
     const qwen = page.locator('[data-model="qwen3-32b"]');
     await qwen.getByRole('button', { name: 'Start' }).click();
     await qwen.getByLabel('Most it may spend in an hour (USDC)').fill('2');

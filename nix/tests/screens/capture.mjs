@@ -4,7 +4,7 @@
 // `browser` module, put a plan on it and run
 //
 //   losos-capture --base https://192.168.1.1 --plan /tmp/plan.json \
-//       --out /tmp/shots [--user NAME --password WORD]
+//       --out /tmp/shots [--user NAME --password WORD] [--proxy socks5://HOST:PORT]
 //
 // then `copy_from_machine("/tmp/shots", "")` puts the PNGs in the test's output.
 // With a user, the browser signs in to LosOS Login first, the way the
@@ -60,8 +60,9 @@
 // option of a native select), `upload` ({selector, file}),
 // `press` (a key), `type` (text typed at the focus), `hold` (the mouse pressed on a control and left
 // down), `waitText` (exact text), `sleep` (milliseconds), `goto` (a path),
-// `scroll` ("end": the page scrolled to its foot), `stay` (the page's own
-// reloads answered 204, so it holds still for its picture)
+// `scroll` ("end": the page scrolled to its foot; a locator: that brought
+// into view), `stay` (the page's own reloads answered 204, so it holds
+// still for its picture)
 // and, for a strip, `freeze` (what comes before it plays at full speed,
 // only what comes after is taken frame by frame). A shot fails the run when a step does or the page throws:
 // a picture of a half-loaded page is worse than none.
@@ -83,7 +84,9 @@ function flags(names) {
   return out;
 }
 
-const args = flags(['base', 'plan', 'out', 'user', 'password']);
+// --proxy: a browser outside the test network (the driver's own) reaches
+// the box through a proxy on one of the VMs.
+const args = flags(['base', 'plan', 'out', 'user', 'password', 'proxy']);
 for (const need of ['base', 'plan', 'out']) {
   if (!args[need]) {
     // Thrown: an uncaught error is what makes Bun exit non-zero.
@@ -118,6 +121,7 @@ async function step(page, s, { force = false } = {}) {
   else if (s.sleep) await page.waitForTimeout(s.sleep);
   else if (s.goto) await page.goto(base + s.goto, { waitUntil: 'networkidle', timeout: 120000 });
   else if (s.scroll === 'end') await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  else if (s.scroll) await locate(page, s.scroll).scrollIntoViewIfNeeded();
   else if (s.hold) {
     // The mouse pressed on it and left down, for what a held control shows.
     await locate(page, s.hold).hover({ force });
@@ -251,7 +255,11 @@ async function strip(variant, width, shot, name, storageState) {
 
 // The full Chromium in its new headless mode: nixpkgs' bundle has no
 // separate headless shell.
-const browser = await chromium.launch({ channel: 'chromium', args: ['--disable-gpu'] });
+const browser = await chromium.launch({
+  channel: 'chromium',
+  args: ['--disable-gpu'],
+  ...(args.proxy ? { proxy: { server: args.proxy } } : {}),
+});
 const variants = plan.variants ?? [{ suffix: null }];
 const report = [];
 const film = [];
@@ -299,6 +307,18 @@ try {
     for (const shot of plan.shots) {
       const name = variant.suffix ? `${shot.name}-${variant.suffix}` : shot.name;
       const page = await context.newPage();
+      // What the browser has kept for the page (a shot's `storage`, key to
+      // string), as an owner's own browser would have it: the Overview's
+      // board, for one, lives only there.
+      if (shot.storage) {
+        await page.addInitScript((items) => {
+          try {
+            for (const [k, v] of Object.entries(items)) localStorage.setItem(k, v);
+          } catch {
+            // about:blank has no storage.
+          }
+        }, shot.storage);
+      }
       const errors = [];
       page.on('pageerror', (e) => errors.push(String(e)));
       // Without a script the page cannot count its own refusals.
@@ -316,7 +336,10 @@ try {
       if (variant.hideCaret) await page.evaluate(() => document.documentElement.style.setProperty('caret-color', 'transparent'));
       // Fonts and pictures, then a moment for the layout to settle.
       await page.evaluate(() => document.fonts.ready);
-      await page.waitForLoadState('networkidle');
+      // A `live` page keeps a connection busy for as long as it is open (an
+      // editor in a frame), so the network never goes quiet; its `settle`
+      // stands in.
+      if (!shot.live) await page.waitForLoadState('networkidle');
       await page.waitForTimeout(shot.settle ?? 500);
       if (errors.length > 0) throw new Error(`${name}: the page threw: ${errors.join('; ')}`);
       const path = join(args.out, `${name}.png`);

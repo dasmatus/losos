@@ -43,36 +43,34 @@ brána aj hub ju hlásia:
 | terciárne   | zariadenie priamo s oficiálnym edge                        | žiadny: záloha               |
 
 Zariadenie samo nikdy nedrží primárne spojenie. Vlastné spojenie vidí ako
-`path.tier` v `GET /api/edge` a na stránke Mesh, brána ukazuje svoje
-spojenia v `losos-edge status` a hub si brány hlavného klastra, každú na
-primárnom spojení, vedie v `main-cluster.json` vedľa registra
-(`losos-edge main` na bráne vypíše tie z vlastnej lokality).
+`path.tier` v `GET /api/edge` a na stránke Mesh, brána ukazuje svoj hub a
+klastre na svojej stránke na správu a hub si brány hlavného klastra, každú na
+primárnom spojení, vedie v `main-cluster.json` vedľa registra (stránka na
+správu brány vypíše tie z vlastnej lokality v časti **Hlavný klaster**).
 
 ### Sekundárne klastre {#secondary-clusters}
 
 Jedna brána v sieti môže vypadnúť. **Sekundárny klaster** tvorí jedna alebo
 viac brán v tej istej sieti, ktoré obsluhujú tie isté zariadenia, takže
 zariadenie zostane dostupné, aj keď jedna z nich zmizne. Je to stav za
-behu, vytvorený na bránach:
-
-```sh
-# na prvej bráne
-losos-edge cluster create office
-# vypíše riadok, ktorý spustíte na každej ďalšej bráne:
-losos-edge cluster join office <secret> http://gwa.local:8443
-```
+behu, vytvorený na stránkach na správu brán: **Založiť klaster** na prvej
+bráne, ktorá potom ukáže názov klastra, jeho tajomstvo a svoju adresu;
+**Pridať sa ku klastru** na každej ďalšej bráne, s týmito tromi údajmi.
+Stránka volá `PUT /manage/api/gateway/cluster` (samotný názov klaster založí;
+názov, tajomstvo a adresa iného člena sa k nemu pridajú) a **Opustiť** volá
+`DELETE` na tej istej ceste.
 
 Súbor klastra (`losos.edge.secondary.file`, predvolene
 `/var/lib/losos-edge/cluster.json`, režim 0600) obsahuje názov, meno tejto
 brány v klastri, spoločné tajomstvo a brány, cez ktoré sa pripojila.
-Registrar ho číta pri každom prechode, takže `create`, `join` ani
-`losos-edge cluster leave` nepotrebujú reštart. Členovia sa synchronizujú
+Registrar ho číta pri každom prechode, takže založenie, pridanie ani
+opustenie nepotrebujú reštart. Členovia sa synchronizujú
 každý `losos.edge.secondary.interval` cez `POST /cluster/secondary/sync`,
 každá správa je podpísaná HMAC tajomstva: každý člen sa dozvie zariadenia,
 ktoré zapísali ostatní, takže token zariadenia platí na všetkých, a kedy
 ktorý člen naposledy počul ktoré zariadenie. Zariadenie preposiela hubu len
 člen, ktorý ho počul naposledy, takže trasa na hube ide za zariadením bez
-preskakovania. `losos-edge cluster show` vypíše členov, ktorí odpovedajú.
+preskakovania. `GET /manage/api/gateway` vypíše členov, ktorí odpovedajú.
 
 `GET /cluster/secondary` je to, čo zariadenie číta z každého edge, ktorý
 nájde: rolu edge, úroveň spojení, ktoré obsluhuje, jeho klaster a meno
@@ -193,10 +191,14 @@ súbor vznikne), a keď sa súbor zmení, pripojí sa nanovo. Certifikát tunela
 hubu sa pripne pri prvom kontakte (`GET /tunnel-pin`, zapíše ho do
 `uplink.pinFile` sám registrar), tak ako zariadenie pripína certifikát
 svojho edge. Požiadavka na
-`https://mattbox.acme.losos.cfd/` teda ukončí TLS na hube, vstúpi do služby
-tunela hubu `acme.mattbox`, prejde uplinkom na lokálny port spoke pre
-`mattbox`, prejde tunelom zariadenia a skončí v Nginxe zariadenia. Dva tunely, jedna
-hlavička Host, žiadna zmena na zariadení.
+`https://mattbox.acme.losos.cfd/` teda príde na hub, ktorý ju podľa názvu v
+TLS hello nasmeruje do služby tunela hubu `acme.mattbox`. Prejde uplinkom na
+lokálny port spoke pre `mattbox`, prejde tunelom zariadenia a TLS ukončí až
+zariadenie vlastným certifikátom pre tento názov
+([passthrough](master-proxy.md#the-edge-cannot-read-the-traffic)); hub ani
+spoke ju čítať nemôžu. Kým zariadenie taký certifikát nemá, TLS ukončuje hub
+a požiadavka ide ďalej ako obyčajné HTTP. Dva tunely, jeden názov, žiadna
+zmena na zariadení.
 
 **Otvorený zápis** (open enrolment) umožňuje použiť bežné zariadenie s bránou, pre
 ktorú nikto nepripravil tokeny: s `lan.openEnrolment` sa neznáme id
@@ -206,8 +208,8 @@ každá ďalšia požiadavka pre toto id sa s nimi musí zhodovať. Udeľuje iba
 členstvo v proxy (nikdy `cluster` ani `market`), na edge, ktorý sa neohlasuje
 v LAN, sa odmietne (VPS ho nesmie nastaviť nikdy) a ohlasovanie to uvádza
 (`enrol=open`). `losos-registrar enrol list|forget --dir
-/var/lib/losos-registrar/enrolled` (na bráne `losos-edge boxes` a
-`losos-edge forget <id>`) zobrazí a odstráni zapísané zariadenia; zariadenie, ktoré stále
+/var/lib/losos-registrar/enrolled` (na bráne časť **Zaregistrované pri
+prvom kontakte** na jej stránke na správu) zobrazí a odstráni zapísané zariadenia; zariadenie, ktoré stále
 posiela heartbeat, sa znova zapíše s tokenom, ktorý drží, takže zabudnutie je
 pre zariadenie, ktoré odišlo. Hub ponecháva zatvorený zápis.
 
@@ -279,12 +281,13 @@ držanie vlastnej domény.
   nepremosťuje clustre dvoch lokalít a nič tu nepreposiela 9345/6443 cez
   uplink. Spájanie naprieč lokalitami je ďalší krok s vlastným návrhom.
 - **Market.** Obchodovanie zariadenie odmietne, pokiaľ nie je v dosahu *oficiálny*
-  edge ([Oficiálne edge](/in-depth/master-proxy.md#official-edges)); spoke nie je
-  nikdy oficiálny a preposielané zariadenie nie je tenantom hubu, takže v jeho mene
+  edge ([Oficiálne edge](/in-depth/master-proxy.md#official-edges)); spoke je
+  oficiálny iba vtedy, ak sám prejde overením brány, a preposielané zariadenie nie je tenantom hubu, takže v jeho mene
   nemožno uskutočniť žiadne volanie `/market/*`. Relay prenáša dosiahnuteľnosť
   cez HTTP, nič iné.
-- **Identita.** Spoke nepreposiela `/identity`; zariadenie, ktoré chce market,
-  dosiahne oficiálny edge sám, cez vlastné internetové pripojenie.
+- **Pas.** Spoke nepreposiela `/passport` hubu; zariadenie si každý edge, ktorý
+  dosiahne, overí samo, a to, ktoré chce market cez hub, dosiahne hub samo,
+  cez vlastné internetové pripojenie.
 
 ## Vlastné domény za lokálnym edge {#custom-domains-behind-a-local-edge}
 
@@ -397,22 +400,16 @@ Dve podoby, jedna konfigurácia:
    `losos.edge.gateway.enable` (`modules/edge-gateway.nix`), ktorý nastaví
    `lan.advertise` a `lan.openEnrolment`, uplink číta za behu z
    `/var/lib/losos-edge/uplink.json`, takže jeden obraz poslúži každej
-   lokalite, pri prvom štarte si vytvorí vlastný certifikát tunela, dá rootu
-   konzolu (prvé heslo `losos`, zmena vynútená pri prvom prihlásení; sshd je
-   nainštalovaný, ale zastavený, kým nezadáte `losos-edge ssh on`) a na tty1
-   vypíše svoju adresu. Spustite ho na Proxmoxe, libvirt alebo VirtualBoxe so
-   sieťovou kartou v LAN; zariadenia nainštalované zo štandardného ISO ho nájdu do
-   minúty. Potom na jeho konzole:
-
-   ```sh
-   losos-edge status
-   losos-edge uplink set --id acme --token-file /root/acme.token \
-     --registrar https://register.losos.cfd --tunnel edge.losos.cfd:2333
-   losos-edge boxes
-   ```
-
-   s riadkom tenanta, ktorý vám dal prevádzkovateľ hubu. `losos-edge uplink
-   clear` preposielanie zastaví.
+   lokalite, a pri prvom štarte si vytvorí vlastný certifikát tunela. Tak
+   ako zariadenie nemá shell: žiadne prihlásenie na konzolu, žiadne SSH,
+   žiadne heslo pre root. Jeho obrazovka ukazuje adresu stránky na správu a
+   kľúč, ktorým sa na nej prihlásite. Spustite ho na Proxmoxe, libvirt alebo
+   VirtualBoxe so sieťovou kartou v LAN; zariadenia nainštalované zo
+   štandardného ISO ho nájdu do minúty. Potom otvorte stránku na správu a v
+   časti **Hub** zadajte riadok tenanta, ktorý vám dal prevádzkovateľ hubu:
+   ID nájomcu, URL registrátora (napríklad `https://register.losos.cfd`),
+   koncový bod tunela (`edge.losos.cfd:2333`) a token. **Zastaviť prenos**
+   ho zruší. Stránka volá `PUT` a `DELETE /manage/api/gateway/uplink`.
 2. **Existujúci stroj s NixOS**: importujte `nixosModules.edge` a buď
    nastavte `losos.edge.gateway.enable = true` (tvar obrazu), alebo zapíšte
    voľby uvedené vyššie ručne, ako to robí demo s dvoma VM a

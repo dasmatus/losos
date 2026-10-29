@@ -37,15 +37,15 @@
   <text x="756" y="92" font-weight="650">Overiť každý edge</text>
   <text x="756" y="114" fill="#5c6a77" font-size="13">zariadenie vymyslí nový</text>
   <text x="756" y="132" fill="#5c6a77" font-size="13">nonce; edge vráti svoj</text>
-  <text x="756" y="150" fill="#5c6a77" font-size="13">certifikát a podpíše</text>
-  <text x="756" y="168" fill="#5c6a77" font-size="13">nonce vlastným kľúčom</text>
+  <text x="756" y="150" fill="#5c6a77" font-size="13">pas a jeho TPM zahrnie</text>
+  <text x="756" y="168" fill="#5c6a77" font-size="13">nonce do citácie PCR</text>
 
   <rect x="690" y="225" width="280" height="132" rx="8" fill="#f3f5f7" stroke="#dce1e6"/>
   <text x="706" y="250" font-weight="650">Štyri kontroly, všetky alebo nič</text>
-  <text x="706" y="274" font-size="13">1. podpísaný koreňovým kľúčom LosOS</text>
-  <text x="706" y="294" font-size="13">2. uvádza adresu, na ktorú sa pýtalo</text>
-  <text x="706" y="314" font-size="13">3. nevypršal</text>
-  <text x="706" y="334" font-size="13">4. podpis nonce je platný</text>
+  <text x="706" y="274" font-size="13">1. pas vlastníka platí</text>
+  <text x="706" y="294" font-size="13">2. TPM od známeho výrobcu</text>
+  <text x="706" y="314" font-size="13">3. naštartoval zverejnený obraz</text>
+  <text x="706" y="334" font-size="13">4. adresy poplatkov LosOS</text>
 
   <text x="230" y="255" fill="#5c6a77" font-size="13">Zariadenie sa pýta ďalej, takže edge, ktorý sa vráti,</text>
   <text x="230" y="274" fill="#5c6a77" font-size="13">nájde znova samo. Nič netreba reštartovať.</text>
@@ -63,7 +63,7 @@
   <text x="361" y="487" font-size="13">Trh nie.</text>
 
   <rect x="690" y="400" width="280" height="104" rx="8" fill="#e5f1ec" stroke="#2e7357" stroke-width="1.5"/>
-  <text x="706" y="426" font-weight="650" fill="#2e7357">✓ Oficiálny edge LosOS</text>
+  <text x="706" y="426" font-weight="650" fill="#2e7357">✓ Overená brána</text>
   <text x="706" y="449" font-size="13">Zdieľanie a vzdialený prístup fungujú.</text>
   <text x="706" y="468" font-size="13">Trh môže bežať, keď sa</text>
   <text x="706" y="487" font-size="13">otvorí.</text>

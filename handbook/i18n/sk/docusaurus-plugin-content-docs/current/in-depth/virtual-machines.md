@@ -7,6 +7,8 @@ mdx:
 
 # Virtuálne stroje
 
+![Panel Mesh na zariadení bez edge; Stroje sú pod Mesh.](@site/docs/img/mesh-none-sk.png)
+
 Zariadenie, ktoré zdieľa svoj disk so sieťou mesh, si v nej môže prenajať
 virtuálne stroje a môže hosťovať stroje iných zariadení. Stroj sa predáva po
 **replikách**: každá replika je jedna kópia stroja s vlastným diskom, ktorá

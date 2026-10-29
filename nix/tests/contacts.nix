@@ -1,7 +1,7 @@
 # nixos-test-vms config for LosOS Contacts (backend/src/cloud/contacts.rs,
 # backend/src/contacts.rs, backend/src/vcard.rs, admin-ui/app/src/contacts/).
 #
-# The box runs LosOS Login, lososd, nginx, LosOS Cloud, Dendrite and
+# The box runs LosOS Login, lososd, nginx, LosOS Cloud, Synapse and
 # Stalwart as they ship; a laptop on the LAN carries the browser's traffic,
 # as in nix/tests/chat.nix. What only a booted box can show:
 #
@@ -37,6 +37,7 @@
 let
   inherit (pkgs) lib;
   lososPkgs = import ../packages.nix { inherit pkgs; };
+  screens = import ./screens { inherit pkgs; };
   before = beforeSrc != null;
 
   # The admin UI as it ships, without the Lab page and LosOS Cloud's page,
@@ -319,6 +320,8 @@ pkgs.testers.nixosTest {
     HOST = "mattbox.local"
     PASSWORD = "Correct-Horse-Battery-9"
     EVA_PASSWORD = "Eva-Long-Password-3"
+
+    ${screens.handbookScript}
     PEOPLE = "/var/lib/losos-identity/users.yml"
     OUT = os.environ.get("out", os.getcwd())
     SHOTS = f"{OUT}/shots"
@@ -330,7 +333,7 @@ pkgs.testers.nixosTest {
     # plugins takes it a minute, and the claim would meet nginx's 502.
     box.wait_for_open_port(8082)
     box.wait_for_unit("nginx.service")
-    box.wait_for_unit("dendrite.service")
+    box.wait_for_unit("losos-chat.service")
     box.wait_for_unit("losos-mail.service")
     box.wait_for_unit("losos-cloud.service")
     box.wait_for_open_port(443)
@@ -420,7 +423,7 @@ pkgs.testers.nixosTest {
         print(run.stdout)
         print(run.stderr)
         if run.returncode != 0:
-            print(box.execute("journalctl -b --no-pager -o cat -n 800 -u lososd -u dendrite -u nginx")[1])
+            print(box.execute("journalctl -b --no-pager -o cat -n 800 -u lososd -u losos-chat -u nginx")[1])
         assert run.returncode == 0, f"the contacts pages, {phase}: {run.stderr[-2000:]}"
 
     if BEFORE:
@@ -600,7 +603,7 @@ pkgs.testers.nixosTest {
 
         with subtest("with sharing off the book stays, without chat and mail"):
             switch("unshared")
-            box.wait_until_fails("systemctl is-active dendrite.service")
+            box.wait_until_fails("systemctl is-active losos-chat.service")
             assert len(ok(C, matus)["contacts"]) == 5
             assert "contacts" in ok("/api/me", matus)["shared"]
             assert "chat" not in ok("/api/me", matus)["shared"]
@@ -613,7 +616,7 @@ pkgs.testers.nixosTest {
 
         with subtest("with sharing on again the pages use the book in Mail and Chat"):
             switch(None)
-            box.wait_for_unit("dendrite.service")
+            box.wait_for_unit("losos-chat.service")
             box.wait_until_succeeds("curl -sf http://127.0.0.1:8008/_matrix/client/versions")
             browser("on")
             # The browser imported the 2.1 card and added one contact.
@@ -622,5 +625,13 @@ pkgs.testers.nixosTest {
 
         with subtest("the launch film's pictures"):
             browser("film")
+
+        with subtest("the handbook's pictures"):
+            handbook_pictures(box, f"https://{HOST}", "matus", PASSWORD, [
+                {"name": "contacts", "path": "/contacts",
+                 "waitFor": {"selector": 'button:has-text("Eva Nováková")'},
+                 "steps": [{"click": {"selector": 'button:has-text("Eva Nováková")'}}],
+                 "settle": 1500},
+            ], proxy="socks5://127.0.0.1:1080")
   '';
 }

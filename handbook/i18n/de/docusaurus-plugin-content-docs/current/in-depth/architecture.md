@@ -7,6 +7,8 @@ mdx:
 
 # Architektur
 
+![Die Übersicht, die Admin-Seite, die nginx ausliefert und für die lososd antwortet.](@site/docs/img/overview-de.png)
+
 ## Systeme im Flake {#systems-in-the-flake}
 
 | Ausgabe                       | Was                                              |

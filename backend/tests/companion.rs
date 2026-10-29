@@ -2,9 +2,9 @@
 //! header with a LosOS Login access token, asked about at a stand-in for
 //! LosOS Login's introspection endpoint (`src/companion.rs`).
 //!
-//! The stand-in knows three tokens: one LosOS Login issued to the
-//! companion for `ada`, one it issued to some other client, and one it
-//! no longer counts. It records each question, so the test can see the
+//! The stand-in knows four tokens: one LosOS Login issued to the
+//! companion for `ada`, one to LosOS Desktop's backups for her, one it
+//! issued to some other client, and one it no longer counts. It records each question, so the test can see the
 //! host the token was asked about at and the client lososd asked as.
 
 use assert_fs::TempDir;
@@ -16,6 +16,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 const ADA: &str = "authelia_at_ada.companion";
+const BACKUPS: &str = "authelia_at_ada.backups";
 const OTHER_CLIENT: &str = "authelia_at_ada.forgejo";
 const REVOKED: &str = "authelia_at_ada.revoked";
 
@@ -49,6 +50,8 @@ fn login() -> (String, Arc<Mutex<Vec<String>>>) {
             let exp = chrono_now() + 3600;
             let answer = if body.contains(&format!("token={ADA}&")) {
                 json!({ "active": true, "client_id": "losos-companion", "exp": exp, "username": "ada" })
+            } else if body.contains(&format!("token={BACKUPS}&")) {
+                json!({ "active": true, "client_id": "losos-backups", "exp": exp, "username": "ada" })
             } else if body.contains(&format!("token={OTHER_CLIENT}&")) {
                 json!({ "active": true, "client_id": "forgejo", "exp": exp, "username": "ada" })
             } else {
@@ -139,13 +142,26 @@ impl Daemon {
     }
 
     fn try_call(&self, method: &str, path: &str, token: Option<&str>) -> Option<(u16, Value)> {
+        self.try_send(method, path, token, "")
+    }
+
+    fn try_send(
+        &self,
+        method: &str,
+        path: &str,
+        token: Option<&str>,
+        body: &str,
+    ) -> Option<(u16, Value)> {
         let mut request = format!(
             "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Forwarded-Host: mattbox.local\r\nConnection: close\r\n"
         );
         if let Some(t) = token {
             request.push_str(&format!("Authorization: Bearer {t}\r\n"));
         }
-        request.push_str("Content-Length: 0\r\n\r\n");
+        request.push_str(&format!(
+            "Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        ));
         let mut socket = TcpStream::connect(("127.0.0.1", self.port)).ok()?;
         socket
             .set_read_timeout(Some(Duration::from_secs(10)))
@@ -163,7 +179,11 @@ impl Daemon {
     }
 
     fn call(&self, method: &str, path: &str, token: Option<&str>) -> (u16, Value) {
-        self.try_call(method, path, token)
+        self.send(method, path, token, "")
+    }
+
+    fn send(&self, method: &str, path: &str, token: Option<&str>, body: &str) -> (u16, Value) {
+        self.try_send(method, path, token, body)
             .unwrap_or_else(|| panic!("no answer to {method} {path}"))
     }
 }
@@ -246,4 +266,49 @@ fn another_clients_token_a_dead_one_or_one_without_login_is_nobody() {
     let d = Daemon::start(&addr, false);
     assert_eq!(d.call("GET", "/api/me", Some(ADA)).0, 401);
     assert!(asked.lock().unwrap().is_empty());
+}
+
+#[test]
+fn a_backups_token_fetches_credentials_and_reads_nothing() {
+    let (addr, _) = login();
+    let d = Daemon::start(&addr, true);
+    let path = "/api/devices/backups";
+
+    // Its one route: past the gate, to the handler, which checks the body.
+    let (status, answer) = d.send("POST", path, Some(BACKUPS), "{}");
+    assert_eq!(status, 400, "{answer}");
+    let (status, answer) = d.send("POST", path, Some(BACKUPS), r#"{"device":"../x"}"#);
+    assert_eq!(status, 400, "{answer}");
+    // A good one reaches the apps, which this box does not run.
+    let (status, answer) = d.send("POST", path, Some(BACKUPS), r#"{"device":"laptop"}"#);
+    assert_ne!(status, 400, "{answer}");
+    assert_ne!(status, 401, "{answer}");
+    assert_ne!(status, 403, "{answer}");
+
+    // Nothing else, not even what the companion reads.
+    for (method, path) in [
+        ("GET", "/api/me"),
+        ("GET", "/api/status"),
+        ("GET", "/api/devices/backups"),
+        ("POST", "/api/devices/cloud"),
+        ("POST", "/api/devices/git"),
+        ("POST", "/api/set-password"),
+    ] {
+        let (status, answer) = d.call(method, path, Some(BACKUPS));
+        assert!(
+            status == 403 || status == 404 || status == 405,
+            "{method} {path}: {status} {answer}"
+        );
+    }
+    let (_, answer) = d.call("GET", "/api/me", Some(BACKUPS));
+    assert!(
+        answer["error"].as_str().unwrap().contains("backups"),
+        "{answer}"
+    );
+
+    // And the companion's token is not the backups'.
+    assert_eq!(
+        d.send("POST", path, Some(ADA), r#"{"device":"laptop"}"#).0,
+        403
+    );
 }
