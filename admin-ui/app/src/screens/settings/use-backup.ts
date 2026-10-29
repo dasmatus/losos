@@ -151,7 +151,7 @@ export function useBackup(enabled: boolean): BackupData {
        * key is said at once rather than at the first backup. */
       act(async () => {
         const { keyed } = await postBackupTargetBought(order);
-        if (keyed) toast.done(t("panes.backup.toast.targetSaved"));
+        if (keyed) toast.done(t("panes.backup.toast.boughtSaved"));
         else
           toast.error(t("panes.backup.toast.notKeyed"), t("panes.backup.toast.notKeyedBody"), {
             help: "backup-and-erase",

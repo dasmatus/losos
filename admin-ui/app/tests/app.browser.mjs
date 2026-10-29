@@ -2398,11 +2398,17 @@ await check('the Backup pane keeps backups on storage bought on the mesh, keyed 
   await offer.getByText('ord_0a1b2c3d4e5f60718293a4b5').waitFor();
   assert.equal(await offer.getByTestId('backup-bought-use').count(), 2, 'a lapsed, unpaid or unbound order is offered');
   await page.getByText('Or a bucket you rent', { exact: true }).waitFor();
+  if (process.env.BACKUP_SHOTS) await page.screenshot({ path: `${process.env.BACKUP_SHOTS}/offer.png`, fullPage: true });
   await offer.getByTestId('backup-bought-use').first().click();
   const shown = page.getByTestId('backup-bought');
   await shown.getByText('ord_0a1b2c3d4e5f60718293a4b5', { exact: true }).waitFor();
   await shown.getByText('https://edge.example.net', { exact: true }).waitFor();
   await shown.getByText(/^50 GB bought on the mesh$/).waitFor();
+  await page.getByText('Backups go to the storage you bought', { exact: true }).first().waitFor();
+  if (process.env.BACKUP_SHOTS) {
+    await page.waitForTimeout(1000);
+    await page.screenshot({ path: `${process.env.BACKUP_SHOTS}/bought.png`, fullPage: true });
+  }
   assert.deepEqual(backupPosts[0], ['POST', '/api/backup/target/bought', { order: 'ord_0a1b2c3d4e5f60718293a4b5' }]);
   assert.doesNotMatch(await page.locator('main').innerText(), /b3c1d2e4/, 'the recovery code is on the screen');
   assert.ok(await page.getByRole('button', { name: 'Back up', exact: true }).isEnabled(), 'bought storage cannot be backed up to');

@@ -418,7 +418,7 @@ pkgs.testers.nixosTest {
 
     def through_door(secret, path="config"):
         return box.succeed(
-            f"curl -s -o /dev/null -w '%{{http_code}}' -u {ORDER}:{secret} {REPO}{path}"
+            f"curl -s --path-as-is -o /dev/null -w '%{{http_code}}' -u {ORDER}:{secret} {REPO}{path}"
         ).strip()
 
     # What the registrar made in mattbox's namespace (the reconciler may ask
@@ -512,7 +512,10 @@ pkgs.testers.nixosTest {
         assert edge.succeed("curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/config").strip() == "401"
         # Through the door the repository answers: there is none yet.
         box.wait_until_succeeds(f"test \"$(curl -s -o /dev/null -w '%{{http_code}}' -u {ORDER}:{secret} {REPO}config)\" = 404", timeout=60)
-        assert through_door(secret, "../etc/passwd") == "404"
+        # A path that climbs out of the repository is refused before the
+        # server is asked, whichever way it is spelled.
+        assert through_door(secret, "%2e%2e/%2e%2e/etc/passwd") == "404"
+        assert through_door(secret, "data/%2e%2e/config") == "404"
 
     with subtest("a backup reaches the bought volume as ciphertext"):
         edge.succeed("systemd-run --unit=capture tcpdump -i lo -U -w /tmp/hop.pcap 'tcp port 8000'")

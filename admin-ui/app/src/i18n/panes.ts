@@ -1461,6 +1461,11 @@ export default defineMessages({
     sk: "Bucket uložený",
     de: "Bucket gespeichert",
   },
+  "panes.backup.toast.boughtSaved": {
+    en: "Backups go to the storage you bought",
+    sk: "Zálohy pôjdu do úložiska, ktoré ste kúpili",
+    de: "Sicherungen gehen auf den Speicher, den du gekauft hast",
+  },
   "panes.backup.toast.targetForgotten": {
     en: "Bucket forgotten. The backups in it are still there.",
     sk: "Bucket zabudnutý. Zálohy v ňom zostali.",
