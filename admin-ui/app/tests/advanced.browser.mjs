@@ -55,7 +55,7 @@ const ON_PANE = Object.fromEntries(
       ? [[option.name, 'apps']]
       : /^inference\.lend\.(enable|memoryMiB)$/.test(option.name)
         ? [[option.name, 'market']]
-        : option.name === 'cloud.windows.enable'
+        : option.name === 'cloud.windows.enable' || /^hidden\.(tor|i2p)\.enable$/.test(option.name)
           ? [[option.name, 'network']]
           : [],
   ),
