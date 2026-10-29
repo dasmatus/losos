@@ -54,6 +54,11 @@ Header `Alt-Svc` an, sodass ein Browser nach der ersten Anfrage zu QUIC
 wechselt. Ein Netz, das UDP sperrt, funktioniert weiter über TCP. Öffne UDP
 443 in jeder Firewall vor der Edge; die Firewall der Edge selbst öffnet ihn.
 
+Eine Box, die TLS selbst beendet (siehe
+[Die Edge kann den Verkehr nicht lesen](#the-edge-cannot-read-the-traffic)),
+läuft nur über HTTP/2 und HTTP/1.1 auf TCP. HTTP/3 bleibt auf den eigenen
+Namen der Edge.
+
 ## Wenn eine Box nicht erreichbar ist {#when-a-box-cant-be-reached}
 
 Erreicht Traefik eine Box nicht (sie ist ausgeschaltet, startet neu, ist
@@ -61,6 +66,11 @@ offline oder ihr Tunnel ist unterbrochen), bekommt der Besucher statt eines
 nackten „Bad Gateway“ eine Seite der Edge, die das erklärt, auf Englisch,
 Slowakisch oder Deutsch je nach Sprache des Browsers. Der Statuscode bleibt
 502, oder 504, wenn die Box nicht rechtzeitig geantwortet hat.
+
+Die Seite setzt voraus, dass die Edge TLS für den Namen beendet; sie
+erscheint also nur bei Namen, für die die Edge das noch tut. Sobald eine Box
+TLS selbst beendet, bekommt der Besucher einer ausgeschalteten Box
+stattdessen den Verbindungsfehler seines Browsers.
 
 ## Appliance {#appliance}
 
@@ -95,6 +105,71 @@ dieses Zertifikat und kein anderes. Willst du es auf einem separaten Weg
 festlegen, leg die Datei vorher dort ab; die Appliance überschreibt sie nie.
 Jeden Dienst, den die Box anbietet, beansprucht sie mit ihrem Token, das in
 konstanter Zeit verglichen wird.
+
+## Die Edge kann den Verkehr nicht lesen {#the-edge-cannot-read-the-traffic}
+
+Die Box holt sich für jeden ihrer öffentlichen Namen ein eigenes Zertifikat
+von Let's Encrypt und beendet TLS selbst. Die Edge leitet jede Verbindung
+nach dem Namen im TLS-Hello weiter und reicht die verschlüsselten Bytes an
+die Box durch, ohne sie zu öffnen. Wer die Edge betreibt, oder die Maschine,
+auf der sie läuft, kann Anmeldungen, Dateien und Seiten also nicht lesen.
+Das ist standardmäßig an (`losos.proxy.tlsPassthrough.enable`).
+
+1. Die Edge leitet `http://<Name>/.well-known/acme-challenge/` auf Port 80
+   an jede Box weiter, damit die Box die HTTP-01-Challenge von Let's Encrypt
+   durch den Tunnel beantworten kann. Die Box fragt mit `lego` an
+   (`losos-public-tls`, jede Stunde und immer, wenn die Edge einen neuen
+   Namen nennt) und hält die Zertifikate in
+   `/var/lib/losos-public-tls/live/<Name>/`.
+2. Der Heartbeat der Box nennt die Namen, für die sie ein gültiges
+   Zertifikat hat. Bis das erste da ist, beendet die Edge TLS wie bisher;
+   der Wechsel kostet also keine Ausfallzeit.
+3. Für diese Namen gibt die Edge ihren eigenen TLS-Router auf und behält
+   einen TCP-Router mit `HostSNI` und Passthrough. Ein eigenes Zertifikat
+   fordert sie dafür nicht an.
+4. Auf der Box liest nginx die ersten Bytes jeder Tunnelverbindung: TLS geht
+   an das eigene Zertifikat der Box, einfaches HTTP (die Challenges, eine
+   ältere Edge) wie bisher an Port 80. Die Admin-Oberfläche bleibt auf
+   beiden Wegen im LAN.
+
+Hat eine Box einmal Passthrough verlangt, gibt ein abgelaufenes Zertifikat
+TLS nicht an die Edge zurück. Besucher sehen dann eine Zertifikatswarnung,
+bis die Box es erneuert.
+
+Jede Stunde öffnet die Box außerdem jeden ihrer Namen von außen, über das
+öffentliche DNS und die Edge, und vergleicht das Zertifikat, das sie
+bekommt, mit ihrem eigenen. Die Seite Mesh zeigt das Ergebnis: **Bis zur Box
+verschlüsselt**, wenn sie übereinstimmen, **Lesbar**, solange die Edge TLS
+beendet, und **Abgefangen**, wenn ein Zertifikat antwortet, das die Box
+nicht erstellt hat. Das Letzte heißt, dass etwas zwischen den Besuchern und
+der Box ihr TLS beendet, etwa eine Edge, die sich für den Namen ein eigenes
+Zertifikat besorgt hat. So ein Zertifikat erscheint auch in den
+öffentlichen Certificate-Transparency-Logs.
+
+Was die Edge weiterhin sieht: welchen Namen ein Besucher anfragt, wann und
+wie viele Daten fließen. Aus dem Tunnel kennt sie auch die Adresse der Box
+zu Hause. Passthrough kostet auf den Namen der Box drei Dinge: die Seite für
+eine nicht erreichbare Box, HTTP/3 und Encrypted Client Hello, weil jedes
+davon voraussetzt, dass die Edge die Schlüssel hält. Die eigenen Namen der
+Edge behalten alle drei.
+
+Eigene Domains, die eine Edge an eine Box leitet, sind genauso abgedeckt:
+Die Antwort auf den Heartbeat nennt der Box jeden Namen, der zu ihr führt,
+und die Box fordert für jeden ein Zertifikat an. Bei der
+[Föderation](edge-federation.md) reicht der Spoke die Liste der Box weiter,
+und der Hub leitet `<spoke>.<box>` nach dem Namen an den Spoke, der sie an
+die Box weitergibt.
+
+:::note[Wie das getestet wird]
+`nix/tests/edge-passthrough.nix` (`losos-edge-passthrough`) startet einen
+Test-ACME-Server, eine Edge und eine Box. Solange die Box kein Zertifikat
+hat, zeigt ein Mitschnitt auf der Seite der Edge im Tunnel ein Passwort, das
+ein Besucher sendet. Nachdem die Box ihr Zertifikat über die Edge bekommen
+hat, prüft der Besucher es gegen die Wurzel des ACME-Servers, Traefik hat
+für den Namen nur eine Passthrough-Route, und dasselbe Passwort steht
+nirgends im Mitschnitt. Zeigt der Name auf eine andere Maschine, springt
+die eigene Prüfung der Box auf **Abgefangen**.
+:::
 
 ## Die Admin-Oberfläche bleibt im LAN {#admin-ui-stays-lan-only}
 
@@ -320,6 +395,11 @@ einer Box durch, findet keinen Schlüssel unter einem Namen, dessen Fehlen
 die Zone belegt, prüft mit einem falschen Vertrauensanker nichts und lehnt
 reines HTTP ab.
 :::
+
+Eine Box, die TLS selbst beendet, bekommt an ihren Namen keinen
+HTTPS-Eintrag, denn nur wer den ECH-Schlüssel hält, kann das Hello
+entschlüsseln, und die Edge reicht die Verbindungen dieser Box ungeöffnet
+durch. Ihr Name steht dann im TLS-Hello im Klartext, wie vor ECH.
 
 ### Eigene Domains {#custom-domains}
 

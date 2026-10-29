@@ -18,6 +18,11 @@ geschrieben, dass du ihm widersprechen kannst.
 2. **Edge → Box.** TLS 1.3 verschlüsselt den Tunnel durchgehend, über
    QUIC oder, wo UDP gesperrt ist, über TCP. Die Box merkt sich das
    Zertifikat der Edge beim ersten Kontakt und lehnt ein geändertes ab.
+   Im Tunnel bleiben die Verbindungen der Besucher bis zum eigenen
+   Zertifikat der Box verschlüsselt: Die Edge leitet sie nach dem Namen
+   weiter und kann sie nicht lesen. Sie sieht aber, welcher Name angefragt
+   wurde, wann, wie viele Daten flossen und die Adresse der Box zu Hause.
+   Siehe [Die Edge kann den Verkehr nicht lesen](../in-depth/master-proxy.md#the-edge-cannot-read-the-traffic).
 3. **LAN → Box.** Die Box liefert HTTPS mit ihrem eigenen Zertifikat aus,
    dem du einmal pro Rechner vertraust. Bis dahin könnte jemand im selben
    WLAN, der Verkehr abfangen kann, die erste Nutzung abfangen.
