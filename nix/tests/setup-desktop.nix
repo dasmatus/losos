@@ -30,7 +30,6 @@
 { pkgs }:
 
 let
-  inherit (pkgs) lib;
   lososPkgs = import ../packages.nix { inherit pkgs; };
 
   # The admin UI as it ships, without the Lab page, which this test never

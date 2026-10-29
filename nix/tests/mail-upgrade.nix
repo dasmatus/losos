@@ -94,7 +94,7 @@ pkgs.testers.nixosTest {
   name = "losos-mail-upgrade";
 
   nodes.box =
-    { lib, ... }:
+    { ... }:
     {
       imports = [
         ../../modules/options.nix

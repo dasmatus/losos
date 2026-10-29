@@ -78,7 +78,10 @@ pkgs.buildNpmPackage {
   # tests/calls.browser.mjs decodes the SFU's tap with ffmpeg.
   # The calls browser test starts the SFU with its edge client; curl is a
   # runtime dependency of that client and must exist in the sandbox.
-  nativeBuildInputs = [ pkgs.ffmpeg-headless pkgs.curl ];
+  nativeBuildInputs = [
+    pkgs.ffmpeg-headless
+    pkgs.curl
+  ];
   preConfigure = mdxPkg;
   preBuild = labCorePkg + labVirtPkg + labRenderPkg;
 
