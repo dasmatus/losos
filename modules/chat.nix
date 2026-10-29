@@ -132,7 +132,9 @@ let
     enable_3pid_lookup = false;
     # Everyone on the box is someone to start a chat with.
     user_directory.search_all_users = true;
-    presence.enabled = true;
+    # LosOS Chat shows no presence, and it is the most work Synapse does
+    # for each sync; on a two-core box it slowed every call's membership.
+    presence.enabled = false;
     # Calls (src/chat/rtc.ts): sticky memberships and the delayed leave.
     experimental_features = {
       msc4354_enabled = true;
