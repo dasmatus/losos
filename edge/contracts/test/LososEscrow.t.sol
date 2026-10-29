@@ -17,12 +17,21 @@ contract LososEscrowTest is Test {
     address internal constant BUYER2 = address(0xB0B2);
     address internal constant SELLER2 = address(0x5E12);
 
+    /// The two boxes' escrow keys. The edge sends its transactions from
+    /// EDGE itself; a box signs.
+    uint256 internal constant BUYER_BOX_KEY = 0xB0B0B0;
+    uint256 internal constant SELLER_BOX_KEY = 0x5E1105E1;
+    address internal BUYER_BOX;
+    address internal SELLER_BOX;
+
     MockUSDC internal token;
     LososEscrow internal escrow;
 
     function setUp() public {
         // A chain's clock, not forge's 1: a tap opens `HEADSTART` back.
         vm.warp(1_800_000_000);
+        BUYER_BOX = vm.addr(BUYER_BOX_KEY);
+        SELLER_BOX = vm.addr(SELLER_BOX_KEY);
         token = new MockUSDC();
         escrow = new LososEscrow(IERC20(address(token)), TREASURY, EDGE);
         token.mint(BUYER, 10_000_000);
@@ -32,7 +41,77 @@ contract LososEscrowTest is Test {
 
     function _pay(uint256 gross, uint256 fee) internal returns (uint256) {
         vm.prank(BUYER);
-        return escrow.pay(keccak256("ord_test"), SELLER, gross, fee, uint64(block.timestamp + 1 days));
+        return
+            escrow.pay(
+                keccak256("ord_test"), SELLER, gross, fee, uint64(block.timestamp + 1 days), BUYER_BOX, SELLER_BOX
+            );
+    }
+
+    /// The EIP-712 digest of a decision on `escrow`, worked out here rather
+    /// than asked of the escrow, so it does not use up a prank;
+    /// `test_the_digest_is_eip712` checks they agree.
+    function _digest(LososEscrow on, uint256 id, uint256 refund_) internal view returns (bytes32) {
+        bytes32 domain = keccak256(
+            abi.encode(
+                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                keccak256("LososEscrow"),
+                keccak256("2"),
+                block.chainid,
+                address(on)
+            )
+        );
+        bytes32 decision = keccak256(abi.encode(keccak256("Decision(uint256 depositId,uint256 refund)"), id, refund_));
+        return keccak256(abi.encodePacked("\x19\x01", domain, decision));
+    }
+
+    /// `key`'s signature on deposit `id` sending `refund_` back.
+    function _sig(uint256 key, uint256 id, uint256 refund_) internal view returns (bytes memory) {
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(key, _digest(escrow, id, refund_));
+        return abi.encodePacked(r, s, v);
+    }
+
+    function test_the_digest_is_eip712() public view {
+        assertEq(escrow.decisionDigest(7, 123), _digest(escrow, 7, 123));
+        assertEq(
+            escrow.DOMAIN_SEPARATOR(),
+            keccak256(
+                abi.encode(
+                    keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                    keccak256("LososEscrow"),
+                    keccak256("2"),
+                    block.chainid,
+                    address(escrow)
+                )
+            )
+        );
+    }
+
+    function _one(bytes memory sig) internal pure returns (bytes[] memory sigs) {
+        sigs = new bytes[](1);
+        sigs[0] = sig;
+    }
+
+    function _two(bytes memory a, bytes memory b) internal pure returns (bytes[] memory sigs) {
+        sigs = new bytes[](2);
+        sigs[0] = a;
+        sigs[1] = b;
+    }
+
+    function _none() internal pure returns (bytes[] memory) {
+        return new bytes[](0);
+    }
+
+    /// The edge sends a release the seller's box signed.
+    function _release(uint256 id) internal {
+        vm.prank(EDGE);
+        escrow.release(id, _one(_sig(SELLER_BOX_KEY, id, 0)));
+    }
+
+    /// The edge sends a refund the buyer's box signed.
+    function _refund(uint256 id) internal {
+        (,,, uint256 gross,,,,,) = escrow.deposits(id);
+        vm.prank(EDGE);
+        escrow.refund(id, _one(_sig(BUYER_BOX_KEY, id, gross)));
     }
 
     function test_pay_holds_the_money_and_moves_nothing_else() public {
@@ -42,20 +121,61 @@ contract LososEscrowTest is Test {
         assertEq(escrow.held(), 2_000_000);
         assertEq(token.balanceOf(SELLER), 0);
         assertEq(token.balanceOf(TREASURY), 0);
-        (bytes32 orderId, address payer, address seller, uint256 gross, uint256 fee,, LososEscrow.State state) =
-            escrow.deposits(id);
+        (
+            bytes32 orderId,
+            address payer,
+            address seller,
+            uint256 gross,
+            uint256 fee,,
+            LososEscrow.State state,
+            address buyerBox,
+            address sellerBox
+        ) = escrow.deposits(id);
         assertEq(orderId, keccak256("ord_test"));
         assertEq(payer, BUYER);
         assertEq(seller, SELLER);
         assertEq(gross, 2_000_000);
         assertEq(fee, 80_000);
         assertEq(uint8(state), uint8(LososEscrow.State.Held));
+        assertEq(buyerBox, BUYER_BOX);
+        assertEq(sellerBox, SELLER_BOX);
+    }
+
+    function test_pay_logs_both_boxes() public {
+        vm.expectEmit(address(escrow));
+        emit LososEscrow.Held(
+            1,
+            keccak256("ord_test"),
+            BUYER,
+            SELLER,
+            1_000_000,
+            0,
+            uint64(block.timestamp + 1 days),
+            BUYER_BOX,
+            SELLER_BOX
+        );
+        _pay(1_000_000, 0);
+    }
+
+    function test_the_two_boxes_are_two_keys_and_neither_is_the_edge() public {
+        uint64 deadline = uint64(block.timestamp + 1 days);
+        address[2][5] memory bad = [
+            [address(0), SELLER_BOX],
+            [BUYER_BOX, address(0)],
+            [SELLER_BOX, SELLER_BOX],
+            [EDGE, SELLER_BOX],
+            [BUYER_BOX, EDGE]
+        ];
+        for (uint256 i = 0; i < bad.length; i++) {
+            vm.prank(BUYER);
+            vm.expectRevert(LososEscrow.BadBoxes.selector);
+            escrow.pay(keccak256("ord_b"), SELLER, 100, 0, deadline, bad[i][0], bad[i][1]);
+        }
     }
 
     function test_release_pays_treasury_and_the_recorded_seller() public {
         uint256 id = _pay(2_000_000, 80_000);
-        vm.prank(EDGE);
-        escrow.release(id);
+        _release(id);
         assertEq(token.balanceOf(TREASURY), 80_000);
         assertEq(token.balanceOf(SELLER), 1_920_000);
         assertEq(token.balanceOf(address(escrow)), 0);
@@ -64,82 +184,171 @@ contract LososEscrowTest is Test {
 
     function test_a_machine_order_releases_half_and_half() public {
         uint256 id = _pay(1_000_000, 500_000);
-        vm.prank(EDGE);
-        escrow.release(id);
+        _release(id);
         assertEq(token.balanceOf(TREASURY), 500_000);
         assertEq(token.balanceOf(SELLER), 500_000);
     }
 
-    function test_only_the_edge_releases() public {
+    function test_the_edge_alone_moves_nothing() public {
         uint256 id = _pay(1_000_000, 0);
-        address[3] memory others = [BUYER, SELLER, STRANGER];
-        for (uint256 i = 0; i < others.length; i++) {
-            vm.prank(others[i]);
-            vm.expectRevert(LososEscrow.NotReleaser.selector);
-            escrow.release(id);
-        }
-        // The treasury can rotate the edge's key but not release for it.
+        vm.startPrank(EDGE);
+        vm.expectRevert(LososEscrow.NotApproved.selector);
+        escrow.release(id, _none());
+        vm.expectRevert(LososEscrow.NotApproved.selector);
+        escrow.refund(id, _none());
+        vm.expectRevert(LososEscrow.NotApproved.selector);
+        escrow.settle(id, 1, _none());
+        vm.stopPrank();
+        // Nor does one box, nor a stranger with a box's signature.
+        vm.prank(SELLER_BOX);
+        vm.expectRevert(LososEscrow.NotApproved.selector);
+        escrow.release(id, _none());
+        vm.prank(STRANGER);
+        vm.expectRevert(LososEscrow.NotApproved.selector);
+        escrow.release(id, _one(_sig(SELLER_BOX_KEY, id, 0)));
+        // The treasury is not one of the three.
         vm.prank(TREASURY);
-        vm.expectRevert(LososEscrow.NotReleaser.selector);
-        escrow.release(id);
+        vm.expectRevert(LososEscrow.NotApproved.selector);
+        escrow.release(id, _one(_sig(SELLER_BOX_KEY, id, 0)));
+        assertEq(escrow.held(), 1_000_000);
+    }
+
+    function test_any_two_of_the_three_decide() public {
+        // Edge and seller's box: the release.
+        uint256 a = _pay(1_000_000, 0);
+        vm.prank(EDGE);
+        escrow.release(a, _one(_sig(SELLER_BOX_KEY, a, 0)));
+        // Edge and buyer's box: a refund.
+        uint256 b = _pay(1_000_000, 0);
+        vm.prank(EDGE);
+        escrow.refund(b, _one(_sig(BUYER_BOX_KEY, b, 1_000_000)));
+        // The two boxes, without the edge, sent by anyone.
+        uint256 c = _pay(1_000_000, 0);
+        vm.prank(STRANGER);
+        escrow.release(c, _two(_sig(BUYER_BOX_KEY, c, 0), _sig(SELLER_BOX_KEY, c, 0)));
+        // A box sending its own transaction counts as itself.
+        uint256 d = _pay(1_000_000, 0);
+        vm.prank(BUYER_BOX);
+        escrow.settle(d, 400_000, _one(_sig(SELLER_BOX_KEY, d, 400_000)));
+        assertEq(token.balanceOf(SELLER), 1_000_000 + 1_000_000 + 600_000);
+        assertEq(token.balanceOf(BUYER), 10_000_000 - 4_000_000 + 1_000_000 + 400_000);
+        assertEq(escrow.held(), 0);
+    }
+
+    function test_the_same_key_twice_is_one_key() public {
+        uint256 id = _pay(1_000_000, 0);
+        bytes memory seller = _sig(SELLER_BOX_KEY, id, 0);
+        vm.prank(STRANGER);
+        vm.expectRevert(LososEscrow.NotApproved.selector);
+        escrow.release(id, _two(seller, seller));
+        vm.prank(SELLER_BOX);
+        vm.expectRevert(LososEscrow.NotApproved.selector);
+        escrow.release(id, _one(seller));
+    }
+
+    function test_a_signature_counts_only_for_its_own_decision() public {
+        uint256 id = _pay(1_000_000, 0);
+        uint256 other = _pay(1_000_000, 0);
+        vm.startPrank(EDGE);
+        // Signed for a release, sent as a refund: it names someone else.
+        vm.expectRevert(LososEscrow.BadSignature.selector);
+        escrow.refund(id, _one(_sig(SELLER_BOX_KEY, id, 0)));
+        // Signed for another deposit.
+        vm.expectRevert(LososEscrow.BadSignature.selector);
+        escrow.release(id, _one(_sig(SELLER_BOX_KEY, other, 0)));
+        // Signed for another split.
+        vm.expectRevert(LososEscrow.BadSignature.selector);
+        escrow.settle(id, 300_000, _one(_sig(BUYER_BOX_KEY, id, 400_000)));
+        vm.stopPrank();
+    }
+
+    function test_a_signature_from_another_escrow_does_not_count() public {
+        LososEscrow twin = new LososEscrow(IERC20(address(token)), TREASURY, EDGE);
+        vm.prank(BUYER);
+        token.approve(address(twin), type(uint256).max);
+        uint256 id = _pay(1_000_000, 0);
+        vm.prank(BUYER);
+        twin.pay(keccak256("ord_test"), SELLER, 1_000_000, 0, uint64(block.timestamp + 1 days), BUYER_BOX, SELLER_BOX);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(SELLER_BOX_KEY, _digest(twin, id, 0));
+        vm.prank(EDGE);
+        vm.expectRevert(LososEscrow.BadSignature.selector);
+        escrow.release(id, _one(abi.encodePacked(r, s, v)));
+    }
+
+    function test_malformed_signatures_are_refused() public {
+        uint256 id = _pay(1_000_000, 0);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(SELLER_BOX_KEY, escrow.decisionDigest(id, 0));
+        // The other half of the curve: the same signer, a second form.
+        bytes32 high = bytes32(0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141 - uint256(s));
+        bytes[4] memory bad = [
+            abi.encodePacked(r, high, v == 27 ? uint8(28) : uint8(27)),
+            abi.encodePacked(r, s, uint8(0)),
+            abi.encodePacked(r, s),
+            abi.encodePacked(bytes32(0), s, v)
+        ];
+        for (uint256 i = 0; i < bad.length; i++) {
+            vm.prank(EDGE);
+            vm.expectRevert(LososEscrow.BadSignature.selector);
+            escrow.release(id, _one(bad[i]));
+        }
+        bytes[] memory three = new bytes[](3);
+        vm.prank(EDGE);
+        vm.expectRevert(LososEscrow.BadSignature.selector);
+        escrow.release(id, three);
     }
 
     function test_a_deposit_is_released_or_refunded_once() public {
         uint256 id = _pay(1_000_000, 0);
-        vm.prank(EDGE);
-        escrow.release(id);
-        vm.prank(EDGE);
+        _release(id);
+        vm.startPrank(EDGE);
         vm.expectRevert(LososEscrow.NotHeld.selector);
-        escrow.release(id);
-        vm.prank(EDGE);
+        escrow.release(id, _one(_sig(SELLER_BOX_KEY, id, 0)));
         vm.expectRevert(LososEscrow.NotHeld.selector);
-        escrow.refund(id);
-        vm.prank(EDGE);
+        escrow.refund(id, _one(_sig(BUYER_BOX_KEY, id, 1_000_000)));
         vm.expectRevert(LososEscrow.NotHeld.selector);
-        escrow.release(99);
+        escrow.release(99, _none());
+        vm.stopPrank();
     }
 
-    function test_the_edge_refunds_the_whole_payment_at_any_time() public {
+    function test_two_keys_refund_the_whole_payment_at_any_time() public {
         uint256 id = _pay(2_000_000, 80_000);
-        vm.prank(EDGE);
-        escrow.refund(id);
+        _refund(id);
         assertEq(token.balanceOf(BUYER), 10_000_000);
         assertEq(token.balanceOf(TREASURY), 0);
         assertEq(token.balanceOf(SELLER), 0);
         assertEq(escrow.held(), 0);
     }
 
-    function test_the_payer_refunds_only_after_the_deadline() public {
+    function test_the_payer_reclaims_only_after_the_deadline() public {
         uint256 id = _pay(1_000_000, 0);
         vm.prank(BUYER);
         vm.expectRevert(LososEscrow.TooEarly.selector);
-        escrow.refund(id);
+        escrow.reclaim(id);
         vm.warp(block.timestamp + 1 days);
         vm.prank(BUYER);
-        escrow.refund(id);
+        escrow.reclaim(id);
         assertEq(token.balanceOf(BUYER), 10_000_000);
     }
 
-    function test_nobody_else_refunds_even_after_the_deadline() public {
+    function test_nobody_else_reclaims_even_after_the_deadline() public {
         uint256 id = _pay(1_000_000, 0);
         vm.warp(block.timestamp + 2 days);
-        vm.prank(SELLER);
-        vm.expectRevert(LososEscrow.NotReleaser.selector);
-        escrow.refund(id);
-        vm.prank(TREASURY);
-        vm.expectRevert(LososEscrow.NotReleaser.selector);
-        escrow.refund(id);
+        address[5] memory others = [SELLER, TREASURY, EDGE, BUYER_BOX, SELLER_BOX];
+        for (uint256 i = 0; i < others.length; i++) {
+            vm.prank(others[i]);
+            vm.expectRevert(LososEscrow.NotApproved.selector);
+            escrow.reclaim(id);
+        }
     }
 
-    function test_the_edge_may_still_release_after_the_deadline_until_the_payer_refunds() public {
+    function test_two_keys_may_still_release_after_the_deadline_until_the_payer_reclaims() public {
         uint256 id = _pay(1_000_000, 0);
         vm.warp(block.timestamp + 2 days);
-        vm.prank(EDGE);
-        escrow.release(id);
+        _release(id);
         assertEq(token.balanceOf(SELLER), 1_000_000);
         vm.prank(BUYER);
         vm.expectRevert(LososEscrow.NotHeld.selector);
-        escrow.refund(id);
+        escrow.reclaim(id);
     }
 
     function test_paying_twice_makes_two_deposits() public {
@@ -147,10 +356,8 @@ contract LososEscrowTest is Test {
         uint256 second = _pay(1_000_000, 0);
         assertEq(second, first + 1);
         assertEq(escrow.held(), 2_000_000);
-        vm.startPrank(EDGE);
-        escrow.release(first);
-        escrow.refund(second);
-        vm.stopPrank();
+        _release(first);
+        _refund(second);
         assertEq(token.balanceOf(SELLER), 1_000_000);
         assertEq(token.balanceOf(BUYER), 9_000_000);
     }
@@ -158,26 +365,30 @@ contract LososEscrowTest is Test {
     function test_fee_over_half_reverts() public {
         vm.prank(BUYER);
         vm.expectRevert(LososEscrow.FeeTooHigh.selector);
-        escrow.pay(keccak256("ord_fee"), SELLER, 1_000_000, 500_001, uint64(block.timestamp + 1 days));
+        escrow.pay(
+            keccak256("ord_fee"), SELLER, 1_000_000, 500_001, uint64(block.timestamp + 1 days), BUYER_BOX, SELLER_BOX
+        );
     }
 
     function test_zero_seller_or_amount_reverts() public {
+        uint64 deadline = uint64(block.timestamp + 1 days);
         vm.startPrank(BUYER);
         vm.expectRevert(LososEscrow.ZeroSeller.selector);
-        escrow.pay(keccak256("ord_zero"), address(0), 100, 0, uint64(block.timestamp + 1 days));
+        escrow.pay(keccak256("ord_zero"), address(0), 100, 0, deadline, BUYER_BOX, SELLER_BOX);
         vm.expectRevert(LososEscrow.ZeroAmount.selector);
-        escrow.pay(keccak256("ord_zero"), SELLER, 0, 0, uint64(block.timestamp + 1 days));
+        escrow.pay(keccak256("ord_zero"), SELLER, 0, 0, deadline, BUYER_BOX, SELLER_BOX);
         vm.stopPrank();
     }
 
     function test_the_deadline_must_leave_an_hour_and_at_most_thirty_five_days() public {
+        uint256 t = block.timestamp;
         vm.startPrank(BUYER);
         vm.expectRevert(LososEscrow.BadDeadline.selector);
-        escrow.pay(keccak256("ord_d"), SELLER, 100, 0, uint64(block.timestamp + 59 minutes));
+        escrow.pay(keccak256("ord_d"), SELLER, 100, 0, uint64(t + 59 minutes), BUYER_BOX, SELLER_BOX);
         vm.expectRevert(LososEscrow.BadDeadline.selector);
-        escrow.pay(keccak256("ord_d"), SELLER, 100, 0, uint64(block.timestamp + 35 days + 1));
-        escrow.pay(keccak256("ord_d"), SELLER, 100, 0, uint64(block.timestamp + 1 hours));
-        escrow.pay(keccak256("ord_d"), SELLER, 100, 0, uint64(block.timestamp + 35 days));
+        escrow.pay(keccak256("ord_d"), SELLER, 100, 0, uint64(t + 35 days + 1), BUYER_BOX, SELLER_BOX);
+        escrow.pay(keccak256("ord_d"), SELLER, 100, 0, uint64(t + 1 hours), BUYER_BOX, SELLER_BOX);
+        escrow.pay(keccak256("ord_d"), SELLER, 100, 0, uint64(t + 35 days), BUYER_BOX, SELLER_BOX);
         vm.stopPrank();
     }
 
@@ -185,67 +396,61 @@ contract LososEscrowTest is Test {
         // A month of storage, the seller's box offline for the last quarter.
         uint256 id = _pay(2_000_000, 80_000);
         vm.prank(EDGE);
-        escrow.settle(id, 500_000);
+        escrow.settle(id, 500_000, _one(_sig(SELLER_BOX_KEY, id, 500_000)));
         assertEq(token.balanceOf(BUYER), 10_000_000 - 2_000_000 + 500_000);
         // The fee shrinks with the seller's share: 4% of 1.5 USDC.
         assertEq(token.balanceOf(TREASURY), 60_000);
         assertEq(token.balanceOf(SELLER), 1_440_000);
         assertEq(token.balanceOf(address(escrow)), 0);
         assertEq(escrow.held(), 0);
-        (,,,,,, LososEscrow.State state) = escrow.deposits(id);
+        (,,,,,, LososEscrow.State state,,) = escrow.deposits(id);
         assertEq(uint8(state), uint8(LososEscrow.State.Split));
     }
 
     function test_the_fee_of_a_split_rounds_down() public {
         uint256 id = _pay(1_000_001, 333_333);
         vm.prank(EDGE);
-        escrow.settle(id, 1);
+        escrow.settle(id, 1, _one(_sig(BUYER_BOX_KEY, id, 1)));
         // 333_333 * 1_000_000 / 1_000_001 = 333_332.67
         assertEq(token.balanceOf(TREASURY), 333_332);
         assertEq(token.balanceOf(SELLER), 1_000_000 - 333_332);
     }
 
-    function test_only_the_edge_settles_and_only_a_real_split() public {
+    function test_only_a_real_split_settles() public {
         uint256 id = _pay(1_000_000, 0);
-        vm.prank(BUYER);
-        vm.expectRevert(LososEscrow.NotReleaser.selector);
-        escrow.settle(id, 1);
-        vm.prank(SELLER);
-        vm.expectRevert(LososEscrow.NotReleaser.selector);
-        escrow.settle(id, 999_999);
         vm.startPrank(EDGE);
         vm.expectRevert(LososEscrow.BadSplit.selector);
-        escrow.settle(id, 0);
+        escrow.settle(id, 0, _one(_sig(SELLER_BOX_KEY, id, 0)));
         vm.expectRevert(LososEscrow.BadSplit.selector);
-        escrow.settle(id, 1_000_000);
-        escrow.settle(id, 250_000);
+        escrow.settle(id, 1_000_000, _one(_sig(SELLER_BOX_KEY, id, 1_000_000)));
+        escrow.settle(id, 250_000, _one(_sig(SELLER_BOX_KEY, id, 250_000)));
         vm.expectRevert(LososEscrow.NotHeld.selector);
-        escrow.settle(id, 250_000);
+        escrow.settle(id, 250_000, _one(_sig(SELLER_BOX_KEY, id, 250_000)));
         vm.expectRevert(LososEscrow.NotHeld.selector);
-        escrow.release(id);
+        escrow.release(id, _one(_sig(SELLER_BOX_KEY, id, 0)));
         vm.expectRevert(LososEscrow.NotHeld.selector);
-        escrow.refund(id);
+        escrow.refund(id, _one(_sig(BUYER_BOX_KEY, id, 1_000_000)));
         vm.stopPrank();
     }
 
     function test_a_settled_deposit_cannot_be_reclaimed_after_the_deadline() public {
         uint256 id = _pay(1_000_000, 40_000);
         vm.prank(EDGE);
-        escrow.settle(id, 400_000);
+        escrow.settle(id, 400_000, _one(_sig(BUYER_BOX_KEY, id, 400_000)));
         vm.warp(block.timestamp + 2 days);
         vm.prank(BUYER);
         vm.expectRevert(LososEscrow.NotHeld.selector);
-        escrow.refund(id);
+        escrow.reclaim(id);
     }
 
     function test_a_deposit_the_payer_reclaimed_cannot_be_settled() public {
         uint256 id = _pay(1_000_000, 40_000);
         vm.warp(block.timestamp + 1 days);
         vm.prank(BUYER);
-        escrow.refund(id);
+        escrow.reclaim(id);
         vm.prank(EDGE);
         vm.expectRevert(LososEscrow.NotHeld.selector);
-        escrow.settle(id, 400_000);
+        escrow.settle(id, 400_000, _one(_sig(SELLER_BOX_KEY, id, 400_000)));
     }
 
     function test_short_allowance_reverts_and_records_nothing() public {
@@ -253,7 +458,9 @@ contract LososEscrowTest is Test {
         token.approve(address(escrow), 10);
         vm.prank(BUYER);
         vm.expectRevert();
-        escrow.pay(keccak256("ord_short"), SELLER, 1_000_000, 0, uint64(block.timestamp + 1 days));
+        escrow.pay(
+            keccak256("ord_short"), SELLER, 1_000_000, 0, uint64(block.timestamp + 1 days), BUYER_BOX, SELLER_BOX
+        );
         assertEq(escrow.depositCount(), 0);
         assertEq(escrow.held(), 0);
         assertEq(token.balanceOf(BUYER), 10_000_000);
@@ -267,11 +474,12 @@ contract LososEscrowTest is Test {
         address next = address(0xED6F);
         vm.prank(TREASURY);
         escrow.setReleaser(next);
+        bytes[] memory seller = _one(_sig(SELLER_BOX_KEY, id, 0));
         vm.prank(EDGE);
-        vm.expectRevert(LososEscrow.NotReleaser.selector);
-        escrow.release(id);
+        vm.expectRevert(LososEscrow.NotApproved.selector);
+        escrow.release(id, seller);
         vm.prank(next);
-        escrow.release(id);
+        escrow.release(id, seller);
         assertEq(token.balanceOf(SELLER), 1_000_000);
     }
 
@@ -322,16 +530,20 @@ contract LososEscrowTest is Test {
                 continue;
             }
             uint256 id = uint256(steps[i]) % count + 1;
-            (,,, uint256 gross,,, LososEscrow.State state) = escrow.deposits(id);
+            (,,, uint256 gross,,, LososEscrow.State state,,) = escrow.deposits(id);
             if (state != LososEscrow.State.Held) continue;
             if (step == 3 && gross < 2) continue;
-            vm.prank(EDGE);
-            if (step == 1) escrow.release(id);
-            else if (step == 2) escrow.refund(id);
-            else escrow.settle(id, gross / 2);
+            if (step == 1) {
+                _release(id);
+            } else if (step == 2) {
+                _refund(id);
+            } else {
+                vm.prank(EDGE);
+                escrow.settle(id, gross / 2, _one(_sig(SELLER_BOX_KEY, id, gross / 2)));
+            }
         }
         for (uint256 id = 1; id <= escrow.depositCount(); id++) {
-            (,,, uint256 gross,,, LososEscrow.State state) = escrow.deposits(id);
+            (,,, uint256 gross,,, LososEscrow.State state,,) = escrow.deposits(id);
             if (state == LososEscrow.State.Held) open += gross;
         }
         assertEq(escrow.held(), open);
@@ -1125,16 +1337,23 @@ contract LososEscrowTest is Test {
             uint256 x = s >> 5;
             if (op == 0) {
                 vm.prank(b);
-                escrow.pay(keccak256("ord_fuzz"), SELLER, x * 1000 + 1, 0, uint64(block.timestamp + 1 days));
+                escrow.pay(
+                    keccak256("ord_fuzz"),
+                    SELLER,
+                    x * 1000 + 1,
+                    0,
+                    uint64(block.timestamp + 1 days),
+                    BUYER_BOX,
+                    SELLER_BOX
+                );
             } else if (op == 1) {
                 uint256 count = escrow.depositCount();
                 if (count == 0) continue;
                 uint256 id = x % count + 1;
-                (,,,,,, LososEscrow.State state) = escrow.deposits(id);
+                (,,,,,, LososEscrow.State state,,) = escrow.deposits(id);
                 if (state != LososEscrow.State.Held) continue;
-                vm.prank(EDGE);
-                if (x & 1 == 0) escrow.release(id);
-                else escrow.refund(id);
+                if (x & 1 == 0) _release(id);
+                else _refund(id);
             } else if (op == 2) {
                 _topUp(b, x * 500 + 1);
             } else if (op == 3) {
@@ -1182,7 +1401,7 @@ contract LososEscrowTest is Test {
         }
         uint256 owed = escrow.balances(BUYER) + escrow.balances(BUYER2);
         for (uint256 id = 1; id <= escrow.depositCount(); id++) {
-            (,,, uint256 gross,,, LososEscrow.State state) = escrow.deposits(id);
+            (,,, uint256 gross,,, LososEscrow.State state,,) = escrow.deposits(id);
             if (state == LososEscrow.State.Held) owed += gross;
         }
         assertEq(escrow.held(), owed);
