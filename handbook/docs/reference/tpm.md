@@ -86,7 +86,7 @@ its own network to open the disk (next section). The
 [security model](security-model.md) lists this as a known limitation.
 :::
 
-## Opening the disk only at home {#opening-the-disk-only-at-home}
+## Opening the disk only at home
 
 A box can be set up so that the chip alone is not enough. Give the installer
 one or more Tang servers on the box's own network:
