@@ -24,10 +24,11 @@ Set `losos.edge.manage.enable` on the edge. An
 
 On its first start the edge makes a manage key: 64 characters, `0` to `9`
 and `a` to `f`, kept in `/var/lib/losos-registrar/manage-key`. Anyone with the
-key can use the page, so keep it with the company's other admin passwords. On
-an edge gateway machine, `losos-edge manage-key` on the console prints the key
-and the page's address. To change the key, delete the file and restart the
-registrar; the edge makes a new one, and the old key stops working.
+key can use the page, so keep it with the company's other admin passwords. An
+edge gateway machine shows the key and the page's address on its screen; it
+has no console login. To change the key on a plain edge, delete the file and
+restart the registrar; the edge makes a new one, and the old key stops
+working.
 
 The page answers at the edge's address on the local network, the one boxes
 find it by, for example `http://<edge>.local:8443/manage/`.

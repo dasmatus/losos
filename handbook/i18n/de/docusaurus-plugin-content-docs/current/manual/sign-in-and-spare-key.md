@@ -132,7 +132,7 @@ Eine eigene Rolle der Box aus **Eigene Rollen** steht in derselben Liste.
 Was jede Rolle darf, zeigt die Tabelle unter
 [Rollen und Moderation](moderation).
 
-![Der Bereich Benutzer: alle mit ihrer Rolle, die Tabelle, was jede Rolle darf, und ganz unten das Formular Person hinzufügen.](@site/docs/img/settings-users-de.png)
+![Der Bereich Benutzer: alle mit ihrer Rolle und die Tabelle, was jede Rolle darf.](@site/docs/img/settings-users-de.png)
 
 Bei einer neuen Person ist **Eigenes Konto** eingeschaltet. Gib Namen und Passwort selbst weiter. Die Anmeldung läuft über LosOS Login.
 LosOS Cloud und LosOS Git legen beim ersten Öffnen jeweils ein eigenes Konto
@@ -174,7 +174,7 @@ immer mindestens einen Administrator.
 sie für alle mit dem Teil Eigenes Konto, auch für Administratoren, und nie
 für den Ersatzschlüssel, der kein Konto hat.
 
-![Dein Konto: deine Angaben, dein Passwort, die Zwei-Faktor-Anmeldung und der Einmalcode.](@site/docs/img/settings-account-de.png)
+![Dein Konto: oben das Profil; Passwort und Zwei-Faktor-Anmeldung stehen weiter unten.](@site/docs/img/settings-account-de.png)
 
 - **Profil**: ein Bild, ein Banner, eine Farbe, deine Pronomen und eine
   Zeile über dich. Alle, die an der Box angemeldet sind, sehen sie neben

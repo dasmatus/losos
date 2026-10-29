@@ -24,11 +24,15 @@ let
   lososPkgs = import ../packages.nix { inherit pkgs; };
   screens = import ./screens { inherit pkgs; };
 
-  plan = name: shots: pkgs.writeText "windows-${name}.json" (builtins.toJSON {
-    width = 1280;
-    height = 860;
-    inherit shots;
-  });
+  plan =
+    name: shots:
+    pkgs.writeText "windows-${name}.json" (
+      builtins.toJSON {
+        width = 1280;
+        height = 860;
+        inherit shots;
+      }
+    );
   network = {
     name = "network";
     path = "/settings/network";
@@ -49,6 +53,9 @@ in
 
 pkgs.testers.nixosTest {
   name = "losos-windows";
+  # The handbook's pictures in three languages take most of an hour on
+  # their own under TCG.
+  globalTimeout = 3 * 3600;
 
   nodes = {
     box = _: {
@@ -68,6 +75,8 @@ pkgs.testers.nixosTest {
       losos = {
         hostName = "mattbox";
         backend.package = lososPkgs.losos-ctl;
+        # The pins and the look are plugins; without them the page sees 404s.
+        backend.plugins = lososPkgs.losos-plugins;
         admin.ui = lososPkgs.losos-admin-ui;
         cloud.enable = true;
         git.enable = false;
@@ -130,6 +139,8 @@ pkgs.testers.nixosTest {
     PASSWORD = "Correct-Horse-Battery-9"
     EVA = "Eva-Long-Password-3"
     EVA_NEW = "Eva-Second-Password-4"
+
+    ${screens.handbookScript}
 
     # One after the other: two VMs booting at once under emulation can miss
     # the driver's wait for a shell.
@@ -340,8 +351,9 @@ pkgs.testers.nixosTest {
         # As on a box that had people before the share came on.
         box.succeed("rm /var/lib/losos-windows/learned.json && systemctl restart lososd")
         box.wait_for_unit("lososd.service")
-        rc, out = smb(f"//{box_ip}/eva -c ls", "eva", EVA_NEW)
-        assert rc != 0, out
+        # lososd rewrites Samba's files on its way up, a moment after the
+        # unit counts as started.
+        retry(lambda _: smb(f"//{box_ip}/eva -c ls", "eva", EVA_NEW)[0] != 0, timeout_seconds=120)
         eva = sign_in("eva", EVA_NEW)
         me = json.loads(curl(f"-f {BASE}/api/windows -H 'Cookie: {eva}'"))
         assert me["ready"] is False, me
@@ -369,6 +381,14 @@ pkgs.testers.nixosTest {
             f" --out /tmp/shots/after-eva --user eva --password '{EVA_NEW}'"
         )
         laptop.copy_from_machine("/tmp/shots", "")
+        handbook_pictures(laptop, BASE, "matus", PASSWORD, [
+            {"name": "settings-network-windows", "path": "/settings/network",
+             "waitFor": {"selector": "[data-testid=network-windows]"},
+             "steps": [{"scroll": {"selector": "[data-testid=network-windows]"}}]},
+            {"name": "settings-account-windows", "path": "/settings/account",
+             "waitFor": {"selector": "[data-testid=account-windows-address]"},
+             "steps": [{"scroll": {"selector": "[data-testid=account-windows-address]"}}]},
+        ])
 
     with subtest("off: no share, no discovery, no NT hashes, the WebDAV entry back"):
         box.succeed("/run/current-system/specialisation/off/bin/switch-to-configuration test")
@@ -379,6 +399,9 @@ pkgs.testers.nixosTest {
         rc, out = smb(f"//{box_ip}/matus -c ls", "matus", PASSWORD)
         assert rc != 0, out
         laptop.wait_until_succeeds("avahi-browse -rpt _webdavs._tcp | grep '^='", timeout=120)
+        # The switch restarted lososd, which loads its plugins before it
+        # listens; under emulation that takes a while.
+        box.wait_for_open_port(8082)
         me = json.loads(curl(f"-f {BASE}/api/windows -H 'Cookie: {sign_in("matus", PASSWORD)}'"))
         assert me == {"on": False}, me
   '';

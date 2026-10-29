@@ -6,6 +6,8 @@ slug: /manual/pictures
 
 # Obrázky a nahlasovanie
 
+![Nastavenia, Vzhľad: pozadia a váš vlastný obrázok.](@site/docs/img/settings-look-sk.png)
+
 Obrázky, ktoré vám iní ľudia pošlú v [Chate](chat) a [Pošte](mail), sú
 skryté, kým ich nestlačíte. Sami rozhodujete, ktorých odosielateľov to
 obíde, a môžete zapnúť upozornenie na nahotu, ktoré beží vo vašom vlastnom

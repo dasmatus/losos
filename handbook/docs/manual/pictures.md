@@ -6,7 +6,7 @@ slug: /manual/pictures
 
 # Pictures and reporting
 
-![Settings, Look.](../img/settings-look.png)
+![Settings, Look: the backgrounds and your own picture.](../img/settings-look.png)
 
 Pictures that other people send you in [Chat](chat) and [Mail](mail) are
 hidden until you press them. You decide which senders get past that, and

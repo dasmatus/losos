@@ -55,8 +55,10 @@ let
 
   # Retired options below the top level, left out the same way.
   retired = {
-    "proxy.bootstrapTokenFile" = "retired with rathole; accepted from an older overrides.nix and ignored";
-    "proxy.noisePublicKeyFile" = "retired with rathole; the edge's certificate is pinned in proxy.tunnelPinFile";
+    "proxy.bootstrapTokenFile" =
+      "retired with rathole; accepted from an older overrides.nix and ignored";
+    "proxy.noisePublicKeyFile" =
+      "retired with rathole; the edge's certificate is pinned in proxy.tunnelPinFile";
     "proxy.rathole" = "retired with rathole; accepted and ignored";
   };
 
@@ -65,6 +67,7 @@ let
   fixed = {
     "targetDrives" = "installer";
     "tpm.enable" = "installer";
+    "tpm.tang" = "installer";
     "bios" = "installer";
     # The live medium's two: the installed system never consults them.
     "installer.autorun" = "installer";

@@ -15,6 +15,23 @@ is covered in two places:
   repository: the build commands, the cross-file architecture and the list of
   mistakes that are easy to make again.
 
+## Before you commit
+
+The repository carries git hooks in `nix/hooks/` that run CI's checks for
+the files you change before a commit or a push leaves your machine.
+`devenv shell` and `nix develop` turn them on. Without either, run this once
+in your clone:
+
+```sh
+bash nix/hooks/install
+```
+
+The commit hook formats and lints the Rust and Nix you touched, typechecks
+the admin UI and evaluates every flake output. The push hook adds the Rust
+tests, the admin UI's browser tests and the VM tests of the files you
+changed. Each run's logs are in `.git/losos-hooks/logs/`. The developer
+notes in `docs/development.md` list every check.
+
 ## Changing this handbook
 
 The source is `handbook/` in the repository, a [Docusaurus](https://docusaurus.io/)

@@ -78,6 +78,7 @@ let
     export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
     exec ${pkgs.nodejs}/bin/node ${./git-shots.mjs} "$@"
   '';
+  screens = import ./screens { inherit pkgs; };
 in
 
 pkgs.testers.nixosTest {
@@ -98,6 +99,8 @@ pkgs.testers.nixosTest {
       losos = {
         hostName = "mattbox";
         backend.package = lososPkgs.losos-ctl;
+        # The pins and the look are plugins; without them the page sees 404s.
+        backend.plugins = lososPkgs.losos-plugins;
         admin.ui = lososPkgs.losos-admin-ui;
         git.enable = true;
         mdns.enable = true;
@@ -144,6 +147,7 @@ pkgs.testers.nixosTest {
         pkgs.jq
         pkgs.gitMinimal
         shots
+        screens.capture
       ];
       # A refused push fails instead of asking for a password.
       environment.variables.GIT_TERMINAL_PROMPT = "0";
@@ -165,6 +169,8 @@ pkgs.testers.nixosTest {
     CA = "/etc/losos-box.pem"
     PASSWORD = "Correct-Horse-Battery-9"
     REPO = "notshared/backup-tool"
+
+    ${screens.handbookScript}
 
     start_all()
     box.wait_for_unit("nginx.service")
@@ -432,6 +438,23 @@ pkgs.testers.nixosTest {
         found = json.loads(curl(f"https://{HOST}/git/api/v1/repos/search"))
         assert [r["full_name"] for r in found["data"]] == ["notshared/website"], found
         laptop.copy_from_machine("/tmp/shots/visibility-after", "shots")
+
+    with subtest("the handbook's pictures"):
+        page = f"/git/{REPO}"
+        handbook_pictures(laptop, BASE, "matus", PASSWORD, [
+            {"name": "git-repos", "path": "/git/", "waitFor": {"selector": "[data-repos]"}},
+            {"name": "git-code", "path": page, "waitFor": {"selector": "[data-readme] h2"}},
+            {"name": "git-pull", "path": f"{page}/pulls/1",
+             "waitFor": {"selector": '[data-merge-box="merged"]'}},
+            {"name": "git-worktrees", "path": f"{page}/worktrees",
+             "waitFor": {"selector": '[data-worktree="release-notes"]'}},
+            {"name": "git-settings", "path": f"{page}/settings",
+             "waitFor": {"selector": "[data-visibility-field]"},
+             "steps": [{"waitFor": {"selector": '[data-ai-review-setting="on"]'}}]},
+            {"name": "git-ai-review", "path": f"{page}/pulls/2/files",
+             "waitFor": {"selector": "[data-thread] [data-suggestion]"},
+             "steps": [{"scroll": {"selector": "[data-thread]"}}]},
+        ])
 
     with subtest("the pictures: the same addresses before the pages"):
         box.succeed("/run/current-system/specialisation/before/bin/switch-to-configuration test")

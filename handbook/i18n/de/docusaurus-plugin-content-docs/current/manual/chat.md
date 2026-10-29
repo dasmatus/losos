@@ -15,7 +15,10 @@ Direktnachrichten und neue Räume sind Ende-zu-Ende-verschlüsselt, also
 speichert das Gerät nur, was es selbst nicht lesen kann.
 
 Chat verwendet Matrix, einen offenen Standard für Nachrichten, und läuft auf
-dem Gerät selbst. Nichts geht an einen fremden Dienst.
+dem Gerät selbst. Nichts geht an einen fremden Dienst. Der Matrix-Server auf
+dem Gerät ist Synapse. Ein Gerät, das Chat schon vor dem Wechsel zu Synapse
+hatte, beginnt mit einem leeren Chat: Die alten Unterhaltungen bleiben im
+geteilten Speicher, aber Chat liest sie nicht mehr.
 
 ## Wann Chat da ist
 

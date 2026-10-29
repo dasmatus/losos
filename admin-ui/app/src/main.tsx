@@ -3,9 +3,10 @@ import { createRoot } from "react-dom/client";
 import App from "@/App";
 import { applyFavicon } from "@/lib/logo";
 import { applyStoredTheme } from "@/lib/theme";
-/* Sonner's stylesheet, as a file in the bundle: the library also injects it
+/* Sonner's stylesheet, as a file in the bundle: the library would inject it
  * as a <style> element at load, which the appliance CSP (style-src 'self')
- * refuses, so this import is what styles the notification stack on the box.
+ * refuses, so vite.sonner-quiet.ts drops that copy and this import is what
+ * styles the notification stack on the box.
  * Before index.css, so the house rules there win the cascade. */
 import "sonner/dist/styles.css";
 import "@/styles/index.css";

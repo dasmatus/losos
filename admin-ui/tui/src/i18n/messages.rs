@@ -322,6 +322,16 @@ messages! {
         sk: "Pripnutý je aj jeho vlastný certifikát TLS: {pin}",
         de: "Sein eigenes TLS-Zertifikat ist ebenfalls festgehalten: {pin}",
     },
+    "tui.login.edgeUrl" => {
+        en: "Away from its network, calls go through its edge: {url}",
+        sk: "Mimo jeho siete idú volania cez jeho edge: {url}",
+        de: "Außerhalb seines Netzes gehen Aufrufe über seine Edge: {url}",
+    },
+    "tui.host.edgeUrl" => {
+        en: "away from home",
+        sk: "mimo domova",
+        de: "unterwegs",
+    },
     "tui.login.hostKey" => {
         en: "Host key",
         sk: "Kľúč hostiteľa",
