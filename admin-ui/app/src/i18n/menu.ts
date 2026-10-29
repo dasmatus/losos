@@ -13,7 +13,7 @@ export default defineMessages({
     sk: "Prehliadač kopírovanie nepovolil",
     de: "Der Browser hat das Kopieren nicht erlaubt",
   },
-  "menu.searchFor": { en: "Search for “{text}”", sk: "Hľadať „{text}“", de: "Nach „{text}“ suchen" },
+  "menu.searchFor": { en: "Search for \"{text}\"", sk: "Hľadať „{text}“", de: "Nach „{text}“ suchen" },
   "menu.open": { en: "Open", sk: "Otvoriť", de: "Öffnen" },
   "menu.newTab": { en: "Open in new tab", sk: "Otvoriť na novej karte", de: "In neuem Tab öffnen" },
   "menu.copyLink": { en: "Copy link", sk: "Kopírovať odkaz", de: "Link kopieren" },

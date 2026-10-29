@@ -944,6 +944,123 @@ impl Vetter {
     }
 }
 
+// ── the official edge's domain ─────────────────────────────────────────────
+//
+// A gateway that passes every check above is official only at a name that
+// is DNSSEC-signed and carries its Encrypted Client Hello key: the HTTPS
+// record an official edge's zone writes at every name in it
+// (edge/registrar/src/zone.rs). The passport names the URL, so the name is
+// the one the owner signed for; the lookup is `delv`'s, which validates from
+// a trust anchor itself rather than believing a resolver's AD bit.
+
+/// What a validating lookup of a name's HTTPS record showed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+pub struct DomainCheck {
+    /// The answer, or the proof that there is none, validated from a
+    /// trust anchor.
+    pub signed: bool,
+    /// A validated HTTPS record carries an `ech=` key.
+    pub ech: bool,
+}
+
+impl DomainCheck {
+    /// Both hold.
+    #[must_use]
+    pub fn passed(self) -> bool {
+        self.signed && self.ech
+    }
+}
+
+/// Read `delv <name> HTTPS`'s output. delv marks a validated answer
+/// `; fully validated` and a validated absence
+/// `; negative response, fully validated`; anything else (`; unsigned
+/// answer`, a resolution failure) is not signed.
+#[must_use]
+pub fn parse_delv(out: &str) -> DomainCheck {
+    let signed = out.lines().map(str::trim).any(|l| {
+        l.starts_with(';') && l.ends_with("fully validated") && !l.contains("not fully validated")
+    });
+    let ech = signed
+        && out.lines().map(str::trim).any(|l| {
+            !l.starts_with(';')
+                && l.split_whitespace().nth(3) == Some("HTTPS")
+                && l.contains("ech=")
+        });
+    DomainCheck { signed, ech }
+}
+
+/// The DNS name an edge's URL is at: its host without a port, lower case.
+/// `None` for a plain `http://` URL, an address, or a name with no dot,
+/// none of which can carry a signed record.
+#[must_use]
+pub fn domain_of(url: &str) -> Option<String> {
+    let rest = url.strip_prefix("https://")?;
+    let host = rest.split('/').next().unwrap_or(rest);
+    if host.starts_with('[') {
+        return None;
+    }
+    let name = host
+        .split(':')
+        .next()
+        .unwrap_or(host)
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
+    let label_ok = |l: &str| {
+        !l.is_empty()
+            && l.len() <= 63
+            && l.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+            && !l.starts_with('-')
+            && !l.ends_with('-')
+    };
+    let ok = name.len() <= 253
+        && name.contains('.')
+        && name.parse::<std::net::IpAddr>().is_err()
+        && name.split('.').all(label_ok);
+    ok.then_some(name)
+}
+
+/// Hold a gateway that passed every other check to its domain: it stays
+/// trusted only when its URL is an `https://` name whose HTTPS record
+/// validates under DNSSEC and carries an ECH key. Anything else is refused,
+/// not disabled: a DS record that is not published yet is the operator's
+/// to fix, and the next scan asks again. `check` is asked only for a
+/// trusted gateway.
+pub fn hold_to_domain(
+    url: &str,
+    gateway: Option<Gateway>,
+    check: impl FnOnce(&str) -> DomainCheck,
+) -> Option<Gateway> {
+    if !matches!(gateway, Some(Gateway::Trusted { .. })) {
+        return gateway;
+    }
+    let refused = |code: &str, reason: String| {
+        Some(Gateway::Refused {
+            code: code.to_string(),
+            reason,
+        })
+    };
+    let Some(name) = domain_of(url) else {
+        return refused(
+            "domainNotHttps",
+            format!("an official edge is reached at an https:// name, and {url} is not one"),
+        );
+    };
+    let c = check(&name);
+    if !c.signed {
+        return refused(
+            "domainUnsigned",
+            format!("{name} does not validate under DNSSEC"),
+        );
+    }
+    if !c.ech {
+        return refused(
+            "domainNoEch",
+            format!("{name} has no signed HTTPS record with an Encrypted Client Hello key"),
+        );
+    }
+    gateway
+}
+
 /// Refused: trading was asked of a box with no checked gateway in reach.
 /// Rendered as a 409 by the HTTP layer; the message is the sentence the
 /// owner reads.
@@ -2536,5 +2653,119 @@ fd00000000000000505400fffe123456 02 40 00 00     eth0\n";
         assert_eq!(drive(None, true, None), Drive::Nothing);
         // It came back: the units were stopped, so start them.
         assert_eq!(drive(None, true, Some(&env)), Drive::Restart);
+    }
+
+    const DELV_ECH: &str = "; fully validated\n\
+        mattbox.boxes.example.test. 300\tIN\tHTTPS\t1 . alpn=\"h3,h2\" ech=\"AEX+DQBBAQAgACA=\"\n\
+        mattbox.boxes.example.test. 300\tIN\tRRSIG\tHTTPS 13 4 300 20261111000000 20261028000000 1234 boxes.example.test. abc=\n";
+
+    #[test]
+    fn delv_reads_a_signed_ech_record() {
+        let c = parse_delv(DELV_ECH);
+        assert!(c.signed && c.ech && c.passed(), "{c:?}");
+    }
+
+    #[test]
+    fn delv_unsigned_or_failed_is_not_signed() {
+        let unsigned = DELV_ECH.replace("; fully validated", "; unsigned answer");
+        assert_eq!(parse_delv(&unsigned), DomainCheck::default());
+        assert_eq!(
+            parse_delv(";; resolution failed: SERVFAIL\n"),
+            DomainCheck::default()
+        );
+        assert_eq!(parse_delv(""), DomainCheck::default());
+    }
+
+    #[test]
+    fn delv_signed_without_ech_is_not_enough() {
+        let no_record = "; negative response, fully validated\n\
+            ; mattbox.boxes.example.test. 300 IN \\-HTTPS ;-$NXRRSET\n";
+        let c = parse_delv(no_record);
+        assert!(c.signed && !c.ech, "{c:?}");
+        // An HTTPS record without a key, signed.
+        let plain = DELV_ECH.replace(" ech=\"AEX+DQBBAQAgACA=\"", "");
+        let c = parse_delv(&plain);
+        assert!(c.signed && !c.ech, "{c:?}");
+        // `ech=` in an RRSIG's or a comment's text is not a record.
+        let rrsig_only =
+            "; fully validated\nx.test. 300 IN RRSIG HTTPS 13 2 300 1 2 3 x.test. ech=\n";
+        assert!(!parse_delv(rrsig_only).ech);
+    }
+
+    #[test]
+    fn the_domain_is_the_https_urls_host() {
+        assert_eq!(
+            domain_of("https://Register.Example.Test:8443/x").as_deref(),
+            Some("register.example.test")
+        );
+        assert_eq!(
+            domain_of("https://register.example.test.").as_deref(),
+            Some("register.example.test")
+        );
+        for url in [
+            "http://register.example.test",
+            "https://192.0.2.1",
+            "https://[2001:db8::1]:443",
+            "https://localhost",
+            "https://-bad.example.test",
+            "https://a_b.example.test",
+        ] {
+            assert_eq!(domain_of(url), None, "{url}");
+        }
+    }
+
+    fn trusted() -> Option<Gateway> {
+        Some(Gateway::Trusted {
+            owner: "Owner <o@example.test>".into(),
+            fingerprint: "AB".into(),
+            image: "gateway".into(),
+        })
+    }
+
+    fn code(g: Option<Gateway>) -> String {
+        match g {
+            Some(Gateway::Refused { code, .. }) => code,
+            other => panic!("not refused: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_trusted_gateway_keeps_its_trust_only_at_a_signed_ech_name() {
+        let pass = DomainCheck {
+            signed: true,
+            ech: true,
+        };
+        let url = "https://register.example.test";
+        let mut asked = None;
+        let held = hold_to_domain(url, trusted(), |n| {
+            asked = Some(n.to_string());
+            pass
+        });
+        assert_eq!(held, trusted());
+        assert_eq!(asked.as_deref(), Some("register.example.test"));
+
+        let unsigned = hold_to_domain(url, trusted(), |_| DomainCheck::default());
+        assert_eq!(code(unsigned), "domainUnsigned");
+        let no_ech = hold_to_domain(url, trusted(), |_| DomainCheck {
+            signed: true,
+            ech: false,
+        });
+        assert_eq!(code(no_ech), "domainNoEch");
+        let plain = hold_to_domain("http://register.example.test", trusted(), |_| pass);
+        assert_eq!(code(plain), "domainNotHttps");
+    }
+
+    #[test]
+    fn only_a_trusted_gateway_is_looked_up() {
+        let refused = Some(Gateway::Refused {
+            code: "unknownImage".into(),
+            reason: "r".into(),
+        });
+        for g in [None, refused] {
+            let out = hold_to_domain("https://register.example.test", g.clone(), |_| {
+                panic!("looked up")
+            });
+            assert_eq!(out, g);
+        }
     }
 }

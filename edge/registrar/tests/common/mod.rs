@@ -662,6 +662,7 @@ impl Edge {
             ci_dir: None,
             hidden: None,
             exit: None,
+            ech: None,
             onramp: None,
         };
         if let Some(tweak) = tweak {

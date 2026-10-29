@@ -469,6 +469,25 @@ fn the_tunnel_halves_parse() {
     }
 }
 
+#[test]
+fn ech_key_takes_the_key_file_and_the_public_name() {
+    let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    match parse(args(&[
+        "ech-key",
+        "--key-file",
+        "/var/lib/losos-ech/ech.pem",
+        "--public-name",
+        "register.example.org",
+    ])) {
+        Ok(Mode::EchKey(o)) => {
+            assert_eq!(o.key_file, "/var/lib/losos-ech/ech.pem");
+            assert_eq!(o.public_name, "register.example.org");
+        }
+        other => panic!("expected ech-key, got {}", mode_name(&other)),
+    }
+    assert!(parse(args(&["ech-key", "--key-file", "/k"])).is_err());
+}
+
 fn mode_name(mode: &miette::Result<Mode>) -> &'static str {
     match mode {
         Ok(Mode::Serve(_)) => "serve",
@@ -482,6 +501,7 @@ fn mode_name(mode: &miette::Result<Mode>) -> &'static str {
         Ok(Mode::Enrol(_)) => "enrol",
         Ok(Mode::Lab(_)) => "lab",
         Ok(Mode::ExitSocks(_)) => "exit-socks",
+        Ok(Mode::EchKey(_)) => "ech-key",
         Err(_) => "error",
     }
 }

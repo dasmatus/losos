@@ -237,10 +237,64 @@ ns1.boxes.losos.dasmat.us.  A   203.0.113.7
 ns1.boxes.losos.dasmat.us.  AAAA 2001:db8::7
 ```
 
-:::note[Only with an identity certificate]
-Nothing is handed out until the edge holds an unexpired identity certificate
-([Official edges](#official-edges)). Before that the zone is only SOA, NS and
-glue, and `/domains/*` answers 503.
+The zone is signed with DNSSEC ([below](#wallets-at-box-names)). Publish
+its DS record at the same registrar, so resolvers trust the signatures:
+`keymgr <zone> ds` on the edge prints it. Until the DS is there, resolvers
+treat the zone as unsigned, and a browser has no reason to trust the ECH key
+below either.
+
+:::note[Only on a claimed gateway]
+The zone needs `losos.edge.passport.enable`, and nothing is handed out until
+the edge's owner has claimed it, with settings signed by the owner's key and
+measured at this boot. Before that the zone is only SOA, NS and glue, and
+`/domains/*` answers 503.
+:::
+
+### Encrypted Client Hello
+
+Every name in the zone also carries an HTTPS record with the edge's Encrypted
+Client Hello (ECH) key:
+
+```
+mattbox IN HTTPS 1 . alpn="h3,h2" ech="AEz+DQBI…"
+```
+
+A browser that finds the record encrypts the part of its TLS hello that names
+the box, and shows the network only the edge's public name,
+`register.<publicDomain>` unless `losos.edge.dns.ech.publicName` names
+another. Someone watching the line sees that the browser went to the edge,
+not which box it asked for. ECH is on with the zone
+(`losos.edge.dns.ech.enable`), and the module refuses a zone without DNSSEC
+or without ECH: an unsigned record could be changed on its way to the
+browser.
+
+The edge makes the key on its first start (`losos-ech-key`,
+`/var/lib/losos-ech/ech.pem`, readable by root and Traefik) and keeps it
+until the public name changes. `losos-registrar ech-key --key-file …
+--public-name …` prints the value the records carry. Traefik decrypts with
+the key. No released Traefik can do that yet, so an edge with the zone runs
+Traefik built from its ECH change (`nix/traefik-ech.nix`), which serves no
+dashboard.
+
+A box holds an official edge to this. An edge that passes every gateway
+check stays trusted only at an `https://` URL whose name has an HTTPS record
+that validates under DNSSEC and carries an ECH key. lososd asks `delv` on
+every scan, which validates from the DNS root's key itself, and lists an edge
+that fails as refused (`domainNotHttps`, `domainUnsigned` or `domainNoEch`)
+until it passes. `losos-ctl edge-domain <url>` runs the same check by hand.
+The URL is the one the edge's passport names, so that name belongs in the
+zone: an edge whose zone is its whole `publicDomain` gets
+`register.<publicDomain>` there with the rest. `losos.proxy.gateways.domain`
+turns the check off, or points it at another resolver and trust anchor.
+
+:::note[How this is tested]
+`nix/tests/edge-dns.nix` (`losos-edge-dns`) reads the key from the signed
+HTTPS record, validates it with `delv`, and opens TLS to a box's name with
+Go's ECH client. Traefik accepts ECH, the captured hello carries only the
+public name, and a key Traefik does not hold is turned down.
+`losos-ctl edge-domain` passes a box's name, finds no key at a name the zone
+proves absent, validates nothing from a trust anchor that does not match,
+and refuses plain HTTP.
 :::
 
 ### Custom domains

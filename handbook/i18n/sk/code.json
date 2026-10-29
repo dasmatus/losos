@@ -867,5 +867,13 @@
   },
   "losos.home.setups.companies": {
     "message": "LosOS pre firmy"
+  },
+  "hb.search.allPages.title": {
+    "message": "Všetky stránky",
+    "description": "The search page without JavaScript, which lists every page"
+  },
+  "hb.search.allPages.lead": {
+    "message": "Vyhľadávanie beží v prehliadači a potrebuje JavaScript. Tu sú namiesto neho všetky stránky príručky; zoznam prehľadá funkcia Hľadať vo vašom prehliadači (Ctrl+F).",
+    "description": "Under the title of the search page without JavaScript"
   }
 }

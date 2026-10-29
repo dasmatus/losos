@@ -9,7 +9,7 @@
 #     says so, refuses network-dependent sharing with its own sentence, still
 #     serves its owner, and keeps saying so across a reboot; the moment an
 #     edge appears on the LAN both find it within a scan, the gate opens on
-#     both, and when it goes away both notice; the second, unsigned edge
+#     both, and when it goes away both notice; the second, plain edge
 #     opens sharing but not trading.
 #   * with LOSOS_RECORD_DIR set in the environment of a driver run on the
 #     host (nix/demo/edge-lan/record.sh), the script also pauses at each step
@@ -25,7 +25,7 @@
 # box accepts here queues a rebuild into mesh mode, and that rebuild needs the
 # real system — see nix/demo/edge-lan/CHECKLIST.md for what covers those steps.
 #
-# The configured edge URL on both boxes is the unsigned second edge on the
+# The configured edge URL on both boxes is the plain second edge on the
 # edge VM, as in nix/tests/edge-lan.nix, so the "no edge anywhere" steps are
 # reachable and the official/unofficial distinction can be shown.
 { pkgs }:
@@ -34,24 +34,11 @@ let
   lososPkgs = import ../../packages.nix { inherit pkgs; };
   proxyTokenValue = "demo-proxy-token-0123456789abcdef";
   proxyToken = "/var/secrets/losos-proxy-token";
-  # The same shape as nix/tests/edge-lan.nix: a root key and one edge certificate
-  # made at build time, so the recording's edge is "official" to these two
-  # boxes without touching the committed (empty) nix/keys/ file.
-  identityFixture =
-    pkgs.runCommand "losos-edge-identity-demo-fixture"
-      {
-        nativeBuildInputs = [ lososPkgs.losos-registrar ];
-      }
-      ''
-        mkdir -p $out
-        losos-registrar identity keygen --out $out/root.key > $out/root.pub
-        losos-registrar identity keygen --out $out/edge.key > $out/edge.pub
-        losos-registrar identity sign \
-          --root-key $out/root.key --public-key "$(cat $out/edge.pub)" \
-          --name "LosOS edge (demo)" --url http://edge.local:8443 --days 30 \
-          > $out/edge.cert.json
-      '';
-  identityKey = "/var/secrets/losos-edge-identity.key";
+  # The same shape as nix/tests/edge-lan.nix: the edge is an open gateway
+  # these two boxes vet for themselves (a TPM a test maker vouches for, an
+  # owner's passport for its advertised URL), so the recording's edge is
+  # "official" with nothing signed by LosOS.
+  openGateway = import ../../tests/open-gateway.nix { inherit pkgs lososPkgs; };
   plainEdgeRoot = pkgs.runCommand "plain-edge-root" { } ''
     mkdir -p $out
     echo ok > $out/health
@@ -69,6 +56,7 @@ let
         ../../../modules/daemon.nix
         ../../../modules/containers.nix
         ../../../modules/mdns.nix
+        openGateway.box
       ];
       networking.hostName = name;
       losos = {
@@ -78,9 +66,8 @@ let
         # LosOS Login (modules/identity.nix) is not in these VMs; the admin
         # pages are opened with the box's spare key, as its sign-in allows.
         identity.enable = false;
-        # The unsigned second edge: see the header.
+        # The plain second edge: see the header.
         proxy.registrarUrl = "http://edge.local:8444";
-        proxy.officialRootKeyFile = "${identityFixture}/root.pub";
       };
       # What modules/configuration.nix gives the real box: mDNS through
       # resolved (modules/mdns.nix).
@@ -103,6 +90,7 @@ pkgs.testers.nixosTest {
         imports = [
           ../../../modules/options.nix
           ../../../modules/edge.nix
+          (openGateway.edge "http://edge.local:8443")
         ];
         _module.args.self = {
           packages.x86_64-linux.losos-registrar = lososPkgs.losos-registrar;
@@ -123,18 +111,13 @@ pkgs.testers.nixosTest {
             tokenFile = proxyToken;
           };
           lan.advertise = true;
-          identity = {
-            keyFile = identityKey;
-            certFile = "${identityFixture}/edge.cert.json";
-          };
         };
         systemd.tmpfiles.rules = [
           "d /var/secrets 0700 root root - -"
           "f ${proxyToken} 0600 root root - ${proxyTokenValue}"
-          "C ${identityKey} 0600 root root - ${identityFixture}/edge.key"
         ];
         systemd.services.losos-plain-edge = {
-          description = "a bare /health responder standing in for an unsigned edge";
+          description = "a bare /health responder standing in for an edge with no passport";
           wantedBy = [ "multi-user.target" ];
           after = [ "network.target" ];
           serviceConfig = {
@@ -153,7 +136,7 @@ pkgs.testers.nixosTest {
     box2 = box "box2";
   };
 
-  testScript = ''
+  testScript = openGateway.script + ''
     import json
     import os
     import shlex
@@ -316,6 +299,7 @@ pkgs.testers.nixosTest {
     edge.wait_until_succeeds("curl -fsS http://localhost:8443/health")
     edge.wait_for_unit("losos-plain-edge.service")
     edge.wait_until_succeeds("curl -fsS http://localhost:8444/health")
+    trust(edge, box1, box2)
     t0 = time.time()
     wait_edge(True, official=True)
     found_in = int(time.time() - t0)
@@ -351,10 +335,10 @@ pkgs.testers.nixosTest {
         accepts_mesh(m, name)
     event("B6", "The edge is back: found again on both, the gate reopened by itself, the join is accepted again.")
 
-    # B8. Only the unsigned edge answers: sharing yes, trading no.
+    # B8. Only the plain edge answers: sharing yes, trading no.
     edge.succeed("systemctl stop losos-registrar.service")
     for name, m in boxes.items():
-        with m.nested(f"{name}: waiting for the unsigned edge alone"):
+        with m.nested(f"{name}: waiting for the plain edge alone"):
             retry(lambda _: [e["url"] for e in edge_doc(m, name)["edges"]] == ["http://edge.local:8444"], timeout_seconds=120)
         d = edge_doc(m, name)
         assert d["reachable"] is True and d["official"] is False, d

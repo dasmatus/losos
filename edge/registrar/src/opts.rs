@@ -259,6 +259,18 @@ pub struct ServeOpts {
     /// The edge as a way out (`crate::exit`). `None` unless `--exit-dir`
     /// was given.
     pub exit: Option<crate::exit::ExitOpts>,
+    /// The ECH key (`crate::ech`): `--ech-key-file FILE --ech-public-name
+    /// NAME`. `None` publishes no HTTPS records with an `ech` value.
+    pub ech: Option<EchOpts>,
+}
+
+/// `serve --ech-key-file FILE --ech-public-name NAME`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EchOpts {
+    /// RFC 9934 PEM, made on the first start, read by the TLS front.
+    pub key_file: String,
+    /// The name the outer handshake shows: the edge's own domain.
+    pub public_name: String,
 }
 
 /// `serve --manage-key-file FILE [--manage-ui DIR] [--manage-traefik-metrics URL]`.
@@ -305,6 +317,11 @@ pub enum PassportOpts {
         name: String,
         apps: Vec<String>,
     },
+    /// `passport image --name N [--event-log F]`: the image entry for the
+    /// machine it runs on, as it booted: PCR 11 read from its TPM and the
+    /// programs its firmware's event log says it started. For a box that
+    /// pins a gateway it has looked at, and for the VM tests.
+    Image { name: String, event_log: String },
     /// `passport check --url U --tpm-roots F --images F --payouts F`: the
     /// box's whole check against a running gateway. Exit 0 when it would be
     /// trusted, 1 with the reason when not, 2 when the reason is tampering.
@@ -428,7 +445,9 @@ pub enum Mode {
     Serve(ServeOpts),
     Announce(AnnounceOpts),
     TunnelServer(crate::tunnel::ServerOpts),
-    TunnelClient { config: String },
+    TunnelClient {
+        config: String,
+    },
     Join(JoinOpts),
     StripeGate(GateOpts),
     Passport(PassportOpts),
@@ -436,6 +455,10 @@ pub enum Mode {
     Enrol(EnrolOpts),
     Lab(crate::lab::LabOpts),
     ExitSocks(crate::exit::SocksOpts),
+    /// `ech-key --key-file FILE --public-name NAME`: make the ECH key if
+    /// missing (`crate::ech`) and print its ECHConfigList, before the TLS
+    /// front starts.
+    EchKey(EchOpts),
 }
 
 /// `enrol` options: the LAN owner's view of the boxes a `--enrol-dir`
@@ -579,6 +602,17 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                     traefik_metrics: arg(&rest, "--manage-traefik-metrics").map(str::to_string),
                 }),
                 calls_relay: parse_calls_relay(&rest)?,
+                ech: match (
+                    arg(&rest, "--ech-key-file"),
+                    arg(&rest, "--ech-public-name"),
+                ) {
+                    (None, None) => None,
+                    (Some(key_file), Some(public_name)) => Some(EchOpts {
+                        key_file: key_file.to_string(),
+                        public_name: public_name.to_string(),
+                    }),
+                    _ => return Err(miette!("--ech-key-file and --ech-public-name go together")),
+                },
                 secondary: match arg(&rest, "--secondary-file") {
                     None => None,
                     Some(file) => Some(crate::secondary::SecondaryOpts {
@@ -672,6 +706,10 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
             managed_file: arg(&rest, "--managed-file").map(str::to_string),
             llm_lend_file: arg(&rest, "--llm-lend-file").map(str::to_string),
             hidden_file: arg(&rest, "--hidden-file").map(str::to_string),
+        })),
+        "ech-key" => Ok(Mode::EchKey(EchOpts {
+            key_file: req(&rest, "--key-file")?.to_string(),
+            public_name: req(&rest, "--public-name")?.to_string(),
         })),
         "tunnel-server" => Ok(Mode::TunnelServer(crate::tunnel::ServerOpts {
             listen: arg(&rest, "--listen")
@@ -844,6 +882,12 @@ fn parse_passport(args: &[String]) -> Result<PassportOpts> {
                 .map(str::to_string)
                 .collect(),
         },
+        "image" => PassportOpts::Image {
+            name: req(&rest, "--name")?.to_string(),
+            event_log: arg(&rest, "--event-log")
+                .unwrap_or("/sys/kernel/security/tpm0/binary_bios_measurements")
+                .to_string(),
+        },
         "check" => PassportOpts::Check {
             url: req(&rest, "--url")?.trim_end_matches('/').to_string(),
             tpm_roots: req(&rest, "--tpm-roots")?.to_string(),
@@ -852,7 +896,7 @@ fn parse_passport(args: &[String]) -> Result<PassportOpts> {
         },
         _ => {
             return Err(miette!(
-                "usage: losos-registrar passport statement|settings|measure|check ..."
+                "usage: losos-registrar passport statement|settings|measure|image|check ..."
             ))
         }
     })

@@ -24,6 +24,11 @@ let
     # lososd's edge path rule, which LosOS Desktop's network machine reads
     # by git too. Its own workspace for the same reason as the envelope.
     "backend/edge-path"
+    # MDX and Markdown to sanitized HTML (backend/mdx/README.md), shared by
+    # LosOS Office and Notes, and built for the browser through wasm-bindgen.
+    # Its own workspace, like backend/access; `lint-wasm` lints the wasm32
+    # build with the `wasm` feature.
+    "backend/mdx"
     # lososd's plugins (backend/plugins/README.md): the SDK, the plugins and
     # their logic, natively here; `lint-wasm` lints the wasm32 build, and
     # backend's tests/plugins.rs builds them for wasm32 to run the daemon.
@@ -305,6 +310,9 @@ in
     echo "── backend/plugins (wasm32)"
     cargo clippy --manifest-path backend/plugins/Cargo.toml \
       --target wasm32-unknown-unknown --all-targets -- -D warnings
+    echo "── backend/mdx (wasm32)"
+    cargo clippy --manifest-path backend/mdx/Cargo.toml \
+      --target wasm32-unknown-unknown --features wasm -- -D warnings
     for backend in webgl2 webgpu; do
       echo "── admin-ui/lab/render ($backend, wasm32)"
       cargo clippy --manifest-path admin-ui/lab/render/Cargo.toml \
@@ -313,7 +321,7 @@ in
       cargo clean --manifest-path admin-ui/lab/render/Cargo.toml
     done
   '';
-  scripts.lint-wasm.description = "clippy -D warnings on lososd's plugins and the Lab canvas's WebGL2 and WebGPU builds, all wasm32.";
+  scripts.lint-wasm.description = "clippy -D warnings on lososd's plugins, losos-mdx's browser build and the Lab canvas's WebGL2 and WebGPU builds, all wasm32.";
 
   # The registrar's Bitcoin and Monero orders run against real regtest
   # nodes (edge/registrar/tests/{bitcoin,monero}.rs); CI's test job
