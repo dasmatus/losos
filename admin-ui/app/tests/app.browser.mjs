@@ -2051,14 +2051,14 @@ await check('a box without the tunnel or with the stock name cannot join, and th
   const stock = await open({ path: '/mesh', stored: true });
   await stock.page.locator('[data-edge="found"]').waitFor();
   assert.equal(await join(stock.page).isDisabled(), true, 'a box with the tunnel off can join');
-  assert.match(await body(stock.page), /Turn on “Reachable from outside your home” in Network first/);
+  assert.match(await body(stock.page), /Turn on "Reachable from outside your home" in Network first/);
   assert.deepEqual(stock.errors, []);
   await stock.page.close();
 
   const named = await open({ path: '/mesh', stored: true, settings: { ...SETTINGS, proxyEnable: true } });
   await named.page.locator('[data-edge="found"]').waitFor();
   assert.equal(await join(named.page).isDisabled(), true, 'a box still called mattbox can join');
-  assert.match(await body(named.page), /Every box starts as “mattbox”/);
+  assert.match(await body(named.page), /Every box starts as "mattbox"/);
   assert.deepEqual(named.errors, []);
   await named.page.close();
 });

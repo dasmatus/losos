@@ -82,7 +82,7 @@ export default defineMessages({
   "together.ai.ask": { en: "Ask AI", sk: "Opýtať sa AI", de: "KI fragen" },
   "together.ai.askAbout": { en: "Ask AI about this", sk: "Opýtať sa AI na toto", de: "Die KI dazu fragen" },
   "together.ai.summarise": { en: "Summarise", sk: "Zhrnúť", de: "Zusammenfassen" },
-  "together.ai.title": { en: "Ask the box’s AI", sk: "Opýtať sa AI zariadenia", de: "Die KI der Box fragen" },
+  "together.ai.title": { en: "Ask the box's AI", sk: "Opýtať sa AI zariadenia", de: "Die KI der Box fragen" },
   "together.ai.about": { en: "About {title}", sk: "O {title}", de: "Zu {title}" },
   "together.ai.private": {
     en: "Runs on this box. What you ask and what it reads stay here.",
@@ -101,7 +101,7 @@ export default defineMessages({
   "together.ai.again": { en: "Ask something else", sk: "Opýtať sa niečo iné", de: "Etwas anderes fragen" },
   "together.ai.thinking": { en: "Reading and thinking…", sk: "Číta a premýšľa…", de: "Liest und denkt nach…" },
   "together.ai.waiting": {
-    en: "Waiting for the box’s AI: it answers one question at a time.",
+    en: "Waiting for the box's AI. It answers one question at a time.",
     sk: "Čaká sa na AI zariadenia: odpovedá na jednu otázku naraz.",
     de: "Wartet auf die KI der Box: Sie beantwortet eine Frage nach der anderen.",
   },
@@ -111,7 +111,7 @@ export default defineMessages({
     de: "Nur der erste Teil wurde gelesen, der Rest passte nicht hinein.",
   },
   "together.ai.failed": {
-    en: "The box’s AI could not answer",
+    en: "The box's AI could not answer",
     sk: "AI zariadenia nedokázala odpovedať",
     de: "Die KI der Box konnte nicht antworten",
   },

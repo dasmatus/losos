@@ -71,7 +71,7 @@ export default defineMessages({
   "tracker.cycle.current": { en: "This cycle", sk: "Tento cyklus", de: "Dieser Zyklus" },
   "tracker.labels.add": { en: "Add labels", sk: "Pridať štítky", de: "Labels hinzufügen" },
   "tracker.labels.find": { en: "Find or make a label", sk: "Nájsť alebo vytvoriť štítok", de: "Label suchen oder anlegen" },
-  "tracker.labels.make": { en: "Make “{name}”", sk: "Vytvoriť „{name}“", de: "„{name}“ anlegen" },
+  "tracker.labels.make": { en: "Make \"{name}\"", sk: "Vytvoriť „{name}“", de: "„{name}“ anlegen" },
 
   // ── The page ──────────────────────────────────────────────────────────
   "tracker.new": { en: "New issue", sk: "Nová úloha", de: "Neues Issue" },
@@ -233,7 +233,7 @@ export default defineMessages({
   "tracker.activity.heading": { en: "Activity", sk: "Aktivita", de: "Aktivität" },
   "tracker.activity.nothing": { en: "nothing", sk: "nič", de: "nichts" },
   "tracker.activity.created": { en: "made the issue", sk: "vytvoril(a) úlohu", de: "hat das Issue angelegt" },
-  "tracker.activity.renamed": { en: "renamed it to “{to}”", sk: "premenoval(a) na „{to}“", de: "hat es in „{to}“ umbenannt" },
+  "tracker.activity.renamed": { en: "renamed it to \"{to}\"", sk: "premenoval(a) na „{to}“", de: "hat es in „{to}“ umbenannt" },
   "tracker.activity.state": { en: "moved it to {to}", sk: "presunul(a) do stavu {to}", de: "hat es auf {to} gesetzt" },
   "tracker.activity.priority": { en: "set the priority to {to}", sk: "nastavil(a) prioritu {to}", de: "hat die Priorität auf {to} gesetzt" },
   "tracker.activity.assigned": { en: "gave it to {to}", sk: "pridelil(a) používateľovi {to}", de: "hat es {to} zugewiesen" },

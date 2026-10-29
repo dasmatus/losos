@@ -135,7 +135,7 @@ export default defineMessages({
     de: "Gib einen Betrag in USDC ein, etwa 5 oder 2.50.",
   },
   "panes.market.ai.topUpNeeded": {
-    en: "The balance is empty: add something to it to start.",
+    en: "The balance is empty. Add something to it to start.",
     sk: "Zostatok je prázdny: na spustenie doň niečo pridajte.",
     de: "Das Guthaben ist leer: füge etwas hinzu, um zu starten.",
   },

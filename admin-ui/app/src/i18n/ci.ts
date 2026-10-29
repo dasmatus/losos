@@ -42,12 +42,12 @@ export default defineMessages({
     de: "Führt nur die eigenen Jobs dieser Box aus.",
   },
   "ci.status.mesh": {
-    en: "The mesh's queue answers: jobs can go to other boxes.",
+    en: "The mesh's queue answers, so jobs can go to other boxes.",
     sk: "Front siete odpovedá: úlohy môžu ísť na iné boxy.",
     de: "Die Warteschlange des Mesh antwortet: Jobs können an andere Boxen gehen.",
   },
   "ci.status.noMesh": {
-    en: "No edge in reach: every job runs on this box.",
+    en: "No edge in reach, so every job runs on this box.",
     sk: "Žiadny edge nie je na dosah: každá úloha beží na tomto boxe.",
     de: "Kein Edge erreichbar: Jeder Job läuft auf dieser Box.",
   },
@@ -112,7 +112,7 @@ export default defineMessages({
   "ci.dispatch.open": { en: "Run workflow", sk: "Spustiť workflow", de: "Workflow ausführen" },
   "ci.dispatch.title": { en: "Run a workflow", sk: "Spustiť workflow", de: "Workflow ausführen" },
   "ci.dispatch.text": {
-    en: "Workflows that list workflow_dispatch under on: can be started by hand.",
+    en: "You can start a workflow by hand when it lists workflow_dispatch under on:.",
     sk: "Workflowy, ktoré majú workflow_dispatch pod on:, sa dajú spustiť ručne.",
     de: "Workflows, die workflow_dispatch unter on: nennen, lassen sich von Hand starten.",
   },

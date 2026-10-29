@@ -141,7 +141,7 @@ await check('picked text offers Copy and a search for it, which opens the palett
   await menu(page).waitFor();
   const got = await texts(page);
   assert.match(got[0], /^Copy/);
-  assert.match(got[1], /^Search for “/);
+  assert.match(got[1], /^Search for "/);
   assert.equal(await items(page).first().getAttribute('aria-keyshortcuts'), 'Control+C');
   await items(page).nth(1).click();
   const field = page.getByRole('combobox', { name: /^Search pages/ });
