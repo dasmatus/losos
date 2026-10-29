@@ -1354,8 +1354,16 @@ pkgs.testers.nixosTest {
             assert code == 200, (code, body)
             return [e for e in json.loads(body)["delayed_events"]
                     if urllib.parse.quote(e["room_id"]) == room]
-        for n in ("matus", "eva", "jan"):
-            assert leaves(n), n
+        for n, page in (("matus", owner), ("eva", her), ("jan", jan)):
+            for _ in range(20):
+                if leaves(n):
+                    break
+                time.sleep(1)
+            else:
+                print(call("/_matrix/client/unstable/org.matrix.msc4140/delayed_events", cookies[n],
+                           token=tokens[n])[1])
+                stuck(n, page)
+                raise AssertionError(f"{n} has no delayed leave in the room")
         shot(owner, "call-three")
         film(owner, "call-of-three", "a call of three in a room")
         jan.get_by_role("button", name="Leave the call").click()
