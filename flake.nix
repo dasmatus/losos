@@ -333,7 +333,7 @@
             ./modules/credentials.nix
             ./modules/daemon.nix
             ./modules/identity.nix
-            # LosOS Chat: Dendrite as the shared user while the box shares
+            # LosOS Chat: Synapse as the shared user while the box shares
             # its storage in a mesh, behind LosOS Login (backend/src/chat.rs).
             ./modules/chat.nix
             # Calls from chat rooms and DMs: the SFU, as the shared user, which

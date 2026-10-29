@@ -2904,43 +2904,6 @@ async fn get_chat_authz(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     }
 }
 
-/// `GET /internal/chat/threads/{room}`: Matrix's thread list, which Dendrite
-/// lacks. nginx sends `GET /_matrix/client/v1/rooms/{room}/threads` here,
-/// after `/internal/chat/authz` let it through; the caller's own Matrix
-/// token decides what it sees (`crate::chat::Chat::threads`).
-async fn get_chat_threads(
-    api: web::Data<Api>,
-    req: HttpRequest,
-    room: web::Path<String>,
-) -> HttpResponse {
-    let token = crate::chat::token_of(
-        req.headers()
-            .get(actix_web::http::header::AUTHORIZATION)
-            .and_then(|v| v.to_str().ok()),
-        &req.uri().to_string(),
-    );
-    let Some(token) = token else {
-        return HttpResponse::Unauthorized().json(serde_json::json!({
-            "errcode": "M_MISSING_TOKEN",
-            "error": "Missing access token",
-        }));
-    };
-    let query = crate::chat::ThreadsQuery::parse(&query_map(&req));
-    let room = room.into_inner();
-    let api = api.clone();
-    match web::block(move || api.chat.threads(&token, &room, &query)).await {
-        Ok(Ok(reply)) => HttpResponse::build(
-            StatusCode::from_u16(reply.status).unwrap_or(StatusCode::BAD_GATEWAY),
-        )
-        .json(reply.body),
-        Ok(Err(e)) => {
-            HttpResponse::build(StatusCode::from_u16(e.status()).unwrap_or(StatusCode::BAD_GATEWAY))
-                .json(serde_json::json!({ "errcode": "M_UNKNOWN", "error": e.to_string() }))
-        }
-        Err(_) => HttpResponse::ServiceUnavailable().finish(),
-    }
-}
-
 // ── LosOS Contacts' people pickers (crate::contacts) ──────────────────────
 //
 // The book is LosOS Cloud's (`/cloud/api/contacts/`, crate::cloud::contacts);
@@ -6464,10 +6427,6 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/chat/git-room", web::post().to(post_chat_git_room))
                 .route("/api/contacts/suggest", web::get().to(get_contacts_suggest))
                 .route("/internal/chat/authz", web::get().to(get_chat_authz))
-                .route(
-                    "/internal/chat/threads/{room}",
-                    web::get().to(get_chat_threads),
-                )
                 // Everything else is a plugin's, or nobody's (crate::plugin).
                 .default_service(web::route().to(plugin_route))
         })

@@ -28,7 +28,7 @@ for an address on your own network, such as a NAS. Once saved, the secret key is
 never shown again. To change the bucket later, leave the secret field empty
 and the stored one is kept.
 
-![Settings, Backup: the bucket, the recovery code behind Show, the last backup and the restore field.](../img/settings-backup.png)
+![Settings, Backup: where backups go, with the bucket's address and keys, and the recovery code behind Show.](../img/settings-backup.png)
 
 ### Glacier on Amazon S3
 

@@ -271,6 +271,21 @@ pub const TOOLS: &[Tool] = &[
             shape: Shape::Plain,
         },
     },
+    // LosOS Desktop's own agent, in derisk. Its chats run Claude Code, but
+    // with an MCP config derisk writes per chat, so Claude Code's plugin
+    // never reaches them; this file is the one every chat reads.
+    Tool {
+        id: "derisk-agent",
+        name: "derisk Agent",
+        kind: Kind::App,
+        programs: &["derisk-agent"],
+        dirs: &[Place::Config("derisk-agent")],
+        method: Method::Json {
+            files: &[Place::Config("derisk-agent/mcp.json")],
+            container: &["mcpServers"],
+            shape: Shape::Plain,
+        },
+    },
 ];
 
 /// The tool with this id.

@@ -22,7 +22,7 @@ const built = await esbuild.build({
 globalThis.location = new URL('https://mattbox.local/chat/');
 const rtc = await import(`data:text/javascript;base64,${Buffer.from(built.outputFiles[0].text).toString('base64')}`);
 
-const MEMBER = 'org.matrix.msc3401.call.member';
+const MEMBER = 'org.matrix.msc4143.rtc.member';
 const SLOT = 'org.matrix.msc4143.rtc.slot';
 const CALL = 'a'.repeat(32);
 const OTHER = 'b'.repeat(32);
@@ -34,27 +34,29 @@ const event = (type, sender, content, ts = now) => {
   return { getId: () => id, getType: () => type, getSender: () => sender, getContent: () => content, getTs: () => ts };
 };
 const transport = (call, url = 'wss://mattbox.local/calls/api/ws') => ({ type: 'org.losos.sfu', url, call });
-const membership = (sender, device, call, { ts = now, expires = 300_000, application = 'org.losos.call', slot = 'room' } = {}) =>
+// A sticky membership as matrix-js-sdk's StickyEventMembershipManager sends it.
+const membership = (sender, device, call, { ts = now, application = 'org.losos.call', slot = 'org.losos.call#room', user = sender } = {}) =>
   event(MEMBER, sender, {
-    application,
-    call_id: slot,
-    scope: 'm.room',
-    device_id: device,
-    expires,
-    'm.call.intent': 'video',
-    focus_active: { type: 'livekit', focus_selection: 'multi_sfu' },
-    foci_preferred: [transport(call)],
+    application: { type: application, 'm.call.intent': 'video' },
+    slot_id: slot,
+    transports: { published: [transport(call)], can_subscribe: ['livekit'] },
+    member: { user_id: user, device_id: device, id: `${user}:${device}` },
+    versions: [],
+    msc4354_sticky_key: `${user}:${device}`,
   }, ts);
-const room = (state, { joined = ['@matus:b', '@eva:b'], timeline = [] } = {}) => ({
+const withdrawn = (sender, device) => event(MEMBER, sender, { msc4354_sticky_key: `${sender}:${device}` });
+const room = (state, { sticky = [], joined = ['@matus:b', '@eva:b'], timeline = [] } = {}) => ({
   myUserId: '@matus:b',
   hasMembershipState: (user, m) => m === 'join' && joined.includes(user),
   findEventById: (id) => timeline.find((e) => e.getId() === id),
+  _unstable_getStickyEvents: () => sticky.values(),
   currentState: {
     getStateEvents: (type, key) => {
       const all = state.filter((e) => e.getType() === type);
       return key === undefined ? all : all.find((e) => e.key === key);
     },
     maySendStateEvent: () => true,
+    maySendEvent: () => true,
   },
 });
 const slot = (content = rtc.SLOT_CONTENT) => Object.assign(event(SLOT, '@matus:b', content), { key: rtc.RTC_SLOT_ID });
@@ -71,14 +73,17 @@ assert.equal(rtc.sfuTransport({ type: 'livekit', livekit_service_url: 'https://x
 // Whatever the membership says, this page connects through its own origin.
 assert.equal(rtc.sfuUrl(), 'wss://mattbox.local/calls/api/ws');
 
-// Members count only while the slot is open, oldest first; expired ones,
-// other applications and people who left the room do not.
+// Members count only while the slot is open, oldest first; withdrawn
+// ones, other applications and slots, someone else's member, and people
+// who left the room do not.
 const first = membership('@eva:b', 'E', CALL, { ts: now - 60_000 });
 const second = membership('@matus:b', 'M', CALL);
-const members = [second, first, membership('@jan:b', 'J', OTHER), membership('@eva:b', 'E2', OTHER, { ts: now - 400_000 }),
-  membership('@eva:b', 'E3', OTHER, { application: 'm.call', slot: '' })];
-assert.deepEqual(rtc.rtcMembers(room(members)), []);
-const open = room([slot(), ...members]);
+const sticky = [second, first, membership('@jan:b', 'J', OTHER), withdrawn('@eva:b', 'E2'),
+  membership('@eva:b', 'E3', OTHER, { application: 'm.call', slot: 'm.call#' }),
+  membership('@eva:b', 'E4', OTHER, { slot: 'org.losos.call#other' }),
+  membership('@eva:b', 'E5', OTHER, { user: '@matus:b' })];
+assert.deepEqual(rtc.rtcMembers(room([], { sticky })), []);
+const open = room([slot()], { sticky });
 assert.deepEqual(rtc.rtcMembers(open).map((m) => [m.user, m.device]), [['@eva:b', 'E'], ['@matus:b', 'M']]);
 assert.deepEqual(rtc.liveCall(open), { call: CALL, video: true });
 assert.ok(rtc.callLive(open, CALL));
@@ -87,17 +92,17 @@ assert.ok(!rtc.slotOpen(room([slot({ status: 'closed', application: { type: 'org
 assert.ok(!rtc.slotOpen(room([slot({ status: 'open', application: { type: 'm.call' } })])));
 
 // A notification names its call through the membership it refers to,
-// in the room state or, once that has moved on, in the timeline.
+// among the sticky events or, once that has moved on, in the timeline.
 assert.deepEqual(rtc.callOfMembership(open, first.getId()), { call: CALL, video: true });
 const gone = membership('@jan:b', 'J', OTHER);
 assert.deepEqual(rtc.callOfMembership(room([slot()], { timeline: [gone] }), gone.getId()), { call: OTHER, video: true });
 assert.equal(rtc.callOfMembership(open, '$missing'), null);
 
-// New private rooms let every member send a membership and open the slot.
-assert.equal(rtc.CALL_POWER_LEVELS.events[MEMBER], 0);
-assert.equal(rtc.CALL_POWER_LEVELS.events['m.room.power_levels'], 100);
+// New private rooms open the slot; any member may then send a membership.
 assert.deepEqual(rtc.slotState, { type: SLOT, state_key: 'org.losos.call#room', content: rtc.SLOT_CONTENT });
 assert.equal(rtc.SLOT_CONTENT.encryption.type, 'org.matrix.msc4143.per_member');
+assert.ok(rtc.mayCall(open, '@eva:b'));
+assert.ok(!rtc.mayCall(room([]), '@eva:b'));
 
 // The notice for other apps is recognised and kept out of the timeline.
 assert.ok(rtc.isStartNotice({ msgtype: 'm.notice', body: 'Matus started a call', 'org.losos.call': { call_id: CALL } }));

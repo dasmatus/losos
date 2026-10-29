@@ -16,7 +16,7 @@ hatched for the mesh.
 Everything you keep on the box stays on the box. The box copies nothing
 anywhere else. The disk has two parts:
 
-![The Storage pane on a box that keeps its disk to itself: room in use, free room and the reserve, with Use the reserve.](../img/storage.png)
+![The Storage pane: the box's disk and the room held back for later, with Use reserve.](../img/storage.png)
 
 - the **room in use** by LosOS Cloud, LosOS Git and the system;
 - the **reserve**, the slice the installer held back. The Storage pane can

@@ -33,6 +33,7 @@ prihlásenie samotného zariadenia, vo vašom prehliadači.
 | Windsurf | záznam v `~/.codeium/windsurf/mcp_config.json` |
 | Zed | záznam pod `context_servers` v súbore `settings.json` editora Zed |
 | LM Studio | záznam v `~/.lmstudio/mcp.json` |
+| derisk Agent, v LosOS Desktop | záznam v `~/.config/derisk-agent/mcp.json` |
 
 Nástroj sa pozná podľa programu vo vašej premennej `PATH` alebo podľa
 priečinka s nastaveniami. `losos agents` vypíše, čo našiel:
