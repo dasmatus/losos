@@ -6399,12 +6399,15 @@ async fn post_access_revoke(
 }
 
 /// `GET /api/access/host-key` — the box's public key, for the terminal to
-/// pin on first contact. Public by nature; LAN-only like all of `/api/`.
+/// pin on first contact, and where it reaches the box through the edge when
+/// that is open to it (`edgeUrl`). Public by nature; LAN-only like all of
+/// `/api/` unless losos.access.throughEdge lets the tunnel through to it.
 async fn get_access_host_key(api: web::Data<Api>) -> HttpResponse {
     match access_ready(&api) {
         Ok(ready) => HttpResponse::Ok().json(serde_json::json!({
             "fingerprint": ready.host.fingerprint(),
             "publicKey": ready.host.armored_public(),
+            "edgeUrl": ready.edge_url,
         })),
         Err(why) => access_off(why),
     }

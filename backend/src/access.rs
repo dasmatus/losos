@@ -58,6 +58,10 @@ pub struct Ready {
     pub ring: Keyring,
     pub tokens: Tokens,
     pub replay: Replay,
+    /// Where the client reaches the box away from its LAN, through the
+    /// edge, when the tunnel lets the terminal's routes through
+    /// (`LOSOS_ACCESS_EDGE_URL`, losos.access.throughEdge).
+    pub edge_url: Option<String>,
 }
 
 impl Access {
@@ -94,6 +98,9 @@ impl Access {
             ring,
             tokens: Tokens::new(dir.join("tokens.json")),
             replay: Replay::default(),
+            edge_url: std::env::var("LOSOS_ACCESS_EDGE_URL")
+                .ok()
+                .filter(|url| url.starts_with("https://")),
         }))
     }
 }
@@ -372,6 +379,7 @@ mod tests {
                 ring: Keyring::parse(owner.armored_public()).unwrap(),
                 tokens: Tokens::new(dir.join("tokens.json")),
                 replay: Replay::default(),
+                edge_url: None,
             },
             owner,
         )

@@ -1981,6 +1981,23 @@ in
       '';
     };
 
+    access.throughEdge = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Let the `losos` terminal client reach this box through its edge
+        while it is away from the box's network. The terminal's two routes,
+        `/api/access/host-key` and `/api/access/call`, then answer through
+        the tunnel as well as on the LAN, and the host key's answer names
+        the edge address (`https://` and `losos.proxy.hostname`) for the
+        client to remember at login. A call is signed by a seeded key,
+        carries a token and is encrypted to this box's own key, so the edge
+        carries it without reading it. Only while `losos.proxy.enable`; off,
+        both routes are LAN-only like the rest of `/api/`. See
+        docs/terminal-access.md.
+      '';
+    };
+
     # Path of the built admin SPA (built from this flake's ./admin-ui/app by
     # nix/packages.nix with buildNpmPackage; wired in via
     # modules/defaults.nix). Internal.
