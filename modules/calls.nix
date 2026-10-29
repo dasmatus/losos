@@ -206,6 +206,9 @@ in
           internal;
           proxy_intercept_errors on;
           error_page 500 502 503 504 = @losos-calls-authz-down;
+          # The request's body never comes here, but its length is held to
+          # this location's limit first (modules/identity.nix, askAboutRequest).
+          client_max_body_size 0;
           proxy_pass_request_body off;
           proxy_set_header Content-Length "";
           proxy_set_header X-Original-Method $request_method;

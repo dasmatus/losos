@@ -582,6 +582,10 @@
           screens = true;
         };
         losos-cloud = import ./nix/tests/cloud.nix { inherit pkgs; };
+        # One frame across the admin pages, LosOS Cloud and its documents,
+        # the palette's keys on all of them, uploads from the browser and a
+        # 4.5 GiB copy over WebDAV (nix/tests/cloud-shell.nix).
+        losos-cloud-shell = import ./nix/tests/cloud-shell.nix { inherit pkgs; };
         # How fast LosOS Cloud and LosOS Git take files in on a two-core,
         # 4 GiB box, as numbers to compare trees by (nix/tests/upload-speed.nix).
         losos-upload-speed = import ./nix/tests/upload-speed.nix { inherit pkgs; };

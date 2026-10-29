@@ -241,6 +241,13 @@ and is never served or built by nix.
   that ran Nextcloud over once, files, calendars, contacts, boards, app
   passwords and trash, and leaves Nextcloud's leftovers for the erase;
   `nix/tests/cloud-from-nextcloud.nix` boots a real Nextcloud and checks it.
+  LosOS Cloud draws the admin SPA's own top bar, sidebar and palette
+  (`components/app-shell.tsx`, `src/lib/site.tsx` for links across the two
+  routers); `nix/tests/cloud-shell.nix` measures that frame on every page
+  and copies 4.5 GiB in over WebDAV. Every auth_request location keeps
+  `client_max_body_size 0`: nginx holds the request's length to the
+  asking location's limit, and the server's 10m turned every upload over
+  10 MB into a 500.
 - `containers.nix`, `cluster.nix`: the box's own k3s server runs only the
   apps of its shared side (sharing on and in a mesh); `services.rke2`
   (agent) joins the edge's mesh. nginx holds 80 and 443: `/cloud/`,

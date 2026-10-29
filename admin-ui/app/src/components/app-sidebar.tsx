@@ -1,9 +1,16 @@
 import * as React from "react";
-import { Link, useLocation } from "react-router-dom";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
   ArrowRight01Icon,
   BubbleChatIcon,
+  Clock01Icon,
+  CloudIcon,
+  Delete02Icon,
+  Image01Icon,
+  LaptopPhoneSyncIcon,
+  NoteIcon,
+  StarIcon,
+  UserSharingIcon,
   Doc01Icon,
   HardDriveIcon,
   Home01Icon,
@@ -50,7 +57,9 @@ import { openInNewTab, usePinItems } from "@/components/pin-menu";
 import { PinsDialog, usePins, useSavePins } from "@/components/pins-dialog";
 import { pinKey, viewPin, type PinView } from "@/lib/pins";
 import { contextMenu } from "@/lib/context-menu";
-import { useOfficeFolder } from "@/lib/office-folder";
+import { useOfficeFolderState } from "@/lib/office-folder";
+import { useSiteLink, useSitePath } from "@/lib/site";
+import { rememberShell, shellHint } from "@/lib/shell-hint";
 
 /* The one panel: every destination on this page in a single sidebar, in the
  * shape of shadcn's Sidebar ("collapses to icons"), inside the recessed box.
@@ -62,6 +71,8 @@ import { useOfficeFolder } from "@/lib/office-folder";
  *   Overview
  *   Apps
  *   Documents               (a box that edits a folder of documents)
+ *   Cloud               ▾   (LosOS Cloud at /cloud/files, wherever it runs)
+ *     Notes, Recent, Favorites, Shared with you, Photos, Trash, Devices
  *   Storage
  *   Mesh                ▾   (the link opens Mesh; the chevron folds)
  *     Market                selling storage and compute, and disk sharing
@@ -108,6 +119,8 @@ interface LinkEntry {
    * only while the box shares its storage, contacts wherever LosOS Cloud
    * runs. */
   shared?: string;
+  /** More addresses that are this entry, besides `to` and below it. */
+  also?: readonly string[];
   children?: readonly Entry[];
 }
 
@@ -138,6 +151,25 @@ const TREE: readonly Entry[] = [
   },
   { kind: "link", key: "apps", to: "/apps", label: "shell.nav.apps", icon: LayoutGridIcon, pane: "apps" },
   { kind: "link", key: "documents", to: "/office/", label: "office.files.title", icon: Doc01Icon },
+  {
+    kind: "link",
+    key: "cloud",
+    to: "/cloud/files",
+    label: "shell.nav.cloud",
+    icon: CloudIcon,
+    shared: "cloud",
+    // A file opened, found or edited is still in the files.
+    also: ["/cloud/open", "/cloud/search", "/cloud/edit", "/cloud/office"],
+    children: [
+      { kind: "link", key: "cloud-notes", to: "/cloud/notes", label: "notes.title", icon: NoteIcon, shared: "cloud" },
+      { kind: "link", key: "cloud-recent", to: "/cloud/recent", label: "cloud.nav.recent", icon: Clock01Icon, shared: "cloud" },
+      { kind: "link", key: "cloud-favorites", to: "/cloud/favorites", label: "cloud.nav.favorites", icon: StarIcon, shared: "cloud" },
+      { kind: "link", key: "cloud-shared", to: "/cloud/shared", label: "mesh.shared.title", icon: UserSharingIcon, shared: "cloud" },
+      { kind: "link", key: "cloud-photos", to: "/cloud/photos", label: "cloud.nav.photos", icon: Image01Icon, shared: "cloud" },
+      { kind: "link", key: "cloud-trash", to: "/cloud/trash", label: "cloud.nav.trash", icon: Delete02Icon, shared: "cloud" },
+      { kind: "link", key: "cloud-devices", to: "/cloud/devices", label: "cloud.nav.devices", icon: LaptopPhoneSyncIcon, shared: "cloud" },
+    ],
+  },
   { kind: "link", key: "storage", to: "/storage", label: "shell.nav.storage", icon: HardDriveIcon, pane: "storage" },
   {
     kind: "link",
@@ -220,24 +252,24 @@ const TREE: readonly Entry[] = [
  * anyone else the panes of their sections (GET /api/me). A hidden link's
  * own children that stay visible move up a level, so someone in the market
  * section sees Market without Mesh. A fold left empty goes. */
-function allowed(entry: LinkEntry, office: boolean): boolean {
+function allowed(entry: LinkEntry, office: boolean, shared: (app: string) => boolean): boolean {
   if (entry.pane !== undefined) return paneOpen(entry.pane);
   if (entry.key === "lab") return canUse("lab");
   if (entry.key === "documents") return office;
   // There only while lososd lists the app in /api/me's `shared`: mail and
   // chat while the box shares its storage, contacts and calendar with LosOS
   // Cloud.
-  if (entry.shared !== undefined) return sharedApp(entry.shared);
+  if (entry.shared !== undefined) return shared(entry.shared);
   return true;
 }
 
-function visible(entries: readonly Entry[], office: boolean): Entry[] {
+function visible(entries: readonly Entry[], office: boolean, shared: (app: string) => boolean): Entry[] {
   const out: Entry[] = [];
   for (const entry of entries) {
-    const children = visible(entry.children ?? [], office);
+    const children = visible(entry.children ?? [], office, shared);
     if (entry.kind === "fold") {
       if (children.length > 0) out.push({ ...entry, children });
-    } else if (allowed(entry, office)) {
+    } else if (allowed(entry, office, shared)) {
       out.push(entry.children === undefined ? entry : { ...entry, children });
     } else {
       out.push(...children);
@@ -250,7 +282,7 @@ function visible(entries: readonly Entry[], office: boolean): Entry[] {
  * may open. Chat and Mail come before the box's own sections because a
  * phone is where they get used; a box without them shows Overview, Apps,
  * Storage and Mesh. Everything else is under More. */
-const TABS = ["overview", "chat", "mail", "apps", "storage", "mesh", "lab"] as const;
+const TABS = ["overview", "cloud", "chat", "mail", "apps", "storage", "mesh", "lab"] as const;
 const TAB_COUNT = 4;
 
 function bottomTabs(tree: readonly Entry[], pathname: string, t: ReturnType<typeof useT>): BottomNavTab[] {
@@ -276,6 +308,9 @@ function isCurrent(entry: LinkEntry, pathname: string): boolean {
   if (entry.key === "ci") return path === "/ci" || path.startsWith("/ci/");
   if (entry.key === "documents") return path === "/office";
   if (entry.key === "wiki") return path === "/wikis" || path.startsWith("/wikis/");
+  if (entry.key.startsWith("cloud")) {
+    return [entry.to, ...(entry.also ?? [])].some((to) => path === to || path.startsWith(`${to}/`));
+  }
   return path === entry.to;
 }
 
@@ -285,19 +320,35 @@ function containsCurrent(entry: Entry, pathname: string): boolean {
   );
 }
 
-export function AppSidebar() {
+/** `footer` sits at the foot of the panel, out of the rail: LosOS Cloud
+ *  puts the person's used and free space there. */
+export function AppSidebar({ footer }: { footer?: React.ReactNode } = {}) {
   const t = useT();
   useLocale(); // the tree's text is read during render
-  const { pathname } = useLocation();
+  const pathname = useSitePath();
   const { state, isMobile, setOpenMobile } = useSidebar();
   const rail = !isMobile && state === "collapsed";
   const me = useMe();
-  const office = useOfficeFolder();
+  const folder = useOfficeFolderState();
+  /* Until GET /api/me and the Office folder have answered, the entries
+   * they decide are the ones the last page of this tab drew
+   * (lib/shell-hint.ts): going from the admin page to LosOS Cloud and back
+   * is a page load each way, and without it Cloud, Mail, Chat and
+   * Documents would blink out and back in at every one. */
+  const hint = shellHint();
+  const sharedHint = me === null ? hint : null;
+  const officeShown = folder === "unknown" ? (hint?.office ?? false) : folder === "yes";
   // Someone a rule of LosOS Login holds gets their account, at the top.
   const tree = React.useMemo(
-    () => ((me?.locked?.length ?? 0) > 0 ? [settingsLeaf("account")] : visible(TREE, office)),
-    [me, office],
+    () =>
+      (me?.locked?.length ?? 0) > 0
+        ? [settingsLeaf("account")]
+        : visible(TREE, officeShown, (app) => (sharedHint === null ? sharedApp(app) : sharedHint.shared.includes(app))),
+    [me, officeShown, sharedHint],
   );
+  React.useEffect(() => {
+    if (me !== null && folder !== "unknown") rememberShell({ shared: me.shared ?? [], office: folder === "yes" });
+  }, [me, folder]);
 
   // Which folds are open. One that holds the current page opens by itself.
   const [openFolds, setOpenFolds] = React.useState<Record<string, boolean>>({});
@@ -393,6 +444,7 @@ export function AppSidebar() {
           {(pins.status === "ready" || pins.pins.length > 0) && heldBy().length === 0 && (
             <PinnedSection views={views} pathname={pathname} rail={rail} onEdit={openEditor} />
           )}
+          {footer !== undefined && !rail && <div className="mt-auto px-2 pt-6 pb-1">{footer}</div>}
         </SidebarContent>
       </Sidebar>
       <PinsDialog open={editing} onOpenChange={setEditing} />
@@ -415,6 +467,7 @@ function PinnedSection({
   const { pins } = usePins();
   const { busy, save } = useSavePins();
   const items = usePinItems();
+  const link = useSiteLink();
   // On the rail an empty section is nothing to point at.
   if (views.length === 0 && rail) return null;
 
@@ -466,7 +519,7 @@ function PinnedSection({
                     tooltip={name}
                     render={
                       view.inApp ? (
-                        <Link to={view.href} aria-current={active ? "page" : undefined} />
+                        link(view.href, { "aria-current": active ? "page" : undefined })
                       ) : (
                         <a
                           href={view.href}
@@ -527,6 +580,7 @@ function Chevron() {
 
 function TopEntry({ entry, pathname, rail, open, onOpenChange }: TopEntryProps) {
   const t = useT();
+  const siteLink = useSiteLink();
   const label = t(entry.label);
 
   if (entry.kind === "fold") {
@@ -539,7 +593,7 @@ function TopEntry({ entry, pathname, rail, open, onOpenChange }: TopEntryProps) 
         <SidebarMenuItem>
           <SidebarMenuButton
             tooltip={label}
-            render={<Link to={entry.railTo} aria-current={holdsCurrent ? "page" : undefined} />}
+            render={siteLink(entry.railTo, { "aria-current": holdsCurrent ? "page" : undefined })}
           >
             <Glyph icon={entry.icon} active={holdsCurrent} />
             <span className="sr-only">{label}</span>
@@ -570,7 +624,7 @@ function TopEntry({ entry, pathname, rail, open, onOpenChange }: TopEntryProps) 
     <SidebarMenuButton
       isActive={active}
       tooltip={label}
-      render={<Link to={entry.to} aria-current={active ? "page" : undefined} />}
+      render={siteLink(entry.to, { "aria-current": active ? "page" : undefined })}
     >
       <Glyph icon={entry.icon} active={active} />
       <span className="group-data-[collapsible=icon]/sidebar:sr-only">{label}</span>
@@ -597,6 +651,7 @@ function TopEntry({ entry, pathname, rail, open, onOpenChange }: TopEntryProps) 
 
 function SubEntries({ entries, pathname }: { entries: readonly Entry[]; pathname: string }) {
   const t = useT();
+  const link = useSiteLink();
   return (
     <SidebarMenuSub>
       {entries.map((entry) => {
@@ -607,7 +662,7 @@ function SubEntries({ entries, pathname }: { entries: readonly Entry[]; pathname
             <SidebarMenuSubItem key={entry.key}>
               <SidebarMenuSubButton
                 isActive={active}
-                render={<Link to={entry.to} aria-current={active ? "page" : undefined} />}
+                render={link(entry.to, { "aria-current": active ? "page" : undefined })}
               >
                 <Glyph icon={entry.icon} active={active} />
                 <span className="truncate">{label}</span>

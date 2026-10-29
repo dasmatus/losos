@@ -241,7 +241,8 @@ export function upload(
         data = {};
       }
       if (xhr.status >= 200 && xhr.status < 300) resolve(data as Entry);
-      else reject(new CloudError(xhr.status, data.code ?? "internal", data.error ?? xhr.statusText));
+      // Over HTTP/2 there is no status text: the number, then.
+      else reject(new CloudError(xhr.status, data.code ?? "internal", data.error ?? (xhr.statusText || `HTTP ${xhr.status}`)));
     };
     xhr.onerror = () => reject(new CloudError(0, "network", "the box did not answer"));
     xhr.onabort = () => reject(new CloudError(0, "aborted", "cancelled"));

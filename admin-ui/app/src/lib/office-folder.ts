@@ -6,7 +6,7 @@
 import { useSyncExternalStore } from "react";
 import { getMe, subscribeAuth } from "@/lib/api";
 
-type Folder = "unknown" | "yes" | "no";
+export type Folder = "unknown" | "yes" | "no";
 
 let folder: Folder = "unknown";
 let askedFor: unknown = undefined;
@@ -48,4 +48,9 @@ function subscribe(onChange: () => void): () => void {
 /** Whether Documents belongs in the sidebar. */
 export function useOfficeFolder(): boolean {
   return useSyncExternalStore(subscribe, () => folder === "yes", () => false);
+}
+
+/** The same, with "unknown" until the box has answered. */
+export function useOfficeFolderState(): Folder {
+  return useSyncExternalStore(subscribe, () => folder, () => "unknown" as Folder);
 }
