@@ -71,7 +71,11 @@ pkgs.testers.runNixOSTest {
   name = "losos-iso-install";
   # The installed closure is too many inodes for virtiofsd under a
   # 20000-descriptor limit (nix/tests/virtiofs.nix).
-  defaults.imports = [ ./virtiofs.nix ];
+  defaults.imports = [ (import ./virtiofs.nix pkgs) ];
+  # With KVM the test takes minutes. Under TCG (a session, or a runner
+  # without /dev/kvm) the guest's evaluation of the clone alone passes the
+  # default hour.
+  globalTimeout = 4 * 3600;
   # installation-device.nix adds an overlay, as the medium's system does.
   node.pkgsReadOnly = false;
 
