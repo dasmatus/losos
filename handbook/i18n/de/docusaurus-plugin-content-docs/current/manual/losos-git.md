@@ -38,6 +38,8 @@ Die Seiten eines Repositorys stehen in der Seitenleiste:
   Beschreibung und wer es sieht. Nur der Besitzer des Repositorys und seine
   Admins sehen sie.
 
+![Die erste Seite von LosOS Git: die Repositorys, jedes mit einem Abzeichen, wer es sieht, und Neues Repository.](@site/docs/img/git-repos-de.png)
+
 ### Wer ein Repository sieht \{#who-can-see-a-repository}
 
 Jedes Repository hat eine von drei Einstellungen, die ein Abzeichen neben
@@ -53,6 +55,8 @@ seinem Namen zeigt:
 Bei jeder Einstellung können nur du und die Leute, die du hinzufügst,
 pushen. Wer `/git/` ohne Anmeldung öffnet, sieht die öffentlichen
 Repositorys und einen Knopf **Anmelden**.
+
+![Die Einstellungen eines Repositorys: Name und Beschreibung, Wer es sieht auf Diese Box und der Schalter für das KI-Review.](@site/docs/img/git-settings-de.png)
 
 ## Klonen und pushen \{#clone-and-push}
 
@@ -127,6 +131,8 @@ Merge mit Konflikten lehnt die Box ab; merge den Basis-Branch in deinen,
 pushe und versuch es noch einmal. **Ohne Mergen schließen** legt einen
 Pull-Request beiseite, und **Wieder öffnen** holt ihn zurück.
 
+![Ein gemergter Pull-Request im Reiter Unterhaltung: die Beschreibung, ein zustimmendes Review mit einem Zeilenkommentar, die bestandenen Checks und der Merge, rechts der Reviewer.](@site/docs/img/git-pull-de.png)
+
 ## Worktrees \{#worktrees}
 
 Ein Worktree ist ein Checkout eines Repositorys auf einem Rechner, angelegt
@@ -147,6 +153,8 @@ Pull-Request zu diesem Branch, falls es einen gibt. Ein Pull-Request, dessen
 Branch aus einem benannten Worktree gepusht wird, zeigt dessen Namen in
 seinem Kopf. **Vergessen** nimmt einen Worktree von der Liste; sein nächster
 Push setzt ihn wieder darauf.
+
+![Die Seite Worktrees: zwei Worktrees mit Computer, Branch, Besitzer und letztem Push, einer davon gemergt und sein Branch gelöscht, und die Befehle, die einen Worktree benennen.](@site/docs/img/git-worktrees-de.png)
 
 ## Wiki \{#wiki}
 

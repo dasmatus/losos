@@ -36,6 +36,7 @@
 let
   inherit (pkgs) lib;
   lososPkgs = import ../packages.nix { inherit pkgs; };
+  screens = import ./screens { inherit pkgs; };
   folder = "/var/lib/losos-office/files";
   python = pkgs.python3.withPackages (p: [ p.websocket-client ]);
   client = pkgs.writeShellScript "office-client" ''
@@ -120,6 +121,9 @@ let
 in
 pkgs.testers.nixosTest {
   name = "losos-office";
+  # The handbook's pictures in three languages take most of an hour on
+  # their own under TCG.
+  globalTimeout = 3 * 3600;
 
   nodes.mattbox =
     { ... }:
@@ -139,6 +143,8 @@ pkgs.testers.nixosTest {
       losos = {
         hostName = "mattbox";
         backend.package = lososPkgs.losos-ctl;
+        # The pins and the look are plugins; without them the page sees 404s.
+        backend.plugins = lososPkgs.losos-plugins;
         admin.enable = true;
         admin.ui = lososPkgs.losos-admin-ui;
         office = {
@@ -168,7 +174,8 @@ pkgs.testers.nixosTest {
   nodes.laptop =
     { nodes, ... }:
     {
-      virtualisation.memorySize = 2048;
+      # The handbook's pictures start a second Chromium beside this one.
+      virtualisation.memorySize = 3072;
       virtualisation.cores = 2;
       networking.hosts.${nodes.mattbox.networking.primaryIPAddress} = [ "mattbox.local" ];
       fonts.enableDefaultPackages = true;
@@ -206,7 +213,10 @@ pkgs.testers.nixosTest {
         ];
       };
 
-      environment.systemPackages = [ pkgs.curl ];
+      environment.systemPackages = [
+        pkgs.curl
+        screens.capture
+      ];
     };
 
   testScript = ''
@@ -223,6 +233,8 @@ pkgs.testers.nixosTest {
     box = "https://mattbox.local"
     PASSWORD = "Correct-Horse-Battery-9"
     EVA_PASSWORD = "Eva-Long-Password-3"
+
+    ${screens.handbookScript}
 
     def hexid(name):
         return name.encode().hex()
@@ -374,8 +386,13 @@ pkgs.testers.nixosTest {
         mattbox.succeed(f"unzip -p {folder}/Plan.docx word/document.xml | grep -q 'Quarterly plan'")
 
     with subtest("save as PDF lands a new file beside the document"):
-        open_session("alice", "Plan.docx", "/tmp/alice.json")
-        mattbox.succeed(f"OFFICE_WS=ws://localhost {client} edit --session /tmp/alice.json --saveas Plan.pdf")
+        # coolwsd can still hold the last session's lock on the file for a
+        # moment; a session opened then gets lockfailed and is read-only.
+        def save_as_pdf(_):
+            open_session("alice", "Plan.docx", "/tmp/alice.json")
+            rc, _ = mattbox.execute(f"OFFICE_WS=ws://localhost {client} edit --session /tmp/alice.json --saveas Plan.pdf")
+            return rc == 0
+        retry(save_as_pdf, timeout_seconds=600)
         mattbox.succeed(f"head -c 5 {folder}/Plan.pdf | grep -q '%PDF-'")
 
     with subtest("two people edit one document together and one save keeps both"):
@@ -595,6 +612,15 @@ pkgs.testers.nixosTest {
         mattbox.succeed(f"file -b '{folder}/Kick-off.pptx' | grep -q 'Microsoft PowerPoint 2007+'")
         browse("close", "slides")
         laptop.copy_from_machine("/tmp/shots", "office-shots")
+
+    with subtest("the handbook's pictures"):
+        handbook_pictures(laptop, box, "matus", PASSWORD, [
+            {"name": "office", "path": "/office/",
+             "waitFor": {"selector": 'main [aria-busy="false"] table'}, "settle": 1500},
+            {"name": "office-document", "path": f"/office/#file={hexid('Trip plan.docx')}",
+             "waitFor": {"selector": 'main[aria-busy="false"] iframe'},
+             "steps": [{"sleep": 15000}], "settle": 3000, "live": True},
+        ])
 
     with subtest("the plain http address goes through sign-in to the same document on https"):
         # The session cookie is https only, so the plain address cannot tell

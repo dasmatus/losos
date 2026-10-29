@@ -21,7 +21,7 @@ ganze Seitenleiste von unten hochholt. Wisch sie nach unten, um sie zu
 schließen. Läuft auf der Box LosOS Chat und LosOS Mail, bekommen die beiden
 zwei der Plätze in der Leiste.
 
-![Die Übersicht: links die Seitenleiste mit den sechs Bereichen, der Name der Box und ob sie antwortet, die App-Kacheln, die Speicherkarte und das Board.](@site/docs/img/overview-de.png)
+![Die Übersicht: links die Seitenleiste, der Name der Box und ob sie antwortet, die App-Kacheln, die Speicherkarte und das Board.](@site/docs/img/overview-de.png)
 
 | Bereich           | Was dort ist                                                                                                 |
 | ----------------- | ------------------------------------------------------------------------------------------------------------ |

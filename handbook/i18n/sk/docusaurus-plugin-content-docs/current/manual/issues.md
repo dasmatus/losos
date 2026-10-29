@@ -6,6 +6,8 @@ slug: /manual/issues
 
 # Úlohy v LosOS Git
 
+![Projekt backup-tool v LosOS Git: jeho úlohy zoskupené podľa stavu, každá s kľúčom, prioritou, štítkami, termínom a riešiteľom, a v bočnom paneli Doručené, Moje úlohy a projekty.](@site/docs/img/git-issues-sk.png)
+
 LosOS Git drží úlohy zariadenia: chyby, práce a nápady, pre kód aj pre
 čokoľvek iné. Nájdete ich pod **Úlohy** v bočnom paneli LosOS Git, na adrese
 `https://<box>.local/git/issues`, v jednom zozname pre všetky projekty na
@@ -52,6 +54,8 @@ Každá úloha si pamätá svoju históriu: kto ju vytvoril, každú zmenu stavu
 priority, riešiteľa, štítku či cyklu, každý komentár a commity a pull
 requesty, ktoré ju spomenuli.
 
+![Úloha BT-7 otvorená vedľa zoznamu: stav, priorita, riešiteľ, štítok, cyklus, odhad a repozitár, rozdelenie na menšie úlohy, podúlohy a pole na komentár.](@site/docs/img/git-issue-sk.png)
+
 ## Zoznamy, nástenka a pohľady \{#lists-the-board-and-views}
 
 **Moje úlohy** ukazuje, čo riešite vy, naprieč všetkými projektmi.
@@ -69,6 +73,8 @@ projekt.
 
 Keď označíte úlohy zaškrtávacími políčkami alebo klávesom `X`, otvorí sa
 lišta, ktorá zmení stav, prioritu, riešiteľa alebo štítky všetkým naraz.
+
+![Ten istý projekt ako nástenka: stĺpec pre každý stav, úlohy ako karty a uloženie pohľadu.](@site/docs/img/git-issues-board-sk.png)
 
 ## Cykly \{#cycles}
 

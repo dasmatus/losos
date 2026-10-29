@@ -834,6 +834,23 @@ export interface EdgeResponse {
    *  answered; it turns it back on a minute after one does. Null when not
    *  paused, missing from an older lososd. */
   sharingPausedAt?: number | null;
+  /** Whether this box ends TLS for its public names itself, so the edge only
+   *  passes encrypted bytes through (modules/public-tls.nix). Missing from an
+   *  older lososd. */
+  publicTls?: PublicTls;
+}
+
+/** What a look at one public name from outside found: this box's own
+ *  certificate, nothing, or a certificate this box did not make. */
+export type TlsSeen = "ok" | "unreachable" | "foreign";
+
+export interface PublicTls {
+  /** The names this box holds its own certificate for; null while the edge
+   *  still ends TLS for every name. */
+  own: string[] | null;
+  /** RFC 3339 time of the last look from outside, or null. */
+  checkedAt: string | null;
+  seen: Record<string, TlsSeen>;
 }
 
 /** The switch that lets a company edge on this LAN manage LosOS Cloud,

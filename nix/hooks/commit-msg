@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# commit-msg: no attribution trailers and no session links in a commit
+# message. The history-scrub workflow rewrites what gets through
+# (.github/scripts/scrub-message.py); this stops it before it is pushed.
+set -eu
+msg=${1:-}
+[ -n "$msg" ] && [ -f "$msg" ] || exit 0
+if grep -v '^#' "$msg" | grep -qiE '^(co-authored-by|generated[- ]with):|claude\.ai/code/session_'; then
+  echo "commit-msg: the message carries an attribution trailer or a session link; drop it" >&2
+  grep -v '^#' "$msg" | grep -iE '^(co-authored-by|generated[- ]with):|claude\.ai/code/session_' | sed 's/^/  /' >&2
+  exit 1
+fi

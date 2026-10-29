@@ -27,13 +27,16 @@ počítač v LAN a zariadenia ho nájdu samy.
 
 ## Čo je iné \{#what-is-different}
 
-- **Žiadny trh.** Firemný edge nedokáže predložiť podpis LosOS, takže ho
-  každé zariadenie považuje za neoficiálny. Kontrolu vysvetľuje časť
-  [oficiálny alebo nie](official-edge#official-or-not). Jeho riadok na paneli
-  Mesh nesie výstražný znak a panel Trh hlási „Okrajový proxy server, ktorý toto zariadenie našlo, neprevádzkuje LosOS.
-  Zdieľanie úložiska cez neho funguje; obchodovanie vyžaduje dostupný oficiálny okrajový server LosOS.“
-  Vlastné zariadenia firmy si medzi sebou zdieľajú úložisko aj výpočtový
-  výkon zadarmo, o čo tu ide.
+- **Žiadny trh, ak nejde o overenú bránu.** Firemný edge zvyčajne neukazuje
+  pas brány, takže ho každé zariadenie považuje za neoficiálny. Kontrolu
+  vysvetľuje časť [oficiálny alebo nie](official-edge#official-or-not). Jeho
+  riadok na paneli Mesh nesie výstražný znak a panel Trh hlási „Okrajový
+  proxy server, ktorý toto zariadenie našlo, neprešiel overením brány.
+  Zdieľanie úložiska cez neho funguje; obchodovanie vyžaduje dostupnú
+  overenú bránu LosOS.“ Vlastné zariadenia firmy si medzi sebou zdieľajú
+  úložisko aj výpočtový výkon zadarmo, o čo tu ide. Firma, ktorá chce trh
+  cez vlastný edge, na ňom spustí zverejnený obraz brány na počítači s TPM a
+  podpíše preň pas; potom platí podiel LosOS ako každá iná brána.
 - **Kľúče drží firma.** Pár kľúčov tunela, token klastra a zoznam povolených
   zariadení sú na firemnom edge. Nič z dát ani prevádzky firmy sa projektu
   LosOS nedotkne.
@@ -87,8 +90,8 @@ vlastník každého zariadenia.
 
 2. Na edge nastavte `losos.edge.manage.enable` (počítač s edge bránou ho má
    zapnuté). Edge si pri prvom spustení vytvorí kľúč na správu a uloží ho do
-   `/var/lib/losos-registrar/manage-key`. Na počítači s edge bránou ho
-   `losos-edge manage-key` vypíše spolu s adresou stránky.
+   `/var/lib/losos-registrar/manage-key`. Počítač s edge bránou ho ukazuje na
+   obrazovke spolu s adresou stránky.
 3. Otvorte `/manage/` na adrese edge, napríklad
    `http://<edge>.local:8443/manage/`, a prihláste sa kľúčom. Stránka ukáže
    zariadenia, ktoré edge smeruje, a otvorí tie, ktorých vlastník prepínač
@@ -107,6 +110,38 @@ nikomu zariadenie nespravuje. Keď vlastník prepínač vypne, ďalšie volanie
 edge zariadenie odmietne.
 
 Stránku celú opisuje [Webová stránka edge](/in-depth/edge-web-ui.md).
+
+## Počítače s LosOS Desktop \{#losos-desktop-computers}
+
+Ľudia firmy sa môžu na jej počítače s LosOS Desktop prihlásiť menom a heslom
+z LosOS Login. Ľudí drží jedno zariadenie za firemnou edge bránou a jeho
+správca k nemu každý počítač raz pripojí, priamo z počítača:
+
+```sh
+losos-login-bridge fingerprint <zariadenie>.local
+losos-login-bridge join <zariadenie>.local <odtlačok> <vaše meno>
+```
+
+Pred pripojením porovnajte odtlačok s tým, ktorý zariadenie ukazuje na
+stránkach nastavenia. Pripojenie si pýta vaše heslo do LosOS Login a funguje
+len pre niekoho v `losos-admins`. Zariadenie musí navyše ísť cez firemný edge
+vo vlastnej sieti. Zariadenie, ktoré sa k edge LosOS pripája priamo, je
+odmietnuté.
+
+Prvé prihlásenie človeka na počítači mu tam vytvorí účet so šifrovaným
+domovským priečinkom. Ďalšie prihlásenia udržiavajú jeho meno, e-mail a
+práva správcu v súlade so zariadením a notebook mimo kancelárie sa prihlási
+heslom, ktoré zariadenie naposledy prijalo. Pripojený počítač si navyše
+každých pár minút, kým je v kancelárskej sieti, načíta zo zariadenia zoznam
+ľudí a zamkne účty ľudí, ktorých tu odstránite alebo vypnete. Číta mená,
+e-mailové adresy, skupiny a kto je vypnutý, nikdy heslo.
+
+Počítač odpojíte tak, že ho zo zariadenia odstránite cez `DELETE
+/api/devices/directory/<id>`; `GET /api/devices/directory` ich vypíše. Účty,
+ktoré už na počítači sú, zostanú a ďalej sa prihlasujú aj offline. Stranu
+počítača opisuje stránka
+[Company accounts](https://losos-project.github.io/desktop/company) v
+dokumentácii LosOS Desktop.
 
 ## Pre koho je to \{#who-this-is-for}
 

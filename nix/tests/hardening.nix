@@ -62,6 +62,10 @@ let
       ];
 
       losos.backend.package = lososPkgs.losos-ctl;
+      # The plugins every installed box loads (modules/defaults.nix). Without
+      # them lososd compiles nothing, and a sandbox setting that stops the
+      # compiler passes here while the installed box never starts.
+      losos.backend.plugins = lososPkgs.losos-plugins;
 
       # /dev/dri does not exist in the VM and the graphics stack is a large
       # closure for nothing here.
@@ -296,6 +300,7 @@ pkgs.testers.nixosTest {
         hardened.wait_until_succeeds("losos-ctl state --json")
         state = hardened.succeed("losos-ctl state --json")
         assert '"mode"' in state, f"lososd unhealthy under hardening: {state!r}"
+        hardened.succeed("journalctl -u lososd -o cat | grep -q 'plugin loaded.*look'")
         hardened.wait_until_succeeds("curl -fsS localhost:8082/api/health")
         hardened.wait_for_unit("nginx.service")
         hardened.wait_for_open_port(80)

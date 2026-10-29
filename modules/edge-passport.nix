@@ -126,6 +126,7 @@ in
     systemd.services.systemd-pcrmachine.enable = false;
     systemd.services."systemd-pcrfs@".enable = false;
     systemd.services.systemd-pcrfs-root.enable = false;
-    boot.initrd.systemd.services.systemd-pcrphase-initrd.enable = lib.mkIf config.boot.initrd.systemd.enable false;
+    boot.initrd.systemd.services.systemd-pcrphase-initrd.enable =
+      lib.mkIf config.boot.initrd.systemd.enable false;
   };
 }

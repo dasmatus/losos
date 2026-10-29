@@ -69,7 +69,7 @@ pkgs.buildNpmPackage {
   # nix/packages.nix carries the SAME hash over the SAME lock file — two
   # derivations, one dependency set. Change both together or the second one
   # fails with the correct hash in its error.
-  npmDepsHash = "sha256-TABNk7JQdgK7xjuq4tzKhuJXoW+Mx4ABtk7zCB4SeaI=";
+  npmDepsHash = "sha256-pnil+AKqIwPMzqVsvU57WI4PId+Ft8zAf5f/D140atI=";
 
   # No postinstall scripts: playwright must not try to fetch browsers (there is
   # no network here, and the ones it would fetch are not the ones this runs
@@ -78,7 +78,10 @@ pkgs.buildNpmPackage {
   # tests/calls.browser.mjs decodes the SFU's tap with ffmpeg.
   # The calls browser test starts the SFU with its edge client; curl is a
   # runtime dependency of that client and must exist in the sandbox.
-  nativeBuildInputs = [ pkgs.ffmpeg-headless pkgs.curl ];
+  nativeBuildInputs = [
+    pkgs.ffmpeg-headless
+    pkgs.curl
+  ];
   preConfigure = mdxPkg;
   preBuild = labCorePkg + labVirtPkg + labRenderPkg;
 
