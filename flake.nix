@@ -471,6 +471,9 @@
         # losos.tpm.tang: the TPM2 and a Tang server on the network, the
         # recovery code at the console without one.
         losos-network-unlock = import ./nix/tests/network-unlock.nix { inherit pkgs disko; };
+        # losos-install --tang-edge: the edge is the box's Tang server, and
+        # refuses it once the owner reports it stolen.
+        losos-edge-unlock = import ./nix/tests/edge-unlock.nix { inherit pkgs disko; };
         losos-admin-daemon = import ./nix/tests/admin-vm.nix { inherit pkgs; };
         losos-edge-proxy = import ./nix/tests/edge-vm.nix { inherit pkgs; };
         losos-quic = import ./nix/tests/quic.nix { inherit pkgs; };

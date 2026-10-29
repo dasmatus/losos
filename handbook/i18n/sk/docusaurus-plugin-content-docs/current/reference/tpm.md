@@ -124,6 +124,43 @@ Server kľúč nikdy nevidí. Dozvie sa iba to, že zariadenie naštartovalo.
 Ako samotné TPM, aj toto nastavenie je v `modules/install-target.nix`
 (`tpm.tang`), takže zapnúť alebo vypnúť ho možno iba novou inštaláciou.
 
+## Disk sa otvorí cez edge \{#opening-the-disk-with-the-edge}
+
+Serverom kľúčov môže byť [edge](/in-depth/master-proxy.md), namiesto servera
+doma alebo popri ňom:
+
+```sh
+losos-ctl install --tang-edge
+```
+
+Bez adresy inštalátor použije edge, pre ktorý je médium nastavené. Iný edge
+zadáte adresou (`--tang-edge https://edge.example.org`). Inštalátor si od
+edgeu vypýta pár kľúčov len pre toto zariadenie a potom zapečatí diskový
+kľúč k TPM a edgeu spolu. Ak zadáte aj `--tang`, disk potrebuje TPM, server
+doma aj edge.
+
+Pri každom štarte si zariadenie vezme adresu v káblovej sieti a opýta sa
+edgeu cez HTTPS. Edge diskový kľúč nikdy nevidí. Dozvie sa, že zariadenie
+naštartovalo, a adresu, z ktorej sa pýtalo, ktorú vidí aj vždy, keď beží
+tunel.
+
+Čo edge pridáva oproti serveru doma:
+
+- **Vypínač pre ukradnuté zariadenie.** Otvorte na edgei `/tang/lost`,
+  napríklad `https://edge.example.org/tang/lost`, zadajte kód na obnovu
+  zariadenia a zvoľte „Zariadenie mi ukradli“. Kód zostane v prehliadači:
+  stránka pošle edgeu iba hodnotu, ktorá sa z neho vypočíta. Odvtedy edge
+  kľúč toho zariadenia odmieta, takže sa zariadenie neotvorí nikde, ani
+  doma, kým na tej istej stránke nezvolíte „Zariadenie mám späť“. Na vlastnej
+  obrazovke zariadenia ho kód na obnovu stále otvorí.
+- Zariadenie túto hodnotu edgeu oznámi, hneď ako má Nastavenia, Záloha kód
+  na obnovu, a znova, keď sa kód zmení. Môže to urobiť iba zariadenie, ktoré
+  kľúč vytvorilo, s tajomstvom, ktoré inštalátor uložil na šifrovaný disk.
+
+Edge musí odpovedať vždy, keď zariadenie štartuje, aj pri nočnom reštarte o
+00:07. Ak je vtedy edge alebo internetové pripojenie zariadenia nedostupné,
+zariadenie čaká na výzve, kým niekto nezadá kód na obnovu.
+
 ## Ako zistiť, v akom režime zariadenie je \{#how-to-tell-which-mode-a-box-is-in}
 
 - Inštalátor vypíše `unlock: TPM2` alebo `unlock: keyfile in the initrd`

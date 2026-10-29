@@ -145,6 +145,17 @@ in
                 nothing.
               '';
             };
+            edge = lib.mkOption {
+              type = lib.types.bool;
+              default = false;
+              description = ''
+                This server is the box's edge (`losos-install --tang-edge`,
+                losos.edge.tang), at `<registrar>/tang/<id>`: a key made for
+                this box alone, which the edge stops answering for once the
+                owner reports the box stolen there. It is required on its
+                own, not one of the servers any one of which will do.
+              '';
+            };
           };
         }
       );
@@ -166,8 +177,14 @@ in
         the console it then asks for the box's recovery code, which the box
         adds as a passphrase once it has one.
 
-        Set by the installer (`losos-install --tang URL#THUMBPRINT`) into
-        install-target.nix, like `tpm.enable`. Needs `tpm.enable`.
+        With the box's edge as a server (`losos-install --tang-edge`), the
+        disk also needs the edge's answer, and the owner can make the edge
+        refuse it from the edge's `/tang/lost` page with the box's recovery
+        code: a stolen box then does not open anywhere.
+
+        Set by the installer (`losos-install --tang URL#THUMBPRINT`,
+        `--tang-edge [URL]`) into install-target.nix, like `tpm.enable`.
+        Needs `tpm.enable`.
       '';
     };
 
@@ -2442,6 +2459,24 @@ in
         GitHub-style workflows to it with POST /ci/submit, and boxes that
         lend their compute claim them. Only boxes listed as tenants with
         `cluster` may use it. Off, every /ci/* route answers 503.
+      '';
+    };
+
+    edge.tang.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Be the Tang server of the boxes installed with
+        `losos-install --tang-edge`: each gets a key pair of its own here,
+        and its disk opens only with its TPM2 and an answer from this edge
+        (modules/network-unlock.nix). The answer is half of a blinded
+        exchange, so the edge learns when the box boots and never sees the
+        key. An owner whose box was stolen reports it at `/tang/lost` with
+        the box's recovery code, which never leaves their browser, and the
+        edge answers for that box no more until they take it back. Anyone
+        may ask for a key, as of any public Tang server; the edge keeps at
+        most 100 000 and makes at most 30 a minute. Off, every /tang/* route
+        answers 404 and those boxes ask for their recovery code at boot.
       '';
     };
 

@@ -37,6 +37,10 @@
 //!     keyfile path bakes it into the initrd. Enrolling before the long
 //!     install means a chip that cannot seal fails the run in seconds, not
 //!     after twenty minutes of copying.
+//!   * With `--tang-edge`, the box's edge is a Tang server too, one only
+//!     this box can name the owner of (edge/registrar/src/tang.rs). The CLI
+//!     asks the edge for the key before anything is planned, and the plan
+//!     carries the claim secret into `/persist` beside the keyfile.
 //!   * With `--tang`, the TPM2 is one of two Clevis pins instead
 //!     (modules/network-unlock.nix): the keyfile is sealed to the chip AND a
 //!     Tang server into `persist.jwe`, no systemd TPM2 token is enrolled, and
@@ -174,8 +178,10 @@ pub fn render_target(
         s.push_str("  losos.tpm.tang = [\n");
         for t in tang {
             s.push_str(&format!(
-                "    {{ url = \"{}\"; thumbprint = \"{}\"; }}\n",
-                t.url, t.thumbprint
+                "    {{ url = \"{}\"; thumbprint = \"{}\";{} }}\n",
+                t.url,
+                t.thumbprint,
+                if t.edge { " edge = true;" } else { "" }
             ));
         }
         s.push_str("  ];\n");
@@ -224,6 +230,10 @@ pub struct Tang {
     /// checks the server's advertisement against it, so nothing is trusted on
     /// first use.
     pub thumbprint: String,
+    /// The box's edge, which made this key for this box alone and stops
+    /// answering when the owner reports the box stolen. Required on its own
+    /// in [`clevis_policy`], not one of the "any one will do" servers.
+    pub edge: bool,
 }
 
 /// Parse `URL#THUMBPRINT`. The same shapes `losos.tpm.tang` accepts
@@ -256,24 +266,70 @@ pub fn parse_tang(arg: &str) -> Result<Tang, String> {
     Ok(Tang {
         url: url.to_string(),
         thumbprint: thumbprint.to_string(),
+        edge: false,
     })
 }
 
+/// An edge address for `--tang-edge`: http(s), no characters that could end
+/// a Nix string or a shell word, no trailing slash.
+pub fn edge_base(url: &str) -> Result<String, String> {
+    let url = url.trim().trim_end_matches('/');
+    let rest = url
+        .strip_prefix("http://")
+        .or_else(|| url.strip_prefix("https://"))
+        .ok_or_else(|| {
+            format!("--tang-edge {url}: the edge's address must start with http:// or https://")
+        })?;
+    if rest.is_empty()
+        || url
+            .chars()
+            .any(|c| c.is_whitespace() || matches!(c, '"' | '\'' | '$' | '`' | '\\' | '#' | '?'))
+    {
+        return Err(format!("--tang-edge {url}: not a usable address"));
+    }
+    Ok(url.to_string())
+}
+
+/// The edge's answer to `POST /tang/keys`: this box's id there and the
+/// thumbprint of its new signing key. Both are checked for shape, since they
+/// go into install-target.nix.
+pub fn edge_tang(base: &str, answer: &str) -> Result<Tang, String> {
+    #[derive(Deserialize)]
+    struct Answer {
+        id: String,
+        thumbprint: String,
+    }
+    let a: Answer = serde_json::from_str(answer)
+        .map_err(|e| format!("the edge's Tang answer is not what it should be: {e}"))?;
+    if a.id.len() != 32 || !a.id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
+        return Err("the edge's Tang answer carries no box id".to_string());
+    }
+    let t = parse_tang(&format!("{base}/tang/{}#{}", a.id, a.thumbprint))?;
+    Ok(Tang { edge: true, ..t })
+}
+
 /// The Clevis policy: the TPM2 (no PCRs, for the reason [`LUKS_HEADER_DEVICE`]'s
-/// enrolment gives) AND any one of the Tang servers.
+/// enrolment gives) AND any one of the home network's Tang servers AND the
+/// edge, each of the last two only when there is one. The edge is a pin of
+/// its own: as one of "any one will do" it would answer anywhere and make
+/// the home servers pointless.
 pub fn clevis_policy(tang: &[Tang]) -> String {
-    let servers: Vec<serde_json::Value> = tang
-        .iter()
-        .map(|t| serde_json::json!({ "url": t.url, "thp": t.thumbprint }))
-        .collect();
-    serde_json::json!({
-        "t": 2,
-        "pins": {
-            "tpm2": {},
-            "sss": { "t": 1, "pins": { "tang": servers } },
-        },
-    })
-    .to_string()
+    let pin = |t: &Tang| serde_json::json!({ "url": t.url, "thp": t.thumbprint });
+    let home: Vec<serde_json::Value> = tang.iter().filter(|t| !t.edge).map(pin).collect();
+    let edge: Vec<serde_json::Value> = tang.iter().filter(|t| t.edge).map(pin).collect();
+    let mut pins = serde_json::Map::new();
+    pins.insert("tpm2".into(), serde_json::json!({}));
+    if !home.is_empty() {
+        pins.insert(
+            "sss".into(),
+            serde_json::json!({ "t": 1, "pins": { "tang": home } }),
+        );
+    }
+    if !edge.is_empty() {
+        pins.insert("tang".into(), serde_json::Value::Array(edge.clone()));
+    }
+    let t = 1 + usize::from(!home.is_empty()) + edge.len();
+    serde_json::json!({ "t": t, "pins": pins }).to_string()
 }
 
 // ── Options and the plan ─────────────────────────────────────────────────────
@@ -353,6 +409,9 @@ pub fn resolve_tpm(explicit: Option<bool>, present: bool) -> Result<bool, String
 /// file and stop), `--disko-script` (format and mount with a prebuilt script,
 /// used by the VM test), and the real install.
 pub fn plan_install(opts: &Options, devs: &[BlockDev]) -> Result<Vec<InstallAction>, String> {
+    if opts.tang.iter().filter(|t| t.edge).count() > 1 {
+        return Err("--tang-edge names one edge".to_string());
+    }
     if !opts.tang.is_empty() && !opts.tpm {
         return Err(
             "--tang needs the TPM2: the disk key is sealed to the chip AND a Tang server"
@@ -423,6 +482,14 @@ pub fn plan_install(opts: &Options, devs: &[BlockDev]) -> Result<Vec<InstallActi
 /// Where the Clevis JWE is staged on the medium: beside the keyfile.
 pub fn staged_jwe(opts: &Options) -> PathBuf {
     opts.keyfile.with_file_name("persist.jwe")
+}
+
+/// Where the box's key on its edge is staged, `{"url", "claim"}`: the
+/// address and the secret that names this box's owner to it. Beside the
+/// keyfile, and kept beside it inside `/persist`, where
+/// `losos-tang-edge-owner` (modules/network-unlock.nix) reads it.
+pub fn staged_claim(keyfile: &Path) -> PathBuf {
+    keyfile.with_file_name("tang-edge.json")
 }
 
 /// The TPM2 enrolment, on the TPM path only. Runs against the freshly
@@ -504,6 +571,13 @@ fn install_tail(opts: &Options, work: &Path) -> Vec<InstallAction> {
                 PathBuf::from(dst),
             ));
         }
+    }
+    if opts.tang.iter().any(|t| t.edge) {
+        // Read only by the running box, so only the /persist copy.
+        acts.push(InstallAction::CopyKeyfile(
+            staged_claim(&opts.keyfile),
+            PathBuf::from("/mnt/persist/etc/keys/tang-edge.json"),
+        ));
     }
 
     acts.push(InstallAction::RunNixosInstall(work.to_path_buf()));
@@ -892,6 +966,106 @@ mod tests {
             ..opts()
         };
         assert!(plan_install(&o, &targets()).unwrap_err().contains("TPM2"));
+    }
+
+    const EDGE_ANSWER: &str = r#"{"id":"0123456789abcdef0123456789abcdef","thumbprint":"0_JX_0smhrUKXWw8gE19kBbQBY-Nk7-c6Qssa5xtbGs"}"#;
+
+    #[test]
+    fn the_edge_is_a_pin_of_its_own_and_its_claim_goes_into_persist() {
+        let edge = edge_tang(
+            &edge_base("https://register.example/").unwrap(),
+            EDGE_ANSWER,
+        )
+        .unwrap();
+        assert!(edge.edge);
+        assert_eq!(
+            edge.url,
+            "https://register.example/tang/0123456789abcdef0123456789abcdef"
+        );
+        // The edge alone: the TPM2 AND the edge.
+        let policy: serde_json::Value =
+            serde_json::from_str(&clevis_policy(std::slice::from_ref(&edge))).unwrap();
+        assert_eq!(policy["t"], 2);
+        assert_eq!(policy["pins"]["tang"][0]["url"], edge.url.as_str());
+        assert!(policy["pins"].get("sss").is_none());
+        // With a home server too, all three: a box carried away fails the
+        // home server, and a box reported stolen fails the edge.
+        let both = vec![home_tang(), edge.clone()];
+        let policy: serde_json::Value = serde_json::from_str(&clevis_policy(&both)).unwrap();
+        assert_eq!(policy["t"], 3);
+        assert_eq!(policy["pins"]["sss"]["t"], 1);
+        assert_eq!(
+            policy["pins"]["sss"]["pins"]["tang"][0]["url"],
+            "http://tang.lan:7500"
+        );
+        assert_eq!(policy["pins"]["tang"].as_array().unwrap().len(), 1);
+
+        let o = Options {
+            tpm: true,
+            tang: both,
+            ..opts()
+        };
+        let acts = plan_install(&o, &targets()).unwrap();
+        let install = acts
+            .iter()
+            .position(|a| matches!(a, InstallAction::RunNixosInstall(_)))
+            .unwrap();
+        let claim = acts
+            .iter()
+            .position(|a| {
+                matches!(a, InstallAction::CopyKeyfile(src, dst)
+                    if src == &PathBuf::from("/etc/keys/tang-edge.json")
+                        && dst == &PathBuf::from("/mnt/persist/etc/keys/tang-edge.json"))
+            })
+            .unwrap();
+        assert!(claim < install);
+        let target = acts
+            .iter()
+            .find_map(|a| match a {
+                InstallAction::WriteTarget(_, t) => Some(t.clone()),
+                _ => None,
+            })
+            .unwrap();
+        assert!(target.contains(
+            "    { url = \"https://register.example/tang/0123456789abcdef0123456789abcdef\"; thumbprint = \"0_JX_0smhrUKXWw8gE19kBbQBY-Nk7-c6Qssa5xtbGs\"; edge = true; }\n"
+        ));
+        // A box without the edge carries no claim.
+        let o = Options {
+            tpm: true,
+            tang: vec![home_tang()],
+            ..opts()
+        };
+        assert!(!plan_install(&o, &targets()).unwrap().iter().any(
+            |a| matches!(a, InstallAction::CopyKeyfile(src, _) if src.ends_with("tang-edge.json"))
+        ));
+        // One edge.
+        let o = Options {
+            tpm: true,
+            tang: vec![edge.clone(), edge],
+            ..opts()
+        };
+        assert!(plan_install(&o, &targets()).is_err());
+    }
+
+    #[test]
+    fn an_edge_answer_or_address_that_could_end_a_string_is_refused() {
+        for bad in [
+            "register.example",
+            "https://",
+            "https://r.example/\"x",
+            "https://r.example/${x}",
+            "https://r.example/#x",
+        ] {
+            assert!(edge_base(bad).is_err(), "{bad}");
+        }
+        for bad in [
+            r#"{"id":"../../x","thumbprint":"0_JX_0smhrUKXWw8gE19kBbQBY-Nk7-c6Qssa5xtbGs"}"#,
+            r#"{"id":"0123456789abcdef0123456789abcdef","thumbprint":"short"}"#,
+            r#"{"id":"0123456789abcdef0123456789abcdef","thumbprint":"0_JX_0smhrUKXWw8gE19kBbQBY\"; x"}"#,
+            "not json",
+        ] {
+            assert!(edge_tang("https://r.example", bad).is_err(), "{bad}");
+        }
     }
 
     #[test]

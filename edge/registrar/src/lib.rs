@@ -88,6 +88,7 @@ pub mod stats;
 pub mod stripe_gate;
 pub mod stripe_mode;
 pub mod sync;
+pub mod tang;
 pub mod tunnel;
 pub mod vms;
 pub mod window;
