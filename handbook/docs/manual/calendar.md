@@ -66,6 +66,8 @@ When a phone changed an event while you were editing it, saving says so
 instead of overwriting the phone's change. Close the editor and open the
 event again to see what changed.
 
+![An event open: Review the box, with its video call in LosOS Chat and Join the call, the calendar, the reminder, Matus as organiser and Eva going, and Email guests and Send invitations below.](../img/calendar-event.png)
+
 ## Invitations
 
 When you save an event with new guests, Calendar offers to mail each of them
