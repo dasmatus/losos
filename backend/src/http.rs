@@ -76,6 +76,8 @@ struct Api {
     people: crate::people::People,
     /// LosOS Login's word on companion tokens (`crate::companion`).
     companion: crate::companion::Companion,
+    /// LosOS Desktop computers joined to this box (`crate::directory`).
+    directory: crate::directory::Directory,
     /// LosOS Login's rules and second factors (`crate::login`).
     login: crate::login::Login,
     /// LosOS Login names on LosOS Cloud's share (`crate::cloud_share`).
@@ -109,6 +111,9 @@ struct Api {
     /// The plugins that answer every route not registered below
     /// (`crate::plugin`).
     plugins: crate::plugin::Runtime,
+    /// The owner's schizo mode and the computers it reaches
+    /// (`crate::schizo`).
+    schizo: crate::schizo::Schizo,
 }
 
 /// Who made a call.
@@ -126,14 +131,22 @@ pub(crate) enum Principal {
     /// it in: GET on `losos_access::COMPANION_ROUTES` only, and within
     /// those what the person may read.
     Companion(crate::people::Person),
+    /// A computer's backups, as the person LosOS Login signed them in as
+    /// (`losos_access::BACKUPS_CLIENT_ID`): `POST /api/devices/backups`
+    /// only, which makes that person's own credentials and nobody else's.
+    Backups(crate::people::Person),
+    /// A LosOS Desktop computer joined to this box, reading the people list
+    /// (`crate::directory`): `GET /api/directory/people` only. Nobody.
+    Directory(crate::directory::Computer),
 }
 
 impl Principal {
     fn audit_name(&self) -> &str {
         match self {
             Principal::Spare => "spare-key",
-            Principal::Person(p) | Principal::Companion(p) => &p.name,
+            Principal::Person(p) | Principal::Companion(p) | Principal::Backups(p) => &p.name,
             Principal::Edge => "edge",
+            Principal::Directory(c) => &c.device,
         }
     }
 
@@ -141,14 +154,17 @@ impl Principal {
         match self {
             Principal::Spare => true,
             Principal::Person(p) => p.is_admin(),
-            Principal::Edge | Principal::Companion(_) => false,
+            Principal::Edge
+            | Principal::Companion(_)
+            | Principal::Backups(_)
+            | Principal::Directory(_) => false,
         }
     }
 
     fn person(&self) -> Option<&crate::people::Person> {
         match self {
-            Principal::Spare | Principal::Edge => None,
-            Principal::Person(p) | Principal::Companion(p) => Some(p),
+            Principal::Spare | Principal::Edge | Principal::Directory(_) => None,
+            Principal::Person(p) | Principal::Companion(p) | Principal::Backups(p) => Some(p),
         }
     }
 }
@@ -182,6 +198,12 @@ fn error_response(e: anyhow::Error) -> HttpResponse {
     if let Some(r) = e.downcast_ref::<crate::people::Refused>() {
         return err(
             StatusCode::from_u16(r.status()).unwrap_or(StatusCode::CONFLICT),
+            &r.to_string(),
+        );
+    }
+    if let Some(r) = e.downcast_ref::<crate::schizo::Refused>() {
+        return err(
+            StatusCode::from_u16(r.status()).unwrap_or(StatusCode::BAD_REQUEST),
             &r.to_string(),
         );
     }
@@ -390,6 +412,14 @@ fn identify(api: &Api, req: &HttpRequest) -> Option<Principal> {
         };
     }
     if let Some(token) = header("authorization").and_then(bearer_credentials) {
+        // A joined computer's own token, which only this box made and
+        // only lososd checks.
+        if crate::directory::is_directory_token(token) {
+            return api
+                .directory
+                .check(token, losos_access::now_secs())
+                .map(Principal::Directory);
+        }
         // nginx passes a Bearer header on without asking Authelia; a token
         // of LosOS Login's is checked with LosOS Login, at the address the
         // request came to, which is where it was issued.
@@ -401,8 +431,13 @@ fn identify(api: &Api, req: &HttpRequest) -> Option<Principal> {
         }
         let host = header("x-forwarded-host").or_else(|| header("host"))?;
         let grant = api.companion.check(token, host)?;
-        return match lookup(&grant.person)? {
-            Principal::Person(p) => Some(Principal::Companion(p)),
+        return match (lookup(&grant.person)?, grant.client) {
+            (Principal::Person(p), crate::companion::Client::Companion) => {
+                Some(Principal::Companion(p))
+            }
+            (Principal::Person(p), crate::companion::Client::Backups) => {
+                Some(Principal::Backups(p))
+            }
             _ => None,
         };
     }
@@ -590,6 +625,20 @@ fn gate_at(
     };
     api.throttle.record_success(&remote);
     let method = req.method().as_str();
+    // Schizo mode takes the owner off the market (`crate::schizo`). A read
+    // is the market's own "not offered here", which every pane already
+    // shows; anything else is refused.
+    if crate::schizo::market_route(req.path()) && api.schizo.on() {
+        audit("schizo", Some(who.audit_name()));
+        return Err(Box::new(if method == "GET" {
+            HttpResponse::Ok().json(serde_json::json!({ "available": false, "schizo": true }))
+        } else {
+            HttpResponse::Forbidden().json(serde_json::json!({
+                "error": "schizo mode is on: nothing is bought or sold with this box",
+                "schizo": true,
+            }))
+        }));
+    }
     let pattern = pattern
         .map(str::to_string)
         .or_else(|| req.match_pattern())
@@ -610,7 +659,31 @@ fn gate_at(
             )));
         }
     }
-    if let Principal::Person(person) | Principal::Companion(person) = &who {
+    if let Principal::Backups(person) = &who {
+        if !losos_access::backups_route(method, req.path()) {
+            audit("forbidden", Some(&person.name));
+            return Err(Box::new(HttpResponse::Forbidden().json(
+                serde_json::json!({
+                    "error": "a computer's backups only fetch their own credentials",
+                    "section": section,
+                }),
+            )));
+        }
+    }
+    if let Principal::Directory(computer) = &who {
+        if !crate::directory::route_allowed(method, req.path()) {
+            audit("forbidden", Some(&computer.device));
+            return Err(Box::new(HttpResponse::Forbidden().json(
+                serde_json::json!({
+                    "error": "a joined computer only reads the people list",
+                    "section": section,
+                }),
+            )));
+        }
+    }
+    if let Principal::Person(person) | Principal::Companion(person) | Principal::Backups(person) =
+        &who
+    {
         // A rule of LosOS Login holds them to their own account until they
         // comply (`crate::login`): that, and what every signed-in page
         // reads, is all they reach.
@@ -723,7 +796,7 @@ async fn get_me(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
                 "sections": all(),
                 "standalone": api.people.headers,
             })),
-            Principal::Person(p) | Principal::Companion(p) => {
+            Principal::Person(p) | Principal::Companion(p) | Principal::Backups(p) => {
                 // What holds them now, not at their last request: a page
                 // that has just added a passkey asks again to be let go.
                 let locked = if api.people.headers {
@@ -782,6 +855,8 @@ async fn get_me(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
                     .collect::<Vec<_>>(),
                 "standalone": api.people.headers,
             })),
+            // The gate lets a joined computer read the people list alone.
+            Principal::Directory(_) => err(StatusCode::FORBIDDEN, "a joined computer is nobody"),
         }
     })
 }
@@ -1124,6 +1199,248 @@ async fn post_person_remove(
             Err(e) => error_response(e),
         }
     })
+}
+
+// ── Schizo mode and the computers it reaches (`crate::schizo`) ───────────
+
+/// The owner, when `who` is them signed in. Schizo mode is the owner's own
+/// setting: not an administrator's, not the spare key's.
+fn owner_of<'a>(api: &Api, who: &'a Principal) -> Option<&'a crate::people::Person> {
+    use crate::losos::Losos;
+    let person = who.person()?;
+    let owner = api.backend.serialized(|l| l.load_state()).ok()?.owner?;
+    (person.name == owner && person.groups.iter().any(|g| g == crate::people::OWNER))
+        .then_some(person)
+}
+
+/// `GET /api/schizo`: whether schizo mode is on, and the computers it
+/// reaches, for the owner.
+async fn get_schizo(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded_as(&api, &req, "/api/schizo", false, |who| {
+        if owner_of(&api, who).is_none() {
+            return err(StatusCode::FORBIDDEN, "schizo mode is the owner's to see");
+        }
+        match api.schizo.status() {
+            Ok(v) => HttpResponse::Ok().json(v),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// `POST /api/schizo`: `{"on", "full", "duress"?}`, the owner signed in.
+/// Turning it on closes the box's open market listings.
+async fn post_schizo(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    const SHAPE: &str = r#"body must be JSON: {"on": bool, "full": bool, "duress"?: "..."}"#;
+    guarded_as(&api, &req, "/api/schizo", true, |who| {
+        let Some(owner) = owner_of(&api, who) else {
+            return err(
+                StatusCode::FORBIDDEN,
+                "only the owner turns schizo mode on or off",
+            );
+        };
+        let Ok(doc) = serde_json::from_slice::<serde_json::Value>(&body) else {
+            return err(StatusCode::BAD_REQUEST, SHAPE);
+        };
+        let (Some(on), full) = (
+            doc.get("on").and_then(serde_json::Value::as_bool),
+            doc.get("full")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false),
+        ) else {
+            return err(StatusCode::BAD_REQUEST, SHAPE);
+        };
+        let duress = match doc.get("duress").and_then(serde_json::Value::as_str) {
+            None => None,
+            Some(code) => match crate::signin::validate_candidate(code) {
+                Ok(code) => Some(code),
+                Err(e) => return err(StatusCode::BAD_REQUEST, &e),
+            },
+        };
+        let was_on = api.schizo.on();
+        let is_password = |code: &crate::setup::Secret| {
+            api.people.check_password(&owner.name, code).unwrap_or(true)
+        };
+        if let Err(e) = api
+            .schizo
+            .set(on, full, duress.as_ref(), is_password, crate::login::now())
+        {
+            return error_response(e);
+        }
+        if on && !was_on {
+            close_listings(&api);
+            match api.backend.serialized(crate::losos::cmd_schizo_tor) {
+                Ok(Some(job)) => {
+                    tracing::info!(job = %job, "schizo mode: giving the box a Tor address")
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    tracing::warn!(error = %e, "schizo mode could not give the box a Tor address")
+                }
+            }
+        }
+        match api.schizo.status() {
+            Ok(v) => HttpResponse::Ok().json(v),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// The box's open listings, closed on its edge in the background: schizo
+/// mode sells nothing, and a listing left open would.
+fn close_listings(api: &web::Data<Api>) {
+    let api = api.clone();
+    std::thread::spawn(move || {
+        let closed = api
+            .backend
+            .serialized(|l| Ok::<_, anyhow::Error>(crate::erase::close_listings(l)));
+        match closed {
+            Ok((n, true)) => tracing::info!(closed = n, "schizo mode closed the box's listings"),
+            Ok((n, false)) => {
+                tracing::warn!(closed = n, "schizo mode could not close every listing")
+            }
+            Err(e) => tracing::warn!(error = %e, "schizo mode could not close the listings"),
+        }
+    });
+}
+
+/// The joined computer behind a directory token (`crate::directory`), its
+/// id and name, or the answer that refuses the call. These routes are open
+/// beyond the LAN and past LosOS Login (`modules/identity.nix`), so the
+/// token is the whole of the check, and a wrong one counts against the
+/// address as a wrong spare key does.
+fn device_call(api: &Api, req: &HttpRequest) -> Result<(String, String), Box<HttpResponse>> {
+    let remote = remote_addr(req);
+    if let Err(wait) = api.throttle.check(&remote, Instant::now()) {
+        let mut resp = err(
+            StatusCode::TOO_MANY_REQUESTS,
+            "too many failed attempts; slow down",
+        );
+        resp.headers_mut().insert(
+            actix_web::http::header::RETRY_AFTER,
+            retry_after_secs(wait).to_string().parse().expect("digits"),
+        );
+        return Err(Box::new(resp));
+    }
+    let token = req
+        .headers()
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(bearer_credentials)
+        .filter(|t| crate::directory::is_directory_token(t));
+    let now = i64::try_from(crate::login::now()).unwrap_or(i64::MAX);
+    match token.and_then(|t| api.directory.check(t, now)) {
+        Some(computer) => {
+            api.throttle.record_success(&remote);
+            Ok((computer.id, computer.device))
+        }
+        None => {
+            api.throttle.record_failure(&remote, Instant::now());
+            Err(Box::new(err(StatusCode::UNAUTHORIZED, "unauthorized")))
+        }
+    }
+}
+
+/// `POST /api/login-devices/self`: `{"onion"?}`. A computer checks in,
+/// with its own Tor address once it has one, and is told whether schizo
+/// mode is on, the duress code's hash while the full form is, a wipe order
+/// it has not confirmed, and, while schizo mode is on, the Tor addresses of
+/// the box and of the owner's other computers.
+async fn post_login_device_self(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    let (id, name) = match device_call(&api, &req) {
+        Ok(found) => found,
+        Err(refused) => return *refused,
+    };
+    let onion = serde_json::from_slice::<serde_json::Value>(&body)
+        .ok()
+        .and_then(|d| d.get("onion")?.as_str().map(str::to_string));
+    let box_onion = crate::schizo::box_onion(std::path::Path::new(HIDDEN_ADDRESSES));
+    match api.schizo.policy(
+        &id,
+        &name,
+        onion.as_deref(),
+        box_onion.as_deref(),
+        crate::login::now(),
+    ) {
+        Ok(p) => HttpResponse::Ok().json(p),
+        Err(e) => error_response(e),
+    }
+}
+
+/// The box's Tor and I2P addresses (modules/hidden-lib.nix).
+const HIDDEN_ADDRESSES: &str = "/var/lib/losos-hidden/addresses.json";
+
+/// `POST /api/login-devices/self/ack`: `{"wipe"}`. The computer heard the
+/// order and is carrying it out.
+async fn post_login_device_ack(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    let (id, _) = match device_call(&api, &req) {
+        Ok(found) => found,
+        Err(refused) => return *refused,
+    };
+    let Some(wipe) = serde_json::from_slice::<serde_json::Value>(&body)
+        .ok()
+        .and_then(|d| d.get("wipe")?.as_str().map(str::to_string))
+    else {
+        return err(
+            StatusCode::BAD_REQUEST,
+            r#"body must be JSON: {"wipe": "..."}"#,
+        );
+    };
+    match api.schizo.ack(&id, &wipe, crate::login::now()) {
+        Ok(known) => HttpResponse::Ok().json(serde_json::json!({ "wipe": wipe, "known": known })),
+        Err(e) => error_response(e),
+    }
+}
+
+/// `POST /api/login-devices/self/duress`: `{"code"}`. Someone typed this at
+/// the computer's login. The box checks it against its own hash, and a
+/// match orders every other computer of the owner's to wipe itself.
+async fn post_login_device_duress(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    let (id, _) = match device_call(&api, &req) {
+        Ok(found) => found,
+        Err(refused) => return *refused,
+    };
+    let Some(code) = serde_json::from_slice::<serde_json::Value>(&body)
+        .ok()
+        .and_then(|d| d.get("code")?.as_str().map(str::to_string))
+        .and_then(|c| crate::signin::validate_candidate(&c).ok())
+    else {
+        return err(
+            StatusCode::BAD_REQUEST,
+            r#"body must be JSON: {"code": "..."}"#,
+        );
+    };
+    match api.schizo.report(&id, &code, crate::login::now()) {
+        Ok(crate::schizo::Reported::Wipe) => {
+            // Every other computer of the owner's hears of it at its next
+            // check-in. What the box itself removes of the owner's is not
+            // decided yet; until it is, the box keeps everything.
+            tracing::warn!(device = %id, "a duress code was entered: the owner's computers are told to wipe");
+            HttpResponse::Ok().json(serde_json::json!({ "wipe": true }))
+        }
+        Ok(crate::schizo::Reported::Already) => {
+            HttpResponse::Ok().json(serde_json::json!({ "wipe": true }))
+        }
+        // The same answer as a right code that came too late: whoever holds
+        // the token learns nothing about the code from it.
+        Ok(crate::schizo::Reported::Wrong) => {
+            api.throttle
+                .record_failure(&remote_addr(&req), Instant::now());
+            HttpResponse::Ok().json(serde_json::json!({ "wipe": false }))
+        }
+        Err(e) => error_response(e),
+    }
 }
 
 // ── LosOS Login: rules, second factors, own account ──────────────────────
@@ -3477,6 +3794,8 @@ async fn post_set_password(
         Principal::Spare => post_set_password_inner(&api, &body),
         Principal::Edge => err(StatusCode::FORBIDDEN, "the edge has no password here"),
         Principal::Companion(_) => err(StatusCode::FORBIDDEN, "the LosOS companion only reads"),
+        Principal::Backups(_) => err(StatusCode::FORBIDDEN, "backups do not change passwords"),
+        Principal::Directory(_) => err(StatusCode::FORBIDDEN, "a joined computer only reads"),
     })
 }
 
@@ -3569,6 +3888,209 @@ fn post_set_password_inner(api: &Api, body: &[u8]) -> HttpResponse {
         }
         Ok(out)
     })
+}
+
+/// `POST /api/devices/backups`: LosOS Cloud and LosOS Git credentials of one
+/// computer's own, for the backups LosOS Login signed in as a person
+/// (`crate::losos::cmd_device_backups`). No password: the token is the
+/// sign-in, with the person's second factor and consent behind it. A person
+/// signed in through LosOS Login in the browser may ask too, for their own.
+async fn post_device_backups(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    const SHAPE: &str = r#"body must be JSON: {"device": "..."}"#;
+    guarded_as(&api, &req, "/api/devices/backups", true, |who| {
+        let (Principal::Backups(person) | Principal::Person(person)) = who else {
+            return err(
+                StatusCode::FORBIDDEN,
+                "backups sign in as a person, through LosOS Login",
+            );
+        };
+        let Some(device) = serde_json::from_slice::<serde_json::Value>(&body)
+            .ok()
+            .and_then(|d| d.get("device")?.as_str().map(str::to_string))
+        else {
+            return err(StatusCode::BAD_REQUEST, SHAPE);
+        };
+        if let Err(e) = crate::devices::validate_device(&device) {
+            return err(StatusCode::BAD_REQUEST, &e);
+        }
+        // A signed-in route lets a locked account through to its own pages;
+        // credentials wait until LosOS Login's rules are met.
+        if person.groups.iter().any(|g| g == crate::people::LOCKED) {
+            return HttpResponse::Forbidden().json(serde_json::json!({
+                "error": "finish what LosOS Login asks of your account first",
+                "locked": true,
+            }));
+        }
+        match api
+            .backend
+            .serialized(|l| crate::losos::cmd_device_backups(l, person, &device))
+        {
+            Ok(v) => HttpResponse::Ok().json(v),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+fn directory_error(e: crate::directory::DirectoryError) -> HttpResponse {
+    use crate::directory::DirectoryError as E;
+    match e {
+        E::Invalid(why) => err(StatusCode::BAD_REQUEST, &why),
+        E::Full => err(StatusCode::CONFLICT, &E::Full.to_string()),
+        E::NotFound => err(StatusCode::NOT_FOUND, &E::NotFound.to_string()),
+        E::Io(e) => error_response(e),
+    }
+}
+
+/// `POST /api/devices/directory` — `{"device"}`: join a LosOS Desktop
+/// computer to this box (`crate::directory`). An administrator asks, from
+/// the computer's `losos-login-bridge join` with their LosOS Login session,
+/// and the answer carries the computer's token, once.
+async fn post_device_directory(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded_as(&api, &req, "/api/devices/directory", true, |who| {
+        let Some(device) = serde_json::from_slice::<serde_json::Value>(&body)
+            .ok()
+            .and_then(|d| d.get("device")?.as_str().map(str::to_string))
+        else {
+            return err(
+                StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"device": "..."}"#,
+            );
+        };
+        match api.directory.join(
+            &device,
+            who.person().map(|p| p.name.as_str()),
+            losos_access::now_secs(),
+        ) {
+            Ok((token, computer)) => HttpResponse::Ok().json(serde_json::json!({
+                "token": token,
+                "computer": computer,
+            })),
+            Err(e) => directory_error(e),
+        }
+    })
+}
+
+/// `GET /api/devices/directory`: the joined computers, without tokens.
+async fn get_device_directory(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded_as(&api, &req, "/api/devices/directory", false, |_| {
+        match api.directory.list() {
+            Ok(computers) => HttpResponse::Ok().json(serde_json::json!({ "computers": computers })),
+            Err(e) => directory_error(e),
+        }
+    })
+}
+
+/// `DELETE /api/devices/directory/{id}`: take a computer out. Its token
+/// stops at once; the accounts already on it stay, as they would offline.
+async fn delete_device_directory(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    id: web::Path<String>,
+) -> HttpResponse {
+    guarded_as(
+        &api,
+        &req,
+        "/api/devices/directory/{id}",
+        true,
+        |_| match api.directory.remove(&id) {
+            Ok(()) => HttpResponse::Ok().json(serde_json::json!({ "removed": true })),
+            Err(e) => directory_error(e),
+        },
+    )
+}
+
+/// `GET /api/directory/people`: the people list a joined computer reads to
+/// lock the accounts this box removed or disabled (`crate::directory`).
+/// The computer's own token, or an administrator.
+async fn get_directory_people(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded_as(&api, &req, crate::directory::PEOPLE_ROUTE, false, |_| {
+        if !api.people.headers {
+            return err(
+                StatusCode::CONFLICT,
+                "LosOS Login does not run on this box, so it has no people list",
+            );
+        }
+        match api.people.list() {
+            Ok(people) => HttpResponse::Ok().json(crate::directory::people(people)),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// Where `losos-ci` answers lososd (`backend/src/ci/api.rs`'s page socket).
+fn ci_socket() -> std::path::PathBuf {
+    std::env::var_os("LOSOS_CI_SOCKET")
+        .map(Into::into)
+        .unwrap_or_else(|| "/run/losos-ci/api.sock".into())
+}
+
+/// `POST /api/directory/jobs/claim` and `/report`: a joined computer's
+/// Mesh CI jobs (`runs-on: [losos-desktop, <computer>]`), relayed to
+/// `losos-ci` as that computer. Only the computer's own token: the
+/// computer's name comes from the token lososd checked, never from the
+/// request. A claim waits up to 15 s for work, off lososd's workers.
+async fn post_directory_jobs(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    let (route, target) = if req.path() == crate::directory::JOBS_CLAIM_ROUTE {
+        (crate::directory::JOBS_CLAIM_ROUTE, "/ci/desktop/claim")
+    } else {
+        (crate::directory::JOBS_REPORT_ROUTE, "/ci/desktop/report")
+    };
+    let computer = match gate_at(&api, &req, route, None, false) {
+        Ok(Principal::Directory(computer)) => computer.device,
+        Ok(_) => {
+            return err(
+                StatusCode::FORBIDDEN,
+                "only a joined computer asks for its own jobs",
+            )
+        }
+        Err(refused) => return *refused,
+    };
+    let body = if target == "/ci/desktop/claim" {
+        serde_json::json!({ "wait": 15 }).to_string().into_bytes()
+    } else {
+        body.to_vec()
+    };
+    let answer = web::block(move || {
+        crate::ci::net::unix_http_with(
+            &ci_socket(),
+            "POST",
+            target,
+            &[
+                ("Content-Type", "application/json"),
+                ("X-Losos-Desktop", &computer),
+            ],
+            &body,
+            1024 * 1024,
+            std::time::Duration::from_secs(40),
+        )
+    })
+    .await;
+    match answer {
+        Ok(Ok((204, _))) => HttpResponse::NoContent().finish(),
+        Ok(Ok((code, body))) => {
+            HttpResponse::build(StatusCode::from_u16(code).unwrap_or(StatusCode::BAD_GATEWAY))
+                .content_type("application/json")
+                .body(body)
+        }
+        // No socket: this box runs no Mesh CI, so there is never work.
+        Ok(Err(e)) => {
+            tracing::debug!("losos-ci did not answer: {e:#}");
+            HttpResponse::NoContent().finish()
+        }
+        Err(e) => err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
+    }
 }
 
 /// `POST /api/devices/cloud` and `POST /api/devices/git`: a credential of
@@ -5414,7 +5936,9 @@ fn plugin_caller(
         // No plugin route is a companion route (`guarded_at` refuses it
         // before a plugin is asked), and a plugin's own calls would run
         // with this caller: nobody, then.
-        Some(Principal::Companion(_)) => t::Principal::Anonymous,
+        Some(Principal::Companion(_) | Principal::Backups(_) | Principal::Directory(_)) => {
+            t::Principal::Anonymous
+        }
         Some(Principal::Person(p)) => t::Principal::Person(t::Person {
             name: p.name.clone(),
             display_name: p.display_name.clone(),
@@ -6146,6 +6670,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
             builder: crate::builder::Builder::from_env(),
             people,
             companion: crate::companion::Companion::from_env(),
+            directory: crate::directory::Directory::from_env(),
             login,
             share: crate::cloud_share::Share::default(),
             chat: crate::chat::Chat::from_env(),
@@ -6164,6 +6689,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
             pictures: crate::pictures::Pictures::from_env(),
             image_jobs: tokio::sync::Semaphore::new(IMAGE_JOBS),
             plugins,
+            schizo: crate::schizo::Schizo::from_env(),
         });
         api.plugins
             .set_authorize(std::sync::Arc::new(authorize_caller));
@@ -6300,6 +6826,44 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                     web::post().to(post_people_profile_clear),
                 )
                 .route("/api/recovery", web::get().to(get_recovery))
+                .route("/api/schizo", web::get().to(get_schizo))
+                .route("/api/schizo", web::post().to(post_schizo))
+                .route(
+                    "/api/login-devices/self",
+                    web::post().to(post_login_device_self),
+                )
+                .route(
+                    "/api/login-devices/self/ack",
+                    web::post().to(post_login_device_ack),
+                )
+                .route(
+                    "/api/login-devices/self/duress",
+                    web::post().to(post_login_device_duress),
+                )
+                .route("/api/devices/backups", web::post().to(post_device_backups))
+                .route(
+                    "/api/devices/directory",
+                    web::get().to(get_device_directory),
+                )
+                .route(
+                    "/api/devices/directory",
+                    web::post().to(post_device_directory),
+                )
+                .route(
+                    "/api/devices/directory/{id}",
+                    web::delete().to(delete_device_directory),
+                )
+                .route("/api/directory/people", web::get().to(get_directory_people))
+                // Written out, as every route here is, so the sections test
+                // reads them; `directory::JOBS_*_ROUTE` are the same strings.
+                .route(
+                    "/api/directory/jobs/claim",
+                    web::post().to(post_directory_jobs),
+                )
+                .route(
+                    "/api/directory/jobs/report",
+                    web::post().to(post_directory_jobs),
+                )
                 .route("/api/devices/{kind}", web::post().to(post_device))
                 .route("/api/apps/search", web::get().to(get_apps_search))
                 .route("/api/cloud/text", web::get().to(get_cloud_text))

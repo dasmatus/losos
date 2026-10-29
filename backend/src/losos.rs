@@ -479,6 +479,29 @@ pub(crate) fn queue_rebuild<L: Losos>(l: &mut L, message: &str) -> anyhow::Resul
     Ok(job)
 }
 
+/// Schizo mode was turned on: give the box its Tor address
+/// (`losos.hidden.tor.enable`, modules/hidden-services.nix), so the owner's
+/// computers, whose connections all go through Tor now, can reach it there.
+/// `None` when it already has one, or when a rebuild is under way, which
+/// this does not queue behind: the owner then turns it on in Network.
+pub fn cmd_schizo_tor<L: Losos>(l: &mut L) -> anyhow::Result<Option<String>> {
+    let s = l.load_state()?;
+    if s.erase.is_some()
+        || s.rebuild
+            .as_ref()
+            .is_some_and(|rb| rb.state == RebuildState::Building)
+    {
+        return Ok(None);
+    }
+    let before = l.read_overrides()?;
+    let Some(body) = crate::schizo::with_tor(&before) else {
+        return Ok(None);
+    };
+    l.write_overrides(&body)?;
+    commit_settings(l, "Schizo mode: a Tor address", &before, &body);
+    queue_rebuild(l, MSG_STARTED).map(Some)
+}
+
 /// Overwrite `overrides.nix` with an already-validated body and rebuild.
 ///
 /// Mode and sharing are left exactly as they were: applying settings is not a
@@ -810,6 +833,155 @@ pub fn cmd_device_git<L: Losos>(
             Ok(json!({ "user": repo.owner, "token": token, "path": GIT_PATH }))
         }
         other => Err(mint_refusal(other)),
+    }
+}
+
+/// `POST /api/devices/backups`: both credentials a computer's backups need,
+/// for the person LosOS Login signed the backups in as.
+///
+/// LosOS Desktop's backups sign in with the device code flow as
+/// [`losos_access::BACKUPS_CLIENT_ID`], so LosOS Login asked for the
+/// person's password, their second factor when they have one, and their
+/// consent; the HTTP layer has checked the token with LosOS Login by now
+/// and passes the person it names. Nobody's password is here.
+///
+/// The person's own account in each app, as `crate::app_names` names it
+/// (the owner's is `notshared`): a LosOS Cloud app password, and a LosOS
+/// Git token that replaces one of the same name from an earlier sign-in of
+/// the same computer. A box without LosOS Git answers `git: null` with
+/// `gitOff`, and the backups put repositories in LosOS Cloud instead. When
+/// neither app can be asked, it is not now.
+pub fn cmd_device_backups<L: Losos>(
+    l: &mut L,
+    person: &crate::people::Person,
+    device: &str,
+) -> anyhow::Result<Value> {
+    use crate::devices::{
+        credential_name, dav_path, interpret_app_password, interpret_token, validate_device,
+        Minted, GIT_PATH,
+    };
+    use crate::pins::CloudRequest;
+
+    let device = validate_device(device).map_err(|e| anyhow::anyhow!(e))?;
+    let owner = person.groups.iter().any(|g| g == crate::people::OWNER);
+    let account = if owner {
+        crate::app_names::OWNER_ACCOUNT.to_string()
+    } else {
+        person.name.clone()
+    };
+    let name = credential_name(&device);
+
+    // LosOS Cloud makes an account the first time LosOS Login sends the
+    // person, as `crate::cloud_share` does for the share; the owner's is
+    // always there.
+    if !owner {
+        let arrive = CloudRequest::Arrive {
+            user: &account,
+            display_name: &person.display_name,
+        };
+        if let Err(e) = l.cloud_request(&arrive) {
+            tracing::info!(error = ?e, "LosOS Cloud could not be reached for a new account");
+        }
+    }
+    let cloud = match l.cloud_request(&CloudRequest::MintKey {
+        user: &account,
+        device: &name,
+    }) {
+        Ok((status, body)) => interpret_app_password(status, &String::from_utf8_lossy(&body)),
+        Err(e) => {
+            tracing::info!(error = ?e, "the app password request could not reach LosOS Cloud");
+            Minted::Unavailable(
+                "LosOS Cloud could not be reached. It may still be starting.".to_string(),
+            )
+        }
+    };
+
+    // The owner's LosOS Git account is the configuration repository's
+    // owner, as `cmd_device_git` makes its tokens for.
+    let mut git_account = account.clone();
+    let git = match l.config_repo().filter(|r| r.via_server()) {
+        None => None,
+        Some(repo) => Some({
+            if owner {
+                git_account = repo.owner.clone();
+            }
+            let made = if owner {
+                ensure_owner(l, &repo)
+            } else {
+                let profile = crate::app_names::Profile {
+                    account: account.clone(),
+                    name: match person.display_name.trim() {
+                        "" => person.name.clone(),
+                        shown => shown.to_string(),
+                    },
+                    email: String::new(),
+                };
+                crate::app_names::git(l, &profile).map(|_| ())
+            };
+            match made {
+                Err(e) => {
+                    tracing::info!(error = ?e, "LosOS Git could not make the account");
+                    Minted::Unavailable(
+                        "LosOS Git could not be reached. It may still be starting.".to_string(),
+                    )
+                }
+                Ok(()) => match l.git_request(&crate::config_repo::GitOp::CreateToken {
+                    login: git_account.clone(),
+                    name: name.clone(),
+                }) {
+                    Ok((status, body)) => interpret_token(status, &body),
+                    Err(e) => {
+                        tracing::info!(error = ?e, "the token request could not reach LosOS Git");
+                        Minted::Unavailable(
+                            "LosOS Git could not be reached. It may still be starting.".to_string(),
+                        )
+                    }
+                },
+            }
+        }),
+    };
+
+    let mut out = json!({ "cloud": null, "git": null });
+    let mut why = Vec::new();
+    match cloud {
+        Minted::Credential(app_password) => {
+            out["cloud"] = json!({
+                "user": account,
+                "appPassword": app_password,
+                "path": dav_path(&account),
+            });
+        }
+        other => why.push(refusal_sentence(other)),
+    }
+    match git {
+        None => out["gitOff"] = Value::Bool(true),
+        Some(Minted::Credential(token)) => {
+            out["git"] = json!({ "user": git_account, "token": token, "path": GIT_PATH });
+        }
+        Some(other) => why.push(refusal_sentence(other)),
+    }
+    if out["cloud"].is_null() && out["git"].is_null() {
+        return Err(crate::setup::NotReady(why.join(" ")).into());
+    }
+    if !why.is_empty() {
+        out["problems"] = json!(why);
+    }
+    tracing::info!(
+        device = device.as_str(),
+        person = person.name.as_str(),
+        "backup credentials made"
+    );
+    Ok(out)
+}
+
+/// What a refused mint says to the person whose backups asked for it.
+fn refusal_sentence(m: crate::devices::Minted) -> String {
+    use crate::devices::Minted;
+    match m {
+        Minted::Rejected => "The app refused the account.".to_string(),
+        Minted::Throttled => "The app is making this box wait; try again in a while.".to_string(),
+        Minted::Unavailable(why) => why,
+        Minted::Credential(_) => String::new(),
     }
 }
 
