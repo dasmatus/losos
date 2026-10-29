@@ -48,6 +48,7 @@ hook_crates=(
   backend
   backend/access
   backend/plugins
+  backend/mdx
   edge/registrar
   edge/vercel
   admin-ui/lab/core
@@ -237,24 +238,31 @@ hook_tool() {
 
 hook_npm() { hook_tool npm nodejs "$@"; }
 
-# The WebAssembly packages admin-ui/app imports and git ignores: LosOS
-# Diagrams' three (src/lab/{core,virt,render}-pkg) and losos-mdx's
-# (src/mdx/pkg, for Office and Notes). tsc needs them, so a checkout without
-# one gets the package the flake builds (`npm run lab:<name>` or `npm run
-# mdx` would need cargo for wasm32 and the pinned wasm-bindgen).
-hook_lab_pkgs() {
-  local spec dir attr out
-  for spec in lab/core-pkg:losos-lab-core lab/virt-pkg:losos-lab-virt \
-    lab/render-pkg:losos-lab-render mdx/pkg:losos-mdx-wasm; do
-    dir=$hook_root/admin-ui/app/src/${spec%%:*}
-    attr=${spec#*:}
-    [ -d "$dir" ] && continue
+# The WebAssembly packages admin-ui/app imports and git ignores: Diagrams'
+# three (src/lab/{core,virt,render}-pkg) and losos-mdx (src/mdx/pkg). tsc
+# needs them, so a checkout without one gets the package the flake builds
+# (`npm run lab:<name>` and `npm run mdx` would need cargo for wasm32 and
+# the pinned wasm-bindgen). A copy made here names its store path in
+# .losos-hooks-out and is replaced once the crate builds to another one,
+# since a stale package fails tsc on whatever the crate added since. One
+# made by `npm run` has no such file and is left alone.
+hook_wasm_pkgs() {
+  local pair rel attr out dir stamp
+  for pair in src/lab/core-pkg:losos-lab-core src/lab/virt-pkg:losos-lab-virt \
+    src/lab/render-pkg:losos-lab-render src/mdx/pkg:losos-mdx-wasm; do
+    rel=${pair%%:*} attr=${pair#*:}
+    dir=$hook_root/admin-ui/app/$rel
+    stamp=$dir/.losos-hooks-out
+    [ -d "$dir" ] && [ ! -f "$stamp" ] && continue
     hook_need_nix || return 1
-    echo "── src/${spec%%:*} from .#$attr"
     out=$(nix build --no-link --print-out-paths "$(hook_flake)#$attr") || return 1
+    [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$out" ] && continue
+    echo "── $rel from .#$attr"
+    rm -rf "$dir"
     mkdir -p "$dir"
     cp -r "$out"/. "$dir"/
     chmod -R u+w "$dir"
+    echo "$out" >"$stamp"
   done
 }
 
