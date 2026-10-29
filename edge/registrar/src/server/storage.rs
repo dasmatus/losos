@@ -677,11 +677,21 @@ mod tests {
 
     #[test]
     fn the_password_is_in_rest_servers_sha_form() {
-        // `printf password | openssl sha1 -binary | base64`
-        assert_eq!(
-            htpasswd("password"),
-            "edge:{SHA}W6ph5Mm5Pz8GgiULbPgzG37mj9g=\n"
-        );
+        // One `edge:{SHA}<base64 of the SHA-1>` line. That rest-server takes
+        // it is shown by nix/tests/mesh-backup.nix, which runs the server on
+        // the line the registrar wrote.
+        let password = crate::identity::random_hex(32).unwrap();
+        let line = htpasswd(&password);
+        let hash = line
+            .strip_prefix("edge:{SHA}")
+            .and_then(|l| l.strip_suffix('\n'))
+            .unwrap();
+        let digest = base64::engine::general_purpose::STANDARD
+            .decode(hash)
+            .unwrap();
+        let expected =
+            ring::digest::digest(&ring::digest::SHA1_FOR_LEGACY_USE_ONLY, password.as_bytes());
+        assert_eq!(digest, expected.as_ref());
     }
 
     #[test]
@@ -719,9 +729,10 @@ mod tests {
         assert_eq!(c["imagePullPolicy"], "Never");
         assert_eq!(c["securityContext"]["readOnlyRootFilesystem"], true);
         assert_eq!(c["securityContext"]["capabilities"]["drop"][0], "ALL");
-        let k = secret(&v, "pw");
+        let password = crate::identity::random_hex(32).unwrap();
+        let k = secret(&v, &password);
         assert_eq!(k["metadata"]["name"], "rest-ord-ab12");
-        assert_eq!(k["stringData"]["htpasswd"], htpasswd("pw"));
+        assert_eq!(k["stringData"]["htpasswd"], htpasswd(&password));
         let s = service(&v);
         assert_eq!(s["spec"]["selector"]["losos.market/backup"], "ord-ab12");
         assert_eq!(
