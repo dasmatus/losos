@@ -40,8 +40,8 @@ lanes, one per group of jobs:
 
 | Lane | Jobs | Turned on by |
 |---|---|---|
-| `rust` | clippy, rustfmt, the crate suites | the eleven crates, and the web UI files `admin-ui/tui/build.rs` reads |
-| `wasm` | clippy for wasm32 | `backend/plugins/`, `admin-ui/lab/` |
+| `rust` | clippy, rustfmt, the crate suites | the twelve crates, and the web UI files `admin-ui/tui/build.rs` reads |
+| `wasm` | clippy for wasm32 | `backend/plugins/`, `backend/mdx/`, `admin-ui/lab/` |
 | `solana`, `evm` | the escrow programs | `edge/contracts/`, `edge/registrar/` |
 | `eval` | the flake evaluation | anything but Markdown, Rust, pictures, `docs/` and `.github/` |
 | `ctl` | `losos-ctl` | the backend crate |
@@ -103,6 +103,15 @@ the run survives. The job summary lists what went, with the
 `git push origin <hash>:refs/heads/<branch>` line that restores each one. Run
 it by hand from the Actions tab for a dry run.
 
+`failed-runs.yml` deletes unsuccessful workflow runs every day: any completed
+run that ended in failure, cancelled, timed out or failed to start, unless its
+commit is still live, the tip of a branch or the head of an open pull request,
+so a red `main` or a red PR keeps the run that says why. One pass deletes at
+most 800 (`GITHUB_TOKEN` has 1000 calls an hour) and the next day takes the
+rest. A deleted run's logs and artifacts are gone for good; the job summary
+lists each one. Run it by hand from the Actions tab for a dry run, or untick
+`dry_run` to clear the backlog at once.
+
 ## Releases
 
 Push a `v*` tag, or draft a release with a new `v*` tag in the web UI.
@@ -119,6 +128,18 @@ os-release, the console banners and `losos --version` show
   `.github/scripts/sync-version.sh --dry-run` shows what it would commit.
 - The `tui` job writes the tag over the file before it builds `losos`, so
   the client published for the tag names it.
+- `desktop-pin.yml` opens a pull request on LosOS Desktop
+  (`losos-project/desktop`, or the repository the `DESKTOP_REPOSITORY`
+  variable names) that moves its pin of this repository,
+  `nixos/pkgs/losos-pin.nix`, to the tag. The desktop builds `losos` from
+  that commit and boots a box from it beside the desktop in its
+  `losos-box` VM test, so the pull request's CI is where a change here
+  that breaks the desktop shows up. `.github/scripts/desktop-pin.sh TAG
+  DIR` rewrites the file in a checkout of the desktop, hashes included.
+  Opening the pull request needs the `DESKTOP_PIN_TOKEN` secret, a
+  fine-grained token for the desktop repository with Contents and Pull
+  requests read and write; without it the job puts the file in its
+  summary. Release candidates are left out; *Run workflow* takes any tag.
 
 The release job:
 
