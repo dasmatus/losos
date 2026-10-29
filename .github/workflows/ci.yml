@@ -1259,7 +1259,9 @@ jobs:
             if ($service.Status -ne 'Running') { throw "Discovery service $s is $($service.Status)" }
           }
           Install-WindowsFeature WebDAV-Redirector -ErrorAction SilentlyContinue | Format-List
-          Get-Service fdPHost, FDResPub, SSDPSRV, upnphost, WebClient | Format-Table Name, Status
+          # WebClient appears only after the restart the feature asks for; check.py
+          # skips the WebDAV half when it is missing.
+          Get-Service fdPHost, FDResPub, SSDPSRV, upnphost, WebClient -ErrorAction SilentlyContinue | Format-Table Name, Status
       - name: Windows, check
         if: runner.os == 'Windows'
         shell: pwsh
