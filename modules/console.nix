@@ -16,6 +16,12 @@
 # go to Plymouth, which draws them in a panel under the logo; the text banner
 # is what tty1 shows wherever Plymouth is not drawing.
 #
+# Under the address the panel lists the parts of LosOS this box runs and
+# whether each is running, starting or not running. The address alone said
+# nothing when lososd crashed at every start: the page opened, and every
+# request behind it failed. A part that is not running turns the headline
+# into a warning, so the one screen an owner can read says so.
+#
 # The URL is plain http:// on purpose: the self-signed certificate
 # modules/tls.nix makes is issued for `<hostName>.local`, so https://<ip> would
 # put a name-mismatch warning in front of the very first page, and :80 stays
@@ -30,12 +36,50 @@
 let
   fqdn = "${config.losos.hostName}.local";
 
-  # "LosOS <tag> is ready", with the release tag modules/branding.nix sets.
-  ready = lib.concatStringsSep " " (
-    [ "LosOS" ]
-    ++ lib.optional (config.system.image.version != null) config.system.image.version
-    ++ [ "is ready" ]
+  # "LosOS <tag>", with the release tag modules/branding.nix sets; the
+  # headline adds "is ready", "is starting" or what is wrong.
+  name = lib.concatStringsSep " " (
+    [ "LosOS" ] ++ lib.optional (config.system.image.version != null) config.system.image.version
   );
+
+  # The parts of LosOS the panel lists, in this order, where this box runs
+  # them. `after` is a file the unit waits for on purpose: LosOS Login
+  # starts only once the claim has written the first person
+  # (modules/identity.nix), so before that it is left out rather than
+  # shown as starting for ever.
+  modules =
+    lib.filter (m: config.systemd.services ? ${m.unit} && config.systemd.services.${m.unit}.enable)
+      [
+        {
+          unit = "lososd";
+          label = "Admin pages";
+        }
+        {
+          unit = "nginx";
+          label = "Web server";
+        }
+        {
+          unit = "authelia-losos";
+          label = "LosOS Login";
+          after = "/var/lib/losos-identity/users.yml";
+        }
+        {
+          unit = "losos-cloud";
+          label = "LosOS Cloud";
+        }
+        {
+          unit = "losos-git";
+          label = "LosOS Git";
+        }
+        {
+          unit = "dendrite";
+          label = "LosOS Chat";
+        }
+        {
+          unit = "losos-mail";
+          label = "LosOS Mail";
+        }
+      ];
 
   # A keyfile box says what that costs on the one screen every owner sees
   # (handbook/docs/reference/tpm.md has the long form). The admin pages say the
@@ -51,10 +95,83 @@ let
       pkgs.gawk
       pkgs.gnugrep
       pkgs.iproute2
+      config.systemd.package
     ]
     ++ lib.optional splash config.boot.plymouth.package;
     text = ''
       fqdn=${lib.escapeShellArg fqdn}
+      name=${lib.escapeShellArg name}
+
+      # unit|label|the file it waits for, one per part of LosOS.
+      modules=(${lib.escapeShellArgs (map (m: "${m.unit}|${m.label}|${m.after or ""}") modules)})
+
+      # running, starting or stopped, for one unit. lososd crashing at every
+      # start is `active` for a moment each time, so a unit systemd has
+      # restarted three times or more counts as stopped until it has stayed
+      # up for 15 s, and one restarted once or twice as starting.
+      state_of() {
+        local unit=$1 active=''' restarts=0 since=0 k v now
+        while IFS='=' read -r k v; do
+          case $k in
+            ActiveState) active=$v ;;
+            NRestarts) restarts=''${v:-0} ;;
+            ActiveEnterTimestampMonotonic) since=''${v:-0} ;;
+          esac
+        done < <(systemctl show "$unit" -p ActiveState -p NRestarts -p ActiveEnterTimestampMonotonic 2>/dev/null)
+        now=$(awk '{ printf "%d", $1 * 1000000 }' /proc/uptime)
+        case $active in
+          active)
+            if (( restarts >= 3 && now - since < 15000000 )); then
+              echo stopped
+            elif (( restarts > 0 && now - since < 15000000 )); then
+              echo starting
+            else
+              echo running
+            fi
+            ;;
+          failed) echo stopped ;;
+          *) if (( restarts >= 3 )); then echo stopped; else echo starting; fi ;;
+        esac
+      }
+
+      # The parts as rows: the running ones three to a row (+), then one row
+      # for each starting (*) or stopped (-) one. Sets `parts`, `control`
+      # (lososd's state), `starting` and `stopped`.
+      check() {
+        parts=()
+        control=running
+        starting=0
+        stopped=0
+        local -a up=()
+        local m unit label after state
+        for m in "''${modules[@]}"; do
+          IFS='|' read -r unit label after <<<"$m"
+          if [ -n "$after" ] && [ ! -e "$after" ]; then continue; fi
+          state=$(state_of "$unit")
+          [ "$unit" = lososd ] && control=$state
+          case $state in
+            running) up+=("$label") ;;
+            starting)
+              parts+=("*$label: starting")
+              starting=1
+              ;;
+            stopped)
+              parts+=("-$label: not running")
+              stopped=1
+              ;;
+          esac
+        done
+        local -a running=()
+        local i j line
+        for ((i = 0; i < ''${#up[@]}; i += 3)); do
+          line=''${up[i]}
+          for ((j = i + 1; j < i + 3 && j < ''${#up[@]}; j++)); do
+            line+="  ·  ''${up[j]}"
+          done
+          running+=("+$line")
+        done
+        parts=("''${running[@]}" "''${parts[@]}")
+      }
 
       # Global IPv4 addresses on real interfaces. The local Kubernetes cluster
       # and any container runtime add bridges and veths whose addresses mean
@@ -80,11 +197,25 @@ let
 
       # The status as rows, each led by a style character: # headline,
       # @ address, ! warning headline, ~ secondary text, a space for plain
-      # text. An empty row is a gap. The splash theme
+      # text, and for the parts of LosOS + running, * starting, - not
+      # running. An empty row is a gap. The splash theme
       # (modules/splash/losos.script) reads the same characters. Fills the
-      # caller's `body`.
+      # caller's `body`; `check` has run.
       rows() {
-        body=(${lib.escapeShellArg "#${ready}"} "")
+        if [ "$control" = stopped ]; then
+          body=(
+            "!$name cannot start its admin pages"
+            "~The box keeps trying. Until they start, the address"
+            "~below opens a page that cannot load."
+            ""
+          )
+        elif (( stopped )); then
+          body=("!Part of $name is not running" "")
+        elif (( starting )); then
+          body=("#$name is starting" "")
+        else
+          body=("#$name is ready" "")
+        fi
         local ips
         ips=$(addresses)
         if [ -n "$ips" ]; then
@@ -116,6 +247,9 @@ let
             ""
           )
         ''}
+        if (( ''${#parts[@]} )); then
+          body+=("''${parts[@]}" "")
+        fi
       }
 
       draw() {
@@ -143,6 +277,9 @@ let
         for text in "''${body[@]}"; do
           case $text in
             [#@!]*) line "''${text:1}" "$width" $'\033[1m' ;;
+            +*) line "[ ok ] ''${text:1}" "$width" ;;
+            \**) line "[ .. ] ''${text:1}" "$width" ;;
+            -*) line "[FAIL] ''${text:1}" "$width" $'\033[1m' ;;
             *) line "''${text:1}" "$width" ;;
           esac
         done
@@ -177,7 +314,8 @@ let
         # Redraw when something changed, and every ~30 s regardless: a stray
         # kernel message lands on top of the banner and nothing else removes
         # it.
-        state="$(addresses | tr '\n' ' ')$(stty -F /dev/tty1 size 2>/dev/null || true)"
+        check
+        state="$(addresses | tr '\n' ' ')$(stty -F /dev/tty1 size 2>/dev/null || true)''${parts[*]}"
         if [ "$state" != "$last" ] || (( ticks >= 10 )); then
           ${lib.optionalString splash "plymouth --ping 2>/dev/null && send"}
           draw

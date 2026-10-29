@@ -7,9 +7,22 @@
 # the address has to reach the screen. Those are wiring facts that only a
 # booted system can show, so assert them here rather than trusting the
 # script exercised on its own.
-{ pkgs }:
+#
+# The parts of LosOS the panel lists are stand-ins here: `lososd` and
+# `losos-cloud` are units that only sleep, which is all the panel reads of
+# them. lososd is then made to crash at every start, as it did under
+# MemoryDenyWriteExecute, and the panel has to say so.
+#
+# `before = true` runs the same boot without the asserts on the parts, to
+# take the same pictures from an older console.nix.
+{
+  pkgs,
+  before ? false,
+}:
 
 let
+  inherit (pkgs) lib;
+
   # "graphics" while a splash draws on tty1, "text" otherwise.
   mode = "${pkgs.kbd}/bin/kbdinfo -C /dev/tty1 getmode";
 
@@ -45,6 +58,14 @@ pkgs.testers.nixosTest {
     losos.hostName = "consolebox";
     losos.tpm.enable = false;
     boot.initrd.kernelModules = [ "bochs" ];
+    systemd.services = lib.genAttrs [ "lososd" "losos-cloud" ] (_: {
+      wantedBy = [ "multi-user.target" ];
+      serviceConfig = {
+        ExecStart = "${pkgs.coreutils}/bin/sleep infinity";
+        Restart = "always";
+        RestartSec = 1;
+      };
+    });
   };
 
   # A machine whose graphics driver loads only in stage 2, after Plymouth
@@ -87,7 +108,48 @@ pkgs.testers.nixosTest {
     machine.wait_for_text(r"192\.168\.1\.\d+")
     machine.wait_for_text("is ready")
     machine.wait_for_text("no TPM chip")
+    ${lib.optionalString (!before) ''
+      machine.wait_for_text("Admin pages")
+      machine.wait_for_text("LosOS Cloud")
+    ''}
     machine.screenshot("splash-ready")
+
+    # lososd exits at every start and systemd keeps restarting it, as it
+    # did when MemoryDenyWriteExecute stopped Wasmtime.
+    machine.succeed(
+        "mkdir -p /run/systemd/system/lososd.service.d",
+        "printf '[Unit]\\nStartLimitIntervalSec=0\\n[Service]\\nExecStart=\\nExecStart=${pkgs.coreutils}/bin/false\\n'"
+        " > /run/systemd/system/lososd.service.d/crash.conf",
+        "systemctl daemon-reload",
+        "systemctl restart lososd.service || true",
+    )
+    machine.wait_until_succeeds(
+        "test $(systemctl show -p NRestarts --value lososd.service) -ge 3", timeout=120
+    )
+    ${
+      if before then
+        ''
+          machine.sleep(10)
+        ''
+      else
+        ''
+          machine.wait_for_text("cannot start its admin pages")
+          machine.wait_for_text("not running")
+        ''
+    }
+    machine.screenshot("splash-admin-down")
+
+    # Back to a lososd that stays up, started by hand: the box is ready
+    # again.
+    machine.succeed(
+        "rm /run/systemd/system/lososd.service.d/crash.conf",
+        "systemctl daemon-reload",
+        "systemctl restart lososd.service",
+    )
+    ${lib.optionalString (!before) ''
+      machine.wait_for_text("is ready")
+      machine.screenshot("splash-ready-again")
+    ''}
 
     late.wait_for_console_text("Started Show the appliance address on tty1")
     late.wait_for_unit("losos-console.service")
@@ -103,6 +165,10 @@ pkgs.testers.nixosTest {
     keyfile.wait_until_tty_matches("1", "LosOS v[0-9.]+ is ready")
     keyfile.wait_until_tty_matches("1", "This box has no TPM chip")
     keyfile.wait_until_tty_matches("1", "anyone who takes the disk can read your files")
+    ${lib.optionalString (!before) ''
+      # No part of LosOS runs on this node, so the text banner lists none.
+      assert "[ ok ]" not in keyfile.get_tty_text("1")
+    ''}
     keyfile.screenshot("text-banner")
 
     # The other VTs keep their login prompts.

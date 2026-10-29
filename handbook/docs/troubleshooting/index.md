@@ -25,7 +25,11 @@ reconfigure afterwards.
 Do these in order. Most problems end at one of them.
 
 1. **Look at the box's screen.** A banner with `LosOS <version> is ready` and an
-   `http://` address means the box has booted and has a network. No banner,
+   `http://` address means the box has booted and has a network. Under the
+   address it lists the parts of LosOS it runs, with a tick for each one that
+   is running. A part that is not running is marked with a cross, and the
+   headline turns into a warning. `LosOS <version> cannot start its admin pages` means
+   the address opens a page that cannot load until they start. No banner,
    a text login prompt or a passphrase prompt means a different problem.
    See [Stuck at a passphrase prompt](./stuck-at-passphrase.md), or
    [Cannot reach the box](./cannot-reach-the-box.md) for a black screen.
@@ -50,7 +54,7 @@ Do these in order. Most problems end at one of them.
 
 | Where                                   | What                                                                                         |
 | --------------------------------------- | -------------------------------------------------------------------------------------------- |
-| The screen (tty1)                       | The IP address and the `.local` name. Redraws when they change.                              |
+| The screen (tty1)                       | The IP address, the `.local` name and which parts of LosOS are running. Redraws when they change. |
 | `http://<address>/api/health`           | Whether the control daemon answers.                                                           |
 | `http://<address>/setup/state.json`     | Name, address, whether HTTPS is on, the certificate's fingerprint.                            |
 | Overview page                           | Answering or not, uptime, apps up or down, the **Changes** widget with every rebuild's outcome. |

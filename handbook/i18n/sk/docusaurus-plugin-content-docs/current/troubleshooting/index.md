@@ -25,7 +25,11 @@ potom nemusíte nič znova nastavovať.
 Postupujte v tomto poradí. Väčšina problémov sa skončí pri jednom z krokov.
 
 1. **Pozrite sa na obrazovku zariadenia.** Banner s `LosOS <version> is ready`
-   a adresou `http://` znamená, že zariadenie naštartovalo a má sieť. Žiadny
+   a adresou `http://` znamená, že zariadenie naštartovalo a má sieť. Pod
+   adresou je zoznam častí LosOS, ktoré zariadenie prevádzkuje, s fajkou pri
+   každej, ktorá beží. Časť, ktorá nebeží, má krížik a nadpis sa zmení na
+   varovanie. `LosOS <version> cannot start its admin pages` znamená, že
+   adresa otvorí stránku, ktorá sa nenačíta, kým sa nespustia. Žiadny
    banner, textová výzva na prihlásenie alebo výzva na heslo disku znamenajú
    iný problém. Pozrite [Zaseknuté pri výzve na heslo disku](/troubleshooting/stuck-at-passphrase.md),
    pri čiernej obrazovke [Zariadenie je nedostupné](/troubleshooting/cannot-reach-the-box.md).
@@ -50,7 +54,7 @@ Postupujte v tomto poradí. Väčšina problémov sa skončí pri jednom z kroko
 
 | Kde                                     | Čo                                                                                           |
 | --------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Obrazovka (tty1)                        | IP adresa a meno `.local`. Prekreslí sa, keď sa zmenia.                                      |
+| Obrazovka (tty1)                        | IP adresa, meno `.local` a ktoré časti LosOS bežia. Prekreslí sa, keď sa zmenia.             |
 | `http://<address>/api/health`           | Či riadiaci démon odpovedá.                                                                   |
 | `http://<address>/setup/state.json`     | Meno, adresa, či je zapnuté HTTPS, odtlačok certifikátu.                                      |
 | Stránka Prehľad                         | Odpovedá alebo nie, doba behu, aplikácie bežia alebo nie, widget **Zmeny** s výsledkom každej prestavby. |
