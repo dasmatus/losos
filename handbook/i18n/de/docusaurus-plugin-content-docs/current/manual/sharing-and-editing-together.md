@@ -6,6 +6,8 @@ slug: /manual/sharing-and-editing-together
 
 # Teilen und gemeinsam bearbeiten
 
+![Die Dateien in LosOS Cloud.](@site/docs/img/cloud-files-de.png)
+
 In [LosOS Cloud](losos-cloud) öffnen sich Textdateien in einem Editor, in den
 mehrere Leute gleichzeitig schreiben können. Jeder sieht oben die Gesichter
 der anderen, ihre Cursor in ihrer eigenen Farbe mit dem Namen daneben und

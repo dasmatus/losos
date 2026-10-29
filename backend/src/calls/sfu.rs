@@ -29,6 +29,12 @@ use tokio::sync::{mpsc, oneshot};
 
 pub type Reply<T> = oneshot::Sender<Result<T, Refusal>>;
 
+/// How long a member whose ICE went quiet keeps its place. str0m calls an
+/// ICE-lite pair lost after 15 s without a binding request; a browser gives
+/// up after 30 s without an answer, so the SFU waits the other 15 for a
+/// laptop that changed networks or stalled to ping again.
+const LOST_GRACE: Duration = Duration::from_secs(15);
+
 /// What the signalling side asks of the loop.
 #[derive(Debug)]
 pub enum Command {
@@ -309,6 +315,7 @@ impl Sfu {
                             tracks_in: Vec::new(),
                             tracks_out: Vec::new(),
                             screen: false,
+                            lost: None,
                         };
                         let members = self.members(&call);
                         let _ = client.out.send(ServerMsg::Joined {
@@ -634,6 +641,8 @@ struct Client {
     tracks_out: Vec<TrackOut>,
     /// The page says it is sharing its screen.
     screen: bool,
+    /// When ICE last lost the page, while it has not come back.
+    lost: Option<Instant>,
 }
 
 impl Client {
@@ -764,7 +773,16 @@ impl Client {
                 }
             };
             match out {
-                Output::Timeout(t) => return t,
+                Output::Timeout(t) => {
+                    let Some(lost) = self.lost else { return t };
+                    let end = lost + LOST_GRACE;
+                    if Instant::now() >= end {
+                        tracing::info!("p{} lost for {}s", self.pid, LOST_GRACE.as_secs());
+                        self.rtc.disconnect();
+                        return Instant::now();
+                    }
+                    return t.min(end);
+                }
                 Output::Transmit(t) => {
                     if let Some(s) = sockets.iter().find(|s| s.offered == t.source) {
                         s.send(&t.contents, t.destination);
@@ -781,8 +799,16 @@ impl Client {
 
     fn event(&mut self, e: Event) -> Option<Propagated> {
         match e {
+            // A pair that went quiet comes back with the page's next
+            // binding request, so the member stays for a while.
             Event::IceConnectionStateChange(IceConnectionState::Disconnected) => {
-                self.rtc.disconnect();
+                self.lost.get_or_insert_with(Instant::now);
+                None
+            }
+            Event::IceConnectionStateChange(
+                IceConnectionState::Connected | IceConnectionState::Completed,
+            ) => {
+                self.lost = None;
                 None
             }
             Event::Connected => {

@@ -7,6 +7,8 @@ mdx:
 
 # Härtung
 
+![Einstellungen, Sicherheit: die vier Schutzmaßnahmen, die standardmäßig aus sind, jede mit dem, was sie kostet.](@site/docs/img/settings-security-de.png)
+
 `losos.hardening.enable` ist standardmäßig eingeschaltet. Es setzt:
 
 - KSPP-Kernelparameter

@@ -65,6 +65,7 @@ let
   fixed = {
     "targetDrives" = "installer";
     "tpm.enable" = "installer";
+    "tpm.tang" = "installer";
     "bios" = "installer";
     # The live medium's two: the installed system never consults them.
     "installer.autorun" = "installer";

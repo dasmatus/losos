@@ -7,7 +7,7 @@ slug: /manual/losos-cloud
 # LosOS Cloud
 
 
-![LosOS Cloud's files.](../img/cloud-files.png)
+![LosOS Cloud's files: the Documents folder, with the places on the left.](../img/cloud-files.png)
 
 LosOS Cloud is the box's own file service: your files in a browser, a
 network folder for the file manager, a server the Nextcloud desktop and
@@ -52,7 +52,7 @@ to go through them, and press **Details** (or <kbd>i</kbd>) for what the
 camera wrote: when, which camera and lens, the exposure, the size, where it
 was taken, who is in it, and every other tag the camera saved.
 
-![A photo's details in LosOS Cloud: when it was taken, the camera, the lens, the settings and the place.](../img/cloud-photos.png)
+![LosOS Cloud's Photos: every picture, by month.](../img/cloud-photos.png)
 
 The box finds the faces in your pictures and puts the ones that look alike
 together as one person. **People** above the photos shows everyone seen in
@@ -78,6 +78,8 @@ The app opens LosOS Login in a browser. Sign in, press **Allow** on the
 page that follows, and the app gets a password of its own. It then shows up
 under **Devices**, where you can sign it out without touching your LosOS
 Login password.
+
+![The page a desktop app opens to sign in: Connect an app, with Allow and Not now.](../img/cloud-connect.png)
 
 ## Calendars and contacts
 

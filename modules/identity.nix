@@ -119,6 +119,8 @@ let
   # The box's own Tor and I2P addresses, and those an edge made for it
   # (modules/hidden-lib.nix).
   hidden = import ./hidden-lib.nix { inherit lib pkgs; };
+  # The box's own TLS for its public names (modules/public-tls.nix).
+  publicTls = import ./public-tls-lib.nix { inherit lib; };
 
   # What an app's sign-in page shows when LosOS Login cannot sign the person
   # in: while it starts (`waiting`, which asks again by itself), and for a
@@ -695,6 +697,7 @@ in
     services.nginx.appendHttpConfig = ''
       map "$server_port|$remote_addr|$http_x_forwarded_proto" $losos_proto {
         "~^${toString hidden.tlsPort}\|" https;
+        "~^${toString publicTls.frontPort}\|" https;
         "~^${toString hidden.plainPort}\|" http;
         "~^[0-9]+\|127\.0\.0\.1\|https$" https;
         default $scheme;

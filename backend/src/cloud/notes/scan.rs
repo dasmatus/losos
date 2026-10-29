@@ -216,7 +216,7 @@ fn wikilinks_in(line: &str, out: &mut Vec<Link>) {
     }
 }
 
-/// `[text](path.md)` and `![alt](picture.png)` to files in the vault, not
+/// `[text](path.note)` and `![alt](picture.png)` to files in the vault, not
 /// to other sites.
 fn markdown_links_in(line: &str, out: &mut Vec<Link>) {
     let mut rest = line;
