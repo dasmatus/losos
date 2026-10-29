@@ -246,7 +246,7 @@ let
       "PLAYWRIGHT_CORE=${pkgs.playwright-driver}"
       "PLAYWRIGHT_BROWSERS_PATH=${browsers}"
       "PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true"
-      "${pkgs.nodejs}/bin/node ${./binance-onramp.mjs}"
+      "${pkgs.bun}/bin/bun ${./binance-onramp.mjs}"
       "--mode ${mode} --out /tmp/shots --user matus --password ${password} >&2"
     ];
   credDir = "/var/secrets";
@@ -407,7 +407,7 @@ pkgs.testers.nixosTest {
       {
         networking.hosts.${nodes.box.networking.primaryIPAddress} = [ "mattbox.local" ];
         environment.systemPackages = [
-          pkgs.nodejs
+          pkgs.bun
           pkgs.curl
         ];
         fonts.packages = [

@@ -194,7 +194,7 @@ reicht jeden Aufruf über D-Bus an lososd weiter. `losos-ctl install` bleibt
 lokal, weil der ISO-Installer als root läuft und keinen Bus braucht.
 
 Die Admin-UI (`admin-ui/app/`, paketiert als `losos-admin-ui` mit
-`buildNpmPackage`) ist eine SPA aus React 19, Vite und Tailwind v4 auf echten
+Bun) ist eine SPA aus React 19, Vite und Tailwind v4 auf echten
 Pfaden (`/`, `/apps`, `/storage`, `/mesh`, `/settings/<pane>`). Ihr gebautes
 `dist/` **ist** das Document Root des vorderen nginx-vhosts, ausgeliefert mit
 `try_files $uri $uri/ /index.html`. Ohne diese Zeile ist jeder Deep Link und

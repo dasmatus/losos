@@ -48,22 +48,16 @@ let
         echo "admin ui" > $out/index.html
       '';
 
-  # Chromium from nixpkgs and the playwright-core admin-ui/app's lock file
-  # pins, as nix/tests/profile-screens.nix has them.
+  # Chromium and playwright-core from nixpkgs' playwright-driver, as
+  # nix/tests/profile-screens.nix has them.
   python = pkgs.python3.withPackages (ps: [ ps.pillow ]);
   browsers = pkgs.playwright-driver.browsers.override {
     withFirefox = false;
     withWebkit = false;
   };
-  lock = builtins.fromJSON (builtins.readFile ../../admin-ui/app/package-lock.json);
-  core = lock.packages."node_modules/playwright-core";
-  playwrightCore = pkgs.fetchurl {
-    url = core.resolved;
-    hash = core.integrity;
-  };
   scripts = pkgs.runCommand "moderation-screens-scripts" { } ''
-    mkdir -p $out/node_modules/playwright-core
-    tar -xzf ${playwrightCore} -C $out/node_modules/playwright-core --strip-components=1
+    mkdir -p $out/node_modules
+    ln -s ${pkgs.playwright-driver} $out/node_modules/playwright-core
     cp ${./screens.mjs} $out/screens.mjs
     cp ${./moderation-screens.mjs} $out/moderation-screens.mjs
   '';
@@ -151,7 +145,7 @@ pkgs.testers.nixosTest {
           pkgs.jq
         ]
         ++ lib.optionals screens [
-          pkgs.nodejs
+          pkgs.bun
           python
         ];
         networking.hosts."192.168.1.1" = [ "mattbox.local" ];
@@ -460,9 +454,9 @@ pkgs.testers.nixosTest {
         laptop.succeed("rm -rf /tmp/shots")
         if not BEFORE:
             for locale in ["en-US", "sk-SK", "de-DE"]:
-                laptop.succeed(f"cd ${scripts} && node moderation-screens.mjs handbook {locale} /tmp/shots/handbook >&2", timeout=3600)
+                laptop.succeed(f"cd ${scripts} && bun moderation-screens.mjs handbook {locale} /tmp/shots/handbook >&2", timeout=3600)
         mode = "before" if BEFORE else "after"
-        laptop.succeed(f"cd ${scripts} && node moderation-screens.mjs {mode} dark /tmp/shots/{mode} >&2", timeout=3600)
+        laptop.succeed(f"cd ${scripts} && bun moderation-screens.mjs {mode} dark /tmp/shots/{mode} >&2", timeout=3600)
         steps = json.loads(laptop.succeed(f"cat /tmp/shots/{mode}/manifest.json"))["steps"]
         assert len(steps) >= 2, steps
         for step in steps:

@@ -561,7 +561,7 @@ mit nichts, einem unsignierten und einem validierten Eintrag, während der
 Test die Zone delegiert und ihren DS veröffentlicht, und der Bereich folgt
 jedem Schritt. `edge/registrar/tests/domains.rs` spielt den Anspruchs- und den
 Wallet-Ablauf gegen einen echten Registrar und einen nachgebildeten
-DNS-over-HTTPS-Server durch. `admin-ui/app/tests/ens.node.mjs` spielt über
+DNS-over-HTTPS-Server durch. `admin-ui/app/tests/ens.unit.mjs` spielt über
 das Relay die Suche nach einem DNS-Namen ab, aufgezeichnet von Ethereum
 Mainnet und dem Gateway von ENS.
 :::

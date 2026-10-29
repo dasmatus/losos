@@ -2017,7 +2017,7 @@ in
     };
 
     # Path of the built admin SPA (built from this flake's ./admin-ui/app by
-    # nix/packages.nix with buildNpmPackage; wired in via
+    # nix/packages.nix with Bun; wired in via
     # modules/defaults.nix). Internal.
     admin.ui = lib.mkOption {
       type = lib.types.nullOr lib.types.path;

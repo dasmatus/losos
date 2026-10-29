@@ -9,21 +9,18 @@
 // proxy on the LAN, so pages load at https://mattbox.local/. Pictures go to
 // <out>/pr/. It exits non-zero at the first step that does not happen,
 // after a picture of every open page.
-import { createRequire } from "node:module";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
 
-const { chromium } = createRequire(import.meta.url)(process.env.CALENDAR_PLAYWRIGHT ?? "playwright");
+const { chromium } = await import(Bun.env.CALENDAR_PLAYWRIGHT ?? "playwright");
 
-const [phase, out] = process.argv.slice(2);
-const HOST = process.env.CALENDAR_HOST ?? "mattbox.local";
+const [phase, out] = Bun.argv.slice(2);
+const HOST = Bun.env.CALENDAR_HOST ?? "mattbox.local";
 const ORIGIN = `https://${HOST}`;
-const PROXY = process.env.CALENDAR_PROXY ?? "socks5://127.0.0.1:1080";
-const MATUS = process.env.CALENDAR_MATUS_PASSWORD;
-const EVA = process.env.CALENDAR_EVA_PASSWORD;
+const PROXY = Bun.env.CALENDAR_PROXY ?? "socks5://127.0.0.1:1080";
+const MATUS = Bun.env.CALENDAR_MATUS_PASSWORD;
+const EVA = Bun.env.CALENDAR_EVA_PASSWORD;
 const DOMAIN = "mattbox.home.arpa";
 const ZONE = "Europe/Bratislava";
-mkdirSync(`${out}/pr`, { recursive: true });
+Bun.spawnSync(["mkdir", "-p", `${out}/pr`]);
 
 const browser = await chromium.launch({ chromiumSandbox: false, proxy: { server: PROXY } });
 const problems = [];
@@ -293,11 +290,13 @@ async function frame(page, title, action = { kind: "none" }, targets = {}) {
 }
 
 async function record(page) {
-  mkdirSync(`${out}/film/frames`, { recursive: true });
+  Bun.spawnSync(["mkdir", "-p", `${out}/film/frames`]);
   const cdp = await page.context().newCDPSession(page);
+  const writes = [];
   cdp.on("Page.screencastFrame", ({ data, metadata, sessionId }) => {
     const name = `frames/${String(frames.length).padStart(6, "0")}.jpg`;
-    writeFileSync(`${out}/film/${name}`, Buffer.from(data, "base64"));
+    // Written as they come; the clip waits for every one before ffmpeg.
+    writes.push(Bun.write(`${out}/film/${name}`, Uint8Array.fromBase64(data)));
     frames.push({ name, t: metadata.timestamp });
     if (clipStart === null) clipStart = metadata.timestamp;
     cdp.send("Page.screencastFrameAck", { sessionId }).catch(() => {});
@@ -307,28 +306,29 @@ async function record(page) {
     await page.waitForTimeout(1000);
     const clipName = `${String(steps.length + 1).padStart(2, "0")}-walkthrough.mp4`;
     await cdp.send("Page.stopScreencast");
+    await Promise.all(writes);
     const lines = ["ffconcat version 1.0"];
     for (const [i, f] of frames.entries()) {
       const next = frames[i + 1]?.t ?? f.t + 1;
       lines.push(`file '${f.name}'`, `duration ${Math.max(next - f.t, 0.001).toFixed(6)}`);
     }
     lines.push(`file '${frames.at(-1).name}'`);
-    writeFileSync(`${out}/film/frames.ffconcat`, lines.join("\n") + "\n");
-    const ffmpeg = spawnSync(
-      process.env.CALENDAR_FFMPEG ?? "ffmpeg",
-      ["-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", "frames.ffconcat",
+    await Bun.write(`${out}/film/frames.ffconcat`, lines.join("\n") + "\n");
+    const ffmpeg = Bun.spawnSync(
+      [Bun.env.CALENDAR_FFMPEG ?? "ffmpeg",
+       "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", "frames.ffconcat",
        "-vf", "fps=60,scale=2560:1800:flags=lanczos,format=yuv420p", "-r", "60",
        "-c:v", "libx264", "-preset", "slow", "-crf", "16", "-movflags", "+faststart", clipName],
-      { cwd: `${out}/film`, encoding: "utf8" },
+      { cwd: `${out}/film` },
     );
-    if (ffmpeg.status !== 0) throw new Error(`ffmpeg: ${ffmpeg.stderr}`);
+    if (ffmpeg.exitCode !== 0) throw new Error(`ffmpeg: ${new TextDecoder().decode(ffmpeg.stderr)}`);
     console.log(`film ${clipName} from ${frames.length} frames`);
     steps.push({ file: clipName, url: `${HOST}/`, title, action: { kind: "none" }, targets: {}, fps: 60, frames: frames.length });
   };
 }
 
 async function film() {
-  mkdirSync(`${out}/film`, { recursive: true });
+  Bun.spawnSync(["mkdir", "-p", `${out}/film`]);
   const owner = await person("matus", MATUS, { film: true });
   await overview(owner);
   await settle(owner);
@@ -384,14 +384,14 @@ async function film() {
     yes: card.getByRole("button", { name: "Yes", exact: true }),
   });
 
-  writeFileSync(
+  await Bun.write(
     `${out}/film/manifest.json`,
     JSON.stringify(
       {
         feature: "calendar",
         viewport: { width: 1280, height: 900 },
         dpr: 2,
-        commit: process.env.CALENDAR_COMMIT ?? "",
+        commit: Bun.env.CALENDAR_COMMIT ?? "",
         test: "losos-calendar",
         steps,
       },
@@ -401,6 +401,9 @@ async function film() {
   );
 }
 
+// Thrown at the very end, after the pictures of the failure are saved:
+// an uncaught error is what makes Bun exit non-zero.
+let failed = false;
 try {
   await { before, on, film }[phase]();
   if (problems.length > 0) throw new Error(`the page reported: ${problems.join("; ")}`);
@@ -409,7 +412,8 @@ try {
     await page.screenshot({ path: `${out}/pr/failed-${phase}-${i}.png`, timeout: 300_000 }).catch(() => {});
   }
   console.error(error);
-  process.exitCode = 1;
+  failed = true;
 } finally {
   await browser.close();
 }
+if (failed) throw new Error(`the ${phase} phase failed, see above`);

@@ -21,9 +21,7 @@
 // `--dpr` change the window from 1280x900 at 2x, and `--video` records the
 // walk as WebM into DIR as well, all for a film.
 
-import { createHash, X509Certificate } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+const join = (...parts) => parts.join("/");
 
 let VIEW = { width: 1280, height: 900 };
 let DPR = 2;
@@ -31,12 +29,30 @@ const FILE = "Lake trip.md";
 const SUBJECT = "Plan for the lake";
 const EVA = "eva@mattbox.home.arpa";
 
-const { chromium } = await import(process.env.PLAYWRIGHT_CORE ?? "playwright-core");
+const { chromium } = await import(Bun.env.PLAYWRIGHT_CORE ?? "playwright-core");
 
-function spkiPin(pemFile) {
-  const cert = new X509Certificate(readFileSync(pemFile));
-  const der = cert.publicKey.export({ type: "spki", format: "der" });
-  return createHash("sha256").update(der).digest("base64");
+async function spkiPin(pemFile) {
+  const pem = await Bun.file(pemFile).text();
+  const der = Uint8Array.fromBase64(/-----BEGIN CERTIFICATE-----([^-]+)-----END CERTIFICATE-----/.exec(pem)[1].replace(/\s/g, ""));
+  // One DER element at `at`: where its contents start and where it ends.
+  const element = (at) => {
+    let len = der[at + 1];
+    let start = at + 2;
+    if (len & 0x80) {
+      const n = len & 0x7f;
+      len = 0;
+      for (let i = 0; i < n; i++) len = len * 256 + der[start + i];
+      start += n;
+    }
+    return { start, end: start + len };
+  };
+  // Certificate > tbsCertificate > [0] version, serial, signature, issuer,
+  // validity, subject, then the subjectPublicKeyInfo Chromium hashes.
+  let at = element(element(0).start).start;
+  if (der[at] === 0xa0) at = element(at).end;
+  for (let i = 0; i < 5; i++) at = element(at).end;
+  const spki = der.subarray(at, element(at).end);
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", spki)).toBase64();
 }
 
 class Shots {
@@ -45,7 +61,7 @@ class Shots {
     this.out = out;
     this.meta = meta;
     this.steps = [];
-    mkdirSync(out, { recursive: true });
+    Bun.spawnSync(["mkdir", "-p", out]);
   }
 
   // The admin page's policy refuses waitForFunction's evaluation, so every
@@ -76,9 +92,9 @@ class Shots {
     console.log(file, title);
   }
 
-  save() {
+  async save() {
     const manifest = { feature: "apps-together", viewport: VIEW, dpr: DPR, ...this.meta, steps: this.steps };
-    writeFileSync(join(this.out, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
+    await Bun.write(join(this.out, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
   }
 }
 
@@ -244,7 +260,7 @@ function parse(argv) {
   return { verb: pos[0], base: pos[1], name: pos[2], password: pos[3], out: pos[4], opts };
 }
 
-const { verb, base, name, password, out, opts } = parse(process.argv.slice(2));
+const { verb, base, name, password, out, opts } = parse(Bun.argv.slice(2));
 const walks = { after, before, closed };
 if (opts.view) {
   const [width, height] = opts.view.split("x").map(Number);
@@ -252,11 +268,11 @@ if (opts.view) {
 }
 if (opts.dpr) DPR = opts.dpr;
 if (!(verb in walks)) {
-  console.error(`unknown verb ${verb}`);
-  process.exit(2);
+  // Thrown: an uncaught error is what makes Bun exit non-zero.
+  throw new Error(`unknown verb ${verb}`);
 }
 const browser = await chromium.launch({
-  args: [`--ignore-certificate-errors-spki-list=${spkiPin(opts.ca ?? "/etc/losos-box.pem")}`],
+  args: [`--ignore-certificate-errors-spki-list=${await spkiPin(opts.ca ?? "/etc/losos-box.pem")}`],
 });
 const context = await browser.newContext({
   viewport: VIEW,
@@ -298,12 +314,12 @@ try {
   await page.screenshot({ path: join(out, `failed-${verb}.png`) }).catch(() => {});
   throw err;
 } finally {
-  s.save();
+  await s.save();
   // The video is written when its page closes.
   await context.close();
 }
 await browser.close();
 if (problems.length > 0) {
-  console.error(`the pages threw:\n${problems.join("\n")}`);
-  process.exit(1);
+  // Thrown: an uncaught error is what makes Bun exit non-zero.
+  throw new Error(`the pages threw:\n${problems.join("\n")}`);
 }

@@ -138,7 +138,7 @@
               ++ fast.packages
               ++ [
                 pkgs.rust-analyzer
-                pkgs.nodejs
+                pkgs.bun
               ];
             inherit (fast) env;
             # The git hooks (nix/hooks) run CI's gates before a commit
@@ -209,11 +209,11 @@
                 losos.installer.autorun = true;
                 # Prebuild the admin UI into the medium.
                 #
-                # `losos-admin-ui` is a React/Tailwind bundle built with
-                # buildNpmPackage — a Node toolchain and an npm dependency
-                # fetch. Without this, `nixos-install` realises that derivation
-                # on the target, so a repurposed mini-PC with no shell runs npm
-                # as part of a first install, over a network it may not have.
+                # `losos-admin-ui` is a React/Tailwind bundle built with Bun
+                # from a node_modules fetch. Without this, `nixos-install`
+                # realises that derivation on the target, so a repurposed
+                # mini-PC with no shell fetches packages and runs Bun as part
+                # of a first install, over a network it may not have.
                 # storeContents puts the finished output in the live system's
                 # store, and nix copies rather than builds anything it already
                 # has.
@@ -223,8 +223,9 @@
                 # 2 GiB per-asset release limit.
                 isoImage.storeContents = [
                   self.packages.${system}.losos-admin-ui
-                  # Same argument: the handbook is a Docusaurus build, npm and
-                  # all, and belongs on the medium rather than on the target.
+                  # Same argument: the handbook is a Docusaurus build, its
+                  # packages and all, and belongs on the medium rather than
+                  # on the target.
                   self.packages.${system}.losos-handbook
                 ];
                 # The default (zstd level 19, cache sized off host RAM) gets
@@ -615,15 +616,8 @@
           # every option the install configuration declares and the check
           # fails on any row it cannot draw (tests/advanced.browser.mjs).
           optionsJson = self.checks.${system}.losos-options-doc;
-          # LosOS Lab's page imports the Rust core, the GPU canvas and the
-          # libvirt client, and LosOS Office losos-mdx; the bundle under test
-          # copies them in the way the shipped one does.
-          inherit (self.packages.${system}.losos-admin-ui)
-            labCorePkg
-            labVirtPkg
-            labRenderPkg
-            mdxPkg
-            ;
+          # The check is the shipped package with its browser checks added.
+          ui = self.packages.${system}.losos-admin-ui;
           callsPackage = self.packages.${system}.losos-ctl;
         };
         # Not a VM: the option document of the install configuration
