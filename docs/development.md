@@ -32,7 +32,7 @@ here too.
 | Hook | Runs |
 | --- | --- |
 | `commit-msg` | refuses an attribution trailer or a session link |
-| `pre-commit` | `cargo fmt --check` on every crate; clippy `-D warnings` on each crate the change reaches; `nix/lint-nix.sh` (nixfmt, deadnix, statix) on the staged `.nix` files; `nix/check-pins.sh` when a lock or `devenv.yaml` changes; `fix-hashes.py --check` when a `Cargo.lock` or `package-lock.json` does; `npm run typecheck` in `admin-ui/app` (a checkout without the Diagrams WebAssembly packages gets them from `.#losos-lab-{core,virt,render}`); CI's eval job: `nix/check-flake.sh`, the module merge of `install`, `iso` and `edge-gateway`, the ISO and edge image derivations |
+| `pre-commit` | `cargo fmt --check` on every crate; clippy `-D warnings` on each crate the change reaches; `nix/lint-nix.sh` (nixfmt, deadnix, statix) on the staged `.nix` files; `nix/check-pins.sh` when a lock or `devenv.yaml` changes; `fix-hashes.py --check` when a `Cargo.lock` or `package-lock.json` does; `npm run typecheck` in `admin-ui/app` (a checkout without the WebAssembly packages it imports gets them from `.#losos-lab-{core,virt,render}` and `.#losos-mdx-wasm`, and a copy it made is replaced when its crate changes); CI's eval job: `nix/check-flake.sh`, the module merge of `install`, `iso` and `edge-gateway`, the ISO and edge image derivations |
 | `pre-push` | all of pre-commit over the whole branch against its merge base with `origin/main`, plus `cargo test` for each crate reached, clippy for wasm32, `.#checks.x86_64-linux.losos-admin-ui` (the built SPA and its Playwright suite), `.#losos-handbook` when the handbook changes, and the VM tests the change touches |
 
 `devenv shell` and `nix develop` set `core.hooksPath` to `nix/hooks`, and so
