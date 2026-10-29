@@ -89,7 +89,7 @@ export default defineMessages({
   "look.widgets.half": { en: "Half width", sk: "Polovičná šírka", de: "Halbe Breite" },
   "look.widgets.full": { en: "Full width", sk: "Plná šírka", de: "Volle Breite" },
   "look.widgets.caption": {
-    en: "A widget written here is kept on this box and offered in the gallery on Overview, where you put it on the board. It runs in a sandbox of its own: it can draw, ask the box for its readings and fetch from the internet, and it cannot reach this page, your sign-in or the box's settings.",
+    en: "A widget written here is kept on this box and offered in the gallery on Overview, where you put it on the board. It runs in a sandbox of its own. It can draw, ask the box for its readings and fetch from the internet, and it cannot reach this page, your sign-in or the box's settings.",
     sk: "Widget napísaný tu zostáva na tomto zariadení a ponúka sa v galérii na Prehľade, kde si ho dáte na nástenku. Beží vo vlastnom sandboxe: môže kresliť, pýtať si od zariadenia jeho údaje a sťahovať z internetu, no nedosiahne na túto stránku, vaše prihlásenie ani nastavenia zariadenia.",
     de: "Ein hier geschriebenes Widget bleibt auf dieser Box und wird in der Galerie der Übersicht angeboten, wo du es auf die Pinnwand legst. Es läuft in einer eigenen Sandbox: es kann zeichnen, die Box nach ihren Messwerten fragen und aus dem Internet laden, aber es erreicht weder diese Seite, noch deine Anmeldung, noch die Einstellungen der Box.",
   },
@@ -405,7 +405,7 @@ export default defineMessages({
     de: "index.html ist das, was die Kachel zeigt. Andere Dateien werden von dort wie gewohnt verlinkt: <link rel=\"stylesheet\" href=\"style.css\">, <script src=\"app.js\"></script>, <img src=\"logo.svg\">, url(\"logo.svg\") in einem Stylesheet und fetch(\"data.json\") aus einem Script. Scripts teilen sich eine Seite, also lade sie der Reihe nach mit mehreren <script src>-Tags; import zwischen Dateien funktioniert nicht.",
   },
   "look.editor.help.limits": {
-    en: "The widget runs in a sandbox: it cannot see this page, your sign-in, or the box's settings, and it cannot change anything on the box. It may fetch from the internet. This box keeps up to {widgets} widgets, each with up to {files} files and {kb} KiB.",
+    en: "The widget runs in a sandbox. It cannot see this page, your sign-in, or the box's settings, and it cannot change anything on the box. It may fetch from the internet. This box keeps up to {widgets} widgets, each with up to {files} files and {kb} KiB.",
     sk: "Widget beží v sandboxe: nevidí túto stránku, vaše prihlásenie ani nastavenia zariadenia a nemôže na zariadení nič zmeniť. Môže sťahovať z internetu. Zariadenie uchová až {widgets} widgetov, každý najviac s {files} súbormi a {kb} KiB.",
     de: "Das Widget läuft in einer Sandbox: es sieht weder diese Seite, noch deine Anmeldung, noch die Einstellungen der Box, und es kann nichts an der Box ändern. Aus dem Internet laden darf es. Diese Box behält bis zu {widgets} Widgets mit je bis zu {files} Dateien und {kb} KiB.",
   },

@@ -659,7 +659,7 @@ function describe(editor: OptionEditor, value: OptionValue, t: ReturnType<typeof
   if (value === null) return t("advanced.none");
   if (typeof value === "boolean") return value ? t("advanced.on") : t("advanced.off");
   if (typeof value === "number") return editor.kind === "float" && Number.isInteger(value) ? value.toFixed(1) : String(value);
-  if (typeof value === "string") return value.length === 0 ? "“”" : value;
+  if (typeof value === "string") return value.length === 0 ? '""' : value;
   if (Array.isArray(value)) return value.length === 0 ? t("advanced.none") : value.map((v) => describe(editor, v, t)).join(", ");
   if ("package" in value) return value.package;
   return value.nix;
