@@ -103,6 +103,9 @@ const config: Config = {
     ],
   ],
 
+  // Every page's title and address for the search page without JavaScript.
+  plugins: ['./src/plugins/page-list.ts'],
+
   themes: [
     [
       // Offline full-text search: a lunr index built into the bundle, so the

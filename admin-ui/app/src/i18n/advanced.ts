@@ -17,7 +17,7 @@ export default defineMessages({
     de: "Name oder Beschreibung…",
   },
   "advanced.search.noMatch": {
-    en: "No option matches “{query}”.",
+    en: "No option matches \"{query}\".",
     sk: "Žiadna možnosť nezodpovedá „{query}“.",
     de: "Keine Option passt zu „{query}“.",
   },
@@ -27,7 +27,7 @@ export default defineMessages({
     de: { one: "{count} Option", other: "{count} Optionen" },
   },
   "advanced.caption": {
-    en: "Every setting this box declares, read from the modules it runs. A value set here is written to the box’s configuration on Apply, like any other setting, and committed to its history. Leave an option at its default unless you know what it does: the ones marked Careful can leave the box unreachable, and there is no other way in.",
+    en: "Every setting this box declares, read from the modules it runs. Apply writes a value set here to the box's configuration, like any other setting, and commits it to its history. Leave an option at its default unless you know what it does. The ones marked Careful can leave the box unreachable, and there is no other way in.",
     sk: "Každé nastavenie, ktoré toto zariadenie deklaruje, načítané z modulov, ktoré beží. Hodnota nastavená tu sa pri Použití zapíše do konfigurácie zariadenia ako každé iné nastavenie a uloží sa do jeho histórie. Možnosť nechajte na predvolenej hodnote, ak neviete, čo robí: tie označené Opatrne môžu zariadenie spraviť nedostupným a iná cesta dnu nie je.",
     de: "Jede Einstellung, die diese Box deklariert, gelesen aus den Modulen, die sie ausführt. Ein hier gesetzter Wert wird beim Anwenden wie jede andere Einstellung in die Konfiguration der Box geschrieben und in ihrer Historie festgehalten. Lass eine Option auf ihrem Standard, wenn du nicht weißt, was sie tut: die mit Vorsicht markierten können die Box unerreichbar machen, und einen anderen Weg hinein gibt es nicht.",
   },
@@ -140,7 +140,7 @@ export default defineMessages({
     de: "Zeilen, für die diese Box keine Option hat",
   },
   "advanced.stray.caption": {
-    en: "These are in the box’s configuration but match no option it declares: a typo or a setting from another version. The box refuses to apply while they are there, so remove them to apply anything.",
+    en: "These are in the box's configuration but match no option it declares. Each is a typo or a setting from another version. The box refuses to apply while they are there, so remove them to apply anything.",
     sk: "Tieto sú v konfigurácii zariadenia, ale nezodpovedajú žiadnej možnosti, ktorú deklaruje: preklep alebo nastavenie z inej verzie. Kým tam sú, zariadenie odmieta použiť zmeny, takže ich odstráňte, aby sa dalo čokoľvek použiť.",
     de: "Diese stehen in der Konfiguration der Box, passen aber zu keiner Option, die sie deklariert: ein Tippfehler oder eine Einstellung aus einer anderen Version. Solange sie da sind, verweigert die Box das Anwenden; entferne sie, um etwas anzuwenden.",
   },
@@ -158,7 +158,7 @@ export default defineMessages({
   "advanced.danger.keep": { en: "Keep as is", sk: "Nechať tak", de: "So lassen" },
   "advanced.danger.confirm": { en: "Change it", sk: "Zmeniť", de: "Ändern" },
   "advanced.commits": {
-    en: "Every Apply is committed to the box’s configuration history, which you can read under History.",
+    en: "Every Apply is a commit in the box's configuration history, which you can read under History.",
     sk: "Každé Použitie sa uloží do histórie konfigurácie zariadenia, ktorú si môžete prečítať v časti História.",
     de: "Jedes Anwenden wird in der Konfigurationshistorie der Box festgehalten, die du unter Historie lesen kannst.",
   },
@@ -249,7 +249,7 @@ export default defineMessages({
     de: "Clone-Adresse",
   },
   "history.repo.off": {
-    en: "LosOS Git is off on this box, so the configuration stays in the box’s own history only. Every change is still committed there.",
+    en: "LosOS Git is off on this box, so the configuration stays in the box's own history only. Every change is still committed there.",
     sk: "LosOS Git je na tomto zariadení vypnutý, takže konfigurácia zostáva len vo vlastnej histórii zariadenia. Každá zmena sa tam stále ukladá.",
     de: "LosOS Git ist auf dieser Box aus, die Konfiguration bleibt also nur in der eigenen Historie der Box. Jede Änderung wird dort trotzdem festgehalten.",
   },

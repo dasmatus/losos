@@ -753,7 +753,11 @@ fn scan_edge_now() -> crate::edge::EdgeStatus {
             let (gateway, changed) =
                 vetter.vet(url, &CurlWire, &nonce, now, &mut rand::rngs::OsRng);
             ledger_changed |= changed;
-            gateway
+            if domain_check_on() {
+                crate::edge::hold_to_domain(url, gateway, check_domain)
+            } else {
+                gateway
+            }
         },
         now,
     );
@@ -765,6 +769,64 @@ fn scan_edge_now() -> crate::edge::EdgeStatus {
     }
     status.mark_on_network(&own_networks(), resolve_host);
     status
+}
+
+/// Whether an official edge is held to its domain (`$LOSOS_EDGE_DOMAIN_CHECK`,
+/// set by modules/daemon.nix from `losos.proxy.gateways.domain.enable`).
+/// On unless it says `0`.
+fn domain_check_on() -> bool {
+    std::env::var("LOSOS_EDGE_DOMAIN_CHECK").map_or(true, |v| v.trim() != "0")
+}
+
+/// `delv <name> HTTPS`, validated by delv itself ([`crate::edge::parse_delv`]).
+/// The resolver, the trust anchors and the anchors' root come from
+/// `$LOSOS_EDGE_DNS_SERVER`, `$LOSOS_EDGE_DNS_ANCHORS` and
+/// `$LOSOS_EDGE_DNS_ROOT` when set; otherwise the system's resolver and
+/// delv's own root key. A delv that cannot run proves nothing.
+pub fn check_domain(name: &str) -> crate::edge::DomainCheck {
+    let env = |k: &str| std::env::var(k).ok().filter(|v| !v.trim().is_empty());
+    let mut cmd = std::process::Command::new("delv");
+    if let Some(server) = env("LOSOS_EDGE_DNS_SERVER") {
+        cmd.arg(format!("@{}", server.trim()));
+    }
+    if let Some(anchors) = env("LOSOS_EDGE_DNS_ANCHORS") {
+        cmd.args(["-a", anchors.trim()]);
+    }
+    if let Some(root) = env("LOSOS_EDGE_DNS_ROOT") {
+        cmd.arg(format!("+root={}", root.trim()));
+    }
+    let out = cmd
+        .args(["-q", name, "-t", "HTTPS"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            // delv has no timeout of its own; the scan must not hang on it.
+            // Its few lines fit the pipes, so waiting before reading is safe.
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+            while child.try_wait()?.is_none() {
+                if std::time::Instant::now() >= deadline {
+                    let _ = child.kill();
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            child.wait_with_output()
+        });
+    match out {
+        Ok(o) => {
+            // delv prints the verdict on stderr and the records on stdout.
+            let mut text = String::from_utf8_lossy(&o.stderr).into_owned();
+            text.push('\n');
+            text.push_str(&String::from_utf8_lossy(&o.stdout));
+            crate::edge::parse_delv(&text)
+        }
+        Err(e) => {
+            tracing::warn!(name, error = %e, "delv could not run; the edge's domain is not checked");
+            crate::edge::DomainCheck::default()
+        }
+    }
 }
 
 /// The prefixes on the box's own links, from the kernel's tables.
@@ -903,13 +965,31 @@ fn drive_edge_path(status: &crate::edge::EdgeStatus) {
         .args([verb, "--no-block"])
         .args(crate::edge::PATH_UNITS)
         .output();
-    match out {
-        Ok(o) if o.status.success() => {}
-        Ok(o) => tracing::error!(
-            stderr = %String::from_utf8_lossy(&o.stderr).trim(),
-            "systemctl {verb} of the tunnel units failed"
-        ),
-        Err(e) => tracing::error!(error = %e, "could not run systemctl for the tunnel units"),
+    let done = match out {
+        Ok(o) if o.status.success() => true,
+        Ok(o) => {
+            tracing::error!(
+                stderr = %String::from_utf8_lossy(&o.stderr).trim(),
+                "systemctl {verb} of the tunnel units failed"
+            );
+            false
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "could not run systemctl for the tunnel units");
+            false
+        }
+    };
+    // What is on disk says what the units were told. A systemctl that did
+    // not finish (lososd stopped under it, say) leaves the file of a path
+    // the units never took, and the next scan would find nothing to do:
+    // take it back so that scan asks again.
+    if !done {
+        let undo = if next.is_some() {
+            &path_file
+        } else {
+            &none_file
+        };
+        let _ = std::fs::remove_file(undo);
     }
     // Into another secondary cluster: the mesh join runs again against it,
     // and the agent follows (modules/cluster.nix). `try-restart` leaves a box

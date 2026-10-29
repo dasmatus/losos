@@ -46,17 +46,17 @@ const OWNED = {
 };
 /* Lines of overrides.nix another pane draws its own editor for: each app's
  * box-wide settings on the Apps pane, the memory this box lends to AI
- * models on the Market pane, the Windows share on the Network pane and the
- * release channel on the History pane (lib/option-value.ts, ON_PANE). The
- * Advanced row shows the value and links there, to the app's fold on the
- * Apps pane. */
+ * models on the Market pane, the Windows share and the Tor and I2P
+ * addresses on the Network pane and the release channel on the History pane
+ * (lib/option-value.ts, ON_PANE). The Advanced row shows the value and links
+ * there, to the app's fold on the Apps pane. */
 const ON_PANE = Object.fromEntries(
   DOC.options.flatMap((option) =>
     option.name === 'cloud.trashDays' || /^git\.site\./.test(option.name)
       ? [[option.name, 'apps']]
       : /^inference\.lend\.(enable|memoryMiB)$/.test(option.name)
         ? [[option.name, 'market']]
-        : option.name === 'cloud.windows.enable'
+        : option.name === 'cloud.windows.enable' || /^hidden\.(tor|i2p)\.enable$/.test(option.name)
           ? [[option.name, 'network']]
           : option.name === 'updates.channel'
             ? [[option.name, 'history']]
@@ -349,7 +349,7 @@ await check('search narrows the rows and says when nothing matches', async () =>
   await main(page).getByText('1 option', { exact: true }).waitFor();
   assert.equal(await page.locator('[data-option]').count(), 1);
   await search.fill('zzz-nothing');
-  await main(page).getByText('No option matches “zzz-nothing”.').waitFor();
+  await main(page).getByText('No option matches "zzz-nothing".').waitFor();
   await page.close();
 });
 
@@ -497,7 +497,7 @@ await check('the Market pane lends memory to AI models with two lines of overrid
   await lend.waitFor();
   // Lending reaches the box only through the edge's tunnel.
   assert.equal(await row(page, 'inference.lend.enable').locator('input').isDisabled(), true, 'lending can be turned on with the proxy off');
-  await lend.getByText('Turn on “Reachable from outside your home” in Network first.', { exact: false }).waitFor();
+  await lend.getByText('Turn on "Reachable from outside your home" in Network first.', { exact: false }).waitFor();
   assert.deepEqual(errors, []);
   await page.close();
 

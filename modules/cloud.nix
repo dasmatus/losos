@@ -53,7 +53,7 @@
 
 let
   cfg = config.losos.cloud;
-  mesh = cfg.mesh;
+  inherit (cfg) mesh;
   enabled = config.lososInternal.appSignIn.cloud;
   pkg = config.losos.backend.package;
   # The same gate as the shared side's chat, mail and calls.
@@ -315,31 +315,32 @@ in
       after = [ "network.target" ];
       before = [ "nginx.service" ];
       serviceConfig = {
-        ExecStart = lib.concatStringsSep " " [
-          "${pkg}/bin/losos-cloud"
-          "--root ${stateDir}"
-          "serve"
-          "--socket ${socket}"
-          "--trash-days ${toString cfg.trashDays}"
-          "--webcal-socket ${webcalSocket}"
-          # People on the box edit text together either way; with the mesh
-          # they also share with, and edit with, people on other boxes.
-          "--box-name ${lib.escapeShellArg mesh.name}"
-        ]
-        + lib.optionalString mesh.enable (
-          " --mesh" + lib.optionalString mesh.selfSigned " --mesh-self-signed"
-        )
-        + lib.optionalString knowledgeBases " --knowledge-bases"
-        # Office documents open in Collabora (modules/office.nix): coolwsd
-        # reaches /wopi/files/ through nginx on the WOPI port, and the types
-        # it opens come from the copy of its discovery saved under /run.
-        + lib.optionalString office (
-          " --office-wopi http://127.0.0.1:${toString config.losos.office.wopiPort}"
-          + " --coolwsd /run/losos-office-discovery/discovery.xml"
-        )
-        # Files the Windows share writes, into the table as they land
-        # (modules/windows.nix).
-        + lib.optionalString cfg.windows.enable " --watch";
+        ExecStart =
+          lib.concatStringsSep " " [
+            "${pkg}/bin/losos-cloud"
+            "--root ${stateDir}"
+            "serve"
+            "--socket ${socket}"
+            "--trash-days ${toString cfg.trashDays}"
+            "--webcal-socket ${webcalSocket}"
+            # People on the box edit text together either way; with the mesh
+            # they also share with, and edit with, people on other boxes.
+            "--box-name ${lib.escapeShellArg mesh.name}"
+          ]
+          + lib.optionalString mesh.enable (
+            " --mesh" + lib.optionalString mesh.selfSigned " --mesh-self-signed"
+          )
+          + lib.optionalString knowledgeBases " --knowledge-bases"
+          # Office documents open in Collabora (modules/office.nix): coolwsd
+          # reaches /wopi/files/ through nginx on the WOPI port, and the types
+          # it opens come from the copy of its discovery saved under /run.
+          + lib.optionalString office (
+            " --office-wopi http://127.0.0.1:${toString config.losos.office.wopiPort}"
+            + " --coolwsd /run/losos-office-discovery/discovery.xml"
+          )
+          # Files the Windows share writes, into the table as they land
+          # (modules/windows.nix).
+          + lib.optionalString cfg.windows.enable " --watch";
         User = "losos-cloud";
         Group = "losos-cloud";
         StateDirectory = "losos-cloud";
