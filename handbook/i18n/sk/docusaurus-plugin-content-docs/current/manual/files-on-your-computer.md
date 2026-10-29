@@ -6,8 +6,6 @@ slug: /manual/files-on-your-computer
 
 # Súbory vo vašom počítači
 
-![Stránka Zariadenia v LosOS Cloud: adresa servera, adresa WebDAV pre správcu súborov a prihlásené počítače.](@site/docs/img/cloud-devices-sk.png)
-
 Vaše súbory v LosOS Cloud sú aj sieťovým priečinkom. Každý počítač v sieti
 zariadenia ho otvorí vo svojom správcovi súborov, môže doň súbory preťahovať,
 brať ich odtiaľ a otvárať ich priamo na mieste, bez inštalácie čohokoľvek.
@@ -36,6 +34,8 @@ ukazuje aj vaša stránka **Váš účet**.
 Zdieľanie odpovedá len počítačom vo vlastnej sieti zariadenia, nikdy nie cez
 internet. Správca ho zapína a vypína v **Nastaveniach** > **Sieť** >
 **Windows, Mac a Linux**. Predvolene je zapnuté.
+
+![Nastavenia, Sieť: Zobraziť v Sieti na počítačoch nablízku, zapnuté.](@site/docs/img/settings-network-windows-sk.png)
 
 ### Windows \{#windows}
 
@@ -75,6 +75,8 @@ na adresu WebDAV. Ak sa nič z toho od zapnutia zdieľania nestalo, otvorte v
 LosOS stránku **Váš účet**, nájdite **Vaše súbory vo Windows, Macu a Linuxe**,
 zadajte heslo pod **Povoliť Windows vaše heslo** a kliknite na **Povoliť**.
 
+![Váš účet: Vaše súbory vo Windows, Macu a Linuxe, s adresou pre Prieskumníka a Pripravené, keď zariadenie vaše heslo už videlo.](@site/docs/img/settings-account-windows-sk.png)
+
 ### Čím sa zdieľanie líši \{#what-the-share-does-differently}
 
 Súbory, ktoré v zdieľaní zmeníte, sa hneď zmenia aj v LosOS Cloud, v
@@ -87,6 +89,8 @@ prepíšete, si nenechá staršiu verziu.
 ```text
 https://<name>.local/remote.php/webdav/
 ```
+
+![Stránka Zariadenia v LosOS Cloud: adresa servera, adresa WebDAV pre správcu súborov a prihlásené počítače.](@site/docs/img/cloud-devices-sk.png)
 
 ### Skôr než začnete \{#before-you-start}
 

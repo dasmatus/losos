@@ -399,6 +399,9 @@ pkgs.testers.nixosTest {
         rc, out = smb(f"//{box_ip}/matus -c ls", "matus", PASSWORD)
         assert rc != 0, out
         laptop.wait_until_succeeds("avahi-browse -rpt _webdavs._tcp | grep '^='", timeout=120)
+        # The switch restarted lososd, which loads its plugins before it
+        # listens; under emulation that takes a while.
+        box.wait_for_open_port(8082)
         me = json.loads(curl(f"-f {BASE}/api/windows -H 'Cookie: {sign_in("matus", PASSWORD)}'"))
         assert me == {"on": False}, me
   '';
