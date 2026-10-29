@@ -20,6 +20,7 @@
 let
   enabled = config.losos.backend.package != null;
   pkg = config.losos.backend.package;
+  domainCheck = config.losos.proxy.gateways.domain;
 
   # System-bus policy: root owns org.losos1; members of the fixed `losos`
   # group may send to it (the facade runs as root or a losos-group caller).
@@ -162,6 +163,20 @@ in
         LOSOS_GATEWAY_TPM_ROOTS = "${config.losos.proxy.gateways.tpmRoots}";
         LOSOS_GATEWAY_IMAGES = "${pkgs.writeText "losos-gateway-images.json" (builtins.toJSON config.losos.proxy.gateways.images)}";
         LOSOS_GATEWAY_PAYOUTS = "${pkgs.writeText "losos-gateway-payouts.json" (builtins.toJSON config.losos.proxy.gateways.payouts)}";
+        # And the name it is reached at: DNSSEC-signed, with an ECH key
+        # (losos.proxy.gateways.domain, `delv` below on the unit's path).
+        LOSOS_EDGE_DOMAIN_CHECK = if domainCheck.enable then "1" else "0";
+      }
+      // lib.optionalAttrs (domainCheck.server != null) {
+        LOSOS_EDGE_DNS_SERVER = domainCheck.server;
+      }
+      // lib.optionalAttrs (domainCheck.trustAnchors != null) {
+        LOSOS_EDGE_DNS_ANCHORS = domainCheck.trustAnchors;
+      }
+      // lib.optionalAttrs (domainCheck.trustAnchorRoot != null) {
+        LOSOS_EDGE_DNS_ROOT = domainCheck.trustAnchorRoot;
+      }
+      // {
         # Edges and official clusters the box must not use (losos.proxy.bansFile):
         # read on every scan, a missing file bans nothing.
         LOSOS_EDGE_BANS_FILE = config.losos.proxy.bansFile;
@@ -246,6 +261,9 @@ in
         # shape as the grow binaries above if this line goes: ENOENT at the
         # exec, reported to the owner as a search that will not come back.
         pkgs.curl
+        # delv: the edge scan's validating lookup of an official edge's name
+        # (losos.proxy.gateways.domain, io_backend.rs `check_domain`).
+        pkgs.bind.dnsutils
         # The edge scan's LAN browse needs no binary here: it asks
         # systemd-resolved over its Varlink socket (backend/src/edge.rs), which
         # is why there is no avahi-browse on this list any more.

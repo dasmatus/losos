@@ -62,3 +62,13 @@ Stránky bez JavaScriptu používajú štýly a texty obvyklých stránok. Ponuk
 zbalenie bočného panela a dialóg, ktorý sa pýta pred použitím rezervy, sa
 otvárajú a zatvárajú len cez CSS. Oznámenia sa vysunú a samy odídu, tiež cez
 CSS, a ostanú stáť, ak váš systém žiada menej pohybu.
+
+## Táto príručka \{#this-handbook}
+
+Príručka sa dá čítať aj bez JavaScriptu, na boxe aj na webe. Na telefóne
+tlačidlo ponuky otvorí kapitoly ako panel. Kapitola v bočnom paneli otvorí
+svoju stránku a **Na tejto stránke**, ponuka jazykov a voľba Svetlý, Tmavý
+alebo podľa prehliadača fungujú. Zvolený vzhľad platí len pre stránku, na
+ktorej ste ho zvolili. Vyhľadávanie potrebuje JavaScript, takže pole
+vyhľadávania namiesto toho otvorí zoznam všetkých stránok, ktorý prehľadá
+funkcia Hľadať vo vašom prehliadači.

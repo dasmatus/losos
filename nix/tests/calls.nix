@@ -190,6 +190,9 @@ let
       "f ${proxyToken} 0600 root root - ${proxyTokenValue}"
     ];
   };
+  # The edge is an open gateway with its owner's passport measured, so it
+  # makes guest links (nix/tests/open-gateway.nix).
+  openGateway = import ./open-gateway.nix { inherit pkgs lososPkgs; };
   # The driver's browsers send to the media port on their own loopback; it
   # arrives at the forwarding machine's user-mode address. QEMU's user-mode
   # network sends every reply from a guest UDP port to whoever wrote to it
@@ -466,14 +469,7 @@ pkgs.testers.nixosTest {
           ../../modules/edge.nix
           secretFiles
           peerNat
-        ];
-        # A claimed gateway makes guest links: the registrar asks only that
-        # owner's settings were measured at boot. With no TPM in the VM the
-        # measuring unit does not run, so the copy is laid down here;
-        # nothing in this test checks the passport itself.
-        systemd.tmpfiles.rules = [
-          "d /run/losos-gateway 0755 root root - -"
-          "f /run/losos-gateway/settings.json 0644 root root - {}"
+          (openGateway.edge "http://edge:8443")
         ];
         _module.args.self = {
           packages.x86_64-linux.losos-registrar = lososPkgs.losos-registrar;
@@ -490,7 +486,6 @@ pkgs.testers.nixosTest {
             hostname = "mattbox.losos.cfd";
             tokenFile = proxyToken;
           };
-          passport.enable = true;
           calls.relay = {
             mediaPorts = "${toString mediaPort}-${toString (mediaPort + 9)}";
             addresses = [ "10.0.2.15=127.0.0.1" ];

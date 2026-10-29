@@ -68,7 +68,7 @@ export default defineMessages({
     de: "Finde eine Seite dieser Box über ihren Namen.",
   },
   "basic.search.noneBody": {
-    en: "Try a shorter word. Files, repositories and issues are searched with JavaScript on.",
+    en: "Try a shorter word. With JavaScript on, the search also looks through files, repositories and issues.",
     sk: "Skúste kratšie slovo. Súbory, repozitáre a úlohy sa hľadajú so zapnutým JavaScriptom.",
     de: "Versuch ein kürzeres Wort. Dateien, Repositorys und Issues werden mit eingeschaltetem JavaScript durchsucht.",
   },
