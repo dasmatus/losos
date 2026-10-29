@@ -35,14 +35,16 @@ npm run dev | typecheck | test:browser              # in admin-ui/app
 cargo test --manifest-path admin-ui/tui/Cargo.toml  # losos, the terminal client
 ```
 
-Ten Rust crates: `backend/` (lososd + losos-ctl), `backend/access`
+Eleven Rust crates: `backend/` (lososd + losos-ctl), `backend/access`
 (the terminal envelope, its own workspace, a path dependency of lososd, the
-registrar and the client), `backend/plugins` (lososd's WebAssembly plugins,
+registrar and the client), `backend/mdx` (`losos-mdx`, MDX and Markdown to
+sanitized HTML for Office and Notes, its own workspace, also built for the
+browser with its `wasm` feature), `backend/plugins` (lososd's WebAssembly plugins,
 their SDK and WIT, its own workspace, linted for the host and wasm32), `edge/registrar/`, `edge/vercel/` (outside the
 flake), the terminal client `admin-ui/tui`, and Diagrams' `admin-ui/lab/core`,
 `admin-ui/lab/virt-rpc` and `admin-ui/lab/render` (built for wasm32), and
 the Solana escrow program `edge/contracts/solana` (`cargo build-sbf`, outside
-the flake). All ten must pass clippy with `-D warnings` and rustfmt; the devenv pre-commit
+the flake). All eleven must pass clippy with `-D warnings` and rustfmt; the devenv pre-commit
 hooks, `lint` and CI each check it. Bevy is a wasm32-only dependency of
 `render`, so `lint-wasm` and CI's `clippy-wasm` lint its WebGL2 and WebGPU
 builds too, one after the other. `nix develop` is a toolchain-only shell for people without devenv.
@@ -523,6 +525,8 @@ and is never served or built by nix.
   with the `HISTORY_SCRUB_DEPLOY_KEY` deploy key and tags with the CI token.
   `stale-branches.yml` deletes, each Sunday, branches with no commit in 30
   days that no open PR uses as head or base.
+  `failed-runs.yml` deletes, each day, unsuccessful workflow runs whose
+  commit is no longer a branch tip or an open PR's head.
   `dependency-hashes.yml` (`pull_request_target`, branches of this repository
   only) runs `.github/scripts/fix-hashes.py` on a pull request that changes
   a `Cargo.lock` or `package-lock.json`, Dependabot's included, and pushes the

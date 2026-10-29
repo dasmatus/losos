@@ -197,7 +197,7 @@ export default defineMessages({
     de: "Von hier aus nicht verfügbar",
   },
   "wizard.trust.blocked.body": {
-    en: "The certificate is only handed out to devices on the same network as this box. Open this page from that network to install it.",
+    en: "The box hands the certificate out only to devices on its own network. Open this page from that network to install it.",
     sk: "Certifikát sa poskytuje iba prístrojom v tej istej sieti ako toto zariadenie. Ak ho chcete nainštalovať, otvorte túto stránku z tejto siete.",
     de: "Das Zertifikat gibt es nur für Geräte im selben Netzwerk wie diese Box. Öffne diese Seite aus diesem Netzwerk, um es zu installieren.",
   },

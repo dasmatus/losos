@@ -137,6 +137,14 @@ enum Command {
     },
     /// The losos auto-installer. Destructive: it repartitions every target disk.
     Install(InstallArgs),
+    /// Check, as lososd does for an official edge, that an edge's https://
+    /// name validates under DNSSEC and its HTTPS record carries an Encrypted
+    /// Client Hello key. Runs locally with lososd's resolver settings
+    /// ($LOSOS_EDGE_DNS_*); exits 1 when the name does not pass.
+    EdgeDomain {
+        /// The edge's URL, as its passport names it.
+        url: String,
+    },
 }
 
 /// Flags for the installer. Runs locally; never touches the bus.
@@ -351,6 +359,24 @@ fn prompt_firmware(
 fn main() -> ExitCode {
     let cli = Cli::parse();
 
+    // The domain check is local too: it is delv and nothing of lososd's.
+    if let Command::EdgeDomain { url } = &cli.command {
+        let Some(name) = losos_ctl::edge::domain_of(url) else {
+            eprintln!("losos-ctl: {url} is not an https:// name");
+            return ExitCode::FAILURE;
+        };
+        let check = losos_ctl::io_backend::check_domain(&name);
+        println!(
+            "{}",
+            serde_json::json!({ "name": name, "signed": check.signed, "ech": check.ech })
+        );
+        return if check.passed() {
+            ExitCode::SUCCESS
+        } else {
+            ExitCode::FAILURE
+        };
+    }
+
     // The installer is local and prints its own progress as it goes; it does
     // not produce a JSON document to relay.
     if let Command::Install(args) = &cli.command {
@@ -545,6 +571,7 @@ fn run(cli: Cli) -> Result<(), BackendFailure> {
         }
         // Handled before the bus is ever touched.
         Command::Install(_) => unreachable!("install is dispatched in main"),
+        Command::EdgeDomain { .. } => unreachable!("edge-domain is dispatched in main"),
     };
     println!("{json}");
     Ok(())

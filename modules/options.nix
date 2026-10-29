@@ -649,6 +649,46 @@ in
           is.
         '';
       };
+      domain = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = ''
+            Hold a gateway that passes every other check to its name: it is
+            trusted only at an https:// URL whose HTTPS record validates
+            under DNSSEC and carries an Encrypted Client Hello key, which
+            the box checks with `delv` on every scan. Off, the name is not
+            looked at.
+          '';
+        };
+        server = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "192.0.2.53";
+          description = ''
+            The resolver `delv` asks for a gateway's name. `null` is the
+            system's resolver. delv validates the answer itself either way.
+          '';
+        };
+        trustAnchors = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = ''
+            A `trust-anchors { … };` file for `delv -a`. `null` is delv's
+            own copy of the DNS root's key, which is what a real gateway's
+            name validates from.
+          '';
+        };
+        trustAnchorRoot = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "boxes.example.test";
+          description = ''
+            The name `trustAnchors` holds a key for, when that is not the
+            DNS root (`delv +root=`).
+          '';
+        };
+      };
     };
 
     proxy.heartbeatInterval = lib.mkOption {
@@ -3310,6 +3350,31 @@ in
       '';
     };
 
+    edge.dns.ech.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Encrypted Client Hello: an HTTPS record at every name in the zone
+        carries the edge's ECH key, and Traefik decrypts with it, so the
+        network between a browser and the edge sees only the public name,
+        not which box was asked for. The key is made on the first start in
+        /var/lib/losos-ech. No released Traefik decrypts ECH yet, so this
+        runs Traefik built from its ECH change (nix/traefik-ech.nix).
+      '';
+    };
+
+    edge.dns.ech.publicName = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "edge.example.org";
+      description = ''
+        The name the outer, unencrypted handshake shows. It needs a
+        certificate on the edge, because a browser checks it whenever the
+        edge turns ECH down. `null` is `register.<publicDomain>`, which has
+        one from the start.
+      '';
+    };
+
     # Custom domains for boxes behind a local edge
     # (handbook/docs/in-depth/edge-federation.md, "Custom domains behind a local
     # edge"). The official edge keeps the route table in the registrar's own
@@ -3370,8 +3435,8 @@ in
       description = ''
         Let this gateway join a secondary cluster: gateways on one network
         that serve the same boxes and fail over for each other. Which
-        cluster is runtime state, written by `losos-edge cluster
-        create|join` into losos.edge.secondary.file and re-read every pass;
+        cluster is runtime state, written from the manage page (start a
+        cluster, or join one) into losos.edge.secondary.file and re-read every pass;
         with no file the gateway is a cluster of its own. Requires
         losos.edge.lan.advertise, because boxes find the members by their
         adverts.
@@ -3453,8 +3518,8 @@ in
         box whose owner let this edge manage it (the switch on the box's Mesh
         page), its LosOS Cloud, LosOS Git and app settings. The page signs in
         with a key the registrar makes on its first start, in
-        /var/lib/losos-registrar/manage-key; `losos-edge manage-key` on the
-        gateway's console prints it. Boxes refuse to be managed by an
+        /var/lib/losos-registrar/manage-key; a gateway's tty1 shows it with
+        the page's address. Boxes refuse to be managed by an
         official LosOS edge, so leave this off on one.
       '';
     };
@@ -3521,7 +3586,7 @@ in
         id, token_file, pin_file; paths, never secrets). The registrar re-reads
         it on every pass, and a missing file means "no uplink yet", so a
         gateway image can ship with the uplink enabled and let its owner
-        fill the file in later with `losos-edge uplink set`.
+        fill the file in later from the manage page.
       '';
     };
 
