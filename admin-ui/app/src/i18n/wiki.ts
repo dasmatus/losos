@@ -17,11 +17,11 @@ export default defineMessages({
     sk: "Hľadať na stránkach všetkých wiki na tomto boxe",
     de: "Die Seiten aller Wikis auf dieser Box durchsuchen",
   },
-  "wiki.results": { en: "Pages with “{query}”", sk: "Stránky s „{query}“", de: "Seiten mit „{query}“" },
+  "wiki.results": { en: "Pages with \"{query}\"", sk: "Stránky s „{query}“", de: "Seiten mit „{query}“" },
   "wiki.back": { en: "Back", sk: "Späť", de: "Zurück" },
   "wiki.noResults": { en: "No page says that.", sk: "Žiadna stránka to neobsahuje.", de: "Keine Seite enthält das." },
   "wiki.searchHandbook": {
-    en: "Search the handbook for “{query}”",
+    en: "Search the handbook for \"{query}\"",
     sk: "Hľadať „{query}“ v príručke",
     de: "„{query}“ im Handbuch suchen",
   },
@@ -188,7 +188,7 @@ export default defineMessages({
   "wiki.edit.failed": { en: "The page was not saved: {detail}", sk: "Stránka sa neuložila: {detail}", de: "Die Seite wurde nicht gespeichert: {detail}" },
 
   // ── deleting ──
-  "wiki.delete.title": { en: "Delete “{title}”?", sk: "Odstrániť „{title}“?", de: "„{title}“ löschen?" },
+  "wiki.delete.title": { en: "Delete \"{title}\"?", sk: "Odstrániť „{title}“?", de: "„{title}“ löschen?" },
   "wiki.delete.body": {
     en: "The page leaves the space. Its text stays in the space's history, so it can be brought back with git.",
     sk: "Stránka z priestoru zmizne. Jej text zostane v histórii priestoru, takže sa dá vrátiť cez git.",

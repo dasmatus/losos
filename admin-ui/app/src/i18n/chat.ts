@@ -257,7 +257,7 @@ export default defineMessages({
   "chat.newRoom.publicOff": { en: "Only people you invite.", sk: "Iba ľudia, ktorých pozvete.", de: "Nur Personen, die du einlädst." },
   "chat.newRoom.encrypted": { en: "End-to-end encryption", sk: "Šifrovanie end-to-end", de: "Ende-zu-Ende-Verschlüsselung" },
   "chat.newRoom.encryptedHint": {
-    en: "Only the people in the room can read it, not the box. It cannot be turned off later.",
+    en: "Only the people in the room can read it, not the box. You cannot turn this off later.",
     sk: "Čítať ju môžu iba ľudia v miestnosti, nie box. Neskôr sa nedá vypnúť.",
     de: "Nur die Personen im Raum können ihn lesen, nicht die Box. Sie lässt sich später nicht abschalten.",
   },
