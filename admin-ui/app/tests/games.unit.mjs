@@ -3,24 +3,12 @@
  * seeded random and fixed steps, so a rule that breaks fails here before
  * anyone has to play it.
  *
- *   node tests/games.node.mjs
+ *   bun tests/games.unit.mjs
  */
 
-import assert from 'node:assert/strict';
-import { fileURLToPath } from 'node:url';
-import * as esbuild from 'esbuild';
+import assert from './assert.mjs';
 
-const load = async (file) => {
-  const built = await esbuild.build({
-    entryPoints: [fileURLToPath(new URL(`../src/games/${file}`, import.meta.url))],
-    bundle: true,
-    format: 'esm',
-    platform: 'node',
-    write: false,
-    alias: { '@': fileURLToPath(new URL('../src', import.meta.url)) },
-  });
-  return import(`data:text/javascript;base64,${Buffer.from(built.outputFiles[0].text).toString('base64')}`);
-};
+const load = (file) => import(`../src/games/${file}`);
 
 const { slideRow, slide, merge } = await load('merge.ts');
 const { upstream } = await load('upstream.ts');
@@ -169,7 +157,7 @@ check('Pairs counts tries, keeps a pair up and finishes when every card is', () 
 });
 
 if (failures > 0) {
-  console.error(`\n${failures} failed`);
-  process.exit(1);
+  // Thrown, not printed: an uncaught error is what makes Bun exit non-zero.
+  throw new Error(`${failures} failed`);
 }
 console.log('\nall rule checks passed');

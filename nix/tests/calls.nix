@@ -54,22 +54,20 @@ let
       done
       cat > vite.calls-test.config.ts <<'EOF'
       import base from "./vite.config";
-      import { join } from "node:path";
-      import { fileURLToPath } from "node:url";
-      const root = fileURLToPath(new URL(".", import.meta.url));
+      const root = import.meta.dirname;
       const config = base as Record<string, any>;
       config.build.rolldownOptions.input = {
-        main: join(root, "index.html"),
-        chat: join(root, "chat/index.html"),
-        manage: join(root, "manage/index.html"),
+        main: `''${root}/index.html`,
+        chat: `''${root}/chat/index.html`,
+        manage: `''${root}/manage/index.html`,
       };
       export default config;
       EOF
     '';
     buildPhase = ''
       runHook preBuild
-      npx vite build --config vite.calls-test.config.ts
-      npx vite build --config vite.guest.config.ts
+      bun --bun vite build --config vite.calls-test.config.ts
+      bun --bun vite build --config vite.guest.config.ts
       runHook postBuild
     '';
   });

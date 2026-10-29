@@ -168,8 +168,8 @@ hlavičky na Verceli a `serve.json` urobí to isté pre `serve` na vašom
 vlastnom počítači:
 
 ```sh
-admin-ui/lab/engine/build.sh /tmp/lab     # docker, nix, node
-npx --yes serve@14.2.4 -l 8080 /tmp/lab   # then open http://localhost:8080/diagrams/
+admin-ui/lab/engine/build.sh /tmp/lab     # docker, nix, bun
+bunx serve@14.2.4 -l 8080 /tmp/lab        # then open http://localhost:8080/diagrams/
 ```
 
 `lab.yml` zostaví hostovanú kópiu pre každý pull request, ktorý sa dotkne
@@ -391,11 +391,11 @@ LosOS Desktop, nie samotná plocha.
 
 ## Ako ho meniť {#changing-it}
 
-- Stránka a jej časti sú v `admin-ui/app/src/lab/`. `npm run lab:core`
-  zostaví jadro do `src/lab/core-pkg/` a `npm run lab:virt` klienta
+- Stránka a jej časti sú v `admin-ui/app/src/lab/`. `bun run lab:core`
+  zostaví jadro do `src/lab/core-pkg/` a `bun run lab:virt` klienta
   libvirt do `src/lab/virt-pkg/` (oboje v gitignore; potrebujú cargo s
   cieľom `wasm32-unknown-unknown` a `wasm-bindgen` 0.2.127) a potom
-  `npm run dev` podáva stránku na `/diagrams/`. `npm run lab:render` rovnako
+  `bun run dev` podáva stránku na `/diagrams/`. `bun run lab:render` rovnako
   zostaví dva moduly GPU plátna do `src/lab/render-pkg/` a spustí na nich
   `wasm-opt`, keď ho `WASM_OPT` pomenúva. Stránka sa bez nich nezostaví a
   ich zostavenie trvá asi 13 minút. `tests/lab.browser.mjs` kontroluje

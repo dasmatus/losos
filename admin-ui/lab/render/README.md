@@ -59,15 +59,15 @@ its own. Build both backends into `demo/pkg/` (see "Building", with
 page's content security policy, which `demo/serve.json` sets:
 
 ```sh
-npx --yes serve@14.2.4 demo   # then open http://localhost:3000/
+bunx serve@14.2.4 demo   # then open http://localhost:3000/
 ```
 
 Query parameters: `setup=two-sites|web|star|bus|office|three`,
 `view=physical`, `theme=dark`, `defer=click|idle|<ms>`, `msaa=1|4`,
 `backend=webgpu|webgl2`, `labels=0`.
 
-In the admin UI, `npm run lab:render` in `admin-ui/app` builds both
-backends into `src/lab/render-pkg/` and `npm run dev` serves the Lab at
+In the admin UI, `bun run lab:render` in `admin-ui/app` builds both
+backends into `src/lab/render-pkg/` and `bun run dev` serves the Lab at
 `/lab/`.
 
 ## Building

@@ -13,13 +13,11 @@
  * titles in order and that finding, for the test script to assert on.
  * Playwright is nixpkgs' playwright-core, named by LOSOS_PLAYWRIGHT. */
 
-import { mkdirSync } from 'node:fs';
-
-const { chromium } = await import(process.env.LOSOS_PLAYWRIGHT);
-const plan = { shots: true, about: false, ...JSON.parse(process.argv[2]) };
+const { chromium } = await import(Bun.env.LOSOS_PLAYWRIGHT);
+const plan = { shots: true, about: false, ...JSON.parse(Bun.argv[2]) };
 const fail = (message) => {
-  console.error(message);
-  process.exit(1);
+  // Thrown: an uncaught error is what makes Bun exit non-zero.
+  throw new Error(message);
 };
 
 /* The words that differ per language: what to wait for and what to click. */
@@ -93,7 +91,7 @@ for (const locale of plan.locales) {
         if (locale === 'en-US') chatInSidebar = sidebar.includes(CHAT[locale]);
       }
       if (plan.shots) {
-        mkdirSync(plan.out, { recursive: true });
+        Bun.spawnSync(["mkdir", "-p", plan.out]);
         await page.locator('dialog[open]').screenshot({ path: `${plan.out}/${locale}-${theme}-${String(i).padStart(2, '0')}.png` });
         if (i === 1 && locale === 'en-US') await page.screenshot({ path: `${plan.out}/${locale}-${theme}-page.png` });
       }

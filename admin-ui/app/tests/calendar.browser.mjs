@@ -11,8 +11,8 @@
  * CSP violation or an uncaught error. nix/tests/calendar.nix runs the same
  * page against a real LosOS Cloud and a real feed. */
 
-import assert from 'node:assert';
-import { launch, runner, serve, shellRoutes, SHELL_ME } from './harness.mjs';
+import assert from './assert.mjs';
+import { launch, runner, serve, SHELL_ME, shellRoutes, stash } from './harness.mjs';
 
 const { origin, close: closeServer } = await serve({ csp: true });
 const browser = await launch();
@@ -254,11 +254,7 @@ await check('an .ics file is imported into a calendar', async () => {
   await page.getByRole('button', { name: 'Import', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await dialog.locator('#calendar-import-into').selectOption('personal');
-  await dialog.locator('input[type="file"]').setInputFiles({
-    name: 'holidays.ics',
-    mimeType: 'text/calendar',
-    buffer: Buffer.from('BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR\r\n'),
-  });
+  await dialog.locator('input[type="file"]').setInputFiles(await stash('holidays.ics', 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR\r\n'));
   await dialog.getByText(/2 new/).waitFor();
   assert.ok(calls.some((c) => c.path === '/import' && c.search.includes('calendar=personal')), JSON.stringify(calls));
   await done();

@@ -44,10 +44,9 @@
   overlay in an explicitly sized `position: relative; transform:
   translateZ(0)` div, a miniature viewport. Don't fork lib/emit.mjs for
   this.
-- The `losos-ds-render` flake check (nix/tests/design-system.nix) pins
-  `npmDepsHash` over admin-ui/design-system/react/package-lock.json. Bump the hash
-  whenever the lockfile changes:
-  `nix run <nixpkgs>#prefetch-npm-deps -- admin-ui/design-system/react/package-lock.json`.
+- The `losos-ds-render` flake check (nix/tests/design-system.nix) pins the
+  `hash` of the node_modules installed from admin-ui/design-system/react/bun.lock.
+  Refresh it whenever the lockfile changes: `python3 .github/scripts/fix-hashes.py`.
 
 ## Pull direction (designs → repo)
 
@@ -111,9 +110,8 @@
   on PATH, and node/npm/bun come from linuxbrew and `~/.bun`. The owner
   prefers bun. `cfg.buildCmd` is now `bun install && bun run build` in
   admin-ui/design-system/react; the old `nix develop …` wrapper still works
-  on a NixOS host. bun writes a `bun.lock` beside `package-lock.json`;
-  the repo's lockfile of record stays `package-lock.json` (the flake's
-  `npmDepsHash` pins it), so don't commit `bun.lock`.
+  on a NixOS host. Since 2026-10-28 `bun.lock` is the lockfile of record
+  (no `package-lock.json`); commit it with every dependency change.
 - Playwright: the user cache `~/.cache/ms-playwright` holds chromium-1243,
   which is playwright 1.63.0's pin (the repo's devDependency). No
   `PLAYWRIGHT_BROWSERS_PATH` is needed on this host. `.ds-sync` gets

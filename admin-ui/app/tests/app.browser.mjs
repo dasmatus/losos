@@ -11,15 +11,13 @@
  * a wrong key really is refused rather than assumed to be.
  */
 
-import assert from 'node:assert';
-import { readFile } from 'node:fs/promises';
-import { launch, runner, serve } from './harness.mjs';
+import assert from './assert.mjs';
+import { launch, pickFiles, runner, serve } from './harness.mjs';
 
 const TOKEN = 'a'.repeat(64);
 const { origin, close: closeServer } = await serve();
 const browser = await launch();
 const { check, finish } = runner();
-
 
 const SETTINGS = {
   sharingMyStorage: false,
@@ -44,7 +42,7 @@ const JOINABLE = { ...SETTINGS, proxyEnable: true, hostName: 'kitchen' };
  * document (the fixture advanced.browser.mjs reads too), with `tpm.enable`'s
  * running value set. Without `options` the catch-all answers `{}`, which the
  * form reads as "no document served". */
-const OPTIONS_DOC = JSON.parse(await readFile(process.env.LOSOS_OPTIONS_JSON ?? 'tests/fixtures/options.json', 'utf8'));
+const OPTIONS_DOC = await Bun.file(Bun.env.LOSOS_OPTIONS_JSON ?? 'tests/fixtures/options.json').json();
 const optionsWithTpm = (tpm) => ({
   available: true,
   ...OPTIONS_DOC,
@@ -2603,8 +2601,9 @@ await check('your machines show each replica and the address they share', async 
 await check('an own QCOW2 is streamed to /api/vms/images with its name and firmware', async () => {
   const { page, errors, vmPosts } = await open({ path: '/machines', stored: true, vms: VMS });
   const images = page.getByTestId('machines-images');
-  const qcow2 = Buffer.concat([Buffer.from([0x51, 0x46, 0x49, 0xfb, 0, 0, 0, 3]), Buffer.alloc(56)]);
-  await images.getByLabel('QCOW2 file').setInputFiles({ name: 'router.qcow2', mimeType: 'application/octet-stream', buffer: qcow2 });
+  const qcow2 = new Uint8Array(64);
+  qcow2.set([0x51, 0x46, 0x49, 0xfb, 0, 0, 0, 3]);
+  await pickFiles(images.getByLabel('QCOW2 file'), [{ name: 'router.qcow2', bytes: qcow2 }]);
   assert.equal(await images.getByLabel('Name of the image').inputValue(), 'router');
   await images.getByLabel('Boots with UEFI').check();
   await images.getByRole('button', { name: 'Upload' }).click();

@@ -185,8 +185,8 @@ mit `Cross-Origin-Opener-Policy: same-origin` und
 für `serve` auf deinem eigenen Rechner:
 
 ```sh
-admin-ui/lab/engine/build.sh /tmp/lab     # docker, nix, node
-npx --yes serve@14.2.4 -l 8080 /tmp/lab   # then open http://localhost:8080/diagrams/
+admin-ui/lab/engine/build.sh /tmp/lab     # docker, nix, bun
+bunx serve@14.2.4 -l 8080 /tmp/lab        # then open http://localhost:8080/diagrams/
 ```
 
 `lab.yml` baut die gehostete Kopie für jeden Pull Request, der
@@ -429,11 +429,11 @@ ein Bild von LosOS Desktop, nicht der Desktop selbst.
 ## Änderungen vornehmen {#changing-it}
 
 - Die Seite und ihre Teile liegen in `admin-ui/app/src/lab/`.
-  `npm run lab:core` baut den Kern nach `src/lab/core-pkg/` und
-  `npm run lab:virt` den libvirt-Client nach `src/lab/virt-pkg/` (beide in
+  `bun run lab:core` baut den Kern nach `src/lab/core-pkg/` und
+  `bun run lab:virt` den libvirt-Client nach `src/lab/virt-pkg/` (beide in
   gitignore; sie brauchen cargo mit dem Target `wasm32-unknown-unknown` und
-  `wasm-bindgen` 0.2.127), und danach liefert `npm run dev` die Seite unter
-  `/diagrams/` aus. `npm run lab:render` baut die zwei Module der GPU-Fläche auf
+  `wasm-bindgen` 0.2.127), und danach liefert `bun run dev` die Seite unter
+  `/diagrams/` aus. `bun run lab:render` baut die zwei Module der GPU-Fläche auf
   dieselbe Weise nach `src/lab/render-pkg/` und führt `wasm-opt` darauf
   aus, wenn `WASM_OPT` es benennt. Ohne sie baut die Seite nicht, und ihr
   Build dauert etwa 13 Minuten. `tests/lab.browser.mjs` prüft die

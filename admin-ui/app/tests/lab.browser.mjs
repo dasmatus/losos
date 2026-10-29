@@ -2,7 +2,7 @@
  * bundle) under its own policy.
  *
  * The real dist/ bundle and the real simulator (src/lab/core-pkg, built by
- * `npm run lab:core`), served with LAB_CSP the way nginx serves /diagrams/. Every
+ * `bun run lab:core`), served with LAB_CSP the way nginx serves /diagrams/. Every
  * page here fails on a CSP violation and on an uncaught error, so a library
  * that injects a <style> or a component that writes a style attribute turns
  * this red before it reaches a box. What a person does with the Lab is
@@ -11,11 +11,11 @@
  * simulation step, the physical view, a console, and the phone layout.
  *
  * The libvirt checks stand a fake `losos-registrar lab` behind /api/lab/
- * (page.route for the HTTP half, page.routeWebSocket for the console and
- * NIC sockets), the way lososd relays the real one on a box. The virt-rpc
- * checks add the relay path: a ticket, and a fake libvirt daemon behind the
- * relay socket that the page's WebAssembly client really drives, under the
- * same CSP (so the client's own module and its 'wasm-unsafe-eval' are
+ * (page.route for the HTTP half, the harness's routeWebSocket, a socket of
+ * the check's own Bun server, for the console and NIC sockets), the way
+ * lososd relays the real one on a box. The virt-rpc checks add the relay
+ * path: a ticket, and a fake libvirt daemon behind the relay socket that
+ * the page's WebAssembly client really drives, under the same CSP (so the client's own module and its 'wasm-unsafe-eval' are
  * covered too).
  *
  * The GPU canvas (src/lab/render.ts, bevy-canvas.tsx) gets a browser of its
@@ -23,9 +23,8 @@
  * Every other check pins the SVG canvas with ?canvas=svg.
  */
 
-import assert from 'node:assert';
-import { readFile } from 'node:fs/promises';
-import { launch, runner, serve, shellRoutes } from './harness.mjs';
+import assert from './assert.mjs';
+import { launch, routeWebSocket, runner, serve, shellRoutes, stash } from './harness.mjs';
 
 const TOKEN = 'b'.repeat(64);
 const { origin, close: closeServer } = await serve({ csp: true });
@@ -281,18 +280,18 @@ await check('Save, then Open the file: the same setup comes back', async () => {
   await page.getByTestId('file-menu').click();
   const [download] = await Promise.all([page.waitForEvent('download'), page.getByTestId('file-download').click()]);
   assert.match(download.suggestedFilename(), /\.canvas$/);
-  const text = await readFile(await download.path(), 'utf8');
+  const text = await Bun.file(await download.path()).text();
   JSON.parse(text);
 
   await page.getByTestId('setup-picker').selectOption('two-sites');
   assert.strictEqual(await devices(page), saved - 1);
-  await page.getByTestId('open-file').setInputFiles({ name: download.suggestedFilename(), mimeType: 'application/json', buffer: Buffer.from(text) });
+  await page.getByTestId('open-file').setInputFiles(await stash(download.suggestedFilename(), text));
   await page.waitForTimeout(200);
   assert.strictEqual(await devices(page), saved, 'the saved device came back');
   assert.match(await page.getByTestId('setup-picker').locator('option:checked').innerText(), /^File: /);
 
   // a file over the 1 MiB cap is refused, the setup stays
-  await page.getByTestId('open-file').setInputFiles({ name: 'big.llf', mimeType: 'application/json', buffer: Buffer.alloc((1 << 20) + 1, 32) });
+  await page.getByTestId('open-file').setInputFiles(await stash('big.llf', new Uint8Array((1 << 20) + 1).fill(32)));
   await page.waitForTimeout(200);
   assert.strictEqual(await devices(page), saved);
   await clean();
@@ -415,48 +414,57 @@ await check('phone width: no sideways scroll, the inspector is a sheet', async (
  * client's fallback to plain QEMU is walked too. */
 function fakeLibvirt(ws, seen) {
   const PROG = 0x20008086;
+  const text = new TextEncoder();
+  const words = new TextDecoder();
+  const cat = (...parts) => {
+    const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+    parts.reduce((at, p) => (out.set(p, at), at + p.length), 0);
+    return out;
+  };
+  const view = (b) => new DataView(b.buffer, b.byteOffset, b.byteLength);
   const u32 = (...v) => {
-    const b = Buffer.alloc(4 * v.length);
-    v.forEach((x, i) => b.writeUInt32BE(x >>> 0, 4 * i));
+    const b = new Uint8Array(4 * v.length);
+    v.forEach((x, i) => view(b).setUint32(4 * i, x >>> 0));
     return b;
   };
   const str = (s) => {
-    const b = Buffer.from(s);
-    return Buffer.concat([u32(b.length), b, Buffer.alloc((4 - (b.length % 4)) % 4)]);
+    const b = text.encode(s);
+    return cat(u32(b.length), b, new Uint8Array((4 - (b.length % 4)) % 4));
   };
   const readStr = (p, off) => {
-    const n = p.readUInt32BE(off);
-    return [p.subarray(off + 4, off + 4 + n).toString(), off + 4 + n + ((4 - (n % 4)) % 4)];
+    const n = view(p).getUint32(off);
+    return [words.decode(p.subarray(off + 4, off + 4 + n)), off + 4 + n + ((4 - (n % 4)) % 4)];
   };
-  const packet = (proc, type, serial, status, body = Buffer.alloc(0)) =>
-    Buffer.concat([u32(28 + body.length, PROG, 1, proc, type, serial, status), body]);
-  const dom = (name) => Buffer.concat([str(name), Buffer.alloc(16, 0xab), u32(1)]);
+  const packet = (proc, type, serial, status, body = new Uint8Array(0)) =>
+    cat(u32(28 + body.length, PROG, 1, proc, type, serial, status), body);
+  const dom = (name) => cat(str(name), new Uint8Array(16).fill(0xab), u32(1));
   // virNetMessageError: code, domain, message, level, dom, str1..3, int1, int2, net
-  const error = (message) => Buffer.concat([u32(1, 10, 1), str(message), u32(2, 0, 0, 0, 0, 0, 0, 0)]);
-  let buf = Buffer.alloc(0);
+  const error = (message) => cat(u32(1, 10, 1), str(message), u32(2, 0, 0, 0, 0, 0, 0, 0));
+  let buf = new Uint8Array(0);
   let consoleSerial = 0;
   ws.onMessage((m) => {
-    buf = Buffer.concat([buf, typeof m === 'string' ? Buffer.from(m) : Buffer.from(m)]);
-    while (buf.length >= 4 && buf.length >= buf.readUInt32BE(0)) {
-      const p = buf.subarray(0, buf.readUInt32BE(0));
+    buf = cat(buf, typeof m === 'string' ? text.encode(m) : new Uint8Array(m));
+    while (buf.length >= 4 && buf.length >= view(buf).getUint32(0)) {
+      const p = buf.subarray(0, view(buf).getUint32(0));
       buf = buf.subarray(p.length);
-      if (p.readUInt32BE(4) !== PROG) continue;
-      const proc = p.readInt32BE(12);
-      const type = p.readUInt32BE(16);
-      const serial = p.readUInt32BE(20);
+      const v = view(p);
+      if (v.getUint32(4) !== PROG) continue;
+      const proc = v.getInt32(12);
+      const type = v.getUint32(16);
+      const serial = v.getUint32(20);
       const body = p.subarray(28);
       if (type === 3) {
-        seen.typed += body.toString();
+        seen.typed += words.decode(body);
         continue;
       }
       seen.procs.push(proc);
-      let ret = Buffer.alloc(0);
+      let ret = new Uint8Array(0);
       if (proc === 66) ret = u32(1, 0); // AUTH_LIST: none
-      if (proc === 1) seen.uri = body.readUInt32BE(0) ? readStr(body, 4)[0] : null;
+      if (proc === 1) seen.uri = view(body).getUint32(0) ? readStr(body, 4)[0] : null;
       if (proc === 10) {
         const [xml, off] = readStr(body, 0);
         seen.xmls.push(xml);
-        seen.flags = body.readUInt32BE(off);
+        seen.flags = view(body).getUint32(off);
         if (xml.startsWith("<domain type='kvm'>")) {
           ws.send(packet(proc, 1, serial, 1, error("unsupported configuration: domain type 'kvm' is not available here")));
           continue;
@@ -467,7 +475,7 @@ function fakeLibvirt(ws, seen) {
       if (proc === 23) ret = dom(readStr(body, 0)[0]);
       if (proc === 201) consoleSerial = serial;
       ws.send(packet(proc, 1, serial, 0, ret));
-      if (proc === 28) ws.send(packet(201, 3, consoleSerial, 2, Buffer.from('Welcome to the LosOS stand-in\r\n\x1b[32mmattbox is ready\x1b[0m\r\n# ')));
+      if (proc === 28) ws.send(packet(201, 3, consoleSerial, 2, text.encode('Welcome to the LosOS stand-in\r\n\x1b[32mmattbox is ready\x1b[0m\r\n# ')));
     }
   });
 }
@@ -504,7 +512,7 @@ function fakeHelper({ refuse = false, gear = false, virsh = true, virt = false }
           nic: { guest: 'virt-c0ffee', domain: 'losos-lab-virt-c0ffee', ticket: '11ff', helperPort: 40001, qemuPort: 40002 },
         });
       });
-      await page.routeWebSocket(/\/api\/lab\/virt$/, (ws) => fakeLibvirt(ws, seen));
+      await routeWebSocket(page, /\/api\/lab\/virt$/, (ws) => fakeLibvirt(ws, seen));
     }
     await page.route('**/api/lab/guests', (route) => {
       if (!authed(route)) return json(route, 401, {});
@@ -517,15 +525,16 @@ function fakeHelper({ refuse = false, gear = false, virsh = true, virt = false }
       seen.deleted.push(route.request().method() + ' ' + new URL(route.request().url()).pathname);
       return json(route, 200, {});
     });
-    await page.routeWebSocket(/\/api\/lab\/ws\//, (ws) => {
+    await routeWebSocket(page, /\/api\/lab\/ws\//, (ws) => {
       if (ws.url().endsWith('/console')) {
-        ws.send(Buffer.from('Welcome to the LosOS stand-in\r\n\x1b[32mmattbox is ready\x1b[0m\r\n# '));
+        ws.send(new TextEncoder().encode('Welcome to the LosOS stand-in\r\n\x1b[32mmattbox is ready\x1b[0m\r\n# '));
         ws.onMessage((m) => {
-          seen.typed += typeof m === 'string' ? m : Buffer.from(m).toString();
+          seen.typed += typeof m === 'string' ? m : new TextDecoder().decode(m);
         });
       }
     });
-    // after routeWebSocket, whose own init script replaces WebSocket too
+    // after routeWebSocket, whose own init script replaces WebSocket too, so
+    // the URL recorded here is the one the page asked for
     await page.addInitScript(() => {
       const WS = window.WebSocket;
       window.__wsProtocols = [];

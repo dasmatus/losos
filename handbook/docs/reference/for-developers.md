@@ -40,19 +40,20 @@ folder tree, and each folder takes its name from its `_category_.json`.
 
 ```sh
 cd handbook
-npm ci
-npm start                 # live preview on http://localhost:3000
-npm run build             # fails on a broken link, on purpose
+bun install --frozen-lockfile --ignore-scripts
+bun run start             # live preview on http://localhost:3000
+bun run build             # fails on a broken link, on purpose
 ```
 
 Every push to `main` publishes the site to [losos.dasmat.us](https://losos.dasmat.us)
 (`.github/workflows/handbook.yml`), and every box builds its own copy
 (`losos-handbook` in `nix/packages.nix`, served at `/handbook/` by
-`modules/containers.nix`). After changing `package-lock.json`, refresh
-`npmDepsHash` in `nix/packages.nix`:
+`modules/containers.nix`). Docusaurus runs on [Bun](https://bun.sh), not
+Node. After changing `bun.lock`, refresh the handbook's `hash` in
+`nix/packages.nix`:
 
 ```sh
-nix run nixpkgs#prefetch-npm-deps -- handbook/package-lock.json
+python3 .github/scripts/fix-hashes.py
 ```
 
 ### Pictures
@@ -77,9 +78,9 @@ Pictures live in `handbook/docs/img/`. There are three kinds:
 
 ```sh
 cd admin-ui/app
-npm run build
-node tests/handbook-screens.mjs /tmp/handbook-screens          # every shot
-node tests/handbook-screens.mjs /tmp/handbook-screens mesh     # names containing "mesh"
+bun run build
+bun tests/handbook-screens.mjs /tmp/handbook-screens           # every shot
+bun tests/handbook-screens.mjs /tmp/handbook-screens mesh      # names containing "mesh"
 ```
 
 :::note[When Playwright has no Chromium]
@@ -101,8 +102,8 @@ Every page is translated in full. Change all three languages together.
 :::
 
 ```sh
-npm run write-translations -- --locale sk   # refresh the string files
-npm run start -- --locale sk                # preview one locale
+bun run write-translations --locale sk      # refresh the string files
+bun run start --locale sk                   # preview one locale
 ```
 
 ## Writing rules this handbook follows
