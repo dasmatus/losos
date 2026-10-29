@@ -36,7 +36,7 @@ pkgs.testers.nixosTest {
 
   nodes = {
     box =
-      { lib, ... }:
+      { ... }:
       {
         imports = [
           ../../modules/options.nix
