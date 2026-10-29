@@ -122,8 +122,8 @@ let
         install -Dm755 ${lib.getExe inner} $out/bin/${binName}
         wrapProgram $out/bin/${binName} --prefix PATH : ${tools} \
           --set-default LOSOS_REGISTRAR_URL ${lib.escapeShellArg config.losos.proxy.registrarUrl}${
-          lib.optionalString (seededKeys != [ ]) " --set LOSOS_INSTALL_GPG_KEYS_FILE ${seededKeysFile}"
-        }
+            lib.optionalString (seededKeys != [ ]) " --set LOSOS_INSTALL_GPG_KEYS_FILE ${seededKeysFile}"
+          }
       '';
 
   losos-install-wrapped = wrapWithTools "losos-install" losos-install { };
