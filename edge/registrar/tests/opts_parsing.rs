@@ -70,6 +70,53 @@ fn a_full_serve_invocation_parses() {
     assert_eq!(opts.heartbeat_ttl, std::time::Duration::from_secs(120));
 }
 
+/// The exit is off without `--exit-dir`, and with it needs the endpoint and
+/// the interface's public key, the two things a peer cannot do without.
+#[test]
+fn the_exit_parses_and_needs_its_endpoint() {
+    assert!(serve_opts(&[]).exit.is_none());
+    let opts = serve_opts(&[
+        "--exit-dir",
+        "/var/lib/losos-registrar/exit",
+        "--exit-endpoint",
+        "edge.example:51820",
+        "--exit-public-key-file",
+        "/var/lib/losos-exit/public.key",
+    ]);
+    let exit = opts.exit.unwrap();
+    assert_eq!(exit.subnet.1, 16);
+    assert_eq!(exit.onion_port, 1080);
+    assert!(exit.onion_file.is_none());
+    assert!(parse(serve_args(&[
+        "--exit-dir",
+        "/x",
+        "--exit-public-key-file",
+        "/k"
+    ]))
+    .is_err());
+    assert!(parse(serve_args(&[
+        "--exit-dir",
+        "/x",
+        "--exit-endpoint",
+        "e:1",
+        "--exit-public-key-file",
+        "/k",
+        "--exit-subnet",
+        "10.153.0.1/16",
+    ]))
+    .is_err());
+
+    let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    match parse(args(&[
+        "exit-socks",
+        "--peers",
+        "/var/lib/losos-registrar/exit/peers.json",
+    ])) {
+        Ok(Mode::ExitSocks(o)) => assert_eq!(o.listen, "127.0.0.1:1081"),
+        other => panic!("expected exit-socks, got {}", mode_name(&other)),
+    }
+}
+
 /// An inverted range makes `alloc_port`'s `(lo..=hi)` sweep empty, so the
 /// first appliance to register would be told the range is exhausted with no
 /// hint that the range itself was the problem.
@@ -453,6 +500,7 @@ fn mode_name(mode: &miette::Result<Mode>) -> &'static str {
         Ok(Mode::Provision(_)) => "provision",
         Ok(Mode::Enrol(_)) => "enrol",
         Ok(Mode::Lab(_)) => "lab",
+        Ok(Mode::ExitSocks(_)) => "exit-socks",
         Ok(Mode::EchKey(_)) => "ech-key",
         Err(_) => "error",
     }

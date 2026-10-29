@@ -256,6 +256,9 @@ pub struct ServeOpts {
     /// Tor and I2P addresses for the boxes (`crate::hidden`). `None` unless
     /// `--hidden-dir` was given.
     pub hidden: Option<crate::hidden::HiddenOpts>,
+    /// The edge as a way out (`crate::exit`). `None` unless `--exit-dir`
+    /// was given.
+    pub exit: Option<crate::exit::ExitOpts>,
     /// The ECH key (`crate::ech`): `--ech-key-file FILE --ech-public-name
     /// NAME`. `None` publishes no HTTPS records with an `ech` value.
     pub ech: Option<EchOpts>,
@@ -451,6 +454,7 @@ pub enum Mode {
     Provision(ProvisionOpts),
     Enrol(EnrolOpts),
     Lab(crate::lab::LabOpts),
+    ExitSocks(crate::exit::SocksOpts),
     /// `ech-key --key-file FILE --public-name NAME`: make the ECH key if
     /// missing (`crate::ech`) and print its ECHConfigList, before the TLS
     /// front starts.
@@ -473,7 +477,7 @@ pub enum EnrolOpts {
 pub fn parse(args: Vec<String>) -> Result<Mode> {
     if args.is_empty() {
         return Err(miette!(
-            "usage: losos-registrar serve|announce|tunnel-server|tunnel-client|join|stripe-gate|passport|provision|enrol|lab ..."
+            "usage: losos-registrar serve|announce|tunnel-server|tunnel-client|join|stripe-gate|passport|provision|enrol|lab|exit-socks ..."
         ));
     }
     let mode = &args[0];
@@ -567,6 +571,23 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                             .map_err(|_| miette!("bad --hidden-https-port"))?,
                     }),
                 },
+                exit: match arg(&rest, "--exit-dir") {
+                    None => None,
+                    Some(dir) => Some(crate::exit::ExitOpts {
+                        dir: dir.to_string(),
+                        subnet: crate::exit::parse_subnet(
+                            arg(&rest, "--exit-subnet").unwrap_or("10.153.0.0/16"),
+                        )
+                        .ok_or_else(|| miette!("bad --exit-subnet"))?,
+                        endpoint: req(&rest, "--exit-endpoint")?.to_string(),
+                        public_key_file: req(&rest, "--exit-public-key-file")?.to_string(),
+                        onion_file: arg(&rest, "--exit-onion-file").map(str::to_string),
+                        onion_port: arg(&rest, "--exit-onion-port")
+                            .unwrap_or("1080")
+                            .parse()
+                            .map_err(|_| miette!("bad --exit-onion-port"))?,
+                    }),
+                },
                 operator: arg(&rest, "--access-dir").map(|dir| crate::operator::OperatorOpts {
                     access_dir: dir.to_string(),
                     keys_file: arg(&rest, "--access-keys-file")
@@ -640,6 +661,12 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
         "passport" => parse_passport(&rest).map(Mode::Passport),
         "provision" => parse_provision(&rest),
         "lab" => parse_lab(&rest).map(Mode::Lab),
+        "exit-socks" => Ok(Mode::ExitSocks(crate::exit::SocksOpts {
+            listen: arg(&rest, "--listen")
+                .unwrap_or("127.0.0.1:1081")
+                .to_string(),
+            peers_file: req(&rest, "--peers")?.to_string(),
+        })),
         "enrol" => {
             let verb = rest.first().map(String::as_str).unwrap_or("");
             let rest: Vec<String> = rest.iter().skip(1).cloned().collect();

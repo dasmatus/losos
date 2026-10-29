@@ -108,6 +108,9 @@ pub enum ApiError {
     /// Buying USDC at Binance failed; see [`OnrampError`].
     #[error(transparent)]
     Onramp(#[from] OnrampError),
+    /// The edge as a way out; see [`crate::exit::ExitError`].
+    #[error(transparent)]
+    Exit(#[from] crate::exit::ExitError),
     /// A filesystem operation backing a request failed (token/tenants read).
     #[error(transparent)]
     Io(#[from] io::Error),
@@ -163,6 +166,12 @@ impl ApiError {
                 DomainError::Conflict(_) => StatusCode::CONFLICT,
                 DomainError::NotFound => StatusCode::NOT_FOUND,
                 DomainError::Store(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            },
+            ApiError::Exit(e) => match e {
+                crate::exit::ExitError::Unconfigured => StatusCode::FORBIDDEN,
+                crate::exit::ExitError::Invalid(_) => StatusCode::BAD_REQUEST,
+                crate::exit::ExitError::Full => StatusCode::SERVICE_UNAVAILABLE,
+                crate::exit::ExitError::Store(_) => StatusCode::INTERNAL_SERVER_ERROR,
             },
             ApiError::Onramp(e) => match e {
                 OnrampError::Unconfigured => StatusCode::SERVICE_UNAVAILABLE,
@@ -228,6 +237,10 @@ impl ApiError {
                 OnrampError::Store(_) => Cow::Borrowed("internal error"),
                 _ => Cow::Owned(e.to_string()),
             },
+            ApiError::Exit(e) => match e {
+                crate::exit::ExitError::Store(_) => Cow::Borrowed("internal error"),
+                _ => Cow::Owned(e.to_string()),
+            },
             ApiError::Registry(_) => Cow::Borrowed("registry unavailable; retry later"),
             // Deliberately *not* `self.to_string()`: the payload carries the
             // apiserver URL and the status it returned, which tells an
@@ -267,6 +280,12 @@ impl axum::response::IntoResponse for ApiError {
             }
             ApiError::Domains(_) => {
                 tracing::debug!(target: Action::Domains.target(), "domain request rejected: {self}");
+            }
+            ApiError::Exit(crate::exit::ExitError::Store(_)) => {
+                tracing::error!(target: Action::Exit.target(), "exit request failed: {self}");
+            }
+            ApiError::Exit(_) => {
+                tracing::debug!(target: Action::Exit.target(), "exit request rejected: {self}");
             }
             ApiError::ClusterForbidden | ApiError::NodeNameForbidden | ApiError::InvalidWindow => {
                 tracing::warn!(target: Action::Join.target(), "join rejected: {self}");

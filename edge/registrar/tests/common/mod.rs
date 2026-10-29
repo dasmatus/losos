@@ -661,6 +661,7 @@ impl Edge {
             calls_relay: None,
             ci_dir: None,
             hidden: None,
+            exit: None,
             ech: None,
             onramp: None,
         };
