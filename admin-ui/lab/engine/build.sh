@@ -2,11 +2,11 @@
 # Build the hosted copy of LosOS Lab: the page plus the qemu-wasm engine and
 # the three guest files, ready for any server that sends the two
 # cross-origin isolation headers: vercel.json on Vercel, serve.json for
-# `npx --yes serve@14.2.4 OUT` on your own machine.
+# `bunx serve@14.2.4 OUT` on your own machine.
 #
 #   admin-ui/lab/engine/build.sh OUT
 #
-# Needs docker, nix, node/npm and git; .github/workflows/lab.yml runs it on a
+# Needs docker, nix, bun, curl and git; .github/workflows/lab.yml runs it on a
 # stock ubuntu runner. It takes a while: qemu-wasm compiles QEMU and its
 # libraries with emscripten, and the guest kernel is a real Linux build.
 #
@@ -87,7 +87,8 @@ nix-build "$HERE/gear/netzgeraete.nix" --arg nixpkgs "$NIXPKGS" -o "$WORK/gear"
 install -m 0644 "$WORK/gear/rootfs.bin" "$ENG/guest/gear.bin"
 
 echo "== xterm $XTERM_VERSION, xterm-pty $XTERM_PTY_VERSION"
-(cd "$WORK" && npm pack -s "xterm@$XTERM_VERSION" "xterm-pty@$XTERM_PTY_VERSION" >/dev/null)
+curl -fsSL -o "$WORK/xterm-$XTERM_VERSION.tgz" "https://registry.npmjs.org/xterm/-/xterm-$XTERM_VERSION.tgz"
+curl -fsSL -o "$WORK/xterm-pty-$XTERM_PTY_VERSION.tgz" "https://registry.npmjs.org/xterm-pty/-/xterm-pty-$XTERM_PTY_VERSION.tgz"
 mkdir -p "$WORK/xterm" "$WORK/xterm-pty"
 tar xzf "$WORK/xterm-$XTERM_VERSION.tgz" -C "$WORK/xterm"
 tar xzf "$WORK/xterm-pty-$XTERM_PTY_VERSION.tgz" -C "$WORK/xterm-pty"
@@ -113,10 +114,10 @@ rm -rf "$APP/src/mdx/pkg"
 mkdir -p "$APP/src/mdx/pkg"
 cp -r "$WORK/mdx"/* "$APP/src/mdx/pkg/"
 chmod -R u+w "$APP/src/mdx/pkg"
-# The main build only: `npm run build -- --outDir` would hand the flags to
+# The main build only: `bun run build --outDir` would hand the flags to
 # the guest call page's build, the script's last step, which then empties
 # the folder Diagrams was just built into.
-(cd "$APP" && npm ci --ignore-scripts && npx tsc --noEmit && VITE_LAB_HOSTED=1 npx vite build --outDir "$WORK/dist" --emptyOutDir)
+(cd "$APP" && bun install --frozen-lockfile --ignore-scripts && bun run typecheck && VITE_LAB_HOSTED=1 bun --bun vite build --outDir "$WORK/dist" --emptyOutDir)
 cp -r "$WORK/dist/diagrams/." "$OUT/diagrams/"
 cp -r "$WORK/dist/assets" "$WORK/dist/theme-boot.js" "$OUT/"
 cp "$LAB/vercel.json" "$LAB/serve.json" "$OUT/"

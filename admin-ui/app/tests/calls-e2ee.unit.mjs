@@ -3,23 +3,12 @@
  * that a changed byte anywhere is refused, and that the key schedule gives
  * the forward secrecy the call page promises.
  *
- *   node tests/calls-e2ee.node.mjs
+ *   bun tests/calls-e2ee.unit.mjs
  */
 
-import assert from 'node:assert/strict';
-import { fileURLToPath } from 'node:url';
-import * as esbuild from 'esbuild';
+import assert from './assert.mjs';
 
-const built = await esbuild.build({
-  entryPoints: [fileURLToPath(new URL('../src/calls/e2ee.ts', import.meta.url))],
-  bundle: true,
-  format: 'esm',
-  platform: 'node',
-  write: false,
-});
-const e = await import(
-  `data:text/javascript;base64,${Buffer.from(built.outputFiles[0].text).toString('base64')}`
-);
+const e = await import('../src/calls/e2ee.ts');
 
 const bytes = (...xs) => new Uint8Array(xs);
 const fill = (n, f) => Uint8Array.from({ length: n }, (_, i) => f(i));

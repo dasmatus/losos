@@ -11,7 +11,7 @@
 
 import { Shots } from './screens.mjs';
 
-const [MODE, SCHEME, OUT, PICTURES] = process.argv.slice(2);
+const [MODE, SCHEME, OUT, PICTURES] = Bun.argv.slice(2);
 const BASE = 'https://mattbox.local';
 const PASSWORD = 'Correct-Horse-Battery-9';
 

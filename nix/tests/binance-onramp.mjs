@@ -16,11 +16,11 @@
 //
 // Playwright is nixpkgs' playwright-driver, named by $PLAYWRIGHT_CORE.
 
-import { existsSync, mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { parseArgs } from "node:util";
+const exists = (file) => Bun.file(file).exists();
+const join = (...parts) => parts.join("/");
+const dirname = (file) => file.slice(0, file.lastIndexOf("/"));
 
-const { chromium } = await import(join(process.env.PLAYWRIGHT_CORE, "index.mjs"));
+const { chromium } = await import(join(Bun.env.PLAYWRIGHT_CORE, "index.mjs"));
 
 const BASE = "https://mattbox.local";
 const PHRASE = "test test test test test test test test test test test junk";
@@ -30,14 +30,19 @@ const VIEWPORT = { width: 1280, height: 900 };
 const STATE = "/tmp/onramp-state.json";
 const DOCUMENTS = ["Terms of Use", "Product Terms", "Privacy Notice", "Risk Warning"];
 
-const { values: args } = parseArgs({
-  options: {
-    mode: { type: "string" },
-    out: { type: "string" },
-    user: { type: "string" },
-    password: { type: "string" },
-  },
-});
+/* `--name value` or `--name=value`, for each of `names`; anything else is refused. */
+function flags(names) {
+  const out = {};
+  const argv = Bun.argv.slice(2);
+  for (let i = 0; i < argv.length; i++) {
+    const m = /^--([^=]+)(?:=(.*))?$/.exec(argv[i]);
+    if (!m || !names.includes(m[1])) throw new Error(`unknown argument ${argv[i]}`);
+    out[m[1]] = m[2] ?? argv[++i];
+  }
+  return out;
+}
+
+const args = flags(["mode", "out", "user", "password"]);
 
 // The wallet made on this box, sealed into this browser the way
 // wallet/hot.ts seals it (nix/tests/box-wallet-name.mjs does the same).
@@ -84,7 +89,7 @@ async function shoot(page, row, state) {
     await page.emulateMedia({ colorScheme });
     await settle(page);
     const full = join(args.out, `pr/${args.mode}/${state}-${colorScheme}.png`);
-    mkdirSync(dirname(full), { recursive: true });
+    Bun.spawnSync(["mkdir", "-p", dirname(full)]);
     await page.screenshot({ path: full, timeout: 300_000 });
   }
   await page.emulateMedia({ colorScheme: "light" });
@@ -98,7 +103,7 @@ async function open(browser) {
     timezoneId: "Europe/Bratislava",
     reducedMotion: "reduce",
     ignoreHTTPSErrors: true,
-    ...(args.mode === "done" && existsSync(STATE) ? { storageState: STATE } : {}),
+    ...(args.mode === "done" && await exists(STATE) ? { storageState: STATE } : {}),
   });
   ctx.setDefaultTimeout(120_000);
   // Binance's pages, which the VM cannot reach: a stand-in tab for each.

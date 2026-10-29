@@ -4,101 +4,77 @@
  * tab that joins later gets in on a fresh key.
  *
  *   cargo build --manifest-path ../../backend/Cargo.toml --bin losos-calls
- *   LOSOS_CALLS_BIN=../../backend/target/debug/losos-calls node tests/calls.browser.mjs
+ *   LOSOS_CALLS_BIN=../../backend/target/debug/losos-calls bun tests/calls.browser.mjs
  *
  * LOSOS_CALLS_ADDRESS is the address the SFU offers media on (default: the
  * first non-loopback IPv4 address, else loopback, which Chromium also
  * takes); LOSOS_CHROMIUM a chromium binary.
  */
 
-import assert from 'node:assert/strict';
-import { spawn, spawnSync } from 'node:child_process';
-import { createServer, request as httpRequest } from 'node:http';
-import { connect } from 'node:net';
-import { randomBytes } from 'node:crypto';
-import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { networkInterfaces, tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import * as esbuild from 'esbuild';
+import assert from './assert.mjs';
 import { launch } from './harness.mjs';
 
-const here = (p) => fileURLToPath(new URL(p, import.meta.url));
-const BIN = process.env.LOSOS_CALLS_BIN ?? here('../../../backend/target/debug/losos-calls');
+const here = (p) => `${import.meta.dir}/${p}`;
+const BIN = Bun.env.LOSOS_CALLS_BIN ?? here('../../../backend/target/debug/losos-calls');
 const SERVER = 'calls.test';
-const ADDRESS =
-  process.env.LOSOS_CALLS_ADDRESS ??
-  Object.values(networkInterfaces())
-    .flat()
-    .find((i) => i && i.family === 'IPv4' && !i.internal)?.address ??
-  '127.0.0.1';
+// Chromium takes a loopback candidate under --allow-loopback-in-peer-connection.
+const ADDRESS = Bun.env.LOSOS_CALLS_ADDRESS ?? '127.0.0.1';
+const TMP = Bun.env.TMPDIR ?? '/tmp';
 
-const bundle = async (entry) =>
-  (
-    await esbuild.build({
-      entryPoints: [entry],
-      bundle: true,
-      format: 'esm',
-      platform: 'browser',
-      write: false,
-      // src/calls/background.ts reads Vite's base path.
-      define: { 'import.meta.env.BASE_URL': '"/"' },
-    })
-  ).outputFiles[0].text;
+const bundle = async (entry) => {
+  const built = await Bun.build({
+    entrypoints: [entry],
+    target: 'browser',
+    format: 'esm',
+    // src/calls/background.ts reads Vite's base path.
+    define: { 'import.meta.env.BASE_URL': '"/"' },
+  });
+  if (!built.success) throw new AggregateError(built.logs, `bundling ${entry} failed`);
+  return built.outputs[0].text();
+};
 
 const harness = await bundle(here('fixtures/calls/harness.ts'));
-const e2ee = await import(
-  `data:text/javascript;base64,${Buffer.from(
-    (await esbuild.build({ entryPoints: [here('../src/calls/e2ee.ts')], bundle: true, format: 'esm', platform: 'node', write: false }))
-      .outputFiles[0].text,
-  ).toString('base64')}`
-);
+const e2ee = await import('../src/calls/e2ee.ts');
 const worker = await bundle(here('../src/calls/e2ee-worker.ts'));
 
-const listen = (server) =>
-  new Promise((ok) => server.listen(0, '127.0.0.1', () => ok(server.address().port)));
-
-const pages = createServer((req, res) => {
-  const body = { '/': '<!doctype html><title>call</title><script type="module" src="/harness.js"></script>', '/harness.js': harness, '/e2ee-worker.js': worker }[req.url];
-  if (body === undefined) {
-    res.writeHead(404).end();
-    return;
-  }
-  res.writeHead(200, { 'Content-Type': req.url === '/' ? 'text/html' : 'text/javascript' });
-  res.end(body);
+const pages = Bun.serve({
+  hostname: '127.0.0.1',
+  port: 0,
+  fetch(req) {
+    const path = new URL(req.url).pathname;
+    const body = { '/': '<!doctype html><title>call</title><script type="module" src="/harness.js"></script>', '/harness.js': harness, '/e2ee-worker.js': worker }[path];
+    if (body === undefined) return new Response(null, { status: 404 });
+    return new Response(body, { headers: { 'Content-Type': path === '/' ? 'text/html' : 'text/javascript' } });
+  },
 });
-const pagePort = await listen(pages);
+const pagePort = pages.port;
 
 // An edge that makes guest links, as an official one does, and keeps what
 // it was asked.
 const asked = [];
-const edge = createServer((req, res) => {
-  let body = '';
-  req.on('data', (c) => (body += c));
-  req.on('end', () => {
-    if (req.method !== 'POST' || req.url !== '/calls/guest-link') {
-      res.writeHead(404).end();
-      return;
-    }
-    const b = JSON.parse(body);
+const edge = Bun.serve({
+  hostname: '127.0.0.1',
+  port: 0,
+  async fetch(req) {
+    if (req.method !== 'POST' || new URL(req.url).pathname !== '/calls/guest-link') return new Response(null, { status: 404 });
+    const b = await req.json();
     asked.push(b);
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ url: `https://box.calls.test/calls/guest/?call=${b.call}&invite=${b.invite}` }));
-  });
+    return Response.json({ url: `https://box.calls.test/calls/guest/?call=${b.call}&invite=${b.invite}` });
+  },
 });
-const edgePort = await listen(edge);
+const edgePort = edge.port;
 
 // The SFU, on a free port of its own.
-const probe = createServer();
-const sfuPort = await listen(probe);
-probe.close();
+const probe = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response() });
+const sfuPort = probe.port;
+probe.stop(true);
 const udpPort = 20000 + Math.floor(Math.random() * 20000);
-const tap = mkdtempSync(join(tmpdir(), 'losos-calls-tap-'));
-const relayToken = join(mkdtempSync(join(tmpdir(), 'losos-calls-edge-')), 'token');
-writeFileSync(relayToken, 'box-token\n');
-const sfu = spawn(
-  BIN,
-  ['--listen', `127.0.0.1:${sfuPort}`, '--udp-port', String(udpPort), '--address', ADDRESS, '--server-name', SERVER, '--tap', tap, '--ffmpeg', process.env.LOSOS_FFMPEG ?? 'ffmpeg', '--registrar', `http://127.0.0.1:${edgePort}`, '--relay-id', 'box-1', '--relay-token-file', relayToken],
+const tap = `${TMP}/losos-calls-tap-${crypto.randomUUID()}`;
+await Bun.$`mkdir -p ${tap}`;
+const relayToken = `${TMP}/losos-calls-edge-${crypto.randomUUID()}/token`;
+await Bun.write(relayToken, 'box-token\n');
+const sfu = Bun.spawn(
+  [BIN, '--listen', `127.0.0.1:${sfuPort}`, '--udp-port', String(udpPort), '--address', ADDRESS, '--server-name', SERVER, '--tap', tap, '--ffmpeg', Bun.env.LOSOS_FFMPEG ?? 'ffmpeg', '--registrar', `http://127.0.0.1:${edgePort}`, '--relay-id', 'box-1', '--relay-token-file', relayToken],
   { stdio: ['ignore', 'inherit', 'inherit'] },
 );
 for (let i = 0; ; i++) {
@@ -112,36 +88,65 @@ for (let i = 0; ; i++) {
 /* nginx in front of the SFU, as modules/calls.nix has it: it names the
  * person LosOS Login signed in as Remote-User and drops any the client sent.
  * Here a path `/as/<name>/` stands in for that sign-in; anything else, a
- * guest's socket among it, reaches the SFU with nobody named. */
+ * guest's socket among it, reaches the SFU with nobody named. A socket is
+ * passed on message by message, the way nginx passes its frames. */
 const forward = (req) => {
-  const m = /^\/as\/([^/]+)(\/.*)$/.exec(req.url);
-  const headers = { ...req.headers };
-  delete headers['remote-user'];
-  if (m) headers['remote-user'] = decodeURIComponent(m[1]);
-  return { path: m ? m[2] : req.url, headers };
+  const url = new URL(req.url);
+  const m = /^\/as\/([^/]+)(\/.*)$/.exec(url.pathname);
+  const headers = new Headers(req.headers);
+  headers.delete('remote-user');
+  if (m) headers.set('remote-user', decodeURIComponent(m[1]));
+  return { path: (m ? m[2] : url.pathname) + url.search, headers };
 };
-const nginx = createServer((req, res) => {
-  const { path, headers } = forward(req);
-  const up = httpRequest({ host: '127.0.0.1', port: sfuPort, path, method: req.method, headers }, (r) => {
-    res.writeHead(r.statusCode, r.headers);
-    r.pipe(res);
-  });
-  up.on('error', () => res.destroy());
-  req.pipe(up);
+const nginx = Bun.serve({
+  hostname: '127.0.0.1',
+  port: 0,
+  async fetch(req, server) {
+    const { path, headers } = forward(req);
+    if (req.headers.get('upgrade')?.toLowerCase() === 'websocket') {
+      for (const h of ['upgrade', 'connection', 'sec-websocket-key', 'sec-websocket-version', 'sec-websocket-extensions', 'host']) headers.delete(h);
+      const protocols = req.headers.get('sec-websocket-protocol')?.split(',').map((p) => p.trim());
+      headers.delete('sec-websocket-protocol');
+      return server.upgrade(req, { data: { url: `ws://127.0.0.1:${sfuPort}${path}`, headers: Object.fromEntries(headers), protocols } })
+        ? undefined
+        : new Response('upgrade failed', { status: 400 });
+    }
+    headers.delete('host');
+    try {
+      return await fetch(`http://127.0.0.1:${sfuPort}${path}`, {
+        method: req.method,
+        headers,
+        body: ['GET', 'HEAD'].includes(req.method) ? undefined : await req.arrayBuffer(),
+        redirect: 'manual',
+      });
+    } catch {
+      return new Response('bad gateway', { status: 502 });
+    }
+  },
+  websocket: {
+    open(ws) {
+      const { url, headers, protocols } = ws.data;
+      const up = new WebSocket(url, { headers, protocols });
+      up.binaryType = 'arraybuffer';
+      ws.data.up = up;
+      ws.data.queue = [];
+      up.onopen = () => {
+        for (const m of ws.data.queue.splice(0)) up.send(m);
+      };
+      up.onmessage = (e) => ws.send(e.data);
+      up.onclose = (e) => ws.close(e.code === 1005 ? 1000 : e.code, e.reason);
+      up.onerror = () => ws.close(1011);
+    },
+    message(ws, m) {
+      if (ws.data.up.readyState === WebSocket.OPEN) ws.data.up.send(m);
+      else ws.data.queue.push(m);
+    },
+    close(ws) {
+      ws.data.up?.close();
+    },
+  },
 });
-nginx.on('upgrade', (req, socket, head) => {
-  const { path, headers } = forward(req);
-  const up = connect(sfuPort, '127.0.0.1', () => {
-    const lines = Object.entries(headers).map(([k, v]) => `${k}: ${v}`);
-    up.write(`${req.method} ${path} HTTP/1.1\r\n${lines.join('\r\n')}\r\n\r\n`);
-    up.write(head);
-    up.pipe(socket);
-    socket.pipe(up);
-  });
-  up.on('error', () => socket.destroy());
-  socket.on('error', () => up.destroy());
-});
-const front = `127.0.0.1:${await listen(nginx)}`;
+const front = `127.0.0.1:${nginx.port}`;
 const api = (name) => `http://${front}${name ? `/as/${name}` : ''}/calls/api`;
 
 const browser = await launch({
@@ -208,7 +213,7 @@ const guestTab = async (invite, name, secret) => {
   });
   return p;
 };
-const secret = () => randomBytes(32).toString('base64url');
+const secret = () => crypto.getRandomValues(new Uint8Array(32)).toBase64({ alphabet: 'base64url', omitPadding: true });
 const makeInvite = async (name, p) => {
   const r = await fetch(`${api(name)}/invites`, {
     method: 'POST',
@@ -322,12 +327,12 @@ await check('a shared screen reaches the others as a track of its own, beside th
 const rtmpPort = 20000 + Math.floor(Math.random() * 20000);
 await check('podcast mode streams the call to an RTMP address, and every member sees it is live', async () => {
   const evaPid = await pidOf(matus, '@eva:calls.test');
-  const flv = join(tap, 'podcast.flv');
+  const flv = `${tap}/podcast.flv`;
   // An RTMP server that keeps six seconds of what it gets.
-  const server = spawn('ffmpeg', ['-v', 'error', '-listen', '1', '-i', `rtmp://127.0.0.1:${rtmpPort}/live/key-123`, '-t', '6', '-c', 'copy', '-y', flv], {
+  const server = Bun.spawn(['ffmpeg', '-v', 'error', '-listen', '1', '-i', `rtmp://127.0.0.1:${rtmpPort}/live/key-123`, '-t', '6', '-c', 'copy', '-y', flv], {
     stdio: ['ignore', 'inherit', 'inherit'],
   });
-  const exited = new Promise((ok) => server.on('exit', ok));
+  const exited = server.exited;
   await new Promise((r) => setTimeout(r, 1000));
   await eva.evaluate((url) => window.goLive(url, 'The LosOS podcast'), `rtmp://127.0.0.1:${rtmpPort}/live/key-123`);
   await until('eva live', () => eva.evaluate(() => window.callState.podcast.includes('live')));
@@ -337,7 +342,7 @@ await check('podcast mode streams the call to an RTMP address, and every member 
   await until('a second stream is refused', () => matus.evaluate(() => window.callState.podcast.includes('ended:alreadyLive')));
   await Promise.race([exited, new Promise((_, no) => setTimeout(() => no(new Error('the RTMP server got no six seconds')), 60000))]);
   const probe = JSON.parse(
-    spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_name,width,height:format=duration', '-of', 'json', flv]).stdout.toString(),
+    new TextDecoder().decode(Bun.spawnSync(['ffprobe', '-v', 'error', '-show_entries', 'stream=codec_name,width,height:format=duration', '-of', 'json', flv]).stdout),
   );
   const codecs = probe.streams.map((x) => x.codec_name).sort();
   assert.deepEqual(codecs, ['aac', 'h264'], JSON.stringify(probe));
@@ -480,19 +485,20 @@ await check('guests are sent away once the last of the room has left', async () 
   assert.equal((await zoe.evaluate(() => window.callState.states)).at(-1), 'failed:ended');
 });
 
-const readIvf = (file) => {
-  const raw = readFileSync(file);
+const readIvf = async (file) => {
+  const raw = await Bun.file(file).bytes();
+  const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
   const frames = [];
   for (let at = 32; at + 12 <= raw.length; ) {
-    const len = raw.readUInt32LE(at);
-    frames.push({ head: raw.subarray(at, at + 12), data: new Uint8Array(raw.subarray(at + 12, at + 12 + len)) });
+    const len = view.getUint32(at, true);
+    frames.push({ head: raw.slice(at, at + 12), data: raw.slice(at + 12, at + 12 + len) });
     at += 12 + len;
   }
   return frames;
 };
 const ffmpegErrors = (file) =>
-  spawnSync('ffmpeg', ['-v', 'error', '-i', file, '-f', 'null', '-'])
-    .stderr.toString()
+  new TextDecoder()
+    .decode(Bun.spawnSync(['ffmpeg', '-v', 'error', '-i', file, '-f', 'null', '-']).stderr)
     .split('\n')
     // Two frames the tap stamped with the same millisecond are a muxer
     // warning, not a frame the decoder could not read.
@@ -502,8 +508,8 @@ let pids;
 await check("the SFU's tap holds frames no decoder can read", async () => {
   pids = { matus: matusAt, eva: evaAt };
   for (const pid of Object.values(pids)) {
-    const file = join(tap, `video-p${pid}-1.ivf`);
-    const frames = readIvf(file);
+    const file = `${tap}/video-p${pid}-1.ivf`;
+    const frames = await readIvf(file);
     assert.ok(frames.length > 100, `${file}: ${frames.length} frames`);
     assert.ok(frames.every((f) => e2ee.readTrailer(f.data)), 'every frame carries the e2ee trailer');
     const errors = ffmpegErrors(file);
@@ -517,8 +523,8 @@ await check('the tapped frames are AES-GCM under keys only the members had', asy
     const ring = new e2ee.ReceiveRing();
     const keys = heard.filter((h) => h.msg.pid === pid).map((h) => h.msg);
     assert.ok(keys.length >= 2, `${who} sent keys: ${keys.length}`);
-    const file = join(tap, `video-p${pid}-1.ivf`);
-    const frames = readIvf(file);
+    const file = `${tap}/video-p${pid}-1.ivf`;
+    const frames = await readIvf(file);
     let opened = 0;
     let beforeAnyone = 0;
     // Once Eva left, Matus's next key went to the guest alone, over their
@@ -549,14 +555,14 @@ await check('the tapped frames are AES-GCM under keys only the members had', asy
       `${who}: ${opened}/${frames.length} opened, ${beforeAnyone} before anyone, ${guestsOnly} to guests only`,
     );
     // The same frames, decrypted, are a clean VP8 stream.
-    const head = readFileSync(file).subarray(0, 32);
+    const head = (await Bun.file(file).bytes()).subarray(0, 32);
     const body = plain.flatMap((p) => {
-      const h = Buffer.from(p.head);
-      h.writeUInt32LE(p.data.length, 0);
-      return [h, Buffer.from(p.data)];
+      const h = p.head.slice();
+      new DataView(h.buffer).setUint32(0, p.data.length, true);
+      return [h, p.data];
     });
-    const clean = join(tap, `decrypted-p${pid}.ivf`);
-    writeFileSync(clean, Buffer.concat([head, ...body]));
+    const clean = `${tap}/decrypted-p${pid}.ivf`;
+    await Bun.write(clean, new Blob([head, ...body]));
     const errors = ffmpegErrors(clean);
     assert.ok(errors <= 3, `${who}: ${errors} decode errors once decrypted`);
   }
@@ -608,8 +614,9 @@ await check('a call starts without a camera, or listening only without a microph
 
 await browser.close();
 sfu.kill();
-edge.close();
-nginx.close();
-pages.close();
-console.log(failed ? 'calls: FAILED' : `calls: ${checks.length} passed`);
-process.exit(failed ? 1 : 0);
+edge.stop(true);
+nginx.stop(true);
+pages.stop(true);
+// Thrown, not printed: an uncaught error is what makes Bun exit non-zero.
+if (failed) throw new Error('calls: FAILED');
+console.log(`calls: ${checks.length} passed`);

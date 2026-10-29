@@ -160,7 +160,7 @@ let
     export PLAYWRIGHT_BROWSERS_PATH=${browsers}
     export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
     export PLAYWRIGHT_CORE=${pkgs.playwright}
-    exec ${pkgs.nodejs}/bin/node ${./inference-payg-shots.mjs} "$@"
+    exec ${pkgs.bun}/bin/bun ${./inference-payg-shots.mjs} "$@"
   '';
   # The wallet the owner keeps in mattbox's page: anvil's first account,
   # imported from its phrase.

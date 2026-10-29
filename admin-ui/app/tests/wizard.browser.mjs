@@ -14,14 +14,14 @@
  * — so the API is stubbed with page.route(), which also lets one run flip the
  * box between claimed and unclaimed without any state to reset.
  *
- * Needs `npm run build` first and a browsers dir:
+ * Needs `bun run build` first and a browsers dir:
  *   PLAYWRIGHT_BROWSERS_PATH=$(nix build --print-out-paths --no-link \
  *     nixpkgs#playwright-driver.browsers)
  * nix/tests/admin-ui.nix sets all of that up; keep the `playwright` devDependency
  * pinned to the same version as nixpkgs' playwright-driver.
  */
 
-import assert from 'node:assert';
+import assert from './assert.mjs';
 import { launch, runner, serve } from './harness.mjs';
 
 const { origin, close: closeServer } = await serve();
@@ -438,7 +438,6 @@ await check('claiming the box mid-wizard does not end the wizard', async () => {
   assert.ok(!/Your board/i.test(text), 'the overview replaced the wizard mid-flow');
   await page.close();
 });
-
 
 await check('a reload after the claim comes back to step 2 with the spare key, not to the app', async () => {
   // The tab holds the token now, so without the wizard's own note the shell

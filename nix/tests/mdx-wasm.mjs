@@ -1,15 +1,13 @@
 /* losos-mdx's browser package, loaded the way a page loads it, against the
  * documents the crate's own suite uses: the same HTML, the same refusals,
  * and the limits holding inside WebAssembly's 1 MiB stack. Run by
- * nix/tests/mdx-wasm.nix with the package's directory as its argument. */
+ * nix/tests/mdx-wasm.nix on Bun, with the package's directory and the
+ * admin UI's assertions (admin-ui/app/tests/assert.mjs) as its arguments. */
 
-import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-
-const dir = process.argv[2];
-const { default: init, render, tree } = await import(join(dir, 'losos_mdx.js'));
-await init({ module_or_path: readFileSync(join(dir, 'losos_mdx_bg.wasm')) });
+const [dir, asserts] = Bun.argv.slice(2);
+const { default: assert } = await import(asserts);
+const { default: init, render, tree } = await import(`${dir}/losos_mdx.js`);
+await init({ module_or_path: await Bun.file(`${dir}/losos_mdx_bg.wasm`).bytes() });
 
 const vault = {
   note: (t) => (t === 'trip.note' ? 'notes/trip.note' : undefined),

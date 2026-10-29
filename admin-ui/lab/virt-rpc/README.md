@@ -43,7 +43,7 @@ finds the socket for its `--connect` URI, admits a WebSocket only with a
 single-use ticket from `POST /lab/v1/virt-ticket` sent as the
 `ticket.<hex>` subprotocol beside `losos-lab`, and applies the helper's
 Origin and Host checks. `relay/ws-relay.mjs` is a standalone test relay:
-about 100 lines of Node with no dependencies. `websockify` would also work.
+about 110 lines of Bun with no dependencies. `websockify` would also work.
 None of them parses the protocol; all the libvirt logic is in the page.
 
 In an Isolated Web App, the alternative is a daemon listening on TCP
@@ -152,7 +152,7 @@ cargo test --test live -- --nocapture
 
 # In a browser: the demo page through the relay
 LOSOS_VIRT_SOCKET=/run/libvirt/virtqemud-sock LOSOS_VIRT_TOKEN=secret \
-  node relay/ws-relay.mjs --port 8771 --static demo
+  bun relay/ws-relay.mjs --port 8771 --static demo
 # open http://127.0.0.1:8771/index.html?token=secret&guest=/path/with/images
 
 # ... or through losos-registrar lab's relay (ws-relay.mjs then only serves

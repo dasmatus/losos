@@ -62,16 +62,14 @@ jobs:
         working-directory: handbook
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: oven-sh/setup-bun@v2
         with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: handbook/package-lock.json
-      - run: npm ci --no-audit --no-fund
-      - run: npm run typecheck
+          bun-version-file: handbook/package.json
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun run typecheck
       # The admin UI's "What to do" links must all land on a page.
-      - run: npm run check
-      - run: npm run build
+      - run: bun run check
+      - run: bun run build
       - name: add the cache copy at /proxy
         if: github.event_name != 'pull_request'
         env:

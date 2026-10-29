@@ -20,24 +20,40 @@
 // Diagrams pictures are. A page error or a refusal by the page's security
 // policy fails the run.
 
-import { createHash, X509Certificate } from "node:crypto";
-import { mkdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+const join = (...parts) => parts.join("/");
 
 const VIEW = { width: 1440, height: 900 };
 const WAIT = 180_000;
 
-const { chromium } = await import(process.env.PLAYWRIGHT_CORE ?? "playwright-core");
-const [cfgFile, out] = process.argv.slice(2);
-const cfg = JSON.parse(readFileSync(cfgFile, "utf8"));
-mkdirSync(out, { recursive: true });
+const { chromium } = await import(Bun.env.PLAYWRIGHT_CORE ?? "playwright-core");
+const [cfgFile, out] = Bun.argv.slice(2);
+const cfg = (await Bun.file(cfgFile).json());
+Bun.spawnSync(["mkdir", "-p", out]);
 
 const problems = [];
 
-function spkiPin(pemFile) {
-  const cert = new X509Certificate(readFileSync(pemFile));
-  const der = cert.publicKey.export({ type: "spki", format: "der" });
-  return createHash("sha256").update(der).digest("base64");
+async function spkiPin(pemFile) {
+  const pem = await Bun.file(pemFile).text();
+  const der = Uint8Array.fromBase64(/-----BEGIN CERTIFICATE-----([^-]+)-----END CERTIFICATE-----/.exec(pem)[1].replace(/\s/g, ""));
+  // One DER element at `at`: where its contents start and where it ends.
+  const element = (at) => {
+    let len = der[at + 1];
+    let start = at + 2;
+    if (len & 0x80) {
+      const n = len & 0x7f;
+      len = 0;
+      for (let i = 0; i < n; i++) len = len * 256 + der[start + i];
+      start += n;
+    }
+    return { start, end: start + len };
+  };
+  // Certificate > tbsCertificate > [0] version, serial, signature, issuer,
+  // validity, subject, then the subjectPublicKeyInfo Chromium hashes.
+  let at = element(element(0).start).start;
+  if (der[at] === 0xa0) at = element(at).end;
+  for (let i = 0; i < 5; i++) at = element(at).end;
+  const spki = der.subarray(at, element(at).end);
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", spki)).toBase64();
 }
 
 async function window(browser, who, box) {

@@ -9,8 +9,8 @@
 #
 #   nix/demo/box-edge-box/record.sh [OUTDIR]     default nix/demo/box-edge-box/recording
 #
-# Needs: nix with flakes; node with admin-ui/app's dependencies installed
-# (`npm ci` there, for playwright); a chromium Playwright can run (its own,
+# Needs: nix with flakes; bun with admin-ui/app's dependencies installed
+# (`bun install` there, for playwright); a chromium Playwright can run (its own,
 # or LOSOS_CHROMIUM=/path/to/chromium). THEME=dark for dark pictures.
 # LOSOS_NIX_ARGS passes extra arguments to nix. Without KVM the three VMs
 # take about 15 minutes.
@@ -31,7 +31,7 @@ log "building the demo driver"
 nix build "${nix_args[@]}" -o "$out/driver" "$repo#checks.x86_64-linux.losos-box-edge-box.driver"
 
 log "starting the recorder"
-LOSOS_RECORD_DIR="$out" node "$here/record.mjs" >"$out/recorder.log" 2>&1 &
+LOSOS_RECORD_DIR="$out" bun "$here/record.mjs" >"$out/recorder.log" 2>&1 &
 recorder=$!
 
 log "running the demo (log in $out/driver.log)"

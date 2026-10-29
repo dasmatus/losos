@@ -19,15 +19,15 @@
 // JSON line per frame: its file, the action that follows it and the boxes of
 // what it shows, in CSS pixels.
 
-import fs from "node:fs";
-import path from "node:path";
+const join = (...parts) => parts.join("/");
+const dirname = (file) => file.slice(0, file.lastIndexOf("/"));
 
-const { chromium } = await import(path.join(process.env.PLAYWRIGHT_CORE, "index.mjs"));
+const { chromium } = await import(join(Bun.env.PLAYWRIGHT_CORE, "index.mjs"));
 
 const BASE = "http://mattbox";
 const PANE = `${BASE}/settings/market`;
 const PROFILE = "/var/lib/shots/profile";
-const TOKEN = fs.readFileSync("/var/lib/shots/token", "utf8").trim();
+const TOKEN = (await Bun.file("/var/lib/shots/token").text()).trim();
 
 const LOOKS = {
   pr: { colorScheme: "light", deviceScaleFactor: 1 },
@@ -90,7 +90,7 @@ let current = null;
 
 async function browser(look) {
   const opts = LOOKS[look];
-  fs.mkdirSync(PROFILE, { recursive: true });
+  Bun.spawnSync(["mkdir", "-p", PROFILE]);
   const ctx = await chromium.launchPersistentContext(PROFILE, {
     // Full Chromium in its headless mode: the headless shell ignores the
     // secure-origin switch below.
@@ -164,19 +164,19 @@ class Frames {
     this.page = page;
     this.outdir = outdir;
     if (outdir === "-") return;
-    fs.mkdirSync(outdir, { recursive: true });
-    this.counter = path.join(outdir, ".next");
-    this.n = fs.existsSync(this.counter) ? Number(fs.readFileSync(this.counter, "utf8")) : 1;
+    this.counter = Bun.file(join(outdir, ".next"));
   }
 
   async take(slug, action, target, names) {
     if (this.outdir === "-") return;
+    // The number goes on from an earlier call's pictures in the same folder.
+    this.n ??= (await this.counter.exists()) ? Number(await this.counter.text()) : 1;
     const file = `${String(this.n).padStart(2, "0")}-${slug}.png`;
-    await this.page.screenshot({ path: path.join(this.outdir, file) });
+    await this.page.screenshot({ path: join(this.outdir, file) });
     const step = { file, action: target ? { kind: action, target } : { kind: action }, targets: await targets(names) };
     console.log(JSON.stringify(step));
     this.n += 1;
-    fs.writeFileSync(this.counter, String(this.n));
+    await Bun.write(this.counter, String(this.n));
   }
 }
 
@@ -209,7 +209,7 @@ async function importWallet(phrase, password) {
 async function shot(look, out, anchor) {
   const { ctx, page } = await browser(look);
   await openPane(page, anchor);
-  fs.mkdirSync(path.dirname(out), { recursive: true });
+  Bun.spawnSync(["mkdir", "-p", dirname(out)]);
   await page.screenshot({ path: out });
   await ctx.close();
 }
@@ -301,17 +301,17 @@ async function settled(outdir) {
   await ctx.close();
 }
 
-const [cmd, ...args] = process.argv.slice(2);
+const [cmd, ...args] = Bun.argv.slice(2);
 const commands = { "import-wallet": importWallet, shot, start, chat, stop, settled };
 if (!(cmd in commands)) {
-  console.error(`unknown command ${cmd}`);
-  process.exit(2);
+  // Thrown: an uncaught error is what makes Bun exit non-zero.
+  throw new Error(`unknown command ${cmd}`);
 }
 try {
   await commands[cmd](...args);
 } catch (e) {
   if (current) {
-    fs.mkdirSync("/tmp/shots", { recursive: true });
+    Bun.spawnSync(["mkdir", "-p", "/tmp/shots"]);
     await current.screenshot({ path: "/tmp/shots/failed.png", fullPage: true }).catch(() => {});
     const text = await current.evaluate(() => location.href + "\n" + document.body.innerText.slice(0, 4000)).catch(() => "");
     console.error(`--- the page at the failure reads:\n${text}`);

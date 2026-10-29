@@ -33,7 +33,7 @@ let
     export PLAYWRIGHT_CORE=${pkgs.playwright-driver}
     export PLAYWRIGHT_BROWSERS_PATH=${browsers}
     export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
-    exec ${pkgs.nodejs}/bin/node ${./shoot.mjs} "$@"
+    exec ${pkgs.bun}/bin/bun ${./shoot.mjs} "$@"
   '';
 
   defaultPlan = builtins.toJSON {

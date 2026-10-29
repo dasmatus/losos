@@ -6,7 +6,7 @@
 # made it.
 #
 # What each hook runs is in its own header. Everything here is plumbing:
-# finding the tools (cargo is the flake's pinned toolchain; npm comes from
+# finding the tools (cargo is the flake's pinned toolchain; bun comes from
 # the flake when it is not on PATH), running one check with its output in a log file,
 # and the summary at the end.
 #
@@ -235,11 +235,11 @@ hook_tool() {
   fi
 }
 
-hook_npm() { hook_tool npm nodejs "$@"; }
+hook_bun() { hook_tool bun bun "$@"; }
 
 # LosOS Diagrams' three WebAssembly packages, which admin-ui/app imports and
 # git ignores (src/lab/{core,virt,render}-pkg). tsc needs them, so a checkout
-# without one gets the package the flake builds (`npm run lab:<name>` would
+# without one gets the package the flake builds (`bun run lab:<name>` would
 # need cargo for wasm32 and the pinned wasm-bindgen).
 hook_lab_pkgs() {
   local name out dir

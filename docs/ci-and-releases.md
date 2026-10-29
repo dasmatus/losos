@@ -75,7 +75,7 @@ web UI, a VM test reading a Rust file), add it to that lane in the script.
 
 Beside `ci.yml`, `dependency-hashes.yml` keeps the Nix hashes of the lock
 files current. On a pull request from a branch of this repository that
-changes a `Cargo.lock` or `package-lock.json`, Dependabot's included, it runs
+changes a `Cargo.lock` or `bun.lock`, Dependabot's included, it runs
 `.github/scripts/fix-hashes.py`, which vendors each changed lock file with a
 placeholder hash so no cache can answer for it, and pushes the real hashes
 back to the branch as one commit. It runs as `pull_request_target`, so a

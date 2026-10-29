@@ -37,7 +37,7 @@ full_patterns=(
 )
 
 # The flake and the package set: every lane that builds with nix.
-pkgs=(flake.nix nix/packages.nix)
+pkgs=(flake.nix nix/packages.nix nix/bun-deps.nix)
 
 # What admin-ui/tui/build.rs reads out of the web UI.
 tui_reads=(

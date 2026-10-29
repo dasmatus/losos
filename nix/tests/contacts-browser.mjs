@@ -10,18 +10,18 @@
 // on the LAN, so pages load at https://mattbox.local/. Pictures go to
 // <out>/pr/. It exits non-zero at the first step that does not happen,
 // after a picture of every open page.
-import { createRequire } from "node:module";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
 
-const { chromium } = createRequire(import.meta.url)(process.env.CONTACTS_PLAYWRIGHT ?? "playwright");
+const { chromium } = await import(Bun.env.CONTACTS_PLAYWRIGHT ?? "playwright");
 
-const [phase, out] = process.argv.slice(2);
-const HOST = process.env.CONTACTS_HOST ?? "mattbox.local";
+const [phase, out] = Bun.argv.slice(2);
+const HOST = Bun.env.CONTACTS_HOST ?? "mattbox.local";
 const ORIGIN = `https://${HOST}`;
-const PROXY = process.env.CONTACTS_PROXY ?? "socks5://127.0.0.1:1080";
-const OLD_CARD = process.env.CONTACTS_OLD_CARD;
-mkdirSync(`${out}/pr`, { recursive: true });
+const PROXY = Bun.env.CONTACTS_PROXY ?? "socks5://127.0.0.1:1080";
+const OLD_CARD = Bun.env.CONTACTS_OLD_CARD;
+// The card under the name the page sees: Playwright picks a file by path.
+const PHONE_CARD = `${Bun.env.TMPDIR ?? "/tmp"}/contacts-${crypto.randomUUID()}/phone.vcf`;
+await Bun.write(PHONE_CARD, Bun.file(OLD_CARD));
+Bun.spawnSync(["mkdir", "-p", `${out}/pr`]);
 
 const browser = await chromium.launch({ chromiumSandbox: false, proxy: { server: PROXY } });
 const problems = [];
@@ -104,7 +104,7 @@ async function chatPicker(page, name) {
 }
 
 async function before() {
-  const owner = await person("matus", process.env.CONTACTS_MATUS_PASSWORD);
+  const owner = await person("matus", Bun.env.CONTACTS_MATUS_PASSWORD);
   await overview(owner);
   await owner.getByRole("link", { name: "Chat", exact: true }).waitFor();
   await shot(owner, "sidebar-before");
@@ -115,7 +115,7 @@ async function before() {
 async function off() {
   // Without the shared side Contacts stays, LosOS Cloud keeps the book;
   // only the ways to reach someone through chat and mail are gone.
-  const owner = await person("matus", process.env.CONTACTS_MATUS_PASSWORD);
+  const owner = await person("matus", Bun.env.CONTACTS_MATUS_PASSWORD);
   await overview(owner);
   await contactsLink(owner).waitFor();
   if ((await owner.getByRole("link", { name: "Chat", exact: true }).count()) !== 0) {
@@ -137,7 +137,7 @@ async function off() {
 }
 
 async function on() {
-  const owner = await person("matus", process.env.CONTACTS_MATUS_PASSWORD);
+  const owner = await person("matus", Bun.env.CONTACTS_MATUS_PASSWORD);
   await overview(owner);
   await contactsLink(owner).waitFor();
   await shot(owner, "sidebar-after");
@@ -204,11 +204,7 @@ async function on() {
   // An import: the old phone's 2.1 card.
   await owner.getByRole("button", { name: "Import", exact: true }).click();
   const importer = owner.getByRole("dialog");
-  await importer.locator('input[type="file"]').setInputFiles({
-    name: "phone.vcf",
-    mimeType: "text/vcard",
-    buffer: readFileSync(OLD_CARD),
-  });
+  await importer.locator('input[type="file"]').setInputFiles(PHONE_CARD);
   await importer.getByText("1 added, 0 updated").waitFor();
   await shot(owner, "contacts-import");
   await importer.getByRole("button", { name: "Done" }).click();
@@ -283,11 +279,13 @@ async function typed(page, field, text, title) {
 }
 
 async function record(page) {
-  mkdirSync(`${out}/film/frames`, { recursive: true });
+  Bun.spawnSync(["mkdir", "-p", `${out}/film/frames`]);
   const cdp = await page.context().newCDPSession(page);
+  const writes = [];
   cdp.on("Page.screencastFrame", ({ data, metadata, sessionId }) => {
     const name = `frames/${String(frames.length).padStart(6, "0")}.jpg`;
-    writeFileSync(`${out}/film/${name}`, Buffer.from(data, "base64"));
+    // Written as they come; the clip waits for every one before ffmpeg.
+    writes.push(Bun.write(`${out}/film/${name}`, Uint8Array.fromBase64(data)));
     frames.push({ name, t: metadata.timestamp });
     if (clipStart === null) clipStart = metadata.timestamp;
     cdp.send("Page.screencastFrameAck", { sessionId }).catch(() => {});
@@ -297,6 +295,7 @@ async function record(page) {
     await page.waitForTimeout(1000);
     const clipName = `${String(steps.length + 1).padStart(2, "0")}-walkthrough.mp4`;
     await cdp.send("Page.stopScreencast");
+    await Promise.all(writes);
     // Each frame stays on screen until the next one; ffmpeg's fps filter
     // then samples that at 60 per second.
     const lines = ["ffconcat version 1.0"];
@@ -305,23 +304,23 @@ async function record(page) {
       lines.push(`file '${f.name}'`, `duration ${Math.max(next - f.t, 0.001).toFixed(6)}`);
     }
     lines.push(`file '${frames.at(-1).name}'`);
-    writeFileSync(`${out}/film/frames.ffconcat`, lines.join("\n") + "\n");
-    const ffmpeg = spawnSync(
-      process.env.CONTACTS_FFMPEG ?? "ffmpeg",
-      ["-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", "frames.ffconcat",
+    await Bun.write(`${out}/film/frames.ffconcat`, lines.join("\n") + "\n");
+    const ffmpeg = Bun.spawnSync(
+      [Bun.env.CONTACTS_FFMPEG ?? "ffmpeg",
+       "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", "frames.ffconcat",
        "-vf", "fps=60,scale=2560:1800:flags=lanczos,format=yuv420p", "-r", "60",
        "-c:v", "libx264", "-preset", "slow", "-crf", "16", "-movflags", "+faststart", clipName],
-      { cwd: `${out}/film`, encoding: "utf8" },
+      { cwd: `${out}/film` },
     );
-    if (ffmpeg.status !== 0) throw new Error(`ffmpeg: ${ffmpeg.stderr}`);
+    if (ffmpeg.exitCode !== 0) throw new Error(`ffmpeg: ${new TextDecoder().decode(ffmpeg.stderr)}`);
     console.log(`film ${clipName} from ${frames.length} frames`);
     steps.push({ file: clipName, url: `${HOST}/`, title: "The walk through Contacts, Mail and Chat", action: { kind: "none" }, targets: {}, fps: 60, frames: frames.length });
   };
 }
 
 async function film() {
-  mkdirSync(`${out}/film`, { recursive: true });
-  const owner = await person("matus", process.env.CONTACTS_MATUS_PASSWORD, true);
+  Bun.spawnSync(["mkdir", "-p", `${out}/film`]);
+  const owner = await person("matus", Bun.env.CONTACTS_MATUS_PASSWORD, true);
   await overview(owner);
   await settle(owner);
   const stop = await record(owner);
@@ -377,24 +376,20 @@ async function film() {
   await owner.goto(`${ORIGIN}/contacts`);
   await owner.getByRole("button", { name: "Import", exact: true }).click();
   const importer = owner.getByRole("dialog");
-  await importer.locator('input[type="file"]').setInputFiles({
-    name: "phone.vcf",
-    mimeType: "text/vcard",
-    buffer: readFileSync(OLD_CARD),
-  });
+  await importer.locator('input[type="file"]').setInputFiles(PHONE_CARD);
   await importer.getByText(/updated/).waitFor();
   await frame(owner, "Import from a phone", { kind: "none" });
   await importer.getByRole("button", { name: "Done" }).click();
   await stop();
 
-  writeFileSync(
+  await Bun.write(
     `${out}/film/manifest.json`,
     JSON.stringify(
       {
         feature: "contacts",
         viewport: { width: 1280, height: 900 },
         dpr: 2,
-        commit: process.env.CONTACTS_COMMIT ?? "",
+        commit: Bun.env.CONTACTS_COMMIT ?? "",
         test: "losos-contacts",
         steps,
       },
@@ -404,6 +399,9 @@ async function film() {
   );
 }
 
+// Thrown at the very end, after the pictures of the failure are saved:
+// an uncaught error is what makes Bun exit non-zero.
+let failed = false;
 try {
   await { before, off, on, film }[phase]();
   if (problems.length > 0) throw new Error(`the page reported: ${problems.join("; ")}`);
@@ -412,7 +410,8 @@ try {
     await page.screenshot({ path: `${out}/pr/failed-${phase}-${i}.png` }).catch(() => {});
   }
   console.error(error);
-  process.exitCode = 1;
+  failed = true;
 } finally {
   await browser.close();
 }
+if (failed) throw new Error(`the ${phase} phase failed, see above`);

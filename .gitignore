@@ -11,10 +11,10 @@ result-*
 
 .superpowers/
 
-# admin-ui/design-system/react/ is a dev-machine-only npm package (TypeScript
-# + esbuild, see admin-ui/design-system/react/package.json) — never part of
-# the Nix closure, but its local install and build/test output still need to
-# stay untracked. `npm run build` and `npm test` both write into dist/.
+# admin-ui/design-system/react/ is a dev-machine-only Bun package (TypeScript,
+# see admin-ui/design-system/react/package.json) — never part of the Nix
+# closure, but its local install and build/test output still need to stay
+# untracked. `bun run build` and `bun run test` both write into dist/.
 admin-ui/design-system/react/node_modules
 admin-ui/design-system/react/dist
 

@@ -182,7 +182,7 @@ D-Bus. `losos-ctl install` stays local, because the ISO installer runs as
 root and needs no bus.
 
 The admin UI (`admin-ui/app/`, packaged as `losos-admin-ui` with
-`buildNpmPackage`) is a React 19, Vite and Tailwind v4 SPA on real paths
+Bun) is a React 19, Vite and Tailwind v4 SPA on real paths
 (`/`, `/apps`, `/storage`, `/mesh`, `/settings/<pane>`). Its built `dist/`
 **is** the front nginx vhost's document root, served with
 `try_files $uri $uri/ /index.html`. Without that line every deep link and

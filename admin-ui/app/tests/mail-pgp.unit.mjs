@@ -6,30 +6,12 @@
  * page reads what GnuPG writes. nix/tests/mail-pgp.nix runs the same thing
  * through a real Stalwart and a real browser.
  *
- *   node tests/mail-pgp.node.mjs
+ *   bun tests/mail-pgp.unit.mjs
  */
 
-import assert from 'node:assert/strict';
-import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import * as esbuild from 'esbuild';
+import assert from './assert.mjs';
 
-// Bundled next to node_modules, with OpenPGP.js and postal-mime left as
-// imports, so Node loads its own build of each.
-const outfile = fileURLToPath(new URL('../node_modules/.cache/losos-tests/mail-pgp.mjs', import.meta.url));
-await esbuild.build({
-  entryPoints: [fileURLToPath(new URL('../src/mail/pgp.ts', import.meta.url))],
-  bundle: true,
-  format: 'esm',
-  platform: 'node',
-  outfile,
-  external: ['openpgp', 'postal-mime'],
-  alias: { '@': fileURLToPath(new URL('../src', import.meta.url)) },
-});
-const pgpTs = await import(pathToFileURL(outfile).href);
+const pgpTs = await import('../src/mail/pgp.ts');
 const { makeKey, importKey, unlockKey, unlockedKey, lockKey, seal, openMail, keyFacts, quotedPrintable, ImportProblem, CannotOpen, WrongPassphrase } = pgpTs;
 const openpgp = await import('openpgp');
 
@@ -177,7 +159,7 @@ await check('files travel inside the encrypted part, and inside the signed one',
   assert.equal(opened.text.replace(/\r\n/g, '\n').trimEnd(), BODY.trimEnd());
   assert.equal(opened.signature.state, 'good');
   assert.deepEqual(opened.attachments.map((a) => a.name), ['lake.bin', 'Údolie "plán".txt']);
-  assert.deepEqual(Buffer.from(opened.attachments[0].bytes), Buffer.from(bytes));
+  assert.deepEqual(new Uint8Array(opened.attachments[0].bytes), new Uint8Array(bytes));
   assert.equal(new TextDecoder().decode(opened.attachments[1].bytes), 'the plan');
 
   const signed = await seal({ text: BODY, files, encryptTo: [], signWith: annaKey, inline: false });
@@ -232,36 +214,44 @@ await check('quoted-printable keeps lines short and ends clean', () => {
 });
 
 /* GnuPG, when it is here: it reads the page's mail, and the page reads its. */
-const hasGpg = spawnSync('gpg', ['--version']).status === 0;
+const hasGpg = Bun.which('gpg') !== null;
 if (hasGpg) {
-  const home = mkdtempSync(join(tmpdir(), 'losos-gpg-'));
-  const gpg = (args, input) =>
-    execFileSync('gpg', ['--homedir', home, '--batch', '--yes', '--pinentry-mode', 'loopback', '--passphrase', PASS, ...args], {
-      input,
-      stdio: ['pipe', 'pipe', 'pipe'],
+  const home = `${Bun.env.TMPDIR ?? '/tmp'}/losos-gpg-${crypto.randomUUID()}`;
+  Bun.spawnSync(['mkdir', '-m', '700', home]);
+  const run = (args, input) => {
+    const result = Bun.spawnSync(['gpg', '--homedir', home, '--batch', '--pinentry-mode', 'loopback', '--passphrase', PASS, ...args], {
+      stdin: new TextEncoder().encode(input),
     });
+    const text = new TextDecoder();
+    return { status: result.exitCode, stdout: text.decode(result.stdout), stderr: text.decode(result.stderr) };
+  };
+  const gpg = (args, input) => {
+    const result = run(['--yes', ...args], input);
+    if (result.status !== 0) throw new Error(`gpg ${args.join(' ')}: ${result.stderr}`);
+    return result.stdout;
+  };
   try {
     gpg(['--import'], bob.lockedKey);
     gpg(['--import'], anna.publicKey);
     await check('GnuPG decrypts and verifies what the page sends', async () => {
       const made = await seal({ text: 'to gpg', encryptTo: [bob.publicKey], signWith: annaKey, inline: false });
-      const result = spawnSync('gpg', ['--homedir', home, '--batch', '--pinentry-mode', 'loopback', '--passphrase', PASS, '--status-fd', '2', '--decrypt'], { input: made.pgp.armored });
-      assert.equal(result.status, 0, result.stderr.toString());
-      assert.match(result.stdout.toString(), /to gpg/);
-      assert.match(result.stderr.toString(), new RegExp(`VALIDSIG ${anna.fingerprint}`));
+      const result = run(['--status-fd', '2', '--decrypt'], made.pgp.armored);
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /to gpg/);
+      assert.match(result.stderr, new RegExp(`VALIDSIG ${anna.fingerprint}`));
     });
     await check('the page decrypts and verifies what GnuPG sends', async () => {
       gpg(['--import'], anna.lockedKey);
       const armored = gpg(
         ['--armor', '--trust-model', 'always', '--local-user', 'anna@box.home.arpa', '--recipient', 'bob@box.home.arpa', '--sign', '--encrypt'],
         'from gpg\n',
-      ).toString();
+      );
       const opened = await openMail(plainRaw({ from: 'anna@box.home.arpa', to: 'bob@box.home.arpa', subject: 's', text: armored }), bobKey, [anna.publicKey]);
       assert.equal(opened.text.trim(), 'from gpg');
       assert.equal(opened.signature.state, 'good');
     });
   } finally {
-    rmSync(home, { recursive: true, force: true });
+    await Bun.$`rm -rf ${home}`;
   }
 } else {
   console.log('skip GnuPG: not on the PATH');

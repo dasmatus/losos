@@ -11,18 +11,11 @@
 
 let
   driver = pkgs.playwright-driver;
-  # node with Playwright's own driver as its one module, and Chromium only.
+  # Bun with Playwright's own driver as its one module, and Chromium only.
   capture = pkgs.writeShellScriptBin "losos-capture" ''
     export PLAYWRIGHT_BROWSERS_PATH=${driver.browsers-chromium}
-    export NODE_PATH=${
-      pkgs.linkFarm "losos-capture-modules" [
-        {
-          name = "playwright-core";
-          path = driver;
-        }
-      ]
-    }
-    exec ${pkgs.nodejs}/bin/node ${./capture.mjs} "$@"
+    export PLAYWRIGHT_CORE=${driver}/index.mjs
+    exec ${pkgs.bun}/bin/bun ${./capture.mjs} "$@"
   '';
 in
 {

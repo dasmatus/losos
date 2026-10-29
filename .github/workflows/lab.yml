@@ -25,7 +25,7 @@ on:
       - "admin-ui/app/src/lab/**"
       - "admin-ui/app/src/mdx/**"
       - "backend/mdx/**"
-      - "admin-ui/app/package-lock.json"
+      - "admin-ui/app/bun.lock"
       - ".github/workflows/lab.yml"
   pull_request:
     paths:
@@ -34,7 +34,7 @@ on:
       - "admin-ui/app/src/lab/**"
       - "admin-ui/app/src/mdx/**"
       - "backend/mdx/**"
-      - "admin-ui/app/package-lock.json"
+      - "admin-ui/app/bun.lock"
       - ".github/workflows/lab.yml"
   workflow_dispatch:
 
@@ -57,9 +57,9 @@ jobs:
         with:
           cache-url: ${{ vars.LOSOS_PROXY_URL }}
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
-      - uses: actions/setup-node@v7
+      - uses: oven-sh/setup-bun@v2
         with:
-          node-version: 22
+          bun-version-file: admin-ui/app/package.json
       - run: admin-ui/lab/engine/build.sh lab-out
       - uses: actions/upload-artifact@v7
         with:
@@ -77,4 +77,4 @@ jobs:
             echo "::notice::VERCEL_TOKEN, VERCEL_ORG_ID or VERCEL_PROJECT_ID is not set; the lab was built but not deployed."
             exit 0
           fi
-          npx --yes vercel@59.23.2 deploy lab-out --prod --yes --token "$VERCEL_TOKEN"
+          bunx --bun vercel@59.23.2 deploy lab-out --prod --yes --token "$VERCEL_TOKEN"

@@ -72,7 +72,7 @@ let
     # Signing in goes through Node's TLS, not Chromium's: the boxes'
     # certificates, which the test collects on the laptop.
     export NODE_EXTRA_CA_CERTS=''${NODE_EXTRA_CA_CERTS:-/etc/losos-boxes.pem}
-    exec ${pkgs.nodejs}/bin/node ${./mesh-collab-shots.mjs} "$@"
+    exec ${pkgs.bun}/bin/bun ${./mesh-collab-shots.mjs} "$@"
   '';
 
   box =

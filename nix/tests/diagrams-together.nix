@@ -27,7 +27,7 @@ let
   together = pkgs.writeShellScriptBin "diagrams-together" ''
     export PLAYWRIGHT_CORE=${pkgs.playwright-driver}/index.mjs
     export NODE_EXTRA_CA_CERTS=''${NODE_EXTRA_CA_CERTS:-/etc/losos-boxes.pem}
-    exec ${pkgs.nodejs}/bin/node ${./diagrams-together.mjs} "$@"
+    exec ${pkgs.bun}/bin/bun ${./diagrams-together.mjs} "$@"
   '';
 
   box =

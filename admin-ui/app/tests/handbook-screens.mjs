@@ -2,7 +2,7 @@
  * built dist/ against a stubbed lososd, so every screen shows the current UI
  * and the current logo without a box.
  *
- *   npm run build && node tests/handbook-screens.mjs /tmp/handbook-screens [name]
+ *   bun run build && bun tests/handbook-screens.mjs /tmp/handbook-screens [name]
  *
  * Each entry in SHOTS is one PNG: a path, a box state (the stub's answers),
  * a theme and a locale, and optionally what to click before the picture and
@@ -15,15 +15,9 @@
  * names that contain it. The PNGs are 2x; the handbook carries them
  * downscaled (handbook/docs/reference/for-developers.md, "Pictures"). */
 
-import { mkdirSync } from 'node:fs';
-import { join } from 'node:path';
-import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
-import * as esbuild from 'esbuild';
 import { launch, serve } from './harness.mjs';
 
-const [outDir = '/tmp/handbook-screens', only = ''] = process.argv.slice(2);
-mkdirSync(outDir, { recursive: true });
+const [outDir = '/tmp/handbook-screens', only = ''] = Bun.argv.slice(2);
 
 const TOKEN = '7c1e4a9d02f6b38e5d71c0a4e9b2f86d3a5c17e0b94d62f8c3e1a07d5b9f4c26'; // a fixture, not a key
 const PASSWORD = 'Correct-horse battery staple 1';
@@ -419,14 +413,7 @@ const CHART = {
 
 /* The UI's message catalogue, so a click can name a button in the language
  * the shot is taken in: T(lang)(key, vars) is what t(key, vars) draws. */
-const catalogue = await esbuild.build({
-  entryPoints: [fileURLToPath(new URL('../src/i18n/index.ts', import.meta.url))],
-  bundle: true,
-  format: 'esm',
-  platform: 'node',
-  write: false,
-});
-const { MESSAGES } = await import(`data:text/javascript;base64,${Buffer.from(catalogue.outputFiles[0].text).toString('base64')}`);
+const { MESSAGES } = await import('../src/i18n/index.ts');
 const T = (lang) => (key, vars = {}) => {
   const text = MESSAGES[key]?.[lang];
   if (typeof text !== 'string') throw new Error(`no ${lang} string for ${key}`);
@@ -434,7 +421,7 @@ const T = (lang) => (key, vars = {}) => {
 };
 const LOCALES = { en: 'en-US', sk: 'sk-SK', de: 'de-DE' };
 
-const DOC = JSON.parse(await readFile('tests/fixtures/options.json', 'utf8'));
+const DOC = await Bun.file('tests/fixtures/options.json').json();
 const options = (overrides = {}) => ({
   available: true,
   version: DOC.version,
@@ -1158,7 +1145,7 @@ for (const shot of SHOTS) {
     try {
       if (act) await act(page, T(lang));
       const clip = await region(page, crop, full);
-      await page.screenshot({ path: join(outDir, `${file}.png`), fullPage: full || (clip ? clip.y + clip.height > page.viewportSize().height : false), ...(clip ? { clip } : {}) });
+      await page.screenshot({ path: `${outDir}/${file}.png`, fullPage: full || (clip ? clip.y + clip.height > page.viewportSize().height : false), ...(clip ? { clip } : {}) });
       console.log('  wrote', file);
     } catch (e) {
       console.log('  FAIL', file, e.message.split('\n')[0]);

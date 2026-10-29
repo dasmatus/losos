@@ -13,17 +13,16 @@
 // Playwright comes from PLAYWRIGHT_CORE (a path to playwright-core, as
 // nixpkgs' playwright-driver is) or the `playwright-core` package.
 
-import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+const join = (...parts) => parts.join("/");
 
-const { chromium } = await import(process.env.PLAYWRIGHT_CORE ?? "playwright-core");
+const { chromium } = await import(Bun.env.PLAYWRIGHT_CORE ?? "playwright-core");
 
-const [which, out, login, password, lan] = process.argv.slice(2);
+const [which, out, login, password, lan] = Bun.argv.slice(2);
 if (!["after", "before", "film"].includes(which) || !lan) {
-  console.error("usage: cloud-photos-shots.mjs after|before|film OUT NAME PASSWORD ADDRESS");
-  process.exit(2);
+  // Thrown: an uncaught error is what makes Bun exit non-zero.
+  throw new Error("usage: cloud-photos-shots.mjs after|before|film OUT NAME PASSWORD ADDRESS");
 }
-mkdirSync(out, { recursive: true });
+Bun.spawnSync(["mkdir", "-p", out]);
 
 const browser = await chromium.launch({ args: [`--host-resolver-rules=MAP mattbox.local ${lan}`] });
 const context = await browser.newContext({
@@ -130,14 +129,14 @@ async function film() {
   await frame("06-tags.png", "/cloud/photos?by=place", "every tag the camera saved", { kind: "none" }, {
     panel: page.locator("[data-photo-details]"),
   });
-  writeFileSync(
+  await Bun.write(
     join(out, "manifest.json"),
     JSON.stringify(
       {
         feature: "photos",
         viewport: { width: 1280, height: 900 },
         dpr: 2,
-        commit: process.env.LOSOS_COMMIT ?? "",
+        commit: Bun.env.LOSOS_COMMIT ?? "",
         test: "losos-cloud-photos",
         steps,
       },
@@ -198,6 +197,6 @@ try {
   await browser.close();
 }
 if (errors.length > 0) {
-  console.error(`the page threw or was refused:\n${errors.join("\n")}`);
-  process.exit(1);
+  // Thrown: an uncaught error is what makes Bun exit non-zero.
+  throw new Error(`the page threw or was refused:\n${errors.join("\n")}`);
 }

@@ -17,8 +17,7 @@
  * Same arrangement as the other files: the real dist/ bundle under the real
  * policies, the routes stubbed with page.route(). */
 
-import assert from 'node:assert';
-import { readFile } from 'node:fs/promises';
+import assert from './assert.mjs';
 import { launch, runner, serve } from './harness.mjs';
 
 const { origin, close: closeServer } = await serve({ csp: true });
@@ -30,7 +29,7 @@ const BOXES = [
   { id: 'office-box', hostname: 'office-box', seenAgoSecs: 12, managed: true },
   { id: 'reception', hostname: 'reception', seenAgoSecs: 300, managed: false },
 ];
-const DOC = JSON.parse(await readFile(process.env.LOSOS_OPTIONS_JSON ?? 'tests/fixtures/options.json', 'utf8'));
+const DOC = await Bun.file(Bun.env.LOSOS_OPTIONS_JSON ?? 'tests/fixtures/options.json').json();
 const SITE_NAMES = /^(cloud\.trashDays|git\.site\..+)$/;
 const SITE = {
   available: true,
@@ -271,7 +270,7 @@ await check('the gateway is set up from the page: its owner, its hub and the box
   await section.getByRole('alert').filter({ hasText: "not from this gateway's owner" }).waitFor();
   await page.getByLabel('Signature').fill('-----BEGIN PGP SIGNATURE-----\nabc\n-----END PGP SIGNATURE-----');
   await section.getByRole('button', { name: 'Save' }).click();
-  await page.getByText('Settings accepted').waitFor();
+  await page.getByText('Settings accepted', { exact: true }).waitFor();
   const claim = writes.filter((w) => w.path === '/passport/settings').at(-1);
   assert.equal(claim.auth, null);
   assert.equal(claim.body.settings, '{"version":1}\n');

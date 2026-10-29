@@ -25,9 +25,9 @@
  * skeleton or toast is on screen. Waits poll locators: page.waitForFunction
  * compiles its predicate in the page, and the admin page's CSP refuses it. */
 
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { chromium } from 'playwright-core';
+
+const join = (...parts) => parts.join('/');
 
 export const VIEWPORT = { width: 1280, height: 900 };
 export const DPR = 2;
@@ -49,10 +49,10 @@ export class Shots {
     this.base = base.replace(/\/+$/, '');
     this.scheme = scheme;
     this.locale = locale;
-    this.commit = commit || process.env.LOSOS_COMMIT || '';
+    this.commit = commit || Bun.env.LOSOS_COMMIT || '';
     this.host = host ?? this.base.split('://').pop();
     this.steps = [];
-    mkdirSync(out, { recursive: true });
+    Bun.spawnSync(["mkdir", "-p", out]);
   }
 
   url(path) {
@@ -61,7 +61,7 @@ export class Shots {
 
   async open() {
     this.browser = await chromium.launch({
-      executablePath: process.env.LOSOS_CHROMIUM,
+      executablePath: Bun.env.LOSOS_CHROMIUM,
       args: ['--disable-gpu', '--font-render-hinting=none'],
     });
     this.context = await this.browser.newContext({
@@ -159,7 +159,7 @@ export class Shots {
       test: this.test,
       steps: this.steps,
     };
-    writeFileSync(join(this.out, 'manifest.json'), JSON.stringify(manifest, null, 2));
+    await Bun.write(join(this.out, 'manifest.json'), JSON.stringify(manifest, null, 2));
     await this.context?.close();
     await this.browser?.close();
   }

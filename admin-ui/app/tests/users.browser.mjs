@@ -20,7 +20,7 @@
  * policy, the routes stubbed with page.route() as a small stateful lososd.
  * The caller signed in through LosOS Login, so there is no Bearer token. */
 
-import assert from 'node:assert';
+import assert from './assert.mjs';
 import { launch, runner, serve } from './harness.mjs';
 
 const { origin, close: closeServer } = await serve({ csp: true });

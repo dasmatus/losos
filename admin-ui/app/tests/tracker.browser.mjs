@@ -10,7 +10,7 @@
  * (?new=1&title=…). nix/tests/git-issues.nix
  * runs the same pages against a real box. */
 
-import assert from 'node:assert';
+import assert from './assert.mjs';
 import { launch, runner, serve } from './harness.mjs';
 
 const { origin, close: closeServer } = await serve({ csp: true });

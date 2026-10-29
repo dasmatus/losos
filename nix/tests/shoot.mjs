@@ -18,14 +18,11 @@
 // `steps` run before the shot (click, type, press, hover, scroll, wait);
 // `targets` are measured on the finished page and land in the manifest as
 // CSS px boxes, for a film that points at them.
-import { readFileSync, writeFileSync } from "node:fs";
-import { createRequire } from "node:module";
 
-const require = createRequire(import.meta.url);
-const { chromium } = require(process.env.PLAYWRIGHT_CORE);
+const { chromium } = await import(Bun.env.PLAYWRIGHT_CORE);
 
-const [planFile, outDir, origin, user, password] = process.argv.slice(2);
-const plan = JSON.parse(readFileSync(planFile, "utf8"));
+const [planFile, outDir, origin, user, password] = Bun.argv.slice(2);
+const plan = (await Bun.file(planFile).json());
 const HIDE = "*, *::before, *::after { caret-color: transparent !important; }";
 
 async function settle(page) {
@@ -104,10 +101,10 @@ for (const shot of plan.shots) {
   }
 }
 await browser.close();
-writeFileSync(`${outDir}/manifest.json`, JSON.stringify(manifest, null, 2));
+await Bun.write(`${outDir}/manifest.json`, JSON.stringify(manifest, null, 2));
 if (missed.length) {
-  console.log(`missed: ${missed.join(", ")}`);
-  process.exit(1);
+  // Thrown: an uncaught error is what makes Bun exit non-zero.
+  throw new Error(`missed: ${missed.join(", ")}`);
 }
 
 async function take(shot) {

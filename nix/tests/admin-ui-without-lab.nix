@@ -3,7 +3,7 @@
 # The SPA imports the Diagrams screen lazily, so `tsc` and Vite still
 # resolve its three WebAssembly packages (src/lab/{core,virt,render}-pkg),
 # and those take most of an hour to build. Stand-ins with the same module
-# names take their place; every page and the normal `npm run build` stay.
+# names take their place; every page and the normal `bun run build` stay.
 # Each stand-in's init throws, so a page that did open Diagrams would show
 # its error rather than half a canvas.
 #

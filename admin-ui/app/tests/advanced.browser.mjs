@@ -14,8 +14,7 @@
  * injected element fails here before it fails on the box.
  */
 
-import assert from 'node:assert';
-import { readFile } from 'node:fs/promises';
+import assert from './assert.mjs';
 import { launch, runner, serve } from './harness.mjs';
 
 const TOKEN = 'a'.repeat(64);
@@ -23,7 +22,7 @@ const { origin, close: closeServer } = await serve({ csp: true });
 const browser = await launch();
 const { check, finish } = runner();
 
-const DOC = JSON.parse(await readFile(process.env.LOSOS_OPTIONS_JSON ?? 'tests/fixtures/options.json', 'utf8'));
+const DOC = await Bun.file(Bun.env.LOSOS_OPTIONS_JSON ?? 'tests/fixtures/options.json').json();
 assert.equal(DOC.version, 1, 'the option document is version 1');
 assert.ok(DOC.options.length > 40, `the document carries ${DOC.options.length} options; expected the whole losos.* tree`);
 

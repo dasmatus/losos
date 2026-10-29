@@ -164,8 +164,8 @@ headers on Vercel, and `serve.json` does the same for `serve` on your own
 machine:
 
 ```sh
-admin-ui/lab/engine/build.sh /tmp/lab     # docker, nix, node
-npx --yes serve@14.2.4 -l 8080 /tmp/lab   # then open http://localhost:8080/diagrams/
+admin-ui/lab/engine/build.sh /tmp/lab     # docker, nix, bun
+bunx serve@14.2.4 -l 8080 /tmp/lab        # then open http://localhost:8080/diagrams/
 ```
 
 `lab.yml` builds the hosted copy for every pull request that touches
@@ -386,11 +386,11 @@ LosOS Desktop, not the desktop itself.
 
 ## Changing it
 
-- The page and its parts are in `admin-ui/app/src/lab/`. `npm run lab:core`
-  builds the core into `src/lab/core-pkg/` and `npm run lab:virt` the
+- The page and its parts are in `admin-ui/app/src/lab/`. `bun run lab:core`
+  builds the core into `src/lab/core-pkg/` and `bun run lab:virt` the
   libvirt client into `src/lab/virt-pkg/` (both gitignored; they need cargo
   with the `wasm32-unknown-unknown` target and `wasm-bindgen` 0.2.127), and
-  then `npm run dev` serves the page at `/diagrams/`. `npm run lab:render` builds
+  then `bun run dev` serves the page at `/diagrams/`. `bun run lab:render` builds
   the GPU canvas's two modules into `src/lab/render-pkg/` the same way, and
   runs `wasm-opt` on them when `WASM_OPT` names it. The page does not
   build without them, and building them takes about 13 minutes. `tests/lab.browser.mjs`

@@ -1,6 +1,6 @@
 /* LosOS Lab's core: the world model, the packet simulator, the clock, the
  * simulated consoles and pages, compiled from admin-ui/lab/core (Rust) to
- * WebAssembly. `npm run lab:core` writes the wasm-bindgen package into
+ * WebAssembly. `bun run lab:core` writes the wasm-bindgen package into
  * ./core-pkg (gitignored).
  *
  * The contract is admin-ui/lab/core/README.md: strings in, JSON text out, a

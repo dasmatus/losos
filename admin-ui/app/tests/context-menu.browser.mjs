@@ -6,7 +6,7 @@
  * Same arrangement as the other files: the real dist/ bundle, the API
  * stubbed with page.route(), the page under the appliance CSP. */
 
-import assert from 'node:assert';
+import assert from './assert.mjs';
 import { launch, runner, serve } from './harness.mjs';
 
 const TOKEN = 'a'.repeat(64);

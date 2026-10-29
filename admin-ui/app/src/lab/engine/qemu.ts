@@ -275,7 +275,7 @@ export class QemuBackend implements GuestBackend {
         label,
         reason: this.boxCopy
           ? "This copy of the lab ships without the qemu-wasm engine, so consoles are simulated. The hosted copy boots real guests."
-          : "This page is served without COOP/COEP headers, so qemu-wasm cannot start its threads. Serve the hosted copy with its serve.json (npx serve) or vercel.json.",
+          : "This page is served without COOP/COEP headers, so qemu-wasm cannot start its threads. Serve the hosted copy with its serve.json (bunx serve) or vercel.json.",
       };
     }
     try {

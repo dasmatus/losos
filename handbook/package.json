@@ -3,20 +3,20 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "docusaurus": "docusaurus",
-    "start": "docusaurus start",
-    "build": "docusaurus build",
-    "swizzle": "docusaurus swizzle",
-    "deploy": "docusaurus deploy",
-    "clear": "docusaurus clear",
-    "serve": "docusaurus serve",
-    "write-translations": "docusaurus write-translations",
-    "write-heading-ids": "docusaurus write-heading-ids",
-    "typecheck": "tsc",
-    "check:links": "node scripts/check-links.mjs",
+    "docusaurus": "bunx --bun docusaurus",
+    "start": "bunx --bun docusaurus start",
+    "build": "bunx --bun docusaurus build",
+    "swizzle": "bunx --bun docusaurus swizzle",
+    "deploy": "bunx --bun docusaurus deploy",
+    "clear": "bunx --bun docusaurus clear",
+    "serve": "bunx --bun docusaurus serve",
+    "write-translations": "bunx --bun docusaurus write-translations",
+    "write-heading-ids": "bunx --bun docusaurus write-heading-ids",
+    "typecheck": "bun --bun tsc",
+    "check:links": "bun scripts/check-links.mjs",
     "theme": "scripts/derisk-theme.sh",
-    "check": "npm run check:links && npm run check:braces",
-    "check:braces": "node scripts/check-braces.mjs"
+    "check": "bun run check:links && bun run check:braces",
+    "check:braces": "bun scripts/check-braces.mjs"
   },
   "dependencies": {
     "@docusaurus/core": "3.10.2",
@@ -32,6 +32,7 @@
     "@docusaurus/module-type-aliases": "3.10.2",
     "@docusaurus/tsconfig": "3.10.2",
     "@docusaurus/types": "3.10.2",
+    "@types/bun": "1.4.2",
     "@types/react": "^19.0.0",
     "braces": "file:./vendor/braces",
     "typescript": "~6.0.2"
@@ -48,14 +49,12 @@
       "last 5 safari version"
     ]
   },
-  "engines": {
-    "node": ">=20.0"
-  },
   "overrides": {
     "tinypool": "^2.2.0",
     "serialize-javascript": "^7.0.5",
     "uuid": "^11.1.1",
     "postcss-selector-parser": "^7.1.6",
-    "braces": "$braces"
-  }
+    "braces": "file:./vendor/braces"
+  },
+  "packageManager": "bun@1.4.2"
 }

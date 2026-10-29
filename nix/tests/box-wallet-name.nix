@@ -139,7 +139,7 @@ let
       "PLAYWRIGHT_CORE=${pkgs.playwright-driver}"
       "PLAYWRIGHT_BROWSERS_PATH=${browsers}"
       "PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true"
-      "${pkgs.nodejs}/bin/node ${./box-wallet-name.mjs}"
+      "${pkgs.bun}/bin/bun ${./box-wallet-name.mjs}"
       "--mode ${mode} --out /tmp/shots --user matus --password ${password} >&2"
     ];
 in
@@ -250,7 +250,7 @@ pkgs.testers.nixosTest {
       {
         networking.hosts.${nodes.box.networking.primaryIPAddress} = [ "mattbox.local" ];
         environment.systemPackages = [
-          pkgs.nodejs
+          pkgs.bun
           pkgs.bind
           pkgs.curl
         ];

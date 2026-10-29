@@ -1,7 +1,7 @@
 /* A live-editing room in memory, as backend/src/cloud/collab/room.rs keeps
  * one: a Yjs document per file with the text in `content`, y-sync and
  * awareness over the y-websocket framing, every update passed to the other
- * connections. Pages reach it through page.routeWebSocket. `hold` keeps a
+ * connections. Pages reach it through routeWebSocket in harness.mjs. `hold` keeps a
  * connection's messages back in both directions until it is let go, so a
  * test can make two people change the same file at the same moment. */
 
@@ -23,7 +23,7 @@ export function yroom(initial) {
 
   const sendTo = (conn, bytes) => {
     if (conn.held) conn.out.push(bytes);
-    else conn.ws.send(Buffer.from(bytes));
+    else conn.ws.send(bytes);
   };
   const broadcast = (bytes, except) => {
     for (const c of conns.values()) if (c !== except) sendTo(c, bytes);
@@ -62,7 +62,7 @@ export function yroom(initial) {
   return {
     doc,
     text: () => doc.getText('content').toString(),
-    /** For page.routeWebSocket: `name` names the connection for hold(). */
+    /** For routeWebSocket (harness.mjs): `name` names the connection for hold(). */
     connect(ws, name) {
       const conn = { ws, held: false, in: [], out: [], clients: new Set() };
       conns.set(name, conn);
@@ -98,7 +98,7 @@ export function yroom(initial) {
       const conn = conns.get(name);
       conn.held = false;
       for (const m of conn.in.splice(0)) receive(conn, m);
-      for (const b of conn.out.splice(0)) conn.ws.send(Buffer.from(b));
+      for (const b of conn.out.splice(0)) conn.ws.send(b);
     },
   };
 }

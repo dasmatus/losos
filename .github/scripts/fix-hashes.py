@@ -2,8 +2,9 @@
 """Recompute the Nix hashes that pin the dependency lock files.
 
 Each lock file below is vendored by a fixed-output derivation whose hash is
-written in a .nix file (`cargoHash`, `npmDepsHash`, `pluginsCargoHash`). When a
-lock file changes, through a Dependabot bump, `cargo update` or `npm install`,
+written in a .nix file (`cargoHash`, `pluginsCargoHash`, and the `hash` of each
+Bun workspace's node_modules). When a lock file changes, through a Dependabot
+bump, `cargo update` or `bun install`,
 that hash goes stale: the package fails to build with the right hash in its
 error, or a cache that still holds the old vendor directory hands it back and
 the build fails later, offline, on a missing crate.
@@ -12,7 +13,7 @@ This script builds each affected vendor derivation with a placeholder hash, so
 nothing can be substituted for it, reads the real hash out of Nix's mismatch
 error and writes it over the old value in every tracked .nix file that carries
 it. Two packages that vendor the same lock file (losos-registrar and its static
-build, the admin UI and its browser check) share one value and move together.
+build) share one value and move together.
 
     fix-hashes.py                 entries whose lock files differ from origin/main
     fix-hashes.py --base REF      ... from REF (merge base), plus uncommitted edits
@@ -35,7 +36,8 @@ SYSTEM = "x86_64-linux"
 # (name, the vendor derivation, derivations that must carry the same hash,
 #  the lock files it vendors)
 CARGO = "cargoDeps.vendorStaging"
-NPM = "npmDeps"
+# nix/bun-deps.nix, a passthru of each Bun-built package.
+BUN = "nodeModules"
 ENTRIES = [
     ("losos-ctl", f"packages.{SYSTEM}.losos-ctl.{CARGO}", [], ["backend/Cargo.lock"]),
     (
@@ -60,14 +62,14 @@ ENTRIES = [
     ("losos-lab-virt", f"packages.{SYSTEM}.losos-lab-virt.{CARGO}", [], ["admin-ui/lab/virt-rpc/Cargo.lock"]),
     ("losos-lab-render", f"packages.{SYSTEM}.losos-lab-render.{CARGO}", [], ["admin-ui/lab/render/Cargo.lock"]),
     ("losos-mdx-wasm", f"packages.{SYSTEM}.losos-mdx-wasm.{CARGO}", [], ["backend/mdx/Cargo.lock"]),
+    ("losos-admin-ui", f"packages.{SYSTEM}.losos-admin-ui.{BUN}", [], ["admin-ui/app/bun.lock"]),
     (
-        "losos-admin-ui",
-        f"packages.{SYSTEM}.losos-admin-ui.{NPM}",
-        [f"checks.{SYSTEM}.losos-admin-ui.{NPM}"],
-        ["admin-ui/app/package-lock.json"],
+        "losos-handbook",
+        f"packages.{SYSTEM}.losos-handbook.{BUN}",
+        [],
+        ["handbook/bun.lock", "handbook/vendor/braces/package.json"],
     ),
-    ("losos-handbook", f"packages.{SYSTEM}.losos-handbook.{NPM}", [], ["handbook/package-lock.json"]),
-    ("losos-ds-render", f"checks.{SYSTEM}.losos-ds-render.{NPM}", [], ["admin-ui/design-system/react/package-lock.json"]),
+    ("losos-ds-render", f"checks.{SYSTEM}.losos-ds-render.{BUN}", [], ["admin-ui/design-system/react/bun.lock"]),
 ]
 
 # The fetchers run Python requests and curl inside the sandbox. Where outgoing

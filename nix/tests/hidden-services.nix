@@ -51,7 +51,7 @@ let
       }
     }
     export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
-    exec ${pkgs.nodejs}/bin/node ${./shoot.mjs} "$@"
+    exec ${pkgs.bun}/bin/bun ${./shoot.mjs} "$@"
   '';
 
   # The Network pane, scrolled to its end, where the new section is: the

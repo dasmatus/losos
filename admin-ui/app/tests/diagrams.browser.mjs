@@ -12,9 +12,8 @@
  * in memory behind /cloud/api, as backend/src/cloud/api.rs answers.
  */
 
-import assert from 'node:assert';
-import { readFile } from 'node:fs/promises';
-import { launch, runner, serve, shellRoutes } from './harness.mjs';
+import assert from './assert.mjs';
+import { launch, routeWebSocket, runner, serve, shellRoutes, stash } from './harness.mjs';
 import { yroom } from './yroom.mjs';
 
 const TOKEN = 'c'.repeat(64);
@@ -275,7 +274,7 @@ const OBSIDIAN = {
 
 await check('an Obsidian Canvas file opens, and saves with every key it came with', async () => {
   const { page, clean } = await open();
-  await page.getByTestId('open-file').setInputFiles({ name: 'week.canvas', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(OBSIDIAN)) });
+  await page.getByTestId('open-file').setInputFiles(await stash('week.canvas', JSON.stringify(OBSIDIAN)));
   await card(page, 'Inbox').waitFor();
   assert.strictEqual(await nodes(page).count(), 3);
   assert.strictEqual(await edges(page).count(), 1);
@@ -283,7 +282,7 @@ await check('an Obsidian Canvas file opens, and saves with every key it came wit
 
   const saved = await download(page, 'file-download');
   assert.strictEqual(saved.name, 'week.canvas');
-  const doc = JSON.parse(await readFile(saved.path, 'utf8'));
+  const doc = await Bun.file(saved.path).json();
   const a1 = doc.nodes.find((n) => n.id === 'a1');
   assert.strictEqual(a1['x-plugin-pin'], true, 'a card keeps its unknown key');
   assert.deepStrictEqual(a1.styleAttributes, { shape: 'pill', border: 'dashed' });
@@ -299,18 +298,18 @@ await check('an Obsidian Canvas file opens, and saves with every key it came wit
 
 await check('the picture comes out as SVG and as PNG', async () => {
   const { page, clean } = await open();
-  await page.getByTestId('open-file').setInputFiles({ name: 'week.canvas', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(OBSIDIAN)) });
+  await page.getByTestId('open-file').setInputFiles(await stash('week.canvas', JSON.stringify(OBSIDIAN)));
   await card(page, 'Inbox').waitFor();
   const svg = await download(page, 'export-svg');
   assert.strictEqual(svg.name, 'week.svg');
-  const text = await readFile(svg.path, 'utf8');
+  const text = await Bun.file(svg.path).text();
   assert.match(text, /^<svg[^>]+xmlns="http:\/\/www.w3.org\/2000\/svg"/);
   assert.match(text, /Inbox/);
   assert.doesNotMatch(text, /var\(--/, 'colours are resolved, not tokens');
   const png = await download(page, 'export-png');
   assert.strictEqual(png.name, 'week.png');
-  const bytes = await readFile(png.path);
-  assert.strictEqual(bytes.subarray(1, 4).toString(), 'PNG');
+  const bytes = await Bun.file(png.path).bytes();
+  assert.strictEqual(new TextDecoder().decode(bytes.subarray(1, 4)), 'PNG');
   assert.ok(bytes.length > 2000, `a real picture: ${bytes.length} bytes`);
   await clean();
   await page.close();
@@ -417,7 +416,7 @@ await check('edited together: two people on one file see each other, their chang
     await page.route('**/cloud/api/collab/doc?*', (route) =>
       json(route, 200, { name: 'plan.canvas', owner: 'matus', box: 'mattbox.local', perm: 'edit', remote: false, me: { name, address: `${login}@mattbox.local` } }),
     );
-    await page.routeWebSocket(/\/cloud\/api\/collab\/ws/, (ws) => room.connect(ws, login));
+    await routeWebSocket(page, /\/cloud\/api\/collab\/ws/, (ws) => room.connect(ws, login));
   };
   const query = '&file=' + encodeURIComponent('Diagrams/plan.canvas');
   const a = await open({ routes: person('Matus', 'matus'), query });
@@ -496,7 +495,7 @@ await check('a diagram shared from another box opens in its room; a view-only sh
         perm: 'read', remote: true, linked: true, me: { name: 'Eva', address: 'eva@kitchenbox.local' },
       });
     });
-    await page.routeWebSocket(/\/cloud\/api\/collab\/ws\?.*share=sh_1/, (ws) => room.connect(ws, 'eva'));
+    await routeWebSocket(page, /\/cloud\/api\/collab\/ws\?.*share=sh_1/, (ws) => room.connect(ws, 'eva'));
   };
   const { page, clean } = await open({ routes, query: '&share=sh_1&fileId=7' });
   await card(page, 'Inbox').waitFor();
@@ -595,7 +594,7 @@ await check('phone width: no sideways scroll, the canvas still takes a card', as
 
 await check('dark theme: cards follow the house tokens', async () => {
   const { page, clean } = await open({ scheme: 'dark' });
-  await page.getByTestId('open-file').setInputFiles({ name: 'week.canvas', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(OBSIDIAN)) });
+  await page.getByTestId('open-file').setInputFiles(await stash('week.canvas', JSON.stringify(OBSIDIAN)));
   await card(page, 'Inbox').waitFor();
   const fill = await page.locator('[data-testid=diagram] [data-node="b2"] .dg-shape').evaluate((el) => getComputedStyle(el).fill);
   const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
