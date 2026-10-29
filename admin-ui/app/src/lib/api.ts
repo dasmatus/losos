@@ -33,6 +33,10 @@ export interface StateResponse {
 
 export interface SettingsResponse {
   sharingMyStorage: boolean;
+  /** losos.sharingLocally: share as `kindashared` with the local gateways of
+   *  this box's own network only. Missing from an older lososd, which reads
+   *  as off. */
+  sharingLocally: boolean;
   hostName: string;
   gpuEnable: boolean;
   proxyEnable: boolean;
@@ -714,7 +718,10 @@ export function getState(options: RequestOptions = {}): Promise<StateResponse> {
 
 /** GET /api/settings — the losos.* options parsed out of overrides.nix. */
 export function getSettings(options: RequestOptions = {}): Promise<SettingsResponse> {
-  return call<SettingsResponse>("/api/settings", options);
+  return call<SettingsResponse>("/api/settings", options).then((s) => ({
+    ...s,
+    sharingLocally: s.sharingLocally ?? false,
+  }));
 }
 
 /** GET /api/status — rebuild progress. Poll it with {@link createStatusPoller}. */
@@ -805,6 +812,9 @@ export interface EdgeCluster {
 export interface EdgeResponse {
   /** At least one edge answered. The one bit the gate reads. */
   reachable: boolean;
+  /** At least one edge is a local gateway (its link is secondary): the bit
+   *  the kindashared gate reads. Missing from an older lososd. */
+  localGateway?: boolean;
   /** At least one edge is official: the bit the market gate reads. */
   official: boolean;
   /** Every edge that answered, LAN first. */
@@ -834,6 +844,9 @@ export interface EdgeResponse {
    *  answered; it turns it back on a minute after one does. Null when not
    *  paused, missing from an older lososd. */
   sharingPausedAt?: number | null;
+  /** The same for sharing with this network (`sharingLocally`): when the box
+   *  turned it off because no local gateway answered. */
+  localSharingPausedAt?: number | null;
   /** Whether this box ends TLS for its public names itself, so the edge only
    *  passes encrypted bytes through (modules/public-tls.nix). Missing from an
    *  older lososd. */
@@ -1972,7 +1985,7 @@ export interface AppSource {
 }
 
 /** The two data users: the private side and the side lent to the mesh. */
-export type AppRunAs = "notshared" | "shared";
+export type AppRunAs = "notshared" | "shared" | "kindashared";
 
 export type AppPhase = "installing" | "running" | "failed" | "removing";
 
@@ -2003,7 +2016,13 @@ export interface InstalledApp {
 
 export type AppsResponse =
   | { available: false; reason: "off"; apps: [] }
-  | { available: true; sharedAvailable: boolean; apps: InstalledApp[] };
+  | {
+      available: true;
+      sharedAvailable: boolean;
+      /** Missing from an older lososd, which reads as no. */
+      kindasharedAvailable?: boolean;
+      apps: InstalledApp[];
+    };
 
 /** GET /api/apps */
 export function getApps(options: RequestOptions = {}): Promise<AppsResponse> {
@@ -2984,9 +3003,9 @@ export function buildOverridesNix(
   settings: SettingsResponse,
   /* Every other `losos.<name>` the file should carry, as Nix literals the
    * Advanced pane produced (lib/option-value.ts): one line each, after the
-   * twelve above, sorted so the file is stable from one apply to the next
+   * thirteen above, sorted so the file is stable from one apply to the next
    * and the commit lososd makes shows only what changed. A name here that is
-   * one of the twelve would be a second line for the same key; the first
+   * one of the thirteen would be a second line for the same key; the first
    * wins in lososd's parser, so the form's own value would silently win over
    * the Advanced pane's. The pane never hands one in (it edits those through
    * the form), and the filter below is the belt to that. */
@@ -3000,6 +3019,7 @@ export function buildOverridesNix(
     "{ ... }:",
     "{",
     `  losos.sharingMyStorage = ${nixBool(settings.sharingMyStorage)};`,
+    `  losos.sharingLocally = ${nixBool(settings.sharingLocally)};`,
     `  losos.hostName = ${nixString(settings.hostName)};`,
     `  losos.gpu.enable = ${nixBool(settings.gpuEnable)};`,
     `  losos.proxy.enable = ${nixBool(settings.proxyEnable)};`,
@@ -3017,9 +3037,10 @@ export function buildOverridesNix(
   ].join("\n");
 }
 
-/** The twelve `losos.*` names the lines above always write. */
+/** The thirteen `losos.*` names the lines above always write. */
 export const OWNED_NAMES: ReadonlySet<string> = new Set([
   "sharingMyStorage",
+  "sharingLocally",
   "hostName",
   "gpu.enable",
   "proxy.enable",

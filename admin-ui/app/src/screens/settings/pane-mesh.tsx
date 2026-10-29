@@ -415,6 +415,75 @@ export function ClusterGroup({ view, locked }: { view: EdgeView; locked: boolean
   );
 }
 
+/* Sharing as kindashared: the third data account, for the local gateways of
+ * the network this box sits on and nothing further (losos.sharingLocally).
+ * The daemon turns it on only while such a gateway answers, an official edge
+ * not being one, so the switch is greyed with that reason when none does,
+ * unless it is already on and must stay possible to turn off. Like the
+ * mesh's switches it goes out with Apply. The last row says which account
+ * the shared side's apps (chat, mail, calls, Mesh CI) run as, from the saved
+ * settings: shared in the mesh, else kindashared, else none
+ * (lososInternal.sideUser). */
+export function LocalShareGroup({ view, form }: { view: EdgeView; form: SettingsForm }) {
+  const t = useT();
+  const id = React.useId();
+  const edge = view.edge;
+  const on = form.draft?.sharingLocally ?? false;
+  const saved = form.saved;
+  const refused = edge !== null && edge.localGateway === false && !(saved?.sharingLocally ?? false);
+  const gateways = (edge?.edges ?? [])
+    .filter((e) => e.tier === "secondary")
+    .map((e) => e.member ?? e.name);
+  const paused = edge?.localSharingPausedAt ?? null;
+  const side =
+    saved === null
+      ? null
+      : saved.sharingMyStorage && saved.clusterEnable
+        ? "shared"
+        : saved.sharingLocally
+          ? "kindashared"
+          : null;
+  return (
+    <PaneSection data-section="local-share">
+      <GroupTitle>{t("panes.mesh.local.title")}</GroupTitle>
+      <Group>
+        {paused !== null && (
+          <Row data-local-sharing="paused">
+            <RowText
+              title={t("panes.mesh.local.paused", { date: fmt.date(paused * 1000), time: fmt.time(paused * 1000) })}
+              detail={t("panes.mesh.local.pausedDetail")}
+            />
+            <RowValue className={gateways.length > 0 ? "text-ok" : "text-warn"}>
+              {t(gateways.length > 0 ? "panes.mesh.edge.resuming" : "panes.mesh.local.waiting")}
+            </RowValue>
+          </Row>
+        )}
+        <SwitchRow
+          id={id}
+          title={t("panes.mesh.local.switch")}
+          description={refused && !form.locked ? t("panes.mesh.local.needed") : undefined}
+          checked={on}
+          disabled={form.locked || !form.ready || refused}
+          onCheckedChange={(next) => form.set("sharingLocally", next)}
+        />
+        <Row data-local-gateways={gateways.length}>
+          <RowText title={t("panes.mesh.local.gateways")} />
+          <RowValue className={gateways.length > 0 ? "text-ok" : undefined}>
+            {gateways.length > 0 ? gateways.join(", ") : t("panes.mesh.local.none")}
+          </RowValue>
+        </Row>
+        <Row last data-side-user={side ?? "none"}>
+          <RowText title={t("panes.mesh.local.runsAs")} />
+          <RowValue className="font-mono">{side ?? t("panes.mesh.local.runsAsNone")}</RowValue>
+        </Row>
+      </Group>
+      <GroupCaption>
+        {t("panes.mesh.local.caption")} <HelpLink entry="storage-modes" />
+      </GroupCaption>
+    </PaneSection>
+  );
+}
+
 /* A company's own edge may look after LosOS Cloud, LosOS Git and the apps
  * from its own page, once the owner says so here. The switch names the edge
  * in use and is bound to it: a box that moves to another edge is not managed
@@ -519,6 +588,7 @@ export function MeshPane({ form }: { form: SettingsForm }) {
     <>
       <EdgeGroup view={edge} />
       <ClusterGroup view={edge} locked={form.locked} />
+      <LocalShareGroup view={edge} form={form} />
       <ManageGroup view={edge} locked={form.locked} />
 
       <PaneSection>

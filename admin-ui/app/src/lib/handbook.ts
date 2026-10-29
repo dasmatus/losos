@@ -31,6 +31,7 @@ export const HANDBOOK_ENTRIES = {
   "out-of-room": "troubleshooting/out-of-room/",
   "edge-not-found": "troubleshooting/edge-not-found/",
   "sharing-refused": "troubleshooting/sharing-refused/",
+  "storage-modes": "types/storage-modes/",
   "getting-help": "troubleshooting/getting-help/",
   "sign-in-and-spare-key": "manual/sign-in-and-spare-key/",
   moderation: "manual/moderation/",

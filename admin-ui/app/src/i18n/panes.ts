@@ -609,6 +609,61 @@ export default defineMessages({
     sk: "Vaša vlastná doména je obsluhovaná cez okrajový server, ktorý zariadenie používa, preto ho nemožno presunúť do iného klastra. Samo sa presunie, iba ak je ten server zablokovaný, a doména ide s ním.",
     de: "Deine eigene Domain läuft über den Edge, den diese Box nutzt, darum kann sie nicht in einen anderen Cluster wechseln. Sie wechselt nur von selbst, wenn dieser Edge gesperrt wird, und die Domain zieht mit.",
   },
+  "panes.mesh.local.title": {
+    en: "This network",
+    sk: "Táto sieť",
+    de: "Dieses Netzwerk",
+  },
+  "panes.mesh.local.switch": {
+    en: "Share with this network's gateways",
+    sk: "Zdieľať s bránami tejto siete",
+    de: "Mit den Gateways dieses Netzwerks teilen",
+  },
+  "panes.mesh.local.needed": {
+    en: "Needs a local gateway in reach. An official edge is not enough.",
+    sk: "Vyžaduje dostupnú lokálnu bránu. Oficiálny okrajový server nestačí.",
+    de: "Braucht ein erreichbares lokales Gateway. Ein offizieller Edge reicht nicht.",
+  },
+  "panes.mesh.local.gateways": {
+    en: "Local gateways",
+    sk: "Lokálne brány",
+    de: "Lokale Gateways",
+  },
+  "panes.mesh.local.none": {
+    en: "None in reach",
+    sk: "Žiadna nie je dostupná",
+    de: "Keines erreichbar",
+  },
+  "panes.mesh.local.runsAs": {
+    en: "Chat, mail, calls and Mesh CI run as",
+    sk: "Chat, pošta, hovory a Mesh CI bežia ako",
+    de: "Chat, Mail, Anrufe und Mesh CI laufen als",
+  },
+  "panes.mesh.local.runsAsNone": {
+    en: "Off",
+    sk: "Vypnuté",
+    de: "Aus",
+  },
+  "panes.mesh.local.paused": {
+    en: "Sharing with this network paused since {date}, {time}",
+    sk: "Zdieľanie s touto sieťou pozastavené od {date}, {time}",
+    de: "Teilen mit diesem Netzwerk pausiert seit {date}, {time}",
+  },
+  "panes.mesh.local.pausedDetail": {
+    en: "No local gateway answered for a while, so this box turned it off by itself. It turns it back on a minute after one answers again.",
+    sk: "Dlhší čas sa neozvala žiadna lokálna brána, preto ho toto zariadenie samo vyplo. Znova ho zapne minútu po tom, ako sa niektorá opäť ozve.",
+    de: "Eine Weile hat kein lokales Gateway geantwortet, also hat diese Box es selbst ausgeschaltet. Sie schaltet es wieder ein, eine Minute nachdem eines wieder antwortet.",
+  },
+  "panes.mesh.local.waiting": {
+    en: "Waiting for a gateway",
+    sk: "Čaká sa na bránu",
+    de: "Wartet auf ein Gateway",
+  },
+  "panes.mesh.local.caption": {
+    en: "Kinda shared: the box keeps a third account, kindashared, with its own encrypted folder, for the gateways of the network it sits on, a company's or your own. Nothing in it goes to an official edge or the wider mesh, and nothing in it is sold on the market. While it is on, chat, mail, calls and Mesh CI run as kindashared when the box is not in the mesh, and apps can be installed as kindashared. Your own files stay apart either way.",
+    sk: "Tak trochu zdieľané: zariadenie má tretí účet, kindashared, s vlastným šifrovaným priečinkom, pre brány siete, v ktorej je, firemnej alebo vašej. Nič z neho nejde na oficiálny okrajový server ani do širšej siete mesh a nič z neho sa nepredáva na trhu. Kým je zapnuté, chat, pošta, hovory a Mesh CI bežia ako kindashared, ak zariadenie nie je v sieti mesh, a aplikácie možno inštalovať ako kindashared. Vaše vlastné súbory zostávajú oddelené tak či tak.",
+    de: "Ein bisschen geteilt: Die Box führt ein drittes Konto, kindashared, mit einem eigenen verschlüsselten Ordner, für die Gateways des Netzwerks, in dem sie steht, das einer Firma oder dein eigenes. Nichts darin geht an einen offiziellen Edge oder ins weitere Mesh, und nichts darin wird auf dem Markt verkauft. Solange es an ist, laufen Chat, Mail, Anrufe und Mesh CI als kindashared, wenn die Box nicht im Mesh ist, und Apps lassen sich als kindashared installieren. Deine eigenen Dateien bleiben so oder so getrennt.",
+  },
   "panes.mesh.manage.title": {
     en: "Managed from the edge",
     sk: "Správa z okrajového servera",

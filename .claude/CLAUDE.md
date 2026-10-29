@@ -89,9 +89,15 @@ and is never served or built by nix.
   tree, and `flake.nix` imports the live copy from `/etc/nixos` on rebuilds.
   `nix/tests/iso-install.nix` (CI's `install` job, and pre-push on the same
   lane) runs that installer offline and boots the disk it wrote.
-- `configuration.nix`: `notshared` (uid 1000, the owner's apps and LosOS Cloud name) and `shared`
-  (uid 1001, mesh storage), each with its own group and a `700` home, no
-  passwords, `openssh` off.
+- `configuration.nix`: `notshared` (uid 1000, the owner's apps and LosOS Cloud name), `shared`
+  (uid 1001, mesh storage) and `kindashared` (uid 1004, shared with local
+  gateways only), each with its own group, `700` home and fscrypt domain
+  (`fscrypt.nix` `mkDomain`), no passwords, `openssh` off. `losos.sharingLocally`
+  opens `kindashared`; lososd refuses it without a Secondary-tier edge
+  (`edge::check_local_gate`, 409 `localGatewayRequired`) and pauses it like
+  sharing. `lososInternal.sideUser` (`shared` while in the mesh, else
+  `kindashared`) is the account chat, mail, calls and Mesh CI run as;
+  `sideLive` gates them.
 - `daemon.nix` + `backend/`: `lososd` is a root daemon owning
   `/var/lib/losos/state.json`, exporting one D-Bus method per subcommand
   (`org.losos1`, `/org/losos1`, `org.losos.Control1`) and a Bearer-authed

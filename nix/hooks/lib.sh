@@ -237,18 +237,21 @@ hook_tool() {
 
 hook_npm() { hook_tool npm nodejs "$@"; }
 
-# LosOS Diagrams' three WebAssembly packages, which admin-ui/app imports and
-# git ignores (src/lab/{core,virt,render}-pkg). tsc needs them, so a checkout
-# without one gets the package the flake builds (`npm run lab:<name>` would
-# need cargo for wasm32 and the pinned wasm-bindgen).
+# The WebAssembly packages admin-ui/app imports and git ignores: LosOS
+# Diagrams' three (src/lab/{core,virt,render}-pkg) and losos-mdx's
+# (src/mdx/pkg, for Office and Notes). tsc needs them, so a checkout without
+# one gets the package the flake builds (`npm run lab:<name>` or `npm run
+# mdx` would need cargo for wasm32 and the pinned wasm-bindgen).
 hook_lab_pkgs() {
-  local name out dir
-  for name in core virt render; do
-    dir=$hook_root/admin-ui/app/src/lab/$name-pkg
+  local spec dir attr out
+  for spec in lab/core-pkg:losos-lab-core lab/virt-pkg:losos-lab-virt \
+    lab/render-pkg:losos-lab-render mdx/pkg:losos-mdx-wasm; do
+    dir=$hook_root/admin-ui/app/src/${spec%%:*}
+    attr=${spec#*:}
     [ -d "$dir" ] && continue
     hook_need_nix || return 1
-    echo "── src/lab/$name-pkg from .#losos-lab-$name"
-    out=$(nix build --no-link --print-out-paths "$(hook_flake)#losos-lab-$name") || return 1
+    echo "── src/${spec%%:*} from .#$attr"
+    out=$(nix build --no-link --print-out-paths "$(hook_flake)#$attr") || return 1
     mkdir -p "$dir"
     cp -r "$out"/. "$dir"/
     chmod -R u+w "$dir"

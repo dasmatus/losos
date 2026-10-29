@@ -27,11 +27,12 @@ const DOC = JSON.parse(await readFile(process.env.LOSOS_OPTIONS_JSON ?? 'tests/f
 assert.equal(DOC.version, 1, 'the option document is version 1');
 assert.ok(DOC.options.length > 40, `the document carries ${DOC.options.length} options; expected the whole losos.* tree`);
 
-/* The twelve names lib/api.ts's buildOverridesNix always writes, and the
+/* The thirteen names lib/api.ts's buildOverridesNix always writes, and the
  * pane links to another pane for. Kept as a list here so the test does not
  * import the bundle it is testing. */
 const OWNED = {
   sharingMyStorage: 'market',
+  sharingLocally: 'mesh',
   hostName: 'network',
   'gpu.enable': 'hardware',
   'proxy.enable': 'network',
@@ -213,7 +214,7 @@ await check('every option in the document is drawn, with an editor kind the pane
   await page.close();
 });
 
-await check('a plain switch writes one more line after the twelve, and Apply sends it', async () => {
+await check('a plain switch writes one more line after the thirteen, and Apply sends it', async () => {
   const { page, applies } = await open();
   const r = row(page, 'configRepo.enable');
   await flip(r);
@@ -223,9 +224,9 @@ await check('a plain switch writes one more line after the twelve, and Apply sen
   await page.waitForTimeout(200);
   assert.equal(applies.length, 1);
   const lines = nixLines(applies[0]);
-  assert.equal(lines.length, 13, `expected the twelve lines plus one, got:\n${lines.join('\n')}`);
+  assert.equal(lines.length, 14, `expected the thirteen lines plus one, got:\n${lines.join('\n')}`);
   assert.ok(lines.includes('  losos.configRepo.enable = false;'), lines.join('\n'));
-  assert.ok(lines[0].startsWith('  losos.sharingMyStorage'), 'the twelve come first');
+  assert.ok(lines[0].startsWith('  losos.sharingMyStorage'), 'the thirteen come first');
   await page.close();
 });
 
@@ -351,12 +352,12 @@ await check('search narrows the rows and says when nothing matches', async () =>
   await page.close();
 });
 
-await check('a box without the options route still applies its twelve lines', async () => {
+await check('a box without the options route still applies its thirteen lines', async () => {
   const { page, applies, errors } = await open({ path: '/settings/network', optionsStatus: 404 });
   await main(page).getByText('Reachable from outside your home', { exact: true }).click();
   await applyButton(page).click();
   await page.waitForTimeout(200);
-  assert.equal(nixLines(applies[0]).length, 12);
+  assert.equal(nixLines(applies[0]).length, 13);
   await page.goto(origin + '/settings/advanced', { waitUntil: 'networkidle' });
   await main(page).getByText('does not serve its option document yet').waitFor();
   assert.deepEqual(errors, []);
@@ -455,7 +456,7 @@ await check('the Apps pane draws every box-wide setting of both apps, and Apply 
   }
   assert.ok(!lines.some((line) => line.includes('trashDays')), 'clearing a field back to the default kept its line');
   assert.ok(!lines.some((line) => line.includes('defaultPrivate')), 'a default the box had unset was written');
-  assert.equal(lines.length, 12 + 2);
+  assert.equal(lines.length, 13 + 2);
   await noViolations(page);
   assert.deepEqual(errors, []);
   await page.close();

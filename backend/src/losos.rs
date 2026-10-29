@@ -439,6 +439,96 @@ pub fn sharing_tick<L: Losos>(
     Ok(step)
 }
 
+/// [`sharing_tick`] for `losos.sharingLocally`, the `kindashared` side:
+/// pause when no local gateway has answered for `pause_after` seconds, share
+/// again once one is back. `clock` observes [`crate::edge::EdgeStatus::
+/// local_gateway`], not plain reachability: an official edge answering does
+/// not keep this kind of sharing on.
+///
+/// # Errors
+/// Reading the state or the settings, or queueing the rebuild, failed.
+pub fn local_sharing_tick<L: Losos>(
+    l: &mut L,
+    clock: &crate::edge::OutageClock,
+    now: u64,
+    pause_after: u64,
+) -> anyhow::Result<crate::edge::SharingStep> {
+    use crate::edge::SharingStep;
+    let s = l.load_state()?;
+    if s.erase.is_some() || !s.claimed {
+        return Ok(SharingStep::Nothing);
+    }
+    let sharing = crate::edge::SharingNow {
+        on: parse_settings(&l.read_overrides()?).sharing_locally,
+        paused: s.local_sharing_paused_at.is_some(),
+        edge_seen: s.local_sharing_edge_seen,
+        building: s
+            .rebuild
+            .as_ref()
+            .is_some_and(|rb| rb.state == RebuildState::Building),
+    };
+    let step = crate::edge::sharing_step(sharing, clock, now, pause_after);
+    match step {
+        SharingStep::Nothing => {}
+        SharingStep::SeenEdge => {
+            let mut s = s;
+            s.local_sharing_edge_seen = true;
+            l.save_state(&s)?;
+        }
+        SharingStep::Forget => {
+            let mut s = s;
+            s.local_sharing_paused_at = None;
+            l.save_state(&s)?;
+        }
+        SharingStep::Pause => {
+            set_local_sharing(
+                l,
+                false,
+                "Pause local sharing: no local gateway answers",
+                |s| {
+                    s.local_sharing_paused_at = Some(now);
+                },
+            )?;
+        }
+        SharingStep::Resume => {
+            set_local_sharing(
+                l,
+                true,
+                "Resume local sharing: a local gateway answers again",
+                |s| {
+                    s.local_sharing_paused_at = None;
+                    s.local_sharing_edge_seen = true;
+                },
+            )?;
+        }
+    }
+    Ok(step)
+}
+
+/// Write `losos.sharingLocally` and rebuild: the box's own pause and resume
+/// of sharing with its local gateways. Unlike [`set_sharing`] it leaves
+/// `mode`, which is about the mesh, alone.
+fn set_local_sharing<L: Losos>(
+    l: &mut L,
+    on: bool,
+    title: &str,
+    mark: impl FnOnce(&mut State),
+) -> anyhow::Result<(String, Value)> {
+    let before = l.read_overrides()?;
+    let lines: Vec<String> = before.lines().map(str::to_string).collect();
+    let mut body = crate::overrides::inject_bool("sharingLocally", on, &lines).join("\n");
+    body.push('\n');
+    l.write_overrides(&body)?;
+    let commit = commit_settings(l, title, &before, &body);
+    let job = l.next_job_id()?;
+    let mut s = l.load_state()?;
+    s.rebuild = Some(building(&job, MSG_STARTED));
+    mark(&mut s);
+    l.save_state(&s)?;
+    l.spawn_rebuild(&job)?;
+    Ok((job, commit))
+}
+
 /// Record a change to `overrides.nix` in the configuration repository
 /// (`crate::config_repo`), with a message naming the settings that moved.
 ///
@@ -527,7 +617,10 @@ pub fn cmd_apply<L: Losos>(l: &mut L, nix_code: &str) -> anyhow::Result<Value> {
     // that is not sharing, pass whatever the network looks like.
     let now = parse_settings(&before);
     let want = parse_settings(nix_code);
-    crate::edge::check_gate(&now, &want, &l.edge_status()?)?;
+    let edge = l.edge_status()?;
+    crate::edge::check_gate(&now, &want, &edge)?;
+    // Sharing as `kindashared` needs more than any edge: a local gateway.
+    crate::edge::check_local_gate(&now, &want, &edge)?;
     crate::edge::check_mesh(nix_code)?;
     let body = crate::overrides::drop_retired(nix_code);
     l.write_overrides(&body)?;
@@ -538,6 +631,14 @@ pub fn cmd_apply<L: Losos>(l: &mut L, nix_code: &str) -> anyhow::Result<Value> {
         let mut s = l.load_state()?;
         s.sharing_paused_at = None;
         s.sharing_edge_seen = want.sharing_my_storage;
+        l.save_state(&s)?;
+    }
+    if now.sharing_locally != want.sharing_locally {
+        // The same for sharing with the local gateways: the gate above just
+        // saw one answer if it was turned on.
+        let mut s = l.load_state()?;
+        s.local_sharing_paused_at = None;
+        s.local_sharing_edge_seen = want.sharing_locally;
         l.save_state(&s)?;
     }
     let job = queue_rebuild(l, MSG_STARTED)?;
@@ -1085,6 +1186,10 @@ pub fn cmd_llm_models<L: Losos>(l: &mut L, network: Option<String>) -> anyhow::R
     Ok(reply)
 }
 
+/// Why a listing is refused on a box that shares only with its local
+/// gateways ([`cmd_market_op`]).
+pub const LOCAL_ONLY_NOT_SOLD: &str = "this box shares only with the gateways of its own network, and nothing shared that way is sold: turn on sharing with the mesh to sell room or time";
+
 /// One market action, validated here as well as at the HTTP boundary so the
 /// rule travels with the command.
 ///
@@ -1092,6 +1197,20 @@ pub fn cmd_llm_models<L: Losos>(l: &mut L, network: Option<String>) -> anyhow::R
 /// is not plain `https` is dropped rather than handed to the browser.
 pub fn cmd_market_op<L: Losos>(l: &mut L, op: &crate::market::Op) -> anyhow::Result<Value> {
     use crate::market::{Op, Outcome, Refused};
+    // Nothing kindashared holds is ever sold: sharing with this network's
+    // gateways is not the mesh, and a box that shares only that way has no
+    // room or time on the market to offer. Buying stays the owner's own
+    // business and is not touched.
+    if matches!(op, Op::List { .. }) {
+        let settings = parse_settings(&l.read_overrides()?);
+        if settings.sharing_locally && !settings.sharing_my_storage {
+            return Err(Refused {
+                status: 409,
+                message: LOCAL_ONLY_NOT_SOLD.to_string(),
+            }
+            .into());
+        }
+    }
     // Same gate as `cmd_market`, as a refusal: an action, unlike a view, has
     // to say why it did not happen.
     crate::edge::check_market_gate(&l.edge_status()?)?;
@@ -1379,6 +1498,8 @@ pub fn cmd_edge<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
     // Sharing the box turned off itself while no edge answered, and turns
     // back on once one does (`sharing_tick`).
     out["sharingPausedAt"] = json!(state.sharing_paused_at);
+    // The same for sharing with the local gateways (`local_sharing_tick`).
+    out["localSharingPausedAt"] = json!(state.local_sharing_paused_at);
     // Whether the edge can read what passes through it.
     out["publicTls"] = serde_json::to_value(l.public_tls()?)?;
     Ok(out)
@@ -2645,6 +2766,88 @@ mod tests {
         assert_eq!(fake.state, State::default(), "nothing was saved");
     }
 
+    // ── Sharing with the local gateways (kindashared) ───────────────────
+
+    fn locally_body(fake: &FakeLosos, on: bool) -> String {
+        crate::overrides::inject_bool("sharingLocally", on, &fake.config).join("\n")
+    }
+
+    fn local_line(fake: &FakeLosos) -> bool {
+        parse_settings(&fake.config.join("\n")).sharing_locally
+    }
+
+    #[test]
+    fn sharing_locally_is_refused_through_an_official_edge_alone() {
+        // The default fake's edge is official and tertiary: any edge, but
+        // not a local gateway.
+        let mut fake = FakeLosos::new();
+        let before = fake.config.clone();
+        let body = locally_body(&fake, true);
+        let err = cmd_apply(&mut fake, &body).unwrap_err();
+        assert!(
+            err.downcast_ref::<crate::edge::LocalGatewayRequired>()
+                .is_some(),
+            "{err:?}"
+        );
+        assert_eq!(fake.config, before, "overrides.nix must be untouched");
+        assert!(!fake.spawned);
+
+        let mut fake = FakeLosos::new().with_local_gateway();
+        let body = locally_body(&fake, true);
+        cmd_apply(&mut fake, &body).unwrap();
+        assert!(local_line(&fake));
+        assert!(fake.state.local_sharing_edge_seen);
+        // Sharing through the official edges is a separate switch, untouched.
+        assert_eq!(fake.state.mode, Mode::Local);
+    }
+
+    #[test]
+    fn no_local_gateway_pauses_local_sharing_and_one_brings_it_back() {
+        use crate::edge::{OutageClock, SharingStep};
+        let mut fake = FakeLosos::new().with_local_gateway();
+        fake.state.claimed = true;
+        let body = locally_body(&fake, true);
+        cmd_apply(&mut fake, &body).unwrap();
+        fake.state.rebuild.as_mut().unwrap().state = RebuildState::Done;
+        fake.spawned = false;
+        let mesh_before = parse_settings(&fake.config.join("\n")).sharing_my_storage;
+
+        let mut clock = OutageClock::default();
+        clock.observe(false, 1000);
+        clock.observe(false, 1599);
+        assert_eq!(
+            local_sharing_tick(&mut fake, &clock, 1599, 600).unwrap(),
+            SharingStep::Nothing
+        );
+        clock.observe(false, 1600);
+        assert_eq!(
+            local_sharing_tick(&mut fake, &clock, 1600, 600).unwrap(),
+            SharingStep::Pause
+        );
+        assert!(!local_line(&fake));
+        assert_eq!(fake.state.local_sharing_paused_at, Some(1600));
+        assert_eq!(
+            parse_settings(&fake.config.join("\n")).sharing_my_storage,
+            mesh_before,
+            "the pause leaves sharing through the mesh alone"
+        );
+        assert!(fake.spawned);
+        assert_eq!(
+            cmd_edge(&mut fake).unwrap()["localSharingPausedAt"],
+            json!(1600)
+        );
+
+        fake.state.rebuild.as_mut().unwrap().state = RebuildState::Done;
+        clock.observe(true, 2000);
+        clock.observe(true, 2060);
+        assert_eq!(
+            local_sharing_tick(&mut fake, &clock, 2060, 600).unwrap(),
+            SharingStep::Resume
+        );
+        assert!(local_line(&fake));
+        assert_eq!(fake.state.local_sharing_paused_at, None);
+    }
+
     #[test]
     fn edge_status_says_when_sharing_was_paused() {
         let mut fake = FakeLosos::new();
@@ -3375,6 +3578,44 @@ mod tests {
         let r = e.downcast_ref::<Refused>().unwrap();
         assert_eq!(r.status, 409);
         assert!(r.message.contains("sharing its compute"));
+    }
+
+    #[test]
+    fn nothing_shared_only_with_local_gateways_is_sold() {
+        use crate::market::{Op, Refused};
+        let list = || Op::List {
+            kind: "storage".to_string(),
+            unit_price: 100,
+            capacity: 4,
+        };
+        let mut f = market_fake();
+        f.config = crate::overrides::inject_bool("sharingMyStorage", false, &f.config);
+        f.config = crate::overrides::inject_bool("sharingLocally", true, &f.config);
+        let e = cmd_market_op(&mut f, &list()).unwrap_err();
+        let r = e.downcast_ref::<Refused>().unwrap();
+        assert_eq!(r.status, 409);
+        assert_eq!(r.message, LOCAL_ONLY_NOT_SOLD);
+        assert!(f.market_ops.is_empty(), "the refused listing left the box");
+        // Buying is the owner's own and still goes out.
+        f.market_routes.insert(
+            "POST /market/orders".to_string(),
+            (200, r#"{"id":"ord_1"}"#.to_string()),
+        );
+        cmd_market_op(
+            &mut f,
+            &Op::Order {
+                listing_id: "lst_1".to_string(),
+                quantity: 1,
+            },
+        )
+        .unwrap();
+        // With the mesh shared too, the mesh's room is for sale again.
+        f.config = crate::overrides::inject_bool("sharingMyStorage", true, &f.config);
+        f.market_routes.insert(
+            "POST /market/listings".to_string(),
+            (200, r#"{"id":"lst_2"}"#.to_string()),
+        );
+        cmd_market_op(&mut f, &list()).unwrap();
     }
 
     // ── Custom domains ──────────────────────────────────────────────────

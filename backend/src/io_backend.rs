@@ -1057,12 +1057,15 @@ pub fn start_edge_scanner(backend: &IoLosos) {
             ensure_proxy_token();
             let pause_after = sharing_pause_after();
             let mut clock = crate::edge::OutageClock::default();
+            // Sharing as kindashared counts only the local gateways.
+            let mut local_clock = crate::edge::OutageClock::default();
             loop {
                 let status = backend.scan_edge();
                 let now = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .map_or(0, |d| d.as_secs());
                 clock.observe(status.reachable, now);
+                local_clock.observe(status.local_gateway(), now);
                 match backend
                     .serialized(|l| crate::losos::sharing_tick(l, &clock, now, pause_after))
                 {
@@ -1075,6 +1078,21 @@ pub fn start_edge_scanner(backend: &IoLosos) {
                     }
                     Ok(_) => {}
                     Err(e) => tracing::warn!(error = ?e, "could not pause or resume sharing"),
+                }
+                match backend.serialized(|l| {
+                    crate::losos::local_sharing_tick(l, &local_clock, now, pause_after)
+                }) {
+                    Ok(crate::edge::SharingStep::Pause) => tracing::warn!(
+                        pause_after,
+                        "no local gateway answered for {pause_after} s: sharing with this network is paused until one does"
+                    ),
+                    Ok(crate::edge::SharingStep::Resume) => {
+                        tracing::info!("a local gateway answers again: sharing with this network is back on");
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!(error = ?e, "could not pause or resume sharing with this network");
+                    }
                 }
                 std::thread::sleep(crate::edge::SCAN_INTERVAL);
             }
@@ -3420,6 +3438,8 @@ mod tests {
             managed_by: Some("http://office.local:8443".into()),
             sharing_paused_at: Some(1_700_000_000),
             sharing_edge_seen: true,
+            local_sharing_paused_at: Some(1_700_000_100),
+            local_sharing_edge_seen: true,
         };
         write_state(&p, &s).unwrap();
         assert_eq!(read_state(&p), s);
