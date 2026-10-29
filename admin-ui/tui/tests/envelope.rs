@@ -27,6 +27,7 @@ fn pair() -> Pair {
         token: "losos_pat_0123abcd_00112233445566778899aabbccddeeff00112233".into(),
         key_fingerprint: user.fingerprint().to_owned(),
         tls_pin: None,
+        edge_url: None,
     };
     let unlocked = UserKey::from_armored(&user.armored_secret().unwrap())
         .unwrap()
@@ -147,6 +148,7 @@ fn refuses_a_pin_whose_key_does_not_match_its_fingerprint() {
         token: String::new(),
         key_fingerprint: user.fingerprint().to_owned(),
         tls_pin: None,
+        edge_url: None,
     };
     let unlocked = UserKey::from_armored(&user.armored_secret().unwrap())
         .unwrap()

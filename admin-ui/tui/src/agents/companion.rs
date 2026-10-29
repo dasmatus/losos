@@ -112,7 +112,7 @@ fn unreachable(url: &str, e: HttpError) -> Problem {
         HttpError::CertificateChanged => {
             Problem::new("losos::pin", tr!("tui.host.certificateChanged", url = url))
         }
-        HttpError::Unreachable(detail) => Problem::new(
+        HttpError::Unreachable(detail) | HttpError::NoConnection(detail) => Problem::new(
             "losos::unreachable",
             tr!("tui.agents.loginUnreachable", url = url, detail = detail),
         ),
