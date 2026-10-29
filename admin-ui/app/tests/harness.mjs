@@ -182,7 +182,8 @@ function upgrade(req, server) {
   if (route === undefined) return new Response('no socket here', { status: 404 });
   // The page names its subprotocols; the first is the one it gets.
   const protocol = req.headers.get('sec-websocket-protocol')?.split(',')[0].trim();
-  const headers = protocol ? { 'Sec-WebSocket-Protocol': protocol } : {};
+  const headers = new Headers();
+  if (protocol) headers.set('Sec-WebSocket-Protocol', protocol);
   if (server.upgrade(req, { headers, data: { url, route } })) return undefined;
   return new Response('not a WebSocket', { status: 400 });
 }
