@@ -110,11 +110,14 @@ oder die Anmeldung. **Widerrufen** beendet eines sofort.
 ## Den Client installieren \{#install-the-client}
 
 ```sh
-curl -fsSL https://proxy.losos.dasmat.us/updates/main/x86_64/install.sh | sh
+curl -fsSLO https://nightly.link/dasmatus/losos/workflows/ci/main/losos-pages-updates.zip
+unzip -o losos-pages-updates.zip -d losos-pages-updates
+sh losos-pages-updates/install.sh
 ```
 
-Das Skript lädt das Programm und seine Prüfsumme herunter, prüft das eine
-gegen das andere und legt `losos` in `~/.local/bin` ab, oder in
+Das Zip ist der neueste Build des Clients aus dem GitHub von LosOS, mit dem
+Programm, seiner Prüfsumme und dem Skript. Das Skript prüft das Programm
+gegen die Prüfsumme und legt `losos` in `~/.local/bin` ab, oder in
 `/usr/local/bin`, wenn du es als root ausführst. Es fragt nie nach einem
 Passwort. Lies es vorher, wenn du willst. Es ist kurz und sagt oben, was es
 tut.

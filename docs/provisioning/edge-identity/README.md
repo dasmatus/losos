@@ -12,20 +12,21 @@ This page is for the people who run gateways and the tools around them:
 
 ## Getting the tool
 
-CI publishes `losos-registrar` for the dev machine, linked statically so it
-runs on any x86_64 Linux with nothing installed, to GHCR, and the LosOS
-proxy serves it. One line fetches it, checks it against the sums CI wrote
-beside it, and makes it executable:
+CI builds `losos-registrar` for the dev machine, linked statically so it
+runs on any x86_64 Linux with nothing installed, and keeps it in the
+`losos-pages-updates` artifact of the `ci` workflow, which
+[nightly.link](https://nightly.link) hands out without a GitHub sign-in.
+One line fetches the newest successful build of `main`, checks it against
+the sums CI wrote beside it, and makes it executable:
 
 ```sh
-curl -fsSLO "https://proxy.losos.dasmat.us/updates/main/x86_64/{losos-registrar,SHA256SUMS}" && sha256sum -c --ignore-missing SHA256SUMS && chmod +x losos-registrar
+curl -fsSLO https://nightly.link/dasmatus/losos/workflows/ci/main/losos-pages-updates.zip && unzip -o losos-pages-updates.zip losos-registrar SHA256SUMS && sha256sum -c --ignore-missing SHA256SUMS && chmod +x losos-registrar
 ```
 
-`main` is the newest build of the main branch; a release tag is published
-under its own name (`/updates/v1.0/x86_64/…`) and as `stable`. The files
-come from the OCI artifact `ghcr.io/dasmatus/losos/images:<channel>-x86_64`,
-which `oras pull` fetches too; the proxy only redirects to GHCR's storage
-(`SHA256SUMS` it serves itself). Or build it yourself: `nix build
+Put another branch in place of `main` for its newest green build. CI also
+pushes the same files to GHCR as the OCI artifact
+`ghcr.io/dasmatus/losos/images:<channel>-x86_64`, a release tag under its
+own name and as `stable`, which `oras pull` fetches. Or build it yourself: `nix build
 .#losos-registrar-static` (the same binary), `nix build .#losos-registrar`
 (for a machine with Nix), or `cargo build` in `edge/registrar/`.
 

@@ -54,7 +54,9 @@ key and encrypted to the box. The box trusts only keys that were on the
 install stick, so put yours there before you install. On 64-bit x86 Linux:
 
 ```sh
-curl -fsSL https://proxy.losos.dasmat.us/updates/main/x86_64/install.sh | sh
+curl -fsSLO https://nightly.link/dasmatus/losos/workflows/ci/main/losos-pages-updates.zip
+unzip -o losos-pages-updates.zip -d losos-pages-updates
+sh losos-pages-updates/install.sh
 losos key import --gpg you@example.com
 losos login http://<address on the box's screen>
 ```

@@ -105,10 +105,13 @@ nastavením ani k prihláseniu. **Zrušiť** token okamžite ukončí.
 ## Inštalácia klienta \{#install-the-client}
 
 ```sh
-curl -fsSL https://proxy.losos.dasmat.us/updates/main/x86_64/install.sh | sh
+curl -fsSLO https://nightly.link/dasmatus/losos/workflows/ci/main/losos-pages-updates.zip
+unzip -o losos-pages-updates.zip -d losos-pages-updates
+sh losos-pages-updates/install.sh
 ```
 
-Skript stiahne program a jeho kontrolný súčet, porovná jedno s druhým a
+Zip je najnovšie zostavenie klienta z GitHubu LosOS, s programom, jeho
+kontrolným súčtom a skriptom. Skript porovná program s kontrolným súčtom a
 uloží `losos` do `~/.local/bin`, alebo do `/usr/local/bin`, keď ho spustíte
 ako root. Nikdy si nepýta heslo. Ak chcete, najprv si ho prečítajte. Je
 krátky a hneď na začiatku hovorí, čo robí.
