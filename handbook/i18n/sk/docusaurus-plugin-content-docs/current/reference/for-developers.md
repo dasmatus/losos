@@ -15,6 +15,22 @@ LosOS opisujú dve miesta:
   v repozitári: príkazy na zostavenie, architektúra naprieč súbormi a zoznam
   chýb, ktoré sa ľahko zopakujú.
 
+## Pred commitom \{#before-you-commit}
+
+Repozitár nesie v `nix/hooks/` git hooky, ktoré pred commitom alebo pushom
+spustia kontroly CI pre súbory, ktoré meníte. Zapne ich `devenv shell` aj
+`nix develop`. Bez nich ich vo svojom klone zapnite raz týmto príkazom:
+
+```sh
+bash nix/hooks/install
+```
+
+Hook pri commite naformátuje a skontroluje Rust a Nix, ktorých ste sa
+dotkli, overí typy webového rozhrania a vyhodnotí každý výstup flaku. Hook
+pri pushi pridá testy Rustu, testy webového rozhrania v prehliadači a VM
+testy zmenených súborov. Záznamy každého behu sú v `.git/losos-hooks/logs/`.
+Všetky kontroly vymenúvajú poznámky pre vývojárov v `docs/development.md`.
+
 ## Úpravy tejto príručky \{#changing-this-handbook}
 
 Zdroj je `handbook/` v repozitári, stránka postavená na
