@@ -331,10 +331,11 @@ channel is `main` for a push to main, the tag for a release (which also moves
 requests never publish.
 
 ```sh
-curl -fsSLO "https://proxy.losos.dasmat.us/updates/main/x86_64/{losos-registrar,SHA256SUMS}" && sha256sum -c --ignore-missing SHA256SUMS && chmod +x losos-registrar
+curl -fsSLO https://nightly.link/dasmatus/losos/workflows/ci/main/losos-pages-updates.zip && unzip -o losos-pages-updates.zip losos-registrar SHA256SUMS && sha256sum -c --ignore-missing SHA256SUMS && chmod +x losos-registrar
 ```
 
-The update artifacts can also be pulled directly from GHCR, without a hosted
+That is the newest successful run's `losos-pages-updates` artifact, kept
+90 days, through nightly.link. The update artifacts can also be pulled directly from GHCR, without a hosted
 proxy, with `oras pull ghcr.io/dasmatus/losos/images:main-x86_64`.
 
 The job's step summary carries the artifact reference, the URL and the sum.

@@ -30,6 +30,7 @@ nix build .#checks.x86_64-linux.losos-admin-daemon  # lososd: D-Bus, HTTP, token
 nix build .#checks.x86_64-linux.losos-install       # installer, keyfile, BIOS
 nix build .#checks.x86_64-linux.losos-tpm-unlock    # installer, swtpm unlock
 nix build .#checks.x86_64-linux.losos-iso-install   # the real installer offline, then boot the disk
+nix build .#checks.x86_64-linux.losos-network-unlock # --tang: TPM2 + Tang, recovery code
 nix build .#checks.x86_64-linux.losos-identity      # LosOS Login (Authelia), sections
 npm run dev | typecheck | test:browser              # in admin-ui/app
 cargo test --manifest-path admin-ui/tui/Cargo.toml  # losos, the terminal client
@@ -146,8 +147,8 @@ and is never served or built by nix.
   tracing without time, ratatui) with the web UI's panes, catalogue and
   palette, read from `admin-ui/app` by its `build.rs`. It pins a box's
   self-signed certificate by SHA-256 at login. `.#losos-static` (musl) is
-  installed by `curl … /updates/<channel>/x86_64/install.sh | sh` (CI's
-  `tui` and `publish-tool` jobs). Each call is one OpenPGP
+  installed by `install.sh` out of CI's `losos-pages-updates` artifact,
+  linked through nightly.link (CI's `tui` and `publish-tool` jobs). Each call is one OpenPGP
   message signed by a key seeded at install (`losos.access.gpgKeys`,
   installer-fixed, never added at runtime) and encrypted to the host's own
   key, carrying a personal access token from the Access tokens pane;
