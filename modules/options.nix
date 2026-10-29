@@ -78,11 +78,29 @@ in
       (alias [ "edge" "uplink" "ratholeEndpoint" ] [ "edge" "uplink" "tunnelEndpoint" ])
     ]
     ++ map gone [
-      [ "edge" "bootstrapTokenFile" ]
-      [ "edge" "noisePrivateKeyFile" ]
-      [ "edge" "rathole" "package" ]
-      [ "edge" "uplink" "bootstrapTokenFile" ]
-      [ "edge" "uplink" "noisePublicKeyFile" ]
+      [
+        "edge"
+        "bootstrapTokenFile"
+      ]
+      [
+        "edge"
+        "noisePrivateKeyFile"
+      ]
+      [
+        "edge"
+        "rathole"
+        "package"
+      ]
+      [
+        "edge"
+        "uplink"
+        "bootstrapTokenFile"
+      ]
+      [
+        "edge"
+        "uplink"
+        "noisePublicKeyFile"
+      ]
     ];
 
   options.losos = {

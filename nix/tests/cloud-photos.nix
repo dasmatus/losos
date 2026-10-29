@@ -41,26 +41,28 @@ let
   # (Bevy among it) takes longer to build than this test runs: their pages
   # are left out and their modules are empty stand-ins. Nothing here opens
   # either; the shipped package builds both.
-  noLab = ui: ui.overrideAttrs {
-    preBuild = ''
-      for pkg in core-pkg/losos_lab_core virt-pkg/losos_lab_virt \
-          render-pkg/webgpu/losos_lab_render render-pkg/webgl2/losos_lab_render; do
-        mkdir -p "src/lab/$(dirname "$pkg")"
-        printf 'export default async function init() {}\nexport class Lab {}\n' > "src/lab/$pkg.js"
-        : > "src/lab/''${pkg}_bg.wasm"
-      done
-    '';
-    buildPhase = ''
-      runHook preBuild
-      cat > vite.nolab.config.ts <<'EOF'
-      import config from "./vite.config";
-      for (const page of ["diagrams", "lab"]) delete (config.build!.rolldownOptions!.input as Record<string, string>)[page];
-      export default config;
-      EOF
-      node_modules/.bin/vite build --config vite.nolab.config.ts
-      runHook postBuild
-    '';
-  };
+  noLab =
+    ui:
+    ui.overrideAttrs {
+      preBuild = ''
+        for pkg in core-pkg/losos_lab_core virt-pkg/losos_lab_virt \
+            render-pkg/webgpu/losos_lab_render render-pkg/webgl2/losos_lab_render; do
+          mkdir -p "src/lab/$(dirname "$pkg")"
+          printf 'export default async function init() {}\nexport class Lab {}\n' > "src/lab/$pkg.js"
+          : > "src/lab/''${pkg}_bg.wasm"
+        done
+      '';
+      buildPhase = ''
+        runHook preBuild
+        cat > vite.nolab.config.ts <<'EOF'
+        import config from "./vite.config";
+        for (const page of ["diagrams", "lab"]) delete (config.build!.rolldownOptions!.input as Record<string, string>)[page];
+        export default config;
+        EOF
+        node_modules/.bin/vite build --config vite.nolab.config.ts
+        runHook postBuild
+      '';
+    };
 
   nasa = id: size: sha256: {
     name = "${id}.jpg";
@@ -73,24 +75,29 @@ let
   # originals keep their camera's EXIF block; NASA's smaller copies drop it.
   photos = pkgs.linkFarm "losos-test-photos" [
     # Victor Glover
-    (nasa "KSC-20200814-PH-SPX01_0005" "medium" "1cb0a42a09c7201e0e6d2aec3cf23ed391b68b238bb1b5f39620fbeb899be008")
+    (nasa "KSC-20200814-PH-SPX01_0005" "medium"
+      "1cb0a42a09c7201e0e6d2aec3cf23ed391b68b238bb1b5f39620fbeb899be008"
+    )
     (nasa "NHQ202009150002" "medium" "3a36a61de3c9000c76c4c85cc5abca3b06468830834ae8b78f6ee349a49a6ed9")
     # The Crew-1 crew, Glover second from the left.
     (nasa "jsc2020e032979" "medium" "9dc7fb71452e35bea0faf20dbc8a9c003290cd85d2976e37f7f37fd00f474e2b")
     # Jessica Meir
     (nasa "NHQ202009150005" "medium" "c99c8f145e5083ecb0b5d47722a510ccfea94f47bb1a524c6b7a16fe4e2308e5")
-    (nasa "jsc2025e078605_alt" "medium" "3177035d2ef10190bf921fc223cd2624293c75a6e74d9e32c071d31df1c08473")
+    (nasa "jsc2025e078605_alt" "medium"
+      "3177035d2ef10190bf921fc223cd2624293c75a6e74d9e32c071d31df1c08473"
+    )
     (nasa "iss074e0365172" "orig" "4426bf3da293dadfacf17501bfc40c0ef96638e7c2f9af0b8c189f869a4bb979")
     # Christina Koch
     (nasa "NHQ202009160004" "medium" "6a497fe163d661c8f9504ca3075c6964b8ea7a07375b92769a9ca2f15327b4dd")
-    (nasa "jsc2018e095073_alt" "orig" "c9d1054dd50010477099b093e73aaff95759ab19099c143f5c18cb0b298ae96a")
+    (nasa "jsc2018e095073_alt" "orig"
+      "c9d1054dd50010477099b093e73aaff95759ab19099c143f5c18cb0b298ae96a"
+    )
     # Expedition 59, Koch among them.
     (nasa "iss059e098878" "orig" "774afc687eea73b90ae063589c56c13ce613b4dd2a7c8880da8a196ff290e818")
   ];
-  landscapes =
-    pkgs.runCommand "losos-test-landscapes"
-      { nativeBuildInputs = [ (pkgs.python3.withPackages (ps: [ ps.pillow ])) ]; }
-      "python3 ${./cloud-photos-draw.py} $out";
+  landscapes = pkgs.runCommand "losos-test-landscapes" {
+    nativeBuildInputs = [ (pkgs.python3.withPackages (ps: [ ps.pillow ])) ];
+  } "python3 ${./cloud-photos-draw.py} $out";
   pictures = pkgs.symlinkJoin {
     name = "losos-test-pictures";
     paths = [

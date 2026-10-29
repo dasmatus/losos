@@ -112,6 +112,35 @@ rest. A deleted run's logs and artifacts are gone for good; the job summary
 lists each one. Run it by hand from the Actions tab for a dry run, or untick
 `dry_run` to clear the backlog at once.
 
+## Merging
+
+Local hooks (`nix/hooks`, see [Development](development.md#git-hooks)) can
+be skipped with `--no-verify`, and a pull request can be merged while its
+run is still going. What actually holds is a ruleset on `main`, set once
+under Settings, Rules, Rulesets, New branch ruleset:
+
+- Target: the default branch. Enforcement: Active.
+- Require status checks to pass: the check
+  `result: every job this change needs passed`, with "Require branches to
+  be up to date before merging" ticked. The `result` job sums up the run,
+  so one required check covers every lane, skipped ones included, and the
+  up-to-date rule makes a pull request run against the `main` it lands on.
+  Two pull requests that each pass alone can still break `main` together
+  (one removes an option, the other adds a test that sets it), and only a
+  run on the merged tree sees that.
+- Block force pushes and Restrict deletions.
+- Bypass list: the history-scrub deploy key (Deploy keys) and GitHub
+  Actions, which push to `main` themselves (the scrub, `fmt-bot`).
+
+With many pull requests open, "up to date" means merging `main` into each
+before it can land. A merge queue does that merging itself: tick "Require
+merge queue" instead. `ci.yml` already runs on `merge_group`, every lane,
+so the queue's runs report `result`.
+
+Runs on `main` are never cancelled by a newer push (`concurrency` in
+`ci.yml`), so every merge gets a finished run. Only a pull request's
+superseded runs are cancelled.
+
 ## Releases
 
 Push a `v*` tag, or draft a release with a new `v*` tag in the web UI.

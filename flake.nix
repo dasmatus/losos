@@ -141,8 +141,11 @@
                 pkgs.nodejs
               ];
             inherit (fast) env;
+            # The git hooks (nix/hooks) run CI's gates before a commit
+            # or a push; this shell installs them as devenv's does.
             shellHook = ''
-              echo "Toolchain-only shell. For the scripts and pre-commit hooks:"
+              root=$(git rev-parse --show-toplevel 2>/dev/null) && bash "$root/nix/hooks/install"
+              echo "Toolchain-only shell. For the scripts:"
               echo "  devenv shell      (or: direnv allow)"
             '';
           };
@@ -482,6 +485,9 @@
       # builds.
       checks.${system} = {
         losos-install = import ./nix/tests/install.nix { inherit pkgs disko; };
+        # The real installer from the branch, offline, then the installed disk
+        # booted on its own (nix/tests/iso-install.nix).
+        losos-iso-install = import ./nix/tests/iso-install.nix { inherit pkgs self; };
         losos-tpm-unlock = import ./nix/tests/tpm.nix { inherit pkgs disko; };
         # losos.tpm.tang: the TPM2 and a Tang server on the network, the
         # recovery code at the console without one.
