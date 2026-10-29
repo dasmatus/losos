@@ -47,9 +47,9 @@ const OWNED = {
 /* Lines of overrides.nix another pane draws its own editor for: each app's
  * box-wide settings, on the Apps pane, the
  * memory this box lends to AI models, on the Market pane, and the Windows
- * share and the Tor and I2P switches, on the Network pane
- * (lib/option-value.ts, ON_PANE). The Advanced row shows the value and
- * links there, to the app's fold on the Apps pane. */
+ * share and the Tor and I2P addresses, on the Network pane
+ * (lib/option-value.ts, ON_PANE). The Advanced
+ * row shows the value and links there, to the app's fold on the Apps pane. */
 const ON_PANE = Object.fromEntries(
   DOC.options.flatMap((option) =>
     option.name === 'cloud.trashDays' || /^git\.site\./.test(option.name)
