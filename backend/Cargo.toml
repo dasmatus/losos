@@ -57,6 +57,10 @@ futures-core = { version = "0.3", default-features = false }
 # client (src/access.rs). Shared with edge/registrar by path, so the box
 # and the edge speak one contract (docs/terminal-access.md).
 losos-access = { path = "access" }
+# Problem reports (src/install_report.rs): the installer writes and sends
+# them with the same crate the box's problems plugin uses, so the two read
+# alike and the same failure is one GitHub issue.
+losos-report = { path = "plugins/report" }
 # The secret of a gateway check's TPM credential (crate::edge::Vetter) and
 # keys for the mail key store's tests; the version losos-access and rPGP use.
 rand = "0.8"

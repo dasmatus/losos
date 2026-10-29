@@ -235,11 +235,54 @@ pub fn progress(p: &Progress) -> Vec<Row> {
 /// How the install ended when it worked. `installed` is false for the
 /// runs that stop after the disks (`--disko-script`, `--no-install`).
 pub fn finished(installed: bool, tpm: bool) -> Vec<Row> {
+    finished_with(installed, tpm, &[], &Offer::None)
+}
+
+/// What the installer offers to do about a problem it saw.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Offer {
+    /// Nothing: no problem, or a medium built to send no reports.
+    None,
+    /// The handbook explains it: the page's title and address.
+    Documented { title: String, url: String },
+    /// A report, written out on screen 7, sent with R.
+    Report,
+}
+
+/// The rows that say what was seen while the install ran.
+fn spike_rows(spikes: &[String]) -> Vec<Row> {
+    if spikes.is_empty() {
+        return Vec::new();
+    }
+    let mut rows = vec![Row::Gap, Row::Warn("While it ran".into())];
+    for line in spikes {
+        rows.extend(wrap(line, WRAP).into_iter().map(Row::Muted));
+    }
+    rows
+}
+
+fn report_rows() -> Vec<Row> {
+    vec![
+        Row::Gap,
+        Row::Strong("Press R to send a report of this to the LosOS developers.".into()),
+        Row::Muted("Read it first on screen 7: hold Alt and press F7.".into()),
+        Row::Muted("Nothing leaves this machine until you press R.".into()),
+    ]
+}
+
+/// How it ended when it worked, with what was seen meanwhile (`spikes`,
+/// one line each) and what the installer offers to do about it.
+pub fn finished_with(installed: bool, tpm: bool, spikes: &[String], offer: &Offer) -> Vec<Row> {
+    let any = if *offer == Offer::Report {
+        "any other key"
+    } else {
+        "any key"
+    };
     let mut rows = if installed {
         vec![
             Row::Head("LosOS is installed".into()),
             Row::Gap,
-            Row::Strong("Remove the stick, then press any key to restart.".into()),
+            Row::Strong(format!("Remove the stick, then press {any} to restart.")),
             Row::Muted("The box shows its address on this screen once it is up.".into()),
         ]
     } else {
@@ -256,6 +299,10 @@ pub fn finished(installed: bool, tpm: bool) -> Vec<Row> {
             Row::Muted("Its disk key is on the unencrypted boot partition,".into()),
             Row::Muted("so anyone who takes the disk can read your files.".into()),
         ]);
+    }
+    rows.extend(spike_rows(spikes));
+    if *offer == Offer::Report {
+        rows.extend(report_rows());
     }
     rows
 }
@@ -290,12 +337,94 @@ fn sentence(error: &str) -> String {
 
 /// How the install ended when it failed.
 pub fn failed(error: &str) -> Vec<Row> {
+    failed_with(error, &[], &Offer::None)
+}
+
+/// How it ended when it failed, with what was seen meanwhile and what the
+/// installer offers to do about it.
+pub fn failed_with(error: &str, spikes: &[String], offer: &Offer) -> Vec<Row> {
     let mut rows = vec![Row::Warn("The install failed".into()), Row::Gap];
     rows.extend(wrap(&sentence(error), WRAP).into_iter().map(Row::Plain));
+    rows.extend(spike_rows(spikes));
+    match offer {
+        Offer::None => {}
+        Offer::Documented { title, url } => rows.extend([
+            Row::Gap,
+            Row::Strong(format!("The handbook explains this: {title}")),
+            Row::Muted(format!(
+                "On a phone or another computer: {}",
+                url.trim_start_matches("https://")
+            )),
+        ]),
+        Offer::Report => rows.extend(report_rows()),
+    }
     rows.extend([
         Row::Gap,
         Row::Muted("The full command log is on tty2 (Alt+F2).".into()),
-        Row::Muted("Press any key for a shell.".into()),
+        Row::Muted(
+            if *offer == Offer::Report {
+                "Press any other key for a shell."
+            } else {
+                "Press any key for a shell."
+            }
+            .into(),
+        ),
+    ]);
+    rows
+}
+
+/// Sending a report: asking GitHub for a code.
+pub fn send_starting() -> Vec<Row> {
+    vec![
+        Row::Head("Sending the report".into()),
+        Row::Gap,
+        Row::Current("Asking GitHub for a code".into()),
+        Row::Gap,
+        Row::Muted("Press any key to stop.".into()),
+    ]
+}
+
+/// Sending a report: the code the person enters on GitHub.
+pub fn send_code(uri: &str, code: &str) -> Vec<Row> {
+    vec![
+        Row::Head("Sending the report".into()),
+        Row::Gap,
+        Row::Plain("On a phone or another computer, open".into()),
+        Row::Strong(uri.trim_start_matches("https://").into()),
+        Row::Plain("sign in to GitHub and enter this code:".into()),
+        Row::Gap,
+        Row::Strong(code.into()),
+        Row::Gap,
+        Row::Current("Waiting for the code".into()),
+        Row::Muted("The report is sent as the account that enters it.".into()),
+        Row::Muted("Press any key to stop.".into()),
+    ]
+}
+
+/// The report went out: where it is now.
+pub fn send_done(url: &str, existing: bool) -> Vec<Row> {
+    vec![
+        Row::Head(
+            if existing {
+                "Added to a report already open"
+            } else {
+                "Report sent"
+            }
+            .into(),
+        ),
+        Row::Gap,
+        Row::Strong(url.trim_start_matches("https://").into()),
+        Row::Muted("Thank you. Press any key to go on.".into()),
+    ]
+}
+
+/// The report did not go out, and why.
+pub fn send_failed(why: &str) -> Vec<Row> {
+    let mut rows = vec![Row::Warn("The report was not sent".into()), Row::Gap];
+    rows.extend(wrap(&sentence(why), WRAP).into_iter().map(Row::Plain));
+    rows.extend([
+        Row::Gap,
+        Row::Strong("Press R to try again, any other key to go on.".into()),
     ]);
     rows
 }
@@ -444,6 +573,39 @@ mod tests {
         assert!(f
             .iter()
             .any(|r| matches!(r, Row::Plain(t) if t.starts_with("No network:"))));
+    }
+
+    #[test]
+    fn a_problem_offers_the_handbook_or_a_report() {
+        let spikes =
+            vec!["Memory use reached 96% for 14 s while installing the system.".to_owned()];
+        let f = failed_with(
+            "no space left on device",
+            &[],
+            &Offer::Documented {
+                title: "Out of room".into(),
+                url: "https://losos.dasmat.us/troubleshooting/out-of-room/".into(),
+            },
+        );
+        assert!(f.contains(&Row::Strong(
+            "The handbook explains this: Out of room".into()
+        )));
+        assert!(f.contains(&Row::Muted(
+            "On a phone or another computer: losos.dasmat.us/troubleshooting/out-of-room/".into()
+        )));
+        assert!(f.contains(&Row::Muted("Press any key for a shell.".into())));
+        let f = failed_with("disko failed (exit status: 1)", &spikes, &Offer::Report);
+        assert!(f.contains(&Row::Warn("While it ran".into())));
+        assert!(f.contains(&Row::Strong(
+            "Press R to send a report of this to the LosOS developers.".into()
+        )));
+        assert!(f.contains(&Row::Muted("Press any other key for a shell.".into())));
+        let done = finished_with(true, true, &spikes, &Offer::Report);
+        assert!(done.contains(&Row::Strong(
+            "Remove the stick, then press any other key to restart.".into()
+        )));
+        assert!(send_code("https://github.com/login/device", "ABCD-1234")
+            .contains(&Row::Strong("github.com/login/device".into())));
     }
 
     #[test]

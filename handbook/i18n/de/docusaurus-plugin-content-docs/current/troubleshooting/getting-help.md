@@ -11,6 +11,17 @@ Schick Probleme und Fragen an den
 Box hat keine Shell, deshalb ist das, was du im LAN sammeln kannst, alles,
 worum ein Maintainer bitten kann. Sammle es, bevor du schreibst.
 
+## Lass die Box ihn schreiben \{#let-the-box-write-it}
+
+Ein Absturz, ein Dienst, der mit einem Fehler endet, oder ein Programm, das
+wegen Speichermangels beendet wurde, steht schon unter **Einstellungen →
+Probleme**, mit einem Bericht aus dem Protokoll der Box. Lies ihn dort und
+schick ihn in zwei Schritten: [Problemberichte](../manual/problem-reports.md)
+sagt wie. Eine gescheiterte Installation bietet dasselbe auf dem Bildschirm
+des Installers an.
+
+Alles andere schreibst du selbst als Issue.
+
 ## Was dazugehört \{#what-to-include}
 
 ![Der Bereich Über, dessen Zeilen in einen Bericht gehören: Name, Adresse, Speichermodus und Zustand des Mesh.](@site/docs/img/settings-about-de.png)

@@ -41,6 +41,7 @@ import palette from "./palette";
 import panes from "./panes";
 import pictures from "./pictures";
 import pins from "./pins";
+import problems from "./problems";
 import profile from "./profile";
 import quick from "./quick";
 import report from "./report";
@@ -83,6 +84,7 @@ export const MESSAGES = {
   ...advanced,
   ...access,
   ...credentials,
+  ...problems,
   ...users,
   ...moderation,
   ...account,

@@ -1,0 +1,14 @@
+[package]
+name = "losos-report"
+description = "Problem reports as GitHub issues: what the box and the installer write, how a person reads and sends one"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

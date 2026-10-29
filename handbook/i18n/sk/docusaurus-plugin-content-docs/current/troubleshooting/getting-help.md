@@ -11,6 +11,16 @@ Problémy a otázky posielajte do
 projektu. Zariadenie nemá shell, takže to, čo zhromaždíte z LAN, je všetko,
 o čo vás správca projektu môže požiadať. Zhromaždite to skôr, ako napíšete.
 
+## Nechajte ho napísať zariadenie \{#let-the-box-write-it}
+
+Pád, služba, ktorá skončí chybou, alebo program zastavený pre nedostatok
+pamäte už je v **Nastavenia → Problémy** s hlásením napísaným zo záznamu
+zariadenia. Prečítajte si ho tam a odošlite v dvoch krokoch:
+[Hlásenia problémov](../manual/problem-reports.md) hovorí ako. Neúspešná
+inštalácia ponúkne to isté na obrazovke inštalátora.
+
+Pri všetkom ostatnom napíšte issue sami.
+
 ## Čo uviesť \{#what-to-include}
 
 ![Panel O zariadení, ktorého riadky patria do hlásenia: meno, adresa, režim úložiska a stav mesh.](@site/docs/img/settings-about-sk.png)

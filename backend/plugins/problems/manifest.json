@@ -1,0 +1,37 @@
+{
+  "name": "problems",
+  "description": "What went wrong on the box: failed services, crashes and programs the kernel killed for memory, written up as reports the owner reads and may send to LosOS's issue tracker.",
+  "routes": [
+    { "method": "GET", "path": "/api/problems" },
+    { "method": "GET", "path": "/api/problems/{id}" },
+    { "method": "POST", "path": "/api/problems/{id}/send", "maxBody": 16384 },
+    { "method": "GET", "path": "/api/problems/{id}/send" },
+    { "method": "POST", "path": "/api/problems/{id}/cancel" },
+    { "method": "POST", "path": "/api/problems/{id}/dismiss" }
+  ],
+  "files": [
+    { "path": "${LOSOS_STATE_DIR:-/var/lib/losos}/problems.json", "access": "rw" },
+    { "path": "${LOSOS_REPORT_CLIENT_ID_FILE:-}", "access": "ro" },
+    { "path": "/proc/cpuinfo", "access": "ro" },
+    { "path": "/proc/meminfo", "access": "ro" },
+    { "path": "/proc/sys/kernel/osrelease", "access": "ro" },
+    { "path": "/proc/sys/kernel/hostname", "access": "ro" },
+    { "path": "/sys/devices/virtual/dmi/id", "access": "ro" },
+    { "path": "/sys/firmware/efi", "access": "ro" }
+  ],
+  "exec": ["journalctl", "systemctl"],
+  "http": ["${LOSOS_REPORT_LOGIN:-https://github.com}", "${LOSOS_REPORT_API:-https://api.github.com}"],
+  "dispatch": true,
+  "locks": ["problems"],
+  "timers": [{ "name": "start" }, { "name": "scan", "every": 60 }],
+  "limits": { "memoryMiB": 64, "timeoutSecs": 30, "jobSecs": 960, "jobs": 2 },
+  "config": {
+    "stateFile": "${LOSOS_STATE_DIR:-/var/lib/losos}/problems.json",
+    "repository": "${LOSOS_REPORT_REPOSITORY:-}",
+    "clientIdFile": "${LOSOS_REPORT_CLIENT_ID_FILE:-}",
+    "login": "${LOSOS_REPORT_LOGIN:-https://github.com}",
+    "api": "${LOSOS_REPORT_API:-https://api.github.com}",
+    "release": "${LOSOS_RELEASE:-}",
+    "dmiDir": "/sys/devices/virtual/dmi/id"
+  }
+}
