@@ -13,8 +13,8 @@
 # ciphertext. The SFU only decides who is in which call: nginx asks LosOS
 # Login before every request and hands it the person as Remote-User, whose
 # Matrix id is @<name>:<server name>, and that person joins only a call
-# their room was invited to. Chat does not federate, and Dendrite answers
-# no Matrix OpenID check with federation off, so a token would add nothing.
+# their room was invited to. The SFU admits only people of this box, so a
+# Matrix OpenID token would only repeat what LosOS Login already said.
 #
 # It runs as `shared`, keeps nothing on disk, and answers HTTP on a unix
 # socket only nginx can open, so a Remote-User it reads is nginx's.
@@ -98,7 +98,7 @@ in
       partOf = lib.optional throughEdge "losos-tunnel-client.service";
       after = [
         "network-online.target"
-        "dendrite.service"
+        "losos-chat.service"
       ]
       ++ lib.optional throughEdge "losos-tunnel-client.service";
       wants = [ "network-online.target" ];

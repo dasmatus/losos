@@ -425,9 +425,9 @@ await check('the gallery writes a widget by hand: the editor previews it in the 
 
 await check('the code editor completes the bridge, the readings, the colours and the file names, and draws under the admin CSP', async () => {
   const { page, errors } = await open();
-  // The bundle's two first-paint style-src-elem reports (advanced.browser.mjs)
-  // are counted out; the editor must add none.
+  // The page loads with no violation, and the editor must add none.
   const atLoad = (await violations(page)).length;
+  assert.equal(atLoad, 0, `CSP violations at load: ${(await violations(page)).join(', ')}`);
   const editor = await openEditor(page);
   await code(editor, 'index.html').waitFor();
   const list = page.locator('.cm-tooltip-autocomplete');
@@ -572,9 +572,9 @@ function builderStub({ stopped = null } = {}) {
 
 await check('Build with AI runs on the box for free, and a finished build lands in the editor and its preview', async () => {
   const { page, errors, writes } = await open({ builder: builderStub() });
-  // The bundle's two first-paint style-src-elem reports (advanced.browser.mjs)
-  // are counted out; the builder must add none.
+  // The page loads with no violation, and the builder must add none.
   const atLoad = (await violations(page)).length;
+  assert.equal(atLoad, 0, `CSP violations at load: ${(await violations(page)).join(', ')}`);
   await page.getByRole('button', { name: 'Add a widget' }).first().click();
   await page.getByRole('dialog', { name: 'Add a widget' }).getByRole('button', { name: 'Write one' }).click();
   const editor = page.getByRole('dialog', { name: 'Write a widget' });

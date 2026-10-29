@@ -30,7 +30,6 @@
     "POST /api/setup/claim": "public",
     "GET /internal/cloud-share": "internal",
     "GET /internal/chat/authz": "internal",
-    "GET /internal/chat/threads/{room}": "internal",
 
     "GET /api/me": "signed-in",
     "GET /api/state": "signed-in",
