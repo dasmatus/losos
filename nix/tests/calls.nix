@@ -229,7 +229,6 @@ let
   browserBridge = pkgs.writeText "losos-calls-browser-bridge.py" ''
     import itertools
     import os
-    import selectors
     import socket
     import sys
     import threading
@@ -273,28 +272,34 @@ let
     front = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     front.bind(("127.0.0.1", ${toString mediaPort}))
     open(ready, "w").close()
-    sel = selectors.DefaultSelector()
-    sel.register(front, selectors.EVENT_READ, None)
+
+
+    # One thread per direction and socket: a browser that is slow to read
+    # holds up its own packets only, never another browser's or its own
+    # sending side.
+    def back(up, peer):
+        while True:
+            try:
+                front.sendto(up.recv(65535), peer)
+            except OSError:
+                pass
+
+
     ups = {}
     serial = itertools.count()
     while True:
-        for key, _ in sel.select():
-            try:
-                if key.data is None:
-                    data, peer = front.recvfrom(65535)
-                    up = ups.get(peer)
-                    if up is None:
-                        up = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-                        up.bind(f"{bridge}/p{os.getpid()}-{next(serial)}")
-                        up.connect(f"{bridge}/media")
-                        ups[peer] = up
-                        sel.register(up, selectors.EVENT_READ, (up, peer))
-                    up.send(data)
-                else:
-                    sock, peer = key.data
-                    front.sendto(sock.recv(65535), peer)
-            except OSError:
-                pass
+        try:
+            data, peer = front.recvfrom(65535)
+            up = ups.get(peer)
+            if up is None:
+                up = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+                up.bind(f"{bridge}/p{os.getpid()}-{next(serial)}")
+                up.connect(f"{bridge}/media")
+                ups[peer] = up
+                threading.Thread(target=back, args=(up, peer), daemon=True).start()
+            up.send(data)
+        except OSError:
+            pass
   '';
   chromiumInOwnNetwork = pkgs.writeShellScript "chromium-in-own-network" ''
     exec ${pkgs.util-linux}/bin/unshare -rn ${pkgs.runtimeShell} -c '
@@ -532,6 +537,10 @@ pkgs.testers.nixosTest {
     # The edge node, with throughEdge; looked up so the script reads the
     # same without one.
     EDGE = globals().get("edge")
+    # The film is recorded by losos-calls alone: under emulation a 2x
+    # recording of Matus's window costs the edge run, with a third machine
+    # and its relay, more than it can spare.
+    FILMING = EDGE is None
 
     start_all()
     if EDGE is not None:
@@ -641,7 +650,6 @@ pkgs.testers.nixosTest {
     os.environ.setdefault("HOME", os.environ.get("TMPDIR", "/tmp"))
     from playwright.sync_api import sync_playwright
 
-    import selectors
     import socket
     import sys
     import tempfile
@@ -679,36 +687,38 @@ pkgs.testers.nixosTest {
     def media_shim():
         """Each browser socket the bridges carry gets a forwarded port of its
         own (peerPorts in the Nix above), and the replies on it go back to
-        that socket."""
+        that socket, each on a thread of its own so that one slow browser
+        holds up nobody else."""
         front = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
         front.bind(f"{BRIDGE}/media")
-        sel = selectors.DefaultSelector()
-        sel.register(front, selectors.EVENT_READ, None)
         free = list(range(${toString shimBase}, ${toString (shimBase + peerPorts)}))
         ups = {}
-        while True:
-            for key, _ in sel.select():
+
+        def back(up, peer):
+            while True:
                 try:
-                    if key.data is None:
-                        data, peer = front.recvfrom(65535)
-                        up = ups.get(peer)
-                        if up is None:
-                            if not free:
-                                print(f"media shim: no port left for {peer}")
-                                continue
-                            up = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                            up.connect(("127.0.0.1", free.pop(0)))
-                            ups[peer] = up
-                            sel.register(up, selectors.EVENT_READ, (up, peer))
-                        up.send(data)
-                        SHIM[peer] = SHIM.get(peer, (0, 0))
-                        SHIM[peer] = (SHIM[peer][0] + 1, SHIM[peer][1])
-                    else:
-                        sock, peer = key.data
-                        front.sendto(sock.recv(65535), peer)
-                        SHIM[peer] = (SHIM[peer][0], SHIM[peer][1] + 1)
+                    front.sendto(up.recv(65535), peer)
+                    SHIM[peer] = (SHIM[peer][0], SHIM[peer][1] + 1)
                 except OSError:
                     pass
+
+        while True:
+            try:
+                data, peer = front.recvfrom(65535)
+                up = ups.get(peer)
+                if up is None:
+                    if not free:
+                        print(f"media shim: no port left for {peer}")
+                        continue
+                    up = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    up.connect(("127.0.0.1", free.pop(0)))
+                    ups[peer] = up
+                    SHIM[peer] = (0, 0)
+                    threading.Thread(target=back, args=(up, peer), daemon=True).start()
+                up.send(data)
+                SHIM[peer] = (SHIM[peer][0] + 1, SHIM[peer][1])
+            except OSError:
+                pass
 
     SHIM: dict[str, tuple[int, int]] = {}
     threading.Thread(target=socks_relay, daemon=True).start()
@@ -784,7 +794,7 @@ pkgs.testers.nixosTest {
             timezone_id="Europe/Bratislava",
             reduced_motion="reduce",
             ignore_https_errors=True,
-            **({"record_video_dir": f"{FILM}/raw", "record_video_size": {"width": 2560, "height": 1800}} if name == "matus" else {}),
+            **({"record_video_dir": f"{FILM}/raw", "record_video_size": {"width": 2560, "height": 1800}} if name == "matus" and FILMING else {}),
         )
         if name == "matus":
             clip_start["matus"] = time.time()
@@ -861,6 +871,16 @@ pkgs.testers.nixosTest {
         # in what changed; a picture of the timeline's end stays put.
         if top:
             page.evaluate("window.scrollTo(0, 0)")
+        page.screenshot(path=f"{SHOTS}/{name}.png")
+
+    def shot_end(page, name):
+        """The end of the room's timeline, where the newest notice is,
+        with the pointer off the messages so no toolbar covers them."""
+        page.mouse.move(0, 0)
+        settle(page)
+        page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight)")
+        page.get_by_role("log").first.evaluate("e => { e.scrollTop = e.scrollHeight }")
+        time.sleep(1)
         page.screenshot(path=f"{SHOTS}/{name}.png")
 
     def film(page, slug, title, action="none", targets=None, top=True):
@@ -1183,6 +1203,9 @@ pkgs.testers.nixosTest {
             guest.get_by_label("Your name").fill("Jack")
             shot(guest, "guest-join")
             guest.get_by_role("button", name="Join the call").click()
+            # Under emulation the guest's camera and its background cut take
+            # minutes to open; the call view comes after them.
+            guest.locator("[data-guest-call]").wait_for(timeout=360000)
             # Two others for the guest, and the guest for each of them.
             live(guest, 2)
             for page in (owner, her):
@@ -1331,8 +1354,7 @@ pkgs.testers.nixosTest {
             assert counts["refused"] == "0", counts
         notice = jan.locator("[data-call-notice]").last
         notice.get_by_role("button", name="Join", exact=True).wait_for()
-        notice.scroll_into_view_if_needed()
-        shot(jan, "timeline-join", top=False)
+        shot_end(jan, "timeline-join")
         notice.get_by_role("button", name="Join", exact=True).click()
         for page in (owner, her, jan):
             live(page, 2, frames=0)
@@ -1361,7 +1383,9 @@ pkgs.testers.nixosTest {
         # page it was the last one there, so it tells the room.
         owner.locator("[data-call-view]").wait_for(state="detached", timeout=60000)
         owner.get_by_role("log").get_by_text("The call ended").last.wait_for(timeout=60000)
-        jan.locator("[data-call-notice] button").wait_for(state="detached", timeout=30000)
+        until_js(jan, "document.querySelectorAll('[data-call-notice] button').length === 0", timeout=30000)
+        # The call rang the room once, however many joined it.
+        assert jan.locator("[data-call-notice]").count() == 1, jan.locator("[data-call-notice]").count()
 
     with subtest("a call link from another app opens the direct chat and rings"):
         # Contacts and Mail link a person as /chat/?with=<name>&call=voice.
@@ -1421,15 +1445,16 @@ pkgs.testers.nixosTest {
     # Matus's clip: Chromium writes it when his window closes. Under
     # emulation the page paints well below 60 frames a second, so the
     # clip is resampled to a constant 60 for the cut.
-    raw = owner.video.path()
-    owner.context.close()
-    subprocess.run(
-        ["${pkgs.ffmpeg-headless}/bin/ffmpeg", "-v", "error", "-i", raw, "-vf", "fps=60",
-         "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
-         "-movflags", "+faststart", "-y", f"{FILM}/calls-matus.mp4"],
-        check=True,
-    )
-    os.remove(raw)
+    if FILMING:
+        raw = owner.video.path()
+        owner.context.close()
+        subprocess.run(
+            ["${pkgs.ffmpeg-headless}/bin/ffmpeg", "-v", "error", "-i", raw, "-vf", "fps=60",
+             "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
+             "-movflags", "+faststart", "-y", f"{FILM}/calls-matus.mp4"],
+            check=True,
+        )
+        os.remove(raw)
 
     for b in browsers.values():
         b.close()

@@ -655,7 +655,10 @@ function CallScreen({
       };
       room.on(RoomStateEvent.Events, recalculate);
       unwatch = () => room.off(RoomStateEvent.Events, recalculate);
-      void leaving.then(() => {
+      // Join once the session knows who is already in the call: a session
+      // that still counts nobody takes this device for the first and rings
+      // the room a second time.
+      void leaving.then(() => rtc.initialMembershipCalculated).then(() => {
         if (rtcSession.current !== rtc) return;
         rtc.join({ userId: client.getSafeUserId(), deviceId, memberId: crypto.randomUUID() }, [transport], {
           callIntent: active.video ? "video" : "audio",
