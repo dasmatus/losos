@@ -10,6 +10,8 @@
 #
 #   * the box lists the vault: every note with its tags, aliases and links,
 #     finds the vault from a note deep inside it, and searches its text;
+#   * Chromium opens Notes before there is any note, which makes the
+#     Notes folder and offers the first note;
 #   * Chromium opens it in Notes, reads a note with its embeds, callouts and
 #     backlinks, draws its mind map and the vault's graph, types a link into
 #     a note with the box saving it, searches, and publishes the folder as a
@@ -276,6 +278,8 @@ pkgs.testers.nixosTest {
             f"notes-shots {BASE} matus '{PASSWORD}' /tmp/shots/after --test losos-notes"
             " >&2"
         )
+        # Opening Notes made the default vault, empty, for the first note.
+        assert status(f"-u 'matus:{PASSWORD}' -X PROPFIND -H 'Depth: 0' {BASE}/remote.php/webdav/Notes/") == 207
         # What was typed in the editor is in the file, written by the box.
         text = curl(f"-f -u 'matus:{PASSWORD}' '{BASE}/remote.php/webdav/{Q(VAULT)}/{Q("Planting calendar.md")}'")
         assert "Feed with [[Compost]]" in text, text
