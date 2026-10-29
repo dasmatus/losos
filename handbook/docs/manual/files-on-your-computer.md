@@ -6,8 +6,6 @@ slug: /manual/files-on-your-computer
 
 # Files on your computer
 
-![LosOS Cloud's Devices page: the server address, the WebDAV address for a file manager, and the computers signed in.](../img/cloud-devices.png)
-
 Your LosOS Cloud files are also a network folder. Any computer on the box's
 network can open it in its file manager, drag files in and out, and open
 them in place, without installing anything. There are two ways in:
@@ -36,6 +34,8 @@ files. Your **Account** page shows the address too.
 The share answers computers on the box's own network only, never through
 the internet. An administrator turns it on and off under **Settings** >
 **Network** > **Windows, Mac and Linux**. It is on by default.
+
+![Settings, Network: Show under Network on computers nearby, turned on.](../img/settings-network-windows.png)
 
 ### Windows
 
@@ -77,6 +77,8 @@ happened since the share was turned on, open your **Account** page in
 LosOS, find **Your files on Windows, Mac and Linux**, type your password
 under **Let Windows take your password**, and click **Allow**.
 
+![Your account: Your files on Windows, Mac and Linux, with the address for File Explorer and Ready once the box has seen your password.](../img/settings-account-windows.png)
+
 ### What the share does differently
 
 Files you change on the share change in LosOS Cloud at once, in the
@@ -89,6 +91,8 @@ keeps no earlier version.
 ```text
 https://<name>.local/remote.php/webdav/
 ```
+
+![LosOS Cloud's Devices page: the server address, the WebDAV address for a file manager, and the computers signed in.](../img/cloud-devices.png)
 
 ### Before you start
 
