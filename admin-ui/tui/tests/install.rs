@@ -1,5 +1,6 @@
-//! install.sh under sh, with a fake curl that serves files from a folder and
-//! a fake uname, so every branch runs without the network.
+//! install.sh under sh, with a fake curl that serves files from a folder, a
+//! fake unzip that opens them, and a fake uname, so every branch runs without
+//! the network.
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -26,8 +27,17 @@ fn write_exe(path: &Path, text: &str) {
 impl Fake {
     fn new() -> Fake {
         let dir = tempfile::tempdir().unwrap();
-        let served = dir.path().join("served/main/x86_64");
-        fs::create_dir_all(&served).unwrap();
+        // The build's zip as nightly.link hands it out: a file at
+        // served/<branch>/losos-pages-updates.zip. The fake unzip below
+        // reads it as the name of the folder it stands for.
+        let build = dir.path().join("served/main/build");
+        fs::create_dir_all(&build).unwrap();
+        fs::write(
+            dir.path().join("served/main/losos-pages-updates.zip"),
+            build.to_str().unwrap(),
+        )
+        .unwrap();
+        let served = build;
         let bin = dir.path().join("bin");
         fs::create_dir_all(&bin).unwrap();
         fs::write(served.join("losos"), PROGRAM).unwrap();
@@ -43,10 +53,17 @@ impl Fake {
             "#!/bin/sh\n\
              for a; do last=$a; done\n\
              while [ $# -gt 0 ]; do [ \"$1\" = -o ] && out=$2; shift; done\n\
-             path=${last#https://proxy.losos.dasmat.us/updates/}\n\
+             path=${last#https://nightly.link/dasmatus/losos/workflows/ci/}\n\
              echo \"$last\" >> \"$FAKE_SERVED/requests\"\n\
              [ -f \"$FAKE_SERVED/$path\" ] || exit 22\n\
              cp \"$FAKE_SERVED/$path\" \"$out\"\n",
+        );
+        // unzip -q -o <zip> -d <folder>
+        write_exe(
+            &bin.join("unzip"),
+            "#!/bin/sh\n\
+             while [ $# -gt 0 ]; do case \"$1\" in -d) out=$2; shift;; -*) ;; *) zip=$1;; esac; shift; done\n\
+             mkdir -p \"$out\" && cp \"$(cat \"$zip\")\"/* \"$out\"/\n",
         );
         write_exe(
             &bin.join("uname"),
@@ -65,8 +82,18 @@ impl Fake {
         self.dir.path().join("served")
     }
 
+    fn build(&self) -> PathBuf {
+        self.served().join("main/build")
+    }
+
     fn run(&self, env: &[(&str, &str)]) -> Output {
-        let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("install.sh");
+        self.run_script(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("install.sh"),
+            env,
+        )
+    }
+
+    fn run_script(&self, script: &Path, env: &[(&str, &str)]) -> Output {
         let mut cmd = Command::new("sh");
         cmd.arg(script)
             .env_clear()
@@ -109,8 +136,10 @@ fn installs_into_local_bin_after_checking_the_checksum() {
     assert!(!out.contains("AI tools"), "{out}");
     assert!(!err.contains("sudo"));
     let requests = fs::read_to_string(fake.served().join("requests")).unwrap();
-    assert!(requests.contains("https://proxy.losos.dasmat.us/updates/main/x86_64/SHA256SUMS\n"));
-    assert!(requests.contains("https://proxy.losos.dasmat.us/updates/main/x86_64/losos\n"));
+    assert_eq!(
+        requests,
+        "https://nightly.link/dasmatus/losos/workflows/ci/main/losos-pages-updates.zip\n"
+    );
     let has_secret_tool = Command::new("sh")
         .args(["-c", "command -v secret-tool"])
         .env("PATH", real_path())
@@ -157,11 +186,7 @@ fn refuses_another_architecture_or_system_with_a_sentence() {
 #[test]
 fn stops_on_a_checksum_that_does_not_match() {
     let fake = Fake::new();
-    fs::write(
-        fake.served().join("main/x86_64/losos"),
-        format!("{PROGRAM}# tampered\n"),
-    )
-    .unwrap();
+    fs::write(fake.build().join("losos"), format!("{PROGRAM}# tampered\n")).unwrap();
     let r = fake.run(&[]);
     assert_eq!(r.status.code(), Some(1));
     assert!(text(&r.stderr).contains("does not match its checksum"));
@@ -173,5 +198,33 @@ fn takes_the_channel_from_losos_channel() {
     let fake = Fake::new();
     let r = fake.run(&[("LOSOS_CHANNEL", "nightly")]);
     assert_eq!(r.status.code(), Some(1));
-    assert!(text(&r.stderr).contains("updates/nightly/x86_64/SHA256SUMS"));
+    assert!(text(&r.stderr).contains("workflows/ci/nightly/losos-pages-updates.zip"));
+}
+
+#[test]
+fn installs_from_beside_itself_out_of_the_unzipped_build() {
+    let fake = Fake::new();
+    let unzipped = fake.dir.path().join("losos-pages-updates");
+    fs::create_dir_all(&unzipped).unwrap();
+    for name in ["losos", "SHA256SUMS"] {
+        fs::copy(fake.build().join(name), unzipped.join(name)).unwrap();
+    }
+    let script = unzipped.join("install.sh");
+    fs::copy(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("install.sh"),
+        &script,
+    )
+    .unwrap();
+    let r = fake.run_script(&script, &[]);
+    assert!(r.status.success(), "{}", text(&r.stderr));
+    let installed = fake.dir.path().join("home/.local/bin/losos");
+    assert_eq!(fs::read_to_string(installed).unwrap(), PROGRAM);
+    assert!(
+        unzipped.join("losos").exists(),
+        "the unzipped folder stays whole"
+    );
+    assert!(
+        !fake.served().join("requests").exists(),
+        "nothing was downloaded"
+    );
 }
