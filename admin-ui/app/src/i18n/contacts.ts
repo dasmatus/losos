@@ -135,7 +135,7 @@ export default defineMessages({
   // ── import and export ──
   "contacts.importTitle": { en: "Import contacts", sk: "Importovať kontakty", de: "Kontakte importieren" },
   "contacts.importLead": {
-    en: "Pick a .vcf file: vCard 4.0, 3.0 or 2.1, with one contact or many. Contacts already in your book are updated, not added twice.",
+    en: "Pick a .vcf file: vCard 4.0, 3.0 or 2.1, with one contact or many. The import updates contacts already in your book rather than adding them twice.",
     sk: "Vyberte súbor .vcf: vCard 4.0, 3.0 alebo 2.1, s jedným kontaktom alebo s mnohými. Kontakty, ktoré už máte, sa aktualizujú, nepridajú sa dvakrát.",
     de: "Wähle eine .vcf-Datei: vCard 4.0, 3.0 oder 2.1, mit einem Kontakt oder vielen. Kontakte, die schon in deinem Buch sind, werden aktualisiert, nicht doppelt hinzugefügt.",
   },

@@ -36,10 +36,10 @@ export default defineMessages({
   "cloud.search.label": { en: "Search your files", sk: "Hľadať v súboroch", de: "Dateien durchsuchen" },
   "cloud.search.placeholder": { en: "Search by name", sk: "Hľadať podľa názvu", de: "Nach Namen suchen" },
   "cloud.search.title": { en: "Search", sk: "Hľadanie", de: "Suche" },
-  "cloud.search.for": { en: "Results for “{text}”", sk: "Výsledky pre „{text}“", de: "Ergebnisse für „{text}“" },
+  "cloud.search.for": { en: "Results for \"{text}\"", sk: "Výsledky pre „{text}“", de: "Ergebnisse für „{text}“" },
   "cloud.search.emptyTitle": { en: "Nothing found", sk: "Nič sa nenašlo", de: "Nichts gefunden" },
   "cloud.search.emptyBody": {
-    en: "No file or folder name contains “{text}”.",
+    en: "No file or folder name contains \"{text}\".",
     sk: "Žiadny súbor ani priečinok nemá v názve „{text}“.",
     de: "Kein Datei- oder Ordnername enthält „{text}“.",
   },
@@ -153,7 +153,7 @@ export default defineMessages({
   "cloud.versions.action": { en: "Versions", sk: "Verzie", de: "Versionen" },
   "cloud.versions.title": { en: "Versions of {name}", sk: "Verzie súboru {name}", de: "Versionen von {name}" },
   "cloud.versions.summary": {
-    en: "Each time the file is changed, the content before is kept here. The 20 newest are kept.",
+    en: "Each time the file changes, LosOS Cloud keeps the content from before here, up to the 20 newest.",
     sk: "Pri každej zmene súboru sa sem odloží predchádzajúci obsah. Uchováva sa 20 najnovších.",
     de: "Bei jeder Änderung wird der vorherige Inhalt hier aufbewahrt. Die 20 neuesten bleiben.",
   },
