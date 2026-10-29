@@ -7,15 +7,16 @@
 #                test network as any resolver on the internet would.
 #
 # What it asserts, in order:
-#   1. Before the edge holds a certificate it serves the zone (SOA, NS, glue)
-#      but no box names, and `/domains/list` answers 503: an edge that is not
-#      official hands out nothing.
-#   2. An identity certificate is installed (signed here by a throwaway root,
-#      the way `losos-registrar provision edge` would push one) and the
-#      registrar restarted: the registrar rewrites the zone with the tenant
+#   1. Before the edge's owner has claimed it, it serves the zone (SOA, NS,
+#      glue) but no box names, and `/domains/list` answers 503: an open
+#      gateway nobody claimed hands out nothing.
+#   2. A claim: the measured settings appear where the boot after
+#      `POST /passport/settings` leaves them (the test writes them, with no
+#      TPM) and the registrar restarts. It rewrites the zone with the tenant
 #      hostname inside it, the path unit reloads Knot, and the client gets
 #      the edge's address for `mattbox.boxes.example.test` over UDP and TCP,
-#      with the SOA serial the file carries.
+#      with the SOA serial the file carries. What the settings say is the
+#      boxes' to check (backend/access/src/gateway/check.rs), not this test's.
 #   3. `/domains/list` now answers 200 and says why this box may not add a
 #      domain: the edge runs no market, so there is no Stripe account to
 #      vouch for it. It carries the box's relay pass, because the edge keeps
@@ -44,7 +45,6 @@ let
   spokeTokenValue = "test-spoke-token-0123456789abcdef0123456789abcdef";
   spokeToken = "/var/secrets/losos-tenant-acme";
   lososPkgs = import ../packages.nix { inherit pkgs; };
-  registrar = "${lososPkgs.losos-registrar}/bin/losos-registrar";
   # A test wallet (private key 0x0707…07) and its personal_sign of
   # "LosOS box name v1\nzone: boxes.example.test\nbox: mattbox\naddress: <it>\n",
   # as viem's signMessage makes it in the admin page.
@@ -99,6 +99,10 @@ pkgs.testers.nixosTest {
           };
         };
         networking.firewall.allowedTCPPorts = [ 8443 ];
+        # Only a claimed open gateway's zone hands out names
+        # (modules/edge-passport.nix). No TPM here: the test stands in for
+        # the measured claim itself, below.
+        losos.edge.passport.enable = true;
         environment.systemPackages = [ pkgs.jq ];
         virtualisation.memorySize = 1024;
       };
@@ -141,7 +145,7 @@ pkgs.testers.nixosTest {
               "http://127.0.0.1:8443/domains/list"
           ).rsplit("\n", 1)
 
-      with subtest("not official: the zone answers, but holds no box names"):
+      with subtest("not claimed: the zone answers, but holds no box names"):
           edge.wait_until_succeeds("test -s /var/lib/losos-dns/boxes.example.test.zone")
           zone = edge.succeed("cat /var/lib/losos-dns/boxes.example.test.zone")
           print(zone)
@@ -151,16 +155,18 @@ pkgs.testers.nixosTest {
               "kdig @${edgeIp} boxes.example.test SOA +short | grep -q 'ns1.boxes.example.test.'"
           )
           assert dig("ns1.boxes.example.test") == "${edgeIp}"
-          assert dig("mattbox.boxes.example.test") == "", "a name before the edge is official"
+          assert dig("mattbox.boxes.example.test") == "", "a name before the edge is claimed"
           body, code = domains_list()
           assert code == "503", (code, body)
 
-      with subtest("official: the tenant's name is assigned and Knot reloads"):
+      with subtest("claimed: the tenant's name is assigned and Knot reloads"):
+          # The claim as the registrar sees it after the boot that measured
+          # the owner's settings into the TPM. The measuring and the TPM are
+          # the passport's own business; the zone only asks whether there is
+          # a claim.
           edge.succeed(
-              "${registrar} identity keygen --out /root/root.key",
-              "${registrar} identity show --key /var/lib/losos-registrar/identity.key > /root/edge.pub",
-              "${registrar} identity sign --root-key /root/root.key --public-key \"$(cat /root/edge.pub)\" "
-              "--name 'test edge' --url http://edge:8443 > /var/lib/losos-registrar/identity.cert.json",
+              "install -d -m 0755 /run/losos-gateway",
+              "echo '{\"owner\":\"test\"}' > /run/losos-gateway/settings.json",
               "systemctl restart losos-registrar.service",
           )
           edge.wait_until_succeeds(
@@ -179,7 +185,7 @@ pkgs.testers.nixosTest {
           edge.succeed("systemctl show -p Result losos-dns-reload.service | grep -qx Result=success")
           edge.succeed("journalctl -u knot.service | grep -q 'boxes.example.test'")
 
-      with subtest("official without a market: the box is told Stripe has not vouched"):
+      with subtest("claimed without a market: the box is told Stripe has not vouched"):
           body, code = domains_list()
           assert code == "200", (code, body)
           view = json.loads(body)
