@@ -313,15 +313,13 @@ let
   # points at a runtime path instead; the registrar re-reads either on every
   # pass and treats a missing file as "no uplink yet".
   uplinkRendered = pkgs.writeText "losos-uplink.json" (
-    builtins.toJSON (
-      {
-        registrar_url = cfg.uplink.registrarUrl;
-        tunnel_endpoint = cfg.uplink.tunnelEndpoint;
-        inherit (cfg.uplink) id;
-        token_file = toString cfg.uplink.tokenFile;
-        pin_file = toString cfg.uplink.pinFile;
-      }
-    )
+    builtins.toJSON {
+      registrar_url = cfg.uplink.registrarUrl;
+      tunnel_endpoint = cfg.uplink.tunnelEndpoint;
+      inherit (cfg.uplink) id;
+      token_file = toString cfg.uplink.tokenFile;
+      pin_file = toString cfg.uplink.pinFile;
+    }
   );
   uplinkFile =
     if cfg.uplink.configFile != null then cfg.uplink.configFile else toString uplinkRendered;
@@ -336,7 +334,7 @@ let
   ];
 
   # Clusters and bans (handbook/docs/in-depth/edge-federation.md, "Three
-  # tiers"). The cluster file is runtime state (`losos-edge cluster`), the
+  # tiers"). The cluster file is runtime state (the manage page writes it), the
   # registrar re-reads it every pass; the official cluster and its peers are
   # configuration; the ban file is re-read on every uplink pass and a missing
   # one bans nothing.
@@ -972,6 +970,7 @@ let
       "--dns-ipv6"
       (lib.concatStringsSep "," dnsCfg.ipv6)
     ]
+    ++ lib.optionals echOn echArgs
     ++ lib.optionals relayRoutes [
       "--relay-routes"
       "--relay-routes-file"
@@ -984,6 +983,27 @@ let
   # routes.rs): the route table and the key relay passes are signed with,
   # both in the registrar's StateDirectory, the key made on its first start.
   relayRoutes = dnsCfg.enable && dnsCfg.relayRoutes.enable;
+
+  # Encrypted Client Hello (losos.edge.dns.ech, edge/registrar/src/ech.rs):
+  # one key, made on the first start by losos-ech-key below, published in
+  # the zone's HTTPS records by the registrar and decrypted with by Traefik.
+  # The directory is setgid traefik, so the file the registrar (root) writes
+  # is Traefik's to read and nobody else's. Only with the zone: without it
+  # nothing tells a browser the key.
+  echOn = dnsCfg.enable && dnsCfg.ech.enable;
+  echKeyFile = "/var/lib/losos-ech/ech.pem";
+  echPublicName = if dnsCfg.ech.publicName == null then registerDomain else dnsCfg.ech.publicName;
+  echArgs = [
+    "--ech-key-file"
+    echKeyFile
+    "--ech-public-name"
+    echPublicName
+  ];
+  # The `default` TLS option is the one a handshake to the public name
+  # meets, so it carries the key; Traefik reads the file when it loads this.
+  echYml = (pkgs.formats.yaml { }).generate "losos-ech.yml" {
+    tls.options.default.echKeys = [ echKeyFile ];
+  };
 
   # Credentials the registrar decrypts. The list is empty on an edge that
   # does not run USDC, and the unit then has no LoadCredentialEncrypted at
@@ -1172,6 +1192,17 @@ in
           losos.edge.dns.enable requires losos.edge.dns.ipv4 and/or
           losos.edge.dns.ipv6: the edge's public addresses, which every name
           in the zone resolves to.
+        '';
+      }
+      {
+        # An edge that serves its own zone is an official one (the names
+        # answer only on a claimed gateway), and an official edge's names
+        # are signed and hide which box a browser asks for.
+        assertion = dnsCfg.enable -> (dnsCfg.dnssec.enable && dnsCfg.ech.enable);
+        message = ''
+          losos.edge.dns.enable requires losos.edge.dns.dnssec.enable and
+          losos.edge.dns.ech.enable: an official edge's zone is signed and
+          carries its Encrypted Client Hello key.
         '';
       }
       {
@@ -1415,6 +1446,9 @@ in
       enable = true;
       staticConfigFile = staticCfg;
       group = "traefik";
+      # No released Traefik decrypts ECH; nix/traefik-ech.nix is the one
+      # that does, and only an edge with the key runs it.
+      package = lib.mkIf echOn (pkgs.callPackage ../nix/traefik-ech.nix { });
     };
 
     # /etc/traefik/dynamic: real dir (0755, root) holding the static
@@ -1431,6 +1465,15 @@ in
       "r /etc/traefik/dynamic/losos-vms.yml - - - - -"
       "r /etc/traefik/dynamic/hidden.yml - - - - -"
     ]
+    ++ (
+      if echOn then
+        [
+          "d /var/lib/losos-ech 2750 root traefik - -"
+          "L+ /etc/traefik/dynamic/ech.yml - - - - ${echYml}"
+        ]
+      else
+        [ "r /etc/traefik/dynamic/ech.yml - - - - -" ]
+    )
     ++ lib.optionals cfg.vms.enable [
       "L+ /etc/traefik/dynamic/register-vm-transfer.yml - - - - ${toString vmTransferYml}"
     ]
@@ -1592,6 +1635,36 @@ in
         ProtectHome = true;
       };
     };
+
+    # The ECH key exists before Traefik reads ech.yml, which inlines the file
+    # once at load, and before the registrar renders the zone. The registrar
+    # reads the same file with the same public name, so it never makes a
+    # second key; a changed publicName makes a new one here, and Traefik
+    # restarts with it.
+    systemd.services.losos-ech-key = lib.mkIf echOn {
+      description = "Make the edge's Encrypted Client Hello key";
+      wantedBy = [ "multi-user.target" ];
+      before = [
+        "traefik.service"
+        "losos-registrar.service"
+      ];
+      requiredBy = [ "traefik.service" ];
+      restartTriggers = [ echPublicName ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        UMask = "0027";
+        ExecStart = utils.escapeSystemdExecArgs [
+          "${registrar}/bin/losos-registrar"
+          "ech-key"
+          "--key-file"
+          echKeyFile
+          "--public-name"
+          echPublicName
+        ];
+      };
+    };
+    systemd.services.traefik.restartTriggers = lib.mkIf echOn [ echPublicName ];
 
     # ── DNS: the edge's own zone, served by Knot ─────────────────────────
     # losos-registrar renders the zone (edge/registrar/src/zone.rs) into
