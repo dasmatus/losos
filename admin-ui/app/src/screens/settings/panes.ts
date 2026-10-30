@@ -455,7 +455,8 @@ export const DEFAULT_PANE: SettingsPaneId = "storage";
  * who sees it: an administrator sees every pane, anyone else the panes of
  * the sections their groups open. A pane that writes the box's
  * configuration (Mesh, Hardware, Security, Advanced, ...) is the
- * administrators'. */
+ * administrators'. Look is everyone's: each person picks their own
+ * background there, and only the widgets on it ask for the look section. */
 const PANE_SECTION: Record<SettingsPaneId, string> = {
   storage: "storage",
   mesh: "admin",
@@ -464,7 +465,7 @@ const PANE_SECTION: Record<SettingsPaneId, string> = {
   apps: "apps",
   statistics: "apps",
   network: "network",
-  look: "look",
+  look: "signed-in",
   hardware: "admin",
   security: "admin",
   credentials: "admin",
@@ -494,7 +495,8 @@ export function paneOpen(id: SettingsPaneId): boolean {
   if ((id === "users" || id === "account" || id === "moderation") && !runsOwnSignIn()) return false;
   if (id === "account") return getMe()?.spareKey !== true && canUse("account");
   if (heldBy().length > 0) return false;
-  return canUse(paneSection(id));
+  const section = paneSection(id);
+  return section === "signed-in" || canUse(section);
 }
 
 /** Parse a URL segment into the id of a pane that can be opened. For an

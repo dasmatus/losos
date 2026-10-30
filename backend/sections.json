@@ -13,7 +13,10 @@
     "POST /api/user-apps/{id}/data",
     "POST /api/pictures",
     "POST /api/pictures/trust",
-    "POST /api/reports"
+    "POST /api/reports",
+    "POST /api/look",
+    "PUT /api/look/background",
+    "DELETE /api/look/background"
   ],
   "speech": [
     "POST /api/mail/send",
@@ -39,7 +42,11 @@
     "POST /api/edge/manage": "admin",
     "POST /api/edge/cluster": "admin",
     "GET /api/look": "signed-in",
+    "POST /api/look": "signed-in",
     "GET /api/look/background": "signed-in",
+    "GET /api/look/background/{name}": "signed-in",
+    "PUT /api/look/background": "signed-in",
+    "DELETE /api/look/background": "signed-in",
     "POST /api/set-password": "signed-in",
     "GET /api/chat": "signed-in",
     "POST /api/chat/session": "signed-in",
@@ -153,9 +160,6 @@
     "POST /api/domains/remove": "network",
     "POST /api/domains/wallet": "network",
 
-    "POST /api/look": "look",
-    "PUT /api/look/background": "look",
-    "DELETE /api/look/background": "look",
     "POST /api/look/widgets": "look",
     "DELETE /api/look/widgets/{id}": "look",
 
@@ -249,6 +253,7 @@
     "POST /api/basic/sign-out": "public",
     "POST /api/basic/prefs": "public",
     "GET /api/basic/counts.css": "public",
+    "GET /api/basic/look.css": "signed-in",
     "GET /api/basic/": "signed-in",
     "GET /api/basic/{page}": "signed-in",
     "POST /api/basic/{page}": "signed-in",

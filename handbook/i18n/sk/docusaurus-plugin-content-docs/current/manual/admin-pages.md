@@ -224,9 +224,13 @@ pamätá tento prehliadač.
 
 ## Téma a jazyk \{#theme-and-language}
 
-Lišta hore prepína medzi angličtinou, slovenčinou a nemčinou a medzi
-možnosťami „Podľa prehliadača“, svetlá a tmavá. Tento prehliadač si obe
-voľby zapamätá.
+Vaša ponuka vpravo hore, pod vaším menom, má **Vzhľad** („Podľa
+prehliadača“, svetlý alebo tmavý) a **Jazyk** (jazyk prehliadača,
+angličtina, slovenčina alebo nemčina). Je to tá istá ponuka na každej
+stránke zariadenia: na správcovských stránkach, v LosOS Cloud, Office,
+Mail, Chat a LosOS Git. Stránka, na ktorú nie ste prihlásení, má obe voľby
+za jedným tlačidlom vo svojej lište. Tento prehliadač si obe voľby
+zapamätá.
 
 ![Prehľad v nemčine a v tmavej téme.](@site/docs/img/overview-de-dark.png)
 

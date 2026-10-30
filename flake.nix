@@ -574,6 +574,10 @@
         # The admin pages with JavaScript off, from sign-in to a rebuild, with
         # the pull request's pictures (nix/tests/no-js.nix).
         losos-no-js = import ./nix/tests/no-js.nix { inherit pkgs; };
+        # Each person's own look: the theme and the language in the person
+        # menu, a background picture each, with the pull request's pictures
+        # (nix/tests/person-look.nix).
+        losos-person-look = import ./nix/tests/person-look.nix { inherit pkgs; };
         # The pages as MDX: an administrator's page and stylesheet saved as
         # commits, drawn with JavaScript on and off, and the editor beside
         # the page, with the pull request's pictures (nix/tests/pages.nix).

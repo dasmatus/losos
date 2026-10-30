@@ -179,9 +179,9 @@ async function eva(s, p) {
   await yes.click();
   await p.waitForURL(`${MATT}${REPO}**`);
   await p.locator("[data-contributor-note]").waitFor();
-  await p.locator("[data-me]", { hasText: "Eva" }).waitFor();
+  await p.locator("[data-testid='signed-in-name']", { hasText: "Eva" }).waitFor();
   await s.take(p, "contributor", "back on mattbox as @eva:kitchenbox.local, with her own branches", { kind: "none" }, {
-    me: p.locator("[data-me]"),
+    me: p.locator("[data-testid='signed-in-name']"),
     note: p.locator("[data-contributor-note]"),
   });
   await p.goto(`${MATT}${REPO}/pulls/1`);

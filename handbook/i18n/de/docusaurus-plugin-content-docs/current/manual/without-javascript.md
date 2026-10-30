@@ -42,9 +42,12 @@ wird auf `https://` umgeleitet.
   sehen und sie entfernen.
 - **Hardware** und **Sicherheit.** Jeder Schalter auf diesen Bereichen.
 - **Suche.** Findet eine Seite der Box über ihren Namen.
+- **Aussehen.** Dein eigener Hintergrund, schlicht oder ein Bild, das die
+  Box mitbringt, und der Schleier darüber. Ein eigenes Bild lädst du mit
+  eingeschaltetem JavaScript hoch.
 - **Design, Sprache und die Seitenleiste.** Hell, dunkel oder wie der
-  Browser, die Sprache und die auf Symbole eingeklappte Seitenleiste. Der
-  Browser merkt sich das.
+  Browser und die Sprache, in deinem Menü oben rechts, und die auf Symbole
+  eingeklappte Seitenleiste. Der Browser merkt sich das.
 
 Eine Änderung zeigt sich in der Anwenden-Leiste am Fuß des Bereichs, die die
 Änderungen zählt. **Anwenden** baut die Box neu wie auf den gewohnten

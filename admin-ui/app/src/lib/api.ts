@@ -3336,9 +3336,13 @@ export interface LookLimits {
 
 export interface LookResponse {
   version: number;
+  /** The signed-in person's own background, or the box's for the spare key. */
   background: LookBackground;
   /** Percent of the theme's ground colour laid over the picture. */
   veil: number;
+  /** The background is a person's own; false for the spare key, which sees
+   *  and sets the box's. */
+  personal: boolean;
   widgets: HandWidget[];
   /** Names of the pictures the box ships, under /backgrounds/<name>.svg. */
   shipped: string[];

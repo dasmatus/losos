@@ -40,23 +40,34 @@ wizard offers a one-line installer for macOS, Linux and Windows
 
 ## Look
 
-**Settings, Look** changes how the admin pages look, for every browser that
-opens the box. Nothing here is a setting in the Nix sense. It is a document
-lososd keeps at `/var/lib/losos/look.json`, so a change takes effect the
-moment it is saved, with no rebuild.
+**Settings, Look** changes how the admin pages look. Everyone signed in
+opens it for their own background; the widgets on it are for the people in
+the look section. Nothing here is a setting in the Nix sense. lososd keeps
+the widgets at `/var/lib/losos/look.json` and each person's background at
+`/var/lib/losos/looks/<name>.json`, so a change takes effect the moment it
+is saved, with no rebuild.
 
 ### Background
 
-Pick one of the three shipped pictures, or upload one of your own (PNG, JPEG,
-WebP, GIF or SVG, up to 8 MiB). The **Veil** slider lays the page colour over
-the picture, from 20 % to 90 %, so text stays readable in both the light and
-the dark theme. *Plain* removes the picture again.
+Each person picks their own, and it follows them to every browser they sign
+in to; nobody else's choice changes their page. Pick one of the three shipped
+pictures, or upload one of your own (PNG, JPEG, WebP or GIF, up to 8 MiB).
+The **Veil** slider lays the page colour over the picture, from 20 % to
+90 %, so text stays readable in both the light and the dark theme. *Plain*
+removes the picture again. LosOS Cloud and LosOS Git show it behind their
+pages too.
 
-:::note[Why the picture needs no token]
-lososd serves an uploaded picture at `/api/look/background` without a token,
-because a CSS `background-image` cannot send one. The route sits behind the
-same LAN-only guard as the rest of the admin pages, and a wallpaper is not a
-secret.
+The spare key is nobody, so it sees and sets the box's own background. On a
+box that had a background before backgrounds were per person, that one is
+the box's own, and the owner gets a copy of it the first time they sign in.
+Removing a person removes their background.
+
+:::note[Who can read a picture]
+A person's uploaded picture is served at `/api/look/background/<name>` to
+that person alone, read with their LosOS Login cookie. The box's own is
+served at `/api/look/background` without a token, because a spare-key tab
+keeps its key in the page and a CSS `background-image` cannot send one. Both
+routes sit behind the same LAN-only guard as the rest of the admin pages.
 :::
 
 ### Widgets written by hand
