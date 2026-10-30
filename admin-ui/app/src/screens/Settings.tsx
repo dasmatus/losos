@@ -10,6 +10,7 @@ import { ApplyBar } from "./settings/apply-bar";
 import { AboutPane } from "./settings/pane-about";
 import { AccessPane } from "./settings/pane-access";
 import { CredentialsPane } from "./settings/pane-credentials";
+import { ProblemsPane } from "./settings/pane-problems";
 import { AccountPane } from "./settings/pane-account";
 import { UsersPane } from "./settings/pane-users";
 import { ModerationPane } from "./settings/pane-moderation";
@@ -125,6 +126,9 @@ function Pane({
     case "credentials":
       // No draft, no Apply bar: a new value is its own request.
       return <CredentialsPane locked={form.locked} />;
+    case "problems":
+      // No draft, no Apply bar: sending and dismissing are their own requests.
+      return <ProblemsPane locked={form.locked} />;
     case "account":
       // No draft, no Apply bar: each part of the account is its own request.
       return <AccountPane locked={form.locked} />;

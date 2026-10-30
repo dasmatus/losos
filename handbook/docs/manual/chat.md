@@ -99,6 +99,8 @@ conversation it goes to.
 
 A small row of faces under a message shows who has read up to there.
 
+![A conversation with Eva in LosOS Chat: reactions under the messages, a reply in a thread and a picture, with the paper clip, the cloud button and the microphone under it.](../img/chat.png)
+
 ## Other Matrix apps
 
 Other Matrix apps, such as Element, cannot sign in to the box's chat,
