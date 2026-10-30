@@ -8,7 +8,7 @@
  * page's strings count UTF-16 units, so `tree` turns every offset into one
  * of those before anything here reads it. */
 
-import init, { page as pageJson, render as renderJson, tree as treeJson } from "./pkg/losos_mdx.js";
+import init, { date as dateWords, mathml as mathmlOf, render as renderJson, tree as treeJson } from "./pkg/losos_mdx.js";
 import wasmUrl from "./pkg/losos_mdx_bg.wasm?url";
 
 export type Flavour = "mdx" | "md";
@@ -80,8 +80,21 @@ export function loadMdx(): Promise<unknown> {
   return ready;
 }
 
-export function renderMdx(source: string, flavour: Flavour, resolver?: Resolver): Rendered {
-  return JSON.parse(renderJson(source, flavour, resolver ?? null)) as Rendered;
+/** `lang` is the reader's language, for a `<Date>` in a document that
+ * names none of its own. */
+export function renderMdx(source: string, flavour: Flavour, resolver?: Resolver, lang?: string): Rendered {
+  return JSON.parse(renderJson(source, flavour, resolver ?? null, lang ?? null)) as Rendered;
+}
+
+/** An equation as the MathML the box writes, or null for TeX that does
+ * not read. */
+export function mathml(tex: string, block: boolean): string | null {
+  return mathmlOf(tex, block) ?? null;
+}
+
+/** A `<Date>` in words, as the box writes it. */
+export function formatDate(value: string, long: boolean, lang: string): string {
+  return dateWords(value, long, lang);
 }
 
 /** A page of the admin UI (src/pages/README.md) as the box reads it:

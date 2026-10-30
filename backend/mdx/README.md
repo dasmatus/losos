@@ -28,12 +28,32 @@ itself:
   and URL schemes (`src/sanitize.rs`), whatever wrote it: render.rs, raw
   HTML in a `.md` file, or a Notes pass. No script, style, frame or form
   can get through, nor any form field, event handler or `style` attribute.
+  MathML is allowed for equations, with its layout attributes only.
   Classes are limited to the document's own (`mdx-*`, `callout-*`,
   `language-*` and a few more), so a document cannot borrow the page's
   layout classes to cover the page.
 - **Size and depth** are bounded: documents over 1 MiB, and nesting deeper
   than 100 levels, are errors. markdown-rs recurses, and its time grows
   faster than the document does.
+
+## Finished with no script
+
+The HTML is complete as written: a page shows it with JavaScript off, and
+an export carries none.
+
+- **Equations** (`$…$`, `$$…$$`, `<Equation>`) are MathML Core, made by
+  math-core (`src/math.rs`), which browsers lay out themselves. The TeX
+  rides along as an `application/x-tex` annotation, which Pandoc reads back.
+  An equation that does not read, is longer than 4 KiB or nests deeper than
+  32 levels stays TeX, as text; an unknown command is marked in place.
+- **Dates** (`<Date>`) are words (`src/date.rs`): in the document's
+  language (`lang` in its front matter), else the reader's
+  (`Parsed::lang`), else English. English, Slovak and German.
+- **Charts** (`<Chart>`) are a figure with the data's address for now;
+  they become inline SVG with the sheet editor.
+
+The browser package exports `mathml` and `date`, so the editor shows the
+same as the box.
 
 A refusal is a `Problem` with a line and column, not a failure. The page
 still draws the document, with the refused part as plain text, and lists
@@ -70,10 +90,10 @@ autolinks), YAML front matter and `$maths$`.
 | `PageNumber` | | `span.mdx-page-number` |
 | `Table`, `Row`, `Cell` | `caption`; `header`; `colSpan`, `rowSpan`, `align` | `table.mdx-table`, `tr`, `th` or `td` |
 | `Comment` | `text` (required), `author`, `date` | `span.mdx-comment` around the text it is about |
-| `Equation` | `tex` (required), `inline` | `code.language-math` |
+| `Equation` | `tex` (required), `inline` | `math` (MathML), `display="block"` unless inline |
 | `Chart` | `src` (required, a `.sheet`), `range`, `type` (bar, line, area, pie), `title` | `figure.mdx-chart` with `data-*` |
 | `Mention` | `login` (required) | `span.mdx-mention` |
-| `Date` | `value` (required, YYYY-MM-DD), `format` (short, long) | `time.mdx-date` |
+| `Date` | `value` (required, YYYY-MM-DD), `format` (short, long) | `time.mdx-date`, the date in words |
 
 Plain elements, as themselves: `abbr` (with `title`), `br`, `kbd`, `mark`,
 `s`, `small`, `sub`, `sup`, `u`.

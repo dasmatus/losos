@@ -1,4 +1,4 @@
-//! The browser's way in: `render(source, flavour, resolver)` gives the
+//! The browser's way in: `render(source, flavour, resolver, lang)` gives the
 //! [`crate::Rendered`] result as JSON, and `tree(source, flavour)` the mdast
 //! the WYSIWYG editor builds its document from. The resolver is a plain JS
 //! object with `note`, `file` and `href` methods, each optional.
@@ -53,8 +53,10 @@ pub fn render(
     source: &str,
     flavour_name: &str,
     resolver: Option<JsResolver>,
+    lang: Option<String>,
 ) -> Result<String, JsError> {
-    let parsed = crate::parse(source, flavour(flavour_name)).map_err(to_js)?;
+    let mut parsed = crate::parse(source, flavour(flavour_name)).map_err(to_js)?;
+    parsed.lang = lang;
     let rendered = match &resolver {
         Some(r) => parsed.render(r),
         None => parsed.render(&crate::Plain),
@@ -72,6 +74,19 @@ pub fn tree(source: &str, flavour_name: &str) -> Result<String, JsError> {
         "problems": parsed.problems,
     }))
     .map_err(to_js)
+}
+
+/// An equation as MathML, the same the box writes; undefined for TeX that
+/// does not read, which the page then shows as it is.
+#[wasm_bindgen]
+pub fn mathml(tex: &str, block: bool) -> Option<String> {
+    crate::mathml(tex, block).ok()
+}
+
+/// A `<Date>`'s words, the same the box writes.
+#[wasm_bindgen]
+pub fn date(value: &str, long: bool, lang: &str) -> String {
+    crate::format_date(value, long, lang)
 }
 
 /// A note as `Rendered` JSON: [`crate::notes::render_note`], Obsidian's

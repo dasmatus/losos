@@ -14,7 +14,7 @@
     "lab:virt": "bun scripts/lab-core.mjs virt",
     "lab:render": "bun scripts/lab-core.mjs render",
     "mdx": "bun scripts/lab-core.mjs mdx",
-    "test:browser": "bun tests/solana.unit.mjs && bun tests/mail-pgp.unit.mjs && bun tests/fees.unit.mjs && bun tests/ens.unit.mjs && bun tests/games.unit.mjs && bun tests/chat-links.unit.mjs && bun tests/chat-rtc.unit.mjs && bun tests/sensitive.unit.mjs && bun tests/calls-e2ee.unit.mjs && bun tests/wizard.browser.mjs && bun tests/app.browser.mjs && bun tests/toasts.browser.mjs && bun tests/look.browser.mjs && bun tests/pages.browser.mjs && bun tests/advanced.browser.mjs && bun tests/lab.browser.mjs && bun tests/diagrams.browser.mjs && bun tests/apps.browser.mjs && bun tests/pins.browser.mjs && bun tests/tour.browser.mjs && bun tests/access.browser.mjs && bun tests/credentials.browser.mjs && bun tests/problems.browser.mjs && bun tests/users.browser.mjs && bun tests/moderation.browser.mjs && bun tests/account.browser.mjs && bun tests/profile.browser.mjs && bun tests/manage.browser.mjs && bun tests/edge-tiers.browser.mjs && bun tests/mail.browser.mjs && bun tests/palette.browser.mjs && bun tests/notes.browser.mjs && bun tests/games.browser.mjs && bun tests/calls.browser.mjs && bun tests/office.browser.mjs && bun tests/context-menu.browser.mjs && bun tests/user-apps.browser.mjs && bun tests/git.browser.mjs && bun tests/tracker.browser.mjs && bun tests/office-markdown.browser.mjs && bun tests/quick-actions.browser.mjs && bun tests/wiki.browser.mjs"
+    "test:browser": "bun tests/solana.unit.mjs && bun tests/mail-pgp.unit.mjs && bun tests/fees.unit.mjs && bun tests/ens.unit.mjs && bun tests/games.unit.mjs && bun tests/chat-links.unit.mjs && bun tests/chat-rtc.unit.mjs && bun tests/sensitive.unit.mjs && bun tests/calls-e2ee.unit.mjs && bun tests/wizard.browser.mjs && bun tests/app.browser.mjs && bun tests/toasts.browser.mjs && bun tests/look.browser.mjs && bun tests/advanced.browser.mjs && bun tests/lab.browser.mjs && bun tests/diagrams.browser.mjs && bun tests/apps.browser.mjs && bun tests/pins.browser.mjs && bun tests/tour.browser.mjs && bun tests/access.browser.mjs && bun tests/credentials.browser.mjs && bun tests/problems.browser.mjs && bun tests/users.browser.mjs && bun tests/moderation.browser.mjs && bun tests/account.browser.mjs && bun tests/profile.browser.mjs && bun tests/manage.browser.mjs && bun tests/edge-tiers.browser.mjs && bun tests/mail.browser.mjs && bun tests/palette.browser.mjs && bun tests/notes.browser.mjs && bun tests/games.browser.mjs && bun tests/calls.browser.mjs && bun tests/office.browser.mjs && bun tests/context-menu.browser.mjs && bun tests/user-apps.browser.mjs && bun tests/git.browser.mjs && bun tests/tracker.browser.mjs && bun tests/office-markdown.browser.mjs && bun tests/mdx-editor.unit.mjs && bun tests/paper.browser.mjs && bun tests/quick-actions.browser.mjs && bun tests/wiki.browser.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",
@@ -47,6 +47,17 @@
     "onnxruntime-web": "1.30.0",
     "openpgp": "6.3.2",
     "postal-mime": "4.1.4",
+    "prosemirror-commands": "1.7.2",
+    "prosemirror-dropcursor": "1.8.4",
+    "prosemirror-gapcursor": "1.4.1",
+    "prosemirror-inputrules": "1.5.1",
+    "prosemirror-keymap": "1.2.3",
+    "prosemirror-model": "1.25.12",
+    "prosemirror-schema-list": "1.5.1",
+    "prosemirror-state": "1.4.4",
+    "prosemirror-tables": "1.8.5",
+    "prosemirror-transform": "1.12.2",
+    "prosemirror-view": "1.42.6",
     "qr": "0.7.2",
     "react": "^19.3.1",
     "react-aria-components": "1.22.1",
