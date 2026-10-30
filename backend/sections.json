@@ -97,6 +97,7 @@
     "POST /api/credentials/{name}/rotate": "admin",
     "POST /api/backup/target": "backup",
     "DELETE /api/backup/target": "backup",
+    "POST /api/backup/target/bought": "backup",
     "POST /api/backup/run": "backup",
 
     "GET /api/apps": "apps",
@@ -188,6 +189,12 @@
     "GET /api/profiles/{name}": "signed-in",
     "GET /api/profiles/{name}/{kind}": "signed-in",
     "POST /api/people/profile/clear": "admin",
+    "GET /api/problems": "admin",
+    "GET /api/problems/{id}": "admin",
+    "POST /api/problems/{id}/send": "admin",
+    "GET /api/problems/{id}/send": "admin",
+    "POST /api/problems/{id}/cancel": "admin",
+    "POST /api/problems/{id}/dismiss": "admin",
     "POST /api/roles": "admin",
     "POST /api/roles/remove": "admin",
 

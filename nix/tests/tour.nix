@@ -142,7 +142,7 @@ pkgs.testers.nixosTest {
             "LOSOS_PLAYWRIGHT": "${pkgs.playwright-driver}/index.mjs",
         })
         run = subprocess.run(
-            ["${pkgs.nodejs}/bin/node", "${driver}", json.dumps(plan)],
+            ["${pkgs.bun}/bin/bun", "${driver}", json.dumps(plan)],
             env=env, capture_output=True, text=True, timeout=1800,
         )
         print(run.stdout)

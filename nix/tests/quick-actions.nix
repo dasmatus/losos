@@ -105,7 +105,7 @@ let
     }
     export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
     export FFMPEG=${pkgs.ffmpeg-headless}/bin/ffmpeg
-    exec ${pkgs.nodejs}/bin/node ${./quick-actions-shots.mjs} "$@"
+    exec ${pkgs.bun}/bin/bun ${./quick-actions-shots.mjs} "$@"
   '';
 in
 

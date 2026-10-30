@@ -8,6 +8,7 @@ import {
   postBackupRestore,
   postBackupRun,
   postBackupTarget,
+  postBackupTargetBought,
   postErase,
   postEraseCancel,
   type BackupResponse,
@@ -44,6 +45,7 @@ export interface BackupData {
   busy: boolean;
   refresh: () => void;
   saveTarget: (target: BackupTargetInput) => Promise<boolean>;
+  useBought: (order: string) => Promise<boolean>;
   forgetTarget: () => Promise<boolean>;
   backUp: () => Promise<boolean>;
   restore: (code: string) => Promise<boolean>;
@@ -144,6 +146,17 @@ export function useBackup(enabled: boolean): BackupData {
         "panes.backup.toast.targetFailed",
         () => toast.done(t("panes.backup.toast.targetSaved")),
       ),
+    useBought: (order) =>
+      /* The target is kept either way; an edge that would not take the
+       * key is said at once rather than at the first backup. */
+      act(async () => {
+        const { keyed } = await postBackupTargetBought(order);
+        if (keyed) toast.done(t("panes.backup.toast.boughtSaved"));
+        else
+          toast.error(t("panes.backup.toast.notKeyed"), t("panes.backup.toast.notKeyedBody"), {
+            help: "backup-and-erase",
+          });
+      }, "panes.backup.toast.targetFailed"),
     forgetTarget: () =>
       act(
         () => deleteBackupTarget(),

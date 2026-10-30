@@ -1382,6 +1382,47 @@ export default defineMessages({
     sk: "Funguje akýkoľvek bucket kompatibilný s S3: Amazon S3 (aj Glacier), Backblaze B2, Wasabi alebo MinIO vo vašej vlastnej sieti. Na Amazon S3 je adresa https://s3.<región>.amazonaws.com. Zariadenie každú zálohu pred odoslaním zašifruje, takže v buckete sú len dáta, ktoré bez vášho kódu obnovy nikto neprečíta. Tajný kľúč sa po uložení už nikdy nezobrazí.",
     de: "Jeder S3-kompatible Bucket geht: Amazon S3 (auch Glacier), Backblaze B2, Wasabi oder ein MinIO im eigenen Netz. Bei Amazon S3 lautet die Adresse https://s3.<region>.amazonaws.com. Die Box verschlüsselt jede Sicherung, bevor sie hinausgeht, also liegen im Bucket nur Daten, die ohne deinen Wiederherstellungscode niemand lesen kann. Der geheime Schlüssel wird nach dem Speichern nie wieder angezeigt.",
   },
+  "panes.backup.target.orBucket": {
+    en: "Or a bucket you rent",
+    sk: "Alebo bucket, ktorý si prenajímate",
+    de: "Oder ein Bucket, den du mietest",
+  },
+  "panes.backup.bought.title": {
+    en: "Storage you bought on the mesh",
+    sk: "Úložisko, ktoré ste kúpili v sieti",
+    de: "Speicher, den du im Mesh gekauft hast",
+  },
+  "panes.backup.bought.size": {
+    en: "{size} bought on the mesh",
+    sk: "{size} kúpených v sieti",
+    de: "{size} im Mesh gekauft",
+  },
+  "panes.backup.bought.use": {
+    en: "Keep backups here",
+    sk: "Zálohovať sem",
+    de: "Hier sichern",
+  },
+  "panes.backup.bought.current": {
+    en: "Storage you bought",
+    sk: "Kúpené úložisko",
+    de: "Gekaufter Speicher",
+  },
+  "panes.backup.bought.edge": { en: "Through", sk: "Cez", de: "Über" },
+  "panes.backup.bought.forget": {
+    en: "Stop backing up here",
+    sk: "Prestať sem zálohovať",
+    de: "Hier nicht mehr sichern",
+  },
+  "panes.backup.bought.toBucket": {
+    en: "Use a bucket instead…",
+    sk: "Použiť radšej bucket…",
+    de: "Lieber einen Bucket nutzen…",
+  },
+  "panes.backup.bought.caption": {
+    en: "The box encrypts every backup with your recovery code before it leaves, so the box that keeps the volume and the edge that sold it hold only data nobody can read without the code. The edge opens the volume only to a key your recovery code makes, so the same code reaches it from a new box.",
+    sk: "Zariadenie každú zálohu pred odoslaním zašifruje vaším kódom obnovy, takže zariadenie, ktoré zväzok drží, aj edge, ktorý ho predal, majú len dáta, ktoré bez kódu nikto neprečíta. Edge otvorí zväzok len kľúču, ktorý vytvorí váš kód obnovy, takže ten istý kód sa k nemu dostane aj z nového zariadenia.",
+    de: "Die Box verschlüsselt jede Sicherung mit deinem Wiederherstellungscode, bevor sie hinausgeht. Die Box, die das Volume hält, und die Edge, die es verkauft hat, haben also nur Daten, die ohne den Code niemand lesen kann. Die Edge öffnet das Volume nur für einen Schlüssel, den dein Wiederherstellungscode ergibt, also erreicht derselbe Code es auch von einer neuen Box aus.",
+  },
   "panes.backup.code.title": {
     en: "The key to your backups",
     sk: "Kľúč k vašim zálohám",
@@ -1546,10 +1587,25 @@ export default defineMessages({
     sk: "Bucket uložený",
     de: "Bucket gespeichert",
   },
+  "panes.backup.toast.boughtSaved": {
+    en: "Backups go to the storage you bought",
+    sk: "Zálohy pôjdu do úložiska, ktoré ste kúpili",
+    de: "Sicherungen gehen auf den Speicher, den du gekauft hast",
+  },
   "panes.backup.toast.targetForgotten": {
     en: "Bucket forgotten. The backups in it are still there.",
     sk: "Bucket zabudnutý. Zálohy v ňom zostali.",
     de: "Bucket vergessen. Die Sicherungen darin sind noch da.",
+  },
+  "panes.backup.toast.notKeyed": {
+    en: "The edge did not take the key",
+    sk: "Edge kľúč neprijal",
+    de: "Die Edge hat den Schlüssel nicht angenommen",
+  },
+  "panes.backup.toast.notKeyedBody": {
+    en: "The storage is kept as the place for backups. Backing up will fail until the edge that sold it opens it to this box's recovery code.",
+    sk: "Úložisko zostáva miestom pre zálohy. Zálohovanie zlyhá, kým ho edge, ktorý ho predal, neotvorí kódu obnovy tohto zariadenia.",
+    de: "Der Speicher bleibt als Ort für Sicherungen eingetragen. Sichern schlägt fehl, bis die Edge, die ihn verkauft hat, ihn für den Wiederherstellungscode dieser Box öffnet.",
   },
   "panes.backup.toast.targetFailed": {
     en: "The bucket was not saved",

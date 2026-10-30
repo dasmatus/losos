@@ -174,15 +174,29 @@ let
   # The keys first, out of the job's credential directory: the lines
   # `Target::env_file` writes, each name checked here as well, so the file
   # can only ever set these six.
+  #
+  # Storage bought on the mesh (backup.rs, `BoughtStorage`) is a restic REST
+  # repository behind the edge's backup door, and its file holds no secret,
+  # only the order (LOSOS_DOOR_ORDER). The door's password is made here
+  # from the code file the job is given, as backup.rs's `door_secret` does:
+  # the box's own code for a backup, the code the owner typed for a
+  # restore, so a new box opens the old one's door with the old code.
   s3Fns = ''
     bucket="''${CREDENTIALS_DIRECTORY:?no credentials}/backup-bucket"
     while IFS='=' read -r k v; do
       case "$k" in
-        RESTIC_REPOSITORY | AWS_ACCESS_KEY_ID | AWS_SECRET_ACCESS_KEY | AWS_DEFAULT_REGION | LOSOS_S3_STORAGE_CLASS | LOSOS_S3_THAW)
+        RESTIC_REPOSITORY | AWS_ACCESS_KEY_ID | AWS_SECRET_ACCESS_KEY | AWS_DEFAULT_REGION | LOSOS_S3_STORAGE_CLASS | LOSOS_S3_THAW | LOSOS_DOOR_ORDER)
           export "$k=$v"
           ;;
       esac
     done < "$bucket"
+    if [ -n "''${LOSOS_DOOR_ORDER:-}" ]; then
+      code=$(tr -d '[:space:]' < "''${RESTIC_PASSWORD_FILE:?}")
+      export RESTIC_REST_USERNAME="$LOSOS_DOOR_ORDER"
+      RESTIC_REST_PASSWORD=$(printf 'losos-backup-door\n%s\n%s' "$LOSOS_DOOR_ORDER" "$code" | sha256sum | cut -c1-64)
+      export RESTIC_REST_PASSWORD
+      unset code
+    fi
     s3opts=()
     if [ -n "''${LOSOS_S3_STORAGE_CLASS:-}" ]; then
       s3opts+=(-o "s3.storage-class=$LOSOS_S3_STORAGE_CLASS")
@@ -222,7 +236,7 @@ let
       echo "backup: checking the bucket"
       if ! probe=$(restic cat config 2>&1 >/dev/null); then
         case "$probe" in
-          *"Is there a repository"* | *"unable to open config file"*)
+          *"Is there a repository"* | *"unable to open config file"* | *"config file does not exist"*)
             echo "backup: first backup to this bucket, creating the repository"
             restic "''${s3opts[@]}" init
             ;;

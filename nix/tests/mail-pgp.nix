@@ -85,7 +85,7 @@ let
 
   shots = pkgs.writeShellScriptBin "mail-pgp" ''
     export PLAYWRIGHT_CORE=${pkgs.playwright-driver}
-    exec ${pkgs.nodejs}/bin/node ${./mail-pgp.mjs} "$@"
+    exec ${pkgs.bun}/bin/bun ${./mail-pgp.mjs} "$@"
   '';
 
   # The test numbers its machines by name: box .1, elsewhere .2, laptop .3.

@@ -12,6 +12,7 @@
 
 use clap::{Args, Parser, Subcommand};
 use losos_ctl::facade::{call_backend, BackendFailure};
+use losos_ctl::install_report;
 use losos_ctl::install_screen;
 use losos_ctl::installer::{parse_tang, resolve_tpm, staged_claim, Tang};
 use losos_ctl::installer_io::{
@@ -20,6 +21,7 @@ use losos_ctl::installer_io::{
 };
 use losos_ctl::model::Mode;
 use losos_ctl::overrides::validate_apply;
+use losos_report::{github, install, Report, Target};
 use std::io::{IsTerminal, Read, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -462,12 +464,40 @@ fn main() -> ExitCode {
                 Err(e) => return install_failed(splash, &format!("{e:#}")),
             }
         }
-        return match run_install(&opts, splash) {
+        // Memory and processor, sampled while the install runs: the medium
+        // runs from memory, so a spike is worth hearing about even when the
+        // install finishes.
+        let watch = on_installer_iso.then(install_report::Watch::start);
+        let result = run_install(&opts, splash);
+        let spikes = watch.map(install_report::Watch::finish).unwrap_or_default();
+        let disks = opts
+            .drives
+            .as_ref()
+            .map_or_else(|| "picked by the installer".to_owned(), |d| d.join(", "));
+        return match result {
             Ok(()) => {
                 if let Some(splash) = splash {
                     let installed = !opts.no_install && opts.disko_script.is_none();
-                    splash.show(&install_screen::finished(installed, opts.tpm));
-                    splash.key(None, None, |_| {});
+                    let target = install_report::target();
+                    let report = target.as_ref().and_then(|_| {
+                        install::spike_report(&spikes, &install_report::system(), true)
+                    });
+                    let offer = if report.is_some() {
+                        install_screen::Offer::Report
+                    } else {
+                        install_screen::Offer::None
+                    };
+                    let lines: Vec<String> = spikes.iter().map(install::Spike::line).collect();
+                    let rows = install_screen::finished_with(installed, opts.tpm, &lines, &offer);
+                    match (target, report) {
+                        (Some(target), Some(report)) => {
+                            offer_report(splash, &rows, &target, &report)
+                        }
+                        _ => {
+                            splash.show(&rows);
+                            splash.key(None, None, |_| {});
+                        }
+                    }
                     if installed {
                         // The medium can come out now; nothing on it is
                         // needed again. If the restart fails, the login
@@ -479,7 +509,7 @@ fn main() -> ExitCode {
                 }
                 ExitCode::SUCCESS
             }
-            Err(e) => install_failed(splash, &format!("{e:#}")),
+            Err(e) => install_failed_with(splash, &format!("{e:#}"), &disks, &spikes),
         };
     }
 
@@ -523,6 +553,18 @@ fn splash_firmware(splash: Splash) -> Option<bool> {
 /// panel too, which waits for a key before the login wrapper takes the
 /// splash down and opens a shell under the log.
 fn install_failed(splash: Option<Splash>, error: &str) -> ExitCode {
+    install_failed_with(splash, error, "", &[])
+}
+
+/// A failed install: the banner on tty2, and on the panel what to do about
+/// it. A failure the handbook explains names the page; any other, on a
+/// medium built to send reports, offers one, and so does a spike.
+fn install_failed_with(
+    splash: Option<Splash>,
+    error: &str,
+    disks: &str,
+    spikes: &[install::Spike],
+) -> ExitCode {
     let banner = format!(
         "\nlosos-install: FAILED\nlosos-install: {error}\nlosos-install: the install stopped. See the lines above on tty2 for the full command output.\n"
     );
@@ -533,10 +575,103 @@ fn install_failed(splash: Option<Splash>, error: &str) -> ExitCode {
         let _ = write!(tty, "{banner}");
     }
     if let Some(splash) = splash {
-        splash.show(&install_screen::failed(error));
-        splash.key(None, None, |_| {});
+        let failure = install_report::failure(error, disks);
+        let documented = install_report::documented(&failure);
+        let target = install_report::target();
+        let lines: Vec<String> = spikes.iter().map(install::Spike::line).collect();
+        let report = match (&target, &documented) {
+            (None, _) => None,
+            (Some(_), None) => Some(install::failure_report(
+                &failure,
+                &install_report::system(),
+                &install_report::journal(),
+                spikes,
+            )),
+            // The handbook explains the failure; a spike is still news.
+            (Some(_), Some(_)) => install::spike_report(spikes, &install_report::system(), false),
+        };
+        let offer = match (&documented, &report) {
+            (_, Some(_)) => install_screen::Offer::Report,
+            (Some(known), None) => install_screen::Offer::Documented {
+                title: known.title_in("en").to_owned(),
+                url: install_report::handbook_url(known),
+            },
+            (None, None) => install_screen::Offer::None,
+        };
+        let rows = install_screen::failed_with(error, &lines, &offer);
+        match (target, report) {
+            (Some(target), Some(report)) => offer_report(splash, &rows, &target, &report),
+            _ => {
+                splash.show(&rows);
+                splash.key(None, None, |_| {});
+            }
+        }
     }
     ExitCode::FAILURE
+}
+
+/// Shows `rows`, which offer a report, with the report on screen 7, and
+/// sends it when the person presses R: the code on the panel, any key to
+/// stop, the issue's address at the end. Returns once they move on.
+fn offer_report(splash: Splash, rows: &[install_screen::Row], target: &Target, report: &Report) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    install_report::show(report);
+    splash.show(rows);
+    let mut key = splash.key(None, None, |_| {});
+    while matches!(key.as_deref(), Some("r" | "R")) {
+        let cancel = Arc::new(AtomicBool::new(false));
+        splash.show(&install_screen::send_starting());
+        let stop = cancel.clone();
+        let sending = install_report::send_in_background(
+            target.clone(),
+            report.clone(),
+            cancel.clone(),
+            move |progress| {
+                if stop.load(Ordering::Relaxed) {
+                    return;
+                }
+                splash.show(&match progress {
+                    github::Progress::SignIn { uri, code, .. } => {
+                        install_screen::send_code(&uri, &code)
+                    }
+                    github::Progress::Sent { url, existing } => {
+                        install_screen::send_done(&url, existing)
+                    }
+                });
+            },
+        );
+        // A key while it runs stops it; once it has ended, the key is the
+        // answer to the screen it ended on.
+        let shown = Arc::new(AtomicBool::new(false));
+        let ended = shown.clone();
+        let failed_screen = std::thread::spawn(move || {
+            let result = sending.join().unwrap_or(Err("The sender stopped.".into()));
+            if let Err(why) = &result {
+                if why != "Cancelled." {
+                    splash.show(&install_screen::send_failed(why));
+                }
+            }
+            ended.store(true, Ordering::Relaxed);
+            result
+        });
+        key = splash.key(None, None, |_| {});
+        let done = shown.load(Ordering::Relaxed);
+        if !done {
+            cancel.store(true, Ordering::Relaxed);
+        }
+        let result = failed_screen.join().unwrap_or(Err("Cancelled.".into()));
+        match result {
+            Ok(()) => return,
+            Err(_) if !done => {
+                // Stopped: back to the offer, nothing sent.
+                splash.show(rows);
+                key = splash.key(None, None, |_| {});
+            }
+            // Not sent: R tries again, any other key goes on.
+            Err(_) => {}
+        }
+    }
 }
 
 fn validate_firmware_choice(

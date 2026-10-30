@@ -6,15 +6,15 @@
   "license": "EUPL-1.2",
   "description": "LosOS appliance admin UI. Built to static files and served by the front Nginx vhost.",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit && vite build && vite build --config vite.guest.config.ts",
-    "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
-    "lab:core": "node scripts/lab-core.mjs core",
-    "lab:virt": "node scripts/lab-core.mjs virt",
-    "lab:render": "node scripts/lab-core.mjs render",
-    "mdx": "node scripts/lab-core.mjs mdx",
-    "test:browser": "node tests/solana.node.mjs && node tests/mail-pgp.node.mjs && node tests/fees.node.mjs && node tests/ens.node.mjs && node tests/games.node.mjs && node tests/chat-links.node.mjs && node tests/chat-rtc.node.mjs && node tests/sensitive.node.mjs && node tests/calls-e2ee.node.mjs && node tests/wizard.browser.mjs && node tests/app.browser.mjs && node tests/toasts.browser.mjs && node tests/look.browser.mjs && node tests/advanced.browser.mjs && node tests/lab.browser.mjs && node tests/diagrams.browser.mjs && node tests/apps.browser.mjs && node tests/pins.browser.mjs && node tests/tour.browser.mjs && node tests/access.browser.mjs && node tests/credentials.browser.mjs && node tests/users.browser.mjs && node tests/moderation.browser.mjs && node tests/account.browser.mjs && node tests/profile.browser.mjs && node tests/manage.browser.mjs && node tests/edge-tiers.browser.mjs && node tests/mail.browser.mjs && node tests/palette.browser.mjs && node tests/notes.browser.mjs && node tests/games.browser.mjs && node tests/calls.browser.mjs && node tests/office.browser.mjs && node tests/context-menu.browser.mjs && node tests/user-apps.browser.mjs && node tests/git.browser.mjs && node tests/tracker.browser.mjs && node tests/office-markdown.browser.mjs && node tests/quick-actions.browser.mjs && node tests/wiki.browser.mjs"
+    "dev": "bun --bun vite",
+    "build": "bun --bun tsc --noEmit && bun --bun tsc --noEmit -p tsconfig.tools.json && bun --bun vite build && bun --bun vite build --config vite.guest.config.ts",
+    "preview": "bun --bun vite preview",
+    "typecheck": "bun --bun tsc --noEmit && bun --bun tsc --noEmit -p tsconfig.tools.json",
+    "lab:core": "bun scripts/lab-core.mjs core",
+    "lab:virt": "bun scripts/lab-core.mjs virt",
+    "lab:render": "bun scripts/lab-core.mjs render",
+    "mdx": "bun scripts/lab-core.mjs mdx",
+    "test:browser": "bun tests/solana.unit.mjs && bun tests/mail-pgp.unit.mjs && bun tests/fees.unit.mjs && bun tests/ens.unit.mjs && bun tests/games.unit.mjs && bun tests/chat-links.unit.mjs && bun tests/chat-rtc.unit.mjs && bun tests/sensitive.unit.mjs && bun tests/calls-e2ee.unit.mjs && bun tests/wizard.browser.mjs && bun tests/app.browser.mjs && bun tests/toasts.browser.mjs && bun tests/look.browser.mjs && bun tests/advanced.browser.mjs && bun tests/lab.browser.mjs && bun tests/diagrams.browser.mjs && bun tests/apps.browser.mjs && bun tests/pins.browser.mjs && bun tests/tour.browser.mjs && bun tests/access.browser.mjs && bun tests/credentials.browser.mjs && bun tests/problems.browser.mjs && bun tests/users.browser.mjs && bun tests/moderation.browser.mjs && bun tests/account.browser.mjs && bun tests/profile.browser.mjs && bun tests/manage.browser.mjs && bun tests/edge-tiers.browser.mjs && bun tests/mail.browser.mjs && bun tests/palette.browser.mjs && bun tests/notes.browser.mjs && bun tests/games.browser.mjs && bun tests/calls.browser.mjs && bun tests/office.browser.mjs && bun tests/context-menu.browser.mjs && bun tests/user-apps.browser.mjs && bun tests/git.browser.mjs && bun tests/tracker.browser.mjs && bun tests/office-markdown.browser.mjs && bun tests/quick-actions.browser.mjs && bun tests/wiki.browser.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",
@@ -63,15 +63,15 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.16",
+    "@types/bun": "1.4.2",
     "@types/d3-force": "3.0.10",
-    "@types/node": "^26.6.5",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.5",
     "@vitejs/plugin-react": "^6.1.2",
-    "esbuild": "^0.28.2",
     "playwright": "1.63.0",
     "tailwindcss": "^4.1.16",
     "typescript": "^7.0.2",
     "vite": "^8.3.5"
-  }
+  },
+  "packageManager": "bun@1.4.2"
 }

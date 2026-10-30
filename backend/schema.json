@@ -2249,6 +2249,12 @@
         "out": "{\"target\": <the bucket without its secret>}",
         "note": "Set the S3 bucket backups go to (backend/src/backup.rs). https, or http only for a LAN address; bucket, folder, region and keys checked by shape; a Glacier storage class only on an amazonaws.com address. 400 with the field named; 409 while a backup or restore runs. The secret is written to /var/secrets (0600) and never answered. Audited."
       },
+      "POST /api/backup/target/bought": {
+        "auth": true,
+        "in": "{\"order\": \"ord_…\"}",
+        "out": "{\"target\": <the target, with bought: {order, edge}>, \"keyed\": true | false}",
+        "note": "Keep the backups on storage this box bought on the mesh instead of a bucket (backend/src/backup.rs, BoughtStorage): restic over the edge's backup door, encrypted on the box as always. The door's key, a hash of a secret made from the recovery code and the order, is set at the edge first; `keyed` is false when the edge would not take it from this box (another box bought the storage), and the target is kept for a restore all the same. 400 for an order id of the wrong shape or no edge; 409 while a job runs. Audited."
+      },
       "DELETE /api/backup/target": {
         "auth": true,
         "out": "{\"target\": null}",

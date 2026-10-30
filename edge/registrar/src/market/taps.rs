@@ -1636,6 +1636,7 @@ mod tests {
             currency: "usd".into(),
             fee_bps: 400,
             storage_class: DEFAULT_STORAGE_CLASS.into(),
+            storage_image: None,
             hardware_catalogue: None,
             vms: None,
             usdc: Some(usdc()),
