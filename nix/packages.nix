@@ -533,7 +533,7 @@ images
     src = lib.cleanSource ./../backend;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-ctl-rs` will print the new hash to paste here.
-    cargoHash = "sha256-TsKe6ZRBxauxRwKA5fUnU7f2kFjW6Lwi87EIunsB4IU=";
+    cargoHash = "sha256-SR3HehJDSG/n6MLS6z8Ddg8s2K3r2TlEhBVDpIOXQjM=";
     # No system deps: zbus speaks the D-Bus wire protocol natively, so there is
     # no libdbus to link against.
     # doCheck is off, and the tests still run — in CI's lint job and in
