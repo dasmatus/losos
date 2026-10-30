@@ -572,6 +572,10 @@
         # The admin pages with JavaScript off, from sign-in to a rebuild, with
         # the pull request's pictures (nix/tests/no-js.nix).
         losos-no-js = import ./nix/tests/no-js.nix { inherit pkgs; };
+        # The pages as MDX: an administrator's page and stylesheet saved as
+        # commits, drawn with JavaScript on and off, and the editor beside
+        # the page, with the pull request's pictures (nix/tests/pages.nix).
+        losos-pages = import ./nix/tests/pages.nix { inherit pkgs; };
         # Settings › Logs: the journal, its redaction and the page that works
         # while lososd is down (nix/tests/logs.nix).
         losos-logs = import ./nix/tests/logs.nix { inherit pkgs; };
