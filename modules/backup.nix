@@ -84,6 +84,13 @@ let
   # LosOS Git's records (modules/git.nix), copied whole the same way.
   gitDb = "/var/lib/losos-git/git.db";
   proxyToken = toString config.losos.proxy.tokenFile;
+  # LosOS Mail's store (modules/mail.nix), when mail runs here. It sits
+  # beside the shared folder, not inside it, so the folder's copy misses
+  # it; RocksDB files copied under a running server need not agree with
+  # each other, so the server stops for the moment a local copy takes.
+  mail = config.lososInternal.mail.live;
+  mailStore = "/home/shared/data/mail/store";
+  mailPlanMarker = "/home/shared/data/mail/plan.sha256";
 
   # Opening the fscrypt domain for the length of a copy, and closing it again
   # only if it was closed before. Linux gives no ciphertext for a locked
@@ -277,6 +284,24 @@ let
         cp ${lib.escapeShellArg proxyToken} "$stage/identity/proxy-token"
       fi
 
+      ${lib.optionalString mail ''
+        if [ -d ${mailStore} ]; then
+          echo "backup: copying LosOS Mail, which pauses for the copy"
+          mail_was_up=0
+          if systemctl is-active --quiet losos-mail.service; then
+            mail_was_up=1
+            systemctl stop losos-mail.service
+          fi
+          cp -a --reflink=auto ${mailStore} "$stage/mail" || copied=no
+          if [ "$mail_was_up" = 1 ]; then
+            systemctl start losos-mail.service || true
+          fi
+          if [ "''${copied:-}" = no ]; then
+            echo "backup: LosOS Mail could not be copied" >&2
+            exit 1
+          fi
+        fi
+      ''}
       paths=("$stage")
       for p in ${lib.escapeShellArgs appDirs}; do
         if [ -d "$p" ]; then
@@ -350,7 +375,7 @@ let
       staged="$out$dir/stage"
 
       echo "restore: stopping the apps"
-      for unit in losos-cloud.service losos-git.service k3s.service; do
+      for unit in losos-cloud.service losos-git.service ${lib.optionalString mail "losos-mail.service"} k3s.service; do
         if systemctl is-active --quiet "$unit"; then
           systemctl stop "$unit" || true
           stopped+=("$unit")
@@ -438,6 +463,17 @@ let
         fi
       '') domains}
 
+      ${lib.optionalString mail ''
+        if [ -d "$staged/mail" ]; then
+          echo "restore: putting back LosOS Mail"
+          mkdir -p ${mailStore}
+          rsync -aHAX --numeric-ids --delete "$staged/mail/" ${mailStore}/
+          chown -R shared:shared ${mailStore}
+          # The restored settings may be older than this build's plan:
+          # the next start applies it again.
+          rm -f ${mailPlanMarker}
+        fi
+      ''}
       for f in look.json background.img; do
         if [ -f "$staged/look/$f" ]; then
           install -m 0600 "$staged/look/$f" "/var/lib/losos/$f"

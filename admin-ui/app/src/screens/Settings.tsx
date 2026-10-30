@@ -144,7 +144,8 @@ function Pane({
     case "advanced":
       return <AdvancedPane form={form} />;
     case "history":
-      // No draft, no Apply bar: it reads the repository and syncs on request.
+      // It reads the repository and syncs on request; the release channel
+      // is its one line of the draft.
       return <HistoryPane form={form} />;
     case "logs":
       // No draft, no Apply bar: it only reads the journal, from the log

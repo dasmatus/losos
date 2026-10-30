@@ -77,6 +77,8 @@ außerhalb der Box auf.
 - die Dateien von LosOS Cloud;
 - die Repositorys von LosOS Git;
 - die Datenbanken von beiden;
+- die Postfächer von LosOS Mail, wo die Box Mail hat (der Mailserver
+  pausiert für die paar Sekunden der Kopie);
 - den Ordner, den die Box mit dem Mesh teilt, wenn das Teilen an ist (er wird
   für die Kopie geöffnet und danach wieder gesperrt);
 - jede Einstellung und das Aussehen der Startseite.

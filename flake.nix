@@ -608,6 +608,8 @@
         # two people, the box's WKD, keys from an outside WKD, a keyserver and
         # Autocrypt (nix/tests/mail-pgp.nix).
         losos-mail-pgp = import ./nix/tests/mail-pgp.nix { inherit pkgs; };
+        # The upgrade from Stalwart 0.15 to 1.0 (nix/tests/mail-upgrade.nix).
+        losos-mail-upgrade = import ./nix/tests/mail-upgrade.nix { inherit pkgs; };
         # Roles and moderation: reports, held mail, mutes and suspensions
         # across LosOS Login, lososd and Stalwart (nix/tests/moderation.nix).
         losos-moderation = import ./nix/tests/moderation.nix { inherit pkgs; };

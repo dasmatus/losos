@@ -12,9 +12,10 @@ slug: /manual/mail
 
 LosOS Mail ist ein Mail-Programm für die Personen auf der Box. Wer über
 LosOS Login angemeldet ist, hat ein Postfach, und **Mail** in der
-Seitenleiste öffnet es unter `/mail`. Der Mailserver ist Stalwart. Er läuft
-auf der geteilten Seite der Box, unter dem Konto `shared`, und legt die
-Postfächer im geteilten Datenverzeichnis ab.
+Seitenleiste öffnet es unter `/mail`. Der Mailserver ist Stalwart 1.0. Er
+läuft auf der geteilten Seite der Box, unter dem Konto `shared`, legt die
+Postfächer im geteilten Datenverzeichnis ab und antwortet nur auf der Box
+selbst: Aus dem Netz erreicht ihn nichts.
 
 ## Wann es Mail gibt \{#when-mail-is-there}
 
@@ -24,8 +25,7 @@ ausgeschaltetem Teilen oder außerhalb eines Mesh:
 
 - steht **Mail** nicht in der Seitenleiste, und `/mail` öffnet sich nicht;
 - ist der Mailserver gestoppt;
-- bleiben die Postfächer auf der Platte, im geteilten Verzeichnis, das die
-  Box nicht lesen kann, solange das Teilen aus ist.
+- bleiben die Postfächer unverändert auf der verschlüsselten Platte der Box.
 
 Teilt die Box wieder mit ihrem Mesh, ist Mail mit derselben Post zurück.
 
@@ -205,6 +205,23 @@ heruntergeladen.
 unter `/.well-known/openpgpkey/`, damit Mailprogramme anderswo ihn über
 deine Adresse finden. Jede Nachricht, die du schickst, trägt ihn außerdem
 in einem Autocrypt-Header.
+
+## Umzug auf Stalwart 1.0 \{#moving-to-stalwart-10}
+
+Eine Box, die schon vor dieser Version Mail hatte, kopiert sie beim ersten
+Start nach dem Update selbst auf den neuen Server: Ordner, Nachrichten,
+Absenderadressen und Filter jeder Person. Mail funktioniert während des
+Kopierens, und Post, die in der Zeit ankommt, bleibt. Hält die Box mitten
+drin an, macht das Kopieren beim nächsten Start weiter, ohne etwas doppelt
+anzulegen. Die alten Postfächer bleiben neben den neuen im Ordner `db-0.15`,
+und nichts darin wird gelöscht.
+
+## Sicherungen \{#backups}
+
+[Sicherungen](backup-and-erase) enthalten auch Mail. Der Mailserver
+pausiert für die paar Sekunden, die die Box zum Kopieren der Postfächer
+braucht, und startet dann wieder. In diesen Sekunden bittet Mail dich, es
+gleich noch einmal zu versuchen.
 
 ## Was Mail noch nicht kann \{#what-mail-does-not-do-yet}
 

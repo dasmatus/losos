@@ -1,27 +1,28 @@
 //! LosOS Mail: a mailbox for every person LosOS Login knows.
 //!
-//! The mail server is Stalwart (`modules/mail.nix`), a pod in this box's own
-//! cluster that runs as the `shared` user and keeps its mailboxes in the
-//! shared data domain, so it runs only while the box shares its storage;
-//! with sharing off there is no mail here at all, page and API included.
-//! It listens on loopback only. This daemon is the one client it has: the
-//! Mail page (`admin-ui/app/mail/`) calls `/api/mail/*`, and each call is
-//! made here, in JMAP, as the person Authelia signed in.
+//! The mail server is Stalwart 1.0 (`modules/mail.nix`), a service of its
+//! own that runs as the `shared` user with its store in the shared data, so
+//! it runs only while the box shares its storage; with sharing off there is
+//! no mail here at all, page and API included. It listens on loopback only.
+//! This daemon is the one client it has: the Mail page calls
+//! `/api/mail/*`, and each call is made here, in JMAP, as the person
+//! Authelia signed in.
 //!
-//! **Who a call is made as.** Stalwart's master user lets a client sign in
-//! as `<name>%<master>` with the master secret and act as `<name>`. Only
-//! this daemon and the pod read that secret (`$LOSOS_MAIL_SECRET_FILE`), so
-//! a person reaches their own mailbox through LosOS Login and nothing else:
-//! no second password, and taking someone out of the people file takes
-//! their mail away at the next call, because `crate::http` no longer
-//! recognises them.
+//! **Who a call is made as.** Stalwart's administrator, named in its
+//! environment, may sign in as `<address>%<admin>` and act as the account
+//! with that address (`crate::mail_setup::as_person`). Only this daemon and
+//! the server read its secret (`$LOSOS_MAIL_SECRET_FILE`), so a person
+//! reaches their own mailbox through LosOS Login and nothing else: no
+//! second password, and taking someone out of the people file takes their
+//! mail away at the next call, because `crate::http` no longer recognises
+//! them.
 //!
 //! **Accounts.** A person's account is made on their first call, with the
-//! address `<name>@<domain>`: the mail domain, then the person. The same
-//! secret opens Stalwart's management API as its fallback administrator,
-//! which is how the domain and the account are made. Making them twice is
-//! harmless (`fieldAlreadyExists`), so nothing has to remember it across
-//! restarts; a set in memory saves the call after the first.
+//! address `<name>@<domain>`. The domain is part of the server's settings
+//! (`crate::mail_setup`); the account is made in its registry over JMAP
+//! with the same administrator. Making it twice is harmless, so nothing has
+//! to remember it across restarts; a map in memory saves the call after the
+//! first.
 //!
 //! **HTML.** A message's HTML is never put into the Mail page. It is served
 //! on its own URL (`html_response` in `crate::http`) under a policy that
@@ -43,10 +44,12 @@ use std::time::Duration;
 use serde::Serialize;
 use serde_json::{json, Value};
 
-/// The master user's name in Stalwart's configuration. `modules/mail.nix`
-/// writes the same literal.
+/// The administrator's name, `STALWART_RECOVERY_ADMIN` in
+/// `modules/mail.nix`. It manages the server's registry and acts as each
+/// person.
 pub const MASTER_USER: &str = "losos";
-/// The fallback administrator's name, for the management API.
+/// The fallback administrator of a Stalwart 0.15 store, which the upgrade's
+/// copy (`losos-mail migrate`) reads accounts with.
 pub const ADMIN_USER: &str = "losos-admin";
 /// The JMAP capabilities every call uses.
 const USING: [&str; 3] = [
@@ -84,7 +87,7 @@ const MAX_ANSWER: u64 = 64 * 1024 * 1024;
 pub struct Config {
     /// `127.0.0.1:<port>`, Stalwart's HTTP listener.
     pub addr: String,
-    /// The master secret, shared with the pod.
+    /// The administrator's secret, shared with the server.
     pub secret_file: PathBuf,
     /// The domain addresses are made in.
     pub domain: String,
@@ -126,7 +129,7 @@ fn refuse<T>(status: u16, message: impl Into<String>) -> Result<T, Refused> {
     })
 }
 
-/// The server is not answering: the pod is starting, or sharing went off.
+/// The server is not answering: the server is starting, or sharing went off.
 fn not_up() -> Refused {
     Refused {
         status: 503,
@@ -1664,15 +1667,21 @@ pub fn parse_changed(resp: &Value) -> Result<(), Refused> {
 
 // ── The service ────────────────────────────────────────────────────────────
 
+/// The login that acts as `person`: their whole address, impersonated with
+/// the administrator's secret.
+fn login(config: &Config, person: &crate::people::Person) -> String {
+    crate::mail_setup::as_person(&format!("{}@{}", person.name, config.domain))
+}
+
 /// Mail as the HTTP handlers use it.
 pub struct Mail {
     config: Option<Config>,
     transport: Box<dyn Transport>,
     /// People whose account exists, and the JMAP account id of each.
     accounts: Mutex<BTreeMap<String, String>>,
-    /// Whether the domain exists.
-    domain_made: Mutex<bool>,
-    /// Secrets read once. A new secret means a new pod, which means a
+    /// The mail domain's id in the server's registry.
+    domain_id: Mutex<Option<String>>,
+    /// Secrets read once. A new secret means a new server, which means a
     /// restart of this daemon too (`modules/mail.nix`).
     secret: Mutex<Option<String>>,
 }
@@ -1683,7 +1692,7 @@ impl Mail {
             config,
             transport,
             accounts: Mutex::new(BTreeMap::new()),
-            domain_made: Mutex::new(false),
+            domain_id: Mutex::new(None),
             secret: Mutex::new(None),
         }
     }
@@ -1720,39 +1729,24 @@ impl Mail {
         Ok(s)
     }
 
-    fn admin(
-        &self,
-        config: &Config,
-        method: &'static str,
-        path: &str,
-        body: Value,
-    ) -> Result<Response, Refused> {
-        self.transport.send(&Request {
-            method,
-            path: path.to_string(),
-            user: ADMIN_USER.to_string(),
+    /// One registry request as the server's administrator.
+    fn admin(&self, config: &Config, calls: Vec<Value>) -> Result<Value, Refused> {
+        let resp = self.transport.send(&Request {
+            method: "POST",
+            path: "/jmap/".into(),
+            user: MASTER_USER.to_string(),
             secret: self.secret(config)?,
-            body: Some(serde_json::to_vec(&body).unwrap_or_default()),
+            body: Some(serde_json::to_vec(&crate::mail_setup::envelope(calls)).unwrap_or_default()),
             content_type: None,
-        })
-    }
-
-    /// Make `doc` with the management API; one that already exists is fine.
-    fn create(&self, config: &Config, doc: Value) -> Result<(), Refused> {
-        let resp = self.admin(config, "POST", "/api/principal", doc)?;
-        let body: Value = serde_json::from_slice(&resp.body).unwrap_or_default();
-        if resp.status == 200
-            && (body.get("data").is_some()
-                || body.get("error").and_then(Value::as_str) == Some("fieldAlreadyExists"))
-        {
-            return Ok(());
+        })?;
+        if resp.status != 200 {
+            tracing::warn!(
+                status = resp.status,
+                "the mail server refused an account request"
+            );
+            return Err(odd("registry status"));
         }
-        tracing::warn!(
-            status = resp.status,
-            ?body,
-            "the mail server would not make an account"
-        );
-        Err(odd("/api/principal"))
+        serde_json::from_slice(&resp.body).map_err(|_| odd("registry JSON"))
     }
 
     /// Make sure `person` has a mailbox, and return their JMAP account id.
@@ -1765,27 +1759,39 @@ impl Mail {
         {
             return Ok(id.clone());
         }
-        {
-            let mut made = self.domain_made.lock().unwrap_or_else(|e| e.into_inner());
-            if !*made {
-                self.create(config, json!({ "type": "domain", "name": config.domain }))?;
-                *made = true;
+        // The domain is the server's own setting (modules/mail.nix); only
+        // its id is looked up, once.
+        let domain_id = {
+            let mut slot = self.domain_id.lock().unwrap_or_else(|e| e.into_inner());
+            match slot.as_ref() {
+                Some(id) => id.clone(),
+                None => {
+                    let resp = self.admin(config, vec![crate::mail_setup::domains_call()])?;
+                    let id = crate::mail_setup::domain_id(&resp, &config.domain).map_err(|e| {
+                        tracing::warn!(error = %e, "no mail domain");
+                        odd("x:Domain")
+                    })?;
+                    *slot = Some(id.clone());
+                    id
+                }
             }
-        }
-        self.create(
+        };
+        let resp = self.admin(
             config,
-            json!({
-                "type": "individual",
-                "name": person.name,
-                "description": person.display_name,
-                "emails": [format!("{}@{}", person.name, config.domain)],
-                "roles": ["user"],
-            }),
+            vec![crate::mail_setup::account_call(
+                &domain_id,
+                &person.name,
+                &person.display_name,
+            )],
         )?;
+        crate::mail_setup::account_made(&resp).map_err(|e| {
+            tracing::warn!(error = %e, "the mail server would not make an account");
+            odd("x:Account")
+        })?;
         let resp = self.transport.send(&Request {
             method: "GET",
             path: "/jmap/session".into(),
-            user: format!("{}%{MASTER_USER}", person.name),
+            user: login(config, person),
             secret: self.secret(config)?,
             body: None,
             content_type: None,
@@ -1817,7 +1823,7 @@ impl Mail {
         let resp = self.transport.send(&Request {
             method: "POST",
             path: "/jmap/".into(),
-            user: format!("{}%{MASTER_USER}", person.name),
+            user: login(config, person),
             secret: self.secret(config)?,
             body: Some(serde_json::to_vec(&envelope(calls(&account))).unwrap_or_default()),
             content_type: None,
@@ -1944,7 +1950,7 @@ impl Mail {
                 let resp = self.transport.send(&Request {
                     method: "POST",
                     path: format!("/jmap/upload/{account}/"),
-                    user: format!("{}%{MASTER_USER}", person.name),
+                    user: login(config, person),
                     secret: self.secret(config)?,
                     body: Some(file.data.clone()),
                     content_type: Some(file.kind.clone()),
@@ -2008,7 +2014,7 @@ impl Mail {
         let resp = self.transport.send(&Request {
             method: "POST",
             path: format!("/jmap/upload/{account}/"),
-            user: format!("{}%{MASTER_USER}", person.name),
+            user: login(config, person),
             secret: self.secret(config)?,
             body: Some(raw),
             content_type: Some("message/rfc822".to_string()),
@@ -2075,7 +2081,7 @@ impl Mail {
         let resp = self.transport.send(&Request {
             method: "GET",
             path: format!("/jmap/download/{account}/{blob}/file"),
-            user: format!("{}%{MASTER_USER}", person.name),
+            user: login(config, person),
             secret: self.secret(config)?,
             body: None,
             content_type: None,
@@ -2698,13 +2704,15 @@ mod tests {
     }
 
     #[test]
-    fn the_first_call_makes_the_domain_and_the_account_as_the_person() {
+    fn the_first_call_makes_the_account_and_acts_as_the_person() {
         let dir = tempdir();
         let fake = Fake::default();
         let seen = fake.seen.clone();
         *fake.answers.lock().unwrap() = vec![
-            ok(json!({ "data": 1 })),
-            ok(json!({ "error": "fieldAlreadyExists", "field": "name", "value": "eva" })),
+            ok(json!({ "methodResponses": [["x:Domain/get",
+                { "list": [{ "id": "dom", "name": "mattbox.home.arpa" }] }, "d"]] })),
+            ok(json!({ "methodResponses": [["x:Account/set",
+                { "notCreated": { "a": { "type": "alreadyExists" } } }, "a"]] })),
             ok(json!({ "primaryAccounts": { "urn:ietf:params:jmap:mail": "d" } })),
             ok(mailboxes_answer()),
             ok(archived_answer()),
@@ -2726,21 +2734,23 @@ mod tests {
         let make: Value = serde_json::from_slice(seen[4].body.as_ref().unwrap()).unwrap();
         assert_eq!(make["methodCalls"][0][0], "Mailbox/set");
         assert_eq!(make["methodCalls"][0][1]["create"]["a"]["role"], "archive");
-        assert_eq!(
-            (seen[0].method, seen[0].path.as_str(), seen[0].user.as_str()),
-            ("POST", "/api/principal", ADMIN_USER)
-        );
+        for req in &seen[..2] {
+            assert_eq!(
+                (req.method, req.path.as_str(), req.user.as_str()),
+                ("POST", "/jmap/", MASTER_USER)
+            );
+        }
         let domain: Value = serde_json::from_slice(seen[0].body.as_ref().unwrap()).unwrap();
-        assert_eq!(
-            domain,
-            json!({ "type": "domain", "name": "mattbox.home.arpa" })
-        );
+        assert_eq!(domain["methodCalls"][0][0], "x:Domain/get");
+        assert_eq!(domain["using"][1], "urn:stalwart:jmap");
         let account: Value = serde_json::from_slice(seen[1].body.as_ref().unwrap()).unwrap();
-        assert_eq!(account["emails"], json!(["eva@mattbox.home.arpa"]));
-        assert_eq!(account["description"], "EVA");
+        assert_eq!(
+            account["methodCalls"][0][1]["create"]["a"],
+            json!({ "@type": "User", "name": "eva", "domainId": "dom", "description": "EVA" })
+        );
         assert_eq!(seen[2].path, "/jmap/session");
         for req in &seen[2..] {
-            assert_eq!(req.user, "eva%losos");
+            assert_eq!(req.user, "eva@mattbox.home.arpa%losos");
             assert_eq!(req.secret, "s3cret");
         }
         let jmap: Value = serde_json::from_slice(seen[3].body.as_ref().unwrap()).unwrap();
@@ -2763,8 +2773,10 @@ mod tests {
         let moved =
             json!({ "methodResponses": [["Email/set", { "updated": { "m1": null } }, "s"]] });
         *fake.answers.lock().unwrap() = vec![
-            ok(json!({ "data": 1 })),
-            ok(json!({ "data": 2 })),
+            ok(json!({ "methodResponses": [["x:Domain/get",
+                { "list": [{ "id": "dom", "name": "mattbox.home.arpa" }] }, "d"]] })),
+            ok(json!({ "methodResponses": [["x:Account/set",
+                { "created": { "a": { "id": "e" } } }, "a"]] })),
             ok(json!({ "primaryAccounts": { "urn:ietf:params:jmap:mail": "d" } })),
             ok(json!({ "methodResponses": [["Mailbox/get", { "list": folders(&[]) }, "m"]] })),
             ok(json!({ "methodResponses": [
