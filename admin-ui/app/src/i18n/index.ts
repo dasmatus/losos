@@ -16,6 +16,7 @@ import ci from "./ci";
 import cloud from "./cloud";
 import cloudApps from "./cloud-apps";
 import credentials from "./credentials";
+import logs from "./logs";
 import details from "./details";
 import collab from "./collab";
 import contacts from "./contacts";
@@ -84,6 +85,7 @@ export const MESSAGES = {
   ...advanced,
   ...access,
   ...credentials,
+  ...logs,
   ...problems,
   ...users,
   ...moderation,
