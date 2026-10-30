@@ -13,7 +13,7 @@
  * page opens after asking for the passphrase. nix/tests/mail.nix and
  * nix/tests/mail-pgp.nix run the same page against a real Stalwart. */
 
-import assert from 'node:assert';
+import assert from './assert.mjs';
 import * as openpgp from 'openpgp';
 import { launch, MAIL_FRAME_CSP, runner, serve } from './harness.mjs';
 

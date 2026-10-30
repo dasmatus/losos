@@ -19,12 +19,11 @@
  * test script asserts on. Playwright is nixpkgs' playwright-core, named by
  * LOSOS_PLAYWRIGHT. */
 
-import { mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+const join = (...parts) => parts.join('/');
 
-const { chromium } = await import(process.env.LOSOS_PLAYWRIGHT);
-const plan = JSON.parse(process.argv[2]);
-mkdirSync(plan.out, { recursive: true });
+const { chromium } = await import(Bun.env.LOSOS_PLAYWRIGHT);
+const plan = JSON.parse(Bun.argv[2]);
+Bun.spawnSync(["mkdir", "-p", plan.out]);
 
 /* Milliseconds into the motion: the desktop arriving (900 ms) and the card
  * after it, then the desktop growing (700 ms). */

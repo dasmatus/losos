@@ -81,8 +81,8 @@ jobs:
           nix develop -c bash -euo pipefail -c '
             cargo update --manifest-path backend/Cargo.toml
             cargo update --manifest-path edge/registrar/Cargo.toml
-            npm update --prefix admin-ui/app --package-lock-only
-            npm update --prefix admin-ui/design-system/react --package-lock-only
+            (cd admin-ui/app && bun update --ignore-scripts)
+            (cd admin-ui/design-system/react && bun update --ignore-scripts)
           '
       # The new lock files vendor to new hashes; without this step the pull
       # request carries the old ones and every package that vendors them fails.
@@ -111,8 +111,10 @@ jobs:
             devenv.lock \
             backend/Cargo.lock \
             edge/registrar/Cargo.lock \
-            admin-ui/app/package-lock.json \
-            admin-ui/design-system/react/package-lock.json \
+            admin-ui/app/package.json \
+            admin-ui/app/bun.lock \
+            admin-ui/design-system/react/package.json \
+            admin-ui/design-system/react/bun.lock \
             nix/packages.nix \
             nix/tests/admin-ui.nix \
             nix/tests/design-system.nix
@@ -127,7 +129,7 @@ jobs:
           ## Summary
           - refresh the repository lockfiles
           - keep `flake.lock`, `devenv.yaml` and `devenv.lock` in sync
-          - refresh Cargo and npm lockfiles
+          - refresh Cargo and Bun lockfiles
           EOF
           git commit -m "chore: weekly lockfile updates"
           auth_header="$(

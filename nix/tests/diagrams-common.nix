@@ -24,7 +24,7 @@ let
     # vite alone: the type check needs the real module's declarations.
     buildPhase = ''
       runHook preBuild
-      npx vite build
+      bun --bun vite build
       runHook postBuild
     '';
   });

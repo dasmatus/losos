@@ -11,6 +11,16 @@ Send problems and questions to the project's
 shell, so what you can collect from the LAN is all a maintainer can ask for.
 Collect it before you write.
 
+## Let the box write it
+
+A crash, a service that stops with an error or a program stopped for lack
+of memory is already on **Settings → Problems**, with a report written
+from the box's own log. Read it there and send it in two steps:
+[Problem reports](../manual/problem-reports.md) says how. A failed install
+offers the same on the installer's screen.
+
+For anything else, write the issue yourself.
+
 ## What to include
 
 ![The About pane, whose rows go into a report: name, address, storage mode and mesh state.](../img/settings-about.png)
