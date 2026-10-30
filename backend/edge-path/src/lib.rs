@@ -585,6 +585,14 @@ impl EdgeStatus {
         self.left_banned = chosen.left_banned;
     }
 
+    /// True when a local gateway (secondary-tier edge) is among the
+    /// ones that answered. Sharing locally goes only through one of those,
+    /// never through an official edge.
+    #[must_use]
+    pub fn local_gateway(&self) -> bool {
+        self.edges.iter().any(|e| e.tier == Tier::Secondary)
+    }
+
     #[must_use]
     pub fn to_json(&self) -> Value {
         json!({
@@ -599,6 +607,7 @@ impl EdgeStatus {
             "cluster": self.cluster,
             "held": self.held,
             "leftBanned": self.left_banned,
+            "localGateway": self.local_gateway(),
         })
     }
 }
