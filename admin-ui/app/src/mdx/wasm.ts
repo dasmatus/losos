@@ -8,7 +8,7 @@
  * page's strings count UTF-16 units, so `tree` turns every offset into one
  * of those before anything here reads it. */
 
-import init, { render as renderJson, tree as treeJson } from "./pkg/losos_mdx.js";
+import init, { page as pageJson, render as renderJson, tree as treeJson } from "./pkg/losos_mdx.js";
 import wasmUrl from "./pkg/losos_mdx_bg.wasm?url";
 
 export type Flavour = "mdx" | "md";
@@ -82,6 +82,13 @@ export function loadMdx(): Promise<unknown> {
 
 export function renderMdx(source: string, flavour: Flavour, resolver?: Resolver): Rendered {
   return JSON.parse(renderJson(source, flavour, resolver ?? null)) as Rendered;
+}
+
+/** A page of the admin UI (src/pages/README.md) as the box reads it:
+ *  `registry` is blocks.json as text. Throws on a page id it does not
+ *  list. */
+export function renderPage(source: string, registry: string, id: string): { html: string; problems: Problem[] } {
+  return JSON.parse(pageJson(source, registry, id)) as { html: string; problems: Problem[] };
 }
 
 /** Byte offset to UTF-16 index, for every byte offset of `source`. */

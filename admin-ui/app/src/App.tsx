@@ -51,6 +51,7 @@ import {
 } from "@/lib/api";
 import { followAuth } from "@/lib/look";
 import { followPins } from "@/lib/pins";
+import { followPages, getPagesState, subscribePages } from "@/pages/store";
 import { readProgress } from "@/screens/wizard/progress";
 import { isTourOpen, startTour, subscribeTour } from "@/tour/store";
 import { closePalette, isPaletteColon, isPaletteShortcut, openPalette, paletteState, subscribePalette } from "@/palette/store";
@@ -72,6 +73,9 @@ import { chatDocument } from "@/chat/document";
 const Wizard = React.lazy(() => import("@/screens/Wizard"));
 const Home = React.lazy(() => import("@/screens/Home"));
 const Settings = React.lazy(() => import("@/screens/Settings"));
+const PageEditorDock = React.lazy(() =>
+  import("@/pages/editor").then((m) => ({ default: m.PageEditorDock })),
+);
 /* Documents (losos.office.folder) and the editor, on boxes that edit a
  * folder of documents. */
 const Office = React.lazy(() => import("@/screens/Office"));
@@ -219,8 +223,10 @@ function Shell() {
    * token: loaded on sign-in, dropped on sign-out. Once, for the page. */
   React.useEffect(() => {
     followAuth();
-    // The sidebar's pins follow the token the same way (lib/pins.ts).
+    // The sidebar's pins follow the token the same way (lib/pins.ts), and
+    // so do the pages an administrator changed (src/pages/store.ts).
     followPins();
+    followPages();
   }, []);
 
   /* Setup runs to the end once it has started, and this latch is what makes
@@ -305,6 +311,10 @@ function Shell() {
     path.startsWith("/calendar") ||
     path.startsWith("/wikis");
   const tourOpen = React.useSyncExternalStore(subscribeTour, isTourOpen, () => false);
+  // An administrator editing a page (src/pages/editor.tsx): the page keeps
+  // drawing beside the panel, so it gives the panel its room.
+  const pageEditor = React.useSyncExternalStore(subscribePages, () => getPagesState().editor, () => null);
+  const editingPage = signedIn && !held && me?.admin === true && pageEditor !== null;
   const paletteOpen = React.useSyncExternalStore(subscribePalette, () => paletteState().open, () => false);
   const searchable = signedIn && !held;
   const pageMenu = usePageMenu(() => [
@@ -399,6 +409,7 @@ function Shell() {
       ref={holdStage}
       data-testid="desktop"
       data-stage={stage}
+      data-page-editor={editingPage ? "" : undefined}
       inert={stage === "preview"}
       className={cn(
         "losos-shell min-h-dvh text-ink",
@@ -499,6 +510,11 @@ function Shell() {
         </React.Suspense>
       )}
       {signedIn && <ReportDialogHost />}
+      {editingPage && (
+        <React.Suspense fallback={null}>
+          <PageEditorDock target={pageEditor} />
+        </React.Suspense>
+      )}
     </div>
     </BottomNavHost.Provider>
     {wizard}

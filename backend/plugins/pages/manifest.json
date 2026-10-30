@@ -1,0 +1,24 @@
+{
+  "name": "pages",
+  "description": "The pages of the admin UI and the apps as MDX: an administrator's changes and stylesheet, in a Git repository of their own.",
+  "routes": [
+    { "method": "GET", "path": "/api/pages" },
+    { "method": "GET", "path": "/api/pages/style.css", "unguarded": true },
+    { "method": "PUT", "path": "/api/pages/style.css", "maxBody": 524288 },
+    { "method": "DELETE", "path": "/api/pages/style.css" },
+    { "method": "GET", "path": "/api/pages/{page}" },
+    { "method": "PUT", "path": "/api/pages/{page}", "maxBody": 524288 },
+    { "method": "DELETE", "path": "/api/pages/{page}" }
+  ],
+  "files": [
+    { "path": "${LOSOS_PAGES_DIR:-/var/lib/losos/pages}", "access": "rw" },
+    { "path": "${LOSOS_ADMIN_UI_DIR:-}", "access": "ro" }
+  ],
+  "exec": ["git"],
+  "locks": ["pages"],
+  "limits": { "memoryMiB": 96, "timeoutSecs": 20 },
+  "config": {
+    "repo": "${LOSOS_PAGES_DIR:-/var/lib/losos/pages}",
+    "ui": "${LOSOS_ADMIN_UI_DIR:-}"
+  }
+}
