@@ -76,6 +76,7 @@ async function open({
   cloudText = { available: true, partial: false },
   gitText = { available: true },
   viewport,
+  cloudPage = false,
 } = {}) {
   const page = await browser.newPage({ viewport: viewport ?? { width: 1280, height: 860 } });
   const errors = [];
@@ -126,10 +127,27 @@ async function open({
   }
   // The two apps' own pages, so a jump there has somewhere to land. A regex,
   // because `**/cloud/**` would also catch /api/cloud/files.
-  for (const app of ['cloud', 'git']) {
+  for (const app of cloudPage ? ['git'] : ['cloud', 'git']) {
     await page.route(new RegExp(`^[a-z]+://[^/]+/${app}(/|\\?|$)`), (route) =>
       route.fulfill({ status: 200, contentType: 'text/html', body: `<title>${app}</title>` }),
     );
+  }
+  // LosOS Cloud's own page and API, for a check that opens it for real.
+  if (cloudPage) {
+    await page.route('**/cloud/api/**', (route) => {
+      const p = new URL(route.request().url()).pathname;
+      if (p === '/cloud/api/me') return json(route, 200, { login: 'notshared', name: 'Matus', email: '', used: 1, free: 99, product: 'LosOS Cloud' });
+      if (p === '/cloud/api/files') {
+        return json(route, 200, {
+          folder: { id: 1, path: '', name: '', dir: true, size: 0, mtime: 0, etag: 'root', mime: '', favorite: false },
+          entries: [{ id: 2, path: 'notes.txt', name: 'notes.txt', dir: false, size: 5, mtime: 1792580040, etag: 'a', mime: 'text/plain', favorite: false }],
+        });
+      }
+      if (p.startsWith('/cloud/api/files/by-id/')) {
+        return json(route, 200, { id: 418, path: 'Documents/Taxes 2025/tax-return-2025.pdf', name: 'tax-return-2025.pdf', dir: false, size: 1, mtime: 0, etag: 'b', mime: 'application/pdf', favorite: false });
+      }
+      return json(route, 404, { code: 'notFound' });
+    });
   }
   await page.addInitScript((t) => {
     window.sessionStorage.setItem('losos-token', t);
@@ -199,6 +217,35 @@ await check('Ctrl+Shift+P opens it with the input focused; Escape closes it and 
   assert.equal(await page.locator('#probe').inputValue(), 'a:b');
   assert.equal(await box(page).count(), 0, 'a colon in a field opened the palette');
   assert.equal(csp.length, baseline, `the palette added CSP violations:\n${csp.join('\n')}`);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('in LosOS Cloud the same keys open it, and it goes to the admin pages and to files', async () => {
+  const { page, errors } = await open({ path: '/cloud/files', cloudPage: true });
+  await page.locator('[data-entry="notes.txt"]').waitFor();
+  await page.evaluate(() => {
+    window.__sameDocument = true;
+  });
+  await page.mouse.click(1200, 820);
+  await page.keyboard.press('Control+Shift+P');
+  await box(page).waitFor();
+  await page.keyboard.press('Escape');
+  await box(page).waitFor({ state: 'detached' });
+  await page.keyboard.type(':');
+  await box(page).waitFor();
+  // A file of LosOS Cloud opens in this page, by its router.
+  await box(page).fill('tax-return');
+  await option(page, /^tax-return-2025\.pdf/).click();
+  await page.waitForURL(/\/cloud\/files/);
+  assert.equal(await page.evaluate(() => window.__sameDocument), true, 'a file in LosOS Cloud loaded the page again');
+  // A page of the admin UI is a page load to it.
+  await page.keyboard.press('Control+Shift+P');
+  await box(page).fill('gpu');
+  await option(page, /^Hardware/).waitFor();
+  await page.keyboard.press('Enter');
+  await page.waitForURL(origin + '/settings/hardware');
+  await page.getByRole('heading', { name: 'Hardware', level: 1 }).waitFor();
   assert.deepEqual(errors, []);
   await page.close();
 });
