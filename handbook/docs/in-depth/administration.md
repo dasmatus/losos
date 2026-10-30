@@ -439,7 +439,7 @@ other's files. `nix/tests/impermanence.nix` checks this.
 ## Upgrades and reboots
 
 - **03:00.** lososd first moves `/etc/nixos` to the newest commit of
-  `losos.configRepo.upstream.branch` (`main`) at
+  `losos.configRepo.upstream.branch` (the release channel, below) at
   `losos.configRepo.upstream.url` (the GitHub repository), keeping the box's
   `modules/overrides.nix` and `modules/install-target.nix`. Then
   `system.autoUpgrade` rebuilds from `losos.upgradeFlakeUri`, which is
@@ -450,3 +450,36 @@ other's files. `nix/tests/impermanence.nix` checks this.
 - **00:07.** `midnight-reboot.timer` reboots unconditionally
   (`Persistent=true`, so a box that was off catches up). Because the root is
   rebuilt on boot, the reboot is how the box repairs itself.
+
+### Release channels {#release-channels}
+
+A box follows one of three branches, picked under Settings, History, Release
+channel (`losos.updates.channel`):
+
+| Channel   | Branch            | Moves                     |
+| --------- | ----------------- | ------------------------- |
+| Daily     | `channel/daily`   | Every night at 00:17 UTC  |
+| Weekly    | `channel/weekly`  | Mondays at 00:17 UTC      |
+| Monthly   | `channel/monthly` | The 1st at 00:17 UTC      |
+
+Each move takes the newest commit of `main` whose CI run passed, the upload
+to the binary cache included, so a box never builds a version that failed
+its checks and never compiles what CI already built. Before LosOS 1.0.0 a
+box follows the daily channel, and the weekly one from then on. "Every
+change" (`main`) follows `main` itself, checked or not, and is for testing
+LosOS.
+
+A pull request labelled `hotfix` reaches every channel the same day. Once it
+is merged, a bot cherry-picks it onto each channel that lacks it, CI and the
+cache upload run on the result, and the channel moves when they pass. Boxes
+take it at their next 03:00 update. A hotfix carries what is in this
+repository: LosOS's own code, its Rust and npm dependencies and its module
+settings. A fix inside NixOS itself, such as nginx or the kernel, arrives
+through the nixpkgs pin like any other change.
+
+Moving to a slower channel never takes a box back. Every commit on a channel
+names the `main` commit it was cut from (a `Channel-Base:` trailer), and the
+box keeps the version it has until the channel passes it; the History pane
+shows "Waiting for the channel" meanwhile. `.github/workflows/channels.yml`
+and `.github/scripts/channels.py` do the cuts and the hotfixes, and no
+channel is ever force-pushed.

@@ -112,6 +112,36 @@ fn assert_inert(r: &Rendered, source: &str) {
         "tr",
         "u",
         "ul",
+        // MathML Core, which the equations are written in.
+        "annotation",
+        "math",
+        "menclose",
+        "merror",
+        "mfrac",
+        "mi",
+        "mmultiscripts",
+        "mn",
+        "mo",
+        "mover",
+        "mpadded",
+        "mphantom",
+        "mprescripts",
+        "mroot",
+        "mrow",
+        "ms",
+        "mspace",
+        "msqrt",
+        "mstyle",
+        "msub",
+        "msubsup",
+        "msup",
+        "mtable",
+        "mtd",
+        "mtext",
+        "mtr",
+        "munder",
+        "munderover",
+        "semantics",
     ];
     for tag in tags(&r.html) {
         assert!(
@@ -151,6 +181,7 @@ fn assert_inert(r: &Rendered, source: &str) {
                             "language-",
                             "math-",
                             "mdx-",
+                            "menclose-",
                             "page-break",
                             "task-",
                             "losos-",
@@ -190,6 +221,17 @@ const MARKDOWN_ATTACKS: &[&str] = &[
     "<svg><script>alert(1)</script></svg>",
     "<svg onload=alert(1)>",
     "<math><mi xlink:href=\"javascript:alert(1)\">x</mi></math>",
+    // MathML is allowed now, so its namespace tricks are tried too.
+    "<math href=\"javascript:alert(1)\"><mi>x</mi></math>",
+    "<math><mi onclick=\"alert(1)\" style=\"position:fixed\">x</mi></math>",
+    "<math><mtext><table><mglyph><style><img src=x onerror=alert(1)>",
+    "<math><mtext><h1><a><h6></a></h6><mglyph><svg><mtext><style><a title=\"</style><img src=x onerror=alert(1)>\"></style></h1>",
+    "<math><annotation-xml encoding=\"text/html\"><img src=x onerror=alert(1)></annotation-xml></math>",
+    "<math><annotation encoding=\"text/html\"><script>alert(1)</script></annotation></math>",
+    "<math><maction actiontype=\"statusline#http://evil\"><mi>x</mi></maction></math>",
+    "<math><mi mathvariant=\"expression(alert(1))\">x</mi></math>",
+    "<math><semantics><mi>x</mi><annotation encoding=\"text/html\"><iframe src=//evil></iframe></annotation></semantics></math>",
+    "$\\href{javascript:alert(1)}{x}$ and $\\style{position:fixed}{x}$",
     "<img src=\"https://ok/x.png\" srcset=\"javascript:alert(1)\">",
     "<style>body{display:none}</style>",
     "<link rel=stylesheet href=//evil><meta http-equiv=refresh content=0;url=//evil><base href=//evil>",
@@ -305,6 +347,32 @@ fn small_stack(f: impl FnOnce() + Send + 'static) {
         .unwrap()
         .join()
         .unwrap();
+}
+
+#[test]
+fn a_deep_equation_stays_tex_instead_of_overflowing_the_stack() {
+    small_stack(|| {
+        for tex in [
+            "{".repeat(4000) + "x" + &"}".repeat(4000),
+            "\\sqrt".repeat(800) + " x",
+            "\\left(".repeat(1000) + "x" + &"\\right)".repeat(1000),
+            "\\begin{matrix}".repeat(500) + "x" + &"\\end{matrix}".repeat(500),
+            "x^".repeat(2000) + "x",
+            "x".repeat(losos_mdx::MAX_TEX + 1),
+        ] {
+            for source in [format!("${tex}$"), format!("$$\n{tex}\n$$")] {
+                let r = html(&source, Flavour::Mdx);
+                assert!(!r.html.contains("<math"), "{}", &source[..40]);
+                assert!(r.html.contains("language-math"), "{}", &source[..40]);
+            }
+        }
+        // Just under the limits still draws.
+        let tex =
+            "{".repeat(losos_mdx::MAX_TEX_NESTING) + "x" + &"}".repeat(losos_mdx::MAX_TEX_NESTING);
+        assert!(html(&format!("${tex}$"), Flavour::Mdx)
+            .html
+            .contains("<math"));
+    });
 }
 
 #[test]

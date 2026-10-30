@@ -236,6 +236,10 @@ pub trait Losos {
     fn upstream_fetch(&mut self, up: &crate::config_repo::Upstream) -> anyhow::Result<String>;
     /// What the last follow recorded, `None` before the first.
     fn upstream_mark(&mut self) -> anyhow::Result<Option<crate::config_repo::FollowMark>>;
+    /// When the main a fetched or marked published commit was cut from was
+    /// made ([`crate::config_repo::base_of`]), `None` when the repository
+    /// does not hold that commit.
+    fn upstream_base(&mut self, sha: &str) -> anyhow::Result<Option<i64>>;
     /// Whether the head's tree differs from `base`'s outside
     /// [`crate::config_repo::BOX_FILES`]. `None` compares with the first
     /// commit, the tree the installer laid down.
@@ -1796,10 +1800,36 @@ fn try_follow<L: Losos>(
     let fetched = l.upstream_fetch(up)?;
     let mark = l.upstream_mark()?;
     let edited = l.config_edited_outside(mark.as_ref().map(|m| m.followed.as_str()))?;
+    // Only a different commit can be older; an unknown time is never older,
+    // so a box whose mark predates the channels follows as it always did.
+    let bases = match &mark {
+        Some(m) if m.upstream != fetched => l
+            .upstream_base(&fetched)?
+            .zip(l.upstream_base(&m.upstream)?),
+        _ => None,
+    };
+    let older = bases.is_some_and(|(new, taken)| new < taken);
     let short: String = fetched.chars().take(10).collect();
     let label = up.label();
-    let mut report = match plan_follow(&fetched, mark.as_ref(), edited) {
+    let mut report = match plan_follow(&fetched, mark.as_ref(), edited, older) {
         FollowPlan::UpToDate => SyncReport::new("ok", format!("This box has {label} at {short}.")),
+        FollowPlan::Holding => {
+            let made = |secs: i64| {
+                chrono::DateTime::from_timestamp(secs, 0)
+                    .map(|t| t.format("%Y-%m-%d").to_string())
+                    .unwrap_or_default()
+            };
+            let (new, taken) = bases.unwrap_or_default();
+            SyncReport::new(
+                "holding",
+                format!(
+                    "{label} is at a version from {}, older than the one from {} this box runs, \
+                     so the box keeps its version until the channel passes it.",
+                    made(new),
+                    made(taken)
+                ),
+            )
+        }
         FollowPlan::Kept => SyncReport::new(
             "kept",
             format!(
@@ -2410,6 +2440,9 @@ mod tests {
             }
             fn upstream_mark(&mut self) -> anyhow::Result<Option<crate::config_repo::FollowMark>> {
                 self.0.upstream_mark()
+            }
+            fn upstream_base(&mut self, sha: &str) -> anyhow::Result<Option<i64>> {
+                self.0.upstream_base(sha)
             }
             fn config_edited_outside(&mut self, b: Option<&str>) -> anyhow::Result<bool> {
                 self.0.config_edited_outside(b)
@@ -3958,6 +3991,52 @@ mod tests {
         f.upstream_head = Some("b".repeat(40));
         cmd_config_update(&mut f).unwrap();
         assert_eq!(f.commits.len(), commits + 1);
+        assert_eq!(f.upstream_mark.as_ref().unwrap().upstream, "b".repeat(40));
+    }
+
+    #[test]
+    fn update_holds_on_a_slower_channel_until_it_passes_the_box() {
+        let mut f = following();
+        let daily = "d".repeat(40);
+        let weekly = "w".repeat(40);
+        let later = "e".repeat(40);
+        f.upstream_bases.insert(daily.clone(), 1_761_600_000); // 2025-10-27
+        f.upstream_bases.insert(weekly.clone(), 1_761_000_000); // 2025-10-20
+        f.upstream_bases.insert(later.clone(), 1_762_200_000); // 2025-11-03
+        f.upstream_head = Some(daily.clone());
+        cmd_config_update(&mut f).unwrap();
+        let commits = f.commits.len();
+
+        // The owner picks weekly; its last cut is older than what the box runs.
+        f.upstream_head = Some(weekly);
+        let out = cmd_config_update(&mut f).unwrap();
+        assert_eq!(out["upstream"]["report"]["state"], "holding");
+        let detail = out["upstream"]["report"]["detail"].as_str().unwrap();
+        assert!(
+            detail.contains("2025-10-20") && detail.contains("2025-10-27"),
+            "{detail}"
+        );
+        assert_eq!(f.commits.len(), commits);
+        assert_eq!(f.upstream_mark.as_ref().unwrap().upstream, daily);
+
+        // The next weekly cut is newer: the box moves.
+        f.upstream_head = Some(later.clone());
+        let out = cmd_config_update(&mut f).unwrap();
+        assert_eq!(out["upstream"]["report"]["state"], "ok");
+        assert_eq!(f.commits.len(), commits + 1);
+        assert_eq!(f.upstream_mark.as_ref().unwrap().upstream, later);
+    }
+
+    #[test]
+    fn update_follows_when_a_commit_has_no_known_time() {
+        // A box whose mark the repository no longer holds follows as before.
+        let mut f = following();
+        f.upstream_head = Some("a".repeat(40));
+        cmd_config_update(&mut f).unwrap();
+        f.upstream_bases.insert("b".repeat(40), 1);
+        f.upstream_head = Some("b".repeat(40));
+        let out = cmd_config_update(&mut f).unwrap();
+        assert_eq!(out["upstream"]["report"]["state"], "ok");
         assert_eq!(f.upstream_mark.as_ref().unwrap().upstream, "b".repeat(40));
     }
 

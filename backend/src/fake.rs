@@ -145,6 +145,8 @@ pub struct FakeLosos {
     /// The published branch's head; `None` models a source that cannot be
     /// reached.
     pub upstream_head: Option<String>,
+    /// `upstream_base` per published commit.
+    pub upstream_bases: std::collections::HashMap<String, i64>,
     /// What the last follow recorded.
     pub upstream_mark: Option<crate::config_repo::FollowMark>,
     /// Whether files outside the box's own were changed since the mark.
@@ -342,6 +344,7 @@ impl FakeLosos {
             sync_report: None,
             upstream: None,
             upstream_head: None,
+            upstream_bases: std::collections::HashMap::new(),
             upstream_mark: None,
             edited_outside: false,
             upstream_report: None,
@@ -885,6 +888,10 @@ impl Losos for FakeLosos {
 
     fn upstream_mark(&mut self) -> anyhow::Result<Option<crate::config_repo::FollowMark>> {
         Ok(self.upstream_mark.clone())
+    }
+
+    fn upstream_base(&mut self, sha: &str) -> anyhow::Result<Option<i64>> {
+        Ok(self.upstream_bases.get(sha).copied())
     }
 
     fn config_edited_outside(&mut self, _base: Option<&str>) -> anyhow::Result<bool> {

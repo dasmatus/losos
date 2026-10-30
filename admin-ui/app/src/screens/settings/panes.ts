@@ -6,6 +6,7 @@ import {
   Flag02Icon,
   CloudUploadIcon,
   ComputerCloudIcon,
+  ComputerTerminal01Icon,
   CpuIcon,
   Globe02Icon,
   HardDriveIcon,
@@ -65,6 +66,7 @@ export type SettingsPaneId =
   | "access"
   | "advanced"
   | "history"
+  | "logs"
   | "backup"
   | "about"
   | "reset";
@@ -398,6 +400,29 @@ export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
     "changes",
     "audit",
   ]),
+  /* Logs right after History: what the box changed, then what its services
+   * said about it. */
+  pane("logs", ComputerTerminal01Icon, [
+    "log",
+    "logs",
+    "journal",
+    "journalctl",
+    "error",
+    "errors",
+    "warning",
+    "debug",
+    "lososd",
+    "service",
+    "services",
+    "unit",
+    "systemd",
+    "kernel",
+    "dmesg",
+    "crash",
+    "failed",
+    "bug",
+    "report",
+  ]),
   /* Backup sits just above the two panes that end a box's life: it is
    * where the way back is set up, so it should be met before Reset. */
   pane("backup", CloudUploadIcon, [
@@ -451,6 +476,7 @@ const PANE_SECTION: Record<SettingsPaneId, string> = {
   access: "access",
   advanced: "admin",
   history: "admin",
+  logs: "admin",
   backup: "backup",
   about: "admin",
   reset: "admin",

@@ -477,7 +477,7 @@ mod tests {
         vec![
             InstallAction::Log("drives".into()),
             InstallAction::EnsureKeyfile(p("/k")),
-            InstallAction::CloneFlake("u".into(), p("/w")),
+            InstallAction::CloneFlake("u".into(), None, p("/w")),
             InstallAction::WriteTarget(p("/w/t"), String::new()),
             InstallAction::RunDisko(p("/w")),
             InstallAction::Log("sealing".into()),

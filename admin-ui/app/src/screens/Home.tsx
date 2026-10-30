@@ -39,6 +39,7 @@ import {
 import { t as translate, type MessageKey } from "@/lib/i18n";
 import { Rich, useT } from "@/lib/i18n-react";
 import { cn, setCssVar } from "@/lib/utils";
+import { Page, type BlockMap } from "@/pages/page";
 
 /* The homepage — the grid of apps, and the two facts worth a glance above and
  * below it.
@@ -102,7 +103,6 @@ export function Home({
   uptimeSeconds = null,
   storage = null,
 }: HomeProps) {
-  const t = useT();
   const signedIn = React.useSyncExternalStore(subscribeAuth, hasToken, () => false);
   const health = useHealth();
   const { settings, boxState, status, measured } = useBoxFacts(signedIn);
@@ -122,36 +122,103 @@ export function Home({
   const building = status !== null && status.state === "building";
   const game = useWaitGame(building);
 
+  /* The page is src/pages/overview.mdx, which places the blocks below; an
+   * administrator may place them otherwise (src/pages/README.md). Each
+   * block reads what it shows from here. */
+  const overview: OverviewFacts = {
+    hostName,
+    uptimeSeconds,
+    health,
+    showThemeSwitch,
+    status: building ? status : null,
+    game,
+    model,
+    lending,
+    disk,
+    widgets,
+  };
+
   return (
     <div className="flex flex-col gap-4">
-      <HomeHeader
-        hostName={hostName}
-        uptimeSeconds={uptimeSeconds}
-        health={health}
-        showThemeSwitch={showThemeSwitch}
-      />
-
-      {building && <ApplyingChange status={status} offer={game.offer} />}
-      {game.panel}
-
-      <Card className="overflow-hidden">
-        <CardContent className="pt-5">
-          <AppGrid model={model} />
-        </CardContent>
-
-        <CardFooter className="bg-sunk/40">
-          <StorageStrip lending={lending} storage={disk} />
-        </CardFooter>
-      </Card>
-
-      {widgets !== undefined && (
-        <section aria-label={t("home.glance.label")} className="flex flex-col gap-3">
-          {widgets}
-        </section>
-      )}
+      <OverviewContext.Provider value={overview}>
+        <Page id="overview" blocks={OVERVIEW_BLOCKS} />
+      </OverviewContext.Provider>
     </div>
   );
 }
+
+// ── The page's blocks (src/pages/blocks.json) ─────────────────────────────
+
+interface OverviewFacts {
+  hostName: string;
+  uptimeSeconds: number | null;
+  health: Health;
+  showThemeSwitch: boolean;
+  /** The change being applied, while one is. */
+  status: StatusResponse | null;
+  game: ReturnType<typeof useWaitGame>;
+  model: ReturnType<typeof deriveApps>;
+  lending: Lending;
+  disk: HomeStorage | null;
+  widgets: React.ReactNode | undefined;
+}
+
+const OverviewContext = React.createContext<OverviewFacts | null>(null);
+
+function useOverview(): OverviewFacts {
+  const facts = React.useContext(OverviewContext);
+  if (facts === null) throw new Error("an overview block outside the overview");
+  return facts;
+}
+
+const OVERVIEW_BLOCKS: BlockMap<"overview"> = {
+  BoxName() {
+    const o = useOverview();
+    return (
+      <HomeHeader
+        hostName={o.hostName}
+        uptimeSeconds={o.uptimeSeconds}
+        health={o.health}
+        showThemeSwitch={o.showThemeSwitch}
+      />
+    );
+  },
+  Applying() {
+    const o = useOverview();
+    return (
+      <>
+        {o.status !== null && <ApplyingChange status={o.status} offer={o.game.offer} />}
+        {o.game.panel}
+      </>
+    );
+  },
+  Apps({ props }) {
+    const o = useOverview();
+    return (
+      <Card className="overflow-hidden">
+        <CardContent className="pt-5">
+          <AppGrid model={o.model} />
+        </CardContent>
+
+        {props["hideStorage"] !== true && (
+          <CardFooter className="bg-sunk/40">
+            <StorageStrip lending={o.lending} storage={o.disk} />
+          </CardFooter>
+        )}
+      </Card>
+    );
+  },
+  Glance() {
+    const t = useT();
+    const o = useOverview();
+    if (o.widgets === undefined) return null;
+    return (
+      <section aria-label={t("home.glance.label")} className="flex flex-col gap-3">
+        {o.widgets}
+      </section>
+    );
+  },
+};
 
 export default Home;
 

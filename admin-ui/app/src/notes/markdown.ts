@@ -247,6 +247,14 @@ function finish(html: string, links: Map<string, { path: string; sub: string }>)
     box.innerHTML = renderMath(code.textContent ?? "", display);
     (display && pre !== null ? pre : code).replaceWith(box);
   }
+  // losos-mdx writes equations as MathML; a display one gets the same box.
+  for (const math of body.querySelectorAll<MathMLElement>('math[display="block"]')) {
+    if (math.parentElement?.classList.contains("math-block") === true) continue;
+    const box = doc.createElement("div");
+    box.className = "math-block";
+    math.replaceWith(box);
+    box.append(math);
+  }
   for (const code of body.querySelectorAll<HTMLElement>("pre > code")) {
     const lang = [...code.classList].find((c) => c.startsWith("language-"))?.slice("language-".length) ?? "";
     if (lang === "") continue;

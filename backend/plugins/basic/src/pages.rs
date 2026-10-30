@@ -115,7 +115,10 @@ fn bytes(v: &Value, key: &str) -> Option<u64> {
 /// One tile: its app, icon, address, name and the note under it.
 type Tile<'a> = (&'a str, &'a str, &'a str, String, Option<(&'a str, String)>);
 
-pub fn overview(ctx: &Ctx, o: &Overview) -> Html {
+/// The Overview, or the administrator's page in its place when they changed
+/// it (`custom`, crate::custom): its blocks are the header, the change being
+/// applied and the card of apps. Glance, the widgets, needs a script.
+pub fn overview(ctx: &Ctx, o: &Overview, custom: Option<&str>) -> Html {
     let m = &ctx.m;
     let header = el("header")
         .class("flex flex-wrap items-center gap-x-4 gap-y-2 animate-fade-in")
@@ -264,20 +267,38 @@ pub fn overview(ctx: &Ctx, o: &Overview) -> Html {
         (true, false) => "waiting",
         (true, true) => "lent",
     };
-    let card = ui::card()
-        .class("overflow-hidden")
-        .child(ui::card_content().class("pt-5").child(apps))
-        .child(ui::card_footer().class("bg-sunk/40").child(storage_strip(
+    let apps = Html::from(apps);
+    let card = |hide_storage: bool| -> Html {
+        let card = ui::card()
+            .class("overflow-hidden")
+            .child(ui::card_content().class("pt-5").child(apps.clone()));
+        if hide_storage {
+            return card.into();
+        }
+        card.child(ui::card_footer().class("bg-sunk/40").child(storage_strip(
             m,
             lending,
             o.storage.as_ref(),
-        )));
+        )))
+        .into()
+    };
+    let header = Html::from(header);
+    let applying = if o.status.building() {
+        applying(m, &o.status)
+    } else {
+        Html::new()
+    };
 
-    let mut page = el("div").class("flex flex-col gap-4").child(header);
-    if o.status.building() {
-        page = page.child(applying(m, &o.status));
-    }
-    page.child(card).into()
+    let body = match custom {
+        None => header.with(applying).with(card(false)),
+        Some(html) => crate::custom::splice(html, |name, props| match name {
+            "BoxName" => header.clone(),
+            "Applying" => applying.clone(),
+            "Apps" => card(props.get("hideStorage") == Some(&Value::Bool(true))),
+            _ => Html::new(),
+        }),
+    };
+    el("div").class("flex flex-col gap-4").child(body).into()
 }
 
 /// AppGrid.tsx's SetupPrompt. The first-run wizard is a script page, so
@@ -773,7 +794,14 @@ pub fn not_this(old: &str) -> String {
 
 /// pane-storage.tsx: the meter, the reserve and the dialog that asks
 /// before the reserve is used, opened by a checkbox's label.
-pub fn storage(ctx: &Ctx, storage: Option<&Value>, rebuild: &Rebuild) -> Html {
+/// The Storage pane, or the administrator's page in its place (`custom`,
+/// crate::custom), whose one block is the disk.
+pub fn storage(
+    ctx: &Ctx,
+    storage: Option<&Value>,
+    rebuild: &Rebuild,
+    custom: Option<&str>,
+) -> Html {
     let m = &ctx.m;
     let facts = storage.cloned().unwrap_or(Value::Null);
     let reserve = bytes(&facts, "reserveBytes");
@@ -825,7 +853,7 @@ pub fn storage(ctx: &Ctx, storage: Option<&Value>, rebuild: &Rebuild) -> Html {
                         .child(action),
                 ),
         );
-    let mut body = Html::from(
+    let disk = Html::from(
         ui::pane_section()
             .child(ui::group_title(&m.t("panes.storage.disk")))
             .child(group)
@@ -833,6 +861,13 @@ pub fn storage(ctx: &Ctx, storage: Option<&Value>, rebuild: &Rebuild) -> Html {
                 &m.t("panes.storage.diskCaption"),
             ))),
     );
+    let mut body = match custom {
+        None => disk,
+        Some(html) => crate::custom::splice(html, |name, _| match name {
+            "Disk" => disk.clone(),
+            _ => Html::new(),
+        }),
+    };
 
     if has_reserve && !rebuild.busy() {
         let text = format!(

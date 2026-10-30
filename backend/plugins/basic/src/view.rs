@@ -1,14 +1,13 @@
 //! What every page needs before it draws: the catalogue in the reader's
 //! language, the page's cookie, the built stylesheet, who is signed in and
-//! the sidebar they may see (components/app-sidebar.tsx's TREE and
-//! `visible`, screens/settings/panes.ts's `paneOpen`).
+//! the sidebar they may see (losos_page::nav, which the log reader draws
+//! too).
 
 use crate::host::Host;
 use losos_page::i18n::{Locale, Messages};
-use losos_page::icons;
-use losos_page::shell::{self, Assets, Frame, NavEntry, Person, Prefs};
-use serde_json::Value;
+use losos_page::shell::{Assets, Frame, NavEntry, Person, Prefs};
 
+pub use losos_page::nav::*;
 /// The panes in the script page's order (screens/settings/panes.ts), with
 /// their icon and the section of backend/sections.json each works in.
 pub const PANES: &[(&str, &str, &str)] = &[
@@ -519,6 +518,8 @@ pub struct Ctx {
     pub rail_moved: bool,
     pub refresh: Option<u32>,
     pub pins: Option<Vec<NavEntry>>,
+    /// The page's name for an administrator's stylesheet (`data-page`).
+    pub page: Option<&'static str>,
 }
 
 impl Ctx {
@@ -536,6 +537,7 @@ impl Ctx {
             rail_moved: self.rail_moved,
             refresh: self.refresh,
             pins: self.pins.as_deref(),
+            page: self.page,
         }
     }
 }
