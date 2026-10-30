@@ -75,7 +75,8 @@ in
     # socket changes every test that talks to :8082. An owner match on
     # OUTPUT says it at the kernel instead: a locally generated packet to the
     # port is rejected unless its socket belongs to root (the daemon's own
-    # tooling, the VM tests) or nginx. nix/tests/admin-vm.nix asserts both halves.
+    # tooling, the VM tests), nginx or the log reader. nix/tests/admin-vm.nix
+    # asserts both halves.
     #
     # `-I`, so it sits ahead of anything appended later; the delete first
     # makes a firewall reload idempotent. nginx is named only when it runs:
@@ -89,6 +90,9 @@ in
             "-m owner ! --uid-owner 0"
           ]
           ++ lib.optional config.services.nginx.enable "-m owner ! --uid-owner ${config.services.nginx.user}"
+          # The log reader (modules/log-reader.nix) asks who is signed in,
+          # passing on the person nginx named to it.
+          ++ lib.optional (config.users.users ? losos-logs) "-m owner ! --uid-owner losos-logs"
           ++ [ "-j REJECT --reject-with tcp-reset" ]
         );
       in

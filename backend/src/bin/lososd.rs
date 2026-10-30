@@ -18,18 +18,8 @@ use losos_ctl::io_backend::{IoLosos, Paths};
 use losos_ctl::{config_repo, dbus, http, plugin, supervisor};
 
 fn main() -> std::process::ExitCode {
-    tracing_subscriber::fmt()
-        // systemd stamps its own timestamp on every journal line; a second one
-        // in the message is noise.
-        .without_time()
-        // Diagnostics belong on stderr. Under systemd both streams reach the
-        // journal either way, so nothing is lost, and stdout stays clean.
-        .with_writer(std::io::stderr)
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .init();
+    // Under systemd each line carries its priority (losos_ctl::trace).
+    losos_ctl::trace::init("info");
 
     match run() {
         Ok(()) => std::process::ExitCode::SUCCESS,
