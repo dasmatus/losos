@@ -92,6 +92,7 @@ let
     "hardening.enable"
     "hostName"
     "shared.fscrypt"
+    "kindashared.fscrypt"
     "storage"
     "tls"
     "upgradeFlakeUri"

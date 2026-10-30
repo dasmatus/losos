@@ -61,6 +61,9 @@ futures-core = { version = "0.3", default-features = false }
 # client (src/access.rs). Shared with edge/registrar by path, so the box
 # and the edge speak one contract (docs/terminal-access.md).
 losos-access = { path = "access" }
+# The path rule, which edge to use (src/edge.rs re-exports it): its own crate
+# so that LosOS Desktop's network machine picks an edge the same way.
+losos-edge-path = { path = "edge-path" }
 # Problem reports (src/install_report.rs): the installer writes and sends
 # them with the same crate the box's problems plugin uses, so the two read
 # alike and the same failure is one GitHub issue.

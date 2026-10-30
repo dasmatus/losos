@@ -58,6 +58,7 @@ pub mod ech;
 pub mod error;
 pub mod escrow_boxes;
 pub mod evm_tx;
+pub mod exit;
 mod fsutil;
 pub mod gateway;
 pub mod hardware;

@@ -203,7 +203,7 @@ fn page_builder() -> &'static ammonia::Builder<'static> {
 fn make(extra: &[&'static str]) -> ammonia::Builder<'static> {
     {
         let mut b = ammonia::Builder::empty();
-        b.tags(TAGS.iter().copied().collect::<HashSet<_>>())
+        b.tags(TAGS.iter().chain(extra).copied().collect::<HashSet<_>>())
             .tag_attributes({
                 let mut map = TAG_ATTRIBUTES
                     .iter()

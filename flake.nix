@@ -460,6 +460,7 @@
           ./modules/edge-inference.nix
           ./modules/edge-gateway.nix
           ./modules/edge-hidden.nix
+          ./modules/edge-exit.nix
           ./modules/logs.nix
         ];
         _module.args.self = self;
@@ -583,6 +584,10 @@
         # The Mesh page while the box has paused sharing for want of an edge,
         # with the pull request's pictures (nix/tests/sharing-pause.nix).
         losos-sharing-pause = import ./nix/tests/sharing-pause.nix { inherit pkgs; };
+        # kindashared: sharing with the local gateways only, refused through
+        # an edge reached over the internet, paused and resumed with a real
+        # gateway, with the pull request's pictures (nix/tests/kindashared.nix).
+        losos-kindashared = import ./nix/tests/kindashared.nix { inherit pkgs; };
         # LosOS Diagrams on a box with LosOS Cloud: the /lab/ move, a .canvas
         # file opened and saved back, and the pull request's pictures.
         losos-diagrams = import ./nix/tests/diagrams.nix { inherit pkgs; };

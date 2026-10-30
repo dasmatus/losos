@@ -522,6 +522,7 @@ fn sign_in_page(c: &PageCtx, login: bool, wrong: bool) -> HttpResponse {
         rail_moved: false,
         refresh: None,
         pins: None,
+        page: None,
     };
     html(
         401,
@@ -560,6 +561,7 @@ async fn page_view(r: web::Data<Reader>, req: HttpRequest) -> HttpResponse {
             rail_moved: false,
             refresh: None,
             pins: asked.pins.as_deref(),
+            page: None,
         };
         return html(403, shell::page(&frame, header.with(pane::denied(&c.m))));
     }
@@ -605,6 +607,7 @@ async fn page_view(r: web::Data<Reader>, req: HttpRequest) -> HttpResponse {
         rail_moved: false,
         refresh: p.filter.follow.then_some(5),
         pins: asked.pins.as_deref(),
+        page: None,
     };
     let main = Html::from(
         el("div")
