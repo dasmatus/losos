@@ -107,6 +107,10 @@ pub trait Losos {
     /// any other error is a fault for the journal.
     fn market_request(&mut self, op: &crate::market::Op) -> anyhow::Result<crate::market::Outcome>;
 
+    /// This box's escrow keys, from the `market-escrow-key` credential, or
+    /// `None` on a box that has none (an older build, a test).
+    fn escrow_keys(&mut self) -> anyhow::Result<Option<crate::escrow_key::Keys>>;
+
     /// The edge this box trades through and its id there, or `None` with no
     /// master proxy configured.
     fn market_config(&mut self) -> Option<crate::market::Config> {
@@ -449,6 +453,96 @@ pub fn sharing_tick<L: Losos>(
     Ok(step)
 }
 
+/// [`sharing_tick`] for `losos.sharingLocally`, the `kindashared` side:
+/// pause when no local gateway has answered for `pause_after` seconds, share
+/// again once one is back. `clock` observes [`crate::edge::EdgeStatus::
+/// local_gateway`], not plain reachability: an official edge answering does
+/// not keep this kind of sharing on.
+///
+/// # Errors
+/// Reading the state or the settings, or queueing the rebuild, failed.
+pub fn local_sharing_tick<L: Losos>(
+    l: &mut L,
+    clock: &crate::edge::OutageClock,
+    now: u64,
+    pause_after: u64,
+) -> anyhow::Result<crate::edge::SharingStep> {
+    use crate::edge::SharingStep;
+    let s = l.load_state()?;
+    if s.erase.is_some() || !s.claimed {
+        return Ok(SharingStep::Nothing);
+    }
+    let sharing = crate::edge::SharingNow {
+        on: parse_settings(&l.read_overrides()?).sharing_locally,
+        paused: s.local_sharing_paused_at.is_some(),
+        edge_seen: s.local_sharing_edge_seen,
+        building: s
+            .rebuild
+            .as_ref()
+            .is_some_and(|rb| rb.state == RebuildState::Building),
+    };
+    let step = crate::edge::sharing_step(sharing, clock, now, pause_after);
+    match step {
+        SharingStep::Nothing => {}
+        SharingStep::SeenEdge => {
+            let mut s = s;
+            s.local_sharing_edge_seen = true;
+            l.save_state(&s)?;
+        }
+        SharingStep::Forget => {
+            let mut s = s;
+            s.local_sharing_paused_at = None;
+            l.save_state(&s)?;
+        }
+        SharingStep::Pause => {
+            set_local_sharing(
+                l,
+                false,
+                "Pause local sharing: no local gateway answers",
+                |s| {
+                    s.local_sharing_paused_at = Some(now);
+                },
+            )?;
+        }
+        SharingStep::Resume => {
+            set_local_sharing(
+                l,
+                true,
+                "Resume local sharing: a local gateway answers again",
+                |s| {
+                    s.local_sharing_paused_at = None;
+                    s.local_sharing_edge_seen = true;
+                },
+            )?;
+        }
+    }
+    Ok(step)
+}
+
+/// Write `losos.sharingLocally` and rebuild: the box's own pause and resume
+/// of sharing with its local gateways. Unlike [`set_sharing`] it leaves
+/// `mode`, which is about the mesh, alone.
+fn set_local_sharing<L: Losos>(
+    l: &mut L,
+    on: bool,
+    title: &str,
+    mark: impl FnOnce(&mut State),
+) -> anyhow::Result<(String, Value)> {
+    let before = l.read_overrides()?;
+    let lines: Vec<String> = before.lines().map(str::to_string).collect();
+    let mut body = crate::overrides::inject_bool("sharingLocally", on, &lines).join("\n");
+    body.push('\n');
+    l.write_overrides(&body)?;
+    let commit = commit_settings(l, title, &before, &body);
+    let job = l.next_job_id()?;
+    let mut s = l.load_state()?;
+    s.rebuild = Some(building(&job, MSG_STARTED));
+    mark(&mut s);
+    l.save_state(&s)?;
+    l.spawn_rebuild(&job)?;
+    Ok((job, commit))
+}
+
 /// Record a change to `overrides.nix` in the configuration repository
 /// (`crate::config_repo`), with a message naming the settings that moved.
 ///
@@ -537,7 +631,10 @@ pub fn cmd_apply<L: Losos>(l: &mut L, nix_code: &str) -> anyhow::Result<Value> {
     // that is not sharing, pass whatever the network looks like.
     let now = parse_settings(&before);
     let want = parse_settings(nix_code);
-    crate::edge::check_gate(&now, &want, &l.edge_status()?)?;
+    let edge = l.edge_status()?;
+    crate::edge::check_gate(&now, &want, &edge)?;
+    // Sharing as `kindashared` needs more than any edge: a local gateway.
+    crate::edge::check_local_gate(&now, &want, &edge)?;
     crate::edge::check_mesh(nix_code)?;
     let body = crate::overrides::drop_retired(nix_code);
     l.write_overrides(&body)?;
@@ -548,6 +645,14 @@ pub fn cmd_apply<L: Losos>(l: &mut L, nix_code: &str) -> anyhow::Result<Value> {
         let mut s = l.load_state()?;
         s.sharing_paused_at = None;
         s.sharing_edge_seen = want.sharing_my_storage;
+        l.save_state(&s)?;
+    }
+    if now.sharing_locally != want.sharing_locally {
+        // The same for sharing with the local gateways: the gate above just
+        // saw one answer if it was turned on.
+        let mut s = l.load_state()?;
+        s.local_sharing_paused_at = None;
+        s.local_sharing_edge_seen = want.sharing_locally;
         l.save_state(&s)?;
     }
     let job = queue_rebuild(l, MSG_STARTED)?;
@@ -1095,6 +1200,10 @@ pub fn cmd_llm_models<L: Losos>(l: &mut L, network: Option<String>) -> anyhow::R
     Ok(reply)
 }
 
+/// Why a listing is refused on a box that shares only with its local
+/// gateways ([`cmd_market_op`]).
+pub const LOCAL_ONLY_NOT_SOLD: &str = "this box shares only with the gateways of its own network, and nothing shared that way is sold: turn on sharing with the mesh to sell room or time";
+
 /// One market action, validated here as well as at the HTTP boundary so the
 /// rule travels with the command.
 ///
@@ -1102,6 +1211,20 @@ pub fn cmd_llm_models<L: Losos>(l: &mut L, network: Option<String>) -> anyhow::R
 /// is not plain `https` is dropped rather than handed to the browser.
 pub fn cmd_market_op<L: Losos>(l: &mut L, op: &crate::market::Op) -> anyhow::Result<Value> {
     use crate::market::{Op, Outcome, Refused};
+    // Nothing kindashared holds is ever sold: sharing with this network's
+    // gateways is not the mesh, and a box that shares only that way has no
+    // room or time on the market to offer. Buying stays the owner's own
+    // business and is not touched.
+    if matches!(op, Op::List { .. }) {
+        let settings = parse_settings(&l.read_overrides()?);
+        if settings.sharing_locally && !settings.sharing_my_storage {
+            return Err(Refused {
+                status: 409,
+                message: LOCAL_ONLY_NOT_SOLD.to_string(),
+            }
+            .into());
+        }
+    }
     // Same gate as `cmd_market`, as a refusal: an action, unlike a view, has
     // to say why it did not happen.
     crate::edge::check_market_gate(&l.edge_status()?)?;
@@ -1123,6 +1246,24 @@ pub fn cmd_market_op<L: Losos>(l: &mut L, op: &crate::market::Op) -> anyhow::Res
             message: e.to_string(),
         })
     })?;
+    // An escrowed payment names this box's escrow key, which the edge has
+    // from the box itself: tell it once more right before the order, so a
+    // box that just came up does not have to wait for its signing pass.
+    let keys = if matches!(op, Op::Order { .. }) {
+        let keys = l.escrow_keys()?;
+        if let Some(k) = &keys {
+            let register = Op::EscrowDecisions {
+                evm: k.evm_address(),
+                solana: k.solana_address(),
+            };
+            if let Err(e) = l.market_request(&register) {
+                tracing::warn!(error = ?e, "could not register the escrow keys before an order");
+            }
+        }
+        keys
+    } else {
+        None
+    };
     let Outcome::Reply(mut reply) = l.market_request(op)? else {
         return Err(Refused {
             status: 409,
@@ -1130,6 +1271,9 @@ pub fn cmd_market_op<L: Losos>(l: &mut L, op: &crate::market::Op) -> anyhow::Res
         }
         .into());
     };
+    if let Some(k) = &keys {
+        k.check_invoice(&reply["stablecoin"])?;
+    }
     // A chain call is a JSON-RPC object. Wrapping it, or treating a missing
     // checkout URL as a Stripe page, would make the wallet's transport fail.
     if matches!(op, Op::Rpc { .. }) {
@@ -1159,6 +1303,55 @@ pub fn cmd_market_op<L: Losos>(l: &mut L, op: &crate::market::Op) -> anyhow::Res
     }
     Ok(reply)
 }
+
+/// One pass of this box over the escrowed payments it is party to: tell the
+/// edge its escrow keys, read what the edge waits on it to agree to, and
+/// sign what pays this box's owner (`crate::escrow_key`). lososd runs it
+/// every [`ESCROW_PASS_EVERY`]; the count is what it signed.
+///
+/// # Errors
+/// A fault reaching the edge. A box with no market, no official edge or no
+/// escrow key signs nothing and is not an error.
+pub fn cmd_escrow_pass<L: Losos>(l: &mut L) -> anyhow::Result<usize> {
+    use crate::market::{Op, Outcome};
+    if crate::edge::check_market_gate(&l.edge_status()?).is_err() {
+        return Ok(0);
+    }
+    let Some(keys) = l.escrow_keys()? else {
+        return Ok(0);
+    };
+    let register = Op::EscrowDecisions {
+        evm: keys.evm_address(),
+        solana: keys.solana_address(),
+    };
+    let Outcome::Reply(decisions) = l.market_request(&register)? else {
+        return Ok(0);
+    };
+    let decisions = decisions.as_array().cloned().unwrap_or_default();
+    if decisions.is_empty() {
+        return Ok(0);
+    }
+    // Which trades are this box's, from the box's own account view.
+    let Outcome::Reply(account) = l.market_request(&Op::Account)? else {
+        return Ok(0);
+    };
+    let mine = crate::escrow_key::Mine::from_account(&account);
+    let mut signed = 0;
+    for d in &decisions {
+        match keys.sign(d, &mine) {
+            Ok(body) => match l.market_request(&Op::EscrowSign(body)) {
+                Ok(_) => signed += 1,
+                Err(e) => tracing::warn!(error = ?e, "the edge did not take an escrow signature"),
+            },
+            Err(e) => tracing::warn!(error = %e, "an escrow decision was not signed"),
+        }
+    }
+    Ok(signed)
+}
+
+/// How often the box looks for escrow decisions to sign. A release waits on
+/// it at most this long after the edge decides.
+pub const ESCROW_PASS_EVERY: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// Why a machine action was refused before anything left the box: this box
 /// does not share its storage, and virtual machines are offered only to a box
@@ -1389,6 +1582,8 @@ pub fn cmd_edge<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
     // Sharing the box turned off itself while no edge answered, and turns
     // back on once one does (`sharing_tick`).
     out["sharingPausedAt"] = json!(state.sharing_paused_at);
+    // The same for sharing with the local gateways (`local_sharing_tick`).
+    out["localSharingPausedAt"] = json!(state.local_sharing_paused_at);
     // Whether the edge can read what passes through it.
     out["publicTls"] = serde_json::to_value(l.public_tls()?)?;
     Ok(out)
@@ -2301,6 +2496,9 @@ mod tests {
             ) -> anyhow::Result<crate::market::Outcome> {
                 self.0.market_request(op)
             }
+            fn escrow_keys(&mut self) -> anyhow::Result<Option<crate::escrow_key::Keys>> {
+                self.0.escrow_keys()
+            }
             fn edge_status(&mut self) -> anyhow::Result<crate::edge::EdgeStatus> {
                 self.0.edge_status()
             }
@@ -2684,6 +2882,88 @@ mod tests {
         assert_eq!(fake.state, State::default(), "nothing was saved");
     }
 
+    // ── Sharing with the local gateways (kindashared) ───────────────────
+
+    fn locally_body(fake: &FakeLosos, on: bool) -> String {
+        crate::overrides::inject_bool("sharingLocally", on, &fake.config).join("\n")
+    }
+
+    fn local_line(fake: &FakeLosos) -> bool {
+        parse_settings(&fake.config.join("\n")).sharing_locally
+    }
+
+    #[test]
+    fn sharing_locally_is_refused_through_an_official_edge_alone() {
+        // The default fake's edge is official and tertiary: any edge, but
+        // not a local gateway.
+        let mut fake = FakeLosos::new();
+        let before = fake.config.clone();
+        let body = locally_body(&fake, true);
+        let err = cmd_apply(&mut fake, &body).unwrap_err();
+        assert!(
+            err.downcast_ref::<crate::edge::LocalGatewayRequired>()
+                .is_some(),
+            "{err:?}"
+        );
+        assert_eq!(fake.config, before, "overrides.nix must be untouched");
+        assert!(!fake.spawned);
+
+        let mut fake = FakeLosos::new().with_local_gateway();
+        let body = locally_body(&fake, true);
+        cmd_apply(&mut fake, &body).unwrap();
+        assert!(local_line(&fake));
+        assert!(fake.state.local_sharing_edge_seen);
+        // Sharing through the official edges is a separate switch, untouched.
+        assert_eq!(fake.state.mode, Mode::Local);
+    }
+
+    #[test]
+    fn no_local_gateway_pauses_local_sharing_and_one_brings_it_back() {
+        use crate::edge::{OutageClock, SharingStep};
+        let mut fake = FakeLosos::new().with_local_gateway();
+        fake.state.claimed = true;
+        let body = locally_body(&fake, true);
+        cmd_apply(&mut fake, &body).unwrap();
+        fake.state.rebuild.as_mut().unwrap().state = RebuildState::Done;
+        fake.spawned = false;
+        let mesh_before = parse_settings(&fake.config.join("\n")).sharing_my_storage;
+
+        let mut clock = OutageClock::default();
+        clock.observe(false, 1000);
+        clock.observe(false, 1599);
+        assert_eq!(
+            local_sharing_tick(&mut fake, &clock, 1599, 600).unwrap(),
+            SharingStep::Nothing
+        );
+        clock.observe(false, 1600);
+        assert_eq!(
+            local_sharing_tick(&mut fake, &clock, 1600, 600).unwrap(),
+            SharingStep::Pause
+        );
+        assert!(!local_line(&fake));
+        assert_eq!(fake.state.local_sharing_paused_at, Some(1600));
+        assert_eq!(
+            parse_settings(&fake.config.join("\n")).sharing_my_storage,
+            mesh_before,
+            "the pause leaves sharing through the mesh alone"
+        );
+        assert!(fake.spawned);
+        assert_eq!(
+            cmd_edge(&mut fake).unwrap()["localSharingPausedAt"],
+            json!(1600)
+        );
+
+        fake.state.rebuild.as_mut().unwrap().state = RebuildState::Done;
+        clock.observe(true, 2000);
+        clock.observe(true, 2060);
+        assert_eq!(
+            local_sharing_tick(&mut fake, &clock, 2060, 600).unwrap(),
+            SharingStep::Resume
+        );
+        assert!(local_line(&fake));
+        assert_eq!(fake.state.local_sharing_paused_at, None);
+    }
+
     #[test]
     fn edge_status_says_when_sharing_was_paused() {
         let mut fake = FakeLosos::new();
@@ -2940,6 +3220,109 @@ mod tests {
             (200, r#"{"seller_ready":false}"#.to_string()),
         );
         f
+    }
+
+    #[test]
+    fn the_escrow_pass_signs_only_what_pays_this_boxs_owner() {
+        use crate::market::Op;
+        let mut f = market_fake();
+        let keys = f.escrow_keys().unwrap().unwrap();
+        let decision = |refund: &str, order: &str| {
+            serde_json::json!({
+                "network": "base", "family": "evm", "chainId": 8453,
+                "escrow": "0x5615deb798bb3e4dfa0139dfa1b3d433cc23b72f", "deposit": 4,
+                "side": "seller", "step": "release", "refund": refund, "gross": "100",
+                "orderId": order,
+            })
+        };
+        f.market_routes.insert(
+            "POST /market/escrow/decisions".to_string(),
+            (
+                200,
+                serde_json::json!([
+                    decision("0", "ord_sold"),
+                    // The edge asks this box, the buyer, to release: refused.
+                    decision("0", "ord_bought"),
+                    decision("100", "ord_bought"),
+                ])
+                .to_string(),
+            ),
+        );
+        f.market_routes.insert(
+            "POST /market/account".to_string(),
+            (
+                200,
+                r#"{"purchases":[{"id":"ord_bought"}],"sales":[{"id":"ord_sold"}]}"#.to_string(),
+            ),
+        );
+        f.market_routes
+            .insert("POST /market/escrow/sign".to_string(), (204, String::new()));
+        assert_eq!(cmd_escrow_pass(&mut f).unwrap(), 2);
+        assert_eq!(
+            f.market_ops[0],
+            Op::EscrowDecisions {
+                evm: keys.evm_address(),
+                solana: keys.solana_address(),
+            }
+        );
+        let signed: Vec<_> = f
+            .market_ops
+            .iter()
+            .filter_map(|op| match op {
+                Op::EscrowSign(body) => Some(body["refund"].as_u64().unwrap()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(signed, vec![0, 100]);
+
+        // No escrow key, or no official edge: nothing is asked at all.
+        let mut f = market_fake();
+        f.escrow_seed = None;
+        assert_eq!(cmd_escrow_pass(&mut f).unwrap(), 0);
+        assert!(f.market_ops.is_empty());
+        let mut f = FakeLosos::new().with_company_edge();
+        assert_eq!(cmd_escrow_pass(&mut f).unwrap(), 0);
+        assert!(f.market_ops.is_empty());
+    }
+
+    #[test]
+    fn an_order_registers_the_escrow_keys_and_refuses_an_invoice_naming_others() {
+        use crate::market::Op;
+        let mut f = market_fake();
+        let keys = f.escrow_keys().unwrap().unwrap();
+        let order = Op::Order {
+            listing_id: "lst_1".to_string(),
+            quantity: 2,
+        };
+        f.market_routes.insert(
+            "POST /market/escrow/decisions".to_string(),
+            (200, "[]".to_string()),
+        );
+        f.market_routes.insert(
+            "POST /market/orders".to_string(),
+            (
+                201,
+                serde_json::json!({ "order_id": "ord_1", "stablecoin": { "chains": [
+                    { "network": "base", "buyer_box": keys.evm_address() },
+                    { "network": "solana", "buyer_box": keys.solana_address() },
+                ]}})
+                .to_string(),
+            ),
+        );
+        assert_eq!(cmd_market_op(&mut f, &order).unwrap()["order_id"], "ord_1");
+        assert!(matches!(f.market_ops[0], Op::EscrowDecisions { .. }));
+        f.market_routes.insert(
+            "POST /market/orders".to_string(),
+            (
+                201,
+                serde_json::json!({ "order_id": "ord_2", "stablecoin": { "chains": [
+                    { "network": "base", "buyer_box": "0x00000000000000000000000000000000000000b1" },
+                ]}})
+                .to_string(),
+            ),
+        );
+        let err = cmd_market_op(&mut f, &order).unwrap_err().to_string();
+        assert!(err.contains("another key"), "{err}");
     }
 
     #[test]
@@ -3414,6 +3797,44 @@ mod tests {
         let r = e.downcast_ref::<Refused>().unwrap();
         assert_eq!(r.status, 409);
         assert!(r.message.contains("sharing its compute"));
+    }
+
+    #[test]
+    fn nothing_shared_only_with_local_gateways_is_sold() {
+        use crate::market::{Op, Refused};
+        let list = || Op::List {
+            kind: "storage".to_string(),
+            unit_price: 100,
+            capacity: 4,
+        };
+        let mut f = market_fake();
+        f.config = crate::overrides::inject_bool("sharingMyStorage", false, &f.config);
+        f.config = crate::overrides::inject_bool("sharingLocally", true, &f.config);
+        let e = cmd_market_op(&mut f, &list()).unwrap_err();
+        let r = e.downcast_ref::<Refused>().unwrap();
+        assert_eq!(r.status, 409);
+        assert_eq!(r.message, LOCAL_ONLY_NOT_SOLD);
+        assert!(f.market_ops.is_empty(), "the refused listing left the box");
+        // Buying is the owner's own and still goes out.
+        f.market_routes.insert(
+            "POST /market/orders".to_string(),
+            (200, r#"{"id":"ord_1"}"#.to_string()),
+        );
+        cmd_market_op(
+            &mut f,
+            &Op::Order {
+                listing_id: "lst_1".to_string(),
+                quantity: 1,
+            },
+        )
+        .unwrap();
+        // With the mesh shared too, the mesh's room is for sale again.
+        f.config = crate::overrides::inject_bool("sharingMyStorage", true, &f.config);
+        f.market_routes.insert(
+            "POST /market/listings".to_string(),
+            (200, r#"{"id":"lst_2"}"#.to_string()),
+        );
+        cmd_market_op(&mut f, &list()).unwrap();
     }
 
     // ── Custom domains ──────────────────────────────────────────────────

@@ -46,6 +46,35 @@ gelten:
   dafür bezahlt werden eine einzige Entscheidung ist. Er funktioniert
   unabhängig davon, ob die Edge dieser Box den Markt anbietet.
 
+## Nur mit diesem Netzwerk geteilt \{#shared-with-this-network-only}
+
+Zwischen „nur für sich“ und „mit dem Mesh geteilt“ gibt es eine dritte
+Wahl, für eine Box im Netz einer Firma oder in einem Zuhause mit eigenem
+Gateway: mit den lokalen Gateways dieses Netzwerks teilen und mit nichts
+darüber hinaus.
+
+- Die Daten liegen in einem dritten Konto, `kindashared`, in einem eigenen
+  Verzeichnis mit eigenem Schlüssel verschlüsselt. Es öffnet sich nur,
+  solange diese Art des Teilens an ist. `notshared`, `shared` und
+  `kindashared` können einander nicht lesen.
+- Es braucht ein erreichbares **lokales Gateway**: einen Edge, den die Box
+  in ihrem eigenen Netzwerk erreicht und dessen Verbindung sekundär ist
+  (siehe [Edge-Föderation](../in-depth/edge-federation)). Ein offizieller
+  Edge allein reicht nicht, und die Box lehnt den Schalter ab.
+- Kein Markt. Nichts, was `kindashared` hält, wird angeboten, verkauft oder
+  bezahlt, und eine Box, die nur so teilt, kann weder Platz noch Zeit auf
+  den Markt bringen. Kaufen auf dem Markt geht weiter.
+- Antwortet zehn Minuten lang kein lokales Gateway, schaltet die Box es
+  selbst aus und eine Minute, nachdem wieder eines antwortet, wieder ein.
+- Solange es an ist und die Box nicht im Mesh ist, laufen Chat, Mail,
+  Anrufe und Mesh CI als `kindashared`, mit ihren Daten in dessen
+  Verzeichnis. Auch Apps lassen sich als `kindashared` installieren. Tritt
+  die Box später dem Mesh bei, laufen sie als `shared` und fangen dort neu
+  an; was `kindashared` hält, bleibt in seinem eigenen Verzeichnis.
+- Der Schalter **Mit den Gateways dieses Netzwerks teilen** ist im Bereich
+  **Mesh**, zusammen mit den erreichbaren Gateways und dem Konto, als das
+  die geteilte Seite läuft.
+
 ## Freie Zeit verleihen (Rechenleistung) \{#lending-spare-time-compute}
 
 Das ist von der Festplatte getrennt und liegt im Bereich Mesh. Eine Box

@@ -4,7 +4,9 @@
 //! or a stranger could take money that is not theirs. The pay-as-you-go
 //! half (balances and taps) is checked the same way, from both sides: a
 //! buyer who tries to keep what was used, and a stolen edge key that tries
-//! to bill more than the buyer allowed.
+//! to bill more than the buyer allowed. A deposit moves only when two of
+//! its three keys (the edge's releaser, the buyer's box, the seller's box)
+//! agree, so a stolen edge key alone moves none of it.
 //!
 //! ```sh
 //! cargo build-sbf && cargo test
@@ -13,8 +15,8 @@
 use litesvm::LiteSVM;
 use losos_escrow::state::{Balance, Config, Deposit, Tap};
 use losos_escrow::{
-    ix, EscrowError, BALANCE_SEED, CONFIG_SEED, DEPOSIT_SEED, HEADSTART, MAX_ACCRUAL, NOTICE,
-    TAP_SEED, VAULT_SEED,
+    decision_message, ix, EscrowError, BALANCE_SEED, CONFIG_SEED, DEPOSIT_SEED, HEADSTART,
+    MAX_ACCRUAL, NOTICE, TAP_SEED, VAULT_SEED,
 };
 use solana_account::Account;
 use solana_clock::Clock;
@@ -30,6 +32,9 @@ type Address = solana_address::Address;
 const TOKEN: Address = Address::from_str_const("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 const TOKEN_2022: Address = Address::from_str_const("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
 const SYSTEM: Address = Address::new_from_array([0; 32]);
+const ED25519: Address = Address::from_str_const("Ed25519SigVerify111111111111111111111111111");
+const INSTRUCTIONS: Address =
+    Address::from_str_const("Sysvar1nstructions1111111111111111111111111");
 const NOW: i64 = 1_800_000_000;
 const DAY: i64 = 24 * 60 * 60;
 /// 20.00 USDC, a 4.00 fee: the registrar's own split example in base units.
@@ -49,6 +54,8 @@ struct Edge {
     config: Address,
     payer: Keypair,
     seller: Keypair,
+    buyer_box: Keypair,
+    seller_box: Keypair,
 }
 
 fn program_so() -> Vec<u8> {
@@ -87,7 +94,16 @@ impl Edge {
         let releaser = Keypair::new();
         let payer = Keypair::new();
         let seller = Keypair::new();
-        for k in [&treasury, &releaser, &payer, &seller] {
+        let buyer_box = Keypair::new();
+        let seller_box = Keypair::new();
+        for k in [
+            &treasury,
+            &releaser,
+            &payer,
+            &seller,
+            &buyer_box,
+            &seller_box,
+        ] {
             svm.airdrop(&k.pubkey(), 10_000_000_000).unwrap();
         }
         let config = Address::find_program_address(
@@ -104,6 +120,8 @@ impl Edge {
             config,
             payer,
             seller,
+            buyer_box,
+            seller_box,
         };
         edge.at(NOW);
         let init = edge.initialize_ix(&edge.treasury.pubkey(), edge.config, edge.releaser.pubkey());
@@ -186,6 +204,8 @@ impl Edge {
         data.extend_from_slice(&p.gross.to_le_bytes());
         data.extend_from_slice(&p.fee.to_le_bytes());
         data.extend_from_slice(&p.deadline.to_le_bytes());
+        data.extend_from_slice(p.buyer_box.unwrap_or(self.buyer_box.pubkey()).as_ref());
+        data.extend_from_slice(p.seller_box.unwrap_or(self.seller_box.pubkey()).as_ref());
         Instruction {
             program_id: self.program,
             accounts: vec![
@@ -248,10 +268,27 @@ impl Edge {
         accounts.push(AccountMeta::new(payer, false));
         accounts.push(AccountMeta::new_readonly(self.mint, false));
         accounts.push(AccountMeta::new_readonly(TOKEN, false));
+        accounts.push(AccountMeta::new_readonly(INSTRUCTIONS, false));
         Instruction {
             program_id: self.program,
             accounts,
             data,
+        }
+    }
+
+    /// The box's half of a decision: an Ed25519 check of `key`'s signature
+    /// over the program's decision message, every offset in its own data.
+    fn decision_ix(&self, key: &Keypair, nonce: &[u8; 32], refund: u64) -> Instruction {
+        let (deposit, _) = self.deposit_of(nonce);
+        ed25519_ix(key, &decision_message(&deposit, refund), u16::MAX)
+    }
+
+    /// The refund a finishing instruction asks the keys to agree on.
+    fn decided(&self, tag: u8, nonce: &[u8; 32], refund: u64) -> u64 {
+        match tag {
+            ix::RELEASE => 0,
+            ix::REFUND => self.held(nonce).map_or(GROSS, |d| d.gross),
+            _ => refund,
         }
     }
 
@@ -262,9 +299,30 @@ impl Edge {
         nonce: &[u8; 32],
         to: Finish,
     ) -> Result<(), TransactionError> {
-        let ix = self.finish_ix(tag, &by.pubkey(), nonce, to);
+        // By default the box the decision favours signs it beside `by`: the
+        // seller's for a release or a split, the buyer's for a refund. With
+        // the edge as `by` that is the everyday two of three.
+        let agree = to.agree.clone().unwrap_or_else(|| match tag {
+            ix::REFUND => vec![1],
+            _ => vec![2],
+        });
+        let refund = self.decided(tag, nonce, to.refund);
+        let mut ixs: Vec<Instruction> = agree
+            .iter()
+            .map(|&k| self.decision_ix(&self.box_key(k), nonce, refund))
+            .collect();
+        ixs.push(self.finish_ix(tag, &by.pubkey(), nonce, to));
         // The signer pays its own fee, so a refused instruction costs only it.
-        self.send(&[ix], &[by])
+        self.send(&ixs, &[by])
+    }
+
+    /// 0 the releaser, 1 the buyer's box, 2 the seller's box.
+    fn box_key(&self, k: u8) -> Keypair {
+        match k {
+            0 => self.releaser(),
+            1 => self.buyer_box.insecure_clone(),
+            _ => self.seller_box.insecure_clone(),
+        }
     }
 
     fn release(&mut self, by: &Keypair, nonce: &[u8; 32]) -> Result<(), TransactionError> {
@@ -343,6 +401,8 @@ struct Pay {
     token: Option<Address>,
     deposit: Option<Address>,
     config: Option<Address>,
+    buyer_box: Option<Address>,
+    seller_box: Option<Address>,
 }
 
 impl Pay {
@@ -357,13 +417,18 @@ impl Pay {
             token: None,
             deposit: None,
             config: None,
+            buyer_box: None,
+            seller_box: None,
         }
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct Finish {
     refund: u64,
+    /// Whose Ed25519 checks ride in front (see [`Edge::box_key`]); `None`
+    /// is the box the decision favours.
+    agree: Option<Vec<u8>>,
     payer: Option<Address>,
     payer_token: Option<Address>,
     seller_token: Option<Address>,
@@ -371,6 +436,34 @@ struct Finish {
     vault: Option<Address>,
     deposit: Option<Address>,
     config: Option<Address>,
+}
+
+/// An Ed25519 signature-check instruction for `message` signed by `key`,
+/// with the signature, key and message all named by `index` (`u16::MAX` is
+/// the instruction's own data).
+fn ed25519_ix(key: &Keypair, message: &[u8], index: u16) -> Instruction {
+    let signature = key.sign_message(message);
+    let (key_at, sig_at, message_at) = (16u16, 48u16, 112u16);
+    let mut data = vec![1u8, 0];
+    for v in [
+        sig_at,
+        index,
+        key_at,
+        index,
+        message_at,
+        u16::try_from(message.len()).unwrap(),
+        index,
+    ] {
+        data.extend_from_slice(&v.to_le_bytes());
+    }
+    data.extend_from_slice(key.pubkey().as_ref());
+    data.extend_from_slice(signature.as_ref());
+    data.extend_from_slice(message);
+    Instruction {
+        program_id: ED25519,
+        accounts: vec![],
+        data,
+    }
 }
 
 fn account(lamports: u64, data: Vec<u8>, owner: Address) -> Account {
@@ -421,6 +514,8 @@ fn a_payment_is_held_and_released_to_the_seller_and_the_treasury() {
     assert_eq!(d.config.as_ref(), e.config.as_ref());
     assert_eq!((d.gross, d.fee, d.order), (GROSS, FEE, [7u8; 32]));
     assert_eq!((d.deadline, d.paid_at), (NOW + 33 * DAY, NOW));
+    assert_eq!(d.buyer_box.as_ref(), e.buyer_box.pubkey().as_ref());
+    assert_eq!(d.seller_box.as_ref(), e.seller_box.pubkey().as_ref());
     let rent = e.lamports(&deposit) + e.lamports(&vault);
     assert!(rent > 0);
 
@@ -446,21 +541,184 @@ fn a_payment_is_held_and_released_to_the_seller_and_the_treasury() {
 }
 
 #[test]
-fn only_the_releaser_releases_or_splits() {
+fn one_key_alone_never_moves_a_deposit() {
     let mut e = Edge::new();
     let nonce = e.paid(1);
+    // Beside the seller's box: someone who is none of the three keys.
     for who in [e.seller(), e.payer(), e.treasury(), Keypair::new()] {
         e.svm.airdrop(&who.pubkey(), 1_000_000_000).unwrap();
         assert_eq!(
             custom(e.release(&who, &nonce)),
-            code(EscrowError::NotReleaser)
+            code(EscrowError::NotApproved)
         );
         assert_eq!(
             custom(e.settle(&who, &nonce, 1)),
-            code(EscrowError::NotReleaser)
+            code(EscrowError::NotApproved)
         );
     }
+    // Each of the three on its own: the edge (a stolen releaser key), the
+    // buyer's box, the seller's box.
+    let stranger = Keypair::new();
+    e.svm.airdrop(&stranger.pubkey(), 1_000_000_000).unwrap();
+    let releaser = e.releaser();
+    for (by, agree) in [
+        (&releaser, vec![]),
+        (&stranger, vec![0]),
+        (&stranger, vec![1]),
+        (&stranger, vec![2]),
+    ] {
+        for tag in [ix::RELEASE, ix::REFUND, ix::SETTLE] {
+            let to = Finish {
+                refund: 1,
+                agree: Some(agree.clone()),
+                ..Finish::default()
+            };
+            assert_eq!(
+                custom(e.finish(tag, by, &nonce, to)),
+                code(EscrowError::NotApproved),
+                "tag {tag} agree {agree:?}"
+            );
+        }
+    }
+    // The same box twice is still one key.
+    let twice = Finish {
+        agree: Some(vec![2, 2]),
+        ..Finish::default()
+    };
+    assert_eq!(
+        custom(e.finish(ix::RELEASE, &stranger, &nonce, twice)),
+        code(EscrowError::NotApproved)
+    );
     assert!(e.held(&nonce).is_some());
+}
+
+#[test]
+fn any_two_of_the_three_keys_decide() {
+    let mut e = Edge::new();
+    let stranger = Keypair::new();
+    e.svm.airdrop(&stranger.pubkey(), 1_000_000_000).unwrap();
+    let releaser = e.releaser();
+    // The two boxes without the edge: whoever sends the transaction.
+    let a = e.paid(1);
+    let both = || Finish {
+        refund: 5_000_000,
+        agree: Some(vec![1, 2]),
+        ..Finish::default()
+    };
+    e.finish(ix::RELEASE, &stranger, &a, both()).unwrap();
+    assert_eq!(e.balance(&ata(&e.seller.pubkey())), GROSS - FEE);
+    let b = e.paid(2);
+    e.finish(ix::REFUND, &stranger, &b, both()).unwrap();
+    assert_eq!(e.balance(&ata(&e.payer.pubkey())), 100_000_000 - GROSS);
+    let c = e.paid(3);
+    e.finish(ix::SETTLE, &stranger, &c, both()).unwrap();
+    assert!(e.held(&c).is_none());
+    // The edge with either box, the edge's own signature as a check too.
+    let d = e.paid(4);
+    let with_buyer = Finish {
+        agree: Some(vec![1]),
+        ..Finish::default()
+    };
+    e.finish(ix::RELEASE, &releaser, &d, with_buyer).unwrap();
+    let f = e.paid(5);
+    let checks_only = Finish {
+        agree: Some(vec![0, 1]),
+        ..Finish::default()
+    };
+    e.finish(ix::REFUND, &stranger, &f, checks_only).unwrap();
+    // All three are fine as well.
+    let g = e.paid(6);
+    let all = Finish {
+        agree: Some(vec![1, 2]),
+        ..Finish::default()
+    };
+    e.finish(ix::RELEASE, &releaser, &g, all).unwrap();
+    for n in [&a, &b, &d, &f, &g] {
+        assert!(e.held(n).is_none());
+    }
+}
+
+#[test]
+fn a_box_signature_counts_only_for_its_own_decision() {
+    let mut e = Edge::new();
+    let nonce = e.paid(1);
+    let other = e.paid(2);
+    let releaser = e.releaser();
+    let seller_box = e.box_key(2);
+    let buyer_box = e.box_key(1);
+    let (deposit, _) = e.deposit_of(&nonce);
+    let (other_deposit, _) = e.deposit_of(&other);
+    let try_with = |e: &mut Edge, check: Instruction, tag: u8, refund: u64| {
+        let to = Finish {
+            refund,
+            ..Finish::default()
+        };
+        let finish = e.finish_ix(tag, &releaser.pubkey(), &nonce, to);
+        custom(e.send(&[check, finish], &[&releaser]))
+    };
+    let cases = [
+        // The seller's box agreed to release another deposit.
+        (
+            ed25519_ix(&seller_box, &decision_message(&other_deposit, 0), u16::MAX),
+            ix::RELEASE,
+            0,
+        ),
+        // The seller's box agreed to a split, not to a release.
+        (
+            ed25519_ix(&seller_box, &decision_message(&deposit, 1), u16::MAX),
+            ix::RELEASE,
+            0,
+        ),
+        // The buyer's box agreed to a release, not to a refund.
+        (
+            ed25519_ix(&buyer_box, &decision_message(&deposit, 0), u16::MAX),
+            ix::REFUND,
+            0,
+        ),
+        // The buyer's box agreed to give back 2, not 3.
+        (
+            ed25519_ix(&buyer_box, &decision_message(&deposit, 2), u16::MAX),
+            ix::SETTLE,
+            3,
+        ),
+        // A message of the right shape under another tag.
+        (
+            ed25519_ix(
+                &seller_box,
+                &[
+                    b"something else entirely!".as_slice(),
+                    deposit.as_ref(),
+                    &[0u8; 8],
+                ]
+                .concat(),
+                u16::MAX,
+            ),
+            ix::RELEASE,
+            0,
+        ),
+        // A check whose data points at instruction 0 (itself, here): the
+        // precompile verifies it, the program does not read it.
+        (
+            ed25519_ix(&seller_box, &decision_message(&deposit, 0), 0),
+            ix::RELEASE,
+            0,
+        ),
+    ];
+    for (n, (check, tag, refund)) in cases.into_iter().enumerate() {
+        assert_eq!(
+            try_with(&mut e, check, tag, refund),
+            code(EscrowError::NotApproved),
+            "case {n}"
+        );
+    }
+    // A forged signature never reaches the program: the precompile refuses
+    // the whole transaction.
+    let mut forged = ed25519_ix(&seller_box, &decision_message(&deposit, 0), u16::MAX);
+    forged.data[60] ^= 1;
+    let finish = e.finish_ix(ix::RELEASE, &releaser.pubkey(), &nonce, Finish::default());
+    refused(e.send(&[forged, finish], &[&releaser]));
+    assert!(e.held(&nonce).is_some());
+    e.release(&releaser, &nonce).unwrap();
 }
 
 #[test]
@@ -541,12 +799,12 @@ fn the_payer_takes_it_back_only_after_the_deadline() {
     e.at(NOW + 40 * DAY);
     assert_eq!(
         custom(e.refund(&stranger, &nonce)),
-        code(EscrowError::NotReleaser)
+        code(EscrowError::NotApproved)
     );
     let seller = e.seller();
     assert_eq!(
         custom(e.refund(&seller, &nonce)),
-        code(EscrowError::NotReleaser)
+        code(EscrowError::NotApproved)
     );
     e.at(NOW + 33 * DAY);
     e.refund(&payer, &nonce).unwrap();
@@ -561,7 +819,7 @@ fn the_payer_takes_it_back_only_after_the_deadline() {
 }
 
 #[test]
-fn the_releaser_refunds_at_any_time_but_only_to_the_payer() {
+fn the_edge_and_the_buyers_box_refund_at_any_time_but_only_to_the_payer() {
     let mut e = Edge::new();
     let nonce = e.paid(1);
     let releaser = e.releaser();
@@ -705,6 +963,43 @@ fn a_payment_must_fit_the_rules_the_evm_escrow_keeps() {
                 ..Pay::new(1)
             },
             code(EscrowError::WrongAccount),
+        ),
+        // Two box keys, neither the edge's: otherwise the edge, or one
+        // box, would hold two of the three.
+        (
+            Pay {
+                buyer_box: Some(Address::default()),
+                ..Pay::new(1)
+            },
+            code(EscrowError::BadBoxes),
+        ),
+        (
+            Pay {
+                seller_box: Some(Address::default()),
+                ..Pay::new(1)
+            },
+            code(EscrowError::BadBoxes),
+        ),
+        (
+            Pay {
+                buyer_box: Some(e.seller_box.pubkey()),
+                ..Pay::new(1)
+            },
+            code(EscrowError::BadBoxes),
+        ),
+        (
+            Pay {
+                seller_box: Some(e.releaser.pubkey()),
+                ..Pay::new(1)
+            },
+            code(EscrowError::BadBoxes),
+        ),
+        (
+            Pay {
+                buyer_box: Some(e.releaser.pubkey()),
+                ..Pay::new(1)
+            },
+            code(EscrowError::BadBoxes),
         ),
     ];
     for (p, want) in cases {
@@ -875,7 +1170,7 @@ fn the_treasury_rotates_the_releaser_and_the_old_key_stops() {
     e.send(&[by_treasury], &[&treasury]).unwrap();
     assert_eq!(
         custom(e.release(&releaser, &nonce)),
-        code(EscrowError::NotReleaser)
+        code(EscrowError::NotApproved)
     );
     e.release(&next, &nonce).unwrap();
 }
@@ -901,6 +1196,7 @@ fn a_payment_fits_one_transaction_with_room_to_spare() {
         meta.compute_units_consumed
     );
     let releaser = e.releaser();
+    let check = e.decision_ix(&e.box_key(2), &p.nonce, 1);
     let ix = e.finish_ix(
         ix::SETTLE,
         &releaser.pubkey(),
@@ -913,7 +1209,7 @@ fn a_payment_fits_one_transaction_with_room_to_spare() {
     e.svm.expire_blockhash();
     let tx = Transaction::new(
         &[&releaser],
-        Message::new(&[ix], Some(&releaser.pubkey())),
+        Message::new(&[check, ix], Some(&releaser.pubkey())),
         e.svm.latest_blockhash(),
     );
     let meta = e.svm.send_transaction(tx).unwrap();

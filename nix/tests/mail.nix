@@ -259,9 +259,25 @@ pkgs.testers.nixosTest {
         uid = box.succeed(f"stat -c %u /proc/{pid}").strip()
         assert uid == "1001", uid
         assert box.succeed("stat -c '%U %a' /home/shared/data/mail").strip() == "shared 700"
-        box.succeed("test -d /home/shared/data/mail/db")
+        box.succeed("test -d /home/shared/data/mail/store")
         local = box.succeed("ss -Hltn 'sport = :8096' | awk '{print $4}'").split()
         assert local == ["127.0.0.1:8096"], local
+        # The server's only socket is that one: none of Stalwart's first-start
+        # defaults (25, 465, 993, 995, 4190, 443, 8080) was ever made.
+        sockets = box.succeed(f"ss -Hltnp | grep 'pid={pid},' | awk '{{print $4}}'").split()
+        assert sockets == ["127.0.0.1:8096"], sockets
+        # The plan was applied before the first start, and is remembered.
+        box.succeed("test -s /home/shared/data/mail/plan.sha256")
+        # No log file of its own, no web interface fetched, no network
+        # beyond localhost.
+        box.fail("test -e /var/log/stalwart")
+        show = box.succeed("systemctl show -p IPAddressDeny -p IPAddressAllow -p MemoryMax losos-mail.service")
+        deny = next(l for l in show.splitlines() if l.startswith("IPAddressDeny="))
+        assert sorted(deny.split("=", 1)[1].split()) == ["0.0.0.0/0", "::/0"], show
+        assert "MemoryMax=1073741824" in show, show
+        # A new box has no 0.15 store, so the upgrade's copy never ran.
+        cond = box.succeed("systemctl show -p ConditionResult --value losos-mail-migrate.service").strip()
+        assert cond == "no", cond
         laptop.fail(f"curl -s --max-time 5 http://{BOX}:8096/")
         # The secret it shares with lososd is sealed in the credential store,
         # and no plaintext copy is left where an older build kept it.
@@ -382,7 +398,7 @@ pkgs.testers.nixosTest {
         secret = box.succeed(
             "systemd-creds decrypt --name=mail-master /etc/credstore.encrypted/mail-master -"
         ).strip()
-        jmap = f"curl -sf -u 'eva%losos:{secret}' http://127.0.0.1:8096"
+        jmap = f"curl -sf -u 'eva@{DOMAIN}%losos:{secret}' http://127.0.0.1:8096"
         session = json.loads(box.succeed(f"{jmap}/jmap/session"))
         account = session["primaryAccounts"]["urn:ietf:params:jmap:mail"]
         inbox = folder(ehome, "inbox")
@@ -491,13 +507,13 @@ pkgs.testers.nixosTest {
         body = {"using": [f"urn:ietf:params:jmap:{u}" for u in using], "methodCalls": calls}
         box.succeed(f"cat > /tmp/jmap.json <<'EOF'\n{json.dumps(body)}\nEOF")
         out = box.succeed(
-            f"curl -sf -u '{name}%losos:{secret}' http://127.0.0.1:8096/jmap/"
+            f"curl -sf -u '{name}@{DOMAIN}%losos:{secret}' http://127.0.0.1:8096/jmap/"
             " -H 'Content-Type: application/json' -d @/tmp/jmap.json"
         )
         return [r[1] for r in json.loads(out)["methodResponses"]]
 
     def account_of(name):
-        session = json.loads(box.succeed(f"curl -sf -u '{name}%losos:{secret}' http://127.0.0.1:8096/jmap/session"))
+        session = json.loads(box.succeed(f"curl -sf -u '{name}@{DOMAIN}%losos:{secret}' http://127.0.0.1:8096/jmap/session"))
         return session["primaryAccounts"]["urn:ietf:params:jmap:mail"]
 
     def named(cookie, name):
@@ -576,7 +592,7 @@ pkgs.testers.nixosTest {
         [script] = got["list"]
         assert script["name"] == "losos" and script["isActive"] is True, script
         sieve = box.succeed(
-            f"curl -sf -u 'matus%losos:{secret}' "
+            f"curl -sf -u 'matus@{DOMAIN}%losos:{secret}' "
             f"'http://127.0.0.1:8096/jmap/download/{maccount}/{script['blobId']}/losos.sieve?accept=application/sieve'"
         )
         assert f'fileinto :mailboxid "{losos_box}" "LosOS box";' in sieve, sieve
@@ -679,7 +695,7 @@ pkgs.testers.nixosTest {
         assert code == 404, code
         assert mail_page() == ["404", "404"]
         # The mailboxes stay where they were, in the shared domain.
-        box.succeed("test -d /home/shared/data/mail/db")
+        box.succeed("test -d /home/shared/data/mail/store")
         screens("sidebar", "01", "sidebar-sharing-off", "the sidebar while the box does not share", "none")
 
     with subtest("with sharing back on, the mail is still there"):

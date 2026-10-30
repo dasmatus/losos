@@ -1,7 +1,7 @@
 #!/bin/bash
 # Pay a real USDC deposit into LososEscrow on a local chain (anvil), hand the
 # receipt to the registrar's matcher, and have the registrar's own signer
-# release it; then check the split. Then, if Base Sepolia answers, run the
+# release it with the seller box's agreement; then check the split. Then, if Base Sepolia answers, run the
 # same payments against Circle's testnet USDC on a fork.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -26,6 +26,11 @@ TREASURY=0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC
 # anvil's fourth account, standing in for the edge's releaser key.
 RELEASER=0x90F79bf6EB2c4f870365E785982E1f101E93b906
 RELEASER_KEY=7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6
+# anvil's sixth and seventh accounts, standing in for the two boxes' escrow
+# keys: with the edge's, any two of the three move a deposit.
+BUYER_BOX=0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc
+SELLER_BOX=0x976EA74026E726554dB657fA54763abd0C3a0aa9
+SELLER_BOX_KEY=0x92db14e403b83dfe3df233f83dfa3a0d7096f21ca9b0d6d6b8d88b2b4ec1564e
 PORT=8545
 
 if curl -sf -o /dev/null --max-time 1 "${RPC}"; then
@@ -61,7 +66,7 @@ ORDER_ID=ord_anvil
 HASH=$(cast keccak "${ORDER_ID}")
 NOW=$(cast block latest --field timestamp --rpc-url "${RPC}")
 DEADLINE=$((NOW + 86400))
-TX=$(cast send "${PAY}" "pay(bytes32,address,uint256,uint256,uint64)" "${HASH}" "${SELLER}" 2000000 80000 "${DEADLINE}" --rpc-url "${RPC}" --private-key "${KEY}" --json | json_field transactionHash)
+TX=$(cast send "${PAY}" "pay(bytes32,address,uint256,uint256,uint64,address,address)" "${HASH}" "${SELLER}" 2000000 80000 "${DEADLINE}" "${BUYER_BOX}" "${SELLER_BOX}" --rpc-url "${RPC}" --private-key "${KEY}" --json | json_field transactionHash)
 echo "escrow $(balance "${PAY}") seller $(balance "${SELLER}") tx ${TX}"
 test "$(balance "${PAY}")" = "2000000"
 test "$(balance "${SELLER}")" = "0"
@@ -90,11 +95,13 @@ jq -n \
   --arg gross "2000000" \
   --arg fee "80000" \
   --argjson deadline "${DEADLINE}" \
-  '{pay:$pay, seller:$seller, order_id_hash:$hash, gross:$gross, fee:$fee, deadline:$deadline, deposit:1, receipt:$receipt[0], payout_address:$payout[0].address, payout_message:$payout[0].message, payout_signature:$payout[0].signature}' \
+  --arg buyer_box "${BUYER_BOX}" \
+  --arg seller_box "${SELLER_BOX}" \
+  '{pay:$pay, seller:$seller, order_id_hash:$hash, gross:$gross, fee:$fee, deadline:$deadline, buyer_box:$buyer_box, seller_box:$seller_box, deposit:1, receipt:$receipt[0], payout_address:$payout[0].address, payout_message:$payout[0].message, payout_signature:$payout[0].signature}' \
   > /tmp/losos-anvil-payment.json
 echo "wrote /tmp/losos-anvil-payment.json"
-jq -n --arg rpc "${RPC}" --arg escrow "${PAY}" --arg key "${RELEASER_KEY}" \
-  '{rpc:$rpc, escrow:$escrow, deposit:1, releaser_key:$key}' > /tmp/losos-anvil-escrow.json
+jq -n --arg rpc "${RPC}" --arg escrow "${PAY}" --arg key "${RELEASER_KEY}" --arg box "${SELLER_BOX_KEY}" \
+  '{rpc:$rpc, escrow:$escrow, deposit:1, releaser_key:$key, seller_box_key:$box}' > /tmp/losos-anvil-escrow.json
 
 echo "== registrar: the receipt, the payout signature, the release =="
 ( cd ../registrar && LOSOS_ANVIL_RECEIPT=/tmp/losos-anvil-payment.json cargo test --lib an_anvil_receipt_pays_the_order_it_names -- --nocapture )

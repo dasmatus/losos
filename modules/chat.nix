@@ -51,10 +51,19 @@ let
   pkg = config.losos.backend.package;
   synapse = pkgs.matrix-synapse;
   inherit (cfg) port;
-  sharedUid = 1001;
+  # The account the shared side runs as (lososInternal.sideUser): `shared`
+  # in a mesh, `kindashared` with the local gateways only. Its uid is pinned
+  # in modules/configuration.nix.
+  user = if config.lososInternal.sideUser == null then "shared" else config.lososInternal.sideUser;
+  sharedUid =
+    {
+      shared = 1001;
+      kindashared = 1004;
+    }
+    .${user};
 
-  # Dendrite's files are the rest of /home/shared/data/chat.
-  chatDir = "/home/shared/data/chat";
+  # Dendrite's files are the rest of /home/<user>/data/chat.
+  chatDir = "/home/${user}/data/chat";
   stateDir = "${chatDir}/synapse";
   secretsDir = "/var/secrets/losos-chat";
   credentials = "/run/credentials/losos-chat.service";
@@ -229,7 +238,7 @@ let
       mv ${secretsDir}/appservice.yaml.tmp ${secretsDir}/appservice.yaml
       # The domain is unlocked (this unit runs after the unlock); the folders
       # are the shared user's, inside it.
-      install -d -m 0700 -o shared -g shared ${chatDir} ${stateDir}
+      install -d -m 0700 -o ${user} -g ${user} ${chatDir} ${stateDir}
     '';
   };
 
@@ -302,8 +311,8 @@ in
             description = "Prepare LosOS Chat: the homeserver's keys and lososd's application service";
             wantedBy = [ "multi-user.target" ];
             before = [ "losos-chat.service" ];
-            after = [ "losos-fscrypt-shared.service" ];
-            wants = [ "losos-fscrypt-shared.service" ];
+            after = [ "losos-fscrypt-${user}.service" ];
+            wants = [ "losos-fscrypt-${user}.service" ];
             serviceConfig = {
               Type = "oneshot";
               RemainAfterExit = true;
@@ -312,20 +321,20 @@ in
           };
 
           systemd.services.losos-chat = {
-            description = "LosOS Chat (Synapse Matrix homeserver), as the shared user";
+            description = "LosOS Chat (Synapse Matrix homeserver), as the ${user} user";
             wantedBy = [ "multi-user.target" ];
             after = [
               "network.target"
               "losos-chat-setup.service"
-              "losos-fscrypt-shared.service"
+              "losos-fscrypt-${user}.service"
             ];
             requires = [ "losos-chat-setup.service" ];
-            wants = [ "losos-fscrypt-shared.service" ];
+            wants = [ "losos-fscrypt-${user}.service" ];
             serviceConfig = {
               Type = "notify";
               NotifyAccess = "main";
-              User = "shared";
-              Group = "shared";
+              User = user;
+              Group = user;
               WorkingDirectory = stateDir;
               LoadCredential = [
                 "signing_key:${secretsDir}/signing.key"

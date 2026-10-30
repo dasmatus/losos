@@ -145,7 +145,7 @@ jobs:
   #
   # A pull request runs only the lanes its files reach:
   # .github/scripts/ci-changes.sh maps paths to lanes (rust, wasm, solana,
-  # evm, eval, ctl, ui, tui, images, iso, discovery) and each job
+  # evm, eval, ctl, ui, tui, images, mail, iso, install, discovery) and each job
   # below waits on its lane. A handbook page builds the handbook and nothing
   # else; a Rust file skips the ISO; docs/ and screenshots run nothing but
   # this and `pins`. A job a change does not need shows as skipped, and the
@@ -173,6 +173,7 @@ jobs:
       ui: ${{ steps.pick.outputs.ui }}
       tui: ${{ steps.pick.outputs.tui }}
       images: ${{ steps.pick.outputs.images }}
+      mail: ${{ steps.pick.outputs.mail }}
       iso: ${{ steps.pick.outputs.iso }}
       install: ${{ steps.pick.outputs.install }}
       discovery: ${{ steps.pick.outputs.discovery }}
@@ -245,6 +246,7 @@ jobs:
           nix develop .#ci -c bash -euo pipefail -c '
             cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
             cargo clippy --manifest-path backend/access/Cargo.toml --all-targets -- -D warnings
+            cargo clippy --manifest-path backend/edge-path/Cargo.toml --all-targets -- -D warnings
             cargo clippy --manifest-path backend/mdx/Cargo.toml --all-targets -- -D warnings
             cargo clippy --manifest-path backend/plugins/Cargo.toml --all-targets -- -D warnings
             cargo clippy --manifest-path edge/registrar/Cargo.toml --all-targets -- -D warnings
@@ -265,6 +267,7 @@ jobs:
           nix develop .#ci -c bash -euo pipefail -c '
             cargo fmt --manifest-path backend/Cargo.toml --check
             cargo fmt --manifest-path backend/access/Cargo.toml --check
+            cargo fmt --manifest-path backend/edge-path/Cargo.toml --check
             cargo fmt --manifest-path backend/mdx/Cargo.toml --check
             cargo fmt --all --manifest-path backend/plugins/Cargo.toml --check
             cargo fmt --manifest-path edge/registrar/Cargo.toml --check
@@ -368,6 +371,7 @@ jobs:
           nix develop .#ci -c bash -euo pipefail -c '
             cargo test --manifest-path backend/Cargo.toml
             cargo test --manifest-path backend/access/Cargo.toml
+            cargo test --manifest-path backend/edge-path/Cargo.toml
             cargo test --manifest-path backend/mdx/Cargo.toml
             cargo test --manifest-path backend/plugins/Cargo.toml
             cargo test --manifest-path edge/registrar/Cargo.toml
@@ -661,12 +665,43 @@ jobs:
           retention-days: 1
           include-hidden-files: true
 
+  # ── LosOS Mail's server ────────────────────────────────────────────────────
+  #
+  # Stalwart 1.0 is built from source here (nix/stalwart.nix): nixpkgs stops
+  # at 0.16, so cache.nixos.org does not serve it. A box must never compile
+  # Stalwart itself (an hour of rustc on four cores, more on the two a small
+  # box has), so this job builds it and publish-cache pushes it to the
+  # LosOS cache the box substitutes from. Once pushed, a later run substitutes them and finishes
+  # in a minute.
+  stalwart:
+    name: "nix: Stalwart 1.0 for LosOS Mail"
+    needs: [changes]
+    if: ${{ needs.changes.outputs.mail == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-nix
+      - run: nix build .#losos-stalwart -L
+      - name: export the mail server for the publisher
+        if: github.event_name != 'pull_request'
+        run: |
+          nix copy --to "file://$PWD/mail-cache" --no-check-sigs .#losos-stalwart
+          nix path-info .#losos-stalwart > mail-cache/store-paths
+      - uses: actions/upload-artifact@v7
+        if: github.event_name != 'pull_request'
+        with:
+          name: losos-mail-store
+          path: mail-cache
+          retention-days: 1
+          include-hidden-files: true
+
   publish-cache:
     name: "nix: publish built paths to GHCR"
     runs-on: ubuntu-latest
     timeout-minutes: 45
     if: github.event_name != 'pull_request' && !inputs.release_tags
-    needs: [losos-ctl, registrar-and-ui, images]
+    needs: [losos-ctl, registrar-and-ui, images, stalwart]
     permissions:
       contents: read
       packages: write
@@ -689,15 +724,20 @@ jobs:
         with:
           name: losos-images-store
           path: images-cache
+      - uses: actions/download-artifact@v8
+        with:
+          name: losos-mail-store
+          path: mail-cache
       - name: import the build jobs' store exports
         run: |
           xargs -r nix copy --from "file://$PWD/ctl-cache" --no-check-sigs < ctl-cache/store-paths
           xargs -r nix copy --from "file://$PWD/registrar-cache" --no-check-sigs < registrar-cache/store-paths
           xargs -r nix copy --from "file://$PWD/ui-cache" --no-check-sigs < ui-cache/store-paths
           xargs -r nix copy --from "file://$PWD/images-cache" --no-check-sigs < images-cache/store-paths
+          xargs -r nix copy --from "file://$PWD/mail-cache" --no-check-sigs < mail-cache/store-paths
       - uses: ./.github/actions/proxy-push
         with:
-          installables: ".#losos-ctl .#losos-registrar .#losos-admin-ui .#losos-handbook .#losos-image-pause"
+          installables: ".#losos-ctl .#losos-registrar .#losos-admin-ui .#losos-handbook .#losos-image-pause .#losos-stalwart"
           signing-key: ${{ secrets.NIX_CACHE_SIGNING_KEY }}
       # The same paths as a static file cache, for the copy the GitHub Pages
       # site serves at /proxy when the LosOS proxy does not answer. The
@@ -913,6 +953,7 @@ jobs:
           nix develop .#ci -c bash -euo pipefail -c '
             cargo fmt --manifest-path backend/Cargo.toml
             cargo fmt --manifest-path backend/access/Cargo.toml
+            cargo fmt --manifest-path backend/edge-path/Cargo.toml
             cargo fmt --manifest-path backend/mdx/Cargo.toml
             cargo fmt --all --manifest-path backend/plugins/Cargo.toml
             cargo fmt --manifest-path edge/registrar/Cargo.toml
@@ -1350,6 +1391,7 @@ jobs:
       - losos-ctl
       - registrar-and-ui
       - images
+      - stalwart
       - publish-cache
       - tui
       - publish-tool
