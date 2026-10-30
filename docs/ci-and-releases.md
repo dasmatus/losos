@@ -184,6 +184,16 @@ The release job:
 4. pushes both media to GHCR, since the QCOW2 is over GitHub's 2 GiB asset
    limit.
 
+Both ISO builds, the release job's and the `iso` job's, run `--impure`
+with the `LOSOS_ABRT_VAR` repository variable in their environment. It holds
+the client ID of the GitHub App that problem reports sign in with, and it
+is never written in the tree. `flake.nix` reads it into the medium's
+`losos.report.clientId`, and the installer unit gets it as the systemd
+credential `report-client-id`. The installer hands it to the box it
+installs, and on first boot the box seals it into
+`/etc/credstore.encrypted`. A medium built without the variable, such as a
+local build or a fork's pull request, offers no report.
+
 The `iso` job on main does the same signing before its boot legs. OVMF with
 Microsoft's keys must refuse the medium, and the same OVMF store with the
 committed certificate added beside Microsoft's must boot it (`nix/tests/iso-boot.py --firmware

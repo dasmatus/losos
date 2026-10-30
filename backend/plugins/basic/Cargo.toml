@@ -13,6 +13,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 losos-plugin.workspace = true
 losos-page.workspace = true
+losos-report.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 

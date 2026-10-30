@@ -73,6 +73,8 @@ Der Editor speichert während der Arbeit und wenn du gehst, und
 Speichern den vorigen Inhalt als Version der Datei, und die Sync-Apps auf
 deinen Computern holen sich den neuen.
 
+![Ein Textdokument, geöffnet in LosOS Office: darüber die Leisten der Box mit dem Weg zurück, dem Namen, dem Zoom, Als PDF herunterladen und Speichern, darunter die Formatierungsleiste.](@site/docs/img/office-document-de.png)
+
 ## Gemeinsam arbeiten \{#working-together}
 
 Wenn eine zweite Person dasselbe Dokument öffnet, seid ihr beide in

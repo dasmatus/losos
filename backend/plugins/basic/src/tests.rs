@@ -801,6 +801,100 @@ fn a_domain_is_added_and_removed_by_forms_of_its_own() {
     assert!(html(&after).contains("That domain is not yours"));
 }
 
+#[test]
+fn a_problem_is_read_sent_and_dismissed_by_forms() {
+    let mut f = Fake::owner();
+    let pane = "/api/basic/settings/problems";
+    let route = "/api/basic/settings/{pane}";
+    let problem = json!({
+        "id": "0badc0de", "kind": "crashed", "unit": "eva-sync.service",
+        "process": "eva-sync", "signal": "SEGV", "result": null,
+        "title": "eva-sync.service crashed (SIGSEGV)", "first": 1_793_246_400u64,
+        "last": 1_793_250_000u64, "count": 2, "dismissed": false,
+        "documented": null, "sent": null
+    });
+    f.set(
+        "/api/problems",
+        json!({"reporting": {"repository": "dasmatus/losos"}, "problems": [problem.clone()]}),
+    );
+    let page = html(&get(&mut f, route, pane));
+    no_script(&page);
+    assert!(page.contains("data-testid=\"problem\""));
+    assert!(page.contains("href=\"/basic/settings/problems?read=0badc0de\""));
+    assert!(page.contains("name=\"dismiss\" value=\"0badc0de\""));
+    assert!(!page.contains("<dialog"));
+
+    // Open: the report's whole text, and a form that sends it.
+    f.set(
+        "/api/problems/0badc0de",
+        json!({"title": "eva-sync.service crashed (SIGSEGV) [0badc0de]",
+               "body": "The whole report", "problem": problem}),
+    );
+    f.set("/api/problems/0badc0de/send", json!({"state": "idle"}));
+    let r = handle_with(
+        &mut f,
+        &request("GET", route, pane, "read=0badc0de", "", &[]),
+        1000,
+    );
+    let page = html(&r);
+    no_script(&page);
+    assert!(page.contains("<dialog"));
+    assert!(page.contains("The whole report"));
+    assert!(page.contains("name=\"send\" value=\"0badc0de\""));
+    assert!(page.contains("name=\"note\""));
+    assert!(!page.contains("http-equiv=\"refresh\""));
+
+    // Sent with a note: the box gets it as JSON, and the page opens again.
+    let r = handle_with(
+        &mut f,
+        &request(
+            "POST",
+            route,
+            pane,
+            "",
+            "send=0badc0de&note=after+an+update",
+            &[],
+        ),
+        1000,
+    );
+    assert_eq!(r.status, 303);
+    assert_eq!(location(&r), "/basic/settings/problems?read=0badc0de");
+    assert_eq!(
+        f.posted("/api/problems/0badc0de/send").as_deref(),
+        Some(r#"{"note":"after an update"}"#)
+    );
+
+    // Waiting on GitHub: the code, a way to stop, and a page that looks again.
+    f.set(
+        "/api/problems/0badc0de/send",
+        json!({"state": "sign-in", "uri": "https://github.com/login/device", "code": "ABCD-1234", "expires": 900}),
+    );
+    let page = html(&handle_with(
+        &mut f,
+        &request("GET", route, pane, "read=0badc0de", "", &[]),
+        1000,
+    ));
+    no_script(&page);
+    assert!(page.contains("ABCD-1234"));
+    assert!(page.contains("name=\"cancel\" value=\"0badc0de\""));
+    assert!(page.contains("http-equiv=\"refresh\" content=\"3\""));
+
+    // An id that is not one is never put in a path.
+    let r = handle_with(
+        &mut f,
+        &request("POST", route, pane, "", "dismiss=..%2Fpeople", &[]),
+        1000,
+    );
+    assert_eq!(location(&r), "/basic/settings/problems");
+    assert!(!f.calls.iter().any(|(_, p, _)| p.contains("people")));
+    handle_with(
+        &mut f,
+        &request("POST", route, pane, "", "dismiss=0badc0de", &[]),
+        1000,
+    );
+    assert!(f.posted("/api/problems/0badc0de/dismiss").is_some());
+}
+
 /// Every string in the page crates' sources, one per line: what the admin
 /// bundle's Tailwind reads (admin-ui/app/src/styles/index.css's `@source`)
 /// so the classes only these pages use are in the stylesheet too. The

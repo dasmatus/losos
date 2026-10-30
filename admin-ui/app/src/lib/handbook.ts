@@ -52,6 +52,7 @@ export const HANDBOOK_ENTRIES = {
   "edge-tiers": "in-depth/edge-federation/",
   tpm: "reference/tpm/",
   credentials: "reference/credentials/",
+  "problem-reports": "manual/problem-reports/",
   wiki: "manual/wiki/",
   // The chapters, as LosOS Wiki lists the handbook among the box's wikis.
   "chapter-start": "start/what-is-losos/",

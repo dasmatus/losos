@@ -11,6 +11,7 @@ pub mod custom;
 pub mod format;
 pub mod host;
 pub mod pages;
+pub mod problems;
 pub mod settings;
 pub mod signin;
 pub mod view;
@@ -411,6 +412,9 @@ fn page(host: &mut dyn Host, req: &Request, cookies: &Cookies, now: u64) -> Resp
                 let word = pages::domain_word(&answer, removed.map(|_| domain.as_str()));
                 return web::see_other(&here).header("set-cookie", &web::flash_cookie(&word));
             }
+            (_, Some("problems")) if ctx.me.pane_open("problems") => {
+                return web::see_other(&problems::post(host, req, &here));
+            }
             (_, Some(p @ ("network" | "hardware" | "security")))
                 if ctx.me.pane_open(p) && !busy =>
             {
@@ -546,6 +550,20 @@ fn page(host: &mut dyn Host, req: &Request, cookies: &Cookies, now: u64) -> Resp
                 200,
                 ctx.m.t("settings.panes.security.label"),
                 pages::security(&ctx, s, options.as_ref(), r),
+            )
+        }
+        (_, Some("problems")) => {
+            let list = host.get("/api/problems");
+            let reading = web::query(req, "read")
+                .filter(|id| problems::id_ok(id))
+                .map(|id| problems::Reading::read(host, &id));
+            if reading.as_ref().is_some_and(problems::Reading::waiting) {
+                ctx.refresh = Some(3);
+            }
+            (
+                200,
+                ctx.m.t("settings.panes.problems.label"),
+                problems::pane(&ctx, list.as_ref(), reading.as_ref()),
             )
         }
         (_, Some(p)) => {
