@@ -23,6 +23,7 @@ mod components;
 mod date;
 mod math;
 pub mod notes;
+pub mod page;
 mod render;
 mod sanitize;
 #[cfg(feature = "wasm")]
@@ -306,6 +307,16 @@ impl Parsed {
     /// Writes the document out, handing the reserved `losos:` elements a
     /// pass put in the tree to `hook`.
     pub fn render_with(&self, resolver: &dyn Resolver, hook: Option<&dyn Hook>) -> Rendered {
+        self.finish(resolver, hook, sanitize::clean)
+    }
+
+    /// Writes the tree out and runs `clean`, an allowlist, over the HTML.
+    fn finish(
+        &self,
+        resolver: &dyn Resolver,
+        hook: Option<&dyn Hook>,
+        clean: fn(&str) -> String,
+    ) -> Rendered {
         let (properties, properties_error) = properties(self.front_matter.as_deref());
         let lang = properties
             .as_ref()
@@ -318,7 +329,7 @@ impl Parsed {
         problems.extend(out.problems);
         problems.sort_by_key(|p| (p.place.line, p.place.column));
         Rendered {
-            html: sanitize::clean(&out.html),
+            html: clean(&out.html),
             properties,
             properties_error,
             headings: out.headings,

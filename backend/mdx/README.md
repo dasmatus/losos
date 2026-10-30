@@ -81,6 +81,7 @@ autolinks), YAML front matter and `$maths$`.
 | `Tabs`, `Tab` | `label` (required on Tab) | `div.mdx-tabs`, `section.mdx-tab` |
 | `Figure` | `src` (required), `alt`, `caption` | `figure.mdx-figure` |
 | `Embed` | `href` (required), `title` | `a.mdx-embed` |
+| `Button` | `href` (required), `variant` (primary, secondary, outline, ghost, link), `size` (sm, md, lg) | `a.mdx-button`, its text as the label |
 | `Slide` | `layout` (title, content, two-columns, picture) | `section.mdx-slide` |
 | `Notes` | | `aside.mdx-speaker-notes` |
 | `PageBreak` | | `div.page-break` |
@@ -100,6 +101,33 @@ Plain elements, as themselves: `abbr` (with `title`), `br`, `kbd`, `mark`,
 Charts, the table of contents and page numbers are filled in by whoever
 shows the page: the editor draws a chart from its sheet, and an export
 lays the pages out.
+
+## Pages
+
+`page::render_page(source, spec)` reads a page of the admin UI or an app
+(`admin-ui/app/src/pages/README.md`). `spec` is the page's entry in
+`blocks.json`, read by `page::Registry::from_json`: the blocks the page
+has, each with typed props (`text`, `choice` with `values`, `number`,
+`flag`, `url`), which are required, and whether it takes MDX inside it.
+
+On top of the MDX rules above:
+
+- A JSX element named like one of the page's blocks becomes
+  `<losos-block data-block="Name" data-props="{...}">`, an empty
+  placeholder the page swaps for its component. Its props are checked
+  against the entry and carried as JSON; a bad one is dropped with a
+  problem, and a block missing a required prop is not drawn.
+- A block goes on a line of its own; one inside a sentence is refused.
+- Any other name that is neither a block of this page nor a component is
+  refused. An author cannot write the placeholder: `losos-block` is a
+  name no table knows, so it is refused like any other, and only the page
+  allowlist (`sanitize::clean_page`) keeps the element at all.
+- Each run of the author's own text and components at the top of a page is
+  wrapped in `div.mdx-document.mdx-page-text`, so the document styles
+  reach it and never the blocks beside it. A page that is only blocks is
+  only placeholders, so the default pages draw exactly what they did.
+
+`tests/page.rs` covers each rule.
 
 ## API
 
@@ -165,6 +193,6 @@ line, unless the result reads without a problem and keeps the note's
 headings and links.
 
 In the browser, `render(source, "mdx" | "md", resolver?)` returns the same
-result as JSON, `tree(source, flavour)` the mdast (positions kept) the
+result as JSON, `page(source, registry, page)` a page's, `tree(source, flavour)` the mdast (positions kept) the
 WYSIWYG editor builds its document from, and `renderNote` and `toNote` the
 two above.
