@@ -10,7 +10,7 @@
 // nix/tests/notes-shots.mjs does. nix/tests/office-paper.nix runs it in its
 // laptop VM against the box's own nginx.
 //
-//   node office-paper-shots.mjs BASE NAME PASSWORD OUT [--before]
+//   bun office-paper-shots.mjs BASE NAME PASSWORD OUT [--before]
 //                               [--commit SHA] [--test NAME] [--ca FILE]
 //
 // --before takes the same places with the admin UI as it was before: the

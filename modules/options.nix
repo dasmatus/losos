@@ -3060,6 +3060,18 @@ in
       description = "Supported two-decimal ISO 4217 currency, lowercase. One currency per edge; listings are priced in its minor unit (cents).";
     };
 
+    edge.market.backups.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Let a box keep its restic backups on the storage it bought. The edge
+        runs restic's REST server on the bought volume, on its own node, and
+        lets in only the box that bought it. restic on the box encrypts
+        everything before it leaves, so the volume's replicas on other boxes,
+        and the edge, hold only ciphertext.
+      '';
+    };
+
     edge.market.storageClass = lib.mkOption {
       # A DNS-1123 subdomain, as Kubernetes requires of the name: at most
       # 253 characters, each dot-separated label at most 63. The registrar
