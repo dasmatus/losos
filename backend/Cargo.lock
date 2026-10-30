@@ -2922,6 +2922,7 @@ dependencies = [
  "kamadak-exif",
  "losos-access",
  "losos-names",
+ "losos-report",
  "losos-widget",
  "mime",
  "oxc",
@@ -2962,6 +2963,13 @@ dependencies = [
 [[package]]
 name = "losos-names"
 version = "0.1.0"
+
+[[package]]
+name = "losos-report"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
 
 [[package]]
 name = "losos-widget"

@@ -66,6 +66,8 @@ The editor saves as you work and when you leave, and **Save** writes your
 changes at once. In LosOS Cloud each save keeps the earlier contents as a
 version of the file, and your computers' sync apps pick up the new one.
 
+![A text document open in LosOS Office: the box's bars above it with the way back, the name, the zoom, Download as PDF and Save, then the formatting bar.](../img/office-document.png)
+
 ## Working together
 
 When a second person opens the same document, both of you are in the same
