@@ -3,10 +3,11 @@
 //! sends the mail itself.
 //!
 //! Every call is made to Stalwart as the person LosOS Login signed in,
-//! through its master user, as lososd's own mail calls are: `<name>%losos`
-//! with the secret `modules/mail.nix` made. The manifest grants that one
-//! loopback origin and that one file, and both exist only while mail is
-//! live on this box; otherwise every route answers 404, as lososd's do.
+//! through its administrator, as lososd's own mail calls are:
+//! `<name>@<domain>%losos` with the secret `modules/mail.nix` made. The
+//! manifest grants that one loopback origin and that one file, and both
+//! exist only while mail is live on this box; otherwise every route
+//! answers 404, as lososd's do.
 //! What the routes do is [`model`]; what a filter is, and the Sieve it
 //! becomes, is [`sieve`].
 
@@ -18,7 +19,7 @@ use losos_plugin::{cache, config, fs, http, lock, Plugin, Request, Response};
 use model::{odd, refuse, Refused, Server};
 use serde_json::{json, Value};
 
-/// lososd's own name for its master user (backend/src/mail.rs).
+/// lososd's own name for the server's administrator (backend/src/mail.rs).
 const MASTER_USER: &str = "losos";
 /// The group LosOS Login holds an unfinished account in.
 const LOCKED: &str = "losos-locked";
@@ -54,7 +55,8 @@ impl Live {
     fn open(req: &Request) -> Result<Live, Refused> {
         let url = config::get("url").filter(|u| !u.is_empty());
         let file = config::get("secretFile").filter(|f| !f.is_empty());
-        let (Some(url), Some(file)) = (url, file) else {
+        let domain = config::get("domain").filter(|d| !d.is_empty());
+        let (Some(url), Some(file), Some(domain)) = (url, file, domain) else {
             return refuse(404, "there is no mail on this box");
         };
         let person = match req.caller.person() {
@@ -76,7 +78,7 @@ impl Live {
             .ok_or_else(not_up)?;
         let mut live = Live {
             url: url.trim_end_matches('/').to_string(),
-            user: format!("{}%{MASTER_USER}", person.name),
+            user: format!("{}@{domain}%{MASTER_USER}", person.name),
             secret,
             account: String::new(),
         };
