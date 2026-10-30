@@ -46,7 +46,7 @@ on:
 # before a commit is pushed.
 #
 # CI does NOT go through devenv: every job would first realise the whole dev
-# toolchain — rustc, cargo, clippy, rustfmt, rust-analyzer, nodejs, bun,
+# toolchain — rustc, cargo, clippy, rustfmt, rust-analyzer, bun,
 # nixfmt, deadnix, statix, plus the interactive shell packages — before doing
 # any work of its own. Measured on Codeberg's runners: `devenv test` 9m31s,
 # `devenv shell build-pkgs` 10m05s, plain nix 1m32s. GitHub's 6-hour cap would
@@ -540,11 +540,11 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
       # Compiles only; the registrar's tests run in the test job.
-      # losos-admin-ui is a buildNpmPackage: `npm ci` from the committed
-      # package-lock.json, then `tsc --noEmit && vite build`. So this step is
-      # also the typecheck gate for admin-ui/app, and the one place in CI that
-      # proves the npm dependency fetch still resolves. losos-handbook is the
-      # same shape: `npm ci` then `docusaurus build` of handbook/, rooted at
+      # losos-admin-ui is a Bun build: node_modules from the committed bun.lock
+      # (nix/bun-deps.nix), then `tsc --noEmit && vite build` on Bun. So this
+      # step is also the typecheck gate for admin-ui/app, and the one place in
+      # CI that proves the dependency fetch still resolves. losos-handbook is
+      # the same shape: its bun.lock, then `docusaurus build` of handbook/, rooted at
       # /handbook/ for the box (the public site is handbook.yml's build of the
       # same source), and it fails on a broken link. LosOS Lab is the admin
       # UI's second page, so losos-admin-ui builds its Rust core for wasm32
@@ -572,12 +572,12 @@ jobs:
           retention-days: 1
       # The Playwright suite (admin-ui/app/tests/*.browser.mjs) against the
       # production bundle, in headless chromium from nixpkgs. No /dev/kvm
-      # needed, unlike the VM tests. Reuses the npm deps built just above.
+      # needed, unlike the VM tests. Reuses the node_modules fetched just above.
       - run: nix build .#checks.x86_64-linux.losos-admin-ui -L
       # Export the built SPA and the handbook for the iso job, exactly as the
       # losos-ctl job exports its crate and for the same reason. flake.nix
       # puts both in isoImage.storeContents, so without this the ISO job
-      # would run `npm ci` + vite and docusaurus itself.
+      # would fetch the packages and run vite and docusaurus itself.
       #
       # A dist/ tree with no store references: about 1 MiB of page, plus the
       # GPU canvas's two WebAssembly modules (about 16 MiB each), which are

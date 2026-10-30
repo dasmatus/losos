@@ -35,7 +35,7 @@ let
   # The admin UI as it ships, without the Lab page, which this test never
   # opens and whose WebAssembly takes longer to build than the test to run.
   ui = import ./admin-ui-without-lab.nix (
-    # The earlier UI shares this one's lock file, so its npm cache too.
+    # The earlier UI shares this one's lock file, so its node_modules too.
     lososPkgs.losos-admin-ui.overrideAttrs (_: lib.optionalAttrs (!after) { src = before; })
   );
 

@@ -17,8 +17,7 @@
  * Same arrangement as the other files: the real dist/ bundle under the real
  * policies, the routes stubbed with page.route(). */
 
-import assert from 'node:assert';
-import { readFile } from 'node:fs/promises';
+import assert from './assert.mjs';
 import { launch, runner, serve } from './harness.mjs';
 
 const { origin, close: closeServer } = await serve({ csp: true });
@@ -30,7 +29,7 @@ const BOXES = [
   { id: 'office-box', hostname: 'office-box', seenAgoSecs: 12, managed: true },
   { id: 'reception', hostname: 'reception', seenAgoSecs: 300, managed: false },
 ];
-const DOC = JSON.parse(await readFile(process.env.LOSOS_OPTIONS_JSON ?? 'tests/fixtures/options.json', 'utf8'));
+const DOC = await Bun.file(Bun.env.LOSOS_OPTIONS_JSON ?? 'tests/fixtures/options.json').json();
 const SITE_NAMES = /^(cloud\.trashDays|git\.site\..+)$/;
 const SITE = {
   available: true,

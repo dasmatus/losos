@@ -52,6 +52,18 @@
 //! there deletes only packs nothing uses any more and never repacks, which
 //! would need a thaw too.
 //!
+//! # Storage bought on the mesh
+//!
+//! Instead of a bucket, a box can keep its backups on storage it bought on
+//! the market ([`BoughtStorage`]). That volume's replicas sit on other
+//! people's boxes, so it gets nothing restic did not already encrypt: the
+//! edge runs restic's REST server on it and the box talks restic to it
+//! through the edge (`edge/registrar/src/server/storage.rs`). The door is
+//! opened by [`door_secret`], derived from the recovery code and the order,
+//! of which the edge keeps only a hash ([`door_key`]). A new box that knows
+//! the recovery code can therefore restore from it, as from a bucket, with
+//! nothing else from the old box.
+//!
 //! # Secrets
 //!
 //! The bucket's keys are the credential [`CREDENTIAL`] in the box's
@@ -121,6 +133,52 @@ impl StorageClass {
     }
 }
 
+/// Storage this box bought on the mesh, used in place of a bucket.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BoughtStorage {
+    /// The storage order, `ord_<hex>`.
+    pub order: String,
+    /// The edge that sold it, `https://register.<domain>`, no trailing slash.
+    pub edge: String,
+}
+
+/// Whether `id` is the shape of a market order id: `ord_` and lowercase hex.
+#[must_use]
+pub fn order_ok(id: &str) -> bool {
+    id.strip_prefix("ord_").is_some_and(|hex| {
+        !hex.is_empty()
+            && hex.len() <= 48
+            && hex
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    })
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    ring::digest::digest(&ring::digest::SHA256, bytes)
+        .as_ref()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// The password of the backup door of `order`: SHA-256, in hex, of
+/// `losos-backup-door`, the order id and the recovery code, a line each (no
+/// newline after the code). `modules/backup.nix` makes the same one in the
+/// shell from the code file a job is given, so the code typed for a restore
+/// opens the door of the box that made the backup.
+#[must_use]
+pub fn door_secret(order: &str, code: &str) -> String {
+    sha256_hex(format!("losos-backup-door\n{order}\n{}", code.trim()).as_bytes())
+}
+
+/// What the edge keeps of a door's password: its SHA-256 in hex.
+#[must_use]
+pub fn door_key(secret: &str) -> String {
+    sha256_hex(secret.as_bytes())
+}
+
 /// Where backups go. Serialised whole only into the 0600 file; the browser
 /// gets [`Target::public`].
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -143,6 +201,10 @@ pub struct Target {
     /// choice read as Standard.
     #[serde(default)]
     pub storage_class: StorageClass,
+    /// Bought storage instead of a bucket; the bucket's fields are then
+    /// empty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bought: Option<BoughtStorage>,
 }
 
 impl fmt::Debug for Target {
@@ -155,6 +217,7 @@ impl fmt::Debug for Target {
             .field("region", &self.region)
             .field("access_key_id", &self.access_key_id)
             .field("storage_class", &self.storage_class)
+            .field("bought", &self.bought)
             .finish_non_exhaustive()
     }
 }
@@ -248,14 +311,55 @@ impl TargetInput {
             access_key_id,
             secret_access_key,
             storage_class: self.storage_class,
+            bought: None,
         })
     }
 }
 
 impl Target {
-    /// restic's name for the repository: `s3:<endpoint>/<bucket>[/<prefix>]`.
+    /// Back up to bought storage: `order` at the edge `edge`.
+    ///
+    /// # Errors
+    /// [`Invalid`] for an order id or an edge address of the wrong shape.
+    pub fn bought(order: &str, edge: &str) -> Result<Self, Invalid> {
+        let order = order.trim();
+        if !order_ok(order) {
+            return Err(Invalid("that is not a storage order of this box"));
+        }
+        let edge = edge.trim().trim_end_matches('/');
+        let host = edge.strip_prefix("https://").unwrap_or_default();
+        if host.is_empty()
+            || host.len() > MAX_URL
+            || !host
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b':'))
+        {
+            return Err(Invalid("the edge's address is not an https:// address"));
+        }
+        Ok(Target {
+            endpoint: String::new(),
+            bucket: String::new(),
+            prefix: String::new(),
+            region: String::new(),
+            access_key_id: String::new(),
+            secret_access_key: String::new(),
+            storage_class: StorageClass::Standard,
+            bought: Some(BoughtStorage {
+                order: order.to_string(),
+                edge: edge.to_string(),
+            }),
+        })
+    }
+}
+
+impl Target {
+    /// restic's name for the repository: `s3:<endpoint>/<bucket>[/<prefix>]`,
+    /// or `rest:<edge>/market/storage/<order>/` on bought storage.
     #[must_use]
     pub fn repository(&self) -> String {
+        if let Some(b) = &self.bought {
+            return format!("rest:{}/market/storage/{}/", b.edge, b.order);
+        }
         if self.prefix.is_empty() {
             format!("s3:{}/{}", self.endpoint, self.bucket)
         } else {
@@ -271,6 +375,12 @@ impl Target {
     pub fn env_file(&self) -> String {
         let mut out = String::new();
         out.push_str(&format!("RESTIC_REPOSITORY={}\n", self.repository()));
+        // No secret at all on bought storage: the scripts make the door's
+        // password from the code file the job is given.
+        if let Some(b) = &self.bought {
+            out.push_str(&format!("LOSOS_DOOR_ORDER={}\n", b.order));
+            return out;
+        }
         out.push_str(&format!("AWS_ACCESS_KEY_ID={}\n", self.access_key_id));
         out.push_str(&format!(
             "AWS_SECRET_ACCESS_KEY={}\n",
@@ -301,6 +411,7 @@ impl Target {
             "accessKeyId": self.access_key_id,
             "hasSecret": !self.secret_access_key.is_empty(),
             "storageClass": self.storage_class,
+            "bought": self.bought,
         })
     }
 }
@@ -507,6 +618,11 @@ pub fn explain_failure(kind: Kind, code: i32, tail: &str) -> String {
     if lower.contains("no such host") || lower.contains("connection refused") {
         return "the bucket's address could not be reached".to_string();
     }
+    // The backup door on bought storage answers 401 to a recovery code that
+    // is not the buyer's, or before the door has a key.
+    if lower.contains("(401)") || lower.contains("401 unauthorized") {
+        return "the edge does not open this storage to this recovery code".to_string();
+    }
     if lower.contains("nosuchbucket") || lower.contains("bucket does not exist") {
         return "the bucket does not exist".to_string();
     }
@@ -535,6 +651,63 @@ mod tests {
             secret_access_key: Some("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY".into()),
             storage_class: StorageClass::Standard,
         }
+    }
+
+    #[test]
+    fn bought_storage_is_a_rest_repository_with_no_secret_in_the_file() {
+        let t = Target::bought("ord_ab12", "https://register.example.org/").unwrap();
+        assert_eq!(
+            t.repository(),
+            "rest:https://register.example.org/market/storage/ord_ab12/"
+        );
+        let env = t.env_file();
+        assert_eq!(
+            env,
+            "RESTIC_REPOSITORY=rest:https://register.example.org/market/storage/ord_ab12/\nLOSOS_DOOR_ORDER=ord_ab12\n"
+        );
+        assert_eq!(secret_from_env(&env), None);
+        assert_eq!(t.public()["bought"]["order"], "ord_ab12");
+        assert_eq!(t.public()["hasSecret"], false);
+        // It survives the file it is kept in.
+        let back: Target = serde_json::from_str(&serde_json::to_string(&t).unwrap()).unwrap();
+        assert_eq!(back, t);
+        for (order, edge) in [
+            ("ord_AB", "https://register.example.org"),
+            ("lst_ab", "https://register.example.org"),
+            ("ord_ab", "http://register.example.org"),
+            ("ord_ab", "https://register.example.org/x"),
+            ("ord_ab", "https://user@register.example.org"),
+        ] {
+            assert!(Target::bought(order, edge).is_err(), "{order} {edge}");
+        }
+    }
+
+    #[test]
+    fn a_closed_door_is_named() {
+        assert_eq!(
+            explain_failure(
+                Kind::Restore,
+                1,
+                "Fatal: unable to open repository: unexpected HTTP response (401): 401 Unauthorized"
+            ),
+            "the edge does not open this storage to this recovery code"
+        );
+    }
+
+    #[test]
+    fn the_door_secret_is_fixed_by_the_order_and_the_code() {
+        let code = "0f8fad5b-d9cb-469f-a165-70867728950e";
+        let secret = door_secret("ord_ab12", code);
+        // `printf 'losos-backup-door\nord_ab12\n%s' CODE | sha256sum`, what
+        // modules/backup.nix runs.
+        assert_eq!(
+            secret,
+            "1cb11c44bb92be179a4d77ef9e9a12d4b891e46b9cad95ba2b2d7e35f28b95f2"
+        );
+        assert_eq!(secret, door_secret("ord_ab12", &format!("{code}\n")));
+        assert_ne!(secret, door_secret("ord_ab13", code));
+        assert_eq!(secret.len(), 64);
+        assert_eq!(door_key(&secret), sha256_hex(secret.as_bytes()));
     }
 
     #[test]

@@ -97,6 +97,7 @@
     "POST /api/credentials/{name}/rotate": "admin",
     "POST /api/backup/target": "backup",
     "DELETE /api/backup/target": "backup",
+    "POST /api/backup/target/bought": "backup",
     "POST /api/backup/run": "backup",
 
     "GET /api/apps": "apps",

@@ -230,9 +230,9 @@ export default defineMessages({
   },
   "settings.panes.backup.label": { en: "Backup", sk: "Záloha", de: "Sicherung" },
   "settings.panes.backup.summary": {
-    en: "Copies of your files and settings in a bucket you rent, encrypted before they leave the box.",
-    sk: "Kópie vašich súborov a nastavení v úložisku, ktoré si prenajímate, zašifrované ešte pred odoslaním zo zariadenia.",
-    de: "Kopien deiner Dateien und Einstellungen in einem Bucket, den du mietest, verschlüsselt, bevor sie die Box verlassen.",
+    en: "Copies of your files and settings in a bucket you rent or on storage you bought on the mesh, encrypted before they leave the box.",
+    sk: "Kópie vašich súborov a nastavení v úložisku, ktoré si prenajímate alebo ste kúpili v sieti, zašifrované ešte pred odoslaním zo zariadenia.",
+    de: "Kopien deiner Dateien und Einstellungen in einem Bucket, den du mietest, oder auf Speicher, den du im Mesh gekauft hast, verschlüsselt, bevor sie die Box verlassen.",
   },
   "settings.panes.backup.keywords": {
     en: "",

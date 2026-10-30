@@ -1,0 +1,8 @@
+{
+  "//": "The Vite configs run on Bun; the pages under src run in the browser and see neither Bun's types nor Node's.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["bun"]
+  },
+  "include": ["vite.config.ts", "vite.guest.config.ts", "vite.segmenter-quiet.ts", "vite.sonner-quiet.ts"]
+}

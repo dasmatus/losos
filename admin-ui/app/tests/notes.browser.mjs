@@ -24,9 +24,7 @@
  * backend/src/cloud/notes/scan.rs, and nix/tests/notes.nix runs both
  * halves together. */
 
-import assert from 'node:assert';
-import { readdir, readFile } from 'node:fs/promises';
-import { join, relative } from 'node:path';
+import assert from './assert.mjs';
 import { launch, runner, serve } from './harness.mjs';
 
 const { origin, close: closeServer } = await serve({ csp: true });
@@ -35,18 +33,10 @@ const { check, finish } = runner();
 
 const FIXTURE = 'tests/fixtures/vault';
 
-async function walk(dir) {
-  const out = [];
-  for (const e of await readdir(dir, { withFileTypes: true })) {
-    const p = join(dir, e.name);
-    if (e.isDirectory()) out.push(...(await walk(p)));
-    else out.push(p);
-  }
-  return out;
-}
-
 const files = new Map();
-for (const p of await walk(FIXTURE)) files.set(relative(FIXTURE, p).split('\\').join('/'), await readFile(p, 'utf8'));
+for await (const rel of new Bun.Glob('**/*').scan({ cwd: FIXTURE, dot: true })) {
+  files.set(rel, await Bun.file(`${FIXTURE}/${rel}`).text());
+}
 files.set(
   'Garden plan.canvas',
   JSON.stringify({
@@ -371,7 +361,7 @@ await check('a .note reads as MDX, its components beside Obsidian\'s syntax', as
     assert.deepEqual(errors, []);
     for (const v of await violations(page)) ALL_VIOLATIONS.add(v);
   } finally {
-    files.set('Harvest.note', await readFile(join(FIXTURE, 'Harvest.note'), 'utf8'));
+    files.set('Harvest.note', await Bun.file(`${FIXTURE}/Harvest.note`).text());
     etags.delete('Harvest.note');
     await context.close();
   }

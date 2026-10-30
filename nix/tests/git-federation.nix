@@ -46,21 +46,19 @@ let
       done
       cat > vite.federation-test.config.ts <<'EOF'
       import base from "./vite.config";
-      import { join } from "node:path";
-      import { fileURLToPath } from "node:url";
-      const root = fileURLToPath(new URL(".", import.meta.url));
+      const root = import.meta.dirname;
       const config = base as Record<string, any>;
       config.build.rolldownOptions.input = {
-        main: join(root, "index.html"),
-        chat: join(root, "chat/index.html"),
-        git: join(root, "git/index.html"),
+        main: `''${root}/index.html`,
+        chat: `''${root}/chat/index.html`,
+        git: `''${root}/git/index.html`,
       };
       export default config;
       EOF
     '';
     buildPhase = ''
       runHook preBuild
-      npx vite build --config vite.federation-test.config.ts
+      bun --bun vite build --config vite.federation-test.config.ts
       runHook postBuild
     '';
   });
@@ -74,7 +72,7 @@ let
       }
     }
     export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
-    exec ${pkgs.nodejs}/bin/node ${./git-federation-shots.mjs} "$@"
+    exec ${pkgs.bun}/bin/bun ${./git-federation-shots.mjs} "$@"
   '';
 
   # Each box knows the other two machines by name: the names a box has on
