@@ -245,6 +245,7 @@ jobs:
           nix develop .#ci -c bash -euo pipefail -c '
             cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
             cargo clippy --manifest-path backend/access/Cargo.toml --all-targets -- -D warnings
+            cargo clippy --manifest-path backend/edge-path/Cargo.toml --all-targets -- -D warnings
             cargo clippy --manifest-path backend/mdx/Cargo.toml --all-targets -- -D warnings
             cargo clippy --manifest-path backend/plugins/Cargo.toml --all-targets -- -D warnings
             cargo clippy --manifest-path edge/registrar/Cargo.toml --all-targets -- -D warnings
@@ -265,6 +266,7 @@ jobs:
           nix develop .#ci -c bash -euo pipefail -c '
             cargo fmt --manifest-path backend/Cargo.toml --check
             cargo fmt --manifest-path backend/access/Cargo.toml --check
+            cargo fmt --manifest-path backend/edge-path/Cargo.toml --check
             cargo fmt --manifest-path backend/mdx/Cargo.toml --check
             cargo fmt --all --manifest-path backend/plugins/Cargo.toml --check
             cargo fmt --manifest-path edge/registrar/Cargo.toml --check
@@ -368,6 +370,7 @@ jobs:
           nix develop .#ci -c bash -euo pipefail -c '
             cargo test --manifest-path backend/Cargo.toml
             cargo test --manifest-path backend/access/Cargo.toml
+            cargo test --manifest-path backend/edge-path/Cargo.toml
             cargo test --manifest-path backend/mdx/Cargo.toml
             cargo test --manifest-path backend/plugins/Cargo.toml
             cargo test --manifest-path edge/registrar/Cargo.toml
@@ -913,6 +916,7 @@ jobs:
           nix develop .#ci -c bash -euo pipefail -c '
             cargo fmt --manifest-path backend/Cargo.toml
             cargo fmt --manifest-path backend/access/Cargo.toml
+            cargo fmt --manifest-path backend/edge-path/Cargo.toml
             cargo fmt --manifest-path backend/mdx/Cargo.toml
             cargo fmt --all --manifest-path backend/plugins/Cargo.toml
             cargo fmt --manifest-path edge/registrar/Cargo.toml

@@ -36,16 +36,17 @@ bun run dev | typecheck | test:browser              # in admin-ui/app
 cargo test --manifest-path admin-ui/tui/Cargo.toml  # losos, the terminal client
 ```
 
-Eleven Rust crates: `backend/` (lososd + losos-ctl), `backend/access`
+Twelve Rust crates: `backend/` (lososd + losos-ctl), `backend/access`
 (the terminal envelope, its own workspace, a path dependency of lososd, the
-registrar and the client), `backend/mdx` (`losos-mdx`, MDX and Markdown to
+registrar and the client), `backend/edge-path` (lososd's edge path rule, its
+own workspace, also read by LosOS Desktop's network machine), `backend/mdx` (`losos-mdx`, MDX and Markdown to
 sanitized HTML for Office and Notes, its own workspace, also built for the
 browser with its `wasm` feature), `backend/plugins` (lososd's WebAssembly plugins,
 their SDK and WIT, its own workspace, linted for the host and wasm32), `edge/registrar/`, `edge/vercel/` (outside the
 flake), the terminal client `admin-ui/tui`, and Diagrams' `admin-ui/lab/core`,
 `admin-ui/lab/virt-rpc` and `admin-ui/lab/render` (built for wasm32), and
 the Solana escrow program `edge/contracts/solana` (`cargo build-sbf`, outside
-the flake). All eleven must pass clippy with `-D warnings` and rustfmt; the git hooks
+the flake). All twelve must pass clippy with `-D warnings` and rustfmt; the git hooks
 in `nix/hooks`, `lint` and CI each check it. Bevy is a wasm32-only dependency of
 `render`, so `lint-wasm` and CI's `clippy-wasm` lint its WebGL2 and WebGPU
 builds too, one after the other. `nix develop` is a toolchain-only shell for people without devenv.
@@ -397,6 +398,16 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   names to the box (`edge.json`). LosOS Login takes both as cookie
   domains; `GET /api/hidden` is the `hidden` plugin.
   `nix/tests/hidden-services.nix` boots private Tor and I2P networks.
+- `edge-exit.nix` + `edge/registrar/src/exit.rs` (`losos.edge.exit.*`,
+  `handbook/docs/in-depth/edge-exit.md`): the edge as a VPN-like way out
+  for tenants marked `exit`, LosOS Desktop's network machine among them.
+  `POST /exit` enrols a WireGuard key and hands back an address on
+  `losos-exit`; the registrar only writes `/var/lib/losos-exit/peers.json`
+  and `losos-exit-sync` (root) sets the peers. The FORWARD chain lets out
+  only public addresses, never peer to peer. With `onion.enable`,
+  `losos-registrar exit-socks` (user `losos-exit`) answers SOCKS5 behind
+  the edge's own onion with the enrolment's password, public destinations
+  only, for a desktop in schizo mode.
 - `admin-ui/themes/`: the SPA's `tokens.css` is shipped byte for byte as
   `losos-tokens.css` into LosOS Login's page; LosOS Cloud and LosOS Git are
   part of the SPA's own build, so one colour change moves all of them.

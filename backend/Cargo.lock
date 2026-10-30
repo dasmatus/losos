@@ -2921,6 +2921,7 @@ dependencies = [
  "image",
  "kamadak-exif",
  "losos-access",
+ "losos-edge-path",
  "losos-names",
  "losos-page",
  "losos-report",
@@ -2960,6 +2961,15 @@ dependencies = [
  "yrs",
  "zbus",
  "zip",
+]
+
+[[package]]
+name = "losos-edge-path"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]
