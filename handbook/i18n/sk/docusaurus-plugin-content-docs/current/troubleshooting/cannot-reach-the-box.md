@@ -56,6 +56,11 @@ spred aktualizácie. Načítajte ju znova cez Ctrl+Shift+R, čím cache
 obídete, alebo otvorte súkromné okno.
 :::
 
+Ak sa stránka načíta, ale každý panel čaká alebo ukazuje chybu, riadiaca
+služba možno nebeží. `https://<address>/basic/settings/logs` sa otvorí aj
+bez nej a ukáže jej riadky, s náhradným kľúčom správcu, ak neodpovedá ani
+LosOS Login. Pozrite [Záznamy](../manual/logs).
+
 Ak banner ukazuje adresu a na nej neodpovedá vôbec nič, nefunguje webový
 server zariadenia, nginx, a opraví ho nočný reštart. Ak nefunguje ani
 nasledujúce ráno, [požiadajte o pomoc](getting-help) a priložte text
