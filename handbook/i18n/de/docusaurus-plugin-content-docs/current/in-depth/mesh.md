@@ -131,7 +131,11 @@ festgelegten Chart (`losos.edge.cluster.longhornChart`). Die Datenträger
 liegen nur auf den Boxen: Eine Box, die dem Mesh beitritt, bekommt das Label
 `node.longhorn.io/create-default-disk=true`, und die Edge, die es nicht hat,
 speichert keine Replikate. Speicherbestellungen aus dem Markt beziehen ihre
-Volumes aus Longhorns Storage-Class `longhorn`. Longhorn auf der Edge sucht
+Volumes aus Longhorns Storage-Class `longhorn`. Der fscrypt-Schlüssel schützt
+die Platte des Verleihers, liegt aber auf dessen Box, also kann ein Verleiher
+lesen, was in seinem Anteil landet. Backups eines Käufers auf so einem Volume
+werden deshalb zuerst auf der Box des Käufers verschlüsselt, mit restic und
+dem Wiederherstellungscode des Käufers ([Marktplatz](/in-depth/market.md)). Longhorn auf der Edge sucht
 nicht nach Updates, sendet keine Nutzungsdaten, und seine Weboberfläche wird
 nicht bereitgestellt.
 

@@ -175,6 +175,20 @@ gone, because the claim still holds Longhorn capacity after the month ends.
   `volume: "<namespace>/<claim>"`. The edge writes the claim's name down
   before it asks for it, so a claim that never binds, or one created just
   before the edge stopped, still keeps its units sold after the month ends.
+- **Backups on bought storage.** The buyer's box can keep its backups on a
+  bound storage order (Settings, Backup). The box encrypts with restic
+  before anything leaves it, as for a bucket, and talks to the edge's
+  `/market/storage/<order>/`, which serves restic's REST protocol. The
+  edge starts one `rest-server` per order beside the claim on first use,
+  from an image it carries (`losos.edge.market.backups.enable`, on by
+  default) and never pulls. The server's one account is the edge's, with a
+  password made for that order, so the mesh boxes that can reach its
+  cluster address cannot open it. The edge opens that path only to a key it
+  stores as a SHA-256 hash, which the buyer's box sets with
+  `POST /market/storage-door` and derives from its recovery code and the
+  order id. A new box with the same recovery code therefore reaches the
+  same volume. The boxes that hold Longhorn's replicas and the edge see
+  restic's ciphertext only.
 - **Compute.** A credit in vCPU-hours, listed under `entitlements`. Nothing
   meters or schedules against it yet.
 
@@ -184,8 +198,8 @@ Limits to know about, none of which are enforced yet:
 - The claim is not pinned to the seller's node. Longhorn places replicas
   across the pool, so the seller is paid for contributing to it, not for
   hosting that particular volume.
-- The buyer has no access path to the claim; it exists in the cluster for a
-  workload to mount.
+- The only way to the claim is the backup path above. Nothing else mounts
+  it.
 - Nothing is ever deleted. A lapsed entitlement stops being reported, but
   the volume holds the buyer's data, and removing it is the operator's call.
   Until the operator deletes the claim, its GiB stay sold, so the same
@@ -193,8 +207,10 @@ Limits to know about, none of which are enforced yet:
   since it may yet bind. The reconcile pass checks each lapsed claim and puts
   its units back on sale once the apiserver answers 404 for it.
 - The registrar's ServiceAccount gains cluster-wide `get`/`create` on
-  namespaces and PersistentVolumeClaims when the market is enabled. Kubernetes
-  RBAC cannot scope either to `market-*` names.
+  namespaces and PersistentVolumeClaims when the market is enabled, and on
+  Deployments and Services (and `create` on Secrets) when backups on bought
+  storage are on.
+  Kubernetes RBAC cannot scope any of them to `market-*` names.
 :::
 
 ## Admin UI

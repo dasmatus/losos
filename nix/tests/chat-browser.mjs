@@ -117,13 +117,13 @@ async function shot(page, name) {
  *  light, in each of its languages, on a device of Matus's unlocked with the
  *  recovery key. The labels are src/i18n/chat.ts's. */
 const UNLOCK = {
-  en: ["Unlock this device to read encrypted messages", "Recovery key", "Unlock"],
-  sk: ["Odomknite toto zariadenie na čítanie šifrovaných správ", "Kľúč na obnovenie", "Odomknúť"],
-  de: ["Entsperre dieses Gerät, um verschlüsselte Nachrichten zu lesen", "Wiederherstellungsschlüssel", "Entsperren"],
+  en: ["Unlock this device to read encrypted messages", "Recovery key", "Unlock", "This device is unlocked"],
+  sk: ["Odomknite toto zariadenie na čítanie šifrovaných správ", "Kľúč na obnovenie", "Odomknúť", "Toto zariadenie je odomknuté"],
+  de: ["Entsperre dieses Gerät, um verschlüsselte Nachrichten zu lesen", "Wiederherstellungsschlüssel", "Entsperren", "Dieses Gerät ist entsperrt"],
 };
 async function handbook(key) {
   for (const [lang, locale] of [["en", "en-US"], ["sk", "sk-SK"], ["de", "de-DE"]]) {
-    const [unlock, field, button] = UNLOCK[lang];
+    const [unlock, field, button, unlocked] = UNLOCK[lang];
     const context = await browser.newContext({
       viewport: { width: 1280, height: 900 },
       deviceScaleFactor: 2,
@@ -147,6 +147,11 @@ async function handbook(key) {
     await page.getByRole("log").getByText("Hi Eva, chat is up on mattbox.").waitFor();
     await page.getByRole("log").getByText("Nice. Can we plan the holiday here?").waitFor();
     Bun.spawnSync(["mkdir", "-p", `${out}/handbook/${lang}`]);
+    // The unlock's toast, which can come after the messages, would sit
+    // over the top bar in the picture.
+    const toast = page.locator("[data-toast]").filter({ hasText: unlocked });
+    await toast.waitFor();
+    await toast.waitFor({ state: "hidden" });
     await settle(page);
     await page.screenshot({ path: `${out}/handbook/${lang}/chat.png`, timeout: 300_000 });
     await context.close();
