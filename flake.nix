@@ -138,7 +138,7 @@
               ++ fast.packages
               ++ [
                 pkgs.rust-analyzer
-                pkgs.nodejs
+                pkgs.bun
               ];
             inherit (fast) env;
             # The git hooks (nix/hooks) run CI's gates before a commit
@@ -188,6 +188,7 @@
             disko.nixosModules.disko
             (
               {
+                lib,
                 modulesPath,
                 pkgs,
                 self,
@@ -207,13 +208,24 @@
                 # screen where it draws, which presents the firmware-mode menu
                 # before destructive work.
                 losos.installer.autorun = true;
+                # The GitHub App problem reports sign in with: CI's Actions
+                # variable LOSOS_ABRT_VAR, read only by an `--impure` build
+                # (pure evaluation sees ""). The medium's installer gets it
+                # as its unit's credential `report-client-id` and hands it to
+                # the box it installs (modules/installer.nix,
+                # modules/problems.nix). Never written in this tree.
+                losos.report.clientId =
+                  let
+                    id = builtins.getEnv "LOSOS_ABRT_VAR";
+                  in
+                  lib.mkIf (id != "") (lib.mkDefault id);
                 # Prebuild the admin UI into the medium.
                 #
-                # `losos-admin-ui` is a React/Tailwind bundle built with
-                # buildNpmPackage — a Node toolchain and an npm dependency
-                # fetch. Without this, `nixos-install` realises that derivation
-                # on the target, so a repurposed mini-PC with no shell runs npm
-                # as part of a first install, over a network it may not have.
+                # `losos-admin-ui` is a React/Tailwind bundle built with Bun
+                # from a node_modules fetch. Without this, `nixos-install`
+                # realises that derivation on the target, so a repurposed
+                # mini-PC with no shell fetches packages and runs Bun as part
+                # of a first install, over a network it may not have.
                 # storeContents puts the finished output in the live system's
                 # store, and nix copies rather than builds anything it already
                 # has.
@@ -223,8 +235,9 @@
                 # 2 GiB per-asset release limit.
                 isoImage.storeContents = [
                   self.packages.${system}.losos-admin-ui
-                  # Same argument: the handbook is a Docusaurus build, npm and
-                  # all, and belongs on the medium rather than on the target.
+                  # Same argument: the handbook is a Docusaurus build, its
+                  # packages and all, and belongs on the medium rather than
+                  # on the target.
                   self.packages.${system}.losos-handbook
                 ];
                 # The default (zstd level 19, cache sized off host RAM) gets
@@ -338,6 +351,9 @@
             # cover different halves of the same problem.
             ./modules/credentials.nix
             ./modules/daemon.nix
+            # What went wrong on the box, as reports the owner may send
+            # (backend/plugins/problems).
+            ./modules/problems.nix
             ./modules/identity.nix
             # LosOS Chat: Synapse as the shared user while the box shares
             # its storage in a mesh, behind LosOS Login (backend/src/chat.rs).
@@ -536,6 +552,8 @@
         losos-profiles = import ./nix/tests/profiles.nix { inherit pkgs; };
         losos-profile-screens = import ./nix/tests/profile-screens.nix { inherit pkgs; };
         losos-plugins = import ./nix/tests/plugins.nix { inherit pkgs; };
+        # Problem reports: the box's list and a report sent to a stand-in GitHub.
+        losos-problems = import ./nix/tests/problems.nix { inherit pkgs; };
         losos-hidden-services = import ./nix/tests/hidden-services.nix { inherit pkgs; };
         # The box ends its own TLS and the edge passes it through unread
         # (modules/public-tls.nix, edge/registrar/src/passthrough.rs).
@@ -617,15 +635,8 @@
           # every option the install configuration declares and the check
           # fails on any row it cannot draw (tests/advanced.browser.mjs).
           optionsJson = self.checks.${system}.losos-options-doc;
-          # LosOS Lab's page imports the Rust core, the GPU canvas and the
-          # libvirt client, and LosOS Office losos-mdx; the bundle under test
-          # copies them in the way the shipped one does.
-          inherit (self.packages.${system}.losos-admin-ui)
-            labCorePkg
-            labVirtPkg
-            labRenderPkg
-            mdxPkg
-            ;
+          # The check is the shipped package with its browser checks added.
+          ui = self.packages.${system}.losos-admin-ui;
           callsPackage = self.packages.${system}.losos-ctl;
         };
         # Not a VM: the option document of the install configuration
@@ -636,6 +647,10 @@
           self.nixosConfigurations.install.config.environment.etc."losos/options.json".source;
         losos-credentials = import ./nix/tests/credentials.nix { inherit pkgs; };
         losos-erase = import ./nix/tests/erase.nix { inherit pkgs impermanence; };
+        # Backups on storage bought on the mesh: through the edge's backup
+        # door to a rest-server per order, ciphertext only on the volume and
+        # on the edge (nix/tests/mesh-backup.nix).
+        losos-mesh-backup = import ./nix/tests/mesh-backup.nix { inherit pkgs impermanence; };
         losos-console = import ./nix/tests/console.nix { inherit pkgs; };
         # The text search behind the admin palette: the cloud index pass in
         # its sandbox, PDFs, a changed file, the Git search and who may ask
@@ -670,6 +685,7 @@
         # refusals (nix/tests/inference-payg.nix).
         losos-inference-payg = import ./nix/tests/inference-payg.nix { inherit pkgs; };
         losos-installer-screen = import ./nix/tests/installer-screen.nix { inherit pkgs disko; };
+        losos-installer-report = import ./nix/tests/installer-report.nix { inherit pkgs disko; };
         # LosOS Git: Forgejo's repositories moved in, the configuration
         # repository's round trip through lososd, clone and push through
         # nginx, and who it believes (nix/tests/git.nix).

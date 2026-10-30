@@ -3,26 +3,25 @@
 // so broken tokens.css/losos.css wiring fails loudly. renderToStaticMarkup in
 // render.test.tsx can't see CSS at all; this test exists for that gap.
 //
-// Needs `npm run build` first (reads dist/styles.css) and a browsers dir:
+// Needs `bun run build` first (reads dist/styles.css) and a browsers dir:
 //   PLAYWRIGHT_BROWSERS_PATH=$(nix build --print-out-paths --no-link \
 //     nixpkgs#playwright-driver.browsers)
 // The nix check (nix/tests/design-system.nix) sets all of this up; keep the
 // `playwright` devDependency version identical to nixpkgs' playwright-driver.
-import { build } from 'esbuild';
-import { readFileSync } from 'node:fs';
 import { chromium } from 'playwright';
-import assert from 'node:assert';
 
-await build({
-  entryPoints: ['tests/browser-entry.tsx'],
-  bundle: true,
+const bundle = await Bun.build({
+  entrypoints: [`${import.meta.dir}/browser-entry.tsx`],
+  target: 'browser',
   format: 'iife',
-  jsx: 'automatic',
-  outfile: 'dist/.browser-test.js',
+  define: { 'process.env.NODE_ENV': '"production"' },
 });
+if (!bundle.success) throw new AggregateError(bundle.logs, 'bundling tests/browser-entry.tsx failed');
 
-const css = readFileSync('dist/styles.css', 'utf8');
-const js = readFileSync('dist/.browser-test.js', 'utf8');
+const css = await Bun.file(`${import.meta.dir}/../dist/styles.css`).text();
+// Inlined below, so a `</script` inside the bundle must not end the tag
+// (esbuild escaped it on its own; Bun.build does not).
+const js = (await bundle.outputs[0].text()).replaceAll('</script', '<\\/script');
 
 const browser = await chromium.launch({ chromiumSandbox: false });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
@@ -65,14 +64,14 @@ const cases = [
 ];
 for (const [sel, prop, want] of cases) {
   const got = (await computed(sel, prop)).trim();
-  assert.strictEqual(got, want, `${sel} { ${prop} }`);
+  if (got !== want) throw new Error(`${sel} { ${prop} }: got ${got}, want ${want}`);
 }
 
 // The showcase must mount fully (React render errors surface as pageerror,
 // not as a setContent failure).
-assert.deepStrictEqual(pageErrors, [], 'page errors during render');
-assert.ok(await page.$('.auth-card'), 'auth card mounted');
+if (pageErrors.length > 0) throw new Error(`page errors during render: ${JSON.stringify(pageErrors)}`);
+if (!(await page.$('.auth-card'))) throw new Error('auth card not mounted');
 
-await page.screenshot({ path: 'dist/.browser-test.png', fullPage: true });
+await page.screenshot({ path: `${import.meta.dir}/../dist/.browser-test.png`, fullPage: true });
 await browser.close();
 console.log(`browser render tests: OK (${cases.length} computed-style assertions)`);

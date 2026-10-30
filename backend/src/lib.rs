@@ -56,6 +56,7 @@ pub mod grow;
 pub mod guard;
 pub mod http;
 pub mod ical;
+pub mod install_report;
 pub mod install_screen;
 pub mod installer;
 pub mod installer_io;

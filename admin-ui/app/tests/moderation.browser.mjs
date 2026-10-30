@@ -17,7 +17,7 @@
  * Same arrangement as the other files: the real dist/ bundle under the real
  * policy, the routes stubbed with page.route() as a small stateful lososd. */
 
-import assert from 'node:assert';
+import assert from './assert.mjs';
 import { launch, runner, serve } from './harness.mjs';
 
 const { origin, close: closeServer } = await serve({ csp: true });

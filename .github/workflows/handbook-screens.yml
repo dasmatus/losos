@@ -42,11 +42,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v7
+      - uses: oven-sh/setup-bun@v2
         with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: admin-ui/app/package-lock.json
+          bun-version-file: admin-ui/app/package.json
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -58,10 +56,10 @@ jobs:
       - name: build lab packages
         working-directory: admin-ui/app
         run: |
-          npm ci --no-audit --no-fund
-          npm run lab:core
-          npm run lab:virt
-          npm run mdx
+          bun install --frozen-lockfile --ignore-scripts
+          bun run lab:core
+          bun run lab:virt
+          bun run mdx
           # render is large and only needed for the Lab page; stub it for screens
           mkdir -p src/lab/render-pkg/webgl2 src/lab/render-pkg/webgpu
           echo "export default {};" > src/lab/render-pkg/webgl2/losos_lab_render.js
@@ -73,15 +71,15 @@ jobs:
 
       - name: build admin UI
         working-directory: admin-ui/app
-        run: npx vite build
+        run: bun --bun vite build
 
       - name: install Playwright Chromium
         working-directory: admin-ui/app
-        run: npx playwright install chromium --with-deps
+        run: bun --bun x playwright install chromium --with-deps
 
       - name: take screenshots
         working-directory: admin-ui/app
-        run: node tests/handbook-screens.mjs /tmp/handbook-screens
+        run: bun tests/handbook-screens.mjs /tmp/handbook-screens
 
       - name: collect changed shots
         id: changes

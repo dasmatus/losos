@@ -103,6 +103,8 @@ do ktorej konverzácie má ísť.
 
 Malý rad tvárí pod správou ukazuje, kto už čítal až potiaľto.
 
+![Konverzácia s Evou v LosOS Chat: reakcie pod správami, odpoveď vo vlákne a obrázok, pod nimi kancelárska spinka, tlačidlo cloudu a mikrofón.](@site/docs/img/chat-sk.png)
+
 ## Iné aplikácie pre Matrix
 
 Iné aplikácie pre Matrix, napríklad Element, sa do chatu na zariadení

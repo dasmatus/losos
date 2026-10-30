@@ -1,25 +1,30 @@
-# Browser render check for the losos design system. Builds the losos-ds npm
-# package (admin-ui/design-system/react) in the sandbox and runs both its
-# test suites:
-# the node markup test, and the playwright browser test that mounts every
+# Browser render check for the losos design system. Builds the losos-ds
+# package (admin-ui/design-system/react) with Bun in the sandbox and runs
+# both its test suites: the markup test, and the playwright browser test that mounts every
 # component in headless chromium and asserts computed styles straight from
 # tokens.css. Browsers come from nixpkgs' playwright-driver.browsers; the
 # `playwright` devDependency in package.json must pin the SAME version as
 # pkgs.playwright-driver. The assertion below fails the eval when the flake's
-# nixpkgs moves playwright and the npm pin wasn't bumped to match.
+# nixpkgs moves playwright and the package.json pin wasn't bumped to match.
 #
 # This is a flake check only; admin-ui/design-system/react stays
 # dev-machine-only and never enters the appliance closure (see .claude/CLAUDE.md).
 { pkgs }:
 let
   inherit (pkgs) lib;
+  # From admin-ui/design-system/react/bun.lock (nix/bun-deps.nix).
+  nodeModules = import ../bun-deps.nix { inherit pkgs; } {
+    pname = "losos-ds";
+    src = ../../admin-ui/design-system/react;
+    hash = "sha256-E59wyhPZX0qu9z/sw1SWiSatG3OUiKAfcUdU/F77lGY=";
+  };
   pinnedPlaywright =
     (builtins.fromJSON (builtins.readFile ../../admin-ui/design-system/react/package.json))
     .devDependencies.playwright;
 in
 assert lib.assertMsg (pinnedPlaywright == pkgs.playwright-driver.version)
-  "losos-ds-render: package.json pins playwright ${pinnedPlaywright} but nixpkgs ships playwright-driver ${pkgs.playwright-driver.version}; bump the devDependency (npm install --save-dev --save-exact playwright@${pkgs.playwright-driver.version}) and refresh npmDepsHash";
-pkgs.buildNpmPackage {
+  "losos-ds-render: package.json pins playwright ${pinnedPlaywright} but nixpkgs ships playwright-driver ${pkgs.playwright-driver.version}; bump the devDependency (bun add --dev --exact playwright@${pkgs.playwright-driver.version}) and refresh the node_modules hash below";
+pkgs.stdenvNoCC.mkDerivation {
   pname = "losos-ds-render";
   version = "0.1.0";
 
@@ -28,27 +33,40 @@ pkgs.buildNpmPackage {
   # unpacked store copy, whose name is the path's basename ("design-system").
   src = ../../admin-ui/design-system;
   sourceRoot = "design-system/react";
-  npmDepsHash = "sha256-nVhfD1tarlxAGZe5ctWvcvKNw9W2qUa7vrV5Xi6Iok4=";
 
-  # No postinstall scripts: esbuild's binary rides in via its platform
-  # package, and playwright must not try to download browsers (no network).
-  npmFlags = [ "--ignore-scripts" ];
-
+  nativeBuildInputs = [ pkgs.bun ];
   env = {
-    PLAYWRIGHT_BROWSERS_PATH = pkgs.playwright-driver.browsers;
+    # Chromium only, all the test launches; nixpkgs' playwright-webkit does
+    # not build (the same override as nix/tests/admin-ui.nix).
+    PLAYWRIGHT_BROWSERS_PATH = pkgs.playwright-driver.browsers.override {
+      withFirefox = false;
+      withWebkit = false;
+    };
     PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "true";
-    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
     # fonts.nix: the generic families mapped, or the pictures come out serif.
     FONTCONFIG_FILE = import ./fonts.nix { inherit pkgs; };
   };
 
-  # `npm run build` already ran (npmBuildScript default); the install phase
-  # is the actual check. The screenshot lands in $out for inspection.
+  configurePhase = ''
+    runHook preConfigure
+    ${nodeModules.install}
+    runHook postConfigure
+  '';
+  buildPhase = ''
+    runHook preBuild
+    export HOME="$TMPDIR"
+    bun run build
+    runHook postBuild
+  '';
+  # .github/scripts/fix-hashes.py finds the hash here.
+  passthru = { inherit nodeModules; };
+
+  # The install phase is the actual check. The screenshot lands in $out for
+  # inspection.
   installPhase = ''
     runHook preInstall
-    export HOME="$TMPDIR"
-    npm test
-    npm run test:browser
+    bun run test
+    bun run test:browser
     mkdir -p $out
     cp dist/.browser-test.png $out/
     echo ok > $out/result

@@ -8,7 +8,7 @@
  * uses. A palette that styles itself with an injected <style> would add a
  * violation to the baseline and fail here. */
 
-import assert from 'node:assert';
+import assert from './assert.mjs';
 import { launch, runner, serve } from './harness.mjs';
 
 const TOKEN = 'a'.repeat(64);

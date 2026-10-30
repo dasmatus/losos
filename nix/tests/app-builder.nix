@@ -69,20 +69,9 @@ let
   promptRate = "45";
   writeRate = "7";
 
-  # Playwright for Node from the admin pages' own lock file, the version
-  # nix/tests/admin-ui.nix pins to nixpkgs' browsers.
-  playwright = pkgs.buildNpmPackage {
-    pname = "losos-shots-playwright";
-    version = "0.1.0";
-    src = ../../admin-ui/app;
-    inherit (lososPkgs.losos-admin-ui) npmDeps;
-    npmFlags = [ "--ignore-scripts" ];
-    dontNpmBuild = true;
-    installPhase = ''
-      mkdir -p $out/node_modules
-      cp -r node_modules/playwright node_modules/playwright-core $out/node_modules/
-    '';
-  };
+  # Playwright from the admin pages' own node_modules (nix/bun-deps.nix),
+  # the version nix/tests/admin-ui.nix pins to nixpkgs' browsers.
+  playwright = lososPkgs.losos-admin-ui.nodeModules;
   browsers = pkgs.playwright-driver.browsers.override {
     withFirefox = false;
     withWebkit = false;
@@ -169,7 +158,7 @@ pkgs.testers.nixosTest {
       environment.systemPackages = [
         pkgs.curl
         pkgs.gitMinimal
-        pkgs.nodejs
+        pkgs.bun
       ];
       environment.variables.PLAYWRIGHT_BROWSERS_PATH = "${browsers}";
       fonts.packages = [ pkgs.dejavu_fonts ];
@@ -221,7 +210,7 @@ pkgs.testers.nixosTest {
             "mkdir -p /tmp/run && ln -sfn ${playwright}/node_modules /tmp/run/node_modules "
             "&& cp ${./app-builder/shots.mjs} /tmp/run/shots.mjs && cd /tmp/run && "
             f"BOX={BOX} OWNER=matus PASSWORD={PASSWORD} OUT=/tmp/shots MODE={MODE} "
-            "timeout 3600 node shots.mjs >&2"
+            "timeout 3600 bun shots.mjs >&2"
         )
         laptop.copy_from_machine("/tmp/shots", "")
 
@@ -317,7 +306,7 @@ pkgs.testers.nixosTest {
             laptop.succeed(
                 "cd /tmp/run && "
                 f"BOX={BOX} OWNER=matus PASSWORD={PASSWORD} OUT=/tmp/shots-pushed MODE=pushed FIRST=31 "
-                "timeout 1200 node shots.mjs >&2"
+                "timeout 1200 bun shots.mjs >&2"
             )
             laptop.copy_from_machine("/tmp/shots-pushed", "")
 

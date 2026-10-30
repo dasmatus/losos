@@ -1,10 +1,6 @@
 import { defineConfig, type Plugin, type ResolvedConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
-import { build as esbuild } from "esbuild";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { segmenterQuiet } from "./vite.segmenter-quiet";
 import { sonnerQuiet } from "./vite.sonner-quiet";
 
@@ -27,6 +23,15 @@ import { sonnerQuiet } from "./vite.sonner-quiet";
  * no reason to change, nginx serves it with an ETag off a per-build store
  * path, and it is the only unhashed file in dist/.
  */
+/* Bun's bundler for the two classic scripts below, which Vite's pipeline
+ * does not make: one file, no imports left, legal comments dropped. A
+ * failed build throws with Bun's messages rather than emitting nothing. */
+async function bundle(options: Pick<Bun.BuildConfig, "entrypoints" | "format" | "minify" | "define">) {
+  const result = await Bun.build({ target: "browser", ...options });
+  if (!result.success) throw new AggregateError(result.logs, `bundling ${options.entrypoints.join(", ")} failed`);
+  return result;
+}
+
 const THEME_BOOT_FILE = "theme-boot.js";
 const THEME_BOOT_ENTRY = "src/theme-boot.ts";
 
@@ -34,17 +39,8 @@ function themeBoot(): Plugin {
   let config: ResolvedConfig;
 
   const compile = async (minify: boolean): Promise<string> => {
-    const result = await esbuild({
-      absWorkingDir: config.root,
-      entryPoints: [THEME_BOOT_ENTRY],
-      bundle: true,
-      format: "iife",
-      target: "es2020",
-      minify,
-      write: false,
-      legalComments: "none",
-    });
-    return result.outputFiles[0]?.text ?? "";
+    const result = await bundle({ entrypoints: [`${config.root}/${THEME_BOOT_ENTRY}`], format: "iife", minify });
+    return (await result.outputs[0]?.text()) ?? "";
   };
 
   return {
@@ -76,7 +72,7 @@ function themeBoot(): Plugin {
 }
 
 /* The app frame's runtime (src/app-frame/runtime.tsx): React, the LosOS
- * components and the bridge, bundled by esbuild into one classic script and
+ * components and the bridge, bundled by Bun into one classic script and
  * its stylesheet at fixed names, /app-frame/runtime.js and runtime.css,
  * which public/app-frame/index.html loads. Classic and unhashed for the
  * reasons runtime.tsx gives: the frame is an opaque origin, where a module
@@ -88,21 +84,14 @@ function appFrame(): Plugin {
   let config: ResolvedConfig;
 
   const compile = async (minify: boolean): Promise<{ js: string; css: string }> => {
-    const result = await esbuild({
-      absWorkingDir: config.root,
-      entryPoints: [APP_FRAME_ENTRY],
-      bundle: true,
+    const result = await bundle({
+      entrypoints: [`${config.root}/${APP_FRAME_ENTRY}`],
       format: "iife",
-      target: "es2020",
-      jsx: "automatic",
       minify,
-      write: false,
-      outfile: "app-frame/runtime.js",
-      legalComments: "none",
       define: { "process.env.NODE_ENV": JSON.stringify(minify ? "production" : "development") },
     });
-    const pick = (ext: string) => result.outputFiles.find((f) => f.path.endsWith(ext))?.text ?? "";
-    return { js: pick(".js"), css: pick(".css") };
+    const pick = async (ext: string) => (await result.outputs.find((f) => f.path.endsWith(ext))?.text()) ?? "";
+    return { js: await pick(".js"), css: await pick(".css") };
   };
 
   return {
@@ -151,19 +140,8 @@ function basicMessages(): Plugin {
     },
     async buildStart() {
       if (config.command !== "build") return;
-      const result = await esbuild({
-        absWorkingDir: config.root,
-        entryPoints: [BASIC_MESSAGES_ENTRY],
-        bundle: true,
-        format: "esm",
-        platform: "neutral",
-        target: "es2022",
-        write: false,
-        legalComments: "none",
-      });
-      const code = result.outputFiles[0]?.text ?? "";
-      const url = `data:text/javascript;base64,${Buffer.from(code).toString("base64")}`;
-      const { MESSAGES } = (await import(url)) as {
+      // Bun runs the TypeScript catalogue as it is.
+      const { MESSAGES } = (await import(`${config.root}/${BASIC_MESSAGES_ENTRY}`)) as {
         MESSAGES: Record<string, Record<"en" | "sk" | "de", unknown>>;
       };
       for (const locale of ["en", "sk", "de"] as const) {
@@ -186,7 +164,7 @@ function basicMessages(): Plugin {
  * the same variable for the old page). */
 /* The black background behind a person on a call (src/calls/background.ts)
  * runs MediaPipe's selfie segmenter on the device. Its WebAssembly comes
- * from the npm package and its model from LOSOS_SEGMENTER_MODEL, which
+ * from the @mediapipe/tasks-vision package and its model from LOSOS_SEGMENTER_MODEL, which
  * nix/packages.nix points at a fixed download; both land beside the chat
  * page under chat/calls-ml/, so the page loads them from the box itself. A
  * build without the model still builds, and a call then sends no picture
@@ -195,10 +173,10 @@ function segmenterFiles(): Plugin {
   const wasm = "node_modules/@mediapipe/tasks-vision/wasm";
   const files = (): [string, string][] => {
     const list: [string, string][] = [
-      ["vision_wasm_internal.js", join(wasm, "vision_wasm_internal.js")],
-      ["vision_wasm_internal.wasm", join(wasm, "vision_wasm_internal.wasm")],
+      ["vision_wasm_internal.js", `${wasm}/vision_wasm_internal.js`],
+      ["vision_wasm_internal.wasm", `${wasm}/vision_wasm_internal.wasm`],
     ];
-    const model = process.env["LOSOS_SEGMENTER_MODEL"];
+    const model = Bun.env["LOSOS_SEGMENTER_MODEL"];
     if (model) list.push(["selfie_segmenter.tflite", model]);
     return list;
   };
@@ -206,14 +184,14 @@ function segmenterFiles(): Plugin {
     name: "losos:segmenter-files",
     configureServer(server) {
       for (const [name, src] of files()) {
-        server.middlewares.use(`/chat/calls-ml/${name}`, (_req, res) => {
-          res.end(readFileSync(src));
+        server.middlewares.use(`/chat/calls-ml/${name}`, async (_req, res) => {
+          res.end(await Bun.file(src).bytes());
         });
       }
     },
-    buildStart() {
+    async buildStart() {
       for (const [name, src] of files()) {
-        this.emitFile({ type: "asset", fileName: `chat/calls-ml/${name}`, source: readFileSync(src) });
+        this.emitFile({ type: "asset", fileName: `chat/calls-ml/${name}`, source: await Bun.file(src).bytes() });
       }
     },
   };
@@ -229,10 +207,10 @@ function nudityFiles(): Plugin {
   const ort = "node_modules/onnxruntime-web/dist";
   const files = (): [string, string][] => {
     const list: [string, string][] = [
-      ["ort-wasm-simd-threaded.mjs", join(ort, "ort-wasm-simd-threaded.mjs")],
-      ["ort-wasm-simd-threaded.wasm", join(ort, "ort-wasm-simd-threaded.wasm")],
+      ["ort-wasm-simd-threaded.mjs", `${ort}/ort-wasm-simd-threaded.mjs`],
+      ["ort-wasm-simd-threaded.wasm", `${ort}/ort-wasm-simd-threaded.wasm`],
     ];
-    const model = process.env["LOSOS_NUDITY_MODEL"];
+    const model = Bun.env["LOSOS_NUDITY_MODEL"];
     if (model) list.push(["model.onnx", model]);
     return list;
   };
@@ -240,21 +218,21 @@ function nudityFiles(): Plugin {
     name: "losos:nudity-files",
     configureServer(server) {
       for (const [name, src] of files()) {
-        server.middlewares.use(`/nudity/${name}`, (_req, res) => {
-          res.end(readFileSync(src));
+        server.middlewares.use(`/nudity/${name}`, async (_req, res) => {
+          res.end(await Bun.file(src).bytes());
         });
       }
     },
-    buildStart() {
+    async buildStart() {
       for (const [name, src] of files()) {
-        this.emitFile({ type: "asset", fileName: `nudity/${name}`, source: readFileSync(src) });
+        this.emitFile({ type: "asset", fileName: `nudity/${name}`, source: await Bun.file(src).bytes() });
       }
     },
   };
 }
 
 function labMeme(): Plugin {
-  const dir = process.env["LOSOS_LAB_MEME"] || "";
+  const dir = Bun.env["LOSOS_LAB_MEME"] || "";
   const files = { "meme-no.jpg": "no.jpg", "meme-yes.jpg": "yes.jpg" } as const;
   return {
     name: "losos:lab-meme",
@@ -262,22 +240,22 @@ function labMeme(): Plugin {
     configureServer(server) {
       if (!dir) return;
       for (const [name, src] of Object.entries(files)) {
-        server.middlewares.use(`/diagrams/${name}`, (_req, res) => {
+        server.middlewares.use(`/diagrams/${name}`, async (_req, res) => {
           res.setHeader("Content-Type", "image/jpeg");
-          res.end(readFileSync(join(dir, src)));
+          res.end(await Bun.file(`${dir}/${src}`).bytes());
         });
       }
     },
-    buildStart() {
+    async buildStart() {
       if (!dir) return;
       for (const [name, src] of Object.entries(files)) {
-        this.emitFile({ type: "asset", fileName: `diagrams/${name}`, source: readFileSync(join(dir, src)) });
+        this.emitFile({ type: "asset", fileName: `diagrams/${name}`, source: await Bun.file(`${dir}/${src}`).bytes() });
       }
     },
   };
 }
 
-const root = fileURLToPath(new URL(".", import.meta.url));
+const root = import.meta.dirname;
 
 export default defineConfig({
   plugins: [react(), tailwindcss(), themeBoot(), appFrame(), basicMessages(), labMeme(), segmenterFiles(), nudityFiles(), segmenterQuiet(), sonnerQuiet()],
@@ -309,24 +287,24 @@ export default defineConfig({
     // shadows the SPA's /diagrams.
     rolldownOptions: {
       input: {
-        main: join(root, "index.html"),
-        chat: join(root, "chat/index.html"),
-        ...(process.env["VITE_LAB_HOSTED"] === "1" ? { diagrams: join(root, "diagrams/index.html") } : {}),
-        manage: join(root, "manage/index.html"),
-        cloud: join(root, "cloud/index.html"),
-        kb: join(root, "kb/index.html"),
-        git: join(root, "git/index.html"),
-        wiki: join(root, "wiki/index.html"),
+        main: `${root}/index.html`,
+        chat: `${root}/chat/index.html`,
+        ...(Bun.env["VITE_LAB_HOSTED"] === "1" ? { diagrams: `${root}/diagrams/index.html` } : {}),
+        manage: `${root}/manage/index.html`,
+        cloud: `${root}/cloud/index.html`,
+        kb: `${root}/kb/index.html`,
+        git: `${root}/git/index.html`,
+        wiki: `${root}/wiki/index.html`,
       },
     },
   },
   server: {
     port: 5173,
     proxy: {
-      // `npm run dev` against a real box: point this at the appliance and the
+      // `bun run dev` against a real box: point this at the appliance and the
       // Bearer-authed API answers on the dev origin too.
       "/api": {
-        target: process.env["LOSOS_API_ORIGIN"] ?? "http://127.0.0.1:8082",
+        target: Bun.env["LOSOS_API_ORIGIN"] ?? "http://127.0.0.1:8082",
         changeOrigin: true,
       },
       // LosOS Cloud's API: `losos-cloud serve --listen 127.0.0.1:8095
@@ -334,13 +312,13 @@ export default defineConfig({
       // dev origin's: the service refuses a write whose Origin names another
       // host than Host, and the browser's Origin is this dev server.
       "/cloud/api": {
-        target: process.env["LOSOS_CLOUD_ORIGIN"] ?? "http://127.0.0.1:8095",
+        target: Bun.env["LOSOS_CLOUD_ORIGIN"] ?? "http://127.0.0.1:8095",
         changeOrigin: false,
-        headers: { "X-Losos-Cloud-User": process.env["LOSOS_CLOUD_USER"] ?? "owner" },
+        headers: { "X-Losos-Cloud-User": Bun.env["LOSOS_CLOUD_USER"] ?? "owner" },
       },
       // A knowledge base's data, read as nobody.
       "/kb/api": {
-        target: process.env["LOSOS_CLOUD_ORIGIN"] ?? "http://127.0.0.1:8095",
+        target: Bun.env["LOSOS_CLOUD_ORIGIN"] ?? "http://127.0.0.1:8095",
         changeOrigin: false,
       },
       // The first-run wizard's step 1 reads /setup/state.json — the box's name
@@ -352,7 +330,7 @@ export default defineConfig({
       // document parses as HTML, and step 1 reports the box as too old to have
       // a setup route at all.
       "/setup": {
-        target: process.env["LOSOS_API_ORIGIN"] ?? "http://127.0.0.1:8082",
+        target: Bun.env["LOSOS_API_ORIGIN"] ?? "http://127.0.0.1:8082",
         changeOrigin: true,
       },
     },
