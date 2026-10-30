@@ -8,7 +8,7 @@
  * page's strings count UTF-16 units, so `tree` turns every offset into one
  * of those before anything here reads it. */
 
-import init, { date as dateWords, mathml as mathmlOf, render as renderJson, tree as treeJson } from "./pkg/losos_mdx.js";
+import init, { date as dateWords, mathml as mathmlOf, page as pageJson, render as renderJson, tree as treeJson } from "./pkg/losos_mdx.js";
 import wasmUrl from "./pkg/losos_mdx_bg.wasm?url";
 
 export type Flavour = "mdx" | "md";
