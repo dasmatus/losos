@@ -2967,6 +2967,13 @@ name = "losos-names"
 version = "0.1.0"
 
 [[package]]
+name = "losos-page"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "losos-report"
 version = "0.1.0"
 dependencies = [
