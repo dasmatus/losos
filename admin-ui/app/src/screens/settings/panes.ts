@@ -1,5 +1,6 @@
 import type { IconSvgElement } from "@hugeicons/react";
 import {
+  Alert02Icon,
   ArrowReloadHorizontalIcon,
   ChartLineData01Icon,
   Flag02Icon,
@@ -57,6 +58,7 @@ export type SettingsPaneId =
   | "hardware"
   | "security"
   | "credentials"
+  | "problems"
   | "account"
   | "users"
   | "moderation"
@@ -350,6 +352,23 @@ export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
     "rotate",
     "systemd-creds",
   ]),
+  /* Problems after Credentials: what the box noticed going wrong, each
+   * report read in full before anything is sent. */
+  pane("problems", Alert02Icon, [
+    "problem",
+    "problems",
+    "crash",
+    "crashed",
+    "error",
+    "errors",
+    "failed",
+    "bug",
+    "report",
+    "abrt",
+    "memory",
+    "github",
+    "issue",
+  ]),
   /* Advanced and History sit between Security and About: every option,
    * then the record of every change. Advanced carries the long tail an
    * owner reaches for rarely and deliberately — like Security, below the
@@ -425,6 +444,7 @@ const PANE_SECTION: Record<SettingsPaneId, string> = {
   hardware: "admin",
   security: "admin",
   credentials: "admin",
+  problems: "admin",
   account: "account",
   users: "admin",
   moderation: "moderation",
