@@ -136,6 +136,17 @@ export default defineMessages({
     sk: "heslo heslá tajomstvo kľúč token šifrovanie tpm zapečatené obnoviť vymeniť",
     de: "Passwort Passwörter Geheimnis Schlüssel Token Verschlüsselung TPM versiegelt erneuern wechseln",
   },
+  "settings.panes.problems.label": { en: "Problems", sk: "Problémy", de: "Probleme" },
+  "settings.panes.problems.summary": {
+    en: "What went wrong on this box, and a report you can read before you send it.",
+    sk: "Čo sa v tomto zariadení pokazilo a hlásenie, ktoré si prečítate pred odoslaním.",
+    de: "Was auf dieser Box schiefging, und ein Bericht, den du vor dem Senden liest.",
+  },
+  "settings.panes.problems.keywords": {
+    en: "",
+    sk: "problém chyba pád spadol hlásenie nahlásiť pamäť zlyhanie",
+    de: "Problem Fehler Absturz abgestürzt Bericht melden Speicher fehlgeschlagen",
+  },
   "settings.panes.users.label": { en: "Users", sk: "Používatelia", de: "Benutzer" },
   "settings.panes.users.summary": {
     en: "Who can sign in to this box, and what each person can change.",
@@ -219,9 +230,9 @@ export default defineMessages({
   },
   "settings.panes.backup.label": { en: "Backup", sk: "Záloha", de: "Sicherung" },
   "settings.panes.backup.summary": {
-    en: "Copies of your files and settings in a bucket you rent, encrypted before they leave the box.",
-    sk: "Kópie vašich súborov a nastavení v úložisku, ktoré si prenajímate, zašifrované ešte pred odoslaním zo zariadenia.",
-    de: "Kopien deiner Dateien und Einstellungen in einem Bucket, den du mietest, verschlüsselt, bevor sie die Box verlassen.",
+    en: "Copies of your files and settings in a bucket you rent or on storage you bought on the mesh, encrypted before they leave the box.",
+    sk: "Kópie vašich súborov a nastavení v úložisku, ktoré si prenajímate alebo ste kúpili v sieti, zašifrované ešte pred odoslaním zo zariadenia.",
+    de: "Kopien deiner Dateien und Einstellungen in einem Bucket, den du mietest, oder auf Speicher, den du im Mesh gekauft hast, verschlüsselt, bevor sie die Box verlassen.",
   },
   "settings.panes.backup.keywords": {
     en: "",

@@ -23,6 +23,7 @@
 /basic/sign-in?step=passkey&next={next}
 /basic/sign-in?with=key&next={}
 /basic/sign-out
+/handbook/manual/problem-reports/
 07:00
 23:00
 @counter-style
@@ -195,6 +196,7 @@ data-basic-facts
 data-basic-form
 data-basic-later
 data-basic-menu
+data-basic-problems
 data-basic-rebuild
 data-basic-toast
 data-basic-toasts
@@ -203,7 +205,9 @@ data-basic=\"\"><head>{}</head><body>{}</body></html>
 data-collapsible
 data-disabled
 data-fact
+data-id
 data-invalid
+data-kind
 data-mesh
 data-mesh-link
 data-more
@@ -246,6 +250,8 @@ empty-title
 f-domain
 f-hostName
 f-hostName-problem
+f-problem-note
+f-problem-send
 f-{id}
 fallback:
 field-content
@@ -270,6 +276,7 @@ focus-visible:ring-accent/40
 focus-visible:z-10
 fold-{side}-{}
 font-medium
+font-mono
 font-normal
 font-semibold
 for=\"fold-d-settings\"
@@ -367,7 +374,9 @@ href="/assets/losos-AB.png"><script
 href="/assets/styles-CD.css"><link
 href="https://evil/x.css"></head>
 http-equiv
+http://
 http://127.0.0.1:8082
+https://
 https://evil/
 https://evil/x.png
 id=\"fold-p-settings\"
@@ -401,6 +410,7 @@ losos-shell
 m-0
 max-age=300
 max-h-40
+max-h-[45vh]
 max-h-[85dvh]
 max-h-[calc(100dvh-4rem)]
 max-h-[calc(100dvh-6rem)]
@@ -431,6 +441,7 @@ md:hidden
 md:p-10
 min-h-0
 min-h-4
+min-h-[4.5rem]
 min-h-[42px]
 min-h-dvh
 min-w-0
@@ -455,6 +466,7 @@ object-cover
 one-time-code
 opacity-0
 opacity-60
+out-of-memory
 outline-none
 outline-offset-4
 overflow-auto
@@ -493,6 +505,15 @@ pr-1
 pr-10
 pr-11
 pr-3.5
+problem-code
+problem-documented
+problem-note
+problem-read
+problem-report-body
+problem-send
+problem-sent
+problem-sign-in
+problem-title
 pt-1
 pt-1.5
 pt-2
@@ -514,6 +535,7 @@ py-3.5
 py-4
 py-px
 repo:{owner}/{name}
+resize-y
 right-0
 right-1
 right-2
@@ -556,6 +578,7 @@ sidebar-menu-sub-button
 sidebar-menu-sub-item
 sidebar-trigger
 sidebar-wrapper
+sign-in
 sign-in-problem
 sign-in-title
 sign-out
@@ -586,6 +609,7 @@ switch-thumb
 symbols:
 system:
 tabular-nums
+text-2xl
 text-[10px]
 text-[11.5px]
 text-[11px]
@@ -655,6 +679,7 @@ w-[13rem]
 w-[356px]
 w-[min(26rem,calc(100vw-2rem))]
 w-[min(28rem,calc(100vw-2rem))]
+w-[min(46rem,calc(100vw-2rem))]
 w-[{lent_pct}%]
 w-[{used_pct}%]
 w-auto
