@@ -24,8 +24,8 @@
 /basic/sign-in?step=passkey&next={next}
 /basic/sign-in?with=key&next={}
 /basic/sign-out
-00:00:01
 /handbook/manual/problem-reports/
+00:00:01
 07:00
 2026-10-28
 2026-10-28T23:59:59+01:00
