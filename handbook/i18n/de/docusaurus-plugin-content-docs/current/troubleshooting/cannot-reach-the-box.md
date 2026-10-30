@@ -62,6 +62,12 @@ die Seite von vor einem Update im Cache. Lade mit Strg+Umschalt+R neu, um
 den Cache zu umgehen, oder öffne ein privates Fenster.
 :::
 
+Lädt die Seite, aber jeder Bereich wartet oder zeigt einen Fehler, läuft
+der Steuerdienst vielleicht nicht. `https://<address>/basic/settings/logs`
+öffnet sich auch ohne ihn und zeigt seine Zeilen, mit dem
+Ersatzschlüssel, wenn auch LosOS Login nicht antwortet. Siehe
+[Protokolle](../manual/logs).
+
 Wenn das Banner eine Adresse zeigt und unter ihr gar nichts antwortet, ist
 der Webserver der Box, nginx, ausgefallen, und der nächtliche Neustart
 behebt das. Ist er am nächsten Morgen immer noch aus,

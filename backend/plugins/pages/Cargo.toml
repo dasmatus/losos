@@ -1,0 +1,23 @@
+[package]
+name = "losos-plugin-pages"
+description = "lososd plugin: the pages of the admin UI and the apps as MDX an administrator may change, kept in a Git repository of their own"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+losos-plugin.workspace = true
+# The same reader the build compiles the default pages with
+# (admin-ui/app/vite.pages.ts), so a page that saves here draws there.
+losos-mdx = { path = "../../mdx" }
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+
+[lints]
+workspace = true

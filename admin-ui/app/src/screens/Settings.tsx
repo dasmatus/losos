@@ -1,7 +1,9 @@
 import * as React from "react";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { Alert02Icon, SquareLock01Icon } from "@hugeicons/core-free-icons";
+import { Link } from "react-router-dom";
 import { HelpLink } from "@/components/ui/help-link";
+import { logsPath } from "@/lib/api";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { ApplyBar } from "./settings/apply-bar";
@@ -17,6 +19,7 @@ import { AppsPane } from "./settings/pane-apps";
 import { BackupPane } from "./settings/pane-backup";
 import { HardwarePane } from "./settings/pane-hardware";
 import { HistoryPane } from "./settings/pane-history";
+import { LogsPane } from "./settings/pane-logs";
 import { LookPane } from "./settings/pane-look";
 import { MachinesPane } from "./settings/pane-machines";
 import { MarketPane } from "./settings/pane-market";
@@ -38,7 +41,7 @@ import { useStorage, type Storage } from "./settings/use-storage";
  * ONE FORM, SEVEN PANES (and the Look pane, which is the exception below).
  * /api/apply takes the whole of modules/overrides.nix,
  * not a patch, so every pane edits a slice of a single draft and Apply writes
- * all twelve keys at once. A pane that owned its own save would reset the
+ * all thirteen keys at once. A pane that owned its own save would reset the
  * other eleven to their defaults on a box with no shell to fix it from. The
  * draft, the validation and the rebuild watch all live in useSettingsForm;
  * the panes below are views onto it and nothing more. The Look pane is the
@@ -142,7 +145,11 @@ function Pane({
       return <AdvancedPane form={form} />;
     case "history":
       // No draft, no Apply bar: it reads the repository and syncs on request.
-      return <HistoryPane locked={form.locked} />;
+      return <HistoryPane form={form} />;
+    case "logs":
+      // No draft, no Apply bar: it only reads the journal, from the log
+      // reader rather than lososd.
+      return <LogsPane locked={form.locked} />;
     case "backup":
       // No draft, no Apply bar: the bucket and every run are their own requests.
       return <BackupPane locked={form.locked} rebuilding={form.applying} />;
@@ -178,6 +185,11 @@ function LoadErrorNotice({ message }: { message: string }) {
   return (
     <Notice icon={Alert02Icon} tone="crit">
       {t("settings.notice.loadError", { message })}
+      {/* Settings › Logs reads the journal apart from lososd, so it says why
+          while the rest of the page cannot. */}
+      <Link to={logsPath("lososd")} className="ml-2 font-medium underline-offset-4 hover:underline">
+        {t("logs.seeLogs")}
+      </Link>
       <HelpLink entry="cannot-reach-the-box" className="ml-2" />
     </Notice>
   );

@@ -33,6 +33,10 @@ export interface StateResponse {
 
 export interface SettingsResponse {
   sharingMyStorage: boolean;
+  /** losos.sharingLocally: share as `kindashared` with the local gateways of
+   *  this box's own network only. Missing from an older lososd, which reads
+   *  as off. */
+  sharingLocally: boolean;
   hostName: string;
   gpuEnable: boolean;
   proxyEnable: boolean;
@@ -714,7 +718,10 @@ export function getState(options: RequestOptions = {}): Promise<StateResponse> {
 
 /** GET /api/settings — the losos.* options parsed out of overrides.nix. */
 export function getSettings(options: RequestOptions = {}): Promise<SettingsResponse> {
-  return call<SettingsResponse>("/api/settings", options);
+  return call<SettingsResponse>("/api/settings", options).then((s) => ({
+    ...s,
+    sharingLocally: s.sharingLocally ?? false,
+  }));
 }
 
 /** GET /api/status — rebuild progress. Poll it with {@link createStatusPoller}. */
@@ -805,6 +812,9 @@ export interface EdgeCluster {
 export interface EdgeResponse {
   /** At least one edge answered. The one bit the gate reads. */
   reachable: boolean;
+  /** At least one edge is a local gateway (its link is secondary): the bit
+   *  the kindashared gate reads. Missing from an older lososd. */
+  localGateway?: boolean;
   /** At least one edge is official: the bit the market gate reads. */
   official: boolean;
   /** Every edge that answered, LAN first. */
@@ -834,6 +844,9 @@ export interface EdgeResponse {
    *  answered; it turns it back on a minute after one does. Null when not
    *  paused, missing from an older lososd. */
   sharingPausedAt?: number | null;
+  /** The same for sharing with this network (`sharingLocally`): when the box
+   *  turned it off because no local gateway answered. */
+  localSharingPausedAt?: number | null;
   /** Whether this box ends TLS for its public names itself, so the edge only
    *  passes encrypted bytes through (modules/public-tls.nix). Missing from an
    *  older lososd. */
@@ -1972,7 +1985,7 @@ export interface AppSource {
 }
 
 /** The two data users: the private side and the side lent to the mesh. */
-export type AppRunAs = "notshared" | "shared";
+export type AppRunAs = "notshared" | "shared" | "kindashared";
 
 export type AppPhase = "installing" | "running" | "failed" | "removing";
 
@@ -2003,7 +2016,13 @@ export interface InstalledApp {
 
 export type AppsResponse =
   | { available: false; reason: "off"; apps: [] }
-  | { available: true; sharedAvailable: boolean; apps: InstalledApp[] };
+  | {
+      available: true;
+      sharedAvailable: boolean;
+      /** Missing from an older lososd, which reads as no. */
+      kindasharedAvailable?: boolean;
+      apps: InstalledApp[];
+    };
 
 /** GET /api/apps */
 export function getApps(options: RequestOptions = {}): Promise<AppsResponse> {
@@ -2585,6 +2604,100 @@ export function postProblemDismiss(id: string, options: RequestOptions = {}): Pr
   return call<Problem>(`/api/problems/${encodeURIComponent(id)}/dismiss`, { ...options, method: "POST" });
 }
 
+// ── Logs (Settings › Logs) ────────────────────────────────────────────────
+
+/* The journal of the box's services, from the log reader (backend/src/logs/,
+ * modules/log-reader.nix) rather than lososd, so the pane answers while
+ * lososd does not. Every line is redacted on the box before it is sent. */
+
+/** How far back: this boot, the one before, or a stretch of time. */
+export type LogSpan = "boot" | "previous" | "hour" | "day" | "week";
+
+/** What the pane shows. `unit` is a source's id (`lososd`, `cloud`, `losos`,
+ *  `everything`, …) or a unit's own name. `priority` is journald's: at most
+ *  this, so 3 is errors and worse. */
+export interface LogFilter {
+  unit: string;
+  priority: number;
+  span: LogSpan;
+  text: string;
+}
+
+export interface LogLine {
+  /** The journal's cursor, to ask for what came before or after. */
+  cursor: string;
+  /** In the box's own time zone: `2026-10-29` and `12:00:01`. */
+  date: string;
+  time: string;
+  /** RFC 3339. */
+  stamp: string;
+  unit: string;
+  pid: number | null;
+  /** 0 (emergency) to 7 (debug). */
+  priority: number;
+  message: string;
+}
+
+export interface LogsResponse {
+  /** The ids of the Service list, in its order. */
+  sources: string[];
+  unit: string;
+  /** Oldest first. */
+  lines: LogLine[];
+  /** Ask with `before` for the lines older than these, when there are any. */
+  older: string | null;
+  /** Ask with `after` for the lines that came since. */
+  newer: string | null;
+  /** The journal could not be read: why. */
+  error: string | null;
+}
+
+/** The filter as the reader reads it, without `?`; the page without
+ *  JavaScript takes the same one (backend/plugins/page/src/logs.rs). */
+export function logsQuery(filter: LogFilter): string {
+  const q = new URLSearchParams({
+    unit: filter.unit,
+    priority: String(filter.priority),
+    span: filter.span,
+  });
+  if (filter.text.trim() !== "") q.set("q", filter.text.trim());
+  return q.toString();
+}
+
+/** GET /api/logs — the newest lines, the ones before `before`, or the ones
+ *  after `after` (following). */
+export function getLogs(
+  filter: LogFilter,
+  place: { before?: string; after?: string } = {},
+  options: RequestOptions = {},
+): Promise<LogsResponse> {
+  const q = new URLSearchParams(logsQuery(filter));
+  if (place.before !== undefined) q.set("before", place.before);
+  if (place.after !== undefined) q.set("after", place.after);
+  return call<LogsResponse>(`/api/logs?${q.toString()}`, options);
+}
+
+/** GET /api/logs/download — up to 5000 lines as a text file, for a bug
+ *  report, with the name the box gave it. */
+export async function downloadLogs(filter: LogFilter): Promise<{ blob: Blob; name: string }> {
+  const headers: Record<string, string> = {};
+  const bearer = getToken();
+  if (bearer !== null) headers["Authorization"] = `Bearer ${bearer}`;
+  const res = await fetch(apiPath(`/api/logs/download?${logsQuery(filter)}`), {
+    headers,
+    cache: "no-store",
+    credentials: "same-origin",
+  });
+  if (!res.ok) throw new ApiError(res.status, res.statusText);
+  const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") ?? "")?.[1] ?? "losos.log";
+  return { blob: await res.blob(), name };
+}
+
+/** The pane's address for one unit, as a problem report links to it. */
+export function logsPath(unit: string): string {
+  return `/settings/logs?unit=${encodeURIComponent(unit)}`;
+}
+
 // ── People (the Users pane) ───────────────────────────────────────────────
 
 /** Someone who may sign in to this box, as GET /api/people lists them. */
@@ -3101,9 +3214,9 @@ export function buildOverridesNix(
   settings: SettingsResponse,
   /* Every other `losos.<name>` the file should carry, as Nix literals the
    * Advanced pane produced (lib/option-value.ts): one line each, after the
-   * twelve above, sorted so the file is stable from one apply to the next
+   * thirteen above, sorted so the file is stable from one apply to the next
    * and the commit lososd makes shows only what changed. A name here that is
-   * one of the twelve would be a second line for the same key; the first
+   * one of the thirteen would be a second line for the same key; the first
    * wins in lososd's parser, so the form's own value would silently win over
    * the Advanced pane's. The pane never hands one in (it edits those through
    * the form), and the filter below is the belt to that. */
@@ -3117,6 +3230,7 @@ export function buildOverridesNix(
     "{ ... }:",
     "{",
     `  losos.sharingMyStorage = ${nixBool(settings.sharingMyStorage)};`,
+    `  losos.sharingLocally = ${nixBool(settings.sharingLocally)};`,
     `  losos.hostName = ${nixString(settings.hostName)};`,
     `  losos.gpu.enable = ${nixBool(settings.gpuEnable)};`,
     `  losos.proxy.enable = ${nixBool(settings.proxyEnable)};`,
@@ -3134,9 +3248,10 @@ export function buildOverridesNix(
   ].join("\n");
 }
 
-/** The twelve `losos.*` names the lines above always write. */
+/** The thirteen `losos.*` names the lines above always write. */
 export const OWNED_NAMES: ReadonlySet<string> = new Set([
   "sharingMyStorage",
+  "sharingLocally",
   "hostName",
   "gpu.enable",
   "proxy.enable",
@@ -3296,6 +3411,97 @@ export function deleteHandWidget(
     ...options,
     method: "DELETE",
   });
+}
+
+// ── Pages as MDX (backend/plugins/pages, src/pages/) ────────────────────
+
+/** A page an administrator changed, as the box drew it. */
+export interface CustomPage {
+  /** The page's HTML, its blocks as placeholders (src/pages/README.md). */
+  html: string;
+  /** When it was saved, ISO 8601, and by whom. */
+  at: string;
+  by: string;
+}
+
+/** GET /api/pages — every signed-in person: the pages an administrator
+ *  changed, and whether there is a stylesheet of theirs. */
+export interface PagesResponse {
+  pages: Record<string, CustomPage>;
+  /** A version for `/api/pages/style.css?v=`, or null for none. */
+  style: string | null;
+}
+
+export function getPages(options: RequestOptions = {}): Promise<PagesResponse> {
+  return call<PagesResponse>("/api/pages", options);
+}
+
+/** One commit of the pages' repository. */
+export interface PageCommit {
+  commit: string;
+  at: string;
+  by: string;
+  message: string;
+}
+
+/** GET /api/pages/{page} — administrators: a page's source, its default,
+ *  and its history. */
+export interface PageSource {
+  id: string;
+  /** The administrator's file, or the default when there is none. */
+  source: string;
+  default: string;
+  custom: boolean;
+  /** LosOS's default moved on since the page was changed. */
+  defaultChanged: boolean;
+  history: PageCommit[];
+}
+
+export function getPageSource(id: string, options: RequestOptions = {}): Promise<PageSource> {
+  return call<PageSource>(`/api/pages/${encodeURIComponent(id)}`, options);
+}
+
+/** PUT /api/pages/{page} — save an administrator's page; refused with the
+ *  first problem when it does not read cleanly. */
+export function putPage(id: string, source: string, options: RequestOptions = {}): Promise<PagesResponse> {
+  return call<PagesResponse>(`/api/pages/${encodeURIComponent(id)}`, {
+    ...options,
+    method: "PUT",
+    contentType: "application/json",
+    body: JSON.stringify({ source }),
+  });
+}
+
+/** DELETE /api/pages/{page} — back to LosOS's default. */
+export function resetPage(id: string, options: RequestOptions = {}): Promise<PagesResponse> {
+  return call<PagesResponse>(`/api/pages/${encodeURIComponent(id)}`, { ...options, method: "DELETE" });
+}
+
+/** The administrators' stylesheet as text, "" for none. */
+export async function getPagesStyle(options: RequestOptions = {}): Promise<string> {
+  const response = await fetch(apiPath("/api/pages/style.css"), {
+    cache: "no-store",
+    headers: getToken() === null ? {} : { Authorization: `Bearer ${getToken()}` },
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
+  });
+  if (response.status === 404) return "";
+  if (!response.ok) throw new ApiError(response.status, `HTTP ${response.status}`);
+  return response.text();
+}
+
+/** PUT /api/pages/style.css — the administrators' stylesheet. */
+export function putPagesStyle(source: string, options: RequestOptions = {}): Promise<PagesResponse> {
+  return call<PagesResponse>("/api/pages/style.css", {
+    ...options,
+    method: "PUT",
+    contentType: "application/json",
+    body: JSON.stringify({ source }),
+  });
+}
+
+/** DELETE /api/pages/style.css — no stylesheet of theirs. */
+export function resetPagesStyle(options: RequestOptions = {}): Promise<PagesResponse> {
+  return call<PagesResponse>("/api/pages/style.css", { ...options, method: "DELETE" });
 }
 
 // ── Every option, and the configuration repository ────────────────────────
@@ -3552,7 +3758,7 @@ export interface ConfigSync {
 }
 
 /** How the last look at the published branch went (backend/schema.json). */
-export type ConfigUpdateState = "off" | "pending" | "ok" | "kept" | "waiting" | "unavailable" | "error";
+export type ConfigUpdateState = "off" | "pending" | "ok" | "kept" | "holding" | "waiting" | "unavailable" | "error";
 
 export interface ConfigUpdateReport {
   state: ConfigUpdateState;
