@@ -1,11 +1,17 @@
 //! `losos-escrow`: the Solana twin of `LososEscrow.sol`.
 //!
 //! It holds one USDC payment per deposit for as long as what it bought
-//! runs. The edge then releases it to the treasury and the seller recorded at
-//! payment time, refunds it to the payer, or splits it between the two when
-//! the seller stopped delivering partway. The edge's key can do nothing
-//! else: it cannot change where a deposit goes. If the edge never answers,
-//! the payer takes the deposit back after its deadline.
+//! runs. It is then released to the treasury and the seller recorded at
+//! payment time, refunded to the payer, or split between the two when the
+//! seller stopped delivering partway. Each of those needs two of three keys:
+//! the releaser (the edge's), the buyer's box's and the seller's box's, the
+//! last two named at payment. A key agrees either by signing the
+//! transaction as its authority or through an Ed25519 signature-check
+//! instruction in the same transaction over the decision's message
+//! ([`decision_message`]), so the edge alone can neither pay a deposit out
+//! nor send it back, and the boxes can settle without the edge. Nobody can
+//! change where a deposit goes. If no two agree, the payer takes the deposit
+//! back after its deadline.
 //!
 //! One config account per treasury and mint (`["config", treasury, mint]`)
 //! names the releaser. Each payment is a deposit account
@@ -37,6 +43,7 @@ use pinocchio::cpi::{invoke_signed, Seed, Signer};
 use pinocchio::error::{ProgramError, ProgramResult};
 use pinocchio::instruction::{InstructionAccount, InstructionView};
 use pinocchio::sysvars::clock::Clock;
+use pinocchio::sysvars::instructions::{Instructions, INSTRUCTIONS_ID};
 use pinocchio::sysvars::rent::Rent;
 use pinocchio::sysvars::Sysvar;
 use pinocchio::{AccountView, Address};
@@ -58,6 +65,27 @@ pub const TOKEN_PROGRAM: Address = Address::new_from_array([
     95, 91, 55, 145, 58, 140, 245, 133, 126, 255, 0, 169,
 ]);
 pub const SYSTEM_PROGRAM: Address = Address::new_from_array([0; 32]);
+/// The native Ed25519 signature-check program,
+/// `Ed25519SigVerify111111111111111111111111111`.
+pub const ED25519_PROGRAM: Address = Address::new_from_array([
+    3, 125, 70, 214, 124, 147, 251, 190, 18, 249, 66, 143, 131, 141, 64, 255, 5, 112, 116, 73, 39,
+    244, 138, 100, 252, 202, 112, 68, 128, 0, 0, 0,
+]);
+/// What a key signs to agree on a deposit's end: this tag, the deposit's
+/// address, and the amount going back to the payer (`u64` little-endian):
+/// 0 for a release, the gross for a refund, anything between for a split.
+pub const DECISION_TAG: &[u8; 24] = b"losos-escrow decision v1";
+pub const DECISION_LEN: usize = 24 + 32 + 8;
+
+/// The bytes a key signs to agree that `deposit` sends `refund` back.
+#[must_use]
+pub fn decision_message(deposit: &Address, refund: u64) -> [u8; DECISION_LEN] {
+    let mut m = [0u8; DECISION_LEN];
+    m[..24].copy_from_slice(DECISION_TAG);
+    m[24..56].copy_from_slice(deposit.as_ref());
+    m[56..].copy_from_slice(&refund.to_le_bytes());
+    m
+}
 
 /// The same ceiling as `LososEscrow`: half, the fixed split of a machine
 /// order.
@@ -92,23 +120,28 @@ pub mod ix {
     /// `[releaser: 32]`. Accounts: treasury (signer, writable, pays the
     /// rent), config (writable), mint, system program.
     pub const INITIALIZE: u8 = 0;
-    /// `[nonce: 32][order: 32][gross: u64][fee: u64][deadline: i64]`.
-    /// Accounts: payer (signer, writable), payer's token account (writable),
-    /// config, deposit (writable), vault (writable), seller, mint, token
-    /// program, system program.
+    /// `[nonce: 32][order: 32][gross: u64][fee: u64][deadline: i64]
+    /// [buyer box: 32][seller box: 32]`. Accounts: payer (signer,
+    /// writable), payer's token account (writable), config, deposit
+    /// (writable), vault (writable), seller, mint, token program, system
+    /// program.
     pub const PAY: u8 = 1;
-    /// Accounts: releaser (signer), config, deposit (writable), vault
-    /// (writable), seller's token account (writable), treasury's token
-    /// account (writable), payer (writable), mint, token program.
-    pub const RELEASE: u8 = 2;
-    /// Accounts: releaser, or the payer after the deadline (signer), config,
-    /// deposit (writable), vault (writable), payer's token account
-    /// (writable), payer (writable), mint, token program.
-    pub const REFUND: u8 = 3;
-    /// `[refund: u64]`. Accounts: releaser (signer), config, deposit
-    /// (writable), vault (writable), payer's token account (writable),
+    /// Two of the three keys agree (see the crate's docs). Accounts:
+    /// authority (signer), config, deposit (writable), vault (writable),
     /// seller's token account (writable), treasury's token account
-    /// (writable), payer (writable), mint, token program.
+    /// (writable), payer (writable), mint, token program, instructions
+    /// sysvar.
+    pub const RELEASE: u8 = 2;
+    /// Two of the three keys agree, or the authority is the payer after the
+    /// deadline. Accounts: authority (signer), config, deposit (writable),
+    /// vault (writable), payer's token account (writable), payer (writable),
+    /// mint, token program, instructions sysvar.
+    pub const REFUND: u8 = 3;
+    /// `[refund: u64]`, two of the three keys agreeing on it. Accounts:
+    /// authority (signer), config, deposit (writable), vault (writable),
+    /// payer's token account (writable), seller's token account (writable),
+    /// treasury's token account (writable), payer (writable), mint, token
+    /// program, instructions sysvar.
     pub const SETTLE: u8 = 4;
     /// `[next: 32]`. Accounts: treasury (signer), config (writable).
     pub const SET_RELEASER: u8 = 5;
@@ -171,6 +204,10 @@ pub enum EscrowError {
     NoBalance,
     /// The buyer has asked for no withdrawal.
     NoWithdrawal,
+    /// The two boxes' keys are not two keys other than the releaser's.
+    BadBoxes,
+    /// Fewer than two of the deposit's three keys agreed.
+    NotApproved,
 }
 
 impl From<EscrowError> for ProgramError {
@@ -263,6 +300,8 @@ fn pay(program_id: &Address, accounts: &mut [AccountView], data: &[u8]) -> Progr
     let gross = u64_at(data, 64)?;
     let fee = u64_at(data, 72)?;
     let deadline = u64_at(data, 80)? as i64;
+    let buyer_box = address_at(data, 88)?;
+    let seller_box = address_at(data, 120)?;
     if !payer.is_signer() {
         return Err(ProgramError::MissingRequiredSignature);
     }
@@ -272,6 +311,14 @@ fn pay(program_id: &Address, accounts: &mut [AccountView], data: &[u8]) -> Progr
     let cfg = Config::load(program_id, config)?;
     if mint.address() != &cfg.mint {
         return Err(EscrowError::WrongMint.into());
+    }
+    if buyer_box == Address::default()
+        || seller_box == Address::default()
+        || buyer_box == seller_box
+        || buyer_box == cfg.releaser
+        || seller_box == cfg.releaser
+    {
+        return Err(EscrowError::BadBoxes.into());
     }
     let decimals = state::mint_decimals(mint)?;
     let seller_key = *seller.address();
@@ -344,6 +391,8 @@ fn pay(program_id: &Address, accounts: &mut [AccountView], data: &[u8]) -> Progr
         fee,
         deadline,
         paid_at: now,
+        buyer_box,
+        seller_box,
     }
     .write(&mut data);
     Ok(())
@@ -412,18 +461,94 @@ fn check_destination(account: &AccountView, mint: &Address, owner: &Address) -> 
     Ok(())
 }
 
-/// The edge has checked the order and the seller's address: fee to the
-/// treasury, the rest to the seller recorded in `pay`.
+/// Which of the deposit's three keys `key` is, as a bit: 1 the releaser, 2
+/// the buyer's box, 4 the seller's box, 0 none.
+fn party(cfg: &Config, d: &Deposit, key: &Address) -> u8 {
+    if key == &cfg.releaser {
+        1
+    } else if key == &d.buyer_box {
+        2
+    } else if key == &d.seller_box {
+        4
+    } else {
+        0
+    }
+}
+
+/// The keys that agree on `deposit` sending `refund` back: the authority,
+/// if it signed and is one of the three, and every one of the three whose
+/// signature over [`decision_message`] an Ed25519 signature-check
+/// instruction anywhere in this transaction verified. Only checks whose
+/// key, signature and message all sit in their own instruction's data are
+/// counted, so one cannot point at bytes elsewhere.
+fn agreed(
+    cfg: &Config,
+    d: &Deposit,
+    deposit: &Address,
+    authority: &AccountView,
+    sysvar: &AccountView,
+    refund: u64,
+) -> Result<u8, ProgramError> {
+    let mut seen = 0;
+    if authority.is_signer() {
+        seen |= party(cfg, d, authority.address());
+    }
+    if sysvar.address() != &INSTRUCTIONS_ID {
+        return Err(ProgramError::UnsupportedSysvar);
+    }
+    let want = decision_message(deposit, refund);
+    let ixs = Instructions::try_from(sysvar)?;
+    for i in 0..ixs.num_instructions() {
+        let ix = ixs.load_instruction_at(i)?;
+        if ix.get_program_id() != &ED25519_PROGRAM {
+            continue;
+        }
+        let data = ix.get_instruction_data();
+        let count = usize::from(*data.first().ok_or(ProgramError::InvalidInstructionData)?);
+        for n in 0..count {
+            let at = 2 + n * 14;
+            let key_at = usize::from(u16_at(data, at + 4)?);
+            let message_at = usize::from(u16_at(data, at + 8)?);
+            let message_len = usize::from(u16_at(data, at + 10)?);
+            let own = [at + 2, at + 6, at + 12]
+                .iter()
+                .all(|&o| u16_at(data, o) == Ok(u16::MAX));
+            if !own || message_len != DECISION_LEN {
+                continue;
+            }
+            if data.get(message_at..message_at + DECISION_LEN) != Some(&want[..]) {
+                continue;
+            }
+            seen |= party(cfg, d, &address_at(data, key_at)?);
+        }
+    }
+    Ok(seen)
+}
+
+/// Refuse unless at least two of the deposit's three keys agree.
+fn approve(
+    h: &Held,
+    deposit: &Address,
+    authority: &AccountView,
+    sysvar: &AccountView,
+    refund: u64,
+) -> ProgramResult {
+    match agreed(&h.cfg, &h.deposit, deposit, authority, sysvar, refund)? {
+        3 | 5 | 6 | 7 => Ok(()),
+        _ => Err(EscrowError::NotApproved.into()),
+    }
+}
+
+/// Fee to the treasury, the rest to the seller recorded in `pay`, when two
+/// of the three keys agree.
 fn release(program_id: &Address, accounts: &mut [AccountView]) -> ProgramResult {
-    let [releaser, config, deposit, vault, seller_token, treasury_token, payer, mint, token, ..] =
+    let [authority, config, deposit, vault, seller_token, treasury_token, payer, mint, token, sysvar, ..] =
         accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
     let h = load_held(program_id, config, deposit, vault, payer, mint, token)?;
-    if !releaser.is_signer() || releaser.address() != &h.cfg.releaser {
-        return Err(EscrowError::NotReleaser.into());
-    }
+    approve(&h, deposit.address(), authority, sysvar, 0)?;
     check_destination(seller_token, &h.cfg.mint, &h.deposit.seller)?;
     check_destination(treasury_token, &h.cfg.mint, &h.cfg.treasury)?;
     let stray = h.balance - h.deposit.gross;
@@ -452,24 +577,28 @@ fn release(program_id: &Address, accounts: &mut [AccountView]) -> ProgramResult 
     close_account(deposit, payer)
 }
 
-/// Back to the payer, whole. The edge may refund at any time (the seller's
-/// address failed its check, the order was paid twice, nothing could be
-/// delivered). The payer may refund only after the deadline.
+/// Back to the payer, whole: at any time when two of the three keys agree
+/// (the seller's address failed its check, the order was paid twice,
+/// nothing could be delivered), or by the payer alone after the deadline.
 fn refund(program_id: &Address, accounts: &mut [AccountView]) -> ProgramResult {
-    let [authority, config, deposit, vault, payer_token, payer, mint, token, ..] = accounts else {
+    let [authority, config, deposit, vault, payer_token, payer, mint, token, sysvar, ..] = accounts
+    else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
     let h = load_held(program_id, config, deposit, vault, payer, mint, token)?;
     if !authority.is_signer() {
         return Err(ProgramError::MissingRequiredSignature);
     }
-    if authority.address() != &h.cfg.releaser {
-        if authority.address() != &h.deposit.payer {
-            return Err(EscrowError::NotReleaser.into());
-        }
-        if Clock::get()?.unix_timestamp < h.deposit.deadline {
-            return Err(EscrowError::TooEarly.into());
-        }
+    let by_payer = authority.address() == &h.deposit.payer;
+    if by_payer && Clock::get()?.unix_timestamp >= h.deposit.deadline {
+        // The payer's own way out once nobody agreed in time.
+    } else if let Err(e) = approve(&h, deposit.address(), authority, sysvar, h.deposit.gross) {
+        // The payer alone is only early, not refused for good.
+        return Err(if by_payer {
+            EscrowError::TooEarly.into()
+        } else {
+            e
+        });
     }
     check_destination(payer_token, &h.cfg.mint, &h.deposit.payer)?;
     let d = &h.deposit;
@@ -491,23 +620,22 @@ fn refund(program_id: &Address, accounts: &mut [AccountView]) -> ProgramResult {
 /// Part back to the payer, the rest released: the seller's box went offline
 /// partway through what was bought, so the payer gets back the share that
 /// was not delivered and the seller keeps the share that was. The fee
-/// shrinks with the seller's share, rounded down. For all or nothing, the
-/// edge calls `refund` or `release`.
+/// shrinks with the seller's share, rounded down. Two of the three keys
+/// agree on this exact `refund`. For all or nothing, see `refund` and
+/// `release`.
 fn settle(program_id: &Address, accounts: &mut [AccountView], data: &[u8]) -> ProgramResult {
-    let [releaser, config, deposit, vault, payer_token, seller_token, treasury_token, payer, mint, token, ..] =
+    let [authority, config, deposit, vault, payer_token, seller_token, treasury_token, payer, mint, token, sysvar, ..] =
         accounts
     else {
         return Err(ProgramError::NotEnoughAccountKeys);
     };
     let back = u64_at(data, 0)?;
     let h = load_held(program_id, config, deposit, vault, payer, mint, token)?;
-    if !releaser.is_signer() || releaser.address() != &h.cfg.releaser {
-        return Err(EscrowError::NotReleaser.into());
-    }
     let d = &h.deposit;
     if back == 0 || back >= d.gross {
         return Err(EscrowError::BadSplit.into());
     }
+    approve(&h, deposit.address(), authority, sysvar, back)?;
     check_destination(payer_token, &h.cfg.mint, &d.payer)?;
     check_destination(seller_token, &h.cfg.mint, &d.seller)?;
     check_destination(treasury_token, &h.cfg.mint, &h.cfg.treasury)?;

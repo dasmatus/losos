@@ -126,15 +126,15 @@ await check('the seal, the groups in order and every row render', async () => {
   await seal.waitFor();
   const sealText = await seal.innerText();
   assert.ok(sealText.includes("Sealed to this box's TPM"), sealText);
-  assert.ok(sealText.includes('6 secrets'), sealText);
+  assert.ok(sealText.includes('7 secrets'), sealText);
   assert.ok(sealText.includes('TPM'), sealText);
   assert.equal(await seal.getByRole('link', { name: 'How it works' }).getAttribute('href'), '/handbook/reference/credentials/');
 
   const apps = await page.getByTestId('credentials-app').evaluateAll((els) => els.map((e) => e.dataset.app));
-  assert.deepEqual(apps, ['admin', 'login', 'mail', 'backup', 'weather']);
+  assert.deepEqual(apps, ['admin', 'login', 'mail', 'backup', 'market', 'weather']);
   const titles = await page.getByTestId('credentials-app').evaluateAll((els) =>
     els.map((e) => e.querySelector('h2, h3')?.textContent?.trim()));
-  assert.deepEqual(titles, ['This box', 'LosOS Login', 'LosOS Mail', 'Backups', 'weather']);
+  assert.deepEqual(titles, ['This box', 'LosOS Login', 'LosOS Mail', 'Backups', 'Market', 'weather']);
 
   const spare = await row(page, 'admin-token').innerText();
   for (const part of ['Spare key', 'Made by the box', 'Moved from a plain file', 'Read by lososd.service']) {
@@ -147,6 +147,8 @@ await check('the seal, the groups in order and every row render', async () => {
   const bucket = await row(page, 'backup-bucket').innerText();
   assert.ok(bucket.includes('Bucket keys') && bucket.includes('Not set'), bucket);
   assert.ok(!bucket.includes('Changed'), bucket);
+  const escrow = await row(page, 'market-escrow-key').innerText();
+  for (const part of ['Escrow key', 'Made by the box', 'Read by lososd.service']) assert.ok(escrow.includes(part), `${part} missing:\n${escrow}`);
   // A name this build has no words for reads lososd's sentence.
   assert.ok((await row(page, 'weather-feed').innerText()).includes('The key of the weather service the Overview tile reads.'));
 
@@ -156,7 +158,7 @@ await check('the seal, the groups in order and every row render', async () => {
   for (const name of ['authelia-session', 'weather-feed']) {
     assert.equal(await row(page, name).getByRole('button', { name: 'Make new' }).count(), 1, name);
   }
-  for (const name of ['admin-token', 'authelia-storage', 'mail-master', 'backup-bucket']) {
+  for (const name of ['admin-token', 'authelia-storage', 'mail-master', 'backup-bucket', 'market-escrow-key']) {
     assert.equal(await row(page, name).getByRole('button').count(), 0, name);
   }
   assert.equal(await row(page, 'backup-bucket').getByRole('link', { name: 'Set up' }).getAttribute('href'), '/settings/backup');
@@ -231,7 +233,7 @@ for (const [locale, title, seal] of [
     const { page, context, errors } = await open({ locale });
     await page.getByRole('heading', { name: title, level: 1 }).waitFor();
     assert.ok((await page.getByTestId('credentials-seal').innerText()).includes(seal));
-    assert.equal(await page.getByTestId('credential').count(), 6);
+    assert.equal(await page.getByTestId('credential').count(), 7);
     assert.deepEqual(errors, []);
     await context.close();
   });

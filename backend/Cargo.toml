@@ -43,10 +43,14 @@ tracing = "0.1"
 rustix = { version = "1", features = ["event", "fs", "rand"] }
 
 # Ed25519 verification of an edge's identity (`edge.rs`): is the edge the box
-# found one LosOS runs, or a company's own? Verification only — the box never
-# holds a signing key — and the same crate edge/registrar signs with, so
-# the two sides cannot disagree on the primitive.
+# found one LosOS runs, or a company's own? The same crate edge/registrar
+# signs with, so the two sides cannot disagree on the primitive. It also
+# signs the box's escrow agreements on Solana (`escrow_key.rs`).
 ring = "0.17"
+# The box's escrow key on EVM networks (`escrow_key.rs`): secp256k1 and the
+# keccak of EIP-712, the versions already in the lock.
+k256 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
+sha3 = "0.10"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # The `Stream` trait, to read an uploaded disk image off the request a chunk
 # at a time (`vm_upload.rs`) rather than holding gigabytes in memory. Already

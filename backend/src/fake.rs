@@ -72,6 +72,8 @@ pub struct FakeLosos {
     pub market_config: Option<crate::market::Config>,
     /// Every operation asked for, in order.
     pub market_ops: Vec<crate::market::Op>,
+    /// The `market-escrow-key` credential's bytes, if the box has one.
+    pub escrow_seed: Option<[u8; 32]>,
     /// The live custom domains last handed to LosOS Cloud; `None` until the
     /// first write.
     pub public_names: Option<Vec<String>>,
@@ -295,6 +297,7 @@ impl FakeLosos {
             market_routes: std::collections::BTreeMap::new(),
             market_config: None,
             market_ops: Vec::new(),
+            escrow_seed: Some([7u8; 32]),
             public_names: None,
             public_tls: crate::edge::PublicTls::default(),
             relay_pass: None,
@@ -586,6 +589,12 @@ impl Losos for FakeLosos {
             None => Ok(crate::market::Outcome::Unavailable),
             Some((status, body)) => op.classify(*status, body),
         }
+    }
+
+    fn escrow_keys(&mut self) -> anyhow::Result<Option<crate::escrow_key::Keys>> {
+        self.escrow_seed
+            .map(|s| crate::escrow_key::Keys::from_seed(&s))
+            .transpose()
     }
 
     fn write_relay_pass(&mut self, pass: Option<&str>) -> anyhow::Result<()> {
