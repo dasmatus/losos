@@ -45,11 +45,11 @@ const OWNED = {
   'hardening.usbguard': 'security',
 };
 /* Lines of overrides.nix another pane draws its own editor for: each app's
- * box-wide settings, on the Apps pane, the
- * memory this box lends to AI models, on the Market pane, and the Windows
- * share and the Tor and I2P addresses, on the Network pane
- * (lib/option-value.ts, ON_PANE). The Advanced
- * row shows the value and links there, to the app's fold on the Apps pane. */
+ * box-wide settings on the Apps pane, the memory this box lends to AI
+ * models on the Market pane, the Windows share and the Tor and I2P
+ * addresses on the Network pane and the release channel on the History pane
+ * (lib/option-value.ts, ON_PANE). The Advanced row shows the value and links
+ * there, to the app's fold on the Apps pane. */
 const ON_PANE = Object.fromEntries(
   DOC.options.flatMap((option) =>
     option.name === 'cloud.trashDays' || /^git\.site\./.test(option.name)
@@ -58,7 +58,9 @@ const ON_PANE = Object.fromEntries(
         ? [[option.name, 'market']]
         : option.name === 'cloud.windows.enable' || /^hidden\.(tor|i2p)\.enable$/.test(option.name)
           ? [[option.name, 'network']]
-          : [],
+          : option.name === 'updates.channel'
+            ? [[option.name, 'history']]
+            : [],
   ),
 );
 const fold = (name) => (name.startsWith('cloud.') ? 'cloud' : name.startsWith('git.') ? 'git' : null);
@@ -396,6 +398,34 @@ await check('History says when the box kept an edit instead of updating, and whe
   await main(page).getByText('This box does not take new versions.', { exact: false }).waitFor();
   assert.deepEqual(errors, []);
   await page.close();
+});
+
+await check('History picks the release channel, Apply writes its line, and a slower channel says it waits', async () => {
+  const { page, applies, errors } = await open({ path: '/settings/history' });
+  const picker = main(page).getByLabel('Release channel', { exact: true });
+  assert.equal(await picker.inputValue(), 'daily');
+  // Back to the default is no line at all.
+  await picker.selectOption('monthly');
+  await applyButton(page).waitFor();
+  await picker.selectOption('daily');
+  assert.equal(await applyButton(page).count(), 0, 'the default left a change');
+  await picker.selectOption('weekly');
+  await main(page).getByText('A new version each Monday. Hotfixes still arrive the same day.').waitFor();
+  await applyButton(page).click();
+  await page.waitForTimeout(200);
+  assert.equal(applies.length, 1);
+  const lines = nixLines(applies[0]);
+  assert.ok(lines.includes('  losos.updates.channel = "weekly";'), lines.join('\n'));
+  assert.deepEqual(errors, []);
+  await page.close();
+
+  const holding = { ...CONFIG, upstream: { ...CONFIG.upstream, branch: 'channel/weekly', report: { state: 'holding', detail: 'channel/weekly is at a version from 2026-10-24, older than the one from 2026-10-28 this box runs, so the box keeps its version until the channel passes it.', syncedAt: '2026-10-28T03:05:00+02:00', remoteHead: 'e'.repeat(40) } } };
+  const held = await open({ path: '/settings/history', config: holding });
+  assert.equal(await main(held.page).getByTestId('history-update-state').innerText(), 'Waiting for the channel');
+  await main(held.page).getByText('older than the one from 2026-10-28 this box runs', { exact: false }).waitFor();
+  await noViolations(held.page);
+  assert.deepEqual(held.errors, []);
+  await held.page.close();
 });
 
 await check('History on a box with LosOS Git off says so and still lists the commits', async () => {

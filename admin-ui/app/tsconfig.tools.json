@@ -4,5 +4,5 @@
   "compilerOptions": {
     "types": ["bun"]
   },
-  "include": ["vite.config.ts", "vite.guest.config.ts", "vite.segmenter-quiet.ts", "vite.sonner-quiet.ts"]
+  "include": ["vite.config.ts", "vite.guest.config.ts", "vite.segmenter-quiet.ts", "vite.sonner-quiet.ts", "vite.pages.ts"]
 }

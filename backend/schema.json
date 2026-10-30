@@ -1574,11 +1574,12 @@
                     "pending",
                     "ok",
                     "kept",
+                    "holding",
                     "waiting",
                     "unavailable",
                     "error"
                   ],
-                  "description": "How the last look at the published branch went. `kept`: files other than modules/overrides.nix and modules/install-target.nix changed since the last follow (or since the install), so the box keeps its tree rather than overwrite them. `waiting`: a rebuild was running. `unavailable`: the source could not be fetched, and the nightly rebuild builds the current tree."
+                  "description": "How the last look at the published branch went. `kept`: files other than modules/overrides.nix and modules/install-target.nix changed since the last follow (or since the install), so the box keeps its tree rather than overwrite them. `holding`: the branch's version was made from an older main than the one the box runs (a move to a slower channel), so the box keeps its tree until the branch passes it. `waiting`: a rebuild was running. `unavailable`: the source could not be fetched, and the nightly rebuild builds the current tree."
                 },
                 "detail": {
                   "type": "string",

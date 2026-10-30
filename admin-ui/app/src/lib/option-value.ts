@@ -203,4 +203,5 @@ export const ON_PANE: Readonly<Record<string, SettingsPaneId>> = {
   "cloud.windows.enable": "network",
   "hidden.tor.enable": "network",
   "hidden.i2p.enable": "network",
+  "updates.channel": "history",
 };

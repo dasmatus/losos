@@ -37,6 +37,7 @@ export const HANDBOOK_ENTRIES = {
   moderation: "manual/moderation/",
   apps: "manual/apps/",
   "look-and-widgets": "manual/look-and-widgets/",
+  pages: "manual/pages/",
   "backup-and-erase": "manual/backup-and-erase/",
   terminal: "manual/terminal/",
   chat: "manual/chat/",

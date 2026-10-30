@@ -28,12 +28,32 @@ itself:
   and URL schemes (`src/sanitize.rs`), whatever wrote it: render.rs, raw
   HTML in a `.md` file, or a Notes pass. No script, style, frame or form
   can get through, nor any form field, event handler or `style` attribute.
+  MathML is allowed for equations, with its layout attributes only.
   Classes are limited to the document's own (`mdx-*`, `callout-*`,
   `language-*` and a few more), so a document cannot borrow the page's
   layout classes to cover the page.
 - **Size and depth** are bounded: documents over 1 MiB, and nesting deeper
   than 100 levels, are errors. markdown-rs recurses, and its time grows
   faster than the document does.
+
+## Finished with no script
+
+The HTML is complete as written: a page shows it with JavaScript off, and
+an export carries none.
+
+- **Equations** (`$…$`, `$$…$$`, `<Equation>`) are MathML Core, made by
+  math-core (`src/math.rs`), which browsers lay out themselves. The TeX
+  rides along as an `application/x-tex` annotation, which Pandoc reads back.
+  An equation that does not read, is longer than 4 KiB or nests deeper than
+  32 levels stays TeX, as text; an unknown command is marked in place.
+- **Dates** (`<Date>`) are words (`src/date.rs`): in the document's
+  language (`lang` in its front matter), else the reader's
+  (`Parsed::lang`), else English. English, Slovak and German.
+- **Charts** (`<Chart>`) are a figure with the data's address for now;
+  they become inline SVG with the sheet editor.
+
+The browser package exports `mathml` and `date`, so the editor shows the
+same as the box.
 
 A refusal is a `Problem` with a line and column, not a failure. The page
 still draws the document, with the refused part as plain text, and lists
@@ -61,6 +81,7 @@ autolinks), YAML front matter and `$maths$`.
 | `Tabs`, `Tab` | `label` (required on Tab) | `div.mdx-tabs`, `section.mdx-tab` |
 | `Figure` | `src` (required), `alt`, `caption` | `figure.mdx-figure` |
 | `Embed` | `href` (required), `title` | `a.mdx-embed` |
+| `Button` | `href` (required), `variant` (primary, secondary, outline, ghost, link), `size` (sm, md, lg) | `a.mdx-button`, its text as the label |
 | `Slide` | `layout` (title, content, two-columns, picture) | `section.mdx-slide` |
 | `Notes` | | `aside.mdx-speaker-notes` |
 | `PageBreak` | | `div.page-break` |
@@ -69,10 +90,10 @@ autolinks), YAML front matter and `$maths$`.
 | `PageNumber` | | `span.mdx-page-number` |
 | `Table`, `Row`, `Cell` | `caption`; `header`; `colSpan`, `rowSpan`, `align` | `table.mdx-table`, `tr`, `th` or `td` |
 | `Comment` | `text` (required), `author`, `date` | `span.mdx-comment` around the text it is about |
-| `Equation` | `tex` (required), `inline` | `code.language-math` |
+| `Equation` | `tex` (required), `inline` | `math` (MathML), `display="block"` unless inline |
 | `Chart` | `src` (required, a `.sheet`), `range`, `type` (bar, line, area, pie), `title` | `figure.mdx-chart` with `data-*` |
 | `Mention` | `login` (required) | `span.mdx-mention` |
-| `Date` | `value` (required, YYYY-MM-DD), `format` (short, long) | `time.mdx-date` |
+| `Date` | `value` (required, YYYY-MM-DD), `format` (short, long) | `time.mdx-date`, the date in words |
 
 Plain elements, as themselves: `abbr` (with `title`), `br`, `kbd`, `mark`,
 `s`, `small`, `sub`, `sup`, `u`.
@@ -80,6 +101,33 @@ Plain elements, as themselves: `abbr` (with `title`), `br`, `kbd`, `mark`,
 Charts, the table of contents and page numbers are filled in by whoever
 shows the page: the editor draws a chart from its sheet, and an export
 lays the pages out.
+
+## Pages
+
+`page::render_page(source, spec)` reads a page of the admin UI or an app
+(`admin-ui/app/src/pages/README.md`). `spec` is the page's entry in
+`blocks.json`, read by `page::Registry::from_json`: the blocks the page
+has, each with typed props (`text`, `choice` with `values`, `number`,
+`flag`, `url`), which are required, and whether it takes MDX inside it.
+
+On top of the MDX rules above:
+
+- A JSX element named like one of the page's blocks becomes
+  `<losos-block data-block="Name" data-props="{...}">`, an empty
+  placeholder the page swaps for its component. Its props are checked
+  against the entry and carried as JSON; a bad one is dropped with a
+  problem, and a block missing a required prop is not drawn.
+- A block goes on a line of its own; one inside a sentence is refused.
+- Any other name that is neither a block of this page nor a component is
+  refused. An author cannot write the placeholder: `losos-block` is a
+  name no table knows, so it is refused like any other, and only the page
+  allowlist (`sanitize::clean_page`) keeps the element at all.
+- Each run of the author's own text and components at the top of a page is
+  wrapped in `div.mdx-document.mdx-page-text`, so the document styles
+  reach it and never the blocks beside it. A page that is only blocks is
+  only placeholders, so the default pages draw exactly what they did.
+
+`tests/page.rs` covers each rule.
 
 ## API
 
@@ -145,6 +193,6 @@ line, unless the result reads without a problem and keeps the note's
 headings and links.
 
 In the browser, `render(source, "mdx" | "md", resolver?)` returns the same
-result as JSON, `tree(source, flavour)` the mdast (positions kept) the
+result as JSON, `page(source, registry, page)` a page's, `tree(source, flavour)` the mdast (positions kept) the
 WYSIWYG editor builds its document from, and `renderNote` and `toNote` the
 two above.

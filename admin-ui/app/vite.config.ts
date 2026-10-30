@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { segmenterQuiet } from "./vite.segmenter-quiet";
 import { sonnerQuiet } from "./vite.sonner-quiet";
+import { pages } from "./vite.pages";
 
 /* The theme has to be on the <html> element BEFORE the first paint, or a box
  * whose owner picked Dark while the browser reports Light flashes white for a
@@ -258,7 +259,7 @@ function labMeme(): Plugin {
 const root = import.meta.dirname;
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), themeBoot(), appFrame(), basicMessages(), labMeme(), segmenterFiles(), nudityFiles(), segmenterQuiet(), sonnerQuiet()],
+  plugins: [react(), tailwindcss(), themeBoot(), appFrame(), basicMessages(), labMeme(), segmenterFiles(), nudityFiles(), segmenterQuiet(), sonnerQuiet(), pages()],
   // Served from the vhost root by nginx.
   base: "/",
   resolve: {

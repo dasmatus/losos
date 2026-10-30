@@ -2905,6 +2905,28 @@ impl Losos for IoLosos {
             .map(|(upstream, followed)| crate::config_repo::FollowMark { upstream, followed }))
     }
 
+    fn upstream_base(&mut self, sha: &str) -> anyhow::Result<Option<i64>> {
+        // A shallow fetch keeps the commit object itself, so its time and
+        // message are here even though its parents are not.
+        let out = git(
+            &self.paths,
+            false,
+            &["log", "-1", "--no-walk", "--format=%ct%x00%B", sha, "--"],
+        )?;
+        if !out.status.success() {
+            return Ok(None);
+        }
+        let text = String::from_utf8_lossy(&out.stdout);
+        let Some((time, message)) = text.split_once('\0') else {
+            return Ok(None);
+        };
+        Ok(time
+            .trim()
+            .parse()
+            .ok()
+            .map(|t| crate::config_repo::base_of(t, message)))
+    }
+
     fn config_edited_outside(&mut self, base: Option<&str>) -> anyhow::Result<bool> {
         let base = match base {
             Some(b) => b.to_string(),

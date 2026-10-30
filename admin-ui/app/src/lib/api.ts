@@ -3413,6 +3413,97 @@ export function deleteHandWidget(
   });
 }
 
+// ── Pages as MDX (backend/plugins/pages, src/pages/) ────────────────────
+
+/** A page an administrator changed, as the box drew it. */
+export interface CustomPage {
+  /** The page's HTML, its blocks as placeholders (src/pages/README.md). */
+  html: string;
+  /** When it was saved, ISO 8601, and by whom. */
+  at: string;
+  by: string;
+}
+
+/** GET /api/pages — every signed-in person: the pages an administrator
+ *  changed, and whether there is a stylesheet of theirs. */
+export interface PagesResponse {
+  pages: Record<string, CustomPage>;
+  /** A version for `/api/pages/style.css?v=`, or null for none. */
+  style: string | null;
+}
+
+export function getPages(options: RequestOptions = {}): Promise<PagesResponse> {
+  return call<PagesResponse>("/api/pages", options);
+}
+
+/** One commit of the pages' repository. */
+export interface PageCommit {
+  commit: string;
+  at: string;
+  by: string;
+  message: string;
+}
+
+/** GET /api/pages/{page} — administrators: a page's source, its default,
+ *  and its history. */
+export interface PageSource {
+  id: string;
+  /** The administrator's file, or the default when there is none. */
+  source: string;
+  default: string;
+  custom: boolean;
+  /** LosOS's default moved on since the page was changed. */
+  defaultChanged: boolean;
+  history: PageCommit[];
+}
+
+export function getPageSource(id: string, options: RequestOptions = {}): Promise<PageSource> {
+  return call<PageSource>(`/api/pages/${encodeURIComponent(id)}`, options);
+}
+
+/** PUT /api/pages/{page} — save an administrator's page; refused with the
+ *  first problem when it does not read cleanly. */
+export function putPage(id: string, source: string, options: RequestOptions = {}): Promise<PagesResponse> {
+  return call<PagesResponse>(`/api/pages/${encodeURIComponent(id)}`, {
+    ...options,
+    method: "PUT",
+    contentType: "application/json",
+    body: JSON.stringify({ source }),
+  });
+}
+
+/** DELETE /api/pages/{page} — back to LosOS's default. */
+export function resetPage(id: string, options: RequestOptions = {}): Promise<PagesResponse> {
+  return call<PagesResponse>(`/api/pages/${encodeURIComponent(id)}`, { ...options, method: "DELETE" });
+}
+
+/** The administrators' stylesheet as text, "" for none. */
+export async function getPagesStyle(options: RequestOptions = {}): Promise<string> {
+  const response = await fetch(apiPath("/api/pages/style.css"), {
+    cache: "no-store",
+    headers: getToken() === null ? {} : { Authorization: `Bearer ${getToken()}` },
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
+  });
+  if (response.status === 404) return "";
+  if (!response.ok) throw new ApiError(response.status, `HTTP ${response.status}`);
+  return response.text();
+}
+
+/** PUT /api/pages/style.css — the administrators' stylesheet. */
+export function putPagesStyle(source: string, options: RequestOptions = {}): Promise<PagesResponse> {
+  return call<PagesResponse>("/api/pages/style.css", {
+    ...options,
+    method: "PUT",
+    contentType: "application/json",
+    body: JSON.stringify({ source }),
+  });
+}
+
+/** DELETE /api/pages/style.css — no stylesheet of theirs. */
+export function resetPagesStyle(options: RequestOptions = {}): Promise<PagesResponse> {
+  return call<PagesResponse>("/api/pages/style.css", { ...options, method: "DELETE" });
+}
+
 // ── Every option, and the configuration repository ────────────────────────
 
 /* The editor kind of one `losos.*` option, as nix/options-doc.nix
@@ -3667,7 +3758,7 @@ export interface ConfigSync {
 }
 
 /** How the last look at the published branch went (backend/schema.json). */
-export type ConfigUpdateState = "off" | "pending" | "ok" | "kept" | "waiting" | "unavailable" | "error";
+export type ConfigUpdateState = "off" | "pending" | "ok" | "kept" | "holding" | "waiting" | "unavailable" | "error";
 
 export interface ConfigUpdateReport {
   state: ConfigUpdateState;
