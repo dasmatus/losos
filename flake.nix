@@ -460,6 +460,7 @@
           ./modules/edge-inference.nix
           ./modules/edge-gateway.nix
           ./modules/edge-hidden.nix
+          ./modules/edge-exit.nix
           ./modules/logs.nix
         ];
         _module.args.self = self;
