@@ -2492,6 +2492,99 @@ export function postCredentialRotate(
   });
 }
 
+// ── Problems (the Problems pane, backend/plugins/problems) ─────────────────
+
+export type ProblemKind = "failed" | "crashed" | "out-of-memory";
+
+/** A problem the box noticed in its journal, kept by its fingerprint. */
+export interface Problem {
+  /** The fingerprint, eight hex digits, the same on every box. */
+  id: string;
+  kind: ProblemKind;
+  unit: string | null;
+  process: string | null;
+  /** The signal's name without SIG, for a crash. */
+  signal: string | null;
+  /** systemd's result, for a failed unit: exit-code, timeout, … */
+  result: string | null;
+  /** The issue's title, in English, as GitHub would show it. */
+  title: string;
+  /** Unix seconds. */
+  first: number;
+  last: number;
+  count: number;
+  dismissed: boolean;
+  /** The handbook page that already explains it, if one does. */
+  documented: {
+    id: string;
+    page: string;
+    title: { en: string; sk: string; de: string };
+  } | null;
+  /** Where its report went. */
+  sent: { url: string; existing: boolean; at: number } | null;
+}
+
+export interface ProblemsResponse {
+  /** null when this box cannot send reports (no GitHub App configured). */
+  reporting: { repository: string } | null;
+  problems: Problem[];
+}
+
+/** GET /api/problems — everything the box noticed, newest first. */
+export function getProblems(options: RequestOptions = {}): Promise<ProblemsResponse> {
+  return call<ProblemsResponse>("/api/problems", options);
+}
+
+export interface ProblemReport {
+  problem: Problem;
+  repository: string | null;
+  title: string;
+  /** The whole issue body, Markdown, exactly as it would be sent. */
+  body: string;
+}
+
+/** GET /api/problems/{id} — the report, written now from the box's records. */
+export function getProblemReport(id: string, options: RequestOptions = {}): Promise<ProblemReport> {
+  return call<ProblemReport>(`/api/problems/${encodeURIComponent(id)}`, options);
+}
+
+/** Where sending a report stands. */
+export type ProblemSending =
+  | { state: "idle" }
+  | { state: "starting" }
+  | { state: "sign-in"; uri: string; code: string; expires: number }
+  | { state: "sent"; url: string; existing: boolean }
+  | { state: "failed" | "cancelled"; message: string };
+
+/** POST /api/problems/{id}/send — start the sign-in and the sending. */
+export function postProblemSend(
+  id: string,
+  note: string,
+  options: RequestOptions = {},
+): Promise<ProblemSending> {
+  return call<ProblemSending>(`/api/problems/${encodeURIComponent(id)}/send`, {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify({ note }),
+  });
+}
+
+/** GET /api/problems/{id}/send */
+export function getProblemSending(id: string, options: RequestOptions = {}): Promise<ProblemSending> {
+  return call<ProblemSending>(`/api/problems/${encodeURIComponent(id)}/send`, options);
+}
+
+/** POST /api/problems/{id}/cancel — stop waiting for the code. */
+export function postProblemCancel(id: string, options: RequestOptions = {}): Promise<unknown> {
+  return call<unknown>(`/api/problems/${encodeURIComponent(id)}/cancel`, { ...options, method: "POST" });
+}
+
+/** POST /api/problems/{id}/dismiss — hide it until it happens again. */
+export function postProblemDismiss(id: string, options: RequestOptions = {}): Promise<Problem> {
+  return call<Problem>(`/api/problems/${encodeURIComponent(id)}/dismiss`, { ...options, method: "POST" });
+}
+
 // ── Logs (Settings › Logs) ────────────────────────────────────────────────
 
 /* The journal of the box's services, from the log reader (backend/src/logs/,
