@@ -55,14 +55,18 @@ let
   # Where an older build kept the secret as plaintext; the credential store
   # adopts it from here.
   legacySecret = "/var/lib/losos-mail/master-secret";
-  # The real path is /persist/home/shared/data, bind-mounted here by
+  # The account the shared side runs as (lososInternal.sideUser): `shared`
+  # in a mesh, `kindashared` with the local gateways only.
+  user = if config.lososInternal.sideUser == null then "shared" else config.lososInternal.sideUser;
+  # The real path is /persist/home/<user>/data, bind-mounted here by
   # modules/impermanence.nix; the unit sees the bind-mounted view.
-  dataDir = "/home/shared/data/mail";
+  dataDir = "/home/${user}/data/mail";
   # The box's Web Key Directory: public keys lososd publishes, nginx serves.
   wkdDir = "/var/lib/losos-wkd";
   credential = "%{file:/run/credentials/losos-mail.service/mail-master}%";
 
-  fscrypt = config.losos.shared.fscrypt.enable;
+  fscrypt = config.losos.${user}.fscrypt.enable;
+  unlock = "losos-fscrypt-${user}.service";
 
   settings = {
     server = {
@@ -167,37 +171,37 @@ in
     };
 
     systemd.services.losos-mail-dir = {
-      description = "LosOS Mail: the mailboxes' directory in the shared domain";
-      after = [ "local-fs.target" ] ++ lib.optional fscrypt "losos-fscrypt-shared.service";
-      requires = lib.optional fscrypt "losos-fscrypt-shared.service";
+      description = "LosOS Mail: the mailboxes' directory in the ${user} domain";
+      after = [ "local-fs.target" ] ++ lib.optional fscrypt unlock;
+      requires = lib.optional fscrypt unlock;
       before = [ "losos-mail.service" ];
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
-        ExecStart = "${pkgs.coreutils}/bin/install -d -o shared -g shared -m 0700 ${dataDir}";
+        ExecStart = "${pkgs.coreutils}/bin/install -d -o ${user} -g ${user} -m 0700 ${dataDir}";
       };
     };
 
     systemd.services.losos-mail = {
-      description = "LosOS Mail (Stalwart), as the shared user";
+      description = "LosOS Mail (Stalwart), as the ${user} user";
       wantedBy = [ "multi-user.target" ];
       after = [
         "local-fs.target"
         "network.target"
         "losos-mail-dir.service"
       ]
-      ++ lib.optional fscrypt "losos-fscrypt-shared.service";
+      ++ lib.optional fscrypt unlock;
       requires = [
         "losos-mail-dir.service"
       ]
-      ++ lib.optional fscrypt "losos-fscrypt-shared.service";
+      ++ lib.optional fscrypt unlock;
       # A new configuration (a new port or domain) is a restart.
       restartTriggers = [ configFile ];
       serviceConfig = {
         Type = "simple";
         ExecStart = "${lib.getExe package} --config=${configFile}";
-        User = "shared";
-        Group = "shared";
+        User = user;
+        Group = user;
         CacheDirectory = "losos-mail";
         LimitNOFILE = 65536;
         KillMode = "process";

@@ -349,6 +349,11 @@ pub struct Options {
     pub disko_script: Option<PathBuf>,
     pub emit_target: Option<PathBuf>,
     pub flake_url: String,
+    /// The branch to clone: the release channel the box will follow
+    /// (`losos.configRepo.upstream.branch`), so a new box starts on the
+    /// version its first nightly update would take. `None` is the
+    /// repository's default branch.
+    pub flake_branch: Option<String>,
     pub flake_work: PathBuf,
     pub keyfile: PathBuf,
     pub target_rel: PathBuf,
@@ -376,7 +381,8 @@ pub enum InstallAction {
     WriteTarget(PathBuf, String),
     EnsureKeyfile(PathBuf),
     RunDiskoScript(PathBuf),
-    CloneFlake(String, PathBuf),
+    /// URL, branch (`None`: the default one), directory.
+    CloneFlake(String, Option<String>, PathBuf),
     RunDisko(PathBuf),
     BindMount(PathBuf, PathBuf),
     RunNixosInstall(PathBuf),
@@ -476,6 +482,7 @@ pub fn plan_install(opts: &Options, devs: &[BlockDev]) -> Result<Vec<InstallActi
     let work = &opts.flake_work;
     acts.push(InstallAction::CloneFlake(
         opts.flake_url.clone(),
+        opts.flake_branch.clone(),
         work.clone(),
     ));
     acts.push(InstallAction::WriteTarget(
@@ -638,7 +645,7 @@ pub trait Install {
     fn write_file_atomic(&mut self, path: &Path, text: &str) -> anyhow::Result<()>;
     fn ensure_keyfile(&mut self, path: &Path) -> anyhow::Result<()>;
     fn run_disko_script(&mut self, path: &Path) -> anyhow::Result<()>;
-    fn clone_flake(&mut self, url: &str, work: &Path) -> anyhow::Result<()>;
+    fn clone_flake(&mut self, url: &str, branch: Option<&str>, work: &Path) -> anyhow::Result<()>;
     fn run_disko(&mut self, work: &Path) -> anyhow::Result<()>;
     fn bind_mount(&mut self, src: &Path, dst: &Path) -> anyhow::Result<()>;
     fn run_nixos_install(&mut self, work: &Path) -> anyhow::Result<()>;
@@ -657,7 +664,7 @@ pub fn execute<I: Install>(installer: &mut I, acts: &[InstallAction]) -> anyhow:
             InstallAction::WriteTarget(p, t) => installer.write_file_atomic(p, t)?,
             InstallAction::EnsureKeyfile(p) => installer.ensure_keyfile(p)?,
             InstallAction::RunDiskoScript(p) => installer.run_disko_script(p)?,
-            InstallAction::CloneFlake(u, d) => installer.clone_flake(u, d)?,
+            InstallAction::CloneFlake(u, b, d) => installer.clone_flake(u, b.as_deref(), d)?,
             InstallAction::RunDisko(d) => installer.run_disko(d)?,
             InstallAction::BindMount(s, d) => installer.bind_mount(s, d)?,
             InstallAction::RunNixosInstall(d) => installer.run_nixos_install(d)?,
@@ -684,6 +691,7 @@ mod tests {
             disko_script: None,
             emit_target: None,
             flake_url: "https://github.com/dasmatus/losos.git".into(),
+            flake_branch: Some("channel/daily".into()),
             flake_work: PathBuf::from("/tmp/losos-flake"),
             keyfile: PathBuf::from("/etc/keys/persist-keyfile"),
             target_rel: PathBuf::from("modules/install-target.nix"),
@@ -1187,6 +1195,27 @@ mod tests {
         assert!(resolve_tpm(Some(true), false)
             .unwrap_err()
             .contains("--no-tpm"));
+    }
+
+    #[test]
+    fn the_clone_is_the_channel_the_box_will_follow() {
+        let acts = plan_install(&opts(), &targets()).unwrap();
+        let clone = acts
+            .iter()
+            .find_map(|a| match a {
+                InstallAction::CloneFlake(url, branch, _) => {
+                    Some((url.as_str(), branch.as_deref()))
+                }
+                _ => None,
+            })
+            .expect("the plan clones the flake");
+        assert_eq!(
+            clone,
+            (
+                "https://github.com/dasmatus/losos.git",
+                Some("channel/daily")
+            )
+        );
     }
 
     #[test]

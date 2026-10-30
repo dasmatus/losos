@@ -4,7 +4,7 @@ import type { SettingsPaneId } from "@/screens/settings/panes";
 /* One Nix literal per option, and the rules for reading and writing it.
  *
  * The Advanced pane (screens/settings/pane-advanced.tsx) edits the lines of
- * modules/overrides.nix that the twelve-key form does not own. Each of those
+ * modules/overrides.nix that the thirteen-key form does not own. Each of those
  * lines is `losos.<name> = <literal>;`, and the literal is what this module
  * deals in: the pane's draft holds the literal as a string, the editors turn
  * it into a switch, a number field or a list and back, and `fits` says
@@ -164,7 +164,7 @@ export function toLiteral(editor: OptionEditor, value: OptionValue): string | nu
   }
 }
 
-/* The twelve options the settings form edits on its own panes, by their
+/* The thirteen options the settings form edits on its own panes, by their
  * Nix name. The Advanced pane shows each one with its value and a link to
  * the pane that owns it, rather than a second editor that could disagree
  * with the first. */
@@ -175,6 +175,7 @@ export interface OwnedOption {
 
 export const OWNED: Readonly<Record<string, OwnedOption>> = {
   sharingMyStorage: { key: "sharingMyStorage", pane: "market" },
+  sharingLocally: { key: "sharingLocally", pane: "mesh" },
   hostName: { key: "hostName", pane: "network" },
   "gpu.enable": { key: "gpuEnable", pane: "hardware" },
   "proxy.enable": { key: "proxyEnable", pane: "network" },
@@ -190,7 +191,7 @@ export const OWNED: Readonly<Record<string, OwnedOption>> = {
 
 /* Options another pane draws an editor for, though they are lines of
  * overrides.nix like any the Advanced pane edits (form.extra, not one of the
- * twelve fields). The Advanced pane shows each with its value and a link to
+ * thirteen fields). The Advanced pane shows each with its value and a link to
  * that pane, so there is one place to change it. */
 export const ON_PANE: Readonly<Record<string, SettingsPaneId>> = {
   "cloud.trashDays": "apps",
@@ -202,4 +203,5 @@ export const ON_PANE: Readonly<Record<string, SettingsPaneId>> = {
   "cloud.windows.enable": "network",
   "hidden.tor.enable": "network",
   "hidden.i2p.enable": "network",
+  "updates.channel": "history",
 };

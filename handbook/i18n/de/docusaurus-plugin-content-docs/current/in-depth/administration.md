@@ -477,7 +477,7 @@ das.
 ## Updates und Neustarts {#upgrades-and-reboots}
 
 - **03:00.** lososd bringt `/etc/nixos` zuerst auf den neuesten Commit von
-  `losos.configRepo.upstream.branch` (`main`) unter
+  `losos.configRepo.upstream.branch` (dem Release-Kanal, unten) unter
   `losos.configRepo.upstream.url` (dem GitHub-Repository) und behält dabei
   `modules/overrides.nix` und `modules/install-target.nix` der Box. Dann
   baut `system.autoUpgrade` aus `losos.upgradeFlakeUri` neu, also aus
@@ -490,3 +490,38 @@ das.
   (`Persistent=true`, sodass eine Box, die aus war, das nachholt). Da die
   Wurzel beim Booten neu aufgebaut wird, ist der Neustart der Weg, auf dem
   sich die Box selbst repariert.
+
+### Release-Kanäle {#release-channels}
+
+Eine Box folgt einem von drei Branches, gewählt unter Einstellungen,
+Verlauf, Release-Kanal (`losos.updates.channel`):
+
+| Kanal        | Branch            | Rückt vor                  |
+| ------------ | ----------------- | -------------------------- |
+| Täglich      | `channel/daily`   | Jede Nacht um 00:17 UTC    |
+| Wöchentlich  | `channel/weekly`  | Montags um 00:17 UTC       |
+| Monatlich    | `channel/monthly` | Am 1. um 00:17 UTC         |
+
+Jeder Schritt nimmt den neuesten Commit von `main`, dessen CI-Lauf bestanden
+hat, den Upload in den Binär-Cache eingeschlossen. So baut eine Box nie eine
+Version, die ihre Prüfungen nicht bestanden hat, und kompiliert nie, was CI
+schon gebaut hat. Vor LosOS 1.0.0 folgt eine Box dem täglichen Kanal, danach
+dem wöchentlichen. „Jede Änderung“ (`main`) folgt `main` selbst, geprüft
+oder nicht, und ist zum Testen von LosOS.
+
+Ein Pull Request mit dem Label `hotfix` erreicht jeden Kanal am selben Tag.
+Sobald er gemergt ist, überträgt ein Bot ihn per Cherry-Pick auf jeden Kanal,
+dem er fehlt, auf dem Ergebnis laufen CI und der Cache-Upload, und der Kanal
+rückt vor, wenn beide bestehen. Boxen holen ihn beim nächsten Update um
+03:00. Ein Hotfix trägt, was in diesem Repository liegt: den eigenen Code von
+LosOS, seine Rust- und npm-Abhängigkeiten und seine Moduleinstellungen. Eine
+Korrektur in NixOS selbst, etwa in nginx oder im Kernel, kommt wie jede
+andere Änderung über den nixpkgs-Pin.
+
+Der Wechsel auf einen langsameren Kanal bringt eine Box nie zurück. Jeder
+Commit eines Kanals nennt den `main`-Commit, aus dem er geschnitten wurde
+(eine Zeile `Channel-Base:`), und die Box behält ihre Version, bis der Kanal
+sie überholt; der Verlauf-Bereich zeigt so lange „Wartet auf den Kanal“.
+`.github/workflows/channels.yml` und `.github/scripts/channels.py` erledigen
+die Schritte und die Hotfixes, und kein Kanal wird je per Force-Push
+überschrieben.

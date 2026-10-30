@@ -57,6 +57,9 @@ futures-core = { version = "0.3", default-features = false }
 # client (src/access.rs). Shared with edge/registrar by path, so the box
 # and the edge speak one contract (docs/terminal-access.md).
 losos-access = { path = "access" }
+# The path rule, which edge to use (src/edge.rs re-exports it): its own crate
+# so that LosOS Desktop's network machine picks an edge the same way.
+losos-edge-path = { path = "edge-path" }
 # Problem reports (src/install_report.rs): the installer writes and sends
 # them with the same crate the box's problems plugin uses, so the two read
 # alike and the same failure is one GitHub issue.
@@ -71,6 +74,13 @@ losos-widget = { path = "plugins/widget" }
 # The names the pins plugin takes as well (release, Git owner and repository,
 # LosOS Cloud path), so the two cannot drift apart.
 losos-names = { path = "plugins/names" }
+# Settings › Logs without JavaScript, drawn by the log reader
+# (src/logs/, the losos-logs binary) in the same markup as lososd's basic
+# plugin, so the page and its sidebar look alike while lososd is down.
+losos-page = { path = "plugins/page" }
+# The log reader's redaction (src/logs/redact.rs). Already in the lock
+# file through other crates.
+regex = "1"
 
 # The Monero key check (`monero_key.rs`): the key the owner pasted must be
 # the address's view key, never its spend key, before it goes to the edge.
@@ -242,3 +252,7 @@ path = "src/bin/losos-git.rs"
 [[bin]]
 name = "losos-ci"
 path = "src/bin/losos-ci.rs"
+
+[[bin]]
+name = "losos-logs"
+path = "src/bin/losos-logs.rs"

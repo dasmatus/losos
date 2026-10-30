@@ -49,6 +49,7 @@ jobs:
           nix develop .#ci -c bash -euo pipefail -c '
             cargo fmt --manifest-path backend/Cargo.toml
             cargo fmt --manifest-path backend/access/Cargo.toml
+            cargo fmt --manifest-path backend/edge-path/Cargo.toml
             cargo fmt --all --manifest-path backend/plugins/Cargo.toml
             cargo fmt --manifest-path edge/registrar/Cargo.toml
             cargo fmt --manifest-path edge/vercel/Cargo.toml
@@ -60,6 +61,7 @@ jobs:
 
             cargo clippy --fix --allow-dirty --allow-staged --manifest-path backend/Cargo.toml --all-targets -- -D warnings
             cargo clippy --fix --allow-dirty --allow-staged --manifest-path backend/access/Cargo.toml --all-targets -- -D warnings
+            cargo clippy --fix --allow-dirty --allow-staged --manifest-path backend/edge-path/Cargo.toml --all-targets -- -D warnings
             cargo clippy --fix --allow-dirty --allow-staged --manifest-path backend/plugins/Cargo.toml --all-targets -- -D warnings
             cargo clippy --fix --allow-dirty --allow-staged --manifest-path edge/registrar/Cargo.toml --all-targets -- -D warnings
             cargo clippy --fix --allow-dirty --allow-staged --manifest-path edge/vercel/Cargo.toml --all-targets -- -D warnings

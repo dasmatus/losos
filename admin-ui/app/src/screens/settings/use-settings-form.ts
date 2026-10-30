@@ -32,7 +32,7 @@ const REBUILD_STATUS = "rebuild";
 /* The whole settings screen is one form over one document.
  *
  * /api/apply takes the ENTIRE modules/overrides.nix body, not a patch: all
- * twelve losos.* keys are rewritten on every apply. So the draft here is a
+ * thirteen losos.* keys are rewritten on every apply. So the draft here is a
  * complete SettingsResponse, every pane edits a slice of the same object, and
  * a key nobody touched still round-trips through buildOverridesNix unchanged.
  * A pane that posted only its own slice would silently reset the other
@@ -89,16 +89,16 @@ export interface SettingsForm {
   draft: SettingsResponse | null;
   dirty: boolean;
   changedKeys: readonly (keyof SettingsResponse)[];
-  /* The rest of modules/overrides.nix: every `losos.<name>` line the twelve
+  /* The rest of modules/overrides.nix: every `losos.<name>` line the thirteen
    * keys above do not own, as Nix literals by name (lib/option-value.ts).
-   * The Advanced pane edits these; Apply writes them after the twelve. A
+   * The Advanced pane edits these; Apply writes them after the thirteen. A
    * name the box declares no option for (a stray) is carried too, so it is
    * shown rather than silently dropped, and `valid` stays false until it is
    * removed, because lososd's gate would refuse it. */
   extra: Readonly<Record<string, string>>;
   savedExtra: Readonly<Record<string, string>>;
   changedExtra: readonly string[];
-  /** Pending edits, the twelve keys and the extras together. */
+  /** Pending edits, the thirteen keys and the extras together. */
   changeCount: number;
   /** Every option this box declares, or null while loading. `available`
    *  false when the box serves no document (an older lososd). */
@@ -120,6 +120,7 @@ export interface SettingsForm {
 
 const KEYS = [
   "sharingMyStorage",
+  "sharingLocally",
   "hostName",
   "gpuEnable",
   "proxyEnable",
@@ -150,7 +151,7 @@ function changedKeysOf(
   return KEYS.filter((key) => !sameValue(saved[key], draft[key]));
 }
 
-/* The overrides.nix lines the twelve keys do not own, as the option
+/* The overrides.nix lines the thirteen keys do not own, as the option
  * document reports them: each declared option's `set` literal, plus the
  * strays. Owned names are left out even when set — the form's own field
  * carries them, and buildOverridesNix filters them anyway. */
@@ -338,7 +339,7 @@ export function useSettingsForm(): SettingsForm {
      * needs it, and the extras it carries are part of the same draft. A box
      * without the route (an older lososd) still gets its settings — the
      * pane then says the document is not served, and Apply writes the
-     * twelve lines as before. */
+     * thirteen lines as before. */
     let doc: OptionsResponse | null = null;
     try {
       doc = await getOptions(request);
@@ -576,6 +577,7 @@ export function useSettingsForm(): SettingsForm {
     const before = savedRef.current;
     const turnsOnMesh =
       (current.sharingMyStorage && !(before?.sharingMyStorage ?? false)) ||
+      (current.sharingLocally && !(before?.sharingLocally ?? false)) ||
       (current.clusterEnable && !(before?.clusterEnable ?? false));
     void runRebuild(() => postApply(body), "settings.form.applyingYours", (error) =>
       turnsOnMesh && error instanceof ApiError && error.status === 409 ? "sharing-refused" : "apply-fails",

@@ -216,6 +216,13 @@ impl Seal for SystemdCreds {
                 String::from_utf8_lossy(&output.stderr).trim()
             );
         }
+        // systemd-creds writes its output 0644. The store is 0700, but a
+        // sealed secret is the owner's alone, as the boot unit leaves its own.
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600))
+                .map_err(|e| anyhow::anyhow!("making {} owner-only: {e}", tmp.display()))?;
+        }
         std::fs::rename(&tmp, out)
             .map_err(|e| anyhow::anyhow!("putting {} in place: {e}", out.display()))?;
         Ok(())
