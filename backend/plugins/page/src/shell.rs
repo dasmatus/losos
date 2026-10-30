@@ -212,6 +212,9 @@ pub struct Frame<'a> {
     pub refresh: Option<u32>,
     /// The sidebar's Pinned section, when the box sent the list.
     pub pins: Option<&'a [NavEntry]>,
+    /// The page's name on `<html data-page>`, as the script page sets it,
+    /// so an administrator's stylesheet can pick one page out.
+    pub page: Option<&'a str>,
 }
 
 /// A whole page: the frame around `main`. With no `nav`, only the top bar
@@ -237,6 +240,7 @@ pub fn page(f: &Frame<'_>, main: Html) -> Html {
         f.title,
         f.assets,
         f.refresh,
+        f.page,
         body.into(),
     )
 }
@@ -249,6 +253,7 @@ pub fn document(
     title: &str,
     assets: &Assets,
     refresh: Option<u32>,
+    page: Option<&str>,
     body: Html,
 ) -> Html {
     let mut head = Html::trusted(
@@ -277,10 +282,19 @@ pub fn document(
         Theme::Auto => String::new(),
         other => format!(" data-theme=\"{}\"", other.code()),
     };
+    // Page names are lowercase words joined by dots (blocks.json).
+    let page_attr = page
+        .filter(|p| {
+            p.chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.')
+        })
+        .map(|p| format!(" data-page=\"{p}\""))
+        .unwrap_or_default();
     Html::trusted(format!(
-        "<!doctype html><html lang=\"{}\"{} data-basic=\"\"><head>{}</head><body>{}</body></html>",
+        "<!doctype html><html lang=\"{}\"{}{} data-basic=\"\"><head>{}</head><body>{}</body></html>",
         locale.code(),
         theme_attr,
+        page_attr,
         head.as_str(),
         body.as_str()
     ))
@@ -1038,6 +1052,7 @@ mod tests {
             rail_moved: false,
             refresh: None,
             pins: None,
+            page: None,
         }
     }
 

@@ -89,15 +89,7 @@ fn host_addresses() -> anyhow::Result<Vec<IpAddr>> {
 }
 
 fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_writer(std::io::stderr)
-        .with_ansi(false)
-        .without_time()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,str0m=warn")),
-        )
-        .init();
+    losos_ctl::trace::init("info,str0m=warn");
     let cli = Cli::parse();
     str0m::crypto::from_feature_flags().install_process_default();
 

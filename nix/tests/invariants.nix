@@ -52,6 +52,19 @@ assert must (lib.elem "tpm2-device=auto" config.boot.initrd.luks.devices.persist
   "crypttab for `persist` has no tpm2-device=auto (${toString config.boot.initrd.luks.devices.persist.crypttabExtraOpts}): the enrolled token is never consulted";
 assert must (lib.elem "--impure" config.system.autoUpgrade.flags)
   "system.autoUpgrade does not pass --impure (${toString config.system.autoUpgrade.flags}): a remote upgradeFlakeUri then evaluates the published tree without this box's install-target.nix and overrides.nix, flips a keyfile box to the TPM shape and resets every setting";
+assert must
+  (
+    let
+      release = lib.removePrefix "v" (import ../version.nix);
+      stable = !(lib.hasInfix "-" release) && lib.versionAtLeast release "1.0.0";
+    in
+    config.losos.updates.channel == (if stable then "weekly" else "daily")
+  )
+  "losos.updates.channel defaults to ${config.losos.updates.channel}: boxes follow the daily channel before LosOS 1.0.0 and the weekly one from then on";
+assert must (config.losos.configRepo.upstream.branch == "channel/${config.losos.updates.channel}")
+  "losos.configRepo.upstream.branch is ${config.losos.configRepo.upstream.branch}, not the release channel: the box would follow a branch .github/workflows/channels.yml does not move";
+assert must config.losos.configRepo.upstream.enable
+  "losos.configRepo.upstream.enable is off: a box never takes a new version";
 assert must (lib.hasSuffix "#install" config.losos.upgradeFlakeUri)
   "losos.upgradeFlakeUri has no #install fragment (${config.losos.upgradeFlakeUri}); nixos-rebuild would look for nixosConfigurations.<hostname>, which this flake does not export";
 assert must

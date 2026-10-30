@@ -1,19 +1,17 @@
 /* Markdown documents and presentations in LosOS Office
  * (src/cloud/office/markdown/), inside LosOS Cloud.
  *
- * What is checked: the files bar offers New document and New presentation,
- * which make "Untitled document.md" (the next free name when it is taken)
- * with a starter text and open it at /cloud/office/<id>; a .md opens there
- * as LosOS's own editor, never in Collabora, under the Office bar with the
- * name, Markdown and the saved state; the formatting bar writes what
- * Obsidian and GitHub read for each of its buttons, takes a mark off again,
- * shows the cursor's bold and heading as pressed, and the read side draws
- * the result with the notes renderer; a file with `slides: true` is a
- * presentation, with its slides in a strip, the slide the cursor is in
- * beside the text, its text centred and its picture on the right, and it
- * plays full screen with the arrows and Escape; the right-click menu of a
- * .md offers Office; and none of it adds to the policy violations a plain
- * load logs.
+ * What is checked (a new document is a .paper, tests/paper.browser.mjs): a
+ * .md opens at /cloud/office/<id> as LosOS's own editor, never in
+ * Collabora, under the Office bar with the name, Markdown and the saved
+ * state; the formatting bar writes what Obsidian and GitHub read for each
+ * of its buttons, takes a mark off again, shows the cursor's bold and
+ * heading as pressed, and the read side draws the result with the notes
+ * renderer; a file with `slides: true` is a presentation, with its slides
+ * in a strip, the slide the cursor is in beside the text, its text centred
+ * and its picture on the right, and it plays full screen with the arrows
+ * and Escape; the right-click menu of a .md offers Office; and none of it
+ * adds to the policy violations a plain load logs.
  *
  * The shared editor's WebSocket has no box here, so it stays offline and
  * the text is what is typed; the routes are stubbed with page.route(). */
@@ -154,32 +152,6 @@ let BASELINE = [];
 }
 
 console.log('office markdown checks');
-
-await check('New document makes the next free Untitled document and opens it in Office', async () => {
-  const { page, context, errors, made } = await openCloud('/cloud/files', { taken: ['Untitled document.md'] });
-  await page.getByRole('button', { name: 'New document' }).click();
-  await page.waitForURL(/\/cloud\/office\/\d+$/);
-  assert.equal(made.length, 1, JSON.stringify(made));
-  assert.equal(made[0].path, 'Untitled document 2.md');
-  assert.equal(made[0].ifNew, '1');
-  assert.equal(made[0].body, '# Untitled document\n\n');
-  await page.locator('[data-markdown-office]').waitFor();
-  await page.getByRole('heading', { level: 1, name: 'Untitled document 2.md' }).waitFor();
-  await page.getByTestId('office-bar').getByText('Markdown', { exact: true }).waitFor();
-  // Never Collabora.
-  assert.equal(await page.locator('iframe').count(), 0);
-  assert.deepEqual(errors, []);
-  await context.close();
-});
-
-await check('New presentation starts with a title slide and one more', async () => {
-  const { page, context, made } = await openCloud('/cloud/files');
-  await page.getByRole('button', { name: 'New presentation' }).click();
-  await page.waitForURL(/\/cloud\/office\/\d+$/);
-  assert.equal(made[0].path, 'Untitled presentation.md');
-  assert.match(made[0].body, /^---\nslides: true\n---\n\n# Untitled presentation\n\n.+\n\n---\n\n## .+\n\n- .+\n$/);
-  await context.close();
-});
 
 await check('the bar writes Obsidian and GitHub Markdown, and the read side draws it', async () => {
   const { page, context, errors } = await openDoc('Plan.md');

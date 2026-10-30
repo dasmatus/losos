@@ -15,6 +15,11 @@
 @import "tailwindcss";
 @import "./tokens.css";
 @import "./basic.css";
+/* Text an administrator writes on a page (src/pages/), and the document
+ * components it may use: in the main sheet, so the pages without a script
+ * (backend/plugins/basic) draw it too. */
+@import "../mdx/document.css";
+@import "../pages/pages.css";
 
 /* The pages without JavaScript (/basic/) are drawn in Rust on the box, in
  * this stylesheet's classes. The bundle is built from this folder alone, so
@@ -501,6 +506,20 @@
   padding-bottom: var(--bottom-nav);
   padding-left: env(safe-area-inset-left, 0px);
   padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* The page editor (src/pages/editor.tsx) docks at the right edge, or at the
+ * foot on a phone, and the page it previews moves out from under it. Here
+ * rather than as utilities, which the rule above would outweigh. */
+@media (width >= 48rem) {
+  .losos-shell[data-page-editor] {
+    padding-right: calc(30rem + env(safe-area-inset-right, 0px));
+  }
+}
+@media (width < 48rem) {
+  .losos-shell[data-page-editor] {
+    padding-bottom: calc(55dvh + var(--bottom-nav));
+  }
 }
 
 /* The phone's bottom bar (components/ui/bottom-nav.tsx) is fixed to the

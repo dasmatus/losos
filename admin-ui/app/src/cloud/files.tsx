@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 import { cloud, isAbort, joinPath, parentOf, type Entry } from "./api";
 import { NameDialog, explain, failed } from "./dialogs";
 import { EntryTable, SelectionBar, folderHref, sortEntries, type SortKey } from "./entries";
-import { createDocument, type Kind } from "./office/markdown/new";
+import { createPaper, type Kind } from "./office/paper/new";
 import { bump, enqueue, useRevision } from "./store";
 
 type Loaded = { state: "loading" } | { state: "error"; message: string; missing: boolean } | { state: "ready"; entries: Entry[] };
@@ -137,20 +137,20 @@ export function FilesView() {
   const newDocument = (kind: Kind) => {
     setMaking(true);
     const starter = {
-      name: kind === "doc" ? t("office.md.untitledDoc") : t("office.md.untitledDeck"),
-      title: kind === "doc" ? t("office.md.untitledDoc") : t("office.md.untitledDeck"),
+      name: kind === "paper" ? t("office.md.untitledDoc") : t("office.md.untitledDeck"),
+      title: kind === "paper" ? t("office.md.untitledDoc") : t("office.md.untitledDeck"),
       subtitle: t("office.md.starter.subtitle"),
       next: t("office.md.starter.next"),
       point: t("office.md.starter.point"),
     };
-    createDocument(path, kind, starter).then(
+    createPaper(path, kind, starter).then(
       (entry) => {
         bump();
         navigate(`/office/${entry.id}`);
       },
       (err: unknown) => {
         setMaking(false);
-        failed(kind === "doc" ? t("office.md.newDocFailed") : t("office.md.newDeckFailed"), err);
+        failed(kind === "paper" ? t("office.md.newDocFailed") : t("office.md.newDeckFailed"), err);
       },
     );
   };
@@ -192,11 +192,11 @@ export function FilesView() {
       <div className="flex min-h-9 flex-wrap items-center gap-3">
         <Crumbs path={path} />
         <div className="ml-auto flex items-center gap-2">
-          <Button size="sm" variant="secondary" onClick={() => newDocument("doc")} disabled={making} data-new="doc">
+          <Button size="sm" variant="secondary" onClick={() => newDocument("paper")} disabled={making} data-new="paper">
             <HugeiconsIcon icon={FileAddIcon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
             <span className="max-sm:sr-only">{t("office.md.newDoc")}</span>
           </Button>
-          <Button size="sm" variant="secondary" onClick={() => newDocument("deck")} disabled={making} data-new="deck">
+          <Button size="sm" variant="secondary" onClick={() => newDocument("slides")} disabled={making} data-new="slides">
             <HugeiconsIcon icon={PresentationBarChart01Icon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
             <span className="max-sm:sr-only">{t("office.md.newDeck")}</span>
           </Button>
