@@ -24,7 +24,7 @@ export type InstalledState =
   | { kind: "loading" }
   | { kind: "unavailable" }
   | { kind: "failed"; message: string }
-  | { kind: "ready"; sharedAvailable: boolean; apps: InstalledApp[] };
+  | { kind: "ready"; sharedAvailable: boolean; kindasharedAvailable: boolean; apps: InstalledApp[] };
 
 export interface InstalledApps {
   state: InstalledState;
@@ -39,7 +39,12 @@ const SETTLING_POLL_MS = 4_000;
 
 function fromResponse(reply: AppsResponse): InstalledState {
   return reply.available
-    ? { kind: "ready", sharedAvailable: reply.sharedAvailable, apps: reply.apps }
+    ? {
+        kind: "ready",
+        sharedAvailable: reply.sharedAvailable,
+        kindasharedAvailable: reply.kindasharedAvailable ?? false,
+        apps: reply.apps,
+      }
     : { kind: "unavailable" };
 }
 

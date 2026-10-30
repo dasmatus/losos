@@ -42,6 +42,32 @@ the box can claim room in the pool itself. Three things hold:
   for it are one decision. It works whether or not the edge offers the
   market to this box.
 
+## Shared with this network only
+
+Between keeping to itself and sharing with the mesh there is a third
+choice, for a box on a company's network or a home with its own gateway:
+share with the local gateways of that network and with nothing further.
+
+- The data lives in a third account, `kindashared`, in a directory of its
+  own, encrypted with its own key. It opens only while this kind of sharing
+  is on. `notshared`, `shared` and `kindashared` cannot read each other.
+- It needs a **local gateway** in reach: an edge the box reaches on its own
+  network, whose link is secondary (see
+  [edge federation](../in-depth/edge-federation)). An official edge alone is
+  not enough, and the box refuses the switch.
+- No market. Nothing `kindashared` holds is listed, sold or paid for, and
+  a box that shares only this way cannot put room or time on the market.
+  Buying from the market is unaffected.
+- With no local gateway for ten minutes the box turns it off by itself, and
+  back on a minute after one answers again.
+- While it is on and the box is not in the mesh, chat, mail, calls and Mesh
+  CI run as `kindashared`, with their data in its directory. Apps can be
+  installed as `kindashared` too. A box that later joins the mesh runs them
+  as `shared` and starts them afresh there; what `kindashared` holds stays
+  in its own directory.
+- The switch, **Share with this network's gateways**, is on the **Mesh**
+  pane, with the gateways in reach and the account the shared side runs as.
+
 ## Lending spare time (compute)
 
 This is separate from disk and lives on the Mesh pane. A box runs other
