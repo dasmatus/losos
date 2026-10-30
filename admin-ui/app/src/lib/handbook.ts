@@ -54,6 +54,7 @@ export const HANDBOOK_ENTRIES = {
   credentials: "reference/credentials/",
   "problem-reports": "manual/problem-reports/",
   wiki: "manual/wiki/",
+  logs: "manual/logs/",
   // The chapters, as LosOS Wiki lists the handbook among the box's wikis.
   "chapter-start": "start/what-is-losos/",
   "chapter-types": "types/",

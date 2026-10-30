@@ -2604,6 +2604,100 @@ export function postProblemDismiss(id: string, options: RequestOptions = {}): Pr
   return call<Problem>(`/api/problems/${encodeURIComponent(id)}/dismiss`, { ...options, method: "POST" });
 }
 
+// ── Logs (Settings › Logs) ────────────────────────────────────────────────
+
+/* The journal of the box's services, from the log reader (backend/src/logs/,
+ * modules/log-reader.nix) rather than lososd, so the pane answers while
+ * lososd does not. Every line is redacted on the box before it is sent. */
+
+/** How far back: this boot, the one before, or a stretch of time. */
+export type LogSpan = "boot" | "previous" | "hour" | "day" | "week";
+
+/** What the pane shows. `unit` is a source's id (`lososd`, `cloud`, `losos`,
+ *  `everything`, …) or a unit's own name. `priority` is journald's: at most
+ *  this, so 3 is errors and worse. */
+export interface LogFilter {
+  unit: string;
+  priority: number;
+  span: LogSpan;
+  text: string;
+}
+
+export interface LogLine {
+  /** The journal's cursor, to ask for what came before or after. */
+  cursor: string;
+  /** In the box's own time zone: `2026-10-29` and `12:00:01`. */
+  date: string;
+  time: string;
+  /** RFC 3339. */
+  stamp: string;
+  unit: string;
+  pid: number | null;
+  /** 0 (emergency) to 7 (debug). */
+  priority: number;
+  message: string;
+}
+
+export interface LogsResponse {
+  /** The ids of the Service list, in its order. */
+  sources: string[];
+  unit: string;
+  /** Oldest first. */
+  lines: LogLine[];
+  /** Ask with `before` for the lines older than these, when there are any. */
+  older: string | null;
+  /** Ask with `after` for the lines that came since. */
+  newer: string | null;
+  /** The journal could not be read: why. */
+  error: string | null;
+}
+
+/** The filter as the reader reads it, without `?`; the page without
+ *  JavaScript takes the same one (backend/plugins/page/src/logs.rs). */
+export function logsQuery(filter: LogFilter): string {
+  const q = new URLSearchParams({
+    unit: filter.unit,
+    priority: String(filter.priority),
+    span: filter.span,
+  });
+  if (filter.text.trim() !== "") q.set("q", filter.text.trim());
+  return q.toString();
+}
+
+/** GET /api/logs — the newest lines, the ones before `before`, or the ones
+ *  after `after` (following). */
+export function getLogs(
+  filter: LogFilter,
+  place: { before?: string; after?: string } = {},
+  options: RequestOptions = {},
+): Promise<LogsResponse> {
+  const q = new URLSearchParams(logsQuery(filter));
+  if (place.before !== undefined) q.set("before", place.before);
+  if (place.after !== undefined) q.set("after", place.after);
+  return call<LogsResponse>(`/api/logs?${q.toString()}`, options);
+}
+
+/** GET /api/logs/download — up to 5000 lines as a text file, for a bug
+ *  report, with the name the box gave it. */
+export async function downloadLogs(filter: LogFilter): Promise<{ blob: Blob; name: string }> {
+  const headers: Record<string, string> = {};
+  const bearer = getToken();
+  if (bearer !== null) headers["Authorization"] = `Bearer ${bearer}`;
+  const res = await fetch(apiPath(`/api/logs/download?${logsQuery(filter)}`), {
+    headers,
+    cache: "no-store",
+    credentials: "same-origin",
+  });
+  if (!res.ok) throw new ApiError(res.status, res.statusText);
+  const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") ?? "")?.[1] ?? "losos.log";
+  return { blob: await res.blob(), name };
+}
+
+/** The pane's address for one unit, as a problem report links to it. */
+export function logsPath(unit: string): string {
+  return `/settings/logs?unit=${encodeURIComponent(unit)}`;
+}
+
 // ── People (the Users pane) ───────────────────────────────────────────────
 
 /** Someone who may sign in to this box, as GET /api/people lists them. */

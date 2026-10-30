@@ -1428,6 +1428,20 @@ in
       '';
     };
 
+    # ── Settings › Logs (modules/log-reader.nix) ─────────────────────────
+    logReader.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Show the journal of the box's services in the admin pages, under
+        Settings › Logs, to an administrator or whoever holds the spare key,
+        with passwords, keys and tokens hidden. It runs apart from the
+        control service, so the page keeps working when that service does
+        not. The lines never leave the box unless an administrator
+        downloads them.
+      '';
+    };
+
     # ── Office documents (modules/office.nix) ───────────────────────────
     office.enable = lib.mkOption {
       type = lib.types.bool;
