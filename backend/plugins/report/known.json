@@ -1,0 +1,23 @@
+{
+  "about": "Problems the handbook already explains. A problem whose report holds one of an entry's phrases (lower case, after numbers are taken out) is documented: the box and the installer point at the page instead of offering a report. Read by backend/plugins/report/src/known.rs; the pages are under handbook/docs/.",
+  "known": [
+    {
+      "id": "out-of-room",
+      "page": "troubleshooting/out-of-room",
+      "title": { "en": "Out of room", "sk": "Nedostatok miesta", "de": "Kein Platz mehr" },
+      "when": ["no space left on device", "not enough space", "disk quota exceeded"]
+    },
+    {
+      "id": "upgrade-source-unreachable",
+      "page": "troubleshooting/apply-fails",
+      "title": { "en": "Apply fails", "sk": "Použitie zlyhá", "de": "Übernehmen schlägt fehl" },
+      "when": ["could not resolve host", "couldn't resolve host", "unable to download", "temporary failure in name resolution"]
+    },
+    {
+      "id": "installer-no-network",
+      "page": "start/install",
+      "title": { "en": "Install LosOS", "sk": "Inštalácia LosOS", "de": "LosOS installieren" },
+      "when": ["no network:"]
+    }
+  ]
+}
