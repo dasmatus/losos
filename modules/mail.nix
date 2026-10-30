@@ -444,16 +444,6 @@ in
         ExecStart = start;
         # The setup's recovery start is a server start of its own.
         TimeoutStartSec = 300;
-      ++ lib.optional fscrypt unlock;
-      # A new configuration (a new port or domain) is a restart.
-      restartTriggers = [ configFile ];
-      serviceConfig = {
-        Type = "simple";
-        ExecStart = "${lib.getExe package} --config=${configFile}";
-        User = user;
-        Group = user;
-        CacheDirectory = "losos-mail";
-        LimitNOFILE = 65536;
         KillMode = "process";
         KillSignal = "SIGINT";
         Restart = "on-failure";
