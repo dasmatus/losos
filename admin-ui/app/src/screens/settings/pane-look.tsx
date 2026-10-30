@@ -7,9 +7,11 @@ import {
   PencilEdit02Icon,
   PlusSignIcon,
 } from "@hugeicons/core-free-icons";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
+import { canUse, useMe } from "@/lib/api";
 import { useT } from "@/lib/i18n-react";
 import type { MessageKey } from "@/lib/i18n";
 import {
@@ -32,17 +34,21 @@ import {
 } from "@/lib/look";
 import { cn } from "@/lib/utils";
 import { addHand, removeHandTiles } from "@/lib/widgets";
+import { PAGE_IDS, type PageId } from "@/pages/page";
+import { getPagesState, openPageEditor, subscribePages } from "@/pages/store";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, StackRow } from "./rows";
 
 /* The Look pane: what sits behind the page, and the widgets written by hand.
  *
- * The one pane with no Apply bar. Everything here is lososd's look document
- * (lib/look.ts): a picture, the veil over it, and the hand-written widgets.
- * Each is saved the moment it is picked and takes effect at once, in this
- * browser and every other that opens the box, because none of it is a
- * NixOS option — nothing rebuilds, nothing restarts, and nothing on this
- * pane can reach the one operation on this box that can fail with nobody
- * able to log in and fix it.
+ * The one pane with no Apply bar. Everything here is lososd's look
+ * (lib/look.ts): the signed-in person's own picture and the veil over it,
+ * and the box's hand-written widgets. Everyone signed in opens it for their
+ * background; the widgets are there only for the look section. Each change
+ * is saved the moment it is picked and takes effect at once, in every
+ * browser the person signs in to, because none of it is a NixOS option:
+ * nothing rebuilds, nothing restarts, and nothing on this pane can reach
+ * the one operation on this box that can fail with nobody able to log in
+ * and fix it.
  *
  * House style, as on every pane: no emoji, nothing names a runtime, and the
  * cost of a choice is said on the row. The picker is a row of thumbnails
@@ -66,6 +72,9 @@ export function LookPane({ locked }: { locked: boolean }) {
   const look = state.look;
   const limits = lookLimits();
   const disabled = locked || look === null;
+  // The spare key sees and sets the box's own background; a person, theirs.
+  const personal = look?.personal ?? true;
+  const widgets = canUse("look");
 
   const [uploading, setUploading] = React.useState(false);
   const [editing, setEditing] = React.useState<{ widget?: HandWidget } | null>(null);
@@ -155,12 +164,12 @@ export function LookPane({ locked }: { locked: boolean }) {
       )}
 
       <PaneSection>
-        <GroupTitle>{t("look.background.group")}</GroupTitle>
+        <GroupTitle>{t(personal ? "look.background.groupMine" : "look.background.group")}</GroupTitle>
         <Group>
           <StackRow>
             <div
               role="radiogroup"
-              aria-label={t("look.background.group")}
+              aria-label={t(personal ? "look.background.groupMine" : "look.background.group")}
               className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-5"
             >
               <Swatch
@@ -279,9 +288,10 @@ export function LookPane({ locked }: { locked: boolean }) {
             </div>
           </Row>
         </Group>
-        <GroupCaption>{t("look.background.caption", { mb })}</GroupCaption>
+        <GroupCaption>{t(personal ? "look.background.caption" : "look.background.captionBox", { mb })}</GroupCaption>
       </PaneSection>
 
+      {widgets && (
       <PaneSection>
         <GroupTitle>
           {t("look.widgets.group")}
@@ -362,6 +372,9 @@ export function LookPane({ locked }: { locked: boolean }) {
         </Group>
         <GroupCaption>{t("look.widgets.caption")}</GroupCaption>
       </PaneSection>
+      )}
+
+      <PagesSection locked={locked} />
 
       {editing !== null && (
         <React.Suspense fallback={null}>
@@ -378,6 +391,63 @@ export function LookPane({ locked }: { locked: boolean }) {
         </React.Suspense>
       )}
     </>
+  );
+}
+
+/* The pages as MDX (src/pages/): each page, whether an administrator
+ * changed it, and the stylesheet they all share. Administrators only, like
+ * the routes behind it; the editor opens beside the page it changes. */
+function PagesSection({ locked }: { locked: boolean }) {
+  const t = useT();
+  const me = useMe();
+  const pages = React.useSyncExternalStore(subscribePages, getPagesState, getPagesState);
+  if (me?.admin !== true) return null;
+  const name = (id: PageId): string => t(`pages.page.${id}` as MessageKey);
+  return (
+    <PaneSection data-testid="pages-section">
+      <GroupTitle>{t("pages.group")}</GroupTitle>
+      <Group>
+        {PAGE_IDS.map((id) => (
+          <Row key={id}>
+            <RowText title={name(id)} />
+            <div className="flex shrink-0 items-center gap-2">
+              <Badge variant={pages.custom[id] === undefined ? "neutral" : "local"}>
+                {t(pages.custom[id] === undefined ? "pages.shipped" : "pages.changed")}
+              </Badge>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                disabled={locked}
+                aria-label={t("pages.edit", { name: name(id) })}
+                title={t("pages.edit", { name: name(id) })}
+                onClick={() => openPageEditor({ kind: "page", id })}
+              >
+                <HugeiconsIcon icon={PencilEdit02Icon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+              </Button>
+            </div>
+          </Row>
+        ))}
+        <Row last>
+          <RowText
+            title={t("pages.style.title")}
+            detail={t(pages.style === null ? "pages.style.none" : "pages.style.set")}
+          />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8 shrink-0"
+            disabled={locked}
+            aria-label={t("pages.style.edit")}
+            title={t("pages.style.edit")}
+            onClick={() => openPageEditor({ kind: "style" })}
+          >
+            <HugeiconsIcon icon={PencilEdit02Icon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+          </Button>
+        </Row>
+      </Group>
+      <GroupCaption>{t("pages.caption")}</GroupCaption>
+    </PaneSection>
   );
 }
 

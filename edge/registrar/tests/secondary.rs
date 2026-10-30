@@ -374,7 +374,14 @@ async fn a_gateway_leaves_a_banned_official_cluster() {
     let file = std::fs::read_to_string(gw.dir.join("uplink.json")).unwrap();
     assert!(file.contains(&hub_us.base), "{file}");
     assert!(file.contains("127.0.0.1:2334"), "{file}");
-    assert!(uplink(&gw).contains("127.0.0.1:2334"), "{}", uplink(&gw));
+    // The hub takes the route on the gateway's `/relay`, and the gateway
+    // writes its tunnel file only after fetching the new hub's pin, so the
+    // file can still name the old hub for a moment after the route moved.
+    assert!(
+        gw.wait_for(|| uplink(&gw).contains("127.0.0.1:2334")).await,
+        "{}",
+        uplink(&gw)
+    );
     // The old hub's pin went with it: the uplink pins the new hub's.
     assert!(uplink(&gw).contains(&pin_of("us")), "{}", uplink(&gw));
 

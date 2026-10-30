@@ -218,8 +218,11 @@ browser keeps your best score for each game.
 
 ## Theme and language
 
-The bar at the top switches between English, Slovak and German, and between
-"match the browser", light and dark. This browser remembers both.
+Your menu at the top right, under your name, has **Appearance** ("match the
+browser", light or dark) and **Language** (the browser's, English, Slovak or
+German). It is the same menu on every page of the box: the admin pages,
+LosOS Cloud, Office, Mail, Chat and LosOS Git. A page you have not signed in
+to keeps both behind one button in its bar. This browser remembers both.
 
 ![The Overview in German and in the dark theme.](../img/overview-de-dark.png)
 

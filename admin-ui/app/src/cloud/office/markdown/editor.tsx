@@ -319,7 +319,7 @@ export function MarkdownOffice({ entry: first, onClose }: { entry: Entry; onClos
       </header>
       {!readOnly && <MarkdownToolbar view={view} active={cursor.active} heading={cursor.heading} deck={deck} words={words} disabled={!loaded} />}
 
-      <main className="relative flex min-h-0 flex-1" aria-busy={!loaded}>
+      <div className="relative flex min-h-0 flex-1" aria-busy={!loaded}>
         {deck && (
           <aside className="w-52 shrink-0 border-r border-hair bg-surface max-md:hidden">
             <Filmstrip slides={slides} current={current} resolver={resolver} onPick={goToSlide} />
@@ -372,7 +372,7 @@ export function MarkdownOffice({ entry: first, onClose }: { entry: Entry; onClos
             <Spinner size={28} label={t("office.opening", { name: entry.name })} />
           </div>
         )}
-      </main>
+      </div>
 
       {meta !== null && presenting === null && (
         <EditorQuickActions

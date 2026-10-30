@@ -212,6 +212,9 @@ pub struct Frame<'a> {
     pub refresh: Option<u32>,
     /// The sidebar's Pinned section, when the box sent the list.
     pub pins: Option<&'a [NavEntry]>,
+    /// The page's name on `<html data-page>`, as the script page sets it,
+    /// so an administrator's stylesheet can pick one page out.
+    pub page: Option<&'a str>,
 }
 
 /// A whole page: the frame around `main`. With no `nav`, only the top bar
@@ -237,6 +240,7 @@ pub fn page(f: &Frame<'_>, main: Html) -> Html {
         f.title,
         f.assets,
         f.refresh,
+        f.page,
         body.into(),
     )
 }
@@ -249,6 +253,7 @@ pub fn document(
     title: &str,
     assets: &Assets,
     refresh: Option<u32>,
+    page: Option<&str>,
     body: Html,
 ) -> Html {
     let mut head = Html::trusted(
@@ -277,10 +282,19 @@ pub fn document(
         Theme::Auto => String::new(),
         other => format!(" data-theme=\"{}\"", other.code()),
     };
+    // Page names are lowercase words joined by dots (blocks.json).
+    let page_attr = page
+        .filter(|p| {
+            p.chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.')
+        })
+        .map(|p| format!(" data-page=\"{p}\""))
+        .unwrap_or_default();
     Html::trusted(format!(
-        "<!doctype html><html lang=\"{}\"{} data-basic=\"\"><head>{}</head><body>{}</body></html>",
+        "<!doctype html><html lang=\"{}\"{}{} data-basic=\"\"><head>{}</head><body>{}</body></html>",
         locale.code(),
         theme_attr,
+        page_attr,
         head.as_str(),
         body.as_str()
     ))
@@ -316,9 +330,10 @@ fn app_bar(f: &Frame<'_>) -> Html {
                         .child(ui::badge(ui::Tone::Outline, &m.t("shell.thisBox"))),
                 )
                 .child(el("div").class("flex-1"))
-                .child(language_menu(f))
-                .child(theme_toggle(f))
-                .child(f.person.map(|p| person_menu(f, p))),
+                .child(match f.person {
+                    Some(p) => person_menu(f, p),
+                    None => display_menu(f),
+                }),
         )
         .into()
 }
@@ -341,87 +356,170 @@ fn menu(name: &str) -> El {
 
 const SUMMARY: &str = "list-none [&::-webkit-details-marker]:hidden";
 
-/// components/ui/language-picker.tsx: the same label, opening a menu of the
-/// three languages and "Browser language" instead of a native select.
-fn language_menu(f: &Frame<'_>) -> Html {
+const POPUP: &str = "absolute top-full z-50 mt-1.5 rounded-card border border-line bg-surface p-1 text-ink shadow-pop outline-none";
+const MENU_ITEM: &str = "flex w-full cursor-pointer items-center gap-2 rounded-control px-2 py-1.5 text-[13px] text-ink outline-none select-none transition-colors duration-100 hover:bg-accent-wash focus-visible:bg-accent-wash";
+
+/// components/preferences-menu.tsx's two rows, the appearance and the
+/// language. There each opens a submenu; here each is a disclosure that
+/// opens its choices under it, buttons of one form that changes the page's
+/// cookie and comes back.
+fn preference_rows(f: &Frame<'_>) -> [Html; 2] {
     let m = f.m;
-    let current = f
+    let theme_choices = [
+        (Theme::Auto, icons::COMPUTER, m.t("ui.theme.auto")),
+        (Theme::Light, icons::SUN_03, m.t("ui.theme.light")),
+        (Theme::Dark, icons::MOON_02, m.t("ui.theme.dark")),
+    ];
+    let (theme_glyph, theme_now) = theme_choices
+        .iter()
+        .find(|(t, _, _)| *t == f.prefs.theme)
+        .map_or((icons::COMPUTER, m.t("ui.theme.auto")), |(_, g, l)| {
+            (*g, l.clone())
+        });
+    let theme = choice_row(
+        f,
+        "theme",
+        theme_glyph,
+        &m.t("ui.theme.label"),
+        &theme_now,
+        theme_choices
+            .iter()
+            .map(|(t, glyph, label)| {
+                choice(
+                    "theme",
+                    t.code(),
+                    label,
+                    Some(glyph),
+                    None,
+                    f.prefs.theme == *t,
+                )
+            })
+            .collect(),
+    );
+    let lang_now = f
         .prefs
         .lang
         .map_or_else(|| m.t("ui.language.auto"), |l| l.own_name().to_string());
-    let choice = |value: &str, text: &str, lang: Option<&str>, on: bool| -> Html {
-        el("button")
-            .attr("type", "submit")
-            .attr("name", "lang")
-            .attr("value", value)
-            .attr_opt("lang", lang)
-            .attr("role", "menuitemradio")
-            .attr("aria-checked", if on { "true" } else { "false" })
-            .class(MENU_ITEM)
-            .child(el("span").class("flex-1 text-left").text(text))
-            .child(on.then(|| icon(icons::TICK_02, 14, "text-accent")))
-            .into()
-    };
-    menu("language")
+    let mut langs = vec![choice(
+        "lang",
+        "auto",
+        &m.t("ui.language.auto"),
+        None,
+        None,
+        f.prefs.lang.is_none(),
+    )];
+    langs.extend([Locale::En, Locale::Sk, Locale::De].into_iter().map(|l| {
+        choice(
+            "lang",
+            l.code(),
+            l.own_name(),
+            None,
+            Some(l.code()),
+            f.prefs.lang == Some(l),
+        )
+    }));
+    let language = choice_row(
+        f,
+        "language",
+        icons::LANGUAGE_CIRCLE,
+        &m.t("ui.language.label"),
+        &lang_now,
+        langs,
+    );
+    [theme, language]
+}
+
+/// One row: its name and the current choice, opening the choices below.
+fn choice_row(
+    f: &Frame<'_>,
+    slot: &str,
+    glyph: &str,
+    label: &str,
+    current: &str,
+    choices: Vec<Html>,
+) -> Html {
+    el("details")
+        .attr("data-slot", &format!("{slot}-menu"))
+        .class("group/choice")
         .child(
             el("summary")
-                .attr("title", &m.t("ui.language.label"))
                 .class(SUMMARY)
-                .class("relative inline-flex h-[34px] cursor-pointer items-center gap-1.5 rounded-control border border-line bg-sunk pr-1 pl-2 text-faint focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:outline-none hover:text-ink")
-                .child(icon(icons::LANGUAGE_CIRCLE, 16, ""))
-                .child(el("span").class("sr-only").text(&m.t("ui.language.label")))
+                .class(MENU_ITEM)
+                .child(icon(glyph, 14, ""))
+                .child(el("span").class("flex-1").text(label))
                 .child(
                     el("span")
-                        .class("pr-1 text-[12.5px] text-ink max-sm:sr-only")
-                        .text(&current),
-                ),
+                        .class("max-w-[8rem] truncate text-[12px] text-muted")
+                        .text(current),
+                )
+                .child(icon(
+                    icons::ARROW_RIGHT_01,
+                    14,
+                    "text-faint transition-[rotate] duration-150 ease-snap group-open/choice:rotate-90",
+                )),
         )
         .child(
             prefs_form(f)
-                .attr("role", "menu")
-                .attr("data-slot", "basic-popup")
-                .class(POPUP)
-                .class("right-0 w-48")
-                .child(choice("auto", &m.t("ui.language.auto"), None, f.prefs.lang.is_none()))
-                .children([Locale::En, Locale::Sk, Locale::De].into_iter().map(|l| {
-                    choice(l.code(), l.own_name(), Some(l.code()), f.prefs.lang == Some(l))
-                })),
+                .attr("role", "group")
+                .attr("aria-label", label)
+                .attr("data-slot", &format!("{slot}-choices"))
+                .class("pb-1 pl-4")
+                .children(choices),
         )
         .into()
 }
 
-const POPUP: &str = "absolute top-full z-50 mt-1.5 rounded-card border border-line bg-surface p-1 text-ink shadow-pop outline-none";
-const MENU_ITEM: &str = "flex w-full cursor-pointer items-center gap-2 rounded-control px-2 py-1.5 text-[13px] text-ink outline-none select-none transition-colors duration-100 hover:bg-accent-wash focus-visible:bg-accent-wash";
+fn choice(
+    name: &str,
+    value: &str,
+    text: &str,
+    glyph: Option<&str>,
+    lang: Option<&str>,
+    on: bool,
+) -> Html {
+    el("button")
+        .attr("type", "submit")
+        .attr("name", name)
+        .attr("value", value)
+        .attr_opt("lang", lang)
+        .attr("role", "menuitemradio")
+        .attr("aria-checked", if on { "true" } else { "false" })
+        .class(MENU_ITEM)
+        .child(match glyph {
+            Some(g) => icon(g, 14, ""),
+            None => el("span")
+                .attr("aria-hidden", "true")
+                .class("size-[14px] shrink-0")
+                .into(),
+        })
+        .child(el("span").class("flex-1 text-left").text(text))
+        .child(on.then(|| icon(icons::TICK_02, 14, "text-accent")))
+        .into()
+}
 
-/// components/ui/theme-toggle.tsx: three buttons in one group.
-fn theme_toggle(f: &Frame<'_>) -> Html {
+/// components/preferences-menu.tsx's DisplayMenu: the two rows behind one
+/// button, for a page nobody is signed in to.
+fn display_menu(f: &Frame<'_>) -> Html {
     let m = f.m;
-    let item = |theme: Theme, glyph: &str, label: &str| -> Html {
-        let on = f.prefs.theme == theme;
-        el("button")
-            .attr("type", "submit")
-            .attr("name", "theme")
-            .attr("value", theme.code())
-            .attr("role", "radio")
-            .attr("aria-checked", if on { "true" } else { "false" })
-            .attr("aria-label", label)
-            .attr("title", label)
-            .attr("data-slot", "toggle-group-item")
-            .attr("data-state", if on { "on" } else { "off" })
-            .class("inline-flex items-center justify-center gap-1.5 whitespace-nowrap select-none text-[12.5px] font-medium transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-45 [&_svg]:pointer-events-none [&_svg]:shrink-0 text-faint hover:text-ink data-[state=on]:bg-surface data-[state=on]:text-ink data-[state=on]:shadow-card size-7 p-0 min-w-0 shrink-0 rounded-[calc(var(--control-radius)-2px)] focus-visible:z-10")
-            .child(icon(glyph, 16, ""))
-            .into()
-    };
-    prefs_form(f)
+    let [theme, language] = preference_rows(f);
+    menu("display")
+        .child(
+            el("summary")
+                .attr("data-testid", "display-menu")
+                .attr("aria-label", &m.t("ui.display.label"))
+                .attr("title", &m.t("ui.display.label"))
+                .class(SUMMARY)
+                .class("inline-flex size-[34px] cursor-pointer items-center justify-center rounded-control text-faint hover:bg-sunk hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent")
+                .child(icon(icons::PAINT_BOARD, 18, "")),
+        )
         .child(
             el("div")
-                .attr("role", "radiogroup")
-                .attr("aria-label", &m.t("ui.theme.label"))
-                .attr("data-slot", "toggle-group")
-                .class("group/toggle-group inline-flex w-fit items-center gap-0.5 rounded-control border p-0.5 border-line bg-sunk")
-                .child(item(Theme::Auto, icons::COMPUTER, &m.t("ui.theme.auto")))
-                .child(item(Theme::Light, icons::SUN_03, &m.t("ui.theme.light")))
-                .child(item(Theme::Dark, icons::MOON_02, &m.t("ui.theme.dark"))),
+                .attr("role", "menu")
+                .attr("data-slot", "basic-popup")
+                .class(POPUP)
+                .class("right-0 w-64 max-w-[calc(100vw-2rem)]")
+                .child(theme)
+                .child(language),
         )
         .into()
 }
@@ -481,6 +579,8 @@ fn person_menu(f: &Frame<'_>, person: &Person) -> Html {
                         .child(el("span").class("truncate text-[13.5px] font-medium").text(&person.label))
                         .child(el("span").class("text-[12px] leading-snug text-muted").text(&person.tip)),
                 )
+                .child(el("div").attr("role", "separator").class("my-1 h-px bg-hair"))
+                .children(preference_rows(f))
                 .child(el("div").attr("role", "separator").class("my-1 h-px bg-hair"))
                 .when(person.account, |d| {
                     d.child(
@@ -1038,6 +1138,7 @@ mod tests {
             rail_moved: false,
             refresh: None,
             pins: None,
+            page: None,
         }
     }
 

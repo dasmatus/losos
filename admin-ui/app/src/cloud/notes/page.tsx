@@ -521,10 +521,10 @@ export function NotesPage() {
       <div className={cn("lg:sticky lg:top-20 lg:block lg:max-h-[calc(100dvh-6rem)] lg:w-64 lg:shrink-0 lg:self-start lg:overflow-y-auto", !tree && "max-lg:hidden")}>
         {left}
       </div>
-      <main className="flex min-w-0 flex-1 flex-col gap-6 xl:flex-row">
+      <div className="flex min-w-0 flex-1 flex-col gap-6 xl:flex-row">
         <div className="min-w-0 flex-1">{middle}</div>
         {side}
-      </main>
+      </div>
     </div>
   );
 }

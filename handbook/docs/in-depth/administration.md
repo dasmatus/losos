@@ -40,23 +40,34 @@ wizard offers a one-line installer for macOS, Linux and Windows
 
 ## Look
 
-**Settings, Look** changes how the admin pages look, for every browser that
-opens the box. Nothing here is a setting in the Nix sense. It is a document
-lososd keeps at `/var/lib/losos/look.json`, so a change takes effect the
-moment it is saved, with no rebuild.
+**Settings, Look** changes how the admin pages look. Everyone signed in
+opens it for their own background; the widgets on it are for the people in
+the look section. Nothing here is a setting in the Nix sense. lososd keeps
+the widgets at `/var/lib/losos/look.json` and each person's background at
+`/var/lib/losos/looks/<name>.json`, so a change takes effect the moment it
+is saved, with no rebuild.
 
 ### Background
 
-Pick one of the three shipped pictures, or upload one of your own (PNG, JPEG,
-WebP, GIF or SVG, up to 8 MiB). The **Veil** slider lays the page colour over
-the picture, from 20 % to 90 %, so text stays readable in both the light and
-the dark theme. *Plain* removes the picture again.
+Each person picks their own, and it follows them to every browser they sign
+in to; nobody else's choice changes their page. Pick one of the three shipped
+pictures, or upload one of your own (PNG, JPEG, WebP or GIF, up to 8 MiB).
+The **Veil** slider lays the page colour over the picture, from 20 % to
+90 %, so text stays readable in both the light and the dark theme. *Plain*
+removes the picture again. LosOS Cloud and LosOS Git show it behind their
+pages too.
 
-:::note[Why the picture needs no token]
-lososd serves an uploaded picture at `/api/look/background` without a token,
-because a CSS `background-image` cannot send one. The route sits behind the
-same LAN-only guard as the rest of the admin pages, and a wallpaper is not a
-secret.
+The spare key is nobody, so it sees and sets the box's own background. On a
+box that had a background before backgrounds were per person, that one is
+the box's own, and the owner gets a copy of it the first time they sign in.
+Removing a person removes their background.
+
+:::note[Who can read a picture]
+A person's uploaded picture is served at `/api/look/background/<name>` to
+that person alone, read with their LosOS Login cookie. The box's own is
+served at `/api/look/background` without a token, because a spare-key tab
+keeps its key in the page and a CSS `background-image` cannot send one. Both
+routes sit behind the same LAN-only guard as the rest of the admin pages.
 :::
 
 ### Widgets written by hand
@@ -428,7 +439,7 @@ other's files. `nix/tests/impermanence.nix` checks this.
 ## Upgrades and reboots
 
 - **03:00.** lososd first moves `/etc/nixos` to the newest commit of
-  `losos.configRepo.upstream.branch` (`main`) at
+  `losos.configRepo.upstream.branch` (the release channel, below) at
   `losos.configRepo.upstream.url` (the GitHub repository), keeping the box's
   `modules/overrides.nix` and `modules/install-target.nix`. Then
   `system.autoUpgrade` rebuilds from `losos.upgradeFlakeUri`, which is
@@ -439,3 +450,36 @@ other's files. `nix/tests/impermanence.nix` checks this.
 - **00:07.** `midnight-reboot.timer` reboots unconditionally
   (`Persistent=true`, so a box that was off catches up). Because the root is
   rebuilt on boot, the reboot is how the box repairs itself.
+
+### Release channels {#release-channels}
+
+A box follows one of three branches, picked under Settings, History, Release
+channel (`losos.updates.channel`):
+
+| Channel   | Branch            | Moves                     |
+| --------- | ----------------- | ------------------------- |
+| Daily     | `channel/daily`   | Every night at 00:17 UTC  |
+| Weekly    | `channel/weekly`  | Mondays at 00:17 UTC      |
+| Monthly   | `channel/monthly` | The 1st at 00:17 UTC      |
+
+Each move takes the newest commit of `main` whose CI run passed, the upload
+to the binary cache included, so a box never builds a version that failed
+its checks and never compiles what CI already built. Before LosOS 1.0.0 a
+box follows the daily channel, and the weekly one from then on. "Every
+change" (`main`) follows `main` itself, checked or not, and is for testing
+LosOS.
+
+A pull request labelled `hotfix` reaches every channel the same day. Once it
+is merged, a bot cherry-picks it onto each channel that lacks it, CI and the
+cache upload run on the result, and the channel moves when they pass. Boxes
+take it at their next 03:00 update. A hotfix carries what is in this
+repository: LosOS's own code, its Rust and npm dependencies and its module
+settings. A fix inside NixOS itself, such as nginx or the kernel, arrives
+through the nixpkgs pin like any other change.
+
+Moving to a slower channel never takes a box back. Every commit on a channel
+names the `main` commit it was cut from (a `Channel-Base:` trailer), and the
+box keeps the version it has until the channel passes it; the History pane
+shows "Waiting for the channel" meanwhile. `.github/workflows/channels.yml`
+and `.github/scripts/channels.py` do the cuts and the hotfixes, and no
+channel is ever force-pushed.

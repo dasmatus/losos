@@ -1314,18 +1314,25 @@ await check('the homepage has a tile for each page of LosOS Cloud, LosOS Git and
   await page.close();
 });
 
+/* The theme and the language live in the person menu: open it, open the
+ * row's submenu, pick `name`. */
+async function choose(page, slot, name) {
+  await page.getByTestId('signed-in-as').click();
+  await page.locator(`[data-slot="${slot}"]`).click();
+  await page.locator(`[data-slot="${slot}-choices"]`).getByRole('menuitemradio', { name, exact: true }).click();
+}
+
 await check('an unknown address says so instead of showing a blank page', async () => {
   const { page } = await open({ path: '/no/such/page', stored: true });
   await page.getByText('Nothing here').waitFor();
   await page.close();
 });
 
-await check('the theme toggle stamps the choice on <html> and it survives a reload', async () => {
+await check('the theme in the person menu stamps the choice on <html> and it survives a reload', async () => {
   const { page } = await open({ stored: true });
   const stamp = () => page.evaluate(() => document.documentElement.className + '|' + document.documentElement.dataset.theme);
   const before = await stamp();
-  const dark = page.getByRole('radio', { name: 'Dark' });
-  await dark.click();
+  await choose(page, 'theme-menu', 'Dark');
   const after = await stamp();
   assert.notEqual(after, before, 'choosing Dark changed nothing on <html>');
   await page.reload({ waitUntil: 'networkidle' });
@@ -1334,11 +1341,11 @@ await check('the theme toggle stamps the choice on <html> and it survives a relo
   await page.close();
 });
 
-await check('a Slovak browser gets Slovak, and the picker switches to German for good', async () => {
+await check('a Slovak browser gets Slovak, and the person menu switches it to German for good', async () => {
   const { page, errors } = await open({ stored: true, locale: 'sk-SK' });
   await page.getByRole('navigation', { name: 'Sekcie', exact: true }).getByText('Prehľad').waitFor();
   assert.equal(await page.evaluate(() => document.documentElement.lang), 'sk');
-  await page.getByLabel('Jazyk').selectOption('de');
+  await choose(page, 'language-menu', 'Deutsch');
   await page.getByRole('navigation', { name: 'Bereiche', exact: true }).getByText('Übersicht').waitFor();
   await page.reload({ waitUntil: 'networkidle' });
   await page.getByRole('navigation', { name: 'Bereiche', exact: true }).getByText('Übersicht').waitFor();
@@ -1632,18 +1639,29 @@ await check('the gallery offers each widget as an Item with its own action', asy
   await page.close();
 });
 
-await check('the theme toggle is a Toggle Group: a radio group the arrow keys move through', async () => {
+await check('the theme is a submenu of the person menu that the arrow keys move through', async () => {
   const { page } = await open({ stored: true });
-  const group = page.getByRole('radiogroup', { name: 'Appearance' });
-  assert.equal(await group.getAttribute('data-slot'), 'toggle-group');
-  const auto = group.getByRole('radio', { name: 'Match the browser' });
-  assert.equal(await auto.getAttribute('aria-checked'), 'true');
-  await auto.focus();
+  await page.getByTestId('signed-in-as').click();
+  const row = page.locator('[data-slot="theme-menu"]');
+  await row.waitFor();
+  assert.match(await row.innerText(), /Appearance\s*Match the browser/, 'the row does not name the current choice');
+  await row.focus();
   await page.keyboard.press('ArrowRight');
-  assert.equal(await group.getByRole('radio', { name: 'Light' }).getAttribute('aria-checked'), 'true', 'ArrowRight did not move the choice');
-  assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'light');
+  const sub = page.locator('[data-slot="theme-menu-choices"]');
+  await sub.waitFor();
+  assert.deepEqual(
+    (await sub.getByRole('menuitemradio').allInnerTexts()).map((s) => s.trim()),
+    ['Match the browser', 'Light', 'Dark'],
+  );
+  assert.equal(await sub.getByRole('menuitemradio', { name: 'Match the browser' }).getAttribute('aria-checked'), 'true');
   await page.keyboard.press('End');
-  assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'dark', 'End did not jump to the last choice');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
+  await sub.waitFor({ state: 'detached' });
+  // The language sits under it, and the menu keeps Your account and Sign out.
+  await page.getByTestId('signed-in-as').click();
+  await page.locator('[data-slot="language-menu"]').waitFor();
+  await page.getByTestId('sign-out').waitFor();
   await page.close();
 });
 

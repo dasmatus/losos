@@ -15,6 +15,11 @@
 @import "tailwindcss";
 @import "./tokens.css";
 @import "./basic.css";
+/* Text an administrator writes on a page (src/pages/), and the document
+ * components it may use: in the main sheet, so the pages without a script
+ * (backend/plugins/basic) draw it too. */
+@import "../mdx/document.css";
+@import "../pages/pages.css";
 
 /* The pages without JavaScript (/basic/) are drawn in Rust on the box, in
  * this stylesheet's classes. The bundle is built from this folder alone, so
@@ -503,6 +508,20 @@
   padding-right: env(safe-area-inset-right, 0px);
 }
 
+/* The page editor (src/pages/editor.tsx) docks at the right edge, or at the
+ * foot on a phone, and the page it previews moves out from under it. Here
+ * rather than as utilities, which the rule above would outweigh. */
+@media (width >= 48rem) {
+  .losos-shell[data-page-editor] {
+    padding-right: calc(30rem + env(safe-area-inset-right, 0px));
+  }
+}
+@media (width < 48rem) {
+  .losos-shell[data-page-editor] {
+    padding-bottom: calc(55dvh + var(--bottom-nav));
+  }
+}
+
 /* The phone's bottom bar (components/ui/bottom-nav.tsx) is fixed to the
  * viewport and drawn only below md. While it is on the page its height,
  * the home indicator's safe area included, is --bottom-nav: the shell pads
@@ -510,6 +529,19 @@
  * list, a call in the corner, a selection's actions) sits that much higher. */
 :root {
   --bottom-nav: 0px;
+}
+
+/* The scrollbar's room is kept whether the page scrolls or not. Without it
+ * a page long enough to scroll draws the bar into the window's width and
+ * the centred column under the top bar slides sideways by half of it, so
+ * the logo, the sidebar and the page jumped between a short page and a
+ * long one, and when a list finished loading. A phone's scrollbar floats
+ * over the page and takes no room, and there the gutter would only narrow
+ * the bars fixed to the edges. */
+@media (min-width: 48rem) {
+  html {
+    scrollbar-gutter: stable;
+  }
 }
 :root:has([data-slot="bottom-nav"]) {
   --bottom-nav: calc(3.5rem + 1px + env(safe-area-inset-bottom, 0px));

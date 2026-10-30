@@ -47,6 +47,8 @@ let
   runDir = "/run/losos-calls";
   socket = "${runDir}/http.sock";
   tap = config.lososInternal.callsTap;
+  # The account the shared side runs as (lososInternal.sideUser).
+  user = if config.lososInternal.sideUser == null then "shared" else config.lososInternal.sideUser;
   proxy = config.losos.proxy;
   throughEdge = proxy.enable;
   edgePathEnv = "/run/losos/edge-path.env";
@@ -93,7 +95,7 @@ in
     users.users.nginx.extraGroups = [ "losos-calls" ];
 
     systemd.services.losos-calls = {
-      description = "LosOS calls (the SFU behind chat's calls), as the shared user";
+      description = "LosOS calls (the SFU behind chat's calls), as the ${user} user";
       wantedBy = [ "multi-user.target" ] ++ lib.optional throughEdge "losos-tunnel-client.service";
       partOf = lib.optional throughEdge "losos-tunnel-client.service";
       after = [
@@ -107,7 +109,7 @@ in
       };
       serviceConfig = {
         Type = "simple";
-        User = "shared";
+        User = user;
         Group = "losos-calls";
         ExecStart =
           if throughEdge then
@@ -172,7 +174,7 @@ in
       };
     };
 
-    systemd.tmpfiles.rules = lib.optional (tap != null) "d ${tap} 0700 shared losos-calls - -";
+    systemd.tmpfiles.rules = lib.optional (tap != null) "d ${tap} 0700 ${user} losos-calls - -";
 
     networking.firewall.allowedUDPPorts = lib.optional (!throughEdge) cfg.udpPort;
 
@@ -206,6 +208,9 @@ in
           internal;
           proxy_intercept_errors on;
           error_page 500 502 503 504 = @losos-calls-authz-down;
+          # The request's body never comes here, but its length is held to
+          # this location's limit first (modules/identity.nix, askAboutRequest).
+          client_max_body_size 0;
           proxy_pass_request_body off;
           proxy_set_header Content-Length "";
           proxy_set_header X-Original-Method $request_method;

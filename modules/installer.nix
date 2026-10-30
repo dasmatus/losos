@@ -12,7 +12,9 @@
 # sets it via nix/packages.nix). The flake the installer builds from is
 # cloned over the network at run time (LOSOS_FLAKE_URL, default the public
 # GitHub repo) — the ISO needs working network either way, since evaluating
-# the flake fetches its nixpkgs input.
+# the flake fetches its nixpkgs input. It clones the release channel the box
+# will follow (LOSOS_FLAKE_BRANCH, losos.configRepo.upstream.branch), and the
+# default branch where that channel does not exist.
 #
 # When `losos.installer.autorun` is true (installer ISO only), tty1 runs the
 # installer as a service in place of a login prompt, so booting the ISO starts
@@ -140,6 +142,7 @@ let
       ''
         install -Dm755 ${lib.getExe inner} $out/bin/${binName}
         wrapProgram $out/bin/${binName} --prefix PATH : ${tools} ${lib.concatStringsSep " " reportEnv} \
+          --set-default LOSOS_FLAKE_BRANCH ${lib.escapeShellArg config.losos.configRepo.upstream.branch} \
           --set-default LOSOS_REGISTRAR_URL ${lib.escapeShellArg config.losos.proxy.registrarUrl}${
             lib.optionalString (seededKeys != [ ]) " --set LOSOS_INSTALL_GPG_KEYS_FILE ${seededKeysFile}"
           }

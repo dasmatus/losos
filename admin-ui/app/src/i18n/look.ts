@@ -8,6 +8,7 @@ import { defineMessages } from "./define";
 export default defineMessages({
   // ── Background ──────────────────────────────────────────────────────────
   "look.background.group": { en: "Background", sk: "Pozadie", de: "Hintergrund" },
+  "look.background.groupMine": { en: "Your background", sk: "Vaše pozadie", de: "Dein Hintergrund" },
   "look.background.none": { en: "Plain", sk: "Bez obrázka", de: "Schlicht" },
   "look.background.tide": { en: "Tide", sk: "Príliv", de: "Gezeiten" },
   "look.background.grid": { en: "Grid", sk: "Mriežka", de: "Raster" },
@@ -26,9 +27,14 @@ export default defineMessages({
   },
   "look.background.uploading": { en: "Uploading…", sk: "Nahráva sa…", de: "Wird hochgeladen …" },
   "look.background.caption": {
-    en: "Takes effect at once, on every browser that opens this box; nothing rebuilds. A picture of your own can be a PNG, JPEG, GIF or WebP up to {mb} MB.",
-    sk: "Prejaví sa hneď, v každom prehliadači, ktorý toto zariadenie otvorí; nič sa neprestavuje. Vlastný obrázok môže byť PNG, JPEG, GIF alebo WebP do {mb} MB.",
-    de: "Gilt sofort, in jedem Browser, der diese Box öffnet; nichts wird neu gebaut. Ein eigenes Bild kann ein PNG, JPEG, GIF oder WebP bis {mb} MB sein.",
+    en: "Yours alone: everyone on this box picks their own, and it follows you to every browser you sign in to. Nothing rebuilds. A picture of your own can be a PNG, JPEG, GIF or WebP up to {mb} MB.",
+    sk: "Len vaše: každý na tomto zariadení si vyberá vlastné a sprevádza vás v každom prehliadači, kde sa prihlásite. Nič sa neprestavuje. Vlastný obrázok môže byť PNG, JPEG, GIF alebo WebP do {mb} MB.",
+    de: "Nur deins: Alle auf dieser Box wählen ihren eigenen, und er begleitet dich in jeden Browser, in dem du dich anmeldest. Nichts wird neu gebaut. Ein eigenes Bild kann ein PNG, JPEG, GIF oder WebP bis {mb} MB sein.",
+  },
+  "look.background.captionBox": {
+    en: "The box's own background, the one the spare key sees. Each person picks their own once they sign in. A picture of your own can be a PNG, JPEG, GIF or WebP up to {mb} MB.",
+    sk: "Vlastné pozadie zariadenia, ktoré vidí náhradný kľúč. Každý si po prihlásení vyberie svoje. Vlastný obrázok môže byť PNG, JPEG, GIF alebo WebP do {mb} MB.",
+    de: "Der eigene Hintergrund der Box, den der Ersatzschlüssel sieht. Alle wählen nach der Anmeldung ihren eigenen. Ein eigenes Bild kann ein PNG, JPEG, GIF oder WebP bis {mb} MB sein.",
   },
   "look.veil.title": { en: "Veil", sk: "Závoj", de: "Schleier" },
   "look.veil.detail": {

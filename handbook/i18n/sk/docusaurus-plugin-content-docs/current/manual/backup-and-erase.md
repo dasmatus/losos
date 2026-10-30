@@ -73,6 +73,8 @@ zariadenie.
 - súbory LosOS Cloud;
 - repozitáre LosOS Git;
 - databázy oboch;
+- schránky LosOS Mail, ak zariadenie má Poštu (poštový server sa na pár
+  sekúnd kopírovania zastaví);
 - priečinok, ktorý zariadenie zdieľa s mesh, ak je zdieľanie zapnuté (na
   kópiu sa otvorí a potom znova zamkne);
 - každé nastavenie a vzhľad domovskej stránky.

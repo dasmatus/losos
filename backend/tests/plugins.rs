@@ -44,7 +44,7 @@ fn components() -> &'static Vec<Built> {
             .status()
             .expect("cargo builds the plugins");
         assert!(status.success(), "building the plugins for wasm32 failed");
-        ["look", "pins", "hidden", "probe"]
+        ["look", "pins", "hidden", "pages", "probe"]
             .iter()
             .map(|name| {
                 let core = std::fs::read(
@@ -65,11 +65,19 @@ fn components() -> &'static Vec<Built> {
     })
 }
 
-/// A sealed "store" with one package of plugins in it.
-fn store(root: &Path) -> PathBuf {
+/// The plugins most tests load. The pages plugin carries the whole MDX
+/// crate and slows lososd's start enough that fourteen daemons at once on a
+/// CI runner missed the deadline, so only its own test loads it.
+const PLUGINS: &[&str] = &["look", "pins", "hidden", "probe"];
+
+/// A sealed "store" with one package of the named plugins in it.
+fn store(root: &Path, plugins: &[&str]) -> PathBuf {
     let pkg = root.join("0000-losos-plugins");
     std::fs::create_dir_all(&pkg).unwrap();
-    for (name, wasm, manifest) in components() {
+    for (name, wasm, manifest) in components()
+        .iter()
+        .filter(|(name, ..)| plugins.contains(&name.as_str()))
+    {
         for (file, bytes) in [
             (format!("{name}.wasm"), wasm),
             (format!("{name}.json"), manifest),
@@ -102,6 +110,14 @@ impl Drop for Daemon {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+        // A failing test shows what lososd logged.
+        if std::thread::panicking() {
+            if let Some(mut err) = self.child.stderr.take() {
+                let mut log = String::new();
+                let _ = err.read_to_string(&mut log);
+                eprintln!("lososd said:\n{log}");
+            }
+        }
         // The sealed package is not removable until it is writable again.
         for entry in std::fs::read_dir(&self.store_root)
             .into_iter()
@@ -131,9 +147,13 @@ impl Daemon {
     }
 
     fn start_with(extra: &[(&str, &str)]) -> Daemon {
+        Daemon::start_plugins(PLUGINS, extra)
+    }
+
+    fn start_plugins(plugins: &[&str], extra: &[(&str, &str)]) -> Daemon {
         let dir = TempDir::new().unwrap();
         let store_root = dir.path().join("store");
-        let pkg = store(&store_root);
+        let pkg = store(&store_root, plugins);
         let probe = dir.path().join("probe");
         std::fs::create_dir_all(probe.join("sealed")).unwrap();
         std::fs::write(dir.path().join("secret"), "not yours").unwrap();
@@ -143,6 +163,7 @@ impl Daemon {
             json!({"users": {
                 "ada": {"displayname": "Ada", "password": "x", "groups": ["losos-look"]},
                 "bob": {"displayname": "Bob", "password": "x", "groups": []},
+                "ola": {"displayname": "Ola", "password": "x", "groups": ["losos-admins", "losos-owner"]},
                 "root": {"displayname": "Root", "password": "x", "groups": ["losos-admins"]}
             }})
             .to_string(),
@@ -255,6 +276,16 @@ impl Daemon {
     /// As a person LosOS Login signed in.
     fn person(&self, name: &str, method: &str, path: &str) -> Answer {
         self.call(method, path, &[("Remote-User", name)], b"")
+    }
+
+    /// As a person LosOS Login signed in, with a body.
+    fn person_send(&self, name: &str, method: &str, path: &str, body: &[u8]) -> Answer {
+        self.call(
+            method,
+            path,
+            &[("Remote-User", name), ("Content-Type", "application/json")],
+            body,
+        )
     }
 
     fn probe(&self) -> PathBuf {
@@ -377,6 +408,106 @@ fn the_look_is_served_by_its_plugin() {
 }
 
 #[test]
+fn each_person_keeps_their_own_background() {
+    let d = Daemon::start();
+    // The box's own background, as a box from before kept it.
+    let bearer = format!("Bearer {TOKEN}");
+    let a = d.call(
+        "PUT",
+        "/api/look/background",
+        &[("Authorization", &bearer)],
+        PNG,
+    );
+    assert_eq!(a.status, 200);
+    assert_eq!(a.json()["personal"], false);
+
+    // Bob, who is in no section at all, picks his own.
+    let a = d.person_send(
+        "bob",
+        "POST",
+        "/api/look",
+        br#"{"background": {"kind": "shipped", "name": "dusk"}, "veil": 30}"#,
+    );
+    assert_eq!(a.status, 200, "{}", String::from_utf8_lossy(&a.body));
+    assert_eq!(a.json()["personal"], true);
+    assert_eq!(a.json()["background"]["name"], "dusk");
+    // Ada starts plain: the box's picture is not hers.
+    let a = d.person("ada", "GET", "/api/look");
+    assert_eq!(a.json()["background"]["kind"], "none");
+    assert_eq!(a.json()["veil"], 60);
+    // Her upload is hers, read back with her sign-in and nobody else's.
+    let a = d.call(
+        "PUT",
+        "/api/look/background",
+        &[("Remote-User", "ada")],
+        b"\xff\xd8\xff\xe0JFIF",
+    );
+    assert_eq!(a.status, 200, "{}", String::from_utf8_lossy(&a.body));
+    assert_eq!(
+        a.json()["background"]["url"],
+        "/api/look/background/ada?v=1"
+    );
+    let a = d.person("ada", "GET", "/api/look/background/ada?v=1");
+    assert_eq!(a.status, 200);
+    assert!(a
+        .head
+        .to_ascii_lowercase()
+        .contains("content-type: image/jpeg"));
+    assert_eq!(
+        d.person("bob", "GET", "/api/look/background/ada?v=1")
+            .status,
+        404
+    );
+    assert_eq!(
+        d.call("GET", "/api/look/background/ada?v=1", &[], b"")
+            .status,
+        401
+    );
+    // Bob's choice did not reach the spare key's page.
+    let a = d.admin("GET", "/api/look", Value::Null);
+    assert_eq!(a.json()["background"]["kind"], "upload");
+    assert_eq!(a.json()["background"]["url"], "/api/look/background?v=1");
+
+    // The owner's first look is a copy of the box's.
+    let a = d.person("ola", "GET", "/api/look");
+    assert_eq!(a.status, 200);
+    assert_eq!(a.json()["background"]["kind"], "upload");
+    assert_eq!(
+        a.json()["background"]["url"],
+        "/api/look/background/ola?v=1"
+    );
+    let a = d.person("ola", "GET", "/api/look/background/ola?v=1");
+    assert_eq!(a.body, PNG);
+
+    // Widgets stay the look section's.
+    let a = d.person_send(
+        "bob",
+        "POST",
+        "/api/look/widgets",
+        br#"{"name": "x", "source": "<b/>"}"#,
+    );
+    assert_eq!(a.status, 403);
+
+    // On disk, beside the box's, readable by root only.
+    for f in [
+        "state/looks/ada.json",
+        "state/looks/ada.img",
+        "state/looks/bob.json",
+        "state/looks/ola.img",
+    ] {
+        let mode = std::fs::metadata(d.dir.path().join(f))
+            .unwrap_or_else(|e| panic!("{f}: {e}"))
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600, "{f}");
+    }
+    let bob: Value =
+        serde_json::from_slice(&std::fs::read(d.dir.path().join("state/looks/bob.json")).unwrap())
+            .unwrap();
+    assert_eq!(bob["veil"], 30);
+}
+
+#[test]
 fn the_pins_are_served_by_their_plugin() {
     let d = Daemon::start();
     let a = d.admin("GET", "/api/pins", Value::Null);
@@ -426,6 +557,46 @@ fn the_pins_are_served_by_their_plugin() {
     let a = d.person("ada", "GET", "/api/pins");
     assert_eq!(a.status, 403);
     assert_eq!(d.person("root", "GET", "/api/pins").status, 200);
+}
+
+#[test]
+fn the_pages_answer_on_a_box_where_nothing_was_saved_yet() {
+    // The build's blocks.json and defaults, and a repository directory
+    // that does not exist yet, as on a box nobody customized.
+    let ui = TempDir::new().unwrap();
+    let pages = Path::new(env!("CARGO_MANIFEST_DIR")).join("../admin-ui/app/src/pages");
+    std::fs::create_dir_all(ui.path().join("pages")).unwrap();
+    for file in ["blocks.json", "overview.mdx", "settings.storage.mdx"] {
+        std::fs::copy(pages.join(file), ui.path().join("pages").join(file)).unwrap();
+    }
+    let repo = ui.path().join("repo");
+    let d = Daemon::start_plugins(
+        &["pages"],
+        &[
+            ("LOSOS_ADMIN_UI_DIR", ui.path().to_str().unwrap()),
+            ("LOSOS_PAGES_DIR", repo.to_str().unwrap()),
+        ],
+    );
+
+    let a = d.admin("GET", "/api/pages", Value::Null);
+    assert_eq!(a.status, 200, "{}", String::from_utf8_lossy(&a.body));
+    assert_eq!(a.json(), json!({"pages": {}, "style": null}));
+    let a = d.admin("GET", "/api/pages/overview", Value::Null);
+    assert_eq!(a.status, 200, "{}", String::from_utf8_lossy(&a.body));
+    let shipped = std::fs::read_to_string(pages.join("overview.mdx")).unwrap();
+    assert_eq!(a.json()["source"], json!(shipped));
+    assert_eq!(a.json()["custom"], json!(false));
+    assert_eq!(a.json()["history"], json!([]));
+    assert!(!repo.exists(), "a read made the repository");
+
+    let source = "<BoxName />\n\n## Welcome\n\n<Apps hideStorage />\n";
+    let a = d.admin("PUT", "/api/pages/overview", json!({"source": source}));
+    assert_eq!(a.status, 200, "{}", String::from_utf8_lossy(&a.body));
+    assert!(repo.join(".git").is_dir());
+    let a = d.admin("GET", "/api/pages/overview", Value::Null);
+    assert_eq!(a.json()["source"], json!(source));
+    assert_eq!(a.json()["custom"], json!(true));
+    assert_eq!(a.json()["history"].as_array().map(Vec::len), Some(1));
 }
 
 #[test]

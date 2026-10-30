@@ -155,10 +155,11 @@
 let
   cfg = config.losos.cluster;
 
-  # The LOCAL cluster exists to run this box's `shared` apps, which live in
-  # the shared data domain, so it runs exactly while that side does: sharing
-  # on and the box in a mesh. The box's own cloud and Git run on the host.
-  localEnabled = config.lososInternal.sharedSide;
+  # The LOCAL cluster exists to run this box's `shared` and `kindashared`
+  # apps, which live in those accounts' data domains, so it runs exactly while
+  # either side does: sharing on and the box in a mesh, or sharing with the
+  # local gateways. The box's own cloud and Git run on the host.
+  localEnabled = config.lososInternal.sharedSide || config.lososInternal.kindasharedSide;
 
   meshEnabled = cfg.enable;
 
@@ -537,6 +538,7 @@ in
           "containerd.service"
           "losos-workload-images.service"
           "losos-fscrypt-shared.service"
+          "losos-fscrypt-kindashared.service"
         ];
         requires = [
           "containerd.service"

@@ -169,7 +169,7 @@ let
     dir = ./../backend/mdx;
     wasm = "losos_mdx";
     features = [ "wasm" ];
-    cargoHash = "sha256-/PsXCBJFqy5hJ1ov20niOX5WhMcbm30UIkCoppjWiBI=";
+    cargoHash = "sha256-hyHEBRx7gLddFz4Y/Dqir9q4NpIr5wvRwDeTA1QyTvU=";
   };
   # Copied to src/mdx/pkg (gitignored; `bun run mdx` writes it in a
   # checkout) by both builds of the UI, in preConfigure rather than preBuild:
@@ -304,7 +304,7 @@ let
   # build a set with the probe in it.
   # backend/plugins' vendored crates: lososd's plugins and Mesh CI's pm
   # plugin are built from the one workspace.
-  pluginsCargoHash = "sha256-KJHNKRwPEjjGHKBlRYvTFG0ZtQLqNeHnJhPrMKKHF60=";
+  pluginsCargoHash = "sha256-30apxXXXZwQQcm+GUoXqqQPLZlkNggwwjlntT8/UWb4=";
   lososPlugins =
     {
       pname ? "losos-plugins",
@@ -318,12 +318,13 @@ let
         "problems"
         "hidden"
         "basic"
+        "pages"
       ],
     }:
     pkgs.rustPlatform.buildRustPackage {
       inherit pname;
       version = "0.1.0";
-      src = lib.cleanSource ./../backend/plugins;
+      inherit (import ./plugins-src.nix { inherit lib; }) src sourceRoot;
       cargoHash = pluginsCargoHash;
       nativeBuildInputs = [
         pkgs.wasm-tools
@@ -509,6 +510,9 @@ images
 
   losos-plugins = lososPlugins { };
 
+  # The mail server, Stalwart 1.0 (nix/stalwart.nix), for modules/mail.nix.
+  losos-stalwart = pkgs.callPackage ./stalwart.nix { };
+
   # Photos' face models (nix/face-models.nix), read by losos-cloud-photos.
   losos-face-models = import ./face-models.nix { inherit pkgs; };
   # The TPM makers' certificates boxes check gateways against
@@ -533,7 +537,7 @@ images
     src = lib.cleanSource ./../backend;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-ctl-rs` will print the new hash to paste here.
-    cargoHash = "sha256-PSnZgiBMWDc0q19g1VGaIglmvmtnoogtACnu8kyURJo=";
+    cargoHash = "sha256-HOWKAROLNgpoWCslwvP0xiTDrmUIBm5dkCus2/VKThg=";
     # No system deps: zbus speaks the D-Bus wire protocol natively, so there is
     # no libdbus to link against.
     # doCheck is off, and the tests still run — in CI's lint job and in
@@ -559,7 +563,7 @@ images
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-registrar` will print the new hash to paste here.
-    cargoHash = "sha256-LedCH3lBYEFRAqqO4XKcqtmtWtbXLbqN5JEulQ9QcbY=";
+    cargoHash = "sha256-AKuhgUY1X03EyclNVMrJmTrt+AQgHgVXf20GhL4Ke6M=";
     # No system deps; pure Rust with rustls (no openssl).
     # Same reasoning as losos-ctl above: the suite runs via cargo test in the
     # lint job, not inside this derivation.
@@ -584,7 +588,7 @@ images
     pname = "losos-registrar-static";
     version = "0.1.0";
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
-    cargoHash = "sha256-LedCH3lBYEFRAqqO4XKcqtmtWtbXLbqN5JEulQ9QcbY=";
+    cargoHash = "sha256-AKuhgUY1X03EyclNVMrJmTrt+AQgHgVXf20GhL4Ke6M=";
     doCheck = false;
   };
 

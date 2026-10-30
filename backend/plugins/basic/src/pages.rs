@@ -115,7 +115,10 @@ fn bytes(v: &Value, key: &str) -> Option<u64> {
 /// One tile: its app, icon, address, name and the note under it.
 type Tile<'a> = (&'a str, &'a str, &'a str, String, Option<(&'a str, String)>);
 
-pub fn overview(ctx: &Ctx, o: &Overview) -> Html {
+/// The Overview, or the administrator's page in its place when they changed
+/// it (`custom`, crate::custom): its blocks are the header, the change being
+/// applied and the card of apps. Glance, the widgets, needs a script.
+pub fn overview(ctx: &Ctx, o: &Overview, custom: Option<&str>) -> Html {
     let m = &ctx.m;
     let header = el("header")
         .class("flex flex-wrap items-center gap-x-4 gap-y-2 animate-fade-in")
@@ -264,20 +267,38 @@ pub fn overview(ctx: &Ctx, o: &Overview) -> Html {
         (true, false) => "waiting",
         (true, true) => "lent",
     };
-    let card = ui::card()
-        .class("overflow-hidden")
-        .child(ui::card_content().class("pt-5").child(apps))
-        .child(ui::card_footer().class("bg-sunk/40").child(storage_strip(
+    let apps = Html::from(apps);
+    let card = |hide_storage: bool| -> Html {
+        let card = ui::card()
+            .class("overflow-hidden")
+            .child(ui::card_content().class("pt-5").child(apps.clone()));
+        if hide_storage {
+            return card.into();
+        }
+        card.child(ui::card_footer().class("bg-sunk/40").child(storage_strip(
             m,
             lending,
             o.storage.as_ref(),
-        )));
+        )))
+        .into()
+    };
+    let header = Html::from(header);
+    let applying = if o.status.building() {
+        applying(m, &o.status)
+    } else {
+        Html::new()
+    };
 
-    let mut page = el("div").class("flex flex-col gap-4").child(header);
-    if o.status.building() {
-        page = page.child(applying(m, &o.status));
-    }
-    page.child(card).into()
+    let body = match custom {
+        None => header.with(applying).with(card(false)),
+        Some(html) => crate::custom::splice(html, |name, props| match name {
+            "BoxName" => header.clone(),
+            "Applying" => applying.clone(),
+            "Apps" => card(props.get("hideStorage") == Some(&Value::Bool(true))),
+            _ => Html::new(),
+        }),
+    };
+    el("div").class("flex flex-col gap-4").child(body).into()
 }
 
 /// AppGrid.tsx's SetupPrompt. The first-run wizard is a script page, so
@@ -773,7 +794,14 @@ pub fn not_this(old: &str) -> String {
 
 /// pane-storage.tsx: the meter, the reserve and the dialog that asks
 /// before the reserve is used, opened by a checkbox's label.
-pub fn storage(ctx: &Ctx, storage: Option<&Value>, rebuild: &Rebuild) -> Html {
+/// The Storage pane, or the administrator's page in its place (`custom`,
+/// crate::custom), whose one block is the disk.
+pub fn storage(
+    ctx: &Ctx,
+    storage: Option<&Value>,
+    rebuild: &Rebuild,
+    custom: Option<&str>,
+) -> Html {
     let m = &ctx.m;
     let facts = storage.cloned().unwrap_or(Value::Null);
     let reserve = bytes(&facts, "reserveBytes");
@@ -825,7 +853,7 @@ pub fn storage(ctx: &Ctx, storage: Option<&Value>, rebuild: &Rebuild) -> Html {
                         .child(action),
                 ),
         );
-    let mut body = Html::from(
+    let disk = Html::from(
         ui::pane_section()
             .child(ui::group_title(&m.t("panes.storage.disk")))
             .child(group)
@@ -833,6 +861,13 @@ pub fn storage(ctx: &Ctx, storage: Option<&Value>, rebuild: &Rebuild) -> Html {
                 &m.t("panes.storage.diskCaption"),
             ))),
     );
+    let mut body = match custom {
+        None => disk,
+        Some(html) => crate::custom::splice(html, |name, _| match name {
+            "Disk" => disk.clone(),
+            _ => Html::new(),
+        }),
+    };
 
     if has_reserve && !rebuild.busy() {
         let text = format!(
@@ -1142,6 +1177,196 @@ pub fn search(ctx: &Ctx, q: &str) -> Html {
 }
 
 /// A page the script UI has and these pages do not have yet.
+/// screens/settings/pane-look.tsx without script: the person's own
+/// background, plain or one of the pictures the box ships, and the veil
+/// over it. Each swatch is a button of one form; a picture of one's own is
+/// uploaded from the script page, and one already there is shown and kept.
+/// The widgets run script, so they are not here.
+pub fn look(ctx: &Ctx, look: Option<&Value>) -> Html {
+    let m = &ctx.m;
+    let empty = Value::Null;
+    let look = look.unwrap_or(&empty);
+    let personal = look["personal"].as_bool().unwrap_or(true);
+    let kind = look["background"]["kind"].as_str().unwrap_or("none");
+    let current = look["background"]["name"].as_str().unwrap_or_default();
+    let shipped: Vec<&str> = look["shipped"]
+        .as_array()
+        .map(|a| a.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_else(|| vec!["tide", "grid", "dusk"]);
+    let swatch = |value: &str, label: &str, on: bool, picture: Html| -> Html {
+        el("button")
+            .attr("type", "submit")
+            .attr("name", "background")
+            .attr("value", value)
+            .attr("role", "radio")
+            .attr("aria-checked", if on { "true" } else { "false" })
+            .class("group flex flex-col gap-1.5 rounded-card text-left focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:outline-none")
+            .child(
+                el("span")
+                    .class("block aspect-[16/10] w-full overflow-hidden rounded-control border")
+                    .class(if on {
+                        "border-accent ring-2 ring-accent/40"
+                    } else {
+                        "border-line group-hover:border-muted/60"
+                    })
+                    .child(picture),
+            )
+            .child(
+                el("span")
+                    .class("text-[12.5px] leading-snug")
+                    .class(if on { "text-ink" } else { "text-muted" })
+                    .text(label),
+            )
+            .into()
+    };
+    let title = m.t(if personal {
+        "look.background.groupMine"
+    } else {
+        "look.background.group"
+    });
+    let mut grid = el("div")
+        .attr("role", "radiogroup")
+        .attr("aria-label", &title)
+        .class("grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-5")
+        .child(swatch(
+            "none",
+            &m.t("look.background.none"),
+            kind == "none",
+            el("div").class("size-full bg-ground").into(),
+        ));
+    for name in &shipped {
+        if !name.bytes().all(|b| b.is_ascii_lowercase()) {
+            continue;
+        }
+        let key = format!("look.background.{name}");
+        let label = m.t(&key);
+        let label = if label == key {
+            (*name).to_string()
+        } else {
+            label
+        };
+        grid = grid.child(swatch(
+            name,
+            &label,
+            kind == "shipped" && current == *name,
+            el("img")
+                .attr("src", &format!("/backgrounds/{name}.svg"))
+                .attr("alt", "")
+                .class("size-full object-cover")
+                .into(),
+        ));
+    }
+    if kind == "upload" {
+        if let Some(url) = look["background"]["url"].as_str() {
+            grid = grid.child(
+                el("div")
+                    .attr("role", "radio")
+                    .attr("aria-checked", "true")
+                    .class("flex flex-col gap-1.5")
+                    .child(
+                        el("span")
+                            .class("block aspect-[16/10] w-full overflow-hidden rounded-control border border-accent ring-2 ring-accent/40")
+                            .child(el("img").attr("src", url).attr("alt", "").class("size-full object-cover")),
+                    )
+                    .child(
+                        el("span")
+                            .class("text-[12.5px] leading-snug text-ink")
+                            .text(&m.t("look.background.own")),
+                    ),
+            );
+        }
+    }
+    let veil = look["veil"].as_u64().unwrap_or(60);
+    let (low, high) = (
+        look["limits"]["veil"]["min"].as_u64().unwrap_or(20),
+        look["limits"]["veil"]["max"].as_u64().unwrap_or(90),
+    );
+    let veil_form = el("form")
+        .attr("method", "post")
+        .attr("action", &ctx.here)
+        .class("contents")
+        .child(
+            ui::row()
+                .child(ui::row_text(
+                    &m.t("look.veil.title"),
+                    Some(&m.t("look.veil.detail")),
+                    Some("f-veil"),
+                ))
+                .child(
+                    el("div")
+                        .class("flex shrink-0 items-center gap-3")
+                        .child(
+                            el("input")
+                                .attr("id", "f-veil")
+                                .attr("type", "range")
+                                .attr("name", "veil")
+                                .attr("min", &low.to_string())
+                                .attr("max", &high.to_string())
+                                .attr("step", "5")
+                                .attr("value", &veil.to_string())
+                                .attr_opt("disabled", (kind == "none").then_some(""))
+                                .class("w-32 accent-accent"),
+                        )
+                        .child(
+                            ui::button(Variant::Secondary, Size::Sm)
+                                .attr_opt("disabled", (kind == "none").then_some(""))
+                                .text(&m.t("basic.look.saveVeil")),
+                        ),
+                ),
+        );
+    let caption = m.tv(
+        if personal {
+            "look.background.caption"
+        } else {
+            "look.background.captionBox"
+        },
+        &[("mb", Var::Number(8))],
+    );
+    let body = ui::pane_section()
+        .child(ui::group_title(&title))
+        .child(
+            ui::group()
+                .child(
+                    el("form")
+                        .attr("method", "post")
+                        .attr("action", &ctx.here)
+                        .child(ui::stack_row().child(grid)),
+                )
+                .child(veil_form),
+        )
+        .child(ui::group_caption(Html::text(&caption)))
+        .child(ui::group_caption(Html::text(&m.t("basic.look.upload"))));
+    pane_column(ctx, "look", body.into(), Html::new())
+}
+
+/// The word a change on the Look pane leaves for the next page.
+#[must_use]
+pub fn look_word(answer: &crate::host::Answer, veil: bool) -> String {
+    if !(200..300).contains(&answer.status) {
+        "look.failed".to_string()
+    } else if veil {
+        "look.veil".to_string()
+    } else {
+        "look.set".to_string()
+    }
+}
+
+/// The toast for [`look_word`].
+#[must_use]
+pub fn look_toast(m: &Messages, word: &str) -> Option<Toast> {
+    let (key, tone) = match word {
+        "look.set" => ("look.toast.pictureSet", "success"),
+        "look.veil" => ("look.toast.veilSaved", "success"),
+        "look.failed" => ("look.toast.notSaved", "error"),
+        _ => return None,
+    };
+    Some(Toast {
+        tone,
+        title: m.t(key),
+        body: String::new(),
+    })
+}
+
 pub fn later(ctx: &Ctx, title: &str, glyph: &'static str) -> Html {
     let m = &ctx.m;
     el("div")

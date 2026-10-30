@@ -3,11 +3,15 @@ pragma solidity 0.8.24;
 
 /// @title LososEscrow
 /// @notice Holds one USDC payment per deposit for as long as what it bought
-/// runs. The edge then releases it to the treasury and the seller recorded
-/// at payment time, refunds it to the payer, or splits it between the two
-/// when the seller stopped delivering partway. The edge's key can do nothing
-/// else: it cannot change where a deposit goes. If the edge never answers,
-/// the payer takes the deposit back after its deadline.
+/// runs. It is then released to the treasury and the seller recorded at
+/// payment time, refunded to the payer, or split between the two when the
+/// seller stopped delivering partway. Each of those needs two of three keys:
+/// the edge's, the buyer's box's and the seller's box's, all named at
+/// payment. One of them sends the transaction and the others sign the
+/// decision (EIP-712), so the edge alone can neither pay a deposit out nor
+/// send it back, and the two boxes can settle without the edge. Nobody can
+/// change where a deposit goes. If no two agree, the payer takes the
+/// deposit back after its deadline.
 ///
 /// It also holds prepaid balances for pay-as-you-go. A buyer tops up a USDC
 /// balance and opens taps, one per seller, each naming the most the edge may
@@ -51,6 +55,8 @@ contract LososEscrow {
         uint64 notBefore;
     }
 
+    /// `buyerBox` and `sellerBox` are the two boxes' escrow keys: with the
+    /// edge's, the three keys any two of which decide the deposit.
     struct Deposit {
         bytes32 orderId;
         address payer;
@@ -59,6 +65,8 @@ contract LososEscrow {
         uint256 fee;
         uint64 deadline;
         State state;
+        address buyerBox;
+        address sellerBox;
     }
 
     IERC20 public immutable usdc;
@@ -66,7 +74,8 @@ contract LososEscrow {
     /// key or rescue stray tokens. A hardware wallet or a multisig, never a
     /// key on a server.
     address public immutable treasury;
-    /// The edge's key: releases and refunds deposits.
+    /// The edge's key: one of the three that decide a deposit, and the only
+    /// one that bills taps.
     address public releaser;
 
     /// The same ceiling as LososPay: half, the fixed split of a machine order.
@@ -91,6 +100,11 @@ contract LososEscrow {
     /// Taps one `openTaps` call may open, so a group of listings fits in one
     /// transaction and the loop stays bounded.
     uint256 public constant MAX_TAPS_PER_CALL = 16;
+    /// What the keys sign: release is `refund` 0, a whole refund is
+    /// `refund` equal to the deposit's gross, anything between is a split.
+    bytes32 public constant DECISION_TYPEHASH = keccak256("Decision(uint256 depositId,uint256 refund)");
+    /// EIP-712 domain: "LososEscrow", version "2", this chain, this contract.
+    bytes32 public immutable DOMAIN_SEPARATOR;
 
     uint256 public depositCount;
     /// USDC this contract owes to open deposits and to balances. Anything
@@ -113,7 +127,9 @@ contract LososEscrow {
         address seller,
         uint256 gross,
         uint256 fee,
-        uint64 deadline
+        uint64 deadline,
+        address buyerBox,
+        address sellerBox
     );
     event Released(
         uint256 indexed depositId, bytes32 indexed orderId, address indexed seller, uint256 gross, uint256 fee
@@ -151,6 +167,9 @@ contract LososEscrow {
     error NoWithdrawal();
     error TooManyTaps();
     error BadTaps();
+    error BadBoxes();
+    error BadSignature();
+    error NotApproved();
 
     constructor(IERC20 usdc_, address treasury_, address releaser_) {
         if (address(usdc_) == address(0) || treasury_ == address(0) || releaser_ == address(0)) {
@@ -159,35 +178,65 @@ contract LososEscrow {
         usdc = usdc_;
         treasury = treasury_;
         releaser = releaser_;
+        DOMAIN_SEPARATOR = keccak256(
+            abi.encode(
+                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                keccak256("LososEscrow"),
+                keccak256("2"),
+                block.chainid,
+                address(this)
+            )
+        );
         emit ReleaserChanged(address(0), releaser_);
     }
 
     /// Pull `gross` from the caller and hold it. `orderId` is keccak256 of
-    /// the edge's order id. Paying twice makes two deposits, and the edge
-    /// refunds the second.
-    function pay(bytes32 orderId, address seller, uint256 gross, uint256 fee, uint64 deadline)
-        external
-        returns (uint256 depositId)
-    {
+    /// the edge's order id. `buyerBox` and `sellerBox` are the escrow keys of
+    /// the buyer's and the seller's boxes: two different keys, neither of
+    /// them the edge's. The edge counts a payment only when `sellerBox` is
+    /// the key the seller's box gave it. Paying twice makes two deposits,
+    /// and the second goes back.
+    function pay(
+        bytes32 orderId,
+        address seller,
+        uint256 gross,
+        uint256 fee,
+        uint64 deadline,
+        address buyerBox,
+        address sellerBox
+    ) external returns (uint256 depositId) {
         if (seller == address(0)) revert ZeroSeller();
         if (gross == 0) revert ZeroAmount();
         if (fee > gross || fee * 10000 > gross * MAX_FEE_BPS) revert FeeTooHigh();
         if (deadline < block.timestamp + MIN_HOLD || deadline > block.timestamp + MAX_HOLD) {
             revert BadDeadline();
         }
+        if (
+            buyerBox == address(0) || sellerBox == address(0) || buyerBox == sellerBox || buyerBox == releaser
+                || sellerBox == releaser
+        ) revert BadBoxes();
         depositId = ++depositCount;
-        deposits[depositId] = Deposit(orderId, msg.sender, seller, gross, fee, deadline, State.Held);
+        deposits[depositId] =
+            Deposit(orderId, msg.sender, seller, gross, fee, deadline, State.Held, buyerBox, sellerBox);
         held += gross;
         if (!usdc.transferFrom(msg.sender, address(this), gross)) revert TransferFailed();
-        emit Held(depositId, orderId, msg.sender, seller, gross, fee, deadline);
+        emit Held(depositId, orderId, msg.sender, seller, gross, fee, deadline, buyerBox, sellerBox);
     }
 
-    /// The edge has checked the order and the seller's address: fee to the
-    /// treasury, the rest to the seller recorded in `pay`.
-    function release(uint256 depositId) external {
-        if (msg.sender != releaser) revert NotReleaser();
+    /// The digest a key signs to agree that deposit `depositId` sends
+    /// `refund` back to the payer and releases the rest.
+    function decisionDigest(uint256 depositId, uint256 refund_) public view returns (bytes32) {
+        return keccak256(
+            abi.encodePacked("\x19\x01", DOMAIN_SEPARATOR, keccak256(abi.encode(DECISION_TYPEHASH, depositId, refund_)))
+        );
+    }
+
+    /// Fee to the treasury, the rest to the seller recorded in `pay`. Needs
+    /// two of the three keys: the sender, if it is one, and `sigs`.
+    function release(uint256 depositId, bytes[] calldata sigs) external {
         Deposit storage d = deposits[depositId];
         if (d.state != State.Held) revert NotHeld();
+        _approved(depositId, d, 0, sigs);
         d.state = State.Released;
         held -= d.gross;
         _send(treasury, d.fee);
@@ -195,32 +244,36 @@ contract LososEscrow {
         emit Released(depositId, d.orderId, d.seller, d.gross, d.fee);
     }
 
-    /// Back to the payer, whole. The edge may refund at any time (the seller's
-    /// address failed its check, the order was paid twice, nothing could be
-    /// delivered). The payer may refund only after the deadline.
-    function refund(uint256 depositId) external {
+    /// Back to the payer, whole, at any time, when two of the three keys
+    /// agree (the seller's address failed its check, the order was paid
+    /// twice, nothing could be delivered).
+    function refund(uint256 depositId, bytes[] calldata sigs) external {
         Deposit storage d = deposits[depositId];
         if (d.state != State.Held) revert NotHeld();
-        if (msg.sender != releaser) {
-            if (msg.sender != d.payer) revert NotReleaser();
-            if (block.timestamp < d.deadline) revert TooEarly();
-        }
-        d.state = State.Refunded;
-        held -= d.gross;
-        _send(d.payer, d.gross);
-        emit Refunded(depositId, d.orderId, d.payer, d.gross);
+        _approved(depositId, d, d.gross, sigs);
+        _refund(depositId, d);
+    }
+
+    /// Back to the payer, whole, by the payer alone, after the deadline:
+    /// what happens when no two keys agreed in time.
+    function reclaim(uint256 depositId) external {
+        Deposit storage d = deposits[depositId];
+        if (d.state != State.Held) revert NotHeld();
+        if (msg.sender != d.payer) revert NotApproved();
+        if (block.timestamp < d.deadline) revert TooEarly();
+        _refund(depositId, d);
     }
 
     /// Part back to the payer, the rest released: the seller's box went
     /// offline partway through what was bought, so the payer gets back the
     /// share that was not delivered and the seller keeps the share that was.
-    /// The fee shrinks with the seller's share, rounded down. For all or
-    /// nothing, the edge calls `refund` or `release`.
-    function settle(uint256 depositId, uint256 refundAmount) external {
-        if (msg.sender != releaser) revert NotReleaser();
+    /// The fee shrinks with the seller's share, rounded down. Two of the
+    /// three keys sign this exact `refundAmount`.
+    function settle(uint256 depositId, uint256 refundAmount, bytes[] calldata sigs) external {
         Deposit storage d = deposits[depositId];
         if (d.state != State.Held) revert NotHeld();
         if (refundAmount == 0 || refundAmount >= d.gross) revert BadSplit();
+        _approved(depositId, d, refundAmount, sigs);
         d.state = State.Split;
         held -= d.gross;
         uint256 kept = d.gross - refundAmount;
@@ -229,6 +282,50 @@ contract LososEscrow {
         _send(treasury, fee);
         _send(d.seller, kept - fee);
         emit Settled(depositId, d.orderId, d.seller, refundAmount, fee);
+    }
+
+    function _refund(uint256 depositId, Deposit storage d) internal {
+        d.state = State.Refunded;
+        held -= d.gross;
+        _send(d.payer, d.gross);
+        emit Refunded(depositId, d.orderId, d.payer, d.gross);
+    }
+
+    /// Which of the deposit's three keys `who` is, as a bit: 1 the edge, 2
+    /// the buyer's box, 4 the seller's box, 0 none.
+    function _party(Deposit storage d, address who) internal view returns (uint8) {
+        if (who == releaser) return 1;
+        if (who == d.buyerBox) return 2;
+        if (who == d.sellerBox) return 4;
+        return 0;
+    }
+
+    /// Revert unless the sender and `sigs` together are at least two
+    /// different keys of the deposit's three, each agreeing on `refund_`.
+    /// A signature from any other key reverts rather than being skipped.
+    function _approved(uint256 depositId, Deposit storage d, uint256 refund_, bytes[] calldata sigs) internal view {
+        if (sigs.length > 2) revert BadSignature();
+        uint8 seen = _party(d, msg.sender);
+        bytes32 digest = decisionDigest(depositId, refund_);
+        for (uint256 i = 0; i < sigs.length; i++) {
+            uint8 p = _party(d, _recover(digest, sigs[i]));
+            if (p == 0) revert BadSignature();
+            seen |= p;
+        }
+        if (seen != 3 && seen != 5 && seen != 6 && seen != 7) revert NotApproved();
+    }
+
+    /// The signer of `digest`, from a 65-byte `r ‖ s ‖ v`. High `s` and
+    /// anything but `v` 27 or 28 are refused, so a signature has one form.
+    function _recover(bytes32 digest, bytes calldata sig) internal pure returns (address who) {
+        if (sig.length != 65) revert BadSignature();
+        bytes32 r = bytes32(sig[0:32]);
+        bytes32 s = bytes32(sig[32:64]);
+        uint8 v = uint8(sig[64]);
+        if (uint256(s) > 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0) revert BadSignature();
+        if (v != 27 && v != 28) revert BadSignature();
+        who = ecrecover(digest, v, r, s);
+        if (who == address(0)) revert BadSignature();
     }
 
     /// A new edge key, for a rotation or after a compromise.

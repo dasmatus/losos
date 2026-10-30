@@ -596,7 +596,7 @@ let
           echo "losos-apps: $release is running"
           ;;
 
-        install:shared)
+        install:shared | install:kindashared)
           chart_ref
           args=(upgrade --install "''${chart_args[@]}"
             --namespace "$ns" --create-namespace --skip-crds
@@ -637,7 +637,7 @@ let
           echo "losos-apps: $release removed"
           ;;
 
-        remove:shared)
+        remove:shared | remove:kindashared)
           echo "losos-apps: removing $release"
           if ! helm uninstall "$release" --namespace "$ns" --wait=watcher --timeout 5m --ignore-not-found 2> "$dir/helm.err"; then
             cat "$dir/helm.err" >&2
@@ -650,9 +650,9 @@ let
           echo "losos-apps: $release removed"
           ;;
 
-        # A shared app's route file again, from its record: at boot, for an
-        # app installed before Traefik held the range.
-        route:shared)
+        # A shared (or kindashared) app's route file again, from its record:
+        # at boot, for an app installed before Traefik held the range.
+        route:shared | route:kindashared)
           write_route "$(jq -r '.appPort // empty' "$record")"
           ;;
 
@@ -796,7 +796,7 @@ in
         script = ''
           for record in ${stateDir}/*/app.json; do
             [[ -e "$record" ]] || continue
-            if jq -e '.runAs == "shared" and .phase == "running"' "$record" > /dev/null; then
+            if jq -e '(.runAs == "shared" or .runAs == "kindashared") and .phase == "running"' "$record" > /dev/null; then
               release=$(jq -r .release "$record")
               [[ -e "${traefikDir}/$release.yml" ]] || ${lib.getExe appsJob} route "$release"
             fi

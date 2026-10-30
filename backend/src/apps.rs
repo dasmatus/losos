@@ -96,7 +96,7 @@ fn conflict<T>(message: impl Into<String>) -> anyhow::Result<T> {
 
 // ── Who the app runs as ───────────────────────────────────────────────────
 
-/// The two data users of `modules/configuration.nix`. Their uids are pinned
+/// The three data users of `modules/configuration.nix`. Their uids are pinned
 /// there and asserted by `nix/tests/impermanence.nix`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -107,6 +107,11 @@ pub enum RunAs {
     /// while the box does not share its disk (`modules/fscrypt.nix`), so an
     /// app can run as it only then.
     Shared,
+    /// uid 1004, the side lent to the local gateways of this box's own
+    /// network and nothing further. Its domain is locked while the box does
+    /// not share with them (`losos.sharingLocally`); like `shared`, its apps
+    /// run in the box's own cluster.
+    Kindashared,
 }
 
 impl RunAs {
@@ -114,6 +119,7 @@ impl RunAs {
         match raw {
             "notshared" => Some(RunAs::Notshared),
             "shared" => Some(RunAs::Shared),
+            "kindashared" => Some(RunAs::Kindashared),
             _ => None,
         }
     }
@@ -122,6 +128,7 @@ impl RunAs {
         match self {
             RunAs::Notshared => "notshared",
             RunAs::Shared => "shared",
+            RunAs::Kindashared => "kindashared",
         }
     }
 
@@ -130,6 +137,7 @@ impl RunAs {
         match self {
             RunAs::Notshared => 1000,
             RunAs::Shared => 1001,
+            RunAs::Kindashared => 1004,
         }
     }
 
@@ -149,7 +157,7 @@ impl RunAs {
     pub fn runtime(self) -> Runtime {
         match self {
             RunAs::Notshared => Runtime::Podman,
-            RunAs::Shared => Runtime::Kube,
+            RunAs::Shared | RunAs::Kindashared => Runtime::Kube,
         }
     }
 }
@@ -1013,12 +1021,19 @@ pub fn cmd_apps<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
         return Ok(json!({ "available": false, "reason": "off", "apps": [] }));
     };
     let shared = l.load_state()?.sharing && config.kube;
+    let kindashared =
+        crate::overrides::parse_settings(&l.read_overrides()?).sharing_locally && config.kube;
     let mut apps = Vec::new();
     for r in l.load_app_records()? {
         let r = effective(l, r);
         apps.push(record_json(&r));
     }
-    Ok(json!({ "available": true, "sharedAvailable": shared, "apps": apps }))
+    Ok(json!({
+        "available": true,
+        "sharedAvailable": shared,
+        "kindasharedAvailable": kindashared,
+        "apps": apps,
+    }))
 }
 
 /// `GET /api/apps/chart`: the chart's values and schema, for the dialog.
@@ -1044,16 +1059,25 @@ pub fn cmd_app_install<L: Losos>(l: &mut L, req: &InstallRequest) -> anyhow::Res
         return conflict("This box runs no apps of its own, so it cannot install one.");
     };
     config.check_name(&req.release)?;
-    if req.run_as == RunAs::Shared && !config.kube {
-        return conflict(
-            "An app can run as shared only while LosOS Cloud or LosOS Git is kept separate. \
+    if req.run_as.runtime() == Runtime::Kube && !config.kube {
+        return conflict(format!(
+            "An app can run as {} only while LosOS Cloud or LosOS Git is kept separate. \
              Choose notshared.",
-        );
+            req.run_as.as_str()
+        ));
     }
     if req.run_as == RunAs::Shared && !l.load_state()?.sharing {
         return conflict(
             "An app can run as shared only while this box shares its disk. \
              Choose notshared, or turn sharing on first.",
+        );
+    }
+    if req.run_as == RunAs::Kindashared
+        && !crate::overrides::parse_settings(&l.read_overrides()?).sharing_locally
+    {
+        return conflict(
+            "An app can run as kindashared only while this box shares with its local \
+             gateways. Choose notshared, or turn sharing with this network on first.",
         );
     }
     let records = l.load_app_records()?;
@@ -1418,6 +1442,24 @@ mod tests {
     }
 
     #[test]
+    fn kindashared_puts_the_files_in_its_own_domain_as_uid_1004() {
+        assert_eq!(RunAs::parse("kindashared"), Some(RunAs::Kindashared));
+        assert_eq!(RunAs::Kindashared.runtime(), Runtime::Kube);
+        let c = ShapeCtx {
+            run_as: RunAs::Kindashared,
+            ..ctx()
+        };
+        let shaped = shape(vec![deployment()], &c).unwrap();
+        let pod = &shaped.docs[0]["spec"]["template"]["spec"];
+        assert_eq!(pod["securityContext"]["runAsUser"], 1004);
+        assert_eq!(pod["containers"][0]["securityContext"]["runAsGroup"], 1004);
+        assert_eq!(
+            shaped.dirs,
+            vec!["/home/kindashared/data/apps/jellyfin/jellyfin-config"]
+        );
+    }
+
+    #[test]
     fn a_host_path_refuses_the_install_and_says_which_object_asked() {
         let mut d = deployment();
         d["spec"]["template"]["spec"]["volumes"][1] =
@@ -1722,6 +1764,21 @@ mod tests {
     }
 
     #[test]
+    fn kindashared_is_refused_until_the_box_shares_with_its_local_gateways() {
+        let mut f = crate::fake::FakeLosos::default();
+        // Sharing through the mesh does not open the kindashared side.
+        f.state.sharing = true;
+        let req = InstallRequest::parse(&install_body("kindashared")).unwrap();
+        let e = cmd_app_install(&mut f, &req).unwrap_err();
+        assert!(e.downcast_ref::<Conflict>().is_some(), "{e}");
+        assert!(e.to_string().contains("local"), "{e}");
+        assert!(f.app_jobs.is_empty());
+
+        f.config = crate::overrides::inject_bool("sharingLocally", true, &f.config);
+        assert!(cmd_app_install(&mut f, &req).is_ok());
+    }
+
+    #[test]
     fn a_box_with_apps_turned_off_says_so_and_installs_nothing() {
         let mut f = crate::fake::FakeLosos {
             apps: None,
@@ -1874,6 +1931,9 @@ mod tests {
         let mut f = crate::fake::FakeLosos::default();
         f.state.sharing = true;
         assert_eq!(cmd_apps(&mut f).unwrap()["sharedAvailable"], true);
+        assert_eq!(cmd_apps(&mut f).unwrap()["kindasharedAvailable"], false);
+        f.config = crate::overrides::inject_bool("sharingLocally", true, &f.config);
+        assert_eq!(cmd_apps(&mut f).unwrap()["kindasharedAvailable"], true);
         f.apps.as_mut().unwrap().kube = false;
         assert_eq!(cmd_apps(&mut f).unwrap()["sharedAvailable"], false);
         let e = cmd_app_install(

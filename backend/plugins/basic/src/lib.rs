@@ -7,6 +7,7 @@
 //! in ([`host`]), and works by links and forms alone: menus are `<details>`,
 //! dialogs open from a checkbox's label, and what moves, moves in CSS.
 
+pub mod custom;
 pub mod format;
 pub mod host;
 pub mod pages;
@@ -89,6 +90,7 @@ pub fn handle_with(host: &mut dyn Host, req: &Request, now: u64) -> Response {
     }
     let mut resp = match (req.method.as_str(), req.route.as_str()) {
         ("GET", "/api/basic/counts.css") => counts_css(host, req),
+        ("GET", "/api/basic/look.css") => look_css(req),
         ("POST", "/api/basic/prefs") => prefs(req, &cookies),
         ("GET", "/api/basic/sign-in") => sign_in_page(host, req, &cookies),
         ("POST", "/api/basic/sign-in" | "/api/basic/sign-in/code" | "/api/basic/sign-in/key") => {
@@ -144,6 +146,20 @@ fn counts_css(host: &mut dyn Host, req: &Request) -> Response {
     );
     Response::bytes(200, "text/css; charset=utf-8", css.into_bytes())
         .header("cache-control", "public, max-age=300")
+        .header("x-content-type-options", "nosniff")
+}
+
+/// The person's background as a stylesheet, from the query the page wrote
+/// ([`view::Backdrop::sheet`]); anything else is an empty sheet. Cached:
+/// another picture or veil is another address.
+fn look_css(req: &Request) -> Response {
+    let backdrop = web::query(req, "bg").and_then(|url| {
+        let veil = web::query(req, "veil")?.parse().ok()?;
+        Some(view::Backdrop { url, veil }).filter(view::Backdrop::sound)
+    });
+    let css = backdrop.map(|b| b.css()).unwrap_or_default();
+    Response::bytes(200, "text/css; charset=utf-8", css.into_bytes())
+        .header("cache-control", "private, max-age=31536000, immutable")
         .header("x-content-type-options", "nosniff")
 }
 
@@ -271,6 +287,16 @@ fn page(host: &mut dyn Host, req: &Request, cookies: &Cookies, now: u64) -> Resp
     assets
         .styles
         .push(format!("/basic/counts.css?lang={}", locale.code()));
+    // The pages an administrator changed, and their stylesheet, last so an
+    // equal rule of theirs wins (crate::custom).
+    let changed = if me.locked {
+        None
+    } else {
+        host.get("/api/pages")
+    };
+    if let Some(href) = custom::style_href(changed.as_ref()) {
+        assets.styles.push(href);
+    }
     let office = !me.locked && host.office_folder();
     let nav = view::nav(&me, &m, &path, office);
     let person = me.person(&m);
@@ -279,6 +305,11 @@ fn page(host: &mut dyn Host, req: &Request, cookies: &Cookies, now: u64) -> Resp
     } else {
         host.get("/api/pins").map(|v| view::pins(&v, &m))
     };
+    // The person's own background, under every page as on the script page.
+    let look = host.get("/api/look");
+    if let Some(backdrop) = look.as_ref().and_then(view::Backdrop::of) {
+        assets.styles.push(backdrop.sheet());
+    }
     let mut ctx = Ctx {
         m,
         prefs: cookies.prefs.clone(),
@@ -291,6 +322,7 @@ fn page(host: &mut dyn Host, req: &Request, cookies: &Cookies, now: u64) -> Resp
         rail_moved: cookies.flash.as_deref() == Some("rail"),
         refresh: None,
         pins,
+        page: None,
     };
 
     let mut toasts: Vec<Toast> = Vec::new();
@@ -299,6 +331,9 @@ fn page(host: &mut dyn Host, req: &Request, cookies: &Cookies, now: u64) -> Resp
             toasts.push(t);
         }
         if let Some(t) = pages::domain_toast(&ctx.m, flash) {
+            toasts.push(t);
+        }
+        if let Some(t) = pages::look_toast(&ctx.m, flash) {
             toasts.push(t);
         }
         if let Some(why) = flash.strip_prefix("nostart") {
@@ -400,6 +435,32 @@ fn page(host: &mut dyn Host, req: &Request, cookies: &Cookies, now: u64) -> Resp
                 let word = pages::domain_word(&answer, removed.map(|_| domain.as_str()));
                 return web::see_other(&here).header("set-cookie", &web::flash_cookie(&word));
             }
+            (_, Some("look")) if ctx.me.pane_open("look") => {
+                let (body, veil) = if let Some(name) = web::field(&form, "background") {
+                    let choice = if name == "none" {
+                        serde_json::json!({ "kind": "none" })
+                    } else {
+                        serde_json::json!({ "kind": "shipped", "name": name })
+                    };
+                    (serde_json::json!({ "background": choice }), false)
+                } else if let Some(veil) =
+                    web::field(&form, "veil").and_then(|v| v.parse::<u8>().ok())
+                {
+                    (serde_json::json!({ "veil": veil }), true)
+                } else {
+                    return web::see_other(&here);
+                };
+                let answer = host.call(
+                    "POST",
+                    "/api/look",
+                    Some("application/json"),
+                    body.to_string().as_bytes(),
+                );
+                return web::see_other(&here).header(
+                    "set-cookie",
+                    &web::flash_cookie(&pages::look_word(&answer, veil)),
+                );
+            }
             (_, Some("problems")) if ctx.me.pane_open("problems") => {
                 return web::see_other(&problems::post(host, req, &here));
             }
@@ -473,10 +534,15 @@ fn page(host: &mut dyn Host, req: &Request, cookies: &Cookies, now: u64) -> Resp
             if o.status.building() {
                 ctx.refresh = Some(5);
             }
+            ctx.page = Some("overview");
             (
                 200,
                 ctx.m.t("shell.nav.overview"),
-                pages::overview(&ctx, &o),
+                pages::overview(
+                    &ctx,
+                    &o,
+                    custom::changed(changed.as_ref(), "overview").as_deref(),
+                ),
             )
         }
         ("/search", _) => {
@@ -498,10 +564,16 @@ fn page(host: &mut dyn Host, req: &Request, cookies: &Cookies, now: u64) -> Resp
         }
         (_, Some("storage")) => {
             let st = host.get("/api/storage");
+            ctx.page = Some("settings.storage");
             (
                 200,
                 ctx.m.t("settings.panes.storage.label"),
-                pages::storage(&ctx, st.as_ref(), r),
+                pages::storage(
+                    &ctx,
+                    st.as_ref(),
+                    r,
+                    custom::changed(changed.as_ref(), "settings.storage").as_deref(),
+                ),
             )
         }
         (_, Some("network")) => {
@@ -516,6 +588,11 @@ fn page(host: &mut dyn Host, req: &Request, cookies: &Cookies, now: u64) -> Resp
                 pages::network(&ctx, s, r, None, domains),
             )
         }
+        (_, Some("look")) => (
+            200,
+            ctx.m.t("settings.panes.look.label"),
+            pages::look(&ctx, look.as_ref()),
+        ),
         (_, Some("hardware")) => (
             200,
             ctx.m.t("settings.panes.hardware.label"),

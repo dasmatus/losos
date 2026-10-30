@@ -1,13 +1,11 @@
 import * as React from "react";
 import { ReportDialogHost } from "@/components/report-dialog";
-import { BrowserRouter, Link, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Compass01Icon, Search01Icon } from "@hugeicons/core-free-icons";
-import { AppBar, type AppBarPerson } from "@/components/app-bar";
+import { ShellBar, ShellBody, ShellDocument } from "@/components/app-shell";
 import { AppSidebar } from "@/components/app-sidebar";
 import { MeshNotice } from "@/components/mesh-notice";
-import { PersonAvatar } from "@/components/person";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -31,7 +29,6 @@ import { Input, MonoInput } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { ContextMenuHost, usePageMenu } from "@/components/context-menu";
 import { BottomNavHost } from "@/components/ui/bottom-nav";
-import { SidebarProvider } from "@/components/ui/sidebar";
 import { toast, Toaster } from "@/components/ui/toast";
 import {
   getClaimState,
@@ -44,16 +41,17 @@ import {
   sentToSignIn,
   sharedApp,
   signInUrl,
-  signOut,
   subscribeAuth,
   TOKEN_PATTERN,
   useMe,
 } from "@/lib/api";
 import { followAuth } from "@/lib/look";
 import { followPins } from "@/lib/pins";
+import { followPages, getPagesState, subscribePages } from "@/pages/store";
 import { readProgress } from "@/screens/wizard/progress";
 import { isTourOpen, startTour, subscribeTour } from "@/tour/store";
-import { closePalette, isPaletteColon, isPaletteShortcut, openPalette, paletteState, subscribePalette } from "@/palette/store";
+import { openPalette } from "@/palette/store";
+import { PaletteHost } from "@/palette/host";
 import { seededShuffle } from "@/lib/shuffle";
 import type { SettingsPaneId } from "@/screens/settings/panes";
 import { paneFromPath } from "@/lib/routes";
@@ -72,6 +70,9 @@ import { chatDocument } from "@/chat/document";
 const Wizard = React.lazy(() => import("@/screens/Wizard"));
 const Home = React.lazy(() => import("@/screens/Home"));
 const Settings = React.lazy(() => import("@/screens/Settings"));
+const PageEditorDock = React.lazy(() =>
+  import("@/pages/editor").then((m) => ({ default: m.PageEditorDock })),
+);
 /* Documents (losos.office.folder) and the editor, on boxes that edit a
  * folder of documents. */
 const Office = React.lazy(() => import("@/screens/Office"));
@@ -82,9 +83,6 @@ const AppEditorScreen = React.lazy(() =>
 /* The first-run tour (src/tour/): its own chunk, fetched only when it opens,
  * which on most visits is never. */
 const Tour = React.lazy(() => import("@/tour/tour"));
-/* The command palette (src/palette/): its own chunk, fetched the first time
- * Ctrl/Cmd+Shift+P, a colon or the sidebar's search button opens it. */
-const CommandPalette = React.lazy(() => import("@/palette/command-palette"));
 /* LosOS Mail (src/mail/): only on the shared side, so most boxes never
  * fetch it. */
 const Mail = React.lazy(() => import("@/mail/app"));
@@ -219,8 +217,10 @@ function Shell() {
    * token: loaded on sign-in, dropped on sign-out. Once, for the page. */
   React.useEffect(() => {
     followAuth();
-    // The sidebar's pins follow the token the same way (lib/pins.ts).
+    // The sidebar's pins follow the token the same way (lib/pins.ts), and
+    // so do the pages an administrator changed (src/pages/store.ts).
     followPins();
+    followPages();
   }, []);
 
   /* Setup runs to the end once it has started, and this latch is what makes
@@ -305,6 +305,10 @@ function Shell() {
     path.startsWith("/calendar") ||
     path.startsWith("/wikis");
   const tourOpen = React.useSyncExternalStore(subscribeTour, isTourOpen, () => false);
+  // An administrator editing a page (src/pages/editor.tsx): the page keeps
+  // drawing beside the panel, so it gives the panel its room.
+  const pageEditor = React.useSyncExternalStore(subscribePages, () => getPagesState().editor, () => null);
+  const editingPage = signedIn && !held && me?.admin === true && pageEditor !== null;
   const paletteOpen = React.useSyncExternalStore(subscribePalette, () => paletteState().open, () => false);
   const searchable = signedIn && !held;
   const pageMenu = usePageMenu(() => [
@@ -317,35 +321,6 @@ function Shell() {
       onSelect: () => openPalette(),
     },
   ]);
-  // Once fetched, the palette stays mounted so it can close the way it opened.
-  const [paletteLoaded, setPaletteLoaded] = React.useState(false);
-  React.useEffect(() => {
-    if (paletteOpen) setPaletteLoaded(true);
-  }, [paletteOpen]);
-
-  /* Ctrl/Cmd+Shift+P from anywhere on the page, signed in, or a colon typed
-   * outside a text field. A key some field has already handled (a code
-   * editor's own binding) is left to it. */
-  React.useEffect(() => {
-    if (!signedIn || inSetup || held) {
-      closePalette();
-      return;
-    }
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.defaultPrevented) return;
-      if (isPaletteShortcut(event)) {
-        event.preventDefault();
-        if (paletteState().open) closePalette();
-        else openPalette();
-      } else if (isPaletteColon(event) && !paletteState().open) {
-        event.preventDefault();
-        openPalette();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [signedIn, inSetup, held]);
-
   // A box being set up gets the wizard and nothing else: no chrome, no
   // navigation, no dialog over the top, until its last step shows the
   // desktop behind it. It is a sequence the owner should not be able to
@@ -399,6 +374,7 @@ function Shell() {
       ref={holdStage}
       data-testid="desktop"
       data-stage={stage}
+      data-page-editor={editingPage ? "" : undefined}
       inert={stage === "preview"}
       className={cn(
         "losos-shell min-h-dvh text-ink",
@@ -406,25 +382,19 @@ function Shell() {
         stage !== undefined && "desktop-stage h-dvh overflow-hidden",
       )}
     >
-      <TopBar signedIn={signedIn} wide={wide} />
+      <ShellBar signedIn={signedIn} />
       <ContextMenuHost page={pageMenu} search={searchable ? (text) => openPalette(text) : undefined} />
 
       {editing ? (
-        <div className="min-h-0 flex-1">
-          <React.Suspense fallback={<ScreenFallback />}>
-            <Office hash={location.hash} />
-          </React.Suspense>
-        </div>
+        <ShellBody sidebar={<AppSidebar />} fill>
+          <ShellDocument>
+            <React.Suspense fallback={<ScreenFallback />}>
+              <Office hash={location.hash} />
+            </React.Suspense>
+          </ShellDocument>
+        </ShellBody>
       ) : (
-      <SidebarProvider
-        className={cn(
-          "mx-auto flex w-full px-4 pt-5 pb-12 sm:px-6",
-          wide ? "max-w-[96rem]" : "max-w-6xl",
-          "max-md:flex-col max-md:gap-3 md:gap-6",
-        )}
-      >
-        <AppSidebar />
-        <main className="min-w-0 flex-1">
+      <ShellBody sidebar={<AppSidebar />} wide={wide}>
           {signedIn && !held && <MeshNotice />}
           <React.Suspense fallback={<ScreenFallback />}>
           <CallsHolder>
@@ -478,16 +448,12 @@ function Shell() {
           )}
           </CallsHolder>
           </React.Suspense>
-        </main>
-      </SidebarProvider>
+      </ShellBody>
       )}
 
       <SignInDialog open={!signedIn} />
-      {signedIn && paletteLoaded && (
-        <React.Suspense fallback={null}>
-          <CommandPalette />
-        </React.Suspense>
-      )}
+      {/* The command palette (src/palette/), on its keys. */}
+      <PaletteHost enabled={signedIn && !inSetup && !held} />
       {signedIn && !held && sharedApp("calendar") && (
         <React.Suspense fallback={null}>
           <Reminders />
@@ -499,6 +465,11 @@ function Shell() {
         </React.Suspense>
       )}
       {signedIn && <ReportDialogHost />}
+      {editingPage && (
+        <React.Suspense fallback={null}>
+          <PageEditorDock target={pageEditor} />
+        </React.Suspense>
+      )}
     </div>
     </BottomNavHost.Provider>
     {wizard}
@@ -508,38 +479,6 @@ function Shell() {
 }
 
 // ── Chrome ────────────────────────────────────────────────────────────────
-
-function TopBar({ signedIn, wide }: { signedIn: boolean; wide: boolean }) {
-  const t = useT();
-  const me = useMe();
-  let person: AppBarPerson | null = null;
-  if (signedIn && me !== null) {
-    const name = me.spareKey ? t("shell.me.spareKey") : (me.displayName ?? me.name ?? "");
-    const tip = me.spareKey
-      ? t("shell.me.spareKeyTip")
-      : `${t("shell.me.signedIn", { name: me.name ?? name })} ${t(me.admin ? "shell.me.admin" : "shell.me.limited")}`;
-    person = { label: name, tip };
-    if (!me.spareKey && me.name) {
-      person.avatar = (
-        <PersonAvatar
-          size="xs"
-          data-testid="signed-in-avatar"
-          person={{ name: me.name, displayName: me.displayName ?? me.name, picture: me.picture, accent: me.accent }}
-        />
-      );
-      person.accountLink = <Link to="/settings/account" />;
-    }
-  }
-  return (
-    <AppBar
-      homeLink={<Link to="/" />}
-      badge={<Badge variant="outline">{t("shell.thisBox")}</Badge>}
-      person={person}
-      onSignOut={signedIn ? signOut : undefined}
-      width={wide ? "wide" : "page"}
-    />
-  );
-}
 
 // ── Placeholders ──────────────────────────────────────────────────────────
 

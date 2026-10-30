@@ -42,23 +42,38 @@ Einzeiler-Installer für macOS, Linux und Windows (`/setup/trust.sh`,
 
 ## Aussehen {#look}
 
-**Einstellungen, Aussehen** ändert das Aussehen der Admin-Seiten, für jeden Browser,
-der die Box öffnet. Nichts davon ist eine Einstellung im Sinne von Nix. Es
-ist ein Dokument, das lososd unter `/var/lib/losos/look.json` führt, daher
-wirkt eine Änderung sofort beim Speichern, ohne Rebuild.
+**Einstellungen, Aussehen** ändert das Aussehen der Admin-Seiten. Alle,
+die angemeldet sind, öffnen es für ihren eigenen Hintergrund; die Widgets
+darauf sind für die Leute im Bereich Aussehen. Nichts davon ist eine
+Einstellung im Sinne von Nix. lososd führt die Widgets unter
+`/var/lib/losos/look.json` und den Hintergrund jeder Person unter
+`/var/lib/losos/looks/<name>.json`, daher wirkt eine Änderung sofort beim
+Speichern, ohne Rebuild.
 
 ### Hintergrund {#background}
 
-Wähle eines der drei mitgelieferten Bilder oder lade ein eigenes
-hoch (PNG, JPEG, WebP, GIF oder SVG, bis 8 MiB). Der Regler **Schleier**
-legt die Seitenfarbe über das Bild, von 20 % bis 90 %, damit Text im hellen
-wie im dunklen Theme lesbar bleibt. *Schlicht* entfernt das Bild wieder.
+Alle wählen ihren eigenen, und er begleitet sie in jeden Browser, in dem sie
+sich anmelden; die Wahl von jemand anderem ändert ihre Seite nicht. Wähle
+eines der drei mitgelieferten Bilder oder lade ein eigenes hoch (PNG, JPEG,
+WebP oder GIF, bis 8 MiB). Der Regler **Schleier** legt die Seitenfarbe
+über das Bild, von 20 % bis 90 %, damit Text im hellen wie im dunklen Theme
+lesbar bleibt. *Schlicht* entfernt das Bild wieder. LosOS Cloud und LosOS
+Git zeigen ihn auch hinter ihren Seiten.
 
-:::note[Warum das Bild kein Token braucht]
-lososd liefert ein hochgeladenes Bild unter `/api/look/background` ohne
-Token aus, weil ein CSS-`background-image` keinen senden kann. Die Route
-liegt hinter demselben Nur-LAN-Schutz wie der Rest der Admin-Seiten, und ein
-Hintergrundbild ist kein Geheimnis.
+Der Ersatzschlüssel ist niemand, darum sieht und setzt er den eigenen
+Hintergrund der Box. Auf einer Box, die schon einen Hintergrund hatte, bevor
+Hintergründe persönlich wurden, ist das der Hintergrund der Box, und der
+Besitzer bekommt beim ersten Anmelden eine Kopie davon. Wer eine Person
+entfernt, entfernt auch ihren Hintergrund.
+
+:::note[Wer ein Bild lesen kann]
+Das hochgeladene Bild einer Person liefert lososd unter
+`/api/look/background/<name>` nur an diese Person aus, gelesen mit ihrem
+Cookie von LosOS Login. Das eigene Bild der Box liegt unter
+`/api/look/background` ohne Token, weil ein Tab mit dem Ersatzschlüssel den
+Schlüssel in der Seite hält und ein CSS-`background-image` keinen senden
+kann. Beide Routen liegen hinter demselben Nur-LAN-Schutz wie der Rest der
+Admin-Seiten.
 :::
 
 ### Selbst geschriebene Widgets {#widgets-written-by-hand}
@@ -477,7 +492,7 @@ das.
 ## Updates und Neustarts {#upgrades-and-reboots}
 
 - **03:00.** lososd bringt `/etc/nixos` zuerst auf den neuesten Commit von
-  `losos.configRepo.upstream.branch` (`main`) unter
+  `losos.configRepo.upstream.branch` (dem Release-Kanal, unten) unter
   `losos.configRepo.upstream.url` (dem GitHub-Repository) und behält dabei
   `modules/overrides.nix` und `modules/install-target.nix` der Box. Dann
   baut `system.autoUpgrade` aus `losos.upgradeFlakeUri` neu, also aus
@@ -490,3 +505,38 @@ das.
   (`Persistent=true`, sodass eine Box, die aus war, das nachholt). Da die
   Wurzel beim Booten neu aufgebaut wird, ist der Neustart der Weg, auf dem
   sich die Box selbst repariert.
+
+### Release-Kanäle {#release-channels}
+
+Eine Box folgt einem von drei Branches, gewählt unter Einstellungen,
+Verlauf, Release-Kanal (`losos.updates.channel`):
+
+| Kanal        | Branch            | Rückt vor                  |
+| ------------ | ----------------- | -------------------------- |
+| Täglich      | `channel/daily`   | Jede Nacht um 00:17 UTC    |
+| Wöchentlich  | `channel/weekly`  | Montags um 00:17 UTC       |
+| Monatlich    | `channel/monthly` | Am 1. um 00:17 UTC         |
+
+Jeder Schritt nimmt den neuesten Commit von `main`, dessen CI-Lauf bestanden
+hat, den Upload in den Binär-Cache eingeschlossen. So baut eine Box nie eine
+Version, die ihre Prüfungen nicht bestanden hat, und kompiliert nie, was CI
+schon gebaut hat. Vor LosOS 1.0.0 folgt eine Box dem täglichen Kanal, danach
+dem wöchentlichen. „Jede Änderung“ (`main`) folgt `main` selbst, geprüft
+oder nicht, und ist zum Testen von LosOS.
+
+Ein Pull Request mit dem Label `hotfix` erreicht jeden Kanal am selben Tag.
+Sobald er gemergt ist, überträgt ein Bot ihn per Cherry-Pick auf jeden Kanal,
+dem er fehlt, auf dem Ergebnis laufen CI und der Cache-Upload, und der Kanal
+rückt vor, wenn beide bestehen. Boxen holen ihn beim nächsten Update um
+03:00. Ein Hotfix trägt, was in diesem Repository liegt: den eigenen Code von
+LosOS, seine Rust- und npm-Abhängigkeiten und seine Moduleinstellungen. Eine
+Korrektur in NixOS selbst, etwa in nginx oder im Kernel, kommt wie jede
+andere Änderung über den nixpkgs-Pin.
+
+Der Wechsel auf einen langsameren Kanal bringt eine Box nie zurück. Jeder
+Commit eines Kanals nennt den `main`-Commit, aus dem er geschnitten wurde
+(eine Zeile `Channel-Base:`), und die Box behält ihre Version, bis der Kanal
+sie überholt; der Verlauf-Bereich zeigt so lange „Wartet auf den Kanal“.
+`.github/workflows/channels.yml` und `.github/scripts/channels.py` erledigen
+die Schritte und die Hotfixes, und kein Kanal wird je per Force-Push
+überschrieben.

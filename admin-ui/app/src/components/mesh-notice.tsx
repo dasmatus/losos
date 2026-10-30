@@ -12,8 +12,9 @@ import { useT } from "@/lib/i18n-react";
 /* The banner over every page while this box is not on a mesh.
  *
  * Some of what LosOS does runs only on a box that shares its storage AND has
- * joined a mesh (the same rule the About pane and the Overview's storage
- * strip read, and `lososInternal.sharedSide` on the Nix side). Those features
+ * joined a mesh, or that shares with its local gateways (the same rule the
+ * About pane and the Overview's storage strip read, and
+ * `lososInternal.sideLive` on the Nix side). Those features
  * do not appear at all on any other box, so the banner names none of them:
  * it says that some may be missing and where the switch is.
  *
@@ -26,13 +27,17 @@ import { useT } from "@/lib/i18n-react";
 const PERIOD_MS = 30_000;
 const DISMISSED_KEY = "losos-mesh-notice";
 
-export type MeshReading = "unknown" | "joined" | "notJoined" | "notSharing";
+export type MeshReading = "unknown" | "joined" | "local" | "notJoined" | "notSharing";
 
-/** Where the box stands, from its saved settings. */
+/** Where the box stands, from its saved settings. A box that shares with
+ *  its local gateways runs the same features as `kindashared`
+ *  (`lososInternal.sideUser`), so it is not missing any and sees no banner. */
 export function meshReading(
-  settings: Pick<SettingsResponse, "sharingMyStorage" | "clusterEnable"> | null,
+  settings: Pick<SettingsResponse, "sharingMyStorage" | "sharingLocally" | "clusterEnable"> | null,
 ): MeshReading {
   if (settings === null) return "unknown";
+  if (settings.sharingMyStorage && settings.clusterEnable) return "joined";
+  if (settings.sharingLocally) return "local";
   if (!settings.clusterEnable) return "notJoined";
   if (!settings.sharingMyStorage) return "notSharing";
   return "joined";
@@ -97,13 +102,13 @@ export function MeshNotice() {
   const [dismissed, setDismissed] = React.useState(readDismissed);
 
   React.useEffect(() => {
-    if (reading === "joined" && dismissed) {
+    if ((reading === "joined" || reading === "local") && dismissed) {
       writeDismissed(false);
       setDismissed(false);
     }
   }, [reading, dismissed]);
 
-  if (reading === "unknown" || reading === "joined" || dismissed) return null;
+  if (reading === "unknown" || reading === "joined" || reading === "local" || dismissed) return null;
 
   const pane: SettingsPaneId = reading === "notJoined" ? "mesh" : "market";
   const href = paneHref(pane);

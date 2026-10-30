@@ -15,6 +15,7 @@ const KNOWN = {
   "authelia-storage": "credentials.name.autheliaStorage",
   "mail-master": "credentials.name.mailMaster",
   "backup-bucket": "credentials.name.backupBucket",
+  "market-escrow-key": "credentials.name.marketEscrowKey",
   "authelia-oidc-hmac": "credentials.name.autheliaOidcHmac",
   "authelia-oidc-jwks": "credentials.name.autheliaOidcJwks",
   "oidc-lososd": "credentials.name.oidcLososd",
@@ -46,10 +47,11 @@ const APPS = {
   login: "credentials.app.login",
   mail: "credentials.app.mail",
   backup: "credentials.app.backup",
+  market: "credentials.app.market",
 } as const satisfies Record<string, MessageKey>;
 
 /** The order the groups come in: the box's own way in first. */
-export const APP_ORDER: readonly string[] = ["admin", "login", "mail", "backup"];
+export const APP_ORDER: readonly string[] = ["admin", "login", "mail", "backup", "market"];
 
 export function appTitle(app: string): string {
   return Object.prototype.hasOwnProperty.call(APPS, app)

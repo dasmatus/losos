@@ -12,9 +12,10 @@ slug: /manual/mail
 
 LosOS Mail je poštový klient pre ľudí na zariadení. Každý, kto je
 prihlásený cez LosOS Login, má schránku a položka **Pošta** v bočnom paneli
-ju otvorí na adrese `/mail`. Poštový server je Stalwart. Beží na zdieľanej
-strane zariadenia pod účtom `shared` a schránky uchováva v zdieľanom
-dátovom priečinku.
+ju otvorí na adrese `/mail`. Poštový server je Stalwart 1.0. Beží na
+zdieľanej strane zariadenia pod účtom `shared`, schránky uchováva
+v zdieľanom dátovom priečinku a odpovedá len na samotnom zariadení: nič
+v sieti sa k nemu nedostane.
 
 ## Kedy je Pošta k dispozícii \{#when-mail-is-there}
 
@@ -24,8 +25,7 @@ je zdieľanie vypnuté alebo zariadenie nie je v sieti:
 
 - v bočnom paneli nie je **Pošta** a `/mail` sa neotvorí;
 - poštový server je zastavený;
-- schránky zostávajú na disku v zdieľanom priečinku, ktorý zariadenie počas
-  vypnutého zdieľania nedokáže prečítať.
+- schránky zostávajú nedotknuté na šifrovanom disku zariadenia.
 
 Keď zariadenie znova zdieľa so svojou sieťou, Pošta sa vráti s tou istou
 poštou.
@@ -187,6 +187,21 @@ odosielateľa, a jej prílohy sa sťahujú ako všetky ostatné.
 každého vo svojej Web Key Directory na `/.well-known/openpgpkey/`, takže ho
 poštové programy inde nájdu podľa vašej adresy. Každá správa, ktorú pošlete,
 ho nesie aj v hlavičke Autocrypt.
+
+## Prechod na Stalwart 1.0 \{#moving-to-stalwart-10}
+
+Zariadenie, ktoré malo poštu už pred touto verziou, ju pri prvom spustení
+po aktualizácii samo skopíruje na nový server: priečinky, správy, adresy
+odosielateľa a filtre každého človeka. Pošta počas kopírovania funguje
+a pošta, ktorá medzitým príde, zostane. Ak sa zariadenie v polovici zastaví,
+kopírovanie pokračuje pri ďalšom spustení a nič nezdvojí. Staré schránky
+zostanú vedľa nových v priečinku `db-0.15` a nič sa z nich nezmaže.
+
+## Zálohy \{#backups}
+
+[Zálohy](backup-and-erase) obsahujú aj Poštu. Poštový server sa na pár
+sekúnd, kým zariadenie skopíruje schránky, zastaví a potom sa znova spustí.
+V tých sekundách vás Pošta požiada, aby ste to o chvíľu skúsili znova.
 
 ## Čo Pošta zatiaľ nerobí \{#what-mail-does-not-do-yet}
 

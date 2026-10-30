@@ -336,6 +336,94 @@ fn the_end_of_our_rebuild_is_a_toast_once() {
     assert!(!html(&again).contains("data-basic-toast"));
 }
 
+/// What the pages plugin answers GET /api/pages with for `pages` (id to
+/// source): each page as losos-mdx draws it against the admin page's
+/// blocks.json.
+fn changed_pages(pages: &[(&str, &str)], style: Option<&str>) -> Value {
+    let registry = losos_mdx::page::Registry::from_json(include_str!(
+        "../../../../admin-ui/app/src/pages/blocks.json"
+    ))
+    .unwrap();
+    let mut out = serde_json::Map::new();
+    for (id, source) in pages {
+        let rendered = losos_mdx::page::render_page(source, registry.page(id).unwrap()).unwrap();
+        assert!(rendered.problems.is_empty(), "{:?}", rendered.problems);
+        out.insert(
+            (*id).to_string(),
+            json!({ "html": rendered.html, "at": "2026-10-29T10:00:00Z", "by": "matus" }),
+        );
+    }
+    json!({ "pages": out, "style": style })
+}
+
+#[test]
+fn a_changed_overview_draws_its_text_button_and_kept_blocks() {
+    let mut f = Fake::owner();
+    f.set(
+        "/api/pages",
+        changed_pages(
+            &[(
+                "overview",
+                "# Office box\n\nAsk first.\n\n<Button href=\"/apps\" variant=\"secondary\">Apps</Button>\n\n<Apps hideStorage />\n",
+            )],
+            Some("4"),
+        ),
+    );
+    let page = html(&get(&mut f, "/api/basic/", "/api/basic/"));
+    no_script(&page);
+    assert!(page.contains("Office box</h1>"), "{page}");
+    assert!(page.contains("mdx-page-text"));
+    assert!(!page.contains(">losos</h1>"), "BoxName was left out");
+    assert!(page.contains("data-app=\"files\""), "the apps are kept");
+    assert!(!page.contains("w-[25%]"), "the storage strip was hidden");
+    assert!(
+        !page.contains("losos-block"),
+        "a placeholder reached the page"
+    );
+    assert!(page.contains(&losos_page::ui::button_classes(
+        losos_page::ui::Variant::Secondary,
+        losos_page::ui::Size::Md
+    )));
+    // Named as the script page names it, for the stylesheet's selectors.
+    assert!(
+        page.contains("<html lang=\"en\" data-page=\"overview\""),
+        "{page}"
+    );
+    // The stylesheet comes last, after the bundle's.
+    let bundle = page.find("href=\"/assets/index-AB.css\"").unwrap();
+    let theirs = page.find("href=\"/api/pages/style.css?v=4\"").unwrap();
+    assert!(bundle < theirs);
+}
+
+#[test]
+fn a_page_nobody_changed_draws_as_before() {
+    let mut f = Fake::owner();
+    let before = html(&get(&mut f, "/api/basic/{page}", "/api/basic/storage"));
+    assert!(
+        before.contains("data-page=\"settings.storage\""),
+        "{before}"
+    );
+    f.set(
+        "/api/pages",
+        changed_pages(&[("overview", "<BoxName />\n")], None),
+    );
+    let after = html(&get(&mut f, "/api/basic/{page}", "/api/basic/storage"));
+    assert_eq!(before, after);
+    f.set(
+        "/api/pages",
+        changed_pages(
+            &[("settings.storage", "Ask before you grow it.\n\n<Disk />\n")],
+            None,
+        ),
+    );
+    let changed = html(&get(&mut f, "/api/basic/{page}", "/api/basic/storage"));
+    assert!(changed.contains("Ask before you grow it."));
+    assert!(
+        changed.contains("for=\"basic-grow\""),
+        "the disk block is kept"
+    );
+}
+
 #[test]
 fn the_reserve_is_used_after_asking() {
     let mut f = Fake::owner();
@@ -812,6 +900,151 @@ fn a_problem_is_read_sent_and_dismissed_by_forms() {
 /// so the classes only these pages use are in the stylesheet too. The
 /// bundle is built from admin-ui/app alone, so it cannot read the Rust
 /// files themselves. `UPDATE_BASIC_CLASSES=1 cargo test` writes the file.
+fn look(kind: &str) -> Value {
+    let background = match kind {
+        "shipped" => json!({"kind": "shipped", "name": "dusk"}),
+        "upload" => {
+            json!({"kind": "upload", "version": 3, "contentType": "image/png", "url": "/api/look/background/matus?v=3"})
+        }
+        _ => json!({"kind": "none"}),
+    };
+    json!({
+        "version": 1, "background": background, "veil": 45, "personal": true,
+        "widgets": [], "shipped": ["tide", "grid", "dusk"],
+        "limits": {"veil": {"min": 20, "max": 90}}
+    })
+}
+
+#[test]
+fn the_persons_background_is_behind_every_page() {
+    let mut f = Fake::owner();
+    f.set("/api/look", look("upload"));
+    let page = html(&get(&mut f, "/api/basic/", "/api/basic/"));
+    let sheet = "/basic/look.css?bg=%2Fapi%2Flook%2Fbackground%2Fmatus%3Fv%3D3&amp;veil=45";
+    assert!(page.contains(&format!("href=\"{sheet}\"")), "{page}");
+
+    // The sheet says what its address says, and only an address it trusts.
+    let req = request(
+        "GET",
+        "/api/basic/look.css",
+        "/api/basic/look.css",
+        "bg=%2Fapi%2Flook%2Fbackground%2Fmatus%3Fv%3D3&veil=45",
+        "",
+        &[],
+    );
+    let css = html(&handle_with(&mut f, &req, 1000));
+    assert!(
+        css.contains("url(\"/api/look/background/matus?v=3\")"),
+        "{css}"
+    );
+    assert!(css.contains("rgba(var(--ground-rgb), 0.45)"), "{css}");
+    for query in [
+        "bg=https%3A%2F%2Fevil%2Fx.png&veil=45",
+        "bg=%2Fapi%2Flook%2Fbackground%2F..%2Fx%3Fv%3D1&veil=45",
+        "bg=%2Fbackgrounds%2Fdusk.svg%22)%3Bx&veil=45",
+        "bg=%2Fbackgrounds%2Fdusk.svg&veil=5",
+    ] {
+        let req = request(
+            "GET",
+            "/api/basic/look.css",
+            "/api/basic/look.css",
+            query,
+            "",
+            &[],
+        );
+        assert!(html(&handle_with(&mut f, &req, 1000)).is_empty(), "{query}");
+    }
+
+    // A plain look asks for no sheet.
+    f.set("/api/look", look("none"));
+    assert!(!html(&get(&mut f, "/api/basic/", "/api/basic/")).contains("look.css"));
+}
+
+#[test]
+fn the_look_pane_picks_a_background_and_a_veil() {
+    let mut f = Fake::owner();
+    f.set("/api/look", look("shipped"));
+    let r = get(
+        &mut f,
+        "/api/basic/settings/{pane}",
+        "/api/basic/settings/look",
+    );
+    assert_eq!(r.status, 200);
+    let page = html(&r);
+    no_script(&page);
+    assert!(
+        page.contains("name=\"background\" value=\"dusk\" role=\"radio\" aria-checked=\"true\""),
+        "{page}"
+    );
+    assert!(page.contains("name=\"veil\""));
+    assert!(!page.contains("data-basic-later"));
+
+    let post = |f: &mut Fake, body: &str| {
+        let req = request(
+            "POST",
+            "/api/basic/settings/{pane}",
+            "/api/basic/settings/look",
+            "",
+            body,
+            &[("sec-fetch-site", "same-origin")],
+        );
+        handle_with(f, &req, 1000)
+    };
+    let r = post(&mut f, "background=tide");
+    assert_eq!(r.status, 303);
+    assert_eq!(location(&r), "/basic/settings/look");
+    assert!(cookies(&r)
+        .iter()
+        .any(|c| c.starts_with("losos_basic_flash=look.set;")));
+    assert_eq!(
+        f.posted("/api/look").as_deref(),
+        Some(r#"{"background":{"kind":"shipped","name":"tide"}}"#)
+    );
+    f.calls.clear();
+    post(&mut f, "veil=70");
+    assert_eq!(f.posted("/api/look").as_deref(), Some(r#"{"veil":70}"#));
+
+    // Someone in no section at all has the pane too.
+    let mut viewer = Fake::owner();
+    viewer.set(
+        "/api/me",
+        json!({"name": "ann", "admin": false, "standalone": true, "sections": []}),
+    );
+    viewer.set("/api/look", look("none"));
+    assert_eq!(
+        get(
+            &mut viewer,
+            "/api/basic/settings/{pane}",
+            "/api/basic/settings/look"
+        )
+        .status,
+        200
+    );
+}
+
+#[test]
+fn the_theme_and_the_language_are_in_the_person_menu() {
+    let mut f = Fake::owner();
+    let page = html(&get(&mut f, "/api/basic/", "/api/basic/"));
+    let menu = &page[page
+        .find("data-slot=\"person-menu\"")
+        .expect("a person menu")..];
+    let theme = menu
+        .find("data-slot=\"theme-menu\"")
+        .expect("the appearance row");
+    let language = menu
+        .find("data-slot=\"language-menu\"")
+        .expect("the language row");
+    let out = menu.find("data-testid=\"sign-out\"").unwrap();
+    assert!(theme < language && language < out);
+    assert!(menu.contains("name=\"theme\" value=\"dark\""));
+    assert!(menu.contains("name=\"lang\" value=\"sk\""));
+    // Nothing of either is left loose in the bar.
+    let bar = &page[..page.find("data-slot=\"person-menu\"").unwrap()];
+    assert!(!bar.contains("data-basic-menu=\"language\""));
+    assert!(!bar.contains("role=\"radiogroup\""));
+}
+
 #[test]
 fn the_bundle_knows_every_class_these_pages_use() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");

@@ -18,7 +18,7 @@ pub const PANES: &[(&str, &str, &str)] = &[
     ("apps", icons::LAYOUT_GRID, "apps"),
     ("statistics", icons::CHART_LINE_DATA_01, "apps"),
     ("network", icons::GLOBE_02, "network"),
-    ("look", icons::PAINT_BOARD, "look"),
+    ("look", icons::PAINT_BOARD, "signed-in"),
     ("hardware", icons::CPU, "admin"),
     ("security", icons::SHIELD_01, "admin"),
     ("account", icons::USER_CIRCLE, "account"),
@@ -143,7 +143,7 @@ impl Me {
             .iter()
             .find(|(id, _, _)| *id == pane)
             .map_or("admin", |p| p.2);
-        self.can_use(section)
+        section == "signed-in" || self.can_use(section)
     }
 
     /// The top bar's person (App.tsx's TopBar).
@@ -432,6 +432,78 @@ pub fn assets(host: &mut dyn Host) -> Assets {
 }
 
 /// Everything a signed-in page draws around itself.
+/// What sits behind the page, read off `GET /api/look`: the picture's
+/// address and the veil over it, or `None` for the plain ground.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Backdrop {
+    pub url: String,
+    /// Percent, 20 to 90.
+    pub veil: u8,
+}
+
+impl Backdrop {
+    #[must_use]
+    pub fn of(look: &Value) -> Option<Backdrop> {
+        let b = &look["background"];
+        let url = match b["kind"].as_str()? {
+            "shipped" => format!("/backgrounds/{}.svg", b["name"].as_str()?),
+            "upload" => b["url"].as_str()?.to_string(),
+            _ => return None,
+        };
+        let veil = u8::try_from(look["veil"].as_u64().unwrap_or(60)).ok()?;
+        let backdrop = Backdrop { url, veil };
+        backdrop.sound().then_some(backdrop)
+    }
+
+    /// An address this page may put in a stylesheet: a shipped picture, or
+    /// one of the look plugin's, versioned; a veil in its range.
+    #[must_use]
+    pub fn sound(&self) -> bool {
+        let shipped = self
+            .url
+            .strip_prefix("/backgrounds/")
+            .and_then(|n| n.strip_suffix(".svg"))
+            .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_lowercase()));
+        let uploaded = self
+            .url
+            .strip_prefix("/api/look/background")
+            .and_then(|rest| rest.split_once("?v="))
+            .is_some_and(|(who, v)| {
+                (who.is_empty()
+                    || who.strip_prefix('/').is_some_and(|n| {
+                        !n.is_empty()
+                            && n.bytes().all(|b| {
+                                b.is_ascii_lowercase() || b.is_ascii_digit() || b"._-".contains(&b)
+                            })
+                    }))
+                    && !v.is_empty()
+                    && v.bytes().all(|b| b.is_ascii_digit())
+            });
+        (shipped || uploaded) && (20..=90).contains(&self.veil)
+    }
+
+    /// The page's stylesheet for it, `/basic/look.css?…`, which says the
+    /// same as its query: the page cannot set a style itself.
+    #[must_use]
+    pub fn sheet(&self) -> String {
+        format!(
+            "/basic/look.css?bg={}&veil={}",
+            crate::encode(&self.url),
+            self.veil
+        )
+    }
+
+    /// styles/index.css's `html.has-bg .losos-shell`, for this picture.
+    #[must_use]
+    pub fn css(&self) -> String {
+        let veil = f64::from(self.veil) / 100.0;
+        format!(
+            ":root[data-basic] .losos-shell {{ background-image: linear-gradient(rgba(var(--ground-rgb), {veil}), rgba(var(--ground-rgb), {veil})), url(\"{}\"); background-size: cover; background-position: center; background-attachment: fixed; }}\n",
+            self.url
+        )
+    }
+}
+
 pub struct Ctx {
     pub m: Messages,
     pub prefs: Prefs,
@@ -446,6 +518,8 @@ pub struct Ctx {
     pub rail_moved: bool,
     pub refresh: Option<u32>,
     pub pins: Option<Vec<NavEntry>>,
+    /// The page's name for an administrator's stylesheet (`data-page`).
+    pub page: Option<&'static str>,
 }
 
 impl Ctx {
@@ -463,6 +537,74 @@ impl Ctx {
             rail_moved: self.rail_moved,
             refresh: self.refresh,
             pins: self.pins.as_deref(),
+            page: self.page,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn panes_and_addresses_agree() {
+        assert_eq!(pane_path("storage"), "/storage");
+        assert_eq!(pane_path("network"), "/settings/network");
+        assert_eq!(pane_at("/settings/network"), Some("network"));
+        assert_eq!(pane_at("/settings"), Some("network"));
+        assert_eq!(pane_at("/mesh"), Some("mesh"));
+        assert_eq!(pane_at("/settings/nope"), None);
+    }
+
+    #[test]
+    fn a_viewer_sees_their_sections_only() {
+        let m = Messages::from_pairs(Locale::En, &[]);
+        let me = Me::from_json(&json!({
+            "name": "ann", "admin": false, "sections": ["storage", "network"],
+            "standalone": true, "shared": ["mail"], "spareKey": false
+        }));
+        let keys: Vec<String> = nav(&me, &m, "/storage", false)
+            .into_iter()
+            .map(|e| e.key)
+            .collect();
+        assert_eq!(keys, ["overview", "storage", "mail", "settings"]);
+        let settings = nav(&me, &m, "/settings/network", false).pop().unwrap();
+        let inner: Vec<&str> = settings.children.iter().map(|e| e.key.as_str()).collect();
+        // Look is everyone's: their own background is there.
+        assert_eq!(inner, ["network", "look"]);
+        assert!(settings.holds_current());
+    }
+
+    #[test]
+    fn an_admin_sees_market_under_mesh() {
+        let m = Messages::from_pairs(Locale::En, &[]);
+        let me =
+            Me::from_json(&json!({"name": "o", "admin": true, "sections": [], "standalone": true}));
+        let tree = nav(&me, &m, "/settings/market", false);
+        let mesh = tree.iter().find(|e| e.key == "mesh").unwrap();
+        assert_eq!(mesh.children.len(), 2);
+        assert!(mesh.holds_current());
+        assert!(tree.iter().any(|e| e.key == "lab"));
+    }
+
+    #[test]
+    fn the_spare_key_has_no_account_and_no_picture() {
+        let m = Messages::from_pairs(Locale::En, &[("shell.me.spareKey", "Spare admin key")]);
+        let me = Me::from_json(&json!({"spareKey": true, "admin": true, "standalone": true}));
+        let p = me.person(&m);
+        assert_eq!(p.label, "Spare admin key");
+        assert!(!p.account);
+        assert!(p.initial.is_none());
+        assert!(!me.pane_open("account"));
+    }
+
+    #[test]
+    fn a_picture_elsewhere_is_dropped() {
+        let me = Me::from_json(
+            &json!({"name": "x", "picture": "https://evil/x.png", "accent": "te\"al"}),
+        );
+        assert!(me.picture.is_none());
+        assert!(me.accent.is_none());
     }
 }
