@@ -326,6 +326,11 @@ in
   # What `nix flake check --no-build` checks, one `nix eval` per derivation, so
   # the peak memory is one VM test's evaluation rather than all of them at
   # once (nix/check-flake.sh says why). CI's eval job runs the same script.
+  # CI's `bots` job: the release channels' bot against a fake GitHub over a
+  # real repository (.github/scripts/test_channels.py).
+  scripts.test-bots.exec = ''${pkgs.python3}/bin/python3 "$DEVENV_ROOT/.github/scripts/test_channels.py"'';
+  scripts.test-bots.description = "Test the release channels' bot.";
+
   scripts.check-flake.exec = ''bash "$DEVENV_ROOT/nix/check-flake.sh" "$@"'';
   scripts.check-flake.description = "Evaluate every flake output, one at a time (builds nothing).";
 
@@ -470,6 +475,7 @@ in
   enterTest = ''
     set -e
     check-pins
+    test-bots
     lint
     lint-nix
     lint-wasm

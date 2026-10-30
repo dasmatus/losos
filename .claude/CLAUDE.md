@@ -480,6 +480,17 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   upgrade), `nix.gc` at 04:30 with `--delete-older-than 14d`, five boot
   generations, unconditional reboot at 00:07. `nix/tests/invariants.nix` pins
   these at eval time.
+- Release channels (`losos.updates.channel`, `channels.yml`,
+  `.github/scripts/channels.py`): boxes follow `channel/daily` before
+  1.0.0 and `channel/weekly` from then on (`nix/version.nix` decides), or
+  `channel/monthly`. A cut takes the newest main whose `ci` passed with
+  `publish-cache`, as a fast-forward or a merge commit with main's tree; a
+  merged PR labelled `hotfix` is cherry-picked onto each channel as
+  `hotfix/<channel>/<n>`, CI is dispatched there, and the channel
+  fast-forwards when it passes. All through the API, never a force push.
+  Each channel commit carries `Channel-Base: <sha> <unix>`, and
+  `config_repo::plan_follow` holds a box that moved to a slower channel
+  until the channel passes it. The installer clones the channel.
 - `logs.nix` (install and edge) caps every log: the journal at
   `losos.logs.journalMaxUse` and a month, pod logs at three files of 10 MiB
   per container in all three clusters, logrotate for lososd's `audit.log`
@@ -574,7 +585,7 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   to main (rules in `.github/scripts/scrub-message.py`), pushing branches
   with the `HISTORY_SCRUB_DEPLOY_KEY` deploy key and tags with the CI token.
   `stale-branches.yml` deletes, each Sunday, branches with no commit in 30
-  days that no open PR uses as head or base.
+  days that no open PR uses as head or base, never `channel/*`.
   `failed-runs.yml` deletes, each day, unsuccessful workflow runs whose
   commit is no longer a branch tip or an open PR's head.
   `dependency-hashes.yml` (`pull_request_target`, branches of this repository

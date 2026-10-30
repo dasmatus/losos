@@ -3737,7 +3737,7 @@ export interface ConfigSync {
 }
 
 /** How the last look at the published branch went (backend/schema.json). */
-export type ConfigUpdateState = "off" | "pending" | "ok" | "kept" | "waiting" | "unavailable" | "error";
+export type ConfigUpdateState = "off" | "pending" | "ok" | "kept" | "holding" | "waiting" | "unavailable" | "error";
 
 export interface ConfigUpdateReport {
   state: ConfigUpdateState;

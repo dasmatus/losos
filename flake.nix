@@ -555,6 +555,7 @@
         losos-profiles = import ./nix/tests/profiles.nix { inherit pkgs; };
         losos-profile-screens = import ./nix/tests/profile-screens.nix { inherit pkgs; };
         losos-plugins = import ./nix/tests/plugins.nix { inherit pkgs; };
+        losos-channels = import ./nix/tests/channels.nix { inherit pkgs; };
         # Problem reports: the box's list and a report sent to a stand-in GitHub.
         losos-problems = import ./nix/tests/problems.nix { inherit pkgs; };
         losos-hidden-services = import ./nix/tests/hidden-services.nix { inherit pkgs; };
