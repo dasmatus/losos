@@ -36,16 +36,17 @@ bun run dev | typecheck | test:browser              # in admin-ui/app
 cargo test --manifest-path admin-ui/tui/Cargo.toml  # losos, the terminal client
 ```
 
-Eleven Rust crates: `backend/` (lososd + losos-ctl), `backend/access`
+Twelve Rust crates: `backend/` (lososd + losos-ctl), `backend/access`
 (the terminal envelope, its own workspace, a path dependency of lososd, the
-registrar and the client), `backend/mdx` (`losos-mdx`, MDX and Markdown to
+registrar and the client), `backend/edge-path` (lososd's edge path rule, its
+own workspace, also read by LosOS Desktop's network machine), `backend/mdx` (`losos-mdx`, MDX and Markdown to
 sanitized HTML for Office and Notes, its own workspace, also built for the
 browser with its `wasm` feature), `backend/plugins` (lososd's WebAssembly plugins,
 their SDK and WIT, its own workspace, linted for the host and wasm32), `edge/registrar/`, `edge/vercel/` (outside the
 flake), the terminal client `admin-ui/tui`, and Diagrams' `admin-ui/lab/core`,
 `admin-ui/lab/virt-rpc` and `admin-ui/lab/render` (built for wasm32), and
 the Solana escrow program `edge/contracts/solana` (`cargo build-sbf`, outside
-the flake). All eleven must pass clippy with `-D warnings` and rustfmt; the git hooks
+the flake). All twelve must pass clippy with `-D warnings` and rustfmt; the git hooks
 in `nix/hooks`, `lint` and CI each check it. Bevy is a wasm32-only dependency of
 `render`, so `lint-wasm` and CI's `clippy-wasm` lint its WebGL2 and WebGPU
 builds too, one after the other. `nix develop` is a toolchain-only shell for people without devenv.
@@ -101,9 +102,15 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   tree, and `flake.nix` imports the live copy from `/etc/nixos` on rebuilds.
   `nix/tests/iso-install.nix` (CI's `install` job, and pre-push on the same
   lane) runs that installer offline and boots the disk it wrote.
-- `configuration.nix`: `notshared` (uid 1000, the owner's apps and LosOS Cloud name) and `shared`
-  (uid 1001, mesh storage), each with its own group and a `700` home, no
-  passwords, `openssh` off.
+- `configuration.nix`: `notshared` (uid 1000, the owner's apps and LosOS Cloud name), `shared`
+  (uid 1001, mesh storage) and `kindashared` (uid 1004, shared with local
+  gateways only), each with its own group, `700` home and fscrypt domain
+  (`fscrypt.nix` `mkDomain`), no passwords, `openssh` off. `losos.sharingLocally`
+  opens `kindashared`; lososd refuses it without a Secondary-tier edge
+  (`edge::check_local_gate`, 409 `localGatewayRequired`) and pauses it like
+  sharing. `lososInternal.sideUser` (`shared` while in the mesh, else
+  `kindashared`) is the account chat, mail, calls and Mesh CI run as;
+  `sideLive` gates them.
 - `daemon.nix` + `backend/`: `lososd` is a root daemon owning
   `/var/lib/losos/state.json`, exporting one D-Bus method per subcommand
   (`org.losos1`, `/org/losos1`, `org.losos.Control1`) and a Bearer-authed
@@ -391,6 +398,16 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   names to the box (`edge.json`). LosOS Login takes both as cookie
   domains; `GET /api/hidden` is the `hidden` plugin.
   `nix/tests/hidden-services.nix` boots private Tor and I2P networks.
+- `edge-exit.nix` + `edge/registrar/src/exit.rs` (`losos.edge.exit.*`,
+  `handbook/docs/in-depth/edge-exit.md`): the edge as a VPN-like way out
+  for tenants marked `exit`, LosOS Desktop's network machine among them.
+  `POST /exit` enrols a WireGuard key and hands back an address on
+  `losos-exit`; the registrar only writes `/var/lib/losos-exit/peers.json`
+  and `losos-exit-sync` (root) sets the peers. The FORWARD chain lets out
+  only public addresses, never peer to peer. With `onion.enable`,
+  `losos-registrar exit-socks` (user `losos-exit`) answers SOCKS5 behind
+  the edge's own onion with the enrolment's password, public destinations
+  only, for a desktop in schizo mode.
 - `admin-ui/themes/`: the SPA's `tokens.css` is shipped byte for byte as
   `losos-tokens.css` into LosOS Login's page; LosOS Cloud and LosOS Git are
   part of the SPA's own build, so one colour change moves all of them.
@@ -480,12 +497,40 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   upgrade), `nix.gc` at 04:30 with `--delete-older-than 14d`, five boot
   generations, unconditional reboot at 00:07. `nix/tests/invariants.nix` pins
   these at eval time.
+- Release channels (`losos.updates.channel`, `channels.yml`,
+  `.github/scripts/channels.py`): boxes follow `channel/daily` before
+  1.0.0 and `channel/weekly` from then on (`nix/version.nix` decides), or
+  `channel/monthly`. A cut takes the newest main whose `ci` passed with
+  `publish-cache`, as a fast-forward or a merge commit with main's tree; a
+  merged PR labelled `hotfix` is cherry-picked onto each channel as
+  `hotfix/<channel>/<n>`, CI is dispatched there, and the channel
+  fast-forwards when it passes. All through the API, never a force push.
+  Each channel commit carries `Channel-Base: <sha> <unix>`, and
+  `config_repo::plan_follow` holds a box that moved to a slower channel
+  until the channel passes it. The installer clones the channel.
 - `logs.nix` (install and edge) caps every log: the journal at
   `losos.logs.journalMaxUse` and a month, pod logs at three files of 10 MiB
   per container in all three clusters, logrotate for lososd's `audit.log`
   and `rebuild.log` and a size bound on nixpkgs' nginx rule, Nix build logs
   after 30 days. A new service that writes its own log file gets a cap
   here or in its own flags. `nix/tests/invariants.nix` pins it.
+- `log-reader.nix` + `backend/src/logs/` (`losos-logs`, a third binary of
+  the backend crate, `losos.logReader.enable`): Settings › Logs, the
+  journal in the admin pages. Its own user in `systemd-journal`, on
+  `/run/losos-logs/http.sock` (root and nginx's group), apart from lososd so
+  the page works while lososd is down: nginx sends it `/api/logs*` and
+  `/basic/settings/logs*`, and the no-JS page draws its own spare-key
+  sign-in (`backend/plugins/page/src/logs.rs`, shared with the basic
+  plugin). Every line is redacted (`logs/redact.rs`) before it is shown,
+  searched (never `--grep`, so a search cannot probe for a secret),
+  downloaded or handed to lososd's problem reports at
+  `/internal/logs/excerpt`, which refuses anything nginx forwards
+  (`X-Losos-Front`). The Service list is `/etc/losos/log-units.json`, the
+  units this box runs. The backend's services log through
+  `losos_ctl::trace::init`, which prefixes each line on a journal stream
+  with its syslog level (`<3>`, `<4>`) so journald files it at that
+  priority; a plain `tracing_subscriber::fmt()` lands every error as
+  info. `nix/tests/logs.nix` boots it and stops lososd.
 - `grow.rs`: `losos-ctl grow` runs lvextend, `cryptsetup resize`, `resize2fs`
   online, asserted against the plan and in `nix/tests/resize.nix`.
 - `backup.nix` + `backup.rs` + `erase.rs`: restic backups to an S3 bucket,
@@ -557,7 +602,7 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   to main (rules in `.github/scripts/scrub-message.py`), pushing branches
   with the `HISTORY_SCRUB_DEPLOY_KEY` deploy key and tags with the CI token.
   `stale-branches.yml` deletes, each Sunday, branches with no commit in 30
-  days that no open PR uses as head or base.
+  days that no open PR uses as head or base, never `channel/*`.
   `failed-runs.yml` deletes, each day, unsuccessful workflow runs whose
   commit is no longer a branch tip or an open PR's head.
   `dependency-hashes.yml` (`pull_request_target`, branches of this repository

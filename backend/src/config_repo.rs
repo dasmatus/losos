@@ -448,19 +448,59 @@ pub enum FollowPlan {
     /// (a push to LosOS Git from a clone). Following would overwrite them,
     /// so the box keeps its tree and says so.
     Kept,
+    /// The published commit was cut from an older main than the one the box
+    /// took last: the box moved to a slower channel. Taking it would run the
+    /// box's data under older code, and migrations do not run backwards, so
+    /// the box keeps its tree until the channel passes it.
+    Holding,
     /// Take the published tree.
     Follow,
 }
 
-/// Decide from the fetched head, the last mark, and whether the box's tree
-/// was edited outside its own files since that mark (or since the install,
-/// when there is no mark yet).
-pub fn plan_follow(fetched: &str, mark: Option<&FollowMark>, edited_outside: bool) -> FollowPlan {
+/// Decide from the fetched head, the last mark, whether the box's tree was
+/// edited outside its own files since that mark (or since the install, when
+/// there is no mark yet), and whether the fetched head is older than the
+/// marked one by [`base_of`].
+pub fn plan_follow(
+    fetched: &str,
+    mark: Option<&FollowMark>,
+    edited_outside: bool,
+    older: bool,
+) -> FollowPlan {
     match mark {
         Some(m) if m.upstream == fetched && !edited_outside => FollowPlan::UpToDate,
         _ if edited_outside => FollowPlan::Kept,
+        Some(_) if older => FollowPlan::Holding,
         _ => FollowPlan::Follow,
     }
+}
+
+// ── Release channels ────────────────────────────────────────────────────────
+//
+// `channel/daily`, `channel/weekly` and `channel/monthly` are branches that
+// .github/workflows/channels.yml moves (.github/scripts/channels.py). A cut is
+// a commit whose tree is exactly main's at a commit whose CI run passed, and
+// a hotfix is a cherry-pick on top. Each of those commits names the main
+// commit it was cut from in a trailer:
+//
+//     Channel-Base: <sha> <unix seconds of that commit>
+//
+// The box fetches one commit deep and cannot ask git whether one commit
+// descends from another, so it compares that time instead. A commit of main
+// itself carries no trailer, and its own committer time stands in.
+
+/// The trailer naming the main commit a channel commit was cut from.
+pub const CHANNEL_BASE: &str = "Channel-Base:";
+
+/// When the main a published commit was cut from was made, in unix seconds:
+/// the last `Channel-Base:` trailer of `message`, else `committed_at`.
+pub fn base_of(committed_at: i64, message: &str) -> i64 {
+    message
+        .lines()
+        .rev()
+        .filter_map(|line| line.trim().strip_prefix(CHANNEL_BASE))
+        .find_map(|rest| rest.split_whitespace().nth(1)?.parse().ok())
+        .unwrap_or(committed_at)
 }
 
 /// The current time, RFC 3339 to the second.
@@ -570,13 +610,65 @@ mod tests {
             followed: "b1".into(),
         };
         // A box that never followed takes the published tree.
-        assert_eq!(plan_follow("u1", None, false), FollowPlan::Follow);
-        assert_eq!(plan_follow("u1", Some(&mark), false), FollowPlan::UpToDate);
-        assert_eq!(plan_follow("u2", Some(&mark), false), FollowPlan::Follow);
+        assert_eq!(plan_follow("u1", None, false, false), FollowPlan::Follow);
+        assert_eq!(
+            plan_follow("u1", Some(&mark), false, false),
+            FollowPlan::UpToDate
+        );
+        assert_eq!(
+            plan_follow("u2", Some(&mark), false, false),
+            FollowPlan::Follow
+        );
         // An edit outside the box's own files wins, new commit or not.
-        assert_eq!(plan_follow("u2", Some(&mark), true), FollowPlan::Kept);
-        assert_eq!(plan_follow("u1", Some(&mark), true), FollowPlan::Kept);
-        assert_eq!(plan_follow("u1", None, true), FollowPlan::Kept);
+        assert_eq!(
+            plan_follow("u2", Some(&mark), true, false),
+            FollowPlan::Kept
+        );
+        assert_eq!(
+            plan_follow("u1", Some(&mark), true, false),
+            FollowPlan::Kept
+        );
+        assert_eq!(plan_follow("u1", None, true, false), FollowPlan::Kept);
+        assert_eq!(plan_follow("u2", Some(&mark), true, true), FollowPlan::Kept);
+    }
+
+    #[test]
+    fn a_slower_channel_never_takes_the_box_back() {
+        let mark = FollowMark {
+            upstream: "daily".into(),
+            followed: "b1".into(),
+        };
+        assert_eq!(
+            plan_follow("weekly", Some(&mark), false, true),
+            FollowPlan::Holding
+        );
+        // Once the channel passes the box, it moves again.
+        assert_eq!(
+            plan_follow("weekly", Some(&mark), false, false),
+            FollowPlan::Follow
+        );
+        // Without a mark there is nothing to be older than.
+        assert_eq!(plan_follow("weekly", None, false, true), FollowPlan::Follow);
+    }
+
+    #[test]
+    fn the_base_of_a_channel_commit_is_its_trailer() {
+        // A commit of main: its own time.
+        assert_eq!(
+            base_of(1_700_000_000, "Merge pull request #12\n\nA fix"),
+            1_700_000_000
+        );
+        // A cut: the main commit it was cut from.
+        let cut =
+            "Cut channel/weekly from main 1234567\n\nChannel-Base: 1234567890abcdef 1690000000\n";
+        assert_eq!(base_of(1_700_000_000, cut), 1_690_000_000);
+        // A hotfix keeps the channel's base; the last trailer counts.
+        let hotfix = "Hotfix #40 on channel/weekly: Fix the tunnel\n\n\
+                      Channel-Base: aaaa 1680000000\nChannel-Base: bbbb 1690000000\nHotfix: #40 cccc";
+        assert_eq!(base_of(1_700_000_000, hotfix), 1_690_000_000);
+        // A trailer that does not parse is no trailer.
+        assert_eq!(base_of(5, "Channel-Base: nonsense"), 5);
+        assert_eq!(base_of(5, "Channel-Base: abc soon"), 5);
     }
 
     #[test]

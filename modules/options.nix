@@ -25,6 +25,13 @@ let
   secretPath = lib.types.coercedTo storePathLike toString lib.types.str;
 
   inNixStore = p: lib.hasPrefix builtins.storeDir (toString p);
+
+  # The release this tree is (nix/version.nix). A box follows the daily
+  # channel until LosOS is at 1.0.0 or later, without a pre-release suffix,
+  # and the weekly one from then on; version.yml moving the tag is what
+  # flips it.
+  release = lib.removePrefix "v" (import ../nix/version.nix);
+  stableRelease = !(lib.hasInfix "-" release) && lib.versionAtLeast release "1.0.0";
 in
 {
   # LosOS Git took over from Forgejo; an older overrides.nix still names
@@ -1221,6 +1228,30 @@ in
       '';
     };
 
+    # ── The kindashared data domain (fscrypt) ──────────────────────────────
+    kindashared.fscrypt.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Protect /home/kindashared/data with an fscrypt policy of its own that
+        is unlocked only while losos.sharingLocally is on: the same second
+        layer as the shared domain's (losos.shared.fscrypt.enable), with its
+        own protector key, so turning one kind of sharing on never opens the
+        other's files.
+      '';
+    };
+
+    kindashared.fscrypt.keyFile = lib.mkOption {
+      type = secretPath;
+      default = "/var/secrets/losos-kindashared-key";
+      description = ''
+        The kindashared domain's fscrypt protector key, kept and sealed the
+        way losos.shared.fscrypt.keyFile is: to the TPM when
+        losos.tpm.enable is true, a 0600 file inside the LUKS volume when it
+        is not.
+      '';
+    };
+
     # ── Erasing the box (modules/backup.nix, backend/src/erase.rs) ──────────
     reset.graceMinutes = lib.mkOption {
       type = lib.types.ints.between 1 1440;
@@ -1401,6 +1432,20 @@ in
         repository in LosOS Git. The index is a copy of the files' text and
         never leaves the box; turning this off stops the updates, and a
         factory erase deletes it.
+      '';
+    };
+
+    # ── Settings › Logs (modules/log-reader.nix) ─────────────────────────
+    logReader.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Show the journal of the box's services in the admin pages, under
+        Settings › Logs, to an administrator or whoever holds the spare key,
+        with passwords, keys and tokens hidden. It runs apart from the
+        control service, so the page keeps working when that service does
+        not. The lines never leave the box unless an administrator
+        downloads them.
       '';
     };
 
@@ -1612,6 +1657,30 @@ in
       '';
     };
 
+    # Sharing as kindashared: only with the local gateways of this box's
+    # own network, never with an official edge or the wider mesh.
+    sharingLocally = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Share this box with the local edge gateways of its own network (a
+        company's or a home's), and with nothing further: the third data
+        account, `kindashared` (modules/configuration.nix), is the shared
+        account's counterpart for a secondary cluster. Its data domain,
+        /home/kindashared/data, is unlocked only while this is on
+        (modules/fscrypt.nix), exactly as losos.sharingMyStorage opens the
+        shared one.
+
+        lososd turns it on only while a local gateway answers (an edge whose
+        link from this box is secondary, backend/src/edge.rs): an official
+        edge alone is refused with 409 `localGatewayRequired`. With no local
+        gateway for losos.proxy.pauseSharingAfter seconds the box turns it
+        off by itself, and back on a minute after one answers again. It is
+        independent of losos.sharingMyStorage: a box can share with its
+        local gateway and keep everything from the official edges.
+      '';
+    };
+
     # LosOS Git (modules/git.nix, backend/src/forge/): the box's own Git
     # server, a Rust service of lososd's crate. One mode: it runs on the
     # host, never in a cluster.
@@ -1722,8 +1791,45 @@ in
     };
     configRepo.upstream.branch = lib.mkOption {
       type = lib.types.str;
-      default = "main";
-      description = "The branch of losos.configRepo.upstream.url the box follows.";
+      default =
+        if config.losos.updates.channel == "main" then
+          "main"
+        else
+          "channel/${config.losos.updates.channel}";
+      defaultText = lib.literalExpression ''"channel/''${config.losos.updates.channel}", or "main" for the main channel'';
+      description = ''
+        The branch of losos.configRepo.upstream.url the box follows. Set
+        losos.updates.channel instead; this is for a fork that names its
+        branches differently.
+      '';
+    };
+
+    # ── Release channels ─────────────────────────────────────────────────
+    # .github/workflows/channels.yml moves channel/daily, channel/weekly and
+    # channel/monthly to a commit of main whose CI run and cache upload both
+    # passed, and puts every merged pull request labelled `hotfix` on top of
+    # each one the same day. The box only picks the branch; lososd never
+    # takes a channel that is older than what the box already runs
+    # (crate::config_repo::plan_follow).
+    updates.channel = lib.mkOption {
+      type = lib.types.enum [
+        "daily"
+        "weekly"
+        "monthly"
+        "main"
+      ];
+      default = if stableRelease then "weekly" else "daily";
+      defaultText = lib.literalExpression ''"daily" before LosOS 1.0.0, "weekly" from then on'';
+      description = ''
+        How often this box takes a new version. "daily" takes the newest
+        version that passed every check, at most a day after it was made.
+        "weekly" takes one each Monday and "monthly" one on the 1st, so a
+        change reaches the box up to a week or a month later. A fix marked as
+        a hotfix reaches every channel the same day. "main" takes every change
+        the night it is made, checked or not, and is for testing LosOS
+        itself. Moving to a slower channel keeps the version the box has
+        until that channel passes it.
+      '';
     };
 
     # ── LosOS Git's box-wide settings ───────────────────────────────────────
@@ -2555,6 +2661,18 @@ in
                 `market`. `null` (the default) is an ordinary tenant that may
                 relay nothing. Rendered into tenants.json as `relay_zone`, like
                 `cluster` and `market`.
+              '';
+            };
+            exit = lib.mkOption {
+              type = lib.types.bool;
+              default = false;
+              description = ''
+                Let this tenant send its traffic out through this edge
+                (losos.edge.exit). A fifth bit, apart from the others: the
+                edge's address becomes the tenant's on the internet, which
+                publishing a website through it never meant. Rendered into
+                tenants.json like `cluster` and `market`. Inert unless
+                losos.edge.exit.enable is set.
               '';
             };
           };
@@ -3707,6 +3825,74 @@ in
       '';
     };
 
+    # ── The edge as a way out (modules/edge-exit.nix) ───────────────────────
+    # handbook/docs/in-depth/edge-exit.md. A tenant with `exit` sends its
+    # traffic out through this edge over WireGuard, or over Tor to a SOCKS5
+    # server on the edge's onion address; the registrar enrols it.
+    edge.exit.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Let the tenants marked `exit` send their traffic to the internet
+        through this edge, the way a VPN carries it: each enrols a
+        WireGuard key with the registrar's `POST /exit` and gets an address
+        on the edge's `losos-exit` interface. What they send leaves from the
+        edge's public address. LosOS Desktop uses it to leave through the
+        edge it picked. Nothing reaches the edge's own network or other
+        peers through it.
+      '';
+    };
+
+    edge.exit.port = lib.mkOption {
+      type = lib.types.port;
+      default = 51820;
+      description = "The UDP port the exit's WireGuard interface listens on. Opened in the firewall.";
+    };
+
+    edge.exit.subnet = lib.mkOption {
+      type = lib.types.str;
+      default = "10.153.0.0/16";
+      description = ''
+        The exit's network. The edge takes its first address and each
+        enrolled tenant one more, kept across enrolments.
+      '';
+    };
+
+    edge.exit.endpoint = lib.mkOption {
+      type = lib.types.str;
+      default = "${config.losos.edge.publicDomain}:${toString config.losos.edge.exit.port}";
+      defaultText = lib.literalExpression ''"''${losos.edge.publicDomain}:''${toString losos.edge.exit.port}"'';
+      description = ''
+        Where a tenant dials the exit, as it writes it in WireGuard's
+        `Endpoint =`: a name or address of this edge that the internet
+        reaches, and the port.
+      '';
+    };
+
+    edge.exit.onion.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Also offer the exit on an onion service of the edge's own, as a
+        SOCKS5 server that asks for the tenant's id and the password its
+        enrolment handed out. A computer whose traffic already goes through
+        Tor reaches the edge there and leaves from it, so a site sees the
+        edge and the edge sees only Tor. Runs Tor on the edge.
+      '';
+    };
+
+    edge.exit.onion.port = lib.mkOption {
+      type = lib.types.port;
+      default = 1080;
+      description = "The SOCKS5 port on the exit's onion address.";
+    };
+
+    edge.exit.socksPort = lib.mkOption {
+      type = lib.types.port;
+      default = 1081;
+      description = "The loopback port Tor delivers the onion's SOCKS5 connections to.";
+    };
+
     edge.manage.ui = lib.mkOption {
       type = lib.types.nullOr lib.types.path;
       default = null;
@@ -3980,6 +4166,54 @@ in
     description = "The shared side is live: losos.sharingMyStorage and losos.cluster.enable.";
   };
 
+  # ── The kindashared side ──────────────────────────────────────────────
+  # The kindashared account's domain is open exactly while the box shares
+  # with its local gateways (losos.sharingLocally). Whether a gateway is in
+  # reach is lososd's to watch at run time: it refuses the switch without
+  # one and pauses it when the gateways go away. Read-only.
+  options.lososInternal.kindasharedSide = lib.mkOption {
+    type = lib.types.bool;
+    internal = true;
+    readOnly = true;
+    default = config.losos.sharingLocally;
+    description = "The kindashared side is live: losos.sharingLocally.";
+  };
+
+  # ── Who runs the shared side's apps ───────────────────────────────────
+  # Chat, mail, calls, Mesh CI and the hosted knowledge bases are one
+  # instance each, and they run as whichever sharing account is live: `shared`
+  # on a box in the mesh, else `kindashared` on a box that shares only with
+  # its local gateways. Their data is in that account's own domain
+  # (/home/<user>/data), so a box that moves from one side to the other
+  # starts them afresh there and keeps the other side's files, locked with
+  # their domain. Null: neither side is live and none of them run. Read-only.
+  options.lososInternal.sideUser = lib.mkOption {
+    type = lib.types.nullOr (
+      lib.types.enum [
+        "shared"
+        "kindashared"
+      ]
+    );
+    internal = true;
+    readOnly = true;
+    default =
+      if config.lososInternal.sharedSide then
+        "shared"
+      else if config.lososInternal.kindasharedSide then
+        "kindashared"
+      else
+        null;
+    description = "The account the shared side's apps run as: shared in a mesh, kindashared with a local gateway only, else null.";
+  };
+
+  options.lososInternal.sideLive = lib.mkOption {
+    type = lib.types.bool;
+    internal = true;
+    readOnly = true;
+    default = config.lososInternal.sideUser != null;
+    description = "The shared side's apps run: lososInternal.sideUser is set.";
+  };
+
   # Whether this box runs chat, as it actually runs: the switch and the
   # sharing gate together. Chat belongs to the shared user and keeps its
   # data in the shared domain (modules/chat.nix). Read-only.
@@ -3989,11 +4223,11 @@ in
     readOnly = true;
     default =
       config.losos.chat.enable
-      && config.lososInternal.sharedSide
+      && config.lososInternal.sideLive
       && config.losos.identity.enable
       && config.losos.admin.enable
       && config.losos.admin.ui != null;
-    description = "LosOS Chat runs: losos.chat.enable, the shared user's apps (lososInternal.sharedSide) and LosOS Login.";
+    description = "LosOS Chat runs: losos.chat.enable, the shared side's apps (lososInternal.sideLive) and LosOS Login.";
   };
 
   # ── Mesh CI, as it actually runs ────────────────────────────────────────
@@ -4006,10 +4240,10 @@ in
     readOnly = true;
     default =
       config.losos.ci.enable
-      && config.lososInternal.sharedSide
+      && config.lososInternal.sideLive
       && config.losos.git.enable
       && config.losos.backend.package != null;
-    description = "Mesh CI runs: losos.ci.enable, the shared side (lososInternal.sharedSide) and LosOS Git.";
+    description = "Mesh CI runs: losos.ci.enable, the shared side (lososInternal.sideLive) and LosOS Git.";
   };
 
   # ── LosOS Mail, as it actually runs ─────────────────────────────────────
@@ -4024,10 +4258,10 @@ in
       readOnly = true;
       default =
         config.losos.mail.enable
-        && config.lososInternal.sharedSide
+        && config.lososInternal.sideLive
         && config.losos.admin.enable
         && config.losos.admin.ui != null;
-      description = "LosOS Mail runs: losos.mail.enable, the shared side (lososInternal.sharedSide) and the admin pages.";
+      description = "LosOS Mail runs: losos.mail.enable, the shared side (lososInternal.sideLive) and the admin pages.";
     };
     domain = lib.mkOption {
       type = lib.types.str;
@@ -4076,6 +4310,7 @@ in
         "losos.proxy.tokenFile" = config.losos.proxy.tokenFile;
         "losos.cluster.tokenFile" = config.losos.cluster.tokenFile;
         "losos.shared.fscrypt.keyFile" = config.losos.shared.fscrypt.keyFile;
+        "losos.kindashared.fscrypt.keyFile" = config.losos.kindashared.fscrypt.keyFile;
         "losos.edge.cluster.agentTokenFile" = config.losos.edge.cluster.agentTokenFile;
         "losos.edge.market.stripeSecretKeySealed" = config.losos.edge.market.stripeSecretKeySealed;
         "losos.edge.market.webhookSecretSealed" = config.losos.edge.market.webhookSecretSealed;

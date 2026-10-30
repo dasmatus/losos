@@ -35,6 +35,7 @@ pub enum Action {
     Enrol,
     Secondary,
     Lab,
+    Exit,
 }
 
 impl Action {
@@ -65,6 +66,7 @@ impl Action {
             Action::Enrol => "losos::enrol",
             Action::Secondary => "losos::secondary",
             Action::Lab => "losos::lab",
+            Action::Exit => "losos::exit",
         }
     }
 }
@@ -93,6 +95,7 @@ impl Display for Action {
             Action::Enrol => f.write_str("[enrol]"),
             Action::Secondary => f.write_str("[secondary]"),
             Action::Lab => f.write_str("[lab]"),
+            Action::Exit => f.write_str("[exit]"),
         }
     }
 }

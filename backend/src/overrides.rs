@@ -28,6 +28,7 @@ pub const DEFAULT_OVERRIDES_NIX: &str = r#"{ ... }:
 
 {
   losos.sharingMyStorage = true;
+  losos.sharingLocally = false;
   losos.hostName = "mattbox";
   losos.gpu.enable = true;
   losos.proxy.enable = false;
@@ -304,6 +305,7 @@ pub fn parse_settings(content: &str) -> Settings {
             d.sharing_my_storage,
             lookup_nix("sharingMyStorage", content),
         ),
+        sharing_locally: read_bool(d.sharing_locally, lookup_nix("sharingLocally", content)),
         host_name: read_str(&d.host_name, lookup_nix("hostName", content)),
         gpu_enable: read_bool(d.gpu_enable, lookup_nix("gpu.enable", content)),
         proxy_enable: read_bool(
@@ -348,11 +350,15 @@ pub fn parse_settings(content: &str) -> Settings {
 /// one. The `contains('=')` guard means a comment merely *mentioning* the
 /// option is left alone.
 pub fn inject_line(sharing: bool, lines: &[String]) -> Vec<String> {
-    let new = format!(
-        "  losos.sharingMyStorage = {};",
-        if sharing { "true" } else { "false" }
-    );
-    let is_assign = |l: &String| l.contains("losos.sharingMyStorage") && l.contains('=');
+    inject_bool("sharingMyStorage", sharing, lines)
+}
+
+/// Patch the boolean assignment `losos.<key>` the way [`inject_line`] patches
+/// `losos.sharingMyStorage`: in place, or before the closing brace. `key` is
+/// matched as a whole name, so `sharingLocally` never touches a longer one.
+pub fn inject_bool(key: &str, value: bool, lines: &[String]) -> Vec<String> {
+    let new = format!("  losos.{key} = {value};");
+    let is_assign = |l: &String| lookup_nix(key, l).is_some();
 
     if let Some(i) = lines.iter().position(is_assign) {
         let mut out = lines.to_vec();
@@ -591,6 +597,28 @@ mod tests {
         );
         assert!(is_retired("proxy.rathole.package"));
         assert!(!is_retired("proxy.edgeTunnelEndpoint"));
+    }
+
+    #[test]
+    fn inject_bool_patches_its_own_key_only() {
+        let lines: Vec<String> = vec![
+            "{".into(),
+            "  losos.sharingMyStorage = true;".into(),
+            "  losos.sharingLocally = false;".into(),
+            "}".into(),
+        ];
+        let out = inject_bool("sharingLocally", true, &lines);
+        assert_eq!(out[1], "  losos.sharingMyStorage = true;");
+        assert_eq!(out[2], "  losos.sharingLocally = true;");
+        let none: Vec<String> = vec![
+            "{".into(),
+            "  losos.sharingMyStorage = true;".into(),
+            "}".into(),
+        ];
+        let out = inject_bool("sharingLocally", true, &none);
+        assert_eq!(out[2], "  losos.sharingLocally = true;");
+        assert_eq!(out[3], "}");
+        assert!(parse_settings(&out.join("\n")).sharing_locally);
     }
 
     #[test]

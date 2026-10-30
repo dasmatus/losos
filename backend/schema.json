@@ -72,6 +72,7 @@
       "description": "The user-tunable losos.* options parsed out of modules/overrides.nix (line-based). Returned by `settings`; consumed by the admin UI for first paint. Lines for options LosOS no longer has (`losos.nextcloud.*`, `losos.keyring.*`, `losos.aio.*`) are ignored when read and dropped on the next apply.",
       "required": [
         "sharingMyStorage",
+        "sharingLocally",
         "hostName",
         "gpuEnable",
         "proxyEnable",
@@ -87,6 +88,10 @@
       "properties": {
         "sharingMyStorage": {
           "type": "boolean"
+        },
+        "sharingLocally": {
+          "type": "boolean",
+          "description": "losos.sharingLocally: share as `kindashared` (uid 1004) with the local gateways of this box's own network only. Turning it on while no local gateway answers (`localGateway` false in `GET /api/edge`) is refused (HTTP 409, `{\"error\":\"...\",\"localGatewayRequired\":true,\"setting\":\"losos.sharingLocally\"}`)."
         },
         "hostName": {
           "type": "string",
@@ -733,9 +738,10 @@
           "type": "string",
           "enum": [
             "notshared",
-            "shared"
+            "shared",
+            "kindashared"
           ],
-          "description": "The user every pod runs as (uid 1000 or 1001), and the data domain its folders are in. Fixed at the first install."
+          "description": "The user every pod runs as (uid 1000, 1001 or 1004), and the data domain its folders are in. Fixed at the first install. `kindashared` only while losos.sharingLocally is on."
         },
         "values": {
           "type": "object",
@@ -802,6 +808,10 @@
         "sharedAvailable": {
           "type": "boolean",
           "description": "Whether an app may run as shared: true only while the box shares its disk. Present when available."
+        },
+        "kindasharedAvailable": {
+          "type": "boolean",
+          "description": "Whether an app may run as kindashared: true only while the box shares with its local gateways (losos.sharingLocally). Present when available."
         },
         "apps": {
           "type": "array",
@@ -1072,6 +1082,17 @@
         "official": {
           "type": "boolean",
           "description": "At least one of `edges` is official. The one bit the market gate reads: while false, `GET /api/market` answers `{\"available\":false,\"reason\":\"noOfficialEdge\"}` and every `POST /api/market/*` is refused (HTTP 409, `{\"error\":\"...\",\"officialEdgeRequired\":true}`), whatever edge the box is enrolled with. Sharing storage and joining the mesh are gated on `reachable` only."
+        },
+        "localGateway": {
+          "type": "boolean",
+          "description": "At least one of `edges` is a local gateway: its link from this box is secondary. The bit the kindashared gate reads: while false, an `apply` that turns losos.sharingLocally on is refused (HTTP 409, `localGatewayRequired`), and after losos.proxy.pauseSharingAfter seconds a box sharing locally pauses it (`localSharingPausedAt`)."
+        },
+        "localSharingPausedAt": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Unix seconds when the box turned losos.sharingLocally off by itself because no local gateway answered; null when it did not, or once it turned it back on or the owner switched it."
         },
         "reachable": {
           "type": "boolean",
@@ -1553,11 +1574,12 @@
                     "pending",
                     "ok",
                     "kept",
+                    "holding",
                     "waiting",
                     "unavailable",
                     "error"
                   ],
-                  "description": "How the last look at the published branch went. `kept`: files other than modules/overrides.nix and modules/install-target.nix changed since the last follow (or since the install), so the box keeps its tree rather than overwrite them. `waiting`: a rebuild was running. `unavailable`: the source could not be fetched, and the nightly rebuild builds the current tree."
+                  "description": "How the last look at the published branch went. `kept`: files other than modules/overrides.nix and modules/install-target.nix changed since the last follow (or since the install), so the box keeps its tree rather than overwrite them. `holding`: the branch's version was made from an older main than the one the box runs (a move to a slower channel), so the box keeps its tree until the branch passes it. `waiting`: a rebuild was running. `unavailable`: the source could not be fetched, and the nightly rebuild builds the current tree."
                 },
                 "detail": {
                   "type": "string",
