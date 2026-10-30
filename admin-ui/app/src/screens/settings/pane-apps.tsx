@@ -266,6 +266,7 @@ export function BoxApps({
       <InstallDialog
         target={target}
         sharedAvailable={ready?.sharedAvailable ?? false}
+        kindasharedAvailable={ready?.kindasharedAvailable ?? false}
         onOpenChange={(open) => {
           if (!open) setTarget(null);
         }}
