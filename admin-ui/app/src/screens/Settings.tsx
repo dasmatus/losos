@@ -41,7 +41,7 @@ import { useStorage, type Storage } from "./settings/use-storage";
  * ONE FORM, SEVEN PANES (and the Look pane, which is the exception below).
  * /api/apply takes the whole of modules/overrides.nix,
  * not a patch, so every pane edits a slice of a single draft and Apply writes
- * all twelve keys at once. A pane that owned its own save would reset the
+ * all thirteen keys at once. A pane that owned its own save would reset the
  * other eleven to their defaults on a box with no shell to fix it from. The
  * draft, the validation and the rebuild watch all live in useSettingsForm;
  * the panes below are views onto it and nothing more. The Look pane is the

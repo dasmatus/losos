@@ -677,10 +677,19 @@ impl EdgeStatus {
         self.left_banned = chosen.left_banned;
     }
 
+    /// A local gateway answered: an edge whose link from this box is
+    /// secondary (a company's or a home's own, [`Tier::Secondary`]). What
+    /// `losos.sharingLocally` needs; an official edge alone is not one.
+    #[must_use]
+    pub fn local_gateway(&self) -> bool {
+        self.edges.iter().any(|e| e.tier == Tier::Secondary)
+    }
+
     #[must_use]
     pub fn to_json(&self) -> Value {
         json!({
             "reachable": self.reachable,
+            "localGateway": self.local_gateway(),
             "official": self.official,
             "edges": self.edges,
             "lanSearched": self.lan_searched,
@@ -737,6 +746,35 @@ pub fn check_gate(
         Some(setting) if !edge.reachable => Err(EdgeRequired { setting }),
         _ => Ok(()),
     }
+}
+
+/// Refused: `losos.sharingLocally` was being turned on with no local gateway
+/// in reach. Sharing as `kindashared` goes to the gateways of the box's own
+/// network and nowhere else, so an official edge does not open it. Rendered
+/// as a 409 by the HTTP layer.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error(
+    "no local gateway is reachable from this box, so losos.sharingLocally cannot be \
+     turned on: sharing with this network goes only through a gateway on it, never \
+     through an official edge. Local use keeps working."
+)]
+pub struct LocalGatewayRequired;
+
+/// The local half of the gate: `Ok` unless `desired` turns
+/// `losos.sharingLocally` on while no local gateway answers. Settings already
+/// on pass, like [`check_gate`]'s, so a box can always switch it off.
+///
+/// # Errors
+/// [`LocalGatewayRequired`].
+pub fn check_local_gate(
+    current: &Settings,
+    desired: &Settings,
+    edge: &EdgeStatus,
+) -> Result<(), LocalGatewayRequired> {
+    if desired.sharing_locally && !current.sharing_locally && !edge.local_gateway() {
+        return Err(LocalGatewayRequired);
+    }
+    Ok(())
 }
 
 /// How long an edge must have answered before a paused box shares again:
@@ -2897,6 +2935,52 @@ fd00000000000000505400fffe123456 02 40 00 00     eth0\n";
             cluster_enable: cluster,
             ..Settings::default()
         }
+    }
+
+    fn locally(on: bool) -> Settings {
+        Settings {
+            sharing_locally: on,
+            ..Settings::default()
+        }
+    }
+
+    fn edge_of(tier: Tier) -> Edge {
+        Edge {
+            name: "gw".into(),
+            url: "http://gw.local:8443".into(),
+            source: Source::Lan,
+            official: false,
+            gateway: None,
+            tunnel: Some("gw.local:2333".into()),
+            on_network: true,
+            tier,
+            cluster: None,
+            member: None,
+            official_cluster: None,
+        }
+    }
+
+    #[test]
+    fn sharing_locally_needs_a_local_gateway_not_any_edge() {
+        let none = EdgeStatus::found(Vec::new(), true, None);
+        let official = EdgeStatus::found(vec![edge_of(Tier::Tertiary)], true, None);
+        let gateway = EdgeStatus::found(vec![edge_of(Tier::Secondary)], true, None);
+        assert!(!none.local_gateway());
+        assert!(!official.local_gateway());
+        assert!(gateway.local_gateway());
+        assert_eq!(official.to_json()["localGateway"], false);
+        assert_eq!(gateway.to_json()["localGateway"], true);
+
+        let err = check_local_gate(&locally(false), &locally(true), &none).unwrap_err();
+        assert!(err.to_string().contains("no local gateway is reachable"));
+        // An official edge answers, and it is not enough.
+        assert!(check_local_gate(&locally(false), &locally(true), &official).is_err());
+        assert!(check_local_gate(&locally(false), &locally(true), &gateway).is_ok());
+        // Already on, or being turned off, passes whatever answers.
+        assert!(check_local_gate(&locally(true), &locally(true), &none).is_ok());
+        assert!(check_local_gate(&locally(true), &locally(false), &none).is_ok());
+        // The other kind of sharing is not this gate's business.
+        assert!(check_local_gate(&settings(false, false), &settings(true, false), &none).is_ok());
     }
 
     #[test]
