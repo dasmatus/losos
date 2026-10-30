@@ -32,12 +32,12 @@ here too.
 | Hook | Runs |
 | --- | --- |
 | `commit-msg` | refuses an attribution trailer or a session link |
-| `pre-commit` | `cargo fmt --check` on every crate; clippy `-D warnings` on each crate the change reaches; `nix/lint-nix.sh` (nixfmt, deadnix, statix) on the staged `.nix` files; `nix/check-pins.sh` when a lock or `devenv.yaml` changes; `fix-hashes.py --check` when a `Cargo.lock` or `package-lock.json` does; `npm run typecheck` in `admin-ui/app` (a checkout without the Diagrams WebAssembly packages gets them from `.#losos-lab-{core,virt,render}`); CI's eval job: `nix/check-flake.sh`, the module merge of `install`, `iso` and `edge-gateway`, the ISO and edge image derivations |
+| `pre-commit` | `cargo fmt --check` on every crate; clippy `-D warnings` on each crate the change reaches; `nix/lint-nix.sh` (nixfmt, deadnix, statix) on the staged `.nix` files; `nix/check-pins.sh` when a lock or `devenv.yaml` changes; `fix-hashes.py --check` when a `Cargo.lock` or `bun.lock` does; `bun run typecheck` in `admin-ui/app` (a checkout without the WebAssembly packages it imports gets them from `.#losos-lab-{core,virt,render}` and `.#losos-mdx-wasm`, and a copy it made is replaced when its crate changes); CI's eval job: `nix/check-flake.sh`, the module merge of `install`, `iso` and `edge-gateway`, the ISO and edge image derivations |
 | `pre-push` | all of pre-commit over the whole branch against its merge base with `origin/main`, plus `cargo test` for each crate reached, clippy for wasm32, `.#checks.x86_64-linux.losos-admin-ui` (the built SPA and its Playwright suite), `.#losos-handbook` when the handbook changes, and the VM tests the change touches |
 
 `devenv shell` and `nix develop` set `core.hooksPath` to `nix/hooks`, and so
 does a Claude Code session (`.claude/settings.json`). Anywhere else, run
-`bash nix/hooks/install` once per clone. cargo, npm and the Nix linters come
+`bash nix/hooks/install` once per clone. cargo, bun and the Nix linters come
 from PATH, or from the flake when they are not on it.
 
 pre-push checks the commit it sends, not the working tree: when that commit
@@ -94,14 +94,26 @@ rewritten commits cleanly. A plain `git pull` would merge the two histories.
 From `admin-ui/app/`:
 
 ```sh
-npm run dev           # set LOSOS_API_ORIGIN to a real box
-npm run typecheck
-npm run test:browser
+bun install --frozen-lockfile --ignore-scripts
+bun run dev           # set LOSOS_API_ORIGIN to a real box
+bun run typecheck
+bun run test:browser
 ```
 
-`nix build .#losos-admin-ui` runs `npm ci` then `tsc --noEmit && vite build`,
-so the typecheck is part of the package. `npm run test:browser` is the
-playwright check that `.#checks.x86_64-linux.losos-admin-ui` wraps.
+The admin UI, the handbook and the design system's React wrapper are Bun
+workspaces. Their scripts run on Bun's runtime (`bun --bun`, `bunx --bun`),
+never on Node, and their code uses Bun's and the web's APIs rather than
+Node's: no `node:` module, `process`, `Buffer` or `require`. The pages
+under `src/` typecheck without Bun's or Node's types; the Vite configs,
+which run on Bun, are typechecked by `tsconfig.tools.json`.
+
+`nix build .#losos-admin-ui` installs `node_modules` from `bun.lock`
+(`nix/bun-deps.nix`), then runs `tsc --noEmit && vite build` on Bun, so the
+typecheck is part of the package. `bun run test:browser` is the playwright
+check that `.#checks.x86_64-linux.losos-admin-ui` wraps; that check also
+fails on any `node:` import. Playwright takes binary data only as a Node
+`Buffer`, so the checks hand it a file path instead (`stash` in
+`tests/harness.mjs`), and `wsBytes` for a WebSocket route.
 
 `tests/advanced.browser.mjs` renders every option the box declares. Outside
 nix it reads `tests/fixtures/options.json`, a copy of the document
@@ -163,8 +175,9 @@ say so when they did not run.
 
 - `flake.lock` pins the nixpkgs that builds the appliance; `devenv.lock` the
   one that lints and tests it. Update them together.
-- A `Cargo.lock` or `package-lock.json` is vendored by a fixed-output
-  derivation whose hash (`cargoHash`, `npmDepsHash`, `pluginsCargoHash`) is
+- A `Cargo.lock` or `bun.lock` is vendored by a fixed-output
+  derivation whose hash (`cargoHash`, `pluginsCargoHash`, or the `hash` of a
+  workspace's `nodeModules`) is
   written in `nix/packages.nix` or a test under `nix/tests/`. After changing
   a lock file, `.github/scripts/fix-hashes.py` rewrites the hashes of the
   lock files that differ from `origin/main` (`--all` for every one, `--check`

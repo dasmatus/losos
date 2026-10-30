@@ -72,42 +72,26 @@ let
       done
       cat > vite.chat-test.config.ts <<'EOF'
       import base from "./vite.config";
-      import { join } from "node:path";
-      import { fileURLToPath } from "node:url";
-      const root = fileURLToPath(new URL(".", import.meta.url));
+      const root = import.meta.dirname;
       const config = base as Record<string, any>;
       config.build.rolldownOptions.input = {
-        main: join(root, "index.html"),
-        chat: join(root, "chat/index.html"),
-        manage: join(root, "manage/index.html"),
+        main: `''${root}/index.html`,
+        chat: `''${root}/chat/index.html`,
+        manage: `''${root}/manage/index.html`,
       };
       export default config;
       EOF
     '';
     buildPhase = ''
       runHook preBuild
-      npx vite build --config vite.chat-test.config.ts
+      bun --bun vite build --config vite.chat-test.config.ts
       runHook postBuild
     '';
   });
 
   # The playwright the admin UI pins (to nixpkgs' playwright-driver, which
-  # nix/tests/admin-ui.nix asserts), from the same lock file and hash.
-  playwright =
-    (pkgs.buildNpmPackage {
-      pname = "losos-chat-test-playwright";
-      version = "0.1.0";
-      src = ../../admin-ui/app;
-      inherit (lososPkgs.losos-admin-ui) npmDepsHash;
-      npmFlags = [ "--ignore-scripts" ];
-      env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
-      dontNpmBuild = true;
-      installPhase = ''
-        mkdir -p $out/node_modules
-        cp -r node_modules/playwright node_modules/playwright-core $out/node_modules/
-      '';
-    })
-    + "/node_modules/playwright";
+  # nix/tests/admin-ui.nix asserts), from its own node_modules.
+  playwright = "${lososPkgs.losos-admin-ui.nodeModules}/node_modules/playwright";
   browsers = pkgs.playwright-driver.browsers.override {
     withFirefox = false;
     withWebkit = false;
@@ -508,7 +492,7 @@ pkgs.testers.nixosTest {
 
     def browser(phase):
         run = subprocess.Popen(
-            ["${pkgs.nodejs}/bin/node", "${./chat-browser.mjs}", phase, SHOTS],
+            ["${pkgs.bun}/bin/bun", "${./chat-browser.mjs}", phase, SHOTS],
             env=browser_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         )
         # How loaded the box is while the page works, in case a step stalls.

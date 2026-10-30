@@ -372,6 +372,16 @@ never repacks (`--max-repack-size 0`), since a repack would need a thaw too.
 A lifecycle rule that moves the bucket to Glacier would take restic's
 metadata with it, so you choose the class on the pane instead.
 
+The pane also offers each storage order the box bought on the
+[market](/in-depth/market.md) once its volume is bound. Backups then go
+through the edge that sold it, to restic's REST protocol on
+`/market/storage/<order>/`, with the same encryption as a bucket. The edge
+opens the volume only to a key the box makes from its recovery code and
+the order id (`POST /api/backup/target/bought`), so neither the edge nor
+the boxes that hold the volume's replicas can read a backup, and a new box
+with the same code can restore from it. The box keeps no secret for this
+target: the backup job makes the key again from the code each time.
+
 The bucket keeps the last seven. lososd runs each backup and restore as a
 transient unit, `losos-backup-<job>`, started by systemd outside lososd's
 `ProtectHome=true` sandbox. The bucket's keys are sealed in the credential

@@ -11,8 +11,8 @@
  * policy stays strict while the widget's script runs anyway.
  */
 
-import assert from 'node:assert';
-import { launch, runner, serve } from './harness.mjs';
+import assert from './assert.mjs';
+import { launch, runner, serve, stash } from './harness.mjs';
 
 const TOKEN = 'a'.repeat(64);
 const { origin, close: closeServer } = await serve({ csp: true });
@@ -80,10 +80,8 @@ const json = (route, status, body) =>
   route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
 /* A tiny PNG (1x1), so an upload is real bytes with the magic lososd sniffs. */
-const PNG = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
-  'base64',
-);
+const PNG = Uint8Array.fromBase64('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==');
+const PNG_FILE = await stash('picture.png', PNG);
 
 /* A claimed, signed-in box with a look. `look` is what GET /api/look answers
  * with, and every write is recorded in `writes` as [method, path, body]. */
@@ -136,7 +134,7 @@ async function open({
     const method = route.request().method();
     if (method === 'GET') {
       // The picture itself, served without a token like lososd does.
-      return route.fulfill({ status: 200, contentType: 'image/png', body: PNG });
+      return route.fulfill({ status: 200, contentType: 'image/png', path: PNG_FILE });
     }
     if (!authed(route)) return json(route, 401, { error: 'unauthorized' });
     if (method === 'PUT') {
@@ -292,11 +290,11 @@ await check('the veil follows the slider at once and is saved once, a moment lat
 await check('a picture of your own is uploaded as its bytes and painted from the versioned route', async () => {
   const { page, writes } = await open({ path: '/settings/look' });
   await page.getByRole('radiogroup', { name: 'Background' }).waitFor();
-  await page.getByTestId('background-file').setInputFiles({ name: 'wall.png', mimeType: 'image/png', buffer: PNG });
+  await page.getByTestId('background-file').setInputFiles(await stash('wall.png', PNG));
   await page.getByText('Background set.', { exact: true }).first().waitFor();
   assert.equal(writes.length, 1);
   assert.equal(writes[0][0], 'PUT');
-  assert.ok(Buffer.compare(writes[0][2], PNG) === 0, 'the bytes sent are not the file');
+  assert.deepEqual(new Uint8Array(writes[0][2]), PNG, 'the bytes sent are not the file');
   assert.equal(await bgVar(page), 'url("/api/look/background?v=1")');
   assert.equal(await page.getByRole('radio', { name: 'Your own picture' }).getAttribute('aria-checked'), 'true');
   await page.getByRole('button', { name: 'Remove the picture' }).click();
@@ -309,7 +307,7 @@ await check('a picture of your own is uploaded as its bytes and painted from the
 await check('a file that is not a picture lososd takes is refused before it is sent', async () => {
   const { page, writes } = await open({ path: '/settings/look' });
   await page.getByRole('radiogroup', { name: 'Background' }).waitFor();
-  await page.getByTestId('background-file').setInputFiles({ name: 'wall.svg', mimeType: 'image/svg+xml', buffer: Buffer.from('<svg/>') });
+  await page.getByTestId('background-file').setInputFiles(await stash('wall.svg', '<svg/>'));
   // .first(): the toast's live region repeats the text for a screen reader.
   await page.getByText(/not a picture this box takes/).first().waitFor();
   assert.deepEqual(writes, []);

@@ -17,8 +17,8 @@
  * Same arrangement as the other files: the real dist/ bundle under the real
  * policy, the routes stubbed with page.route() as a small stateful lososd. */
 
-import assert from 'node:assert';
-import { launch, runner, serve } from './harness.mjs';
+import assert from './assert.mjs';
+import { launch, runner, serve, stash } from './harness.mjs';
 
 const { origin, close: closeServer } = await serve({ csp: true });
 const browser = await launch();
@@ -61,13 +61,14 @@ async function photo(page, width, height) {
     },
     [width, height],
   );
-  return { name: 'holiday.png', mimeType: 'image/png', buffer: Buffer.from(base64, 'base64') };
+  return stash('holiday.png', Uint8Array.fromBase64(base64));
 }
 
 /* PNG width and height from the IHDR chunk. */
 function pngSize(bytes) {
-  assert.equal(bytes.subarray(1, 4).toString('latin1'), 'PNG', 'not a PNG');
-  return [bytes.readUInt32BE(16), bytes.readUInt32BE(20)];
+  assert.equal(new TextDecoder('latin1').decode(bytes.subarray(1, 4)), 'PNG', 'not a PNG');
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  return [view.getUint32(16), view.getUint32(20)];
 }
 
 async function open({ path = '/settings/account', admin = false } = {}) {
@@ -132,7 +133,10 @@ async function open({ path = '/settings/account', admin = false } = {}) {
     const [, who, kind] = /\/api\/profiles\/(\w+)\/(\w+)/.exec(route.request().url());
     const bytes = box.images[`${who}/${kind}`];
     if (bytes === undefined) return route.fulfill({ status: 404, body: 'no picture' });
-    return route.fulfill({ status: 200, contentType: 'image/png', body: bytes });
+    // A picture the check put there is a file (see stash), one the page sent
+    // is the bytes Playwright handed over.
+    const answer = typeof bytes === 'string' ? { path: bytes } : { body: bytes };
+    return route.fulfill({ status: 200, contentType: 'image/png', ...answer });
   });
   for (const kind of ['picture', 'banner']) {
     await page.route(`**/api/account/${kind}`, (route) => {
@@ -290,7 +294,7 @@ await check('a file that is not a picture says so in the dialog', async () => {
   await page.getByTestId('profile-card').waitFor();
   const chooser = page.waitForEvent('filechooser');
   await page.getByTestId('profile-picture-choose').click();
-  await (await chooser).setFiles({ name: 'notes.png', mimeType: 'image/png', buffer: Buffer.from('not a picture') });
+  await (await chooser).setFiles(await stash('notes.png', 'not a picture'));
   await page.getByTestId('profile-crop-failed').waitFor();
   assert.ok(await page.getByTestId('profile-crop-save').isDisabled());
   await page.keyboard.press('Escape');
@@ -339,7 +343,7 @@ await check('a picture that does not load falls back to the initials', async () 
 
 await check('the Users pane shows everyone and lets an administrator take a picture down', async () => {
   const { page, context, sent, box } = await open({ path: '/settings/users', admin: true });
-  box.images['oma/picture'] = (await photo(page, 64, 64)).buffer;
+  box.images['oma/picture'] = await photo(page, 64, 64);
   await page.reload({ waitUntil: 'networkidle' });
   await page.locator('[data-person=oma] [data-testid=users-avatar] img').waitFor();
   assert.equal(await page.locator('[data-person=jan] [data-testid=users-avatar]').innerText(), 'J');

@@ -11,7 +11,7 @@
  * address. nix/tests/git-pages.nix and nix/tests/git-federation.nix run the
  * same pages against real boxes. */
 
-import assert from 'node:assert';
+import assert from './assert.mjs';
 import { launch, runner, serve } from './harness.mjs';
 
 const { origin, close: closeServer } = await serve({ csp: true });
@@ -265,7 +265,7 @@ await check('the code shows the folder and the README as Markdown', async () => 
   await page.locator('[data-readme] h2', { hasText: 'Notes' }).waitFor();
   assert.equal(await page.locator('[data-readme] strong').textContent(), 'May');
   await page.getByText('https://mattbox.local/git/notshared/notes.git').waitFor();
-  if (process.env.GIT_SHOTS) await page.screenshot({ path: `${process.env.GIT_SHOTS}/code.png`, fullPage: true });
+  if (Bun.env.GIT_SHOTS) await page.screenshot({ path: `${Bun.env.GIT_SHOTS}/code.png`, fullPage: true });
   await settle();
   await page.close();
 });
@@ -297,7 +297,7 @@ await check('a line comment goes into a review that asks for changes', async () 
   await page.getByRole('button', { name: 'Add to review' }).click();
   await page.locator('[data-pending]').waitFor();
   await page.locator('[data-review-panel]').getByText('1 comment waiting').waitFor();
-  if (process.env.GIT_SHOTS) await page.screenshot({ path: `${process.env.GIT_SHOTS}/files.png`, fullPage: true });
+  if (Bun.env.GIT_SHOTS) await page.screenshot({ path: `${Bun.env.GIT_SHOTS}/files.png`, fullPage: true });
   await page.locator('[data-review-panel] [role=radio], [data-review-panel] button', { hasText: 'Request changes' }).first().click();
   await page.locator('[data-submit-review]').click();
   await page.getByText('Review sent', { exact: true }).first().waitFor();
@@ -351,7 +351,7 @@ await check('the AI review switch in the settings turns LosOS Reviewer off', asy
   const { page, m, settle } = await open('/notshared/notes/settings');
   const box = page.locator('[data-ai-review-setting="on"]');
   await box.getByText('qwen2.5-coder:1.5b on this box comments on every pull request', { exact: false }).waitFor();
-  if (process.env.GIT_SHOTS) await page.screenshot({ path: `${process.env.GIT_SHOTS}/settings.png`, fullPage: true });
+  if (Bun.env.GIT_SHOTS) await page.screenshot({ path: `${Bun.env.GIT_SHOTS}/settings.png`, fullPage: true });
   await box.getByRole('switch').click({ force: true });
   await page.locator('[data-ai-review-setting="off"]').waitFor();
   await page.getByText('AI review is off', { exact: true }).first().waitFor();

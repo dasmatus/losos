@@ -2187,6 +2187,15 @@ export interface BackupTarget {
   hasSecret: boolean;
   /** Missing from a box older than the choice: read it as `standard`. */
   storageClass?: StorageClass;
+  /** Set when the backups go to storage this box bought on the mesh. The
+   *  S3 fields are empty then. */
+  bought?: BoughtStorage | null;
+}
+
+/** A storage order of this box's, reached through the edge that sold it. */
+export interface BoughtStorage {
+  order: string;
+  edge: string;
 }
 
 /** What the owner types. Leave `secretAccessKey` out to keep the stored one. */
@@ -2274,6 +2283,21 @@ export function postBackupTarget(
     method: "POST",
     contentType: "application/json",
     body: JSON.stringify(target),
+  });
+}
+
+/** POST /api/backup/target/bought — keep backups on storage this box bought
+ *  on the mesh. `keyed` is false when the edge would not take the key the
+ *  recovery code makes; the target is kept and the next backup says why. */
+export function postBackupTargetBought(
+  order: string,
+  options: RequestOptions = {},
+): Promise<{ target: BackupTarget; keyed: boolean }> {
+  return call<{ target: BackupTarget; keyed: boolean }>("/api/backup/target/bought", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify({ order }),
   });
 }
 

@@ -413,6 +413,18 @@ bräuchte. Eine Lifecycle-Regel, die den Bucket nach Glacier verschiebt,
 würde restics Metadaten mitnehmen, daher wird die Klasse stattdessen im
 Bereich gewählt.
 
+Die Seite bietet auch jede Speicherbestellung an, die die Box auf dem
+[Marktplatz](/in-depth/market.md) gekauft hat, sobald ihr Volume gebunden
+ist. Backups gehen dann über die Edge, die sie verkauft hat, per restics
+REST-Protokoll an `/market/storage/<order>/`, mit derselben Verschlüsselung
+wie bei einem Bucket. Die Edge öffnet das Volume nur für einen Schlüssel,
+den die Box aus ihrem Wiederherstellungscode und der Bestell-ID macht
+(`POST /api/backup/target/bought`). Weder die Edge noch die Boxen mit den
+Replikaten des Volumes können also ein Backup lesen, und eine neue Box mit
+demselben Code kann daraus wiederherstellen. Die Box speichert für dieses
+Ziel kein Geheimnis: Der Backup-Job macht den Schlüssel jedes Mal neu aus
+dem Code.
+
 Der Bucket behält die letzten sieben. lososd führt jedes Backup und jede
 Wiederherstellung als transiente Unit `losos-backup-<job>` aus, die systemd
 außerhalb der `ProtectHome=true`-Sandbox von lososd startet. Die Schlüssel
