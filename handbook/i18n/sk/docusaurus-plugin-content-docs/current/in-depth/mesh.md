@@ -123,7 +123,11 @@ Edge spúšťa v mesh klastri Longhorn, nainštalovaný zo zafixovaného chartu
 zariadenie, ktoré sa pripojí do mesh, dostane štítok
 `node.longhorn.io/create-default-disk=true`, a edge, ktorý ho nemá, žiadne
 repliky neukladá. Objednávky úložiska z trhu si berú zväzky z triedy
-úložiska `longhorn`. Longhorn na edge nekontroluje aktualizácie, neposiela
+úložiska `longhorn`. Kľúč fscrypt chráni disk požičiavateľa, no je na jeho
+zariadení, takže požičiavateľ dokáže čítať, čo pristane v jeho podiele.
+Zálohy kupujúceho na takom zväzku sa preto najprv zašifrujú na zariadení
+kupujúceho, nástrojom restic a kódom obnovy kupujúceho
+([Trh](/in-depth/market.md)). Longhorn na edge nekontroluje aktualizácie, neposiela
 štatistiky používania a jeho webové rozhranie sa nenasadzuje.
 
 ## Predaj {#selling}

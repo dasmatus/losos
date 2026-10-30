@@ -14,12 +14,11 @@
  * lososd that enforces the Bearer token. Data: tests/fixtures/access.json.
  */
 
-import assert from 'node:assert';
-import { readFile } from 'node:fs/promises';
+import assert from './assert.mjs';
 import { launch, runner, serve } from './harness.mjs';
 
 const TOKEN = 'a'.repeat(64);
-const FIXTURE = JSON.parse(await readFile('tests/fixtures/access.json', 'utf8'));
+const FIXTURE = await Bun.file('tests/fixtures/access.json').json();
 const NEW_SECRET = 'losos_pat_0a1b2c3d_' + '5e'.repeat(20);
 const { origin, close: closeServer } = await serve({ csp: true });
 const browser = await launch();

@@ -59,7 +59,7 @@ let
         for (const page of ["diagrams", "lab"]) delete (config.build!.rolldownOptions!.input as Record<string, string>)[page];
         export default config;
         EOF
-        node_modules/.bin/vite build --config vite.nolab.config.ts
+        bun --bun vite build --config vite.nolab.config.ts
         runHook postBuild
       '';
     };
@@ -115,7 +115,7 @@ let
       }
     }
     export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
-    exec ${pkgs.nodejs}/bin/node ${./cloud-photos-shots.mjs} "$@"
+    exec ${pkgs.bun}/bin/bun ${./cloud-photos-shots.mjs} "$@"
   '';
 in
 

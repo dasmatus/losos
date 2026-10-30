@@ -27,28 +27,50 @@
 // Europe/Bratislava. Each picture waits for the page to settle: no request
 // in flight, fonts and pictures loaded, no skeleton and no toast on screen.
 
-import { createHash, X509Certificate } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+const exists = (file) => Bun.file(file).exists();
+const join = (...parts) => parts.join("/");
 
 const VIEW = { width: 1280, height: 900 };
-const { chromium } = await import(process.env.PLAYWRIGHT_CORE ?? "playwright-core");
+const { chromium } = await import(Bun.env.PLAYWRIGHT_CORE ?? "playwright-core");
 
-function spkiPin(pemFile) {
-  const cert = new X509Certificate(readFileSync(pemFile));
-  const der = cert.publicKey.export({ type: "spki", format: "der" });
-  return createHash("sha256").update(der).digest("base64");
+async function spkiPin(pemFile) {
+  const pem = await Bun.file(pemFile).text();
+  const der = Uint8Array.fromBase64(/-----BEGIN CERTIFICATE-----([^-]+)-----END CERTIFICATE-----/.exec(pem)[1].replace(/\s/g, ""));
+  // One DER element at `at`: where its contents start and where it ends.
+  const element = (at) => {
+    let len = der[at + 1];
+    let start = at + 2;
+    if (len & 0x80) {
+      const n = len & 0x7f;
+      len = 0;
+      for (let i = 0; i < n; i++) len = len * 256 + der[start + i];
+      start += n;
+    }
+    return { start, end: start + len };
+  };
+  // Certificate > tbsCertificate > [0] version, serial, signature, issuer,
+  // validity, subject, then the subjectPublicKeyInfo Chromium hashes.
+  let at = element(element(0).start).start;
+  if (der[at] === 0xa0) at = element(at).end;
+  for (let i = 0; i < 5; i++) at = element(at).end;
+  const spki = der.subarray(at, element(at).end);
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", spki)).toBase64();
 }
 
 class Shots {
-  constructor(page, base, out, meta) {
+  constructor(page, base, out, meta, steps) {
     this.page = page;
     this.host = new URL(base).hostname;
     this.out = out;
     this.meta = meta;
-    mkdirSync(out, { recursive: true });
-    const manifest = join(out, "manifest.json");
-    this.steps = existsSync(manifest) ? JSON.parse(readFileSync(manifest, "utf8")).steps : [];
+    this.steps = steps;
+  }
+
+  /** A run that goes on from the manifest an earlier phase left in `out`. */
+  static async open(page, base, out, meta) {
+    const manifest = Bun.file(join(out, "manifest.json"));
+    const steps = (await manifest.exists()) ? (await manifest.json()).steps : [];
+    return new Shots(page, base, out, meta, steps);
   }
 
   async settle() {
@@ -90,9 +112,9 @@ class Shots {
     console.log(file, title);
   }
 
-  save() {
+  async save() {
     const manifest = { feature: "issues", viewport: VIEW, dpr: 2, ...this.meta, steps: this.steps };
-    writeFileSync(join(this.out, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
+    await Bun.write(join(this.out, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
   }
 }
 
@@ -302,15 +324,15 @@ function parse(argv) {
     else pos.push(a);
   }
   if (pos.length < 5 || !["tracker", "before"].includes(pos[4])) {
-    console.error("usage: issue-shots.mjs BASE NAME PASSWORD OUT tracker|before [--commit SHA] [--test NAME] [--ca FILE]");
-    process.exit(2);
+    // Thrown: an uncaught error is what makes Bun exit non-zero.
+    throw new Error("usage: issue-shots.mjs BASE NAME PASSWORD OUT tracker|before [--commit SHA] [--test NAME] [--ca FILE]");
   }
   return { base: pos[0], name: pos[1], password: pos[2], out: pos[3], phase: pos[4], opts };
 }
 
-const { base, name, password, out, phase, opts } = parse(process.argv.slice(2));
+const { base, name, password, out, phase, opts } = parse(Bun.argv.slice(2));
 const browser = await chromium.launch({
-  args: [`--ignore-certificate-errors-spki-list=${spkiPin(opts.ca ?? "/etc/losos-box.pem")}`],
+  args: [`--ignore-certificate-errors-spki-list=${await spkiPin(opts.ca ?? "/etc/losos-box.pem")}`],
 });
 const context = await browser.newContext({
   viewport: VIEW,
@@ -355,7 +377,7 @@ const problems = [];
 listen((text) => {
   if (!baseline.has(text)) problems.push(text);
 });
-const s = new Shots(page, base, out, { commit: opts.commit ?? "", test: opts.test ?? "" });
+const s = await Shots.open(page, base, out, { commit: opts.commit ?? "", test: opts.test ?? "" });
 try {
   if (phase === "tracker") await tracker(s, base);
   else await before(s, base);
@@ -363,10 +385,10 @@ try {
   await page.screenshot({ path: join(out, `failed-${phase}.png`) }).catch(() => {});
   throw e;
 } finally {
-  s.save();
+  await s.save();
 }
 await browser.close();
 if (problems.length > 0 && phase !== "before") {
-  console.error(`the page reported errors:\n${problems.join("\n")}`);
-  process.exit(1);
+  // Thrown: an uncaught error is what makes Bun exit non-zero.
+  throw new Error(`the page reported errors:\n${problems.join("\n")}`);
 }

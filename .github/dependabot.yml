@@ -46,7 +46,7 @@ updates:
         applies-to: security-updates
         patterns: ["*"]
 
-  - package-ecosystem: "npm"
+  - package-ecosystem: "bun"
     directories:
       - "/admin-ui/app"
       - "/admin-ui/design-system/react"
@@ -59,7 +59,7 @@ updates:
       - "dependencies"
       - "javascript"
     commit-message:
-      prefix: "deps(npm)"
+      prefix: "deps(bun)"
     cooldown:
       default-days: 3
     # playwright moves with nixpkgs' playwright-driver, never ahead of it:
@@ -68,15 +68,15 @@ updates:
     ignore:
       - dependency-name: "playwright"
     groups:
-      npm-minor-patch:
+      bun-minor-patch:
         applies-to: version-updates
         patterns: ["*"]
         update-types: ["minor", "patch"]
-      npm-major:
+      bun-major:
         applies-to: version-updates
         patterns: ["*"]
         update-types: ["major"]
-      npm-security:
+      bun-security:
         applies-to: security-updates
         patterns: ["*"]
 

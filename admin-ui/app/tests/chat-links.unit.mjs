@@ -1,21 +1,12 @@
 /* The links other screens make into chat (src/chat/links.ts): a whole
  * Matrix ID or a bare sign-in name in `?with=`, and what is refused.
  *
- *   node tests/chat-links.node.mjs
+ *   bun tests/chat-links.unit.mjs
  */
 
-import assert from 'node:assert/strict';
-import { fileURLToPath } from 'node:url';
-import * as esbuild from 'esbuild';
+import assert from './assert.mjs';
 
-const built = await esbuild.build({
-  entryPoints: [fileURLToPath(new URL('../src/chat/links.ts', import.meta.url))],
-  bundle: true,
-  format: 'esm',
-  platform: 'node',
-  write: false,
-});
-const { withUserId, withoutLink, linkedCall, withoutCall } = await import(`data:text/javascript;base64,${Buffer.from(built.outputFiles[0].text).toString('base64')}`);
+const { withUserId, withoutLink, linkedCall, withoutCall } = await import('../src/chat/links.ts');
 
 const server = 'mattbox.local';
 assert.equal(withUserId('eva', server), '@eva:mattbox.local');

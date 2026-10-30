@@ -42,20 +42,21 @@ Ordner bekommt seinen Namen aus seiner `_category_.json`.
 
 ```sh
 cd handbook
-npm ci
-npm start                 # live preview on http://localhost:3000
-npm run build             # fails on a broken link, on purpose
+bun install --frozen-lockfile --ignore-scripts
+bun run start             # live preview on http://localhost:3000
+bun run build             # fails on a broken link, on purpose
 ```
 
 Jeder Push auf `main` veröffentlicht die Site unter
 [losos.dasmat.us](https://losos.dasmat.us)
 (`.github/workflows/handbook.yml`), und jede Box baut ihre eigene Kopie
 (`losos-handbook` in `nix/packages.nix`, unter `/handbook/` ausgeliefert
-von `modules/containers.nix`). Nach einer Änderung an `package-lock.json`
-aktualisiere `npmDepsHash` in `nix/packages.nix`:
+von `modules/containers.nix`). Docusaurus läuft auf [Bun](https://bun.sh),
+nicht auf Node. Nach einer Änderung an `bun.lock` aktualisiere den `hash`
+des Handbuchs in `nix/packages.nix`:
 
 ```sh
-nix run nixpkgs#prefetch-npm-deps -- handbook/package-lock.json
+python3 .github/scripts/fix-hashes.py
 ```
 
 ### Bilder \{#pictures}
@@ -82,9 +83,9 @@ Die Bilder liegen in `handbook/docs/img/`. Es gibt drei Arten:
 
 ```sh
 cd admin-ui/app
-npm run build
-node tests/handbook-screens.mjs /tmp/handbook-screens          # every shot
-node tests/handbook-screens.mjs /tmp/handbook-screens mesh     # names containing "mesh"
+bun run build
+bun tests/handbook-screens.mjs /tmp/handbook-screens           # every shot
+bun tests/handbook-screens.mjs /tmp/handbook-screens mesh      # names containing "mesh"
 ```
 
 :::note[Wenn Playwright kein Chromium hat]
@@ -107,8 +108,8 @@ Jede Seite ist vollständig übersetzt. Ändere alle drei Sprachen zusammen.
 :::
 
 ```sh
-npm run write-translations -- --locale sk   # refresh the string files
-npm run start -- --locale sk                # preview one locale
+bun run write-translations --locale sk      # refresh the string files
+bun run start --locale sk                   # preview one locale
 ```
 
 ## Schreibregeln, denen dieses Handbuch folgt \{#writing-rules-this-handbook-follows}
