@@ -488,12 +488,52 @@ A seller's address can receive USDC when it holds no contract code on that
 network, or holds only an EIP-7702 delegation, which keeps it an account
 someone has the key to. The payout signature already showed that someone
 does. The treasury, the USDC contract, the escrow and the zero address never
-count. The edge's key can release a deposit only to the seller and the
-treasury recorded at payment, refund it to the buyer, or split it between
-the two (`settle`); it cannot send a deposit anywhere else. If the edge has
-not settled a deposit 33 days after the order was placed, the buyer can take
-it back from the contract directly. The edge pays out at least two days
-before that.
+count. A deposit can be released only to the seller and the treasury
+recorded at payment, refunded to the buyer, or split between the two
+(`settle`); nothing can send it anywhere else. If a deposit is still held 33
+days after the order was placed, the buyer can take it back from the
+contract directly. The edge pays out at least two days before that.
+
+### Two of three keys
+
+A held payment moves only when two of three keys agree: the edge's, the
+buyer's box's and the seller's box's. The wallet names both boxes' keys when
+it pays, from the invoice, and the edge counts the payment only when they
+are the keys the two boxes gave it. The edge decides when a payment is
+released, refunded or split, as before, and then waits for one box to agree:
+
+- a release needs the seller's box, which agrees only to a release of one of
+  its own sales;
+- a refund or a split needs the buyer's box, which agrees only to a refund
+  or split of one of its own purchases, or to giving back whole a payment no
+  order took.
+
+Each box checks the decision against its own account before it signs, and
+the edge's own transaction is the second key. A stolen or compelled edge key
+alone therefore moves nothing, and an edge cannot hold a payment back
+forever either, because the buyer still takes it back after the deadline.
+
+The box's key is the `market-escrow-key` credential, made at first boot and
+sealed like the box's other secrets. It never leaves the box: lososd derives
+one key for the Ethereum networks and one for Solana from it, registers both
+with the edge, and checks every new invoice names its own key as the
+buyer's. A box asks the edge about once a minute for decisions waiting on
+it, so a release lands within a minute or two of the edge deciding.
+
+What it does not cover:
+
+- The edge and the seller together can still release a payment for a slot
+  that was never delivered, and the edge and the buyer together can still
+  refund one that was. The amount of a split is the edge's word, which the
+  buyer's box accepts.
+- The buyer's box cannot check the seller's key, which reaches it through
+  the edge. An edge that put its own key there could release a payment to
+  the recorded seller without the seller's box; the money still goes only to
+  that seller.
+- The rest of a new order's payment details, the seller's address and the
+  amounts, also come through the edge. Two of three protects payments
+  already held, not the first one an edge under someone else's control
+  asks for.
 
 On Solana the edge checks that the endpoint reports the network's genesis
 hash, and that the escrow program's config for the treasury names Circle's

@@ -40,7 +40,7 @@ lanes, one per group of jobs:
 
 | Lane | Jobs | Turned on by |
 |---|---|---|
-| `rust` | clippy, rustfmt, the crate suites | the eleven crates, and the web UI files `admin-ui/tui/build.rs` reads |
+| `rust` | clippy, rustfmt, the crate suites | the twelve crates, and the web UI files `admin-ui/tui/build.rs` reads |
 | `wasm` | clippy for wasm32 | `backend/plugins/`, `backend/mdx/`, `admin-ui/lab/` |
 | `solana`, `evm` | the escrow programs | `edge/contracts/`, `edge/registrar/` |
 | `eval` | the flake evaluation | anything but Markdown, Rust, pictures, `docs/` and `.github/` |
@@ -97,7 +97,8 @@ signed commits only.
 `stale-branches.yml` deletes stale branches every Sunday:
 any branch whose last commit is older than 30 days (the `STALE_BRANCH_DAYS`
 repository variable overrides it), except the default branch, `gh-pages`,
-`release/*`, and branches that are the head or base of an open pull request.
+`release/*`, the release channels `channel/*`, and branches that are the
+head or base of an open pull request.
 Each deletion is leased to the tip it judged, so a branch pushed to during
 the run survives. The job summary lists what went, with the
 `git push origin <hash>:refs/heads/<branch>` line that restores each one. Run
@@ -111,6 +112,33 @@ most 800 (`GITHUB_TOKEN` has 1000 calls an hour) and the next day takes the
 rest. A deleted run's logs and artifacts are gone for good; the job summary
 lists each one. Run it by hand from the Actions tab for a dry run, or untick
 `dry_run` to clear the backlog at once.
+
+## Release channels
+
+Boxes follow `channel/daily`, `channel/weekly` or `channel/monthly`
+(`losos.updates.channel`), never `main` unless the owner picks "Every
+change". `channels.yml` moves them and `.github/scripts/channels.py` holds
+the logic; its header is the long form of this section, and the handbook's
+Administration page is the owner's.
+
+- **Cuts**, at 00:17 UTC: daily every night, weekly on Mondays, monthly on
+  the 1st. A cut takes the newest `main` commit whose `ci` run passed with
+  `publish-cache` among its jobs. It fast-forwards the channel, or, when the
+  channel carries a hotfix, makes a merge commit with main's tree. Run one by
+  hand from the Actions tab (`task: cut`, `channels: all` to move every
+  channel now).
+- **Hotfixes.** Label a pull request `hotfix`, before or after the merge.
+  The bot cherry-picks its commit on `main` onto every channel that lacks it,
+  as `hotfix/<channel>/<number>`, and dispatches `ci` there. When that run
+  passes, cache upload included, the channel fast-forwards to it (on the
+  run's completion, or in the hourly pass). A failed run or a cherry-pick
+  that does not apply is a comment on the pull request; for the latter, open
+  a pull request against the channel branch by hand.
+- Everything is written through the API, so the commits are signed and only
+  fast-forward. `history-scrub.yml` rewrites channel branches like any
+  other; boxes copy trees, so a rewrite changes nothing for them.
+- `test_channels.py` runs the bot against a fake GitHub over a real
+  repository (CI's `bots` job, `test-bots` in devenv).
 
 ## Merging
 
@@ -150,8 +178,8 @@ os-release, the console banners and `losos --version` show
 
 - `version.yml` commits the newest `v*` tag to `nix/version.nix` on
   main when a tag is pushed, and again on any push to main that finds the
-  file behind. Installed boxes build from main, so they show the new
-  version after their next nightly update. The commit goes through the
+  file behind. Installed boxes build from their release channel, so they
+  show the new version once the channel takes that commit. The commit goes through the
   GitHub API with `GITHUB_TOKEN`, so GitHub signs it, and it only
   fast-forwards. A file already ahead of every tag is left alone.
   `.github/scripts/sync-version.sh --dry-run` shows what it would commit.
@@ -222,7 +250,7 @@ break is fixed on `main`, put that fix as a patch in
 the workflow for the tag. The patches are applied over the tag's tree
 before the build, the tag itself stays where it is, and the run notes
 each patch it used. Only fixes that are on `main` belong there: an
-installed box rebuilds from `main`, not from the tag. v0.1.9 is built
+installed box rebuilds from its release channel, not from the tag. v0.1.9 is built
 this way, with the Stripe gate fix from `main` that makes
 `losos-registrar` compile.
 

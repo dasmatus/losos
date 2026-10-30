@@ -14,6 +14,7 @@ import { CloudRoot } from "./app";
 import { CloudTogether } from "./together";
 // A .canvas file's name opens it in Diagrams, and a Markdown file's as a note.
 import "./open-diagrams";
+import "./office/paper/opener";
 import "./notes/opener";
 import "./collab/opener";
 // Office once the box says which types its Collabora opens.

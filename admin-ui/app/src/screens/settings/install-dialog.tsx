@@ -59,6 +59,9 @@ export interface InstallTarget {
 export interface InstallDialogProps {
   target: InstallTarget | null;
   sharedAvailable: boolean;
+  /** The box shares with its local gateways, so an app may run as
+   *  kindashared. */
+  kindasharedAvailable: boolean;
   onOpenChange: (open: boolean) => void;
   onInstall: (request: AppInstallRequest) => Promise<InstalledApp>;
 }
@@ -79,7 +82,13 @@ function valueAt(values: unknown, path: Path): unknown {
   return at;
 }
 
-export function InstallDialog({ target, sharedAvailable, onOpenChange, onInstall }: InstallDialogProps) {
+export function InstallDialog({
+  target,
+  sharedAvailable,
+  kindasharedAvailable,
+  onOpenChange,
+  onInstall,
+}: InstallDialogProps) {
   const t = useT();
   const titleId = React.useId();
   const bodyId = React.useId();
@@ -232,7 +241,7 @@ export function InstallDialog({ target, sharedAvailable, onOpenChange, onInstall
 
                 <fieldset className="flex flex-col gap-2">
                   <legend className="mb-2 text-sm font-medium text-ink">{t("install.runAs")}</legend>
-                  <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="grid gap-2 sm:grid-cols-3">
                     <RunAsChoice
                       value="notshared"
                       current={runAs}
@@ -248,6 +257,16 @@ export function InstallDialog({ target, sharedAvailable, onOpenChange, onInstall
                       disabled={sending || !sharedAvailable || (existing !== null && existing.runAs !== "shared")}
                       title="shared"
                       detail={sharedAvailable ? t("install.sharedDetail") : t("install.sharedLocked")}
+                    />
+                    <RunAsChoice
+                      value="kindashared"
+                      current={runAs}
+                      onPick={setRunAs}
+                      disabled={
+                        sending || !kindasharedAvailable || (existing !== null && existing.runAs !== "kindashared")
+                      }
+                      title="kindashared"
+                      detail={kindasharedAvailable ? t("install.kindasharedDetail") : t("install.kindasharedLocked")}
                     />
                   </div>
                   <p className="text-[12px] leading-snug text-muted">

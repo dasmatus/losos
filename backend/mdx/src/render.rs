@@ -49,12 +49,19 @@ pub struct Writer<'a> {
     tight: bool,
     /// Inside `<Row header>`, cells are `<th>`.
     header_row: bool,
+    /// What a `<Date>` is written in: `en`, `sk` or `de`.
+    lang: &'static str,
 }
 
 /// Where `<TableOfContents>` puts the headings, once they are all known.
 const TOC_MARK: &str = "<!--losos-toc-->";
 
-pub(crate) fn render(parsed: &Parsed, resolver: &dyn Resolver, hook: Option<&dyn Hook>) -> Output {
+pub(crate) fn render(
+    parsed: &Parsed,
+    resolver: &dyn Resolver,
+    hook: Option<&dyn Hook>,
+    lang: &'static str,
+) -> Output {
     let mut w = Writer {
         out: String::new(),
         flavour: parsed.flavour,
@@ -71,6 +78,7 @@ pub(crate) fn render(parsed: &Parsed, resolver: &dyn Resolver, hook: Option<&dyn
         depth: 0,
         tight: false,
         header_row: false,
+        lang,
     };
     w.collect(&parsed.tree);
     w.node(&parsed.tree);
@@ -217,6 +225,24 @@ impl<'a> Writer<'a> {
             embed,
             external: external(target),
         });
+    }
+
+    /// An equation as MathML, drawn by the browser with no script. One
+    /// math-core cannot read stays TeX, as text: a typo in an equation is
+    /// not a refusal, and an export still goes through.
+    pub fn math(&mut self, tex: &str, block: bool) {
+        match crate::math::mathml(tex, block) {
+            Ok(m) => self.raw(&m),
+            Err(_) => {
+                if block {
+                    self.raw("<pre><code class=\"language-math math-display\">");
+                } else {
+                    self.raw("<code class=\"language-math math-inline\">");
+                }
+                self.text(tex);
+                self.raw(if block { "</code></pre>" } else { "</code>" });
+            }
+        }
     }
 
     /// Records a problem at a node.
@@ -404,16 +430,8 @@ impl<'a> Writer<'a> {
                 self.text(&c.value);
                 self.raw("</code></pre>");
             }
-            Node::InlineMath(m) => {
-                self.raw("<code class=\"language-math math-inline\">");
-                self.text(&m.value);
-                self.raw("</code>");
-            }
-            Node::Math(m) => {
-                self.raw("<pre><code class=\"language-math math-display\">");
-                self.text(&m.value);
-                self.raw("</code></pre>");
-            }
+            Node::InlineMath(m) => self.math(&m.value, false),
+            Node::Math(m) => self.math(&m.value, true),
             Node::Blockquote(_) => {
                 self.open("blockquote", node, &[]);
                 self.blocks(node);
@@ -739,6 +757,38 @@ impl<'a> Writer<'a> {
                     self.raw("</p>");
                 }
             }
+            "Button" => {
+                // A link drawn as LosOS's button: plain HTML, no script
+                // behind it. The page swaps the classes for its own button's.
+                let target = get("href");
+                let href = self.href(node, &target, false);
+                let variant = props
+                    .get("variant")
+                    .cloned()
+                    .unwrap_or_else(|| "primary".into());
+                let size = props.get("size").cloned().unwrap_or_else(|| "md".into());
+                if flow {
+                    self.raw("<p>");
+                }
+                self.open(
+                    "a",
+                    node,
+                    &[
+                        (
+                            "class",
+                            format!("mdx-button mdx-button-{variant} mdx-button-{size}"),
+                        ),
+                        ("href", href),
+                    ],
+                );
+                let label = plain_text(node);
+                let label = label.trim();
+                self.text(if label.is_empty() { &target } else { label });
+                self.close("a");
+                if flow {
+                    self.raw("</p>");
+                }
+            }
             "Slide" => {
                 let mut attrs = vec![("class", "mdx-slide".to_string())];
                 if let Some(layout) = props.get("layout") {
@@ -830,13 +880,7 @@ impl<'a> Writer<'a> {
             }
             "Equation" => {
                 let inline = props.contains_key("inline") || !flow;
-                if inline {
-                    self.raw("<code class=\"language-math math-inline\">");
-                } else {
-                    self.raw("<pre><code class=\"language-math math-display\">");
-                }
-                self.text(&get("tex"));
-                self.raw(if inline { "</code>" } else { "</code></pre>" });
+                self.math(&get("tex"), !inline);
             }
             "Chart" => {
                 let src = get("src");
@@ -879,7 +923,8 @@ impl<'a> Writer<'a> {
                     attrs.push(("data-format", f.clone()));
                 }
                 self.open("time", node, &attrs);
-                self.text(&value);
+                let long = props.get("format").is_some_and(|f| f == "long");
+                self.text(&crate::date::format(&value, long, self.lang));
                 self.close("time");
             }
             "br" => self.raw("<br>"),
@@ -1033,6 +1078,7 @@ fn toc(headings: &[Heading]) -> String {
 
 /// Components that sit inside a line of text; the rest are blocks.
 const INLINE: &[&str] = &[
+    "Button",
     "Comment",
     "Date",
     "Embed",

@@ -67,6 +67,8 @@ const SLIDE_LAYOUTS: &[&str] = &["title", "content", "two-columns", "picture"];
 const CHART_TYPES: &[&str] = &["bar", "line", "area", "pie"];
 const ALIGN: &[&str] = &["left", "center", "right"];
 const DATE_FORMATS: &[&str] = &["short", "long"];
+const BUTTON_VARIANTS: &[&str] = &["primary", "secondary", "outline", "ghost", "link"];
+const BUTTON_SIZES: &[&str] = &["sm", "md", "lg"];
 
 /// LosOS's components, in README.md's order.
 pub const COMPONENTS: &[Component] = &[
@@ -112,6 +114,15 @@ pub const COMPONENTS: &[Component] = &[
     Component {
         name: "Embed",
         props: &[("href", Prop::Url), ("title", Prop::Text)],
+        required: &["href"],
+    },
+    Component {
+        name: "Button",
+        props: &[
+            ("href", Prop::Url),
+            ("variant", Prop::Choice(BUTTON_VARIANTS)),
+            ("size", Prop::Choice(BUTTON_SIZES)),
+        ],
         required: &["href"],
     },
     Component {

@@ -150,6 +150,14 @@ pub struct State {
     /// an outage pause sharing.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub sharing_edge_seen: bool,
+    /// The same as `sharing_paused_at`, for `losos.sharingLocally`: when the
+    /// box turned sharing with its local gateways off because none answered.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_sharing_paused_at: Option<u64>,
+    /// A local gateway has answered since `losos.sharingLocally` was last
+    /// turned on.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub local_sharing_edge_seen: bool,
 }
 
 /// See [`State::claimed`]: a state file without the field predates it.
@@ -187,6 +195,8 @@ impl Default for State {
             managed_by: None,
             sharing_paused_at: None,
             sharing_edge_seen: false,
+            local_sharing_paused_at: None,
+            local_sharing_edge_seen: false,
         }
     }
 }
@@ -208,6 +218,9 @@ where
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Settings {
     pub sharing_my_storage: bool,
+    /// `losos.sharingLocally`: share as `kindashared`, with the local
+    /// gateways of this box's own network only.
+    pub sharing_locally: bool,
     pub host_name: String,
     pub gpu_enable: bool,
     pub proxy_enable: bool,
@@ -256,6 +269,7 @@ impl Default for Settings {
     fn default() -> Self {
         Settings {
             sharing_my_storage: true,
+            sharing_locally: false,
             host_name: "mattbox".to_string(),
             gpu_enable: true,
             proxy_enable: false,
@@ -277,6 +291,7 @@ impl Settings {
     pub fn to_json(&self) -> serde_json::Value {
         serde_json::json!({
             "sharingMyStorage": self.sharing_my_storage,
+            "sharingLocally": self.sharing_locally,
             "hostName": self.host_name,
             "gpuEnable": self.gpu_enable,
             "proxyEnable": self.proxy_enable,

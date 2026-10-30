@@ -72,6 +72,8 @@ pub struct FakeLosos {
     pub market_config: Option<crate::market::Config>,
     /// Every operation asked for, in order.
     pub market_ops: Vec<crate::market::Op>,
+    /// The `market-escrow-key` credential's bytes, if the box has one.
+    pub escrow_seed: Option<[u8; 32]>,
     /// The live custom domains last handed to LosOS Cloud; `None` until the
     /// first write.
     pub public_names: Option<Vec<String>>,
@@ -145,6 +147,8 @@ pub struct FakeLosos {
     /// The published branch's head; `None` models a source that cannot be
     /// reached.
     pub upstream_head: Option<String>,
+    /// `upstream_base` per published commit.
+    pub upstream_bases: std::collections::HashMap<String, i64>,
     /// What the last follow recorded.
     pub upstream_mark: Option<crate::config_repo::FollowMark>,
     /// Whether files outside the box's own were changed since the mark.
@@ -293,6 +297,7 @@ impl FakeLosos {
             market_routes: std::collections::BTreeMap::new(),
             market_config: None,
             market_ops: Vec::new(),
+            escrow_seed: Some([7u8; 32]),
             public_names: None,
             public_tls: crate::edge::PublicTls::default(),
             relay_pass: None,
@@ -342,6 +347,7 @@ impl FakeLosos {
             sync_report: None,
             upstream: None,
             upstream_head: None,
+            upstream_bases: std::collections::HashMap::new(),
             upstream_mark: None,
             edited_outside: false,
             upstream_report: None,
@@ -365,6 +371,18 @@ impl FakeLosos {
     #[must_use]
     pub fn without_edge(mut self) -> Self {
         self.edge = crate::edge::EdgeStatus::found(Vec::new(), true, None);
+        self
+    }
+
+    /// A local gateway in reach and nothing else: the edge a box on a
+    /// company network finds, its link secondary.
+    #[must_use]
+    pub fn with_local_gateway(mut self) -> Self {
+        for e in &mut self.edge.edges {
+            e.official = false;
+            e.tier = crate::edge::Tier::Secondary;
+        }
+        self.edge = crate::edge::EdgeStatus::found(self.edge.edges.clone(), true, None);
         self
     }
 
@@ -571,6 +589,12 @@ impl Losos for FakeLosos {
             None => Ok(crate::market::Outcome::Unavailable),
             Some((status, body)) => op.classify(*status, body),
         }
+    }
+
+    fn escrow_keys(&mut self) -> anyhow::Result<Option<crate::escrow_key::Keys>> {
+        self.escrow_seed
+            .map(|s| crate::escrow_key::Keys::from_seed(&s))
+            .transpose()
     }
 
     fn write_relay_pass(&mut self, pass: Option<&str>) -> anyhow::Result<()> {
@@ -885,6 +909,10 @@ impl Losos for FakeLosos {
 
     fn upstream_mark(&mut self) -> anyhow::Result<Option<crate::config_repo::FollowMark>> {
         Ok(self.upstream_mark.clone())
+    }
+
+    fn upstream_base(&mut self, sha: &str) -> anyhow::Result<Option<i64>> {
+        Ok(self.upstream_bases.get(sha).copied())
     }
 
     fn config_edited_outside(&mut self, _base: Option<&str>) -> anyhow::Result<bool> {
