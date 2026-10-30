@@ -20,17 +20,20 @@ running.
 
 ## Settings → Look
 
-This pane changes how the admin pages look in every browser that opens the
-box. A change takes effect as soon as you save it, with no rebuild.
+Everyone signed in has this pane. The background on it is yours alone:
+everyone on the box picks their own, and yours follows you to every browser
+you sign in to, LosOS Cloud and LosOS Git included. A change takes effect as
+soon as you save it, with no rebuild.
 
 ![Settings, Look: the backgrounds Plain, Tide, Grid, Dusk and your own picture, the veil slider, and the hand-written widgets kept on this box.](../img/settings-look.png)
 
-- **Background**: one of three shipped pictures (Tide, Grid, Dusk), an
-  upload of your own (PNG, JPEG, WebP, GIF or SVG, up to 8 MiB), or Plain.
+- **Your background**: one of three shipped pictures (Tide, Grid, Dusk), an
+  upload of your own (PNG, JPEG, WebP or GIF, up to 8 MiB), or Plain.
 - **Veil**: lays the page colour over the picture, from 20 % to 90 %, so
   text stays readable in the light and the dark theme.
-- **Widgets written by hand**: the hand-written widgets kept on this box. You
-  can edit or delete each one.
+- **Widgets written by hand**: the hand-written widgets kept on this box,
+  shown to the people who may change the look of the box. You can edit or
+  delete each one.
 
 ## Writing a widget
 

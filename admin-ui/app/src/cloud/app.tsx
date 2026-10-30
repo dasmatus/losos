@@ -1,40 +1,20 @@
 import * as React from "react";
-import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
-import {
-  Clock01Icon,
-  Delete02Icon,
-  Folder01Icon,
-  Image01Icon,
-  LaptopPhoneSyncIcon,
-  NoteIcon,
-  Search01Icon,
-  StarIcon,
-  UserSharingIcon,
-} from "@hugeicons/core-free-icons";
-import { AppBar, AppBarSearch, type AppBarPerson } from "@/components/app-bar";
+import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { AppSidebar } from "@/components/app-sidebar";
+import { ShellBar, ShellBody, ShellDocument } from "@/components/app-shell";
 import { ContextMenuHost, usePageMenu } from "@/components/context-menu";
-import { PersonAvatar } from "@/components/person";
-import { BottomNav } from "@/components/ui/bottom-nav";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
-import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuIcon,
-  SidebarMenuItem,
-  SidebarProvider,
-  SidebarTrigger,
-  useSidebar,
-} from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/toast";
-import type { MessageKey } from "@/lib/i18n";
+import { loadMe } from "@/lib/api";
 import { useT } from "@/lib/i18n-react";
+import { paintOwnLook } from "@/lib/look";
+import { followAuth } from "@/lib/look";
+import { followPins } from "@/lib/pins";
+import { SiteBaseProvider } from "@/lib/site";
 import { cn } from "@/lib/utils";
+import { PaletteHost } from "@/palette/host";
+import { openPalette } from "@/palette/store";
 import { EditPage } from "./collab/page";
 import { ConnectPage } from "./connect";
 import { DevicesView } from "./devices";
@@ -46,51 +26,41 @@ import { NotesOpen, NotesPage } from "./notes/page";
 import { OfficePage } from "./office/page";
 import { OpenFile } from "./open";
 import { PhotosView } from "./photos";
-import { useMe } from "./store";
+import { useFollowChanges, useMe } from "./store";
 import { TrashView } from "./trash";
 import { UploadsPanel } from "./uploads";
 
 /* LosOS Cloud at /cloud/: the person's files in the browser, beside the
- * desktop and phone apps that sync them. One sidebar of places (Files,
- * Notes, Recent, Favorites, Photos, Trash, Devices), a search in the top
- * bar, and
- * the uploads in the corner. /cloud/connect/<token> is the page the apps
- * open to sign in, and draws without the sidebar. */
+ * desktop and phone apps that sync them. It is a document of its own (its
+ * own nginx location and API, src/cloud/api.ts) in the box's one frame
+ * (components/app-shell.tsx): the same top bar and sidebar as the admin
+ * pages, with LosOS Cloud's places (Files, Notes, Recent, Favorites,
+ * Shared with you, Photos, Trash, Devices) under its Cloud entry, the same
+ * command palette on the same keys, and the uploads in the corner. A
+ * document opens in `main`, beside the sidebar. /cloud/connect/<token> is
+ * the page the apps open to sign in, and draws without the sidebar. */
 
 export function CloudRoot() {
   return (
     <BrowserRouter basename="/cloud">
-      <Shell />
+      <SiteBaseProvider value="/cloud">
+        <Shell />
+      </SiteBaseProvider>
       <Toaster />
     </BrowserRouter>
   );
 }
 
-interface Place {
-  to: string;
-  label: MessageKey;
-  icon: IconSvgElement;
-}
-
-const PLACES: readonly Place[] = [
-  { to: "/files", label: "cloud.nav.files", icon: Folder01Icon },
-  { to: "/notes", label: "notes.title", icon: NoteIcon },
-  { to: "/recent", label: "cloud.nav.recent", icon: Clock01Icon },
-  { to: "/favorites", label: "cloud.nav.favorites", icon: StarIcon },
-  { to: "/shared", label: "mesh.shared.title", icon: UserSharingIcon },
-  { to: "/photos", label: "cloud.nav.photos", icon: Image01Icon },
-  { to: "/trash", label: "cloud.nav.trash", icon: Delete02Icon },
-  { to: "/devices", label: "cloud.nav.devices", icon: LaptopPhoneSyncIcon },
-];
-
 function Shell() {
   const { pathname } = useLocation();
   const connecting = pathname.startsWith("/connect/");
-  const editing = pathname.startsWith("/edit/");
-  const office = pathname.startsWith("/office/");
+  const editing = pathname.startsWith("/edit/") || pathname.startsWith("/office/");
   const noting = pathname === "/notes" || pathname.startsWith("/notes/");
-  const navigate = useNavigate();
   const pageMenu = usePageMenu();
+  // The background the person picked, as on every page of the box.
+  React.useEffect(() => {
+    void paintOwnLook();
+  }, []);
   return (
     <div className={cn("losos-shell min-h-dvh text-ink", office && "flex h-dvh flex-col")}>
       <TopBar search={!connecting && !editing && !noting && !office} wide={noting || office} />
@@ -106,181 +76,82 @@ function Shell() {
           </Routes>
         </main>
       ) : connecting ? (
+  // Files added by other apps show up without a reload.
+  useFollowChanges();
+
+  /* Who is here, as the admin page asks it (GET /api/me): the sidebar's
+   * entries and the person's menu are the same as there. The pins and the
+   * look follow it the same way. */
+  React.useEffect(() => {
+    void loadMe().catch(() => undefined);
+    followAuth();
+    followPins();
+  }, []);
+
+  if (connecting) {
+    return (
+      <div className="losos-shell min-h-dvh text-ink">
+        <ShellBar signedIn />
         <Routes>
           <Route path="/connect/:token" element={<ConnectPage />} />
         </Routes>
-      ) : noting ? (
+      </div>
+    );
+  }
+
+  const sidebar = <AppSidebar footer={<Usage />} />;
+  return (
+    <div className={cn("losos-shell min-h-dvh text-ink", editing && "flex h-dvh flex-col")}>
+      <ShellBar signedIn />
+      <ContextMenuHost page={pageMenu} search={(text) => openPalette(text)} />
+      {editing ? (
+        // A document beside the sidebar, the rest of the window's height.
+        <ShellBody sidebar={sidebar} fill>
+          <ShellDocument>
+            <Routes>
+              <Route path="/office/:file" element={<OfficePage />} />
+              <Route path="/edit/:file" element={<div className="h-full overflow-auto p-4 sm:p-6"><EditPage /></div>} />
+            </Routes>
+          </ShellDocument>
+        </ShellBody>
+      ) : (
         // A vault has panes of its own and wants the width.
-        <div className="px-4 pt-5 pb-12 sm:px-6">
+        <ShellBody sidebar={sidebar} wide={noting}>
           <Routes>
+            <Route path="/" element={<Navigate to="/files" replace />} />
+            <Route path="/files/*" element={<FilesView />} />
             <Route path="/notes" element={<NotesPage />} />
             <Route path="/notes/open" element={<NotesOpen />} />
+            <Route path="/open/:file" element={<OpenFile />} />
+            <Route path="/recent" element={<ListView kind="recent" />} />
+            <Route path="/favorites" element={<ListView kind="favorites" />} />
+            <Route path="/search" element={<ListView kind="search" />} />
+            <Route path="/shared" element={<SharedView />} />
+            <Route path="/shared/:share" element={<SharedFolderView />} />
+            <Route path="/photos" element={<PhotosView />} />
+            <Route path="/trash" element={<TrashView />} />
+            <Route path="/devices" element={<DevicesView />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
-        </div>
-      ) : editing ? (
-        // A document gets the width; the places are one link away.
-        <main className="px-4 pt-5 pb-12 sm:px-6">
-          <Routes>
-            <Route path="/edit/:file" element={<EditPage />} />
-          </Routes>
-        </main>
-      ) : (
-        <SidebarProvider className={cn("mx-auto flex w-full max-w-6xl px-4 pt-5 pb-12 sm:px-6", "max-md:flex-col max-md:gap-3 md:gap-6")}>
-          <Places />
-          <main className="min-w-0 flex-1">
-            <Routes>
-              <Route path="/" element={<Navigate to="/files" replace />} />
-              <Route path="/files/*" element={<FilesView />} />
-              <Route path="/open/:file" element={<OpenFile />} />
-              <Route path="/recent" element={<ListView kind="recent" />} />
-              <Route path="/favorites" element={<ListView kind="favorites" />} />
-              <Route path="/search" element={<ListView kind="search" />} />
-              <Route path="/shared" element={<SharedView />} />
-              <Route path="/shared/:share" element={<SharedFolderView />} />
-              <Route path="/photos" element={<PhotosView />} />
-              <Route path="/trash" element={<TrashView />} />
-              <Route path="/devices" element={<DevicesView />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </main>
-          <UploadsPanel />
-        </SidebarProvider>
+        </ShellBody>
       )}
+      <UploadsPanel />
+      <PaletteHost enabled />
     </div>
   );
 }
 
-function TopBar({ search, wide = false }: { search: boolean; wide?: boolean }) {
+/* The person's used and free space, at the foot of the sidebar. */
+function Usage() {
   const t = useT();
   const me = useMe();
-  const navigate = useNavigate();
-  const [params] = useSearchParams();
-  const { pathname } = useLocation();
-  const [text, setText] = React.useState(pathname === "/search" ? (params.get("q") ?? "") : "");
-
-  React.useEffect(() => {
-    if (pathname !== "/search") setText("");
-  }, [pathname]);
-
-  const person: AppBarPerson | null =
-    me === null
-      ? null
-      : {
-          label: me.name || me.login,
-          tip: me.email || me.login,
-          avatar: <PersonAvatar size="xs" person={{ name: me.login, displayName: me.name || me.login }} />,
-          accountLink: <a href="/settings/account" />,
-        };
-
-  return (
-    <AppBar
-      name={me?.product ?? "LosOS Cloud"}
-      nameLink={<Link to="/files" />}
-      width={wide ? "wide" : "page"}
-      person={person}
-      onSignOut={signOut}
-    >
-      {search ? (
-        <AppBarSearch
-          onSubmit={(event) => {
-            event.preventDefault();
-            const q = text.trim();
-            if (q !== "") navigate(`/search?q=${encodeURIComponent(q)}`);
-          }}
-        >
-          <HugeiconsIcon
-            icon={Search01Icon}
-            size={16}
-            strokeWidth={1.5}
-            color="currentColor"
-            className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-faint"
-            aria-hidden="true"
-          />
-          <Input
-            type="search"
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            placeholder={t("cloud.search.placeholder")}
-            aria-label={t("cloud.search.label")}
-            className="pl-9"
-          />
-        </AppBarSearch>
-      ) : undefined}
-    </AppBar>
-  );
-}
-
-/* Out through LosOS Login, which sends the browser back to LosOS Cloud. */
-function signOut() {
-  const home = `${window.location.origin}/cloud/`;
-  window.location.assign(`${window.location.origin}/auth/logout?rd=${encodeURIComponent(home)}`);
-}
-
-/* The phone's bottom bar: these four, then More for the rest. Notes is not
- * one: a vault is a page of its own without the places, as on a wide
- * screen. */
-const TABS = ["/files", "/recent", "/favorites", "/photos"] as const;
-
-function Places() {
-  const t = useT();
-  const { pathname } = useLocation();
-  const { state, isMobile, setOpenMobile } = useSidebar();
-  const rail = !isMobile && state === "collapsed";
-  const me = useMe();
-  const current = PLACES.find((p) => pathname === p.to || pathname.startsWith(`${p.to}/`));
-
-  React.useEffect(() => setOpenMobile(false), [pathname, setOpenMobile]);
-
   const total = me === null ? 0 : me.used + me.free;
+  if (me === null || total <= 0) return null;
   return (
-    <>
-      <BottomNav
-        label={t("ui.bottomNav.label")}
-        tabs={TABS.flatMap((to) => PLACES.filter((place) => place.to === to)).map((place) => ({
-          key: place.to,
-          to: place.to,
-          label: t(place.label),
-          icon: place.icon,
-          active: current === place,
-        }))}
-      />
-      <Sidebar aria-label={t("cloud.nav.label")} mobileTitle={t("cloud.nav.label")} closeLabel={t("cloud.close")}>
-        {!isMobile && (
-          <SidebarHeader>
-            <SidebarTrigger label={t(rail ? "cloud.nav.expand" : "cloud.nav.collapse")} />
-          </SidebarHeader>
-        )}
-        <SidebarContent>
-          <SidebarMenu>
-            {PLACES.map((place) => {
-              const active = current === place;
-              const label = t(place.label);
-              return (
-                <SidebarMenuItem key={place.to}>
-                  <SidebarMenuButton
-                    isActive={active}
-                    tooltip={label}
-                    render={<Link to={place.to} aria-current={active ? "page" : undefined} />}
-                  >
-                    <SidebarMenuIcon active={active}>
-                      <HugeiconsIcon icon={place.icon} size={13} strokeWidth={1.5} color="currentColor" />
-                    </SidebarMenuIcon>
-                    <span className={cn(rail && "sr-only")}>{label}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              );
-            })}
-          </SidebarMenu>
-          {me !== null && total > 0 && !rail && (
-            <div className="mt-auto flex flex-col gap-1.5 px-2 pt-6 pb-1" data-usage>
-              <Progress value={(me.used / total) * 100} label={t("cloud.usage.label")} />
-              <p className="text-[12px] text-muted">{t("cloud.usage.text", { used: formatBytes(me.used), free: formatBytes(me.free) })}</p>
-            </div>
-          )}
-        </SidebarContent>
-      </Sidebar>
-    </>
+    <div className="flex flex-col gap-1.5" data-usage>
+      <Progress value={(me.used / total) * 100} label={t("cloud.usage.label")} />
+      <p className="text-[12px] text-muted">{t("cloud.usage.text", { used: formatBytes(me.used), free: formatBytes(me.free) })}</p>
+    </div>
   );
 }
 

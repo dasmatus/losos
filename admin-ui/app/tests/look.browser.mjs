@@ -363,13 +363,16 @@ await check('a hand-written widget on the board runs in a sandboxed frame, reach
   await page.close();
 });
 
-await check('the theme toggle reaches the widget through the bridge', async () => {
+await check('the theme from the bar menu reaches the widget through the bridge', async () => {
   const { page } = await open({
     look: { version: 1, background: { kind: 'none' }, veil: 60, widgets: [CLOCK], shipped: ['tide', 'grid', 'dusk'], limits: LIMITS },
     board: { version: 1, widgets: [{ id: 'tile1', source: { kind: 'hand', id: 'w1' } }] },
   });
   await frame(page).locator('#theme').filter({ hasText: 'theme:light' }).waitFor({ timeout: 10000 });
-  await page.getByRole('radiogroup', { name: 'Appearance' }).getByRole('radio', { name: 'Dark' }).click();
+  // No one is named to this page, so the theme sits in the bar's own menu.
+  await page.getByTestId('display-menu').click();
+  await page.locator('[data-slot="theme-menu"]').click();
+  await page.locator('[data-slot="theme-menu-choices"]').getByRole('menuitemradio', { name: 'Dark' }).click();
   await frame(page).locator('#theme').filter({ hasText: 'theme:dark' }).waitFor();
   const accent = await frame(page).locator('#out').evaluate((el) => getComputedStyle(el).color);
   assert.equal(accent, 'rgb(72, 179, 192)', `the dark accent did not reach the frame: ${accent}`);

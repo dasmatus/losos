@@ -510,6 +510,9 @@ images
 
   losos-plugins = lososPlugins { };
 
+  # The mail server, Stalwart 1.0 (nix/stalwart.nix), for modules/mail.nix.
+  losos-stalwart = pkgs.callPackage ./stalwart.nix { };
+
   # Photos' face models (nix/face-models.nix), read by losos-cloud-photos.
   losos-face-models = import ./face-models.nix { inherit pkgs; };
   # The TPM makers' certificates boxes check gateways against

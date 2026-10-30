@@ -25,7 +25,7 @@
  * halves together. */
 
 import assert from './assert.mjs';
-import { launch, runner, serve } from './harness.mjs';
+import { launch, runner, serve, shellRoutes, SHELL_ME } from './harness.mjs';
 
 const { origin, close: closeServer } = await serve({ csp: true });
 const browser = await launch();
@@ -124,9 +124,12 @@ function search(q) {
 
 const json = (route, status, body) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
-async function open(path, { kb = { available: true, sites: [] }, kbSite = 'anyone', viewport = { width: 1440, height: 1000 }, vault = 'garden' } = {}) {
+async function open(path, { kb = { available: true, sites: [] }, kbSite = 'anyone', viewport = { width: 1440, height: 1000 }, vault = 'garden', me } = {}) {
   const context = await browser.newContext({ viewport, locale: 'en-US' });
   const page = await context.newPage();
+  // The box's shell around LosOS Cloud asks lososd who is here; its own
+  // routes below win over these.
+  if (me !== undefined) await shellRoutes(page, me);
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.addInitScript(() => {
@@ -623,23 +626,26 @@ await check('no Content-Security-Policy violation under the admin policy', async
 /* The places of LosOS Cloud on a phone: a bar along the bottom, as on the
  * admin pages, with More for the rest. Notes is not a tab: a vault is a
  * page of its own, without the places, at every width. */
-await check('on a phone LosOS Cloud has a bar along the bottom and More for the other places', async () => {
-  const { page, errors } = await open('/cloud/files', { viewport: { width: 390, height: 844 } });
+await check('on a phone LosOS Cloud has the box\'s bar along the bottom, and its places under More', async () => {
+  const { page, errors } = await open('/cloud/files', { viewport: { width: 390, height: 844 }, me: { ...SHELL_ME, shared: ['cloud'] } });
   const bar = page.getByRole('navigation', { name: 'Main places', exact: true });
   await bar.waitFor();
-  assert.deepEqual((await bar.getByRole('listitem').allInnerTexts()).map((l) => l.trim()), ['Files', 'Recent', 'Favorites', 'Photos', 'More']);
-  assert.equal(await bar.locator('a[aria-current="page"]').innerText(), 'Files');
+  // The same bar as on the admin pages, with LosOS Cloud lit.
+  await bar.getByRole('link', { name: 'Cloud' }).waitFor();
+  assert.deepEqual((await bar.getByRole('listitem').allInnerTexts()).map((l) => l.trim()), ['Overview', 'Cloud', 'Apps', 'Storage', 'More']);
+  assert.equal(await bar.locator('a[aria-current="page"]').innerText(), 'Cloud');
   await bar.getByRole('button', { name: 'More', exact: true }).click();
-  const sheet = page.getByRole('dialog', { name: 'Places' });
+  const sheet = page.getByRole('dialog', { name: 'Sections' });
   await sheet.waitFor();
   await sheet.getByRole('link', { name: 'Trash' }).click();
   await page.waitForURL(/\/cloud\/trash$/);
   await sheet.waitFor({ state: 'detached' });
-  assert.equal(await bar.locator('a[aria-current="page"]').count(), 0);
-  assert.equal(await bar.getByRole('button', { name: 'More', exact: true }).getAttribute('data-active'), '');
+  // Trash is one of LosOS Cloud's places, so Cloud stays lit.
+  assert.equal(await bar.locator('a[aria-current="page"]').innerText(), 'Cloud');
+  // A vault is in the same frame: the bar stays.
   await page.goto(origin + '/cloud/notes');
   await page.waitForLoadState('networkidle');
-  assert.equal(await bar.count(), 0, 'a vault got the places bar');
+  await bar.waitFor();
   assert.deepEqual(errors, []);
   await page.close();
 });

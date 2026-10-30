@@ -532,7 +532,7 @@ pkgs.testers.nixosTest {
         secret = box.succeed(
             "systemd-creds decrypt --name=mail-master /etc/credstore.encrypted/mail-master -"
         ).strip()
-        jmap = f"curl -sf -u 'matus%losos:{secret}' http://127.0.0.1:8096"
+        jmap = f"curl -sf -u 'matus@{DOMAIN}%losos:{secret}' http://127.0.0.1:8096"
         session = json.loads(box.succeed(f"{jmap}/jmap/session"))
         account = session["primaryAccounts"]["urn:ietf:params:jmap:mail"]
         blob = json.loads(box.succeed(

@@ -767,11 +767,12 @@ fn shared_apps(api: &Api) -> Vec<&'static str> {
     if api.chat.live() {
         apps.push("chat");
     }
-    // Not shared-side apps: LosOS Contacts and LosOS Calendar are LosOS
-    // Cloud's address books and calendars, on every box that runs LosOS
-    // Cloud. Listed here because the sidebar draws the app entries this
-    // list names.
+    // Not shared-side apps: LosOS Cloud itself, and LosOS Contacts and
+    // LosOS Calendar, its address books and calendars, on every box that
+    // runs LosOS Cloud. Listed here because the sidebar draws the app
+    // entries this list names.
     if api.contacts {
+        apps.push("cloud");
         apps.push("contacts");
         apps.push("calendar");
     }
@@ -1195,6 +1196,9 @@ async fn post_person_remove(
                 }
                 if let Err(e) = api.pictures.forget(&name) {
                     tracing::warn!(error = ?e, "a removed person's picture settings stayed");
+                }
+                if let Err(e) = forget_look(&name) {
+                    tracing::warn!(error = ?e, "a removed person's background stayed");
                 }
                 api.moderation.note(
                     crate::login::now(),
@@ -1674,6 +1678,24 @@ fn shown_people(api: &Api) -> anyhow::Result<Vec<serde_json::Value>> {
             shown
         })
         .collect())
+}
+
+/// A removed person's background: the look plugin keeps it as
+/// `looks/<name>.json` and `looks/<name>.img` in the state directory
+/// (`backend/plugins/look`). The name has passed `people::validate_name`.
+fn forget_look(name: &str) -> std::io::Result<()> {
+    let dir = std::path::PathBuf::from(
+        std::env::var("LOSOS_STATE_DIR").unwrap_or_else(|_| "/var/lib/losos".into()),
+    )
+    .join("looks");
+    for ext in ["json", "img"] {
+        match std::fs::remove_file(dir.join(format!("{name}.{ext}"))) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
 }
 
 /// `GET /api/profiles`: everyone's profile.

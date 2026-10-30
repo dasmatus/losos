@@ -887,6 +887,8 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         .route("/market/payout", post(market_payout))
         .route("/market/sales/release", post(market_release))
         .route("/market/confirm", post(market_confirm))
+        .route("/market/escrow/decisions", post(market_escrow_decisions))
+        .route("/market/escrow/sign", post(market_escrow_sign))
         .route("/market/coins/key", post(market_coin_key))
         .route("/market/coins/pay", post(market_coin_pay))
         .route("/market/fees/pay", post(market_fees_pay))
@@ -2109,6 +2111,53 @@ async fn market_payout(
     market
         .set_payout(&req.auth.appliance_id, &req.address, &req.signature, family)
         .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, Deserialize)]
+struct EscrowKeysReq {
+    #[serde(flatten)]
+    auth: MarketAuth,
+    evm: String,
+    #[serde(default)]
+    solana: Option<String>,
+}
+
+/// `POST /market/escrow/decisions`: the box registers its escrow keys and
+/// gets the decisions that wait for its signature.
+async fn market_escrow_decisions(
+    State(st): State<AppState>,
+    Json(req): Json<EscrowKeysReq>,
+) -> Result<Json<Vec<crate::market::EscrowDecision>>, ApiError> {
+    let market = market_tenant(&st, &req.auth).await?;
+    let keys = crate::escrow_boxes::BoxKeys::parse(&req.evm, req.solana.as_deref())
+        .map_err(MarketError::Invalid)?;
+    Ok(Json(
+        market
+            .escrow_decisions(&req.auth.appliance_id, keys)
+            .await?,
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+struct EscrowSignReq {
+    #[serde(flatten)]
+    auth: MarketAuth,
+    #[serde(flatten)]
+    signed: crate::market::EscrowSignature,
+}
+
+/// `POST /market/escrow/sign`: the box's signature over one decision.
+async fn market_escrow_sign(
+    State(st): State<AppState>,
+    Json(req): Json<EscrowSignReq>,
+) -> Result<StatusCode, ApiError> {
+    let market = market_tenant(&st, &req.auth).await?;
+    market
+        .escrow_sign(&req.auth.appliance_id, &req.signed)
+        .await?;
+    // The call it was waiting for goes out now, not on the next tick.
+    st.notify.notify_one();
     Ok(StatusCode::NO_CONTENT)
 }
 

@@ -20,7 +20,7 @@
 # anyway, so a pattern here only decides what a pull request may skip.
 set -euo pipefail
 
-lanes=(rust wasm solana evm eval ctl ui tui images iso install discovery)
+lanes=(rust wasm solana evm eval ctl ui tui images mail iso install discovery)
 
 # CI's own wiring and the toolchain every lane builds with: any change here
 # runs everything.
@@ -109,6 +109,9 @@ lane_tui=("admin-ui/tui/*" "backend/access/*" "${tui_reads[@]}" "${pkgs[@]}")
 
 # The OCI image of the local cluster.
 lane_images=(nix/images.nix "${pkgs[@]}")
+
+# LosOS Mail's server and its copier, built from source for the cache.
+lane_mail=(nix/stalwart.nix "${pkgs[@]}")
 
 # The installer the ISO boots into.
 installer=(

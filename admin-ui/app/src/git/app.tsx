@@ -18,13 +18,14 @@ import {
   Settings02Icon,
 } from "@hugeicons/core-free-icons";
 import { PersonAvatar } from "@/components/person";
+import { PersonMenu } from "@/components/app-bar";
+import { DisplayMenu } from "@/components/preferences-menu";
 import { BottomNav, type BottomNavTab } from "@/components/ui/bottom-nav";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { LanguagePicker } from "@/components/ui/language-picker";
 import {
   Sidebar,
   SidebarContent,
@@ -39,12 +40,12 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { Toaster } from "@/components/ui/toast";
 import { t as translate, type MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
 import { ContextMenuHost, usePageMenu } from "@/components/context-menu";
 import { logoFor } from "@/lib/logo";
+import { paintOwnLook } from "@/lib/look";
 import { cn } from "@/lib/utils";
 import { chatServerOf, chatToken, dropChatToken, git, GitError, matrixSignIn, whenSignedOut, type User } from "./api";
 import { ErrorAlert, failed, Loading, NotFound } from "./parts";
@@ -104,6 +105,8 @@ function Shell() {
       (u) => {
         signedIn.current = true;
         setMe(u);
+        // Someone of this box sees the background they picked.
+        if (!u.matrix_id) void paintOwnLook();
       },
       (e: unknown) => {
         if (controller.signal.aborted) return;
@@ -268,13 +271,9 @@ function TopBar() {
           <span className="text-[15px] font-semibold tracking-tight max-sm:sr-only">LosOS Git</span>
         </Link>
         <div className="flex-1" />
-        <div className="flex shrink-0 items-center gap-2 max-md:hidden">
-          <LanguagePicker />
-          <ThemeToggle />
-        </div>
-        {me !== null && <MeChip me={me} />}
         {visitor ? (
           <>
+            <DisplayMenu />
             <Button variant="ghost" size="sm" onClick={() => setAsking(true)} data-chat-sign-in>
               {t("git.chatSignIn.open")}
             </Button>
@@ -282,23 +281,10 @@ function TopBar() {
               {t("git.visitor.signIn")}
             </Button>
           </>
+        ) : me !== null ? (
+          <MeMenu me={me} />
         ) : (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              const home = `${window.location.origin}/git/`;
-              if (me?.matrix_id) {
-                // Someone of another box: forget this browser's token.
-                dropChatToken();
-                window.location.assign(home);
-                return;
-              }
-              window.location.assign(`${window.location.origin}/auth/logout?rd=${encodeURIComponent(home)}`);
-            }}
-          >
-            {t("git.signOut")}
-          </Button>
+          <DisplayMenu />
         )}
       </div>
       <ChatSignIn open={asking} onOpenChange={setAsking} />
@@ -306,13 +292,32 @@ function TopBar() {
   );
 }
 
-function MeChip({ me }: { me: User }) {
+/* Who is signed in, and the menu under them, the same as on every other
+ * page of the box (components/app-bar.tsx): the appearance, the language,
+ * Your account for a person of this box, and Sign out. */
+function MeMenu({ me }: { me: User }) {
   const faces = useFaces();
+  const label = me.full_name || me.matrix_id || me.login;
+  const signOut = React.useCallback(() => {
+    const home = `${window.location.origin}/git/`;
+    if (me.matrix_id) {
+      // Someone of another box: forget this browser's token.
+      dropChatToken();
+      window.location.assign(home);
+      return;
+    }
+    window.location.assign(`${window.location.origin}/auth/logout?rd=${encodeURIComponent(home)}`);
+  }, [me.matrix_id]);
   return (
-    <span className="flex max-w-56 items-center gap-2 text-[13px] text-muted max-lg:hidden" title={me.matrix_id ?? (me.email || me.login)}>
-      <PersonAvatar person={faces(me.login)} size="xs" />
-      <span className="truncate" data-me>{me.full_name || me.matrix_id || me.login}</span>
-    </span>
+    <PersonMenu
+      person={{
+        label,
+        tip: me.matrix_id ?? (me.email || me.login),
+        avatar: <PersonAvatar person={faces(me.login)} size="xs" />,
+        accountLink: me.matrix_id ? undefined : <a href="/settings/account" />,
+      }}
+      onSignOut={signOut}
+    />
   );
 }
 

@@ -103,6 +103,7 @@ export default defineMessages({
   "credentials.app.login": { en: "LosOS Login", sk: "LosOS Login", de: "LosOS Login" },
   "credentials.app.mail": { en: "LosOS Mail", sk: "LosOS Mail", de: "LosOS Mail" },
   "credentials.app.backup": { en: "Backups", sk: "Zálohy", de: "Sicherungen" },
+  "credentials.app.market": { en: "Market", sk: "Trh", de: "Markt" },
 
   // ── Each credential ─────────────────────────────────────────────────────
   "credentials.name.adminToken.title": { en: "Spare key", sk: "Náhradný kľúč", de: "Ersatzschlüssel" },
@@ -167,6 +168,21 @@ export default defineMessages({
     en: "LosOS Mail and the admin pages restart.",
     sk: "LosOS Mail a stránky správy sa reštartujú.",
     de: "LosOS Mail und die Verwaltung starten neu.",
+  },
+  "credentials.name.marketEscrowKey.title": {
+    en: "Escrow key",
+    sk: "Kľúč úschovy",
+    de: "Treuhandschlüssel",
+  },
+  "credentials.name.marketEscrowKey.detail": {
+    en: "Agrees, with the edge, to pay out what this box sold and to give back what it bought. Without it a held payment waits for its deadline.",
+    sk: "Spolu s edge súhlasí s vyplatením toho, čo zariadenie predalo, a s vrátením toho, čo kúpilo. Bez neho držaná platba čaká na svoj termín.",
+    de: "Stimmt zusammen mit der Edge zu, dass Verkauftes ausgezahlt und Gekauftes zurückgegeben wird. Ohne ihn wartet eine gehaltene Zahlung auf ihre Frist.",
+  },
+  "credentials.name.marketEscrowKey.rotate": {
+    en: "Payments still held keep waiting on the old key.",
+    sk: "Platby, ktoré sú ešte držané, ďalej čakajú na starý kľúč.",
+    de: "Noch gehaltene Zahlungen warten weiter auf den alten Schlüssel.",
   },
   "credentials.name.backupBucket.title": {
     en: "Bucket keys",
