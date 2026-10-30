@@ -2017,7 +2017,7 @@ in
     };
 
     # Path of the built admin SPA (built from this flake's ./admin-ui/app by
-    # nix/packages.nix with buildNpmPackage; wired in via
+    # nix/packages.nix with Bun; wired in via
     # modules/defaults.nix). Internal.
     admin.ui = lib.mkOption {
       type = lib.types.nullOr lib.types.path;
@@ -3058,6 +3058,18 @@ in
       ];
       default = "eur";
       description = "Supported two-decimal ISO 4217 currency, lowercase. One currency per edge; listings are priced in its minor unit (cents).";
+    };
+
+    edge.market.backups.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Let a box keep its restic backups on the storage it bought. The edge
+        runs restic's REST server on the bought volume, on its own node, and
+        lets in only the box that bought it. restic on the box encrypts
+        everything before it leaves, so the volume's replicas on other boxes,
+        and the edge, hold only ciphertext.
+      '';
     };
 
     edge.market.storageClass = lib.mkOption {

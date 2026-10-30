@@ -195,6 +195,22 @@ nach Monatsende weiterhin Longhorn-Kapazität.
   bevor sie ihn anfordert, sodass ein Claim, der nie bindet, oder einer, der
   kurz vor dem Anhalten der Edge entstand, seine Einheiten auch nach
   Monatsende verkauft hält.
+- **Backups auf gekauftem Speicher.** Die Box des Käufers kann ihre Backups
+  auf einer gebundenen Speicherbestellung ablegen (Einstellungen, Backup).
+  Die Box verschlüsselt mit restic, bevor etwas sie verlässt, wie bei einem
+  Bucket, und spricht mit `/market/storage/<order>/` auf der Edge, das
+  restics REST-Protokoll bedient. Die Edge startet beim ersten Zugriff einen
+  `rest-server` pro Bestellung neben dem Claim, aus einem Image, das sie
+  mitbringt (`losos.edge.market.backups.enable`, standardmäßig an) und nie
+  zieht. Das einzige Konto des Servers ist das der Edge, mit einem Passwort
+  nur für diese Bestellung, also öffnen ihn die Mesh-Boxen nicht, die seine
+  Cluster-Adresse erreichen. Die Edge öffnet diesen Pfad nur für einen
+  Schlüssel, den sie als
+  SHA-256-Hash speichert. Die Box des Käufers setzt ihn mit
+  `POST /market/storage-door` und leitet ihn aus ihrem
+  Wiederherstellungscode und der Bestell-ID ab. Eine neue Box mit demselben
+  Wiederherstellungscode erreicht also dasselbe Volume. Die Boxen mit
+  Longhorns Replikaten und die Edge sehen nur restics Chiffretext.
 - **Rechenleistung.** Ein Guthaben in vCPU-Stunden, aufgeführt unter
   `entitlements`. Noch misst nichts dagegen und plant nichts danach.
 
@@ -204,8 +220,8 @@ Grenzen, die du kennen solltest und von denen noch keine durchgesetzt wird:
 - Der Claim ist nicht an den Node des Verkäufers gebunden. Longhorn verteilt
   Replikate über den Pool, also wird der Verkäufer für seinen Beitrag dazu
   bezahlt, nicht dafür, genau dieses Volume zu hosten.
-- Der Käufer hat keinen Zugriffsweg zum Claim; er existiert im Cluster, damit
-  ein Workload ihn einhängen kann.
+- Der einzige Weg zum Claim ist der Backup-Pfad oben. Nichts anderes hängt
+  ihn ein.
 - Es wird nie etwas gelöscht. Ein abgelaufener Anspruch wird nicht mehr
   gemeldet, aber das Volume enthält die Daten des Käufers, und das Entfernen
   entscheidet der Betreiber. Bis der Betreiber den Claim löscht, bleiben
@@ -214,8 +230,9 @@ Grenzen, die du kennen solltest und von denen noch keine durchgesetzt wird:
   Der Reconcile-Durchlauf prüft jeden abgelaufenen Claim und gibt seine
   Einheiten wieder in den Verkauf, sobald der Apiserver für ihn 404 antwortet.
 - Der ServiceAccount des Registrars erhält clusterweit `get`/`create` auf
-  Namespaces und PersistentVolumeClaims, wenn der Marktplatz aktiviert ist.
-  Kubernetes-RBAC kann keines von beiden auf `market-*`-Namen einschränken.
+  Namespaces und PersistentVolumeClaims, wenn der Marktplatz aktiviert ist,
+  und auf Deployments und Services (und `create` auf Secrets), wenn Backups
+  auf gekauftem Speicher an sind. Kubernetes-RBAC kann keines davon auf `market-*`-Namen einschränken.
 :::
 
 ## Admin-UI {#admin-ui}

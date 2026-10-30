@@ -16,12 +16,11 @@
  * enforces the Bearer token. Data: tests/fixtures/credentials.json.
  */
 
-import assert from 'node:assert';
-import { readFile } from 'node:fs/promises';
+import assert from './assert.mjs';
 import { launch, runner, serve } from './harness.mjs';
 
 const TOKEN = 'a'.repeat(64);
-const FIXTURE = JSON.parse(await readFile('tests/fixtures/credentials.json', 'utf8'));
+const FIXTURE = await Bun.file('tests/fixtures/credentials.json').json();
 const { origin, close: closeServer } = await serve({ csp: true });
 const browser = await launch();
 const { check, finish } = runner();

@@ -680,6 +680,33 @@ pub struct MarketState {
     /// Each box's escrow keys, by appliance id (`crate::escrow_boxes`).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub escrow_keys: BTreeMap<String, crate::escrow_boxes::BoxKeys>,
+    /// The backup door of each bought volume a box keeps its backups on
+    /// (`server/storage.rs`), by order id.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub doors: BTreeMap<String, Door>,
+}
+
+/// One bought volume's backup door.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Door {
+    /// The SHA-256, in hex, of a secret the buyer's box derives from its
+    /// recovery code and the order id. The secret itself is never sent here.
+    /// Only the buyer sets it; whoever knows the recovery code (the buyer's
+    /// box, or a new box the owner restores onto) can then open the door.
+    pub key: String,
+    /// The password the edge alone uses to reach the order's server, made
+    /// here once and kept for the life of the order. Every mesh node can
+    /// reach a Service's cluster address; without this, any of them could
+    /// read or delete the backups there.
+    pub upstream: String,
+}
+
+/// What is behind an opened door: the volume, and how the edge reaches its
+/// server.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpenDoor {
+    pub volume: StorageVolume,
+    pub upstream: String,
 }
 
 /// A seller's watch-only keys for coin orders (`crate::coins`), and the
@@ -1308,6 +1335,57 @@ pub fn pending_provisions(state: &MarketState, now: u64) -> Vec<Provision> {
             })
         })
         .collect()
+}
+
+/// Where one of a buyer's bought volumes is, for the backup door
+/// (`server/storage.rs`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StorageVolume {
+    pub namespace: String,
+    pub pvc: String,
+}
+
+/// The volume of `buyer`'s storage order `order_id`, once its claim is bound.
+/// `None` for any other order, another buyer's, or one not bound yet; the
+/// caller answers all of them alike, so a box cannot learn which orders
+/// exist. A lapsed order keeps its volume until the operator deletes the
+/// claim, and so does the buyer's way to it: the data is still theirs.
+#[must_use]
+pub fn storage_volume(state: &MarketState, order_id: &str, buyer: &str) -> Option<StorageVolume> {
+    let order = state.orders.get(order_id)?;
+    if order.kind != Kind::Storage || order.buyer != buyer {
+        return None;
+    }
+    let (namespace, pvc) = order.volume.as_deref()?.split_once('/')?;
+    Some(StorageVolume {
+        namespace: namespace.to_string(),
+        pvc: pvc.to_string(),
+    })
+}
+
+/// Whether `hash` is the shape of a door key: 64 lowercase hex characters.
+#[must_use]
+pub fn door_hash_ok(hash: &str) -> bool {
+    hash.len() == 64
+        && hash
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+/// What is behind `order_id`'s backup door, when `hash` is its key. The
+/// comparison takes the same time however much of the key matches.
+#[must_use]
+pub fn door_volume(state: &MarketState, order_id: &str, hash: &str) -> Option<OpenDoor> {
+    use subtle::ConstantTimeEq;
+    let door = state.doors.get(order_id)?;
+    if !bool::from(door.key.as_bytes().ct_eq(hash.as_bytes())) {
+        return None;
+    }
+    let buyer = &state.orders.get(order_id)?.buyer;
+    Some(OpenDoor {
+        volume: storage_volume(state, order_id, buyer)?,
+        upstream: door.upstream.clone(),
+    })
 }
 
 /// Paid, live machine orders whose replicas do not exist yet, resolved to
@@ -2024,6 +2102,9 @@ pub struct MarketOpts {
     pub fee_bps: u32,
     /// `StorageClass` purchased volumes are claimed from.
     pub storage_class: String,
+    /// The `rest-server` image the backup door runs on a bought volume
+    /// (`server/storage.rs`); `None` keeps the door shut.
+    pub storage_image: Option<String>,
     /// The hardware catalogue (`crate::hardware`), when the edge sells boxes
     /// and gateways. Unset, `/market/hardware*` answers 503.
     pub hardware_catalogue: Option<String>,
@@ -3156,6 +3237,10 @@ impl Market {
         &self.opts.storage_class
     }
 
+    pub fn storage_image(&self) -> Option<&str> {
+        self.opts.storage_image.as_deref()
+    }
+
     // ── virtual machines (crate::vms) ───────────────────────────────────
 
     /// The machine settings, when this edge runs machines.
@@ -3502,6 +3587,56 @@ impl Market {
             self.commit(&mut state, next).await?;
         }
         Ok(())
+    }
+
+    /// See [`door_volume`].
+    pub async fn door_volume(&self, order_id: &str, hash: &str) -> Option<OpenDoor> {
+        door_volume(&*self.state.lock().await, order_id, hash)
+    }
+
+    /// Set the backup door's key of `buyer`'s bought volume `order_id`. A new
+    /// key replaces the old one: the box's recovery code changed (an erase),
+    /// and the old backups, encrypted under the old code, are no longer its.
+    /// The upstream password is made with the first key and kept.
+    ///
+    /// # Errors
+    /// [`MarketError::NotFound`] for anything but the buyer's own bound
+    /// storage, [`MarketError::Invalid`] for a key of the wrong shape.
+    pub async fn set_door(
+        &self,
+        order_id: &str,
+        buyer: &str,
+        hash: &str,
+    ) -> Result<(), MarketError> {
+        if !door_hash_ok(hash) {
+            return Err(MarketError::Invalid("the door key is not a SHA-256 in hex"));
+        }
+        let mut state = self.state.lock().await;
+        if storage_volume(&state, order_id, buyer).is_none() {
+            return Err(MarketError::NotFound);
+        }
+        if state.doors.get(order_id).is_some_and(|d| d.key == hash) {
+            return Ok(());
+        }
+        let upstream = match state.doors.get(order_id) {
+            Some(d) => d.upstream.clone(),
+            None => crate::identity::random_hex(32)
+                .ok_or_else(|| MarketError::Store("no randomness for the door".to_string()))?,
+        };
+        let mut next = state.clone();
+        next.doors.insert(
+            order_id.to_string(),
+            Door {
+                key: hash.to_string(),
+                upstream,
+            },
+        );
+        self.commit(&mut state, next).await
+    }
+
+    /// See [`storage_volume`].
+    pub async fn storage_volume(&self, order_id: &str, buyer: &str) -> Option<StorageVolume> {
+        storage_volume(&*self.state.lock().await, order_id, buyer)
     }
 
     /// Lapsed storage orders whose claim may still exist.
@@ -5740,6 +5875,61 @@ mod tests {
     }
 
     #[test]
+    fn only_the_buyer_reaches_a_bound_storage_volume() {
+        let mut bound = paid("ord_a", Kind::Storage, 1, "b", Some(100));
+        bound.volume = Some("market-b/ord-a".to_string());
+        let mut lapsed = paid("ord_old", Kind::Storage, 1, "b", Some(5));
+        lapsed.volume = Some("market-b/ord-old".to_string());
+        let mut vm = paid("ord_vm", Kind::Compute, 1, "b", Some(100));
+        vm.volume = Some("market-b/ord-vm".to_string());
+        let st = state_of(vec![
+            bound,
+            lapsed,
+            vm,
+            paid("ord_todo", Kind::Storage, 2, "b", Some(100)),
+        ]);
+        assert_eq!(
+            storage_volume(&st, "ord_a", "b"),
+            Some(StorageVolume {
+                namespace: "market-b".to_string(),
+                pvc: "ord-a".to_string(),
+            })
+        );
+        // Someone else's order, or another buyer asking, is nothing.
+        assert_eq!(storage_volume(&st, "ord_a", "other"), None);
+        assert_eq!(storage_volume(&st, "ord_missing", "b"), None);
+        // Not bound yet, or not storage.
+        assert_eq!(storage_volume(&st, "ord_todo", "b"), None);
+        assert_eq!(storage_volume(&st, "ord_vm", "b"), None);
+        // A lapsed order's data stays reachable while its claim exists.
+        assert!(storage_volume(&st, "ord_old", "b").is_some());
+    }
+
+    #[test]
+    fn a_door_opens_only_with_its_own_key() {
+        let mut bound = paid("ord_a", Kind::Storage, 1, "b", Some(100));
+        bound.volume = Some("market-b/ord-a".to_string());
+        let mut st = state_of(vec![bound]);
+        let key = "ab".repeat(32);
+        assert_eq!(door_volume(&st, "ord_a", &key), None, "no key set yet");
+        st.doors.insert(
+            "ord_a".to_string(),
+            Door {
+                key: key.clone(),
+                upstream: "cd".repeat(32),
+            },
+        );
+        let open = door_volume(&st, "ord_a", &key).expect("the right key opens it");
+        assert_eq!(open.volume.pvc, "ord-a");
+        assert_eq!(open.upstream, "cd".repeat(32));
+        assert_eq!(door_volume(&st, "ord_a", &"ac".repeat(32)), None);
+        assert_eq!(door_volume(&st, "ord_b", &key), None);
+        assert!(door_hash_ok(&key));
+        assert!(!door_hash_ok(&"AB".repeat(32)));
+        assert!(!door_hash_ok("ab"));
+    }
+
+    #[test]
     fn namespaces_are_dns_labels_or_nothing() {
         assert_eq!(
             namespace_for("mattbox-01").as_deref(),
@@ -6170,6 +6360,7 @@ mod tests {
             currency: "eur".into(),
             fee_bps: DEFAULT_FEE_BPS,
             storage_class: DEFAULT_STORAGE_CLASS.into(),
+            storage_image: None,
             hardware_catalogue: None,
             vms: None,
             usdc: None,
@@ -6203,6 +6394,7 @@ mod tests {
             currency: "eur".into(),
             fee_bps: DEFAULT_FEE_BPS,
             storage_class: DEFAULT_STORAGE_CLASS.into(),
+            storage_image: None,
             hardware_catalogue: None,
             vms: None,
             usdc: None,
@@ -6280,6 +6472,59 @@ mod tests {
 
         market.use_mode(StripeMode::Test).await.unwrap();
         assert!(market.state.lock().await.listings.contains_key("lst_1"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Only the buyer sets a door's key, only on its own bound storage, and
+    /// the key survives a restart.
+    #[tokio::test]
+    async fn the_buyer_alone_sets_a_door_key() {
+        let dir = std::env::temp_dir().join(format!("market-door-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("market.json");
+        let mut bound = paid("ord_a", Kind::Storage, 1, "b", Some(u64::MAX));
+        bound.volume = Some("market-b/ord-a".to_string());
+        let mut todo = paid("ord_t", Kind::Storage, 1, "b", Some(u64::MAX));
+        todo.volume = None;
+        let mut test = state_of(vec![bound, todo]);
+        test.mode = Some(StripeMode::Test);
+        std::fs::write(
+            ledger_path(&file, StripeMode::Test),
+            serde_json::to_vec(&test).unwrap(),
+        )
+        .unwrap();
+        let market = Market::open(opts_at(&file)).await.unwrap();
+        market.use_mode(StripeMode::Test).await.unwrap();
+        let key = "0f".repeat(32);
+
+        assert!(matches!(
+            market.set_door("ord_a", "other", &key).await,
+            Err(MarketError::NotFound)
+        ));
+        assert!(matches!(
+            market.set_door("ord_t", "b", &key).await,
+            Err(MarketError::NotFound)
+        ));
+        assert!(matches!(
+            market.set_door("ord_a", "b", "not-hex").await,
+            Err(MarketError::Invalid(_))
+        ));
+        market.set_door("ord_a", "b", &key).await.unwrap();
+        let upstream = market.door_volume("ord_a", &key).await.unwrap().upstream;
+        assert!(door_hash_ok(&upstream), "{upstream}");
+        assert_ne!(upstream, key);
+
+        let again = Market::open(opts_at(&file)).await.unwrap();
+        again.use_mode(StripeMode::Test).await.unwrap();
+        assert!(again.door_volume("ord_a", &key).await.is_some());
+        let other = "1e".repeat(32);
+        again.set_door("ord_a", "b", &other).await.unwrap();
+        assert!(again.door_volume("ord_a", &key).await.is_none());
+        // A new key keeps the server's password: the server keeps running.
+        assert_eq!(
+            again.door_volume("ord_a", &other).await.unwrap().upstream,
+            upstream
+        );
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

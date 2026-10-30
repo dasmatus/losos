@@ -221,6 +221,12 @@ pub enum Op {
         tx: String,
         network: Option<String>,
     },
+    /// Set the key of the backup door of storage this box bought
+    /// (`crate::backup::door_key`). The secret it hashes never leaves.
+    StorageDoor {
+        order_id: String,
+        door: String,
+    },
     /// Pay this box the sales whose slots are over, without waiting for the
     /// edge to do it a day later. The edge refuses (409) while none are.
     Release,
@@ -599,6 +605,19 @@ impl Op {
             | Op::Release
             | Op::VmImages
             | Op::VmStatus => Ok(()),
+            Op::StorageDoor { order_id, door } => {
+                if !crate::backup::order_ok(order_id) {
+                    Err("order_id is not valid")
+                } else if door.len() != 64
+                    || !door
+                        .bytes()
+                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                {
+                    Err("door is not a SHA-256 in hex")
+                } else {
+                    Ok(())
+                }
+            }
             Op::VmOrder {
                 listing_id,
                 quantity,
@@ -893,6 +912,7 @@ impl Op {
             Op::Confirm { .. } => ("POST", "/market/confirm"),
             Op::FeePay { .. } => ("POST", "/market/fees/pay"),
             Op::Release => ("POST", "/market/sales/release"),
+            Op::StorageDoor { .. } => ("POST", "/market/storage-door"),
             Op::CoinKey { .. } => ("POST", "/market/coins/key"),
             Op::CoinPay { .. } => ("POST", "/market/coins/pay"),
             Op::Rpc { .. } => ("POST", "/market/rpc"),
@@ -1028,6 +1048,7 @@ impl Op {
             }
             Op::VmTicket { name, efi } => json!({ "name": name.trim(), "efi": efi }),
             Op::VmRemove { upload_id } => json!({ "upload_id": upload_id }),
+            Op::StorageDoor { order_id, door } => json!({ "order_id": order_id, "door": door }),
             Op::Onramp { address, euros } => json!({ "address": address, "euros": euros }),
             Op::OnrampStatus { order_id } => json!({ "order_id": order_id }),
             Op::HardwareCheckout { items } => json!({

@@ -1,7 +1,7 @@
 /* The recorder for nix/demo/edge-lan/two-boxes.nix: photographs the Mesh pane of
  * both boxes at every step the VM script announces.
  *
- *   LOSOS_RECORD_DIR=<dir> node nix/demo/edge-lan/record.mjs
+ *   LOSOS_RECORD_DIR=<dir> bun nix/demo/edge-lan/record.mjs
  *
  * The VM script (run by nix/demo/edge-lan/record.sh) writes <dir>/box{1,2}.token
  * and .port once the boxes are up, then appends one JSON line per step to
@@ -10,20 +10,25 @@
  * SPA, signed in with the box's admin key — waits for the pane to settle on
  * the edge state the step implies, writes <dir>/<nn>-<step>-<box>.png, and
  * acknowledges. The step's caption lands in <dir>/timeline.jsonl for
- * compose.sh. Needs the app's node_modules (admin-ui/app, after `npm ci`;
+ * compose.sh. Needs the app's node_modules (admin-ui/app, after `bun install`;
  * LOSOS_APP_DIR points elsewhere) for playwright;
  * LOSOS_CHROMIUM points at a chromium binary when Playwright's own is not
  * installed. */
-import { existsSync, readFileSync, writeFileSync, appendFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
 
 // playwright comes from the app's node_modules (LOSOS_APP_DIR, default
 // admin-ui/app in this checkout), wherever this script is run from.
-const appDir = process.env.LOSOS_APP_DIR || join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'admin-ui', 'app');
-const { chromium } = await import(pathToFileURL(join(appDir, 'node_modules', 'playwright', 'index.mjs')).href);
+const exists = (file) => Bun.file(file).exists();
+const join = (...parts) => parts.join('/');
+/* One line more at the end of a file. */
+async function append(path, line) {
+  const file = Bun.file(path);
+  await Bun.write(file, ((await file.exists()) ? await file.text() : '') + line);
+}
 
-const dir = process.env.LOSOS_RECORD_DIR;
+const appDir = Bun.env.LOSOS_APP_DIR || join(import.meta.dir, '..', '..', '..', 'admin-ui', 'app');
+const { chromium } = await import(join(appDir, 'node_modules', 'playwright', 'index.mjs'));
+
+const dir = Bun.env.LOSOS_RECORD_DIR;
 if (!dir) throw new Error('set LOSOS_RECORD_DIR');
 const boxes = ['box1', 'box2'];
 const want = { A1: 'none', A2: 'none', A3: 'none', A4: 'none', B1: 'found', B2: 'found', B5: 'none', B6: 'found', B8: 'found', end: 'found' };
@@ -32,19 +37,19 @@ const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 async function waitFor(path, timeoutMs = 60 * 60 * 1000) {
   const t0 = Date.now();
-  while (!existsSync(path)) {
+  while (!await exists(path)) {
     if (Date.now() - t0 > timeoutMs) throw new Error(`gave up waiting for ${path}`);
     await sleep(1000);
   }
 }
 
-const browser = await chromium.launch({ chromiumSandbox: false, executablePath: process.env.LOSOS_CHROMIUM || undefined });
+const browser = await chromium.launch({ chromiumSandbox: false, executablePath: Bun.env.LOSOS_CHROMIUM || undefined });
 
 async function openMesh(box) {
   await waitFor(join(dir, `${box}.port`));
   await waitFor(join(dir, `${box}.token`));
-  const port = readFileSync(join(dir, `${box}.port`), 'utf8').trim();
-  const token = readFileSync(join(dir, `${box}.token`), 'utf8').trim();
+  const port = (await Bun.file(join(dir, `${box}.port`)).text()).trim();
+  const token = (await Bun.file(join(dir, `${box}.token`)).text()).trim();
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
   await page.addInitScript((t) => {
     window.sessionStorage.setItem('losos-token', t);
@@ -84,7 +89,7 @@ let done = 0;
 log('waiting for the VM script');
 for (;;) {
   const tl = join(dir, 'timeline.jsonl');
-  const lines = existsSync(tl) ? readFileSync(tl, 'utf8').split('\n').filter(Boolean) : [];
+  const lines = await exists(tl) ? (await Bun.file(tl).text()).split('\n').filter(Boolean) : [];
   if (lines.length > done) {
     const ev = JSON.parse(lines[done]);
     log(`step ${ev.n} ${ev.step}: ${ev.caption}`);
@@ -96,12 +101,12 @@ for (;;) {
         log(`${box}: ${e.message}`);
       }
     }
-    appendFileSync(join(dir, 'shots.jsonl'), JSON.stringify({ ...ev, files }) + '\n');
-    writeFileSync(join(dir, `ack-${ev.n}`), '');
+    await append(join(dir, 'shots.jsonl'), JSON.stringify({ ...ev, files }) + '\n');
+    await Bun.write(join(dir, `ack-${ev.n}`), '');
     done += 1;
     if (ev.step === 'end') break;
   } else {
-    if (existsSync(join(dir, 'vm-finished'))) break;
+    if (await exists(join(dir, 'vm-finished'))) break;
     await sleep(1000);
   }
 }

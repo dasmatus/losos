@@ -16,7 +16,7 @@
  * The shared editor's WebSocket has no box here, so it stays offline and
  * the text is what is typed; the routes are stubbed with page.route(). */
 
-import assert from 'node:assert';
+import assert from './assert.mjs';
 import { launch, runner, serve, shellRoutes } from './harness.mjs';
 
 const { origin, close: closeServer } = await serve({ csp: true });

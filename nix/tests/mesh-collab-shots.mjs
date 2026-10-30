@@ -30,30 +30,51 @@
 // that a plain Files page does not also log fails the run, except in the
 // before phase.
 
-import { createHash, X509Certificate } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+const exists = (file) => Bun.file(file).exists();
+const join = (...parts) => parts.join("/");
 
 const VIEW = { width: 1280, height: 900 };
 const WAIT = 180_000;
 
-const { chromium } = await import(process.env.PLAYWRIGHT_CORE ?? "playwright-core");
+const { chromium } = await import(Bun.env.PLAYWRIGHT_CORE ?? "playwright-core");
 
-function spkiPin(pemFile) {
-  const cert = new X509Certificate(readFileSync(pemFile));
-  const der = cert.publicKey.export({ type: "spki", format: "der" });
-  return createHash("sha256").update(der).digest("base64");
+async function spkiPin(pemFile) {
+  const pem = await Bun.file(pemFile).text();
+  const der = Uint8Array.fromBase64(/-----BEGIN CERTIFICATE-----([^-]+)-----END CERTIFICATE-----/.exec(pem)[1].replace(/\s/g, ""));
+  // One DER element at `at`: where its contents start and where it ends.
+  const element = (at) => {
+    let len = der[at + 1];
+    let start = at + 2;
+    if (len & 0x80) {
+      const n = len & 0x7f;
+      len = 0;
+      for (let i = 0; i < n; i++) len = len * 256 + der[start + i];
+      start += n;
+    }
+    return { start, end: start + len };
+  };
+  // Certificate > tbsCertificate > [0] version, serial, signature, issuer,
+  // validity, subject, then the subjectPublicKeyInfo Chromium hashes.
+  let at = element(element(0).start).start;
+  if (der[at] === 0xa0) at = element(at).end;
+  for (let i = 0; i < 5; i++) at = element(at).end;
+  const spki = der.subarray(at, element(at).end);
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", spki)).toBase64();
 }
 
 /** The pictures of both windows, in the order a person sees them. */
 class Shots {
-  constructor(out, meta) {
+  constructor(out, meta, steps) {
     this.out = out;
-    mkdirSync(out, { recursive: true });
-    const file = join(out, "manifest.json");
-    const old = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : null;
-    this.steps = old?.steps ?? [];
+    this.steps = steps;
     this.meta = meta;
+  }
+
+  /** A run that goes on from the manifest an earlier phase left in `out`. */
+  static async open(out, meta) {
+    const manifest = Bun.file(join(out, "manifest.json"));
+    const steps = (await manifest.exists()) ? (await manifest.json()).steps : [];
+    return new Shots(out, meta, steps);
   }
 
   async take(w, slug, title, action = { kind: "none" }, targets = {}) {
@@ -68,12 +89,12 @@ class Shots {
     const url = new URL(w.page.url());
     this.steps.push({ file, url: `${url.host}${url.pathname}${url.search}`, title, action, targets: found });
     console.log(file, title);
-    this.save();
+    await this.save();
   }
 
-  save() {
+  async save() {
     const manifest = { feature: "mesh-collab", viewport: VIEW, dpr: 2, ...this.meta, steps: this.steps };
-    writeFileSync(join(this.out, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
+    await Bun.write(join(this.out, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
   }
 }
 
@@ -383,24 +404,24 @@ const phases = {
   },
 };
 
-const [phase, configFile, out] = process.argv.slice(2);
+const [phase, configFile, out] = Bun.argv.slice(2);
 if (!(phase in phases) || configFile === undefined || out === undefined) {
-  console.error(`usage: mesh-collab-shots.mjs ${Object.keys(phases).join("|")} CONFIG OUT`);
-  process.exit(2);
+  // Thrown: an uncaught error is what makes Bun exit non-zero.
+  throw new Error(`usage: mesh-collab-shots.mjs ${Object.keys(phases).join("|")} CONFIG OUT`);
 }
 const cfg = {
   evaSays: "- Pack the tent and two sleeping bags",
   matusSays: "- I'll bring the camping stove",
   evaApart: "- Buy a map of the Wachau",
   matusApart: "- Leave at seven",
-  ...JSON.parse(readFileSync(configFile, "utf8")),
+  ...(await Bun.file(configFile).json()),
 };
 const strict = phase !== "before";
 const browser = await chromium.launch({
   args: [`--ignore-certificate-errors-spki-list=${cfg.certs.map(spkiPin).join(",")}`],
 });
 const problems = [];
-const s = new Shots(out, { commit: cfg.commit ?? "", test: cfg.test ?? "" });
+const s = await Shots.open(out, { commit: cfg.commit ?? "", test: cfg.test ?? "" });
 const hostOf = (who) => new URL(who.base).hostname.split(".")[0];
 const m = await window(browser, cfg.owner, hostOf(cfg.owner), problems, strict);
 const e = await window(browser, cfg.guest, hostOf(cfg.guest), problems, strict);
@@ -417,6 +438,6 @@ try {
   await browser.close();
 }
 if (problems.length > 0) {
-  console.error(`the pages reported errors:\n${problems.join("\n")}`);
-  process.exit(1);
+  // Thrown: an uncaught error is what makes Bun exit non-zero.
+  throw new Error(`the pages reported errors:\n${problems.join("\n")}`);
 }

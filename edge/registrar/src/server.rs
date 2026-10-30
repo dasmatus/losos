@@ -101,6 +101,7 @@ mod llm;
 mod manage;
 mod operator;
 mod provider;
+mod storage;
 mod tang;
 mod vm;
 
@@ -272,6 +273,9 @@ struct AppState {
     /// Machine image transfers in flight (`vm::MAX_TRANSFERS`), which run
     /// outside [`guard`] and so outside [`AppState::limiter`].
     transfers: Arc<Semaphore>,
+    /// The backup door on bought storage (`storage`), which also runs
+    /// outside [`guard`].
+    storage: Arc<storage::Door>,
     /// The terminal (`crate::operator`); `None` without `--access-dir`.
     operator: Option<Arc<crate::operator::Operator>>,
     /// The page boxes are managed from (`manage`); `None` without
@@ -798,6 +802,11 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         routes,
         passes: Arc::new(std::sync::Mutex::new(HashMap::new())),
         transfers: Arc::new(Semaphore::new(vm::MAX_TRANSFERS)),
+        storage: Arc::new(
+            storage::Door::new()
+                .into_diagnostic()
+                .wrap_err("build the storage client")?,
+        ),
         operator,
         manage,
         calls_relay,
@@ -879,6 +888,7 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         .route("/market/fees/pay", post(market_fees_pay))
         .route("/market/rpc", post(market_rpc))
         .route("/market/account", post(market_account))
+        .route("/market/storage-door", post(storage::set_door))
         // Pay as you go for AI models (`llm`). The chat route is merged
         // below, outside the guard.
         .route("/market/llm/models", post(llm::overview))
@@ -937,6 +947,9 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         // image is gigabytes and takes minutes. `vm::transfer_router` has
         // its own cap, idle timeout and size limit.
         .merge(vm::transfer_router(state.clone()))
+        // A box's backup on the storage it bought: packs of megabytes, many
+        // of them (`storage`), with its own cap.
+        .merge(storage::router(state.clone()))
         // The same for the manage page: an app install on a box outlasts
         // the API's budget (`manage`).
         .merge(manage::router(state.clone()))

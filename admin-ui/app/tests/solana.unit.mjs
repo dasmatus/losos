@@ -11,17 +11,13 @@
  * LOSOS_ESCROW_PROGRAM set to the program the validator loaded at
  * LosEscrow111…, it also pays into the escrow and reads the deposit back.
  *
- *   node tests/solana.node.mjs
- *   LOSOS_SOLANA_RPC=http://127.0.0.1:8899 node tests/solana.node.mjs
+ *   bun tests/solana.unit.mjs
+ *   LOSOS_SOLANA_RPC=http://127.0.0.1:8899 bun tests/solana.unit.mjs
  */
 
-import assert from 'node:assert/strict';
-import { randomBytes } from 'node:crypto';
-import { writeFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
+import assert from './assert.mjs';
 import { ed25519 } from '@noble/curves/ed25519.js';
 import { base58, base64 } from '@scure/base';
-import * as esbuild from 'esbuild';
 
 const JUNK = 'test test test test test test test test test test test junk';
 // solana-keygen pubkey "prompt://?full-path=m/44'/501'/0'/0'" with JUNK, no passphrase.
@@ -30,16 +26,7 @@ const USDC_DEVNET = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
 // spl-token address --verbose --owner JUNK_ADDRESS --token USDC_DEVNET
 const JUNK_USDC_ATA = 'Acp8hQfvQgptyqCreekNzaEHXMv6o3L1JiSwXmRHaaDW';
 
-const built = await esbuild.build({
-  entryPoints: [fileURLToPath(new URL('../src/wallet/solana.ts', import.meta.url))],
-  bundle: true,
-  format: 'esm',
-  platform: 'node',
-  write: false,
-});
-const sol = await import(
-  `data:text/javascript;base64,${Buffer.from(built.outputFiles[0].text).toString('base64')}`
-);
+const sol = await import('../src/wallet/solana.ts');
 
 const failures = [];
 async function check(name, fn) {
@@ -53,7 +40,8 @@ async function check(name, fn) {
 }
 
 const freshOwner = () => base58.encode(ed25519.getPublicKey(ed25519.utils.randomSecretKey()));
-const memo = () => `0x${randomBytes(32).toString('hex')}`;
+const randomBytes = (n) => crypto.getRandomValues(new Uint8Array(n));
+const memo = () => `0x${randomBytes(32).toHex()}`;
 const buyer = sol.solanaKeyFromPhrase(JUNK);
 
 await check('junk mnemonic derives the address solana-keygen prints', () => {
@@ -67,7 +55,7 @@ await check('a phrase that fails its checksum is refused', () => {
 });
 
 await check('base58 round trip and address shape', () => {
-  const bytes = new Uint8Array(randomBytes(32));
+  const bytes = randomBytes(32);
   const text = sol.formatBase58(bytes);
   assert.deepEqual(base58.decode(text), bytes);
   assert.equal(sol.formatBase58(new Uint8Array(32)), sol.SYSTEM_PROGRAM);
@@ -161,7 +149,7 @@ function escrowPay(seller = freshOwner(), treasury = freshOwner()) {
     deadline: BigInt(Math.floor(Date.now() / 1000) + 33 * 86_400),
     buyerBox: freshOwner(),
     sellerBox: freshOwner(),
-    nonce: new Uint8Array(randomBytes(32)),
+    nonce: randomBytes(32),
     recentBlockhash: sol.formatBase58(new Uint8Array(32).fill(9)),
   };
 }
@@ -206,7 +194,7 @@ await check("escrow pay layout: the program's nine accounts and 153 bytes", () =
   assert.equal(data.length, 153);
   assert.equal(data[0], 1);
   assert.deepEqual(data.subarray(1, 33), p.nonce);
-  assert.equal(`0x${Buffer.from(data.subarray(33, 65)).toString('hex')}`, p.orderIdHash);
+  assert.equal(`0x${data.subarray(33, 65).toHex()}`, p.orderIdHash);
   const view = new DataView(data.buffer, data.byteOffset);
   assert.equal(view.getBigUint64(65, true), p.gross);
   assert.equal(view.getBigUint64(73, true), p.fee);
@@ -292,12 +280,12 @@ await check('taps layout: top_up, then one open_tap per box with its id, rate an
   assert.equal(new DataView(top.data.buffer, top.data.byteOffset).getBigUint64(1, true), p.topUp);
   opens.forEach((ix, i) => {
     const tap = p.taps[i];
-    const id = Buffer.from(tap.key.slice(2), 'hex');
+    const id = Uint8Array.fromHex(tap.key.slice(2));
     assert.equal(ix.program, ESCROW);
     assert.deepEqual(ix.accounts, [buyer.address, config, balance, sol.escrowTapAddress(ESCROW, config, buyer.address, new Uint8Array(id)), tap.seller, sol.SYSTEM_PROGRAM]);
     assert.equal(ix.data.length, 43);
     assert.equal(ix.data[0], 7);
-    assert.deepEqual(Buffer.from(ix.data.subarray(1, 33)), id);
+    assert.deepEqual(ix.data.slice(1, 33), id);
     const view = new DataView(ix.data.buffer, ix.data.byteOffset);
     assert.equal(view.getBigUint64(33, true), tap.rate);
     assert.equal(view.getUint16(41, true), 400);
@@ -345,7 +333,7 @@ await check('ask_withdrawal and withdraw: the buyer, the config and the balance,
   assert.deepEqual([...take.ixs[1].data], [11]);
 });
 
-const RPC = process.env.LOSOS_SOLANA_RPC;
+const RPC = Bun.env.LOSOS_SOLANA_RPC;
 if (RPC === undefined || RPC === '') {
   console.log('  skip live payment (LOSOS_SOLANA_RPC is not set)');
 } else {
@@ -379,8 +367,8 @@ if (RPC === undefined || RPC === '') {
       signature,
       { encoding: 'jsonParsed', commitment: 'confirmed', maxSupportedTransactionVersion: 0 },
     ]);
-    if (process.env.LOSOS_SOLANA_SAMPLE) {
-      await writeFile(process.env.LOSOS_SOLANA_SAMPLE, `${JSON.stringify(tx, null, 2)}\n`);
+    if (Bun.env.LOSOS_SOLANA_SAMPLE) {
+      await Bun.write(Bun.env.LOSOS_SOLANA_SAMPLE, `${JSON.stringify(tx, null, 2)}\n`);
     }
 
     assert.equal(tx.meta.err, null);
@@ -409,7 +397,7 @@ if (RPC === undefined || RPC === '') {
 // With the escrow program loaded at ESCROW as well (the edge's test loads it
 // the same way: `--bpf-program LosEscrow111… losos_escrow.so`), the page's
 // payment goes into a deposit the program then holds.
-if (RPC && process.env.LOSOS_ESCROW_PROGRAM === ESCROW) {
+if (RPC && Bun.env.LOSOS_ESCROW_PROGRAM === ESCROW) {
   await check(`live escrow payment against ${RPC}`, async () => {
     let id = 0;
     const rpc = async (method, params = []) => {
@@ -470,7 +458,7 @@ if (RPC && process.env.LOSOS_ESCROW_PROGRAM === ESCROW) {
     assert.equal(base58.encode(d.subarray(228, 260)), p.sellerBox);
     assert.equal(base58.encode(d.subarray(36, 68)), buyer.address);
     assert.equal(base58.encode(d.subarray(68, 100)), seller);
-    assert.equal(`0x${Buffer.from(d.subarray(100, 132)).toString('hex')}`, p.orderIdHash);
+    assert.equal(`0x${d.subarray(100, 132).toHex()}`, p.orderIdHash);
     const view = new DataView(d.buffer, d.byteOffset);
     assert.equal(view.getBigUint64(164, true), p.gross);
     assert.equal(view.getBigUint64(172, true), p.fee);
@@ -481,7 +469,7 @@ if (RPC && process.env.LOSOS_ESCROW_PROGRAM === ESCROW) {
 }
 
 if (failures.length > 0) {
-  console.error(`\n${failures.length} failed:\n${failures.map((f) => `  - ${f}`).join('\n')}`);
-  process.exit(1);
+  // Thrown, not printed: an uncaught error is what makes Bun exit non-zero.
+  throw new Error(`${failures.length} failed:\n${failures.map((f) => `  - ${f}`).join('\n')}`);
 }
 console.log('\nall solana checks passed');

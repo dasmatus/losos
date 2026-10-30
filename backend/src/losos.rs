@@ -111,6 +111,12 @@ pub trait Losos {
     /// `None` on a box that has none (an older build, a test).
     fn escrow_keys(&mut self) -> anyhow::Result<Option<crate::escrow_key::Keys>>;
 
+    /// The edge this box trades through and its id there, or `None` with no
+    /// master proxy configured.
+    fn market_config(&mut self) -> Option<crate::market::Config> {
+        crate::market::Config::from_env()
+    }
+
     // ── Finding an edge proxy ───────────────────────────────────────────
     /// What the last scan for an edge proxy found (`crate::edge`). The real
     /// daemon answers from its scanner's cache; the fake answers what a test
