@@ -7,8 +7,7 @@ import { StatusDot, type DotState } from "@/components/ui/badge";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { ThemeToggle } from "@/components/ui/theme-toggle";
-import { LanguagePicker } from "@/components/ui/language-picker";
+import { DisplayMenu } from "@/components/preferences-menu";
 import {
   getHealth,
   getSettings,
@@ -77,9 +76,10 @@ export interface HomeProps {
    * heading; it never draws a widget. Pass <HomeWidgetPlaceholder /> during
    * integration to see where the slot sits. */
   widgets?: React.ReactNode;
-  /* The app shell has a theme switch of its own in its top bar. This page is
-   * also reachable as a bare homepage with no shell around it, and then the
-   * switch has to be here — so it is, and the shell turns it off. */
+  /* The app shell has the theme and the language in its person menu. This
+   * page is also reachable as a bare homepage with no shell around it, and
+   * then they have to be here, in a menu of their own; the shell turns it
+   * off. */
   showThemeSwitch?: boolean;
   /* How long the box has been up, in seconds.
    *
@@ -265,8 +265,7 @@ function HomeHeader({
         </p>
       </div>
 
-      {showThemeSwitch && <LanguagePicker />}
-      {showThemeSwitch && <ThemeToggle />}
+      {showThemeSwitch && <DisplayMenu />}
     </header>
   );
 }

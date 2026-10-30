@@ -411,7 +411,7 @@ await check('back from their box, someone of another box keeps to their own bran
     me: (req) => (req.headers().authorization === 'token chat-tok' ? EVA : null),
     room: ROOM,
   });
-  await page.locator('[data-me]', { hasText: 'Eva' }).waitFor();
+  await page.locator('[data-testid="signed-in-name"]', { hasText: 'Eva' }).waitFor();
   const session = m.calls.find((c) => c.path === '/matrix/session');
   assert.deepEqual(session.body, { access_token: 'openid-tok', matrix_server_name: 'kitchenbox.local', display_name: 'Eva' });
   assert.equal(new URL(page.url()).hash, '');

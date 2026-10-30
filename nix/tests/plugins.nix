@@ -6,7 +6,8 @@
 #
 #   * lososd loads `.#losos-plugins` from the store, which is a read-only
 #     mount, and serves the look from it: through nginx and LosOS Login,
-#     with the person's section checked, the files where they always were;
+#     the box's own background where it always was and the owner's copy of
+#     it in `looks/`;
 #   * the same lososd binary refuses to start on a plugin directory outside
 #     the store, a writable one, or one whose files are not root's, and a
 #     release build ignores the debug-only stand-in for the store;
@@ -36,7 +37,7 @@ let
           path = "/settings/look";
           waitFor = {
             role = "radiogroup";
-            name = "Background";
+            name = "Your background";
           };
         }
         {
@@ -44,7 +45,7 @@ let
           path = "/settings/look";
           waitFor = {
             role = "radiogroup";
-            name = "Background";
+            name = "Your background";
           };
           steps = [
             {
@@ -128,6 +129,9 @@ pkgs.testers.nixosTest {
 
     start_all()
     box.wait_for_unit("lososd.service")
+    # lososd's unit is up before its API: under emulation loading the
+    # plugins takes it a minute, and the claim would meet nginx's 502.
+    box.wait_for_open_port(8082)
     box.wait_for_unit("nginx.service")
     box.wait_for_open_port(443)
     laptop.wait_for_unit("multi-user.target")
@@ -200,42 +204,44 @@ pkgs.testers.nixosTest {
     with subtest("the look is served by its plugin, through nginx and LosOS Login"):
         code, _ = api("/api/look")
         assert code == 401, code
+        bearer = f"-H 'Authorization: Bearer {spare}'"
+        laptop.succeed(f"echo {PNG} | base64 -d > /tmp/bg.png")
+        # The box's own background is the spare key's, in the files where
+        # lososd always kept it.
+        code, body = api(
+            "/api/look/background",
+            method="PUT",
+            extra=f"{bearer} -H 'Content-Type: image/png' --data-binary @/tmp/bg.png",
+        )
+        assert code == 200, (code, body)
+        assert json.loads(body)["personal"] is False, body
+        box.succeed("cmp /var/lib/losos/background.img <(base64 -d <<< " + PNG + ")")
+        # The owner's first look is a copy of it, theirs from then on.
         code, body = api("/api/look", cookie)
         assert code == 200, (code, body)
         look = json.loads(body)
-        assert look["background"] == {"kind": "none"}, look
+        assert look["personal"] is True, look
+        assert look["background"]["url"] == "/api/look/background/matus?v=1", look
         assert look["shipped"] == ["tide", "grid", "dusk"], look
-        code, body = api("/api/look", cookie, "POST", {"veil": 35})
-        assert code == 200 and json.loads(body)["veil"] == 35, (code, body)
-        laptop.succeed(f"echo {PNG} | base64 -d > /tmp/bg.png")
-        code, body = api(
-            "/api/look/background",
-            cookie,
-            "PUT",
-            extra="-H 'Content-Type: image/png' --data-binary @/tmp/bg.png",
-        )
-        assert code == 200, (code, body)
-        assert json.loads(body)["background"]["kind"] == "upload", body
-        code, _ = api("/api/look/background", cookie, extra="-o /tmp/got.png")
+        code, _ = api("/api/look/background/matus?v=1", cookie, extra="-o /tmp/got.png")
         assert code == 200, code
         laptop.succeed("cmp /tmp/bg.png /tmp/got.png")
-        # Where the files always were, as lososd wrote them before.
-        on_disk = json.loads(box.succeed("cat /var/lib/losos/look.json"))
+        code, body = api("/api/look", cookie, "POST", {"veil": 35})
+        assert code == 200 and json.loads(body)["veil"] == 35, (code, body)
+        on_disk = json.loads(box.succeed("cat /var/lib/losos/looks/matus.json"))
         assert on_disk["veil"] == 35, on_disk
-        box.succeed("cmp /var/lib/losos/background.img <(base64 -d <<< " + PNG + ")")
+        box.succeed("test $(stat -c %a /var/lib/losos/looks/matus.json) = 600")
+        assert json.loads(box.succeed("cat /var/lib/losos/look.json"))["veil"] == 60
+        # Dropping theirs leaves the box's.
         code, body = api("/api/look/background", cookie, "DELETE")
         assert code == 200 and json.loads(body)["background"]["kind"] == "none", body
+        box.fail("test -e /var/lib/losos/looks/matus.img")
+        box.succeed("test -e /var/lib/losos/background.img")
+        code, body = api("/api/look/background", method="DELETE", extra=bearer)
+        assert code == 200 and json.loads(body)["background"]["kind"] == "none", body
         box.fail("test -e /var/lib/losos/background.img")
-        # The spare key reaches it too, and puts the veil back to its
-        # default for the pictures below.
-        code, _ = api("/api/look", extra=f"-H 'Authorization: Bearer {spare}'")
-        assert code == 200, code
-        code, body = api(
-            "/api/look",
-            method="POST",
-            data={"veil": 60},
-            extra=f"-H 'Authorization: Bearer {spare}'",
-        )
+        # The veil back to its default for the pictures below.
+        code, body = api("/api/look", cookie, "POST", {"veil": 60})
         assert code == 200 and json.loads(body)["veil"] == 60, (code, body)
 
     with subtest("the pins are served by their plugin"):

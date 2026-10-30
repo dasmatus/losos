@@ -110,6 +110,14 @@ impl Drop for Daemon {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+        // A failing test shows what lososd logged.
+        if std::thread::panicking() {
+            if let Some(mut err) = self.child.stderr.take() {
+                let mut log = String::new();
+                let _ = err.read_to_string(&mut log);
+                eprintln!("lososd said:\n{log}");
+            }
+        }
         // The sealed package is not removable until it is writable again.
         for entry in std::fs::read_dir(&self.store_root)
             .into_iter()
@@ -155,6 +163,7 @@ impl Daemon {
             json!({"users": {
                 "ada": {"displayname": "Ada", "password": "x", "groups": ["losos-look"]},
                 "bob": {"displayname": "Bob", "password": "x", "groups": []},
+                "ola": {"displayname": "Ola", "password": "x", "groups": ["losos-admins", "losos-owner"]},
                 "root": {"displayname": "Root", "password": "x", "groups": ["losos-admins"]}
             }})
             .to_string(),
@@ -267,6 +276,16 @@ impl Daemon {
     /// As a person LosOS Login signed in.
     fn person(&self, name: &str, method: &str, path: &str) -> Answer {
         self.call(method, path, &[("Remote-User", name)], b"")
+    }
+
+    /// As a person LosOS Login signed in, with a body.
+    fn person_send(&self, name: &str, method: &str, path: &str, body: &[u8]) -> Answer {
+        self.call(
+            method,
+            path,
+            &[("Remote-User", name), ("Content-Type", "application/json")],
+            body,
+        )
     }
 
     fn probe(&self) -> PathBuf {
@@ -386,6 +405,106 @@ fn the_look_is_served_by_its_plugin() {
     assert!(!d.dir.path().join("state/background.img").exists());
     let a = d.call("GET", "/api/look/background", &[], b"");
     assert_eq!(a.status, 404);
+}
+
+#[test]
+fn each_person_keeps_their_own_background() {
+    let d = Daemon::start();
+    // The box's own background, as a box from before kept it.
+    let bearer = format!("Bearer {TOKEN}");
+    let a = d.call(
+        "PUT",
+        "/api/look/background",
+        &[("Authorization", &bearer)],
+        PNG,
+    );
+    assert_eq!(a.status, 200);
+    assert_eq!(a.json()["personal"], false);
+
+    // Bob, who is in no section at all, picks his own.
+    let a = d.person_send(
+        "bob",
+        "POST",
+        "/api/look",
+        br#"{"background": {"kind": "shipped", "name": "dusk"}, "veil": 30}"#,
+    );
+    assert_eq!(a.status, 200, "{}", String::from_utf8_lossy(&a.body));
+    assert_eq!(a.json()["personal"], true);
+    assert_eq!(a.json()["background"]["name"], "dusk");
+    // Ada starts plain: the box's picture is not hers.
+    let a = d.person("ada", "GET", "/api/look");
+    assert_eq!(a.json()["background"]["kind"], "none");
+    assert_eq!(a.json()["veil"], 60);
+    // Her upload is hers, read back with her sign-in and nobody else's.
+    let a = d.call(
+        "PUT",
+        "/api/look/background",
+        &[("Remote-User", "ada")],
+        b"\xff\xd8\xff\xe0JFIF",
+    );
+    assert_eq!(a.status, 200, "{}", String::from_utf8_lossy(&a.body));
+    assert_eq!(
+        a.json()["background"]["url"],
+        "/api/look/background/ada?v=1"
+    );
+    let a = d.person("ada", "GET", "/api/look/background/ada?v=1");
+    assert_eq!(a.status, 200);
+    assert!(a
+        .head
+        .to_ascii_lowercase()
+        .contains("content-type: image/jpeg"));
+    assert_eq!(
+        d.person("bob", "GET", "/api/look/background/ada?v=1")
+            .status,
+        404
+    );
+    assert_eq!(
+        d.call("GET", "/api/look/background/ada?v=1", &[], b"")
+            .status,
+        401
+    );
+    // Bob's choice did not reach the spare key's page.
+    let a = d.admin("GET", "/api/look", Value::Null);
+    assert_eq!(a.json()["background"]["kind"], "upload");
+    assert_eq!(a.json()["background"]["url"], "/api/look/background?v=1");
+
+    // The owner's first look is a copy of the box's.
+    let a = d.person("ola", "GET", "/api/look");
+    assert_eq!(a.status, 200);
+    assert_eq!(a.json()["background"]["kind"], "upload");
+    assert_eq!(
+        a.json()["background"]["url"],
+        "/api/look/background/ola?v=1"
+    );
+    let a = d.person("ola", "GET", "/api/look/background/ola?v=1");
+    assert_eq!(a.body, PNG);
+
+    // Widgets stay the look section's.
+    let a = d.person_send(
+        "bob",
+        "POST",
+        "/api/look/widgets",
+        br#"{"name": "x", "source": "<b/>"}"#,
+    );
+    assert_eq!(a.status, 403);
+
+    // On disk, beside the box's, readable by root only.
+    for f in [
+        "state/looks/ada.json",
+        "state/looks/ada.img",
+        "state/looks/bob.json",
+        "state/looks/ola.img",
+    ] {
+        let mode = std::fs::metadata(d.dir.path().join(f))
+            .unwrap_or_else(|e| panic!("{f}: {e}"))
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600, "{f}");
+    }
+    let bob: Value =
+        serde_json::from_slice(&std::fs::read(d.dir.path().join("state/looks/bob.json")).unwrap())
+            .unwrap();
+    assert_eq!(bob["veil"], 30);
 }
 
 #[test]

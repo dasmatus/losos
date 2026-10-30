@@ -38,8 +38,12 @@ presmeruje na `https://`.
   domény: pridajte doménu, pozrite si jej dva záznamy a odstráňte ju.
 - **Hardvér** a **Zabezpečenie.** Každý prepínač na týchto paneloch.
 - **Hľadanie.** Nájde stránku zariadenia podľa názvu.
-- **Vzhľad, jazyk a bočný panel.** Svetlý, tmavý alebo podľa prehliadača,
-  jazyk a bočný panel zbalený na ikony. Prehliadač si to pamätá.
+- **Vzhľad.** Vaše vlastné pozadie, bez obrázka alebo s obrázkom, ktorý
+  zariadenie dodáva, a závoj nad ním. Vlastný obrázok sa nahráva so
+  zapnutým JavaScriptom.
+- **Téma, jazyk a bočný panel.** Svetlý, tmavý alebo podľa prehliadača a
+  jazyk, vo vašej ponuke vpravo hore, a bočný panel zbalený na ikony.
+  Prehliadač si to pamätá.
 
 Zmena, ktorú urobíte, sa ukáže v lište Použiť na spodku panela, ktorá zmeny
 počíta. **Použiť** zariadenie prestavia ako na obvyklých stránkach a stránka
