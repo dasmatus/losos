@@ -40,19 +40,20 @@ dostane názov zo svojho `_category_.json`.
 
 ```sh
 cd handbook
-npm ci
-npm start                 # live preview on http://localhost:3000
-npm run build             # fails on a broken link, on purpose
+bun install --frozen-lockfile --ignore-scripts
+bun run start             # live preview on http://localhost:3000
+bun run build             # fails on a broken link, on purpose
 ```
 
 Každý push do `main` zverejní stránku na [losos.dasmat.us](https://losos.dasmat.us)
 (`.github/workflows/handbook.yml`) a každé zariadenie si zostaví vlastnú
 kópiu (`losos-handbook` vo `nix/packages.nix`, poskytovanú na `/handbook/`
-cez `modules/containers.nix`). Po zmene `package-lock.json` obnovte
-`npmDepsHash` vo `nix/packages.nix`:
+cez `modules/containers.nix`). Docusaurus beží v prostredí
+[Bun](https://bun.sh), nie v Node. Po zmene `bun.lock` obnovte `hash` príručky vo
+`nix/packages.nix`:
 
 ```sh
-nix run nixpkgs#prefetch-npm-deps -- handbook/package-lock.json
+python3 .github/scripts/fix-hashes.py
 ```
 
 ### Obrázky \{#pictures}
@@ -77,9 +78,9 @@ Obrázky sú v `handbook/docs/img/`. Sú troch druhov:
 
 ```sh
 cd admin-ui/app
-npm run build
-node tests/handbook-screens.mjs /tmp/handbook-screens          # every shot
-node tests/handbook-screens.mjs /tmp/handbook-screens mesh     # names containing "mesh"
+bun run build
+bun tests/handbook-screens.mjs /tmp/handbook-screens           # every shot
+bun tests/handbook-screens.mjs /tmp/handbook-screens mesh      # names containing "mesh"
 ```
 
 :::note[Keď Playwright nemá Chromium]
@@ -102,8 +103,8 @@ Každá stránka je preložená celá. Meňte všetky tri jazyky naraz.
 :::
 
 ```sh
-npm run write-translations -- --locale sk   # refresh the string files
-npm run start -- --locale sk                # preview one locale
+bun run write-translations --locale sk      # refresh the string files
+bun run start --locale sk                   # preview one locale
 ```
 
 ## Pravidlá písania, ktorými sa táto príručka riadi \{#writing-rules-this-handbook-follows}

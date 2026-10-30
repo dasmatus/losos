@@ -16,6 +16,7 @@ import ci from "./ci";
 import cloud from "./cloud";
 import cloudApps from "./cloud-apps";
 import credentials from "./credentials";
+import logs from "./logs";
 import details from "./details";
 import collab from "./collab";
 import contacts from "./contacts";
@@ -41,6 +42,7 @@ import palette from "./palette";
 import panes from "./panes";
 import pictures from "./pictures";
 import pins from "./pins";
+import problems from "./problems";
 import profile from "./profile";
 import quick from "./quick";
 import report from "./report";
@@ -83,6 +85,8 @@ export const MESSAGES = {
   ...advanced,
   ...access,
   ...credentials,
+  ...logs,
+  ...problems,
   ...users,
   ...moderation,
   ...account,

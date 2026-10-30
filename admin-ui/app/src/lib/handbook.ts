@@ -5,7 +5,7 @@
  * paths on the admin origin and work with no internet. The right-hand side
  * is the page's slug under handbook/docs/, and each troubleshooting page
  * declares that slug in its front matter so a file rename cannot move it:
- * `npm run check:links` in handbook/ reads this file and fails when an
+ * `bun run check:links` in handbook/ reads this file and fails when an
  * entry here names a page that is not there.
  *
  * `index` is the fallback: an error with no page of its own sends the owner
@@ -51,7 +51,9 @@ export const HANDBOOK_ENTRIES = {
   "edge-tiers": "in-depth/edge-federation/",
   tpm: "reference/tpm/",
   credentials: "reference/credentials/",
+  "problem-reports": "manual/problem-reports/",
   wiki: "manual/wiki/",
+  logs: "manual/logs/",
   // The chapters, as LosOS Wiki lists the handbook among the box's wikis.
   "chapter-start": "start/what-is-losos/",
   "chapter-types": "types/",

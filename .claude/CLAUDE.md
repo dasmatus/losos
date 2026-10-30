@@ -32,7 +32,7 @@ nix build .#checks.x86_64-linux.losos-tpm-unlock    # installer, swtpm unlock
 nix build .#checks.x86_64-linux.losos-iso-install   # the real installer offline, then boot the disk
 nix build .#checks.x86_64-linux.losos-network-unlock # --tang: TPM2 + Tang, recovery code
 nix build .#checks.x86_64-linux.losos-identity      # LosOS Login (Authelia), sections
-npm run dev | typecheck | test:browser              # in admin-ui/app
+bun run dev | typecheck | test:browser              # in admin-ui/app
 cargo test --manifest-path admin-ui/tui/Cargo.toml  # losos, the terminal client
 ```
 
@@ -60,8 +60,19 @@ Code session (`.claude/settings.json`) set `core.hooksPath`; elsewhere run
 `LOSOS_HOOKS_SKIP` to get past a red check you caused; skip only a check
 that is red on `main` too, and say which in the PR.
 Inside the shell `bcd` and `rcd` cd into the two in-flake crates.
-`admin-ui/design-system/react` has its own `npm run typecheck` and `npm test`
+`admin-ui/design-system/react` has its own `bun run typecheck` and `bun run test`
 and is never served or built by nix.
+The JS workspaces (`admin-ui/app`, `handbook/`, the design system) are Bun
+workspaces with a `bun.lock`, and their code uses no Node API: no `node:`
+module, `process`, `Buffer` or `require`, but Bun's (`Bun.file`, `Bun.serve`,
+`Bun.spawn`, `Bun.$`) and the web's. Every script runs on Bun's runtime
+(`bun --bun`, `bunx --bun`), and `src/` typechecks without Bun's or Node's
+types (the Vite configs have `tsconfig.tools.json`). Nix installs each
+`node_modules` from its `bun.lock` alone (`nix/bun-deps.nix`, one hash per
+workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
+`node:` import. Playwright's API wants a Node `Buffer` for bytes
+(`setInputFiles`, `route.fulfill`, a WebSocket route): hand it a file path
+(`stash` in `tests/harness.mjs`) or `wsBytes`.
 
 ## Layout
 
@@ -475,6 +486,23 @@ and is never served or built by nix.
   and `rebuild.log` and a size bound on nixpkgs' nginx rule, Nix build logs
   after 30 days. A new service that writes its own log file gets a cap
   here or in its own flags. `nix/tests/invariants.nix` pins it.
+- `log-reader.nix` + `backend/src/logs/` (`losos-logs`, a third binary of
+  the backend crate, `losos.logReader.enable`): Settings › Logs, the
+  journal in the admin pages. Its own user in `systemd-journal`, on
+  `/run/losos-logs/http.sock` (root and nginx's group), apart from lososd so
+  the page works while lososd is down: nginx sends it `/api/logs*` and
+  `/basic/settings/logs*`, and the no-JS page draws its own spare-key
+  sign-in (`backend/plugins/page/src/logs.rs`, shared with the basic
+  plugin). Every line is redacted (`logs/redact.rs`) before it is shown,
+  searched (never `--grep`, so a search cannot probe for a secret),
+  downloaded or handed to lososd's problem reports at
+  `/internal/logs/excerpt`, which refuses anything nginx forwards
+  (`X-Losos-Front`). The Service list is `/etc/losos/log-units.json`, the
+  units this box runs. The backend's services log through
+  `losos_ctl::trace::init`, which prefixes each line on a journal stream
+  with its syslog level (`<3>`, `<4>`) so journald files it at that
+  priority; a plain `tracing_subscriber::fmt()` lands every error as
+  info. `nix/tests/logs.nix` boots it and stops lososd.
 - `grow.rs`: `losos-ctl grow` runs lvextend, `cryptsetup resize`, `resize2fs`
   online, asserted against the plan and in `nix/tests/resize.nix`.
 - `backup.nix` + `backup.rs` + `erase.rs`: restic backups to an S3 bucket,
@@ -517,7 +545,14 @@ and is never served or built by nix.
   USDC is held in `LososEscrow` on EVM networks and in the `losos-escrow`
   program on Solana (`edge/contracts/solana`, `solana_escrow.rs`, signed by
   a key derived from the EVM releaser's); a live edge counts no payment into
-  a program that still has an upgrade authority.
+  a program that still has an upgrade authority. A storage order's claim is
+  reached only as a backup target: `/market/storage/<order>/`
+  (`server/storage.rs`, outside the guard like the VM uploads) forwards
+  restic's REST protocol to one `rest-server` per order on the edge node,
+  from an airgap image (`losos.edge.market.backups.enable`), and opens to
+  the SHA-256 of a key the buyer's box derives from its recovery code and
+  the order (`backup.rs` `door_secret`, `modules/backup.nix` makes it again
+  each run). The buyer's box encrypts first, so lenders hold ciphertext.
 - `edge/registrar/src/{vms,server/vm}.rs` + `modules/edge-vms.nix`:
   virtual machines on the mesh, sold per replica-month through the market
   with a fixed 50/50 fee the Stripe gate enforces. KubeVirt and CDI from
@@ -544,8 +579,8 @@ and is never served or built by nix.
   commit is no longer a branch tip or an open PR's head.
   `dependency-hashes.yml` (`pull_request_target`, branches of this repository
   only) runs `.github/scripts/fix-hashes.py` on a pull request that changes
-  a `Cargo.lock` or `package-lock.json`, Dependabot's included, and pushes the
-  new `cargoHash`/`npmDepsHash` back to the branch, and on a push to main
+  a `Cargo.lock` or `bun.lock`, Dependabot's included, and pushes the
+  new `cargoHash` or node_modules `hash` back to the branch, and on a push to main
   that still carries a stale one opens a `bot/dependency-hashes-*` pull
   request; run the script yourself after touching a lock file.
   `discovery` boots the netboot box `nix/tests/discovery/box.nix` on Linux,
@@ -678,14 +713,14 @@ nix build .#checks.x86_64-linux.losos-iso-install    # losos-install from the me
 Inside the dev shell, `bcd` → `cd backend`, `rcd` → `cd edge/registrar`.
 
 `admin-ui/app` is the shipped SPA and **is** built by nix
-(`nix build .#losos-admin-ui` runs `npm ci` then `tsc --noEmit && vite build`,
-so the typecheck is part of the package). For an iteration loop it also has
-`npm run dev` (with `LOSOS_API_ORIGIN` pointed at a real box), `npm run
-typecheck`, and `npm run test:browser` — the last is the playwright check that
-`.#checks.x86_64-linux.losos-admin-ui` wraps.
+(`nix build .#losos-admin-ui` installs `node_modules` from `bun.lock`, then runs
+`tsc --noEmit && vite build` on Bun, so the typecheck is part of the package).
+For an iteration loop it also has `bun run dev` (with `LOSOS_API_ORIGIN`
+pointed at a real box), `bun run typecheck`, and `bun run test:browser` — the
+last is the playwright check that `.#checks.x86_64-linux.losos-admin-ui` wraps.
 
-`admin-ui/design-system/react` has its own `npm run typecheck` / `npm test`
-(esbuild + tsc, no nix, no CI) — dev-machine-only, run manually from
+`admin-ui/design-system/react` has its own `bun run typecheck` / `bun run test`
+(Bun + tsc, no CI) — dev-machine-only, run manually from
 `admin-ui/design-system/react/` when touching the React wrapper. It is not
 what the appliance serves.
 
@@ -779,7 +814,7 @@ thin **facade** CLI that keeps the old subcommand/JSON surface
 `factory-reset`; `--json` no-op) and relays each call to lososd over D-Bus.
 `losos-ctl install` stays a local subcommand (the ISO installer runs as root,
 no bus needed). The admin UI (`admin-ui/app/`, packaged as `losos-admin-ui`
-with `buildNpmPackage`) is a React 19 + Vite + Tailwind v4 SPA on real paths
+with Bun) is a React 19 + Vite + Tailwind v4 SPA on real paths
 (`/`, `/apps`, `/storage`, `/mesh`, `/settings/<pane>`), whose built `dist/`
 **is** the front Nginx vhost's document root — served with
 `try_files $uri $uri/ /index.html`, without which every deep link and every

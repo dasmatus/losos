@@ -2,15 +2,11 @@
  * browser without JavaScript draw (the `basic` plugin), as the same SVG the
  * script pages get from @hugeicons/react. Run after adding a name below:
  *
- *   node scripts/basic-icons.mjs
+ *   bun scripts/basic-icons.mjs
  *
- * The output is committed; the plugin build has no npm. */
+ * The output is committed; the plugin build has no JavaScript toolchain. */
 
-import { writeFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
-
-const require = createRequire(import.meta.url);
-const icons = require('@hugeicons/core-free-icons');
+import * as icons from '@hugeicons/core-free-icons';
 
 const NAMES = [
   'Alert02Icon',
@@ -18,6 +14,7 @@ const NAMES = [
   'ArrowLeft01Icon',
   'ArrowReloadHorizontalIcon',
   'ArrowRight01Icon',
+  'ArrowUp01Icon',
   'BookOpen01Icon',
   'BubbleChatIcon',
   'Calendar03Icon',
@@ -30,10 +27,12 @@ const NAMES = [
   'Compass01Icon',
   'ComputerCloudIcon',
   'ComputerIcon',
+  'ComputerTerminal01Icon',
   'ContactBookIcon',
   'CpuIcon',
   'DashboardSquare01Icon',
   'Doc01Icon',
+  'Download04Icon',
   'Flag02Icon',
   'FlowchartIcon',
   'Folder01Icon',
@@ -58,12 +57,14 @@ const NAMES = [
   'Menu01Icon',
   'Moon02Icon',
   'PaintBoardIcon',
+  'PauseIcon',
   'PasswordValidationIcon',
   'PencilEdit02Icon',
   'PackageIcon',
   'File01Icon',
   'TaskDaily01Icon',
   'PinIcon',
+  'PlayIcon',
   'PlusSignIcon',
   'Rocket01Icon',
   'Search01Icon',
@@ -119,4 +120,4 @@ for (const name of [...NAMES].sort()) {
     .join('');
   out += `pub const ${constName(name)}: &str = r#"${inner}"#;\n`;
 }
-writeFileSync(new URL('../../../backend/plugins/page/src/icons.rs', import.meta.url), out);
+await Bun.write(`${import.meta.dir}/../../../backend/plugins/page/src/icons.rs`, out);

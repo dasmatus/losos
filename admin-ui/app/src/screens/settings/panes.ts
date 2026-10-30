@@ -1,10 +1,12 @@
 import type { IconSvgElement } from "@hugeicons/react";
 import {
+  Alert02Icon,
   ArrowReloadHorizontalIcon,
   ChartLineData01Icon,
   Flag02Icon,
   CloudUploadIcon,
   ComputerCloudIcon,
+  ComputerTerminal01Icon,
   CpuIcon,
   Globe02Icon,
   HardDriveIcon,
@@ -57,12 +59,14 @@ export type SettingsPaneId =
   | "hardware"
   | "security"
   | "credentials"
+  | "problems"
   | "account"
   | "users"
   | "moderation"
   | "access"
   | "advanced"
   | "history"
+  | "logs"
   | "backup"
   | "about"
   | "reset";
@@ -350,6 +354,23 @@ export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
     "rotate",
     "systemd-creds",
   ]),
+  /* Problems after Credentials: what the box noticed going wrong, each
+   * report read in full before anything is sent. */
+  pane("problems", Alert02Icon, [
+    "problem",
+    "problems",
+    "crash",
+    "crashed",
+    "error",
+    "errors",
+    "failed",
+    "bug",
+    "report",
+    "abrt",
+    "memory",
+    "github",
+    "issue",
+  ]),
   /* Advanced and History sit between Security and About: every option,
    * then the record of every change. Advanced carries the long tail an
    * owner reaches for rarely and deliberately — like Security, below the
@@ -378,6 +399,29 @@ export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
     "git",
     "changes",
     "audit",
+  ]),
+  /* Logs right after History: what the box changed, then what its services
+   * said about it. */
+  pane("logs", ComputerTerminal01Icon, [
+    "log",
+    "logs",
+    "journal",
+    "journalctl",
+    "error",
+    "errors",
+    "warning",
+    "debug",
+    "lososd",
+    "service",
+    "services",
+    "unit",
+    "systemd",
+    "kernel",
+    "dmesg",
+    "crash",
+    "failed",
+    "bug",
+    "report",
   ]),
   /* Backup sits just above the two panes that end a box's life: it is
    * where the way back is set up, so it should be met before Reset. */
@@ -424,12 +468,14 @@ const PANE_SECTION: Record<SettingsPaneId, string> = {
   hardware: "admin",
   security: "admin",
   credentials: "admin",
+  problems: "admin",
   account: "account",
   users: "admin",
   moderation: "moderation",
   access: "access",
   advanced: "admin",
   history: "admin",
+  logs: "admin",
   backup: "backup",
   about: "admin",
   reset: "admin",

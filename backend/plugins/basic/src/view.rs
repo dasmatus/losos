@@ -1,14 +1,13 @@
 //! What every page needs before it draws: the catalogue in the reader's
 //! language, the page's cookie, the built stylesheet, who is signed in and
-//! the sidebar they may see (components/app-sidebar.tsx's TREE and
-//! `visible`, screens/settings/panes.ts's `paneOpen`).
+//! the sidebar they may see (losos_page::nav, which the log reader draws
+//! too).
 
 use crate::host::Host;
 use losos_page::i18n::{Locale, Messages};
-use losos_page::icons;
-use losos_page::shell::{self, Assets, Frame, NavEntry, Person, Prefs};
-use serde_json::Value;
+use losos_page::shell::{Assets, Frame, NavEntry, Person, Prefs};
 
+pub use losos_page::nav::*;
 /// The panes in the script page's order (screens/settings/panes.ts), with
 /// their icon and the section of backend/sections.json each works in.
 pub const PANES: &[(&str, &str, &str)] = &[
@@ -27,6 +26,7 @@ pub const PANES: &[(&str, &str, &str)] = &[
     ("moderation", icons::FLAG_02, "moderation"),
     ("access", icons::KEY_01, "access"),
     ("credentials", icons::LOCK_PASSWORD, "admin"),
+    ("problems", icons::ALERT_02, "admin"),
     ("advanced", icons::SLIDERS_HORIZONTAL, "admin"),
     ("history", icons::GIT_COMMIT, "admin"),
     ("backup", icons::CLOUD_UPLOAD, "backup"),
@@ -271,6 +271,7 @@ pub fn nav(me: &Me, m: &Messages, path: &str, office: bool) -> Vec<NavEntry> {
         "moderation",
         "access",
         "credentials",
+        "problems",
         "advanced",
         "history",
         "backup",
@@ -463,71 +464,5 @@ impl Ctx {
             refresh: self.refresh,
             pins: self.pins.as_deref(),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn panes_and_addresses_agree() {
-        assert_eq!(pane_path("storage"), "/storage");
-        assert_eq!(pane_path("network"), "/settings/network");
-        assert_eq!(pane_at("/settings/network"), Some("network"));
-        assert_eq!(pane_at("/settings"), Some("network"));
-        assert_eq!(pane_at("/mesh"), Some("mesh"));
-        assert_eq!(pane_at("/settings/nope"), None);
-    }
-
-    #[test]
-    fn a_viewer_sees_their_sections_only() {
-        let m = Messages::from_pairs(Locale::En, &[]);
-        let me = Me::from_json(&json!({
-            "name": "ann", "admin": false, "sections": ["storage", "network"],
-            "standalone": true, "shared": ["mail"], "spareKey": false
-        }));
-        let keys: Vec<String> = nav(&me, &m, "/storage", false)
-            .into_iter()
-            .map(|e| e.key)
-            .collect();
-        assert_eq!(keys, ["overview", "storage", "mail", "settings"]);
-        let settings = nav(&me, &m, "/settings/network", false).pop().unwrap();
-        let inner: Vec<&str> = settings.children.iter().map(|e| e.key.as_str()).collect();
-        assert_eq!(inner, ["network"]);
-        assert!(settings.holds_current());
-    }
-
-    #[test]
-    fn an_admin_sees_market_under_mesh() {
-        let m = Messages::from_pairs(Locale::En, &[]);
-        let me =
-            Me::from_json(&json!({"name": "o", "admin": true, "sections": [], "standalone": true}));
-        let tree = nav(&me, &m, "/settings/market", false);
-        let mesh = tree.iter().find(|e| e.key == "mesh").unwrap();
-        assert_eq!(mesh.children.len(), 2);
-        assert!(mesh.holds_current());
-        assert!(tree.iter().any(|e| e.key == "lab"));
-    }
-
-    #[test]
-    fn the_spare_key_has_no_account_and_no_picture() {
-        let m = Messages::from_pairs(Locale::En, &[("shell.me.spareKey", "Spare admin key")]);
-        let me = Me::from_json(&json!({"spareKey": true, "admin": true, "standalone": true}));
-        let p = me.person(&m);
-        assert_eq!(p.label, "Spare admin key");
-        assert!(!p.account);
-        assert!(p.initial.is_none());
-        assert!(!me.pane_open("account"));
-    }
-
-    #[test]
-    fn a_picture_elsewhere_is_dropped() {
-        let me = Me::from_json(
-            &json!({"name": "x", "picture": "https://evil/x.png", "accent": "te\"al"}),
-        );
-        assert!(me.picture.is_none());
-        assert!(me.accent.is_none());
     }
 }

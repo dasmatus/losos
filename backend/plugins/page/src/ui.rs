@@ -387,6 +387,35 @@ pub fn input(id: &str, name: &str, value: &str) -> El {
         .class("h-9 min-w-0 rounded-control border border-line bg-surface px-3 text-sm text-ink placeholder:text-faint transition-[border-color,box-shadow] duration-150 hover:border-muted/60 focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 disabled:cursor-not-allowed disabled:bg-sunk disabled:text-faint aria-invalid:border-crit aria-invalid:ring-2 aria-invalid:ring-crit/25")
 }
 
+/// components/ui/native-select.tsx's NativeSelect, as wide as its cell.
+/// `options` are (value, label) pairs; the one equal to `selected` is chosen.
+#[must_use]
+pub fn native_select(id: &str, name: &str, options: &[(String, String)], selected: &str) -> Html {
+    el("div")
+        .attr("data-slot", "native-select-wrapper")
+        .class("group/native-select relative w-full has-[select:disabled]:opacity-50")
+        .child(
+            el("select")
+                .attr("data-slot", "native-select")
+                .attr("id", id)
+                .attr("name", name)
+                .class("h-9 w-full appearance-none rounded-control border border-line bg-surface py-1 pr-9 pl-3 text-sm text-ink transition-[border-color,box-shadow] duration-150 hover:border-muted/60 focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 disabled:cursor-not-allowed disabled:bg-sunk disabled:text-faint aria-invalid:border-crit aria-invalid:ring-2 aria-invalid:ring-crit/25")
+                .children(options.iter().map(|(value, label)| {
+                    el("option")
+                        .attr("data-slot", "native-select-option")
+                        .attr("value", value)
+                        .flag("selected", value == selected)
+                        .text(label)
+                })),
+        )
+        .child(icon(
+            crate::icons::ARROW_DOWN_01,
+            16,
+            "pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-muted select-none",
+        ))
+        .into()
+}
+
 /// field.tsx's FieldLabel, the vertical kind a form field has.
 #[must_use]
 pub fn field_label(for_id: &str, text: &str) -> Html {
