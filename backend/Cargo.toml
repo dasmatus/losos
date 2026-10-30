@@ -60,6 +60,10 @@ losos-access = { path = "access" }
 # The path rule, which edge to use (src/edge.rs re-exports it): its own crate
 # so that LosOS Desktop's network machine picks an edge the same way.
 losos-edge-path = { path = "edge-path" }
+# Problem reports (src/install_report.rs): the installer writes and sends
+# them with the same crate the box's problems plugin uses, so the two read
+# alike and the same failure is one GitHub issue.
+losos-report = { path = "plugins/report" }
 # The secret of a gateway check's TPM credential (crate::edge::Vetter) and
 # keys for the mail key store's tests; the version losos-access and rPGP use.
 rand = "0.8"

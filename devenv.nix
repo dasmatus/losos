@@ -187,22 +187,14 @@ in
     ];
   };
 
-  # admin-ui/design-system/react only — a dev-machine-only TypeScript wrapper
-  # around the shipped tokens.css/losos.css. Never in any system closure.
-  #
-  # `bun.install.enable` is deliberately left off. It auto-runs `bun install`
-  # on shell entry and warns that yarn.lock/package-lock.json are obsolete —
-  # and that package has a committed package-lock.json driving `npm run
-  # typecheck`/`npm test`. Enabling bun the *tool* is free; migrating the
-  # lockfile is a separate decision.
-  languages.javascript = {
-    enable = true;
-    bun.enable = true;
-  };
-
   packages =
     fast.packages
     ++ (with pkgs; [
+      # The JS workspaces (admin-ui/app, the handbook,
+      # admin-ui/design-system/react) build, test and run on Bun, and the
+      # shell carries no Node: each script asks for its runtime with
+      # `bun --bun`, and `bun install` is each workspace's own first step.
+      bun
       # The wasm32 linker and the component wrapper for lososd's plugins
       # (backend/plugins/README.md), as nix/packages.nix builds them.
       lld

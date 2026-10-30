@@ -173,6 +173,21 @@ claim zmizne, pretože claim drží kapacitu v Longhorne aj po skončení mesiac
   požiada, takže claim, ktorý sa nikdy nenaviaže, alebo taký, ktorý vznikol
   tesne pred zastavením edge, si po skončení mesiaca stále ponechá svoje
   jednotky predané.
+- **Zálohy na kúpenom úložisku.** Zariadenie kupujúceho môže svoje zálohy
+  držať na naviazanej objednávke úložiska (Nastavenia, Záloha). Zariadenie
+  šifruje pomocou restic skôr, než čokoľvek odíde, rovnako ako pri buckete,
+  a hovorí s cestou edge `/market/storage/<order>/`, ktorá obsluhuje
+  protokol REST nástroja restic. Edge pri prvom použití spustí pre každú
+  objednávku jeden `rest-server` vedľa claimu, z obrazu, ktorý nesie so
+  sebou (`losos.edge.market.backups.enable`, predvolene zapnuté) a nikdy
+  ho nesťahuje. Jediný účet servera patrí edge, s heslom vytvoreným pre
+  túto objednávku, takže zariadenia mesh siete, ktoré dosiahnu jeho adresu
+  v klastri, ho neotvoria. Edge túto cestu otvorí len kľúču, ktorý ukladá
+  ako hash
+  SHA-256. Zariadenie kupujúceho ho nastaví cez `POST /market/storage-door`
+  a odvodí ho zo svojho kódu obnovy a id objednávky. Nové zariadenie
+  s tým istým kódom obnovy sa preto dostane k tomu istému zväzku. Zariadenia,
+  ktoré držia repliky Longhornu, aj edge vidia len šifrovaný text restic.
 - **Výpočtový výkon.** Kredit vo vCPU-hodinách, uvedený pod `entitlements`.
   Zatiaľ ho nič nemeria ani podľa neho neplánuje.
 
@@ -182,8 +197,8 @@ Obmedzenia, o ktorých treba vedieť a z ktorých sa zatiaľ žiadne nevynucuje:
 - Claim nie je pripnutý k uzlu predajcu. Longhorn rozmiestňuje repliky po
   celom poole, takže predajca dostáva zaplatené za príspevok doň, nie za
   hosťovanie práve tohto zväzku.
-- Kupujúci nemá ku claimu žiadnu prístupovú cestu; existuje v klastri, aby
-  ho mohol pripojiť nejaký workload.
+- Jediná cesta ku claimu je cesta pre zálohy uvedená vyššie. Nič iné ho
+  nepripája.
 - Nič sa nikdy nemaže. Vypršaný nárok sa prestane hlásiť, ale zväzok drží
   dáta kupujúceho a jeho odstránenie je na rozhodnutí operátora. Kým operátor
   claim nezmaže, jeho GiB zostávajú predané, takže tá istá kapacita sa nikdy
@@ -191,8 +206,10 @@ Obmedzenia, o ktorých treba vedieť a z ktorých sa zatiaľ žiadne nevynucuje:
   ešte môže naviazať. Prechod reconcile kontroluje každý vypršaný claim
   a jeho jednotky vráti do predaja, keď naň apiserver odpovie 404.
 - ServiceAccount registrara získa po zapnutí trhu `get`/`create` na
-  namespaces a PersistentVolumeClaims v celom klastri. Kubernetes RBAC
-  nedokáže ani jedno obmedziť na mená `market-*`.
+  namespaces a PersistentVolumeClaims v celom klastri a pri zapnutých
+  zálohách na kúpenom úložisku aj na Deployments a Services (a `create` na
+  Secrets). Kubernetes RBAC
+  nedokáže žiadne z nich obmedziť na mená `market-*`.
 :::
 
 ## Admin UI {#admin-ui}

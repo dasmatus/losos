@@ -15,23 +15,27 @@
 // motion, Europe/Bratislava, taken once the page has settled. Each step
 // records where the film may point (bounding boxes in CSS px).
 
-import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+/* One line more at the end of a file the earlier calls of this script began. */
+async function append(path, line) {
+  const file = Bun.file(path);
+  await Bun.write(file, ((await file.exists()) ? await file.text() : '') + line);
+}
 
-const { chromium } = await import(`${process.env.PLAYWRIGHT_CORE}/index.mjs`);
+const { chromium } = await import(`${Bun.env.PLAYWRIGHT_CORE}/index.mjs`);
 
 const HOST = 'mattbox.local';
 const BASE = `https://${HOST}`;
 const OUT = '/tmp/shots';
 const PROFILE = '/tmp/shots-profile';
 const NAME = 'matus';
-const PASSWORD = process.env.MAIL_SCREENS_PASSWORD ?? '';
+const PASSWORD = Bun.env.MAIL_SCREENS_PASSWORD ?? '';
 const VIEWPORT = { width: 1280, height: 900 };
 // The caret is the film's to draw.
 const HIDE_CARET = '*, *::before, *::after { caret-color: transparent !important; }';
 
 async function browser() {
   const context = await chromium.launchPersistentContext(PROFILE, {
-    executablePath: process.env.CHROMIUM,
+    executablePath: Bun.env.CHROMIUM,
     viewport: VIEWPORT,
     deviceScaleFactor: 2,
     colorScheme: 'dark',
@@ -89,12 +93,12 @@ async function target(locator) {
 
 async function shot(page, file, title, action = { kind: 'none' }, targets = {}) {
   await settle(page);
-  mkdirSync(OUT, { recursive: true });
+  Bun.spawnSync(['mkdir', '-p', OUT]);
   // A modal's blurred backdrop at device scale 2 is slow to paint in a
   // software-rendered VM, so the default 30 s is not always enough.
   await page.screenshot({ path: `${OUT}/${file}`, timeout: 300_000 });
   const url = page.url().replace('https://', '').replace(':443', '');
-  appendFileSync(`${OUT}/steps.jsonl`, JSON.stringify({ file, url, title, action, targets }) + '\n');
+  await append(`${OUT}/steps.jsonl`, JSON.stringify({ file, url, title, action, targets }) + '\n');
   console.log('shot', file);
 }
 
@@ -228,8 +232,8 @@ async function folders(first) {
   await context.close();
 }
 
-function manifest(test) {
-  const steps = readFileSync(`${OUT}/steps.jsonl`, 'utf8')
+async function manifest(test) {
+  const steps = (await Bun.file(`${OUT}/steps.jsonl`).text())
     .split('\n')
     .filter((l) => l !== '')
     .map((l) => JSON.parse(l))
@@ -238,20 +242,20 @@ function manifest(test) {
     feature: 'mail',
     viewport: VIEWPORT,
     dpr: 2,
-    commit: process.env.MAIL_SCREENS_COMMIT ?? '',
+    commit: Bun.env.MAIL_SCREENS_COMMIT ?? '',
     test,
     steps,
   };
-  writeFileSync(`${OUT}/manifest.json`, JSON.stringify(doc, null, 2) + '\n');
-  rmSync(`${OUT}/steps.jsonl`);
+  await Bun.write(`${OUT}/manifest.json`, JSON.stringify(doc, null, 2) + '\n');
+  await Bun.$`rm -f ${OUT}/steps.jsonl`;
 }
 
-const [verb, ...rest] = process.argv.slice(2);
+const [verb, ...rest] = Bun.argv.slice(2);
 if (verb === 'sidebar') await sidebar(...rest);
 else if (verb === 'mail') await mail(...rest);
 else if (verb === 'folders') await folders(...rest);
-else if (verb === 'manifest') manifest(...rest);
+else if (verb === 'manifest') await manifest(...rest);
 else {
-  console.error(`unknown verb ${verb}`);
-  process.exit(2);
+  // Thrown: an uncaught error is what makes Bun exit non-zero.
+  throw new Error(`unknown verb ${verb}`);
 }

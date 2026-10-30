@@ -1112,6 +1112,18 @@ fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
             "--market-offline-refund-after {offline_refund_secs} is outside {MIN_OFFLINE_REFUND_SECS}..={MAX_OFFLINE_REFUND_SECS} seconds"
         ));
     }
+    // The image of the backup door on bought storage (`server/storage.rs`).
+    // Only ever run with imagePullPolicy Never, so it is a name the edge's own
+    // node already holds, and the shape is checked here rather than at the
+    // first box's backup.
+    let storage_image = arg(args, "--market-storage-image").map(str::to_string);
+    if let Some(image) = &storage_image {
+        if !image_ref_ok(image) {
+            return Err(miette!(
+                "bad --market-storage-image {image:?}; expected an image reference such as losos.local/rest-server:0.13.0"
+            ));
+        }
+    }
     // Coins and Solana USDC reach the seller's wallet at once, so nothing
     // can be held for the slot or refunded from it. Off unless the operator
     // takes that on.
@@ -1125,6 +1137,7 @@ fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
         currency: currency.to_string(),
         fee_bps,
         storage_class: storage_class.to_string(),
+        storage_image,
         hardware_catalogue: hardware,
         vms: parse_vms(args)?,
         usdc,
@@ -1136,6 +1149,23 @@ fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
         offline_refund_secs,
         direct_pay,
     })))
+}
+
+/// `registry/name:tag`: lowercase letters, digits and `.-_/:`, one tag.
+fn image_ref_ok(image: &str) -> bool {
+    let Some((name, tag)) = image.rsplit_once(':') else {
+        return false;
+    };
+    !name.is_empty()
+        && !tag.is_empty()
+        && image.len() <= 200
+        && !name.starts_with(['/', '.', '-'])
+        && name.bytes().all(|b| {
+            b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'-' | b'_' | b'/')
+        })
+        && tag
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'))
 }
 
 const MIN_OFFLINE_REFUND_SECS: u64 = 60;

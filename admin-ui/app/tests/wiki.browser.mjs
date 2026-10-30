@@ -11,15 +11,15 @@
  * edit link, a private space for a visitor, German, and the phone layout.
  * nix/tests/wiki.nix runs the same pages against a real box. */
 
-import assert from 'node:assert';
-import { launch, runner, serve, shellRoutes, SHELL_ME } from './harness.mjs';
+import assert from './assert.mjs';
+import { launch, runner, serve, SHELL_ME, shellRoutes, stash } from './harness.mjs';
 
 const { origin, close: closeServer } = await serve({ csp: true });
 const browser = await launch();
 const { check, finish } = runner();
 
 // WIKI_SHOTS=<dir> keeps a picture of each screen, for a look at the layout.
-const shot = (page, name) => (process.env.WIKI_SHOTS ? page.screenshot({ path: `${process.env.WIKI_SHOTS}/${name}.png` }) : null);
+const shot = (page, name) => (Bun.env.WIKI_SHOTS ? page.screenshot({ path: `${Bun.env.WIKI_SHOTS}/${name}.png` }) : null);
 
 const json = (route, status, body) =>
   route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
@@ -27,10 +27,8 @@ const json = (route, status, body) =>
 const API = '/git/api/v1';
 const WHEN = { sha: 'c'.repeat(40), date: '2026-10-21T09:00:00Z', author: 'Matus', subject: 'Update Home' };
 // A 1×1 PNG, the picture a page shows from its wiki.
-const PNG = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
-  'base64',
-);
+const PNG = Uint8Array.fromBase64('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==');
+const PNG_FILE = await stash('picture.png', PNG);
 
 function model() {
   return {
@@ -176,7 +174,7 @@ async function open(path, { locale = 'en-US', viewport = { width: 1280, height: 
     if (s === undefined) return json(route, 404, { message: 'repository not found' });
     if (at[3] === undefined) return json(route, 200, overview(s));
     if (at[3] === 'search') return json(route, 200, { hits: hitsFor(m, url.searchParams.get('q') ?? '', key) });
-    if (at[3] === 'raw') return at[4] === 'beds.png' ? route.fulfill({ status: 200, contentType: 'image/png', body: PNG }) : json(route, 404, {});
+    if (at[3] === 'raw') return at[4] === 'beds.png' ? route.fulfill({ status: 200, contentType: 'image/png', path: PNG_FILE }) : json(route, 404, {});
     const name = at[4] ?? '';
     if (req.method() === 'GET') {
       const found = pageOf(s, name);

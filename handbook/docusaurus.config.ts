@@ -1,3 +1,4 @@
+/// <reference types="bun" />
 import {themes as prismThemes} from 'prism-react-renderer';
 import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
@@ -23,9 +24,9 @@ import type * as Preset from '@docusaurus/preset-classic';
  * internet to promise and the manual is most needed exactly when nothing
  * else answers.
  *
- * This runs in Node.js at build time — no browser APIs, no JSX here. */
-const url = process.env.LOSOS_HANDBOOK_URL ?? 'https://losos.dasmat.us';
-const baseUrl = process.env.LOSOS_HANDBOOK_BASE ?? '/';
+ * This runs on Bun at build time: no browser APIs, no JSX here. */
+const url = Bun.env.LOSOS_HANDBOOK_URL ?? 'https://losos.dasmat.us';
+const baseUrl = Bun.env.LOSOS_HANDBOOK_BASE ?? '/';
 // The box's copy is the only build under another base (nix/packages.nix).
 const landing = baseUrl === '/';
 

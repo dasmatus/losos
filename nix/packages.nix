@@ -12,7 +12,7 @@
 #                modules/installer.nix draws the installer wrapper from the
 #                same derivation (losos.installer.package).
 #   losos-admin-ui — the admin SPA: React 19 + Vite + Tailwind v4, built from
-#                admin-ui/app/ with buildNpmPackage. $out IS the document root
+#                admin-ui/app/ with Bun. $out IS the document root
 #                (index.html, hashed assets/, theme-boot.js), served by the
 #                front Nginx vhost with an SPA fallback — one app on real
 #                paths (/, /storage, /mesh, /apps, /settings/<pane>), not the
@@ -20,7 +20,7 @@
 #                loopback API proxied at /api/*. See admin-ui/app/ and
 #                modules/containers.nix.
 #
-#                Its npm dependency fetch is the one derivation here that
+#                Its node_modules (nix/bun-deps.nix) is the one derivation here that
 #                needs the network on a machine that cannot substitute it. That
 #                costs a red CI job at worst, never a failed install: the
 #                output has no store references, modules/cache.nix points every
@@ -48,6 +48,9 @@
 #                because that is how it reaches a binary cache: the appliance
 #                substitutes it, it never builds it (see the header of
 #                nix/images.nix).
+#   losos-image-rest-server — restic's REST server, which an edge runs on a
+#                buyer's bought volume; modules/edge.nix hands it to the
+#                edge's rke2 and names it to the registrar.
 #   losos-lab-core — LosOS Diagrams' core in Rust (admin-ui/lab/core/),
 #                built for wasm32 and run through wasm-bindgen. The page is
 #                the admin UI's second page (admin-ui/app/diagrams/), served
@@ -84,6 +87,7 @@
 
 let
   inherit (pkgs) lib;
+  bunDeps = import ./bun-deps.nix { inherit pkgs; };
 
   # Only derivations may come out of this file — every attribute here becomes a
   # flake package, and a non-derivation breaks `nix flake check` and
@@ -140,7 +144,7 @@ let
     };
 
   # The Lab page imports a package from src/lab/<name>-pkg (gitignored;
-  # `npm run lab:<name>` writes it in a checkout). Both npm builds of
+  # `bun run lab:<name>` writes it in a checkout). Both Bun builds of
   # admin-ui/app copy it in first: this one and nix/tests/admin-ui.nix.
   labPkg = name: pkg: ''
     mkdir -p src/lab/${name}-pkg
@@ -167,11 +171,10 @@ let
     features = [ "wasm" ];
     cargoHash = "sha256-/PsXCBJFqy5hJ1ov20niOX5WhMcbm30UIkCoppjWiBI=";
   };
-  # Copied to src/mdx/pkg (gitignored; `npm run mdx` writes it in a
-  # checkout) by both npm builds, in preConfigure rather than preBuild: the
-  # VM tests that build the UI without the Lab replace preBuild, and LosOS
-  # Office and Notes still need the parser there. Not postPatch, which the
-  # npm dependencies' fixed-output fetch runs too.
+  # Copied to src/mdx/pkg (gitignored; `bun run mdx` writes it in a
+  # checkout) by both builds of the UI, in preConfigure rather than preBuild:
+  # the VM tests that build the UI without the Lab replace preBuild, and
+  # LosOS Office and Notes still need the parser there.
   mdxPkg = ''
     mkdir -p src/mdx/pkg
     cp ${losos-mdx-wasm}/* src/mdx/pkg/
@@ -248,9 +251,9 @@ let
   };
 
   # The canvas's two modules, copied to src/lab/render-pkg/{webgpu,webgl2}
-  # (gitignored; `npm run lab:render` writes them in a checkout). The page
+  # (gitignored; `bun run lab:render` writes them in a checkout). The page
   # imports one of them lazily, after it has drawn with the SVG canvas
-  # (src/lab/render.ts). Copied in by the same two npm builds.
+  # (src/lab/render.ts). Copied in by the same two Bun builds.
   labRenderPkg = ''
     mkdir -p src/lab/render-pkg
     cp -r ${losos-lab-render}/webgpu ${losos-lab-render}/webgl2 src/lab/render-pkg/
@@ -301,7 +304,7 @@ let
   # build a set with the probe in it.
   # backend/plugins' vendored crates: lososd's plugins and Mesh CI's pm
   # plugin are built from the one workspace.
-  pluginsCargoHash = "sha256-QjOlI0fBfoVpVz2sFyLzyLTfEgN4IVJHnwHNsgmZrnA=";
+  pluginsCargoHash = "sha256-KJHNKRwPEjjGHKBlRYvTFG0ZtQLqNeHnJhPrMKKHF60=";
   lososPlugins =
     {
       pname ? "losos-plugins",
@@ -312,6 +315,7 @@ let
         "mail"
         "ci"
         "statistics"
+        "problems"
         "hidden"
         "basic"
       ],
@@ -367,7 +371,7 @@ images
   inherit losos-lab-core losos-lab-render losos-lab-virt;
   inherit losos-mdx-wasm;
 
-  losos-admin-ui = pkgs.buildNpmPackage {
+  losos-admin-ui = pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
     pname = "losos-admin-ui";
     version = "0.1.0";
 
@@ -377,25 +381,7 @@ images
     # quietly stop matching when somebody renames a directory.
     src = ./../admin-ui/app;
 
-    # SHA256 of the npm dependency cache built from
-    # admin-ui/app/package-lock.json — same convention as cargoHash above. If
-    # the lock file changes, `nix build .#losos-admin-ui` prints the real hash
-    # to paste here (or `nix run nixpkgs#prefetch-npm-deps -- \
-    # admin-ui/app/package-lock.json` gets it without a failed build first).
-    #
-    # nix/tests/admin-ui.nix carries the SAME hash over the SAME lock file: two
-    # derivations, one dependency set. Change both together.
-    npmDepsHash = "sha256-pnil+AKqIwPMzqVsvU57WI4PId+Ft8zAf5f/D140atI=";
-
-    # No postinstall scripts. playwright is a devDependency (nix/tests/admin-ui.nix
-    # drives the browser check with it) and its postinstall downloads browsers:
-    # there is no network in the sandbox, and the browsers it would fetch are
-    # not the ones anything here runs against. esbuild, rollup and
-    # @tailwindcss/oxide get their native binaries from the linux-x64-gnu
-    # packages pinned in package-lock.json rather than from a download, so
-    # nothing else needs a script to run.
-    npmFlags = [ "--ignore-scripts" ];
-    env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
+    nativeBuildInputs = [ pkgs.bun ];
     # The person segmenter behind a call's black background
     # (src/calls/background.ts): MediaPipe's selfie segmenter, Apache-2.0,
     # a fixed version of the model, copied beside the chat page.
@@ -412,24 +398,28 @@ images
       url = "https://huggingface.co/KanariKanaru/nsfw-image-detection-384-onnx/resolve/8edc47eedf74b30fd379673bc202fe3b754b1538/model.onnx";
       hash = "sha256-6TUOV2YIr+S1egif/rDrr6E4nNzqSILdYd8oxF8cJNI=";
     }}";
+
+    # The dependencies, from admin-ui/app/bun.lock alone (nix/bun-deps.nix).
+    configurePhase = ''
+      runHook preConfigure
+      ${finalAttrs.passthru.nodeModules.install}
+      runHook postConfigure
+    '';
     # LosOS Lab (lab/index.html, the second Vite entry) imports the Rust core,
     # the GPU canvas and, for guests on the relay path, the libvirt client.
     preConfigure = mdxPkg;
     preBuild = labCorePkg + labVirtPkg + labRenderPkg;
-    passthru = {
-      inherit
-        labCorePkg
-        labVirtPkg
-        labRenderPkg
-        mdxPkg
-        ;
-    };
-
-    # The default npmBuildScript is `npm run build`, which here is
-    # `tsc --noEmit && vite build` — so unlike the Rust crates (doCheck = off,
+    # `bun run build` is `tsc --noEmit && vite build` (twice, the guest page
+    # too), all on Bun's runtime, so unlike the Rust crates (doCheck = off,
     # see below) the typecheck IS part of building the shipping artefact. It
-    # costs seconds over ~80 files, not the minutes doCheck costs rustc.
-    #
+    # costs seconds, not the minutes doCheck costs rustc.
+    buildPhase = ''
+      runHook preBuild
+      export HOME=$TMPDIR
+      bun run build
+      runHook postBuild
+    '';
+
     # $out is the document root itself rather than a packed tarball: index.html
     # at the top, content-hashed bundles under assets/, and the deliberately
     # unhashed theme-boot.js beside them (admin-ui/app/vite.config.ts explains
@@ -440,7 +430,24 @@ images
       cp -r dist $out
       runHook postInstall
     '';
-  };
+
+    passthru = {
+      inherit
+        labCorePkg
+        labVirtPkg
+        labRenderPkg
+        mdxPkg
+        ;
+      # nix/tests/admin-ui.nix and the VM tests' Playwright reuse it. After a
+      # change to bun.lock, `nix build .#losos-admin-ui.nodeModules` prints
+      # the hash to paste here.
+      nodeModules = bunDeps {
+        pname = "losos-admin-ui";
+        src = ./../admin-ui/app;
+        hash = "sha256-LUyu1qNDz5MHIdLaDE59k/sU7lJeBoKfgjuZznPv+Z0=";
+      };
+    };
+  });
 
   # The owner's handbook: the Docusaurus site in handbook/, built once more
   # here so every box carries its own copy at /handbook/ (served LAN-only by
@@ -451,23 +458,30 @@ images
   # Why on the box at all: the manual is needed most when the box is reachable
   # from the LAN alone, which is also when the internet copy is not. The
   # search index is built into the bundle for the same reason.
-  losos-handbook = pkgs.buildNpmPackage {
+  losos-handbook = pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
     pname = "losos-handbook";
     version = "0.1.0";
     src = ./../handbook;
 
-    # SHA256 of the npm dependency cache built from handbook/package-lock.json,
-    # same convention as losos-admin-ui above. After changing the lock file:
-    # `nix run nixpkgs#prefetch-npm-deps -- handbook/package-lock.json`.
-    npmDepsHash = "sha256-kiDHjrfyehek5JKhsdIvsN1LZE5RsjvDO9iAIU+SGh0=";
-
-    npmFlags = [ "--ignore-scripts" ];
+    nativeBuildInputs = [ pkgs.bun ];
     env.LOSOS_HANDBOOK_BASE = "/handbook/";
     # Docusaurus reads the git log for "last updated" stamps when asked; the
     # config does not ask, and there is no .git in the sandbox anyway.
     env.CI = "true";
 
-    # `npm run build` is `docusaurus build`, which fails on a broken link.
+    configurePhase = ''
+      runHook preConfigure
+      ${finalAttrs.passthru.nodeModules.install}
+      runHook postConfigure
+    '';
+    # `bun run build` is `docusaurus build` on Bun's runtime, which fails on
+    # a broken link.
+    buildPhase = ''
+      runHook preBuild
+      export HOME=$TMPDIR
+      bun run build
+      runHook postBuild
+    '';
     # $out is the built site: index.html at the top, hashed assets under
     # assets/, one directory per page with its own index.html.
     installPhase = ''
@@ -475,7 +489,16 @@ images
       cp -r build $out
       runHook postInstall
     '';
-  };
+
+    # From handbook/bun.lock and the vendored braces it installs, same
+    # convention as losos-admin-ui above.
+    passthru.nodeModules = bunDeps {
+      pname = "losos-handbook";
+      src = ./../handbook;
+      local = [ "vendor/braces" ];
+      hash = "sha256-YRXOmYkE9v7PZH5yWnQ5Wrr/qeygE8uN60iqmvaofS8=";
+    };
+  });
 
   # The LosOS look for LosOS Login: the admin SPA's tokens.css plus its
   # mapping onto it. Consumed by modules/identity.nix through
