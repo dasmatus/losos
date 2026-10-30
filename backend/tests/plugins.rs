@@ -65,11 +65,19 @@ fn components() -> &'static Vec<Built> {
     })
 }
 
-/// A sealed "store" with one package of plugins in it.
-fn store(root: &Path) -> PathBuf {
+/// The plugins most tests load. The pages plugin carries the whole MDX
+/// crate and slows lososd's start enough that fourteen daemons at once on a
+/// CI runner missed the deadline, so only its own test loads it.
+const PLUGINS: &[&str] = &["look", "pins", "hidden", "probe"];
+
+/// A sealed "store" with one package of the named plugins in it.
+fn store(root: &Path, plugins: &[&str]) -> PathBuf {
     let pkg = root.join("0000-losos-plugins");
     std::fs::create_dir_all(&pkg).unwrap();
-    for (name, wasm, manifest) in components() {
+    for (name, wasm, manifest) in components()
+        .iter()
+        .filter(|(name, ..)| plugins.contains(&name.as_str()))
+    {
         for (file, bytes) in [
             (format!("{name}.wasm"), wasm),
             (format!("{name}.json"), manifest),
@@ -131,9 +139,13 @@ impl Daemon {
     }
 
     fn start_with(extra: &[(&str, &str)]) -> Daemon {
+        Daemon::start_plugins(PLUGINS, extra)
+    }
+
+    fn start_plugins(plugins: &[&str], extra: &[(&str, &str)]) -> Daemon {
         let dir = TempDir::new().unwrap();
         let store_root = dir.path().join("store");
-        let pkg = store(&store_root);
+        let pkg = store(&store_root, plugins);
         let probe = dir.path().join("probe");
         std::fs::create_dir_all(probe.join("sealed")).unwrap();
         std::fs::write(dir.path().join("secret"), "not yours").unwrap();
@@ -439,10 +451,13 @@ fn the_pages_answer_on_a_box_where_nothing_was_saved_yet() {
         std::fs::copy(pages.join(file), ui.path().join("pages").join(file)).unwrap();
     }
     let repo = ui.path().join("repo");
-    let d = Daemon::start_with(&[
-        ("LOSOS_ADMIN_UI_DIR", ui.path().to_str().unwrap()),
-        ("LOSOS_PAGES_DIR", repo.to_str().unwrap()),
-    ]);
+    let d = Daemon::start_plugins(
+        &["pages"],
+        &[
+            ("LOSOS_ADMIN_UI_DIR", ui.path().to_str().unwrap()),
+            ("LOSOS_PAGES_DIR", repo.to_str().unwrap()),
+        ],
+    );
 
     let a = d.admin("GET", "/api/pages", Value::Null);
     assert_eq!(a.status, 200, "{}", String::from_utf8_lossy(&a.body));
