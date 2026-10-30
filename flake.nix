@@ -400,6 +400,9 @@
             # modules/overrides.nix is imported through onBox below, never here.
             ./modules/updates.nix
             ./modules/logs.nix
+            # Settings › Logs: the journal for the admin pages, apart from
+            # lososd (backend/src/logs/).
+            ./modules/log-reader.nix
             ./modules/defaults.nix
             ./modules/proxy.nix
             # The box on Tor and I2P (losos.hidden.*).
@@ -553,6 +556,7 @@
         losos-profiles = import ./nix/tests/profiles.nix { inherit pkgs; };
         losos-profile-screens = import ./nix/tests/profile-screens.nix { inherit pkgs; };
         losos-plugins = import ./nix/tests/plugins.nix { inherit pkgs; };
+        losos-channels = import ./nix/tests/channels.nix { inherit pkgs; };
         # Problem reports: the box's list and a report sent to a stand-in GitHub.
         losos-problems = import ./nix/tests/problems.nix { inherit pkgs; };
         losos-hidden-services = import ./nix/tests/hidden-services.nix { inherit pkgs; };
@@ -570,9 +574,20 @@
         # The admin pages with JavaScript off, from sign-in to a rebuild, with
         # the pull request's pictures (nix/tests/no-js.nix).
         losos-no-js = import ./nix/tests/no-js.nix { inherit pkgs; };
+        # The pages as MDX: an administrator's page and stylesheet saved as
+        # commits, drawn with JavaScript on and off, and the editor beside
+        # the page, with the pull request's pictures (nix/tests/pages.nix).
+        losos-pages = import ./nix/tests/pages.nix { inherit pkgs; };
+        # Settings › Logs: the journal, its redaction and the page that works
+        # while lososd is down (nix/tests/logs.nix).
+        losos-logs = import ./nix/tests/logs.nix { inherit pkgs; };
         # The Mesh page while the box has paused sharing for want of an edge,
         # with the pull request's pictures (nix/tests/sharing-pause.nix).
         losos-sharing-pause = import ./nix/tests/sharing-pause.nix { inherit pkgs; };
+        # kindashared: sharing with the local gateways only, refused through
+        # an edge reached over the internet, paused and resumed with a real
+        # gateway, with the pull request's pictures (nix/tests/kindashared.nix).
+        losos-kindashared = import ./nix/tests/kindashared.nix { inherit pkgs; };
         # LosOS Diagrams on a box with LosOS Cloud: the /lab/ move, a .canvas
         # file opened and saved back, and the pull request's pictures.
         losos-diagrams = import ./nix/tests/diagrams.nix { inherit pkgs; };
@@ -667,6 +682,10 @@
         # Markdown documents and presentations in LosOS Office, with no
         # Collabora on the box (nix/tests/office-markdown.nix).
         losos-office-markdown = import ./nix/tests/office-markdown.nix { inherit pkgs; };
+        # LosOS Office's own documents and presentations, .paper and .slides
+        # edited as they look, and a document full of script that runs
+        # nowhere (nix/tests/office-paper.nix).
+        losos-office-paper = import ./nix/tests/office-paper.nix { inherit pkgs; };
         losos-quick-actions = import ./nix/tests/quick-actions.nix { inherit pkgs; };
         # Not a VM: losos-mdx's browser package in Node, against the crate's
         # own expectations and its limits inside a wasm stack

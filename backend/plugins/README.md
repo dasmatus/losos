@@ -15,6 +15,7 @@ host's imports.
 | `names/` | `losos-names`, the names lososd and the pins plugin both take: an app's release name, a LosOS Git owner or repository, a LosOS Cloud path. |
 | `look/` | The look: background picture and hand-written widgets (`/api/look*`). |
 | `pins/` | What the owner pinned to the sidebar (`/api/pins`). |
+| `pages/` | The pages as MDX: an administrator's changes and stylesheet, each save a commit in `/var/lib/losos/pages` (`/api/pages*`). |
 | `probe/` | A test plugin that tries every import and misbehaves on request. Never shipped. |
 | `../src/plugin/` | The host: loading, trust, manifests, the imports, limits. |
 

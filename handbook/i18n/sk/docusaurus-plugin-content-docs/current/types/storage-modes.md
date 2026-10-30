@@ -42,6 +42,32 @@ v spoločnom priestore. Platia tri veci:
   zaplatené je jedno rozhodnutie. Funguje bez ohľadu na to, či edge tomuto
   zariadeniu trh ponúka.
 
+## Zdieľané iba s touto sieťou \{#shared-with-this-network-only}
+
+Medzi ponechaním pre seba a zdieľaním so sieťou mesh je tretia možnosť pre
+zariadenie vo firemnej sieti alebo v domácnosti s vlastnou bránou: zdieľať
+s lokálnymi bránami tejto siete a s ničím ďalším.
+
+- Dáta sú v treťom účte `kindashared`, vo vlastnom adresári šifrovanom
+  vlastným kľúčom. Otvorí sa iba vtedy, keď je toto zdieľanie zapnuté.
+  `notshared`, `shared` a `kindashared` sa navzájom čítať nemôžu.
+- Potrebuje dostupnú **lokálnu bránu**: edge, ktorý zariadenie dosiahne vo
+  vlastnej sieti a ktorého spojenie je sekundárne (pozri
+  [federáciu edge](../in-depth/edge-federation)). Samotný oficiálny edge
+  nestačí a zariadenie prepínač odmietne.
+- Žiadny trh. Nič, čo má `kindashared`, sa neponúka, nepredáva ani neplatí
+  a zariadenie, ktoré zdieľa len takto, nemôže dať na trh miesto ani čas.
+  Nakupovať na trhu sa dá ďalej.
+- Keď sa desať minút neozve žiadna lokálna brána, zariadenie ho samo vypne
+  a znova zapne minútu po tom, ako sa niektorá opäť ozve.
+- Kým je zapnuté a zariadenie nie je v sieti mesh, chat, pošta, hovory
+  a Mesh CI bežia ako `kindashared` a ich dáta sú v jeho adresári. Aj
+  aplikácie možno inštalovať ako `kindashared`. Zariadenie, ktoré sa neskôr
+  pripojí k sieti mesh, ich spúšťa ako `shared` a začína tam odznova; čo
+  má `kindashared`, zostáva v jeho vlastnom adresári.
+- Prepínač **Zdieľať s bránami tejto siete** je na paneli **Mesh** spolu
+  s dostupnými bránami a účtom, pod ktorým beží zdieľaná strana.
+
 ## Požičiavanie voľného času (výpočtový výkon) \{#lending-spare-time-compute}
 
 Toto je od disku oddelené a nachádza sa na paneli Mesh. Zariadenie spúšťa

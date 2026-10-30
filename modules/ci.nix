@@ -51,8 +51,12 @@ let
   proxy = config.losos.proxy;
   window = config.losos.cluster.computeWindow;
 
-  shared = config.users.users.shared;
+  # The account the shared side runs as (lososInternal.sideUser): `shared`
+  # in a mesh, `kindashared` with the local gateways only.
+  user = if config.lososInternal.sideUser == null then "shared" else config.lososInternal.sideUser;
+  shared = config.users.users.${user};
   sharedUid = toString shared.uid;
+  subIds = if user == "shared" then 300000 else 400000;
   runtimeDir = "/run/user/${sharedUid}";
   runnerRoot = "/var/lib/losos-ci-runner";
 
@@ -149,20 +153,21 @@ in
     # LosOS Git sends its events through the socket in this group's directory.
     users.users.losos-git.extraGroups = [ "losos-ci-events" ];
 
-    # Rootless Podman as `shared`: sub-ids of its own, apart from
-    # `notshared`'s (modules/apps.nix), and a user manager from boot.
+    # Rootless Podman as the side's account: sub-ids of its own, apart from
+    # `notshared`'s (modules/apps.nix) and from the other sharing account's,
+    # and a user manager from boot.
     virtualisation.podman.enable = true;
-    users.users.shared = {
+    users.users.${user} = {
       linger = true;
       subUidRanges = [
         {
-          startUid = 300000;
+          startUid = subIds;
           count = 65536;
         }
       ];
       subGidRanges = [
         {
-          startGid = 300000;
+          startGid = subIds;
           count = 65536;
         }
       ];
@@ -170,11 +175,11 @@ in
 
     systemd.tmpfiles.rules = [
       "d ${eventsDir} 0750 losos-ci losos-ci-events - -"
-      "d ${runnerDir} 0750 losos-ci shared - -"
+      "d ${runnerDir} 0750 losos-ci ${user} - -"
       "d ${pageDir} 0700 losos-ci losos-ci - -"
-      "d ${runnerRoot} 0700 shared shared - -"
-      "d ${runnerRoot}/storage 0700 shared shared - -"
-      "d ${runnerRoot}/jobs 0700 shared shared - -"
+      "d ${runnerRoot} 0700 ${user} ${user} - -"
+      "d ${runnerRoot}/storage 0700 ${user} ${user} - -"
+      "d ${runnerRoot}/jobs 0700 ${user} ${user} - -"
     ];
 
     networking.firewall = lib.mkIf config.networking.firewall.enable {
@@ -289,7 +294,7 @@ in
     };
 
     systemd.services.losos-ci-runner = {
-      description = "LosOS Mesh CI runner, as the shared user";
+      description = "LosOS Mesh CI runner, as the ${user} user";
       wantedBy = [ "multi-user.target" ];
       wants = [
         "losos-ci.service"
@@ -300,7 +305,7 @@ in
         "user@${sharedUid}.service"
         "systemd-tmpfiles-setup.service"
       ]
-      ++ lib.optional config.losos.shared.fscrypt.enable "losos-fscrypt-shared.service";
+      ++ lib.optional config.losos.${user}.fscrypt.enable "losos-fscrypt-${user}.service";
       environment = podmanEnv // {
         RUST_LOG = "info";
       };
@@ -323,8 +328,8 @@ in
         pkgs.xz
       ];
       serviceConfig = {
-        User = "shared";
-        Group = "shared";
+        User = user;
+        Group = user;
         ExecStart = lib.escapeShellArgs (
           [
             "${pkg}/bin/losos-ci"

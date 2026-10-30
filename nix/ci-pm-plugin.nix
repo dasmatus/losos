@@ -28,7 +28,7 @@ in
 pkgs.rustPlatform.buildRustPackage {
   pname = "losos-ci-pm-plugin";
   version = "0.1.0";
-  src = lib.cleanSource ./../backend/plugins;
+  inherit (import ./plugins-src.nix { inherit lib; }) src sourceRoot;
   inherit cargoHash;
   nativeBuildInputs = [
     pkgs.wasm-tools
