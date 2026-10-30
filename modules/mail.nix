@@ -3,15 +3,48 @@
 #
 # ── On the shared side, and only while sharing ───────────────────────────────
 # Mail belongs to the shared user: the server runs as `shared` (uid 1001) and
-# keeps its mailboxes in /home/shared/data/mail, inside the fscrypt domain
-# that is unlocked only while losos.sharingMyStorage is on
-# (modules/fscrypt.nix). Mail runs only while the storage counts as shared:
-# sharing on and the box in a mesh (lososInternal.sharedSide). Otherwise
+# keeps its mailboxes in /home/shared/data/mail, on the encrypted /persist
+# beside the shared folder modules/fscrypt.nix locks (that folder is
+# /home/shared/data/<machine-id>/shared). Mail runs only while the storage
+# counts as shared: sharing on and the box in a mesh
+# (lososInternal.sharedSide). Otherwise
 # nothing here exists: no server, no
 # /mail/ page (modules/containers.nix), no Mail entry in the admin pages
 # (lososd lists "mail" in /api/me's `shared` only while it is configured),
 # and /api/mail/* answers 404. Chat follows the same rule. The one switch is
 # lososInternal.mail.live in modules/options.nix.
+#
+# ── Stalwart 1.0, set up by a plan ───────────────────────────────────────────
+# Stalwart 1.0 (nix/stalwart.nix) keeps one file on disk, config.json, which
+# names its data store; the rest of its settings live in its own registry,
+# managed over JMAP. This module writes those settings as a plan, a JSON
+# file in the store, and `losos-mail setup` (backend/src/mail_setup.rs)
+# applies it before the server starts: Stalwart in recovery mode, a single
+# HTTP listener on a free loopback port, the plan, then a clean stop. It
+# runs again only when the plan changes.
+#
+# The plan is also what keeps the server from making its first-start
+# defaults: SMTP, IMAP, POP3 and HTTPS on every address, a log under
+# /var/log, a web interface, address lists and spam rules fetched from
+# GitHub. It makes one loopback HTTP listener, logs to the journal, turns
+# the web interface and the address lists off and sets no rules address.
+# The units may reach localhost and nothing else, whatever the registry
+# says.
+#
+# ── Memory ───────────────────────────────────────────────────────────────────
+# Stalwart's defaults size its caches for a mail host: about 2.7 GiB of
+# limits on a 4 GiB box. The plan and config.json cut them to what a few
+# people's mail needs, and systemd holds the rest: MemoryHigh slows the
+# server down before MemoryMax stops it.
+#
+# ── The upgrade from Stalwart 0.15 ────────────────────────────────────────────
+# 1.0 cannot open a 0.15 store (mailboxes/db). On a box that has one,
+# `losos-mail-migrate` starts the old server from nixpkgs on a free loopback
+# port beside the new one, makes each person's account in 1.0 and has
+# Vandelay (nixpkgs' stalwart-vandelay) copy their folders, messages,
+# identities and filters over JMAP. When everyone is across it renames the
+# old store to db-0.15 and keeps it. A copy cut short starts again on the next boot and
+# carries on where it stopped.
 #
 # ── A plain unit, not nixpkgs' services.stalwart ─────────────────────────────
 # The nixpkgs module adds a systemd-tmpfiles `d` line for its data
@@ -29,11 +62,11 @@
 # Stalwart listens on loopback HTTP only (JMAP and its management API); no
 # SMTP, IMAP or POP listener, so nothing on the LAN talks to it and no
 # password of its own exists. lososd is its one client (backend/src/mail.rs):
-# it signs in with Stalwart's master user as `<person>%losos`, for the person
-# LosOS Login signed in, and makes their account on their first call with
-# the fallback administrator. Both use one secret, `mail-master` in the box's
-# credential store (modules/credentials.nix), which systemd opens into the
-# credential directory of Stalwart and of lososd alone. lososd runs with
+# it is the server's administrator, named in STALWART_RECOVERY_ADMIN, makes
+# each person's account on their first call and acts as them by signing in
+# as `<address>%losos`. The secret is `mail-master` in the box's credential
+# store (modules/credentials.nix), which systemd opens into the credential
+# directory of these units and of lososd alone. lososd runs with
 # ProtectHome=true and never reads the mailboxes itself.
 #
 # Mail between the people on this box is delivered locally. Mail to and from
@@ -50,7 +83,11 @@ let
   live = config.lososInternal.mail.live;
   domain = config.lososInternal.mail.domain;
   port = config.losos.mail.port;
-  package = pkgs.stalwart;
+  package = pkgs.callPackage ../nix/stalwart.nix { };
+  # The 0.15 server and the copier, for the upgrade's copy only.
+  legacyPackage = pkgs.stalwart_0_15;
+  vandelay = pkgs.stalwart-vandelay;
+  lososMail = "${config.losos.backend.package}/bin/losos-mail";
 
   # Where an older build kept the secret as plaintext; the credential store
   # adopts it from here.
@@ -60,27 +97,162 @@ let
   user = if config.lososInternal.sideUser == null then "shared" else config.lososInternal.sideUser;
   # The real path is /persist/home/<user>/data, bind-mounted here by
   # modules/impermanence.nix; the unit sees the bind-mounted view.
-  dataDir = "/home/${user}/data/mail";
+  dataDir = "/home/shared/data/mail";
+  # Stalwart 1.0's store, and 0.15's, which only the upgrade's copy opens.
+  storeDir = "${dataDir}/store";
+  legacyStore = "${dataDir}/db";
+  # The hash of the last plan `losos-mail setup` applied.
+  planMarker = "${dataDir}/plan.sha256";
   # The box's Web Key Directory: public keys lososd publishes, nginx serves.
   wkdDir = "/var/lib/losos-wkd";
-  credential = "%{file:/run/credentials/losos-mail.service/mail-master}%";
 
   fscrypt = config.losos.${user}.fscrypt.enable;
   unlock = "losos-fscrypt-${user}.service";
 
-  settings = {
+  mib = n: n * 1024 * 1024;
+
+  # The one file Stalwart reads: its store, RocksDB, with small caches.
+  configFile = pkgs.writeText "losos-mail-config.json" (
+    builtins.toJSON {
+      "@type" = "RocksDb";
+      path = storeDir;
+      cacheSize = mib 64;
+      bufferSize = mib 32;
+      poolWorkers = 2;
+    }
+  );
+
+  # Everything else, applied by `losos-mail setup` (backend/src/mail_setup.rs).
+  plan = pkgs.writeText "losos-mail-plan.json" (
+    builtins.toJSON {
+      entries = [
+        {
+          # One HTTP listener, on loopback, for lososd. Any other, such as
+          # the defaults an older start may have made, is removed.
+          type = "x:NetworkListener";
+          key = "name";
+          only = true;
+          items = [
+            {
+              name = "http";
+              bind = {
+                "127.0.0.1:${toString port}" = true;
+              };
+              protocol = "http";
+              useTls = false;
+              implicitTls = false;
+            }
+          ];
+        }
+        {
+          # The journal, not a file under /var/log.
+          type = "x:Tracer";
+          key = "@type";
+          only = true;
+          items = [
+            {
+              "@type" = "Journal";
+              enable = true;
+              level = "info";
+            }
+          ];
+        }
+        {
+          # No address lists fetched from GitHub.
+          type = "x:Asn";
+          singleton = true;
+          value = {
+            "@type" = "Disabled";
+          };
+        }
+        {
+          # No rules fetched either: mail stays between the people on this
+          # box, who are not spammers to each other.
+          type = "x:SpamSettings";
+          singleton = true;
+          value = {
+            spamFilterRulesUrl = null;
+          };
+        }
+        {
+          # Stalwart's own web interface, which it would download; lososd
+          # and the Mail page are the interface.
+          type = "x:Application";
+          all = {
+            enable = false;
+          };
+        }
+        {
+          type = "x:Domain";
+          key = "name";
+          items = [
+            {
+              name = domain;
+              reportAddressUri = null;
+            }
+          ];
+        }
+        {
+          type = "x:SystemSettings";
+          singleton = true;
+          value = {
+            defaultHostname = domain;
+            defaultDomainId = {
+              "$ref" = [
+                "x:Domain"
+                "name"
+                domain
+              ];
+            };
+            maxBufferedMemory = mib 64;
+          };
+        }
+        {
+          # Sized for a few people on a 4 GiB box, not a mail host. The
+          # caches for very large accounts are off: none is that large here.
+          type = "x:Cache";
+          singleton = true;
+          value = {
+            messages = mib 32;
+            messagesLarge = 0;
+            groupwareLarge = 0;
+            events = mib 4;
+            contacts = mib 4;
+            files = mib 4;
+            scheduling = mib 1;
+            accounts = mib 4;
+          };
+        }
+        {
+          # Mail only: calendars, contacts and files are LosOS Cloud's.
+          # One indexing task at a time, on a two-core box.
+          type = "x:Search";
+          singleton = true;
+          value = {
+            maxConcurrentIndexTasks = 1;
+            indexCalendar = false;
+            indexContacts = false;
+            indexFiles = false;
+          };
+        }
+      ];
+    }
+  );
+
+  # The 0.15 configuration the upgrade's copy starts the old server with:
+  # what this module wrote before 1.0, on a loopback address the copy picks.
+  legacySecretPath = "/run/credentials/losos-mail-migrate.service/mail-master";
+  legacyConfig = (pkgs.formats.toml { }).generate "losos-mail-0.15.toml" {
     server = {
       hostname = domain;
       listener.http = {
-        bind = [ "127.0.0.1:${toString port}" ];
+        bind = [ "%{env:LOSOS_MAIL_LEGACY_BIND}%" ];
         protocol = "http";
       };
     };
-    # Everything in one RocksDB under the shared domain, as nixpkgs'
-    # module does from state version 24.11 on.
     store.db = {
       type = "rocksdb";
-      path = "${dataDir}/db";
+      path = legacyStore;
       compression = "lz4";
     };
     storage = {
@@ -94,6 +266,9 @@ let
       type = "internal";
       store = "db";
     };
+    # The session's URLs name the address the copy dialled, not the
+    # hostname, which nothing on the box answers.
+    http.url = "protocol + '://' + local_ip + ':' + local_port";
     tracer.journal = {
       type = "journal";
       level = "info";
@@ -103,29 +278,22 @@ let
     resolver.public-suffix = [
       "file://${pkgs.publicsuffix-list}/share/publicsuffix/public_suffix_list.dat"
     ];
-    spam-filter.resource = "file://${package.spam-filter}/spam-filter.toml";
-    # Shipped with the package, so Stalwart never fetches it from GitHub.
-    # Nobody opens it: the listener is loopback and lososd uses the API.
+    spam-filter.resource = "file://${legacyPackage.spam-filter}/spam-filter.toml";
     webadmin = {
       path = "/var/cache/losos-mail";
-      resource = "file://${package.webadmin}/webadmin.zip";
+      resource = "file://${legacyPackage.webadmin}/webadmin.zip";
       auto-update = false;
     };
     authentication = {
-      # lososd makes the domain and each person's account with it.
       fallback-admin = {
         user = "losos-admin";
-        secret = credential;
+        secret = "%{file:${legacySecretPath}}%";
       };
-      # lososd acts as each person with it (backend/src/mail.rs, MASTER_USER).
       master = {
         user = "losos";
-        secret = credential;
+        secret = "%{file:${legacySecretPath}}%";
       };
     };
-    # Stalwart's own list of keys read from this file rather than its
-    # database, plus the master user, which would otherwise be a database
-    # key with a warning at every start.
     config.local-keys = [
       "store.*"
       "directory.*"
@@ -138,6 +306,7 @@ let
       "authentication.fallback-admin.*"
       "authentication.master.*"
       "cluster.*"
+      "http.url"
       "storage.data"
       "storage.blob"
       "storage.lookup"
@@ -149,7 +318,63 @@ let
     ];
   };
 
-  configFile = (pkgs.formats.toml { }).generate "losos-mail.toml" settings;
+  # Stalwart with its administrator: the name lososd uses
+  # (backend/src/mail.rs, MASTER_USER) and the secret from the unit's
+  # credential directory, in the environment of this process alone.
+  start = pkgs.writeShellScript "losos-mail-start" ''
+    secret=$(< "$CREDENTIALS_DIRECTORY/mail-master")
+    export STALWART_RECOVERY_ADMIN="losos:$secret"
+    unset secret
+    exec ${lib.getExe package} --config=${configFile}
+  '';
+
+  # The sandbox the server and both of its jobs run in.
+  sandbox = {
+    User = "shared";
+    Group = "shared";
+    CacheDirectory = "losos-mail";
+    LimitNOFILE = 65536;
+    # Loopback, and nothing else, until mail reaches the internet through
+    # an edge.
+    IPAddressDeny = "any";
+    IPAddressAllow = "localhost";
+
+    # /home is an empty tmpfs with only the mailboxes bound in: the
+    # rest of the shared domain and the owner's home stay out of reach.
+    ProtectHome = "tmpfs";
+    BindPaths = [ dataDir ];
+    ProtectSystem = "strict";
+    PrivateTmp = true;
+    PrivateDevices = true;
+    DeviceAllow = [ "" ];
+    CapabilityBoundingSet = [ "" ];
+    AmbientCapabilities = [ "" ];
+    NoNewPrivileges = true;
+    LockPersonality = true;
+    MemoryDenyWriteExecute = true;
+    ProcSubset = "pid";
+    ProtectClock = true;
+    ProtectControlGroups = true;
+    ProtectHostname = true;
+    ProtectKernelLogs = true;
+    ProtectKernelModules = true;
+    ProtectKernelTunables = true;
+    ProtectProc = "invisible";
+    RestrictAddressFamilies = [
+      "AF_INET"
+      "AF_INET6"
+      "AF_UNIX"
+    ];
+    RestrictNamespaces = true;
+    RestrictRealtime = true;
+    RestrictSUIDSGID = true;
+    SystemCallArchitectures = "native";
+    SystemCallFilter = [
+      "@system-service"
+      "~@privileged"
+    ];
+    UMask = "0077";
+  };
 in
 {
   # The credential store every secret here lives in.
@@ -165,6 +390,7 @@ in
       format = "hex-32";
       services = [
         "losos-mail"
+        "losos-mail-migrate"
         "lososd"
       ];
       legacy = [ legacySecret ];
@@ -178,7 +404,10 @@ in
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
-        ExecStart = "${pkgs.coreutils}/bin/install -d -o ${user} -g ${user} -m 0700 ${dataDir}";
+        ExecStart = [
+          "${pkgs.coreutils}/bin/install -d -o shared -g shared -m 0700 ${dataDir}"
+          "${pkgs.coreutils}/bin/install -d -o shared -g shared -m 0700 ${storeDir}"
+        ];
       };
     };
 
@@ -194,6 +423,27 @@ in
       requires = [
         "losos-mail-dir.service"
       ]
+      ++ lib.optional fscrypt "losos-fscrypt-shared.service";
+      # A new plan or a new server is a restart, and the setup then
+      # applies the plan before the server starts.
+      restartTriggers = [
+        configFile
+        plan
+        package
+      ];
+      environment = {
+        STALWART_HOSTNAME = domain;
+        # The address the JMAP session hands its clients (Vandelay follows
+        # it); without it Stalwart names https://<hostname>, which nothing
+        # on the box answers.
+        STALWART_PUBLIC_URL = "http://127.0.0.1:${toString port}";
+      };
+      serviceConfig = sandbox // {
+        Type = "simple";
+        ExecStartPre = "${lososMail} setup --stalwart ${lib.getExe package} --config ${configFile} --plan ${plan} --secret-file %d/mail-master --marker ${planMarker}";
+        ExecStart = start;
+        # The setup's recovery start is a server start of its own.
+        TimeoutStartSec = 300;
       ++ lib.optional fscrypt unlock;
       # A new configuration (a new port or domain) is a restart.
       restartTriggers = [ configFile ];
@@ -209,42 +459,28 @@ in
         Restart = "on-failure";
         RestartSec = 5;
         SyslogIdentifier = "losos-mail";
+        MemoryHigh = "512M";
+        MemoryMax = "1G";
+        CPUWeight = 50;
+      };
+    };
 
-        # /home is an empty tmpfs with only the mailboxes bound in: the
-        # rest of the shared domain and the owner's home stay out of reach.
-        ProtectHome = "tmpfs";
-        BindPaths = [ dataDir ];
-        ProtectSystem = "strict";
-        PrivateTmp = true;
-        PrivateDevices = true;
-        DeviceAllow = [ "" ];
-        CapabilityBoundingSet = [ "" ];
-        AmbientCapabilities = [ "" ];
-        NoNewPrivileges = true;
-        LockPersonality = true;
-        MemoryDenyWriteExecute = true;
-        ProcSubset = "pid";
-        ProtectClock = true;
-        ProtectControlGroups = true;
-        ProtectHostname = true;
-        ProtectKernelLogs = true;
-        ProtectKernelModules = true;
-        ProtectKernelTunables = true;
-        ProtectProc = "invisible";
-        RestrictAddressFamilies = [
-          "AF_INET"
-          "AF_INET6"
-          "AF_UNIX"
-        ];
-        RestrictNamespaces = true;
-        RestrictRealtime = true;
-        RestrictSUIDSGID = true;
-        SystemCallArchitectures = "native";
-        SystemCallFilter = [
-          "@system-service"
-          "~@privileged"
-        ];
-        UMask = "0077";
+    # The upgrade from Stalwart 0.15: only where its store is still there.
+    systemd.services.losos-mail-migrate = {
+      description = "LosOS Mail: copy the mail of Stalwart 0.15 into 1.0";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "losos-mail.service" ];
+      requires = [ "losos-mail.service" ];
+      unitConfig.ConditionPathExists = legacyStore;
+      serviceConfig = sandbox // {
+        Type = "oneshot";
+        ExecStart = "${lososMail} migrate --legacy-stalwart ${lib.getExe legacyPackage} --legacy-config ${legacyConfig} --legacy-store ${legacyStore} --addr 127.0.0.1:${toString port} --domain ${domain} --vandelay ${lib.getExe vandelay} --work ${dataDir}/migrate --secret-file %d/mail-master";
+        # A large mailbox takes as long as it takes.
+        TimeoutStartSec = "infinity";
+        SyslogIdentifier = "losos-mail-migrate";
+        MemoryHigh = "512M";
+        MemoryMax = "1G";
+        CPUWeight = 20;
       };
     };
 

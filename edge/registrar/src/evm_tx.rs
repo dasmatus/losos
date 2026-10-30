@@ -131,27 +131,55 @@ pub struct Call {
     pub data: Vec<u8>,
 }
 
-/// `release(uint256)` on the escrow.
+/// `release(uint256,bytes[])` on the escrow, with the box signatures that
+/// agree (`crate::escrow_boxes`). The edge's own agreement is that it sends
+/// the call.
 #[must_use]
-pub fn release_data(deposit: u64) -> Vec<u8> {
-    call_data("release(uint256)", deposit)
+pub fn release_data(deposit: u64, sigs: &[Vec<u8>]) -> Vec<u8> {
+    with_sigs(call_data("release(uint256,bytes[])", deposit), sigs)
 }
 
-/// `refund(uint256)` on the escrow.
+/// `refund(uint256,bytes[])` on the escrow.
 #[must_use]
-pub fn refund_data(deposit: u64) -> Vec<u8> {
-    call_data("refund(uint256)", deposit)
+pub fn refund_data(deposit: u64, sigs: &[Vec<u8>]) -> Vec<u8> {
+    with_sigs(call_data("refund(uint256,bytes[])", deposit), sigs)
 }
 
-/// `settle(uint256,uint256)` on the escrow: `refund` base units back to the
-/// payer, the rest to the seller and the treasury.
+/// `settle(uint256,uint256,bytes[])` on the escrow: `refund` base units
+/// back to the payer, the rest to the seller and the treasury.
 #[must_use]
-pub fn settle_data(deposit: u64, refund: u128) -> Vec<u8> {
-    let mut data = call_data("settle(uint256,uint256)", deposit);
+pub fn settle_data(deposit: u64, refund: u128, sigs: &[Vec<u8>]) -> Vec<u8> {
+    let mut data = call_data("settle(uint256,uint256,bytes[])", deposit);
     let mut word = [0u8; 32];
     word[16..].copy_from_slice(&refund.to_be_bytes());
     data.extend_from_slice(&word);
-    data
+    with_sigs(data, sigs)
+}
+
+/// `head` (a selector and its static words) followed by a `bytes[]`
+/// argument as its last: the offset word, then the array.
+fn with_sigs(mut head: Vec<u8>, sigs: &[Vec<u8>]) -> Vec<u8> {
+    let word = |n: usize| {
+        let mut w = [0u8; 32];
+        w[24..].copy_from_slice(&(n as u64).to_be_bytes());
+        w
+    };
+    let padded = |n: usize| n.div_ceil(32) * 32;
+    // The offset counts from the first argument, after the selector, and
+    // this word is itself one of the head's words.
+    head.extend_from_slice(&word(head.len() - 4 + 32));
+    head.extend_from_slice(&word(sigs.len()));
+    let mut at = sigs.len() * 32;
+    for sig in sigs {
+        head.extend_from_slice(&word(at));
+        at += 32 + padded(sig.len());
+    }
+    for sig in sigs {
+        head.extend_from_slice(&word(sig.len()));
+        head.extend_from_slice(sig);
+        head.resize(head.len() + padded(sig.len()) - sig.len(), 0);
+    }
+    head
 }
 
 /// `deposits(uint256)`: the escrow's record of one deposit. The last word
@@ -413,9 +441,33 @@ mod tests {
             stablecoin::DepositState::Held
         );
         let to = stablecoin::address_bytes(escrow).unwrap();
-        let hash = send(rpc, 31337, &releaser, to, release_data(deposit), false)
-            .await
-            .unwrap();
+        // The edge's key alone is one of the three: refused at the estimate,
+        // so nothing is sent.
+        assert!(
+            send(rpc, 31337, &releaser, to, release_data(deposit, &[]), false)
+                .await
+                .is_err()
+        );
+        // The seller's box agrees to the release; with the edge that is two.
+        let seller_box = k256::ecdsa::SigningKey::from_slice(
+            &stablecoin::decode_hex(meta["seller_box_key"].as_str().unwrap()).unwrap(),
+        )
+        .unwrap();
+        let digest = crate::escrow_boxes::evm_digest(31337, to, deposit, 0);
+        let (sig, recid) = seller_box.sign_prehash_recoverable(&digest);
+        let mut sig = sig.to_bytes().to_vec();
+        sig.push(27 + u8::from(recid));
+        let sigs = [sig];
+        let hash = send(
+            rpc,
+            31337,
+            &releaser,
+            to,
+            release_data(deposit, &sigs),
+            false,
+        )
+        .await
+        .unwrap();
         // anvil answers eth_sendRawTransaction before it has mined the
         // block, so the receipt can be a moment behind, as on a real chain.
         let mut receipt = stablecoin::fetch_receipt(rpc, &hash).await;
@@ -436,11 +488,16 @@ mod tests {
         );
         // Released once: the escrow refuses a second call at the estimate,
         // so nothing is sent.
-        assert!(
-            send(rpc, 31337, &releaser, to, release_data(deposit), false)
-                .await
-                .is_err()
-        );
+        assert!(send(
+            rpc,
+            31337,
+            &releaser,
+            to,
+            release_data(deposit, &sigs),
+            false
+        )
+        .await
+        .is_err());
     }
 
     async fn mined(rpc: &str, hash: &str) -> serde_json::Value {
@@ -566,21 +623,53 @@ mod tests {
         assert_ne!(a.address(), b.address());
     }
 
+    /// Each against `cast calldata`, with a signature of 65 `ab` bytes
+    /// ending in `1b`.
     #[test]
-    fn call_data_is_the_selector_and_one_word() {
-        let data = release_data(7);
-        assert_eq!(crate::identity::to_hex(&data[..4]), "37bdc99b");
-        assert_eq!(data.len(), 36);
-        assert_eq!(data[35], 7);
-        assert_eq!(crate::identity::to_hex(&refund_data(1)[..4]), "278ecde1");
-        // `cast calldata 'settle(uint256,uint256)' 7 2500000`
+    fn call_data_is_what_cast_encodes() {
+        let mut sig = vec![0xab; 64];
+        sig.push(0x1b);
+        let hex = |d: Vec<u8>| crate::identity::to_hex(&d);
+        let tail = "0000000000000000000000000000000000000000000000000000000000000041\
+            abababababababababababababababababababababababababababababababab\
+            abababababababababababababababababababababababababababababababab\
+            1b00000000000000000000000000000000000000000000000000000000000000";
         assert_eq!(
-            crate::identity::to_hex(&settle_data(7, 2_500_000)),
-            concat!(
-                "9a9c29f6",
+            hex(release_data(7, std::slice::from_ref(&sig))),
+            [
+                "1aa4c26a",
+                "0000000000000000000000000000000000000000000000000000000000000007",
+                "0000000000000000000000000000000000000000000000000000000000000040",
+                "0000000000000000000000000000000000000000000000000000000000000001",
+                "0000000000000000000000000000000000000000000000000000000000000020",
+                tail,
+            ]
+            .concat()
+        );
+        assert_eq!(
+            hex(refund_data(1, &[])),
+            [
+                "1df60d97",
+                "0000000000000000000000000000000000000000000000000000000000000001",
+                "0000000000000000000000000000000000000000000000000000000000000040",
+                "0000000000000000000000000000000000000000000000000000000000000000",
+            ]
+            .concat()
+        );
+        assert_eq!(
+            hex(settle_data(7, 2_500_000, &[sig.clone(), sig])),
+            [
+                "0e0f4b0c",
                 "0000000000000000000000000000000000000000000000000000000000000007",
                 "00000000000000000000000000000000000000000000000000000000002625a0",
-            )
+                "0000000000000000000000000000000000000000000000000000000000000060",
+                "0000000000000000000000000000000000000000000000000000000000000002",
+                "0000000000000000000000000000000000000000000000000000000000000040",
+                "00000000000000000000000000000000000000000000000000000000000000c0",
+                tail,
+                tail,
+            ]
+            .concat()
         );
     }
 
@@ -610,7 +699,8 @@ mod tests {
             max_fee: 2_000_000_000,
             gas: 90_000,
             to: [0x11; 20],
-            data: release_data(7),
+            // What foundry signed: the escrow's earlier one-argument call.
+            data: call_data("release(uint256)", 7),
         };
         let (raw, hash) = sign(&r, &call);
         assert_eq!(raw, FOUNDRY_RAW);

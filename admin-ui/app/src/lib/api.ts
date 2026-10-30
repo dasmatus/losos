@@ -1191,7 +1191,9 @@ export interface StablecoinInvoice {
    *  after it the buyer can take a deposit the edge never released back. A
    *  direct transfer on Solana ignores it. */
   deadline: number;
-  chains: (UsdcChain & { seller: string })[];
+  /** Each network with the seller's address there and, where the payment
+   *  is held in escrow, the two boxes' escrow keys the wallet names. */
+  chains: (UsdcChain & { seller: string; buyer_box?: string; seller_box?: string })[];
   /** Coins other than USDC the seller takes for this order. */
   coins?: Coin[];
 }
@@ -3334,9 +3336,13 @@ export interface LookLimits {
 
 export interface LookResponse {
   version: number;
+  /** The signed-in person's own background, or the box's for the spare key. */
   background: LookBackground;
   /** Percent of the theme's ground colour laid over the picture. */
   veil: number;
+  /** The background is a person's own; false for the spare key, which sees
+   *  and sets the box's. */
+  personal: boolean;
   widgets: HandWidget[];
   /** Names of the pictures the box ships, under /backgrounds/<name>.svg. */
   shipped: string[];

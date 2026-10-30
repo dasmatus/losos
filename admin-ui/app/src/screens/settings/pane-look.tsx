@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
-import { useMe } from "@/lib/api";
+import { canUse, useMe } from "@/lib/api";
 import { useT } from "@/lib/i18n-react";
 import type { MessageKey } from "@/lib/i18n";
 import {
@@ -40,13 +40,15 @@ import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, StackRow } 
 
 /* The Look pane: what sits behind the page, and the widgets written by hand.
  *
- * The one pane with no Apply bar. Everything here is lososd's look document
- * (lib/look.ts): a picture, the veil over it, and the hand-written widgets.
- * Each is saved the moment it is picked and takes effect at once, in this
- * browser and every other that opens the box, because none of it is a
- * NixOS option — nothing rebuilds, nothing restarts, and nothing on this
- * pane can reach the one operation on this box that can fail with nobody
- * able to log in and fix it.
+ * The one pane with no Apply bar. Everything here is lososd's look
+ * (lib/look.ts): the signed-in person's own picture and the veil over it,
+ * and the box's hand-written widgets. Everyone signed in opens it for their
+ * background; the widgets are there only for the look section. Each change
+ * is saved the moment it is picked and takes effect at once, in every
+ * browser the person signs in to, because none of it is a NixOS option:
+ * nothing rebuilds, nothing restarts, and nothing on this pane can reach
+ * the one operation on this box that can fail with nobody able to log in
+ * and fix it.
  *
  * House style, as on every pane: no emoji, nothing names a runtime, and the
  * cost of a choice is said on the row. The picker is a row of thumbnails
@@ -70,6 +72,9 @@ export function LookPane({ locked }: { locked: boolean }) {
   const look = state.look;
   const limits = lookLimits();
   const disabled = locked || look === null;
+  // The spare key sees and sets the box's own background; a person, theirs.
+  const personal = look?.personal ?? true;
+  const widgets = canUse("look");
 
   const [uploading, setUploading] = React.useState(false);
   const [editing, setEditing] = React.useState<{ widget?: HandWidget } | null>(null);
@@ -159,12 +164,12 @@ export function LookPane({ locked }: { locked: boolean }) {
       )}
 
       <PaneSection>
-        <GroupTitle>{t("look.background.group")}</GroupTitle>
+        <GroupTitle>{t(personal ? "look.background.groupMine" : "look.background.group")}</GroupTitle>
         <Group>
           <StackRow>
             <div
               role="radiogroup"
-              aria-label={t("look.background.group")}
+              aria-label={t(personal ? "look.background.groupMine" : "look.background.group")}
               className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-5"
             >
               <Swatch
@@ -283,9 +288,10 @@ export function LookPane({ locked }: { locked: boolean }) {
             </div>
           </Row>
         </Group>
-        <GroupCaption>{t("look.background.caption", { mb })}</GroupCaption>
+        <GroupCaption>{t(personal ? "look.background.caption" : "look.background.captionBox", { mb })}</GroupCaption>
       </PaneSection>
 
+      {widgets && (
       <PaneSection>
         <GroupTitle>
           {t("look.widgets.group")}
@@ -366,6 +372,7 @@ export function LookPane({ locked }: { locked: boolean }) {
         </Group>
         <GroupCaption>{t("look.widgets.caption")}</GroupCaption>
       </PaneSection>
+      )}
 
       <PagesSection locked={locked} />
 

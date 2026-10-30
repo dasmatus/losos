@@ -316,6 +316,9 @@ in
             proxyPass = "http://127.0.0.1:${toString config.losos.identity.port}/auth/api/authz/auth-request";
             extraConfig = ''
               internal;
+              # The request's body never comes here, but its length is held to
+              # this location's limit first (modules/identity.nix, askAboutRequest).
+              client_max_body_size 0;
               proxy_pass_request_body off;
               proxy_set_header Content-Length "";
               proxy_set_header X-Original-Method $request_method;

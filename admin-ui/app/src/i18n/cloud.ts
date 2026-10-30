@@ -11,9 +11,6 @@ export default defineMessages({
   "cloud.crumbs": { en: "Folder path", sk: "Cesta k priečinku", de: "Ordnerpfad" },
 
   // ── Places ────────────────────────────────────────────────────────────
-  "cloud.nav.label": { en: "Places", sk: "Miesta", de: "Orte" },
-  "cloud.nav.expand": { en: "Show the places", sk: "Zobraziť miesta", de: "Orte einblenden" },
-  "cloud.nav.collapse": { en: "Narrow the places", sk: "Zúžiť miesta", de: "Orte schmaler" },
   "cloud.nav.files": { en: "Files", sk: "Súbory", de: "Dateien" },
   "cloud.nav.recent": { en: "Recent", sk: "Nedávne", de: "Zuletzt" },
   "cloud.nav.favorites": { en: "Favorites", sk: "Obľúbené", de: "Favoriten" },
@@ -33,8 +30,6 @@ export default defineMessages({
   },
 
   // ── Search ────────────────────────────────────────────────────────────
-  "cloud.search.label": { en: "Search your files", sk: "Hľadať v súboroch", de: "Dateien durchsuchen" },
-  "cloud.search.placeholder": { en: "Search by name", sk: "Hľadať podľa názvu", de: "Nach Namen suchen" },
   "cloud.search.title": { en: "Search", sk: "Hľadanie", de: "Suche" },
   "cloud.search.for": { en: "Results for \"{text}\"", sk: "Výsledky pre „{text}“", de: "Ergebnisse für „{text}“" },
   "cloud.search.emptyTitle": { en: "Nothing found", sk: "Nič sa nenašlo", de: "Nichts gefunden" },

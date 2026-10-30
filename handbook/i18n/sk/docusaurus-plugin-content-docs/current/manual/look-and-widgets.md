@@ -20,18 +20,21 @@ zariadenia na zariadení nič nemení a nič nespúšťa.
 
 ## Nastavenia → Vzhľad \{#settings--look}
 
-Tento panel mení vzhľad správcovských stránok v každom prehliadači, ktorý
-zariadenie otvorí. Zmena platí hneď, ako ju uložíte, bez nového zostavenia.
+Tento panel má každý prihlásený. Pozadie na ňom je len vaše: každý na
+zariadení si vyberá vlastné a vaše vás sprevádza v každom prehliadači, kde
+sa prihlásite, vrátane LosOS Cloud a LosOS Git. Zmena platí hneď, ako ju
+uložíte, bez nového zostavenia.
 
 ![Nastavenia, Vzhľad: pozadia Bez obrázka, Príliv, Mriežka, Súmrak a váš vlastný obrázok, posuvník závoja a ručne písané widgety uložené na tomto zariadení.](@site/docs/img/settings-look-sk.png)
 
-- **Pozadie**: jeden z troch dodaných obrázkov (Príliv, Mriežka, Súmrak),
-  vlastný nahraný obrázok (PNG, JPEG, WebP, GIF alebo SVG, do 8 MiB) alebo
-  Bez obrázka.
+- **Vaše pozadie**: jeden z troch dodaných obrázkov (Príliv, Mriežka,
+  Súmrak), vlastný nahraný obrázok (PNG, JPEG, WebP alebo GIF, do 8 MiB)
+  alebo Bez obrázka.
 - **Závoj**: kladie farbu stránky cez obrázok, od 20 % do 90 %, aby text
   zostal čitateľný vo svetlej aj tmavej téme.
 - **Widgety napísané ručne**: ručne písané widgety uložené na tomto
-  zariadení. Každý môžete upraviť alebo odstrániť.
+  zariadení, ktoré vidia ľudia, čo smú meniť vzhľad zariadenia. Každý môžete
+  upraviť alebo odstrániť.
 
 ## Písanie widgetu \{#writing-a-widget}
 
