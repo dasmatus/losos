@@ -55,6 +55,11 @@ before an update. Reload with Ctrl+Shift+R to bypass the cache, or open a
 private window.
 :::
 
+If the page loads but every pane waits or shows an error, the control
+service may be down. `https://<address>/basic/settings/logs` still opens
+without it and shows its lines, with the spare admin key if LosOS Login
+does not answer either. See [Logs](../manual/logs).
+
 If the banner shows an address and nothing at all answers on it, the box's
 web server, nginx, is down, and the nightly restart repairs it. If it is
 still down the next morning, [get help](getting-help) with the banner's
