@@ -30,6 +30,7 @@ _:
 
 {
   losos.sharingMyStorage = true;
+  losos.sharingLocally = false;
   losos.hostName = "mattbox";
   losos.gpu.enable = true;
   losos.proxy.enable = false;

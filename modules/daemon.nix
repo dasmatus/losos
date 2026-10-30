@@ -124,6 +124,17 @@ in
       legacy = [ (toString config.losos.admin.tokenFile) ];
     };
 
+    # The box's escrow key (backend/src/escrow_key.rs): with the edge's,
+    # one of the three keys a USDC payment held in escrow needs two of.
+    # Not rotatable: a deposit names the key it was paid with, and a new
+    # value would leave every payment still held waiting on its deadline.
+    losos.credentials.entries.market-escrow-key = {
+      app = "market";
+      description = "The box's key for payments held in escrow: it agrees to a release of what this box sold and a refund of what it bought.";
+      format = "hex-32";
+      services = [ "lososd" ];
+    };
+
     systemd.services.lososd = {
       description = "losos appliance control daemon (D-Bus + admin HTTP API)";
       wantedBy = [ "multi-user.target" ];
@@ -134,6 +145,7 @@ in
       environment = {
         LOSOS_ADMIN_PORT = toString config.losos.admin.apiPort;
         LOSOS_ADMIN_TOKEN_FILE = "%d/admin-token";
+        LOSOS_ESCROW_KEY_FILE = "%d/market-escrow-key";
         # The credential list and what it is sealed to (backend/src/credentials.rs).
         LOSOS_CREDENTIALS_FILE = "/etc/losos/credentials.json";
         # Terminal access (backend/src/access.rs): the box's own OpenPGP key

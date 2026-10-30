@@ -103,6 +103,7 @@ fn run() -> anyhow::Result<()> {
         // Follows backups and restores to their end, and walks an erase
         // through its countdown. See backend/src/erase.rs.
         losos_ctl::io_backend::start_erase_driver(&backend);
+        losos_ctl::io_backend::start_escrow_signer(&backend);
 
         // The bus connection and the HTTP thread carry the load from here; this
         // task waits for whichever comes first, a stop signal or the HTTP

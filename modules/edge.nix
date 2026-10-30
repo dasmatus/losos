@@ -76,6 +76,28 @@ let
     (toString hidden.edgeTlsPort)
   ];
 
+  # The edge as a way out (modules/edge-exit.nix). The paths are that
+  # module's; the registrar only writes the peers and reads the two files.
+  exitCfg = cfg.exit;
+  exitArgs = lib.optionals exitCfg.enable (
+    [
+      "--exit-dir"
+      "/var/lib/losos-exit"
+      "--exit-subnet"
+      exitCfg.subnet
+      "--exit-endpoint"
+      exitCfg.endpoint
+      "--exit-public-key-file"
+      "/var/lib/losos-exit/public.key"
+    ]
+    ++ lib.optionals exitCfg.onion.enable [
+      "--exit-onion-file"
+      "/var/lib/tor/onion/losos-exit/hostname"
+      "--exit-onion-port"
+      (toString exitCfg.onion.port)
+    ]
+  );
+
   # ── Mesh control plane constants ────────────────────────────────────────
   meshEnabled = cfg.cluster.enable;
   # The registrar API answers off-box when it is bound to a non-loopback
@@ -310,7 +332,12 @@ let
   tenantsJson = pkgs.writeText "losos-registrar-tenants.json" (
     builtins.toJSON (
       lib.mapAttrs (_: v: {
-        inherit (v) hostname cluster market;
+        inherit (v)
+          hostname
+          cluster
+          market
+          exit
+          ;
         token_file = toString v.tokenFile;
         relay_zone = v.relayZone;
       }) cfg.tenants
@@ -1110,6 +1137,7 @@ let
     ++ inferenceArgs
     ++ ciArgs
     ++ hiddenArgs
+    ++ exitArgs
     ++ tangArgs
   );
 

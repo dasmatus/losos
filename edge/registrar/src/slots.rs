@@ -423,11 +423,14 @@ mod tests {
                 tx: None,
                 sent_at: None,
                 refund: None,
+                keys: None,
+                approval: None,
             }),
             fee_offset: 0,
             offset_collected: false,
             card: None,
             offline_base: 0,
+            boxes: None,
         }
     }
 

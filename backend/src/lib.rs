@@ -48,6 +48,7 @@ pub mod devices;
 pub mod directory;
 pub mod edge;
 pub mod erase;
+pub mod escrow_key;
 pub mod facade;
 pub mod fake;
 pub mod forge;
