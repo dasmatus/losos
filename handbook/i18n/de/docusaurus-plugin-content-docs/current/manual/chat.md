@@ -114,6 +114,8 @@ sie geht.
 Eine kleine Reihe von Gesichtern unter einer Nachricht zeigt, wer bis dorthin
 gelesen hat.
 
+![Eine Unterhaltung mit Eva in LosOS Chat: Reaktionen unter den Nachrichten, eine Antwort in einem Thread und ein Bild, darunter die Büroklammer, die Cloud-Taste und das Mikrofon.](@site/docs/img/chat-de.png)
+
 ## Andere Matrix-Apps
 
 Andere Matrix-Apps wie Element können sich nicht beim Chat des Geräts
