@@ -59,6 +59,16 @@ export default defineMessages({
     sk: "Časť disku, ktorú toto zariadenie požičiava sieti, oddelene od vašich súborov.",
     de: "Der Teil der Festplatte, den diese Box dem Verbund leiht, getrennt von deinen Dateien.",
   },
+  "install.kindasharedDetail": {
+    en: "The side this box lends to the gateways of its own network only, apart from your files and the mesh.",
+    sk: "Časť, ktorú toto zariadenie požičiava iba bránam vlastnej siete, oddelene od vašich súborov aj od siete mesh.",
+    de: "Der Teil, den diese Box nur den Gateways ihres eigenen Netzwerks leiht, getrennt von deinen Dateien und vom Verbund.",
+  },
+  "install.kindasharedLocked": {
+    en: "Off while this box does not share with its network's gateways. Switch it on under Mesh to use it.",
+    sk: "Nedostupné, kým toto zariadenie nezdieľa s bránami svojej siete. Zapnite to v časti Mesh.",
+    de: "Nicht verfügbar, solange diese Box nicht mit den Gateways ihres Netzwerks teilt. Schalte es unter Mesh ein.",
+  },
   "install.sharedLocked": {
     en: "Off while this box does not share its disk. Switch sharing on under Storage to use it.",
     sk: "Nedostupné, kým toto zariadenie nezdieľa svoj disk. Zapnite zdieľanie v časti Úložisko.",

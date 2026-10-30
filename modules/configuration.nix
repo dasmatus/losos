@@ -107,6 +107,9 @@
   users.groups.shared = {
     gid = 1001;
   };
+  users.groups.kindashared = {
+    gid = 1004;
+  };
 
   # `notshared` — the owner's account: their files in LosOS Cloud carry this
   # name, and their apps run as it. No Linux login (no password, no SSH).
@@ -133,11 +136,26 @@
     homeMode = "700"; # owner only; notshared cannot enter, let alone read
   };
 
+  # `kindashared` — the shared account's counterpart for the local edge
+  # gateways of this box's own network, and nothing further: its home holds a
+  # second fscrypt data domain, unlocked only while losos.sharingLocally is on
+  # (modules/fscrypt.nix), which lososd allows only while a local gateway
+  # answers (backend/src/edge.rs). Same shape as `shared` and asserted by the
+  # same test: its own group, a 700 home, no Linux login. Not 1002, which
+  # stays retired (below).
+  users.users."kindashared" = {
+    uid = 1004;
+    description = "Kindashared — storage shared with local edge gateways only";
+    isNormalUser = true;
+    group = "kindashared";
+    homeMode = "700"; # owner only; neither other account can enter
+  };
+
   # ── Retired workload uids ─────────────────────────────────────────────────
   # The box's own apps no longer run as pods. 1002 was Nextcloud's and stays
   # unused: the files a box's Nextcloud left behind carry it until LosOS Cloud
   # takes them in (modules/cloud.nix). 1003 was Forgejo's; LosOS Git's account
-  # has it now (modules/git.nix).
+  # has it now (modules/git.nix). 1004 is `kindashared`, above.
 
   # ── GPU / graphics ────────────────────────────────────────────────────────
   # Enables /dev/dri + Mesa and the VA-API drivers for hardware video decode
