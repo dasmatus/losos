@@ -1,7 +1,8 @@
 /* A cloud document in LosOS Office, at /cloud/office/:file. The editor
  * takes the width and the height under the cloud's top bar, like a text
- * document at /cloud/edit/:file. A Markdown file is a document or a
- * presentation of LosOS's own (markdown/); everything else is Collabora's. */
+ * document at /cloud/edit/:file. A `.paper` or `.slides` file is LosOS
+ * Office's own (paper/), a Markdown file opens in the Markdown editor
+ * (markdown/), and everything else is Collabora's. */
 
 import * as React from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -12,6 +13,9 @@ import { OfficeEditor } from "./editor";
 import { openOffice } from "./api";
 import { MarkdownOffice } from "./markdown/editor";
 import { isMarkdown } from "./markdown/new";
+import { isPaper } from "./paper/new";
+
+const PaperOffice = React.lazy(() => import("./paper/editor").then((m) => ({ default: m.PaperOffice })));
 
 export function OfficePage() {
   const t = useT();
@@ -48,6 +52,19 @@ export function OfficePage() {
       <div className="flex h-full items-center justify-center">
         <Spinner size={28} label={t("office.openingPlain")} />
       </div>
+    );
+  }
+  if (entry.entry !== null && isPaper(entry.entry.name ?? "")) {
+    return (
+      <React.Suspense
+        fallback={
+          <div className="flex h-full items-center justify-center">
+            <Spinner size={28} label={t("office.openingPlain")} />
+          </div>
+        }
+      >
+        <PaperOffice key={file} entry={entry.entry} onClose={close} />
+      </React.Suspense>
     );
   }
   if (entry.entry !== null && isMarkdown(entry.entry.name ?? "")) {

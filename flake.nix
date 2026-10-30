@@ -676,6 +676,10 @@
         # Markdown documents and presentations in LosOS Office, with no
         # Collabora on the box (nix/tests/office-markdown.nix).
         losos-office-markdown = import ./nix/tests/office-markdown.nix { inherit pkgs; };
+        # LosOS Office's own documents and presentations, .paper and .slides
+        # edited as they look, and a document full of script that runs
+        # nowhere (nix/tests/office-paper.nix).
+        losos-office-paper = import ./nix/tests/office-paper.nix { inherit pkgs; };
         losos-quick-actions = import ./nix/tests/quick-actions.nix { inherit pkgs; };
         # Not a VM: losos-mdx's browser package in Node, against the crate's
         # own expectations and its limits inside a wasm stack

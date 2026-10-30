@@ -38,6 +38,7 @@ import menu from "./menu";
 import moderation from "./moderation";
 import notes from "./notes";
 import office from "./office";
+import paper from "./paper";
 import pages from "./pages";
 import palette from "./palette";
 import panes from "./panes";
@@ -102,6 +103,7 @@ export const MESSAGES = {
   ...manage,
   ...chat,
   ...office,
+  ...paper,
   ...mail,
   ...contacts,
   ...calendar,

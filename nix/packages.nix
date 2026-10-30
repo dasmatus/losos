@@ -169,7 +169,7 @@ let
     dir = ./../backend/mdx;
     wasm = "losos_mdx";
     features = [ "wasm" ];
-    cargoHash = "sha256-/PsXCBJFqy5hJ1ov20niOX5WhMcbm30UIkCoppjWiBI=";
+    cargoHash = "sha256-hyHEBRx7gLddFz4Y/Dqir9q4NpIr5wvRwDeTA1QyTvU=";
   };
   # Copied to src/mdx/pkg (gitignored; `bun run mdx` writes it in a
   # checkout) by both builds of the UI, in preConfigure rather than preBuild:
@@ -445,7 +445,7 @@ images
       nodeModules = bunDeps {
         pname = "losos-admin-ui";
         src = ./../admin-ui/app;
-        hash = "sha256-LUyu1qNDz5MHIdLaDE59k/sU7lJeBoKfgjuZznPv+Z0=";
+        hash = "sha256-C6awn7GAyZ8v8H0hu1eR6sGZnqe6ZZ8o+Yvd9+iwqZU=";
       };
     };
   });

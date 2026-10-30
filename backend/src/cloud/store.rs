@@ -205,6 +205,10 @@ pub fn mime_for(name: &str, dir: bool) -> String {
     let m = match ext.as_deref() {
         Some("txt" | "log") => "text/plain",
         Some("md" | "markdown" | "note") => "text/markdown",
+        // LosOS Office's own documents and presentations: MDX
+        // (backend/mdx), text the shared editor opens as well.
+        Some("paper") => "text/vnd.losos.paper",
+        Some("slides") => "text/vnd.losos.slides",
         Some("html" | "htm") => "text/html",
         Some("css") => "text/css",
         Some("csv") => "text/csv",
@@ -1459,6 +1463,13 @@ mod tests {
         assert!(valid_owner("notshared"));
         assert!(!valid_owner("../x"));
         assert!(!valid_owner("Alice"));
+    }
+
+    #[test]
+    fn office_documents_are_text() {
+        assert_eq!(mime_for("Plan.paper", false), "text/vnd.losos.paper");
+        assert_eq!(mime_for("Talk.SLIDES", false), "text/vnd.losos.slides");
+        assert_eq!(mime_for("Notes.md", false), "text/markdown");
     }
 
     #[test]
