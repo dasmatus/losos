@@ -460,6 +460,7 @@
           ./modules/edge-inference.nix
           ./modules/edge-gateway.nix
           ./modules/edge-hidden.nix
+          ./modules/edge-exit.nix
           ./modules/logs.nix
         ];
         _module.args.self = self;
@@ -583,6 +584,10 @@
         # The Mesh page while the box has paused sharing for want of an edge,
         # with the pull request's pictures (nix/tests/sharing-pause.nix).
         losos-sharing-pause = import ./nix/tests/sharing-pause.nix { inherit pkgs; };
+        # kindashared: sharing with the local gateways only, refused through
+        # an edge reached over the internet, paused and resumed with a real
+        # gateway, with the pull request's pictures (nix/tests/kindashared.nix).
+        losos-kindashared = import ./nix/tests/kindashared.nix { inherit pkgs; };
         # LosOS Diagrams on a box with LosOS Cloud: the /lab/ move, a .canvas
         # file opened and saved back, and the pull request's pictures.
         losos-diagrams = import ./nix/tests/diagrams.nix { inherit pkgs; };
@@ -699,6 +704,9 @@
         # a USDC escrow, a quote, a paid chat, the settle split, and the
         # refusals (nix/tests/inference-payg.nix).
         losos-inference-payg = import ./nix/tests/inference-payg.nix { inherit pkgs; };
+        # Two of three keys move an escrowed payment: an edge, the buyer's
+        # box and the seller's box on a local chain (nix/tests/market-escrow.nix).
+        losos-market-escrow = import ./nix/tests/market-escrow.nix { inherit pkgs; };
         losos-installer-screen = import ./nix/tests/installer-screen.nix { inherit pkgs disko; };
         losos-installer-report = import ./nix/tests/installer-report.nix { inherit pkgs disko; };
         # LosOS Git: Forgejo's repositories moved in, the configuration
