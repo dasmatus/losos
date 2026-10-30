@@ -90,6 +90,10 @@ const SLOT_RUNNING: &str =
 /// Why a payout was refused: every held payment is for a slot still running.
 const NOTHING_TO_PAY_OUT: &str =
     "nothing is ready to pay out yet; held payments are paid once their slots end";
+/// An escrowed payment needs both boxes' keys, which each box registers by
+/// itself a minute or so after it first reaches the edge.
+const NO_ESCROW_KEYS: &str =
+    "the buyer's or the seller's box has not registered its escrow key with this edge yet; try again in a few minutes";
 const COINS_PAUSED: &str = "the seller owes platform fees on earlier coin sales, so this order cannot be paid in coins until they are settled; pay in USDC where the seller takes it";
 
 /// Smallest charge, in minor units. Stripe refuses anything below roughly 50
@@ -382,6 +386,10 @@ pub struct Order {
     /// paid, so the offline time that counts against it is only its own.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub offline_base: u64,
+    /// The buyer's and the seller's box keys the invoice named
+    /// (`crate::escrow_boxes`). An escrowed payment must name the same.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub boxes: Option<crate::escrow_boxes::OrderBoxes>,
 }
 
 /// A card payment the platform holds until the slot it bought is over
@@ -432,9 +440,34 @@ pub struct Escrow {
     /// market's minor unit.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub refund: Option<u64>,
+    /// The deposit's two box keys and gross, as the chain wrote them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keys: Option<crate::escrow_boxes::DepositKeys>,
+    /// The box signature the edge's next call carries. Kept only while it
+    /// agrees to the refund that call asks for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approval: Option<crate::escrow_boxes::Approval>,
 }
 
 impl Escrow {
+    /// The refund the pending call asks the keys to agree on, USDC base
+    /// units, or `None` when nothing is pending or the gross is unknown.
+    #[must_use]
+    pub fn decided_refund(&self) -> Option<u64> {
+        let keys = self.keys.as_ref()?;
+        let split = self
+            .refund
+            .and_then(|r| u64::try_from(crate::stablecoin::cents_to_usdc(r)).ok());
+        crate::escrow_boxes::refund_of(self.step, keys.gross, split)
+    }
+
+    /// The box signature for the pending call, if one agreed to it.
+    #[must_use]
+    pub fn agreed(&self) -> Option<&crate::escrow_boxes::Approval> {
+        let refund = self.decided_refund()?;
+        self.approval.as_ref().filter(|a| a.refund == refund)
+    }
+
     /// Whether the edge still has a transaction to send or follow.
     #[must_use]
     pub fn pending(&self) -> bool {
@@ -466,6 +499,49 @@ impl EscrowStep {
     pub fn pending(self) -> bool {
         matches!(self, Self::Release | Self::Refund | Self::Split)
     }
+}
+
+/// A decision on a deposit that waits for one box's signature
+/// (`POST /market/escrow/decisions`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EscrowDecision {
+    pub network: String,
+    pub family: crate::stablecoin::Family,
+    /// EVM: the chain the EIP-712 domain names.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chain_id: Option<u64>,
+    /// `LososEscrow` on EVM, the `losos-escrow` program on Solana.
+    pub escrow: String,
+    /// EVM: the deposit id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deposit: Option<u64>,
+    /// Solana: the deposit account.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub account: Option<String>,
+    /// Which of the two boxes this decision pays, and so which one signs.
+    pub side: crate::escrow_boxes::Side,
+    pub step: EscrowStep,
+    /// USDC base units back to the payer, decimal: 0 a release, the gross a
+    /// refund.
+    pub refund: String,
+    pub gross: String,
+    /// `None` on a payment no order took.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub order_id: Option<String>,
+}
+
+/// A box's signature over one [`EscrowDecision`] (`POST /market/escrow/sign`).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct EscrowSignature {
+    pub network: String,
+    #[serde(default)]
+    pub deposit: Option<u64>,
+    #[serde(default)]
+    pub account: Option<String>,
+    pub refund: u64,
+    /// EVM: `0x` + 65 bytes. Solana: base58.
+    pub signature: String,
 }
 
 /// `GET /escrow/releaser` from the terminal (`crate::operator`).
@@ -601,6 +677,9 @@ pub struct MarketState {
     /// Pay as you go: meters and their taps (`crate::meter`).
     #[serde(default, skip_serializing_if = "crate::meter::Taps::is_empty")]
     pub taps: crate::meter::Taps,
+    /// Each box's escrow keys, by appliance id (`crate::escrow_boxes`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub escrow_keys: BTreeMap<String, crate::escrow_boxes::BoxKeys>,
     /// The backup door of each bought volume a box keeps its backups on
     /// (`server/storage.rs`), by order id.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -2092,6 +2171,7 @@ struct HeldAt {
     account: Option<String>,
     deadline: Option<u64>,
     seller_ok: bool,
+    keys: crate::escrow_boxes::DepositKeys,
 }
 
 pub struct Market {
@@ -2979,6 +3059,16 @@ impl Market {
             } else {
                 0
             };
+            let boxes = match (
+                state.escrow_keys.get(buyer),
+                state.escrow_keys.get(&listing.seller),
+            ) {
+                (Some(b), Some(s)) if rail == Rail::Usdc => Some(crate::escrow_boxes::OrderBoxes {
+                    buyer: b.clone(),
+                    seller: s.clone(),
+                }),
+                _ => None,
+            };
             let order = Order {
                 id: random_id("ord")?,
                 listing_id: listing.id.clone(),
@@ -3017,6 +3107,7 @@ impl Market {
                 offset_collected: false,
                 card: None,
                 offline_base: 0,
+                boxes,
             };
             let mut next = state.clone();
             expire_stale(&mut next, now);
@@ -3039,6 +3130,7 @@ impl Market {
                     evm: order.pay_to.as_deref(),
                     solana: order.pay_to_solana.as_deref(),
                 },
+                order.boxes.as_ref(),
                 order.amount,
                 order.fee + order.fee_offset,
                 order.created_at.saturating_add(USDC_HOLD_SECS),
@@ -3046,6 +3138,11 @@ impl Market {
             invoice.fee_offset = (order.fee_offset > 0)
                 .then(|| crate::stablecoin::cents_to_usdc(order.fee_offset).to_string());
             if invoice.chains.is_empty() && coins.is_empty() {
+                if order.boxes.is_none()
+                    && (order.pay_to.is_some() || order.pay_to_solana.is_some())
+                {
+                    return Err(MarketError::Conflict(NO_ESCROW_KEYS));
+                }
                 return Err(MarketError::Conflict("the seller has no payout address"));
             }
             invoice.coins = coins.iter().map(|c| c.key()).collect();
@@ -4367,6 +4464,12 @@ impl Market {
                     account: None,
                     deadline: None,
                     seller_ok: seller,
+                    keys: crate::escrow_boxes::DepositKeys {
+                        buyer_box: format!("0x{}", crate::identity::to_hex(&expected.buyer_box)),
+                        seller_box: format!("0x{}", crate::identity::to_hex(&expected.seller_box)),
+                        gross: u64::try_from(expected.gross)
+                            .map_err(|_| MarketError::Conflict("the amount is too large"))?,
+                    },
                 });
             }
             Expected::SolanaEscrow(expected) => {
@@ -4416,6 +4519,11 @@ impl Market {
                     account: Some(account),
                     deadline: Some(expected.deadline),
                     seller_ok: true,
+                    keys: crate::escrow_boxes::DepositKeys {
+                        buyer_box: crate::solana::base58_encode(&deposit.buyer_box),
+                        seller_box: crate::solana::base58_encode(&deposit.seller_box),
+                        gross: deposit.gross,
+                    },
                 });
             }
             Expected::Solana(expected) => {
@@ -4454,6 +4562,8 @@ impl Market {
             tx: None,
             sent_at: None,
             refund: None,
+            keys: Some(at.keys.clone()),
+            approval: None,
         };
         let offline_base = next
             .presence
@@ -4741,6 +4851,152 @@ impl Market {
                 .map(|r| r.address_base58()),
             networks,
         })
+    }
+
+    /// Register `appliance`'s escrow keys and return the decisions waiting
+    /// for its box: a release of what it sold once it is delivered, a
+    /// refund or a split of what it bought. Each one moves money only to
+    /// that box's own owner, so the box can sign it as it comes.
+    pub async fn escrow_decisions(
+        &self,
+        appliance: &str,
+        keys: crate::escrow_boxes::BoxKeys,
+    ) -> Result<Vec<EscrowDecision>, MarketError> {
+        let mut state = self.state.lock().await;
+        if state.escrow_keys.get(appliance) != Some(&keys) {
+            let mut next = state.clone();
+            next.escrow_keys.insert(appliance.to_string(), keys.clone());
+            self.commit(&mut state, next).await?;
+        }
+        let Some(usdc) = self.opts.usdc.as_ref() else {
+            return Ok(Vec::new());
+        };
+        let orders = state.orders.values().filter_map(|o| {
+            let e = o.escrow.as_ref()?;
+            (e.step != EscrowStep::Release || delivered(o)).then_some((Some(o.id.clone()), e))
+        });
+        let strays = state.strays.values().map(|s| (None, &s.escrow));
+        Ok(orders
+            .chain(strays)
+            .filter(|(_, e)| e.pending() && e.tx.is_none() && e.agreed().is_none())
+            .filter_map(|(order_id, e)| {
+                let chain = usdc.chain(&e.network)?;
+                let deposit_keys = e.keys.as_ref()?;
+                let refund = e.decided_refund()?;
+                let side = crate::escrow_boxes::favoured(refund);
+                let wanted = match side {
+                    crate::escrow_boxes::Side::Buyer => &deposit_keys.buyer_box,
+                    crate::escrow_boxes::Side::Seller => &deposit_keys.seller_box,
+                };
+                if keys.of(chain.network.family) != Some(wanted.as_str()) {
+                    return None;
+                }
+                Some(EscrowDecision {
+                    network: e.network.clone(),
+                    family: chain.network.family,
+                    chain_id: chain.network.chain_id,
+                    escrow: chain.pay.clone()?,
+                    deposit: e.account.is_none().then_some(e.deposit),
+                    account: e.account.clone(),
+                    side,
+                    step: e.step,
+                    refund: refund.to_string(),
+                    gross: deposit_keys.gross.to_string(),
+                    order_id,
+                })
+            })
+            .collect())
+    }
+
+    /// Keep `appliance`'s box signature over the decision pending on a
+    /// deposit, once it checks against the key the deposit names for that
+    /// box. The edge sends the call on its next pass.
+    pub async fn escrow_sign(
+        &self,
+        appliance: &str,
+        signed: &EscrowSignature,
+    ) -> Result<(), MarketError> {
+        use crate::escrow_boxes::Side;
+        use crate::stablecoin::Family;
+        let usdc = self.opts.usdc.as_ref().ok_or(MarketError::Unconfigured)?;
+        let chain = Self::usdc_chain(usdc, Some(&signed.network))?;
+        let mut state = self.state.lock().await;
+        let mine = state
+            .escrow_keys
+            .get(appliance)
+            .and_then(|k| k.of(chain.network.family))
+            .map(str::to_string)
+            .ok_or(MarketError::Conflict(
+                "this box has registered no escrow key",
+            ))?;
+        let mut next = state.clone();
+        let same = |e: &Escrow| {
+            e.network == signed.network
+                && match (&signed.account, signed.deposit) {
+                    (Some(a), _) => e.account.as_deref() == Some(a.as_str()),
+                    (None, Some(d)) => e.account.is_none() && e.deposit == d,
+                    (None, None) => false,
+                }
+        };
+        let escrow = next
+            .orders
+            .values_mut()
+            .filter_map(|o| o.escrow.as_mut())
+            .chain(next.strays.values_mut().map(|s| &mut s.escrow))
+            .find(|e| same(e) && e.pending())
+            .ok_or(MarketError::NotFound)?;
+        let refund = escrow
+            .decided_refund()
+            .filter(|r| *r == signed.refund)
+            .ok_or(MarketError::Conflict(
+                "the edge has decided otherwise since",
+            ))?;
+        let keys = escrow.keys.clone().ok_or(MarketError::NotFound)?;
+        let by = if mine == keys.buyer_box {
+            Side::Buyer
+        } else if mine == keys.seller_box {
+            Side::Seller
+        } else {
+            return Err(MarketError::NotFound);
+        };
+        let good = match chain.network.family {
+            Family::Evm => {
+                let contract = chain
+                    .pay
+                    .as_deref()
+                    .and_then(crate::stablecoin::address_bytes)
+                    .ok_or(MarketError::Unconfigured)?;
+                let chain_id = chain.network.chain_id.ok_or(MarketError::Unconfigured)?;
+                let digest = crate::escrow_boxes::evm_digest(
+                    chain_id,
+                    contract,
+                    escrow.deposit,
+                    u128::from(refund),
+                );
+                crate::escrow_boxes::evm_signer(&digest, &signed.signature).as_deref()
+                    == Some(mine.as_str())
+            }
+            Family::Solana => {
+                let account = escrow
+                    .account
+                    .as_deref()
+                    .and_then(crate::solana_escrow::key)
+                    .ok_or(MarketError::NotFound)?;
+                let message = crate::escrow_boxes::solana_message(&account, refund);
+                crate::escrow_boxes::solana_verifies(&mine, &message, &signed.signature)
+            }
+        };
+        if !good {
+            return Err(MarketError::Invalid(
+                "the signature is not this box's over that decision",
+            ));
+        }
+        escrow.approval = Some(crate::escrow_boxes::Approval {
+            refund,
+            by,
+            signature: signed.signature.clone(),
+        });
+        self.commit(&mut state, next).await
     }
 
     /// Send the escrow calls confirmed payments are waiting on, and follow
@@ -5063,13 +5319,20 @@ impl Market {
         }
         match crate::stablecoin::deposit_state(&url, pay, escrow.deposit).await? {
             DepositState::Held => {
+                // The edge is one of the two keys; a box has to be the other.
+                let Some(agreed) = escrow.agreed() else {
+                    return Ok(None);
+                };
+                let sigs = [crate::stablecoin::decode_hex(&agreed.signature)
+                    .ok_or(MarketError::Conflict("the box signature does not parse"))?];
                 let data = match escrow.step {
-                    EscrowStep::Release => crate::evm_tx::release_data(escrow.deposit),
+                    EscrowStep::Release => crate::evm_tx::release_data(escrow.deposit, &sigs),
                     EscrowStep::Split => crate::evm_tx::settle_data(
                         escrow.deposit,
                         crate::stablecoin::cents_to_usdc(escrow.refund.unwrap_or(0)),
+                        &sigs,
                     ),
-                    _ => crate::evm_tx::refund_data(escrow.deposit),
+                    _ => crate::evm_tx::refund_data(escrow.deposit, &sigs),
                 };
                 let replace = escrow.tx.is_some();
                 let hash = crate::evm_tx::send(&url, chain_id, releaser, to, data, replace).await?;
@@ -5157,7 +5420,18 @@ impl Market {
                 EscrowStep::Refunded
             })));
         };
+        let Some(agreed) = escrow.agreed() else {
+            return Ok(None);
+        };
+        let by = match agreed.by {
+            crate::escrow_boxes::Side::Buyer => held.buyer_box,
+            crate::escrow_boxes::Side::Seller => held.seller_box,
+        };
+        let signature: [u8; 64] = crate::solana::base58_decode(&agreed.signature)
+            .and_then(|s| s.try_into().ok())
+            .ok_or(MarketError::Conflict("the box signature does not parse"))?;
         let parties = crate::solana_escrow::Parties {
+            agreed: Some((by, signature)),
             program: crate::solana_escrow::key(program).ok_or(MarketError::Unconfigured)?,
             mint: crate::solana_escrow::key(chain.network.usdc).ok_or(MarketError::Unconfigured)?,
             treasury: crate::solana_escrow::key(&chain.treasury)
@@ -5323,6 +5597,14 @@ impl Market {
                     .as_deref()
                     .and_then(crate::stablecoin::address_bytes)
                     .ok_or(MarketError::Unconfigured)?;
+                let boxes = order
+                    .boxes
+                    .as_ref()
+                    .ok_or(MarketError::Conflict(NO_ESCROW_KEYS))?;
+                let evm = |k: &crate::escrow_boxes::BoxKeys| {
+                    crate::stablecoin::address_bytes(&k.evm)
+                        .ok_or(MarketError::Conflict(NO_ESCROW_KEYS))
+                };
                 Ok((
                     Expected::Evm(crate::stablecoin::ExpectedPayment {
                         pay,
@@ -5331,6 +5613,8 @@ impl Market {
                         gross: crate::stablecoin::cents_to_usdc(order.amount),
                         fee: crate::stablecoin::cents_to_usdc(order.fee + order.fee_offset),
                         deadline: usdc_deadline(order),
+                        buyer_box: evm(&boxes.buyer)?,
+                        seller_box: evm(&boxes.seller)?,
                     }),
                     stray,
                 ))
@@ -5342,6 +5626,16 @@ impl Market {
                 let gross = crate::stablecoin::cents_to_usdc(order.amount);
                 let fee = crate::stablecoin::cents_to_usdc(order.fee + order.fee_offset);
                 if chain.pay.is_some() {
+                    let boxes = order
+                        .boxes
+                        .as_ref()
+                        .ok_or(MarketError::Conflict(NO_ESCROW_KEYS))?;
+                    let (Some(buyer_box), Some(seller_box)) = (
+                        boxes.buyer.solana.as_deref(),
+                        boxes.seller.solana.as_deref(),
+                    ) else {
+                        return Err(MarketError::Conflict(NO_ESCROW_KEYS));
+                    };
                     let expected = crate::solana_escrow::ExpectedDeposit::new(
                         chain,
                         &seller,
@@ -5349,6 +5643,7 @@ impl Market {
                         gross,
                         fee,
                         usdc_deadline(order),
+                        (buyer_box, seller_box),
                     )
                     .ok_or(MarketError::Unconfigured)?;
                     return Ok((Expected::SolanaEscrow(expected), stray));
@@ -5424,6 +5719,7 @@ mod tests {
             fee_offset: 0,
             offset_collected: false,
             offline_base: 0,
+            boxes: None,
         }
     }
 
@@ -6441,6 +6737,8 @@ mod tests {
             refund: None,
             tx: None,
             sent_at: None,
+            keys: None,
+            approval: None,
         });
         // Held for its slot, then on its way: still riding on that order.
         for step in [EscrowStep::Held, EscrowStep::Release, EscrowStep::Split] {

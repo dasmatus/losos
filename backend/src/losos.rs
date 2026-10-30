@@ -107,6 +107,10 @@ pub trait Losos {
     /// any other error is a fault for the journal.
     fn market_request(&mut self, op: &crate::market::Op) -> anyhow::Result<crate::market::Outcome>;
 
+    /// This box's escrow keys, from the `market-escrow-key` credential, or
+    /// `None` on a box that has none (an older build, a test).
+    fn escrow_keys(&mut self) -> anyhow::Result<Option<crate::escrow_key::Keys>>;
+
     /// The edge this box trades through and its id there, or `None` with no
     /// master proxy configured.
     fn market_config(&mut self) -> Option<crate::market::Config> {
@@ -1242,6 +1246,24 @@ pub fn cmd_market_op<L: Losos>(l: &mut L, op: &crate::market::Op) -> anyhow::Res
             message: e.to_string(),
         })
     })?;
+    // An escrowed payment names this box's escrow key, which the edge has
+    // from the box itself: tell it once more right before the order, so a
+    // box that just came up does not have to wait for its signing pass.
+    let keys = if matches!(op, Op::Order { .. }) {
+        let keys = l.escrow_keys()?;
+        if let Some(k) = &keys {
+            let register = Op::EscrowDecisions {
+                evm: k.evm_address(),
+                solana: k.solana_address(),
+            };
+            if let Err(e) = l.market_request(&register) {
+                tracing::warn!(error = ?e, "could not register the escrow keys before an order");
+            }
+        }
+        keys
+    } else {
+        None
+    };
     let Outcome::Reply(mut reply) = l.market_request(op)? else {
         return Err(Refused {
             status: 409,
@@ -1249,6 +1271,9 @@ pub fn cmd_market_op<L: Losos>(l: &mut L, op: &crate::market::Op) -> anyhow::Res
         }
         .into());
     };
+    if let Some(k) = &keys {
+        k.check_invoice(&reply["stablecoin"])?;
+    }
     // A chain call is a JSON-RPC object. Wrapping it, or treating a missing
     // checkout URL as a Stripe page, would make the wallet's transport fail.
     if matches!(op, Op::Rpc { .. }) {
@@ -1278,6 +1303,55 @@ pub fn cmd_market_op<L: Losos>(l: &mut L, op: &crate::market::Op) -> anyhow::Res
     }
     Ok(reply)
 }
+
+/// One pass of this box over the escrowed payments it is party to: tell the
+/// edge its escrow keys, read what the edge waits on it to agree to, and
+/// sign what pays this box's owner (`crate::escrow_key`). lososd runs it
+/// every [`ESCROW_PASS_EVERY`]; the count is what it signed.
+///
+/// # Errors
+/// A fault reaching the edge. A box with no market, no official edge or no
+/// escrow key signs nothing and is not an error.
+pub fn cmd_escrow_pass<L: Losos>(l: &mut L) -> anyhow::Result<usize> {
+    use crate::market::{Op, Outcome};
+    if crate::edge::check_market_gate(&l.edge_status()?).is_err() {
+        return Ok(0);
+    }
+    let Some(keys) = l.escrow_keys()? else {
+        return Ok(0);
+    };
+    let register = Op::EscrowDecisions {
+        evm: keys.evm_address(),
+        solana: keys.solana_address(),
+    };
+    let Outcome::Reply(decisions) = l.market_request(&register)? else {
+        return Ok(0);
+    };
+    let decisions = decisions.as_array().cloned().unwrap_or_default();
+    if decisions.is_empty() {
+        return Ok(0);
+    }
+    // Which trades are this box's, from the box's own account view.
+    let Outcome::Reply(account) = l.market_request(&Op::Account)? else {
+        return Ok(0);
+    };
+    let mine = crate::escrow_key::Mine::from_account(&account);
+    let mut signed = 0;
+    for d in &decisions {
+        match keys.sign(d, &mine) {
+            Ok(body) => match l.market_request(&Op::EscrowSign(body)) {
+                Ok(_) => signed += 1,
+                Err(e) => tracing::warn!(error = ?e, "the edge did not take an escrow signature"),
+            },
+            Err(e) => tracing::warn!(error = %e, "an escrow decision was not signed"),
+        }
+    }
+    Ok(signed)
+}
+
+/// How often the box looks for escrow decisions to sign. A release waits on
+/// it at most this long after the edge decides.
+pub const ESCROW_PASS_EVERY: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// Why a machine action was refused before anything left the box: this box
 /// does not share its storage, and virtual machines are offered only to a box
@@ -2422,6 +2496,9 @@ mod tests {
             ) -> anyhow::Result<crate::market::Outcome> {
                 self.0.market_request(op)
             }
+            fn escrow_keys(&mut self) -> anyhow::Result<Option<crate::escrow_key::Keys>> {
+                self.0.escrow_keys()
+            }
             fn edge_status(&mut self) -> anyhow::Result<crate::edge::EdgeStatus> {
                 self.0.edge_status()
             }
@@ -3143,6 +3220,109 @@ mod tests {
             (200, r#"{"seller_ready":false}"#.to_string()),
         );
         f
+    }
+
+    #[test]
+    fn the_escrow_pass_signs_only_what_pays_this_boxs_owner() {
+        use crate::market::Op;
+        let mut f = market_fake();
+        let keys = f.escrow_keys().unwrap().unwrap();
+        let decision = |refund: &str, order: &str| {
+            serde_json::json!({
+                "network": "base", "family": "evm", "chainId": 8453,
+                "escrow": "0x5615deb798bb3e4dfa0139dfa1b3d433cc23b72f", "deposit": 4,
+                "side": "seller", "step": "release", "refund": refund, "gross": "100",
+                "orderId": order,
+            })
+        };
+        f.market_routes.insert(
+            "POST /market/escrow/decisions".to_string(),
+            (
+                200,
+                serde_json::json!([
+                    decision("0", "ord_sold"),
+                    // The edge asks this box, the buyer, to release: refused.
+                    decision("0", "ord_bought"),
+                    decision("100", "ord_bought"),
+                ])
+                .to_string(),
+            ),
+        );
+        f.market_routes.insert(
+            "POST /market/account".to_string(),
+            (
+                200,
+                r#"{"purchases":[{"id":"ord_bought"}],"sales":[{"id":"ord_sold"}]}"#.to_string(),
+            ),
+        );
+        f.market_routes
+            .insert("POST /market/escrow/sign".to_string(), (204, String::new()));
+        assert_eq!(cmd_escrow_pass(&mut f).unwrap(), 2);
+        assert_eq!(
+            f.market_ops[0],
+            Op::EscrowDecisions {
+                evm: keys.evm_address(),
+                solana: keys.solana_address(),
+            }
+        );
+        let signed: Vec<_> = f
+            .market_ops
+            .iter()
+            .filter_map(|op| match op {
+                Op::EscrowSign(body) => Some(body["refund"].as_u64().unwrap()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(signed, vec![0, 100]);
+
+        // No escrow key, or no official edge: nothing is asked at all.
+        let mut f = market_fake();
+        f.escrow_seed = None;
+        assert_eq!(cmd_escrow_pass(&mut f).unwrap(), 0);
+        assert!(f.market_ops.is_empty());
+        let mut f = FakeLosos::new().with_company_edge();
+        assert_eq!(cmd_escrow_pass(&mut f).unwrap(), 0);
+        assert!(f.market_ops.is_empty());
+    }
+
+    #[test]
+    fn an_order_registers_the_escrow_keys_and_refuses_an_invoice_naming_others() {
+        use crate::market::Op;
+        let mut f = market_fake();
+        let keys = f.escrow_keys().unwrap().unwrap();
+        let order = Op::Order {
+            listing_id: "lst_1".to_string(),
+            quantity: 2,
+        };
+        f.market_routes.insert(
+            "POST /market/escrow/decisions".to_string(),
+            (200, "[]".to_string()),
+        );
+        f.market_routes.insert(
+            "POST /market/orders".to_string(),
+            (
+                201,
+                serde_json::json!({ "order_id": "ord_1", "stablecoin": { "chains": [
+                    { "network": "base", "buyer_box": keys.evm_address() },
+                    { "network": "solana", "buyer_box": keys.solana_address() },
+                ]}})
+                .to_string(),
+            ),
+        );
+        assert_eq!(cmd_market_op(&mut f, &order).unwrap()["order_id"], "ord_1");
+        assert!(matches!(f.market_ops[0], Op::EscrowDecisions { .. }));
+        f.market_routes.insert(
+            "POST /market/orders".to_string(),
+            (
+                201,
+                serde_json::json!({ "order_id": "ord_2", "stablecoin": { "chains": [
+                    { "network": "base", "buyer_box": "0x00000000000000000000000000000000000000b1" },
+                ]}})
+                .to_string(),
+            ),
+        );
+        let err = cmd_market_op(&mut f, &order).unwrap_err().to_string();
+        assert!(err.contains("another key"), "{err}");
     }
 
     #[test]

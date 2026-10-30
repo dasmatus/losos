@@ -236,6 +236,16 @@ pub enum Op {
         tx: String,
         network: Option<String>,
     },
+    /// Tell the edge this box's escrow keys and read the decisions on
+    /// escrowed deposits it waits on this box to sign. Never from the
+    /// browser: lososd's own signing pass sends it.
+    EscrowDecisions {
+        evm: String,
+        solana: String,
+    },
+    /// This box's signature over one decision, the body
+    /// [`crate::escrow_key::Keys::sign`] made.
+    EscrowSign(Value),
     /// One allowlisted chain call to `network`, or to the name endpoint for
     /// `ens`. `params` is a JSON array. The answer is the JSON-RPC object,
     /// not a market view.
@@ -573,6 +583,20 @@ impl Op {
     /// A sentence naming what was wrong, suitable for a 400.
     pub fn validate(&self) -> Result<(), &'static str> {
         match self {
+            Op::EscrowDecisions { evm, solana } => {
+                if eth_address(evm) && base58(solana, 32) {
+                    Ok(())
+                } else {
+                    Err("the escrow keys are not keys")
+                }
+            }
+            Op::EscrowSign(body) => {
+                if body.is_object() && body["signature"].is_string() {
+                    Ok(())
+                } else {
+                    Err("the escrow signature is not one")
+                }
+            }
             Op::Browse
             | Op::Account
             | Op::Domains
@@ -892,6 +916,8 @@ impl Op {
             Op::CoinKey { .. } => ("POST", "/market/coins/key"),
             Op::CoinPay { .. } => ("POST", "/market/coins/pay"),
             Op::Rpc { .. } => ("POST", "/market/rpc"),
+            Op::EscrowDecisions { .. } => ("POST", "/market/escrow/decisions"),
+            Op::EscrowSign(_) => ("POST", "/market/escrow/sign"),
             Op::Domains => ("POST", "/domains/list"),
             Op::DomainAdd { .. } => ("POST", "/domains/add"),
             Op::DomainRemove { .. } => ("POST", "/domains/remove"),
@@ -1092,6 +1118,8 @@ impl Op {
                 }
                 doc
             }
+            Op::EscrowDecisions { evm, solana } => json!({ "evm": evm, "solana": solana }),
+            Op::EscrowSign(body) => body.clone(),
             Op::Rpc {
                 method,
                 params,

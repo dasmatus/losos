@@ -545,13 +545,59 @@ Eine Verkäuferadresse kann USDC empfangen, wenn sie in diesem Netz keinen
 Vertragscode hat oder nur eine Delegation nach EIP-7702, sodass sie ein Konto
 bleibt, zu dem jemand den Schlüssel hat. Dass jemand ihn hat, hat schon die
 Signatur der Auszahlungsadresse gezeigt. Die Treasury, der USDC-Vertrag, das
-Escrow und die Nulladresse zählen nie. Der Schlüssel des Edge kann eine
-Einzahlung nur an Verkäufer und Treasury freigeben, die bei der Zahlung
-vermerkt wurden, sie an den Käufer zurückgeben oder zwischen beiden aufteilen
-(`settle`); anderswohin schicken kann er sie nicht. Hat der Edge eine
-Einzahlung 33 Tage nach der Bestellung nicht abgerechnet, holt der Käufer sie
-direkt aus dem Vertrag zurück. Der Edge zahlt mindestens zwei Tage vorher
-aus.
+Escrow und die Nulladresse zählen nie. Eine Einzahlung kann nur an
+Verkäufer und Treasury freigegeben werden, die bei der Zahlung vermerkt
+wurden, an den Käufer zurückgehen oder zwischen beiden aufgeteilt werden
+(`settle`); anderswohin schicken kann sie nichts. Wird eine Einzahlung 33
+Tage nach der Bestellung noch gehalten, holt der Käufer sie direkt aus dem
+Vertrag zurück. Der Edge zahlt mindestens zwei Tage vorher aus.
+
+### Zwei von drei Schlüsseln
+
+Eine gehaltene Zahlung bewegt sich nur, wenn zwei von drei Schlüsseln
+zustimmen: der des Edge, der der Box des Käufers und der der Box des
+Verkäufers. Die Wallet nennt beim Bezahlen die Schlüssel beider Boxen aus
+der Rechnung, und der Edge zählt die Zahlung nur, wenn es die Schlüssel
+sind, die ihm die beiden Boxen gegeben haben. Wann eine Zahlung freigegeben,
+erstattet oder aufgeteilt wird, entscheidet wie bisher der Edge, und dann
+wartet er, bis eine Box zustimmt:
+
+- eine Freigabe braucht die Box des Verkäufers, die nur der Freigabe eines
+  eigenen Verkaufs zustimmt;
+- eine Erstattung oder Aufteilung braucht die Box des Käufers, die nur der
+  Erstattung oder Aufteilung eines eigenen Kaufs zustimmt, oder der
+  vollständigen Rückgabe einer Zahlung, die keine Bestellung genommen hat.
+
+Jede Box prüft die Entscheidung vor dem Signieren gegen ihr eigenes Konto,
+und der zweite Schlüssel ist die Transaktion des Edge selbst. Ein
+gestohlener oder erzwungener Edge-Schlüssel allein bewegt also nichts, und
+der Edge kann eine Zahlung auch nicht für immer festhalten, weil der Käufer
+sie nach der Frist weiterhin zurückholt.
+
+Der Schlüssel der Box ist das Credential `market-escrow-key`, beim ersten
+Start erzeugt und versiegelt wie die anderen Geheimnisse der Box. Er
+verlässt die Box nie: lososd leitet daraus einen Schlüssel für die
+Ethereum-Netze und einen für Solana ab, meldet beide beim Edge an und
+prüft bei jeder neuen Rechnung, dass sie seinen eigenen als den des Käufers
+nennt. Eine Box fragt den Edge etwa einmal pro Minute nach Entscheidungen,
+die auf sie warten, sodass eine Freigabe ein bis zwei Minuten nach der
+Entscheidung des Edge ankommt.
+
+Was das nicht abdeckt:
+
+- Edge und Verkäufer zusammen können weiterhin eine Zahlung für einen
+  Zeitraum freigeben, der nie geliefert wurde, und Edge und Käufer zusammen
+  eine für einen gelieferten erstatten. Die Höhe einer Aufteilung bestimmt
+  der Edge, und die Box des Käufers nimmt sie an.
+- Die Box des Käufers kann den Schlüssel des Verkäufers nicht prüfen, der
+  über den Edge zu ihr kommt. Ein Edge, der dort seinen eigenen Schlüssel
+  einsetzt, könnte eine Zahlung ohne die Box des Verkäufers an den
+  vermerkten Verkäufer freigeben; das Geld geht trotzdem nur an diesen
+  Verkäufer.
+- Die übrigen Zahlungsdaten einer neuen Bestellung, die Adresse des
+  Verkäufers und die Beträge, kommen ebenfalls über den Edge. Zwei von drei
+  schützt bereits gehaltene Zahlungen, nicht die erste, die ein Edge in
+  fremden Händen verlangt.
 
 Auf Solana prüft der Edge, dass der Endpunkt den Genesis-Hash des Netzes
 meldet und dass die Konfiguration des Escrow-Programms für die Treasury

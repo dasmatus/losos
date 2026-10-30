@@ -484,11 +484,52 @@ objednávky kontroluje edge.
 Adresa predajcu USDC prijať môže, keď na tej sieti nemá kód zmluvy, alebo má
 len delegáciu podľa EIP-7702, takže zostáva účtom, ku ktorému niekto má
 kľúč. Že ho niekto má, ukázal už podpis výplatnej adresy. Treasury, zmluva
-USDC, escrow a nulová adresa sa nepočítajú nikdy. Kľúč edge môže vklad
-uvoľniť len predajcovi a treasury zapísaným pri platbe, vrátiť ho kupujúcemu,
-alebo ho medzi nich rozdeliť (`settle`); nikam inam ho poslať nevie. Ak edge
-vklad nevyrovná do 33 dní od zadania objednávky, kupujúci si ho môže zo zmluvy
-vziať späť sám. Edge vypláca aspoň dva dni predtým.
+USDC, escrow a nulová adresa sa nepočítajú nikdy. Vklad sa dá uvoľniť len
+predajcovi a treasury zapísaným pri platbe, vrátiť kupujúcemu, alebo medzi
+nich rozdeliť (`settle`); nikam inam ho poslať nič nevie. Ak je vklad 33 dní
+od zadania objednávky stále držaný, kupujúci si ho môže zo zmluvy vziať späť
+sám. Edge vypláca aspoň dva dni predtým.
+
+### Dva z troch kľúčov
+
+Držaná platba sa pohne, len keď sa zhodnú dva z troch kľúčov: kľúč edge,
+kľúč zariadenia kupujúceho a kľúč zariadenia predajcu. Peňaženka pri platbe
+uvedie kľúče oboch zariadení z faktúry a edge platbu započíta, len keď sú to
+kľúče, ktoré mu tie dve zariadenia dali. O tom, kedy sa platba uvoľní,
+vráti alebo rozdelí, rozhoduje edge ako doteraz, a potom čaká, kým s tým
+jedno zariadenie súhlasí:
+
+- uvoľnenie potrebuje zariadenie predajcu, ktoré súhlasí len s uvoľnením
+  vlastného predaja;
+- vrátenie alebo rozdelenie potrebuje zariadenie kupujúceho, ktoré súhlasí
+  len s vrátením alebo rozdelením vlastného nákupu, alebo s vrátením celej
+  platby, ktorú nevzala žiadna objednávka.
+
+Každé zariadenie pred podpisom overí rozhodnutie voči vlastnému účtu a
+druhým kľúčom je transakcia samotného edge. Ukradnutý alebo vynútený kľúč
+edge teda sám nepohne ničím a edge nemôže platbu ani zadržať navždy, lebo
+kupujúci si ju po lehote stále vezme späť.
+
+Kľúč zariadenia je poverenie `market-escrow-key`, vytvorené pri prvom
+štarte a zapečatené ako ostatné tajomstvá zariadenia. Zariadenie nikdy
+neopustí: lososd z neho odvodí jeden kľúč pre siete Ethereum a jeden pre
+Solanu, oba zaregistruje na edge a pri každej novej faktúre overí, že ako
+kľúč kupujúceho uvádza ten jeho. Zariadenie sa edge zhruba raz za minútu
+pýta na rozhodnutia, ktoré naň čakajú, takže uvoľnenie prebehne do minúty
+alebo dvoch od rozhodnutia edge.
+
+Čo to nepokrýva:
+
+- Edge spolu s predajcom stále môžu uvoľniť platbu za obdobie, ktoré sa
+  nedodalo, a edge spolu s kupujúcim vrátiť platbu za obdobie, ktoré sa
+  dodalo. Výšku rozdelenia určuje edge a zariadenie kupujúceho ju prijme.
+- Zariadenie kupujúceho nevie overiť kľúč predajcu, ktorý k nemu prichádza
+  cez edge. Edge, ktorý by tam dal vlastný kľúč, by mohol platbu uvoľniť
+  zapísanému predajcovi aj bez zariadenia predajcu; peniaze aj tak idú len
+  tomuto predajcovi.
+- Ostatné platobné údaje novej objednávky, adresa predajcu a sumy, tiež
+  prichádzajú cez edge. Dva z troch chránia už držané platby, nie prvú,
+  ktorú si vypýta edge v cudzích rukách.
 
 Na Solane edge overí, že endpoint hlási genesis hash siete a že konfigurácia
 programu escrow pre treasury uvádza USDC od Circle a vlastný kľúč edge. Potom

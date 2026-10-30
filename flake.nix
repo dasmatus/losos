@@ -702,6 +702,9 @@
         # a USDC escrow, a quote, a paid chat, the settle split, and the
         # refusals (nix/tests/inference-payg.nix).
         losos-inference-payg = import ./nix/tests/inference-payg.nix { inherit pkgs; };
+        # Two of three keys move an escrowed payment: an edge, the buyer's
+        # box and the seller's box on a local chain (nix/tests/market-escrow.nix).
+        losos-market-escrow = import ./nix/tests/market-escrow.nix { inherit pkgs; };
         losos-installer-screen = import ./nix/tests/installer-screen.nix { inherit pkgs disko; };
         losos-installer-report = import ./nix/tests/installer-report.nix { inherit pkgs disko; };
         # LosOS Git: Forgejo's repositories moved in, the configuration

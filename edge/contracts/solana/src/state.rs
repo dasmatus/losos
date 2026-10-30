@@ -81,6 +81,8 @@ impl Config {
 /// | 172    | fee        |
 /// | 180    | deadline   |
 /// | 188    | paid at    |
+/// | 196    | buyer box  |
+/// | 228    | seller box |
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Deposit {
     pub bump: u8,
@@ -96,10 +98,15 @@ pub struct Deposit {
     /// Unix seconds; after it the payer may refund alone.
     pub deadline: i64,
     pub paid_at: i64,
+    /// The buyer's box's escrow key: with the releaser and `seller_box`,
+    /// one of the three keys any two of which decide the deposit.
+    pub buyer_box: Address,
+    /// The seller's box's escrow key.
+    pub seller_box: Address,
 }
 
 impl Deposit {
-    pub const LEN: usize = 196;
+    pub const LEN: usize = 260;
 
     /// # Errors
     /// The account is not a held deposit of this program.
@@ -128,6 +135,8 @@ impl Deposit {
             fee: u64_le(data, 172),
             deadline: u64_le(data, 180) as i64,
             paid_at: u64_le(data, 188) as i64,
+            buyer_box: address(data, 196),
+            seller_box: address(data, 228),
         })
     }
 
@@ -145,6 +154,8 @@ impl Deposit {
         data[172..180].copy_from_slice(&self.fee.to_le_bytes());
         data[180..188].copy_from_slice(&self.deadline.to_le_bytes());
         data[188..196].copy_from_slice(&self.paid_at.to_le_bytes());
+        data[196..228].copy_from_slice(self.buyer_box.as_ref());
+        data[228..260].copy_from_slice(self.seller_box.as_ref());
     }
 }
 
