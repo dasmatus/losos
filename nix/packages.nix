@@ -304,7 +304,7 @@ let
   # build a set with the probe in it.
   # backend/plugins' vendored crates: lososd's plugins and Mesh CI's pm
   # plugin are built from the one workspace.
-  pluginsCargoHash = "sha256-tpc5iDJHf1nlsVvmwHd4f6lQPdBI0ihXeSgJyxyflR4=";
+  pluginsCargoHash = "sha256-30apxXXXZwQQcm+GUoXqqQPLZlkNggwwjlntT8/UWb4=";
   lososPlugins =
     {
       pname ? "losos-plugins",
@@ -537,7 +537,7 @@ images
     src = lib.cleanSource ./../backend;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-ctl-rs` will print the new hash to paste here.
-    cargoHash = "sha256-PSnZgiBMWDc0q19g1VGaIglmvmtnoogtACnu8kyURJo=";
+    cargoHash = "sha256-KG/9VJXGFm+7/1bK1YE3cYhoguQ09BGUgVjTESCLydw=";
     # No system deps: zbus speaks the D-Bus wire protocol natively, so there is
     # no libdbus to link against.
     # doCheck is off, and the tests still run — in CI's lint job and in
