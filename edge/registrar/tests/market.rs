@@ -1158,6 +1158,114 @@ async fn a_paid_storage_order_becomes_a_claim_in_the_buyers_namespace() {
     stripe.shutdown().await;
 }
 
+/// A restic request through the backup door, with Basic credentials.
+async fn door(edge: &Edge, path: &str, creds: Option<(&str, &str)>) -> (u16, String) {
+    let mut request = edge.client.get(format!("{}{path}", edge.base));
+    if let Some((user, secret)) = creds {
+        request = request.basic_auth(user, Some(secret));
+    }
+    let response = request.send().await.expect("request reaches the registrar");
+    let status = response.status().as_u16();
+    (status, response.text().await.unwrap_or_default())
+}
+
+fn sha256_hex(text: &str) -> String {
+    let digest = ring::digest::digest(&ring::digest::SHA256, text.as_bytes());
+    digest.as_ref().iter().map(|b| format!("{b:02x}")).collect()
+}
+
+#[tokio::test]
+async fn the_backup_door_opens_with_the_buyers_key_and_starts_a_server() {
+    let stripe = StripeStub::start().await;
+    // Answers 404 to the Service lookup until the door has asked for one.
+    let kube = KubeStub::expecting_bearer(201, common::KUBE_TOKEN).await;
+    let edge = Edge::start_market_and_mesh_tweaked(
+        "market-backup-door",
+        &tenants(),
+        &stripe.base,
+        MeshFixture::enabled(&kube.base),
+        |opts, _| {
+            opts.market.as_mut().expect("market").storage_image =
+                Some("losos.local/rest-server:0.14.0".to_string());
+        },
+    )
+    .await;
+    let order_id = buy_paid(&edge, "storage", 5).await;
+    wait_for_volume(&edge).await;
+    let secret = "a secret only the recovery code makes";
+    let key = sha256_hex(secret);
+    let config = format!("/market/storage/{order_id}/config");
+
+    // No key yet: nobody gets in, whatever they send.
+    assert_eq!(door(&edge, &config, None).await.0, 401);
+    assert_eq!(door(&edge, &config, Some((&order_id, secret))).await.0, 401);
+
+    // Only the buyer sets the key.
+    let set = |id: &str, token: &str| {
+        with(
+            auth(id, token),
+            json!({ "order_id": order_id, "door": key }),
+        )
+    };
+    assert_eq!(
+        edge.post("/market/storage-door", set("seller-box", GOOD_TOKEN))
+            .await
+            .0,
+        404
+    );
+    assert_eq!(
+        edge.post("/market/storage-door", set("buyer-box", "wrong"))
+            .await
+            .0,
+        401
+    );
+    let (status, body) = edge
+        .post("/market/storage-door", set("buyer-box", OTHER_TOKEN))
+        .await;
+    assert_eq!(status, 204, "{body}");
+
+    // A wrong key, the key on another order's path, or a path that is not
+    // restic's are refused before anything reaches the cluster.
+    let before = kube.seen().len();
+    assert_eq!(
+        door(&edge, &config, Some((&order_id, "guess"))).await.0,
+        401
+    );
+    assert_eq!(
+        door(
+            &edge,
+            "/market/storage/ord_00/config",
+            Some(("ord_00", secret))
+        )
+        .await
+        .0,
+        401
+    );
+    assert_eq!(
+        door(
+            &edge,
+            &format!("/market/storage/{order_id}/admin"),
+            Some((&order_id, secret))
+        )
+        .await
+        .0,
+        404
+    );
+    assert_eq!(kube.seen().len(), before, "{:?}", kube.seen());
+
+    // The right key reaches the cluster. The stub's Service has an address
+    // nothing answers on, so the door says to come back.
+    let (status, body) = door(&edge, &config, Some((&order_id, secret))).await;
+    assert_eq!(status, 503, "{body}");
+    assert!(kube
+        .seen()
+        .iter()
+        .any(|r| r.starts_with("GET /api/v1/namespaces/market-buyer-box/services/rest-")));
+    edge.shutdown().await;
+    kube.shutdown().await;
+    stripe.shutdown().await;
+}
+
 #[tokio::test]
 async fn a_storage_order_is_not_provisioned_until_its_claim_is_bound() {
     let stripe = StripeStub::start().await;

@@ -159,6 +159,9 @@ impl Splash {
 /// Write an installer message to tty1 and, on the installer ISO, tty2.
 fn log_line(message: &str) {
     println!("{message}");
+    if std::env::var_os("LOSOS_INSTALLER_ISO").is_some() {
+        crate::install_report::keep_line(message);
+    }
     // Always attempt tty2 on the installer ISO so the live log is not
     // dependent on the calling context or PTY setup.
     if std::env::var_os("LOSOS_INSTALLER_ISO").is_some() || Path::new("/dev/tty2").exists() {
@@ -187,8 +190,12 @@ fn run_live(exe: &str, args: &[&str]) -> anyhow::Result<()> {
                 .map(shell_quote)
                 .collect::<Vec<_>>()
                 .join(" ");
+            // Two copies of the output: the live one on tty2, and one kept
+            // in /run for a problem report (src/install_report.rs).
+            let kept = crate::install_report::log_path();
             Command::new("script")
-                .args(["-q", "-f", "-e", "-c", &command, "/dev/tty2"])
+                .args(["-q", "-f", "-e", "-c", &command, "-O", "/dev/tty2", "-O"])
+                .arg(&kept)
                 .status()
                 .with_context(|| format!("could not start {exe} through script"))?
         } else {
@@ -198,9 +205,13 @@ fn run_live(exe: &str, args: &[&str]) -> anyhow::Result<()> {
                 .with_context(|| format!("could not start {exe}"))?
         };
     if !status.success() {
+        let command = std::iter::once(exe)
+            .chain(args.iter().copied())
+            .collect::<Vec<_>>()
+            .join(" ");
         bail!(
-            "{exe} {} failed ({status}); see tty2 for the live command log",
-            args.join(" ")
+            "{command} failed ({status}); {}",
+            crate::install_report::TTY2_HINT
         );
     }
     Ok(())
@@ -739,6 +750,7 @@ pub fn options_from_env(
         target_rel: PathBuf::from(DEFAULT_TARGET_REL),
         emit_file: PathBuf::from(DEFAULT_EMIT_FILE),
         gpg_keys,
+        report_client_id: crate::install_report::client_id(),
     }
 }
 
@@ -885,8 +897,15 @@ pub fn run_install(opts: &Options, splash: Option<Splash>) -> anyhow::Result<()>
     let mut io = IoInstall {
         screen: Some((splash, progress)),
     };
+    let mut noted = None;
     for (act, &step) in acts.iter().zip(&owner) {
         if let Some((splash, p)) = io.screen.as_mut() {
+            if noted != Some(step) {
+                noted = Some(step);
+                if let Some(s) = p.steps.get(step) {
+                    crate::install_report::note_step(s.doing, step + 1, p.steps.len());
+                }
+            }
             if p.current != step {
                 p.current = step;
                 splash.show(&install_screen::progress(p));

@@ -998,7 +998,13 @@ jobs:
       # upload. It fits with room to spare. If it ever stops fitting, the first
       # lever is deleting the preinstalled Android SDK and .NET trees before
       # this step, not trimming the image.
-      - run: nix build .#nixosConfigurations.iso.config.system.build.isoImage -L
+      # --impure for LOSOS_ABRT_VAR only: the GitHub App problem reports
+      # sign in with, which the medium carries as its installer's
+      # credential (flake.nix, modules/installer.nix). Pure evaluation
+      # reads it as "" and builds a medium that offers no report.
+      - run: nix build --impure .#nixosConfigurations.iso.config.system.build.isoImage -L
+        env:
+          LOSOS_ABRT_VAR: ${{ vars.LOSOS_ABRT_VAR }}
       # Sign the medium's UEFI loader (modules/secure-boot.nix). The db key
       # is a repository secret, so this happens after the build, on a copy
       # outside the store, and only where the secret reaches: pushes to main
@@ -1587,7 +1593,13 @@ jobs:
             echo "LOSOS_ASSETS"
           } >> "$GITHUB_OUTPUT"
           rm -rf "$root"
-      - run: nix build .#nixosConfigurations.iso.config.system.build.isoImage -L
+      # --impure for LOSOS_ABRT_VAR only: the GitHub App problem reports
+      # sign in with, which the medium carries as its installer's
+      # credential (flake.nix, modules/installer.nix). Pure evaluation
+      # reads it as "" and builds a medium that offers no report.
+      - run: nix build --impure .#nixosConfigurations.iso.config.system.build.isoImage -L
+        env:
+          LOSOS_ABRT_VAR: ${{ vars.LOSOS_ABRT_VAR }}
       - run: mv result result-iso
       - run: nix build .#losos-disk-qcow2 -L
       - run: mv result result-qcow2
