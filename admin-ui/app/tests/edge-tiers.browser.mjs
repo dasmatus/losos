@@ -13,16 +13,13 @@
  * Same arrangement as the other files: the real dist/ bundle under the real
  * policy, the routes stubbed with page.route(). */
 
-import assert from 'node:assert';
-import { mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import assert from './assert.mjs';
 import { launch, runner, serve } from './harness.mjs';
 
 const { origin, close: closeServer } = await serve({ csp: true });
 const browser = await launch();
 const { check, finish } = runner();
-const SHOTS = process.env.LOSOS_SHOTS;
-if (SHOTS) await mkdir(SHOTS, { recursive: true });
+const SHOTS = Bun.env.LOSOS_SHOTS;
 
 const json = (route, status, body) =>
   route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
@@ -136,7 +133,7 @@ async function open(state) {
 
 async function shoot(page, name) {
   if (!SHOTS) return;
-  await page.screenshot({ path: join(SHOTS, `${name}.png`), fullPage: true });
+  await page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true });
 }
 
 await check('a link through a gateway is secondary and names its cluster', async () => {

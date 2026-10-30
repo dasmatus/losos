@@ -104,6 +104,13 @@ let
   # the registrar is a plain systemd service reading a file, so it needs the
   # legacy `kubernetes.io/service-account-token` Secret.
   meshSaName = "losos-registrar";
+
+  # The backup door on bought storage (edge/registrar/src/server/storage.rs):
+  # restic's REST server, started by the registrar on a buyer's volume on
+  # this node. Its image rides in rke2's airgap folder, so nothing is pulled.
+  backupsOn = cfg.market.enable && meshEnabled && cfg.market.backups.enable;
+  restServerImage = (import ../nix/images.nix { inherit pkgs; }).losos-image-rest-server;
+  restServerRef = "${restServerImage.imageName}:${restServerImage.imageTag}";
   meshSaSecretName = "losos-registrar-token";
 
   # Applied to a mesh node object while its owner's compute window is shut.
@@ -267,10 +274,13 @@ let
   # the two path prefixes ahead of `register` (the longer rule wins) and
   # keeps the per-client cap from register.yml (one file provider, one
   # namespace); the registrar holds them to four transfers at once, its
-  # upload size limit and an idle timeout of its own.
+  # upload size limit and an idle timeout of its own. A box's backup on the
+  # storage it bought (server/storage.rs) sends 16 MiB packs, over the
+  # buffer's 256 KiB, so it takes this router too, with the registrar's own
+  # cap of eight requests and 64 MiB a body.
   vmTransferYml = (pkgs.formats.yaml { }).generate "losos-register-vm-transfer.yml" {
     http.routers.register-vm-transfer = {
-      rule = "Host(`${registerDomain}`) && (PathPrefix(`/market/vm-images/upload/`) || PathPrefix(`/market/vm-images/fetch/`))";
+      rule = "Host(`${registerDomain}`) && (PathPrefix(`/market/vm-images/upload/`) || PathPrefix(`/market/vm-images/fetch/`) || PathPrefix(`/market/storage/`))";
       service = "register";
       middlewares = [ "register-per-client" ];
       entryPoints = [ "websecure" ];
@@ -421,6 +431,33 @@ let
             "get"
             "create"
           ];
+        }
+      ]
+      # The backup door (edge/registrar/src/server/storage.rs): one
+      # rest-server Deployment, a Service and the Secret with its one
+      # password per bought volume that a box backs up to, in the buyer's
+      # namespace. Create and get only, and never a read of a Secret.
+      ++ lib.optionals backupsOn [
+        {
+          apiGroups = [ "apps" ];
+          resources = [ "deployments" ];
+          verbs = [
+            "get"
+            "create"
+          ];
+        }
+        {
+          apiGroups = [ "" ];
+          resources = [ "services" ];
+          verbs = [
+            "get"
+            "create"
+          ];
+        }
+        {
+          apiGroups = [ "" ];
+          resources = [ "secrets" ];
+          verbs = [ "create" ];
         }
       ]
       # Machine fulfilment (edge/registrar/src/server/vm.rs): one
@@ -783,6 +820,10 @@ let
       cfg.market.currency
       "--market-storage-class"
       cfg.market.storageClass
+    ]
+    ++ lib.optionals backupsOn [
+      "--market-storage-image"
+      restServerRef
     ]
     ++ lib.optionals (cfg.market.enable && cfg.market.returnUrl != "") [
       "--market-return-url"
@@ -1896,6 +1937,8 @@ in
       };
 
       manifests.losos-registrar-rbac.content = meshRbacManifest;
+
+      images = lib.optional backupsOn restServerImage;
     };
 
     # Longhorn prerequisites for THIS node. Every node that stores a replica

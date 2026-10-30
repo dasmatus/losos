@@ -6,7 +6,7 @@
 # made it.
 #
 # What each hook runs is in its own header. Everything here is plumbing:
-# finding the tools (cargo is the flake's pinned toolchain; npm comes from
+# finding the tools (cargo is the flake's pinned toolchain; bun comes from
 # the flake when it is not on PATH), running one check with its output in a log file,
 # and the summary at the end.
 #
@@ -236,16 +236,16 @@ hook_tool() {
   fi
 }
 
-hook_npm() { hook_tool npm nodejs "$@"; }
+hook_bun() { hook_tool bun bun "$@"; }
 
 # The WebAssembly packages admin-ui/app imports and git ignores: Diagrams'
 # three (src/lab/{core,virt,render}-pkg) and losos-mdx (src/mdx/pkg). tsc
 # needs them, so a checkout without one gets the package the flake builds
-# (`npm run lab:<name>` and `npm run mdx` would need cargo for wasm32 and
+# (`bun run lab:<name>` and `bun run mdx` would need cargo for wasm32 and
 # the pinned wasm-bindgen). A copy made here names its store path in
 # .losos-hooks-out and is replaced once the crate builds to another one,
 # since a stale package fails tsc on whatever the crate added since. One
-# made by `npm run` has no such file and is left alone.
+# made by `bun run` has no such file and is left alone.
 hook_wasm_pkgs() {
   local pair rel attr out dir stamp
   for pair in src/lab/core-pkg:losos-lab-core src/lab/virt-pkg:losos-lab-virt \

@@ -10,57 +10,33 @@
  * the element as raw source instead of losing them; and a new document
  * or presentation starts as the text the editor would write for it.
  *
- *   node tests/mdx-editor.node.mjs     (needs src/mdx/pkg: npm run mdx)
+ *   bun tests/mdx-editor.unit.mjs     (needs src/mdx/pkg: bun run mdx)
  */
 
-import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import * as esbuild from 'esbuild';
+import assert from './assert.mjs';
 
-const pkg = fileURLToPath(new URL('../src/mdx/pkg/losos_mdx.js', import.meta.url));
+const pkg = new URL('../src/mdx/pkg/losos_mdx.js', import.meta.url).pathname;
 
-const built = await esbuild.build({
-  stdin: {
-    contents: `
-      export { parseMdx } from './src/mdx/wasm.ts';
-      export { fromMdast, sourceOf } from './src/mdx/from-mdast.ts';
-      export { toMdx, block } from './src/mdx/to-mdx.ts';
-      export { schema } from './src/mdx/schema.ts';
-      export { starterText } from './src/cloud/office/paper/new.ts';
-    `,
-    resolveDir: fileURLToPath(new URL('..', import.meta.url)),
-    loader: 'ts',
+// Vite turns `…_bg.wasm?url` into an address; here the module is started
+// from bytes below, so the import only has to resolve.
+Bun.plugin({
+  name: 'mdx-wasm-url',
+  setup(b) {
+    b.onResolve({ filter: /\.wasm\?url$/ }, () => ({ path: 'wasm-url', namespace: 'stub' }));
+    b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export default ""', loader: 'js' }));
   },
-  bundle: true,
-  format: 'esm',
-  platform: 'node',
-  write: false,
-  alias: { '@': fileURLToPath(new URL('../src', import.meta.url)) },
-  plugins: [
-    {
-      name: 'mdx-pkg',
-      setup(b) {
-        // One copy of the module, shared with this file, so initSync below
-        // is the instance the bundle calls.
-        b.onResolve({ filter: /losos_mdx\.js$/ }, () => ({ path: pkg, external: true }));
-        b.onResolve({ filter: /\.wasm\?url$/ }, () => ({ path: 'wasm-url', namespace: 'stub' }));
-        b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export default ""', loader: 'js' }));
-      },
-    },
-  ],
 });
-// A file, not a data: URL, so the bundle can import the package by path.
-const dir = mkdtempSync(join(tmpdir(), 'mdx-editor-'));
-writeFileSync(join(dir, 'bundle.mjs'), built.outputFiles[0].text);
-const lib = await import(pathToFileURL(join(dir, 'bundle.mjs')).href);
-rmSync(dir, { recursive: true, force: true });
-const wasm = await import(pkg);
-wasm.initSync({ module: readFileSync(pkg.replace(/\.js$/, '_bg.wasm')) });
 
-const { parseMdx, fromMdast, toMdx, block, schema, starterText } = lib;
+// One copy of the package, shared with src/mdx/wasm.ts, so initSync below is
+// the instance the model calls.
+const wasm = await import(pkg);
+wasm.initSync({ module: await Bun.file(pkg.replace(/\.js$/, '_bg.wasm')).bytes() });
+
+const { parseMdx } = await import('../src/mdx/wasm.ts');
+const { fromMdast } = await import('../src/mdx/from-mdast.ts');
+const { toMdx, block } = await import('../src/mdx/to-mdx.ts');
+const { schema } = await import('../src/mdx/schema.ts');
+const { starterText } = await import('../src/cloud/office/paper/new.ts');
 
 const read = (text) => {
   const { tree, problems } = parseMdx(text, 'mdx');
@@ -208,7 +184,7 @@ check('every block written afresh reads back as the same document', () => {
   const again = read(written);
   assert.deepEqual(again.problems, [], written);
   assert.deepEqual(again.doc.toJSON(), doc.toJSON(), written);
-  if (process.env.SHOW) console.log(written);
+  if (Bun.env.SHOW) console.log(written);
   // And it is stable: writing that again changes nothing.
   assert.equal(toMdx(fresh(again.doc)), written);
 });
@@ -278,7 +254,7 @@ check('a new document and presentation are what the editor writes', () => {
 });
 
 if (failed > 0) {
-  console.log(`${failed} failed`);
-  process.exit(1);
+  // Thrown: an uncaught error is what makes Bun exit non-zero.
+  throw new Error(`${failed} failed`);
 }
 console.log('mdx editor model: all passed');

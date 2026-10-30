@@ -14,19 +14,12 @@ let
   # One face whether the browser runs in a VM or in the driver
   # (nix/tests/fonts.nix).
   fonts = import ../fonts.nix { inherit pkgs; };
-  # node with Playwright's own driver as its one module, and Chromium only.
+  # Bun with Playwright's own driver as its one module, and Chromium only.
   capture = pkgs.writeShellScriptBin "losos-capture" ''
     export PLAYWRIGHT_BROWSERS_PATH=${driver.browsers-chromium}
     export FONTCONFIG_FILE=${fonts}
-    export NODE_PATH=${
-      pkgs.linkFarm "losos-capture-modules" [
-        {
-          name = "playwright-core";
-          path = driver;
-        }
-      ]
-    }
-    exec ${pkgs.nodejs}/bin/node ${./capture.mjs} "$@"
+    export PLAYWRIGHT_CORE=${driver}/index.mjs
+    exec ${pkgs.bun}/bin/bun ${./capture.mjs} "$@"
   '';
 in
 {

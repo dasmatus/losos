@@ -120,7 +120,7 @@ pkgs.testers.nixosTest {
         })
         plan = {"origin": "https://mattbox.local", "map": f"127.0.0.1:{PORT}", "password": PASSWORD, "out": SHOTS}
         run = subprocess.run(
-            ["${pkgs.nodejs}/bin/node", "${driver}", json.dumps(plan)],
+            ["${pkgs.bun}/bin/bun", "${driver}", json.dumps(plan)],
             env=env, capture_output=True, text=True, timeout=5400,
         )
         print(run.stdout)

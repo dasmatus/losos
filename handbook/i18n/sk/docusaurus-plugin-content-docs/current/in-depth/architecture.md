@@ -186,7 +186,7 @@ D-Bus. `losos-ctl install` zostáva lokálny, pretože inštalátor na ISO bež�
 ako root a zbernicu nepotrebuje.
 
 Administračné UI (`admin-ui/app/`, zabalené ako `losos-admin-ui` cez
-`buildNpmPackage`) je SPA v React 19, Vite a Tailwind v4 na skutočných
+Bun) je SPA v React 19, Vite a Tailwind v4 na skutočných
 cestách (`/`, `/apps`, `/storage`, `/mesh`, `/settings/<pane>`). Jeho
 zostavený `dist/` **je** koreňový adresár dokumentov predného nginx vhostu,
 servírovaný s `try_files $uri $uri/ /index.html`. Bez tohto riadku je každý
