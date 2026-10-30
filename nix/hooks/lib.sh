@@ -198,6 +198,12 @@ hook_crates_for() {
   done
 }
 
+# Prefer nix-portable when system nix is missing or unusable.
+if [ -x "$hook_root/tools/ensure-nix-portable" ]; then
+  # shellcheck source=/dev/null
+  . "$hook_root/tools/ensure-nix-portable"
+fi
+
 # cargo from the flake's pinned toolchain, the rustc CI lints, tests and
 # ships with: the one on PATH inside devenv or nix develop, else the flake's
 # CI shell. A cargo from elsewhere (rustup) is a different compiler, and its

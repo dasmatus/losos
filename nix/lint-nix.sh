@@ -18,6 +18,12 @@ else
 fi
 [ ${#files[@]} -gt 0 ] || exit 0
 
+# Ensure nix (portable if needed) before looking for tools.
+if [ -x "$root/tools/ensure-nix-portable" ]; then
+  # shellcheck source=/dev/null
+  . "$root/tools/ensure-nix-portable"
+fi
+
 # The three tools, from the flake's nixpkgs when any is missing.
 if ! command -v nixfmt >/dev/null || ! command -v deadnix >/dev/null || ! command -v statix >/dev/null; then
   flake="git+file://$root"

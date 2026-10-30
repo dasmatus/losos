@@ -24,6 +24,12 @@
 # call (e.g. --override-input).
 set -euo pipefail
 cd "$(dirname "$0")/.."
+root=$PWD
+if [ -x "$root/tools/ensure-nix-portable" ]; then
+  # shellcheck source=/dev/null
+  . "$root/tools/ensure-nix-portable"
+fi
+
 
 flake="git+file://$PWD"
 # A shallow clone (CI's checkout, a linked worktree of one) evaluates only

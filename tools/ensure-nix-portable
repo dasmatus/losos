@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Ensure a working `nix` is available, falling back to nix-portable
+# (https://github.com/DavHau/nix-portable) when the system nix is missing
+# or unusable (e.g. store ownership errors in restricted environments).
+#
+# Usage:
+#   . tools/ensure-nix-portable   # sources, exports PATH and NIX
+#   tools/ensure-nix-portable     # prints the path to the nix wrapper
+#
+# The binary is cached under $HOME/.cache/losos/nix-portable (or $XDG_CACHE_HOME).
+set -euo pipefail
+
+cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/losos"
+bin="$cache_dir/nix-portable"
+wrapper="$cache_dir/nix"
+
+need_download=false
+if [ ! -x "$bin" ]; then
+  need_download=true
+fi
+
+if [ "$need_download" = true ]; then
+  mkdir -p "$cache_dir"
+  arch=$(uname -m)
+  url="https://github.com/DavHau/nix-portable/releases/latest/download/nix-portable-${arch}"
+  echo "Downloading nix-portable (${arch})..." >&2
+  curl -fsSL "$url" -o "$bin"
+  chmod +x "$bin"
+fi
+
+# Create/update the nix wrapper
+cat >"$wrapper" << 'WRAP'
+#!/bin/sh
+dir=$(dirname "$0")
+exec "$dir/nix-portable" nix "$@"
+WRAP
+chmod +x "$wrapper"
+# Convenience names
+ln -sfn nix "$cache_dir/nix-shell"
+ln -sfn nix "$cache_dir/nix-build"
+
+# Prefer portable when system nix is missing or broken
+if ! command -v nix >/dev/null 2>&1 || ! nix --version >/dev/null 2>&1; then
+  export PATH="$cache_dir:$PATH"
+fi
+
+export LOSOS_NIX="$wrapper"
+
+# If sourced, just set up the environment; if executed, print the wrapper path
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  echo "$wrapper"
+fi
