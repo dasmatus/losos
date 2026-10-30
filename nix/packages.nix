@@ -304,7 +304,7 @@ let
   # build a set with the probe in it.
   # backend/plugins' vendored crates: lososd's plugins and Mesh CI's pm
   # plugin are built from the one workspace.
-  pluginsCargoHash = "sha256-ojS1z5u/8Jl+AzzR4aquE0DFK3/cL+DnuLJc4cvDdQI=";
+  pluginsCargoHash = "sha256-tpc5iDJHf1nlsVvmwHd4f6lQPdBI0ihXeSgJyxyflR4=";
   lososPlugins =
     {
       pname ? "losos-plugins",
