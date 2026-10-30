@@ -16,11 +16,12 @@
  * the file's menu offers Office; and none of it adds to the policy
  * violations a plain load logs.
  *
- * The box's live-editing room is tests/yroom.mjs, reached through
- * page.routeWebSocket; the HTTP routes are stubbed with page.route(). */
+ * The box's live-editing room is tests/yroom.mjs, reached through the
+ * harness's routeWebSocket on the whole context, so a tab an opener opens
+ * reaches it too; the HTTP routes are stubbed with page.route(). */
 
 import assert from './assert.mjs';
-import { launch, runner, serve } from './harness.mjs';
+import { launch, routeWebSocket, runner, serve } from './harness.mjs';
 import { yroom } from './yroom.mjs';
 
 const { origin, close: closeServer } = await serve({ csp: true });
@@ -89,7 +90,7 @@ async function openCloud(path, { files = [], taken = [], byId = {}, room = null,
     if (p === '/office/open') return json(route, 500, { error: 'not Collabora' });
     return json(route, 200, {});
   });
-  if (room !== null) await context.routeWebSocket(/\/cloud\/api\/collab\/ws/, (ws) => room.connect(ws, login));
+  if (room !== null) await routeWebSocket(context, /\/cloud\/api\/collab\/ws/, (ws) => room.connect(ws, login));
   await context.addInitScript(() => {
     window.__violations = [];
     document.addEventListener('securitypolicyviolation', (e) => window.__violations.push(`${e.violatedDirective} ${e.blockedURI}`));
