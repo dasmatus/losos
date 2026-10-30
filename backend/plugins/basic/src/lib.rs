@@ -448,6 +448,7 @@ fn page(host: &mut dyn Host, req: &Request, cookies: &Cookies, now: u64) -> Resp
                     "set-cookie",
                     &web::flash_cookie(&pages::look_word(&answer, veil)),
                 );
+            }
             (_, Some("problems")) if ctx.me.pane_open("problems") => {
                 return web::see_other(&problems::post(host, req, &here));
             }
