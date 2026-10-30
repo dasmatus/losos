@@ -16,8 +16,9 @@
  * the file's menu offers Office; and none of it adds to the policy
  * violations a plain load logs.
  *
- * The box's live-editing room is tests/yroom.mjs, reached through
- * routeWebSocket in harness.mjs; the HTTP routes are stubbed with page.route(). */
+ * The box's live-editing room is tests/yroom.mjs, reached through the
+ * harness's routeWebSocket on the whole context, so a tab an opener opens
+ * reaches it too; the HTTP routes are stubbed with page.route(). */
 
 import assert from './assert.mjs';
 import { launch, routeWebSocket, runner, serve } from './harness.mjs';
@@ -89,7 +90,7 @@ async function openCloud(path, { files = [], taken = [], byId = {}, room = null,
     if (p === '/office/open') return json(route, 500, { error: 'not Collabora' });
     return json(route, 200, {});
   });
-  if (room !== null) await routeWebSocket(page, /\/cloud\/api\/collab\/ws/, (ws) => room.connect(ws, login));
+  if (room !== null) await routeWebSocket(context, /\/cloud\/api\/collab\/ws/, (ws) => room.connect(ws, login));
   await context.addInitScript(() => {
     window.__violations = [];
     document.addEventListener('securitypolicyviolation', (e) => window.__violations.push(`${e.violatedDirective} ${e.blockedURI}`));
@@ -469,10 +470,6 @@ await check('a .paper opens in Office from its menu, with its text one item away
   // Openers open the file in a tab of its own.
   const [tab] = await Promise.all([context.waitForEvent('page'), item.click()]);
   await tab.waitForURL(/\/cloud\/office\/77$/);
-  // The harness answers a page's sockets only once that page is known to it,
-  // which a tab is from its next load on.
-  await routeWebSocket(tab, /\/cloud\/api\/collab\/ws/, (ws) => room.connect(ws, 'matus'));
-  await tab.reload();
   await tab.locator('[data-testid=paper-editor][data-ready]').waitFor();
   await tab.locator('[data-testid=office-saved][data-connection=live]').waitFor();
   await tab.waitForTimeout(400);
