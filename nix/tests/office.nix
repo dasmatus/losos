@@ -618,8 +618,11 @@ pkgs.testers.nixosTest {
             {"name": "office", "path": "/office/",
              "waitFor": {"selector": 'main [aria-busy="false"] table'}, "settle": 1500},
             {"name": "office-document", "path": f"/office/#file={hexid('Trip plan.docx')}",
-             "waitFor": {"selector": 'main[aria-busy="false"] iframe'},
-             "steps": [{"sleep": 15000}], "settle": 3000, "live": True},
+             # Collabora can take minutes to load a document under emulation.
+             "waitFor": {"selector": "main iframe"},
+             "steps": [{"waitFor": {"selector": 'main[aria-busy="false"] iframe'}, "timeout": 600000},
+                       {"sleep": 15000}],
+             "settle": 3000, "live": True},
         ])
 
     with subtest("the plain http address goes through sign-in to the same document on https"):
