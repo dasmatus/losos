@@ -169,7 +169,7 @@ let
     dir = ./../backend/mdx;
     wasm = "losos_mdx";
     features = [ "wasm" ];
-    cargoHash = "sha256-/PsXCBJFqy5hJ1ov20niOX5WhMcbm30UIkCoppjWiBI=";
+    cargoHash = "sha256-hyHEBRx7gLddFz4Y/Dqir9q4NpIr5wvRwDeTA1QyTvU=";
   };
   # Copied to src/mdx/pkg (gitignored; `bun run mdx` writes it in a
   # checkout) by both builds of the UI, in preConfigure rather than preBuild:
@@ -304,7 +304,7 @@ let
   # build a set with the probe in it.
   # backend/plugins' vendored crates: lososd's plugins and Mesh CI's pm
   # plugin are built from the one workspace.
-  pluginsCargoHash = "sha256-KJHNKRwPEjjGHKBlRYvTFG0ZtQLqNeHnJhPrMKKHF60=";
+  pluginsCargoHash = "sha256-tpc5iDJHf1nlsVvmwHd4f6lQPdBI0ihXeSgJyxyflR4=";
   lososPlugins =
     {
       pname ? "losos-plugins",
@@ -318,12 +318,13 @@ let
         "problems"
         "hidden"
         "basic"
+        "pages"
       ],
     }:
     pkgs.rustPlatform.buildRustPackage {
       inherit pname;
       version = "0.1.0";
-      src = lib.cleanSource ./../backend/plugins;
+      inherit (import ./plugins-src.nix { inherit lib; }) src sourceRoot;
       cargoHash = pluginsCargoHash;
       nativeBuildInputs = [
         pkgs.wasm-tools
@@ -444,7 +445,7 @@ images
       nodeModules = bunDeps {
         pname = "losos-admin-ui";
         src = ./../admin-ui/app;
-        hash = "sha256-LUyu1qNDz5MHIdLaDE59k/sU7lJeBoKfgjuZznPv+Z0=";
+        hash = "sha256-C6awn7GAyZ8v8H0hu1eR6sGZnqe6ZZ8o+Yvd9+iwqZU=";
       };
     };
   });

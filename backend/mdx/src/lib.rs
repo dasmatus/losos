@@ -20,14 +20,19 @@
 //! allowlist.
 
 mod components;
+mod date;
+mod math;
 pub mod notes;
+pub mod page;
 mod render;
 mod sanitize;
 #[cfg(feature = "wasm")]
 mod wasm;
 
 pub use components::{Component, Prop, COMPONENTS, INTRINSIC};
+pub use date::{format as format_date, LANGS};
 pub use markdown::mdast;
+pub use math::{mathml, MAX_TEX, MAX_TEX_NESTING};
 pub use render::{Hook, Writer, RESERVED};
 
 use markdown::mdast::Node;
@@ -185,6 +190,10 @@ pub struct Parsed {
     /// first item start at the same offset): `id`, `class` and `data-*`
     /// only, on a paragraph, list item, heading, quote, table or code block.
     pub attributes: BTreeMap<(usize, String), Vec<(String, String)>>,
+    /// The reader's language, for what is written out in words (a
+    /// `<Date>`) when the document names none in its front matter's
+    /// `lang`. English when neither does.
+    pub lang: Option<String>,
 }
 
 /// What a page needs to show a document.
@@ -285,6 +294,7 @@ pub fn parse(source: &str, flavour: Flavour) -> Result<Parsed, Error> {
         front_matter,
         problems,
         attributes: BTreeMap::new(),
+        lang: None,
     })
 }
 
@@ -297,13 +307,29 @@ impl Parsed {
     /// Writes the document out, handing the reserved `losos:` elements a
     /// pass put in the tree to `hook`.
     pub fn render_with(&self, resolver: &dyn Resolver, hook: Option<&dyn Hook>) -> Rendered {
+        self.finish(resolver, hook, sanitize::clean)
+    }
+
+    /// Writes the tree out and runs `clean`, an allowlist, over the HTML.
+    fn finish(
+        &self,
+        resolver: &dyn Resolver,
+        hook: Option<&dyn Hook>,
+        clean: fn(&str) -> String,
+    ) -> Rendered {
         let (properties, properties_error) = properties(self.front_matter.as_deref());
-        let out = render::render(self, resolver, hook);
+        let lang = properties
+            .as_ref()
+            .and_then(|p| p.get("lang"))
+            .and_then(|l| l.as_str())
+            .or(self.lang.as_deref())
+            .map_or("en", date::lang);
+        let out = render::render(self, resolver, hook, lang);
         let mut problems = self.problems.clone();
         problems.extend(out.problems);
         problems.sort_by_key(|p| (p.place.line, p.place.column));
         Rendered {
-            html: sanitize::clean(&out.html),
+            html: clean(&out.html),
             properties,
             properties_error,
             headings: out.headings,

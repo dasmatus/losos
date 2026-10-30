@@ -432,7 +432,7 @@ nemôže čítať súbory toho druhého. `nix/tests/impermanence.nix` to kontrol
 ## Aktualizácie a reštarty {#upgrades-and-reboots}
 
 - **03:00.** lososd najprv posunie `/etc/nixos` na najnovší commit vetvy
-  `losos.configRepo.upstream.branch` (`main`) na
+  `losos.configRepo.upstream.branch` (kanál vydaní, nižšie) na
   `losos.configRepo.upstream.url` (repozitár na GitHube) a ponechá pritom
   `modules/overrides.nix` a `modules/install-target.nix` zariadenia. Potom
   `system.autoUpgrade` prestavia systém z `losos.upgradeFlakeUri`, teda z
@@ -444,3 +444,37 @@ nemôže čítať súbory toho druhého. `nix/tests/impermanence.nix` to kontrol
   (`Persistent=true`, takže zariadenie, ktoré bolo vypnuté, to dobehne).
   Keďže sa koreň pri štarte zostavuje nanovo, reštart je spôsob, akým sa
   zariadenie samo opravuje.
+
+### Kanály vydaní {#release-channels}
+
+Zariadenie sleduje jednu z troch vetiev, ktorú vyberiete v Nastaveniach,
+História, Kanál vydaní (`losos.updates.channel`):
+
+| Kanál      | Vetva             | Posúva sa                   |
+| ---------- | ----------------- | --------------------------- |
+| Denne      | `channel/daily`   | Každú noc o 00:17 UTC       |
+| Týždenne   | `channel/weekly`  | V pondelok o 00:17 UTC      |
+| Mesačne    | `channel/monthly` | 1. dňa v mesiaci o 00:17 UTC |
+
+Každý posun vezme najnovší commit vetvy `main`, ktorého beh CI prešiel aj s
+nahraním do binárnej cache, takže zariadenie nikdy nezostavuje verziu, ktorá
+neprešla kontrolami, a nekompiluje to, čo CI už zostavilo. Pred LosOS 1.0.0
+zariadenie sleduje denný kanál, potom týždenný. „Každá zmena“ (`main`)
+sleduje samotnú vetvu `main`, skontrolovanú alebo nie, a slúži na testovanie
+LosOS.
+
+Pull request s menovkou `hotfix` sa dostane do každého kanála v ten istý
+deň. Po jeho zlúčení ho bot prenesie (cherry-pick) do každého kanála, ktorý
+ho ešte nemá, na výsledku prebehne CI a nahranie do cache a kanál sa posunie,
+keď prejdú. Zariadenia si ho vezmú pri najbližšej aktualizácii o 03:00.
+Hotfix nesie to, čo je v tomto repozitári: vlastný kód LosOS, jeho závislosti
+z Rustu a npm a nastavenia modulov. Oprava vnútri samotného NixOS, napríklad
+v nginx alebo v jadre, prichádza cez pin nixpkgs ako každá iná zmena.
+
+Prechod na pomalší kanál zariadenie nikdy nevráti späť. Každý commit v
+kanáli uvádza commit vetvy `main`, z ktorého vznikol (riadok
+`Channel-Base:`), a zariadenie si ponechá svoju verziu, kým ju kanál
+nedobehne; panel História medzitým ukazuje „Čaká sa na kanál“.
+Posuny a hotfixy robia `.github/workflows/channels.yml` a
+`.github/scripts/channels.py` a žiadny kanál sa nikdy neprepisuje vynúteným
+pushom.

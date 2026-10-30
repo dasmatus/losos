@@ -25,6 +25,13 @@ let
   secretPath = lib.types.coercedTo storePathLike toString lib.types.str;
 
   inNixStore = p: lib.hasPrefix builtins.storeDir (toString p);
+
+  # The release this tree is (nix/version.nix). A box follows the daily
+  # channel until LosOS is at 1.0.0 or later, without a pre-release suffix,
+  # and the weekly one from then on; version.yml moving the tag is what
+  # flips it.
+  release = lib.removePrefix "v" (import ../nix/version.nix);
+  stableRelease = !(lib.hasInfix "-" release) && lib.versionAtLeast release "1.0.0";
 in
 {
   # LosOS Git took over from Forgejo; an older overrides.nix still names
@@ -1736,8 +1743,45 @@ in
     };
     configRepo.upstream.branch = lib.mkOption {
       type = lib.types.str;
-      default = "main";
-      description = "The branch of losos.configRepo.upstream.url the box follows.";
+      default =
+        if config.losos.updates.channel == "main" then
+          "main"
+        else
+          "channel/${config.losos.updates.channel}";
+      defaultText = lib.literalExpression ''"channel/''${config.losos.updates.channel}", or "main" for the main channel'';
+      description = ''
+        The branch of losos.configRepo.upstream.url the box follows. Set
+        losos.updates.channel instead; this is for a fork that names its
+        branches differently.
+      '';
+    };
+
+    # ── Release channels ─────────────────────────────────────────────────
+    # .github/workflows/channels.yml moves channel/daily, channel/weekly and
+    # channel/monthly to a commit of main whose CI run and cache upload both
+    # passed, and puts every merged pull request labelled `hotfix` on top of
+    # each one the same day. The box only picks the branch; lososd never
+    # takes a channel that is older than what the box already runs
+    # (crate::config_repo::plan_follow).
+    updates.channel = lib.mkOption {
+      type = lib.types.enum [
+        "daily"
+        "weekly"
+        "monthly"
+        "main"
+      ];
+      default = if stableRelease then "weekly" else "daily";
+      defaultText = lib.literalExpression ''"daily" before LosOS 1.0.0, "weekly" from then on'';
+      description = ''
+        How often this box takes a new version. "daily" takes the newest
+        version that passed every check, at most a day after it was made.
+        "weekly" takes one each Monday and "monthly" one on the 1st, so a
+        change reaches the box up to a week or a month later. A fix marked as
+        a hotfix reaches every channel the same day. "main" takes every change
+        the night it is made, checked or not, and is for testing LosOS
+        itself. Moving to a slower channel keeps the version the box has
+        until that channel passes it.
+      '';
     };
 
     # ── LosOS Git's box-wide settings ───────────────────────────────────────

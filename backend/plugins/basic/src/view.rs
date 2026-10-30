@@ -49,6 +49,8 @@ pub struct Ctx {
     pub rail_moved: bool,
     pub refresh: Option<u32>,
     pub pins: Option<Vec<NavEntry>>,
+    /// The page's name for an administrator's stylesheet (`data-page`).
+    pub page: Option<&'static str>,
 }
 
 impl Ctx {
@@ -66,6 +68,7 @@ impl Ctx {
             rail_moved: self.rail_moved,
             refresh: self.refresh,
             pins: self.pins.as_deref(),
+            page: self.page,
         }
     }
 }

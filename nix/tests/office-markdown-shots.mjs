@@ -1,10 +1,11 @@
 // Pictures of Markdown documents and presentations in LosOS Office on a
 // real box, from a real browser.
 //
-// Chromium (Playwright) signs in through LosOS Login as the owner, starts a
-// document and a presentation from LosOS Cloud's files bar, writes into
-// them with the formatting bar and the keyboard (the box saves what is
-// typed), puts the presentation's picture on the right of its slide and
+// Chromium (Playwright) signs in through LosOS Login as the owner, opens a
+// Markdown document and a presentation the test put in LosOS Cloud (a new
+// document from the files bar is a .paper now, nix/tests/office-paper.nix),
+// writes into them with the formatting bar and the keyboard (the box saves
+// what is typed), puts the presentation's picture on the right of its slide and
 // plays it full screen. One full-window PNG per state, with a manifest, as
 // nix/tests/notes-shots.mjs does. nix/tests/office-markdown.nix runs it in
 // its laptop VM against the box's own nginx.
@@ -143,6 +144,17 @@ async function write(p, text) {
   await p.keyboard.insertText(text);
 }
 
+/** Opens `name`, at the top of the files, in LosOS Office. */
+async function openInOffice(p, base, name) {
+  await p.goto(`${base}/cloud/files`);
+  await p.locator(`[data-entry="${name}"]`).waitFor();
+  const id = await p.evaluate(async (n) => {
+    const r = await fetch("/cloud/api/files?path=");
+    return (await r.json()).entries.find((e) => e.name === n).id;
+  }, name);
+  await p.goto(`${base}/cloud/office/${id}`);
+}
+
 /** Selects `word` on the line that ends the text. */
 async function selectLast(p, word) {
   await p.keyboard.press("Control+End");
@@ -150,13 +162,8 @@ async function selectLast(p, word) {
 }
 
 async function after(s, p, base) {
-  await p.goto(`${base}/cloud/files`);
-  const newDoc = p.getByRole("button", { name: "New document" });
-  await newDoc.waitFor();
-
   // A document: the bar writes the Markdown, the right side reads it.
-  await newDoc.click();
-  await p.waitForURL(/\/cloud\/office\/\d+$/);
+  await openInOffice(p, base, DOC);
   await waitOffice(p, DOC);
   await write(p, "Saturday at the allotment, with ");
   await write(p, "everyone");
@@ -176,7 +183,7 @@ async function after(s, p, base) {
   await read.locator("table").waitFor();
   await read.locator(".callout").waitFor();
   await p.locator('[data-testid=office-saved][data-connection="live"]').waitFor();
-  await s.take(p, "document", "a new document, written with the bar and read beside it", { kind: "none" }, {
+  await s.take(p, "document", "a Markdown document, written with the bar and read beside it", { kind: "none" }, {
     bar: p.getByTestId("md-toolbar"),
     read,
     name: p.getByTestId("md-name"),
@@ -190,9 +197,7 @@ async function after(s, p, base) {
   });
 
   // A presentation with a picture: the text centred, the picture on the right.
-  await p.goto(`${base}/cloud/files`);
-  await p.getByRole("button", { name: "New presentation" }).click();
-  await p.waitForURL(/\/cloud\/office\/\d+$/);
+  await openInOffice(p, base, DECK);
   await waitOffice(p, DECK);
   await p.locator("[data-markdown-office][data-deck]").waitFor();
   await write(p, "\n![A tomato plant](tomato.png)\n\n---\n\n## This year\n\n1. Rotate the beds\n2. Water in the morning\n3. Feed with compost\n");
@@ -201,7 +206,7 @@ async function after(s, p, base) {
   const stage = p.getByTestId("md-stage");
   await stage.locator(".md-slide-pictures img").waitFor();
   await p.locator('[data-testid=office-saved][data-connection="live"]').waitFor();
-  await s.take(p, "presentation", "a new presentation: slides in the strip, the slide beside its text", { kind: "click", target: "present" }, {
+  await s.take(p, "presentation", "a Markdown presentation: slides in the strip, the slide beside its text", { kind: "click", target: "present" }, {
     strip: p.getByTestId("md-strip"),
     stage,
     present: p.getByTestId("md-present"),
