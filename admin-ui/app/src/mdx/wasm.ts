@@ -1,6 +1,6 @@
 /* losos-mdx in the page (backend/mdx/README.md): the same parser and
  * allowlist the box renders documents with, so the editor, a preview and
- * an export cannot disagree. The module is ./pkg (gitignored; `npm run
+ * an export cannot disagree. The module is ./pkg (gitignored; `bun run
  * mdx` writes it in a checkout, the Nix build copies it in), loaded once
  * on first use.
  *

@@ -22,11 +22,11 @@
 // shows, what happens next and the boxes (CSS pixels) of what a pointer may
 // go to.
 
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { chromium } from 'playwright';
 
-const env = process.env;
+const join = (...parts) => parts.join('/');
+
+const env = Bun.env;
 const BOX = env.BOX ?? 'https://mattbox.local';
 const OWNER = env.OWNER ?? 'matus';
 const PASSWORD = env.PASSWORD;
@@ -41,7 +41,7 @@ const WORK_FRAMES = Number(env.WORK_FRAMES ?? 12);
 // stopped (MODE=pushed).
 const FIRST = Number(env.FIRST ?? 1);
 
-mkdirSync(OUT, { recursive: true });
+Bun.spawnSync(["mkdir", "-p", OUT]);
 const steps = [];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -261,7 +261,7 @@ if (MODE === 'pushed') {
   await shot(page, 'widget-builder', "Build with AI in the widget editor, with the model's notice");
 }
 
-writeFileSync(
+await Bun.write(
   join(OUT, 'manifest.json'),
   JSON.stringify(
     {

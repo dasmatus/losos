@@ -16,7 +16,7 @@
 
 import { Shots } from './screens.mjs';
 
-const [MODE, ARG, OUT] = process.argv.slice(2);
+const [MODE, ARG, OUT] = Bun.argv.slice(2);
 const BASE = 'https://mattbox.local';
 const PASSWORD = 'Correct-Horse-Battery-9';
 
@@ -71,92 +71,91 @@ if (handbook) {
   await shots.settle(page);
   await page.screenshot({ path: `${OUT}/settings-moderation${suffix}.png`, fullPage: true });
   await shots.finish();
-  process.exit(0);
-}
-
-await users(page);
-
-if (MODE === 'before') {
-  const dialog = await access(page);
-  await shots.take(page, 'access', 'Access on Eva', { targets: { dialog } });
 } else {
-  const dialog = await access(page);
-  const select = dialog.getByTestId('users-role-select');
-  await shots.take(page, 'access', 'Access on Eva: her role is one of the box\'s own', {
-    action: { kind: 'click', target: 'role' },
-    targets: { dialog, role: select },
-  });
-  await dialog.getByRole('button', { name: 'Cancel' }).click();
-  await dialog.waitFor({ state: 'hidden' });
+  await users(page);
 
-  const table = page.getByTestId('users-role-table');
-  await table.scrollIntoViewIfNeeded();
-  await shots.take(page, 'roles', 'what each role can do, and the roles of the box\'s own', {
-    targets: { table, custom: page.getByTestId('users-roles') },
-  });
-
-  await moderation(page);
-  const spam = page.locator('[data-testid=moderation-report][data-reason=spam][data-state=open]');
-  const hold = spam.getByTestId('moderation-hide');
-  await shots.take(page, 'queue', 'the Moderation pane: a report about a child first, then spam in mail', {
-    action: { kind: 'click', target: 'hold' },
-    targets: {
-      child: page.locator('[data-testid=moderation-report][data-reason=child][data-state=open]'),
-      spam,
-      hold,
-    },
-  });
-  await hold.click();
-  const held = page.locator('[data-testid=moderation-report][data-reason=spam][data-state=hidden]');
-  await held.waitFor();
-  await shots.toastsGone(page);
-  await shots.take(page, 'held', 'the message is held, and can be let go', {
-    targets: { held, release: held.getByTestId('moderation-release') },
-  });
-
-  const tom = page.locator('[data-testid=moderation-person][data-person=tom]');
-  const mute = tom.getByTestId('moderation-mute');
-  await tom.scrollIntoViewIfNeeded();
-  await shots.take(page, 'people', 'the people a moderator can hold', {
-    action: { kind: 'click', target: 'mute' },
-    targets: { people: page.getByTestId('moderation-people'), mute },
-  });
-  await mute.click();
-  const box = page.getByRole('dialog', { name: 'Mute Tom' });
-  await box.waitFor();
-  await box.getByTestId('moderation-duration').selectOption('week');
-  const reason = box.getByTestId('moderation-reason');
-  await reason.click();
-  let typed = '';
-  for (const [i, word] of 'The same offer to everyone, twelve times'.split(' ').entries()) {
-    const part = i === 0 ? word : ` ${word}`;
-    await reason.pressSequentially(part);
-    typed += part;
-    await shots.take(page, `mute-${i + 1}`, `the mute dialog: “${typed}”`, {
-      action: { kind: 'type', target: 'reason' },
-      targets: { dialog: box, reason },
+  if (MODE === 'before') {
+    const dialog = await access(page);
+    await shots.take(page, 'access', 'Access on Eva', { targets: { dialog } });
+  } else {
+    const dialog = await access(page);
+    const select = dialog.getByTestId('users-role-select');
+    await shots.take(page, 'access', 'Access on Eva: her role is one of the box\'s own', {
+      action: { kind: 'click', target: 'role' },
+      targets: { dialog, role: select },
     });
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await dialog.waitFor({ state: 'hidden' });
+
+    const table = page.getByTestId('users-role-table');
+    await table.scrollIntoViewIfNeeded();
+    await shots.take(page, 'roles', 'what each role can do, and the roles of the box\'s own', {
+      targets: { table, custom: page.getByTestId('users-roles') },
+    });
+
+    await moderation(page);
+    const spam = page.locator('[data-testid=moderation-report][data-reason=spam][data-state=open]');
+    const hold = spam.getByTestId('moderation-hide');
+    await shots.take(page, 'queue', 'the Moderation pane: a report about a child first, then spam in mail', {
+      action: { kind: 'click', target: 'hold' },
+      targets: {
+        child: page.locator('[data-testid=moderation-report][data-reason=child][data-state=open]'),
+        spam,
+        hold,
+      },
+    });
+    await hold.click();
+    const held = page.locator('[data-testid=moderation-report][data-reason=spam][data-state=hidden]');
+    await held.waitFor();
+    await shots.toastsGone(page);
+    await shots.take(page, 'held', 'the message is held, and can be let go', {
+      targets: { held, release: held.getByTestId('moderation-release') },
+    });
+
+    const tom = page.locator('[data-testid=moderation-person][data-person=tom]');
+    const mute = tom.getByTestId('moderation-mute');
+    await tom.scrollIntoViewIfNeeded();
+    await shots.take(page, 'people', 'the people a moderator can hold', {
+      action: { kind: 'click', target: 'mute' },
+      targets: { people: page.getByTestId('moderation-people'), mute },
+    });
+    await mute.click();
+    const box = page.getByRole('dialog', { name: 'Mute Tom' });
+    await box.waitFor();
+    await box.getByTestId('moderation-duration').selectOption('week');
+    const reason = box.getByTestId('moderation-reason');
+    await reason.click();
+    let typed = '';
+    for (const [i, word] of 'The same offer to everyone, twelve times'.split(' ').entries()) {
+      const part = i === 0 ? word : ` ${word}`;
+      await reason.pressSequentially(part);
+      typed += part;
+      await shots.take(page, `mute-${i + 1}`, `the mute dialog: “${typed}”`, {
+        action: { kind: 'type', target: 'reason' },
+        targets: { dialog: box, reason },
+      });
+    }
+    const confirm = box.getByTestId('moderation-hold-confirm');
+    await shots.take(page, 'mute-ready', 'a week, with the reason for the other moderators', {
+      action: { kind: 'click', target: 'confirm' },
+      targets: { dialog: box, confirm },
+    });
+    await confirm.click();
+    await box.waitFor({ state: 'hidden' });
+    await tom.getByTestId('moderation-muted').waitFor();
+    await shots.toastsGone(page);
+    await shots.take(page, 'muted', 'Tom is muted for a week', {
+      targets: { tom, badge: tom.getByTestId('moderation-muted') },
+    });
+
+    const log = page.getByTestId('moderation-log');
+    // The log is taller than the window: start at its title, under the top bar.
+    await log.evaluate((el) => {
+      el.style.scrollMarginTop = '80px';
+      el.scrollIntoView({ block: 'start' });
+    });
+    await shots.take(page, 'log', 'what moderators did', { targets: { log } });
   }
-  const confirm = box.getByTestId('moderation-hold-confirm');
-  await shots.take(page, 'mute-ready', 'a week, with the reason for the other moderators', {
-    action: { kind: 'click', target: 'confirm' },
-    targets: { dialog: box, confirm },
-  });
-  await confirm.click();
-  await box.waitFor({ state: 'hidden' });
-  await tom.getByTestId('moderation-muted').waitFor();
-  await shots.toastsGone(page);
-  await shots.take(page, 'muted', 'Tom is muted for a week', {
-    targets: { tom, badge: tom.getByTestId('moderation-muted') },
-  });
 
-  const log = page.getByTestId('moderation-log');
-  // The log is taller than the window: start at its title, under the top bar.
-  await log.evaluate((el) => {
-    el.style.scrollMarginTop = '80px';
-    el.scrollIntoView({ block: 'start' });
-  });
-  await shots.take(page, 'log', 'what moderators did', { targets: { log } });
+  await shots.finish();
 }
-
-await shots.finish();

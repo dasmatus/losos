@@ -509,7 +509,7 @@ overením. Náhrada verejného DNS na edge potom neodpovie nič, nepodpísaný
 záznam a overený záznam, ako test zónu deleguje a zverejní jej DS, a panel
 nasleduje každý krok. `edge/registrar/tests/domains.rs` prevedie tok
 nárokov aj peňaženiek proti skutočnému registraru a falošnému serveru
-DNS-over-HTTPS. `admin-ui/app/tests/ens.node.mjs` cez relay prehrá
+DNS-over-HTTPS. `admin-ui/app/tests/ens.unit.mjs` cez relay prehrá
 vyhľadanie názvu DNS zaznamenané z Ethereum mainnet a brány ENS.
 :::
 

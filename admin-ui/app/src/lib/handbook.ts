@@ -5,7 +5,7 @@
  * paths on the admin origin and work with no internet. The right-hand side
  * is the page's slug under handbook/docs/, and each troubleshooting page
  * declares that slug in its front matter so a file rename cannot move it:
- * `npm run check:links` in handbook/ reads this file and fails when an
+ * `bun run check:links` in handbook/ reads this file and fails when an
  * entry here names a page that is not there.
  *
  * `index` is the fallback: an error with no page of its own sends the owner

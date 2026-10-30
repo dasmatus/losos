@@ -10,8 +10,8 @@
 #
 #   nix/demo/edge-lan/record.sh [OUTDIR]        default nix/demo/edge-lan/recording
 #
-# Needs: nix with flakes; node with the app's dependencies installed
-# (`npm ci` in admin-ui/app, for playwright); a chromium Playwright can run
+# Needs: nix with flakes; bun with the app's dependencies installed
+# (`bun install` in admin-ui/app, for playwright); a chromium Playwright can run
 # (its own, or LOSOS_CHROMIUM=/path/to/chromium). KVM makes the run minutes;
 # without it the three VMs take about 20 minutes under TCG. LOSOS_NIX_ARGS
 # passes extra arguments to nix (input overrides on a machine that cannot
@@ -32,7 +32,7 @@ log "building the walkthrough driver"
 nix build "${nix_args[@]}" -o "$out/driver" "$repo#checks.x86_64-linux.losos-edge-lan-two-boxes.driver"
 
 log "starting the recorder"
-(cd "$repo/admin-ui/app" && LOSOS_RECORD_DIR="$out" node "$here/record.mjs" >"$out/recorder.log" 2>&1) &
+(cd "$repo/admin-ui/app" && LOSOS_RECORD_DIR="$out" bun "$here/record.mjs" >"$out/recorder.log" 2>&1) &
 recorder=$!
 
 log "running the walkthrough (log in $out/driver.log)"

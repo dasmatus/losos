@@ -75,7 +75,7 @@ web UI, a VM test reading a Rust file), add it to that lane in the script.
 
 Beside `ci.yml`, `dependency-hashes.yml` keeps the Nix hashes of the lock
 files current. On a pull request from a branch of this repository that
-changes a `Cargo.lock` or `package-lock.json`, Dependabot's included, it runs
+changes a `Cargo.lock` or `bun.lock`, Dependabot's included, it runs
 `.github/scripts/fix-hashes.py`, which vendors each changed lock file with a
 placeholder hash so no cache can answer for it, and pushes the real hashes
 back to the branch as one commit. It runs as `pull_request_target`, so a
@@ -303,10 +303,11 @@ channel is `main` for a push to main, the tag for a release (which also moves
 requests never publish.
 
 ```sh
-curl -fsSLO "https://proxy.losos.dasmat.us/updates/main/x86_64/{losos-registrar,SHA256SUMS}" && sha256sum -c --ignore-missing SHA256SUMS && chmod +x losos-registrar
+curl -fsSLO https://nightly.link/dasmatus/losos/workflows/ci/main/losos-pages-updates.zip && unzip -o losos-pages-updates.zip losos-registrar SHA256SUMS && sha256sum -c --ignore-missing SHA256SUMS && chmod +x losos-registrar
 ```
 
-The update artifacts can also be pulled directly from GHCR, without a hosted
+That is the newest successful run's `losos-pages-updates` artifact, kept
+90 days, through nightly.link. The update artifacts can also be pulled directly from GHCR, without a hosted
 proxy, with `oras pull ghcr.io/dasmatus/losos/images:main-x86_64`.
 
 The job's step summary carries the artifact reference, the URL and the sum.

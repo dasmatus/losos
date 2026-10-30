@@ -26,7 +26,11 @@ can argue with it.
    intercept traffic could intercept first use.
 4. **Your files ↔ the mesh's copies.** The box has two accounts with
    separate groups and mode-700 homes. The mesh's directory is encrypted
-   with its own key, which the box loads only while sharing is on.
+   with its own key, which the box loads only while sharing is on. That key
+   is on the box that lends the space, so to keep data of your own on the
+   mesh, back it up to storage you bought there: your box encrypts it with
+   your recovery code before it leaves, and the lenders and the edge hold
+   only ciphertext.
 5. **An official edge ↔ any edge.** The box checks each edge for itself
    before it trades through it: the owner's OpenPGP passport, a TPM that
    shows a published LosOS gateway image booted untouched, and settings that

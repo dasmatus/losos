@@ -55,6 +55,9 @@ let
     chmod -R u+w tree
     cd tree
     git init -q -b main
+    # A commit starts `git maintenance run --auto --detach`, whose repack
+    # renames packs under the clone below ("failed to copy file to …tmp_pack").
+    git config maintenance.auto false
     git add -A
     git -c user.name=losos -c user.email=losos@local commit -qm tree
     git clone -q --bare . $out
@@ -69,6 +72,9 @@ let
 in
 pkgs.testers.runNixOSTest {
   name = "losos-iso-install";
+  # The installed closure is too many inodes for virtiofsd under a
+  # 20000-descriptor limit (nix/tests/virtiofs.nix).
+  defaults.imports = [ ./virtiofs.nix ];
   # installation-device.nix adds an overlay, as the medium's system does.
   node.pkgsReadOnly = false;
 

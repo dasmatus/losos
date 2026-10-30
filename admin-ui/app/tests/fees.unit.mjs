@@ -3,24 +3,12 @@
  * what a payment costs on an EVM network and on Solana, and which network
  * the wallet offers first.
  *
- *   node tests/fees.node.mjs
+ *   bun tests/fees.unit.mjs
  */
 
-import assert from 'node:assert/strict';
-import { fileURLToPath } from 'node:url';
-import * as esbuild from 'esbuild';
+import assert from './assert.mjs';
 
-const built = await esbuild.build({
-  entryPoints: [fileURLToPath(new URL('../src/wallet/fees.ts', import.meta.url))],
-  bundle: true,
-  format: 'esm',
-  platform: 'node',
-  write: false,
-  alias: { '@': fileURLToPath(new URL('../src', import.meta.url)) },
-});
-const fees = await import(
-  `data:text/javascript;base64,${Buffer.from(built.outputFiles[0].text).toString('base64')}`
-);
+const fees = await import('../src/wallet/fees.ts');
 
 const gwei = 1_000_000_000n;
 const hex = (n) => `0x${n.toString(16)}`;

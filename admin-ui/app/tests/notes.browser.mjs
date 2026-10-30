@@ -24,9 +24,7 @@
  * backend/src/cloud/notes/scan.rs, and nix/tests/notes.nix runs both
  * halves together. */
 
-import assert from 'node:assert';
-import { readdir, readFile } from 'node:fs/promises';
-import { join, relative } from 'node:path';
+import assert from './assert.mjs';
 import { launch, runner, serve } from './harness.mjs';
 
 const { origin, close: closeServer } = await serve({ csp: true });
@@ -35,18 +33,10 @@ const { check, finish } = runner();
 
 const FIXTURE = 'tests/fixtures/vault';
 
-async function walk(dir) {
-  const out = [];
-  for (const e of await readdir(dir, { withFileTypes: true })) {
-    const p = join(dir, e.name);
-    if (e.isDirectory()) out.push(...(await walk(p)));
-    else out.push(p);
-  }
-  return out;
-}
-
 const files = new Map();
-for (const p of await walk(FIXTURE)) files.set(relative(FIXTURE, p).split('\\').join('/'), await readFile(p, 'utf8'));
+for await (const rel of new Bun.Glob('**/*').scan({ cwd: FIXTURE, dot: true })) {
+  files.set(rel, await Bun.file(`${FIXTURE}/${rel}`).text());
+}
 files.set(
   'Garden plan.canvas',
   JSON.stringify({
@@ -134,7 +124,7 @@ function search(q) {
 
 const json = (route, status, body) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
-async function open(path, { kb = { available: true, sites: [] }, kbSite = 'anyone', viewport = { width: 1440, height: 1000 } } = {}) {
+async function open(path, { kb = { available: true, sites: [] }, kbSite = 'anyone', viewport = { width: 1440, height: 1000 }, vault = 'garden' } = {}) {
   const context = await browser.newContext({ viewport, locale: 'en-US' });
   const page = await context.newPage();
   const errors = [];
@@ -148,14 +138,22 @@ async function open(path, { kb = { available: true, sites: [] }, kbSite = 'anyon
   const writes = [];
   const posts = [];
   const moves = [];
+  // 'garden' is the fixture; 'new' is a box that has no Notes folder yet,
+  // which the page makes, and then lists as an empty vault.
+  let made = vault === 'garden';
   await page.route('**/cloud/api/**', async (route) => {
     const req = route.request();
     const url = new URL(req.url());
     const p = url.pathname.slice('/cloud/api'.length);
     if (p === '/me') return json(route, 200, { login: 'matus', name: 'Matus', email: '', used: 1e9, free: 9e9, product: 'LosOS Cloud' });
     if (p === '/notes/vault') {
-      if (url.searchParams.get('path') !== 'Notes') return json(route, 404, { code: 'notFound', error: 'no such folder' });
+      if (url.searchParams.get('path') !== 'Notes' || !made) return json(route, 404, { code: 'notFound', error: 'no such folder' });
+      if (vault === 'new') return json(route, 200, { root: 'Notes', name: 'Notes', folderId: 7, notes: [], canvases: [], files: [], folders: [] });
       return json(route, 200, index({ root: 'Notes', name: 'Notes' }));
+    }
+    if (p === '/files/folder' && req.method() === 'POST') {
+      made = true;
+      return json(route, 201, { id: 7, path: 'Notes', name: 'Notes', dir: true, size: 0, mtime: 1, etag: 'x', mime: '', favorite: false });
     }
     if (p === '/notes/search') return json(route, 200, { hits: search(url.searchParams.get('q') ?? '') });
     if (p === '/notes/root') return json(route, 200, { root: 'Notes' });
@@ -228,6 +226,14 @@ const BASELINE = await (async () => {
   await context.close();
   return seen;
 })();
+
+await check('a new box makes its Notes folder and offers the first note', async () => {
+  const { page, context, errors } = await open('/cloud/notes', { vault: 'new' });
+  await page.waitForSelector('[data-notes-empty]', { timeout: 10000 });
+  assert.equal(await page.locator('[data-notes-empty] [data-new-note]').count(), 1);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
 
 await check('a note reads with GitHub and Obsidian Markdown', async () => {
   const { page, context, errors } = await open('/cloud/notes?vault=Notes');
@@ -355,7 +361,7 @@ await check('a .note reads as MDX, its components beside Obsidian\'s syntax', as
     assert.deepEqual(errors, []);
     for (const v of await violations(page)) ALL_VIOLATIONS.add(v);
   } finally {
-    files.set('Harvest.note', await readFile(join(FIXTURE, 'Harvest.note'), 'utf8'));
+    files.set('Harvest.note', await Bun.file(`${FIXTURE}/Harvest.note`).text());
     etags.delete('Harvest.note');
     await context.close();
   }

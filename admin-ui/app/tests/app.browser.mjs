@@ -11,15 +11,13 @@
  * a wrong key really is refused rather than assumed to be.
  */
 
-import assert from 'node:assert';
-import { readFile } from 'node:fs/promises';
-import { launch, runner, serve } from './harness.mjs';
+import assert from './assert.mjs';
+import { launch, pickFiles, runner, serve } from './harness.mjs';
 
 const TOKEN = 'a'.repeat(64);
 const { origin, close: closeServer } = await serve();
 const browser = await launch();
 const { check, finish } = runner();
-
 
 const SETTINGS = {
   sharingMyStorage: false,
@@ -44,7 +42,7 @@ const JOINABLE = { ...SETTINGS, proxyEnable: true, hostName: 'kitchen' };
  * document (the fixture advanced.browser.mjs reads too), with `tpm.enable`'s
  * running value set. Without `options` the catch-all answers `{}`, which the
  * form reads as "no document served". */
-const OPTIONS_DOC = JSON.parse(await readFile(process.env.LOSOS_OPTIONS_JSON ?? 'tests/fixtures/options.json', 'utf8'));
+const OPTIONS_DOC = await Bun.file(Bun.env.LOSOS_OPTIONS_JSON ?? 'tests/fixtures/options.json').json();
 const optionsWithTpm = (tpm) => ({
   available: true,
   ...OPTIONS_DOC,
@@ -278,6 +276,14 @@ async function open({
       const { secretAccessKey, ...shown } = sent;
       backupView.target = { ...shown, hasSecret: Boolean(secretAccessKey) || backupView.target?.hasSecret === true };
       return json(route, 200, { target: backupView.target });
+    }
+    if (path === '/api/backup/target/bought') {
+      const edge = 'https://edge.example.net';
+      backupView.target = {
+        endpoint: '', bucket: '', prefix: '', region: '', accessKeyId: '', hasSecret: false,
+        storageClass: 'standard', bought: { order: sent.order, edge },
+      };
+      return json(route, 200, { target: backupView.target, keyed: sent.order !== 'ord_feedfacefeedfacefeedface' });
     }
     if (path === '/api/backup/target') {
       backupView.target = null;
@@ -2387,6 +2393,78 @@ await check('the Backup pane saves a bucket without echoing the secret, backs up
   await again.page.close();
 });
 
+await check('the Backup pane keeps backups on storage bought on the mesh, keyed from the recovery code', async () => {
+  const storageOrder = (id, quantity) => ({
+    id,
+    kind: 'storage',
+    unit: 'GiB-month',
+    quantity,
+    amount: quantity * 5,
+    fee: 1,
+    seller_net: quantity * 5 - 1,
+    currency: 'eur',
+    status: 'paid',
+    created_at: 1760000000,
+    paid_at: 1760000100,
+    expires_at: 1762600000,
+    expired: false,
+    volume: `market-box/${id.replace('_', '-')}`,
+  });
+  const market = {
+    ...MARKET,
+    account: {
+      ...MARKET.account,
+      purchases: [
+        storageOrder('ord_0a1b2c3d4e5f60718293a4b5', 50),
+        // Not offered: lapsed, unpaid, and an order with no volume yet.
+        { ...storageOrder('ord_000000000000000000000001', 10), expired: true },
+        { ...storageOrder('ord_000000000000000000000002', 10), status: 'pending' },
+        { ...storageOrder('ord_000000000000000000000003', 10), volume: null },
+        storageOrder('ord_feedfacefeedfacefeedface', 20),
+      ],
+    },
+  };
+  const { page, errors, backupPosts } = await open({ path: '/settings/backup', stored: true, market });
+  const offer = page.getByTestId('backup-bought-offer');
+  await offer.getByText('ord_0a1b2c3d4e5f60718293a4b5').waitFor();
+  assert.equal(await offer.getByTestId('backup-bought-use').count(), 2, 'a lapsed, unpaid or unbound order is offered');
+  await page.getByText('Or a bucket you rent', { exact: true }).waitFor();
+  if (process.env.BACKUP_SHOTS) await page.screenshot({ path: `${process.env.BACKUP_SHOTS}/offer.png`, fullPage: true });
+  await offer.getByTestId('backup-bought-use').first().click();
+  const shown = page.getByTestId('backup-bought');
+  await shown.getByText('ord_0a1b2c3d4e5f60718293a4b5', { exact: true }).waitFor();
+  await shown.getByText('https://edge.example.net', { exact: true }).waitFor();
+  await shown.getByText(/^50 GB bought on the mesh$/).waitFor();
+  await page.getByText('Backups go to the storage you bought', { exact: true }).first().waitFor();
+  if (process.env.BACKUP_SHOTS) {
+    await page.waitForTimeout(1000);
+    await page.screenshot({ path: `${process.env.BACKUP_SHOTS}/bought.png`, fullPage: true });
+  }
+  assert.deepEqual(backupPosts[0], ['POST', '/api/backup/target/bought', { order: 'ord_0a1b2c3d4e5f60718293a4b5' }]);
+  assert.doesNotMatch(await page.locator('main').innerText(), /b3c1d2e4/, 'the recovery code is on the screen');
+  assert.ok(await page.getByRole('button', { name: 'Back up', exact: true }).isEnabled(), 'bought storage cannot be backed up to');
+
+  // Back to a bucket: the form is empty and Cancel returns to the order.
+  await shown.getByRole('button', { name: 'Use a bucket instead…' }).click();
+  const form = page.getByTestId('backup-target-form');
+  assert.equal(await form.getByLabel('Address').inputValue(), '');
+  assert.equal(await form.getByRole('button', { name: 'Forget this bucket' }).count(), 0, 'bought storage reads as a bucket');
+  await form.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await shown.waitFor();
+
+  // An edge that will not take the key says so, and the target stays.
+  await shown.getByRole('button', { name: 'Use a bucket instead…' }).click();
+  await page.getByTestId('backup-bought-offer').getByTestId('backup-bought-use').last().click();
+  await page.getByText('The edge did not take the key', { exact: true }).waitFor();
+  await page.getByTestId('backup-bought').getByText('ord_feedfacefeedfacefeedface', { exact: true }).waitFor();
+
+  await page.getByTestId('backup-bought').getByRole('button', { name: 'Stop backing up here' }).click();
+  await page.getByTestId('backup-target-form').waitFor();
+  assert.deepEqual(backupPosts.at(-1), ['DELETE', '/api/backup/target', null]);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
 await check('a claimed reserve reads as claimed, after a reload too', async () => {
   const GiB = 1024 ** 3;
   const storage = { totalBytes: 100 * GiB, usedBytes: 40 * GiB, reserveBytes: 10 * GiB };
@@ -2604,8 +2682,9 @@ await check('your machines show each replica and the address they share', async 
 await check('an own QCOW2 is streamed to /api/vms/images with its name and firmware', async () => {
   const { page, errors, vmPosts } = await open({ path: '/machines', stored: true, vms: VMS });
   const images = page.getByTestId('machines-images');
-  const qcow2 = Buffer.concat([Buffer.from([0x51, 0x46, 0x49, 0xfb, 0, 0, 0, 3]), Buffer.alloc(56)]);
-  await images.getByLabel('QCOW2 file').setInputFiles({ name: 'router.qcow2', mimeType: 'application/octet-stream', buffer: qcow2 });
+  const qcow2 = new Uint8Array(64);
+  qcow2.set([0x51, 0x46, 0x49, 0xfb, 0, 0, 0, 3]);
+  await pickFiles(images.getByLabel('QCOW2 file'), [{ name: 'router.qcow2', bytes: qcow2 }]);
   assert.equal(await images.getByLabel('Name of the image').inputValue(), 'router');
   await images.getByLabel('Boots with UEFI').check();
   await images.getByRole('button', { name: 'Upload' }).click();

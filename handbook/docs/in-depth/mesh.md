@@ -122,6 +122,10 @@ The edge runs Longhorn in the mesh cluster, installed from a pinned chart
 that joins the mesh is labelled `node.longhorn.io/create-default-disk=true`,
 and the edge, which has no such label, stores no replicas. The market's
 storage orders claim their volumes from Longhorn's `longhorn` storage class.
+The fscrypt key protects the lender's disk, but it lives on the lender's
+box, so a lender can read what lands in its share. A buyer's backups on such
+a volume are therefore encrypted on the buyer's box first, with restic and
+the buyer's recovery code ([Market](/in-depth/market.md)).
 Longhorn on the edge does not check for updates or send usage reports, and
 its web UI is not deployed.
 
