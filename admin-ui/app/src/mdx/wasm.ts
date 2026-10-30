@@ -97,6 +97,13 @@ export function formatDate(value: string, long: boolean, lang: string): string {
   return dateWords(value, long, lang);
 }
 
+/** A page of the admin UI (src/pages/README.md) as the box reads it:
+ *  `registry` is blocks.json as text. Throws on a page id it does not
+ *  list. */
+export function renderPage(source: string, registry: string, id: string): { html: string; problems: Problem[] } {
+  return JSON.parse(pageJson(source, registry, id)) as { html: string; problems: Problem[] };
+}
+
 /** Byte offset to UTF-16 index, for every byte offset of `source`. */
 function offsets(source: string): Uint32Array {
   const bytes = new TextEncoder().encode(source).length;

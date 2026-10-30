@@ -213,9 +213,9 @@ const SOCKET_EVENTS = {
 
 /* Serves dist/ with an SPA fallback (`try_files $uri /index.html`). Without it
  * a deep link 404s and the test would be asserting against an error page. */
-export async function serve({ csp = false } = {}) {
+export async function serve({ csp = false, dist = DIST } = {}) {
   const send = async (file) => {
-    const body = Bun.file(`${DIST}/${file.replace(/^\/+/, '')}`);
+    const body = Bun.file(`${dist}/${file.replace(/^\/+/, '')}`);
     if (!(await body.exists())) return null;
     const policy = file.startsWith('/widget-frame/')
       ? WIDGET_FRAME_CSP

@@ -13,7 +13,7 @@ import type { WidgetFile } from "@/lib/api";
 export const ENTRY_FILE = "index.html";
 
 /** What the editor highlights and completes a file as. */
-export type FileLanguage = "html" | "css" | "javascript" | "jsx" | "json" | "text";
+export type FileLanguage = "html" | "css" | "javascript" | "jsx" | "json" | "mdx" | "text";
 
 export function languageOf(name: string): FileLanguage {
   const kind = name.slice(name.lastIndexOf(".") + 1);

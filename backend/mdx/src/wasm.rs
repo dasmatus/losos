@@ -112,3 +112,17 @@ pub fn render_note(
 pub fn to_note(source: &str) -> Result<String, JsError> {
     crate::notes::to_note(source).map_err(to_js)
 }
+
+/// A page of the admin UI or an app as `Rendered` JSON:
+/// [`crate::page::render_page`] against `registry` (`blocks.json`'s text)
+/// for the page named `page`. Throws for a registry that does not read, a
+/// page it does not list, or a page that does not parse.
+#[wasm_bindgen]
+pub fn page(source: &str, registry: &str, page: &str) -> Result<String, JsError> {
+    let registry = crate::page::Registry::from_json(registry).map_err(to_js)?;
+    let spec = registry
+        .page(page)
+        .ok_or_else(|| JsError::new(&format!("no page {page}")))?;
+    let rendered = crate::page::render_page(source, spec).map_err(to_js)?;
+    serde_json::to_string(&rendered).map_err(to_js)
+}
