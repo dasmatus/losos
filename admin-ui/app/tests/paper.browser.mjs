@@ -115,49 +115,54 @@ async function openPaper(name, source, extra = {}) {
   return { ...opened, room };
 }
 
-/** Puts the cursor right after `words` in the page. */
-async function caretAfter(page, words) {
-  await page.evaluate((w) => {
-    const root = document.querySelector('[data-testid=paper-editor] .ProseMirror');
-    const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    for (let n = walk.nextNode(); n !== null; n = walk.nextNode()) {
-      const at = n.data.indexOf(w);
-      if (at >= 0) {
-        root.focus();
-        const r = document.createRange();
-        r.setStart(n, at + w.length);
-        r.collapse(true);
-        const s = getSelection();
-        s.removeAllRanges();
-        s.addRange(r);
-        return;
-      }
-    }
-    throw new Error(`no "${w}" on the page`);
-  }, words);
+/** Selects `words` in the page, or with `caret` puts the cursor right after
+ * them, and waits until the editor has taken that selection in. Focusing the
+ * page first and then waiting matters on a slow machine: the editor puts its
+ * own selection back a moment after it gets focus, and a keystroke before it
+ * reads the new one lands where the old one was. */
+async function place(page, words, caret) {
+  for (let tries = 0; tries < 10; tries++) {
+    const held = await page.evaluate(
+      async ([w, caret]) => {
+        const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
+        const root = document.querySelector('[data-testid=paper-editor] .ProseMirror');
+        if (document.activeElement !== root) {
+          root.focus();
+          await frame();
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        for (let n = walk.nextNode(); n !== null; n = walk.nextNode()) {
+          const at = n.data.indexOf(w);
+          if (at < 0) continue;
+          const r = document.createRange();
+          r.setStart(n, caret ? at + w.length : at);
+          r.setEnd(n, at + w.length);
+          const changed = new Promise((done) => document.addEventListener('selectionchange', () => done(), { once: true }));
+          const s = getSelection();
+          s.removeAllRanges();
+          s.addRange(r);
+          await changed;
+          await frame();
+          await new Promise((done) => setTimeout(done, 50));
+          // Still ours once the editor has had its turn.
+          const now = getSelection();
+          return now.rangeCount === 1 && now.getRangeAt(0).startContainer === n && now.toString() === (caret ? '' : w);
+        }
+        throw new Error(`no "${w}" on the page`);
+      },
+      [words, caret],
+    );
+    if (held) return;
+  }
+  throw new Error(`the editor kept its own selection over "${words}"`);
 }
 
+/** Puts the cursor right after `words` in the page. */
+const caretAfter = (page, words) => place(page, words, true);
+
 /** Selects `words` in the page, as a person drags over them. */
-async function select(page, words) {
-  await page.evaluate((w) => {
-    const root = document.querySelector('[data-testid=paper-editor] .ProseMirror');
-    const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    for (let n = walk.nextNode(); n !== null; n = walk.nextNode()) {
-      const at = n.data.indexOf(w);
-      if (at >= 0) {
-        root.focus();
-        const r = document.createRange();
-        r.setStart(n, at);
-        r.setEnd(n, at + w.length);
-        const s = getSelection();
-        s.removeAllRanges();
-        s.addRange(r);
-        return;
-      }
-    }
-    throw new Error(`no "${w}" on the page`);
-  }, words);
-}
+const select = (page, words) => place(page, words, false);
 
 /** Waits until the room's text passes `test`. */
 async function roomHas(room, test, what) {
