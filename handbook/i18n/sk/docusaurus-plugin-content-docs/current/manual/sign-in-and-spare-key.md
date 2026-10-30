@@ -169,7 +169,11 @@ nemá.
   Zariadenie obrázok znova oreže a uloží ako nový súbor, takže miesto a
   fotoaparát, ktorým bola fotka nasnímaná, zostanú vo vašom zariadení. Vedľa
   profilu je vždy aj vaše prihlasovacie meno, takže sa za vás fotkou nikto
-  nevydá.
+  nevydá. Farba, ktorú vyberiete, je zároveň farbou zvýraznenia vašich
+  vlastných stránok: tlačidiel, odkazov a vybraného miesta v bočnom paneli,
+  na stránkach správy, v LosOS Cloud aj v LosOS Git, s JavaScriptom aj bez
+  neho. Kým žiadnu nevyberiete, vaše stránky ostanú v modrozelenej farbe
+  zariadenia.
 - **Vaše údaje**: celé meno a e-mailová adresa. LosOS Cloud aj LosOS Git
   ukazujú tie isté. Prihlasovacie meno môže zmeniť iba správca.
 - **Heslo**: kedy ste ho naposledy zmenili a kedy vyprší, ak má zariadenie

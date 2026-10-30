@@ -82,6 +82,8 @@ pub struct Me {
     pub standalone: bool,
     pub picture: Option<String>,
     pub accent: Option<String>,
+    /// Whether they picked `accent` rather than having their name's.
+    pub accent_chosen: bool,
 }
 
 impl Me {
@@ -115,6 +117,7 @@ impl Me {
             // Only an address on this box: the page's policy loads nothing else.
             picture: text("picture").filter(|p| p.starts_with('/') && !p.starts_with("//")),
             accent: text("accent").filter(|a| a.bytes().all(|b| b.is_ascii_lowercase())),
+            accent_chosen: v["accentChosen"].as_bool().unwrap_or(false),
         }
     }
 
@@ -173,6 +176,7 @@ impl Me {
             label,
             tip,
             accent: self.accent.clone(),
+            page_accent: self.accent.clone().filter(|_| self.accent_chosen),
             picture: self.picture.clone(),
             account: self.name.is_some(),
         }
@@ -607,5 +611,18 @@ mod tests {
         );
         assert!(me.picture.is_none());
         assert!(me.accent.is_none());
+    }
+
+    #[test]
+    fn only_a_picked_colour_is_the_page_accent() {
+        let m = Messages::from_pairs(Locale::En, &[]);
+        let named = Me::from_json(&json!({"name": "eva", "accent": "blue", "accentChosen": false}));
+        assert_eq!(named.person(&m).accent.as_deref(), Some("blue"));
+        assert_eq!(named.person(&m).page_accent, None);
+        let picked = Me::from_json(&json!({"name": "eva", "accent": "blue", "accentChosen": true}));
+        assert_eq!(picked.person(&m).page_accent.as_deref(), Some("blue"));
+        // An older lososd says nothing of a choice.
+        let older = Me::from_json(&json!({"name": "eva", "accent": "blue"}));
+        assert_eq!(older.person(&m).page_accent, None);
     }
 }
