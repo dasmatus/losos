@@ -23,7 +23,7 @@ solana-address = { version = "2", features = ["curve25519"] }
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
 
 [dev-dependencies]
-litesvm = "0.18"
+litesvm = { version = "0.18", features = ["precompiles"] }
 solana-account = "4.3"
 solana-address = { version = "2", features = ["curve25519", "decode", "atomic"] }
 solana-clock = "3.2"

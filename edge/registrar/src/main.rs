@@ -96,6 +96,13 @@ async fn async_main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+        Ok(Mode::ExitSocks(opts)) => match losos_registrar::exit::run_socks(opts).await {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                tracing::error!(target: Action::Exit.target(), "exit-socks: {:?}", e);
+                ExitCode::FAILURE
+            }
+        },
         Ok(Mode::StripeGate(opts)) => match losos_registrar::stripe_gate::run(opts).await {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {

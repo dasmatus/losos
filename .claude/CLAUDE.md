@@ -36,16 +36,17 @@ bun run dev | typecheck | test:browser              # in admin-ui/app
 cargo test --manifest-path admin-ui/tui/Cargo.toml  # losos, the terminal client
 ```
 
-Eleven Rust crates: `backend/` (lososd + losos-ctl), `backend/access`
+Twelve Rust crates: `backend/` (lososd + losos-ctl), `backend/access`
 (the terminal envelope, its own workspace, a path dependency of lososd, the
-registrar and the client), `backend/mdx` (`losos-mdx`, MDX and Markdown to
+registrar and the client), `backend/edge-path` (lososd's edge path rule, its
+own workspace, also read by LosOS Desktop's network machine), `backend/mdx` (`losos-mdx`, MDX and Markdown to
 sanitized HTML for Office and Notes, its own workspace, also built for the
 browser with its `wasm` feature), `backend/plugins` (lososd's WebAssembly plugins,
 their SDK and WIT, its own workspace, linted for the host and wasm32), `edge/registrar/`, `edge/vercel/` (outside the
 flake), the terminal client `admin-ui/tui`, and Diagrams' `admin-ui/lab/core`,
 `admin-ui/lab/virt-rpc` and `admin-ui/lab/render` (built for wasm32), and
 the Solana escrow program `edge/contracts/solana` (`cargo build-sbf`, outside
-the flake). All eleven must pass clippy with `-D warnings` and rustfmt; the git hooks
+the flake). All twelve must pass clippy with `-D warnings` and rustfmt; the git hooks
 in `nix/hooks`, `lint` and CI each check it. Bevy is a wasm32-only dependency of
 `render`, so `lint-wasm` and CI's `clippy-wasm` lint its WebGL2 and WebGPU
 builds too, one after the other. `nix develop` is a toolchain-only shell for people without devenv.
@@ -101,9 +102,15 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   tree, and `flake.nix` imports the live copy from `/etc/nixos` on rebuilds.
   `nix/tests/iso-install.nix` (CI's `install` job, and pre-push on the same
   lane) runs that installer offline and boots the disk it wrote.
-- `configuration.nix`: `notshared` (uid 1000, the owner's apps and LosOS Cloud name) and `shared`
-  (uid 1001, mesh storage), each with its own group and a `700` home, no
-  passwords, `openssh` off.
+- `configuration.nix`: `notshared` (uid 1000, the owner's apps and LosOS Cloud name), `shared`
+  (uid 1001, mesh storage) and `kindashared` (uid 1004, shared with local
+  gateways only), each with its own group, `700` home and fscrypt domain
+  (`fscrypt.nix` `mkDomain`), no passwords, `openssh` off. `losos.sharingLocally`
+  opens `kindashared`; lososd refuses it without a Secondary-tier edge
+  (`edge::check_local_gate`, 409 `localGatewayRequired`) and pauses it like
+  sharing. `lososInternal.sideUser` (`shared` while in the mesh, else
+  `kindashared`) is the account chat, mail, calls and Mesh CI run as;
+  `sideLive` gates them.
 - `daemon.nix` + `backend/`: `lososd` is a root daemon owning
   `/var/lib/losos/state.json`, exporting one D-Bus method per subcommand
   (`org.losos1`, `/org/losos1`, `org.losos.Control1`) and a Bearer-authed
@@ -398,6 +405,16 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   names to the box (`edge.json`). LosOS Login takes both as cookie
   domains; `GET /api/hidden` is the `hidden` plugin.
   `nix/tests/hidden-services.nix` boots private Tor and I2P networks.
+- `edge-exit.nix` + `edge/registrar/src/exit.rs` (`losos.edge.exit.*`,
+  `handbook/docs/in-depth/edge-exit.md`): the edge as a VPN-like way out
+  for tenants marked `exit`, LosOS Desktop's network machine among them.
+  `POST /exit` enrols a WireGuard key and hands back an address on
+  `losos-exit`; the registrar only writes `/var/lib/losos-exit/peers.json`
+  and `losos-exit-sync` (root) sets the peers. The FORWARD chain lets out
+  only public addresses, never peer to peer. With `onion.enable`,
+  `losos-registrar exit-socks` (user `losos-exit`) answers SOCKS5 behind
+  the edge's own onion with the enrolment's password, public destinations
+  only, for a desktop in schizo mode.
 - `admin-ui/themes/`: the SPA's `tokens.css` is shipped byte for byte as
   `losos-tokens.css` into LosOS Login's page; LosOS Cloud and LosOS Git are
   part of the SPA's own build, so one colour change moves all of them.

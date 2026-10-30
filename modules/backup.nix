@@ -48,7 +48,7 @@
 let
   enabled = config.losos.backend.package != null;
   fs = config.lososInternal.fscrypt;
-  fscryptOn = config.losos.shared.fscrypt.enable;
+  fscryptOn = config.losos.shared.fscrypt.enable || config.losos.kindashared.fscrypt.enable;
   k3s = config.services.k3s.enable;
   # pg_dump and pg_restore for a box that still runs PostgreSQL. Nothing
   # declares it any more, and its package option then has no value.
@@ -84,6 +84,13 @@ let
   # LosOS Git's records (modules/git.nix), copied whole the same way.
   gitDb = "/var/lib/losos-git/git.db";
   proxyToken = toString config.losos.proxy.tokenFile;
+  # LosOS Mail's store (modules/mail.nix), when mail runs here. It sits
+  # beside the shared folder, not inside it, so the folder's copy misses
+  # it; RocksDB files copied under a running server need not agree with
+  # each other, so the server stops for the moment a local copy takes.
+  mail = config.lososInternal.mail.live;
+  mailStore = "/home/shared/data/mail/store";
+  mailPlanMarker = "/home/shared/data/mail/plan.sha256";
 
   # Opening the fscrypt domain for the length of a copy, and closing it again
   # only if it was closed before. Linux gives no ciphertext for a locked
@@ -91,52 +98,74 @@ let
   # without its key; what keeps it encrypted is restic, which encrypts what
   # it read before it leaves the box. modules/fscrypt.nix owns the key; this
   # reuses its own snippet for putting it somewhere.
-  domainFns =
-    if fscryptOn then
+  domainFns = lib.concatMapStrings domainFnsOf domains + ''
+    policies=()
+    open_domains() {
+      policies=()
+      ${lib.concatMapStrings (d: ''
+        open_domain_${d.user}
+        if [ -n "$policy_${d.user}" ]; then
+          policies+=("$policy_${d.user}")
+        fi
+      '') domains}
+    }
+    close_domains() {
+      ${lib.concatMapStrings (d: "close_domain_${d.user}\n") domains}
+    }
+  '';
+  # Both data domains: the shared one and kindashared's
+  # (modules/fscrypt.nix), each opened and closed on its own.
+  domains = lib.attrValues fs.domains;
+  domainFnsOf =
+    d:
+    let
+      u = d.user;
+    in
+    if d.enable then
       ''
-        policy=""
-        relock=0
-        keydir=""
-        open_domain() {
+        policy_${u}=""
+        relock_${u}=0
+        keydir_${u}=""
+        open_domain_${u}() {
           local candidate
-          candidate=${fs.policyDirExpr}
+          candidate=${d.policyDirExpr}
           if [ ! -d "$candidate" ]; then
             return 0
           fi
-          policy=$candidate
-          if fscrypt status "$policy" 2>/dev/null | grep -c '^Unlocked: *No' >/dev/null; then
-            keydir=$(mktemp -d /run/losos-backup-key.XXXXXX)
-            local key="$keydir/key"
-            ${fs.materialiseKeyTo ''"$key"''}
-            fscrypt unlock "$policy" --key="$key" --quiet
+          policy_${u}=$candidate
+          if fscrypt status "$candidate" 2>/dev/null | grep -c '^Unlocked: *No' >/dev/null; then
+            keydir_${u}=$(mktemp -d /run/losos-backup-key.XXXXXX)
+            local key="$keydir_${u}/key"
+            ${d.materialiseKeyTo ''"$key"''}
+            fscrypt unlock "$candidate" --key="$key" --quiet
             rm -f "$key"
-            relock=1
-            echo "${"$"}{0##*/}: opened the shared folder for the copy"
+            relock_${u}=1
+            echo "${"$"}{0##*/}: opened the ${u} folder for the copy"
           fi
         }
-        close_domain() {
-          if [ "$relock" = 1 ]; then
-            fscrypt lock "$policy" --quiet \
-              || echo "${"$"}{0##*/}: the shared folder could not be locked now (files open); it locks on the next boot" >&2
-            relock=0
+        close_domain_${u}() {
+          if [ "$relock_${u}" = 1 ]; then
+            fscrypt lock "$policy_${u}" --quiet \
+              || echo "${"$"}{0##*/}: the ${u} folder could not be locked now (files open); it locks on the next boot" >&2
+            relock_${u}=0
           fi
-          if [ -n "$keydir" ]; then
-            rm -rf "$keydir"
-            keydir=""
+          if [ -n "$keydir_${u}" ]; then
+            rm -rf "$keydir_${u}"
+            keydir_${u}=""
           fi
         }
       ''
     else
       ''
-        policy=""
-        open_domain() {
+        policy_${u}=""
+        open_domain_${u}() {
           local candidate
-          candidate="/persist/home/shared/data/$(cat /etc/machine-id)/shared"
+          candidate="/persist/home/${u}/data/$(cat /etc/machine-id)/${u}"
           if [ -d "$candidate" ]; then
-            policy=$candidate
+            policy_${u}=$candidate
           fi
         }
-        close_domain() { :; }
+        close_domain_${u}() { :; }
       '';
 
   # restic's S3 options from the two variables lososd writes beside the keys
@@ -209,7 +238,7 @@ let
       ${s3Fns}
       ${domainFns}
       # The staging copy holds database dumps: it never outlives the run.
-      trap 'close_domain; rm -rf "$stage"' EXIT
+      trap 'close_domains; rm -rf "$stage"' EXIT
 
       echo "backup: checking the bucket"
       if ! probe=$(restic cat config 2>&1 >/dev/null); then
@@ -255,23 +284,39 @@ let
         cp ${lib.escapeShellArg proxyToken} "$stage/identity/proxy-token"
       fi
 
+      ${lib.optionalString mail ''
+        if [ -d ${mailStore} ]; then
+          echo "backup: copying LosOS Mail, which pauses for the copy"
+          mail_was_up=0
+          if systemctl is-active --quiet losos-mail.service; then
+            mail_was_up=1
+            systemctl stop losos-mail.service
+          fi
+          cp -a --reflink=auto ${mailStore} "$stage/mail" || copied=no
+          if [ "$mail_was_up" = 1 ]; then
+            systemctl start losos-mail.service || true
+          fi
+          if [ "''${copied:-}" = no ]; then
+            echo "backup: LosOS Mail could not be copied" >&2
+            exit 1
+          fi
+        fi
+      ''}
       paths=("$stage")
       for p in ${lib.escapeShellArgs appDirs}; do
         if [ -d "$p" ]; then
           paths+=("$p")
         fi
       done
-      open_domain
-      if [ -n "$policy" ]; then
-        paths+=("$policy")
-      fi
+      open_domains
+      paths+=("''${policies[@]}")
 
       echo "backup: copying ''${#paths[@]} folders"
       summary=$(restic "''${s3opts[@]}" backup --json --quiet --tag losos \
         --exclude '${cloudDb}' --exclude '${cloudDb}-wal' --exclude '${cloudDb}-shm' \
         --exclude '/var/lib/losos-cloud/.previews' --exclude '/var/lib/losos-cloud/*/uploads' \
         "''${paths[@]}" | jq -c 'select(.message_type == "summary")')
-      close_domain
+      close_domains
       rm -rf "$stage"
 
       jq -n --argjson s "$summary" --arg now "$(date +%s)" \
@@ -312,7 +357,7 @@ let
         fi
       }
       cleanup() {
-        close_domain
+        close_domains
         start_apps
         rm -rf "$out"
       }
@@ -330,7 +375,7 @@ let
       staged="$out$dir/stage"
 
       echo "restore: stopping the apps"
-      for unit in losos-cloud.service losos-git.service k3s.service; do
+      for unit in losos-cloud.service losos-git.service ${lib.optionalString mail "losos-mail.service"} k3s.service; do
         if systemctl is-active --quiet "$unit"; then
           systemctl stop "$unit" || true
           stopped+=("$unit")
@@ -402,20 +447,33 @@ let
         done
       fi
 
-      shopt -s nullglob
-      sources=("$out"/persist/home/shared/data/*/shared)
-      shopt -u nullglob
-      if [ "''${#sources[@]}" -gt 0 ]; then
-        open_domain
-        if [ -n "$policy" ]; then
-          echo "restore: putting back the shared folder"
-          rsync -aHAX --numeric-ids --delete "''${sources[0]}/" "$policy/"
-        else
-          echo "restore: the shared folder is not set up on this box yet; skipped" >&2
+      ${lib.concatMapStrings (d: ''
+        shopt -s nullglob
+        sources=("$out"/persist/home/${d.user}/data/*/${d.user})
+        shopt -u nullglob
+        if [ "''${#sources[@]}" -gt 0 ]; then
+          open_domain_${d.user}
+          if [ -n "$policy_${d.user}" ]; then
+            echo "restore: putting back the ${d.user} folder"
+            rsync -aHAX --numeric-ids --delete "''${sources[0]}/" "$policy_${d.user}/"
+          else
+            echo "restore: the ${d.user} folder is not set up on this box yet; skipped" >&2
+          fi
+          close_domain_${d.user}
         fi
-        close_domain
-      fi
+      '') domains}
 
+      ${lib.optionalString mail ''
+        if [ -d "$staged/mail" ]; then
+          echo "restore: putting back LosOS Mail"
+          mkdir -p ${mailStore}
+          rsync -aHAX --numeric-ids --delete "$staged/mail/" ${mailStore}/
+          chown -R shared:shared ${mailStore}
+          # The restored settings may be older than this build's plan:
+          # the next start applies it again.
+          rm -f ${mailPlanMarker}
+        fi
+      ''}
       for f in look.json background.img; do
         if [ -f "$staged/look/$f" ]; then
           install -m 0600 "$staged/look/$f" "/var/lib/losos/$f"
@@ -472,19 +530,24 @@ let
     "/persist/var/lib/kubelet"
     "/persist/var/lib/longhorn"
     "/persist/var/secrets"
-    # Every credential the box sealed (modules/credentials.nix).
-    "/persist/etc/credstore.encrypted"
     "/persist/var/log/journal"
-    "/persist/etc/rancher"
     # fscrypt's protector metadata: the old protector's key is in
     # /var/secrets and goes with it, so losos-fscrypt-setup makes new ones.
     "/persist/.fscrypt"
   ];
-  # The two data domains are emptied, not removed: impermanence expects the
-  # directories, and their modes are the isolation model.
+  # Emptied, not removed. impermanence bind-mounts each of these on its own
+  # (modules/impermanence.nix), and a source deleted under a live bind
+  # mount leaves the mount on a directory nothing can create files in: the
+  # credential store came back like that, the admin token could not be
+  # sealed, and lososd stopped on every start. The three data domains'
+  # modes are the isolation model too.
   emptyDirs = [
     "/persist/home/notshared/data"
     "/persist/home/shared/data"
+    "/persist/home/kindashared/data"
+    # Every credential the box sealed (modules/credentials.nix).
+    "/persist/etc/credstore.encrypted"
+    "/persist/etc/rancher"
   ];
 
   wipeScript = pkgs.writeShellApplication {
