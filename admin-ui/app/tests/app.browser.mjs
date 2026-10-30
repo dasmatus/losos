@@ -790,6 +790,7 @@ const DESTINATIONS = [
   ['Access tokens', '/settings/access', 'Settings'],
   ['Advanced', '/settings/advanced', 'Settings'],
   ['History', '/settings/history', 'Settings'],
+  ['Logs', '/settings/logs', 'Settings'],
   ['Backup', '/settings/backup', 'Settings'],
   ['About', '/settings/about', 'Settings'],
   ['Reset', '/settings/reset', 'Settings'],

@@ -52,12 +52,7 @@ enum Cmd {
 const GIT_BUDGET: Duration = Duration::from_secs(4);
 
 fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_writer(std::io::stderr)
-        // The journal takes stderr and stamps its own time.
-        .with_ansi(false)
-        .without_time()
-        .init();
+    losos_ctl::trace::init("info");
     match Cli::parse().command {
         Cmd::Index {
             root,
