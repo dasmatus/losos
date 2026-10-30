@@ -363,7 +363,17 @@ async fn send_one(
     msg.push(index(&program));
     msg.push(accounts.len() as u8);
     msg.extend(accounts.iter().map(|a| index(&a.key)));
-    msg.push(data.len() as u8);
+    // compact-u16: a pay with both box keys is past 127 bytes.
+    let mut n = data.len();
+    loop {
+        let byte = (n & 0x7f) as u8;
+        n >>= 7;
+        if n == 0 {
+            msg.push(byte);
+            break;
+        }
+        msg.push(byte | 0x80);
+    }
     msg.extend_from_slice(&data);
     let signature = payer.0.sign(&msg);
     let mut wire = vec![1u8];
@@ -509,6 +519,11 @@ async fn pay_into(
     data.extend_from_slice(&gross.to_le_bytes());
     data.extend_from_slice(&fee.to_le_bytes());
     data.extend_from_slice(&deadline.to_le_bytes());
+    let chain = &invoice["chains"][0];
+    for side in ["buyer_box", "seller_box"] {
+        let k = chain[side].as_str().expect("the invoice names both boxes");
+        data.extend_from_slice(&key(k).expect("box key"));
+    }
     send_one(
         url,
         buyer,
@@ -639,6 +654,109 @@ fn with(mut base: Value, extra: Value) -> Value {
         base[k] = v.clone();
     }
     base
+}
+
+/// The two boxes' escrow keys, as lososd derives them from its own secret.
+fn box_wallet(id: &str) -> Wallet {
+    Wallet::new(if id == "seller-box" { 11 } else { 13 })
+}
+
+const BOX_IDS: [(&str, &str); 2] = [("seller-box", GOOD_TOKEN), ("buyer-box", OTHER_TOKEN)];
+
+fn box_keys(id: &str) -> Value {
+    json!({
+        "evm": if id == "seller-box" {
+            "0x00000000000000000000000000000000000000b1"
+        } else {
+            "0x00000000000000000000000000000000000000b2"
+        },
+        "solana": box_wallet(id).address(),
+    })
+}
+
+/// Both boxes tell the edge their keys; an order needs them.
+async fn register_boxes(edge: &Edge) {
+    for (id, token) in BOX_IDS {
+        let (status, body) = edge
+            .post(
+                "/market/escrow/decisions",
+                with(auth(id, token), box_keys(id)),
+            )
+            .await;
+        assert_eq!(status, 200, "{body}");
+    }
+}
+
+/// One pass of both boxes, the way lososd's market loop runs: each signs
+/// what the edge has waiting for it. How many it signed.
+async fn boxes_sign(edge: &Edge) -> usize {
+    let mut signed = 0;
+    for (id, token) in BOX_IDS {
+        let (status, body) = edge
+            .post(
+                "/market/escrow/decisions",
+                with(auth(id, token), box_keys(id)),
+            )
+            .await;
+        assert_eq!(status, 200, "{body}");
+        for d in parse(&body).as_array().expect("decisions") {
+            assert_eq!(d["family"], "solana", "{d}");
+            let account = d["account"].as_str().expect("account");
+            let refund: u64 = d["refund"].as_str().unwrap().parse().unwrap();
+            let message = losos_registrar::escrow_boxes::solana_message(
+                &key(account).expect("account"),
+                refund,
+            );
+            let signature = base58_encode(box_wallet(id).0.sign(&message).as_ref());
+            let (status, body) = edge
+                .post(
+                    "/market/escrow/sign",
+                    with(
+                        auth(id, token),
+                        json!({
+                            "network": d["network"],
+                            "account": account,
+                            "refund": refund,
+                            "signature": signature,
+                        }),
+                    ),
+                )
+                .await;
+            assert_eq!(status, 204, "{body}");
+            signed += 1;
+        }
+    }
+    signed
+}
+
+/// Sign until the escrow reaches `step`.
+async fn sign_until(edge: &Edge, order_id: &str, step: &str) -> Value {
+    for _ in 0..240 {
+        boxes_sign(edge).await;
+        let order = purchase(edge, order_id).await;
+        if order["escrow"]["step"] == step {
+            return order;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    panic!(
+        "{order_id} never reached {step}: {}",
+        purchase(edge, order_id).await
+    );
+}
+
+/// The edge decides `step` but, with no box's word, moves nothing: the
+/// deposit stays where it is for a few seconds of the edge's own loop.
+async fn waits_for_a_box(url: &str, edge: &Edge, order_id: &str, deposit: &[u8; 32]) {
+    for _ in 0..12 {
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        let order = purchase(edge, order_id).await;
+        assert_eq!(order["escrow"]["tx"], Value::Null, "{order}");
+        assert!(
+            exists(url, deposit).await,
+            "moved with the edge's key alone"
+        );
+    }
 }
 
 fn parse(body: &str) -> Value {
@@ -802,7 +920,31 @@ async fn usdc_on_solana_is_held_in_the_escrow_program() {
     // Until the treasury makes its config, the program takes no deposit.
     let kube = mesh().await;
     let edge = start("sol-escrow", &url, &genesis, &t, None, kube).await;
+    // An order needs both boxes' escrow keys on the edge first.
     set_payout(&edge, &seller).await;
+    let (status, body) = edge
+        .post(
+            "/market/listings",
+            with(
+                auth("seller-box", GOOD_TOKEN),
+                json!({ "kind": "storage", "unit_price": 5, "capacity": 100 }),
+            ),
+        )
+        .await;
+    assert_eq!(status, 201, "{body}");
+    let listing = parse(&body)["listing_id"].as_str().unwrap().to_string();
+    let (status, body) = edge
+        .post(
+            "/market/orders",
+            with(
+                auth("buyer-box", OTHER_TOKEN),
+                json!({ "listing_id": listing, "quantity": 40 }),
+            ),
+        )
+        .await;
+    assert_eq!(status, 409, "{body}");
+    assert!(body.contains("escrow key"), "{body}");
+    register_boxes(&edge).await;
     let invoice = order(&edge, 40).await;
     let order_id = invoice["order_id"].as_str().unwrap().to_string();
     let refused = pay(&url, &buyer, &treasury.key(), &invoice, &seller.key(), 1).await;
@@ -823,6 +965,16 @@ async fn usdc_on_solana_is_held_in_the_escrow_program() {
         .await
         .expect("pay");
     let (status, body) = confirm(&edge, &order_id, &wrong_order).await;
+    assert_eq!(status, 409, "{body}");
+    // Nor one naming other box keys than the invoice: the edge could then
+    // move it with a key of its own making in a box's place.
+    let mut swapped = invoice.clone();
+    swapped["chains"][0]["buyer_box"] = invoice["chains"][0]["seller_box"].clone();
+    swapped["chains"][0]["seller_box"] = invoice["chains"][0]["buyer_box"].clone();
+    let wrong_boxes = pay(&url, &buyer, &treasury.key(), &swapped, &seller.key(), 7)
+        .await
+        .expect("pay");
+    let (status, body) = confirm(&edge, &order_id, &wrong_boxes).await;
     assert_eq!(status, 409, "{body}");
     // Nor does a deposit in a copy of the program at another address, even
     // with every field right.
@@ -866,7 +1018,12 @@ async fn usdc_on_solana_is_held_in_the_escrow_program() {
     assert_eq!(status, 409, "{body}");
     assert!(body.contains("already paid"), "{body}");
     let stray = deposit_address(&treasury.key(), &a_nonce(5));
-    wait_until("the stray refund", || async { !exists(&url, &stray).await }).await;
+    // Its refund waits for the buyer's box, which the stray pays.
+    wait_until("the stray refund", || async {
+        boxes_sign(&edge).await;
+        !exists(&url, &stray).await
+    })
+    .await;
     assert_eq!(usdc_of(&url, &buyer.key()).await, before - gross);
     // Nobody is paid yet: the slot is still running.
     assert_eq!(usdc_of(&url, &seller.key()).await, 0);
@@ -899,7 +1056,9 @@ async fn usdc_on_solana_is_held_in_the_escrow_program() {
         kube,
     )
     .await;
-    wait_step(&edge, &order_id, "released").await;
+    // The edge's key alone does not release it; the seller's box agrees.
+    waits_for_a_box(&url, &edge, &order_id, &deposit).await;
+    sign_until(&edge, &order_id, "released").await;
     assert_eq!(usdc_of(&url, &seller.key()).await, gross - fee);
     assert_eq!(usdc_of(&url, &treasury.key()).await, fee);
     assert!(!exists(&url, &deposit).await);
@@ -912,6 +1071,7 @@ async fn usdc_on_solana_is_held_in_the_escrow_program() {
     // A seller offline for a day, ten days in: the rest goes back.
     let edge = start("sol-escrow-offline", &url, &genesis, &t, None, kube).await;
     set_payout(&edge, &seller).await;
+    register_boxes(&edge).await;
     let invoice = order(&edge, 40).await;
     let order_id = invoice["order_id"].as_str().unwrap().to_string();
     let gross: u64 = invoice["gross"].as_str().unwrap().parse().unwrap();
@@ -941,7 +1101,10 @@ async fn usdc_on_solana_is_held_in_the_escrow_program() {
         offline,
     )
     .await;
-    let split = wait_step(&edge, &order_id, "settled").await;
+    let held_in = deposit_address(&treasury.key(), &a_nonce(6));
+    waits_for_a_box(&url, &edge, &order_id, &held_in).await;
+    // The split pays the buyer back, so the buyer's box signs it.
+    let split = sign_until(&edge, &order_id, "settled").await;
     assert_eq!(split["escrow"]["reason"], "sellerOffline", "{split}");
     let back = split["escrow"]["refund"].as_u64().unwrap() * 10_000;
     assert_eq!(back, 1_410_000, "{split}");

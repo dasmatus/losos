@@ -40,6 +40,50 @@ export function useRevision(): number {
   return React.useSyncExternalStore(revision.subscribe, revision.get);
 }
 
+/* Changes made anywhere else: a WebDAV client, the desktop or phone app,
+ * Samba, another tab. Every one of them gives the person's root folder a
+ * new ETag (the store hands one up to every folder above a change), so
+ * one small read of that folder every few seconds says whether anything
+ * moved, and a bump has every view fetch again. Before this a file copied
+ * in over WebDAV showed up only after a reload. Only while the page is in
+ * front, and at once when it comes back. */
+const FOLLOW_MS = 3000;
+
+export function useFollowChanges(): void {
+  React.useEffect(() => {
+    let root: { id: number; etag: string } | null = null;
+    let busy = false;
+    let live = true;
+    const ctl = new AbortController();
+    const tick = async (): Promise<void> => {
+      if (busy || document.visibilityState !== "visible") return;
+      busy = true;
+      try {
+        const now = root === null ? (await cloud.list("", ctl.signal)).folder : await cloud.byId(root.id, ctl.signal);
+        if (!live) return;
+        if (root !== null && now.etag !== root.etag) bump();
+        root = { id: now.id, etag: now.etag };
+      } catch {
+        /* the next tick asks again; the views say what is wrong */
+      } finally {
+        busy = false;
+      }
+    };
+    const timer = window.setInterval(() => void tick(), FOLLOW_MS);
+    const onShow = (): void => void tick();
+    document.addEventListener("visibilitychange", onShow);
+    window.addEventListener("focus", onShow);
+    void tick();
+    return () => {
+      live = false;
+      ctl.abort();
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onShow);
+      window.removeEventListener("focus", onShow);
+    };
+  }, []);
+}
+
 const me = store<Me | null>(null);
 
 async function loadMe(): Promise<void> {

@@ -1,10 +1,10 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { Link } from "react-router-dom";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { Menu01Icon } from "@hugeicons/core-free-icons";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useT } from "@/lib/i18n-react";
+import { useSiteLink } from "@/lib/site";
 import { cn } from "@/lib/utils";
 
 /* The phone's navigation: a bar along the bottom edge, where the thumb
@@ -31,6 +31,7 @@ import { cn } from "@/lib/utils";
 
 export interface BottomNavTab {
   key: string;
+  /** An address on the box; lib/site.tsx makes the link. */
   to: string;
   label: string;
   icon: IconSvgElement;
@@ -77,6 +78,7 @@ export function BottomNav({ label, tabs }: { label: string; tabs: readonly Botto
   const t = useT();
   const host = React.useContext(BottomNavHost);
   const { isMobile, openMobile, setOpenMobile } = useSidebar();
+  const link = useSiteLink();
   if (!isMobile) return null;
   // More is lit while its sheet is up, and while the page is one the tabs
   // do not name: it is where that page lives.
@@ -90,15 +92,16 @@ export function BottomNav({ label, tabs }: { label: string; tabs: readonly Botto
       <ul className="mx-auto grid max-w-lg auto-cols-fr grid-flow-col px-1">
         {tabs.map((tab) => (
           <li key={tab.key} className="min-w-0">
-            <Link
-              to={tab.to}
-              aria-current={tab.active ? "page" : undefined}
-              data-active={tab.active && !openMobile ? "" : undefined}
-              className={TAB}
-            >
-              <Glyph icon={tab.icon} />
-              <Label>{tab.label}</Label>
-            </Link>
+            {React.cloneElement(
+              link(tab.to, {
+                "aria-current": tab.active ? "page" : undefined,
+                "data-active": tab.active && !openMobile ? "" : undefined,
+                className: TAB,
+              }),
+              undefined,
+              <Glyph icon={tab.icon} />,
+              <Label>{tab.label}</Label>,
+            )}
           </li>
         ))}
         <li className="min-w-0">

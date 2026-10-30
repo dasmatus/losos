@@ -206,19 +206,21 @@ await check('an empty folder says so, and a failed list offers to try again', as
   await context.close();
 });
 
-await check('a document opens under the top bar, without the sidebar, in the LosOS look', async () => {
+await check('a document opens under the top bar, beside the sidebar, in the LosOS look', async () => {
   const { page, context, errors, opened } = await open();
   await page.getByRole('link', { name: /Trip plan\.odt/ }).click();
   const frame = page.locator('main iframe');
   await frame.waitFor();
   assert.deepEqual(opened, [FILES[1].id]);
   assert.equal(new URL(page.url()).hash, `#file=${FILES[1].id}`);
-  // The shell's top bar stays; the sidebar gives the editor its width.
+  // The shell's top bar and sidebar stay where they were; the editor takes
+  // the rest of the window beside the sidebar.
   await page.getByTestId('signed-in-as').waitFor();
-  assert.equal(await nav(page).count(), 0);
+  await nav(page).waitFor();
   await page.getByRole('heading', { level: 1, name: 'Trip plan.odt' }).waitFor();
   const box = await frame.boundingBox();
-  assert.ok(box.width >= 1270, `the editor is ${box.width} px wide`);
+  const side = await nav(page).boundingBox();
+  assert.ok(box.x >= side.x + side.width && box.width >= 900 && box.height > 600, `the editor is ${JSON.stringify(box)}`);
 
   const src = new URL(await frame.getAttribute('src'), origin);
   assert.equal(src.pathname, '/browser/abc/cool.html');
@@ -370,7 +372,7 @@ async function openCloud(path, { office = true } = {}) {
   return { page, context, errors, opened };
 }
 
-await check('in LosOS Cloud a document opens in Office, under the cloud\'s top bar', async () => {
+await check('in LosOS Cloud a document opens in Office, in the same frame as the box\'s pages', async () => {
   const { page, context, errors, opened } = await openCloud('/cloud/files');
   const doc = page.getByRole('link', { name: 'Trip plan.docx' }).first();
   await doc.waitFor();
@@ -382,7 +384,8 @@ await check('in LosOS Cloud a document opens in Office, under the cloud\'s top b
   await page.getByRole('heading', { level: 1, name: 'Trip plan.docx' }).waitFor();
   assert.deepEqual(opened, ['42']);
   const box = await page.locator('main iframe').boundingBox();
-  assert.ok(box.width >= 1270 && box.height > 600, JSON.stringify(box));
+  const side = await nav(page).boundingBox();
+  assert.ok(box.x >= side.x + side.width && box.width >= 900 && box.height > 600, JSON.stringify(box));
   await page.getByRole('button', { name: 'Back to files' }).click();
   await page.waitForURL(/\/cloud\/files/);
   assert.deepEqual(errors, []);

@@ -264,6 +264,8 @@ struct AppState {
     enrolment: Option<Arc<Enrolment>>,
     /// The enrolled file, memoised like the whitelist.
     enrolled: Arc<TenantCache>,
+    /// The edge as a way out (`--exit-dir`, `losos.edge.exit.enable`).
+    exit: Option<Arc<crate::exit::Exit>>,
     /// `None` unless `--relay-routes` was given (see `crate::routes`).
     routes: Option<Arc<RouteTable>>,
     /// The relay passes this edge's own boxes handed it, by box id, for the
@@ -680,6 +682,7 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         ),
         None => (None, None),
     };
+    let exit = opts.exit.clone().map(crate::exit::Exit::new);
     let enrolment = opts
         .enrol_dir
         .as_deref()
@@ -799,6 +802,7 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         doh,
         enrolment,
         enrolled: Arc::new(TenantCache::default()),
+        exit,
         routes,
         passes: Arc::new(std::sync::Mutex::new(HashMap::new())),
         transfers: Arc::new(Semaphore::new(vm::MAX_TRANSFERS)),
@@ -854,6 +858,8 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         .route("/passport/attest", post(passport_attest))
         .route("/passport/settings", post(passport_settings))
         .route("/register", post(register))
+        .route("/exit", post(exit_enrol))
+        .route("/exit/leave", post(exit_leave))
         .route("/heartbeat", post(heartbeat))
         .route("/deregister", post(deregister))
         // Same operation under a clearer name; the announce client never
@@ -881,6 +887,8 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         .route("/market/payout", post(market_payout))
         .route("/market/sales/release", post(market_release))
         .route("/market/confirm", post(market_confirm))
+        .route("/market/escrow/decisions", post(market_escrow_decisions))
+        .route("/market/escrow/sign", post(market_escrow_sign))
         .route("/market/coins/key", post(market_coin_key))
         .route("/market/coins/pay", post(market_coin_pay))
         .route("/market/fees/pay", post(market_fees_pay))
@@ -1321,6 +1329,51 @@ async fn register(
     );
     st.notify.notify_one();
     Ok(Json(RegisterResp { tunnel_port: port }))
+}
+
+#[derive(Debug, Deserialize)]
+struct ExitReq {
+    appliance_id: String,
+    token: String,
+    public_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ExitLeaveReq {
+    appliance_id: String,
+    token: String,
+}
+
+/// `POST /exit`: a tenant with the `exit` bit enrols its WireGuard key
+/// (`crate::exit`). An edge with no exit, and a tenant without the bit,
+/// get the same 403 after the token check, so the answer tells a stranger
+/// nothing about which edges are exits.
+async fn exit_enrol(
+    State(st): State<AppState>,
+    Json(req): Json<ExitReq>,
+) -> Result<Json<crate::exit::Enrolled>, ApiError> {
+    let tenant = authenticate(&st, &req.appliance_id, &req.token).await?;
+    let exit = match &st.exit {
+        Some(exit) if tenant.exit => exit,
+        _ => return Err(crate::exit::ExitError::Unconfigured.into()),
+    };
+    Ok(Json(
+        exit.enrol(&req.appliance_id, req.public_key.trim()).await?,
+    ))
+}
+
+/// `POST /exit/leave`: the tenant's key comes off the exit. Allowed without
+/// the `exit` bit, so a tenant the operator stopped letting out can still
+/// tidy up after itself.
+async fn exit_leave(
+    State(st): State<AppState>,
+    Json(req): Json<ExitLeaveReq>,
+) -> Result<StatusCode, ApiError> {
+    authenticate(&st, &req.appliance_id, &req.token).await?;
+    if let Some(exit) = &st.exit {
+        exit.leave(&req.appliance_id).await?;
+    }
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Open enrolment (`losos.edge.lan.openEnrolment`): a `/register` for an id
@@ -2058,6 +2111,53 @@ async fn market_payout(
     market
         .set_payout(&req.auth.appliance_id, &req.address, &req.signature, family)
         .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, Deserialize)]
+struct EscrowKeysReq {
+    #[serde(flatten)]
+    auth: MarketAuth,
+    evm: String,
+    #[serde(default)]
+    solana: Option<String>,
+}
+
+/// `POST /market/escrow/decisions`: the box registers its escrow keys and
+/// gets the decisions that wait for its signature.
+async fn market_escrow_decisions(
+    State(st): State<AppState>,
+    Json(req): Json<EscrowKeysReq>,
+) -> Result<Json<Vec<crate::market::EscrowDecision>>, ApiError> {
+    let market = market_tenant(&st, &req.auth).await?;
+    let keys = crate::escrow_boxes::BoxKeys::parse(&req.evm, req.solana.as_deref())
+        .map_err(MarketError::Invalid)?;
+    Ok(Json(
+        market
+            .escrow_decisions(&req.auth.appliance_id, keys)
+            .await?,
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+struct EscrowSignReq {
+    #[serde(flatten)]
+    auth: MarketAuth,
+    #[serde(flatten)]
+    signed: crate::market::EscrowSignature,
+}
+
+/// `POST /market/escrow/sign`: the box's signature over one decision.
+async fn market_escrow_sign(
+    State(st): State<AppState>,
+    Json(req): Json<EscrowSignReq>,
+) -> Result<StatusCode, ApiError> {
+    let market = market_tenant(&st, &req.auth).await?;
+    market
+        .escrow_sign(&req.auth.appliance_id, &req.signed)
+        .await?;
+    // The call it was waiting for goes out now, not on the next tick.
+    st.notify.notify_one();
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -3216,6 +3316,12 @@ struct TenantEntry {
     /// `modules/edge.nix` renders `relayZone` into tenants.json.
     #[serde(default)]
     relay_zone: Option<String>,
+    /// May send its traffic out through this edge (`crate::exit`). A fifth
+    /// bit: the edge's address becomes the tenant's on the internet, which
+    /// publishing a website through it never meant. Like the others it
+    /// reaches the registrar only because `modules/edge.nix` renders it.
+    #[serde(default)]
+    exit: bool,
 }
 
 /// `tenants.json` memoised behind an mtime+size check.

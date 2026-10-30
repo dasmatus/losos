@@ -12,9 +12,10 @@ slug: /manual/mail
 
 LosOS Mail is a mail client for the people on the box. Each person signed in
 through LosOS Login has a mailbox, and **Mail** in the sidebar opens it at
-`/mail`. The mail server is Stalwart. It runs on the shared side of the
-box, under the `shared` account, and keeps the mailboxes in the shared data
-directory.
+`/mail`. The mail server is Stalwart 1.0. It runs on the shared side of the
+box, under the `shared` account, keeps the mailboxes in the shared data
+directory and answers only on the box itself: nothing on the network can
+reach it.
 
 ## When Mail is there
 
@@ -24,8 +25,7 @@ outside a mesh:
 
 - there is no **Mail** in the sidebar, and `/mail` does not open;
 - the mail server is stopped;
-- the mailboxes stay on the disk, in the shared directory, which the box
-  cannot read while sharing is off.
+- the mailboxes stay on the box's encrypted disk, untouched.
 
 Once the box shares with its mesh again, Mail comes back with the same mail
 in it.
@@ -184,6 +184,22 @@ formatting, and its attachments download like any other.
 its own Web Key Directory at `/.well-known/openpgpkey/`, so mail programs
 elsewhere find it from your address. Every message you send also carries it
 in an Autocrypt header.
+
+## Moving to Stalwart 1.0
+
+A box that had mail before this version copies it to the new server by
+itself, on the first start after the update: every person's folders,
+messages, sending addresses and filters. Mail works during the copy, and
+mail that arrives meanwhile stays. If the box stops halfway, the copy
+carries on at the next start without making doubles. The old mailboxes are
+kept beside the new ones, in a folder named `db-0.15`, and nothing in them
+is deleted.
+
+## Backups
+
+[Backups](backup-and-erase) include Mail. The mail server pauses for the
+few seconds the box takes to copy the mailboxes and then starts again. In
+those seconds Mail asks you to try again in a moment.
 
 ## What Mail does not do yet
 

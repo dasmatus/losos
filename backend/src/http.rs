@@ -767,11 +767,12 @@ fn shared_apps(api: &Api) -> Vec<&'static str> {
     if api.chat.live() {
         apps.push("chat");
     }
-    // Not shared-side apps: LosOS Contacts and LosOS Calendar are LosOS
-    // Cloud's address books and calendars, on every box that runs LosOS
-    // Cloud. Listed here because the sidebar draws the app entries this
-    // list names.
+    // Not shared-side apps: LosOS Cloud itself, and LosOS Contacts and
+    // LosOS Calendar, its address books and calendars, on every box that
+    // runs LosOS Cloud. Listed here because the sidebar draws the app
+    // entries this list names.
     if api.contacts {
+        apps.push("cloud");
         apps.push("contacts");
         apps.push("calendar");
     }

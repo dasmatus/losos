@@ -20,8 +20,13 @@ vlastníka.
 
 ## V prehliadači \{#in-the-browser}
 
+LosOS Cloud je v tom istom rámci ako ostatné stránky zariadenia: rovnaký
+pruh hore aj rovnaký bočný panel, jeho miesta sú pod položkou **Cloud**.
+
 - **Súbory** zobrazujú vaše priečinky. Súbory alebo celé priečinky
-  nahráte tak, že ich pustíte na stránku, alebo cez **Nahrať**. Zaškrtnuté
+  nahráte tak, že ich pustíte na stránku, alebo cez **Nahrať**. Súbor
+  pridaný inak, cez sieťové zdieľanie alebo z aplikácie v počítači, sa v
+  otvorenom priečinku ukáže sám do niekoľkých sekúnd. Zaškrtnuté
   súbory môžete stiahnuť, premenovať, presunúť, skopírovať či vymazať
   alebo si pozrieť ich staršie verzie.
 - **Nedávne** ukazujú, čo sa naposledy zmenilo, **Obľúbené** to, čo ste
@@ -34,7 +39,10 @@ vlastníka.
   doň nepríde.
 - **Zariadenia** zobrazujú počítače a telefóny, ktoré sa synchronizujú, a
   vedia ktorékoľvek odhlásiť.
-- Vyhľadávanie hore nájde súbory podľa mena.
+- <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>, dvojbodka napísaná mimo
+  textového poľa alebo lupa hore v bočnom paneli otvorí vyhľadávanie, ktoré
+  nájde súbory podľa mena aj podľa textu v nich, na každej stránke
+  zariadenia aj v otvorenom dokumente.
 - Textové súbory sa otvárajú v editore, do ktorého môže písať viac ľudí
   naraz, a **Zdieľané s vami** drží to, čo s vami zdieľali ľudia na iných
   zariadeniach. Pozrite
