@@ -20,8 +20,14 @@ eingerichtet hat, bekommt die des Besitzers.
 
 ## Im Browser \{#in-the-browser}
 
+LosOS Cloud sitzt im selben Rahmen wie die anderen Seiten der Box: dieselbe
+Leiste oben und dieselbe Seitenleiste, seine Orte unter **Cloud**.
+
 - **Dateien** zeigt deine Ordner. Zieh Dateien oder ganze Ordner auf die
-  Seite, um sie hochzuladen, oder nimm **Hochladen**. Markierte Dateien
+  Seite, um sie hochzuladen, oder nimm **Hochladen**. Eine Datei, die auf
+  anderem Weg dazukommt, über die Netzwerkfreigabe oder aus der
+  Desktop-App, erscheint nach ein paar Sekunden von selbst im offenen
+  Ordner. Markierte Dateien
   kannst du herunterladen, umbenennen, verschieben, kopieren oder löschen,
   oder ihre früheren Versionen ansehen.
 - **Zuletzt** zeigt, was sich zuletzt geändert hat, **Favoriten**, was du
@@ -35,7 +41,10 @@ eingerichtet hat, bekommt die des Besitzers.
   landet nicht darin.
 - **Geräte** listet die Computer und Telefone, die synchronisieren, und
   meldet eins ab.
-- Das Suchfeld oben findet Dateien nach Namen.
+- <kbd>Strg</kbd>+<kbd>Umschalt</kbd>+<kbd>P</kbd>, ein Doppelpunkt
+  außerhalb eines Textfelds oder die Lupe oben in der Seitenleiste öffnet
+  die Suche. Sie findet Dateien nach Namen und nach dem Text darin, auf
+  jeder Seite der Box und auch in einem offenen Dokument.
 - Textdateien öffnen sich in einem Editor, in den mehrere Leute
   gleichzeitig schreiben, und **Mit Ihnen geteilt** enthält, was Leute auf
   anderen Boxen mit dir geteilt haben. Siehe

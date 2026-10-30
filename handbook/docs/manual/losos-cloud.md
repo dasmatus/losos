@@ -19,8 +19,13 @@ gets their own files. The person who set up the box gets the owner's.
 
 ## In the browser
 
+LosOS Cloud sits in the same frame as the box's other pages: the same bar
+across the top and the same sidebar, with its places under **Cloud**.
+
 - **Files** lists your folders. Drop files or whole folders on the page to
-  upload them, or use **Upload**. Tick files to download, rename, move,
+  upload them, or use **Upload**. A file added any other way, over the
+  network share or from the desktop app, shows up in the open folder by
+  itself within a few seconds. Tick files to download, rename, move,
   copy or delete them, or to see their earlier versions.
 - **Recent** shows what changed lately, **Favorites** what you starred.
 - **Photos** shows every picture by when it was taken, and the people in
@@ -29,7 +34,10 @@ gets their own files. The person who set up the box gets the owner's.
   pane says. Restore one, or delete it for good. Files deleted through
   the [network share](files-on-your-computer#the-network-share) skip it.
 - **Devices** lists the computers and phones that sync, and signs one out.
-- The search field at the top finds files by name.
+- <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>, a colon typed outside a
+  text field, or the magnifier at the top of the sidebar opens the search,
+  which finds files by name and by the text in them, on every page of the
+  box and inside an open document too.
 - Text files open in an editor several people can type in at once, and
   **Shared with you** holds what people on other boxes shared with you.
   See [Sharing and editing together](sharing-and-editing-together).
