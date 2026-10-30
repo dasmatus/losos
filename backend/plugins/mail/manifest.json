@@ -16,6 +16,7 @@
   "limits": { "memoryMiB": 32, "timeoutSecs": 60 },
   "config": {
     "url": "${LOSOS_MAIL_URL:-}",
-    "secretFile": "${LOSOS_MAIL_SECRET_FILE:-}"
+    "secretFile": "${LOSOS_MAIL_SECRET_FILE:-}",
+    "domain": "${LOSOS_MAIL_DOMAIN:-}"
   }
 }

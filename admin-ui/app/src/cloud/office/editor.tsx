@@ -28,6 +28,7 @@ import {
   PlusSignIcon,
 } from "@hugeicons/core-free-icons";
 import { PersonAvatar } from "@/components/person";
+import { followFrameKeys } from "@/palette/host";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -128,6 +129,13 @@ export function OfficeEditor({ load, onClose, backLabel }: OfficeEditorProps) {
   const watched = useMemo(() => watchedCommands(kind), [kind]);
   const loaded = state.kind === "open" && state.loaded;
   const doc = useDocument(frame, loaded, watched, post);
+
+  // Ctrl/Cmd+Shift+P opens the palette while the document has the keys.
+  const open = state.kind === "open";
+  useEffect(() => {
+    const element = frame.current;
+    return open && element !== null ? followFrameKeys(element) : undefined;
+  }, [open]);
   const writable = state.kind === "open" && state.session.writable;
   const busy = state.kind === "opening" || (state.kind === "open" && !state.loaded);
 
@@ -172,7 +180,7 @@ export function OfficeEditor({ load, onClose, backLabel }: OfficeEditorProps) {
       </header>
       {writable && <OfficeToolbar kind={kind} doc={doc} disabled={!loaded} />}
 
-      <main className="relative min-h-0 flex-1" aria-busy={busy}>
+      <div className="relative min-h-0 flex-1" aria-busy={busy}>
         {state.kind === "open" && (
           <iframe
             ref={frame}
@@ -204,7 +212,7 @@ export function OfficeEditor({ load, onClose, backLabel }: OfficeEditorProps) {
             )}
           </div>
         )}
-      </main>
+      </div>
     </div>
   );
 }

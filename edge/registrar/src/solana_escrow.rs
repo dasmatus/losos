@@ -49,7 +49,7 @@ const CLOSE_TAP: u8 = 8;
 const SETTLE_TAP: u8 = 9;
 
 const CONFIG_LEN: usize = 98;
-const DEPOSIT_LEN: usize = 196;
+const DEPOSIT_LEN: usize = 260;
 const BALANCE_LEN: usize = 84;
 const TAP_LEN: usize = 158;
 const TOKEN_ACCOUNT_LEN: usize = 165;
@@ -213,6 +213,10 @@ pub struct DepositData {
     pub fee: u64,
     pub deadline: i64,
     pub paid_at: i64,
+    /// The buyer's and the seller's box keys: two of these and the
+    /// releaser move the deposit.
+    pub buyer_box: [u8; 32],
+    pub seller_box: [u8; 32],
 }
 
 impl DepositData {
@@ -227,6 +231,8 @@ impl DepositData {
             fee: le(data, 172),
             deadline: le(data, 180) as i64,
             paid_at: le(data, 188) as i64,
+            buyer_box: word(data, 196),
+            seller_box: word(data, 228),
         })
     }
 }
@@ -314,6 +320,8 @@ pub struct ExpectedDeposit {
     pub gross: u128,
     pub fee: u128,
     pub deadline: u64,
+    pub buyer_box: [u8; 32],
+    pub seller_box: [u8; 32],
 }
 
 impl ExpectedDeposit {
@@ -327,6 +335,7 @@ impl ExpectedDeposit {
         gross: u128,
         fee: u128,
         deadline: u64,
+        boxes: (&str, &str),
     ) -> Option<Self> {
         let program = chain.pay.as_deref()?;
         let p = key(program)?;
@@ -338,6 +347,8 @@ impl ExpectedDeposit {
             gross,
             fee,
             deadline,
+            buyer_box: key(boxes.0)?,
+            seller_box: key(boxes.1)?,
         })
     }
 }
@@ -396,6 +407,9 @@ pub fn deposit_matches(d: &DepositData, expected: &ExpectedDeposit) -> Result<()
     }
     if u64::try_from(d.deadline).ok() != Some(expected.deadline) {
         return Err("the payment's refund deadline is not the order's");
+    }
+    if d.buyer_box != expected.buyer_box || d.seller_box != expected.seller_box {
+        return Err("the payment names other boxes than the invoice");
     }
     Ok(())
 }
@@ -643,6 +657,42 @@ pub struct Parties {
     pub treasury: [u8; 32],
     pub deposit: [u8; 32],
     pub held: DepositData,
+    /// The box that agrees, and its signature over
+    /// [`crate::escrow_boxes::solana_message`] for this move: the second of
+    /// the two keys the program wants, the releaser being the first.
+    pub agreed: Option<([u8; 32], [u8; 64])>,
+}
+
+/// The program that checks ed25519 signatures, and the sysvar through which
+/// the escrow program reads that check back.
+pub const ED25519_PROGRAM: &str = "Ed25519SigVerify111111111111111111111111111";
+pub const INSTRUCTIONS_SYSVAR: &str = "Sysvar1nstructions1111111111111111111111111";
+
+/// An ed25519 signature check whose key, signature and message all sit in
+/// its own data, the only shape the escrow program counts.
+fn ed25519_check(key_: &[u8; 32], signature: &[u8; 64], message: &[u8]) -> Ix {
+    let own = u16::MAX.to_le_bytes();
+    let (key_at, sig_at, message_at) = (16u16, 48u16, 112u16);
+    let mut data = vec![1u8, 0];
+    for part in [
+        sig_at.to_le_bytes(),
+        own,
+        key_at.to_le_bytes(),
+        own,
+        message_at.to_le_bytes(),
+        u16::try_from(message.len()).expect("short").to_le_bytes(),
+        own,
+    ] {
+        data.extend_from_slice(&part);
+    }
+    data.extend_from_slice(key_);
+    data.extend_from_slice(signature);
+    data.extend_from_slice(message);
+    Ix {
+        program: key(ED25519_PROGRAM).expect("constant"),
+        accounts: Vec::new(),
+        data,
+    }
 }
 
 struct Meta {
@@ -751,6 +801,16 @@ pub fn escrow_transaction(
     accounts.push(w(p.held.payer));
     accounts.push(r(p.mint));
     accounts.push(r(token));
+    accounts.push(r(key(INSTRUCTIONS_SYSVAR).expect("constant")));
+    if let Some((by, signature)) = &p.agreed {
+        let refund = match step {
+            Move::Release => 0,
+            Move::Refund => p.held.gross,
+            Move::Split(back) => back,
+        };
+        let message = crate::escrow_boxes::solana_message(&p.deposit, refund);
+        ixs.push(ed25519_check(by, signature, &message));
+    }
     ixs.push(Ix {
         program: p.program,
         accounts,
@@ -1169,6 +1229,8 @@ mod tests {
             fee: 4_000_000,
             deadline: 1_900_000_000,
             paid_at: 1_800_000_000,
+            buyer_box: [5; 32],
+            seller_box: [6; 32],
         };
         let want = ExpectedDeposit {
             program: String::new(),
@@ -1178,6 +1240,8 @@ mod tests {
             gross: 20_000_000,
             fee: 4_000_000,
             deadline: 1_900_000_000,
+            buyer_box: [5; 32],
+            seller_box: [6; 32],
         };
         assert_eq!(deposit_matches(&d, &want), Ok(()));
         for (bad, why) in [
@@ -1213,6 +1277,23 @@ mod tests {
             (
                 DepositData { deadline: 1, ..d },
                 "the payment's refund deadline is not the order's",
+            ),
+            // The buyer's own second key as the seller's box would hold two
+            // of the three keys.
+            (
+                DepositData {
+                    seller_box: [9; 32],
+                    ..d
+                },
+                "the payment names other boxes than the invoice",
+            ),
+            (
+                DepositData {
+                    buyer_box: [6; 32],
+                    seller_box: [5; 32],
+                    ..d
+                },
+                "the payment names other boxes than the invoice",
             ),
         ] {
             assert_eq!(deposit_matches(&bad, &want), Err(why));

@@ -460,6 +460,7 @@
           ./modules/edge-inference.nix
           ./modules/edge-gateway.nix
           ./modules/edge-hidden.nix
+          ./modules/edge-exit.nix
           ./modules/logs.nix
         ];
         _module.args.self = self;
@@ -611,6 +612,8 @@
         # two people, the box's WKD, keys from an outside WKD, a keyserver and
         # Autocrypt (nix/tests/mail-pgp.nix).
         losos-mail-pgp = import ./nix/tests/mail-pgp.nix { inherit pkgs; };
+        # The upgrade from Stalwart 0.15 to 1.0 (nix/tests/mail-upgrade.nix).
+        losos-mail-upgrade = import ./nix/tests/mail-upgrade.nix { inherit pkgs; };
         # Roles and moderation: reports, held mail, mutes and suspensions
         # across LosOS Login, lososd and Stalwart (nix/tests/moderation.nix).
         losos-moderation = import ./nix/tests/moderation.nix { inherit pkgs; };
@@ -619,6 +622,10 @@
           screens = true;
         };
         losos-cloud = import ./nix/tests/cloud.nix { inherit pkgs; };
+        # One frame across the admin pages, LosOS Cloud and its documents,
+        # the palette's keys on all of them, uploads from the browser and a
+        # 4.5 GiB copy over WebDAV (nix/tests/cloud-shell.nix).
+        losos-cloud-shell = import ./nix/tests/cloud-shell.nix { inherit pkgs; };
         # How fast LosOS Cloud and LosOS Git take files in on a two-core,
         # 4 GiB box, as numbers to compare trees by (nix/tests/upload-speed.nix).
         losos-upload-speed = import ./nix/tests/upload-speed.nix { inherit pkgs; };
@@ -705,6 +712,9 @@
         # a USDC escrow, a quote, a paid chat, the settle split, and the
         # refusals (nix/tests/inference-payg.nix).
         losos-inference-payg = import ./nix/tests/inference-payg.nix { inherit pkgs; };
+        # Two of three keys move an escrowed payment: an edge, the buyer's
+        # box and the seller's box on a local chain (nix/tests/market-escrow.nix).
+        losos-market-escrow = import ./nix/tests/market-escrow.nix { inherit pkgs; };
         losos-installer-screen = import ./nix/tests/installer-screen.nix { inherit pkgs disko; };
         losos-installer-report = import ./nix/tests/installer-report.nix { inherit pkgs disko; };
         # LosOS Git: Forgejo's repositories moved in, the configuration

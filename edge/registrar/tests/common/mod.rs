@@ -685,6 +685,7 @@ impl Edge {
             ci_dir: None,
             tang: None,
             hidden: None,
+            exit: None,
             ech: None,
             onramp: None,
         };

@@ -37,6 +37,7 @@ import {
   useRemote,
   type Remote,
 } from "./sources";
+import { routeIn, useSiteBase } from "@/lib/site";
 import { closePalette, paletteState, subscribePalette } from "./store";
 
 /* The command palette: one box that finds a page, a setting, an app, a file
@@ -138,6 +139,7 @@ function PaletteBody({ initial }: { initial: string }) {
   useLocale();
   React.useSyncExternalStore(subscribeTheme, getTheme, getTheme);
   const navigate = useNavigate();
+  const base = useSiteBase();
   const [query, setQuery] = React.useState(initial);
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const listId = React.useId();
@@ -277,7 +279,7 @@ function PaletteBody({ initial }: { initial: string }) {
 
   const choose = (item: Item, newTab = false): void => {
     closePalette();
-    go(item.target, newTab, navigate);
+    go(item.target, newTab, navigate, base);
   };
 
   const move = (by: number): void => {
@@ -479,15 +481,25 @@ function Option({
   );
 }
 
-function go(target: Target, newTab: boolean, navigate: ReturnType<typeof useNavigate>): void {
+/* `base` is the router's basename (lib/site.tsx): a route is the admin
+ * page's, so from LosOS Cloud it is a page load; an address in LosOS Cloud
+ * is a router move there and a page load from anywhere else. */
+function go(target: Target, newTab: boolean, navigate: ReturnType<typeof useNavigate>, base: string): void {
   switch (target.kind) {
     case "route":
-      navigate(target.to, target.state === undefined ? undefined : { state: target.state });
+      if (base !== "") window.location.assign(target.to);
+      else navigate(target.to, target.state === undefined ? undefined : { state: target.state });
       return;
-    case "href":
-      if (newTab || target.newTab === true) window.open(target.href, "_blank", "noopener");
-      else window.location.assign(target.href);
+    case "href": {
+      if (newTab || target.newTab === true) {
+        window.open(target.href, "_blank", "noopener");
+        return;
+      }
+      const route = base === "" ? null : routeIn(base, target.href);
+      if (route === null) window.location.assign(target.href);
+      else navigate(route);
       return;
+    }
     case "run":
       target.run();
       return;

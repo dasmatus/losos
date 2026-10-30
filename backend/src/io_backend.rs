@@ -1150,6 +1150,31 @@ pub fn start_domain_sync(backend: &IoLosos) {
     }
 }
 
+/// Agree to the edge's escrow decisions that pay this box's owner
+/// ([`crate::losos::cmd_escrow_pass`]): once the edge scanner has had its
+/// first pass, then every [`crate::losos::ESCROW_PASS_EVERY`]. No state
+/// lock: the pass writes nothing on the box.
+pub fn start_escrow_signer(backend: &IoLosos) {
+    let backend = backend.clone();
+    let spawned = std::thread::Builder::new()
+        .name("lososd-escrow".into())
+        .spawn(move || {
+            std::thread::sleep(crate::edge::SCAN_INTERVAL);
+            loop {
+                let mut b = backend.clone();
+                match crate::losos::cmd_escrow_pass(&mut b) {
+                    Ok(0) => {}
+                    Ok(n) => tracing::info!(signed = n, "agreed to the edge's escrow decisions"),
+                    Err(e) => tracing::debug!(error = ?e, "no escrow pass this time"),
+                }
+                std::thread::sleep(crate::losos::ESCROW_PASS_EVERY);
+            }
+        });
+    if let Err(e) = spawned {
+        tracing::error!(error = %e, "could not start the escrow signer; escrowed payments wait on the payer's deadline");
+    }
+}
+
 /// Drive backups, restores and an erase (`crate::erase::tick`) on a short
 /// cadence, under the state lock like every other writer of `state.json`.
 pub fn start_erase_driver(backend: &IoLosos) {
@@ -2693,6 +2718,17 @@ impl Losos for IoLosos {
                 atomic_write_secret(&path, body.as_bytes())
                     .with_context(|| format!("writing {}", path.display()))
             }
+        }
+    }
+
+    fn escrow_keys(&mut self) -> anyhow::Result<Option<crate::escrow_key::Keys>> {
+        let Some(path) = std::env::var_os("LOSOS_ESCROW_KEY_FILE") else {
+            return Ok(None);
+        };
+        match std::fs::read_to_string(&path) {
+            Ok(text) => crate::escrow_key::Keys::from_hex(&text).map(Some),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(anyhow::Error::new(e).context("reading the escrow key")),
         }
     }
 

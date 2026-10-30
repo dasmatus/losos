@@ -230,7 +230,14 @@ let
 
   # Ask Authelia about the request nginx is handling, as the /api/
   # question below does.
+  # Every one of these asks is a subrequest of the request it is about, and
+  # nginx holds that request's Content-Length to the asking location's
+  # client_max_body_size (the server's 10m unless set) before anything else
+  # runs there. The body never comes here, so no limit: with the server's,
+  # anything over 10 MB (an ISO copied into LosOS Cloud, a video uploaded,
+  # a push) failed the ask with 413, and the request itself with 500.
   askAboutRequest = ''
+    client_max_body_size 0;
     proxy_pass_request_body off;
     proxy_set_header Content-Length "";
     proxy_set_header X-Original-Method $request_method;
@@ -747,6 +754,8 @@ in
             if ($losos_lan = 0) {
               return 200;
             }
+            # Not the body's place, as in askAboutRequest above.
+            client_max_body_size 0;
             proxy_pass_request_body off;
             proxy_set_header Content-Length "";
             proxy_set_header X-Real-IP $remote_addr;

@@ -2663,6 +2663,18 @@ in
                 `cluster` and `market`.
               '';
             };
+            exit = lib.mkOption {
+              type = lib.types.bool;
+              default = false;
+              description = ''
+                Let this tenant send its traffic out through this edge
+                (losos.edge.exit). A fifth bit, apart from the others: the
+                edge's address becomes the tenant's on the internet, which
+                publishing a website through it never meant. Rendered into
+                tenants.json like `cluster` and `market`. Inert unless
+                losos.edge.exit.enable is set.
+              '';
+            };
           };
         }
       );
@@ -3811,6 +3823,74 @@ in
         `.b32.i2p` name, in the same way as edge.hidden.tor.enable. The edge
         takes part in I2P as a router with a small bandwidth share.
       '';
+    };
+
+    # ── The edge as a way out (modules/edge-exit.nix) ───────────────────────
+    # handbook/docs/in-depth/edge-exit.md. A tenant with `exit` sends its
+    # traffic out through this edge over WireGuard, or over Tor to a SOCKS5
+    # server on the edge's onion address; the registrar enrols it.
+    edge.exit.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Let the tenants marked `exit` send their traffic to the internet
+        through this edge, the way a VPN carries it: each enrols a
+        WireGuard key with the registrar's `POST /exit` and gets an address
+        on the edge's `losos-exit` interface. What they send leaves from the
+        edge's public address. LosOS Desktop uses it to leave through the
+        edge it picked. Nothing reaches the edge's own network or other
+        peers through it.
+      '';
+    };
+
+    edge.exit.port = lib.mkOption {
+      type = lib.types.port;
+      default = 51820;
+      description = "The UDP port the exit's WireGuard interface listens on. Opened in the firewall.";
+    };
+
+    edge.exit.subnet = lib.mkOption {
+      type = lib.types.str;
+      default = "10.153.0.0/16";
+      description = ''
+        The exit's network. The edge takes its first address and each
+        enrolled tenant one more, kept across enrolments.
+      '';
+    };
+
+    edge.exit.endpoint = lib.mkOption {
+      type = lib.types.str;
+      default = "${config.losos.edge.publicDomain}:${toString config.losos.edge.exit.port}";
+      defaultText = lib.literalExpression ''"''${losos.edge.publicDomain}:''${toString losos.edge.exit.port}"'';
+      description = ''
+        Where a tenant dials the exit, as it writes it in WireGuard's
+        `Endpoint =`: a name or address of this edge that the internet
+        reaches, and the port.
+      '';
+    };
+
+    edge.exit.onion.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Also offer the exit on an onion service of the edge's own, as a
+        SOCKS5 server that asks for the tenant's id and the password its
+        enrolment handed out. A computer whose traffic already goes through
+        Tor reaches the edge there and leaves from it, so a site sees the
+        edge and the edge sees only Tor. Runs Tor on the edge.
+      '';
+    };
+
+    edge.exit.onion.port = lib.mkOption {
+      type = lib.types.port;
+      default = 1080;
+      description = "The SOCKS5 port on the exit's onion address.";
+    };
+
+    edge.exit.socksPort = lib.mkOption {
+      type = lib.types.port;
+      default = 1081;
+      description = "The loopback port Tor delivers the onion's SOCKS5 connections to.";
     };
 
     edge.manage.ui = lib.mkOption {
