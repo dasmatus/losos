@@ -57,7 +57,7 @@ let
   enabled = config.lososInternal.appSignIn.cloud;
   pkg = config.losos.backend.package;
   # The same gate as the shared side's chat, mail and calls.
-  knowledgeBases = config.losos.sharingMyStorage && config.losos.cluster.enable;
+  knowledgeBases = config.lososInternal.sideLive;
   # Office edits the cloud's files unless it was given a folder of its own.
   office = config.losos.office.enable && config.losos.office.folder == null;
   signIn = import ./app-sign-in.nix { inherit lib; };

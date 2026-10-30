@@ -371,6 +371,18 @@ impl FakeLosos {
         self
     }
 
+    /// A local gateway in reach and nothing else: the edge a box on a
+    /// company network finds, its link secondary.
+    #[must_use]
+    pub fn with_local_gateway(mut self) -> Self {
+        for e in &mut self.edge.edges {
+            e.official = false;
+            e.tier = crate::edge::Tier::Secondary;
+        }
+        self.edge = crate::edge::EdgeStatus::found(self.edge.edges.clone(), true, None);
+        self
+    }
+
     /// An edge in reach that proved no LosOS identity: a company's own.
     /// Sharing is allowed through it, trading is not.
     #[must_use]

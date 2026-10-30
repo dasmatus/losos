@@ -10,7 +10,7 @@
 # The VM boots with a tmpfs root and a real /persist, writes markers, is shut
 # down and started again on the same disk image, and then asserts:
 #   1. everything the appliance must keep is still there — lososd's state.json,
-#      the admin token, the two service state dirs, both data homes, machine-id;
+#      the admin token, the two service state dirs, the three data homes, machine-id;
 #   2. a file written outside the persisted set is *gone*, which is what proves
 #      the root is genuinely ephemeral and the test is not passing on a VM that
 #      simply never threw anything away;
@@ -146,14 +146,14 @@ pkgs.testers.nixosTest {
         # impermanence realises every persisted directory as a bind mount, so a
         # path that is not a mountpoint is not coming back from /persist — say
         # that here rather than as a confusing "no such file" after the reboot.
-        for d in ("/var", "/home/notshared/data", "/home/shared/data"):
+        for d in ("/var", "/home/notshared/data", "/home/shared/data", "/home/kindashared/data"):
             machine.succeed(f"mountpoint -q {d}")
 
     # Everything the appliance must not lose. The paths are the ones the
     # modules actually use: lososd's state file and the token it mints
     # (modules/daemon.nix), LosOS Cloud's state (modules/cloud.nix) and
     # LosOS Git's (modules/git.nix), the Kubernetes node identity under
-    # /etc/rancher (modules/cluster.nix), and the two data homes.
+    # /etc/rancher (modules/cluster.nix), and the three data homes.
     machine.succeed(
         "install -d -m 0755 /var/lib/losos",
         "echo '{\"mode\":\"local\"}' > /var/lib/losos/state.json",
@@ -167,6 +167,7 @@ pkgs.testers.nixosTest {
         "echo git-state > /var/lib/losos-git/marker",
         "echo notshared-doc > /home/notshared/data/marker",
         "echo shared-doc > /home/shared/data/marker",
+        "echo kindashared-doc > /home/kindashared/data/marker",
         # The rest of the module's list. /etc/keys carries the LUKS keyfile on
         # the no-TPM path and /etc/nixos the flake system.autoUpgrade rebuilds
         # from, so losing either bricks the box in a way nobody can log in to
@@ -210,6 +211,7 @@ pkgs.testers.nixosTest {
         assert machine.succeed("cat /var/lib/losos-git/marker").strip() == "git-state"
         assert machine.succeed("cat /home/notshared/data/marker").strip() == "notshared-doc"
         assert machine.succeed("cat /home/shared/data/marker").strip() == "shared-doc"
+        assert machine.succeed("cat /home/kindashared/data/marker").strip() == "kindashared-doc"
         assert machine.succeed("cat /etc/credstore.encrypted/admin-token").strip() == token, \
             "the credential store did not survive the reboot"
         assert machine.succeed("cat /etc/ssh/marker").strip() == "host-key"
@@ -227,17 +229,19 @@ pkgs.testers.nixosTest {
     with subtest("permissions survive too"):
         mode = machine.succeed("stat -c %a /etc/credstore.encrypted").strip()
         assert mode == "700", f"the credential store is mode {mode}, expected 700"
-        for home in ("/home/notshared", "/home/shared"):
+        for home in ("/home/notshared", "/home/shared", "/home/kindashared"):
             mode = machine.succeed(f"stat -c %a {home}").strip()
             assert mode == "700", f"{home} is mode {mode}, expected 700"
         assert machine.succeed("stat -c %U /home/notshared").strip() == "notshared"
         assert machine.succeed("stat -c %U /home/shared").strip() == "shared"
+        assert machine.succeed("stat -c %U /home/kindashared").strip() == "kindashared"
 
     with subtest("the home modes keep every other account out"):
         machine.fail("runuser -u outsider -- cat /home/notshared/data/marker")
         machine.fail("runuser -u outsider -- cat /home/shared/data/marker")
+        machine.fail("runuser -u outsider -- cat /home/kindashared/data/marker")
 
-    with subtest("the two data domains are isolated from each other"):
+    with subtest("the three data domains are isolated from each other"):
         # The headline claim: "the two users mutually unreadable".
         #
         # It did not hold. `isNormalUser` defaults the primary group to `users`
@@ -252,9 +256,20 @@ pkgs.testers.nixosTest {
         assert machine.succeed("stat -c %G /home/shared").strip() == "shared"
         machine.fail("runuser -u shared -- cat /home/notshared/data/marker")
         machine.fail("runuser -u notshared -- cat /home/shared/data/marker")
+        # kindashared, the side shared with local gateways only, is a third
+        # account with its own group: none of the three reads another.
+        assert machine.succeed("stat -c %G /home/kindashared").strip() == "kindashared"
+        for reader, home in (
+            ("kindashared", "notshared"),
+            ("kindashared", "shared"),
+            ("notshared", "kindashared"),
+            ("shared", "kindashared"),
+        ):
+            machine.fail(f"runuser -u {reader} -- cat /home/{home}/data/marker")
         # Each still reaches its own, so the isolation is not just a broken
         # permission that locks everyone out including the owner.
         machine.succeed("runuser -u notshared -- cat /home/notshared/data/marker")
         machine.succeed("runuser -u shared -- cat /home/shared/data/marker")
+        machine.succeed("runuser -u kindashared -- cat /home/kindashared/data/marker")
   '';
 }
