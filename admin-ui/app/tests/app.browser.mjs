@@ -277,6 +277,14 @@ async function open({
       backupView.target = { ...shown, hasSecret: Boolean(secretAccessKey) || backupView.target?.hasSecret === true };
       return json(route, 200, { target: backupView.target });
     }
+    if (path === '/api/backup/target/bought') {
+      const edge = 'https://edge.example.net';
+      backupView.target = {
+        endpoint: '', bucket: '', prefix: '', region: '', accessKeyId: '', hasSecret: false,
+        storageClass: 'standard', bought: { order: sent.order, edge },
+      };
+      return json(route, 200, { target: backupView.target, keyed: sent.order !== 'ord_feedfacefeedfacefeedface' });
+    }
     if (path === '/api/backup/target') {
       backupView.target = null;
       return json(route, 200, { target: null });
@@ -2382,6 +2390,78 @@ await check('the Backup pane saves a bucket without echoing the secret, backs up
   assert.deepEqual(again.backupPosts, [['POST', '/api/backup/restore', { code: OLD_CODE.toUpperCase() }]]);
   assert.deepEqual([...errors, ...again.errors], []);
   await again.page.close();
+});
+
+await check('the Backup pane keeps backups on storage bought on the mesh, keyed from the recovery code', async () => {
+  const storageOrder = (id, quantity) => ({
+    id,
+    kind: 'storage',
+    unit: 'GiB-month',
+    quantity,
+    amount: quantity * 5,
+    fee: 1,
+    seller_net: quantity * 5 - 1,
+    currency: 'eur',
+    status: 'paid',
+    created_at: 1760000000,
+    paid_at: 1760000100,
+    expires_at: 1762600000,
+    expired: false,
+    volume: `market-box/${id.replace('_', '-')}`,
+  });
+  const market = {
+    ...MARKET,
+    account: {
+      ...MARKET.account,
+      purchases: [
+        storageOrder('ord_0a1b2c3d4e5f60718293a4b5', 50),
+        // Not offered: lapsed, unpaid, and an order with no volume yet.
+        { ...storageOrder('ord_000000000000000000000001', 10), expired: true },
+        { ...storageOrder('ord_000000000000000000000002', 10), status: 'pending' },
+        { ...storageOrder('ord_000000000000000000000003', 10), volume: null },
+        storageOrder('ord_feedfacefeedfacefeedface', 20),
+      ],
+    },
+  };
+  const { page, errors, backupPosts } = await open({ path: '/settings/backup', stored: true, market });
+  const offer = page.getByTestId('backup-bought-offer');
+  await offer.getByText('ord_0a1b2c3d4e5f60718293a4b5').waitFor();
+  assert.equal(await offer.getByTestId('backup-bought-use').count(), 2, 'a lapsed, unpaid or unbound order is offered');
+  await page.getByText('Or a bucket you rent', { exact: true }).waitFor();
+  if (process.env.BACKUP_SHOTS) await page.screenshot({ path: `${process.env.BACKUP_SHOTS}/offer.png`, fullPage: true });
+  await offer.getByTestId('backup-bought-use').first().click();
+  const shown = page.getByTestId('backup-bought');
+  await shown.getByText('ord_0a1b2c3d4e5f60718293a4b5', { exact: true }).waitFor();
+  await shown.getByText('https://edge.example.net', { exact: true }).waitFor();
+  await shown.getByText(/^50 GB bought on the mesh$/).waitFor();
+  await page.getByText('Backups go to the storage you bought', { exact: true }).first().waitFor();
+  if (process.env.BACKUP_SHOTS) {
+    await page.waitForTimeout(1000);
+    await page.screenshot({ path: `${process.env.BACKUP_SHOTS}/bought.png`, fullPage: true });
+  }
+  assert.deepEqual(backupPosts[0], ['POST', '/api/backup/target/bought', { order: 'ord_0a1b2c3d4e5f60718293a4b5' }]);
+  assert.doesNotMatch(await page.locator('main').innerText(), /b3c1d2e4/, 'the recovery code is on the screen');
+  assert.ok(await page.getByRole('button', { name: 'Back up', exact: true }).isEnabled(), 'bought storage cannot be backed up to');
+
+  // Back to a bucket: the form is empty and Cancel returns to the order.
+  await shown.getByRole('button', { name: 'Use a bucket instead…' }).click();
+  const form = page.getByTestId('backup-target-form');
+  assert.equal(await form.getByLabel('Address').inputValue(), '');
+  assert.equal(await form.getByRole('button', { name: 'Forget this bucket' }).count(), 0, 'bought storage reads as a bucket');
+  await form.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await shown.waitFor();
+
+  // An edge that will not take the key says so, and the target stays.
+  await shown.getByRole('button', { name: 'Use a bucket instead…' }).click();
+  await page.getByTestId('backup-bought-offer').getByTestId('backup-bought-use').last().click();
+  await page.getByText('The edge did not take the key', { exact: true }).waitFor();
+  await page.getByTestId('backup-bought').getByText('ord_feedfacefeedfacefeedface', { exact: true }).waitFor();
+
+  await page.getByTestId('backup-bought').getByRole('button', { name: 'Stop backing up here' }).click();
+  await page.getByTestId('backup-target-form').waitFor();
+  assert.deepEqual(backupPosts.at(-1), ['DELETE', '/api/backup/target', null]);
+  assert.deepEqual(errors, []);
+  await page.close();
 });
 
 await check('a claimed reserve reads as claimed, after a reload too', async () => {

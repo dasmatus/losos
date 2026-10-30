@@ -574,6 +574,31 @@ fn market_flags_are_all_or_nothing_and_bounded() {
 }
 
 #[test]
+fn the_backup_door_takes_an_image_reference() {
+    // Off unless named.
+    assert_eq!(serve_opts(MARKET_FLAGS).market.unwrap().storage_image, None);
+    let mut args = vec!["--market-storage-image", "losos.local/rest-server:0.13.0"];
+    args.extend(MARKET_FLAGS);
+    assert_eq!(
+        serve_opts(&args).market.unwrap().storage_image.as_deref(),
+        Some("losos.local/rest-server:0.13.0")
+    );
+    for bad in [
+        "",
+        "rest-server",
+        "Losos.local/rest-server:1",
+        "losos.local/rest server:1",
+        "losos.local/rest-server:",
+        "/rest-server:1",
+        "losos.local/rest-server:1;rm",
+    ] {
+        let mut args = vec!["--market-storage-image", bad];
+        args.extend(MARKET_FLAGS);
+        assert!(parse(serve_args(&args)).is_err(), "{bad}");
+    }
+}
+
+#[test]
 fn an_edge_without_cards_takes_coins_and_no_gate() {
     const BASE: &str = "network=base,rpc=/run/c/usdc-rpc-base,pay=0x1111111111111111111111111111111111111111,treasury=0x4444444444444444444444444444444444444444";
     let coins = [

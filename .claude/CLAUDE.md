@@ -528,7 +528,14 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   USDC is held in `LososEscrow` on EVM networks and in the `losos-escrow`
   program on Solana (`edge/contracts/solana`, `solana_escrow.rs`, signed by
   a key derived from the EVM releaser's); a live edge counts no payment into
-  a program that still has an upgrade authority.
+  a program that still has an upgrade authority. A storage order's claim is
+  reached only as a backup target: `/market/storage/<order>/`
+  (`server/storage.rs`, outside the guard like the VM uploads) forwards
+  restic's REST protocol to one `rest-server` per order on the edge node,
+  from an airgap image (`losos.edge.market.backups.enable`), and opens to
+  the SHA-256 of a key the buyer's box derives from its recovery code and
+  the order (`backup.rs` `door_secret`, `modules/backup.nix` makes it again
+  each run). The buyer's box encrypts first, so lenders hold ciphertext.
 - `edge/registrar/src/{vms,server/vm}.rs` + `modules/edge-vms.nix`:
   virtual machines on the mesh, sold per replica-month through the market
   with a fixed 50/50 fee the Stripe gate enforces. KubeVirt and CDI from
