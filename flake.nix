@@ -573,6 +573,10 @@
         # The admin pages with JavaScript off, from sign-in to a rebuild, with
         # the pull request's pictures (nix/tests/no-js.nix).
         losos-no-js = import ./nix/tests/no-js.nix { inherit pkgs; };
+        # The pages as MDX: an administrator's page and stylesheet saved as
+        # commits, drawn with JavaScript on and off, and the editor beside
+        # the page, with the pull request's pictures (nix/tests/pages.nix).
+        losos-pages = import ./nix/tests/pages.nix { inherit pkgs; };
         # Settings › Logs: the journal, its redaction and the page that works
         # while lososd is down (nix/tests/logs.nix).
         losos-logs = import ./nix/tests/logs.nix { inherit pkgs; };
@@ -673,6 +677,10 @@
         # Markdown documents and presentations in LosOS Office, with no
         # Collabora on the box (nix/tests/office-markdown.nix).
         losos-office-markdown = import ./nix/tests/office-markdown.nix { inherit pkgs; };
+        # LosOS Office's own documents and presentations, .paper and .slides
+        # edited as they look, and a document full of script that runs
+        # nowhere (nix/tests/office-paper.nix).
+        losos-office-paper = import ./nix/tests/office-paper.nix { inherit pkgs; };
         losos-quick-actions = import ./nix/tests/quick-actions.nix { inherit pkgs; };
         # Not a VM: losos-mdx's browser package in Node, against the crate's
         # own expectations and its limits inside a wasm stack

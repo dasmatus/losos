@@ -62,6 +62,7 @@ pub fn render(p: &SignInPage<'_>) -> Html {
         // script page's spinner does.
         refresh: p.starting.then_some(3),
         pins: None,
+        page: None,
     };
     let (title, hint) = match p.mode {
         Mode::Password => (m.t("shell.signIn.title"), m.t("basic.signIn.hint")),

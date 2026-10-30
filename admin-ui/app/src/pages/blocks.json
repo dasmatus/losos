@@ -1,0 +1,34 @@
+{
+  "pages": {
+    "overview": {
+      "title": "Overview",
+      "path": "/",
+      "blocks": {
+        "BoxName": {
+          "about": "The box's name and whether it is answering."
+        },
+        "Applying": {
+          "about": "While the box applies a change: how far it got, and a game to play meanwhile. Shows nothing otherwise."
+        },
+        "Apps": {
+          "about": "The apps on this box as tiles, with the storage strip under them.",
+          "props": {
+            "hideStorage": { "type": "flag", "about": "Leave the storage strip out." }
+          }
+        },
+        "Glance": {
+          "about": "The widgets: the ones LosOS has and the ones written by hand."
+        }
+      }
+    },
+    "settings.storage": {
+      "title": "Storage",
+      "path": "/storage",
+      "blocks": {
+        "Disk": {
+          "about": "How full the disk is, and the reserve the box can add to it."
+        }
+      }
+    }
+  }
+}
