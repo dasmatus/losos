@@ -29,9 +29,13 @@ einem davon.
 
 1. **Schau auf den Bildschirm der Box.** Ein Banner mit
    `LosOS <version> is ready` und einer `http://`-Adresse bedeutet, dass die
-   Box gestartet ist und ein Netzwerk hat. Kein Banner, eine Login-Eingabe
-   im Textmodus oder eine Abfrage nach einer Passphrase bedeuten ein anderes
-   Problem. Siehe [Hängt an der Passphrase-Abfrage](/troubleshooting/stuck-at-passphrase.md)
+   Box gestartet ist und ein Netzwerk hat. Unter der Adresse stehen die Teile
+   von LosOS, die die Box betreibt, mit einem Haken für jeden, der läuft. Ein
+   Teil, der nicht läuft, bekommt ein Kreuz, und die Überschrift wird zur
+   Warnung. `LosOS <version> cannot start its admin pages` heißt, dass die
+   Adresse eine Seite öffnet, die nicht laden kann, bis sie starten. Kein
+   Banner, eine Login-Eingabe im Textmodus oder eine Abfrage nach einer
+   Passphrase bedeuten ein anderes Problem. Siehe [Hängt an der Passphrase-Abfrage](/troubleshooting/stuck-at-passphrase.md)
    oder bei schwarzem Bildschirm [Die Box ist nicht erreichbar](/troubleshooting/cannot-reach-the-box.md).
 2. **Nimm die IP-Adresse, nicht den Namen.** Tipp das `http://192.168.…`
    aus dem Banner in einen Browser im selben Netzwerk. Die Hälfte aller
@@ -55,7 +59,7 @@ einem davon.
 
 | Wo                                      | Was                                                                                          |
 | --------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Der Bildschirm (tty1)                   | Die IP-Adresse und der `.local`-Name. Wird neu gezeichnet, wenn sie sich ändern.             |
+| Der Bildschirm (tty1)                   | Die IP-Adresse, der `.local`-Name und welche Teile von LosOS laufen. Wird neu gezeichnet, wenn sie sich ändern. |
 | `http://<address>/api/health`           | Ob der Steuerdienst antwortet.                                                               |
 | `http://<address>/setup/state.json`     | Name, Adresse, ob HTTPS an ist, der Fingerabdruck des Zertifikats.                           |
 | Seite Übersicht                         | Antwortet oder nicht, Laufzeit, Apps an oder aus, das Widget **Änderungen** mit dem Ergebnis jedes Rebuilds. |
