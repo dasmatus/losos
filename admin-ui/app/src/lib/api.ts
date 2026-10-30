@@ -33,6 +33,10 @@ export interface StateResponse {
 
 export interface SettingsResponse {
   sharingMyStorage: boolean;
+  /** losos.sharingLocally: share as `kindashared` with the local gateways of
+   *  this box's own network only. Missing from an older lososd, which reads
+   *  as off. */
+  sharingLocally: boolean;
   hostName: string;
   gpuEnable: boolean;
   proxyEnable: boolean;
@@ -714,7 +718,10 @@ export function getState(options: RequestOptions = {}): Promise<StateResponse> {
 
 /** GET /api/settings — the losos.* options parsed out of overrides.nix. */
 export function getSettings(options: RequestOptions = {}): Promise<SettingsResponse> {
-  return call<SettingsResponse>("/api/settings", options);
+  return call<SettingsResponse>("/api/settings", options).then((s) => ({
+    ...s,
+    sharingLocally: s.sharingLocally ?? false,
+  }));
 }
 
 /** GET /api/status — rebuild progress. Poll it with {@link createStatusPoller}. */
@@ -805,6 +812,9 @@ export interface EdgeCluster {
 export interface EdgeResponse {
   /** At least one edge answered. The one bit the gate reads. */
   reachable: boolean;
+  /** At least one edge is a local gateway (its link is secondary): the bit
+   *  the kindashared gate reads. Missing from an older lososd. */
+  localGateway?: boolean;
   /** At least one edge is official: the bit the market gate reads. */
   official: boolean;
   /** Every edge that answered, LAN first. */
@@ -834,6 +844,9 @@ export interface EdgeResponse {
    *  answered; it turns it back on a minute after one does. Null when not
    *  paused, missing from an older lososd. */
   sharingPausedAt?: number | null;
+  /** The same for sharing with this network (`sharingLocally`): when the box
+   *  turned it off because no local gateway answered. */
+  localSharingPausedAt?: number | null;
   /** Whether this box ends TLS for its public names itself, so the edge only
    *  passes encrypted bytes through (modules/public-tls.nix). Missing from an
    *  older lososd. */
@@ -1178,7 +1191,9 @@ export interface StablecoinInvoice {
    *  after it the buyer can take a deposit the edge never released back. A
    *  direct transfer on Solana ignores it. */
   deadline: number;
-  chains: (UsdcChain & { seller: string })[];
+  /** Each network with the seller's address there and, where the payment
+   *  is held in escrow, the two boxes' escrow keys the wallet names. */
+  chains: (UsdcChain & { seller: string; buyer_box?: string; seller_box?: string })[];
   /** Coins other than USDC the seller takes for this order. */
   coins?: Coin[];
 }
@@ -1972,7 +1987,7 @@ export interface AppSource {
 }
 
 /** The two data users: the private side and the side lent to the mesh. */
-export type AppRunAs = "notshared" | "shared";
+export type AppRunAs = "notshared" | "shared" | "kindashared";
 
 export type AppPhase = "installing" | "running" | "failed" | "removing";
 
@@ -2003,7 +2018,13 @@ export interface InstalledApp {
 
 export type AppsResponse =
   | { available: false; reason: "off"; apps: [] }
-  | { available: true; sharedAvailable: boolean; apps: InstalledApp[] };
+  | {
+      available: true;
+      sharedAvailable: boolean;
+      /** Missing from an older lososd, which reads as no. */
+      kindasharedAvailable?: boolean;
+      apps: InstalledApp[];
+    };
 
 /** GET /api/apps */
 export function getApps(options: RequestOptions = {}): Promise<AppsResponse> {
@@ -3195,9 +3216,9 @@ export function buildOverridesNix(
   settings: SettingsResponse,
   /* Every other `losos.<name>` the file should carry, as Nix literals the
    * Advanced pane produced (lib/option-value.ts): one line each, after the
-   * twelve above, sorted so the file is stable from one apply to the next
+   * thirteen above, sorted so the file is stable from one apply to the next
    * and the commit lososd makes shows only what changed. A name here that is
-   * one of the twelve would be a second line for the same key; the first
+   * one of the thirteen would be a second line for the same key; the first
    * wins in lososd's parser, so the form's own value would silently win over
    * the Advanced pane's. The pane never hands one in (it edits those through
    * the form), and the filter below is the belt to that. */
@@ -3211,6 +3232,7 @@ export function buildOverridesNix(
     "{ ... }:",
     "{",
     `  losos.sharingMyStorage = ${nixBool(settings.sharingMyStorage)};`,
+    `  losos.sharingLocally = ${nixBool(settings.sharingLocally)};`,
     `  losos.hostName = ${nixString(settings.hostName)};`,
     `  losos.gpu.enable = ${nixBool(settings.gpuEnable)};`,
     `  losos.proxy.enable = ${nixBool(settings.proxyEnable)};`,
@@ -3228,9 +3250,10 @@ export function buildOverridesNix(
   ].join("\n");
 }
 
-/** The twelve `losos.*` names the lines above always write. */
+/** The thirteen `losos.*` names the lines above always write. */
 export const OWNED_NAMES: ReadonlySet<string> = new Set([
   "sharingMyStorage",
+  "sharingLocally",
   "hostName",
   "gpu.enable",
   "proxy.enable",
@@ -3390,6 +3413,97 @@ export function deleteHandWidget(
     ...options,
     method: "DELETE",
   });
+}
+
+// ── Pages as MDX (backend/plugins/pages, src/pages/) ────────────────────
+
+/** A page an administrator changed, as the box drew it. */
+export interface CustomPage {
+  /** The page's HTML, its blocks as placeholders (src/pages/README.md). */
+  html: string;
+  /** When it was saved, ISO 8601, and by whom. */
+  at: string;
+  by: string;
+}
+
+/** GET /api/pages — every signed-in person: the pages an administrator
+ *  changed, and whether there is a stylesheet of theirs. */
+export interface PagesResponse {
+  pages: Record<string, CustomPage>;
+  /** A version for `/api/pages/style.css?v=`, or null for none. */
+  style: string | null;
+}
+
+export function getPages(options: RequestOptions = {}): Promise<PagesResponse> {
+  return call<PagesResponse>("/api/pages", options);
+}
+
+/** One commit of the pages' repository. */
+export interface PageCommit {
+  commit: string;
+  at: string;
+  by: string;
+  message: string;
+}
+
+/** GET /api/pages/{page} — administrators: a page's source, its default,
+ *  and its history. */
+export interface PageSource {
+  id: string;
+  /** The administrator's file, or the default when there is none. */
+  source: string;
+  default: string;
+  custom: boolean;
+  /** LosOS's default moved on since the page was changed. */
+  defaultChanged: boolean;
+  history: PageCommit[];
+}
+
+export function getPageSource(id: string, options: RequestOptions = {}): Promise<PageSource> {
+  return call<PageSource>(`/api/pages/${encodeURIComponent(id)}`, options);
+}
+
+/** PUT /api/pages/{page} — save an administrator's page; refused with the
+ *  first problem when it does not read cleanly. */
+export function putPage(id: string, source: string, options: RequestOptions = {}): Promise<PagesResponse> {
+  return call<PagesResponse>(`/api/pages/${encodeURIComponent(id)}`, {
+    ...options,
+    method: "PUT",
+    contentType: "application/json",
+    body: JSON.stringify({ source }),
+  });
+}
+
+/** DELETE /api/pages/{page} — back to LosOS's default. */
+export function resetPage(id: string, options: RequestOptions = {}): Promise<PagesResponse> {
+  return call<PagesResponse>(`/api/pages/${encodeURIComponent(id)}`, { ...options, method: "DELETE" });
+}
+
+/** The administrators' stylesheet as text, "" for none. */
+export async function getPagesStyle(options: RequestOptions = {}): Promise<string> {
+  const response = await fetch(apiPath("/api/pages/style.css"), {
+    cache: "no-store",
+    headers: getToken() === null ? {} : { Authorization: `Bearer ${getToken()}` },
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
+  });
+  if (response.status === 404) return "";
+  if (!response.ok) throw new ApiError(response.status, `HTTP ${response.status}`);
+  return response.text();
+}
+
+/** PUT /api/pages/style.css — the administrators' stylesheet. */
+export function putPagesStyle(source: string, options: RequestOptions = {}): Promise<PagesResponse> {
+  return call<PagesResponse>("/api/pages/style.css", {
+    ...options,
+    method: "PUT",
+    contentType: "application/json",
+    body: JSON.stringify({ source }),
+  });
+}
+
+/** DELETE /api/pages/style.css — no stylesheet of theirs. */
+export function resetPagesStyle(options: RequestOptions = {}): Promise<PagesResponse> {
+  return call<PagesResponse>("/api/pages/style.css", { ...options, method: "DELETE" });
 }
 
 // ── Every option, and the configuration repository ────────────────────────
@@ -3646,7 +3760,7 @@ export interface ConfigSync {
 }
 
 /** How the last look at the published branch went (backend/schema.json). */
-export type ConfigUpdateState = "off" | "pending" | "ok" | "kept" | "waiting" | "unavailable" | "error";
+export type ConfigUpdateState = "off" | "pending" | "ok" | "kept" | "holding" | "waiting" | "unavailable" | "error";
 
 export interface ConfigUpdateReport {
   state: ConfigUpdateState;

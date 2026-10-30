@@ -147,6 +147,8 @@ function escrowPay(seller = freshOwner(), treasury = freshOwner()) {
     gross: 6_000_000n,
     fee: 240_000n,
     deadline: BigInt(Math.floor(Date.now() / 1000) + 33 * 86_400),
+    buyerBox: freshOwner(),
+    sellerBox: freshOwner(),
     nonce: randomBytes(32),
     recentBlockhash: sol.formatBase58(new Uint8Array(32).fill(9)),
   };
@@ -160,7 +162,7 @@ await check('escrow addresses match the edge', () => {
   );
 });
 
-await check("escrow pay layout: the program's nine accounts and 89 bytes", () => {
+await check("escrow pay layout: the program's nine accounts and 153 bytes", () => {
   const p = escrowPay();
   const msg = sol.escrowPayMessage(p);
   // one signer; writable: the buyer's token account, the deposit, its
@@ -186,9 +188,10 @@ await check("escrow pay layout: the program's nine accounts and 89 bytes", () =>
   assert.equal(keys[msg[at + 1]], ESCROW);
   assert.equal(msg[at + 2], 9);
   assert.deepEqual([...msg.subarray(at + 3, at + 12)].map((i) => keys[i]), order);
-  assert.equal(msg[at + 12], 89);
-  const data = msg.subarray(at + 13);
-  assert.equal(data.length, 89);
+  // 153 is past 127: compact-u16 in two bytes.
+  assert.deepEqual([...msg.subarray(at + 12, at + 14)], [153 & 0x7f | 0x80, 153 >> 7]);
+  const data = msg.subarray(at + 14);
+  assert.equal(data.length, 153);
   assert.equal(data[0], 1);
   assert.deepEqual(data.subarray(1, 33), p.nonce);
   assert.equal(`0x${data.subarray(33, 65).toHex()}`, p.orderIdHash);
@@ -196,6 +199,8 @@ await check("escrow pay layout: the program's nine accounts and 89 bytes", () =>
   assert.equal(view.getBigUint64(65, true), p.gross);
   assert.equal(view.getBigUint64(73, true), p.fee);
   assert.equal(view.getBigInt64(81, true), p.deadline);
+  assert.equal(base58.encode(data.subarray(89, 121)), p.buyerBox);
+  assert.equal(base58.encode(data.subarray(121, 153)), p.sellerBox);
 });
 
 await check('escrow pay refuses a fee over the gross or a short nonce', () => {
@@ -448,7 +453,9 @@ if (RPC && Bun.env.LOSOS_ESCROW_PROGRAM === ESCROW) {
     const info = await rpc('getAccountInfo', [deposit, { encoding: 'base64', commitment: 'confirmed' }]);
     assert.equal(info.value.owner, ESCROW);
     const d = base64.decode(info.value.data[0]);
-    assert.equal(d.length, 196);
+    assert.equal(d.length, 260);
+    assert.equal(base58.encode(d.subarray(196, 228)), p.buyerBox);
+    assert.equal(base58.encode(d.subarray(228, 260)), p.sellerBox);
     assert.equal(base58.encode(d.subarray(36, 68)), buyer.address);
     assert.equal(base58.encode(d.subarray(68, 100)), seller);
     assert.equal(`0x${d.subarray(100, 132).toHex()}`, p.orderIdHash);

@@ -1057,12 +1057,15 @@ pub fn start_edge_scanner(backend: &IoLosos) {
             ensure_proxy_token();
             let pause_after = sharing_pause_after();
             let mut clock = crate::edge::OutageClock::default();
+            // Sharing as kindashared counts only the local gateways.
+            let mut local_clock = crate::edge::OutageClock::default();
             loop {
                 let status = backend.scan_edge();
                 let now = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .map_or(0, |d| d.as_secs());
                 clock.observe(status.reachable, now);
+                local_clock.observe(status.local_gateway(), now);
                 match backend
                     .serialized(|l| crate::losos::sharing_tick(l, &clock, now, pause_after))
                 {
@@ -1075,6 +1078,21 @@ pub fn start_edge_scanner(backend: &IoLosos) {
                     }
                     Ok(_) => {}
                     Err(e) => tracing::warn!(error = ?e, "could not pause or resume sharing"),
+                }
+                match backend.serialized(|l| {
+                    crate::losos::local_sharing_tick(l, &local_clock, now, pause_after)
+                }) {
+                    Ok(crate::edge::SharingStep::Pause) => tracing::warn!(
+                        pause_after,
+                        "no local gateway answered for {pause_after} s: sharing with this network is paused until one does"
+                    ),
+                    Ok(crate::edge::SharingStep::Resume) => {
+                        tracing::info!("a local gateway answers again: sharing with this network is back on");
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!(error = ?e, "could not pause or resume sharing with this network");
+                    }
                 }
                 std::thread::sleep(crate::edge::SCAN_INTERVAL);
             }
@@ -1129,6 +1147,31 @@ pub fn start_domain_sync(backend: &IoLosos) {
         });
     if let Err(e) = spawned {
         tracing::error!(error = %e, "could not start the custom-domain sync; domains refresh only when the Network pane asks");
+    }
+}
+
+/// Agree to the edge's escrow decisions that pay this box's owner
+/// ([`crate::losos::cmd_escrow_pass`]): once the edge scanner has had its
+/// first pass, then every [`crate::losos::ESCROW_PASS_EVERY`]. No state
+/// lock: the pass writes nothing on the box.
+pub fn start_escrow_signer(backend: &IoLosos) {
+    let backend = backend.clone();
+    let spawned = std::thread::Builder::new()
+        .name("lososd-escrow".into())
+        .spawn(move || {
+            std::thread::sleep(crate::edge::SCAN_INTERVAL);
+            loop {
+                let mut b = backend.clone();
+                match crate::losos::cmd_escrow_pass(&mut b) {
+                    Ok(0) => {}
+                    Ok(n) => tracing::info!(signed = n, "agreed to the edge's escrow decisions"),
+                    Err(e) => tracing::debug!(error = ?e, "no escrow pass this time"),
+                }
+                std::thread::sleep(crate::losos::ESCROW_PASS_EVERY);
+            }
+        });
+    if let Err(e) = spawned {
+        tracing::error!(error = %e, "could not start the escrow signer; escrowed payments wait on the payer's deadline");
     }
 }
 
@@ -2678,6 +2721,17 @@ impl Losos for IoLosos {
         }
     }
 
+    fn escrow_keys(&mut self) -> anyhow::Result<Option<crate::escrow_key::Keys>> {
+        let Some(path) = std::env::var_os("LOSOS_ESCROW_KEY_FILE") else {
+            return Ok(None);
+        };
+        match std::fs::read_to_string(&path) {
+            Ok(text) => crate::escrow_key::Keys::from_hex(&text).map(Some),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(anyhow::Error::new(e).context("reading the escrow key")),
+        }
+    }
+
     fn market_request(&mut self, op: &crate::market::Op) -> anyhow::Result<crate::market::Outcome> {
         let Some(config) = crate::market::Config::from_env() else {
             return Ok(crate::market::Outcome::Unavailable);
@@ -2885,6 +2939,28 @@ impl Losos for IoLosos {
         Ok(upstream
             .zip(followed)
             .map(|(upstream, followed)| crate::config_repo::FollowMark { upstream, followed }))
+    }
+
+    fn upstream_base(&mut self, sha: &str) -> anyhow::Result<Option<i64>> {
+        // A shallow fetch keeps the commit object itself, so its time and
+        // message are here even though its parents are not.
+        let out = git(
+            &self.paths,
+            false,
+            &["log", "-1", "--no-walk", "--format=%ct%x00%B", sha, "--"],
+        )?;
+        if !out.status.success() {
+            return Ok(None);
+        }
+        let text = String::from_utf8_lossy(&out.stdout);
+        let Some((time, message)) = text.split_once('\0') else {
+            return Ok(None);
+        };
+        Ok(time
+            .trim()
+            .parse()
+            .ok()
+            .map(|t| crate::config_repo::base_of(t, message)))
     }
 
     fn config_edited_outside(&mut self, base: Option<&str>) -> anyhow::Result<bool> {
@@ -3420,6 +3496,8 @@ mod tests {
             managed_by: Some("http://office.local:8443".into()),
             sharing_paused_at: Some(1_700_000_000),
             sharing_edge_seen: true,
+            local_sharing_paused_at: Some(1_700_000_100),
+            local_sharing_edge_seen: true,
         };
         write_state(&p, &s).unwrap();
         assert_eq!(read_state(&p), s);

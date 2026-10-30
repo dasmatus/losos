@@ -129,6 +129,8 @@ fn record(backend: &IoLosos, job: &str, state: RebuildState) {
             managed_by: None,
             sharing_paused_at: None,
             sharing_edge_seen: false,
+            local_sharing_paused_at: None,
+            local_sharing_edge_seen: false,
         },
     )
     .unwrap();

@@ -321,7 +321,7 @@ impl Install for IoInstall {
     /// It now waits for the flake's host to resolve, then retries the clone a
     /// couple of times for a flaky first connection. Nothing destructive has
     /// run by this point, so waiting is always safe.
-    fn clone_flake(&mut self, url: &str, work: &Path) -> anyhow::Result<()> {
+    fn clone_flake(&mut self, url: &str, branch: Option<&str>, work: &Path) -> anyhow::Result<()> {
         self.set_activity(Some("Checking network connection"));
         if let Some(host) = flake_host(url) {
             let secs = std::env::var("LOSOS_NETWORK_TIMEOUT")
@@ -343,23 +343,20 @@ impl Install for IoInstall {
             waited?;
         }
         self.set_activity(Some("Downloading repository"));
+        let branch = branch.filter(|b| !channel_missing(url, b));
+        let mut args = vec!["clone", "--progress", "--depth", "1"];
+        if let Some(b) = branch {
+            args.extend(["--branch", b]);
+        }
+        let work_arg = work.to_string_lossy().into_owned();
+        args.extend([url, work_arg.as_str()]);
         let mut attempt = 1;
         loop {
             if work.exists() {
                 std::fs::remove_dir_all(work)
                     .with_context(|| format!("clearing {}", work.display()))?;
             }
-            match run_live(
-                "git",
-                &[
-                    "clone",
-                    "--progress",
-                    "--depth",
-                    "1",
-                    url,
-                    &work.to_string_lossy(),
-                ],
-            ) {
+            match run_live("git", &args) {
                 Ok(()) => break,
                 Err(e) if attempt < CLONE_ATTEMPTS => {
                     log_line(&format!("losos-install: clone attempt {attempt} of {CLONE_ATTEMPTS} failed, retrying: {e:#}"));
@@ -546,6 +543,27 @@ impl Install for IoInstall {
     fn log_info(&mut self, msg: &str) {
         log_line(msg);
     }
+}
+
+/// Whether `url` answers and has no branch `branch`: a fork or a local copy
+/// without the release channels, or the first hours before the first cut.
+/// The installer then clones the default branch and the box's first nightly
+/// update moves it to the channel. Anything else, an unreachable host
+/// included, is left to the clone and its retries.
+fn channel_missing(url: &str, branch: &str) -> bool {
+    let missing = std::process::Command::new("git")
+        .args(["ls-remote", "--exit-code", "--heads", url])
+        .arg(format!("refs/heads/{branch}"))
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.code() == Some(2));
+    if missing {
+        log_line(&format!(
+            "losos-install: {url} has no branch {branch}; cloning its default branch"
+        ));
+    }
+    missing
 }
 
 /// The host a flake URL is fetched from, or `None` for a local path.
@@ -745,6 +763,10 @@ pub fn options_from_env(
         disko_script,
         emit_target,
         flake_url: env_or("LOSOS_FLAKE_URL", DEFAULT_FLAKE_URL),
+        // modules/installer.nix sets it to the channel the box will follow.
+        flake_branch: std::env::var("LOSOS_FLAKE_BRANCH")
+            .ok()
+            .filter(|b| !b.trim().is_empty()),
         flake_work: PathBuf::from(env_or("LOSOS_FLAKE_WORK", DEFAULT_FLAKE_WORK)),
         keyfile: PathBuf::from(env_or("LOSOS_KEYFILE", DEFAULT_KEYFILE)),
         target_rel: PathBuf::from(DEFAULT_TARGET_REL),

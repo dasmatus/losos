@@ -16,7 +16,11 @@ import {
 } from "@/lib/api";
 import { intlTag } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-react";
+import type { MessageKey } from "@/lib/i18n";
+import { nixUnquote } from "@/lib/option-value";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue, StackRow } from "./rows";
+import { SelectRow, slotFor } from "./site-settings";
+import type { SettingsForm } from "./use-settings-form";
 
 /* The configuration repository: where it is on LosOS Git, how the last sync
  * went, and the commits lososd made.
@@ -31,10 +35,26 @@ import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue, S
  *
  * The clone address shown is the box's own origin plus LosOS Git's path, not
  * the loopback URL lososd pushes to: the owner clones from where they are.
+ *
+ * The release channel is the one setting here: `losos.updates.channel`, a
+ * line of overrides.nix in the settings draft like the Apps pane's rows
+ * (site-settings.tsx), applied with the Apply bar. It picks the branch the
+ * nightly update follows (modules/options.nix).
  */
 
-export function HistoryPane({ locked }: { locked: boolean }) {
+const CHANNELS: readonly (readonly [string, MessageKey, MessageKey])[] = [
+  ["daily", "history.update.channel.daily", "history.update.channel.dailyDetail"],
+  ["weekly", "history.update.channel.weekly", "history.update.channel.weeklyDetail"],
+  ["monthly", "history.update.channel.monthly", "history.update.channel.monthlyDetail"],
+  ["main", "history.update.channel.main", "history.update.channel.mainDetail"],
+];
+
+export function HistoryPane({ form }: { form: SettingsForm }) {
+  const locked = form.locked;
   const t = useT();
+  const channelId = React.useId();
+  const channel = slotFor(form, "updates.channel");
+  const picked = channel === null ? null : CHANNELS.find(([value]) => value === nixUnquote(channel.raw ?? ""));
   const locale = useLocale();
   const [config, setConfig] = React.useState<ConfigResponse | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -191,6 +211,15 @@ export function HistoryPane({ locked }: { locked: boolean }) {
       <PaneSection>
         <GroupTitle>{t("history.update.title")}</GroupTitle>
         <Group>
+          {channel !== null && config.upstream.url !== null && (
+            <SelectRow
+              id={channelId}
+              slot={channel}
+              title={t("history.update.channel")}
+              detail={picked === undefined || picked === null ? undefined : t(picked[2])}
+              choices={CHANNELS.map(([value, label]) => [value, t(label)] as const)}
+            />
+          )}
           {config.upstream.url !== null && (
             <Row>
               <RowText title={t("history.update.source")} detail={<span className="numeric break-all">{config.upstream.url}</span>} />
@@ -293,6 +322,7 @@ const UPDATE_STATES: ReadonlySet<string> = new Set([
   "pending",
   "ok",
   "kept",
+  "holding",
   "waiting",
   "unavailable",
   "error",
@@ -341,6 +371,8 @@ function updateTone(state: ConfigUpdateState): BadgeProps["variant"] {
     case "waiting":
     case "pending":
     case "off":
+      return "neutral";
+    case "holding":
       return "neutral";
     case "kept":
     case "unavailable":

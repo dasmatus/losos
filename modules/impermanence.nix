@@ -172,6 +172,7 @@ in
       }
       "/home/notshared/data"
       "/home/shared/data"
+      "/home/kindashared/data"
       # Service state lives under /var/lib/{losos-cloud,losos-git} and is covered
       # by the whole-/var bind mount above; so are lososd's
       # /var/lib/losos/state.json, the container images and Kubernetes state
