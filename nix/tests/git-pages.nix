@@ -76,7 +76,7 @@ let
       }
     }
     export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
-    exec ${pkgs.nodejs}/bin/node ${./git-shots.mjs} "$@"
+    exec ${pkgs.bun}/bin/bun ${./git-shots.mjs} "$@"
   '';
   screens = import ./screens { inherit pkgs; };
 in

@@ -3510,6 +3510,31 @@ async fn post_backup_target(
     )
 }
 
+/// `POST /api/backup/target/bought`: back up to storage this box bought on
+/// the mesh, `{"order": "ord_…"}`. Relayed: the door's key is set at the
+/// edge first.
+async fn post_backup_target_bought(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+    match field_str(&doc, "order") {
+        Some(order) => {
+            relayed(&api, &req, "/api/backup/target/bought", true, move |b| {
+                crate::erase::cmd_backup_target_bought(b, &order)
+            })
+            .await
+        }
+        None => guarded(&api, &req, "/api/backup/target/bought", true, || {
+            err(
+                StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"order": "ord_…"}"#,
+            )
+        }),
+    }
+}
+
 /// `DELETE /api/backup/target`: forget the bucket; the backups in it stay.
 async fn delete_backup_target(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     guarded(&api, &req, "/api/backup/target", true, || {
@@ -6759,6 +6784,10 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 )
                 .route("/api/backup/target", web::post().to(post_backup_target))
                 .route("/api/backup/target", web::delete().to(delete_backup_target))
+                .route(
+                    "/api/backup/target/bought",
+                    web::post().to(post_backup_target_bought),
+                )
                 .route("/api/backup/run", web::post().to(post_backup_run))
                 .route("/api/backup/restore", web::post().to(post_backup_restore))
                 .route("/api/erase", web::post().to(post_erase))

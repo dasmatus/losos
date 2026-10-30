@@ -67,37 +67,36 @@
 // only what comes after is taken frame by frame). A shot fails the run when a step does or the page throws:
 // a picture of a half-loaded page is worse than none.
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
-import { join } from 'node:path';
-import { parseArgs } from 'node:util';
+const join = (...parts) => parts.join('/');
 
-// Through require, which honours NODE_PATH; the wrapper points it at
-// Playwright's driver from nixpkgs.
-const { chromium } = createRequire(import.meta.url)('playwright-core');
+// Playwright's driver from nixpkgs, which the wrapper names.
+const { chromium } = await import(Bun.env.PLAYWRIGHT_CORE ?? 'playwright-core');
 
-const { values: args } = parseArgs({
-  options: {
-    base: { type: 'string' },
-    plan: { type: 'string' },
-    out: { type: 'string' },
-    user: { type: 'string' },
-    password: { type: 'string' },
-    // A browser outside the test network (the driver's own) reaches the
-    // box through a proxy on one of the VMs.
-    proxy: { type: 'string' },
-  },
-});
+/* `--name value` or `--name=value`, for each of `names`; anything else is refused. */
+function flags(names) {
+  const out = {};
+  const argv = Bun.argv.slice(2);
+  for (let i = 0; i < argv.length; i++) {
+    const m = /^--([^=]+)(?:=(.*))?$/.exec(argv[i]);
+    if (!m || !names.includes(m[1])) throw new Error(`unknown argument ${argv[i]}`);
+    out[m[1]] = m[2] ?? argv[++i];
+  }
+  return out;
+}
+
+// --proxy: a browser outside the test network (the driver's own) reaches
+// the box through a proxy on one of the VMs.
+const args = flags(['base', 'plan', 'out', 'user', 'password', 'proxy']);
 for (const need of ['base', 'plan', 'out']) {
   if (!args[need]) {
-    console.error(`losos-capture: --${need} is required`);
-    process.exit(2);
+    // Thrown: an uncaught error is what makes Bun exit non-zero.
+    throw new Error(`losos-capture: --${need} is required`);
   }
 }
 
-const plan = JSON.parse(readFileSync(args.plan, 'utf8'));
+const plan = await Bun.file(args.plan).json();
 const base = args.base.replace(/\/+$/, '');
-mkdirSync(args.out, { recursive: true });
+Bun.spawnSync(['mkdir', '-p', args.out]);
 
 function locate(page, what) {
   if (what.role) return page.getByRole(what.role, { name: what.name, exact: true }).first();
@@ -372,7 +371,7 @@ try {
     }
   }
 } finally {
-  writeFileSync(join(args.out, 'report.json'), `${JSON.stringify(report, null, 2)}\n`);
-  if (film.length > 0) writeFileSync(join(args.out, 'film.json'), `${JSON.stringify(film, null, 2)}\n`);
+  await Bun.write(join(args.out, 'report.json'), `${JSON.stringify(report, null, 2)}\n`);
+  if (film.length > 0) await Bun.write(join(args.out, 'film.json'), `${JSON.stringify(film, null, 2)}\n`);
   await browser.close();
 }

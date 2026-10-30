@@ -39,10 +39,13 @@ let
   # (laying the flake), systemd for systemd-cryptenroll (sealing the disk key
   # to the TPM2 right after the format), clevis for `--tang` (the same key
   # sealed to the TPM2 and a Tang server), curl for `--tang-edge` (asking
-  # the edge for the box's Tang key). nixos-install comes from the installer
-  # medium's own PATH (--prefix preserves the rest of PATH). cryptsetup/lvm2
-  # mirror the old wrap in case disko reaches for them directly.
+  # the edge for the box's Tang key, and sending a problem report), less for
+  # showing that report on screen 7 (src/install_report.rs). nixos-install
+  # comes from the installer medium's own PATH (--prefix preserves the rest
+  # of PATH). cryptsetup/lvm2 mirror the old wrap in case disko reaches for
+  # them directly.
   tools = lib.makeBinPath [
+    pkgs.less
     pkgs.disko
     pkgs.git
     pkgs.util-linux
@@ -55,6 +58,22 @@ let
   ];
 
   plymouth = config.boot.plymouth.enable;
+
+  # Where a problem report goes (losos.report.*, modules/problems.nix on the
+  # box). The GitHub App's client ID is not among these: the installer reads
+  # it from its unit's credential `report-client-id` (below), and a medium
+  # without one offers no report. It still names the handbook's page for a
+  # failure the handbook explains.
+  report = config.losos.report;
+  sending = report.enable && report.clientId != null && report.clientId != "";
+  reportEnv = [
+    "--set LOSOS_RELEASE ${lib.escapeShellArg (import ../nix/version.nix)}"
+  ]
+  ++ lib.optionals report.enable [
+    "--set LOSOS_REPORT_REPOSITORY ${lib.escapeShellArg report.repository}"
+    "--set LOSOS_REPORT_LOGIN ${lib.escapeShellArg report.login}"
+    "--set LOSOS_REPORT_API ${lib.escapeShellArg report.api}"
+  ];
 
   # GPG keys baked into this medium (losos.access.gpgKeys set on the iso
   # system): every install from it seeds them, as `--gpg-key` would. A stock
@@ -189,6 +208,14 @@ in
         UtmpIdentifier = "tty1";
         UtmpMode = "user";
         IgnoreSIGPIPE = false;
+        # The report client ID, as a credential (src/install_report.rs
+        # `client_id`): one passed to the machine (`systemd.set_credential=`
+        # on the kernel command line, SMBIOS, a credstore) wins; a medium
+        # built with losos.report.clientId (CI's LOSOS_ABRT_VAR, flake.nix)
+        # carries it as the fallback. The installer hands it to the box it
+        # installs, whose first boot seals it (modules/problems.nix).
+        ImportCredential = lib.mkIf report.enable [ "report-client-id" ];
+        SetCredential = lib.mkIf sending [ "report-client-id:${report.clientId}" ];
       };
     };
   };

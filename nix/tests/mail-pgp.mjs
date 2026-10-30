@@ -15,9 +15,13 @@
 // px at device scale 2, dark, en-US, reduced motion, Europe/Bratislava, once
 // the page has settled, with where the film may point.
 
-import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+/* One line more at the end of a file the earlier calls of this script began. */
+async function append(path, line) {
+  const file = Bun.file(path);
+  await Bun.write(file, ((await file.exists()) ? await file.text() : '') + line);
+}
 
-const { chromium } = await import(`${process.env.PLAYWRIGHT_CORE}/index.mjs`);
+const { chromium } = await import(`${Bun.env.PLAYWRIGHT_CORE}/index.mjs`);
 
 const BASE = 'https://mattbox.local';
 const OUT = '/tmp/shots';
@@ -99,11 +103,11 @@ function shooter(first) {
   return async (page, slug, title, action = { kind: 'none' }, targets = {}) => {
     if (n === null) return;
     await settle(page);
-    mkdirSync(OUT, { recursive: true });
+    Bun.spawnSync(['mkdir', '-p', OUT]);
     const file = `${String(n++).padStart(2, '0')}-${slug}.png`;
     await page.screenshot({ path: `${OUT}/${file}`, timeout: 300_000 });
     const url = page.url().replace('https://', '').replace(':443', '');
-    appendFileSync(`${OUT}/steps.jsonl`, JSON.stringify({ file, url, title, action, targets }) + '\n');
+    await append(`${OUT}/steps.jsonl`, JSON.stringify({ file, url, title, action, targets }) + '\n');
     console.log('shot', file);
   };
 }
@@ -277,7 +281,7 @@ async function sent(password, passphrase) {
  * window and state as 08-eva-inbox, 11-opened and 06-compose. */
 async function before(evaPassword, matusPassword) {
   const dir = `${OUT}-before`;
-  mkdirSync(dir, { recursive: true });
+  Bun.spawnSync(['mkdir', '-p', dir]);
   const shot = async (page, slug) => {
     await settle(page);
     await page.screenshot({ path: `${dir}/${slug}.png`, timeout: 300_000 });
@@ -305,23 +309,23 @@ async function before(evaPassword, matusPassword) {
   await matus.close();
 }
 
-function manifest(test) {
-  const steps = readFileSync(`${OUT}/steps.jsonl`, 'utf8')
+async function manifest(test) {
+  const steps = (await Bun.file(`${OUT}/steps.jsonl`).text())
     .split('\n')
     .filter((l) => l !== '')
     .map((l) => JSON.parse(l))
     .sort((a, b) => a.file.localeCompare(b.file));
-  writeFileSync(
+  await Bun.write(
     `${OUT}/manifest.json`,
-    JSON.stringify({ feature: 'mail-pgp', viewport: VIEWPORT, dpr: 2, commit: process.env.MAIL_SCREENS_COMMIT ?? '', test, steps }, null, 2) + '\n',
+    JSON.stringify({ feature: 'mail-pgp', viewport: VIEWPORT, dpr: 2, commit: Bun.env.MAIL_SCREENS_COMMIT ?? '', test, steps }, null, 2) + '\n',
   );
-  rmSync(`${OUT}/steps.jsonl`);
+  await Bun.$`rm -f ${OUT}/steps.jsonl`;
 }
 
-const [verb, ...rest] = process.argv.slice(2);
+const [verb, ...rest] = Bun.argv.slice(2);
 const verbs = { key, send, outside, read, sent, before, manifest };
 if (!(verb in verbs)) {
-  console.error(`unknown verb ${verb}`);
-  process.exit(2);
+  // Thrown: an uncaught error is what makes Bun exit non-zero.
+  throw new Error(`unknown verb ${verb}`);
 }
 await verbs[verb](...rest);

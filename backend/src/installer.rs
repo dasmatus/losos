@@ -362,7 +362,16 @@ pub struct Options {
     /// (`losos.access.gpgKeys`). Checked by the CLI layer before they get
     /// here; empty on a stock medium.
     pub gpg_keys: Vec<String>,
+    /// The GitHub App problem reports sign in with, from the medium's own
+    /// credential (`report-client-id`), handed to the installed box. None
+    /// on a medium built without one.
+    pub report_client_id: Option<String>,
 }
+
+/// Where the installer leaves the report client ID for the installed box:
+/// a `legacy` path of its credential (modules/problems.nix), so the box's
+/// first boot seals it into /etc/credstore.encrypted and deletes this copy.
+pub const REPORT_CLIENT_ID_HANDOVER: &str = "/mnt/persist/var/lib/losos/report-client-id";
 
 /// One side effect. Keeping these as data rather than calling straight into the
 /// world is what makes the ordering testable.
@@ -588,6 +597,12 @@ fn install_tail(opts: &Options, work: &Path) -> Vec<InstallAction> {
     }
 
     acts.push(InstallAction::RunNixosInstall(work.to_path_buf()));
+    if let Some(id) = &opts.report_client_id {
+        acts.push(InstallAction::WriteTarget(
+            PathBuf::from(REPORT_CLIENT_ID_HANDOVER),
+            id.clone(),
+        ));
+    }
     acts.push(InstallAction::LayFlake(
         work.to_path_buf(),
         PathBuf::from("/mnt/persist/etc/nixos"),
@@ -682,7 +697,28 @@ mod tests {
             target_rel: PathBuf::from("modules/install-target.nix"),
             emit_file: PathBuf::from("/tmp/losos-install-target.nix"),
             gpg_keys: Vec::new(),
+            report_client_id: None,
         }
+    }
+
+    #[test]
+    fn the_report_client_id_goes_to_the_box_only_when_the_medium_has_one() {
+        let handover = |a: &InstallAction| matches!(a, InstallAction::WriteTarget(p, _) if p == Path::new(REPORT_CLIENT_ID_HANDOVER));
+        let acts = plan_install(&opts(), &targets()).unwrap();
+        assert!(!acts.iter().any(handover));
+
+        let o = Options {
+            report_client_id: Some("Iv23test".into()),
+            ..opts()
+        };
+        let acts = plan_install(&o, &targets()).unwrap();
+        let at = |f: &dyn Fn(&InstallAction) -> bool| acts.iter().position(f).unwrap();
+        let written = at(&handover);
+        // Into /persist once nixos-install has made the tree, never onto
+        // the throwaway /mnt tmpfs.
+        assert!(at(&|a| matches!(a, InstallAction::RunNixosInstall(_))) < written);
+        assert!(matches!(&acts[written], InstallAction::WriteTarget(_, id) if id == "Iv23test"));
+        assert!(REPORT_CLIENT_ID_HANDOVER.starts_with("/mnt/persist/"));
     }
 
     fn disk(name: &str, size: u64, children: Vec<BlockDev>) -> BlockDev {

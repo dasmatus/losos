@@ -19,12 +19,12 @@ two things and nothing else:
   passed to them directly.
 
 braces' own test suite (764 tests at the 3.0.3 release) passes against this
-copy unchanged. `npm run check:braces` checks that the override is in effect
+copy unchanged. `bun run check:braces` checks that the override is in effect
 and that deep nesting is refused.
 
 Drop this directory, the `braces` line in `devDependencies` and the one in
 `overrides` once braces publishes a fixed release, then recompute
-`npmDepsHash` in `nix/packages.nix`.
+the handbook's node_modules `hash` in `nix/packages.nix`.
 
 ## Licence
 

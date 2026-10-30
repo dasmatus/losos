@@ -22,31 +22,59 @@
 // OUT/handbook: light, in English, Slovak and German, named the way the
 // handbook names them (`context-menu-file.png`, `-sk`, `-de`).
 
-import assert from "node:assert/strict";
-import { createHash, X509Certificate } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+const join = (...parts) => parts.join("/");
 
-const { chromium } = await import(process.env.PLAYWRIGHT_CORE ?? "playwright-core");
+// The three checks this script makes, strict like node:assert/strict.
+const assert = {
+  ok(value, message) {
+    if (!value) throw new Error(message ?? `expected a truthy value, got ${Bun.inspect(value)}`);
+  },
+  equal(actual, expected, message) {
+    if (!Object.is(actual, expected)) throw new Error(message ?? `${Bun.inspect(actual)} !== ${Bun.inspect(expected)}`);
+  },
+  deepEqual(actual, expected, message) {
+    if (!Bun.deepEquals(actual, expected, true)) throw new Error(message ?? `${Bun.inspect(actual)} does not equal ${Bun.inspect(expected)}`);
+  },
+};
+
+const { chromium } = await import(Bun.env.PLAYWRIGHT_CORE ?? "playwright-core");
 
 const DESKTOP = { width: 1280, height: 900 };
 const PHONE = { width: 390, height: 844 };
 
-function spkiPin(pemFile) {
-  const cert = new X509Certificate(readFileSync(pemFile));
-  const der = cert.publicKey.export({ type: "spki", format: "der" });
-  return createHash("sha256").update(der).digest("base64");
+async function spkiPin(pemFile) {
+  const pem = await Bun.file(pemFile).text();
+  const der = Uint8Array.fromBase64(/-----BEGIN CERTIFICATE-----([^-]+)-----END CERTIFICATE-----/.exec(pem)[1].replace(/\s/g, ""));
+  // One DER element at `at`: where its contents start and where it ends.
+  const element = (at) => {
+    let len = der[at + 1];
+    let start = at + 2;
+    if (len & 0x80) {
+      const n = len & 0x7f;
+      len = 0;
+      for (let i = 0; i < n; i++) len = len * 256 + der[start + i];
+      start += n;
+    }
+    return { start, end: start + len };
+  };
+  // Certificate > tbsCertificate > [0] version, serial, signature, issuer,
+  // validity, subject, then the subjectPublicKeyInfo Chromium hashes.
+  let at = element(element(0).start).start;
+  if (der[at] === 0xa0) at = element(at).end;
+  for (let i = 0; i < 5; i++) at = element(at).end;
+  const spki = der.subarray(at, element(at).end);
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", spki)).toBase64();
 }
 
-const argv = process.argv.slice(2);
+const argv = Bun.argv.slice(2);
 const flag = (name) => argv.includes(name);
 const option = (name, fallback) => (argv.includes(name) ? argv[argv.indexOf(name) + 1] : fallback);
 const [base, name, password, out] = argv.filter((a, i) => !a.startsWith("--") && !argv[i - 1]?.startsWith("--ca"));
 const before = flag("--before");
 const ca = option("--ca", "/etc/losos-box.pem");
-mkdirSync(out, { recursive: true });
+Bun.spawnSync(["mkdir", "-p", out]);
 
-const browser = await chromium.launch({ args: [`--ignore-certificate-errors-spki-list=${spkiPin(ca)}`] });
+const browser = await chromium.launch({ args: [`--ignore-certificate-errors-spki-list=${await spkiPin(ca)}`] });
 const steps = [];
 
 async function session(scheme, viewport, touch = false, locale = "en-US") {
@@ -285,7 +313,7 @@ async function phone() {
 async function handbook(locale, suffix) {
   const { context, page, errors } = await session("light", DESKTOP, false, locale);
   const dir = join(out, "handbook");
-  mkdirSync(dir, { recursive: true });
+  Bun.spawnSync(["mkdir", "-p", dir]);
   const shoot = async (slug) => {
     await settle(page);
     await page.screenshot({ path: join(dir, `${slug}${suffix}.png`) });
@@ -324,5 +352,5 @@ if (!before) {
   await handbook("sk-SK", "-sk");
   await handbook("de-DE", "-de");
 }
-writeFileSync(join(out, "manifest.json"), JSON.stringify({ feature: "context-menu", before, steps }, null, 2) + "\n");
+await Bun.write(join(out, "manifest.json"), JSON.stringify({ feature: "context-menu", before, steps }, null, 2) + "\n");
 await browser.close();

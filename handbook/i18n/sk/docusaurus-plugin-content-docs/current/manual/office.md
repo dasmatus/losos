@@ -67,6 +67,8 @@ Editor ukladá priebežne a aj keď odídete, a **Uložiť** zapíše vaše zmen
 hneď. V LosOS Cloud každé uloženie zachová predchádzajúci obsah ako verziu
 súboru a aplikácie na synchronizáciu vo vašich počítačoch si vezmú nový.
 
+![Textový dokument otvorený v LosOS Office: nad ním lišty zariadenia s cestou späť, názvom, priblížením, stiahnutím ako PDF a uložením, pod nimi lišta formátovania.](@site/docs/img/office-document-sk.png)
+
 ## Spoločná práca \{#working-together}
 
 Keď ten istý dokument otvorí druhý človek, ste obaja v tej istej kópii.

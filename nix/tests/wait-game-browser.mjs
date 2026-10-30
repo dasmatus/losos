@@ -1,7 +1,7 @@
 /* The browser half of nix/tests/wait-game.nix: play the game a long wait
  * offers, on a booted box, and photograph it.
  *
- *   node wait-game-browser.mjs '{"origin": "http://127.0.0.1:18081",
+ *   bun wait-game-browser.mjs '{"origin": "http://127.0.0.1:18081",
  *     "mode": "rebuild", "token": "…", "out": "/…/shots",
  *     "sync": "/…/sync"}'
  *
@@ -12,16 +12,16 @@
  * assert on. Playwright is nixpkgs' playwright-core, named by
  * LOSOS_PLAYWRIGHT. */
 
-import { existsSync, mkdirSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
+const exists = (file) => Bun.file(file).exists();
 
-const { chromium } = await import(process.env.LOSOS_PLAYWRIGHT);
-const plan = JSON.parse(process.argv[2]);
-mkdirSync(plan.out, { recursive: true });
+const { chromium } = await import(Bun.env.LOSOS_PLAYWRIGHT);
+const plan = JSON.parse(Bun.argv[2]);
+Bun.spawnSync(['mkdir', '-p', plan.out]);
+// Thrown: an uncaught error is what makes Bun exit non-zero.
 const fail = (message) => {
-  console.error(message);
-  process.exit(1);
+  throw new Error(message);
 };
-const ask = (step) => writeFileSync(`${plan.sync}/${step}`, '');
+const ask = (step) => Bun.write(`${plan.sync}/${step}`, '');
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const browser = await chromium.launch({ args: ['--no-sandbox'] });
@@ -128,7 +128,7 @@ async function collect(page, errors, where) {
     await page.getByLabel('This box is called').fill('fishbox');
     await page.getByRole('button', { name: 'Apply', exact: true }).click();
     await offer(page).waitFor();
-    ask('applied');
+    await ask('applied');
     await page.screenshot({ path: `${plan.out}/settings-offer.png` });
     await baseline(page);
     await offer(page).click();
@@ -196,7 +196,7 @@ async function collect(page, errors, where) {
     await switchTo(page, 'upstream');
     await sleep(800);
     await PLAY.upstream(page, 7);
-    ask('release');
+    await ask('release');
     await page.getByTestId('game-ready').waitFor({ timeout: 180000 });
     found.rebuildReady = true;
     await sleep(2500);
@@ -205,9 +205,9 @@ async function collect(page, errors, where) {
     await sleep(1200);
     await collect(page, errors, 'clip');
     await context.close();
-    const [file] = readdirSync(video).filter((f) => f.endsWith('.webm'));
-    if (file !== undefined) renameSync(`${video}/${file}`, `${plan.out}/clip.webm`);
-    found.clip = existsSync(`${plan.out}/clip.webm`);
+    const [file] = await Array.fromAsync(new Bun.Glob('*.webm').scan({ cwd: video }));
+    if (file !== undefined) await Bun.$`mv ${video}/${file} ${plan.out}/clip.webm`;
+    found.clip = await exists(`${plan.out}/clip.webm`);
   }
 }
 
