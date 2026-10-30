@@ -497,6 +497,23 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   and `rebuild.log` and a size bound on nixpkgs' nginx rule, Nix build logs
   after 30 days. A new service that writes its own log file gets a cap
   here or in its own flags. `nix/tests/invariants.nix` pins it.
+- `log-reader.nix` + `backend/src/logs/` (`losos-logs`, a third binary of
+  the backend crate, `losos.logReader.enable`): Settings › Logs, the
+  journal in the admin pages. Its own user in `systemd-journal`, on
+  `/run/losos-logs/http.sock` (root and nginx's group), apart from lososd so
+  the page works while lososd is down: nginx sends it `/api/logs*` and
+  `/basic/settings/logs*`, and the no-JS page draws its own spare-key
+  sign-in (`backend/plugins/page/src/logs.rs`, shared with the basic
+  plugin). Every line is redacted (`logs/redact.rs`) before it is shown,
+  searched (never `--grep`, so a search cannot probe for a secret),
+  downloaded or handed to lososd's problem reports at
+  `/internal/logs/excerpt`, which refuses anything nginx forwards
+  (`X-Losos-Front`). The Service list is `/etc/losos/log-units.json`, the
+  units this box runs. The backend's services log through
+  `losos_ctl::trace::init`, which prefixes each line on a journal stream
+  with its syslog level (`<3>`, `<4>`) so journald files it at that
+  priority; a plain `tracing_subscriber::fmt()` lands every error as
+  info. `nix/tests/logs.nix` boots it and stops lososd.
 - `grow.rs`: `losos-ctl grow` runs lvextend, `cryptsetup resize`, `resize2fs`
   online, asserted against the plan and in `nix/tests/resize.nix`.
 - `backup.nix` + `backup.rs` + `erase.rs`: restic backups to an S3 bucket,

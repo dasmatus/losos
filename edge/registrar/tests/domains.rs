@@ -710,6 +710,16 @@ async fn a_gateway_cannot_forge_a_relay_pass() {
     {
         let tag = format!("rt-forge-spoke-{i}");
         let spoke = spoke(&tag, &hub).await;
+        // Every spoke here is `acme`, so the last one's route stays on the
+        // hub until this one's first /relay, which lists no box yet,
+        // replaces it. Without this wait the one below passes on the old
+        // route and that /relay then empties the document under it.
+        assert!(
+            hub.wait_for(|| hub
+                .traefik_yaml()
+                .is_none_or(|y| !y.contains("Host(`mattbox.acme.example.test`)")))
+                .await
+        );
         let (status, body) = spoke
             .post(
                 "/register",

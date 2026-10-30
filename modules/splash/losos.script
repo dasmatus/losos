@@ -18,6 +18,8 @@
 #
 #   #  headline        @  address        !  warning headline
 #   ~  secondary text  (space)  plain    >  the step running now, which pulses
+#   +  parts of LosOS that run           *  a part starting, which pulses
+#   -  a part that is not running
 #   an empty row is a gap
 #
 # Then the logo glides to the top, slow at first, faster, slow again, while
@@ -333,6 +335,12 @@ fun row_image (line)
     return Image.Text(text, muted.r, muted.g, muted.b, 1, font("", 1));
   if (style == ">")
     return Image.Text("▸  " + text, accent.r, accent.g, accent.b, 1, font("Bold ", 1));
+  if (style == "+")
+    return Image.Text("✓  " + text, muted.r, muted.g, muted.b, 1, font("", 1));
+  if (style == "*")
+    return Image.Text("…  " + text, accent.r, accent.g, accent.b, 1, font("", 1));
+  if (style == "-")
+    return Image.Text("✕  " + text, warn.r, warn.g, warn.b, 1, font("Bold ", 1));
   return Image.Text(text, ink.r, ink.g, ink.b, 1, font("", 1));
 }
 
@@ -382,11 +390,12 @@ fun layout ()
   panel.middle = panel.y + panel.h / 2;
 
   local.y = Math.Int(panel.y + 1.5 * pad);
-  global.pulse = -1;
+  global.pulsing = 0;
   for (i = 0; i < rows; i++)
     {
-      if (row[i].CharAt(0) == ">")
-        global.pulse = i;
+      global.pulse[i] = row[i].CharAt(0) == ">" || row[i].CharAt(0) == "*";
+      if (pulse[i])
+        global.pulsing = 1;
       if (!global.row_sprite[i])
         global.row_sprite[i] = Sprite();
       if (image[i])
@@ -462,18 +471,21 @@ fun draw ()
   message.sprite.SetPosition(centred(message.width), Math.Int(message.y * e + (logo_y + message.dy + pad) * (1 - e)), 3);
 }
 
-# The running step breathes, so a long one does not look stuck.
-pulse = -1;
+# The running step and the parts still starting breathe, so a long one
+# does not look stuck.
+pulsing = 0;
 frame = 0;
 
 fun refresh_callback ()
 {
   if (intro < opening)
     global.intro = intro + 1;
-  if (t == 1 && pulse >= 0 && image[pulse])
+  if (t == 1 && pulsing)
     {
       global.frame = (frame + 1) % 100;
-      row_sprite[pulse].SetOpacity(0.65 + 0.35 * Math.Cos(2 * Math.Pi * frame / 100));
+      for (local.i = 0; i < rows; i++)
+        if (pulse[i] && image[i])
+          row_sprite[i].SetOpacity(0.65 + 0.35 * Math.Cos(2 * Math.Pi * frame / 100));
     }
   if (t < target)
     global.t = Math.Min(target, t + step);
