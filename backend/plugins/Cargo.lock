@@ -113,6 +113,7 @@ version = "0.1.0"
 dependencies = [
  "losos-page",
  "losos-plugin",
+ "losos-report",
  "serde",
  "serde_json",
 ]
@@ -173,6 +174,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "losos-plugin-problems"
+version = "0.1.0"
+dependencies = [
+ "losos-plugin",
+ "losos-report",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "losos-plugin-statistics"
 version = "0.1.0"
 dependencies = [
@@ -186,6 +197,13 @@ name = "losos-pm-ci"
 version = "0.1.0"
 dependencies = [
  "wit-bindgen",
+]
+
+[[package]]
+name = "losos-report"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
 ]
 
 [[package]]

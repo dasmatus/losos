@@ -2231,6 +2231,58 @@ in
       description = "Show the order button in LosOS Diagrams.";
     };
 
+    # ── Problem reports (modules/problems.nix, backend/plugins/problems) ───
+    report.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Offer to send problem reports to LosOS's issue tracker on GitHub.
+        The box notes every service that fails, every program that crashes
+        and every one the kernel kills for memory, and Settings › Problems
+        lists them whatever this says. With this on, each problem the
+        handbook does not already explain has a report you can read in
+        full and send. Nothing is sent until you sign in to GitHub with the
+        code the page shows. The installer offers the same for a failed
+        install and for memory or processor use that spiked.
+      '';
+    };
+
+    report.repository = lib.mkOption {
+      type = lib.types.str;
+      default = "dasmatus/losos";
+      description = ''
+        The GitHub repository, as owner/name, whose issues the reports go
+        to.
+      '';
+    };
+
+    report.clientId = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = ''
+        The client ID of the GitHub App the reports sign in with: device
+        flow on, no webhook, and only the Issues permission, installed on
+        the repository. It is not a secret, because GitHub shows it on the
+        sign-in page. Set to null, the box and the installer still find
+        problems and write the reports, but cannot send them.
+      '';
+    };
+
+    # Where the device flow and the API are, for a VM test's stand-in.
+    report.login = lib.mkOption {
+      type = lib.types.str;
+      default = "https://github.com";
+      internal = true;
+      description = "GitHub's sign-in origin, for the device flow.";
+    };
+
+    report.api = lib.mkOption {
+      type = lib.types.str;
+      default = "https://api.github.com";
+      internal = true;
+      description = "GitHub's REST API origin.";
+    };
+
     # ── Installer (the `losos-ctl install` subcommand) ──────────────────────
     installer.package = lib.mkOption {
       type = lib.types.nullOr lib.types.package;
