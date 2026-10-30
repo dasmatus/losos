@@ -300,6 +300,15 @@ fn error_response(e: anyhow::Error) -> HttpResponse {
             "setting": why.setting,
         }));
     }
+    // Sharing with this network turned on with no local gateway in reach.
+    if let Some(why) = e.downcast_ref::<crate::edge::LocalGatewayRequired>() {
+        tracing::warn!("refused: no local gateway reachable");
+        return HttpResponse::build(StatusCode::CONFLICT).json(serde_json::json!({
+            "error": why.to_string(),
+            "localGatewayRequired": true,
+            "setting": "losos.sharingLocally",
+        }));
+    }
     // The mesh join on a box the edge cannot enrol (`crate::edge::
     // check_mesh`): the sentence, as a 409 with its own flag, rather than a
     // rebuild that fails on the same rule.

@@ -49,10 +49,16 @@ pub const LOCKED: &str = "losos-locked";
 /// change of access keeps them.
 pub const MARKS: [&str; 2] = [TWO_FACTOR, LOCKED];
 /// Names already taken by the box's own accounts in LosOS Cloud and LosOS
-/// Git: the owner's, the shared domain's and the bot's, and LosOS Git's
+/// Git: the owner's, the two sharing domains' and the bot's, and LosOS Git's
 /// account in chat (`crate::chat::GIT_BOT`). A person signing in under
 /// one of them would arrive as that account.
-const RESERVED: [&str; 4] = ["notshared", "shared", "losos", crate::chat::GIT_BOT];
+const RESERVED: [&str; 5] = [
+    "notshared",
+    "shared",
+    "kindashared",
+    "losos",
+    crate::chat::GIT_BOT,
+];
 /// Sign-in names: what Authelia and the audit log show. Lower case so two
 /// people cannot differ by case alone.
 const MAX_NAME_CHARS: usize = 32;
@@ -755,7 +761,7 @@ mod tests {
 
     #[test]
     fn the_boxs_own_account_names_are_refused() {
-        for taken in ["notshared", "shared", "losos", "losos-git"] {
+        for taken in ["notshared", "shared", "kindashared", "losos", "losos-git"] {
             let e = validate_name(taken).unwrap_err();
             assert!(e.contains("box's own accounts"), "{taken}: {e}");
         }

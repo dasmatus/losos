@@ -13,15 +13,18 @@
 #   1. a backup through lososd's API reaches the bucket, and the bucket holds
 #      ciphertext only: a grep for a sentence from the owner's files finds it
 #      on the box (the positive control) and not in MinIO's data;
-#   2. a locked fscrypt domain is opened for the copy and locked again;
+#   2. a locked fscrypt domain is opened for the copy and locked again, the
+#      shared one and kindashared's (the side shared with local gateways),
+#      each with its own key;
 #   3. an erase can be cancelled during its countdown, and a cancelled one
 #      changes nothing;
 #   4. an erase that runs to its end restarts the box, and the box comes up
 #      empty and unclaimed: files, database rows, the shared folder and the
-#      secrets are gone, the disk key and the bucket are not;
+#      secrets are gone, the disk key and the bucket are not; both shared
+#      folders are empty;
 #   5. a restore with the wrong recovery code is refused in plain words, and
-#      with the right one the files, the database rows and the shared folder
-#      come back, and the box takes the old recovery code again.
+#      with the right one the files, the database rows and both shared
+#      folders come back, and the box takes the old recovery code again.
 { pkgs, impermanence }:
 
 let
@@ -60,6 +63,9 @@ pkgs.testers.nixosTest {
       # test can write into it; the test locks it again by hand before the
       # backup, which is the case the backup has to handle.
       losos.sharingMyStorage = true;
+      # And sharing with the local gateways, so kindashared's domain is a
+      # second real policy with a key of its own.
+      losos.sharingLocally = true;
       # No TPM in this VM: the keyfile path, a supported configuration.
       losos.tpm.enable = false;
       # There is no k3s and no LosOS Cloud service in this VM, so the
@@ -163,6 +169,7 @@ pkgs.testers.nixosTest {
 
     NOTE = "the plate of salmon stays in the family"
     SHARED_NOTE = "lent to the mesh, kept in fscrypt"
+    KINDA_NOTE = "lent to this network only, kept in its own fscrypt"
     ROW = "a row the database must keep"
     EVENT = "a calendar entry LosOS Cloud must keep"
 
@@ -192,6 +199,11 @@ pkgs.testers.nixosTest {
     def policy():
         return machine.succeed(
             "echo /persist/home/shared/data/$(cat /etc/machine-id)/shared"
+        ).strip()
+
+    def kinda_policy():
+        return machine.succeed(
+            "echo /persist/home/kindashared/data/$(cat /etc/machine-id)/kindashared"
         ).strip()
 
     def set_bucket():
@@ -228,6 +240,20 @@ pkgs.testers.nixosTest {
         machine.succeed(f"fscrypt lock {p} --quiet")
         machine.succeed(f"fscrypt status {p} | grep -c '^Unlocked: *No'")
         machine.fail(f"cat {p}/lent.txt")
+        # kindashared's domain, opened at boot by its own unit and locked by
+        # hand the same way. Its key is not the shared one.
+        machine.wait_for_unit("losos-fscrypt-kindashared.service")
+        k = kinda_policy()
+        machine.succeed(f"fscrypt status {k} | grep -c '^Unlocked: *Yes'")
+        machine.succeed(f"echo '{KINDA_NOTE}' > {k}/local.txt")
+        machine.succeed(f"fscrypt lock {k} --quiet")
+        machine.succeed(f"fscrypt status {k} | grep -c '^Unlocked: *No'")
+        machine.fail(f"cat {k}/local.txt")
+        machine.succeed(
+            "test -s /var/secrets/losos-shared-key",
+            "test -s /var/secrets/losos-kindashared-key",
+            "! cmp -s /var/secrets/losos-shared-key /var/secrets/losos-kindashared-key",
+        )
 
     with subtest("the bucket's secret never comes back"):
         set_bucket()
@@ -251,11 +277,16 @@ pkgs.testers.nixosTest {
         assert last and len(last["snapshot"]) == 64, last
         # The locked domain was opened for the copy and locked again.
         machine.succeed(f"fscrypt status {policy()} | grep -c '^Unlocked: *No'")
+        machine.succeed(f"fscrypt status {kinda_policy()} | grep -c '^Unlocked: *No'")
+        out = machine.succeed("cat /var/lib/losos-backup/job.log")
+        assert "opened the shared folder for the copy" in out, out
+        assert "opened the kindashared folder for the copy" in out, out
         # Positive control first, so a grep that cannot read proves nothing.
         machine.succeed(f"grep -rqF '{NOTE}' /var/lib/losos-cloud")
         machine.succeed(f"grep -rqaF '{EVENT}' /var/lib/losos-cloud")
         machine.fail(f"grep -rqaF '{NOTE}' /var/lib/minio")
         machine.fail(f"grep -rqaF '{SHARED_NOTE}' /var/lib/minio")
+        machine.fail(f"grep -rqaF '{KINDA_NOTE}' /var/lib/minio")
         machine.fail(f"grep -rqaF '{ROW}' /var/lib/minio")
         machine.fail(f"grep -rqaF '{EVENT}' /var/lib/minio")
         machine.fail("test -e /var/lib/losos-backup/stage")
@@ -292,6 +323,8 @@ pkgs.testers.nixosTest {
         machine.fail("test -e /var/lib/losos-cloud/cloud.db")
         machine.wait_for_unit("losos-fscrypt-shared.service")
         machine.fail(f"test -e {policy()}/lent.txt")
+        machine.wait_for_unit("losos-fscrypt-kindashared.service")
+        machine.fail(f"test -e {kinda_policy()}/local.txt")
         report = json.loads(machine.succeed("cat /var/lib/losos-erase/report.json"))
         assert report["hadEdge"] is False and report["erasedAt"] > 0, report
         # The bucket is somewhere the wipe does not reach. mc keeps its alias
@@ -329,6 +362,9 @@ pkgs.testers.nixosTest {
         p = policy()
         machine.succeed(f"fscrypt status {p} | grep -c '^Unlocked: *Yes'")
         machine.succeed(f"grep -qF '{SHARED_NOTE}' {p}/lent.txt")
+        k = kinda_policy()
+        machine.succeed(f"fscrypt status {k} | grep -c '^Unlocked: *Yes'")
+        machine.succeed(f"grep -qF '{KINDA_NOTE}' {k}/local.txt")
         assert api("GET", "/api/recovery")["code"] == old_code
         machine.fail("test -e /run/losos/restore-code")
         machine.fail("test -e /var/lib/losos-backup/restore")
