@@ -86,8 +86,9 @@ lane_eval=(
   backend/src/cloud/boards.rs
 )
 
-# lososd and losos-ctl, the backend crate's binaries.
-lane_ctl=("backend/*" "!backend/plugins/*" modules/overrides.nix "${pkgs[@]}")
+# lososd and losos-ctl, the backend crate's binaries. losos-ctl builds the
+# report crate in by path (src/install_report.rs).
+lane_ctl=("backend/*" "!backend/plugins/*" "backend/plugins/report/*" modules/overrides.nix "${pkgs[@]}")
 
 # losos-registrar, the admin UI with Diagrams, the handbook, and the
 # Playwright suite against the built SPA (nix/tests/admin-ui.nix, which reads
@@ -112,6 +113,7 @@ lane_images=(nix/images.nix "${pkgs[@]}")
 # The installer the ISO boots into.
 installer=(
   "backend/src/installer*" backend/src/install_screen.rs
+  backend/src/install_report.rs "backend/plugins/report/*"
   backend/src/bin/losos-ctl.rs backend/Cargo.toml backend/Cargo.lock
   modules/options.nix modules/disko.nix modules/installer.nix
 )
