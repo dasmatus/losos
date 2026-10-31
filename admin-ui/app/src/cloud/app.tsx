@@ -8,7 +8,6 @@ import { Progress } from "@/components/ui/progress";
 import { Toaster } from "@/components/ui/toast";
 import { loadMe } from "@/lib/api";
 import { useT } from "@/lib/i18n-react";
-import { paintOwnLook } from "@/lib/look";
 import { followAuth } from "@/lib/look";
 import { followPins } from "@/lib/pins";
 import { SiteBaseProvider } from "@/lib/site";
@@ -57,25 +56,6 @@ function Shell() {
   const editing = pathname.startsWith("/edit/") || pathname.startsWith("/office/");
   const noting = pathname === "/notes" || pathname.startsWith("/notes/");
   const pageMenu = usePageMenu();
-  // The background the person picked, as on every page of the box.
-  React.useEffect(() => {
-    void paintOwnLook();
-  }, []);
-  return (
-    <div className={cn("losos-shell min-h-dvh text-ink", office && "flex h-dvh flex-col")}>
-      <TopBar search={!connecting && !editing && !noting && !office} wide={noting || office} />
-      <ContextMenuHost
-        page={pageMenu}
-        search={connecting ? undefined : (text) => navigate(`/search?q=${encodeURIComponent(text)}`)}
-      />
-      {office ? (
-        // The document under the top bar, edge to edge, its bars its own.
-        <main className="min-h-0 flex-1">
-          <Routes>
-            <Route path="/office/:file" element={<OfficePage />} />
-          </Routes>
-        </main>
-      ) : connecting ? (
   // Files added by other apps show up without a reload.
   useFollowChanges();
 
