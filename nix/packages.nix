@@ -415,7 +415,8 @@ images
     # beside the sheet, and it must not change this derivation's hash.
     src = lib.cleanSourceWith {
       src = ./../admin-ui/app;
-      filter = name: _type:
+      filter =
+        name: _type:
         !(lib.hasSuffix "/src/styles/basic-classes.txt" name)
         && !(lib.hasSuffix "/src/styles/basic-classes.db" name);
     };
@@ -447,10 +448,14 @@ images
     # LosOS Lab (lab/index.html, the second Vite entry) imports the Rust core,
     # the GPU canvas and, for guests on the relay path, the libvirt client.
     preConfigure = mdxPkg;
-    preBuild = labCorePkg + labVirtPkg + labRenderPkg + ''
-      mkdir -p src/styles
-      cp ${losos-basic-classes}/basic-classes.txt src/styles/basic-classes.txt
-    '';
+    preBuild =
+      labCorePkg
+      + labVirtPkg
+      + labRenderPkg
+      + ''
+        mkdir -p src/styles
+        cp ${losos-basic-classes}/basic-classes.txt src/styles/basic-classes.txt
+      '';
     # `bun run build` is `tsc --noEmit && vite build` (twice, the guest page
     # too), all on Bun's runtime, so unlike the Rust crates (doCheck = off,
     # see below) the typecheck IS part of building the shipping artefact. It
