@@ -33,8 +33,8 @@
 2026-10-28T23:59:59+01:00
 2026-10-29
 23:00
-:root[data-basic]
 23:59:59
+:root[data-basic]
 </losos-block>
 <losos-block
 @counter-style
@@ -127,8 +127,8 @@ aria-label
 aria-labelledby
 aria-live
 aria-modal
-aspect-[16/10]
 aria-pressed
+aspect-[16/10]
 authz/auth-request
 auto-cols-fr
 backdrop-blur-sm
@@ -449,8 +449,8 @@ leading-relaxed
 leading-snug
 leading-tight
 left-0
-linear-gradient(rgba(var(--ground-rgb),
 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,0.85fr)]
+linear-gradient(rgba(var(--ground-rgb),
 list-none
 log-day
 log-filters
@@ -571,8 +571,8 @@ peer/field-label
 peer/menu-button
 person-menu
 pl-2
-pl-4
 pl-3
+pl-4
 pl-[18px]
 placeholder:text-faint
 pointer-events-auto
@@ -679,8 +679,8 @@ sm:col-span-1
 sm:col-span-full
 sm:flex-row
 sm:gap-4
-sm:grid-cols-3
 sm:grid-cols-2
+sm:grid-cols-3
 sm:grid-cols-[4.5rem_5.5rem_minmax(0,10rem)_minmax(0,1fr)]
 sm:inline
 sm:inline-flex
