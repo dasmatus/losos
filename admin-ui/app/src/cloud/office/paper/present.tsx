@@ -53,7 +53,7 @@ function SlideFace({ slide, className }: { slide: SlideShown; className?: string
 export function Filmstrip({ slides, current, onPick }: { slides: SlideShown[]; current: number; onPick: (index: number) => void }) {
   const t = useT();
   return (
-    <nav aria-label={t("paper.slides")} className="flex h-full flex-col gap-3 overflow-y-auto p-3" data-testid="paper-filmstrip">
+    <nav aria-label={t("paper.slides")} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3" data-testid="paper-filmstrip">
       {slides.map((s, i) => (
         <button
           key={`${i}-${s.pos}`}

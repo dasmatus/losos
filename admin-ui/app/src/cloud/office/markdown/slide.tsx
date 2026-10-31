@@ -41,7 +41,9 @@ export function SlideView({
   );
 }
 
-/** Every slide small, the one being edited marked; a click goes to it. */
+/** Every slide small, the one being edited marked; a click goes to it.
+ * The list is the scroll view: only as tall as the column, the rest of
+ * the slides moving inside it. */
 export function Filmstrip({
   slides,
   current,
@@ -59,7 +61,7 @@ export function Filmstrip({
     ref.current?.querySelector<HTMLElement>(`[data-index="${current}"]`)?.scrollIntoView({ block: "nearest" });
   }, [current]);
   return (
-    <ol ref={ref} className="md-strip flex flex-col gap-3 overflow-y-auto p-3" aria-label={t("office.md.slides")} data-testid="md-strip">
+    <ol ref={ref} className="md-strip flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3" aria-label={t("office.md.slides")} data-testid="md-strip">
       {slides.map((slide, i) => (
         <li key={i} data-index={i} className="flex items-start gap-2">
           <span className="w-4 pt-1 text-right text-[11px] text-muted tabular-nums">{i + 1}</span>
