@@ -5,9 +5,10 @@
 
 use crate::host::Host;
 use losos_page::i18n::{Locale, Messages};
-use losos_page::shell::{Assets, Frame, NavEntry, Person, Prefs};
+use losos_page::icons;
+use losos_page::shell::{self, Assets, Frame, NavEntry, Person, Prefs};
+use serde_json::Value;
 
-pub use losos_page::nav::*;
 /// The panes in the script page's order (screens/settings/panes.ts), with
 /// their icon and the section of backend/sections.json each works in.
 pub const PANES: &[(&str, &str, &str)] = &[

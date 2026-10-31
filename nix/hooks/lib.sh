@@ -184,7 +184,6 @@ hook_crates_for() {
       edge/registrar/*) want[edge/vercel]=1 ;;
       admin-ui/lab/core/*) want[admin-ui/lab/render]=1 ;;
       modules/overrides.nix) want[backend]=1 ;;
-      admin-ui/app/src/styles/basic-classes.txt) want[backend/plugins]=1 ;;
       admin-ui/app/src/i18n/* | admin-ui/app/src/styles/tokens.css | \
         admin-ui/app/src/screens/settings/panes.ts | admin-ui/themes/brand/salmon-128.png)
         want[admin-ui/tui]=1

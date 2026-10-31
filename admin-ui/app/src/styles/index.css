@@ -23,10 +23,12 @@
 
 /* The pages without JavaScript (/basic/) are drawn in Rust on the box, in
  * this stylesheet's classes. The bundle is built from this folder alone, so
- * Tailwind reads the strings of those sources from basic-classes.txt, which
- * a test of backend/plugins/basic keeps current. Their bars and meters are
- * percentages, which no style attribute may set under the policy: a class
- * for each whole percent. */
+ * Tailwind reads the strings of those sources from basic-classes.txt. That
+ * file is not in git: `scripts/basic-classes.mjs` writes it from the Turso
+ * database `basic-classes.db` (a SQLite file, the format the cache stores
+ * as `losos-basic-classes`) before this sheet is compiled. Their bars and
+ * meters are percentages, which no style attribute may set under the policy:
+ * a class for each whole percent. */
 @source "./basic-classes.txt";
 @source inline("w-[{0..100}%]");
 

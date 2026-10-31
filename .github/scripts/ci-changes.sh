@@ -57,8 +57,6 @@ lane_rust=(
   "admin-ui/lab/*"
   # backend/src/overrides.rs include_str!s it.
   modules/overrides.nix
-  # backend/plugins/basic's tests keep it in step with the pages' sources.
-  admin-ui/app/src/styles/basic-classes.txt
   "${tui_reads[@]}"
 )
 
@@ -97,6 +95,9 @@ lane_ui=(
   "admin-ui/*" "!admin-ui/design-system/*" "!admin-ui/tui/*"
   "handbook/*"
   "edge/registrar/*" "backend/access/*"
+  # The no-JavaScript pages' classes are generated into the bundle from
+  # these sources (admin-ui/app/scripts/basic-classes.mjs).
+  "backend/plugins/page/*" "backend/plugins/basic/*"
   # LosOS Office and Notes parse documents with losos-mdx in the page.
   "backend/mdx/*"
   modules/options.nix nix/options-doc.nix

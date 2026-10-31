@@ -351,6 +351,36 @@ let
       '';
     };
 
+  # Classes the pages without JavaScript use, as a Turso database (a SQLite
+  # file; libSQL opens it). The text Tailwind scans is written from the
+  # database in the same build. It is its own package so the cache publish
+  # (proxy-push, and the Pages copy) stores the database, not a file that
+  # would otherwise be committed and then conflict. losos-admin-ui copies
+  # the text into the tree before Vite; a checkout writes both itself
+  # (admin-ui/app/scripts/basic-classes.mjs), and git ignores them.
+  losos-basic-classes = pkgs.stdenvNoCC.mkDerivation {
+    pname = "losos-basic-classes";
+    version = "0.1.0";
+    src = lib.fileset.toSource {
+      root = ./..;
+      fileset = lib.fileset.unions [
+        ./../admin-ui/app/scripts/basic-classes.mjs
+        ./../backend/plugins/page/src
+        ./../backend/plugins/basic/src
+      ];
+    };
+    nativeBuildInputs = [ pkgs.bun ];
+    buildPhase = ''
+      runHook preBuild
+      mkdir -p $out
+      bun admin-ui/app/scripts/basic-classes.mjs --repo . --out $out
+      test -s $out/basic-classes.db
+      test -s $out/basic-classes.txt
+      runHook postBuild
+    '';
+    dontInstall = true;
+  };
+
 in
 images
 // lib.optionalAttrs (pmSrc != null) (
@@ -369,6 +399,7 @@ images
 )
 // {
   inherit losos-image-ci-base;
+  inherit losos-basic-classes;
   inherit losos-lab-core losos-lab-render losos-lab-virt;
   inherit losos-mdx-wasm;
 
@@ -379,8 +410,16 @@ images
     # admin-ui/app, not admin-ui/. The source ROOT is the exclusion: it is what
     # keeps admin-ui/design-system/react out of the closure, and unlike the
     # `baseNameOf name != "design-system"` filter this replaces, a root cannot
-    # quietly stop matching when somebody renames a directory.
-    src = ./../admin-ui/app;
+    # quietly stop matching when somebody renames a directory. The generated
+    # class list is left out too: a checkout that has already built writes it
+    # beside the sheet, and it must not change this derivation's hash.
+    src = lib.cleanSourceWith {
+      src = ./../admin-ui/app;
+      filter =
+        name: _type:
+        !(lib.hasSuffix "/src/styles/basic-classes.txt" name)
+        && !(lib.hasSuffix "/src/styles/basic-classes.db" name);
+    };
 
     nativeBuildInputs = [ pkgs.bun ];
     # The person segmenter behind a call's black background
@@ -409,7 +448,14 @@ images
     # LosOS Lab (lab/index.html, the second Vite entry) imports the Rust core,
     # the GPU canvas and, for guests on the relay path, the libvirt client.
     preConfigure = mdxPkg;
-    preBuild = labCorePkg + labVirtPkg + labRenderPkg;
+    preBuild =
+      labCorePkg
+      + labVirtPkg
+      + labRenderPkg
+      + ''
+        mkdir -p src/styles
+        cp ${losos-basic-classes}/basic-classes.txt src/styles/basic-classes.txt
+      '';
     # `bun run build` is `tsc --noEmit && vite build` (twice, the guest page
     # too), all on Bun's runtime, so unlike the Rust crates (doCheck = off,
     # see below) the typecheck IS part of building the shipping artefact. It
