@@ -309,7 +309,6 @@ function Shell() {
   // drawing beside the panel, so it gives the panel its room.
   const pageEditor = React.useSyncExternalStore(subscribePages, () => getPagesState().editor, () => null);
   const editingPage = signedIn && !held && me?.admin === true && pageEditor !== null;
-  const paletteOpen = React.useSyncExternalStore(subscribePalette, () => paletteState().open, () => false);
   const searchable = signedIn && !held;
   const pageMenu = usePageMenu(() => [
     {

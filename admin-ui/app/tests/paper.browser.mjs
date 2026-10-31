@@ -11,10 +11,11 @@
  * staying byte for byte; a component's fields come up under the bar when
  * it is selected; Page setup writes the page into the front matter and the
  * page takes its size; two people on one file see each other's typing; a
- * presentation has its slides in a strip and plays full screen; a
- * document with script in it runs none of it and keeps it as written;
- * the file's menu offers Office; and none of it adds to the policy
- * violations a plain load logs.
+ * presentation has its slides in a strip and plays full screen, and a
+ * strip longer than the window scrolls inside itself instead of growing
+ * the page; a document with script in it runs none of it and keeps it as
+ * written; the file's menu offers Office; and none of it adds to the
+ * policy violations a plain load logs.
  *
  * The box's live-editing room is tests/yroom.mjs, reached through the
  * harness's routeWebSocket on the whole context, so a tab an opener opens
@@ -421,6 +422,45 @@ await check('a presentation has its slides in a strip and plays full screen', as
   await presenter.getByRole('heading', { name: 'Gear' }).waitFor();
   await page.keyboard.press('Escape');
   await presenter.waitFor({ state: 'detached' });
+  assert.deepEqual(errors, []);
+  await context.close();
+  room.close();
+});
+
+await check('a long presentation scrolls inside the strip and does not grow the page', async () => {
+  const many = Array.from({ length: 16 }, (_, i) => `<Slide layout="content">\n## Slide ${i + 1}\n\nWords.\n</Slide>`).join('\n\n');
+  const { page, context, errors, room } = await openPaper('Long.slides', many);
+  const strip = page.getByTestId('paper-filmstrip');
+  await page.waitForFunction(() => document.querySelectorAll('[data-testid=paper-filmstrip] button').length === 16);
+  const frame = await strip.evaluate((el) => {
+    const style = getComputedStyle(el);
+    const own = el.getBoundingClientRect();
+    const office = el.closest('[data-paper-office]').getBoundingClientRect();
+    const root = document.documentElement;
+    const last = el.lastElementChild.getBoundingClientRect();
+    return {
+      overflowY: style.overflowY,
+      scrolls: el.scrollHeight > el.clientHeight + 1,
+      inside: own.top >= office.top - 1 && own.bottom <= office.bottom + 1,
+      pageStill: root.scrollHeight <= root.clientHeight + 1 && window.scrollY === 0,
+      lastCut: last.bottom > own.bottom + 1,
+    };
+  });
+  assert.ok(frame.overflowY === 'auto' || frame.overflowY === 'scroll', `overflow-y is ${frame.overflowY}`);
+  assert.equal(frame.scrolls, true, 'the strip is taller than the room it has');
+  assert.equal(frame.inside, true, 'the strip stays inside the office');
+  assert.equal(frame.pageStill, true, 'the page itself does not grow');
+  assert.equal(frame.lastCut, true, 'the last slide starts below the strip');
+  await strip.evaluate((el) => {
+    el.scrollTop = el.scrollHeight;
+  });
+  const bottom = await strip.evaluate((el) => {
+    const own = el.getBoundingClientRect();
+    const last = el.lastElementChild.getBoundingClientRect();
+    return { lastSeen: last.top < own.bottom && last.bottom <= own.bottom + 2, y: window.scrollY };
+  });
+  assert.equal(bottom.lastSeen, true, 'scrolling the strip brings the last slide in');
+  assert.equal(bottom.y, 0);
   assert.deepEqual(errors, []);
   await context.close();
   room.close();
