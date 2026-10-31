@@ -504,7 +504,9 @@ export function PaperOffice({ entry: first, onClose }: { entry: Entry; onClose: 
 
       <main className="relative flex min-h-0 flex-1" aria-busy={!loaded}>
         {kind === "slides" && (
-          <aside className="paper-chrome-bar w-56 shrink-0 border-r border-hair bg-surface max-md:hidden">
+          // The strip scrolls in the height the window leaves it. Without
+          // min-h-0 the column grows with the slides and the shell clips them.
+          <aside className="paper-chrome-bar flex h-full min-h-0 w-56 shrink-0 flex-col overflow-hidden border-r border-hair bg-surface max-md:hidden">
             <Filmstrip slides={slides} current={current} onPick={goToSlide} />
           </aside>
         )}

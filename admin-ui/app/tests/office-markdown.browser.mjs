@@ -10,8 +10,9 @@
  * renderer; a file with `slides: true` is a presentation, with its slides
  * in a strip, the slide the cursor is in beside the text, its text centred
  * and its picture on the right, and it plays full screen with the arrows
- * and Escape; the right-click menu of a .md offers Office; and none of it
- * adds to the policy violations a plain load logs.
+ * and Escape; a deck longer than the window scrolls inside that strip and
+ * does not grow the page; the right-click menu of a .md offers Office; and
+ * none of it adds to the policy violations a plain load logs.
  *
  * The shared editor's WebSocket has no box here, so it stays offline and
  * the text is what is typed; the routes are stubbed with page.route(). */
@@ -271,6 +272,64 @@ await check('a presentation lays out its slides: text centred, the picture on th
   // The bar adds a slide.
   await tool(page, 'New slide').click();
   await page.waitForFunction(() => document.querySelectorAll('[data-testid=md-strip] > li').length === 4);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await check('a long presentation scrolls inside the strip and does not grow the page', async () => {
+  const body = Array.from({ length: 14 }, (_, i) => `## Slide ${i + 1}\n\nOne line.`).join('\n\n---\n\n');
+  const { page, context, errors } = await openDoc('Long.md');
+  await type(page, `---\nslides: true\n---\n\n${body}`);
+  await page.locator('[data-markdown-office][data-deck]').waitFor();
+  const strip = page.getByTestId('md-strip');
+  await page.waitForFunction(() => document.querySelectorAll('[data-testid=md-strip] > li').length === 14);
+  // The cursor lands on the last slide, and the strip follows it. Give
+  // that scroll a moment, then the check drives the strip itself.
+  await strip.locator(':scope > li').last().locator('button[aria-current=true]').waitFor();
+  await page.waitForTimeout(100);
+  const frame = await strip.evaluate((el) => {
+    const style = getComputedStyle(el);
+    const own = el.getBoundingClientRect();
+    const office = el.closest('[data-markdown-office]').getBoundingClientRect();
+    const root = document.documentElement;
+    return {
+      overflowY: style.overflowY,
+      scrolls: el.scrollHeight > el.clientHeight + 1,
+      inside: own.top >= office.top - 1 && own.bottom <= office.bottom + 1,
+      pageStill: root.scrollHeight <= root.clientHeight + 1 && window.scrollY === 0,
+    };
+  });
+  assert.ok(frame.overflowY === 'auto' || frame.overflowY === 'scroll', `overflow-y is ${frame.overflowY}`);
+  assert.equal(frame.scrolls, true, 'the strip is taller than the room it has');
+  assert.equal(frame.inside, true, 'the strip stays inside the office');
+  assert.equal(frame.pageStill, true, 'the page itself does not grow');
+  // Either end is reached by scrolling the strip. The window stays put.
+  await strip.evaluate((el) => {
+    el.scrollTop = 0;
+  });
+  const top = await strip.evaluate((el) => {
+    const own = el.getBoundingClientRect();
+    const first = el.firstElementChild.getBoundingClientRect();
+    const last = el.lastElementChild.getBoundingClientRect();
+    return {
+      firstSeen: first.top >= own.top - 1 && first.bottom <= own.bottom + 1,
+      lastCut: last.bottom > own.bottom + 1,
+      y: window.scrollY,
+    };
+  });
+  assert.equal(top.firstSeen, true, 'the first slide is in the strip');
+  assert.equal(top.lastCut, true, 'the last slide is below the strip');
+  assert.equal(top.y, 0);
+  await strip.evaluate((el) => {
+    el.scrollTop = el.scrollHeight;
+  });
+  const bottom = await strip.evaluate((el) => {
+    const own = el.getBoundingClientRect();
+    const last = el.lastElementChild.getBoundingClientRect();
+    return { lastSeen: last.top < own.bottom && last.bottom <= own.bottom + 2, y: window.scrollY };
+  });
+  assert.equal(bottom.lastSeen, true, 'scrolling the strip brings the last slide in');
+  assert.equal(bottom.y, 0);
   assert.deepEqual(errors, []);
   await context.close();
 });
