@@ -1,0 +1,60 @@
+name: label
+
+# Adds labels to issues and pull requests.
+#
+# An issue is labelled from its title and body. A pull request is labelled
+# from those and from its commits: every commit message, and the paths
+# those commits change. The diff is not read. A word inside a patch would
+# mark almost every change.
+#
+# Labels are only added. A label set by hand is never removed. A label
+# named in .github/labeler/rules.ts is created the first time it is
+# missing. `ci: full` is not one of them: that label runs every CI job
+# and a person puts it on a pull request by hand.
+#
+# pull_request_target, not pull_request. The pull_request token cannot
+# write, so a fork would never be labelled. The job that runs is the one
+# on the default branch: a pull request cannot change this file and have
+# that copy executed. The checkout is that same branch, never the pull
+# request's head, and the only thing the script does with the pull
+# request is read it through the API.
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: label-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  label:
+    name: "label: body and commits"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      # 1.4.2 is the Bun LosOS pins for the admin UI. The script has no
+      # packages of its own, so there is no lock file to install.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+      - name: check the matcher
+        working-directory: .github/labeler
+        run: bun test
+      - name: apply labels
+        working-directory: .github/labeler
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: bun label.ts
