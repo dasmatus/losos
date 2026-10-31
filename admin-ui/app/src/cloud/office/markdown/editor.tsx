@@ -321,7 +321,9 @@ export function MarkdownOffice({ entry: first, onClose }: { entry: Entry; onClos
 
       <div className="relative flex min-h-0 flex-1" aria-busy={!loaded}>
         {deck && (
-          <aside className="w-52 shrink-0 border-r border-hair bg-surface max-md:hidden">
+          // The strip scrolls in the height the window leaves it. Without
+          // min-h-0 the column grows with the slides and the shell clips them.
+          <aside className="flex h-full min-h-0 w-52 shrink-0 flex-col overflow-hidden border-r border-hair bg-surface max-md:hidden">
             <Filmstrip slides={slides} current={current} resolver={resolver} onPick={goToSlide} />
           </aside>
         )}
