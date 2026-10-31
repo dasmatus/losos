@@ -737,7 +737,7 @@ jobs:
           xargs -r nix copy --from "file://$PWD/mail-cache" --no-check-sigs < mail-cache/store-paths
       - uses: ./.github/actions/proxy-push
         with:
-          installables: ".#losos-ctl .#losos-registrar .#losos-admin-ui .#losos-handbook .#losos-image-pause .#losos-stalwart"
+          installables: ".#losos-ctl .#losos-registrar .#losos-admin-ui .#losos-handbook .#losos-basic-classes .#losos-image-pause .#losos-stalwart"
           signing-key: ${{ secrets.NIX_CACHE_SIGNING_KEY }}
       # The same paths as a static file cache, for the copy the GitHub Pages
       # site serves at /proxy when the LosOS proxy does not answer. The
@@ -751,7 +751,7 @@ jobs:
         run: >-
           .github/scripts/pages-cache.sh pages-cache
           .#losos-ctl .#losos-registrar .#losos-admin-ui .#losos-handbook
-          .#losos-image-pause
+          .#losos-basic-classes .#losos-image-pause
       - uses: actions/upload-artifact@v7
         if: github.ref == 'refs/heads/main'
         with:

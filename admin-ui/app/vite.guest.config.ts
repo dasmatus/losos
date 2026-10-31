@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { basicClasses } from "./scripts/basic-classes.mjs";
 import { segmenterQuiet } from "./vite.segmenter-quiet";
 
 /* The guest call page (guest.html, src/calls/guest-main.tsx), built on its
@@ -12,7 +13,7 @@ import { segmenterQuiet } from "./vite.segmenter-quiet";
 const root = import.meta.dirname;
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), segmenterQuiet()],
+  plugins: [basicClasses(), react(), tailwindcss(), segmenterQuiet()],
   base: "/calls/guest/",
   resolve: {
     alias: [{ find: /^@\//, replacement: "/src/" }],

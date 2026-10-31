@@ -1,6 +1,7 @@
 import { defineConfig, type Plugin, type ResolvedConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { basicClasses } from "./scripts/basic-classes.mjs";
 import { segmenterQuiet } from "./vite.segmenter-quiet";
 import { sonnerQuiet } from "./vite.sonner-quiet";
 import { pages } from "./vite.pages";
@@ -259,7 +260,7 @@ function labMeme(): Plugin {
 const root = import.meta.dirname;
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), themeBoot(), appFrame(), basicMessages(), labMeme(), segmenterFiles(), nudityFiles(), segmenterQuiet(), sonnerQuiet(), pages()],
+  plugins: [basicClasses(), react(), tailwindcss(), themeBoot(), appFrame(), basicMessages(), labMeme(), segmenterFiles(), nudityFiles(), segmenterQuiet(), sonnerQuiet(), pages()],
   // Served from the vhost root by nginx.
   base: "/",
   resolve: {
