@@ -16,11 +16,8 @@
  */
 
 import { Database } from "bun:sqlite";
-import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 
-const here = dirname(fileURLToPath(import.meta.url));
+const here = import.meta.dirname;
 
 /** Every `"…"` and `r#"…"#` in `src`, escapes left as they are.
  * Indexes are bytes, as in the Rust `str`, not UTF-16 code units. */
@@ -61,16 +58,16 @@ export function stringLiterals(src) {
 }
 
 /** Class-like tokens in the page crates, in the order the database stores. */
-export function classNames(repo) {
+export async function classNames(repo) {
   const found = new Set();
   for (const dir of ["page/src", "basic/src"]) {
-    const abs = join(repo, "backend/plugins", dir);
-    for (const name of readdirSync(abs).sort()) {
+    const abs = `${repo}/backend/plugins/${dir}`;
+    const names = [...new Bun.Glob("*.rs").scanSync({ cwd: abs, onlyFiles: true })].sort();
+    for (const name of names) {
       // The icons are paths, and the tests' strings are no page's.
       if (name === "icons.rs" || name === "tests.rs") continue;
-      const path = join(abs, name);
-      if (!statSync(path).isFile()) continue;
-      for (const literal of stringLiterals(readFileSync(path, "utf8"))) {
+      const path = `${abs}/${name}`;
+      for (const literal of stringLiterals(await Bun.file(path).text())) {
         for (const token of literal.split(/\s+/)) {
           if (token.includes("-") || token.includes(":") || token.includes("[")) found.add(token);
         }
@@ -81,11 +78,11 @@ export function classNames(repo) {
 }
 
 /** Write the Turso database and the text Tailwind scans, from the database. */
-export function writeBasicClasses(repo, out) {
-  mkdirSync(out, { recursive: true });
-  const dbPath = join(out, "basic-classes.db");
-  rmSync(dbPath, { force: true });
-  const names = classNames(repo);
+export async function writeBasicClasses(repo, out) {
+  const dbPath = `${out}/basic-classes.db`;
+  if (await Bun.file(dbPath).exists()) await Bun.file(dbPath).delete();
+  const names = await classNames(repo);
+  await Bun.write(dbPath, "");
   const db = new Database(dbPath, { create: true });
   try {
     db.exec("DROP TABLE IF EXISTS class");
@@ -96,7 +93,7 @@ export function writeBasicClasses(repo, out) {
     });
     tx(names);
     const stored = db.query("SELECT name FROM class ORDER BY name").all().map((row) => row.name);
-    writeFileSync(join(out, "basic-classes.txt"), stored.join("\n") + (stored.length ? "\n" : ""));
+    await Bun.write(`${out}/basic-classes.txt`, stored.join("\n") + (stored.length ? "\n" : ""));
   } finally {
     db.close();
   }
@@ -109,23 +106,27 @@ function arg(flag, fallback) {
 }
 
 export function basicClasses() {
-  const repo = join(here, "../../..");
-  const styles = join(here, "../src/styles");
-  const sources = join(repo, "backend/plugins/basic/src");
-  let present = false;
-  try {
-    present = statSync(sources).isDirectory();
-  } catch {
-    present = false;
-  }
-  // The Nix build has no plugin sources beside the UI. It copies the
-  // text file out of the cached database before Vite starts.
-  if (present) writeBasicClasses(repo, styles);
-  return { name: "losos-basic-classes" };
+  const repo = `${here}/../../..`;
+  const styles = `${here}/../src/styles`;
+  const sources = `${repo}/backend/plugins/basic/src`;
+  return {
+    name: "losos-basic-classes",
+    async buildStart() {
+      // The Nix build has no plugin sources beside the UI. It copies the
+      // text file out of the cached database before Vite starts.
+      try {
+        new Bun.Glob("*").scanSync({ cwd: sources }).next();
+      } catch (error) {
+        if (error.code === "ENOENT") return;
+        throw error;
+      }
+      await writeBasicClasses(repo, styles);
+    },
+  };
 }
 
 if (import.meta.main) {
-  const repo = arg("--repo", join(here, "../../.."));
-  const out = arg("--out", join(here, "../src/styles"));
-  writeBasicClasses(repo, out);
+  const repo = arg("--repo", `${here}/../../..`);
+  const out = arg("--out", `${here}/../src/styles`);
+  await writeBasicClasses(repo, out);
 }
