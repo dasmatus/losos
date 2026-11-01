@@ -17,7 +17,7 @@
 
 import { Database } from "bun:sqlite";
 
-const here = import.meta.dir;
+const here = import.meta.dirname;
 
 /** Every `"…"` and `r#"…"#` in `src`, escapes left as they are.
  * Indexes are bytes, as in the Rust `str`, not UTF-16 code units. */
