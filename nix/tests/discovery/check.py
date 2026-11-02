@@ -216,12 +216,15 @@ class Linux:
         dav = [l for l in self.browse("_webdavs._tcp") if HOST in l]
         say(f"Avahi: {len(smb)} SMB entry, {len(dav)} WebDAV entry for {HOST}")
         # wsdd's discovery client sends the probe File Explorer sends.
+        env = os.environ.copy()
+        env["XDG_RUNTIME_DIR"] = env.get("XDG_RUNTIME_DIR") or str(WORK)
         _, wsd = run(
             'socket="$XDG_RUNTIME_DIR/wsdd.sock"; rm -f "$socket"; '
             'timeout 20 wsdd --discovery --no-host --listen "$socket" & sleep 12;'
             ' echo list | socat -t 5 - UNIX-CONNECT:"$socket"; wait',
             check=False,
             timeout=60,
+            env=env,
         )
         return len(smb) == 1 and not dav and HOST in wsd.lower()
 
