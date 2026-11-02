@@ -217,8 +217,9 @@ class Linux:
         say(f"Avahi: {len(smb)} SMB entry, {len(dav)} WebDAV entry for {HOST}")
         # wsdd's discovery client sends the probe File Explorer sends.
         _, wsd = run(
-            "rm -f /tmp/wsdd.sock; timeout 20 wsdd --discovery --no-host --listen /tmp/wsdd.sock & sleep 12;"
-            " echo list | socat -t 5 - UNIX-CONNECT:/tmp/wsdd.sock; wait",
+            'socket="$XDG_RUNTIME_DIR/wsdd.sock"; rm -f "$socket"; '
+            'timeout 20 wsdd --discovery --no-host --listen "$socket" & sleep 12;'
+            ' echo list | socat -t 5 - UNIX-CONNECT:"$socket"; wait',
             check=False,
             timeout=60,
         )
