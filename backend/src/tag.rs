@@ -128,7 +128,7 @@ pub const MAX_SKILLS: usize = 64;
 /// The verbs a tag never takes, and the sentences the refusal carries.
 /// One per line: the prompt and the guard share exactly this list.
 pub const NO_GOS: [&str; 3] = [
-    "never call sudo, a root shell, or anything that所说的 of users, units or the box's own filesystem; ask the person to do it in the admin pages",
+    "never call sudo, a root shell, or anything that talks to users, units or the box's own filesystem; ask the person to do it in the admin pages",
     "never buy, sell, rent or lend storage or compute, and never start a market order or a quote of one",
     "never touch anything on disk in notshared's directories; their files are read and written through LosOS Cloud's own application, not by you",
 ];
