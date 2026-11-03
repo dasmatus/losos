@@ -170,7 +170,9 @@ pub struct Area {
     /// [One of `KINDS`](KINDS).
     pub kind: String,
     /// Whose data this covers: a person's name, or [`EVERYONE`] when an
-    /// administrator grades shared ground.
+    /// administrator grades shared ground. Absent on the wire grades the
+    /// caller's own, or [`EVERYONE`] from the spare key.
+    #[serde(default)]
     pub owner: String,
     /// What it grades, in the kind's `ref` shape.
     #[serde(rename = "ref")]
@@ -192,7 +194,9 @@ pub struct Assistant {
     /// The level ([`Level::name`]) this assistant may read up to.
     pub clearance: String,
     /// Who made it: a person, or [`EVERYONE`] for the built-in, whom only
-    /// an administrator may change.
+    /// an administrator may change. Absent on the wire is the caller's
+    /// own, or [`EVERYONE`] from the spare key.
+    #[serde(default)]
     pub owner: String,
     /// A tag that reaches a disabled assistant is refused.
     #[serde(default = "yes")]
@@ -221,6 +225,9 @@ pub struct Skill {
     /// instruction, no tools beyond the ask's own.
     pub prompt: String,
     /// Who wrote it; the built-in [`EVERYONE`] comes on every box.
+    /// Absent on the wire is the caller's own, or [`EVERYONE`] from the
+    /// spare key.
+    #[serde(default)]
     pub owner: String,
     /// A seeded LosOS skill: read-only for people, changed by
     /// administrators only.

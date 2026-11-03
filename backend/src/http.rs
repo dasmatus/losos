@@ -4661,10 +4661,19 @@ async fn post_tag_area(
     guarded_as(&api, &req, "/api/tag/areas", true, |who| {
         let (person, admin) = tag_who(who);
         let value = body.into_inner();
-        let next = match serde_json::from_value::<crate::tag::Area>(value) {
+        let mut next = match serde_json::from_value::<crate::tag::Area>(value) {
             Ok(next) => next,
             Err(e) => return err(StatusCode::BAD_REQUEST, &format!("an area: {e}")),
         };
+        // A body without an owner grades the caller's own; the spare key
+        // grades the box's shared ground.
+        if next.owner.is_empty() {
+            next.owner = if admin {
+                crate::tag::EVERYONE.to_string()
+            } else {
+                person.clone()
+            };
+        }
         match api.tag.put_area(&person, admin, next) {
             Ok(()) => HttpResponse::Ok().json(serde_json::json!({ "ok": true })),
             Err(e) => err(StatusCode::BAD_REQUEST, &e),
@@ -4682,12 +4691,17 @@ async fn post_tag_assistant(
     guarded_as(&api, &req, "/api/tag/assistants", true, |who| {
         let (person, admin) = tag_who(who);
         let mut value = body.into_inner();
-        if admin {
-            if let Some(owner) = value.get("owner").and_then(serde_json::Value::as_str) {
-                let _ = owner;
-            }
-        } else {
-            value["owner"] = serde_json::Value::from(person.clone());
+        // An admin-left owner is the box's own (`everyone`); a person
+        // always makes their own.
+        if value
+            .get("owner")
+            .is_none_or(|v| v.as_str().unwrap_or("").is_empty())
+        {
+            value["owner"] = serde_json::Value::from(if admin {
+                crate::tag::EVERYONE.to_string()
+            } else {
+                person.clone()
+            });
         }
         let next: crate::tag::Assistant = match serde_json::from_value(value) {
             Ok(next) => next,
@@ -4709,7 +4723,16 @@ async fn post_tag_skill(
     guarded_as(&api, &req, "/api/tag/skills", true, |who| {
         let (person, admin) = tag_who(who);
         let mut value = body.into_inner();
-        value["owner"] = serde_json::Value::from(person.clone());
+        if value
+            .get("owner")
+            .is_none_or(|v| v.as_str().unwrap_or("").is_empty())
+        {
+            value["owner"] = serde_json::Value::from(if admin {
+                crate::tag::EVERYONE.to_string()
+            } else {
+                person.clone()
+            });
+        }
         let next: crate::tag::Skill = match serde_json::from_value(value) {
             Ok(next) => next,
             Err(e) => return err(StatusCode::BAD_REQUEST, &format!("a skill: {e}")),
@@ -4728,7 +4751,7 @@ async fn delete_tag_skill(
     req: HttpRequest,
     path: web::Path<String>,
 ) -> HttpResponse {
-    guarded_as(&api, &req, "/api/tag/skills", true, |who| {
+    guarded_as(&api, &req, "/api/tag/skills/{slug}", true, |who| {
         let (person, admin) = tag_who(who);
         match api.tag.drop_skill(&person, admin, &path.into_inner()) {
             Ok(()) => HttpResponse::Ok().json(serde_json::json!({ "ok": true })),
@@ -4764,60 +4787,50 @@ async fn post_tag_clearance(
 /// person's own mail, their rooms (the tag's cache), each hit graded by
 /// the areas.
 async fn get_search(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
-    guarded_at(
-        &api,
-        &req,
-        "/api/search",
-        Some("GET /api/search"),
-        false,
-        |who| {
-            let (person, _) = tag_who(who);
-            let q = query_of(&req, "q").unwrap_or_default();
-            if let Err(e) = crate::textsearch::validate_query(&q) {
-                return err(StatusCode::BAD_REQUEST, &e);
-            }
-            let terms = crate::textsearch::terms(&q);
-            let clearance = api.tag.state().clearance_of(None, &person);
-            let cloud =
-                text_hits::<crate::textsearch::CloudHit>("LOSOS_SEARCH_CLOUD_SOCKET", &terms, "q");
-            let git =
-                text_hits::<crate::textsearch::GitHit>("LOSOS_SEARCH_GIT_SOCKET", &terms, "q");
-            let mut mail = Vec::new();
-            if api.mail.open().is_some() {
-                if let Some(mail_person) = who.person() {
-                    if let Ok(boxes) = api.mail.mailboxes(mail_person) {
-                        let want = terms.join(" ");
-                        for mailbox in boxes.iter().take(crate::textsearch::MAX_HITS) {
-                            if let Ok(page) =
-                                api.mail.list(mail_person, &mailbox.id, Some(&want), 0)
-                            {
-                                for summary in page.messages {
-                                    let snippet = vec![format!(
-                                        "{} — {}",
-                                        summary
-                                            .from
-                                            .iter()
-                                            .map(|a| a.email.clone())
-                                            .collect::<Vec<_>>()
-                                            .join(", "),
-                                        summary.preview
-                                    )];
-                                    mail.push((
-                                        format!("{} ({})", mailbox.name, summary.subject),
-                                        snippet,
-                                    ));
-                                }
+    guarded_as(&api, &req, "/api/search", false, |who| {
+        let (person, _) = tag_who(who);
+        let q = query_of(&req, "q").unwrap_or_default();
+        if let Err(e) = crate::textsearch::validate_query(&q) {
+            return err(StatusCode::BAD_REQUEST, &e);
+        }
+        let terms = crate::textsearch::terms(&q);
+        let clearance = api.tag.state().clearance_of(None, &person);
+        let cloud =
+            text_hits::<crate::textsearch::CloudHit>("LOSOS_SEARCH_CLOUD_SOCKET", &terms, "q");
+        let git = text_hits::<crate::textsearch::GitHit>("LOSOS_SEARCH_GIT_SOCKET", &terms, "q");
+        let mut mail = Vec::new();
+        if api.mail.open().is_some() {
+            if let Some(mail_person) = who.person() {
+                if let Ok(boxes) = api.mail.mailboxes(mail_person) {
+                    let want = terms.join(" ");
+                    for mailbox in boxes.iter().take(crate::textsearch::MAX_HITS) {
+                        if let Ok(page) = api.mail.list(mail_person, &mailbox.id, Some(&want), 0) {
+                            for summary in page.messages {
+                                let snippet = vec![format!(
+                                    "{} — {}",
+                                    summary
+                                        .from
+                                        .iter()
+                                        .map(|a| a.email.clone())
+                                        .collect::<Vec<_>>()
+                                        .join(", "),
+                                    summary.preview
+                                )];
+                                mail.push((
+                                    format!("{} ({})", mailbox.name, summary.subject),
+                                    snippet,
+                                ));
                             }
                         }
                     }
                 }
             }
-            let chat = api.tag.events().find(&terms, 8);
-            let hits = api.tag.search(&person, &clearance, cloud, git, mail, chat);
-            let _ = q;
-            HttpResponse::Ok().json(serde_json::json!({ "hits": hits }))
-        },
-    )
+        }
+        let chat = api.tag.events().find(&terms, 8);
+        let hits = api.tag.search(&person, &clearance, cloud, git, mail, chat);
+        let _ = q;
+        HttpResponse::Ok().json(serde_json::json!({ "hits": hits }))
+    })
 }
 
 /// The query's own parameter, as `Q` asks.
@@ -4901,7 +4914,7 @@ async fn delete_tag_ask(
     req: HttpRequest,
     path: web::Path<String>,
 ) -> HttpResponse {
-    guarded_as(&api, &req, "/api/tag/asks", true, |who| {
+    guarded_as(&api, &req, "/api/tag/asks/{id}", true, |who| {
         let (person, admin) = tag_who(who);
         let mine = who.person().is_some();
         match api.tag.stop(
@@ -4919,38 +4932,31 @@ async fn delete_tag_ask(
 /// room: the room's tail at hand, and the count of what looks like
 /// questions a person asked and no assistant answered.
 async fn get_tag_suggest(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
-    guarded_at(
-        &api,
-        &req,
-        "/api/tag/suggest",
-        Some("GET /api/tag/suggest"),
-        false,
-        |who| {
-            let _ = tag_who(who);
-            let Some(room) = query_of(&req, "room") else {
-                return err(StatusCode::BAD_REQUEST, "which room?");
-            };
-            let tail = api.tag.events().room(&room, 20);
-            let questions = tail
-                .iter()
-                .filter(|event| {
-                    let text = event.text.trim_start();
-                    text.ends_with('?')
-                        || text.starts_with("how ")
-                        || text.starts_with("what ")
-                        || text.starts_with("where ")
-                })
-                .count();
-            let carried = tail
-                .iter()
-                .any(|event| event.sender.contains(crate::tag::TAG_PREFIX));
-            let why = (!carried && questions >= 2).then_some(questions);
-            HttpResponse::Ok().json(serde_json::json!({
-                "suggest": why.is_some(),
-                "assistant": crate::tag::BUILTIN_SLUG,
-            }))
-        },
-    )
+    guarded_as(&api, &req, "/api/tag/suggest", false, |who| {
+        let _ = tag_who(who);
+        let Some(room) = query_of(&req, "room") else {
+            return err(StatusCode::BAD_REQUEST, "which room?");
+        };
+        let tail = api.tag.events().room(&room, 20);
+        let questions = tail
+            .iter()
+            .filter(|event| {
+                let text = event.text.trim_start();
+                text.ends_with('?')
+                    || text.starts_with("how ")
+                    || text.starts_with("what ")
+                    || text.starts_with("where ")
+            })
+            .count();
+        let carried = tail
+            .iter()
+            .any(|event| event.sender.contains(crate::tag::TAG_PREFIX));
+        let why = (!carried && questions >= 2).then_some(questions);
+        HttpResponse::Ok().json(serde_json::json!({
+            "suggest": why.is_some(),
+            "assistant": crate::tag::BUILTIN_SLUG,
+        }))
+    })
 }
 
 // ── Installing an app from the catalogue ─────────────────────────────────
