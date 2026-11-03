@@ -57,7 +57,34 @@ Secure Boot off. See
 | ---------------------------- | --------- | -------------------------------------------------------------------------------------------- |
 | **Installer ISO**            | small     | The normal one, attached to every release. The target downloads the system it installs.      |
 | **ISO with the full system** | large     | Carries the built system, so the install copies instead of downloads. Build it yourself.     |
+| **Edge installer ISO**       | small     | The installer ISO, prefilled for one edge: it installs by itself, and the disk unlocks with the TPM *and* that edge. |
 | **Demo disk image** (QCOW2)  | large     | A preinstalled virtual disk for QEMU or virt-manager. No encryption, no installer. For demos. |
+
+### The edge installer ISO
+
+The edge installer is the installer ISO
+[opened with the edge as a key server](../reference/tpm#opening-the-disk-with-the-edge),
+with the edge it was built for put in at build time. Boot it, walk away: after
+the firmware menu times out the install starts on its own, seals the disk key
+to the TPM and that edge, and reboots. Nothing is typed, and no other decision
+is asked for.
+
+Built for a box with no TPM chip, it stops with the reason instead of
+installing with a weaker keyfile unlock. A flag typed onto `losos-install`
+outranks the prefill, so an operator phoning in can still choose differently
+for one run.
+
+It is not attached to a release: whoever builds it names the edge, so a
+release copy could only ever carry someone else's edge. Building one:
+
+```sh
+LOSOS_EDGE_URL=https://edge.example.org nix build --impure \
+  .#nixosConfigurations.iso-edge.config.system.build.isoImage
+```
+
+Its volume label reads `LOSOS_EDGE` and its file name carries
+`losos-installer-edge`, so it cannot be mistaken for the plain stick once the
+shell history is gone.
 
 ## Growing into the rest of the disk
 
