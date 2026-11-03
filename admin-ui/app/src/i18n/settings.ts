@@ -195,6 +195,21 @@ export default defineMessages({
     sk: "token tokeny prístup osobný kľúč terminál príkazový riadok konzola",
     de: "Token Tokens Zugriff Zugang persönlich Schlüssel Terminal Kommandozeile Konsole",
   },
+  "settings.panes.tag.label": {
+    en: "LosOS Tag",
+    sk: "LosOS značka",
+    de: "LosOS Tag",
+  },
+  "settings.panes.tag.summary": {
+    en: "The assistant people tag in chat: your assistants, the levels that say what they read, and the skills they answer by.",
+    sk: "Asistent, ktorého si v chate značíte: vaši asistenti, úrovne hovoriace, čo čítajú, a zručnosti, ktorými odpovedajú.",
+    de: "Der Assistent, den die Leute im Chat ansprechen: deine Assistenten, die Stufen, die sagen, was sie lesen, und die Fähigkeiten, nach denen sie antworten.",
+  },
+  "settings.panes.tag.keywords": {
+    en: "assistant ai levels confidentiality privacy clearance areas skills",
+    sk: "asistent asistenti úrovně oprávnění oblasti zručnosti",
+    de: "Vertraulichkeit Bereiche Fähigkeiten KI Assistent",
+  },
   "settings.panes.about.label": { en: "About", sk: "O zariadení", de: "Über" },
   "settings.panes.about.summary": {
     en: "What this box is, right now.",

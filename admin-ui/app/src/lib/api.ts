@@ -4903,3 +4903,144 @@ export function dispatchCi(owner: string, repo: string, workflow: string, ref = 
     body: JSON.stringify({ owner, repo, workflow, ref }),
   });
 }
+
+/* ── LosOS Tag (backend/src/tag.rs) ───────────────────────────────────── */
+
+export interface TagLevel {
+  name: string;
+  description: string;
+}
+
+export interface TagArea {
+  kind: string;
+  owner: string;
+  ref: string;
+  level: string;
+}
+
+export interface TagAssistant {
+  slug: string;
+  display: string;
+  prompt: string;
+  clearance: string;
+  owner: string;
+  enabled: boolean;
+}
+
+export interface TagSkill {
+  slug: string;
+  display: string;
+  prompt: string;
+  owner: string;
+  builtin: boolean;
+}
+
+export interface TagJob {
+  id: string;
+  origin: string;
+  person: string;
+  assistant: string;
+  room: string | null;
+  question: string;
+  state: string;
+  answer: string;
+  error: string | null;
+  handoffs: number;
+}
+
+export interface TagConversation {
+  id: string;
+  person: string;
+  assistant: string;
+  room: string | null;
+  question: string;
+  answer: string;
+  handoffs: number;
+}
+
+export interface TagView {
+  levels: TagLevel[];
+  areas: TagArea[];
+  assistants: TagAssistant[];
+  skills: TagSkill[];
+  /** The person's own companion clearance, or the admin's own. */
+  clearance: string;
+  jobs: TagJob[];
+  conversations: TagConversation[];
+}
+
+/** GET /api/tag — the whole screen, as far as the caller sees it. */
+export function getTag(options: RequestOptions = {}): Promise<TagView> {
+  return call<TagView>("/api/tag", options);
+}
+
+export function putTagLevel(level: TagLevel): Promise<{ ok: true }> {
+  return call<{ ok: true }>("/api/tag/levels", {
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(level),
+  });
+}
+
+export function putTagArea(area: TagArea): Promise<{ ok: true }> {
+  return call<{ ok: true }>("/api/tag/areas", {
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(area),
+  });
+}
+
+export function putTagAssistant(assistant: Partial<TagAssistant> & Pick<TagAssistant, "slug" | "display" | "clearance">): Promise<{ ok: true }> {
+  return call<{ ok: true }>("/api/tag/assistants", {
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(assistant),
+  });
+}
+
+export function putTagSkill(skill: Pick<TagSkill, "slug" | "display" | "prompt">): Promise<{ ok: true }> {
+  return call<{ ok: true }>("/api/tag/skills", {
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(skill),
+  });
+}
+
+export function deleteTagSkill(slug: string): Promise<{ ok: true }> {
+  return call<{ ok: true }>(`/api/tag/skills/${slug}`, { method: "DELETE" });
+}
+
+/** POST /api/tag/clearance — the person's own companion clearance. */
+export function putTagClearance(level: string): Promise<{ ok: true }> {
+  return call<{ ok: true }>("/api/tag/clearance", {
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify({ level }),
+  });
+}
+
+/** POST /api/tag/ask — a background ask, the suggestion's own send. */
+export function postTagAsk(question: string, options: { assistant?: string; room?: string; skills?: string[] } = {}): Promise<{ id: string; state: string }> {
+  return call<{ id: string; state: string }>("/api/tag/ask", {
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify({ question, ...(options.assistant !== undefined && { assistant: options.assistant }), ...(options.room !== undefined && { room: options.room }), ...(options.skills !== undefined && { skills: options.skills }) }),
+  });
+}
+
+/** POST /api/tag/asks/{id} — stop one ask. */
+export function deleteTagAsk(id: string): Promise<{ ok: true }> {
+  return call<{ ok: true }>(`/api/tag/asks/${id}`, { method: "DELETE" });
+}
+
+export interface TagSearchHit {
+  path: string;
+  snippet: string[];
+  source: string;
+}
+
+/** GET /api/search — the unified search. */
+export function searchAll(q: string, options: RequestOptions = {}): Promise<{ hits: TagSearchHit[] }> {
+  const params = new URLSearchParams({ q });
+  return call<{ hits: TagSearchHit[] }>(`/api/search?${params.toString()}`, options);
+}
