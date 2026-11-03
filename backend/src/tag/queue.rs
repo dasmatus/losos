@@ -37,7 +37,7 @@ use serde_json::{json, Value};
 
 use rand::RngCore;
 
-use crate::tag::Skill;
+use crate::tag::{Skill, MAX_HANDOFFS};
 
 /// How often the reaper's sweep looks.
 pub const SWEEP_MS: u64 = 5 * 60 * 1000;
@@ -275,6 +275,20 @@ pub struct Runner {
     pub browse: Option<String>,
 }
 
+impl Runner {
+    /// The environment `modules/tag.nix` hands over.
+    pub fn from_env() -> Self {
+        let read = |name: &str| std::env::var(name).ok().filter(|v| !v.trim().is_empty());
+        Runner {
+            t3: read("LOSOS_TAG_T3_BIN"),
+            opencode: read("LOSOS_TAG_OPENCODE_BIN"),
+            model: read("LOSOS_TAG_MODEL"),
+            searxng: read("LOSOS_TAG_SEARXNG_URL"),
+            browse: read("LOSOS_TAG_BROWSE_BIN"),
+        }
+    }
+}
+
 /// Run the queue until the process ends: one job at a time, the sweeps in
 /// between. Spawned once, by `http`'s serve, next to the git rooms'
 /// listener.
@@ -391,9 +405,35 @@ pub fn take(
     }
     tag.archive(id.clone(), job, &text);
     if let Some(room) = job.room.as_deref() {
-        return post.post(room, &job.assistant, &text);
+        post.post(room, &job.assistant, &text)?;
     }
+    handoff(tag, job, &text);
     Ok(())
+}
+
+/// The handoff: what an answer's own text tags reaches the next
+/// assistant, one handoff deeper, until [`MAX_HANDOFFS`] are spent — this
+/// is how assistants talk to each other, one turn at a time, in the same
+/// room the thread lives in.
+fn handoff(tag: &Arc<crate::tag::Tag>, job: &Job, answer: &str) {
+    if job.handoffs as usize >= MAX_HANDOFFS as usize {
+        return;
+    }
+    let Some(room) = job.room.as_deref() else {
+        return;
+    };
+    let state = tag.state();
+    for next in state.reached(answer, &[]) {
+        let localpart = format!("{}{}", crate::tag::TAG_PREFIX, next.slug);
+        if localpart == job.assistant {
+            continue;
+        }
+        let mut follow = Job::queued(&job.person, &localpart, Origin::Mention, answer);
+        follow.room = Some(room.to_string());
+        follow.handoffs = job.handoffs + 1;
+        let _ = tag.enqueue(follow);
+        break;
+    }
 }
 
 fn is_stopped_nolonger(tag: &Arc<crate::tag::Tag>, id: &str) -> bool {
@@ -455,8 +495,25 @@ pub fn turn(
         .iter()
         .find(|a| format!("{}{}", crate::tag::TAG_PREFIX, a.slug) == job.assistant)
         .cloned();
-    let wanted = job
-        .skill_list()
+    let (material, wanted) = match job.material.as_ref() {
+        // The route's own shape: hits and the skills the ask named.
+        Some(doc) if doc.get("hits").is_some() => (
+            built_material(&doc["hits"]),
+            doc.get("skills")
+                .and_then(serde_json::Value::as_array)
+                .map(|skills| {
+                    skills
+                        .iter()
+                        .filter_map(serde_json::Value::as_str)
+                        .map(str::to_string)
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default(),
+        ),
+        Some(material) => (built_material(material), Vec::new()),
+        None => (String::new(), Vec::new()),
+    };
+    let wanted = wanted
         .into_iter()
         .map(|slug| {
             state
@@ -472,7 +529,6 @@ pub fn turn(
     // carries it as data.
     let clearance = state.clearance_of(assistant.as_ref(), &job.person);
     let _ = clearance;
-    let material = built_material(job.material.as_ref().unwrap_or(&json!([])));
     let lang = std::env::var("LOSOS_TAG_LANG").unwrap_or_else(|_| "en".into());
     let prompt = join_prompt(
         &crate::tag::system_prompt(assistant.as_ref(), &knew, &lang),
@@ -493,28 +549,6 @@ pub fn turn(
             let model = config.model.as_deref().ok_or("the box runs no model")?;
             builtin_turn(model, &prompt)
         }
-    }
-}
-
-/// One ask's skills, from its ask body's `skills` list.
-trait SkillList {
-    fn skill_list(&self) -> Vec<String>;
-}
-
-impl SkillList for Job {
-    fn skill_list(&self) -> Vec<String> {
-        self.material
-            .as_ref()
-            .and_then(|m| m.get("skills"))
-            .and_then(Value::as_array)
-            .map(|skills| {
-                skills
-                    .iter()
-                    .filter_map(Value::as_str)
-                    .map(str::to_string)
-                    .collect()
-            })
-            .unwrap_or_default()
     }
 }
 
@@ -662,8 +696,58 @@ mod tests {
     }
 
     #[test]
+    fn the_handoff_reaches_the_named_assistant_once() {
+        let tag = tag();
+        // A second assistant beside the built-in one, through the routes'
+        // own path.
+        let gardener = crate::tag::Assistant {
+            slug: "gardener".into(),
+            display: "Gardener".into(),
+            prompt: String::new(),
+            clearance: crate::tag::DEFAULT_LEVEL.into(),
+            owner: "eva".into(),
+            enabled: true,
+            minted: false,
+        };
+        tag.put_assistant("eva", true, gardener).unwrap();
+
+        // LosOS's own answer names the gardener: one ask follows, one
+        // handoff deeper.
+        let mut answer = Job::queued("eva", "tag-losos-tag", Origin::Mention, "what is the plan?");
+        answer.room = Some("!room:box.local".to_string());
+        answer.answer = "ask @gardener about the plants".into();
+        archive_and_handoff(&tag, &answer);
+
+        let state = tag.state();
+        let follow = state
+            .jobs
+            .iter()
+            .find(|j| j.assistant == "tag-gardener")
+            .expect("the gardener's own ask");
+        assert_eq!(
+            (follow.handoffs, follow.person.clone()),
+            (1, "eva".to_string())
+        );
+
+        // Three handoffs spent: nothing follows.
+        let mut third = Job::queued("eva", "tag-gardener", Origin::Mention, "hello");
+        third.room = Some("!room:box.local".to_string());
+        third.handoffs = 3;
+        archive_and_handoff(&tag, &third);
+        let state = tag.state();
+        assert!(!state.jobs.iter().any(|j| j.handoffs == 4));
+    }
+
+    /// What the runner does after a done ask: the archive, and the handoff.
+    fn archive_and_handoff(tag: &Arc<Tag>, job: &Job) {
+        tag.update_jobs(|jobs| jobs.push(job.clone()));
+        tag.archive(job.id.clone(), job, &job.answer);
+        handoff(tag, job, &job.answer);
+    }
+
+    #[test]
     fn a_paused_suggestion_and_a_running_mention() {
-        assert_eq!(constrain_idle(&tag_for_pressure(), true), true);
+        assert!(constrain_idle(&tag_for_pressure(), true));
     }
 
     fn tag_for_pressure() -> Arc<Tag> {

@@ -559,9 +559,15 @@ pub struct Tag {
     inner: Mutex<State>,
     path: PathBuf,
     signals: std::sync::Mutex<Option<std::sync::mpsc::Sender<queue::Signal>>>,
+    /// The rooms the listener heard since its start, memory only.
+    cache: Cache,
 }
 
 impl Tag {
+    /// What the rooms held, as text only, since the listener started.
+    pub fn events(&self) -> &Cache {
+        &self.cache
+    }
     pub fn new(path: PathBuf) -> Self {
         let file = std::fs::read_to_string(&path)
             .ok()
@@ -588,6 +594,7 @@ impl Tag {
             inner: Mutex::new(file),
             path,
             signals: std::sync::Mutex::new(None),
+            cache: Cache::new(),
         }
     }
 
@@ -650,7 +657,19 @@ impl Tag {
                 .map(|s| json!({ "slug": s.slug, "display": s.display, "prompt": s.prompt, "owner": s.owner, "builtin": s.builtin }))
                 .collect::<Vec<_>>(),
             "clearance": state.clearance_of(None, person),
-            "jobs": state.jobs.iter().filter(|j| admin || j.person == person || true).map(job).collect::<Vec<_>>(),
+            "jobs": state.jobs.iter().filter(|j| admin || j.person == person).map(job).collect::<Vec<_>>(),
+            "conversations": state
+                .conversations
+                .iter()
+                .filter(|c| admin || c.person == person)
+                .map(|c| {
+                    json!({
+                        "id": c.id, "person": c.person, "assistant": c.assistant,
+                        "room": c.room, "question": c.question,
+                        "answer": c.answer, "handoffs": c.handoffs,
+                    })
+                })
+                .collect::<Vec<_>>(),
         })
     }
 
@@ -976,6 +995,90 @@ impl From<&GitHit> for SearchHit {
             source: "git".into(),
             area: None,
         }
+    }
+}
+
+// ── The rooms' events, as the listener heard them ─────────────────────────
+
+/// One message the listener heard, capped at [`CACHE_EVENTS`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CacheEvent {
+    pub room: String,
+    pub sender: String,
+    pub sender_name: String,
+    pub text: String,
+}
+
+/// How many events one listener keeps: the last 4,000, oldest first out.
+pub const CACHE_EVENTS: usize = 4_000;
+/// How much of one event's text the cache keeps.
+pub const MAX_EVENT_CHARS: usize = 2_000;
+
+/// What the tag remembers of the rooms it is in: an in-memory ring, never
+/// written to disk, cross-read for an ask's own room and for unified
+/// search. Bodies only, no attachments, names kept as the homeserver told
+/// them; a redaction is remembered as its absence.
+#[derive(Default)]
+pub struct Cache {
+    inner: Mutex<std::collections::VecDeque<CacheEvent>>,
+}
+
+impl Cache {
+    pub fn new() -> Self {
+        Cache {
+            inner: Mutex::new(std::collections::VecDeque::new()),
+        }
+    }
+
+    /// Remember one message, dropping the oldest when full.
+    pub fn remember(&self, event: CacheEvent) {
+        let Ok(mut events) = self.inner.lock() else {
+            return;
+        };
+        if events.len() >= CACHE_EVENTS {
+            events.pop_front();
+        }
+        events.push_back(event);
+    }
+
+    /// The events of one room's tail, newest last.
+    pub fn room(&self, room: &str, count: usize) -> Vec<CacheEvent> {
+        let Ok(events) = self.inner.lock() else {
+            return Vec::new();
+        };
+        events
+            .iter()
+            .filter(|e| e.room == room)
+            .rev()
+            .take(count)
+            .cloned()
+            .collect()
+    }
+
+    /// The cache's hits for one query, as `(room, marked_snippet)` pairs,
+    /// one per event whose body matched, marked the way
+    /// [`crate::textsearch::mark`] marks a search result.
+    pub fn find(&self, terms: &[String], max: usize) -> Vec<(String, Vec<String>)> {
+        let Ok(events) = self.inner.lock() else {
+            return Vec::new();
+        };
+        let mut hits: Vec<(String, Vec<String>)> = Vec::new();
+        for event in events.iter().rev() {
+            if hits.len() >= max {
+                break;
+            }
+            let lower = event.text.to_lowercase();
+            if terms
+                .iter()
+                .any(|term| lower.contains(&term.to_lowercase()))
+            {
+                hits.push((
+                    event.room.clone(),
+                    crate::textsearch::mark(&event.text, terms, 120),
+                ));
+            }
+        }
+        hits
     }
 }
 

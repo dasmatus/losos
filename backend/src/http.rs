@@ -108,6 +108,10 @@ struct Api {
     pictures: crate::pictures::Pictures,
     /// Turns at decoding an upload (`IMAGE_JOBS`).
     image_jobs: tokio::sync::Semaphore,
+    /// LosOS Tag's levels, assistants, skills and ask queue
+    /// (`crate::tag`), shared in one `Arc`: the queue's runner works on
+    /// the same one as the routes.
+    tag: std::sync::Arc<crate::tag::Tag>,
     /// The plugins that answer every route not registered below
     /// (`crate::plugin`).
     plugins: crate::plugin::Runtime,
@@ -3179,6 +3183,235 @@ fn listen_for_git_events(api: &web::Data<Api>) {
     }
 }
 
+/// LosOS Tag's threads, when the tag runs on this box: the chat listener
+/// hears every room's unencrypted messages over the application service's
+/// `/sync` ([`listen_tag_events`]), and asks run on the queue
+/// ([`crate::tag::queue::run`]), whose answers post back into the rooms.
+fn listen_for_tag(api: &web::Data<Api>) {
+    if std::env::var_os("LOSOS_TAG").is_none() {
+        return;
+    }
+    if !api.chat.live() {
+        return;
+    }
+    // One runner thread, sharing the api's own tag through the same Arc:
+    // an ask a page enqueued and the runner's next state agree on the one
+    // instance.
+    let runner = api.tag.clone();
+    let post: std::sync::Arc<dyn crate::tag::queue::Post> =
+        std::sync::Arc::new(TagPost { api: api.clone() });
+    let config = crate::tag::queue::Runner::from_env();
+    let awake = api.tag.signals();
+    let _ = std::thread::spawn(move || {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::tag::queue::run(runner, post, config, awake)
+        }))
+        .ok();
+    });
+    listen_tag_events(api.clone());
+}
+
+/// How an ask's answer goes back into the room it came from: the api's own
+/// chat, as the assistant, whose display name the tag's own list carries.
+struct TagPost {
+    api: web::Data<Api>,
+}
+
+impl crate::tag::queue::Post for TagPost {
+    fn post(&self, room: &str, assistant: &str, answer: &str) -> Result<(), String> {
+        let slug = assistant
+            .strip_prefix(crate::tag::TAG_PREFIX)
+            .unwrap_or(assistant);
+        let display = self
+            .api
+            .tag
+            .state()
+            .assistants
+            .iter()
+            .find(|a| a.slug == slug)
+            .map(|a| a.display.clone())
+            .unwrap_or_else(|| slug.to_string());
+        self.api
+            .chat
+            .agent_message(room, slug, &display, answer, None)
+            .map_err(|e| format!("{e:#}"))
+    }
+}
+
+/// LosOS Tag's own listener: the application service syncing the rooms,
+/// once a pull after another, so the tag's cache holds the box's rooms for
+/// as long as it runs, and every message that names an assistant is that
+/// ask, with the room and the room's tail in it. The handoff is the
+/// queue's own rule: an answer's `@handle` names the next assistant,
+/// three turns deep at most.
+fn listen_tag_events(api: web::Data<Api>) {
+    std::thread::spawn(move || {
+        let mut since: Option<String> = None;
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            if !api.chat.live() {
+                continue;
+            }
+            match api.chat.sync(since.as_deref()) {
+                Err(e) => tracing::warn!(error = ?e, "the tag listener missed a sync"),
+                Ok((next, body)) => {
+                    since = Some(next);
+                    tag_hear(&api, &body);
+                }
+            }
+        }
+    });
+}
+
+/// Read one sync answer into the tag's cache and its queues. Notices are
+/// dropped: LosOS Git's posts, and the tag's own answers, are not asks.
+fn tag_hear(api: &Api, body: &serde_json::Value) {
+    let Some(joined) = body
+        .pointer("/rooms/join")
+        .and_then(serde_json::Value::as_object)
+    else {
+        return;
+    };
+    for (room, pulled) in joined {
+        let Some(events) = pulled
+            .pointer("/timeline/events")
+            .and_then(serde_json::Value::as_array)
+        else {
+            continue;
+        };
+        for event in events {
+            if event.get("type").and_then(serde_json::Value::as_str) != Some("m.room.message") {
+                continue;
+            }
+            if event
+                .pointer("/content/msgtype")
+                .and_then(serde_json::Value::as_str)
+                != Some("m.text")
+            {
+                continue;
+            }
+            let Some(sender) = event.get("sender").and_then(serde_json::Value::as_str) else {
+                continue;
+            };
+            let text = text_of(event);
+            if text.is_empty() {
+                continue;
+            }
+            tag_remember(api, room, sender, &text);
+        }
+    }
+}
+
+/// A message's own body, capped at [what the cache keeps]
+/// ([`crate::tag::MAX_EVENT_CHARS`]).
+fn text_of(event: &serde_json::Value) -> String {
+    event
+        .pointer("/content/body")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("")
+        .chars()
+        .take(crate::tag::MAX_EVENT_CHARS)
+        .collect()
+}
+
+/// Remember one message, and queue the ask each `@handle` reached. The
+/// sender's own localpart is the person it comes from: the ask runs at its
+/// assistant's clearance ([`State::clearance_of`]).
+fn tag_remember(api: &Api, room: &str, sender: &str, text: &str) {
+    let person = sender
+        .strip_prefix('@')
+        .and_then(|s| s.split_once(':'))
+        .map_or(sender, |(name, _)| name);
+    api.tag.events().remember(crate::tag::CacheEvent {
+        room: room.to_string(),
+        sender: sender.to_string(),
+        sender_name: person.to_string(),
+        text: text.to_string(),
+    });
+    let state = api.tag.state();
+    for assistant in state.reached(text, &[]) {
+        tag_ask_from(api, room, person, assistant, text);
+    }
+}
+
+/// One ask into the queue, from the room's mention: the material gathered
+/// at the assistant's clearance, the question, and the room it answers
+/// into.
+fn tag_ask_from(
+    api: &Api,
+    room: &str,
+    person: &str,
+    assistant: &crate::tag::Assistant,
+    text: &str,
+) {
+    let question = text
+        .lines()
+        .filter(|line| !line.trim_start().starts_with('@'))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let material = tag_material(api, person, &assistant.clearance, &question).ok();
+    let mut job = crate::tag::queue::Job::queued(
+        person,
+        &format!("{}{}", crate::tag::TAG_PREFIX, assistant.slug),
+        crate::tag::queue::Origin::Mention,
+        &question,
+    );
+    job.room = Some(room.to_string());
+    job.material = material;
+    if let Err(e) = api.tag.enqueue(job) {
+        tracing::warn!(error = %e, "the tag took no ask");
+    }
+}
+
+/// One ask's search, the unified one, at the ask's own clearance: the
+/// cloud text and git as the routes relay them, the rooms out of the
+/// listener's cache. The mail joins through its own JMAP where a route
+/// has the person's sessions (`get_search`).
+fn tag_material(
+    api: &Api,
+    person: &str,
+    clearance: &str,
+    question: &str,
+) -> Result<serde_json::Value, String> {
+    let terms = crate::textsearch::terms(question);
+    if terms.is_empty() {
+        return Err("an ask needs something to look for".into());
+    }
+    let cloud = text_hits::<crate::textsearch::CloudHit>("LOSOS_SEARCH_CLOUD_SOCKET", &terms, "q");
+    let git = text_hits::<crate::textsearch::GitHit>("LOSOS_SEARCH_GIT_SOCKET", &terms, "q");
+    let chat = api.tag.events().find(&terms, 8);
+    Ok(serde_json::to_value(
+        api.tag
+            .search(person, clearance, cloud, git, Vec::new(), chat),
+    )
+    .unwrap_or_else(|_| serde_json::json!([])))
+}
+
+/// Ask one of the search sockets, as [`text_search`] does for a route,
+/// and take its hits alone.
+fn text_hits<T: serde::de::DeserializeOwned>(
+    socket_var: &str,
+    question: &[String],
+    param: &str,
+) -> Vec<T> {
+    let Some(socket) = std::env::var_os(socket_var) else {
+        return Vec::new();
+    };
+    let _ = param;
+    match crate::textsearch::ask::<T>(
+        Path::new(&socket),
+        &question.join(" "),
+        8,
+        TEXT_SEARCH_TIMEOUT,
+    ) {
+        Ok(answer) => answer.hits,
+        Err(e) => {
+            tracing::warn!(error = ?e, socket = %socket_var, "a tag search's source was quiet");
+            Vec::new()
+        }
+    }
+}
+
 fn git_event(api: &Api, event: &serde_json::Value) {
     let text = |k: &str| {
         event
@@ -4373,6 +4606,351 @@ fn text_search<T: serde::de::DeserializeOwned + serde::Serialize>(
             )
         }
     }
+}
+
+// ── LosOS Tag ────────────────────────────────────────────────────────────
+// The tag's own screen drive: who edits what, the asks and the search.
+// The rules live in `crate::tag`; these only check who called and shape
+// the wire.
+
+/// Who a tag call is: the person's own name, or "admin" with the admin
+/// bit set, the spare key included.
+fn tag_who(who: &Principal) -> (String, bool) {
+    match who {
+        Principal::Person(p) => (p.name.clone(), p.is_admin()),
+        _ => ("admin".into(), true),
+    }
+}
+
+/// `GET /api/tag` — the whole screen: the levels, areas, assistants and
+/// skills the caller may see, their asks and their past conversations.
+async fn get_tag(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded_as(&api, &req, "/api/tag", false, |who| {
+        let (person, admin) = tag_who(who);
+        HttpResponse::Ok().json(api.tag.view(&person, admin))
+    })
+}
+
+/// `POST /api/tag/levels` — a level, by an administrator. The body is
+/// `{ "name", "description"? }`.
+async fn post_tag_level(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
+    guarded_as(&api, &req, "/api/tag/levels", true, |_| {
+        let level: crate::tag::Level = match serde_json::from_value(body.into_inner()) {
+            Ok(level) => level,
+            Err(e) => return err(StatusCode::BAD_REQUEST, &format!("a level: {e}")),
+        };
+        match api.tag.put_level(level) {
+            Ok(()) => HttpResponse::Ok().json(serde_json::json!({ "ok": true })),
+            Err(e) => err(StatusCode::BAD_REQUEST, &e),
+        }
+    })
+}
+
+/// `POST /api/tag/areas` — grade one piece of the box's data. A person
+/// grades their own; an administrator grades anyone's, the body's `owner`
+/// taken when they name another.
+async fn post_tag_area(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
+    guarded_as(&api, &req, "/api/tag/areas", true, |who| {
+        let (person, admin) = tag_who(who);
+        let value = body.into_inner();
+        let next = match serde_json::from_value::<crate::tag::Area>(value) {
+            Ok(next) => next,
+            Err(e) => return err(StatusCode::BAD_REQUEST, &format!("an area: {e}")),
+        };
+        match api.tag.put_area(&person, admin, next) {
+            Ok(()) => HttpResponse::Ok().json(serde_json::json!({ "ok": true })),
+            Err(e) => err(StatusCode::BAD_REQUEST, &e),
+        }
+    })
+}
+
+/// `POST /api/tag/assistants` — one assistant's persona, by its maker
+/// (or any assistant's, by an administrator).
+async fn post_tag_assistant(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
+    guarded_as(&api, &req, "/api/tag/assistants", true, |who| {
+        let (person, admin) = tag_who(who);
+        let mut value = body.into_inner();
+        if admin {
+            if let Some(owner) = value.get("owner").and_then(serde_json::Value::as_str) {
+                let _ = owner;
+            }
+        } else {
+            value["owner"] = serde_json::Value::from(person.clone());
+        }
+        let next: crate::tag::Assistant = match serde_json::from_value(value) {
+            Ok(next) => next,
+            Err(e) => return err(StatusCode::BAD_REQUEST, &format!("an assistant: {e}")),
+        };
+        match api.tag.put_assistant(&person, admin, next) {
+            Ok(()) => HttpResponse::Ok().json(serde_json::json!({ "ok": true })),
+            Err(e) => err(StatusCode::BAD_REQUEST, &e),
+        }
+    })
+}
+
+/// `POST /api/tag/skills` — a skill, beside the seeded LosOS ones.
+async fn post_tag_skill(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
+    guarded_as(&api, &req, "/api/tag/skills", true, |who| {
+        let (person, admin) = tag_who(who);
+        let mut value = body.into_inner();
+        value["owner"] = serde_json::Value::from(person.clone());
+        let next: crate::tag::Skill = match serde_json::from_value(value) {
+            Ok(next) => next,
+            Err(e) => return err(StatusCode::BAD_REQUEST, &format!("a skill: {e}")),
+        };
+        match api.tag.put_skill(&person, admin, next) {
+            Ok(()) => HttpResponse::Ok().json(serde_json::json!({ "ok": true })),
+            Err(e) => err(StatusCode::BAD_REQUEST, &e),
+        }
+    })
+}
+
+/// `DELETE /api/tag/skills/{slug}` — a skill's own maker, a seed by an
+/// administrator.
+async fn delete_tag_skill(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    path: web::Path<String>,
+) -> HttpResponse {
+    guarded_as(&api, &req, "/api/tag/skills", true, |who| {
+        let (person, admin) = tag_who(who);
+        match api.tag.drop_skill(&person, admin, &path.into_inner()) {
+            Ok(()) => HttpResponse::Ok().json(serde_json::json!({ "ok": true })),
+            Err(e) => err(StatusCode::BAD_REQUEST, &e),
+        }
+    })
+}
+
+/// `POST /api/tag/clearance` — a person sets their own companion's
+/// clearance: `{ "level" }`.
+async fn post_tag_clearance(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
+    guarded_as(&api, &req, "/api/tag/clearance", true, |who| {
+        let (person, _admin) = tag_who(who);
+        let Some(level) = body
+            .get("level")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string)
+        else {
+            return err(StatusCode::BAD_REQUEST, "which level?");
+        };
+        match api.tag.put_clearance(&person, &level) {
+            Ok(()) => HttpResponse::Ok().json(serde_json::json!({ "ok": true })),
+            Err(e) => err(StatusCode::BAD_REQUEST, &e),
+        }
+    })
+}
+
+/// `GET /api/search` — unified search: the cloud text, the git lines, the
+/// person's own mail, their rooms (the tag's cache), each hit graded by
+/// the areas.
+async fn get_search(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded_at(
+        &api,
+        &req,
+        "/api/search",
+        Some("GET /api/search"),
+        false,
+        |who| {
+            let (person, _) = tag_who(who);
+            let q = query_of(&req, "q").unwrap_or_default();
+            if let Err(e) = crate::textsearch::validate_query(&q) {
+                return err(StatusCode::BAD_REQUEST, &e);
+            }
+            let terms = crate::textsearch::terms(&q);
+            let clearance = api.tag.state().clearance_of(None, &person);
+            let cloud =
+                text_hits::<crate::textsearch::CloudHit>("LOSOS_SEARCH_CLOUD_SOCKET", &terms, "q");
+            let git =
+                text_hits::<crate::textsearch::GitHit>("LOSOS_SEARCH_GIT_SOCKET", &terms, "q");
+            let mut mail = Vec::new();
+            if api.mail.open().is_some() {
+                if let Some(mail_person) = who.person() {
+                    if let Ok(boxes) = api.mail.mailboxes(mail_person) {
+                        let want = terms.join(" ");
+                        for mailbox in boxes.iter().take(crate::textsearch::MAX_HITS) {
+                            if let Ok(page) =
+                                api.mail.list(mail_person, &mailbox.id, Some(&want), 0)
+                            {
+                                for summary in page.messages {
+                                    let snippet = vec![format!(
+                                        "{} — {}",
+                                        summary
+                                            .from
+                                            .iter()
+                                            .map(|a| a.email.clone())
+                                            .collect::<Vec<_>>()
+                                            .join(", "),
+                                        summary.preview
+                                    )];
+                                    mail.push((
+                                        format!("{} ({})", mailbox.name, summary.subject),
+                                        snippet,
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            let chat = api.tag.events().find(&terms, 8);
+            let hits = api.tag.search(&person, &clearance, cloud, git, mail, chat);
+            let _ = q;
+            HttpResponse::Ok().json(serde_json::json!({ "hits": hits }))
+        },
+    )
+}
+
+/// The query's own parameter, as `Q` asks.
+fn query_of(req: &HttpRequest, name: &str) -> Option<String> {
+    web::Query::<std::collections::HashMap<String, String>>::from_query(req.query_string())
+        .ok()
+        .map(|q| q.into_inner())
+        .and_then(|params| params.get(name).cloned())
+}
+
+/// `POST /api/tag/ask` — an ask by hand, backgrounded: what the composer's
+/// suggestion sends, and what a test sends. The body is
+/// `{ "question", "assistant"?, "skills"?, "room"? }`.
+async fn post_tag_ask(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Json<serde_json::Value>,
+) -> HttpResponse {
+    guarded_as(&api, &req, "/api/tag/ask", true, |who| {
+        let (person, _admin) = tag_who(who);
+        let body = body.into_inner();
+        let question = body
+            .get("question")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        if question.trim().is_empty() {
+            return err(StatusCode::BAD_REQUEST, "ask a question");
+        }
+        let slug = body
+            .get("assistant")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or(crate::tag::BUILTIN_SLUG);
+        let state = api.tag.state();
+        let assistant = state
+            .assistants
+            .iter()
+            .find(|a| a.slug == slug && a.enabled)
+            .filter(|a| a.owner == person || a.owner == crate::tag::EVERYONE)
+            .cloned()
+            .unwrap_or_else(|| state.assistants[0].clone());
+        let clearance = api.tag.state().clearance_of(Some(&assistant), &person);
+        let skills = body
+            .get("skills")
+            .and_then(serde_json::Value::as_array)
+            .map(|s| {
+                s.iter()
+                    .filter_map(serde_json::Value::as_str)
+                    .map(str::to_string)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let material = tag_material(&api, &person, &clearance, &question)
+            .map(|hits| serde_json::json!({ "hits": hits, "skills": skills }))
+            .map_err(|e| err(StatusCode::BAD_REQUEST, &e))
+            .ok();
+        let mut job = crate::tag::queue::Job::queued(
+            &person,
+            &format!("{}{}", crate::tag::TAG_PREFIX, assistant.slug),
+            crate::tag::queue::Origin::Suggestion,
+            &question,
+        );
+        job.material = material;
+        job.room = body
+            .get("room")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string);
+        match api.tag.enqueue(job) {
+            Ok(job) => HttpResponse::Ok().json(serde_json::json!({
+                "id": job.id, "state": job.state,
+            })),
+            Err(e) => err(StatusCode::BAD_REQUEST, &e),
+        }
+    })
+}
+
+/// `DELETE /api/tag/asks/{id}` — a person's own ask, an administrator's
+/// anything.
+async fn delete_tag_ask(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    path: web::Path<String>,
+) -> HttpResponse {
+    guarded_as(&api, &req, "/api/tag/asks", true, |who| {
+        let (person, admin) = tag_who(who);
+        let mine = who.person().is_some();
+        match api.tag.stop(
+            if mine { Some(&person) } else { None },
+            admin,
+            &path.into_inner(),
+        ) {
+            Ok(()) => HttpResponse::Ok().json(serde_json::json!({ "ok": true })),
+            Err(e) => err(StatusCode::BAD_REQUEST, &e),
+        }
+    })
+}
+
+/// `GET /api/tag/suggest?room=` — whether the tag is suggested in this
+/// room: the room's tail at hand, and the count of what looks like
+/// questions a person asked and no assistant answered.
+async fn get_tag_suggest(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded_at(
+        &api,
+        &req,
+        "/api/tag/suggest",
+        Some("GET /api/tag/suggest"),
+        false,
+        |who| {
+            let _ = tag_who(who);
+            let Some(room) = query_of(&req, "room") else {
+                return err(StatusCode::BAD_REQUEST, "which room?");
+            };
+            let tail = api.tag.events().room(&room, 20);
+            let questions = tail
+                .iter()
+                .filter(|event| {
+                    let text = event.text.trim_start();
+                    text.ends_with('?')
+                        || text.starts_with("how ")
+                        || text.starts_with("what ")
+                        || text.starts_with("where ")
+                })
+                .count();
+            let carried = tail
+                .iter()
+                .any(|event| event.sender.contains(crate::tag::TAG_PREFIX));
+            let why = (!carried && questions >= 2).then_some(questions);
+            HttpResponse::Ok().json(serde_json::json!({
+                "suggest": why.is_some(),
+                "assistant": crate::tag::BUILTIN_SLUG,
+            }))
+        },
+    )
 }
 
 // ── Installing an app from the catalogue ─────────────────────────────────
@@ -6734,6 +7312,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
             share: crate::cloud_share::Share::default(),
             chat: crate::chat::Chat::from_env(),
             git_rooms: crate::git_rooms::Rooms::from_env(),
+            tag: std::sync::Arc::new(crate::tag::Tag::from_env()),
             contacts: std::env::var("LOSOS_CLOUD_CONTACTS").is_ok_and(|v| v == "1"),
             mail: crate::mail::Mail::from_env(),
             mail_keys: crate::mail::Config::from_env().map(|c| {
@@ -6760,6 +7339,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
             .max(crate::mail::MAX_REQUEST);
         owner_in_owner_group(&api);
         listen_for_git_events(&api);
+        listen_for_tag(&api);
         start_login_marks(api.clone());
         sync_names_later(api.clone(), None);
         let server = HttpServer::new(move || {
@@ -7054,6 +7634,17 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/chat/git-room", web::post().to(post_chat_git_room))
                 .route("/api/contacts/suggest", web::get().to(get_contacts_suggest))
                 .route("/internal/chat/authz", web::get().to(get_chat_authz))
+                .route("/api/tag", web::get().to(get_tag))
+                .route("/api/tag/levels", web::post().to(post_tag_level))
+                .route("/api/tag/areas", web::post().to(post_tag_area))
+                .route("/api/tag/assistants", web::post().to(post_tag_assistant))
+                .route("/api/tag/skills", web::post().to(post_tag_skill))
+                .route("/api/tag/skills/{slug}", web::delete().to(delete_tag_skill))
+                .route("/api/tag/clearance", web::post().to(post_tag_clearance))
+                .route("/api/search", web::get().to(get_search))
+                .route("/api/tag/ask", web::post().to(post_tag_ask))
+                .route("/api/tag/asks/{id}", web::delete().to(delete_tag_ask))
+                .route("/api/tag/suggest", web::get().to(get_tag_suggest))
                 // Everything else is a plugin's, or nobody's (crate::plugin).
                 .default_service(web::route().to(plugin_route))
         })
