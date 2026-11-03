@@ -1784,7 +1784,7 @@ jobs:
           nix build --impure .#nixosConfigurations.iso.config.system.build.isoImage -L 2>&1 | tee "$RUNNER_TEMP/nix-build.log"
       - name: file an issue for the failed nix build
         if: failure() && steps.build-iso.outcome == 'failure'
-        uses: ./.github/actions/nix-build-failure
+        uses: ./.ci/.github/actions/nix-build-failure
         with:
           target: .#nixosConfigurations.iso.config.system.build.isoImage
       - run: mv result result-iso
@@ -1795,7 +1795,7 @@ jobs:
           nix build .#losos-disk-qcow2 -L 2>&1 | tee "$RUNNER_TEMP/nix-build.log"
       - name: file an issue for the failed nix build
         if: failure() && steps.build-losos-disk-qcow2.outcome == 'failure'
-        uses: ./.github/actions/nix-build-failure
+        uses: ./.ci/.github/actions/nix-build-failure
         with:
           target: .#losos-disk-qcow2
       - run: mv result result-qcow2
@@ -1809,7 +1809,7 @@ jobs:
           nix build .#losos-disk-edge-qcow2 -L 2>&1 | tee "$RUNNER_TEMP/nix-build.log"
       - name: file an issue for the failed nix build
         if: failure() && steps.build-losos-disk-edge-qcow2.outcome == 'failure'
-        uses: ./.github/actions/nix-build-failure
+        uses: ./.ci/.github/actions/nix-build-failure
         with:
           target: .#losos-disk-edge-qcow2
       - run: mv result result-edge
