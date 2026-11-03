@@ -268,6 +268,12 @@ pub struct Runner {
     pub opencode: Option<String>,
     /// `LOSOS_TAG_MODEL`: the built-in path's model tag on Ollama.
     pub model: Option<String>,
+    /// `LOSOS_TAG_MESH_URL`: an OpenAI-compatible endpoint on the
+    /// network — in a mesh, the llama.cpp head for a model group — the
+    /// built-in path falls back to when Ollama cannot hold `model`.
+    pub mesh_url: Option<String>,
+    /// `LOSOS_TAG_MESH_MODEL`: the catalogue's id the head answers.
+    pub mesh_model: Option<String>,
     /// `LOSOS_TAG_SEARXNG_URL`: the box's own web search.
     pub searxng: Option<String>,
     /// `losos-tag-browse`: the box's own Playwright wrapper, when
@@ -283,6 +289,8 @@ impl Runner {
             t3: read("LOSOS_TAG_T3_BIN"),
             opencode: read("LOSOS_TAG_OPENCODE_BIN"),
             model: read("LOSOS_TAG_MODEL"),
+            mesh_url: read("LOSOS_TAG_MESH_URL"),
+            mesh_model: read("LOSOS_TAG_MESH_MODEL"),
             searxng: read("LOSOS_TAG_SEARXNG_URL"),
             browse: read("LOSOS_TAG_BROWSE_BIN"),
         }
@@ -361,16 +369,7 @@ fn next(tag: &Arc<crate::tag::Tag>, constrained: bool) -> Option<Job> {
             job.state == "queued" || job.state == "paused"
         }
     };
-    state
-        .jobs
-        .iter()
-        .find(|job| enabled(job) && !is_stopped(&state, job))
-        .cloned()
-}
-
-/// Whether a page has since stopped this ask.
-fn is_stopped(_state: &crate::tag::State, _job: &Job) -> bool {
-    false
+    state.jobs.iter().find(|job| enabled(job)).cloned()
 }
 
 /// Run one ask, blocking, and put its answer where it belongs.
@@ -389,7 +388,7 @@ pub fn take(
         Ok(text) => ("done", text, None),
         Err(why) => ("failed", String::new(), Some(why)),
     };
-    if is_stopped_nolonger(tag, &id) {
+    if stopped_before_finish(tag, &id) {
         return Ok(());
     }
     tag.update_jobs(|jobs| {
@@ -436,7 +435,9 @@ fn handoff(tag: &Arc<crate::tag::Tag>, job: &Job, answer: &str) {
     }
 }
 
-fn is_stopped_nolonger(tag: &Arc<crate::tag::Tag>, id: &str) -> bool {
+/// Whether a page stopped this ask while its turn ran: a finished-new
+/// state must never overwrite the page's stop.
+fn stopped_before_finish(tag: &Arc<crate::tag::Tag>, id: &str) -> bool {
     tag.state()
         .jobs
         .iter()
@@ -547,9 +548,56 @@ pub fn turn(
         ),
         crate::tag::Harness::Builtin => {
             let model = config.model.as_deref().ok_or("the box runs no model")?;
-            builtin_turn(model, &prompt)
+            match builtin_turn(model, &prompt) {
+                Ok(answer) => Ok(answer),
+                Err(local) => match config.mesh_url.as_deref() {
+                    // The box could not hold its own model: the mesh's
+                    // head answers, over the network, the model the
+                    // catalogue names.
+                    Some(url) => mesh_turn(
+                        url,
+                        config.mesh_model.as_deref().unwrap_or("qwen3-8max"),
+                        &prompt,
+                    )
+                    .map_err(|mesh| format!("the box: {local}; the mesh: {mesh}")),
+                    None => Err(local),
+                },
+            }
         }
     }
+}
+
+/// One turn on an OpenAI-compatible endpoint (the mesh's llama.cpp head
+/// answers `/chat/completions`), non-streaming.
+fn mesh_turn(url: &str, model: &str, prompt: &str) -> Result<String, String> {
+    let url = url.trim_end_matches('/');
+    let call = json!({
+        "model": model,
+        "stream": false,
+        "messages": [
+            { "role": "system", "content": "You are LosOS Tag. Answer from the material alone." },
+            { "role": "user", "content": prompt },
+        ],
+    });
+    let out = std::process::Command::new(CURL)
+        .arg("-fsS")
+        .arg("--max-time")
+        .arg("1700")
+        .arg("-X")
+        .arg("POST")
+        .arg("-H")
+        .arg("Content-Type: application/json")
+        .arg("-d")
+        .arg(serde_json::to_string(&call).unwrap_or_default())
+        .arg(format!("{url}/chat/completions"))
+        .output()
+        .map_err(|e| format!("the mesh head did not answer: {e}"))?;
+    let answer: Value = serde_json::from_slice(&out.stdout)
+        .map_err(|e| format!("the mesh answer was not JSON: {e}"))?;
+    answer["choices"][0]["message"]["content"]
+        .as_str()
+        .map(str::to_string)
+        .ok_or_else(|| "the mesh head answered nothing".to_string())
 }
 
 /// The turn's material from the job's gathered search.
@@ -586,8 +634,11 @@ fn join_prompt(system: &str, material: &str, question: &str) -> String {
 /// prompt is on stdin? On the command line both take it, capped at what a
 /// command line carries.
 fn spawn_turn(bin: &str, prompt: &str, t3: bool) -> Result<String, String> {
-    let _ = t3;
-    let mut call = crate::tag::t3_command(bin, prompt);
+    let mut call = if t3 {
+        crate::tag::t3_command(bin, prompt)
+    } else {
+        crate::tag::opencode_command(bin, prompt)
+    };
     let out = call
         .output()
         .map_err(|e| format!("{bin} did not start: {e}"))?;
