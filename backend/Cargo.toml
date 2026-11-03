@@ -264,3 +264,15 @@ path = "src/bin/losos-ci.rs"
 [[bin]]
 name = "losos-logs"
 path = "src/bin/losos-logs.rs"
+
+[[bin]]
+name = "losos-mcp"
+path = "src/bin/losos-mcp.rs"
+
+# Test builds carry line tables alone: backtraces keep their file:line for
+# the daemon tests' panics, but full debug info was making every
+# `cargo test` pay for a link of the whole debug world — visible nowhere
+# more than on a small CI or VPS box, where the tag_http daemon test's
+# lososd build dominates the run.
+[profile.test]
+debug = "line-tables-only"
