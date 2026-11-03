@@ -45,14 +45,17 @@ let
   # The medium's edge: what `--tang-edge` with no address asks, and what
   # the flavor asserts below is a usable address.
   registrarUrl = config.losos.proxy.registrarUrl;
-  registrarUsable = lib.hasPrefix "http://" registrarUrl || lib.hasPrefix "https://" registrarUrl;
+  registrarUsable =
+    lib.hasPrefix "http://" registrarUrl || lib.hasPrefix "https://" registrarUrl;
 
   # The flavor's prefilled flag, ahead of "$@": the autorun install asks the
   # edge without anyone typing `--tang-edge`, and whatever is typed after
   # still outranks anything the medium preselects. escapeShellArgs holds it
   # to the CLI's spelling; the LOSOS_REGISTRAR_URL the wrapper carries as a
   # set-default is the edge, so no address is passed here.
-  prefillArgs = lib.escapeShellArgs (lib.optionals (autorun && tangEdge) [ "--tang-edge" ]);
+  prefillArgs = lib.escapeShellArgs (
+    lib.optionals (autorun && tangEdge) [ "--tang-edge" ]
+  );
 
   # The tools losos-ctl install shells out to at runtime: disko + git for the
   # full path, util-linux for lsblk (drive detection), coreutils for cp/chmod
