@@ -28,17 +28,20 @@
 let
   cfg = config.losos.builder;
   assistant = config.losos.assistant;
+  tag = config.losos.tag;
   port = 11434;
   url = "http://127.0.0.1:${toString port}";
 in
 {
-  config = lib.mkIf (cfg.enable || assistant.enable) {
+  config = lib.mkIf (cfg.enable || assistant.enable || tag.enable) {
     services.ollama = {
       enable = true;
       host = "127.0.0.1";
       inherit port;
       loadModels = lib.unique (
-        lib.optional cfg.enable cfg.model ++ lib.optional assistant.enable assistant.model
+        lib.optional cfg.enable cfg.model
+        ++ lib.optional assistant.enable assistant.model
+        ++ lib.optional tag.enable tag.model
       );
       environmentVariables = {
         # One answer at a time, one model in memory: a mini PC shares its

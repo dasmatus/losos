@@ -335,6 +335,8 @@
             ./modules/startup-sound.nix
             # The model the widget builder asks, on loopback.
             ./modules/builder.nix
+            # LosOS Tag, the assistant tagged in chat (`modules/tag.nix`).
+            ./modules/tag.nix
             ./modules/services.nix
             ./modules/containers.nix
             # The local k3s cluster (the `shared` apps) and the mesh rke2
