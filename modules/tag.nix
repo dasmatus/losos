@@ -47,6 +47,13 @@ in
     // lib.optionalAttrs (cfg.searxng != "") {
       LOSOS_TAG_SEARXNG_URL = cfg.searxng;
     }
+    // lib.optionalAttrs (cfg.meshUrl != "") {
+      # The network's own endpoint: in a mesh, the llama.cpp head the
+      # edge runs for a model group, which is how a small box asks a
+      # model no box holds alone.
+      LOSOS_TAG_MESH_URL = cfg.meshUrl;
+      LOSOS_TAG_MESH_MODEL = cfg.meshModel;
+    }
     // lib.optionalAttrs (cfg.t3Bin != "") {
       LOSOS_TAG_T3_BIN = cfg.t3Bin;
     }

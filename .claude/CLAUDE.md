@@ -368,6 +368,34 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   changed is re-read); Git is `git grep` per query as `losos-git`. Both answer
   on Accept=yes sockets under `/run/losos-search` that only root (lososd's
   `/api/{cloud,git}/text`) can open. `nix/tests/search.nix` boots it.
+- `tag.nix` + `backend/src/tag.rs` + `backend/src/tag/queue.rs`
+  (`losos.tag.*`, Settings › LosOS Tag): LosOS Tag, the assistant people
+  tag in LosOS Chat. Every assistant is a real Matrix user
+  (`@tag-<slug>:<serverName>`) lososd mints through its application
+  service; a listener thread pulls the AS `/sync`, remembers the rooms'
+  bodies in a 4,000-event ring, and every `@handle` mention becomes an
+  ask on the queue. The queue is the T3 Code fork's scheduler shape: a
+  5 s cached `/proc/meminfo` probe (<10% available = pressure), pressure
+  pauses suggestion-origin work and never drops it, the reaper sweeps
+  done jobs on the normal or the compressed (60 s floor) threshold and
+  logs why, and an answer's own `@handle` hands the turn to the next
+  assistant (three handoffs, then the thread stops). Asks run on T3 Code
+  when the box ships it (`tag.t3Bin`), OpenCode else, and the box's own
+  Ollama model when neither — one unified model (`tag.model`, Bonsai 27B
+  by default, shared with the builder and assistant), spilling 50–75% of
+  layers to the mesh's head (`tag.meshUrl`, OpenAI-compatible) when the
+  box cannot hold it. User-defined confidentiality levels grade areas
+  (cloud paths, repos, rooms, mailboxes, units); a tag reads an area only
+  at or above its clearance, and `GET /api/search` is the unified search
+  (cloud FTS + git grep + the person's JMAP + the ring), every hit
+  graded. No-gos are a guard, not a prompt alone: no sudo/shell, no
+  market or storage trades, nothing on disk in `notshared`'s
+  directories. `losos-mcp` (`backend/src/bin/losos-mcp.rs`) exposes the
+  box's features as one stateless MCP server (JSON-RPC over stdio, one
+  HTTP call per tool, `LOSOS_MCP_TOKEN`); the tag's web tools go to the
+  box's own SearXNG (`tag.searxng`) and its Playwright wrapper
+  (`tag.browser`, `losos-tag-browse`) reads public pages only, never
+  confidential terms in a query.
 - `ci.nix` + `backend/src/ci/` (`losos-ci`, page at `/ci`): Mesh CI, the
   GitHub Actions workflows of LosOS Git's repositories, only on a box that
   shares and is in a mesh. `losos-ci serve` (user `losos-ci`) plans runs

@@ -1649,6 +1649,31 @@ in
       '';
     };
 
+    tag.meshUrl = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      description = ''
+        An OpenAI-compatible endpoint on the network the tag falls back
+        to when the box cannot hold its own model — in a mesh, the
+        llama.cpp head the edge runs for a model group
+        (`edge.inference.models`, its lenders' RAM reached over the
+        tunnels), which is how a box with 4 GiB asks Qwen 3.8 Max or
+        DeepSeek R1: the head serves them, the boxes lend the memory.
+        The built-in path answers first when Ollama holds
+        `tag.model`; this one answers when it cannot, or when Ollama is
+        off.
+      '';
+    };
+
+    tag.meshModel = lib.mkOption {
+      type = lib.types.str;
+      default = "qwen3-8max";
+      description = ''
+        The model id the tag asks at `tag.meshUrl` (the catalogue's own
+        ids: `qwen3-8max`, `deepseek-r1`, …).
+      '';
+    };
+
     tag.browser = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -3546,7 +3571,39 @@ in
         }
       );
       default = [ ];
-      description = "The models this edge offers. Written to /etc/losos/inference-models.json for the registrar.";
+      example = lib.literalExpression ''
+        [
+          {
+            id = "qwen3-8max";
+            name = "Qwen 3.8 Max";
+            file = pkgs.fetchurl { url = "https://…/qwen3-8max-q4.gguf"; hash = "sha256-…"; };
+            needMiB = 184320;
+            context = 32768;
+            priceIn = 400000;
+            priceOut = 1600000;
+            licence = "Apache-2.0";
+          }
+          {
+            id = "deepseek-r1";
+            name = "DeepSeek R1";
+            file = pkgs.fetchurl { url = "https://…/deepseek-r1-q4.gguf"; hash = "sha256-…"; };
+            needMiB = 402653;
+            context = 16384;
+            priceIn = 550000;
+            priceOut = 2200000;
+            licence = "MIT";
+          }
+        ]
+      '';
+      description = ''
+        The models this edge offers. Written to
+        /etc/losos/inference-models.json for the registrar. The bigger the
+        model, the more boxes lend to hold it: a group's `needMiB` is split
+        over the lenders' `inference.lend.memoryMiB`, one `losos-llm-head`
+        per group, and a box in the mesh reaches the head over its tunnel —
+        which is how LosOS Tag asks a model no box can hold alone
+        (`losos.tag.meshUrl`): the head answers, the boxes lend the memory.
+      '';
     };
 
     edge.inference.portRange = {
