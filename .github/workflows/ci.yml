@@ -512,6 +512,9 @@ jobs:
         || needs.changes.outputs.discovery == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
@@ -519,7 +522,17 @@ jobs:
       # in the test job instead (see nix/packages.nix for why). Even so this
       # is the longest job here; re-time it before adding any heavy dependency
       # to backend/Cargo.toml.
-      - run: nix build .#losos-ctl -L
+      - name: build losos-ctl
+        id: build-losos-ctl
+        run: |
+          set -o pipefail
+          nix build .#losos-ctl -L 2>&1 | tee "$RUNNER_TEMP/nix-build.log"
+
+      - name: file an issue for the failed nix build
+        if: failure() && steps.build-losos-ctl.outcome == 'failure'
+        uses: ./.github/actions/nix-build-failure
+        with:
+          target: .#losos-ctl
       # Hand losos-ctl to the iso job. Exporting its closure to a file://
       # binary cache is 12 MiB and ~13 s, against the ~9 minutes of rustc that
       # job would otherwise spend rebuilding the crate — and it works on a fork
@@ -554,6 +567,9 @@ jobs:
     # browser checks the job took about 41 minutes on a warm run and hit 60
     # on a slow runner.
     timeout-minutes: 90
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
@@ -570,7 +586,16 @@ jobs:
       # (losos-lab-virt), built the same way, and the GPU canvas's two
       # modules (losos-lab-render). lab.yml builds the hosted copy with the
       # qemu-wasm engine.
-      - run: nix build .#losos-registrar .#losos-admin-ui .#losos-handbook .#losos-lab-virt -L
+      - name: build losos-registrar, losos-admin-ui, losos-handbook and losos-lab-virt
+        id: build-registrar-ui
+        run: |
+          set -o pipefail
+          nix build .#losos-registrar .#losos-admin-ui .#losos-handbook .#losos-lab-virt -L 2>&1 | tee "$RUNNER_TEMP/nix-build.log"
+      - name: file an issue for the failed nix build
+        if: failure() && steps.build-registrar-ui.outcome == 'failure'
+        uses: ./.github/actions/nix-build-failure
+        with:
+          target: .#losos-registrar .#losos-admin-ui .#losos-handbook .#losos-lab-virt
       # The same crate linked statically against musl, for the operator's own
       # machine (a gateway's passport, docs/provisioning/edge-identity/README.md): the
       # glibc build above only runs where /nix/store exists. It is built here,
@@ -578,7 +603,16 @@ jobs:
       # handed to the publish-tool job as a plain file: that job pushes it to
       # GHCR, and it needs packages: write, which this job - it runs on
       # fork pull requests - must not have.
-      - run: nix build .#losos-registrar-static -o result-static -L
+      - name: build losos-registrar-static
+        id: build-registrar-static
+        run: |
+          set -o pipefail
+          nix build .#losos-registrar-static -o result-static -L 2>&1 | tee "$RUNNER_TEMP/nix-build.log"
+      - name: file an issue for the failed nix build
+        if: failure() && steps.build-registrar-static.outcome == 'failure'
+        uses: ./.github/actions/nix-build-failure
+        with:
+          target: .#losos-registrar-static
       - name: export the static losos-registrar for the publish-tool job
         run: |
           mkdir dev-machine
@@ -591,7 +625,16 @@ jobs:
       # The Playwright suite (admin-ui/app/tests/*.browser.mjs) against the
       # production bundle, in headless chromium from nixpkgs. No /dev/kvm
       # needed, unlike the VM tests. Reuses the node_modules fetched just above.
-      - run: nix build .#checks.x86_64-linux.losos-admin-ui -L
+      - name: build the Playwright check
+        id: build-admin-ui-check
+        run: |
+          set -o pipefail
+          nix build .#checks.x86_64-linux.losos-admin-ui -L 2>&1 | tee "$RUNNER_TEMP/nix-build.log"
+      - name: file an issue for the failed nix build
+        if: failure() && steps.build-admin-ui-check.outcome == 'failure'
+        uses: ./.github/actions/nix-build-failure
+        with:
+          target: .#checks.x86_64-linux.losos-admin-ui
       # Export the built SPA and the handbook for the iso job, exactly as the
       # losos-ctl job exports its crate and for the same reason. flake.nix
       # puts both in isoImage.storeContents, so without this the ISO job
@@ -634,6 +677,9 @@ jobs:
     if: ${{ needs.changes.outputs.images == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
@@ -651,7 +697,16 @@ jobs:
       #
       # Measured on a dev machine: losos-image-pause is a 51 MiB tarball over a
       # handful of paths.
-      - run: nix build .#losos-image-pause -L
+      - name: build losos-image-pause
+        id: build-losos-image-pause
+        run: |
+          set -o pipefail
+          nix build .#losos-image-pause -L 2>&1 | tee "$RUNNER_TEMP/nix-build.log"
+      - name: file an issue for the failed nix build
+        if: failure() && steps.build-losos-image-pause.outcome == 'failure'
+        uses: ./.github/actions/nix-build-failure
+        with:
+          target: .#losos-image-pause
       - name: export images for the publisher
         if: github.event_name != 'pull_request'
         run: |
@@ -679,10 +734,22 @@ jobs:
     if: ${{ needs.changes.outputs.mail == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 150
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
-      - run: nix build .#losos-stalwart -L
+      - name: build losos-stalwart
+        id: build-losos-stalwart
+        run: |
+          set -o pipefail
+          nix build .#losos-stalwart -L 2>&1 | tee "$RUNNER_TEMP/nix-build.log"
+      - name: file an issue for the failed nix build
+        if: failure() && steps.build-losos-stalwart.outcome == 'failure'
+        uses: ./.github/actions/nix-build-failure
+        with:
+          target: .#losos-stalwart
       - name: export the mail server for the publisher
         if: github.event_name != 'pull_request'
         run: |
@@ -789,6 +856,9 @@ jobs:
     if: ${{ !inputs.release_tags && needs.changes.outputs.tui == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
@@ -808,7 +878,16 @@ jobs:
           fi
           sed -i "s/^\".*\"\$/\"${TAG}\"/" nix/version.nix
           git add nix/version.nix
-      - run: nix build .#losos-static -o result-tui -L
+      - name: build losos-static
+        id: build-losos-static
+        run: |
+          set -o pipefail
+          nix build .#losos-static -o result-tui -L 2>&1 | tee "$RUNNER_TEMP/nix-build.log"
+      - name: file an issue for the failed nix build
+        if: failure() && steps.build-losos-static.outcome == 'failure'
+        uses: ./.github/actions/nix-build-failure
+        with:
+          target: .#losos-static
       - name: the static binary runs and links nothing
         run: |
           set -euo pipefail
@@ -997,6 +1076,9 @@ jobs:
     name: "nix: build the installer ISO"
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      contents: read
+      issues: write
     # Needs losos-ctl's store export. Without it this job would rebuild that
     # crate from source — ~9 minutes on its own.
     #
@@ -1059,9 +1141,18 @@ jobs:
       # sign in with, which the medium carries as its installer's
       # credential (flake.nix, modules/installer.nix). Pure evaluation
       # reads it as "" and builds a medium that offers no report.
-      - run: nix build --impure .#nixosConfigurations.iso.config.system.build.isoImage -L
+      - name: build the installer ISO
+        id: build-iso
         env:
           LOSOS_ABRT_VAR: ${{ vars.LOSOS_ABRT_VAR }}
+        run: |
+          set -o pipefail
+          nix build --impure .#nixosConfigurations.iso.config.system.build.isoImage -L 2>&1 | tee "$RUNNER_TEMP/nix-build.log"
+      - name: file an issue for the failed nix build
+        if: failure() && steps.build-iso.outcome == 'failure'
+        uses: ./.github/actions/nix-build-failure
+        with:
+          target: .#nixosConfigurations.iso.config.system.build.isoImage
       # Sign the medium's UEFI loader (modules/secure-boot.nix). The db key
       # is a repository secret, so this happens after the build, on a copy
       # outside the store, and only where the secret reaches: pushes to main
@@ -1172,6 +1263,9 @@ jobs:
     if: ${{ !inputs.release_tags && needs.changes.outputs.install == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 150
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
@@ -1182,7 +1276,16 @@ jobs:
           set -euo pipefail
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL || true
           df -h /
-      - run: nix build .#checks.x86_64-linux.losos-iso-install -L
+      - name: build the ISO install check
+        id: build-iso-install
+        run: |
+          set -o pipefail
+          nix build .#checks.x86_64-linux.losos-iso-install -L 2>&1 | tee "$RUNNER_TEMP/nix-build.log"
+      - name: file an issue for the failed nix build
+        if: failure() && steps.build-iso-install.outcome == 'failure'
+        uses: ./.github/actions/nix-build-failure
+        with:
+          target: .#checks.x86_64-linux.losos-iso-install
 
   # Does a computer find the box on its own network, and open its files?
   # nix/tests/discovery/check.py boots the box of nix/tests/discovery/box.nix
@@ -1205,6 +1308,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     needs: [changes, losos-ctl, registrar-and-ui]
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
@@ -1225,7 +1331,16 @@ jobs:
             [ -f "$cache/store-paths" ] || continue
             xargs -r nix copy --from "file://$PWD/$cache" --no-check-sigs < "$cache/store-paths"
           done
-      - run: nix build .#losos-disk-discovery-box -L
+      - name: build losos-disk-discovery-box
+        id: build-disk-discovery-box
+        run: |
+          set -o pipefail
+          nix build .#losos-disk-discovery-box -L 2>&1 | tee "$RUNNER_TEMP/nix-build.log"
+      - name: file an issue for the failed nix build
+        if: failure() && steps.build-disk-discovery-box.outcome == 'failure'
+        uses: ./.github/actions/nix-build-failure
+        with:
+          target: .#losos-disk-discovery-box
       - run: |
           mkdir discovery-box
           cp -L result/* discovery-box/
@@ -1487,6 +1602,7 @@ jobs:
     permissions:
       contents: write
       packages: write
+      issues: write
     steps:
       # The tag's tree is what gets built. The workflow's own actions come
       # from this run's commit, checked out beside it in .ci, which nix's
@@ -1659,16 +1775,43 @@ jobs:
       # sign in with, which the medium carries as its installer's
       # credential (flake.nix, modules/installer.nix). Pure evaluation
       # reads it as "" and builds a medium that offers no report.
-      - run: nix build --impure .#nixosConfigurations.iso.config.system.build.isoImage -L
+      - name: build the installer ISO
+        id: build-iso
         env:
           LOSOS_ABRT_VAR: ${{ vars.LOSOS_ABRT_VAR }}
+        run: |
+          set -o pipefail
+          nix build --impure .#nixosConfigurations.iso.config.system.build.isoImage -L 2>&1 | tee "$RUNNER_TEMP/nix-build.log"
+      - name: file an issue for the failed nix build
+        if: failure() && steps.build-iso.outcome == 'failure'
+        uses: ./.github/actions/nix-build-failure
+        with:
+          target: .#nixosConfigurations.iso.config.system.build.isoImage
       - run: mv result result-iso
-      - run: nix build .#losos-disk-qcow2 -L
+      - name: build losos-disk-qcow2
+        id: build-losos-disk-qcow2
+        run: |
+          set -o pipefail
+          nix build .#losos-disk-qcow2 -L 2>&1 | tee "$RUNNER_TEMP/nix-build.log"
+      - name: file an issue for the failed nix build
+        if: failure() && steps.build-losos-disk-qcow2.outcome == 'failure'
+        uses: ./.github/actions/nix-build-failure
+        with:
+          target: .#losos-disk-qcow2
       - run: mv result result-qcow2
       # The edge gateway (handbook/docs/in-depth/edge-federation.md): small
       # enough to be a release asset, compressed here because make-disk-image
       # writes a sparse, uncompressed qcow2 and a download is neither.
-      - run: nix build .#losos-disk-edge-qcow2 -L
+      - name: build losos-disk-edge-qcow2
+        id: build-losos-disk-edge-qcow2
+        run: |
+          set -o pipefail
+          nix build .#losos-disk-edge-qcow2 -L 2>&1 | tee "$RUNNER_TEMP/nix-build.log"
+      - name: file an issue for the failed nix build
+        if: failure() && steps.build-losos-disk-edge-qcow2.outcome == 'failure'
+        uses: ./.github/actions/nix-build-failure
+        with:
+          target: .#losos-disk-edge-qcow2
       - run: mv result result-edge
       # Signing never holds a release back. Before the key ceremony there is
       # no certificate and the release says so. Once there is one, a missing
