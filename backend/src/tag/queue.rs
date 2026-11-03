@@ -55,6 +55,27 @@ pub const SPILL_START: u8 = 50;
 /// Spillover under pressure: three quarters of the layers on the other
 /// side, when the box cannot hold the model it was asked to run.
 pub const SPILL_PRESSURED: u8 = 75;
+/// The module's knobs read over these names
+/// (`losos.tag.spilloverStart`/`…Pressured`); the constants here are what
+/// every box gets without them.
+const SPILL_START_ENV: &str = "LOSOS_TAG_SPILL_START";
+const SPILL_PRESSURED_ENV: &str = "LOSOS_TAG_SPILL_PRESSURED";
+
+/// The ask's spillover pair: the module's, when it set them, and the
+/// constants' when not.
+pub fn spill_pair() -> (u8, u8) {
+    let read = |name: &str, default: u8| {
+        std::env::var(name)
+            .ok()
+            .and_then(|v| v.trim().parse::<u8>().ok())
+            .filter(|v| (50..=75).contains(v))
+            .unwrap_or(default)
+    };
+    (
+        read(SPILL_START_ENV, SPILL_START),
+        read(SPILL_PRESSURED_ENV, SPILL_PRESSURED),
+    )
+}
 /// How long one turn's answer may grow, in characters; a two-core box
 /// streams minutes for this.
 pub const MAX_ANSWER_CHARS: usize = 20_000;
@@ -96,10 +117,24 @@ pub struct Job {
     /// `@gardener` to an ask for `@losos` carries one.
     #[serde(default)]
     pub handoffs: u8,
+    /// When the ask took its place, in unix ms; the handoff throttle
+    /// counts a room's handoffs per minute against this.
+    #[serde(default)]
+    pub created_ms: u64,
+    /// The ask asked for the web, and the box runs a SearXNG: the
+    /// builtin path's one extra search, the subject alone, fenced into
+    /// the material as `source="web"`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub use_web: bool,
     /// The material the ask's search gathered, JSON, ready for the turn.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub material: Option<Value>,
 }
+
+/// How many handoffs one room may take per minute, so two assistants
+/// cannot churn a thread into a waterfall. The depth cap
+/// ([`MAX_HANDOFFS`]) still bounds each chain first.
+pub const HANDOFFS_PER_ROOM_PER_MINUTE: u16 = 2;
 
 impl Job {
     /// A new ask's state and time.
@@ -115,6 +150,11 @@ impl Job {
             answer: String::new(),
             error: None,
             handoffs: 0,
+            created_ms: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0),
+            use_web: false,
             material: None,
         }
     }
@@ -382,7 +422,8 @@ pub fn take(
 ) -> Result<(), String> {
     let id = job.id.clone();
     set_state(tag, &id, "running")?;
-    let spill = spillover(SPILL_START, SPILL_PRESSURED, constrained);
+    let (start, pressured) = spill_pair();
+    let spill = spillover(start, pressured, constrained);
     let answer = turn(&tag.clone(), &config.clone(), job, spill);
     let (state, text, error) = match answer {
         Ok(text) => ("done", text, None),
@@ -421,6 +462,24 @@ fn handoff(tag: &Arc<crate::tag::Tag>, job: &Job, answer: &str) {
     let Some(room) = job.room.as_deref() else {
         return;
     };
+    // Two assistants may carry one thread, but a room is not a waterfall:
+    // at most [`HANDOFFS_PER_ROOM_PER_MINUTE`] handoffs a minute.
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    if tag
+        .state()
+        .jobs
+        .iter()
+        .filter(|j| j.handoffs > 0 && j.room.as_deref() == Some(room))
+        .filter(|j| now.saturating_sub(j.created_ms) < 60_000)
+        .count() as u16
+        >= HANDOFFS_PER_ROOM_PER_MINUTE
+    {
+        tracing::info!(room = %room, "a room's handoffs hold their per-minute rate");
+        return;
+    }
     let state = tag.state();
     for next in state.reached(answer, &[]) {
         let localpart = format!("{}{}", crate::tag::TAG_PREFIX, next.slug);
@@ -531,12 +590,20 @@ pub fn turn(
     let clearance = state.clearance_of(assistant.as_ref(), &job.person);
     let _ = clearance;
     let lang = std::env::var("LOSOS_TAG_LANG").unwrap_or_else(|_| "en".into());
+    let _ = spill;
+    let web = web_material(config, job);
+    // The web excerpts fence themselves in beside the box's own material,
+    // `source="web"`, so the turn reads both kinds the same way.
+    let material = if web.is_empty() {
+        material
+    } else {
+        format!("{material}\n\n<material source=\"web\">{web}</material>")
+    };
     let prompt = join_prompt(
         &crate::tag::system_prompt(assistant.as_ref(), &knew, &lang),
         &material,
         &job.question,
     );
-    let _ = spill;
     match crate::tag::harness(config.t3.as_deref(), config.opencode.as_deref()) {
         crate::tag::Harness::T3 => {
             spawn_turn(config.t3.as_deref().expect("t3 configured"), &prompt, true)
@@ -683,6 +750,42 @@ fn builtin_turn(model: &str, prompt: &str) -> Result<String, String> {
 
 const CURL: &str = "curl";
 
+/// The ask's one web step, for the builtin path: when the ask asked for
+/// the web (`use_web`) and the box runs its own SearXNG, the query is the
+/// ask's subject alone — no names, files or mail from the box ever go
+/// into it — and the answer's excerpts are fenced in as `source="web"`,
+/// exactly as the prompt's no-confidential rule says.
+fn web_material(config: &Runner, job: &Job) -> String {
+    let Some(source) = config.searxng.as_deref().filter(|_| job.use_web) else {
+        return String::new();
+    };
+    let subject: String = job
+        .question
+        .trim()
+        .trim_end_matches(['?', '.', '!', ' '])
+        .chars()
+        .take(crate::textsearch::MAX_QUERY_CHARS)
+        .collect();
+    let Ok(url) = crate::tag::web_search_url(source, &subject) else {
+        return String::new();
+    };
+    let out = std::process::Command::new(CURL)
+        .arg("-fsS")
+        .arg("--max-time")
+        .arg("15")
+        .arg(&url)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| o.stdout)
+        .unwrap_or_default();
+    crate::tag::web_search_hits(&out, 4)
+        .into_iter()
+        .map(|hit| format!("{} — {} ({})", hit.title, hit.excerpt, hit.url))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -716,6 +819,8 @@ mod tests {
                 answer: String::new(),
                 error: None,
                 handoffs: 0,
+                created_ms: 0,
+                use_web: false,
                 material: Some(json!([{ "path": "a.md", "snippet": ["", "tax"] }])),
             })
             .unwrap();

@@ -1684,6 +1684,54 @@ in
       '';
     };
 
+    tag.browserEngine = lib.mkOption {
+      type = lib.types.enum [
+        "chromium"
+        "midori"
+      ];
+      default = "chromium";
+      description = ''
+        Which engine the box's Playwright wrapper drives when
+        `tag.browser` is on. `midori` runs Playwright's WebKit build in
+        place of Chromium — the WebKitGTK-class engine, the lighter
+        renderer on a box you also keep LosOS Cloud and LosOS Git on —
+        while the ask reads one page and nothing else either way.
+      '';
+    };
+
+    tag.midoriBin = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      description = ''
+        The Midori binary the adapter runs instead of Playwright's own
+        engine (`tag.browserEngine = "midori"`; nixpkgs does not carry
+        Midori, so this is a store path when the owner puts one there).
+        Midori reads its page with its own process; text alone still
+        goes into the ask.
+      '';
+    };
+
+    tag.spilloverStart = lib.mkOption {
+      type = lib.types.ints.between 50 75;
+      default = 50;
+      description = ''
+        The layers' spillover percent when the box holds the model
+        comfortably: half the layers sit on the slower side. Climbs to
+        `tag.spilloverPressured` under the ask queue's memory-pressure
+        sweep.
+      '';
+    };
+
+    tag.spilloverPressured = lib.mkOption {
+      type = lib.types.ints.between 50 75;
+      default = 75;
+      description = ''
+        The layers' spillover percent under memory pressure: three
+        quarters of the layers to the lenders' memory, when the box
+        cannot hold the model it was asked to run.
+      '';
+    };
+
     # ── Lending memory to models split across boxes (modules/inference-lend.nix)
     inference.lend.enable = lib.mkOption {
       type = lib.types.bool;

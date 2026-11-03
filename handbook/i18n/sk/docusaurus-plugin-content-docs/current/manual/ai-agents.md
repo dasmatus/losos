@@ -30,6 +30,7 @@ prihlásenie samotného zariadenia, vo vašom prehliadači.
 | Cursor | záznam v `~/.cursor/mcp.json` |
 | VS Code a VSCodium | záznam v `mcp.json` v používateľských nastaveniach editora |
 | Cline | záznam v jeho nastaveniach MCP vo VS Code |
+| T3 Code | záznam v `~/.config/t3/t3.json` |
 | Windsurf | záznam v `~/.codeium/windsurf/mcp_config.json` |
 | Zed | záznam pod `context_servers` v súbore `settings.json` editora Zed |
 | LM Studio | záznam v `~/.lmstudio/mcp.json` |

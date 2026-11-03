@@ -171,6 +171,23 @@ pub const TOOLS: &[Tool] = &[
             shape: Shape::Opencode,
         },
     },
+    // T3 Code is OpenCode's own fork with the same settings file, under
+    // its own folder (`both run `mcp` containers, each server one key).
+    Tool {
+        id: "t3code",
+        name: "T3 Code",
+        kind: Kind::Cli,
+        programs: &["t3", "t3code"],
+        dirs: &[Place::Config("t3")],
+        method: Method::Json {
+            files: &[
+                Place::Config("t3/t3.json"),
+                Place::Config("t3/t3.jsonc"),
+            ],
+            container: &["mcp"],
+            shape: Shape::Opencode,
+        },
+    },
     Tool {
         id: "claude-desktop",
         name: "Claude Desktop",
@@ -1037,7 +1054,9 @@ mod tests {
             assert!(!t.programs.is_empty() || !t.dirs.is_empty(), "{}", t.id);
             assert!(TOOLS[..i].iter().all(|o| o.id != t.id), "{}", t.id);
             assert!(
-                t.id.bytes().all(|b| b.is_ascii_lowercase() || b == b'-'),
+                t.id
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-'),
                 "{}",
                 t.id
             );

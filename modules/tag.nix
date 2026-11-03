@@ -43,6 +43,11 @@ in
       # URL and the harnesses' binaries ride the environment alone, so
       # a search goes to the box's own SearXNG or nowhere, and only the
       # module's own paths ever spawn.
+      # The spillover pair rides the environment always: the queue
+      # reads its module's say, and falls back to its own constants
+      # when the words carry nothing.
+      LOSOS_TAG_SPILL_START = toString cfg.spilloverStart;
+      LOSOS_TAG_SPILL_PRESSURED = toString cfg.spilloverPressured;
     }
     // lib.optionalAttrs (cfg.searxng != "") {
       LOSOS_TAG_SEARXNG_URL = cfg.searxng;
@@ -61,27 +66,83 @@ in
       LOSOS_TAG_OPENCODE_BIN = cfg.opencodeBin;
     }
     // lib.optionalAttrs (cfg.browser && cfg.enable) {
+      # The ask's one reader. `midori` puts Playwright's WebKit shell in
+      # place of Chromium — the lighter renderer — and `tag.midoriBin`
+      # hands the wrapper the Midori binary itself, when the owner put
+      # one in the store (nixpkgs does not carry it). Whatever the
+      # engine, the ask gets one public page's text and nothing else.
       LOSOS_TAG_BROWSE_BIN = lib.getExe (
-        pkgs.writers.writePython3Bin "losos-tag-browse"
+        pkgs.writers.writePython3Bin
+          ("losos-tag-browse" + lib.optionalString (cfg.browserEngine == "midori") "-midori")
           {
             libraries = [ pkgs.python3Packages.playwright ];
             flakeIgnore = [ "E501" ];
           }
-          ''
-            import sys
-            from playwright.sync_api import sync_playwright
+          (
+            if cfg.midoriBin != "" then
+              # The Midori adapter: its own process, one page, text alone.
+              # Chromium-fork headless does not need a GPU or a JS console.
+              ''
+                import subprocess
+                import sys
 
-            url = sys.argv[1]
-            with sync_playwright() as p:
-                browser = p.chromium.launch(
-                    executable_path="${pkgs.chromium}/bin/chromium",
-                    headless=True,
+                url = sys.argv[1]
+                out = subprocess.run(
+                    [
+                        "${cfg.midoriBin}",
+                        "--headless",
+                        "--disable-gpu",
+                        "--no-first-run",
+                        "--no-remote",
+                        "--disable-features=Autofill,Translate",
+                        "--dump-dom",
+                        url,
+                    ],
+                    capture_output=True,
+                    timeout=60,
                 )
-                page = browser.new_page()
-                page.goto(url, timeout=45_000)
-                print(page.inner_text("body")[:20_000])
-                browser.close()
-          ''
+                sys.stdout.write(out.stdout.decode(errors="replace")[:20_000])
+              ''
+            else if cfg.browserEngine == "midori" then
+              # The WebKit adapter: Playwright's own build, found through
+              # the driver's browser directory, with no sign-ins, no
+              # frames and one page.
+              ''
+                import os
+                import sys
+                os.environ.setdefault(
+                    "PLAYWRIGHT_BROWSERS_PATH",
+                    "${pkgs.playwright-driver.browsers}",
+                )
+                from playwright.sync_api import sync_playwright
+
+                url = sys.argv[1]
+                with sync_playwright() as p:
+                    # WebKitGTK-class engine, the light renderer beside
+                    # the box's own services.
+                    browser = p.webkit.launch(headless=True)
+                    page = browser.new_page()
+                    page.goto(url, timeout=45_000)
+                    print(page.inner_text("body")[:20_000])
+                    browser.close()
+              ''
+            else
+              ''
+                import sys
+                from playwright.sync_api import sync_playwright
+
+                url = sys.argv[1]
+                with sync_playwright() as p:
+                    browser = p.chromium.launch(
+                        executable_path="${pkgs.chromium}/bin/chromium",
+                        headless=True,
+                    )
+                    page = browser.new_page()
+                    page.goto(url, timeout=45_000)
+                    print(page.inner_text("body")[:20_000])
+                    browser.close()
+              ''
+          )
       );
     };
   };

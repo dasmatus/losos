@@ -4547,39 +4547,122 @@ fn get_apps_search_inner(api: &Api, req: &HttpRequest) -> HttpResponse {
 
 /// `GET /api/cloud/text?q=` — files in LosOS Cloud whose text matches.
 async fn get_cloud_text(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
-    guarded(&api, &req, "/api/cloud/text", false, || {
-        text_search::<crate::textsearch::CloudHit>(&req, "LOSOS_SEARCH_CLOUD_SOCKET", "off")
+    guarded_as(&api, &req, "/api/cloud/text", false, |who| {
+        graded_text::<crate::textsearch::CloudHit>(
+            &api,
+            who,
+            &req,
+            "cloud",
+            "LOSOS_SEARCH_CLOUD_SOCKET",
+            "off",
+        )
     })
 }
 
 /// `GET /api/git/text?q=` — lines on the repositories' default branches
 /// that match.
 async fn get_git_text(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
-    guarded(&api, &req, "/api/git/text", false, || {
-        text_search::<crate::textsearch::GitHit>(&req, "LOSOS_SEARCH_GIT_SOCKET", "noGit")
+    guarded_as(&api, &req, "/api/git/text", false, |who| {
+        graded_text::<crate::textsearch::GitHit>(
+            &api,
+            who,
+            &req,
+            "git",
+            "LOSOS_SEARCH_GIT_SOCKET",
+            "noGit",
+        )
     })
 }
 
-/// How long lososd waits for a search before it calls it failed. The Git
-/// search answers with what it has after four seconds.
-const TEXT_SEARCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(6);
+/// What the box grades, per hit: `cloud` grades the path; `git` grades
+/// the `owner/repo`, and the hit's own line lands inside like every
+/// [`crate::tag::SearchHit`].
+fn graded_area(
+    state: &crate::tag::State,
+    kind: &str,
+    path: &str,
+    repo: Option<&str>,
+) -> Option<crate::tag::Area> {
+    match kind {
+        "git" => repo.and_then(|owned| state.area_of("git", owned)).cloned(),
+        _ => state.area_of(kind, path).cloned(),
+    }
+}
+
+/// [`text_answer`], with the box's confidentiality grades applied for the
+/// companion in someone's AI tools: the companion reads at the clearance
+/// the person set for themselves ([`State::clearance_of`]), so an area
+/// above it never comes back, and the shape of the answer keeps its
+/// `available`/`partial`/`hits` exactly as the palette and the MCP read
+/// them. The spare key and a person's own calls keep the lot: the
+/// companion is the caller a person shares the box with.
+fn graded_text<T: serde::de::DeserializeOwned + serde::Serialize>(
+    api: &Api,
+    who: &Principal,
+    req: &HttpRequest,
+    kind: &str,
+    socket_var: &str,
+    off: &str,
+) -> HttpResponse {
+    let answer = match text_answer::<T>(req, socket_var, off) {
+        Ok(value) => value,
+        Err(refused) => return *refused,
+    };
+    let person = match who {
+        Principal::Companion(p) => p.name.clone(),
+        _ => return HttpResponse::Ok().json(answer),
+    };
+    let state = api.tag.state();
+    let clearance = state.clearance_of(None, &person);
+    let mut answer = answer;
+    if let Some(hits) = answer
+        .get_mut("hits")
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        hits.retain(|raw| {
+            let path = raw
+                .get("path")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let repo = raw.get("owner").map(|owner| {
+                format!(
+                    "{}/{}",
+                    owner.as_str().unwrap_or(""),
+                    raw.get("repo")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or("")
+                )
+            });
+            let area = graded_area(&state, kind, path, repo.as_deref());
+            state.allowed(&clearance, area.as_ref())
+        });
+    }
+    HttpResponse::Ok().json(answer)
+}
 
 /// Relay one text search. Not offered (the socket variable unset: the search
 /// is off, or the box runs no LosOS Git) is 200 with `available: false` and
 /// the reason, never 404, which the palette latches; neither is a search
 /// unit that is not up yet. A bad `q` is 400 with the reason.
-fn text_search<T: serde::de::DeserializeOwned + serde::Serialize>(
+/// How long lososd waits for a search before it calls it failed. The Git
+/// search answers with what it has after four seconds.
+const TEXT_SEARCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(6);
+
+/// The one relaying, decoded: the answer's own JSON to build from, or the
+/// refusal to hand over as its own status. Only the socket's `available`
+/// frame differs from a bare relay.
+fn text_answer<T: serde::de::DeserializeOwned + serde::Serialize>(
     req: &HttpRequest,
     socket_var: &str,
     off: &str,
-) -> HttpResponse {
+) -> Result<serde_json::Value, Box<HttpResponse>> {
     let params =
         web::Query::<std::collections::HashMap<String, String>>::from_query(req.query_string())
             .map(web::Query::into_inner)
             .unwrap_or_default();
     let q = match crate::textsearch::validate_query(params.get("q").map_or("", String::as_str)) {
         Ok(q) => q,
-        Err(e) => return err(StatusCode::BAD_REQUEST, &e),
+        Err(e) => return Err(Box::new(err(StatusCode::BAD_REQUEST, &e))),
     };
     let limit = params
         .get("limit")
@@ -4587,23 +4670,23 @@ fn text_search<T: serde::de::DeserializeOwned + serde::Serialize>(
         .unwrap_or(8)
         .clamp(1, crate::textsearch::MAX_HITS);
     let Some(socket) = std::env::var_os(socket_var) else {
-        return HttpResponse::Ok().json(serde_json::json!({ "available": false, "reason": off }));
+        return Ok(serde_json::json!({ "available": false, "reason": off }));
     };
     match crate::textsearch::ask::<T>(Path::new(&socket), &q, limit, TEXT_SEARCH_TIMEOUT) {
-        Ok(answer) => HttpResponse::Ok().json(serde_json::json!({
+        Ok(answer) => Ok(serde_json::json!({
             "available": true,
             "partial": answer.partial,
             "hits": answer.hits,
         })),
         Err(crate::textsearch::AskError::NotUp(_)) => {
-            HttpResponse::Ok().json(serde_json::json!({ "available": false, "reason": "notUp" }))
+            Ok(serde_json::json!({ "available": false, "reason": "notUp" }))
         }
         Err(crate::textsearch::AskError::Failed(e)) => {
             tracing::warn!(error = %e, "text search failed");
-            err(
+            Err(Box::new(err(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "search failed; see the lososd journal",
-            )
+            )))
         }
     }
 }
@@ -4898,6 +4981,10 @@ async fn post_tag_ask(
             .get("room")
             .and_then(serde_json::Value::as_str)
             .map(str::to_string);
+        // The web step is the ask's own opt-in: the composer's pill and
+        // the MCP's schema send it, and the query still carries the
+        // subject alone.
+        job.use_web = body.get("useWeb").and_then(serde_json::Value::as_bool) == Some(true);
         match api.tag.enqueue(job) {
             Ok(job) => HttpResponse::Ok().json(serde_json::json!({
                 "id": job.id, "state": job.state,
