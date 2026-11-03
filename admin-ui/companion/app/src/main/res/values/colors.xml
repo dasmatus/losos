@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The brand plate behind the salmon, flattened from themes/brand/plate.png. -->
+    <color name="ic_launcher_bg">#DCBDAA</color>
+</resources>

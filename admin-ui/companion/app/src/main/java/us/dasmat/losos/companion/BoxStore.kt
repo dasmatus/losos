@@ -55,34 +55,44 @@ object BoxStore {
     private fun p(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 }
 
-object BoxProbe {
+/* Trust for the box's self-signed certificate, shared by the reachability
+ * probe and the API client (ApiClient.kt): every box serves one on the LAN
+ * until the owner enrols a CA. */
+internal object BoxTrust {
     private val permissiveTm = object : X509TrustManager {
         override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
         override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
         override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
     }
 
+    private val context: SSLContext by lazy {
+        SSLContext.getInstance("TLS").apply {
+            init(null, arrayOf<TrustManager>(permissiveTm), SecureRandom())
+        }
+    }
+
+    fun install(conn: HttpURLConnection) {
+        (conn as? HttpsURLConnection)?.let {
+            it.sslSocketFactory = context.socketFactory
+            it.setHostnameVerifier { _, _ -> true }
+        }
+    }
+}
+
+object BoxProbe {
     /**
-     * GET the box's admin homepage. Every box serves a self-signed
-     * certificate on the LAN until the owner enrols a CA, so the probe
-     * trusts whatever certificate answers and reports the round trip.
-     */
+     * GET the box's admin homepage. Reachability is not identity, so the
+     * round trip carries no token at all — the probe stays anonymous; the
+     * calls that do carry it live in ApiClient.kt. */
     suspend fun probe(config: BoxConfig): ProbeResult = withContext(Dispatchers.IO) {
         if (config.host.isBlank()) return@withContext ProbeResult.Unreachable("No address set")
         try {
-            val trustCtx = SSLContext.getInstance("TLS")
-            trustCtx.init(null, arrayOf<TrustManager>(permissiveTm), SecureRandom())
-            val conn = URL(config.base).openConnection()
-                as HttpsURLConnection
+            val conn = URL(config.base).openConnection() as HttpURLConnection
             conn.connectTimeout = 4000
             conn.readTimeout = 4000
             conn.instanceFollowRedirects = false
             conn.requestMethod = "GET"
-            if (conn is HttpsURLConnection) {
-                conn.sslSocketFactory = trustCtx.socketFactory
-                conn.setHostnameVerifier { _, _ -> true }
-            }
-            (conn as HttpURLConnection).setRequestProperty("Authorization", "Bearer ${config.token}")
+            BoxTrust.install(conn)
             val started = System.currentTimeMillis()
             conn.responseCode
             val ms = System.currentTimeMillis() - started
