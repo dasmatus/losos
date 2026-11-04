@@ -7,7 +7,7 @@ name: handbook-screens
 # On main: takes the shots and commits any that changed, so the handbook
 # stays in step with the UI.
 #
-# The shots come from admin-ui/app/tests/handbook-screens.mjs (stubbed lososd,
+# The shots come from admin-ui/app/tests/handbook-screens.ts (stubbed lososd,
 # no box required). A change to a shot's name, path or fixture in that file,
 # or to the admin UI it photographs, is what this watches.
 
@@ -15,13 +15,13 @@ on:
   pull_request:
     paths:
       - "admin-ui/app/**"
-      - "admin-ui/app/tests/handbook-screens.mjs"
+      - "admin-ui/app/tests/handbook-screens.ts"
       - ".github/workflows/handbook-screens.yml"
   push:
     branches: [main]
     paths:
       - "admin-ui/app/**"
-      - "admin-ui/app/tests/handbook-screens.mjs"
+      - "admin-ui/app/tests/handbook-screens.ts"
       - ".github/workflows/handbook-screens.yml"
 
 permissions:
@@ -71,7 +71,7 @@ jobs:
 
       - name: build admin UI
         working-directory: admin-ui/app
-        run: bun --bun vite build
+        run: bun run build
 
       - name: install Playwright Chromium
         working-directory: admin-ui/app
@@ -79,7 +79,7 @@ jobs:
 
       - name: take screenshots
         working-directory: admin-ui/app
-        run: bun tests/handbook-screens.mjs /tmp/handbook-screens
+        run: bun tests/handbook-screens.ts /tmp/handbook-screens
 
       - name: collect changed shots
         id: changes

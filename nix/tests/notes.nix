@@ -15,7 +15,7 @@
 #   * Chromium opens it in Notes, reads a note with its embeds, callouts and
 #     backlinks, draws its mind map and the vault's graph, types a link into
 #     a note with the box saving it, searches, and publishes the folder as a
-#     knowledge base from its right click (nix/tests/notes-shots.mjs);
+#     knowledge base from its right click (nix/tests/notes-shots.ts);
 #   * the site reads without signing in, from the LAN and through the
 #     tunnel, leaves out the private note and anything outside the folder,
 #     and ignores a made-up sign-in header; kept to people on the box, it
@@ -107,7 +107,7 @@ let
       }
     }
     export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
-    exec ${pkgs.bun}/bin/bun ${./notes-shots.mjs} "$@"
+    exec ${pkgs.bun}/bin/bun ${./notes-shots.ts} "$@"
   '';
 in
 

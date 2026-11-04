@@ -34,7 +34,7 @@
  */
 
 import { buildSite } from "./build";
-import { buildEnv, DIST, ROOT, type BuildEnv } from "./bundler";
+import { DIST, ROOT } from "./bundler";
 
 /* The static types that fit dist exactly (they drive which cache header a
  * file gets; the SPA fallback documents get no-store). */
@@ -146,7 +146,6 @@ function isCloud(rel: string): boolean {
 }
 
 /* ── The server ────────────────────────────────────────────────────────── */
-const env: BuildEnv = buildEnv(Bun.env as unknown as Record<string, string | undefined>);
 const proxies = proxyTargets(Bun.env as unknown as Record<string, string | undefined>);
 
 /* The epoch the tabs reload on: every build that succeeds bumps it. */

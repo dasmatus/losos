@@ -11,19 +11,27 @@
  * CSP violation or an uncaught error. nix/tests/calendar.nix runs the same
  * page against a real LosOS Cloud and a real feed. */
 
-import assert from './assert.mjs';
-import { launch, runner, serve, SHELL_ME, shellRoutes, stash } from './harness.mjs';
+import type { Route } from 'playwright';
+import assert from './assert.ts';
+import { launch, runner, serve, SHELL_ME, shellRoutes, stash } from './harness.ts';
 
 const { origin, close: closeServer } = await serve({ csp: true });
 const browser = await launch();
 const { check, finish } = runner();
 
-const json = (route, status, body) =>
+const json = (route: Route, status: number, body: unknown) =>
   route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
 const NOW = new Date('2026-10-22T09:30:00+02:00');
 const ME = { ...SHELL_ME, shared: ['contacts', 'calendar', 'chat', 'mail'] };
 const EVA = { email: 'eva@mattbox.home.arpa', name: 'Eva', matrix: '@eva:mattbox.local', status: 'ACCEPTED' };
+
+interface Call {
+  method: string;
+  path: string;
+  search: string;
+  body: string | null;
+}
 
 function calendars() {
   return [
@@ -39,7 +47,7 @@ function calendars() {
   ];
 }
 
-function event(id, calendar, summary, start, end, more = {}) {
+function event(id: string, calendar: string, summary: string, start: string, end: string, more: Record<string, unknown> = {}) {
   return {
     id,
     calendar,
@@ -77,12 +85,12 @@ function events() {
   ];
 }
 
-async function open(path = '/calendar', { cloud = true, viewport = { width: 1280, height: 860 } } = {}) {
+async function open(path = '/calendar', { cloud = true, viewport = { width: 1280, height: 860 } }: { path?: string; cloud?: boolean; viewport?: { width: number; height: number } } = {}) {
   const context = await browser.newContext({ viewport, timezoneId: 'Europe/Bratislava', locale: 'en-US' });
   await context.clock.setFixedTime(NOW);
   const page = await context.newPage();
-  const errors = [];
-  const calls = [];
+  const errors: string[] = [];
+  const calls: Call[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.addInitScript(() => {
     window.__violations = [];
@@ -103,12 +111,12 @@ async function open(path = '/calendar', { cloud = true, viewport = { width: 1280
     calls.push({ method, path, search: url.search, body: request.postData() });
     if (path === '/calendars' && method === 'GET') return json(route, 200, { calendars: cals });
     if (path === '/events' && method === 'GET') {
-      const from = url.searchParams.get('from');
-      const to = url.searchParams.get('to');
+      const from = url.searchParams.get('from')!;
+      const to = url.searchParams.get('to')!;
       return json(route, 200, { events: evs.filter((e) => e.start.slice(0, 10) >= from && e.start.slice(0, 10) < to) });
     }
     if (path === '/events' && method === 'POST') {
-      const f = JSON.parse(request.postData());
+      const f = JSON.parse(request.postData()!);
       const made = event(`n${evs.length}`, f.calendar, f.summary, f.start, f.end, {
         attendees: f.attendees,
         alarms: f.alarms,
@@ -123,7 +131,7 @@ async function open(path = '/calendar', { cloud = true, viewport = { width: 1280
     const one = path.match(/^\/events\/(\w+)$/);
     if (one && method === 'GET') return json(route, 200, evs.find((e) => e.id === one[1]));
     if (path === '/subscriptions' && method === 'POST') {
-      const s = JSON.parse(request.postData());
+      const s = JSON.parse(request.postData()!);
       const made = {
         uri: 'webcal-timetable',
         name: s.name || 'Timetable (EduPage)',
@@ -219,14 +227,14 @@ await check('a new event with a guest, a reminder and a video call is saved', as
   await dialog.waitFor({ state: 'detached' });
   const post = calls.find((c) => c.method === 'POST' && c.path === '/events');
   assert.ok(post, 'no event was saved');
-  const body = JSON.parse(post.body);
+  const body = JSON.parse(post!.body!);
   assert.equal(body.summary, 'Review the box');
   assert.equal(body.start, '2026-10-23T14:00');
   assert.equal(body.end, '2026-10-23T15:00');
   assert.equal(body.zone, 'Europe/Bratislava');
   assert.deepEqual(body.alarms, [15]);
   assert.equal(body.call, 'video');
-  assert.deepEqual(body.attendees.map((a) => a.email), ['eva@mattbox.home.arpa']);
+  assert.deepEqual(body.attendees.map((a: { email: string }) => a.email), ['eva@mattbox.home.arpa']);
   assert.equal(body.organizer?.email, 'matus@mattbox.home.arpa');
   assert.equal(body.organizer?.name, 'Matus');
   await page.getByRole('button', { name: /Review the box/ }).waitFor();
@@ -241,7 +249,7 @@ await check('a webcal:// address is subscribed to and listed under Subscriptions
   await dialog.locator('#calendar-subscribe-refresh').selectOption('21600');
   await dialog.getByRole('button', { name: 'Subscribe', exact: true }).click();
   await dialog.waitFor({ state: 'detached' });
-  const post = JSON.parse(calls.find((c) => c.path === '/subscriptions').body);
+  const post = JSON.parse(calls.find((c) => c.path === '/subscriptions')!.body!);
   assert.equal(post.url, 'webcal://school.example/timetable.ics');
   assert.equal(post.refresh, 21600);
   await page.getByRole('region', { name: 'Calendars' }).getByText('Timetable (EduPage)').waitFor();

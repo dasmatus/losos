@@ -104,18 +104,18 @@ The admin UI, the handbook and the design system's React wrapper are Bun
 workspaces. Their scripts run on Bun's runtime (`bun --bun`, `bunx --bun`),
 never on Node, and their code uses Bun's and the web's APIs rather than
 Node's: no `node:` module, `process`, `Buffer` or `require`. The pages
-under `src/` typecheck without Bun's or Node's types; the Vite configs,
-which run on Bun, are typechecked by `tsconfig.tools.json`.
+under `src/` typecheck without Bun's or Node's types; the build scripts and
+the checks, which run on Bun, are typechecked by `tsconfig.tools.json`.
 
 `nix build .#losos-admin-ui` installs `node_modules` from `bun.lock`
-(`nix/bun-deps.nix`), then runs `tsc --noEmit && vite build` on Bun, so the
+(`nix/bun-deps.nix`), then runs `tsc --noEmit` and `bun run build` on Bun, so the
 typecheck is part of the package. `bun run test:browser` is the playwright
 check that `.#checks.x86_64-linux.losos-admin-ui` wraps; that check also
 fails on any `node:` import. Playwright takes binary data only as a Node
 `Buffer`, so the checks hand it a file path instead (`stash` in
-`tests/harness.mjs`), and `wsBytes` for a WebSocket route.
+`tests/harness.ts`), and `wsBytes` for a WebSocket route.
 
-`tests/advanced.browser.mjs` renders every option the box declares. Outside
+`tests/advanced.browser.ts` renders every option the box declares. Outside
 nix it reads `tests/fixtures/options.json`, a copy of the document
 `nix/options-doc.nix` generates; refresh it after changing
 `modules/options.nix` with

@@ -127,7 +127,7 @@ async function open({
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   let people: Person[] = structuredClone(PEOPLE);
-  let rules: PostBody = { twoFactor: false, passwordDays: 0 };
+  let rules = { twoFactor: false, passwordDays: 0 } as PostBody;
   let roles: { id: string; name: string; sections: string[] }[] = [{ id: 'helpers', name: 'Backup helpers', sections: ['backup', 'account'] }];
   const posts: { path: string; body: PostBody }[] = [];
   const body = (route: Route): PostBody => JSON.parse(route.request().postData() ?? '{}') as PostBody;
@@ -492,7 +492,7 @@ await check('the sign-in rules go out together, with the days the field holds', 
   await page.getByTestId('users-rules-days').fill('30');
   await toggle(rules, 'Require two-factor sign-in');
   await save.click();
-  await page.waitForFunction(() => (document.querySelector('[data-testid="users-rules-save"]') as HTMLElement | null)?.disabled === true);
+  await page.waitForFunction(() => (document.querySelector('[data-testid="users-rules-save"]') as HTMLButtonElement | null)?.disabled === true);
   assert.deepEqual(posts.at(-1), { path: '/api/people/rules', body: { twoFactor: true, passwordDays: 30 } });
   await context.close();
 });

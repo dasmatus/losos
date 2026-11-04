@@ -64,16 +64,22 @@ Inside the shell `bcd` and `rcd` cd into the two in-flake crates.
 `admin-ui/design-system/react` has its own `bun run typecheck` and `bun run test`
 and is never served or built by nix.
 The JS workspaces (`admin-ui/app`, `handbook/`, the design system) are Bun
-workspaces with a `bun.lock`, and their code uses no Node API: no `node:`
-module, `process`, `Buffer` or `require`, but Bun's (`Bun.file`, `Bun.serve`,
-`Bun.spawn`, `Bun.$`) and the web's. Every script runs on Bun's runtime
-(`bun --bun`, `bunx --bun`), and `src/` typechecks without Bun's or Node's
-types (the Vite configs have `tsconfig.tools.json`). Nix installs each
+workspaces with a `bun.lock`, and their code is TypeScript with no Node API:
+no `node:` module, `process`, `Buffer` or `require`, but Bun's (`Bun.file`,
+`Bun.serve`, `Bun.spawn`, `Bun.$`) and the web's. Every script runs on Bun's
+runtime (`bun --bun`, `bunx --bun`). `src/` typechecks without Bun's or
+Playwright's types; the build scripts (`admin-ui/app/scripts/`) and the
+checks have `tsconfig.tools.json`. The admin UI's build is Bun's alone:
+`bun run build` runs scripts/build.ts (Bun.build over the pages, Tailwind
+through @tailwindcss/cli, classic theme-boot.js and app-frame builds,
+dist/pages/ and basic/messages.<locale>.json for the plugins), and
+`bun run dev` runs scripts/dev.ts, which rebuilds on each save and reloads
+over SSE. Nix installs each
 `node_modules` from its `bun.lock` alone (`nix/bun-deps.nix`, one hash per
 workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
-`node:` import. Playwright's API wants a Node `Buffer` for bytes
+`node:` import. Playwright's API wants bytes only in its own Buffer shape
 (`setInputFiles`, `route.fulfill`, a WebSocket route): hand it a file path
-(`stash` in `tests/harness.mjs`) or `wsBytes`.
+(`stash` in `tests/harness.ts`) or `wsBytes`.
 
 ## Layout
 
@@ -132,7 +138,7 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   plugins so far;
   `nix/tests/plugins.nix` boots them with a browser that takes the PR's screenshots
   (`nix/tests/screens/`, reusable by any VM test).
-- `admin-ui/app`: React 19 + Vite + Tailwind SPA on real paths. Its `dist/`
+- `admin-ui/app`: React 19 + Tailwind v4 SPA on real paths, built by scripts/build.ts. Its `dist/`
   is the front nginx vhost's root (`try_files … /index.html`), `/api/*` is
   proxied to lososd. Palette in `src/styles/tokens.css`.
 - `admin-ui/app/src/games/` + `components/play-while-waiting.tsx`: the
@@ -220,8 +226,9 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   Podcast mode composites on the host's canvas and sends WebM to
   `/calls/api/stream`, which ffmpeg passes to RTMP: the one plaintext path,
   marked public in the UI. Guests: only an official edge answers
-  `POST /calls/guest-link`; the box serves `/calls/guest/` (its own Vite
-  build, `vite.guest.config.ts`) and `/calls/guest/ws` without LosOS Login,
+  `POST /calls/guest-link`; the box serves `/calls/guest/` (guest.html, the
+  admin UI build's second bundle under dist/calls/guest/) and `/calls/guest/ws`
+  without LosOS Login,
   and the link's `#` secret, which no server sees, keys an ECDH pair per
   guest (`calls/guests.ts`). lososd runs `HTTP_WORKERS` (8) and a 120 s
   `client_request_timeout` because its handlers block; one worker per core
@@ -284,7 +291,7 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   verdict, requested reviewers, merge (merge, squash, fast-forward) in a
   temporary worktree (`forge/pulls.rs`). Worktrees are marked by push
   options `worktree=` and `computer=` (`forge/worktrees.rs`). The pages
-  are a fifth Vite page of the admin UI (`admin-ui/app/git/`, `src/git/`)
+  are a fifth page of the admin UI's build (`admin-ui/app/git/`, `src/git/`)
   at `/git/`: nginx serves them, strips `/git` from `/git/api/` and the
   smart-HTTP paths to the socket. A write with sign-in headers and no
   token is refused when `Sec-Fetch-Site`/`Origin` say another site sent
@@ -307,7 +314,7 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   changed meanwhile. `/wikis` in the admin SPA is the box's directory of
   wikis (spaces, LosOS Cloud's knowledge bases from `GET /kb/api/`, the
   handbook) and the editor; `/wiki/<owner>/<name>/` is each space as a
-  site, its own Vite page under nginx's `/wiki/` location beside `/git/`,
+  site, its own page of the admin UI's build under nginx's `/wiki/` location beside `/git/`,
   not LAN-guarded. Pictures come from `…/wiki/raw/`, raster only.
   `nix/tests/wiki.nix` boots it.
 - `apps.nix` + `backend/src/apps.rs` + `backend/src/compose.rs`: the run-as
@@ -336,7 +343,7 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   the Overview's Statistics tile draw `src/statistics/` (shared with the
   edge's manage page). `nix/tests/podman-apps.nix` boots it.
 - `chat.nix` + `backend/src/chat.rs` + `admin-ui/app/src/chat/` (LosOS
-  Chat, `/chat/`, its own Vite page of the admin UI): Synapse (unit
+  Chat, `/chat/`, its own page of the admin UI's build): Synapse (unit
   `losos-chat`, SQLite) as `shared` in `/home/shared/data/chat/synapse`
   (a box that ran Dendrite keeps its files beside it, unread), only while
   `lososInternal.sharedSide` (`sharingMyStorage` and `cluster.enable`, the
@@ -749,7 +756,7 @@ Inside the dev shell, `bcd` → `cd backend`, `rcd` → `cd edge/registrar`.
 
 `admin-ui/app` is the shipped SPA and **is** built by nix
 (`nix build .#losos-admin-ui` installs `node_modules` from `bun.lock`, then runs
-`tsc --noEmit && vite build` on Bun, so the typecheck is part of the package).
+`tsc --noEmit` and the Bun build, so the typecheck is part of the package).
 For an iteration loop it also has `bun run dev` (with `LOSOS_API_ORIGIN`
 pointed at a real box), `bun run typecheck`, and `bun run test:browser` — the
 last is the playwright check that `.#checks.x86_64-linux.losos-admin-ui` wraps.
@@ -849,7 +856,7 @@ thin **facade** CLI that keeps the old subcommand/JSON surface
 `factory-reset`; `--json` no-op) and relays each call to lososd over D-Bus.
 `losos-ctl install` stays a local subcommand (the ISO installer runs as root,
 no bus needed). The admin UI (`admin-ui/app/`, packaged as `losos-admin-ui`
-with Bun) is a React 19 + Vite + Tailwind v4 SPA on real paths
+with Bun) is a React 19 + Tailwind v4 SPA on real paths
 (`/`, `/apps`, `/storage`, `/mesh`, `/settings/<pane>`), whose built `dist/`
 **is** the front Nginx vhost's document root — served with
 `try_files $uri $uri/ /index.html`, without which every deep link and every
@@ -871,7 +878,7 @@ Base UI, whose scroll lock is CSSOM; the Switch is shadcn's React Aria
 flavour (`react-aria-components`), laid into settings rows by `SwitchRow` as
 shadcn's "Switch with a description" Field; only the confirmation Toast is
 Radix, which needs no scroll lock. Dialog stays on the native `<dialog>`.
-`tests/app.browser.mjs` serves the real CSP header and fails on any new
+`tests/app.browser.ts` serves the real CSP header and fails on any new
 violation, so a library swap that injects styles turns a check red. The command layer is written against a `Losos` effect
 **trait** with a real (`io_backend`) and an in-memory (`fake`) implementation,
 so the state machine is unit-tested with no filesystem; the installer repeats

@@ -255,7 +255,7 @@ async function clean({ page, errors, atLoad }: { page: Page; errors: string[]; a
 
 await check('the directory lists spaces, knowledge bases and the handbook', async () => {
   const w = await open('/wikis');
-  const { page, m } = w;
+  const { page } = w;
   await page.locator('[data-wiki-entry="space:notshared/garden"]').waitFor();
   await shot(page, 'directory');
   const entries = await page.locator('[data-wiki-entry]').evaluateAll((els) => els.map((e) => e.getAttribute('data-wiki-entry')));
@@ -272,7 +272,7 @@ await check('the directory lists spaces, knowledge bases and the handbook', asyn
 
 await check('a page reads with its tree, sidebar, picture and links', async () => {
   const w = await open('/wikis/notshared/garden');
-  const { page, m } = w;
+  const { page } = w;
   const article = page.locator('[data-wiki-page="Home"]');
   await article.waitFor();
   // The tree nests Guides/Watering below Guides.
@@ -343,7 +343,7 @@ await check('a new page below another, and a save someone else beat', async () =
 
 await check('a space one may only read, and an empty one', async () => {
   const w = await open('/wikis/eva/recipes');
-  const { page, m } = w;
+  const { page } = w;
   await page.locator('[data-wiki-page="Home"]').getByText('Bean soup').waitFor();
   assert.equal(await page.locator('[data-wiki-edit]').count(), 0);
   assert.equal(await page.getByRole('button', { name: 'New page', exact: true }).count(), 0);
@@ -358,7 +358,7 @@ await check('a space one may only read, and an empty one', async () => {
 
 await check('search looks through every wiki and offers the handbook', async () => {
   const w = await open('/wikis');
-  const { page, m } = w;
+  const { page } = w;
   await page.locator('[data-wiki-entry="space:notshared/garden"]').waitFor();
   await page.locator('[data-wiki-search]').fill('water');
   await page.locator('[data-wiki-search]').press('Enter');
@@ -376,7 +376,7 @@ await check('search looks through every wiki and offers the handbook', async () 
 
 await check('the knowledge base and the handbook have an overview', async () => {
   const w = await open('/wikis?kb=birds');
-  const { page, m } = w;
+  const { page } = w;
   await page.locator('[data-wiki-kb="birds"]').getByText('Robins').waitFor();
   assert.equal(await page.locator('[data-wiki-kb="birds"]').getByRole('link', { name: 'Robins' }).getAttribute('href'), '/kb/birds/Robins');
   await page.locator('[data-wiki-entry="handbook"]').click();
@@ -396,14 +396,14 @@ await check('a new space is a repository with a first page', async () => {
   await dialog.getByRole('button', { name: 'Make the space' }).click();
   await page.locator('[data-wiki-page="Home"]').getByText('Team handbook').waitFor();
   assert.equal(new URL(page.url()).pathname, '/wikis/notshared/Team-handbook/');
-  assert.ok(m.spaces['notshared/Team-handbook'].pages['Home']!.startsWith('# Team handbook'));
+  assert.ok(m.spaces['notshared/Team-handbook']!.pages['Home']!.startsWith('# Team handbook'));
   await clean(w);
   await page.close();
 });
 
 await check('the published site reads a space and links its editor', async () => {
   const w = await open('/wiki/notshared/garden/');
-  const { page, m } = w;
+  const { page } = w;
   await page.locator('[data-wiki-page="Home"]').waitFor();
   await shot(page, 'site');
   assert.equal(await page.locator('[data-wiki-site-title]').textContent(), 'garden');
@@ -433,7 +433,7 @@ await check('the published site reads a space and links its editor', async () =>
 
 await check('a visitor reads the public space and is offered to sign in elsewhere', async () => {
   const w = await open('/wiki/eva/recipes/', { visitor: true });
-  const { page, m } = w;
+  const { page } = w;
   await page.locator('[data-wiki-page="Home"]').getByText('Bean soup').waitFor();
   assert.equal(await page.locator('[data-wiki-site-edit]').count(), 0);
   await page.goto(`${origin}/wiki/notshared/garden/`);
@@ -445,7 +445,7 @@ await check('a visitor reads the public space and is offered to sign in elsewher
 
 await check('German, and the phone layout one column at a time', async () => {
   const w = await open('/wikis', { locale: 'de-DE', viewport: { width: 390, height: 844 } });
-  const { page, m } = w;
+  const { page } = w;
   await page.getByText('Alle Wikis').first().waitFor();
   await page.locator('[data-wiki-entry="space:notshared/garden"]').click();
   await page.locator('[data-page-tree]').getByText('Planting').click();

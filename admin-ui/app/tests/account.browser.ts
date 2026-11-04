@@ -203,7 +203,7 @@ await check('the details go out once they changed, and the password once it pass
   await page.getByTestId('account-name').fill('Eva Nováková');
   await page.getByTestId('account-email').fill('eva@example.org');
   await save.click();
-  await page.waitForFunction(() => document.querySelector('[data-testid="account-details-save"]')?.disabled === true);
+  await page.waitForFunction(() => (document.querySelector('[data-testid="account-details-save"]') as HTMLButtonElement | null)?.disabled === true);
   assert.deepEqual(posts.at(-1), {
     path: '/api/account',
     body: { displayName: 'Eva Nováková', email: 'eva@example.org' },
@@ -215,7 +215,7 @@ await check('the details go out once they changed, and the password once it pass
   assert.ok(await change.isDisabled(), 'Change is on with a password that breaks the rules');
   await page.getByTestId('account-new-password').fill(GOOD_PASSWORD);
   await change.click();
-  await page.waitForFunction(() => document.querySelector('[data-testid="account-new-password"]')?.value === '');
+  await page.waitForFunction(() => (document.querySelector('[data-testid="account-new-password"]') as HTMLInputElement | null)?.value === '');
   assert.deepEqual(posts.at(-1), { path: '/api/set-password', body: { password: GOOD_PASSWORD } });
   assert.equal(await page.getByTestId('account-password-expires').innerText(), 'Never');
   assert.deepEqual(errors, []);

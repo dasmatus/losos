@@ -6,7 +6,7 @@
 # Chromium does what the owner does: signs in at /auth/, opens Your apps,
 # describes an app, watches the box write it, tries it in the preview,
 # saves it and uses it on its own page. Every screen on the way is a PNG
-# (nix/tests/app-builder/shots.mjs), the pull request's and the launch
+# (nix/tests/app-builder/shots.ts), the pull request's and the launch
 # film's, so what they show is what this run did.
 #
 # The model is a stand-in (app-builder/ollama-stand-in.py): the VM has no
@@ -208,9 +208,9 @@ pkgs.testers.nixosTest {
     with subtest("Chromium on the laptop takes the screens"):
         laptop.succeed(
             "mkdir -p /tmp/run && ln -sfn ${playwright}/node_modules /tmp/run/node_modules "
-            "&& cp ${./app-builder/shots.mjs} /tmp/run/shots.mjs && cd /tmp/run && "
+            "&& cp ${./app-builder/shots.ts} /tmp/run/shots.ts && cd /tmp/run && "
             f"BOX={BOX} OWNER=matus PASSWORD={PASSWORD} OUT=/tmp/shots MODE={MODE} "
-            "timeout 3600 bun shots.mjs >&2"
+            "timeout 3600 bun shots.ts >&2"
         )
         laptop.copy_from_machine("/tmp/shots", "")
 
@@ -306,7 +306,7 @@ pkgs.testers.nixosTest {
             laptop.succeed(
                 "cd /tmp/run && "
                 f"BOX={BOX} OWNER=matus PASSWORD={PASSWORD} OUT=/tmp/shots-pushed MODE=pushed FIRST=31 "
-                "timeout 1200 bun shots.mjs >&2"
+                "timeout 1200 bun shots.ts >&2"
             )
             laptop.copy_from_machine("/tmp/shots-pushed", "")
 

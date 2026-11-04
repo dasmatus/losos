@@ -90,7 +90,7 @@ async function open({
   view = 'logical',
   on = browser,
   setup = null,
-}: OpenOptions) {
+}: OpenOptions = {}) {
   const page = await on.newPage({ viewport, locale, colorScheme: scheme, acceptDownloads: true });
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(String(e)));
@@ -164,7 +164,7 @@ await check('every built-in setup loads and draws', async () => {
   const picker = page.getByTestId('setup-picker');
   const keys = await picker
     .locator('option:not([disabled])')
-    .evaluateAll((os) => os.map((o) => o.value).filter((v): v is string => Boolean(v)));
+    .evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value).filter((v): v is string => Boolean(v)));
   assert.ok(keys.length >= 3, `built-ins listed: ${keys.join(', ')}`);
   for (const key of keys) {
     await picker.selectOption(key);
@@ -490,7 +490,7 @@ function fakeLibvirt(ws: FakeSocket, seen: LibvirtSeen) {
   const dom = (name: string): Uint8Array => cat(str(name), new Uint8Array(16).fill(0xab), u32(1));
   // virNetMessageError: code, domain, message, level, dom, str1..3, int1, int2, net
   const error = (message: string): Uint8Array => cat(u32(1, 10, 1), str(message), u32(2, 0, 0, 0, 0, 0, 0, 0));
-  let buf = new Uint8Array(0);
+  let buf: Uint8Array = new Uint8Array(0);
   let consoleSerial = 0;
   ws.onMessage((m) => {
     buf = cat(buf, typeof m === 'string' ? text.encode(m) : new Uint8Array(m));
@@ -508,7 +508,7 @@ function fakeLibvirt(ws: FakeSocket, seen: LibvirtSeen) {
         continue;
       }
       seen.procs.push(proc);
-      let ret = new Uint8Array(0);
+      let ret: Uint8Array = new Uint8Array(0);
       if (proc === 66) ret = u32(1, 0); // AUTH_LIST: none
       if (proc === 1) seen.uri = view(body).getUint32(0) ? readStr(body, 4)[0] : null;
       if (proc === 10) {
@@ -590,7 +590,7 @@ function fakeHelper({ refuse = false, gear = false, virsh = true, virt = false }
       window.__wsProtocols = [];
       window.WebSocket = class extends WS {
         constructor(url: string | URL, protocols?: string | string[]) {
-          window.__wsProtocols.push([String(url), [].concat(protocols ?? [])]);
+          window.__wsProtocols.push([String(url), ([] as string[]).concat(protocols ?? [])]);
           super(url, protocols);
         }
       } as typeof window.WebSocket;
@@ -854,7 +854,7 @@ await check('GPU canvas: SVG first, then the swap carries the setup, the selecti
   // canvas has focus, anywhere on the page. `clean` fails on the uncaught
   // error a panic leaves, and the clicks after it prove the canvas lives.
   await page.evaluate(() => {
-    const canvas = document.querySelector('canvas#lab-gpu-canvas')!;
+    const canvas = document.querySelector('canvas#lab-gpu-canvas')! as HTMLCanvasElement;
     canvas.focus();
     for (const target of [canvas, document.body]) {
       for (const type of ['pointerdown', 'pointerup']) {

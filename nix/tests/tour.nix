@@ -54,7 +54,7 @@ let
   };
   # fonts.nix: the generic families mapped, or the pictures come out serif.
   fonts = import ./fonts.nix { inherit pkgs; };
-  driver = ./tour-browser.mjs;
+  driver = ./tour-browser.ts;
 in
 
 pkgs.testers.nixosTest {
@@ -131,7 +131,7 @@ pkgs.testers.nixosTest {
         assert settings["sharingMyStorage"] == sharing and settings["clusterEnable"] == mesh, settings
 
     def browse(name, **plan):
-        """One run of the browser against the box (nix/tests/tour-browser.mjs)."""
+        """One run of the browser against the box (nix/tests/tour-browser.ts)."""
         plan = {"origin": f"http://127.0.0.1:{PORT}", "token": token, "out": f"{SHOTS}/{name}", **plan}
         env = dict(os.environ)
         env.update({

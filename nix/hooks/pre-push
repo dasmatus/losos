@@ -15,7 +15,7 @@
 #                         losos-mdx and the Lab canvas
 #                         (WebGL2, WebGPU)
 #   admin-ui              nix build .#checks…losos-admin-ui: ui lane
-#                         the built SPA (bun.lock, tsc, vite)
+#                         the built SPA (bun.lock, tsc, the Bun build)
 #                         and its Playwright suite
 #   handbook              nix build .#losos-handbook         handbook/ changed
 #   vm:<check>            the VM tests the change touches,   nix/tests/ changed;

@@ -18,7 +18,7 @@
 #   * syncs a folder both ways with nextcloudcmd, the desktop client's own
 #     sync engine;
 #   * opens the web app in Chromium and takes the pictures for the pull
-#     request and the launch film (nix/tests/cloud-shots.mjs), then the same
+#     request and the launch film (nix/tests/cloud-shots.ts), then the same
 #     addresses on the box without LosOS Cloud, for the "before" column.
 #
 { pkgs }:
@@ -50,7 +50,7 @@ let
       }
     }
     export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
-    exec ${pkgs.bun}/bin/bun ${./cloud-shots.mjs} "$@"
+    exec ${pkgs.bun}/bin/bun ${./cloud-shots.ts} "$@"
   '';
   screens = import ./screens { inherit pkgs; };
 in

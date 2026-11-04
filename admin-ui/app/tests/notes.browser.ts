@@ -26,7 +26,13 @@
 
 import type { Page, Route } from 'playwright';
 import assert from './assert.ts';
-import { launch, runner, serve, shellRoutes, SHELL_ME } from './harness.ts';
+import { launch, runner, serve, shellRoutes, SHELL_ME, type ShellMe } from './harness.ts';
+
+declare global {
+  interface Window {
+    __violations: string[];
+  }
+}
 
 const { origin, close: closeServer } = await serve({ csp: true });
 const browser = await launch();
@@ -34,7 +40,7 @@ const { check, finish } = runner();
 
 const FIXTURE = 'tests/fixtures/vault';
 
-const files = new Map();
+const files = new Map<string, string>();
 for await (const rel of new Bun.Glob('**/*').scan({ cwd: FIXTURE, dot: true })) {
   files.set(rel, await Bun.file(`${FIXTURE}/${rel}`).text());
 }
@@ -53,10 +59,10 @@ files.set(
 );
 
 /* A small stand-in for backend/src/cloud/notes/scan.rs. */
-function scan(path, text) {
+function scan(path: string, text: string) {
   if (path.endsWith('.canvas')) {
     const data = JSON.parse(text);
-    const links = [];
+    const links: { target: string; embed: boolean }[] = [];
     for (const n of data.nodes) {
       if (n.type === 'file') links.push({ target: n.file, embed: false });
       if (n.type === 'text') for (const m of n.text.matchAll(/\[\[([^\]|#]+)/g)) links.push({ target: m[1], embed: false });
@@ -66,15 +72,15 @@ function scan(path, text) {
   const front = /^---\n([\s\S]*?)\n---\n/.exec(text);
   const yaml = front?.[1] ?? '';
   const body = front === null ? text : text.slice(front[0].length);
-  const list = (key) => {
+  const list = (key: string) => {
     const m = new RegExp(`^${key}:\\s*(.*)$`, 'm').exec(yaml);
     if (m === null) return [];
-    return m[1].replace(/^\[|\]$/g, '').split(',').map((s) => s.trim()).filter(Boolean);
+    return m[1]!.replace(/^\[|\]$/g, '').split(',').map((s) => s.trim()).filter(Boolean);
   };
   const tags = new Set(list('tags'));
   const prose = body.replace(/```[\s\S]*?```/g, '').replace(/`[^`]*`/g, '');
-  for (const m of prose.matchAll(/(?:^|\s)#([\p{L}_\-/][\p{L}\p{N}_\-/]*)/gu)) tags.add(m[1]);
-  const links = [...prose.matchAll(/(!?)\[\[([^\]|#]+)/g)].map((m) => ({ target: m[2], embed: m[1] === '!' }));
+  for (const m of prose.matchAll(/(?:^|\s)#([\p{L}_\-/][\p{L}\p{N}_\-/]*)/gu)) tags.add(m[1]!);
+  const links = [...prose.matchAll(/(!?)\[\[([^\]|#]+)/g)].map((m) => ({ target: m[2]!, embed: m[1] === '!' }));
   return {
     title: null,
     aliases: list('aliases'),
@@ -85,19 +91,19 @@ function scan(path, text) {
 }
 
 let nextId = 100;
-const ids = new Map();
-const idOf = (p) => {
+const ids = new Map<string, number>();
+const idOf = (p: string) => {
   if (!ids.has(p)) ids.set(p, nextId++);
-  return ids.get(p);
+  return ids.get(p)!;
 };
-const etags = new Map();
-const etagOf = (p) => etags.get(p) ?? 'e1';
+const etags = new Map<string, string>();
+const etagOf = (p: string) => etags.get(p) ?? 'e1';
 
-function index({ root, name, published = false }) {
+function index({ root, name, published = false }: { root: string; name: string; published?: boolean }) {
   const notes = [];
   const canvases = [];
   const attachments = [];
-  const folders = new Set();
+  const folders = new Set<string>();
   for (const [p, text] of files) {
     if (p.includes('/')) folders.add(p.slice(0, p.lastIndexOf('/')));
     const row = { id: idOf(p), path: p, size: text.length, mtime: 1, etag: etagOf(p) };
@@ -111,9 +117,9 @@ function index({ root, name, published = false }) {
   return { root, name, folderId: 7, notes, canvases, files: attachments, folders: [...folders].sort() };
 }
 
-function search(q) {
+function search(q: string) {
   const words = q.toLowerCase().split(/\s+/).filter(Boolean);
-  const hits = [];
+  const hits: { path: string; line: number; text: string }[] = [];
   for (const [p, text] of files) {
     if (!p.endsWith('.md') && !p.endsWith('.note')) continue;
     text.split('\n').forEach((line, i) => {
@@ -123,15 +129,36 @@ function search(q) {
   return hits;
 }
 
-const json = (route, status, body) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+const json = (route: Route, status: number, body: unknown) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
-async function open(path, { kb = { available: true, sites: [] }, kbSite = 'anyone', viewport = { width: 1440, height: 1000 }, vault = 'garden', me } = {}) {
+interface KbSites {
+  available: boolean;
+  sites: KbSite[];
+}
+interface KbSite {
+  id: number;
+  folderId: number;
+  folder: string;
+  slug: string;
+  title: string;
+  audience: string;
+  created: number;
+}
+interface OpenOptions {
+  kb?: KbSites;
+  kbSite?: string;
+  viewport?: { width: number; height: number };
+  vault?: string;
+  me?: ShellMe;
+}
+
+async function open(path: string, { kb = { available: true, sites: [] }, kbSite = 'anyone', viewport = { width: 1440, height: 1000 }, vault = 'garden', me }: OpenOptions = {}) {
   const context = await browser.newContext({ viewport, locale: 'en-US' });
   const page = await context.newPage();
   // The box's shell around LosOS Cloud asks lososd who is here; its own
   // routes below win over these.
   if (me !== undefined) await shellRoutes(page, me);
-  const errors = [];
+  const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.addInitScript(() => {
     window.__violations = [];
@@ -139,13 +166,13 @@ async function open(path, { kb = { available: true, sites: [] }, kbSite = 'anyon
       window.__violations.push(`${e.violatedDirective} ${e.blockedURI}`),
     );
   });
-  const writes = [];
-  const posts = [];
-  const moves = [];
+  const writes: { path: string; body: string; ifMatch: string | null; ifNew: string | null }[] = [];
+  const posts: { path: string; title: string; audience: string }[] = [];
+  const moves: { from: string; to: string; overwrite?: boolean }[] = [];
   // 'garden' is the fixture; 'new' is a box that has no Notes folder yet,
   // which the page makes, and then lists as an empty vault.
   let made = vault === 'garden';
-  await page.route('**/cloud/api/**', async (route) => {
+  await page.route('**/cloud/api/**', async (route: Route) => {
     const req = route.request();
     const url = new URL(req.url());
     const p = url.pathname.slice('/cloud/api'.length);
@@ -179,7 +206,7 @@ async function open(path, { kb = { available: true, sites: [] }, kbSite = 'anyon
       const from = body.from.replace(/^Notes\//, '');
       const to = body.to.replace(/^Notes\//, '');
       if (files.has(to) && !body.overwrite) return json(route, 409, { code: 'exists', error: 'already there' });
-      files.set(to, files.get(from));
+      files.set(to, files.get(from)!);
       files.delete(from);
       return json(route, 200, { id: idOf(to), path: body.to, name: to, dir: false, size: 0, mtime: 1, etag: 'x', mime: 'text/markdown', favorite: false });
     }
@@ -193,12 +220,12 @@ async function open(path, { kb = { available: true, sites: [] }, kbSite = 'anyon
     }
     if (p === '/trash') return json(route, 200, { entries: [], days: 30 });
     if (p === '/files') {
-      const entry = (name, dir) => ({ id: dir ? 7 : 8, path: name, name, dir, size: 0, mtime: 1, etag: 'x', mime: dir ? '' : 'text/plain', favorite: false });
+      const entry = (name: string, dir: boolean) => ({ id: dir ? 7 : 8, path: name, name, dir, size: 0, mtime: 1, etag: 'x', mime: dir ? '' : 'text/plain', favorite: false });
       return json(route, 200, { folder: entry('', true), entries: [entry('Notes', true), entry('todo.txt', false)] });
     }
     return json(route, 200, {});
   });
-  await page.route('**/kb/api/**', async (route) => {
+  await page.route('**/kb/api/**', async (route: Route) => {
     const url = new URL(route.request().url());
     const [, , , slug, call] = url.pathname.split('/');
     if (slug !== 'kitchen-garden') return json(route, 404, { code: 'notFound', error: 'no such site' });
@@ -216,9 +243,9 @@ async function open(path, { kb = { available: true, sites: [] }, kbSite = 'anyon
   return { page, context, errors, writes, posts, moves };
 }
 
-const violations = (page) => page.evaluate(() => [...new Set(window.__violations)].sort());
+const violations = (page: Page): Promise<string[]> => page.evaluate(() => [...new Set(window.__violations)].sort());
 
-const ALL_VIOLATIONS = new Set();
+const ALL_VIOLATIONS = new Set<string>();
 
 /* What a plain load of the file list logs, which should be nothing: Notes
  * and the knowledge base must not add to it. */
@@ -251,7 +278,7 @@ await check('a note reads with GitHub and Obsidian Markdown', async () => {
     // A callout with its own title, and wikilinks that resolve.
     assert.equal(await page.textContent('.callout[data-callout="tip"] .callout-title'), 'Where to begin');
     // One dot before a callout's title, whichever way it was written.
-    const dots = (sel) => page.$eval(sel, (t) => t.querySelectorAll('.callout-icon').length + (getComputedStyle(t, '::before').content === 'none' ? 0 : 1));
+    const dots = (sel: string) => page.$eval(sel, (t) => t.querySelectorAll('.callout-icon').length + (getComputedStyle(t, '::before').content === 'none' ? 0 : 1));
     assert.equal(await dots('.callout[data-callout="tip"] .callout-title'), 1);
     assert.equal(await page.getAttribute('a.wikilink:text("Tomatoes")', 'data-note-path'), 'Tomatoes.md');
     assert.equal(await page.getAttribute('a.wikilink:text("Aphids")', 'data-note-path'), 'Pests/Aphids.md');
@@ -358,8 +385,8 @@ await check('a .note reads as MDX, its components beside Obsidian\'s syntax', as
     const written = page.waitForResponse((r) => r.request().method() === 'PUT' && r.url().includes('/files/content'));
     await page.locator('.note-body input.task-box').nth(1).click();
     await written;
-    assert.equal(writes[0].path, 'Harvest.note');
-    assert.equal(writes[0].body.split('\n')[38], '- [x] Dry the bean seed for next year');
+    assert.equal(writes[0]!.path, 'Harvest.note');
+    assert.equal(writes[0]!.body.split('\n')[38], '- [x] Dry the bean seed for next year');
     // The outline is the note's headings.
     assert.match(await page.textContent('[data-side="outline"]'), /Stores[\s\S]*Still to do/);
     assert.deepEqual(errors, []);
@@ -421,7 +448,7 @@ await check('a .note runs nothing it carries and says what it refused', async ()
 });
 
 await check('a .md note converts to a .note that reads the same', async () => {
-  const before = files.get('Compost.md');
+  const before = files.get('Compost.md')!;
   const { page, context, writes, moves } = await open('/cloud/notes?vault=Notes&note=Compost.md');
   try {
     await page.waitForSelector('[data-note="Compost.md"] .note-body h1');
@@ -446,7 +473,7 @@ await check('a .md note converts to a .note that reads the same', async () => {
 });
 
 await check('a ticked box writes its line back with the version it read', async () => {
-  const before = files.get('Home.md');
+  const before = files.get('Home.md')!;
   const { page, context, writes } = await open('/cloud/notes?vault=Notes');
   try {
     await page.waitForSelector('.note-body input.task-box');
@@ -456,11 +483,11 @@ await check('a ticked box writes its line back with the version it read', async 
     await page.waitForFunction(() => document.querySelectorAll('.note-body input.task-box:checked').length === 2);
     await written;
     assert.equal(writes.length, 1);
-    assert.equal(writes[0].path, 'Home.md');
-    assert.equal(writes[0].ifMatch, 'e1');
-    assert.match(writes[0].body, /^- \[x\] Pot on the tomato seedlings$/m);
+    assert.equal(writes[0]!.path, 'Home.md');
+    assert.equal(writes[0]!.ifMatch, 'e1');
+    assert.match(writes[0]!.body, /^- \[x\] Pot on the tomato seedlings$/m);
     // Nothing else in the file moved.
-    assert.equal(writes[0].body.replace('- [x] Pot on', '- [ ] Pot on'), before);
+    assert.equal(writes[0]!.body.replace('- [x] Pot on', '- [ ] Pot on'), before);
   } finally {
     files.set('Home.md', before);
     etags.delete('Home.md');
@@ -475,8 +502,8 @@ await check('a link to a note not written yet makes it', async () => {
     // A new note is a .note.
     await page.waitForFunction(() => location.search.includes('note=Beans.note') && location.search.includes('view=edit'));
     assert.equal(writes.length, 1);
-    assert.equal(writes[0].path, 'Beans.note');
-    assert.equal(writes[0].ifNew, '1');
+    assert.equal(writes[0]!.path, 'Beans.note');
+    assert.equal(writes[0]!.ifNew, '1');
   } finally {
     files.delete('Beans.note');
     await context.close();
@@ -541,7 +568,7 @@ await check('a folder publishes as a knowledge base from its right click', async
     await page.waitForSelector('[data-entry="Notes"]');
     await page.click('[data-entry="Notes"]', { button: 'right' });
     await page.waitForSelector('[data-slot="context-menu"]');
-    const items = await page.$$eval('[data-slot="context-menu"] [data-item^="folder-"]', (els) => els.map((e) => e.getAttribute('data-item').slice('folder-'.length)));
+    const items = await page.$$eval('[data-slot="context-menu"] [data-item^="folder-"]', (els) => els.map((e) => e.getAttribute('data-item')!.slice('folder-'.length)));
     assert.ok(items.includes('notes-open') && items.includes('kb-publish'), items.join(','));
     // The folder's own items sit beside the file menu's, sharing among them.
     assert.ok(await page.isVisible('[data-slot="context-menu"] [data-item="share"]'), 'no Share item');
@@ -564,7 +591,7 @@ await check('off the mesh, the right click offers no knowledge base', async () =
     await page.waitForSelector('[data-entry="Notes"]');
     await page.click('[data-entry="Notes"]', { button: 'right' });
     await page.waitForSelector('[data-slot="context-menu"]');
-    const items = await page.$$eval('[data-slot="context-menu"] [data-item^="folder-"]', (els) => els.map((e) => e.getAttribute('data-item').slice('folder-'.length)));
+    const items = await page.$$eval('[data-slot="context-menu"] [data-item^="folder-"]', (els) => els.map((e) => e.getAttribute('data-item')!.slice('folder-'.length)));
     assert.ok(items.includes('notes-open'), items.join(','));
     assert.ok(!items.includes('kb-publish'), items.join(','));
   } finally {

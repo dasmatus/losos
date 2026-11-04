@@ -24,7 +24,9 @@
  * stubbed with page.route().
  */
 
-import { type BoundingBox, type Page, type Route } from 'playwright';
+import { type Page, type Route } from 'playwright';
+
+type BoundingBox = { x: number; y: number; width: number; height: number };
 
 declare global {
   interface Window {

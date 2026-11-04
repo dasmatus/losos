@@ -79,7 +79,7 @@ async function open({ path = '/settings/logs', complaint = null }: OpenOptions =
   let next = 10;
 
   const authed = (route: Route) => route.request().headers()['authorization'] === `Bearer ${TOKEN}`;
-  const guard = (fn: (route: Route) => Promise<Response>) => (route: Route) => (authed(route) ? fn(route) : json(route, 401, { error: 'signIn' }));
+  const guard = (fn: (route: Route) => Promise<void>) => (route: Route) => (authed(route) ? fn(route) : json(route, 401, { error: 'signIn' }));
 
   await page.route('**/api/**', (route) => json(route, 200, {}));
   await page.route('**/api/setup/claim', (route) => json(route, 200, { claimed: true }));

@@ -6,7 +6,7 @@
 # The laptop is the owner's computer on the LAN. The test puts a Markdown
 # document and presentation in LosOS Cloud (a new one from the files bar is
 # a .paper, nix/tests/office-paper.nix); Chromium
-# (nix/tests/office-markdown-shots.mjs) writes into them with the formatting
+# (nix/tests/office-markdown-shots.ts) writes into them with the formatting
 # bar and plays the presentation full screen; then
 #
 #   * the box holds both files, written by its shared editor: the document
@@ -45,7 +45,7 @@ let
       }
     }
     export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
-    exec ${pkgs.bun}/bin/bun ${./office-markdown-shots.mjs} "$@"
+    exec ${pkgs.bun}/bin/bun ${./office-markdown-shots.ts} "$@"
   '';
 in
 

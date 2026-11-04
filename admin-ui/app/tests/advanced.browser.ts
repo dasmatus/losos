@@ -509,7 +509,7 @@ await check('the Apps pane draws every box-wide setting of both apps, and Apply 
   await trash.fill('');
   await trash.press('Enter');
   // The field takes the default from the draft one render later, so wait for it.
-  await trash.evaluate((input: HTMLInputElement) => new Promise((done) => {
+  await trash.evaluate((input: HTMLInputElement) => new Promise<void>((done) => {
     const settled = () => (input.value === '30' ? done() : requestAnimationFrame(settled));
     setTimeout(done, 2000);
     settled();
@@ -538,7 +538,7 @@ await check('the Apps pane draws every box-wide setting of both apps, and Apply 
 });
 
 await check('the Market pane lends memory to AI models with two lines of overrides.nix, and only with the edge proxy on', async () => {
-  let { page, applies, errors } = await open({ path: '/settings/market' });
+  let { page, applies, errors, atLoad } = await open({ path: '/settings/market' });
   const lend = main(page).getByTestId('lend-memory');
   await lend.waitFor();
   // Lending reaches the box only through the edge's tunnel.

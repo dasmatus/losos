@@ -15,7 +15,7 @@
  *   LOSOS_SOLANA_RPC=http://127.0.0.1:8899 bun tests/solana.unit.mjs
  */
 
-import assert from './assert.mjs';
+import assert from './assert.ts';
 import { ed25519 } from '@noble/curves/ed25519.js';
 import { base58, base64 } from '@scure/base';
 
@@ -28,19 +28,19 @@ const JUNK_USDC_ATA = 'Acp8hQfvQgptyqCreekNzaEHXMv6o3L1JiSwXmRHaaDW';
 
 const sol = await import('../src/wallet/solana.ts');
 
-const failures = [];
-async function check(name, fn) {
+const failures: string[] = [];
+async function check(name: string, fn: () => void | Promise<void>) {
   try {
     await fn();
     console.log(`  ok   ${name}`);
   } catch (e) {
-    failures.push(`${name}: ${e.message}`);
-    console.log(`  FAIL ${name}\n       ${e.message}`);
+    failures.push(`${name}: ${(e as Error).message}`);
+    console.log(`  FAIL ${name}\n       ${(e as Error).message}`);
   }
 }
 
 const freshOwner = () => base58.encode(ed25519.getPublicKey(ed25519.utils.randomSecretKey()));
-const randomBytes = (n) => crypto.getRandomValues(new Uint8Array(n));
+const randomBytes = (n: number) => crypto.getRandomValues(new Uint8Array(n));
 const memo = () => `0x${randomBytes(32).toHex()}`;
 const buyer = sol.solanaKeyFromPhrase(JUNK);
 
@@ -78,7 +78,7 @@ await check('signMessage verifies under the derived key', () => {
   assert.ok(ed25519.verify(sig, new TextEncoder().encode(text), base58.decode(buyer.address)));
 });
 
-function transfer(feeAmount) {
+function transfer(feeAmount: bigint) {
   return {
     payer: buyer.address,
     mint: USDC_DEVNET,
@@ -185,7 +185,7 @@ await check("escrow pay layout: the program's nine accounts and 153 bytes", () =
   ];
   const at = 4 + 32 * 10 + 32;
   assert.equal(msg[at], 1, 'one instruction');
-  assert.equal(keys[msg[at + 1]], ESCROW);
+  assert.equal(keys[msg[at + 1]!], ESCROW);
   assert.equal(msg[at + 2], 9);
   assert.deepEqual([...msg.subarray(at + 3, at + 12)].map((i) => keys[i]), order);
   // 153 is past 127: compact-u16 in two bytes.
@@ -211,19 +211,25 @@ await check('escrow pay refuses a fee over the gross or a short nonce', () => {
 
 /* A compiled message read back: keys and instructions with their account
  * keys and data. Every count here is under 128, one byte of compact-u16. */
-function parseMessage(msg) {
+interface ParsedInstruction {
+  program: string;
+  accounts: string[];
+  data: Uint8Array;
+}
+
+function parseMessage(msg: Uint8Array): { header: number[]; keys: string[]; ixs: ParsedInstruction[] } {
   const header = [...msg.subarray(0, 3)];
-  const n = msg[3];
+  const n = msg[3]!;
   const keys = Array.from({ length: n }, (_, i) => base58.encode(msg.subarray(4 + 32 * i, 36 + 32 * i)));
   let at = 4 + 32 * n + 32;
-  const count = msg[at++];
-  const ixs = [];
+  const count = msg[at++]!;
+  const ixs: ParsedInstruction[] = [];
   for (let k = 0; k < count; k++) {
-    const program = keys[msg[at++]];
-    const m = msg[at++];
-    const accounts = [...msg.subarray(at, at + m)].map((x) => keys[x]);
+    const program = keys[msg[at++]!]!;
+    const m = msg[at++]!;
+    const accounts = [...msg.subarray(at, at + m)].map((x) => keys[x]!);
     at += m;
-    const len = msg[at++];
+    const len = msg[at++]!;
     ixs.push({ program, accounts, data: msg.subarray(at, at + len) });
     at += len;
   }
@@ -241,7 +247,7 @@ await check('balance and tap addresses match the edge', () => {
   assert.equal(sol.escrowBalanceAddress(ESCROW, config, owner), '4p1yaXiRqaKiAUnnaeZStCXtG4krcWCnTnddBvDdXTHx');
 });
 
-function escrowTaps(taps, topUp = 4_000_000n) {
+function escrowTaps(taps: number, topUp: bigint = 4_000_000n) {
   return {
     payer: buyer.address,
     program: ESCROW,
@@ -263,7 +269,7 @@ await check('taps layout: top_up, then one open_tap per box with its id, rate an
   const config = sol.escrowConfigAddress(ESCROW, p.treasury, p.mint);
   const balance = sol.escrowBalanceAddress(ESCROW, config, p.payer);
   assert.equal(ixs.length, 1 + p.taps.length);
-  const [top, ...opens] = ixs;
+  const [top, ...opens] = ixs as [ParsedInstruction, ...ParsedInstruction[]];
   assert.equal(top.program, ESCROW);
   assert.deepEqual(top.accounts, [
     buyer.address,
@@ -279,7 +285,7 @@ await check('taps layout: top_up, then one open_tap per box with its id, rate an
   assert.equal(top.data[0], 6);
   assert.equal(new DataView(top.data.buffer, top.data.byteOffset).getBigUint64(1, true), p.topUp);
   opens.forEach((ix, i) => {
-    const tap = p.taps[i];
+    const tap = p.taps[i]!;
     const id = Uint8Array.fromHex(tap.key.slice(2));
     assert.equal(ix.program, ESCROW);
     assert.deepEqual(ix.accounts, [buyer.address, config, balance, sol.escrowTapAddress(ESCROW, config, buyer.address, new Uint8Array(id)), tap.seller, sol.SYSTEM_PROGRAM]);
@@ -291,7 +297,7 @@ await check('taps layout: top_up, then one open_tap per box with its id, rate an
     assert.equal(view.getUint16(41, true), 400);
   });
   // The balance is only read by open_tap, and written by top_up.
-  const writable = keys.length - header[2];
+  const writable = keys.length - header[2]!;
   assert.ok(keys.indexOf(balance) < writable, 'the balance is not writable');
   const { wire } = sol.signTransaction(buyer, msg);
   assert.ok(base64.decode(wire).length <= 1232, `${base64.decode(wire).length} bytes is over a packet`);
@@ -303,7 +309,7 @@ await check('taps without a top-up open the taps alone; too many, none or a zero
   assert.throws(() => sol.escrowTapsMessage(escrowTaps(sol.TAPS_PER_TRANSACTION + 1)), /taps/);
   assert.throws(() => sol.escrowTapsMessage(escrowTaps(0)), /taps/);
   const zero = escrowTaps(1);
-  zero.taps[0].rate = 0n;
+  zero.taps[0]!.rate = 0n;
   assert.throws(() => sol.escrowTapsMessage(zero), /rate/);
 });
 
@@ -313,15 +319,15 @@ await check('ask_withdrawal and withdraw: the buyer, the config and the balance,
   const balance = sol.escrowBalanceAddress(ESCROW, config, w.payer);
   const ask = parseMessage(sol.escrowAskMessage({ ...w, amount: 2_500_000n }));
   assert.equal(ask.ixs.length, 1);
-  assert.deepEqual(ask.ixs[0].accounts, [buyer.address, config, balance]);
-  assert.equal(ask.ixs[0].data[0], 10);
-  assert.equal(new DataView(ask.ixs[0].data.buffer, ask.ixs[0].data.byteOffset).getBigUint64(1, true), 2_500_000n);
+  assert.deepEqual(ask.ixs[0]!.accounts, [buyer.address, config, balance]);
+  assert.equal(ask.ixs[0]!.data[0], 10);
+  assert.equal(new DataView(ask.ixs[0]!.data.buffer, ask.ixs[0]!.data.byteOffset).getBigUint64(1, true), 2_500_000n);
   assert.throws(() => sol.escrowAskMessage({ ...w, amount: 0n }), /amount/);
   const take = parseMessage(sol.escrowWithdrawMessage(w));
   assert.equal(take.ixs.length, 2, 'the token account is opened first if it is gone');
-  assert.equal(take.ixs[0].program, sol.ATA_PROGRAM);
-  assert.equal(take.ixs[1].program, ESCROW);
-  assert.deepEqual(take.ixs[1].accounts, [
+  assert.equal(take.ixs[0]!.program, sol.ATA_PROGRAM);
+  assert.equal(take.ixs[1]!.program, ESCROW);
+  assert.deepEqual(take.ixs[1]!.accounts, [
     buyer.address,
     config,
     balance,
@@ -330,7 +336,7 @@ await check('ask_withdrawal and withdraw: the buyer, the config and the balance,
     w.mint,
     sol.TOKEN_PROGRAM,
   ]);
-  assert.deepEqual([...take.ixs[1].data], [11]);
+  assert.deepEqual([...take.ixs[1]!.data], [11]);
 });
 
 const RPC = Bun.env.LOSOS_SOLANA_RPC;
@@ -339,7 +345,7 @@ if (RPC === undefined || RPC === '') {
 } else {
   await check(`live payment against ${RPC}`, async () => {
     let id = 0;
-    const rpc = async (method, params = []) => {
+    const rpc = async (method: string, params: unknown[] = []) => {
       const res = await fetch(RPC, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -373,11 +379,11 @@ if (RPC === undefined || RPC === '') {
 
     assert.equal(tx.meta.err, null);
     assert.equal(tx.transaction.signatures[0], signature);
-    const memoIx = tx.transaction.message.instructions.find((ix) => ix.programId === sol.MEMO_PROGRAM);
+    const memoIx = tx.transaction.message.instructions.find((ix: { programId?: string }) => ix.programId === sol.MEMO_PROGRAM);
     assert.equal(memoIx?.program, 'spl-memo');
     assert.equal(memoIx.parsed, t.memo);
 
-    const byOwner = (list) => {
+    const byOwner = (list?: { mint: string; owner: string; uiTokenAmount: { amount: string } }[]) => {
       const out = new Map();
       for (const b of list ?? []) {
         if (b.mint !== t.mint) continue;
@@ -387,7 +393,7 @@ if (RPC === undefined || RPC === '') {
     };
     const pre = byOwner(tx.meta.preTokenBalances);
     const post = byOwner(tx.meta.postTokenBalances);
-    const delta = (o) => (post.get(o) ?? 0n) - (pre.get(o) ?? 0n);
+    const delta = (o: string) => (post.get(o) ?? 0n) - (pre.get(o) ?? 0n);
     assert.equal(delta(t.seller), 5_760_000n);
     assert.equal(delta(t.treasury), 240_000n);
     assert.equal(delta(t.payer), -6_000_000n);
@@ -400,7 +406,7 @@ if (RPC === undefined || RPC === '') {
 if (RPC && Bun.env.LOSOS_ESCROW_PROGRAM === ESCROW) {
   await check(`live escrow payment against ${RPC}`, async () => {
     let id = 0;
-    const rpc = async (method, params = []) => {
+    const rpc = async (method: string, params: unknown[] = []) => {
       const res = await fetch(RPC, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -410,7 +416,7 @@ if (RPC && Bun.env.LOSOS_ESCROW_PROGRAM === ESCROW) {
       if (body.error) throw new Error(`${method}: ${JSON.stringify(body.error)}`);
       return body.result;
     };
-    const landed = async (signature) => {
+    const landed = async (signature: string) => {
       for (let i = 0; ; i++) {
         const { value } = await rpc('getSignatureStatuses', [[signature]]);
         const s = value[0];

@@ -22,7 +22,14 @@ const { origin, close: closeServer } = await serve({ csp: true });
 const browser = await launch();
 const { check, finish } = runner();
 
-const json = (route, status, body, headers = {}) =>
+/* Page globals the checks read back out of the browser. */
+declare global {
+  interface Window {
+    __violations: string[];
+  }
+}
+
+const json = (route: Route, status: number, body: unknown, headers: Record<string, string> = {}) =>
   route.fulfill({ status, contentType: 'application/json', headers, body: JSON.stringify(body) });
 
 const SETTINGS = { hostName: 'mattbox', sharingMyStorage: false, cluster: { enable: false } };
@@ -35,9 +42,16 @@ async function open({
   scheme = 'light',
   routes = null,
   query = '',
+}: {
+  viewport?: { width: number; height: number };
+  locale?: string;
+  signedIn?: boolean;
+  scheme?: 'light' | 'dark';
+  routes?: ((page: Page, authed: (route: Route) => boolean) => Promise<void>) | null;
+  query?: string;
 } = {}) {
   const page = await browser.newPage({ viewport, locale, colorScheme: scheme, acceptDownloads: true });
-  const errors = [];
+  const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.addInitScript(() => {
     window.__violations = [];
@@ -46,7 +60,7 @@ async function open({
     );
   });
   if (signedIn) await page.addInitScript((t) => window.sessionStorage.setItem('losos-token', t), TOKEN);
-  const authed = (route) => route.request().headers()['authorization'] === `Bearer ${TOKEN}`;
+  const authed = (route: Route) => route.request().headers()['authorization'] === `Bearer ${TOKEN}`;
   await shellRoutes(page);
   await page.route('**/api/settings', (route) => (authed(route) ? json(route, 200, SETTINGS) : json(route, 401, {})));
   await page.route('**/api/edge', (route) => (authed(route) ? json(route, 200, EDGE) : json(route, 401, {})));
@@ -70,23 +84,23 @@ async function open({
   return { page, clean };
 }
 
-const nodes = (page) => page.locator('[data-testid=diagram] [data-node]');
-const edges = (page) => page.locator('[data-testid=diagram] [data-edge]');
-const card = (page, label) => page.locator(`[data-testid=diagram] [data-node][aria-label="${label}"]`);
+const nodes = (page: Page) => page.locator('[data-testid=diagram] [data-node]');
+const edges = (page: Page) => page.locator('[data-testid=diagram] [data-edge]');
+const card = (page: Page, label: string) => page.locator(`[data-testid=diagram] [data-node][aria-label="${label}"]`);
 
-async function fresh(page) {
+async function fresh(page: Page) {
   await page.getByTestId('file-menu').click();
   await page.getByTestId('file-new').click();
   await page.getByTestId('diagram-empty').waitFor();
 }
 
 /** A point on the canvas, from its top-left corner. */
-async function at(page, x, y) {
-  const box = await page.getByTestId('diagram-wrap').boundingBox();
+async function at(page: Page, x: number, y: number) {
+  const box = (await page.getByTestId('diagram-wrap').boundingBox())!;
   return { x: box.x + x, y: box.y + y };
 }
 
-async function download(page, testid) {
+async function download(page: Page, testid: string) {
   await page.getByTestId('file-menu').click();
   const [d] = await Promise.all([page.waitForEvent('download'), page.getByTestId(testid).click()]);
   return { name: d.suggestedFilename(), path: await d.path() };
@@ -133,14 +147,14 @@ await check('@ in a card offers people and files, and the card draws them as chi
     { id: 7, path: 'Plans/launch.canvas', name: 'launch.canvas', dir: false, size: 10, mtime: 1, etag: 'a', mime: 'application/json', favorite: false },
     { id: 9, path: 'Plans/budget (draft).xlsx', name: 'budget (draft).xlsx', dir: false, size: 10, mtime: 1, etag: 'b', mime: 'application/vnd.ms-excel', favorite: false },
   ];
-  const asked = [];
+  const asked: (string | null)[] = [];
   const { page, clean } = await open({
     routes: async (page) => {
       await page.route('**/api/profiles', (route) => json(route, 200, { people: PEOPLE }));
       await page.route('**/cloud/api/files/search?*', (route) => {
         const q = new URL(route.request().url()).searchParams.get('q');
         asked.push(q);
-        json(route, 200, { entries: ENTRIES.filter((e) => e.name.includes(q)) });
+        json(route, 200, { entries: ENTRIES.filter((e) => e.name.includes(q!)) });
       });
     },
   });
@@ -222,8 +236,8 @@ await check('cards from the tray, an arrow between them, undo and redo', async (
   // select the diamond, then drag from its right handle onto the pill
   await card(page, 'Ready?').click();
   const id = await card(page, 'Ready?').getAttribute('data-node');
-  const handle = await page.locator(`[data-handle=right][data-handle-node="${id}"]`).boundingBox();
-  const target = await card(page, 'Ship it').boundingBox();
+  const handle = (await page.locator(`[data-handle=right][data-handle-node="${id}"]`).boundingBox())!;
+  const target = (await card(page, 'Ship it').boundingBox())!;
   await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
   await page.mouse.down();
   await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 8 });
@@ -273,6 +287,16 @@ const OBSIDIAN = {
   'x-plugin-doc': { version: 2 },
 };
 
+/* An Obsidian Canvas document as the checks read it back: Bun.file().json()
+ * and JSON.parse cannot know its shape, so the casts name the few fields the
+ * checks read and the index signature keeps every key they came with. */
+type CanvasDoc = {
+  nodes: { id?: string; text?: string; color?: string; styleAttributes?: unknown; [key: string]: unknown }[];
+  edges: { id?: string; label?: string; [key: string]: unknown }[];
+  'x-plugin-doc': { version: number };
+  [key: string]: unknown;
+};
+
 await check('an Obsidian Canvas file opens, and saves with every key it came with', async () => {
   const { page, clean } = await open();
   await page.getByTestId('open-file').setInputFiles(await stash('week.canvas', JSON.stringify(OBSIDIAN)));
@@ -283,13 +307,13 @@ await check('an Obsidian Canvas file opens, and saves with every key it came wit
 
   const saved = await download(page, 'file-download');
   assert.strictEqual(saved.name, 'week.canvas');
-  const doc = await Bun.file(saved.path).json();
-  const a1 = doc.nodes.find((n) => n.id === 'a1');
+  const doc = (await Bun.file(saved.path).json()) as CanvasDoc;
+  const a1 = doc.nodes.find((n) => n.id === 'a1')!;
   assert.strictEqual(a1['x-plugin-pin'], true, 'a card keeps its unknown key');
   assert.deepStrictEqual(a1.styleAttributes, { shape: 'pill', border: 'dashed' });
   assert.strictEqual(a1.color, '4');
-  assert.strictEqual(doc.nodes.find((n) => n.id === 'g0').color, '#2a9d8f');
-  const e1 = doc.edges.find((e) => e.id === 'e1');
+  assert.strictEqual(doc.nodes.find((n) => n.id === 'g0')!.color, '#2a9d8f');
+  const e1 = doc.edges.find((e) => e.id === 'e1')!;
   assert.strictEqual(e1['x-plugin-weight'], 3, 'an arrow keeps its unknown key');
   assert.strictEqual(e1.label, 'read');
   assert.deepStrictEqual(doc['x-plugin-doc'], { version: 2 }, 'the document keeps its unknown key');
@@ -323,11 +347,11 @@ function fakeCloud() {
     ['Diagrams/plan.canvas', { text: JSON.stringify(OBSIDIAN), etag: 'v1' }],
     ['Diagrams/notes.md', { text: '# notes', etag: 'n1' }],
   ]);
-  const puts = [];
+  const puts: { path: string | null; ifMatch: string | null; ifNew: string | null }[] = [];
   let n = 1;
   const ids = new Map([...files.keys()].map((p, i) => [p, 7 + i]));
-  const entry = (path) => ({ id: ids.get(path) ?? 99, path, name: path.slice(path.lastIndexOf('/') + 1), dir: false, size: files.get(path).text.length, mtime: 0, etag: files.get(path).etag });
-  const routes = async (page) => {
+  const entry = (path: string) => ({ id: ids.get(path) ?? 99, path, name: path.slice(path.lastIndexOf('/') + 1), dir: false, size: files.get(path)!.text.length, mtime: 0, etag: files.get(path)!.etag });
+  const routes = async (page: Page) => {
     await page.route('**/cloud/api/me', (route) => json(route, 200, { login: 'matus', name: 'Matus' }));
     await page.route('**/cloud/api/files?*', (route) => {
       const path = new URL(route.request().url()).searchParams.get('path') ?? '';
@@ -339,7 +363,7 @@ function fakeCloud() {
     });
     await page.route('**/cloud/api/files/content?*', (route) => {
       const u = new URL(route.request().url()).searchParams;
-      const path = u.get('path');
+      const path = u.get('path')!;
       if (route.request().method() === 'GET') {
         const f = files.get(path);
         return f ? route.fulfill({ status: 200, contentType: 'application/json', headers: { ETag: `"${f.etag}"` }, body: f.text }) : json(route, 404, { code: 'notFound' });
@@ -348,7 +372,7 @@ function fakeCloud() {
       const there = files.get(path);
       if (u.get('ifNew') && there) return json(route, 412, { code: 'exists' });
       if (u.get('ifMatch') && (!there || there.etag !== u.get('ifMatch'))) return json(route, 412, { code: 'changed' });
-      files.set(path, { text: route.request().postData(), etag: 'v' + ++n });
+      files.set(path, { text: route.request().postData()!, etag: 'v' + ++n });
       return json(route, 200, entry(path));
     });
   };
@@ -370,15 +394,15 @@ await check('LosOS Cloud: a diagram opens from ?file=, saves back on its version
   await page.keyboard.press('Control+s');
   await page.getByText('Saved plan in LosOS Cloud (Diagrams/plan.canvas).', { exact: true }).waitFor();
   assert.deepStrictEqual(cloud.puts[0], { path: 'Diagrams/plan.canvas', ifMatch: 'v1', ifNew: null });
-  const written = JSON.parse(cloud.files.get('Diagrams/plan.canvas').text);
+  const written = JSON.parse(cloud.files.get('Diagrams/plan.canvas')!.text) as CanvasDoc;
   assert.ok(written.nodes.some((n) => n.text === 'Added on the box'));
   assert.strictEqual(written['x-plugin-doc'].version, 2);
 
   // someone else saves it; this tab's next save is refused, not silent
-  cloud.files.get('Diagrams/plan.canvas').etag = 'elsewhere';
+  cloud.files.get('Diagrams/plan.canvas')!.etag = 'elsewhere';
   await page.keyboard.press('Control+s');
   await page.getByText(/changed in LosOS Cloud since/i).waitFor();
-  assert.strictEqual(cloud.files.get('Diagrams/plan.canvas').etag, 'elsewhere', 'nothing was overwritten');
+  assert.strictEqual(cloud.files.get('Diagrams/plan.canvas')!.etag, 'elsewhere', 'nothing was overwritten');
   await clean();
   await page.close();
 });
@@ -409,10 +433,10 @@ await check('LosOS Cloud: the dialog lists folders and diagrams only, and a new 
 
 await check('edited together: two people on one file see each other, their changes merge, undo is each one\'s own', async () => {
   const cloud = fakeCloud();
-  const room = yroom(cloud.files.get('Diagrams/plan.canvas').text);
+  const room = yroom(cloud.files.get('Diagrams/plan.canvas')!.text);
   // The box writes the room's text back to the file, as room.rs does.
-  room.doc.on('update', () => (cloud.files.get('Diagrams/plan.canvas').text = room.text()));
-  const person = (name, login) => async (page) => {
+  room.doc.on('update', () => (cloud.files.get('Diagrams/plan.canvas')!.text = room.text()));
+  const person = (name: string, login: string) => async (page: Page) => {
     await cloud.routes(page);
     await page.route('**/cloud/api/collab/doc?*', (route) =>
       json(route, 200, { name: 'plan.canvas', owner: 'matus', box: 'mattbox.local', perm: 'edit', remote: false, me: { name, address: `${login}@mattbox.local` } }),
@@ -427,7 +451,7 @@ await check('edited together: two people on one file see each other, their chang
     await page.locator('[data-testid=live-people] [data-face]').nth(1).waitFor();
   }
 
-  const write = async (page, x, y, words) => {
+  const write = async (page: Page, x: number, y: number, words: string) => {
     await page.locator('[data-testid=tray-items] [data-card=text]').click();
     const p = await at(page, x, y);
     await page.mouse.click(p.x, p.y);
@@ -437,7 +461,7 @@ await check('edited together: two people on one file see each other, their chang
   // One writes, the other sees it; the file follows.
   await write(a.page, 80, 450, 'From Matus');
   await card(b.page, 'From Matus').waitFor();
-  assert.ok(JSON.parse(cloud.files.get('Diagrams/plan.canvas').text).nodes.some((n) => n.text === 'From Matus'));
+  assert.ok((JSON.parse(cloud.files.get('Diagrams/plan.canvas')!.text) as CanvasDoc).nodes.some((n) => n.text === 'From Matus'));
 
   // Eva's pointer and selection, in her colour, on Matus's canvas.
   await card(b.page, 'Inbox').click();
@@ -446,7 +470,7 @@ await check('edited together: two people on one file see each other, their chang
   const eva = a.page.locator('[data-testid=peers] [data-peer="eva@mattbox.local"]');
   await eva.getByText('Eva').waitFor();
   await eva.locator('.dg-peer-sel').waitFor();
-  assert.ok(['teal', 'blue', 'violet', 'rose', 'amber', 'green'].includes(await eva.getAttribute('data-accent')));
+  assert.ok(['teal', 'blue', 'violet', 'rose', 'amber', 'green'].includes((await eva.getAttribute('data-accent'))!));
 
   // Both change the file at the same moment: Eva's messages are held
   // until both cards are down, then everything is let through.
@@ -460,7 +484,7 @@ await check('edited together: two people on one file see each other, their chang
   }
   // The two copies settle on one file that parses.
   await a.page.waitForTimeout(1200);
-  const doc = JSON.parse(room.text());
+  const doc = JSON.parse(room.text()) as CanvasDoc;
   for (const words of ['From Matus', 'Card A', 'Card B', '## Inbox\nsort on Monday']) assert.ok(doc.nodes.some((n) => n.text === words), words);
   assert.strictEqual(new Set(doc.nodes.map((n) => n.id)).size, doc.nodes.length);
   assert.strictEqual(doc['x-plugin-doc'].version, 2, 'a key this page does not know stays');
@@ -486,7 +510,7 @@ await check('edited together: two people on one file see each other, their chang
 await check('a diagram shared from another box opens in its room; a view-only share takes no change', async () => {
   const room = yroom(JSON.stringify(OBSIDIAN, null, 2));
   const before = room.text();
-  const routes = async (page) => {
+  const routes = async (page: Page) => {
     await page.route('**/cloud/api/me', (route) => json(route, 200, { login: 'eva', name: 'Eva' }));
     await page.route('**/cloud/api/collab/doc?*', (route) => {
       const u = new URL(route.request().url()).searchParams;
@@ -570,7 +594,7 @@ await check('the chrome speaks Slovak and German', async () => {
   for (const [locale, file, cards] of [
     ['sk-SK', 'Súbor', 'Karty'],
     ['de-DE', 'Datei', 'Karten'],
-  ]) {
+  ] as const) {
     const { page, clean } = await open({ locale });
     assert.match(await page.getByTestId('file-menu').innerText(), new RegExp(file));
     await page.getByRole('button', { name: cards, exact: true }).waitFor();
@@ -599,7 +623,7 @@ await check('dark theme: cards follow the house tokens', async () => {
   await card(page, 'Inbox').waitFor();
   const fill = await page.locator('[data-testid=diagram] [data-node="b2"] .dg-shape').evaluate((el) => getComputedStyle(el).fill);
   const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
-  const lum = (c) => c.match(/\d+/g).slice(0, 3).reduce((a, b) => a + Number(b), 0);
+  const lum = (c: string) => c.match(/\d+/g)!.slice(0, 3).reduce((a, b) => a + Number(b), 0);
   assert.ok(lum(fill) < 300 && lum(bg) < 300, `dark card ${fill} on ${bg}`);
   await clean();
   await page.close();

@@ -5,7 +5,7 @@
 # owner's files seeded over WebDAV.
 #
 # The laptop opens the menu where a person would and checks what it holds
-# (nix/tests/context-menu-shots.mjs): empty space, an app tile, a file, a
+# (nix/tests/context-menu-shots.ts): empty space, an app tile, a file, a
 # folder and the space around them, a row in the trash, Shift+F10 on a
 # focused row and a long press on a phone; that a text field keeps the
 # browser's menu; that F2 and Delete do what the menu says; that nothing
@@ -37,7 +37,7 @@ let
       }
     }
     export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
-    exec ${pkgs.bun}/bin/bun ${./context-menu-shots.mjs} "$@"
+    exec ${pkgs.bun}/bin/bun ${./context-menu-shots.ts} "$@"
   '';
 in
 

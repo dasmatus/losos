@@ -351,7 +351,7 @@ async function claimThroughStepTwo(
  * not before; a box with a TPM, or one serving no option document, says
  * nothing. */
 await check('the wizard warns about a missing TPM once the password is set', async () => {
-  const notice = (page) => page.locator('[data-notice="no-tpm"]');
+  const notice = (page: Page) => page.locator('[data-notice="no-tpm"]');
   const before = await open({ claimed: false, tpm: false });
   await before.page.getByRole('button', { name: /^Continue$/ }).waitFor();
   assert.equal(await notice(before.page).count(), 0, 'a TPM warning before the claim');
@@ -472,7 +472,7 @@ await check('step 2 waits with the reason on screen while the box is not ready, 
     ready: false,
     waitingFor: 'LosOS Login is still starting. This happens once, on the first boot, and takes a minute.',
   });
-  const requests = [];
+  const requests: { method: string; url: string }[] = [];
   page.on('request', (req) => requests.push({ method: req.method(), url: new URL(req.url()).pathname }));
   await page.getByRole('button', { name: /^Continue$/ }).click();
   await page.waitForTimeout(400);
@@ -724,7 +724,7 @@ await check('step 3 waits for LosOS Login, signs in with the password from step 
 
   // The real desktop behind the card, out of reach, the card at its foot.
   assert.equal(await desktopStage(page), 'preview');
-  assert.equal(await page.getByTestId('desktop').evaluate((el) => el.inert), true, 'the preview can be clicked');
+  assert.equal(await page.getByTestId('desktop').evaluate((el: HTMLElement) => el.inert), true, 'the preview can be clicked');
   assert.equal(await page.getByTestId('wizard').getAttribute('data-docked'), 'true');
   await page.getByTestId('signed-in-avatar').waitFor({ timeout: 5000 });
   assert.ok(!(await page.getByRole('button', { name: "Let's go" }).isDisabled()));
@@ -744,7 +744,7 @@ await check("Let's go grows the desktop into the window, signed in, with the tou
   await tour.getByRole('heading', { name: 'Your apps, on your box' }).waitFor({ timeout: 5000 });
   assert.equal(await page.getByTestId('wizard').count(), 0, 'the wizard is still on the page');
   assert.equal(await desktopStage(page), null);
-  assert.equal(await page.getByTestId('desktop').evaluate((el) => el.inert), false);
+  assert.equal(await page.getByTestId('desktop').evaluate((el: HTMLElement) => el.inert), false);
   await page.getByTestId('signed-in-avatar').waitFor();
   // Not closed yet, so a reload brings it back rather than losing it. The
   // reload lands on the desktop by the session: setup is over.

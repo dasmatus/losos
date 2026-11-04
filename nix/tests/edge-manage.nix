@@ -54,7 +54,7 @@ let
     ];
   };
   # The page the edge serves, small: the admin UI's own bundle is
-  # tests/manage.browser.mjs's business, the routes around it are this one's.
+  # tests/manage.browser.ts's business, the routes around it are this one's.
   ui = pkgs.runCommand "losos-manage-ui-fixture" { } ''
     mkdir -p $out/manage $out/assets
     echo '<!doctype html><title>LosOS edge</title>' > $out/manage/index.html

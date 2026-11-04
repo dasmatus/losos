@@ -398,9 +398,9 @@ LosOS Desktop, nie samotná plocha.
   `bun run dev` podáva stránku na `/diagrams/`. `bun run lab:render` rovnako
   zostaví dva moduly GPU plátna do `src/lab/render-pkg/` a spustí na nich
   `wasm-opt`, keď ho `WASM_OPT` pomenúva. Stránka sa bez nich nezostaví a
-  ich zostavenie trvá asi 13 minút. `tests/lab.browser.mjs` kontroluje
+  ich zostavenie trvá asi 13 minút. `tests/lab.browser.ts` kontroluje
   sieťové pohľady pod vlastnou politikou stránky, cestu cez relay proti
-  falošnému démonovi libvirt, a `tests/diagrams.browser.mjs` diagram:
+  falošnému démonovi libvirt, a `tests/diagrams.browser.ts` diagram:
   karty, šípky, súbor z Obsidianu, obrázky, LosOS Cloud, úpravy spolu a
   karty strojov. `nix/tests/diagrams-together.nix` spustí dve zariadenia,
   zdieľa diagram z jedného na druhé a nechá oboch ľudí do neho kresliť.

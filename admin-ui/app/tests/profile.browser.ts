@@ -66,7 +66,7 @@ async function photo(page: Page, width: number, height: number): Promise<string>
       for (const b of bytes) s += String.fromCharCode(b);
       return btoa(s);
     },
-    [width, height],
+    [width, height] as [number, number],
   );
   return stash('holiday.png', Uint8Array.fromBase64(base64));
 }
@@ -98,7 +98,10 @@ async function open({ path = '/settings/account', admin = false }: { path?: stri
     images: {} as Record<string, string | Buffer>,
     version: 1,
     refuse: null as string | null,
-    oma: { picture: '/api/profiles/oma/picture?v=7', banner: null as string | null },
+    oma: { picture: '/api/profiles/oma/picture?v=7', banner: null } as {
+      picture: string | null;
+      banner: string | null;
+    },
   };
   const sent: { kind: string; bytes?: Buffer; type?: string; body?: unknown }[] = [];
   const me = () => ({
@@ -184,7 +187,7 @@ async function open({ path = '/settings/account', admin = false }: { path?: stri
   await page.route('**/api/people/profile/clear', (route) => {
     const body = JSON.parse(route.request().postData() ?? '{}');
     sent.push({ kind: 'clear', body });
-    box.oma[body.kind] = null;
+    box.oma[body.kind as 'picture' | 'banner'] = null;
     return json(route, 200, { ...body, cleared: true });
   });
 

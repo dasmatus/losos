@@ -19,8 +19,9 @@
  * stubbed with page.route().
  */
 
-import assert from './assert.mjs';
-import { launch, runner, serve } from './harness.mjs';
+import type { Page, Route } from 'playwright';
+import assert from './assert.ts';
+import { launch, runner, serve } from './harness.ts';
 
 const TOKEN = 'a'.repeat(64);
 const { origin, close: closeServer } = await serve({ csp: true });
@@ -42,13 +43,14 @@ const SETTINGS = {
   hardeningUsbguard: false,
 };
 
-const json = (route, status, body) =>
+const json = (route: Route, status: number, body: unknown) =>
   route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
 /* What a box with every feature answers, one answer per feature. */
 const ME = { name: 'matus', displayName: 'Matus', groups: ['losos-admins'], admin: true, spareKey: false, sections: [], standalone: true };
-const option = (name, current) => ({ name, group: name.split('.')[0], editor: { kind: 'bool' }, nixType: 'boolean', description: '', default: false, defaultText: null, current, danger: false, fixed: null, readOnly: false, set: null });
-const options = (...rows) => ({ available: true, version: 1, options: rows, stray: [], excluded: {} });
+type Option = ReturnType<typeof option>;
+const option = (name: string, current: boolean) => ({ name, group: name.split('.')[0], editor: { kind: 'bool' }, nixType: 'boolean', description: '', default: false, defaultText: null, current, danger: false, fixed: null, readOnly: false, set: null });
+const options = (...rows: Option[]) => ({ available: true, version: 1, options: rows, stray: [], excluded: {} });
 const DOMAINS = { available: true, eligible: true, reason: null, target: null, addresses: [], max_domains: 3, domains: [], names: ['mattbox.boxes.losos.dasmat.us'], wallet: null };
 const FULL = {
   me: { ...ME, shared: ['chat'], picture: null },
@@ -76,10 +78,28 @@ const ALL = [
  * `box` is what the box answers on /api/me, /api/options and /api/domains;
  * nothing there is a box that predates every feature. `optionsDelay` holds
  * the options answer back. */
-async function openApp({ path = '/', tour = 'pending', reducedMotion = 'no-preference', locale = 'en-US', settings = SETTINGS, box = {}, optionsDelay = 0, clock = false } = {}) {
+async function openApp({
+  path = '/',
+  tour = 'pending',
+  reducedMotion = 'no-preference',
+  locale = 'en-US',
+  settings = SETTINGS,
+  box = {},
+  optionsDelay = 0,
+  clock = false,
+}: {
+  path?: string;
+  tour?: string | null;
+  reducedMotion?: 'no-preference' | 'reduce';
+  locale?: string;
+  settings?: Record<string, unknown>;
+  box?: { me?: unknown; options?: unknown; domains?: unknown };
+  optionsDelay?: number;
+  clock?: boolean;
+} = {}) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale, reducedMotion });
   const page = await context.newPage();
-  const errors = [];
+  const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(String(e)));
 
   await page.route('**/api/**', (route) => json(route, 200, {}));
@@ -116,25 +136,26 @@ async function openApp({ path = '/', tour = 'pending', reducedMotion = 'no-prefe
   await page.goto(origin + path, { waitUntil: optionsDelay > 0 ? 'load' : 'networkidle' });
   return { page, context, errors };
 }
+type AppBox = NonNullable<Parameters<typeof openApp>[0]>['box'];
 
-const tour = (page) => page.getByTestId('tour');
-const stored = (page) => page.evaluate(() => window.localStorage.getItem('losos-tour'));
-const violations = (page) => page.evaluate(() => window.__violations);
+const tour = (page: Page) => page.getByTestId('tour');
+const stored = (page: Page) => page.evaluate(() => window.localStorage.getItem('losos-tour'));
+const violations = (page: Page) => page.evaluate(() => window.__violations);
 /* The picture's markup: what the frame clock changes from one frame to the next. */
 /* What a load logs with the tour closed: the baseline the tour must not add to. */
-async function violationsAtLoad(path) {
+async function violationsAtLoad(path: string) {
   const { page, context } = await openApp({ path, tour: 'seen' });
   await page.waitForTimeout(300);
   const seen = await violations(page);
   await context.close();
   return seen;
 }
-const picture = (page) => tour(page).locator('svg').first().evaluate((svg) => svg.innerHTML);
+const picture = (page: Page) => tour(page).locator('svg').first().evaluate((svg) => svg.innerHTML);
 
 console.log('admin-ui tour checks');
 
 /* Walk every step with Next, checking each title and the count. */
-async function walk(page, titles) {
+async function walk(page: Page, titles: string[]) {
   for (const [i, title] of titles.entries()) {
     await tour(page).getByRole('heading', { name: title, exact: true }).waitFor({ timeout: 3000 });
     assert.ok(await tour(page).getByText(`${i + 1} of ${titles.length}`).isVisible(), `no "${i + 1} of ${titles.length}" on ${title}`);
@@ -184,10 +205,10 @@ await check('Next holds the focus, so Enter walks the tour', async () => {
 });
 
 /* The miniature's sidebar labels: the text inside the picture. */
-const pictureText = (page) => tour(page).locator('svg').first().evaluate((svg) => svg.textContent);
-const titlesOf = async (page) => {
+const pictureText = (page: Page) => tour(page).locator('svg').first().evaluate((svg) => svg.textContent);
+const titlesOf = async (page: Page) => {
   const total = Number((await tour(page).getByText(/^1 of \d+$/).innerText()).split(' of ')[1]);
-  const seen = [];
+  const seen: string[] = [];
   for (let i = 1; i <= total; i++) {
     await tour(page).getByRole('button', { name: `Go to step ${i}`, exact: true }).click();
     seen.push(await tour(page).getByRole('heading').innerText());
@@ -196,7 +217,7 @@ const titlesOf = async (page) => {
 };
 
 await check('each step is there only when the box reports its feature', async () => {
-  const cases = [
+  const cases: [string, AppBox][] = [
     ['Write together', { options: options(option('office.enable', true)) }],
     ['Lend memory to AI models', { options: options(option('inference.lend.enable', false)) }],
     ["Get paid at this box's name", { domains: DOMAINS }],
@@ -217,7 +238,7 @@ await check('each step is there only when the box reports its feature', async ()
 });
 
 await check('a feature the box has but has not turned on, or this person cannot open, is not a step', async () => {
-  const cases = [
+  const cases: [string, AppBox][] = [
     ['Office off', { options: options(option('office.enable', false)) }],
     ['Build with AI off', { options: options(option('builder.enable', false)) }],
     ['no options document', { options: { available: false } }],
@@ -253,11 +274,11 @@ await check('an answer that comes late adds its step without moving the owner', 
 });
 
 await check('the tour is wider than the other dialogs, and still fits a phone', async () => {
-  for (const [width, expected] of [[1280, 736], [390, 358]]) {
+  for (const [width, expected] of [[1280, 736], [390, 358]] as const) {
     const { page, context } = await openApp();
     await page.setViewportSize({ width, height: 900 });
     await tour(page).waitFor({ timeout: 5000 });
-    const box = await page.locator('dialog[open]').boundingBox();
+    const box = (await page.locator('dialog[open]').boundingBox())!;
     assert.ok(Math.abs(box.width - expected) <= 2, `at ${width} px the tour is ${box.width} px wide, not ${expected}`);
     await context.close();
   }
@@ -338,17 +359,17 @@ await check('the picture moves, and holds still under prefers-reduced-motion', a
  * Files, About's tour) must never be drawn as an empty box: whenever it has
  * grown well past its starting size, what is inside it shows. The scene's clock
  * is stepped a tenth of a second at a time through one whole loop. */
-async function neverEmpty(page, part, word, side, least) {
+async function neverEmpty(page: Page, part: string, word: string, side: string, least: number) {
   let open = 0;
   for (let t = 0; t < 6000; t += 100) {
     await page.clock.runFor(100);
     const seen = await tour(page).locator('svg').first().evaluate((svg, [part, side]) => {
       const win = svg.querySelector(`g[data-part="${part}"]`);
       if (win === null) return null;
-      const box = win.querySelector(':scope > rect:not([x="-166"])');
-      const inside = win.querySelector(':scope > g');
-      return { size: Number(box.getAttribute(side)), opacity: Number(inside.getAttribute('opacity') ?? 1), text: inside.textContent };
-    }, [part, side]);
+      const box = win.querySelector(':scope > rect:not([x="-166"])')!;
+      const inside = win.querySelector(':scope > g')!;
+      return { size: Number(box.getAttribute(side)), opacity: Number(inside.getAttribute('opacity') ?? 1), text: inside.textContent! };
+    }, [part, side] as const);
     if (seen === null || seen.size < least) continue;
     open += 1;
     assert.ok(seen.opacity >= 0.5 && seen.text.includes(word), `${part} at ${t} ms is ${Math.round(seen.size)} in ${side} and shows nothing: ${JSON.stringify(seen)}`);

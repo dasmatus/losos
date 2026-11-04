@@ -2,7 +2,7 @@
 #
 # With LOSOS_RECORD_DIR set in the environment of the test driver
 # (nix/demo/record.sh sets it), record() writes one line per step to
-# <dir>/timeline.jsonl and waits until nix/demo/record.mjs has photographed
+# <dir>/timeline.jsonl and waits until nix/demo/record.ts has photographed
 # the step's pages through the box's real nginx and admin UI, forwarded to
 # the host. Without it, record() only prints the caption, so the test runs
 # the same in CI and in `nix build`.

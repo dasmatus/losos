@@ -11,17 +11,30 @@
  * were MDX, one more check draws the Overview and Storage in both and
  * compares them pixel for pixel. */
 
-import assert from './assert.mjs';
-import { launch, runner, serve, SHELL_ME } from './harness.mjs';
+import type { Page, Route } from 'playwright';
+import assert from './assert.ts';
+import { launch, runner, serve, SHELL_ME, type ShellMe } from './harness.ts';
 import { initSync, page as renderPage } from '../src/mdx/pkg/losos_mdx.js';
+
+declare global {
+  interface Window {
+    __violations: string[];
+    __sameDocument: boolean;
+  }
+}
 
 initSync({ module: await Bun.file(new URL('../src/mdx/pkg/losos_mdx_bg.wasm', import.meta.url)).bytes() });
 const REGISTRY = await Bun.file(new URL('../src/pages/blocks.json', import.meta.url)).text();
 const DEFAULT_OVERVIEW = await Bun.file(new URL('../src/pages/overview.mdx', import.meta.url)).text();
 
 /** What the box makes of a page's source: its HTML, and what it refused. */
-function render(source, id = 'overview') {
-  return JSON.parse(renderPage(source, REGISTRY, id));
+interface Rendered {
+  html: string;
+  problems: { message: string }[];
+}
+
+function render(source: string, id = 'overview'): Rendered {
+  return JSON.parse(renderPage(source, REGISTRY, id)) as Rendered;
 }
 
 const TOKEN = 'a'.repeat(64);
@@ -40,7 +53,7 @@ const SETTINGS = {
   computeWindowEnd: '07:00',
 };
 
-const json = (route, status, body) =>
+const json = (route: Route, status: number, body: unknown) =>
   route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
 /* A claimed box, someone signed in (`me`), and the pages plugin answering
@@ -53,9 +66,16 @@ async function open({
   style = '',
   viewport = { width: 1280, height: 900 },
   dist = null,
+}: {
+  path?: string;
+  me?: ShellMe;
+  sources?: Record<string, string>;
+  style?: string;
+  viewport?: { width: number; height: number };
+  dist?: string | null;
 } = {}) {
   const page = await browser.newPage({ viewport, locale: 'en-US' });
-  const errors = [];
+  const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.addInitScript(() => {
     window.__violations = [];
@@ -63,7 +83,7 @@ async function open({
       window.__violations.push(`${e.violatedDirective} ${e.blockedURI}`),
     );
   });
-  const writes = [];
+  const writes: [string, string, unknown][] = [];
   let current = { ...sources };
   let css = style;
   let version = css === '' ? 0 : 1;
@@ -74,17 +94,17 @@ async function open({
     style: css === '' ? null : String(version),
   });
 
-  await page.route('**/api/**', (route) => json(route, 200, {}));
-  await page.route('**/api/setup/claim', (route) => json(route, 200, { claimed: true }));
-  await page.route('**/api/me', (route) => json(route, 200, me));
-  await page.route('**/api/state', (route) => json(route, 200, { mode: 'local', sharing: false }));
-  await page.route('**/api/settings', (route) => json(route, 200, SETTINGS));
-  await page.route('**/api/status', (route) => json(route, 200, { state: 'idle', progress: 0, message: '' }));
-  await page.route('**/api/pages', (route) => json(route, 200, list()));
-  await page.route('**/api/pages/**', (route) => {
+  await page.route('**/api/**', (route: Route) => json(route, 200, {}));
+  await page.route('**/api/setup/claim', (route: Route) => json(route, 200, { claimed: true }));
+  await page.route('**/api/me', (route: Route) => json(route, 200, me));
+  await page.route('**/api/state', (route: Route) => json(route, 200, { mode: 'local', sharing: false }));
+  await page.route('**/api/settings', (route: Route) => json(route, 200, SETTINGS));
+  await page.route('**/api/status', (route: Route) => json(route, 200, { state: 'idle', progress: 0, message: '' }));
+  await page.route('**/api/pages', (route: Route) => json(route, 200, list()));
+  await page.route('**/api/pages/**', (route: Route) => {
     const method = route.request().method();
     const url = new URL(route.request().url());
-    const id = decodeURIComponent(url.pathname.split('/').pop());
+    const id = decodeURIComponent(url.pathname.split('/').pop()!);
     if (id === 'style.css') {
       if (method === 'GET') {
         return css === ''
@@ -113,7 +133,7 @@ async function open({
     writes.push([method, url.pathname, body]);
     if (method === 'PUT') {
       const problems = render(body.source, id).problems;
-      if (problems.length > 0) return json(route, 400, { error: problems[0].message });
+      if (problems.length > 0) return json(route, 400, { error: problems[0]!.message });
       current = { ...current, [id]: body.source };
     } else {
       const { [id]: _gone, ...rest } = current;
@@ -121,7 +141,7 @@ async function open({
     }
     return json(route, 200, list());
   });
-  await page.addInitScript((t) => {
+  await page.addInitScript((t: string) => {
     try {
       window.sessionStorage.setItem('losos-token', t);
     } catch {}
@@ -131,8 +151,8 @@ async function open({
   return { page, errors, writes };
 }
 
-const violations = (page) => page.evaluate(() => window.__violations);
-const hostName = (page) => page.getByRole('heading', { level: 1, name: 'mattbox' });
+const violations = (page: Page) => page.evaluate(() => window.__violations);
+const hostName = (page: Page) => page.getByRole('heading', { level: 1, name: 'mattbox' });
 
 console.log('admin-ui pages checks');
 
@@ -194,7 +214,7 @@ await check('a reload draws the changed page at once, from what the last visit k
   const { page } = await open({ sources: { overview: '# Kept\n\n<BoxName />\n' } });
   await page.getByRole('heading', { name: 'Kept' }).waitFor();
   // The box goes quiet; the page still draws the change, not the default.
-  await page.route('**/api/pages', (route) => route.abort());
+  await page.route('**/api/pages', (route: Route) => route.abort());
   await page.reload({ waitUntil: 'networkidle' });
   await page.getByRole('heading', { name: 'Kept' }).waitFor({ timeout: 2000 });
   await page.close();
@@ -247,7 +267,7 @@ await check('the editor docks beside the page, previews each change and saves it
   await dock.waitFor();
   // The page moves out from under the dock rather than being covered by it.
   const [main, docked] = await Promise.all([page.locator('main').boundingBox(), dock.boundingBox()]);
-  assert.ok(main.x + main.width <= docked.x, `the page runs under the editor: ${JSON.stringify({ main, docked })}`);
+  assert.ok(main!.x + main!.width <= docked!.x, `the page runs under the editor: ${JSON.stringify({ main, docked })}`);
   const box = dock.getByRole('textbox', { name: 'Source of the Overview page' });
   await box.waitFor();
   await box.click();
@@ -267,9 +287,9 @@ await check('the editor docks beside the page, previews each change and saves it
   await dock.getByRole('button', { name: 'Save' }).click();
   await page.getByText('Saved. Every browser that opens this box draws it now.').first().waitFor();
   assert.equal(writes.length, 1);
-  assert.equal(writes[0][0], 'PUT');
-  assert.equal(writes[0][1], '/api/pages/overview');
-  assert.match(writes[0][2].source, /^## Hello from the editor\n\n<BoxName \/>/);
+  assert.equal(writes[0]![0], 'PUT');
+  assert.equal(writes[0]![1], '/api/pages/overview');
+  assert.match((writes[0]![2] as { source: string }).source, /^## Hello from the editor\n\n<BoxName \/>/);
 
   // Closed, the page draws what was saved.
   await dock.getByRole('button', { name: 'Close' }).click();
@@ -288,10 +308,10 @@ await check('the stylesheet editor previews on the page and drops the preview wh
   await box.waitFor();
   await box.click();
   await page.keyboard.insertText('main { outline: 3px solid rgb(4, 5, 6); }');
-  await page.waitForFunction(() => getComputedStyle(document.querySelector('main')).outlineColor === 'rgb(4, 5, 6)');
+  await page.waitForFunction(() => getComputedStyle(document.querySelector('main')!).outlineColor === 'rgb(4, 5, 6)');
   assert.equal(writes.length, 0);
   await dock.getByRole('button', { name: 'Close' }).click();
-  await page.waitForFunction(() => getComputedStyle(document.querySelector('main')).outlineColor !== 'rgb(4, 5, 6)');
+  await page.waitForFunction(() => getComputedStyle(document.querySelector('main')!).outlineColor !== 'rgb(4, 5, 6)');
   assert.deepEqual(errors, []);
   assert.deepEqual(await violations(page), []);
   await page.close();
@@ -302,14 +322,14 @@ if (BEFORE !== undefined && BEFORE !== '') {
   const { origin: before, close: closeBefore } = await serve({ csp: true, dist: BEFORE });
   for (const path of ['/', '/storage']) {
     await check(`${path} looks exactly as it did before it was MDX`, async () => {
-      const shots = [];
+      const shots: Buffer[] = [];
       for (const dist of [before, origin]) {
         const { page } = await open({ path, dist });
         await page.waitForTimeout(500);
         shots.push(await page.screenshot({ fullPage: true, animations: 'disabled' }));
         await page.close();
       }
-      assert.ok(Bun.deepEquals(new Uint8Array(shots[0]), new Uint8Array(shots[1])), `${path} differs from the build before`);
+      assert.ok(Bun.deepEquals(new Uint8Array(shots[0]!), new Uint8Array(shots[1]!)), `${path} differs from the build before`);
     });
   }
   await closeBefore();

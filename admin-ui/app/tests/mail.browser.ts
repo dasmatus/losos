@@ -86,7 +86,7 @@ const LAKE = {
   seen: false,
   flagged: false,
   hasAttachment: false,
-  pgp: null,
+  pgp: null as string | null,
 };
 const SALE = {
   id: 'm2',
@@ -516,7 +516,7 @@ await check('the folders are a tree, and a new one is made inside another', asyn
   await dialog.waitFor({ state: 'detached' });
   await page.getByText('Folder created', { exact: true }).waitFor();
   const made = calls.find((c) => c.folder === 'POST');
-  assert.deepEqual(made.body, { name: 'Receipts', parentId: 'g' });
+  assert.deepEqual(made!.body, { name: 'Receipts', parentId: 'g' });
   // The new folder is open, under its parent.
   await page.getByRole('heading', { level: 2, name: 'Receipts' }).waitFor();
   assert.equal(await inTree(page, 'Receipts').getAttribute('aria-current'), 'page');

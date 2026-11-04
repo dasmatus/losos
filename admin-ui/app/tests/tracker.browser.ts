@@ -227,11 +227,11 @@ function matches(i: Issue, q: URLSearchParams): boolean {
   return true;
 }
 
-function apply(m: Model, i: Issue, body: any): void {
-  if (body.state !== undefined) i.state = STATES.find((s) => s.id === body.state)!;
-  if (body.priority !== undefined) i.priority = body.priority;
-  if (body.sort !== undefined) i.sort = body.sort;
-  if (body.assignee !== undefined) i.assignee = body.assignee;
+function apply(_m: Model, i: Issue, body: Record<string, unknown>): void {
+  if (typeof body.state === 'number' && STATES.some((s) => s.id === body.state)) i.state = STATES.find((s) => s.id === body.state)!;
+  if (typeof body.priority === 'number') i.priority = body.priority;
+  if (typeof body.sort === 'number') i.sort = body.sort;
+  if (body.assignee === null || typeof body.assignee === 'string') i.assignee = body.assignee;
 }
 
 interface OpenOptions {
@@ -477,7 +477,7 @@ await check('without a sign-in that may change the pins, there is no pin button'
 });
 
 await check('right-clicking a row or a card offers open, copy and pin', async () => {
-  const { page, m, settle } = await open('/issues/p/BT', { pins: [] });
+  const { page, m } = await open('/issues/p/BT', { pins: [] });
   const row = page.locator('[data-issue-list] [data-issue-key="BT-2"]');
   await row.waitFor();
   // The pins have answered once the project's own pin button is drawn.

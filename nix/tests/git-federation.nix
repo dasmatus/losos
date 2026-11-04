@@ -22,7 +22,7 @@
 #   * Eva joins that room from kitchenbox's chat, over federation, reads the
 #     notices there, and sees the merge arrive when Matus merges.
 #
-# A laptop on the LAN carries git and Chromium (nix/tests/git-federation-shots.mjs),
+# A laptop on the LAN carries git and Chromium (nix/tests/git-federation-shots.ts),
 # which pictures both people's pages. With LOSOS_GIT_OLD_UI (a
 # losos-admin-ui from before), the same pages before this change first.
 { pkgs }:
@@ -72,7 +72,7 @@ let
       }
     }
     export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
-    exec ${pkgs.bun}/bin/bun ${./git-federation-shots.mjs} "$@"
+    exec ${pkgs.bun}/bin/bun ${./git-federation-shots.ts} "$@"
   '';
 
   # Each box knows the other two machines by name: the names a box has on

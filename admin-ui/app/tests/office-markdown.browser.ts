@@ -17,20 +17,27 @@
  * The shared editor's WebSocket has no box here, so it stays offline and
  * the text is what is typed; the routes are stubbed with page.route(). */
 
-import assert from './assert.mjs';
-import { launch, runner, serve, stash } from './harness.mjs';
+import type { Page, Route } from 'playwright';
+import assert from './assert.ts';
+import { launch, runner, serve, stash } from './harness.ts';
+
+declare global {
+  interface Window {
+    __violations: string[];
+  }
+}
 
 const { origin, close: closeServer } = await serve({ csp: true });
 const browser = await launch();
 const { check, finish } = runner();
 
-const json = (route, status, body) =>
+const json = (route: Route, status: number, body: unknown) =>
   route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
 const PNG = Uint8Array.fromBase64('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR4nGNk+M/AwMDAxMDAwMDAAAAiHgMBvU2hBwAAAABJRU5ErkJggg==');
 const PNG_FILE = await stash('picture.png', PNG);
 
-const entry = (id, path, mime = 'text/markdown') => ({
+const entry = (id: number, path: string, mime = 'text/markdown') => ({
   id,
   path,
   name: path.split('/').pop(),
@@ -42,23 +49,31 @@ const entry = (id, path, mime = 'text/markdown') => ({
   favorite: false,
 });
 
+type Entry = ReturnType<typeof entry>;
+
+interface CloudOptions {
+  files?: Entry[];
+  taken?: string[];
+  byId?: Record<number, Entry>;
+}
+
 /* LosOS Cloud with a folder holding `taken` names already. Every PUT is
  * kept in `made`, with its body. */
-async function openCloud(path, { files = [], taken = [], byId = {} } = {}) {
+async function openCloud(path: string, { files = [], taken = [], byId = {} }: CloudOptions = {}) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: 'en-US', colorScheme: 'dark' });
   const page = await context.newPage();
-  const errors = [];
+  const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(String(e)));
-  const made = [];
+  const made: { path: string; ifNew: string | null; body: string | null; entry: Entry }[] = [];
   let next = 500;
-  await page.route('**/cloud/api/**', async (route) => {
+  await page.route('**/cloud/api/**', async (route: Route) => {
     const req = route.request();
     const url = new URL(req.url());
     const p = url.pathname.slice('/cloud/api'.length);
     if (p === '/me') return json(route, 200, { login: 'matus', name: 'Matus', email: '', used: 1e9, free: 9e9, product: 'LosOS Cloud' });
     if (p === '/files') return json(route, 200, { folder: { ...entry(1, ''), dir: true }, entries: files });
     if (p === '/files/content' && req.method() === 'PUT') {
-      const at = url.searchParams.get('path');
+      const at = url.searchParams.get('path')!;
       if (taken.includes(at)) return json(route, 409, { code: 'exists', error: 'exists' });
       const e = entry(next++, at);
       made.push({ path: at, ifNew: url.searchParams.get('ifNew'), body: req.postData(), entry: e });
@@ -67,11 +82,11 @@ async function openCloud(path, { files = [], taken = [], byId = {} } = {}) {
     }
     if (p === '/files/content') return route.fulfill({ status: 200, contentType: 'image/png', path: PNG_FILE });
     const m = /^\/files\/by-id\/(\d+)$/.exec(p);
-    if (m) return byId[m[1]] ? json(route, 200, byId[m[1]]) : json(route, 404, { code: 'notFound', error: 'no' });
+    if (m) return byId[Number(m[1])] ? json(route, 200, byId[Number(m[1])]) : json(route, 404, { code: 'notFound', error: 'no' });
     if (p === '/collab/doc') {
       const id = url.searchParams.get('file');
       return json(route, 200, {
-        name: byId[id]?.name ?? 'x',
+        name: byId[Number(id)]?.name ?? 'x',
         owner: 'matus',
         box: 'mattbox.local',
         perm: 'edit',
@@ -103,13 +118,18 @@ async function openCloud(path, { files = [], taken = [], byId = {} } = {}) {
   return { page, context, errors, made };
 }
 
-const violations = (page) => page.evaluate(() => [...new Set(window.__violations)].sort());
-const text = (page) => page.locator('.cm-content').evaluate((el) => el.cmView?.view?.state.doc.toString() ?? [...el.querySelectorAll('.cm-line')].map((l) => l.textContent).join('\n'));
-const bar = (page) => page.getByTestId('md-toolbar');
-const tool = (page, name) => bar(page).getByRole('button', { name, exact: true });
+const violations = (page: Page): Promise<string[]> => page.evaluate(() => [...new Set(window.__violations)].sort());
+type CodeMirrorHost = Element & {
+  cmView?: { view?: { state: { doc: { toString(): string } } } };
+};
+const text = (page: Page): Promise<string> =>
+  page.locator('.cm-content').evaluate((el: CodeMirrorHost) =>
+    el.cmView?.view?.state.doc.toString() ?? [...el.querySelectorAll('.cm-line')].map((l) => l.textContent).join('\n'));
+const bar = (page: Page) => page.getByTestId('md-toolbar');
+const tool = (page: Page, name: string) => bar(page).getByRole('button', { name, exact: true });
 
 /** Opens a Markdown file as LosOS Cloud would, and waits for its editor. */
-async function openDoc(name, extra = {}) {
+async function openDoc(name: string, extra: CloudOptions = {}) {
   const byId = { 77: entry(77, name) };
   const opened = await openCloud('/cloud/office/77', { byId, ...extra });
   await opened.page.locator('[data-markdown-office]').waitFor();
@@ -119,7 +139,7 @@ async function openDoc(name, extra = {}) {
   return opened;
 }
 
-async function type(page, value) {
+async function type(page: Page, value: string) {
   await page.locator('.cm-content').click();
   await page.keyboard.press('Control+A');
   await page.keyboard.press('Delete');
@@ -127,24 +147,24 @@ async function type(page, value) {
 }
 
 /** Selects the whole text, as a person does before pressing a button. */
-async function selectAll(page) {
+async function selectAll(page: Page) {
   await page.locator('.cm-content').focus();
   await page.keyboard.press('Control+A');
 }
 
 /** Puts the cursor at the end of the text. */
-async function toEnd(page) {
+async function toEnd(page: Page) {
   await page.locator('.cm-content').focus();
   await page.keyboard.press('Control+End');
 }
 
 /** Puts the cursor at the end of the line that reads `line`. */
-async function caretOn(page, line) {
+async function caretOn(page: Page, line: string) {
   await page.locator('.cm-line', { hasText: line }).first().click();
   await page.keyboard.press('End');
 }
 
-let BASELINE = [];
+let BASELINE: string[] = [];
 {
   const { page, context } = await openCloud('/cloud/files');
   await page.waitForTimeout(400);
@@ -158,8 +178,8 @@ await check('the bar writes Obsidian and GitHub Markdown, and the read side draw
   const { page, context, errors } = await openDoc('Plan.md');
   // Offline the editor still takes typing; the bar is live once the editor is.
   await type(page, 'word');
-  await page.waitForFunction(() => !document.querySelector('[data-testid=md-toolbar] [data-action=bold]')?.disabled, undefined, { timeout: 5000 }).catch(() => {});
-  const cases = [
+  await page.waitForFunction(() => !((document.querySelector('[data-testid=md-toolbar] [data-action=bold]') as HTMLButtonElement | null)?.disabled), undefined, { timeout: 5000 }).catch(() => {});
+  const cases: [string, string][] = [
     ['Bold', '**word**'],
     ['Italic', '*word*'],
     ['Strikethrough', '~~word~~'],
@@ -203,7 +223,7 @@ await check('the bar writes Obsidian and GitHub Markdown, and the read side draw
     ['Footnote', /^word\[\^1\]\n\n\[\^1\]: The footnote$/],
     ['Block link target', /^word \^[0-9a-f]{6}$/],
     ['Properties', /^---\ntags: \n---\n\nword$/],
-  ]) {
+  ] as [string, RegExp][]) {
     await type(page, 'word');
     await toEnd(page);
     await tool(page, name).click();
@@ -256,13 +276,13 @@ await check('a presentation lays out its slides: text centred, the picture on th
   const stage = page.getByTestId('md-stage');
   await stage.locator('h2', { hasText: 'The garden' }).waitFor();
   await strip.locator(':scope > li').nth(1).locator('button[aria-current=true]').waitFor();
-  const textBox = await stage.locator('.md-slide-text').boundingBox();
-  const picBox = await stage.locator('.md-slide-pictures img').boundingBox();
+  const textBox = (await stage.locator('.md-slide-text').boundingBox())!;
+  const picBox = (await stage.locator('.md-slide-pictures img').boundingBox())!;
   assert.ok(picBox.x > textBox.x + textBox.width - 1, `picture at ${picBox.x}, text ends at ${textBox.x + textBox.width}`);
   assert.equal(await stage.locator('.md-slide-text img').count(), 0);
-  assert.equal(await stage.locator('.md-slide-text').evaluate((el) => getComputedStyle(el).textAlign), 'center');
+  assert.equal(await stage.locator('.md-slide-text').evaluate((el: HTMLElement) => getComputedStyle(el).textAlign), 'center');
   // The heading sits in the middle of its column.
-  const h = await stage.locator('.md-slide-text h2').boundingBox();
+  const h = (await stage.locator('.md-slide-text h2').boundingBox())!;
   const mid = textBox.x + textBox.width / 2;
   assert.ok(Math.abs(h.x + h.width / 2 - mid) < 4, `heading centre ${h.x + h.width / 2}, column centre ${mid}`);
   // A slide without a picture is one centred column.
@@ -287,10 +307,10 @@ await check('a long presentation scrolls inside the strip and does not grow the 
   // that scroll a moment, then the check drives the strip itself.
   await strip.locator(':scope > li').last().locator('button[aria-current=true]').waitFor();
   await page.waitForTimeout(100);
-  const frame = await strip.evaluate((el) => {
+  const frame = await strip.evaluate((el: HTMLElement) => {
     const style = getComputedStyle(el);
     const own = el.getBoundingClientRect();
-    const office = el.closest('[data-markdown-office]').getBoundingClientRect();
+    const office = el.closest('[data-markdown-office]')!.getBoundingClientRect();
     const root = document.documentElement;
     return {
       overflowY: style.overflowY,
@@ -304,13 +324,13 @@ await check('a long presentation scrolls inside the strip and does not grow the 
   assert.equal(frame.inside, true, 'the strip stays inside the office');
   assert.equal(frame.pageStill, true, 'the page itself does not grow');
   // Either end is reached by scrolling the strip. The window stays put.
-  await strip.evaluate((el) => {
+  await strip.evaluate((el: HTMLElement) => {
     el.scrollTop = 0;
   });
-  const top = await strip.evaluate((el) => {
+  const top = await strip.evaluate((el: HTMLElement) => {
     const own = el.getBoundingClientRect();
-    const first = el.firstElementChild.getBoundingClientRect();
-    const last = el.lastElementChild.getBoundingClientRect();
+    const first = el.firstElementChild!.getBoundingClientRect();
+    const last = el.lastElementChild!.getBoundingClientRect();
     return {
       firstSeen: first.top >= own.top - 1 && first.bottom <= own.bottom + 1,
       lastCut: last.bottom > own.bottom + 1,
@@ -320,12 +340,12 @@ await check('a long presentation scrolls inside the strip and does not grow the 
   assert.equal(top.firstSeen, true, 'the first slide is in the strip');
   assert.equal(top.lastCut, true, 'the last slide is below the strip');
   assert.equal(top.y, 0);
-  await strip.evaluate((el) => {
+  await strip.evaluate((el: HTMLElement) => {
     el.scrollTop = el.scrollHeight;
   });
-  const bottom = await strip.evaluate((el) => {
+  const bottom = await strip.evaluate((el: HTMLElement) => {
     const own = el.getBoundingClientRect();
-    const last = el.lastElementChild.getBoundingClientRect();
+    const last = el.lastElementChild!.getBoundingClientRect();
     return { lastSeen: last.top < own.bottom && last.bottom <= own.bottom + 2, y: window.scrollY };
   });
   assert.equal(bottom.lastSeen, true, 'scrolling the strip brings the last slide in');
@@ -355,7 +375,7 @@ await check('a presentation plays full screen, and the keys move through it', as
 
 await check('a Markdown file offers Office in its menu, and adds no policy violations', async () => {
   const files = [entry(78, 'Plan.md'), entry(79, 'todo.txt', 'text/plain')];
-  const { page, context } = await openCloud('/cloud/files', { files, byId: { 78: files[0] } });
+  const { page, context } = await openCloud('/cloud/files', { files, byId: { 78: files[0]! } });
   const row = page.locator('[data-entry="Plan.md"]');
   await row.waitFor();
   await row.click({ button: 'right' });

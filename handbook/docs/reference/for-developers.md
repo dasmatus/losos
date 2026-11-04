@@ -60,7 +60,7 @@ python3 .github/scripts/fix-hashes.py
 
 Pictures live in `handbook/docs/img/`. There are three kinds:
 
-- **Admin pages and wizard.** `admin-ui/app/tests/handbook-screens.mjs`
+- **Admin pages and wizard.** `admin-ui/app/tests/handbook-screens.ts`
   takes them from the built SPA against a stubbed lososd, so they show the
   current UI and logo without a box. It writes 2x PNGs, which go into the
   handbook downscaled to 1600 px wide and reduced to 256 colours. Most come
@@ -79,8 +79,8 @@ Pictures live in `handbook/docs/img/`. There are three kinds:
 ```sh
 cd admin-ui/app
 bun run build
-bun tests/handbook-screens.mjs /tmp/handbook-screens           # every shot
-bun tests/handbook-screens.mjs /tmp/handbook-screens mesh      # names containing "mesh"
+bun tests/handbook-screens.ts /tmp/handbook-screens           # every shot
+bun tests/handbook-screens.ts /tmp/handbook-screens mesh      # names containing "mesh"
 ```
 
 :::note[When Playwright has no Chromium]

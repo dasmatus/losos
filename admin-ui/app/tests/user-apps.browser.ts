@@ -10,8 +10,22 @@
  * what the app frame's own try found (src/app-frame/runtime.tsx), so the
  * checks here read that report as the box would. */
 
-import assert from './assert.mjs';
-import { launch, runner, serve } from './harness.mjs';
+import type { Page, Route } from 'playwright';
+import assert from './assert.ts';
+import { launch, runner, serve } from './harness.ts';
+
+declare global {
+  interface Window {
+    __violations: string[];
+  }
+}
+
+declare module 'playwright' {
+  interface Page {
+    /** Where the shell's own first-paint CSP violations end, set by open(). */
+    __atLoad: number;
+  }
+}
 
 const TOKEN = 'a'.repeat(64);
 const APP = await Bun.file(`${import.meta.dir}/fixtures/user-app.json`).json();
@@ -19,7 +33,7 @@ const { origin, close: closeServer } = await serve({ csp: true });
 const browser = await launch();
 const { check, finish } = runner();
 
-const json = (route, status, body) =>
+const json = (route: Route, status: number, body: unknown) =>
   route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
 const SETTINGS = {
@@ -42,13 +56,25 @@ const SETTINGS = {
 const BROKEN = APP.code.replace('function App() {', 'function App() {\n\tconst first = names[0];\n\tconst names = ["Milk"];');
 assert.notEqual(BROKEN, APP.code);
 
-const step = (kind, running, extra = {}) => ({ kind, running, problems: [], shown: [], skipped: false, started_at: 1, ...extra });
+const step = (kind: string, running: boolean, extra: Record<string, unknown> = {}) =>
+({ kind, running, problems: [], shown: [], skipped: false, started_at: 1, ...extra });
 
 /* The box's half of one build. Each read of the build moves it on: write,
  * check, a try the page must answer, then a fix with new code and a second
  * try; once that is answered, done. */
+/* What the preview reports from a try: what it showed, the button it
+ * pressed, what that kept, and what went wrong. */
+interface TryReport {
+  trial: string;
+  shown: string[];
+  pressed: string;
+  kept: string[];
+  errors: string[];
+  threwOnPress: string[];
+}
+
 function builder() {
-  const state = { reads: 0, tried: [], phase: 'writing' };
+  const state: { reads: number; started?: { kind: string }; tried: TryReport[]; phase: string } = { reads: 0, tried: [], phase: 'writing' };
   const build = () => {
     const base = {
       id: 'b1-1', kind: 'app', prompt: 'a shopping list', revision: false, created_at: 1,
@@ -74,7 +100,7 @@ function builder() {
           ],
         };
       default: {
-        const report = state.tried[1];
+        const report = state.tried[1]!;
         return {
           ...base, status: 'done', lines: 38, finished_at: 2, code: APP.code, name: 'Shopping',
           notes: 'A list of things to buy.', files: [{ name: 'app.jsx', content: APP.source }],
@@ -86,7 +112,7 @@ function builder() {
       }
     }
   };
-  const handle = (route) => {
+  const handle = (route: Route) => {
     const url = new URL(route.request().url());
     const method = route.request().method();
     if (url.pathname === '/api/builder') return json(route, 200, { available: true, model: 'qwen2.5-coder:1.5b', builds: [] });
@@ -109,9 +135,9 @@ function builder() {
   return { state, handle };
 }
 
-async function open(path = '/apps', repo = undefined) {
+async function open(path = '/apps', repo: { name?: string; state?: string; detail?: string } | undefined = undefined) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
-  const errors = [];
+  const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.addInitScript(() => {
     window.__violations = [];
@@ -125,10 +151,10 @@ async function open(path = '/apps', repo = undefined) {
     } catch {}
   }, TOKEN);
   const box = builder();
-  const saved = [];
-  const data = { collections: {}, stored: {} };
-  const writes = [];
-  let apps = [];
+  const saved: unknown[] = [];
+  const data: { collections: Record<string, unknown[]>; stored: Record<string, unknown> } = { collections: {}, stored: {} };
+  const writes: unknown[] = [];
+  let apps: { id: string; name: string; summary: string; createdAt: number; updatedAt: number }[] = [];
   await page.route('**/api/**', (route) => json(route, 200, {}));
   await page.route('**/api/state', (route) => json(route, 200, { mode: 'local', sharing: false }));
   await page.route('**/api/status', (route) => json(route, 200, { state: 'idle', progress: 0, message: '' }));
@@ -169,7 +195,7 @@ async function open(path = '/apps', repo = undefined) {
   return { page, errors, box, saved, writes, data };
 }
 
-const violations = async (page) => (await page.evaluate(() => window.__violations)).slice(page.__atLoad);
+const violations = async (page: Page) => (await page.evaluate(() => window.__violations)).slice(page.__atLoad);
 
 console.log('admin-ui your apps checks');
 
@@ -190,9 +216,9 @@ await check('the AI builds an app step by step, the preview tries each version f
   // The page's report, as the frame made it: what the app shows, the
   // button it pressed, what that kept.
   await page.getByTestId('builder-outcome').waitFor({ timeout: 45000 });
-  assert.equal(box.state.started.kind, 'app');
+  assert.equal(box.state.started!.kind, 'app');
   assert.equal(box.state.tried.length, 2, 'two tries, a report for each');
-  const [broken, report] = box.state.tried;
+  const [broken, report] = box.state.tried as [TryReport, TryReport];
   // The first app stopped as it started, and the page said so.
   assert.equal(broken.trial, 't0');
   assert.equal(broken.errors.length, 1, JSON.stringify(broken));
@@ -223,7 +249,7 @@ await check('the AI builds an app step by step, the preview tries each version f
   // Saved, the app runs on its own page and writes to the box.
   await page.getByTestId('app-save').click();
   await page.waitForURL(`${origin}/apps/u1`);
-  assert.equal(saved[0].source, APP.source);
+  assert.equal((saved[0] as { source: string }).source, APP.source);
   const app = page.frameLocator('[data-testid=user-app] iframe');
   await app.getByLabel('Item').fill('Milk');
   // The collection updates optimistically; wait for the box's write response
@@ -235,7 +261,7 @@ await check('the AI builds an app step by step, the preview tries each version f
   await writeResponse;
   await app.getByText('Milk').waitFor();
   assert.deepEqual(writes, [{ op: 'add', collection: 'items', value: { name: 'Milk', done: false } }]);
-  assert.equal(data.collections.items[0].name, 'Milk');
+  assert.equal((data.collections.items as { name: string }[])[0]!.name, 'Milk');
 
   assert.deepEqual(errors, []);
   assert.deepEqual(await violations(page), []);
@@ -247,7 +273,7 @@ await check("an app's page links its repository, and says so when a push was not
   const link = synced.page.getByTestId('user-app-repo');
   await link.waitFor();
   assert.equal(await link.getAttribute('href'), '/git/notshared/app-shopping');
-  assert.equal((await link.textContent()).trim(), 'Source');
+  assert.equal((await link.textContent())!.trim(), 'Source');
   assert.equal(await synced.page.getByTestId('user-app-repo-note').count(), 0);
   await synced.page.close();
 

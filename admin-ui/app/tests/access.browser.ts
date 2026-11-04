@@ -89,7 +89,7 @@ async function open({ path = '/settings/access', access = FIXTURE, refuse = null
   const posts: { path: string; body: unknown }[] = [];
 
   const authed = (route: Route) => route.request().headers()['authorization'] === `Bearer ${TOKEN}`;
-  const guard = (fn: (route: Route) => Promise<Response>) => (route: Route) => (authed(route) ? fn(route) : json(route, 401, { error: 'unauthorized' }));
+  const guard = (fn: (route: Route) => Promise<void>) => (route: Route) => (authed(route) ? fn(route) : json(route, 401, { error: 'unauthorized' }));
 
   await page.route('**/api/**', (route) => json(route, 200, {}));
   await page.route('**/api/setup/claim', (route) => json(route, 200, { claimed: true }));

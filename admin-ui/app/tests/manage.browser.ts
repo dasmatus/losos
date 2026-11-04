@@ -182,7 +182,7 @@ async function openEdge({ path = '/manage/', signedIn = true, refuse = false, ga
         window.__violations.push(`${e.violatedDirective} ${e.blockedURI}`),
       );
     },
-    [KEY, signedIn],
+    [KEY, signedIn] as [string, boolean],
   );
   await page.goto(origin + path, { waitUntil: 'networkidle' });
   return { page, context, errors, calls, posts, writes };

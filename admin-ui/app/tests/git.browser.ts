@@ -11,14 +11,15 @@
  * address. nix/tests/git-pages.nix and nix/tests/git-federation.nix run the
  * same pages against real boxes. */
 
-import assert from './assert.mjs';
-import { launch, runner, serve } from './harness.mjs';
+import type { Request, Route } from 'playwright';
+import assert from './assert.ts';
+import { launch, runner, serve } from './harness.ts';
 
 const { origin, close: closeServer } = await serve({ csp: true });
 const browser = await launch();
 const { check, finish } = runner();
 
-const json = (route, status, body) =>
+const json = (route: Route, status: number, body: unknown) =>
   route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
 const HEAD = 'b'.repeat(40);
@@ -60,6 +61,12 @@ const PATCH = [
   '',
 ].join('\n');
 
+interface ModelCall {
+  method: string;
+  path: string;
+  body: Record<string, unknown>;
+}
+
 function model() {
   return {
     pull: {
@@ -74,9 +81,9 @@ function model() {
       html_url: '/git/notshared/notes/pulls/3',
       pull_request: { head: 'plant-earlier', base: 'main', merged: false, merge_commit_sha: null },
       merged: false,
-      merged_by: null,
-      merged_at: null,
-      merge_commit_sha: null,
+      merged_by: null as null | { login: string },
+      merged_at: null as string | null,
+      merge_commit_sha: null as string | null,
       head: { ref: 'plant-earlier', sha: HEAD },
       base: { ref: 'main', sha: BASE },
       merge_base: BASE,
@@ -106,25 +113,38 @@ function model() {
         commit_id: HEAD,
         body: 'Beans need warmer soil, so May is right.',
         resolved: false,
-        resolved_by: null,
+        resolved_by: null as null | { login: string },
         created_at: '2026-10-21T08:31:00Z',
       },
     ],
     reviews: [
       { id: 5, user: { login: 'eva' }, state: 'commented', body: '', commit_id: HEAD, submitted_at: '2026-10-21T08:31:00Z' },
     ],
-    repo: { ...REPO, chat_room: null },
-    calls: [],
+    repo: { ...REPO, chat_room: null as string | null },
+    calls: [] as ModelCall[],
   };
 }
 
 /* `me` is who LosOS Git says is signed in: an account, null for a visitor
  * (401), or a function of the request. */
-async function open(path, { locale = 'en-US', viewport = { width: 1280, height: 900 }, me = ME, room = null } = {}) {
+async function open(
+  path: string,
+  {
+    locale = 'en-US',
+    viewport = { width: 1280, height: 900 },
+    me = ME,
+    room = null,
+  }: {
+    locale?: string;
+    viewport?: { width: number; height: number };
+    me?: typeof ME | ((req: Request) => typeof ME | null) | null;
+    room?: string | null;
+  } = {},
+) {
   const m = model();
   m.repo.chat_room = room;
   const page = await browser.newPage({ viewport, locale });
-  const errors = [];
+  const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.addInitScript(() => {
     window.__violations = [];
@@ -207,13 +227,13 @@ async function open(path, { locale = 'en-US', viewport = { width: 1280, height: 
     if (p === `${r}/pulls/3/comments` && method === 'GET') return json(route, 200, m.lines);
     if (p === `${r}/pulls/3/comments` && method === 'POST') {
       const body = req.postDataJSON();
-      const reply = { ...m.lines[0], id: 12, in_reply_to: body.in_reply_to, user: { login: 'notshared' }, body: body.body };
+      const reply = { ...m.lines[0]!, id: 12, in_reply_to: body.in_reply_to, user: { login: 'notshared' }, body: body.body };
       m.lines.push(reply);
       return json(route, 200, reply);
     }
     if (p === `${r}/pulls/comments/11` && method === 'PATCH') {
-      m.lines[0].resolved = req.postDataJSON().resolved;
-      m.lines[0].resolved_by = { login: 'notshared' };
+      m.lines[0]!.resolved = req.postDataJSON().resolved;
+      m.lines[0]!.resolved_by = { login: 'notshared' };
       return json(route, 200, m.lines[0]);
     }
     if (p === `${r}/pulls/3/ai-review`) return json(route, 200, { state: 'reviewing', filesDone: 1, filesTotal: 2, ahead: 0 });
@@ -301,7 +321,7 @@ await check('a line comment goes into a review that asks for changes', async () 
   await page.locator('[data-review-panel] [role=radio], [data-review-panel] button', { hasText: 'Request changes' }).first().click();
   await page.locator('[data-submit-review]').click();
   await page.getByText('Review sent', { exact: true }).first().waitFor();
-  const sent = m.calls.find((c) => c.path.endsWith('/pulls/3/reviews'));
+  const sent = m.calls.find((c) => c.path.endsWith('/pulls/3/reviews'))!;
   assert.equal(sent.body.event, 'REQUEST_CHANGES');
   assert.equal(sent.body.commit_id, HEAD);
   assert.deepEqual(sent.body.comments, [{ path: 'README.md', side: 'old', line: 2, body: 'Why a month earlier?' }]);
@@ -330,7 +350,7 @@ await check('a squash merge sends the head it showed', async () => {
   await page.locator('[data-merge-box] button', { hasText: 'Squash' }).click();
   await page.locator('[data-merge]').click();
   await page.locator('[data-merge-box="merged"]').waitFor();
-  const merge = m.calls.find((c) => c.path.endsWith('/merge'));
+  const merge = m.calls.find((c) => c.path.endsWith('/merge'))!;
   assert.equal(merge.body.style, 'squash');
   assert.equal(merge.body.head_commit_id, HEAD);
   assert.equal(merge.body.delete_branch, true);
@@ -355,7 +375,7 @@ await check('the AI review switch in the settings turns LosOS Reviewer off', asy
   await box.getByRole('switch').click({ force: true });
   await page.locator('[data-ai-review-setting="off"]').waitFor();
   await page.getByText('AI review is off', { exact: true }).first().waitFor();
-  const put = m.calls.find((c) => c.method === 'PUT' && c.path.endsWith('/ai-review'));
+  const put = m.calls.find((c) => c.method === 'PUT' && c.path.endsWith('/ai-review'))!;
   assert.deepEqual(put.body, { enabled: false });
   await settle();
   await page.close();
@@ -370,7 +390,7 @@ await check("the room switch makes the repository's room in LosOS Chat and the h
   const on = page.locator('[data-chat-room-setting="on"]');
   await on.waitFor();
   await page.getByText('The room is ready', { exact: true }).first().waitFor();
-  const made = m.calls.find((c) => c.path === '/api/chat/git-room');
+  const made = m.calls.find((c) => c.path === '/api/chat/git-room')!;
   assert.deepEqual(made.body, { owner: 'notshared', repo: 'notes' });
   const link = `/chat/?join=${encodeURIComponent(ROOM)}&via=mattbox.local`;
   assert.equal(await on.locator('[data-chat-room-open]').getAttribute('href'), link);
@@ -380,7 +400,7 @@ await check("the room switch makes the repository's room in LosOS Chat and the h
   await page.getByRole('link', { name: 'Settings' }).first().click();
   await on.getByRole('switch').click({ force: true });
   await page.locator('[data-chat-room-setting="off"]').waitFor();
-  const unlinked = m.calls.find((c) => c.method === 'PATCH');
+  const unlinked = m.calls.find((c) => c.method === 'PATCH')!;
   assert.deepEqual(unlinked.body, { chat_room: '' });
   await settle();
   await page.close();
@@ -412,7 +432,7 @@ await check('back from their box, someone of another box keeps to their own bran
     room: ROOM,
   });
   await page.locator('[data-testid="signed-in-name"]', { hasText: 'Eva' }).waitFor();
-  const session = m.calls.find((c) => c.path === '/matrix/session');
+  const session = m.calls.find((c) => c.path === '/matrix/session')!;
   assert.deepEqual(session.body, { access_token: 'openid-tok', matrix_server_name: 'kitchenbox.local', display_name: 'Eva' });
   assert.equal(new URL(page.url()).hash, '');
   assert.equal(await page.evaluate(() => localStorage.getItem('losos-git-chat-token')), 'chat-tok');
@@ -448,7 +468,7 @@ await check('on a phone LosOS Git has a bar along the bottom: the places of the 
   await bar.waitFor();
   assert.deepEqual((await bar.getByRole('listitem').allInnerTexts()).map((l) => l.trim()), ['Repositories', 'Code', 'Pull requests', 'Issues', 'More']);
   assert.equal(await bar.locator('a[aria-current="page"]').innerText(), 'Pull requests');
-  const box = await bar.boundingBox();
+  const box = (await bar.boundingBox())!;
   assert.ok(Math.abs(box.y + box.height - 844) <= 1, `the bar is not on the bottom edge: ${JSON.stringify(box)}`);
   await bar.getByRole('button', { name: 'More', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: 'LosOS Git' });

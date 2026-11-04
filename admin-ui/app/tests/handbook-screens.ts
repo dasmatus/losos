@@ -15,8 +15,10 @@
  * names that contain it. The PNGs are 2x; the handbook carries them
  * downscaled (handbook/docs/reference/for-developers.md, "Pictures"). */
 
-import type { Page, Route, Rect } from 'playwright';
+import type { Page, Route } from 'playwright';
 import { launch, serve } from './harness.ts';
+
+type Rect = { x: number; y: number; width: number; height: number };
 
 const [outDir = '/tmp/handbook-screens', only = ''] = Bun.argv.slice(2);
 
@@ -424,7 +426,11 @@ const T = (lang: Lang): Translator => (key, vars = {}) => {
 };
 const LOCALES = { en: 'en-US', sk: 'sk-SK', de: 'de-DE' };
 
-const DOC = await Bun.file('tests/fixtures/options.json').json();
+const DOC = (await Bun.file('tests/fixtures/options.json').json()) as {
+  version: number;
+  options: { name: string; [key: string]: unknown }[];
+  excluded: string[];
+};
 const options = (overrides: Record<string, string | null> = {}) => ({
   available: true,
   version: DOC.version,
@@ -449,7 +455,7 @@ const PINS = [
   { kind: 'repo', owner: 'notshared', name: 'site' },
   { kind: 'app', release: 'jellyfin' },
 ];
-const FOLDERS = {
+const FOLDERS: Record<string, { name: string; path: string; id: number; folder: boolean; size: number }[]> = {
   '/': [
     { name: 'Documents', path: '/Documents', id: 10, folder: true, size: 4096 },
     { name: 'Photos', path: '/Photos', id: 11, folder: true, size: 900000 },
@@ -489,14 +495,7 @@ function journal() {
   return { v: 1, days, lastUp: true, outageStart: null };
 }
 
-const REBUILDS = {
-  v: 1,
-  jobs: [
-    { job: 'losos-rebuild-7f3a', state: 'done', at: NOW - 2 * 3600_000, message: 'Rebuilt and switched.' },
-    { job: 'losos-rebuild-61c0', state: 'done', at: NOW - 26 * 3600_000, message: 'Rebuilt and switched.' },
-    { job: 'losos-rebuild-2b9e', state: 'failed', at: NOW - 3 * 86400_000, message: 'error: attribute "losos.cloud.trashDays" must be between 1 and 365' },
-  ],
-};
+
 
 const json = (route: Route, status: number, body: unknown) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
@@ -542,7 +541,7 @@ const ACCOUNT = {
 /* One page wired to a box in a given state. */
 interface OpenOptions {
   path?: string;
-  theme?: string;
+  theme?: 'dark' | 'light' | 'no-preference';
   locale?: string;
   viewport?: { width: number; height: number };
   claimed?: boolean;
@@ -563,7 +562,7 @@ interface OpenOptions {
   board?: Record<string, unknown> | null;
   health?: boolean;
   apply?: Record<string, unknown>;
-  reducedMotion?: string;
+  reducedMotion?: 'no-preference' | 'reduce';
   overrides?: Record<string, string | null>;
   pins?: unknown[];
   me?: Record<string, unknown> | null;
@@ -723,7 +722,7 @@ const settle = (page: Page, ms = 500) => page.waitForTimeout(ms);
  * CSSOM (the admin CSP refuses an injected <style>, as it should). */
 const hideToasts = (page: Page) =>
   page.evaluate(() => {
-    for (const el of document.querySelectorAll('[data-sonner-toaster], [data-toast], ol[tabindex="-1"]')) el.style.display = 'none';
+    for (const el of document.querySelectorAll('[data-sonner-toaster], [data-toast], ol[tabindex="-1"]')) (el as HTMLElement).style.display = 'none';
   });
 
 /* The wizard's steps, each from a fresh page: Continue past the certificate,
@@ -947,7 +946,7 @@ const SHOTS: Shot[] = [
    * pictures do not depend on timing. `tour` is the first step again, in
    * every language, for the first-run page. */
   ...[1, 2, 3, 4, 5, 6].flatMap((step) =>
-    [['', 'light'], ['-dark', 'dark'], ...(step === 1 ? [['-phone', 'light'], ['', 'light', 'tour']] : [])].map(([suffix, theme, name]): Shot => ({
+    ([['', 'light'], ['-dark', 'dark'], ...(step === 1 ? [['-phone', 'light'], ['', 'light', 'tour']] : [])] as [string, 'light' | 'dark', ...string[]][]).map(([suffix, theme, name]): Shot => ({
       name: name ?? `tour-${step}${suffix}`,
       path: '/',
       theme,
@@ -964,7 +963,7 @@ const SHOTS: Shot[] = [
         await settle(page, 700);
         await hideToasts(page);
       },
-    })),
+    }))),
   { name: 'settings-reset', path: '/settings/reset', langs: true },
   {
     name: 'settings-reset-dialog',
@@ -1139,7 +1138,7 @@ const SHOTS: Shot[] = [
  *   { clip }  a fixed rectangle */
 async function region(page: Page, crop: Crop | null, full: boolean): Promise<CropRegion | null> {
   if (!crop) return null;
-  const view = page.viewportSize();
+  const view = page.viewportSize()!;
   if (typeof crop === 'object' && crop.clip) return crop.clip;
   const pad = (box: { x: number; y: number; width: number; height: number }, by: number): CropRegion => {
     const x = Math.max(0, Math.floor(box.x - by));
@@ -1164,8 +1163,8 @@ async function region(page: Page, crop: Crop | null, full: boolean): Promise<Cro
     }
     return { left, right, bottom, height: document.documentElement.scrollHeight };
   });
-  if (crop.down) {
-    const box = (await page.locator(crop.down).first().boundingBox())!;
+  if ((crop as { down?: string }).down) {
+    const box = (await page.locator((crop as { down: string }).down).first().boundingBox())!;
     return { x: 0, y: 0, width: view.width, height: Math.ceil(box.y + box.height) + 14 };
   }
   if (crop === 'fit') return { x: 0, y: 0, width: view.width, height: Math.min(Math.ceil(drawn.bottom) + 32, full ? drawn.height : view.height) };
@@ -1196,7 +1195,7 @@ for (const shot of SHOTS) {
     try {
       if (act) await act(page, T(lang));
       const clip = await region(page, crop, full);
-      await page.screenshot({ path: `${outDir}/${file}.png`, fullPage: full || (clip ? clip.y + clip.height > page.viewportSize().height : false), ...(clip ? { clip } : {}) });
+      await page.screenshot({ path: `${outDir}/${file}.png`, fullPage: full || (clip ? clip.y + clip.height > page.viewportSize()!.height : false), ...(clip ? { clip } : {}) });
       console.log('  wrote', file);
     } catch (e) {
       console.log('  FAIL', file, (e as Error).message.split('\n')[0]);

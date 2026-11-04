@@ -9,7 +9,7 @@
 #   * `box`    — mattbox: lososd, the front vhost with the real admin UI,
 #                LosOS Login, and the master proxy pointed at the edge, so the
 #                edge's /domains routes reach the Network pane through lososd.
-#   * `laptop` — Chromium driven by Playwright (box-wallet-name.mjs), signed
+#   * `laptop` — Chromium driven by Playwright (box-wallet-name.ts), signed
 #                in through LosOS Login as the owner, plus delv.
 #
 # What it asserts:
@@ -139,7 +139,7 @@ let
       "PLAYWRIGHT_CORE=${pkgs.playwright-driver}"
       "PLAYWRIGHT_BROWSERS_PATH=${browsers}"
       "PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true"
-      "${pkgs.bun}/bin/bun ${./box-wallet-name.mjs}"
+      "${pkgs.bun}/bin/bun ${./box-wallet-name.ts}"
       "--mode ${mode} --out /tmp/shots --user matus --password ${password} >&2"
     ];
 in

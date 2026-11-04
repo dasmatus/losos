@@ -243,7 +243,7 @@ await check('a document opens under the top bar, beside the sidebar, in the LosO
   const side = (await nav(page).boundingBox())!;
   assert.ok(box.x >= side.x + side.width && box.width >= 900 && box.height > 600, `the editor is ${JSON.stringify(box)}`);
 
-  const src = new URL(await frame.getAttribute('src')!, origin);
+  const src = new URL((await frame.getAttribute('src'))!, origin);
   assert.equal(src.pathname, '/browser/abc/cool.html');
   assert.equal(src.searchParams.get('access_token'), 'token-1');
   assert.equal(src.searchParams.get('lang'), 'en-GB');
@@ -284,7 +284,7 @@ await check('the LosOS bars drive the document and show what it reports', async 
   assert.equal(await viewers.locator('li').count(), 1);
   // The ring is the colour Collabora draws Eva's cursor in, not her author colour.
   const ring = await viewers.getByLabel('Eva Nováková').evaluate((el) => {
-    for (let n = el; n; n = n.parentElement) if (n.style.boxShadow) return n.style.boxShadow;
+    for (let n: HTMLElement | SVGElement | null = el; n; n = n.parentElement) if (n.style.boxShadow) return n.style.boxShadow;
     return '';
   });
   assert.match(ring, /rgb\(42, 140, 60\)/, ring);
@@ -302,7 +302,7 @@ await check('the LosOS bars drive the document and show what it reports', async 
 
   // The style list applies a paragraph style.
   await bar.getByLabel('Paragraph style').selectOption('Heading 2');
-  await page.waitForFunction(() => document.querySelector('select[aria-label="Paragraph style"]')?.value === 'Heading 2');
+  await page.waitForFunction(() => (document.querySelector('select[aria-label="Paragraph style"]') as HTMLSelectElement | null)?.value === 'Heading 2');
   const style = (await got()).find((m) => m.Values?.Command === '.uno:StyleApply');
   assert.deepEqual(style!.Values!.Args, {
     Style: { type: 'string', value: 'Heading 2' },

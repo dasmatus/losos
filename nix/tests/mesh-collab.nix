@@ -23,7 +23,7 @@
 #     (`style-src 'self'`), the editor included.
 #
 # The pictures for the pull request and the launch film come from the same
-# run (nix/tests/mesh-collab-shots.mjs). `beforeUi`, when given, is the
+# run (nix/tests/mesh-collab-shots.ts). `beforeUi`, when given, is the
 # admin UI as it was before this feature: the boxes switch to it at the end
 # for the "before" pictures. The flake check runs without it.
 #
@@ -72,7 +72,7 @@ let
     # Signing in goes through Node's TLS, not Chromium's: the boxes'
     # certificates, which the test collects on the laptop.
     export NODE_EXTRA_CA_CERTS=''${NODE_EXTRA_CA_CERTS:-/etc/losos-boxes.pem}
-    exec ${pkgs.bun}/bin/bun ${./mesh-collab-shots.mjs} "$@"
+    exec ${pkgs.bun}/bin/bun ${./mesh-collab-shots.ts} "$@"
   '';
 
   box =

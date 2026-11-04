@@ -214,7 +214,7 @@ async function open({
     const id = decodeURIComponent(route.request().url().split('/').at(-1) ?? '');
     const b = body(route);
     posts.push({ path: `/api/moderation/reports/${id}`, body: b });
-    const next = { hide: 'hidden', release: 'resolved', dismiss: 'dismissed', resolve: 'resolved' }[b.action];
+    const next = ({ hide: 'hidden', release: 'resolved', dismiss: 'dismissed', resolve: 'resolved' } as Record<string, Report['state']>)[b.action]!;
     state.reports = state.reports.map((r) =>
       r.id === id ? { ...r, state: next, handledBy: you, handledAt: NOW } : r,
     );

@@ -21,7 +21,7 @@
  * harness's routeWebSocket on the whole context, so a tab an opener opens
  * reaches it too; the HTTP routes are stubbed with page.route(). */
 
-import { type BrowserContext, type Locator, type Page, type Route } from 'playwright';
+import { type BrowserContext, type Page, type Route } from 'playwright';
 
 declare global {
   interface Window {
@@ -197,7 +197,7 @@ async function place(page: Page, words: string, caret?: boolean) {
         }
         throw new Error(`no "${w}" on the page`);
       },
-      [words, caret],
+      [words, caret] as [string, boolean | undefined],
     );
     if (held) return;
   }

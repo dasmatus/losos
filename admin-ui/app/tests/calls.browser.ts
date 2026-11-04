@@ -14,15 +14,74 @@
 import type { Page } from 'playwright';
 import assert from './assert.ts';
 import { launch } from './harness.ts';
+import type { CallSession, KeyMessage, Member } from '../src/calls/session.ts';
+import type { LocalMedia } from '../src/calls/local.ts';
+import type { Podcast } from '../src/calls/podcast.ts';
+import type { WorkerStats } from '../src/calls/e2ee-protocol.ts';
 
-const here = (p) => `${import.meta.dir}/${p}`;
+/* What the fixture page (tests/fixtures/calls/harness.ts) keeps on window:
+ * the checks read the tab through these. A key message overheard off the
+ * BroadcastChannel in place of Olm, and the state a tab publishes. */
+interface Overheard {
+  from: string;
+  to: { user: string; device: string }[];
+  msg: KeyMessage;
+}
+interface CallState {
+  members: Member[];
+  you: number;
+  live: number | null;
+  stats: WorkerStats | null;
+  states: string[];
+  keysIn: number;
+  podcast: string[];
+}
+
+declare global {
+  interface Window {
+    startCall(opts: {
+      socket: string;
+      call: string;
+      me?: { user: string; device: string };
+      dropKeys?: boolean;
+      video?: boolean;
+      media?: boolean;
+      guest?: { invite: string; name: string; secret: string };
+    }): Promise<void>;
+    callState: CallState;
+    session: CallSession;
+    connection: RTCPeerConnection;
+    media: LocalMedia;
+    podcast: Pick<Podcast, 'stop'>;
+    picture(id: string): number[] | null;
+    share(colour: string): Promise<void>;
+    unshare(): Promise<void>;
+    addGuestSecret(secret: string): void;
+    goLive(rtmp: string, title: string): void;
+    overhear(): void;
+    heard: Overheard[];
+  }
+}
+
+/* Byte buffers whose backing buffer is entirely theirs: Bun.file().bytes()
+ * and fresh allocations always are, but slice()/subarray()'s types cannot
+ * say it, so the casts below keep that local. */
+type Bytes = Uint8Array<ArrayBuffer>;
+
+/* ffprobe's answer: the streams, and how long the copy runs. */
+interface Probe {
+  streams?: { codec_name: string; width?: number; height?: number }[];
+  format?: { duration: string };
+}
+
+const here = (p: string) => `${import.meta.dir}/${p}`;
 const BIN = Bun.env.LOSOS_CALLS_BIN ?? here('../../../backend/target/debug/losos-calls');
 const SERVER = 'calls.test';
 // Chromium takes a loopback candidate under --allow-loopback-in-peer-connection.
 const ADDRESS = Bun.env.LOSOS_CALLS_ADDRESS ?? '127.0.0.1';
 const TMP = Bun.env.TMPDIR ?? '/tmp';
 
-const bundle = async (entry) => {
+const bundle = async (entry: string) => {
   const built = await Bun.build({
     entrypoints: [entry],
     target: 'browser',
@@ -31,7 +90,7 @@ const bundle = async (entry) => {
     define: { 'import.meta.env.BASE_URL': '"/"' },
   });
   if (!built.success) throw new AggregateError(built.logs, `bundling ${entry} failed`);
-  return built.outputs[0].text();
+  return built.outputs[0]!.text();
 };
 
 const harness = await bundle(here('fixtures/calls/harness.ts'));
@@ -52,13 +111,21 @@ const pagePort = pages.port;
 
 // An edge that makes guest links, as an official one does, and keeps what
 // it was asked.
-const asked = [];
+/* The body the SFU asks the edge with when someone opens a guest link: the
+ * relay to name, and the call and invite the link was opened for. */
+interface GuestAsk {
+  appliance_id?: string;
+  token?: string;
+  call?: string;
+  invite?: string;
+}
+const asked: GuestAsk[] = [];
 const edge = Bun.serve({
   hostname: '127.0.0.1',
   port: 0,
   async fetch(req) {
     if (req.method !== 'POST' || new URL(req.url).pathname !== '/calls/guest-link') return new Response(null, { status: 404 });
-    const b = await req.json();
+    const b = (await req.json()) as GuestAsk;
     asked.push(b);
     return Response.json({ url: `https://box.calls.test/calls/guest/?call=${b.call}&invite=${b.invite}` });
   },
@@ -91,14 +158,54 @@ for (let i = 0; ; i++) {
  * Here a path `/as/<name>/` stands in for that sign-in; anything else, a
  * guest's socket among it, reaches the SFU with nobody named. A socket is
  * passed on message by message, the way nginx passes its frames. */
-const forward = (req) => {
+const forward = (req: Request) => {
   const url = new URL(req.url);
   const m = /^\/as\/([^/]+)(\/.*)$/.exec(url.pathname);
   const headers = new Headers(req.headers);
   headers.delete('remote-user');
-  if (m) headers.set('remote-user', decodeURIComponent(m[1]));
+  if (m) headers.set('remote-user', decodeURIComponent(m[1]!));
   return { path: (m ? m[2] : url.pathname) + url.search, headers };
 };
+/* Bun's client WebSocket takes a headers/protocols object, which the DOM's
+ * own types do not say; this only narrows what the runtime accepts. */
+const BunWebSocket = WebSocket as unknown as new (
+  url: string | URL,
+  options?: { headers?: Record<string, string>; protocols?: string[] },
+) => WebSocket;
+
+/* What one proxied socket keeps while it is up: where it goes upstream, the
+ * headers to send there, what nginx named, and what the client said before
+ * the upstream socket was ready. */
+interface SocketData {
+  url: string;
+  headers: Record<string, string>;
+  protocols?: string[];
+  up?: WebSocket;
+  queue: (string | Buffer)[];
+}
+const relay: Bun.WebSocketHandler<SocketData> = {
+  open(ws) {
+    const { url, headers, protocols } = ws.data;
+    const up = new BunWebSocket(url, { headers, protocols });
+    up.binaryType = 'arraybuffer';
+    ws.data.up = up;
+    ws.data.queue = [];
+    up.onopen = () => {
+      for (const m of ws.data.queue.splice(0)) up.send(m as string);
+    };
+    up.onmessage = (e) => ws.send(e.data);
+    up.onclose = (e) => ws.close(e.code === 1005 ? 1000 : e.code, e.reason);
+    up.onerror = () => ws.close(1011);
+  },
+  message(ws, m) {
+    if (ws.data.up!.readyState === WebSocket.OPEN) ws.data.up!.send(m as string);
+    else ws.data.queue.push(m);
+  },
+  close(ws) {
+    ws.data.up?.close();
+  },
+};
+
 const nginx = Bun.serve({
   hostname: '127.0.0.1',
   port: 0,
@@ -108,7 +215,9 @@ const nginx = Bun.serve({
       for (const h of ['upgrade', 'connection', 'sec-websocket-key', 'sec-websocket-version', 'sec-websocket-extensions', 'host']) headers.delete(h);
       const protocols = req.headers.get('sec-websocket-protocol')?.split(',').map((p) => p.trim());
       headers.delete('sec-websocket-protocol');
-      return server.upgrade(req, { data: { url: `ws://127.0.0.1:${sfuPort}${path}`, headers: Object.fromEntries(headers), protocols } })
+      return server.upgrade(req, {
+        data: { url: `ws://127.0.0.1:${sfuPort}${path}`, headers: Object.fromEntries(headers), protocols, queue: [] },
+      })
         ? undefined
         : new Response('upgrade failed', { status: 400 });
     }
@@ -124,49 +233,28 @@ const nginx = Bun.serve({
       return new Response('bad gateway', { status: 502 });
     }
   },
-  websocket: {
-    open(ws) {
-      const { url, headers, protocols } = ws.data;
-      const up = new WebSocket(url, { headers, protocols });
-      up.binaryType = 'arraybuffer';
-      ws.data.up = up;
-      ws.data.queue = [];
-      up.onopen = () => {
-        for (const m of ws.data.queue.splice(0)) up.send(m);
-      };
-      up.onmessage = (e) => ws.send(e.data);
-      up.onclose = (e) => ws.close(e.code === 1005 ? 1000 : e.code, e.reason);
-      up.onerror = () => ws.close(1011);
-    },
-    message(ws, m) {
-      if (ws.data.up.readyState === WebSocket.OPEN) ws.data.up.send(m);
-      else ws.data.queue.push(m);
-    },
-    close(ws) {
-      ws.data.up?.close();
-    },
-  },
+  websocket: relay,
 });
 const front = `127.0.0.1:${nginx.port}`;
-const api = (name) => `http://${front}${name ? `/as/${name}` : ''}/calls/api`;
+const api = (name: string | null) => `http://${front}${name ? `/as/${name}` : ''}/calls/api`;
 
 const browser = await launch({
   args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required', '--allow-loopback-in-peer-connection'],
 });
 let failed = false;
 const checks = [];
-const check = async (name, fn) => {
+const check = async (name: string, fn: () => void | Promise<void>) => {
   try {
     await fn();
     console.log(`ok ${name}`);
   } catch (e) {
     failed = true;
-    console.log(`not ok ${name}\n  ${e.stack ?? e}`);
+    console.log(`not ok ${name}\n  ${(e as Error).stack ?? e}`);
   }
   checks.push(name);
 };
 
-const until = async (what, fn, ms = 20000) => {
+const until = async (what: string, fn: () => unknown, ms = 20000): Promise<unknown> => {
   const end = Date.now() + ms;
   for (;;) {
     const v = await fn();
@@ -176,7 +264,7 @@ const until = async (what, fn, ms = 20000) => {
   }
 };
 
-const create = async (name, invited, room = '!room:calls.test') =>
+const create = async (name: string | null, invited: string[], room = '!room:calls.test') =>
   fetch(`${api(name)}/calls`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -191,7 +279,7 @@ const create = async (name, invited, room = '!room:calls.test') =>
  * and no route: without the grant no candidate is gathered, no ICE check
  * reaches the SFU and every DTLS handshake times out. */
 const ctx = await browser.newContext({ permissions: ['camera', 'microphone'] });
-const tab = async (name, user, device, extra = {}) => {
+const tab = async (name: string, user: string, device: string, extra: { dropKeys?: boolean; media?: boolean } = {}) => {
   const p = await ctx.newPage();
   p.on('pageerror', (e) => console.log(`[${user}] ${e}`));
   await p.goto(`http://127.0.0.1:${pagePort}/`);
@@ -202,7 +290,7 @@ const tab = async (name, user, device, extra = {}) => {
   );
   return p;
 };
-const guestTab = async (invite, name, secret) => {
+const guestTab = async (invite: string, name: string, secret: string) => {
   const p = await ctx.newPage();
   p.on('pageerror', (e) => console.log(`[${name}] ${e}`));
   await p.goto(`http://127.0.0.1:${pagePort}/`);
@@ -215,7 +303,7 @@ const guestTab = async (invite, name, secret) => {
   return p;
 };
 const secret = () => crypto.getRandomValues(new Uint8Array(32)).toBase64({ alphabet: 'base64url', omitPadding: true });
-const makeInvite = async (name, p) => {
+const makeInvite = async (name: string | null, p: Page): Promise<{ status: number; body: { url?: string } }> => {
   const r = await fetch(`${api(name)}/invites`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -226,20 +314,20 @@ const makeInvite = async (name, p) => {
   });
   return { status: r.status, body: await r.json().catch(() => ({})) };
 };
-const stats = (p) => p.evaluate(() => window.callState.stats);
-const members = (p) => p.evaluate(() => window.callState.members);
-const pidOf = async (p, user) => (await members(p)).find((m) => m.user === user)?.pid;
-const picture = (p, id) => p.evaluate((id) => window.picture(id), id);
+const stats = (p: Page): Promise<WorkerStats> => p.evaluate(() => window.callState.stats as WorkerStats);
+const members = (p: Page): Promise<Member[]> => p.evaluate(() => window.callState.members);
+const pidOf = async (p: Page, user: string): Promise<number | undefined> => (await members(p)).find((m) => m.user === user)?.pid;
+const picture = (p: Page, id: string): Promise<number[] | null> => p.evaluate((id) => window.picture(id), id);
 /* How far apart two pictures are, 0 to 255: what `to` shows of `from`'s
  * camera against what `from` itself captures. */
-const distance = async (from, to, pid) => {
+const distance = async (from: Page, to: Page, pid: number | undefined): Promise<number> => {
   const [a, b] = [await picture(from, 'local'), await picture(to, `p${pid}`)];
   if (!a || !b) return 255;
-  return a.reduce((s, x, i) => s + Math.abs(x - b[i]), 0) / a.length;
+  return a.reduce((s, x, i) => s + Math.abs(x - b[i]!), 0) / a.length;
 };
 const SAME = 20;
 
-let call;
+let call: string;
 await check('only a local person starts a call, and only the invited join', async () => {
   assert.equal((await create(null, [])).status, 401);
   const r = await create('matus', ['@eva:calls.test', '@jan:calls.test']);
@@ -259,8 +347,8 @@ await ear.goto(`http://127.0.0.1:${pagePort}/`);
 await ear.waitForFunction(() => typeof window.overhear === 'function');
 await ear.evaluate(() => window.overhear());
 
-let matus;
-let eva;
+let matus!: Page;
+let eva!: Page;
 await check('two people see each other through the SFU, decrypted', async () => {
   matus = await tab('matus', '@matus:calls.test', 'MATUSDEV');
   eva = await tab('eva', '@eva:calls.test', 'EVADEV');
@@ -283,17 +371,20 @@ await check('Opus sends at 128 kb/s, and the camera keeps its frame rate before 
     let target = 0;
     let fps = 0;
     for (let i = 0; i < 50 && (target === 0 || fps === 0); i++) {
-      for (const r of (await pc.getStats()).values()) {
+      for (const raw of (await pc.getStats()).values()) {
+        /* getStats() says only the stats' common members; the test reads
+         * what the encoder put on its entries. */
+        const r = raw as RTCOutboundRtpStreamStats & { kind?: string; targetBitrate?: number };
         if (r.type === 'outbound-rtp' && r.kind === 'audio') target = r.targetBitrate ?? 0;
         if (r.type === 'outbound-rtp' && r.kind === 'video' && r.framesPerSecond) fps = Math.max(fps, r.framesPerSecond);
       }
       await new Promise((ok) => setTimeout(ok, 200));
     }
     return {
-      audioMax: audio.encodings[0]?.maxBitrate,
-      cameraMax: camera.encodings[0]?.maxBitrate,
-      camera: camera.degradationPreference,
-      screen: screen.degradationPreference,
+      audioMax: audio!.encodings[0]?.maxBitrate,
+      cameraMax: camera!.encodings[0]?.maxBitrate,
+      camera: camera!.degradationPreference,
+      screen: screen!.degradationPreference,
       target,
       fps,
     };
@@ -313,7 +404,7 @@ await check('a shared screen reaches the others as a track of its own, beside th
   const screenAt = async () => {
     const [a, b] = [await picture(matus, 'local-screen'), await picture(eva, `p${matusPid}-screen`)];
     if (!a || !b) return 255;
-    return a.reduce((s, x, i) => s + Math.abs(x - b[i]), 0) / a.length;
+    return a.reduce((s, x, i) => s + Math.abs(x - b[i]!), 0) / a.length;
   };
   await until("matus's screen at eva", async () => (await screenAt()) < SAME, 30000);
   // The camera keeps coming while the screen is shared.
@@ -344,11 +435,11 @@ await check('podcast mode streams the call to an RTMP address, and every member 
   await Promise.race([exited, new Promise((_, no) => setTimeout(() => no(new Error('the RTMP server got no six seconds')), 60000))]);
   const probe = JSON.parse(
     new TextDecoder().decode(Bun.spawnSync(['ffprobe', '-v', 'error', '-show_entries', 'stream=codec_name,width,height:format=duration', '-of', 'json', flv]).stdout),
-  );
-  const codecs = probe.streams.map((x) => x.codec_name).sort();
+  ) as Probe;
+  const codecs = probe.streams!.map((x) => x.codec_name).sort();
   assert.deepEqual(codecs, ['aac', 'h264'], JSON.stringify(probe));
-  assert.equal(probe.streams.find((x) => x.codec_name === 'h264').width, 1280);
-  assert.ok(Number(probe.format.duration) >= 5, JSON.stringify(probe.format));
+  assert.equal(probe.streams!.find((x) => x.codec_name === 'h264')!.width, 1280);
+  assert.ok(Number(probe.format!.duration) >= 5, JSON.stringify(probe.format));
   await eva.evaluate(() => window.podcast.stop());
   await until('live no more', () => matus.evaluate(() => window.callState.live === null));
 });
@@ -410,14 +501,14 @@ await check('someone who joins later sees everyone, on keys that open nothing ea
   await jan.close();
 });
 
-let zoe;
-let zoePid;
+let zoe: Page;
+let zoePid: number;
 const matusAt = await pidOf(eva, '@matus:calls.test');
 const evaAt = await pidOf(matus, '@eva:calls.test');
 await check('a guest link comes from the edge, and a guest holding its secret sees and is seen', async () => {
   const made = await makeInvite('matus', matus);
   assert.equal(made.status, 200, JSON.stringify(made.body));
-  const url = new URL(made.body.url);
+  const url = new URL(made.body.url!);
   const invite = url.searchParams.get('invite');
   assert.match(invite, /^[0-9a-f]{32}$/);
   assert.equal(url.searchParams.get('call'), call);
@@ -429,11 +520,11 @@ await check('a guest link comes from the edge, and a guest holding its secret se
   const s = secret();
   // Matus keeps the secret and hands it to Eva over the key channel.
   await matus.evaluate((s) => window.addGuestSecret(s), s);
-  zoe = await guestTab(invite, 'Zoe', s);
+  zoe = await guestTab(invite!, 'Zoe', s);
   await until('zoe in the call', async () => (await members(zoe)).length === 3 && (await members(matus)).length === 3);
   const listed = (await members(matus)).find((m) => m.guest === 'Zoe');
   assert.ok(listed, 'the members see the guest by the name she gave');
-  zoePid = listed.pid;
+  zoePid = listed!.pid;
   const evaPid = await pidOf(zoe, '@eva:calls.test');
   const matusPid = await pidOf(zoe, '@matus:calls.test');
   await until(
@@ -448,7 +539,7 @@ await check('a guest link comes from the edge, and a guest holding its secret se
   );
   assert.equal(await zoe.evaluate(() => window.callState.keysIn), 0, 'no key reached the guest over Olm');
   // The same invite lets in one guest at a time.
-  const twin = await guestTab(invite, 'Zoe again', s);
+  const twin = await guestTab(invite!, 'Zoe again', s);
   await until('the twin refused', async () => (await twin.evaluate(() => window.callState.states)).some((x) => x.startsWith('failed:')));
   assert.deepEqual((await twin.evaluate(() => window.callState.states)).at(-1), 'failed:inviteInUse');
   await twin.close();
@@ -457,12 +548,12 @@ await check('a guest link comes from the edge, and a guest holding its secret se
 await check('a guest without the secret gets in through the box but sees and shows nothing', async () => {
   const made = await makeInvite('eva', eva);
   assert.equal(made.status, 200);
-  const invite = new URL(made.body.url).searchParams.get('invite');
+  const invite = new URL(made.body.url!).searchParams.get('invite');
   // A link with someone else's secret after the `#`: what the box and the
   // edge could make on their own.
-  const mallory = await guestTab(invite, 'Mallory', secret());
+  const mallory = await guestTab(invite!, 'Mallory', secret());
   await until('mallory in the call', async () => (await members(mallory)).length === 4);
-  const malloryPid = (await members(matus)).find((m) => m.guest === 'Mallory').pid;
+  const malloryPid = (await members(matus)).find((m) => m.guest === 'Mallory')!.pid;
   const matusPid = await pidOf(mallory, '@matus:calls.test');
   await new Promise((r) => setTimeout(r, 6000));
   assert.ok((await distance(matus, mallory, matusPid)) >= SAME, "matus's picture stays sealed at mallory");
@@ -486,18 +577,18 @@ await check('guests are sent away once the last of the room has left', async () 
   assert.equal((await zoe.evaluate(() => window.callState.states)).at(-1), 'failed:ended');
 });
 
-const readIvf = async (file) => {
-  const raw = await Bun.file(file).bytes();
+const readIvf = async (file: string): Promise<{ head: Bytes; data: Bytes }[]> => {
+  const raw = (await Bun.file(file).bytes()) as Bytes;
   const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
-  const frames = [];
+  const frames: { head: Bytes; data: Bytes }[] = [];
   for (let at = 32; at + 12 <= raw.length; ) {
     const len = view.getUint32(at, true);
-    frames.push({ head: raw.slice(at, at + 12), data: raw.slice(at + 12, at + 12 + len) });
+    frames.push({ head: raw.slice(at, at + 12) as Bytes, data: raw.slice(at + 12, at + 12 + len) as Bytes });
     at += 12 + len;
   }
   return frames;
 };
-const ffmpegErrors = (file) =>
+const ffmpegErrors = (file: string) =>
   new TextDecoder()
     .decode(Bun.spawnSync(['ffmpeg', '-v', 'error', '-i', file, '-f', 'null', '-']).stderr)
     .split('\n')
@@ -505,7 +596,7 @@ const ffmpegErrors = (file) =>
     // warning, not a frame the decoder could not read.
     .filter((l) => l.trim() && !l.includes('non monotonically increasing dts')).length;
 
-let pids;
+let pids: Record<string, number | undefined> = {};
 await check("the SFU's tap holds frames no decoder can read", async () => {
   pids = { matus: matusAt, eva: evaAt };
   for (const pid of Object.values(pids)) {
@@ -532,15 +623,18 @@ await check('the tapped frames are AES-GCM under keys only the members had', asy
     // pair key: the key channel never carried it.
     let guestsOnly = 0;
     const lastHeard = Math.max(...keys.map((k) => k.index));
-    const plain = [];
+    const plain: { head: Bytes; data: Bytes }[] = [];
     for (const f of frames) {
-      const t = e2ee.readTrailer(f.data);
+      // The tap has a trailer on every frame; the check before said so.
+      const t = e2ee.readTrailer(f.data)!;
       // A key handed out for this index; ratchets in between the ring
       // follows by itself, as a member's browser does.
       const handed = keys.find((k) => k.index === t.index);
       if (handed && !ring.has(t.index)) ring.set(t.index, e2ee.fromBase64(handed.key));
       const fk = await ring.get(t.index);
-      const out = fk && (await e2ee.decryptFrame(fk.video, f.data, e2ee.receivedClearBytes('video', f.data)));
+      // decryptFrame() built what it returns itself, fresh; the test hands
+      // it to the muxer below, whose Blob wants a buffer that is its own.
+      const out = (fk && (await e2ee.decryptFrame(fk.video, f.data, e2ee.receivedClearBytes('video', f.data)))) as Bytes | null;
       if (out) {
         opened++;
         plain.push({ head: f.head, data: out });
@@ -556,9 +650,9 @@ await check('the tapped frames are AES-GCM under keys only the members had', asy
       `${who}: ${opened}/${frames.length} opened, ${beforeAnyone} before anyone, ${guestsOnly} to guests only`,
     );
     // The same frames, decrypted, are a clean VP8 stream.
-    const head = (await Bun.file(file).bytes()).subarray(0, 32);
+    const head = (await Bun.file(file).bytes()).subarray(0, 32) as Bytes;
     const body = plain.flatMap((p) => {
-      const h = p.head.slice();
+      const h = p.head.slice() as Bytes;
       new DataView(h.buffer).setUint32(0, p.data.length, true);
       return [h, p.data];
     });
@@ -573,7 +667,7 @@ await check('a call starts without a camera, or listening only without a microph
   const r = await create('matus', ['@eva:calls.test', '@jan:calls.test'], '!quiet:calls.test');
   call = (await r.json()).call;
   // Each tab's browser has no camera, or no device at all.
-  const without = async (name, user, device, refuse) => {
+  const without = async (name: string, user: string, device: string, refuse: 'camera' | 'all') => {
     const p = await ctx.newPage();
     p.on('pageerror', (e) => console.log(`[${user}] ${e}`));
     await p.addInitScript((refuse) => {
@@ -595,7 +689,7 @@ await check('a call starts without a camera, or listening only without a microph
   const host = await tab('matus', '@matus:calls.test', 'MATUSDEV2', { media: true });
   const noCamera = await without('eva', '@eva:calls.test', 'EVADEV2', 'camera');
   const nothing = await without('jan', '@jan:calls.test', 'JANDEV2', 'all');
-  const said = (p) => p.evaluate(() => ({ missing: window.media.missing, camera: window.media.cameraOn, mic: window.media.micOn }));
+  const said = (p: Page) => p.evaluate(() => ({ missing: window.media.missing, camera: window.media.cameraOn, mic: window.media.micOn }));
   assert.deepEqual(await said(noCamera), { missing: { mic: false, camera: true }, camera: false, mic: true });
   assert.deepEqual(await said(nothing), { missing: { mic: true, camera: true }, camera: false, mic: false });
   await until('all three in the call', async () => (await members(host)).length === 3);
@@ -604,7 +698,9 @@ await check('a call starts without a camera, or listening only without a microph
   const heard = () =>
     host.evaluate(async () => {
       let packets = 0;
-      for (const r of (await window.connection.getStats()).values()) {
+      for (const raw of (await window.connection.getStats()).values()) {
+        // getStats() says only the stats' common members; kind the tests read.
+        const r = raw as RTCInboundRtpStreamStats & { kind?: string };
         if (r.type === 'inbound-rtp' && r.kind === 'audio') packets += r.packetsReceived ?? 0;
       }
       return packets;

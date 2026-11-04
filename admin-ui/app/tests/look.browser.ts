@@ -461,7 +461,7 @@ await check('the gallery writes a widget by hand: the editor previews it in the 
   assert.ok((await tile.getAttribute('class'))!.includes('md:col-span-2'), 'a full-width widget spans both columns');
   // Stored on the board as the box's id, so another tab finds the same widget.
   const stored = await page.evaluate(() => JSON.parse(window.localStorage.getItem('losos-widgets')!));
-  assert.deepEqual(stored.widgets.map((w) => w.source), [{ kind: 'hand', id: 'w2' }]);
+  assert.deepEqual(stored.widgets.map((w: { source: unknown }) => w.source), [{ kind: 'hand', id: 'w2' }]);
   assert.deepEqual(errors, []);
   await page.close();
 });
@@ -725,7 +725,7 @@ await check('the Look pane lists the hand-written widgets and can edit and delet
   assert.deepEqual(writes[1], ['DELETE', '/api/look/widgets/w1', null]);
   await main.getByText('None yet.', { exact: false }).waitFor();
   // The tile that showed it is gone from this browser's board too.
-  const stored = await page.evaluate(() => JSON.parse(window.localStorage.getItem('losos-widgets')));
+  const stored = await page.evaluate(() => JSON.parse(window.localStorage.getItem('losos-widgets')!));
   assert.deepEqual(stored.widgets, []);
   await page.close();
 });

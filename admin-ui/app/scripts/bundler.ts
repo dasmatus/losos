@@ -19,7 +19,7 @@
 import type { BunPlugin } from "bun";
 import { compilePages } from "./pages";
 
-export const ROOT = `${import.meta.dirname}/..`;
+export const ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
 export const DIST = `${ROOT}/dist`;
 export const SRC = `${ROOT}/src`;
 
@@ -110,13 +110,37 @@ export async function compileAppCss(): Promise<string> {
   const out = `${ROOT}/.cache/app.css`;
   await Bun.write(out, "");
   const proc = Bun.spawnSync({
-    cmd: ["bun", "x", "tailwindcss", "--input", `${SRC}/styles/index.css`, "--output", out],
+    // The CLI's own bin, from the workspace's node_modules: the Nix sandbox
+    // that runs this build has no registry to ask for it (scripts/build.ts
+    // runs after `bun install --frozen-lockfile` in the package's setup).
+    cmd: ["bun", "node_modules/@tailwindcss/cli/dist/index.mjs", "--input", `${SRC}/styles/index.css`, "--output", out],
     cwd: ROOT,
     stdout: "inherit",
     stderr: "inherit",
   });
   if (proc.exitCode !== 0) throw new Error(`tailwindcss failed with exit code ${proc.exitCode}`);
   return await Bun.file(out).text();
+}
+
+/* The `?url` suffix a couple of src files attach to WebAssembly imports
+ * (src/mdx/wasm.ts, src/lab/{core,render}.ts, src/lab/engine/virt-rpc.ts).
+ * Bun has no asset-query syntax, so the suffix comes off here and the file
+ * loader does the rest: the module copies to a hashed file under assets/
+ * and imports as its URL string, exactly what `?url` promised. */
+export function wasmUrl(): BunPlugin {
+  return {
+    name: "losos:wasm-url",
+    setup(build) {
+      build.onResolve({ filter: /\?url$/ }, (args) => {
+        const target = args.path.replace(/\?url$/, "");
+        // Bun resolves within the importer's own directory; hand it the
+        // absolute, `..`-free path and the default loaders take over.
+        const dir = args.importer.replace(/\/[^/]*$/, "");
+        const joined = new URL(target, `file://${dir}/`).pathname;
+        return { path: joined };
+      });
+    },
+  };
 }
 
 /* ── The stylesheet registry ───────────────────────────────────────────── */
@@ -190,12 +214,16 @@ export function cssRegistry(env: BuildEnv, appCss: string): CssRegistry {
             path: "virtual:losos-css-registry",
             namespace: "losos-css",
           }));
-          build.onLoad({ filter: /\.css$/, namespace: "losos-css" }, () => ({
+          build.onLoad({ filter: /^virtual:losos-css-registry$/, namespace: "losos-css" }, () => ({
             loader: "js",
             contents: REGISTRY,
           }));
           build.onLoad({ filter: /\.css$/ }, async (args) => {
-            const css = await load(args.path);
+            // index.css never loads as source: the registry carries the
+            // sheet Tailwind compiled from it, bytes for bytes. The @/
+            // tsconfig alias can arrive resolved or not; match the tail.
+            const isApp = args.path.endsWith("/src/styles/index.css") || args.path === `${SRC}/styles/index.css`;
+            const css = isApp ? appCss : await load(args.path);
             const key = keyOf(css);
             if (!files.has(key)) files.set(key, css);
             return {
@@ -400,7 +428,7 @@ export async function bundleAll(env: BuildEnv, appCss: string): Promise<BundleRe
   const outputs = await runBuild(env, boxCss.plugin(), entrypoints, DIST);
   const chunks = new Map<string, string>();
   for (const spec of specs) {
-    chunks.set(spec.html, chunkFor(outputs, DIST, spec.entry));
+    chunks.set(spec.html, chunkFor(outputs, DIST, spec.entry, "src"));
   }
   const boxAppKey = await boxCss.write(DIST);
   /* The guest call page, built on its own under dist/calls/guest/ after the
@@ -411,7 +439,7 @@ export async function bundleAll(env: BuildEnv, appCss: string): Promise<BundleRe
   const guestOut = `${DIST}/calls/guest`;
   const guestCss = cssRegistry(guestEnv, appCss);
   const guest = await runBuild(guestEnv, guestCss.plugin(), [`${SRC}/calls/guest-main.tsx`], guestOut);
-  chunks.set("guest.html", chunkFor(guest, guestOut, "src/calls/guest-main.tsx"));
+  chunks.set("guest.html", chunkFor(guest, guestOut, "src/calls/guest-main.tsx", "src/calls"));
   const guestAppKey = await guestCss.write(guestOut);
   return { chunks, appKeys: { box: boxAppKey, guest: guestAppKey } };
 }
@@ -433,7 +461,7 @@ async function runBuild(
     minify: true,
     naming: hashedNaming(),
     define: defines(env, true),
-    plugins: [cssPlugin, pagesVirtual(), sonnerQuiet(), segmenterQuiet()],
+    plugins: [wasmUrl(), cssPlugin, pagesVirtual(), sonnerQuiet(), segmenterQuiet()],
   });
   if (!result.success) throw new AggregateError(result.logs, `bundling ${entrypoints.join(", ")} failed`);
   return result.outputs;
@@ -442,15 +470,17 @@ async function runBuild(
 /* Maps an entrypoint onto the hashed chunk the build emitted for it. Bun
  * names entry chunks `assets/<dir>/<name>-<hash>.js`, with `[dir]` relative
  * to the entrypoints' common ancestor — here, src/. */
-function chunkFor(outputs: Bun.BuildArtifact[], outDir: string, entry: string): string {
-  const relative = `${entry}`.replace(/^src\//, "");
+function chunkFor(outputs: Bun.BuildArtifact[], outDir: string, entry: string, entryRoot: string): string {
+  const relative = entry.replace(new RegExp(`^${entryRoot}/`), "");
   const dir = relative.includes("/") ? relative.slice(0, relative.lastIndexOf("/")) : "";
   const name = relative.slice(relative.lastIndexOf("/") + 1).replace(/\.[^.]+$/, "");
-  const suffix = dir === "" ? `/${name}-` : `/${dir}/${name}-`;
-  const found = outputs.filter((o) => o.kind === "entry-point" && o.path.endsWith(`${suffix}.js`));
+  const escape = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const prefix = `${outDir}/assets/${dir === "" ? "" : `${dir}/`}`;
+  const re = new RegExp(`^${escape(prefix)}${escape(name)}-[^/]+\\.js$`);
+  const found = outputs.filter((o) => o.kind === "entry-point" && re.test(o.path));
   if (found.length !== 1) {
     throw new Error(
-      `the bundle has no single entry chunk for ${entry}: ${found.map((o) => o.path).join(", ") || "none"}`,
+      `the bundle has no single entry chunk for ${entry}: ${found.map((o) => o.path).join(", ") || "none"}\nprefix: ${prefix}\noutputs: ${outputs.filter((o) => o.kind === "entry-point").map((o) => o.path).join(", ")}`,
     );
   }
   return found[0]!.path.slice(outDir.length).replace(/^\//, "");
@@ -467,6 +497,7 @@ export function rewriteHtml(html: string, entryTag: string, env: BuildEnv, chunk
   const base = env.base;
   const script = `<script type="module" src="${base}${chunkJs}"></script>`;
   const out = html
+    .replaceAll(`href="/src/assets/losos.png"`, `href="${base}assets/losos.png"`)
     .replaceAll(`src="/src/assets/losos.png"`, `src="${base}assets/losos.png"`)
     .replace(`<script type="module" src="${entryTag}"></script>`, script)
     .replace("</head>", `\n  <link rel="stylesheet" href="${base}assets/css/${appKey}.css">\n  </head>`);

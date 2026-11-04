@@ -82,7 +82,7 @@ async function open({ path = '/settings/credentials', view = FIXTURE, refuse = f
   const posts: { name: string; method: string; body: string }[] = [];
 
   const authed = (route: Route) => route.request().headers()['authorization'] === `Bearer ${TOKEN}`;
-  const guard = (fn: (route: Route) => Promise<Response>) => (route: Route) => (authed(route) ? fn(route) : json(route, 401, { error: 'unauthorized' }));
+  const guard = (fn: (route: Route) => Promise<void>) => (route: Route) => (authed(route) ? fn(route) : json(route, 401, { error: 'unauthorized' }));
 
   await page.route('**/api/**', (route) => json(route, 200, {}));
   await page.route('**/api/setup/claim', (route) => json(route, 200, { claimed: true }));
@@ -93,10 +93,10 @@ async function open({ path = '/settings/credentials', view = FIXTURE, refuse = f
     typeof state === 'number' ? json(route, state, { error: 'not found' }) : json(route, 200, state)));
   await page.route('**/api/credentials/*/rotate', guard((route) => {
     const request = route.request();
-    const name = decodeURIComponent(new URL(request.url()).pathname.split('/')[3]);
+    const name = decodeURIComponent(new URL(request.url()).pathname.split('/')[3] ?? '');
     posts.push({ name, method: request.method(), body: request.postData() ?? '' });
     if (refuse) return json(route, 409, { error: `${name} is not made by the box` });
-    const row = state.credentials.find((c) => c.name === name)!;
+    const row = (state as CredentialsView).credentials.find((c) => c.name === name)!;
     row.updated = 1792500000;
     row.remade = false;
     return json(route, 200, { credential: row });

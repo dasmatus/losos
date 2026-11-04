@@ -37,7 +37,7 @@ boxes' own admin UI, in about twenty minutes without KVM: it builds and runs
 `checks.losos-edge-lan-two-boxes` ([`two-boxes.nix`](two-boxes.nix) — two
 boxes with the real front nginx and admin SPA, one edge, the checklist's
 order as assertions) with `LOSOS_RECORD_DIR` set, so the VM script pauses at
-each step while [`record.mjs`](record.mjs) photographs the Mesh pane of both
+each step while [`record.ts`](record.ts) photographs the Mesh pane of both
 boxes; [`compose.sh`](compose.sh) then turns the pictures and captions into a
 slideshow video. The boxes there are the appliance's control plane rather
 than full installs (the install itself is in the installer recordings), which

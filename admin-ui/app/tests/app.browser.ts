@@ -13,7 +13,7 @@
 
 import assert from './assert.ts';
 import { launch, pickFiles, runner, serve } from './harness.ts';
-import { type Locator, type Page, type Route, type ViewportSize } from 'playwright';
+import { type Page, type Route, type ViewportSize } from 'playwright';
 import { type Hex } from 'viem';
 
 /* What the checks read off `window`: the CSP listener's violations, a
@@ -148,7 +148,10 @@ const JOINABLE = { ...SETTINGS, proxyEnable: true, hostName: 'kitchen' };
  * document (the fixture advanced.browser.ts reads too), with `tpm.enable`'s
  * running value set. Without `options` the catch-all answers `{}`, which the
  * form reads as "no document served". */
-const OPTIONS_DOC = await Bun.file(Bun.env.LOSOS_OPTIONS_JSON ?? 'tests/fixtures/options.json').json();
+const OPTIONS_DOC: {
+  options: { name: string; [key: string]: unknown }[];
+  [key: string]: unknown;
+} = await Bun.file(Bun.env.LOSOS_OPTIONS_JSON ?? 'tests/fixtures/options.json').json();
 const optionsWithTpm = (tpm: boolean) => ({
   available: true,
   ...OPTIONS_DOC,
@@ -512,10 +515,10 @@ const DOMAINS_READY = {
 
 /* The ENS record the edge publishes for a bound wallet
  * (edge/registrar/src/domains.rs, `ens_record`). */
-const ensRecord = (a) =>
+const ensRecord = (a: string) =>
   `ENS1 dnsname.ens.eth ${a}`;
 /* What the wallet signs to bind (`wallet_message` there). */
-const walletMessage = (zone, box, a) => `LosOS box name v1\nzone: ${zone}\nbox: ${box}\naddress: ${a}\n`;
+const walletMessage = (zone: string, box: string, a: string) => `LosOS box name v1\nzone: ${zone}\nbox: ${box}\naddress: ${a}\n`;
 
 /* What lososd's scan reports with an edge on the LAN, and with none. */
 const EDGE_FOUND = {
@@ -563,7 +566,7 @@ const EDGE_TAMPERED = {
 };
 /* Two secondary clusters on the LAN and the official edge over the
  * internet: the box is in office and uses its gateway gw-a (secondary). */
-const gwEdge = (cluster, member) => ({
+const gwEdge = (cluster: string, member: string) => ({
   name: member, url: `http://${member}.local:8443`, source: 'lan', official: false,
   tier: 'secondary', cluster, member,
 });
@@ -687,8 +690,8 @@ console.log('admin-ui app browser checks');
 const PASSWORD = 'Correct-horse battery staple 1';
 async function openGate(options: OpenOptions = {}) {
   const opened = await open(options);
-  const portal = [];
-  const secure = [];
+  const portal: string[] = [];
+  const secure: string[] = [];
   await opened.page.route('https://**/*', (route) => {
     const url = route.request().url();
     if (new URL(url).pathname.startsWith('/auth/')) portal.push(url);
@@ -710,7 +713,7 @@ await check('signed out on plain http, Sign in goes to the same page on https, m
   await page.waitForURL(/^https:/);
   assert.equal(portal.length, 0, 'went to the sign-in page from plain http');
   assert.equal(secure.length, 1, 'did not move to https');
-  const url = new URL(secure[0]);
+  const url = new URL(secure[0]!);
   assert.equal(url.pathname, '/storage', 'the https page is not the page the person was on');
   assert.ok(url.searchParams.has('signin'), 'the https page is not marked to go on to sign in');
   await page.close();
@@ -1018,9 +1021,9 @@ await check('on a phone the sections are a bar along the bottom, and More raises
   // Four places and More, in reach of a thumb: the bar sits on the bottom
   // edge and every tab is at least 48 px tall.
   assert.deepEqual((await bar.getByRole('listitem').allInnerTexts()).map((l) => l.trim()), ['Overview', 'Apps', 'Storage', 'Mesh', 'More']);
-  const box = await bar.boundingBox();
+  const box = (await bar.boundingBox())!;
   assert.ok(Math.abs(box.y + box.height - 800) <= 1 && box.width === 375, `the bar is not on the bottom edge: ${JSON.stringify(box)}`);
-  for (const tab of await bar.locator('a, button').all()) assert.ok((await tab.boundingBox()).height >= 48, 'a tab is too small to press');
+  for (const tab of await bar.locator('a, button').all()) assert.ok((await tab.boundingBox())!.height >= 48, 'a tab is too small to press');
   // The page marks itself, and the closed panel is nowhere in the page.
   assert.equal(await bar.locator('a[aria-current="page"]').innerText(), 'Storage');
   assert.equal(await nav(page).count(), 0, 'the closed phone panel is in the page');
@@ -1040,7 +1043,7 @@ await check('on a phone the sections are a bar along the bottom, and More raises
   const sheet = page.getByRole('dialog', { name: 'Sections' });
   await sheet.waitFor();
   await page.waitForTimeout(400);
-  const up = await sheet.boundingBox();
+  const up = (await sheet.boundingBox())!;
   assert.ok(Math.abs(up.y + up.height - 800) <= 1 && up.x <= 1 && up.width >= 374, `the sheet did not rise from the bottom: ${JSON.stringify(up)}`);
   assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).overflow === 'hidden' || getComputedStyle(document.body).overflow === 'hidden'), true, 'the page behind the sheet still scrolls');
   await nav(page).locator('a[aria-current="page"]').filter({ hasText: 'Mesh' }).waitFor();
@@ -1069,7 +1072,7 @@ await check('a flick down closes the phone sheet', async () => {
   const sheet = page.getByRole('dialog', { name: 'Sections' });
   await sheet.waitFor();
   await page.waitForTimeout(400);
-  const up = await sheet.boundingBox();
+  const up = (await sheet.boundingBox())!;
   // Take hold of the title row and flick it down.
   const x = up.x + 60;
   const y = up.y + 30;
@@ -1092,7 +1095,7 @@ await check('under the appliance CSP the signed-in Overview logs no violation', 
   const watch = () => {
     window.__violations = [];
     document.addEventListener('securitypolicyviolation', (e) =>
-      window.__violations.push(`${e.violatedDirective} ${e.target?.nodeName ?? ''} ${e.sourceFile}:${e.columnNumber}`),
+      window.__violations.push(`${e.violatedDirective} ${(e.target as Node | null)?.nodeName ?? ''} ${e.sourceFile}:${e.columnNumber}`),
     );
   };
   try {
@@ -1139,13 +1142,13 @@ for (const { name, now, file, tip } of [
     const { page } = await open({ path: '/storage', stored: true, now });
     const logo = page.locator('header').getByRole('img', { name: 'LosOS', exact: true });
     await logo.waitFor();
-    assert.ok(await logo.evaluate((img) => img.complete && img.naturalWidth > 0), 'the logo did not load');
+    assert.ok(await logo.evaluate((img) => (img as HTMLImageElement).complete && (img as HTMLImageElement).naturalWidth > 0), 'the logo did not load');
     // Vite names a bundled file <name>-<hash>.png, the hash eight letters,
     // digits, _ or -, so losos-<hash> cannot match losos-halloween-<hash>.
     const bundled = new RegExp(`^/assets/${file}-[\\w-]{8}\\.png$`);
     const src = await logo.getAttribute('src');
     assert.match(src, bundled, `the logo is not the bundled ${file}.png: ${src}`);
-    const icon = await page.locator('link[rel="icon"]').evaluate((link) => new URL(link.href).pathname);
+    const icon = await page.locator('link[rel="icon"]').evaluate((link) => new URL((link as HTMLLinkElement).href).pathname);
     assert.match(icon, bundled, `the favicon is not the bundled ${file}.png: ${icon}`);
     assert.equal((await page.request.get(origin + icon)).status(), 200);
     assert.equal(await page.locator('header').getByText('LosOS', { exact: true }).count(), 0, 'the name is still drawn as text');
@@ -1172,7 +1175,7 @@ await check('under the appliance CSP the rail tooltip, the folds, the bottom bar
         window.__violations = [];
         document.addEventListener('securitypolicyviolation', (e) => window.__violations.push(e.violatedDirective));
       });
-      const errors = [];
+      const errors: string[] = [];
       page.on('pageerror', (e) => errors.push(String(e)));
       await page.route('**/api/**', (route) => json(route, 200, {}));
       await page.route('**/api/setup/claim', (route) => json(route, 200, { claimed: true }));
@@ -1188,13 +1191,13 @@ await check('under the appliance CSP the rail tooltip, the folds, the bottom bar
         await nav(page).getByRole('link', { name: 'Apps', exact: true }).hover();
         const tip = page.locator('[data-slot="tooltip-content"]').filter({ hasText: /^Apps$/ });
         await tip.waitFor({ timeout: 2000 });
-        const box = await tip.boundingBox();
+        const box = (await tip.boundingBox())!;
         assert.ok(box.x > 40 && box.y > 60, `the tooltip was not positioned: ${JSON.stringify(box)}`);
       } else {
         await page.getByRole('navigation', { name: 'Main places' }).getByRole('button', { name: 'More' }).click();
         await page.getByRole('dialog', { name: 'Sections' }).waitFor();
         await page.waitForTimeout(400);
-        const box = await page.getByRole('dialog', { name: 'Sections' }).boundingBox();
+        const box = (await page.getByRole('dialog', { name: 'Sections' }).boundingBox())!;
         assert.ok(Math.abs(box.y + box.height - viewport.height) <= 1, `the sheet did not rise: ${JSON.stringify(box)}`);
       }
       const after = await page.evaluate(() => window.__violations);
@@ -1233,12 +1236,12 @@ await check('every settings toggle is a React Aria Switch, named by its row and 
     const shapes = await switches.evaluateAll((els) =>
       els.map((el) => ({
         tag: el.tagName,
-        type: el.type,
+        type: (el as HTMLInputElement).type,
         inSlot: el.closest('[data-slot="switch"]') !== null,
         inField: el.closest('[data-slot="field"][data-orientation="horizontal"]') !== null,
         label: document.querySelector(`label[for="${CSS.escape(el.id)}"]`)?.getAttribute('data-slot') ?? null,
         description: el.getAttribute('aria-describedby')
-          ? document.getElementById(el.getAttribute('aria-describedby'))?.getAttribute('data-slot') ?? 'dangling'
+          ? document.getElementById(el.getAttribute('aria-describedby')!)?.getAttribute('data-slot') ?? 'dangling'
           : null,
       })),
     );
@@ -1270,7 +1273,7 @@ await check('every settings toggle is a React Aria Switch, named by its row and 
  * partition. The Security pane says so, links the handbook page, and says
  * nothing on a box with a TPM or one that serves no option document. */
 await check('the Security pane warns on a box without a TPM, and only there', async () => {
-  const notice = (page) => page.locator('[data-notice="no-tpm"]');
+  const notice = (page: Page) => page.locator('[data-notice="no-tpm"]');
   const keyfile = await open({ path: '/settings/security', stored: true, options: optionsWithTpm(false) });
   await notice(keyfile.page).waitFor({ timeout: 3000 }).catch(() => assert.fail('no TPM warning on a keyfile box'));
   assert.match(await notice(keyfile.page).innerText(), /This box has no TPM chip/);
@@ -1338,7 +1341,7 @@ await check('under the appliance CSP the switches and the sidebar beside them ad
       window.__violations = [];
       document.addEventListener('securitypolicyviolation', (e) => window.__violations.push(e.violatedDirective));
     });
-    const errors = [];
+    const errors: string[] = [];
     page.on('pageerror', (e) => errors.push(String(e)));
     await page.route('**/api/**', (route) => json(route, 200, {}));
     await page.route('**/api/setup/claim', (route) => json(route, 200, { claimed: true }));
@@ -1401,9 +1404,9 @@ await check('About leads with the address this browser is using and names the .l
   await page.close();
 });
 
-const tiles = (page) =>
+const tiles = (page: Page) =>
   page.getByRole('list', { name: 'Apps on this box' }).getByRole('link').evaluateAll((links) =>
-    links.map((a) => [a.textContent.trim(), a.getAttribute('href')]),
+    links.map((a) => [a.textContent!.trim(), a.getAttribute('href')] as [string, string | null]),
   );
 
 await check('the homepage has a tile for each page of LosOS Cloud, LosOS Git and Settings', async () => {
@@ -1422,7 +1425,7 @@ await check('the homepage has a tile for each page of LosOS Cloud, LosOS Git and
 
 /* The theme and the language live in the person menu: open it, open the
  * row's submenu, pick `name`. */
-async function choose(page, slot, name) {
+async function choose(page: Page, slot: string, name: string) {
   await page.getByTestId('signed-in-as').click();
   await page.locator(`[data-slot="${slot}"]`).click();
   await page.locator(`[data-slot="${slot}-choices"]`).getByRole('menuitemradio', { name, exact: true }).click();
@@ -1502,7 +1505,7 @@ await check('buying opens Stripe Checkout in a new tab', async () => {
 const SLOT_END = 1792800000;
 // Keep the paid-period assertions independent of the calendar date CI runs.
 const SLOT_NOW = new Date((SLOT_END - 86400) * 1000);
-const slotOrder = (id, extra) => ({
+const slotOrder = (id: string, extra?: Record<string, unknown>) => ({
   id,
   listing_id: 'lst_held',
   kind: 'storage',
@@ -1886,7 +1889,7 @@ const ONRAMP_MARKET = {
 };
 
 const BINANCE_LINK = 'https://app.binance.com/en/pre-connect?orderId=1';
-const binanceOrder = (stage, extra = {}) => ({
+const binanceOrder = (stage: string, extra: Record<string, unknown> = {}) => ({
   order_id: 'a1'.repeat(16),
   link: BINANCE_LINK,
   link_expires: 0,
@@ -1965,7 +1968,7 @@ await check('buying USDC at Binance takes each of its documents opened, then the
     [['/api/market/onramp', { address: PAYOUT, euros: '25' }]],
   );
   assert.deepEqual(
-    JSON.parse(await page.evaluate(() => localStorage.getItem('losos-binance-terms'))).terms,
+    JSON.parse(await page.evaluate(() => localStorage.getItem('losos-binance-terms')!)).terms,
     'binance@2026-10-21',
   );
 
@@ -2136,7 +2139,7 @@ await check('the Mesh pane says which tier the box\'s link is, and the owner mov
   assert.match(await office.innerText(), /Gateways: gw-a, gw-b/);
   assert.match(await office.innerText(), /This box's cluster/);
 
-  const posts = [];
+  const posts: unknown[] = [];
   await page.route('**/api/edge/cluster', (route) => {
     posts.push(route.request().postDataJSON());
     return json(route, 200, { cluster: 'lab', path: { ...EDGE_CLUSTERS.path, name: 'gw-z', member: 'gw-z', cluster: 'lab' } });
@@ -2178,7 +2181,7 @@ await check('with no edge proxy in reach the Mesh pane says so and the join swit
 });
 
 await check('a box without the tunnel or with the stock name cannot join, and the pane says which', async () => {
-  const join = (page) => page.getByRole('switch', { name: 'Join the mesh', exact: true });
+  const join = (page: Page) => page.getByRole('switch', { name: 'Join the mesh', exact: true });
   const stock = await open({ path: '/mesh', stored: true });
   await stock.page.locator('[data-edge="found"]').waitFor();
   assert.equal(await join(stock.page).isDisabled(), true, 'a box with the tunnel off can join');
@@ -2305,12 +2308,12 @@ await check('a browser extension wallet binds to the box names, and unbinds', as
   const account = privateKeyToAccount(`0x${'07'.repeat(32)}`);
   const { page, errors, domainPosts } = await open({ path: '/settings/network', stored: true, domains: DOMAINS_READY });
   // The extension: personal_sign is answered by the test's own key.
-  await page.exposeFunction('testSign', (message) => account.signMessage({ message }));
+  await page.exposeFunction('testSign', (message: string) => account.signMessage({ message }));
   await page.evaluate((address) => {
     window.ethereum = {
       request: async ({ method, params }) => {
         if (method === 'eth_requestAccounts') return [address];
-        if (method === 'personal_sign') return window.testSign(params[0]);
+        if (method === 'personal_sign') return window.testSign!(params[0] as string);
         throw new Error(method);
       },
     };
@@ -2320,9 +2323,10 @@ await check('a browser extension wallet binds to the box names, and unbinds', as
   assert.match(await section.innerText(), /mattbox\.boxes\.losos\.dasmat\.us, 3f9a1c0e7b2d4a55\.boxes\.losos\.dasmat\.us/);
   await section.getByTestId('wallet-bind').click();
   await section.getByText('Bound to this box’s wallet').or(section.getByText("Bound to this box's wallet")).waitFor();
-  const [route, sent] = domainPosts.at(-1);
+  const [route, raw] = domainPosts.at(-1)!;
+  const sent = raw as { address: string; signature: Hex };
   assert.equal(route, '/api/domains/wallet');
-  const address = account.address.toLowerCase();
+  const address = account.address.toLowerCase() as Hex;
   assert.equal(sent.address, address);
   assert.ok(
     await verifyMessage({ address, message: walletMessage('boxes.losos.dasmat.us', 'mattbox', address), signature: sent.signature }),
@@ -2371,7 +2375,7 @@ await check(`the wallet made on this box signs the binding after its password${k
   const bound = {
     ...DOMAINS_READY,
     domains: [
-      { ...DOMAINS_READY.domains[0], wallet: 'found' },
+      { ...DOMAINS_READY.domains[0]!, wallet: 'found' },
       { ...WAITING_DOMAIN, wallet: 'cname' },
     ],
   };
@@ -2391,8 +2395,8 @@ await check(`the wallet made on this box signs the binding after its password${k
         ['encrypt'],
       );
       const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(phrase)));
-      const b64 = (b) => btoa(String.fromCharCode(...b));
-      const db = await new Promise((resolve, reject) => {
+      const b64 = (b: Uint8Array) => btoa(String.fromCharCode(...b));
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
         const req = indexedDB.open('losos-wallet', 1);
         req.onupgradeneeded = () => req.result.createObjectStore('key');
         req.onsuccess = () => resolve(req.result);
@@ -2421,8 +2425,9 @@ await check(`the wallet made on this box signs the binding after its password${k
   await password.fill('right horse battery');
   await section.getByRole('button', { name: 'Sign', exact: true }).click();
   await section.getByTestId('wallet-name').first().waitFor({ timeout: 15000 });
-  const [, sent] = domainPosts.at(-1);
-  const lower = address.toLowerCase();
+  const [, raw] = domainPosts.at(-1)!;
+  const sent = raw as { address: string; signature: Hex };
+  const lower = address.toLowerCase() as Hex;
   assert.equal(sent.address, lower);
   assert.ok(await verifyMessage({ address: lower, message: walletMessage('boxes.losos.dasmat.us', 'mattbox', lower), signature: sent.signature }));
   // What the edge found at the owner's domains: one pays by name, one is a
@@ -2488,7 +2493,7 @@ await check('the Backup pane saves a bucket without echoing the secret, backs up
   await page.getByText('Stored. Leave it empty to keep it.').waitFor();
   await page.getByTestId('backup-target-form').getByRole('button', { name: 'Save', exact: true }).click();
   await page.getByTestId('backup-target').waitFor();
-  assert.equal('secretAccessKey' in backupPosts[1][2], false, 'an empty secret field was sent');
+  assert.equal('secretAccessKey' in (backupPosts[1]![2] as object), false, 'an empty secret field was sent');
 
   const code = page.getByTestId('backup-code');
   assert.equal(await code.getByTestId('recovery-code').count(), 0, 'the code is on screen before it was asked for');
@@ -2518,7 +2523,7 @@ await check('the Backup pane saves a bucket without echoing the secret, backs up
 });
 
 await check('the Backup pane keeps backups on storage bought on the mesh, keyed from the recovery code', async () => {
-  const storageOrder = (id, quantity) => ({
+  const storageOrder = (id: string, quantity: number) => ({
     id,
     kind: 'storage',
     unit: 'GiB-month',
@@ -2651,7 +2656,7 @@ await check('Glacier is offered on Amazon S3 only, and a restore from it warns t
   await form.getByLabel('Secret key').fill('s3cr3t/Key+value');
   await form.getByRole('button', { name: 'Save', exact: true }).click();
   await page.getByTestId('backup-class').getByText('Glacier Deep Archive', { exact: true }).waitFor();
-  assert.equal(backupPosts[0][2].storageClass, 'deepArchive');
+  assert.equal((backupPosts[0]![2] as TargetDoc).storageClass, 'deepArchive');
 
   // Switching the address away from AWS sends Standard, whatever was picked.
   await page.getByTestId('backup-target').getByRole('button', { name: 'Change…' }).click();
@@ -2660,7 +2665,7 @@ await check('Glacier is offered on Amazon S3 only, and a restore from it warns t
   await again.getByLabel('Address').fill('http://192.168.1.20:9000');
   await again.getByRole('button', { name: 'Save', exact: true }).click();
   await page.getByTestId('backup-class').getByText('Standard', { exact: true }).waitFor();
-  assert.equal(backupPosts[1][2].storageClass, 'standard');
+  assert.equal((backupPosts[1]![2] as TargetDoc).storageClass, 'standard');
   await page.close();
 
   const cold = await open({
@@ -2734,7 +2739,7 @@ await check('the other reasons each get their own sentence', async () => {
   for (const [reason, text] of [
     ['noOfficialEdge', 'No LosOS edge in reach'],
     ['notOffered', 'This edge runs no machines'],
-  ]) {
+  ] as const) {
     const { page, errors } = await open({ path: '/machines', stored: true, vms: { available: false, reason } });
     await page.getByTestId('machines-unavailable').getByText(text).waitFor();
     assert.deepEqual(errors, []);
@@ -2903,7 +2908,7 @@ await check('the banner stays dismissed across reloads, goes when the box joins,
 });
 
 await check('the banner fits a phone in both themes', async () => {
-  for (const scheme of ['light', 'dark']) {
+  for (const scheme of ['light', 'dark'] as const) {
     const { page, errors } = await open({ stored: true, viewport: { width: 375, height: 800 } });
     await page.emulateMedia({ colorScheme: scheme });
     await page.locator('[data-notice="mesh"]').waitFor();
@@ -3033,7 +3038,7 @@ await check('AI models: Stop needs no wallet and a chat answer says what it cost
   await chat.getByPlaceholder('Ask something').fill('And its tail?');
   await chat.getByRole('button', { name: 'Send' }).click();
   await page.waitForFunction(() => document.querySelectorAll('[data-testid="ai-chat"] p').length >= 6);
-  assert.deepEqual(llmPosts[1][1].messages, [
+  assert.deepEqual(llmPosts[1]![1].messages, [
     { role: 'user', content: 'What is a comet made of?' },
     { role: 'assistant', content: 'Mostly water, then ice.' },
     { role: 'user', content: 'And its tail?' },
@@ -3080,7 +3085,7 @@ await check('AI models: a wallet that gives up partway tells the edge which wall
     openBefore: Math.floor(Date.now() / 1000) + 900,
   };
   // A browser wallet that connects, then refuses everything it is asked.
-  const init = (wallet) => {
+  const init = (wallet: string) => {
     window.ethereum = {
       request: async ({ method }) => {
         if (method === 'eth_requestAccounts') return [wallet];
@@ -3137,7 +3142,7 @@ await check('under the appliance CSP the AI models section adds no violation', a
     const watch = () => {
       window.__violations = [];
       document.addEventListener('securitypolicyviolation', (e) =>
-        window.__violations.push(`${e.violatedDirective} ${e.target?.nodeName ?? ''}`),
+        window.__violations.push(`${e.violatedDirective} ${(e.target as Node | null)?.nodeName ?? ''}`),
       );
     };
     const { page, errors } = await open({ path: '/settings/market', stored: true, market: AI_MARKET, llm: LLM, base: strict, init: [watch] });
