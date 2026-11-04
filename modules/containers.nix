@@ -528,20 +528,23 @@ in
     # for, for its <noscript> (letters, digits and `/_-`, anything else is
     # the overview), the page a sign-in returns to, and the spare key as a
     # Bearer header.
-    appendHttpConfig = adminHeaderMaps + isolationMaps + ''
-      map $request_uri $losos_basic_here {
-          "~^(?<p>/[A-Za-z0-9/_-]*)(\?.*)?$" $p;
-          default "/";
-      }
-      map $uri $losos_basic_back {
-          "~^/basic/[A-Za-z0-9/_-]*$" $uri;
-          default "/basic/";
-      }
-      map $cookie_losos_spare $losos_basic_bearer {
-          "" "";
-          default "Bearer $cookie_losos_spare";
-      }
-    '';
+    appendHttpConfig =
+      adminHeaderMaps
+      + isolationMaps
+      + ''
+        map $request_uri $losos_basic_here {
+            "~^(?<p>/[A-Za-z0-9/_-]*)(\?.*)?$" $p;
+            default "/";
+        }
+        map $uri $losos_basic_back {
+            "~^/basic/[A-Za-z0-9/_-]*$" $uri;
+            default "/basic/";
+        }
+        map $cookie_losos_spare $losos_basic_bearer {
+            "" "";
+            default "Bearer $cookie_losos_spare";
+        }
+      '';
 
     virtualHosts."losos-front" = {
       default = true; # default_server — master-proxy traffic arrives with a public hostname

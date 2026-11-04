@@ -27,10 +27,12 @@ let
   # onnx-community export: the 8-bit model is 92 MB and runs on ONNX
   # Runtime's WebAssembly backend, which has no half-precision kernels.
   kokoroRev = "1939ad2a8e416c0acfeecc08a694d14ef25f2231";
-  kokoro = file: hash: pkgs.fetchurl {
-    url = "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/${kokoroRev}/${file}";
-    inherit hash;
-  };
+  kokoro =
+    file: hash:
+    pkgs.fetchurl {
+      url = "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/${kokoroRev}/${file}";
+      inherit hash;
+    };
   kokoroModel = kokoro "onnx/model_quantized.onnx" "sha256-+66SV+HgX/xyfpUe+bnJhBjm158cm2sTvVn1yQKKFHg=";
 
   # The voices on offer: American and British, women and men. The default is
