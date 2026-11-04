@@ -104,11 +104,21 @@ The admin UI, the handbook and the design system's React wrapper are Bun
 workspaces. Their scripts run on Bun's runtime (`bun --bun`, `bunx --bun`),
 never on Node, and their code uses Bun's and the web's APIs rather than
 Node's: no `node:` module, `process`, `Buffer` or `require`. The pages
-under `src/` typecheck without Bun's or Node's types; the Vite configs,
-which run on Bun, are typechecked by `tsconfig.tools.json`.
+under `src/` typecheck without Bun's or Node's types; the build and the
+dev server, which run on Bun, are typechecked by `tsconfig.tools.json`.
+
+The admin UI is bundled by Bun itself. `build.ts` runs `Bun.build` over the
+pages (`index.html`, `chat/`, `manage/`, `cloud/`, `kb/`, `git/`, `wiki/`,
+and `guest.html` on its own under `/calls/guest/`) into `dist/`, with
+Tailwind's Bun plugin and the app's own in `bundler.ts`: `losos:build` (the
+build's settings), `?url` imports, `new URL("…", import.meta.url)` files
+and workers, and the two packages patched quiet for the CSP. `bun run dev`
+is `dev.ts`, `Bun.serve` with hot reloading over the same pages and plugins
+(`bunfig.toml`), proxying the APIs to `LOSOS_API_ORIGIN`. The handbook keeps
+Docusaurus's own bundler, which Docusaurus does not let a site replace.
 
 `nix build .#losos-admin-ui` installs `node_modules` from `bun.lock`
-(`nix/bun-deps.nix`), then runs `tsc --noEmit && vite build` on Bun, so the
+(`nix/bun-deps.nix`), then runs `tsc --noEmit && bun build.ts`, so the
 typecheck is part of the package. `bun run test:browser` is the playwright
 check that `.#checks.x86_64-linux.losos-admin-ui` wraps; that check also
 fails on any `node:` import. Playwright takes binary data only as a Node

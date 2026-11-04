@@ -7,7 +7,7 @@
  * on the appliance prints, so a box out of the carton could not be set up at
  * all. That failure typechecked perfectly.
  *
- * Runs against the real production bundle from `vite build`, served over
+ * Runs against the real production bundle from `bun build.ts`, served over
  * http://127.0.0.1 so the page is a secure context (localhost is one by
  * specification, whatever the box is doing). lososd is not here — it owns
  * org.losos1 on the system bus and the policy for that ships in a NixOS module

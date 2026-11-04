@@ -292,7 +292,7 @@ export class QemuBackend implements GuestBackend {
       css.rel = "stylesheet";
       css.href = here("vendor/xterm.css");
       document.head.appendChild(css);
-      const mod = (await import(/* @vite-ignore */ here("qemu/out.js"))) as { default: (m: EmModule) => Promise<unknown> };
+      const mod = (await import(here("qemu/out.js"))) as { default: (m: EmModule) => Promise<unknown> };
       this.factory = mod.default;
       const blobs: Record<string, Uint8Array> = {};
       await Promise.all(

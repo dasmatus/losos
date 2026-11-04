@@ -15,7 +15,7 @@
 
 import assert from './assert.mjs';
 
-// What Vite does for `?url`: the editor fetches the wasm by that URL, and
+// What bundler.ts does for `?url`: the editor fetches the wasm by that URL, and
 // here initSync below has already handed the module over.
 Bun.plugin({
   name: 'wasm-url',

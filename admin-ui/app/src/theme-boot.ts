@@ -1,7 +1,7 @@
 /* The pre-paint theme stamp.
  *
- * vite.config.ts compiles this file on its own into a standalone IIFE at
- * /theme-boot.js, which index.html loads as a blocking classic script in
+ * build.ts compiles this file on its own into a standalone IIFE at
+ * /theme-boot.js, which each page loads as a blocking classic script in
  * <head>. It runs before the body is parsed, so the palette is already
  * decided by the time anything is painted.
  *

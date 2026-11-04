@@ -13,6 +13,7 @@
 
 import assert from './assert.mjs';
 import { launch } from './harness.mjs';
+import { losos } from '../bundler.ts';
 
 const here = (p) => `${import.meta.dir}/${p}`;
 const BIN = Bun.env.LOSOS_CALLS_BIN ?? here('../../../backend/target/debug/losos-calls');
@@ -26,8 +27,9 @@ const bundle = async (entry) => {
     entrypoints: [entry],
     target: 'browser',
     format: 'esm',
-    // src/calls/background.ts reads Vite's base path.
-    define: { 'import.meta.env.BASE_URL': '"/"' },
+    // src/calls/background.ts reads the page's base path from losos:build.
+    // The page serves the worker itself, at /e2ee-worker.js.
+    plugins: [losos({ publicPath: '/', workers: new Map([[Bun.resolveSync('../src/calls/e2ee-worker.ts', import.meta.dir), '/e2ee-worker.js']]) })],
   });
   if (!built.success) throw new AggregateError(built.logs, `bundling ${entry} failed`);
   return built.outputs[0].text();

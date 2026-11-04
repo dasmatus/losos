@@ -18,9 +18,11 @@
  * time a frame took, so a slow mask does not slow the next frame down. */
 
 import type { ImageSegmenter } from "@mediapipe/tasks-vision";
+import { BASE as PAGE_BASE } from "losos:build";
 
-/* Where the vite build puts the segmenter's files (vite.config.ts). */
-const BASE = `${import.meta.env.BASE_URL}chat/calls-ml`;
+/* Where the build puts the segmenter's files (build.ts), under the path
+ * the page was built for: / on the box, /calls/guest/ for a guest. */
+const BASE = `${PAGE_BASE}chat/calls-ml`;
 const FPS = 30;
 /* How much of the previous mask each new one keeps. */
 const SMOOTH = 0.35;

@@ -17,9 +17,9 @@ screen's blocks, and an administrator can write their own in its place
 
 One parser everywhere: losos-mdx (`backend/mdx`, its `page` module).
 
-- At build time `vite.pages.ts` reads each default with the crate's
-  WebAssembly package and the bundle carries the HTML as
-  `virtual:losos-pages`. A default that does not read fails the build.
+- At build time `pages.ts` reads each default with the crate's
+  WebAssembly package and the bundle carries the HTML as `losos:pages`
+  (`bundler.ts`). A default that does not read fails the build.
 - On the box the `pages` plugin (`backend/plugins/pages`) reads an
   administrator's save the same way, against `dist/pages/blocks.json`, and
   refuses one with any problem.

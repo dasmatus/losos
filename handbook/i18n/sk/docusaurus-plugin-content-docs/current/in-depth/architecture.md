@@ -38,7 +38,7 @@ pridajte do `modules/impermanence.nix`.
 | -------------- | ---- |
 | `lososd`       | Systemd démon bežiaci ako root (Rust). Jediný, kto zapisuje `/var/lib/losos/state.json`. D-Bus služba `org.losos1` a JSON API overované tokenom na `127.0.0.1:8082`. |
 | `losos-ctl`    | CLI, ktoré každý podpríkaz posiela `lososd` cez D-Bus. `losos-ctl install` beží na ISO samostatne. |
-| `losos-admin-ui` | SPA v React + Vite + Tailwind, servírovaná cez nginx, ktorý `/api/*` presmerúva na `lososd`. |
+| `losos-admin-ui` | SPA v React + Tailwind, zbalená Bunom, servírovaná cez nginx, ktorý `/api/*` presmerúva na `lososd`. |
 
 Prestavby (rebuildy) bežia ako dočasné systemd jednotky (`losos-rebuild-<job>`).
 `nixos-rebuild switch` reštartuje `lososd`, preto sa démon pri štarte znova
@@ -186,7 +186,7 @@ D-Bus. `losos-ctl install` zostáva lokálny, pretože inštalátor na ISO bež�
 ako root a zbernicu nepotrebuje.
 
 Administračné UI (`admin-ui/app/`, zabalené ako `losos-admin-ui` cez
-Bun) je SPA v React 19, Vite a Tailwind v4 na skutočných
+Bun) je SPA v React 19 a Tailwind v4, zbalená Bunom, na skutočných
 cestách (`/`, `/apps`, `/storage`, `/mesh`, `/settings/<pane>`). Jeho
 zostavený `dist/` **je** koreňový adresár dokumentov predného nginx vhostu,
 servírovaný s `try_files $uri $uri/ /index.html`. Bez tohto riadku je každý

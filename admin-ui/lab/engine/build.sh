@@ -12,7 +12,7 @@
 #
 # What comes out (the page lives at /diagrams/, as on the box):
 #   OUT/diagrams/index.html, OUT/assets/, theme-boot.js   the admin UI's Lab page,
-#                                                    VITE_LAB_HOSTED=1
+#                                                    LOSOS_LAB_HOSTED=1
 #   OUT/diagrams/qemu/out.js, *.wasm, *.worker.js     qemu-system-x86_64 for wasm32
 #   OUT/diagrams/qemu/pc-bios/                        SeaBIOS and the option ROMs
 #   OUT/diagrams/guest/bzImage                        Linux 6.1 for every guest
@@ -96,7 +96,7 @@ cp "$WORK/xterm/package/lib/xterm.js" "$WORK/xterm/package/css/xterm.css" "$ENG/
 cp "$WORK/xterm-pty/package/index.js" "$ENG/vendor/xterm-pty.js"
 
 echo "== the page"
-# The Lab page is admin-ui/app's second Vite entry. Its Rust core, its
+# The Lab page is one of admin-ui/app's pages (build.ts). Its Rust core, its
 # libvirt client and its Bevy canvas (one webgpu/ and one webgl2/ module)
 # come from nix (the same derivations the box's build copies in), so the
 # runner needs no wasm32 toolchain.
@@ -114,10 +114,7 @@ rm -rf "$APP/src/mdx/pkg"
 mkdir -p "$APP/src/mdx/pkg"
 cp -r "$WORK/mdx"/* "$APP/src/mdx/pkg/"
 chmod -R u+w "$APP/src/mdx/pkg"
-# The main build only: `bun run build --outDir` would hand the flags to
-# the guest call page's build, the script's last step, which then empties
-# the folder Diagrams was just built into.
-(cd "$APP" && bun install --frozen-lockfile --ignore-scripts && bun run typecheck && VITE_LAB_HOSTED=1 bun --bun vite build --outDir "$WORK/dist" --emptyOutDir)
+(cd "$APP" && bun install --frozen-lockfile --ignore-scripts && bun run typecheck && LOSOS_LAB_HOSTED=1 bun build.ts --outdir "$WORK/dist")
 cp -r "$WORK/dist/diagrams/." "$OUT/diagrams/"
 cp -r "$WORK/dist/assets" "$WORK/dist/theme-boot.js" "$OUT/"
 cp "$LAB/vercel.json" "$LAB/serve.json" "$OUT/"

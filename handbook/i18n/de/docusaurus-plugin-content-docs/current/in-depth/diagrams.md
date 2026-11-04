@@ -166,7 +166,7 @@ nichts weiter, und Skripte kommen weiterhin nur aus den eigenen Dateien der
 Box.
 
 Die gehostete Kopie ist derselbe Bildschirm auf einer eigenen Seite
-(`admin-ui/app/diagrams/index.html`, nur mit `VITE_LAB_HOSTED=1` gebaut), plus
+(`admin-ui/app/diagrams/index.html`, nur mit `LOSOS_LAB_HOSTED=1` gebaut), plus
 [qemu-wasm](https://github.com/ktock/qemu-wasm): QEMU nach WebAssembly
 kompiliert, sodass jede Konsole ein echter Linux-Gast im Browser-Tab ist.
 Boxen und Edges booten ein busybox als Ersatz für LosOS, und die

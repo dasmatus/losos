@@ -1,21 +1,17 @@
-import type { Plugin, ResolvedConfig } from "vite";
-
 /* Every page is an MDX file that places its blocks (src/pages/README.md).
  * The defaults are read here, at build time, by the same losos-mdx the box
  * reads an administrator's page with (src/mdx/pkg, the wasm-bindgen
- * package), and the bundle carries the HTML they become as
- * `virtual:losos-pages`. So a box nobody customized draws its pages with no
- * parser in the browser, and a default that does not read, or places a
- * block blocks.json does not list, fails the build here.
+ * package), and the bundle carries the HTML they become as `losos:pages`
+ * (bundler.ts). So a box nobody customized draws its pages with no parser
+ * in the browser, and a default that does not read, or places a block
+ * blocks.json does not list, fails the build here.
  *
- * blocks.json and the default files are also copied to dist/pages/, where
+ * build.ts also copies blocks.json and the default files to dist/pages/, where
  * the `pages` plugin (backend/plugins/pages/) reads them: to check what an
  * administrator saves against the same table, and to show the editor the
  * default it starts from. nginx sends /pages/ nowhere, as it does
  * /basic/. */
 const DIR = "src/pages";
-const VIRTUAL = "virtual:losos-pages";
-const RESOLVED = `\0${VIRTUAL}`;
 
 interface Registry {
   pages: Record<string, unknown>;
@@ -78,32 +74,4 @@ export async function compilePages(root: string): Promise<{
   }
   if (wrong.length > 0) throw new Error(`the default pages do not read:\n${wrong.join("\n")}`);
   return { registry, sources, html };
-}
-
-export function pages(): Plugin {
-  let config: ResolvedConfig;
-  return {
-    name: "losos:pages",
-    configResolved(resolved) {
-      config = resolved;
-    },
-    resolveId(id) {
-      return id === VIRTUAL ? RESOLVED : null;
-    },
-    async load(id) {
-      if (id !== RESOLVED) return null;
-      const { html } = await compilePages(config.root);
-      for (const file of Object.keys(html)) this.addWatchFile(`${config.root}/${DIR}/${file}.mdx`);
-      this.addWatchFile(`${config.root}/${DIR}/blocks.json`);
-      return `export const DEFAULTS = ${JSON.stringify(html)};\n`;
-    },
-    async generateBundle() {
-      if (config.command !== "build") return;
-      const { registry, sources } = await compilePages(config.root);
-      this.emitFile({ type: "asset", fileName: "pages/blocks.json", source: registry });
-      for (const [id, source] of Object.entries(sources)) {
-        this.emitFile({ type: "asset", fileName: `pages/${id}.mdx`, source });
-      }
-    },
-  };
 }

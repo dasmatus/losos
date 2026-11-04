@@ -6,9 +6,8 @@
   "license": "EUPL-1.2",
   "description": "LosOS appliance admin UI. Built to static files and served by the front Nginx vhost.",
   "scripts": {
-    "dev": "bun --bun vite",
-    "build": "bun --bun tsc --noEmit && bun --bun tsc --noEmit -p tsconfig.tools.json && bun --bun vite build && bun --bun vite build --config vite.guest.config.ts",
-    "preview": "bun --bun vite preview",
+    "dev": "bun dev.ts",
+    "build": "bun --bun tsc --noEmit && bun --bun tsc --noEmit -p tsconfig.tools.json && bun build.ts",
     "typecheck": "bun --bun tsc --noEmit && bun --bun tsc --noEmit -p tsconfig.tools.json",
     "lab:core": "bun scripts/lab-core.mjs core",
     "lab:virt": "bun scripts/lab-core.mjs virt",
@@ -73,16 +72,14 @@
     "yjs": "13.6.33"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4.1.16",
     "@types/bun": "1.4.4",
     "@types/d3-force": "3.0.10",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.5",
-    "@vitejs/plugin-react": "^6.1.2",
+    "bun-plugin-tailwind": "^0.1.2",
     "playwright": "1.63.0",
     "tailwindcss": "^4.1.16",
-    "typescript": "^7.0.2",
-    "vite": "^8.3.5"
+    "typescript": "^7.0.2"
   },
   "packageManager": "bun@1.4.2"
 }

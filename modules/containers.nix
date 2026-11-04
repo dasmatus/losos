@@ -209,14 +209,12 @@ let
   # inherited set, so any header added at server level later would silently
   # vanish from exactly the locations that need it most.)
   #
-  # img-src carries `data:` for Vite: anything imported under
-  # build.assetsInlineLimit (4 KiB by default) is emitted as a data: URI rather
-  # than a file, and a CSS background-image is an img-src fetch. The SPA
-  # imports no binary assets today, so the grant is currently unused — it is
-  # kept because the first small inlined SVG would otherwise fail in a console
-  # nobody is watching, on a box with no shell. To drop it, pair
-  # `img-src 'self'` with `build.assetsInlineLimit = 0` in
-  # admin-ui/app/vite.config.ts so the ban is enforced where it can be seen.
+  # img-src carries `data:` for a small picture a library or a stylesheet
+  # writes inline, and a CSS background-image is an img-src fetch. Bun's
+  # bundler (admin-ui/app/build.ts) emits every imported file as a file under
+  # assets/, so the grant is currently unused — it is kept because the first
+  # inlined SVG would otherwise fail in a console nobody is watching, on a box
+  # with no shell.
   # (It previously covered a chevron inlined by the plain-JS pages'
   # design-system stylesheet, which is no longer served.)
   #
@@ -485,7 +483,7 @@ in
 
   # ── Nginx front router ────────────────────────────────────────────────────
   # One default_server vhost on :80: the admin SPA at /, lososd's JSON API at
-  # /api/*, and the two workload routes. losos.admin.ui is a built Vite tree
+  # /api/*, and the two workload routes. losos.admin.ui is a built bundle
   # (index.html + hashed assets/ + theme-boot.js), so it is the vhost root
   # outright — there is no page pair to alias alongside each other any more,
   # and every asset the document loads is an absolute /assets/… path served
@@ -577,7 +575,7 @@ in
           # them alone.
           #
           # theme-boot.js is deliberately NOT covered: it is the one unhashed
-          # file in the bundle (admin-ui/app/vite.config.ts says why), so it
+          # file in the bundle (admin-ui/app/build.ts says why), so it
           # has to keep revalidating against its ETag.
           # Not LAN-only while LosOS Cloud or LosOS Git signs people in:
           # their pages at /cloud/ (modules/cloud.nix) and /git/ are reached

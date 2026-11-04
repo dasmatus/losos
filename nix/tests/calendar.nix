@@ -58,21 +58,10 @@ let
           echo 'export default function init() { throw new Error("not in this build"); } export class Lab {}' > "src/lab/$f.js"
           : > "src/lab/''${f}_bg.wasm"
         done
-        cat > vite.calendar-test.config.ts <<'EOF'
-        import base from "./vite.config";
-        const root = import.meta.dirname;
-        const config = base as Record<string, any>;
-        config.build.rolldownOptions.input = {
-          main: `''${root}/index.html`,
-          chat: `''${root}/chat/index.html`,
-          manage: `''${root}/manage/index.html`,
-        };
-        export default config;
-        EOF
       '';
       buildPhase = ''
         runHook preBuild
-        bun --bun vite build --config vite.calendar-test.config.ts
+        bun build.ts
         runHook postBuild
       '';
     }

@@ -54,12 +54,7 @@ let
       '';
       buildPhase = ''
         runHook preBuild
-        cat > vite.nolab.config.ts <<'EOF'
-        import config from "./vite.config";
-        for (const page of ["diagrams", "lab"]) delete (config.build!.rolldownOptions!.input as Record<string, string>)[page];
-        export default config;
-        EOF
-        bun --bun vite build --config vite.nolab.config.ts
+        bun build.ts
         runHook postBuild
       '';
     };

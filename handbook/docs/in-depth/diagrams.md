@@ -147,7 +147,7 @@ compile the core; that lets a page compile WebAssembly and nothing more, and
 script still comes only from the box's own files.
 
 The hosted copy is the same screen on a page of its own
-(`admin-ui/app/diagrams/index.html`, built only with `VITE_LAB_HOSTED=1`), plus
+(`admin-ui/app/diagrams/index.html`, built only with `LOSOS_LAB_HOSTED=1`), plus
 [qemu-wasm](https://github.com/ktock/qemu-wasm): QEMU compiled to
 WebAssembly, so every console is a real Linux guest in the browser tab.
 Boxes and edges boot a busybox stand-in for LosOS, and the network gear

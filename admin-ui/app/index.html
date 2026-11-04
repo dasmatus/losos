@@ -12,9 +12,11 @@
       before the first paint so a stored Light/Dark choice never flashes the
       other way. It cannot be inline: the admin CSP is `script-src 'self'`.
       It cannot be `type="module"`: module scripts are deferred and run after
-      the parse, which is after the paint. See vite.config.ts.
+      the parse, which is after the paint. The bundler makes every
+      <script src> part of the page's module bundle, so the page names it in
+      this placeholder, which build.ts and dev.ts turn into the tag.
     -->
-    <script src="/theme-boot.js"></script>
+    <meta name="losos:classic-script" content="/theme-boot.js" />
     <!--
       With JavaScript off, the same page drawn on the box (/basic/, the
       basic plugin in backend/plugins/basic/). nginx writes the path the

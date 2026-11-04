@@ -97,7 +97,7 @@ async function open({
   // A built-in example in place of this box, for the checks written against it.
   if (setup) await page.getByTestId('setup-picker').selectOption(setup);
   /* Nothing is refused at load: Sonner's injected copy of its stylesheet is
-   * dropped at build (vite.sonner-quiet.ts) and the bundle carries the file.
+   * dropped at build (bundler.ts) and the bundle carries the file.
    * Nothing after that may add a violation either. */
   const atLoad = await page.evaluate(() => window.__violations);
   assert.deepEqual(atLoad, [], `CSP violations at load: ${atLoad.join(', ')}`);

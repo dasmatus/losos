@@ -11,8 +11,8 @@
  *   bun scripts/basic-classes.mjs [--repo ROOT] [--out DIR]
  *
  * ROOT is the checkout (it holds backend/plugins). DIR receives
- * basic-classes.db and basic-classes.txt. From Vite, both default to
- * this repo and admin-ui/app/src/styles.
+ * basic-classes.db and basic-classes.txt. From build.ts and dev.ts, both
+ * default to this repo and admin-ui/app/src/styles.
  */
 
 import { Database } from "bun:sqlite";
@@ -105,24 +105,21 @@ function arg(flag, fallback) {
   return i === -1 ? fallback : process.argv[i + 1];
 }
 
-export function basicClasses() {
+/** Write the gitignored class list before Tailwind scans, where the plugin
+ * sources are beside the UI (a checkout). */
+export async function basicClasses() {
   const repo = `${here}/../../..`;
   const styles = `${here}/../src/styles`;
   const sources = `${repo}/backend/plugins/basic/src`;
-  return {
-    name: "losos-basic-classes",
-    async buildStart() {
-      // The Nix build has no plugin sources beside the UI. It copies the
-      // text file out of the cached database before Vite starts.
-      try {
-        new Bun.Glob("*").scanSync({ cwd: sources }).next();
-      } catch (error) {
-        if (error.code === "ENOENT") return;
-        throw error;
-      }
-      await writeBasicClasses(repo, styles);
-    },
-  };
+  // The Nix build has no plugin sources beside the UI. It copies the
+  // text file out of the cached database before the build starts.
+  try {
+    new Bun.Glob("*").scanSync({ cwd: sources }).next();
+  } catch (error) {
+    if (error.code === "ENOENT") return;
+    throw error;
+  }
+  await writeBasicClasses(repo, styles);
 }
 
 if (import.meta.main) {

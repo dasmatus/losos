@@ -37,7 +37,7 @@ these from `/persist`: `/nix`, `/var`, `/etc/ssh`, `/etc/keys`,
 | -------------- | ---- |
 | `lososd`       | Root systemd daemon (Rust). Sole writer of `/var/lib/losos/state.json`. D-Bus service `org.losos1` and a token-authenticated JSON API on `127.0.0.1:8082`. |
 | `losos-ctl`    | CLI that forwards each subcommand to `lososd` over D-Bus. `losos-ctl install` runs standalone on the ISO. |
-| `losos-admin-ui` | React + Vite + Tailwind SPA, served by nginx, which proxies `/api/*` to `lososd`. |
+| `losos-admin-ui` | React + Tailwind SPA bundled by Bun, served by nginx, which proxies `/api/*` to `lososd`. |
 
 Rebuilds run as transient systemd units (`losos-rebuild-<job>`).
 `nixos-rebuild switch` restarts `lososd`, so on startup it re-attaches to any
@@ -182,7 +182,7 @@ D-Bus. `losos-ctl install` stays local, because the ISO installer runs as
 root and needs no bus.
 
 The admin UI (`admin-ui/app/`, packaged as `losos-admin-ui` with
-Bun) is a React 19, Vite and Tailwind v4 SPA on real paths
+Bun) is a React 19 and Tailwind v4 SPA, bundled by Bun, on real paths
 (`/`, `/apps`, `/storage`, `/mesh`, `/settings/<pane>`). Its built `dist/`
 **is** the front nginx vhost's document root, served with
 `try_files $uri $uri/ /index.html`. Without that line every deep link and
