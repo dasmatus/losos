@@ -20,23 +20,25 @@
 // Diagrams pictures are. A page error or a refusal by the page's security
 // policy fails the run.
 
-const join = (...parts) => parts.join("/");
+const join = (...parts: string[]): string => parts.join("/");
 
 const VIEW = { width: 1440, height: 900 };
 const WAIT = 180_000;
 
 const { chromium } = await import(Bun.env.PLAYWRIGHT_CORE ?? "playwright-core");
-const [cfgFile, out] = Bun.argv.slice(2);
-const cfg = (await Bun.file(cfgFile).json());
+const [cfgFile, out] = (Bun.argv.slice(2) as [string, string]);
+type Person = { base: string; name: string; password: string };
+type Config = { path: string; fileId: number; owner: Person; guest: Person; certs: string[] };
+const cfg = (await Bun.file(cfgFile).json()) as Config;
 Bun.spawnSync(["mkdir", "-p", out]);
 
-const problems = [];
+const problems: string[] = [];
 
-async function spkiPin(pemFile) {
+async function spkiPin(pemFile: string): Promise<string> {
   const pem = await Bun.file(pemFile).text();
   const der = Uint8Array.fromBase64(/-----BEGIN CERTIFICATE-----([^-]+)-----END CERTIFICATE-----/.exec(pem)[1].replace(/\s/g, ""));
   // One DER element at `at`: where its contents start and where it ends.
-  const element = (at) => {
+  const element = (at: number): { start: number; end: number } => {
     let len = der[at + 1];
     let start = at + 2;
     if (len & 0x80) {
@@ -56,7 +58,7 @@ async function spkiPin(pemFile) {
   return new Uint8Array(await crypto.subtle.digest("SHA-256", spki)).toBase64();
 }
 
-async function window(browser, who, box) {
+async function window(browser, who: Person, box: string) {
   const context = await browser.newContext({
     viewport: VIEW,
     colorScheme: "light",
@@ -96,12 +98,12 @@ async function ready(p) {
 }
 
 /** A point on the canvas, from its top-left corner. */
-async function at(p, x, y) {
-  const box = await p.getByTestId("diagram-wrap").boundingBox();
+async function at(p, x: number, y: number): Promise<{ x: number; y: number }> {
+  const box = (await p.getByTestId("diagram-wrap").boundingBox())!;
   return { x: box.x + x, y: box.y + y };
 }
 
-async function shot(w, name) {
+async function shot(w, name: string) {
   await w.page.waitForLoadState("networkidle").catch(() => {});
   await w.page.evaluate(() => document.fonts.ready.then(() => true));
   // No toast over the picture.

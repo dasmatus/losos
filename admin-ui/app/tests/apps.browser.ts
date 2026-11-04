@@ -213,7 +213,7 @@ async function open({
   }));
 
   await page.goto(origin + path, { waitUntil: 'networkidle' });
-  // The shell's own load-time reports are app.browser.mjs's business; what
+  // The shell's own load-time reports are app.browser.ts's business; what
   // counts here is anything the install flow adds after it.
   const atLoad = await page.evaluate(() => window.__violations.length);
   page.__atLoad = atLoad;

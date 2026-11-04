@@ -240,7 +240,7 @@ async function open(
     return json(route, 405, {});
   });
   await page.goto(origin + path, { waitUntil: 'networkidle' });
-  // The bundle's two first-paint style-src-elem reports (advanced.browser.mjs)
+  // The bundle's two first-paint style-src-elem reports (advanced.browser.ts)
   // are the shell's; anything after them is this page's.
   const atLoad = await page.evaluate(() => window.__violations.length);
   return { page, errors, m, atLoad };

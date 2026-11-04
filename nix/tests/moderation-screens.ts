@@ -16,7 +16,7 @@
 
 import { Shots } from './screens.ts';
 
-const [MODE, ARG, OUT] = Bun.argv.slice(2);
+const [MODE, ARG, OUT] = (Bun.argv.slice(2) as [string, string, string]);
 const BASE = 'https://mattbox.local';
 const PASSWORD = 'Correct-Horse-Battery-9';
 
@@ -29,7 +29,7 @@ const shots = new Shots(OUT, {
   locale: handbook ? ARG : 'en-US',
 });
 
-const row = (page, name) => page.locator(`[data-testid=users-person][data-person=${name}]`);
+const row = (page, name: string) => page.locator(`[data-testid=users-person][data-person=${name}]`);
 
 async function users(page) {
   await page.goto(shots.url('/settings/users'));
@@ -61,7 +61,7 @@ if (handbook) {
   // The handbook's pictures, at the handbook's laptop width: the role table
   // on its own and the whole Moderation pane. The Users pane's picture is
   // the one the handbook already has.
-  const suffix = { 'en-US': '', 'sk-SK': '-sk', 'de-DE': '-de' }[ARG];
+  const suffix = ({ 'en-US': '', 'sk-SK': '-sk', 'de-DE': '-de' } as Record<string, string>)[ARG];
   await users(page);
   const table = page.getByTestId('users-role-table');
   await table.scrollIntoViewIfNeeded();

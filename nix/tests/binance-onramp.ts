@@ -16,9 +16,9 @@
 //
 // Playwright is nixpkgs' playwright-driver, named by $PLAYWRIGHT_CORE.
 
-const exists = (file) => Bun.file(file).exists();
-const join = (...parts) => parts.join("/");
-const dirname = (file) => file.slice(0, file.lastIndexOf("/"));
+const exists = (file: string): Promise<boolean> => Bun.file(file).exists();
+const join = (...parts: string[]): string => parts.join("/");
+const dirname = (file: string): string => file.slice(0, file.lastIndexOf("/"));
 
 const { chromium } = await import(join(Bun.env.PLAYWRIGHT_CORE, "index.mjs"));
 
@@ -31,7 +31,7 @@ const STATE = "/tmp/onramp-state.json";
 const DOCUMENTS = ["Terms of Use", "Product Terms", "Privacy Notice", "Risk Warning"];
 
 /* `--name value` or `--name=value`, for each of `names`; anything else is refused. */
-function flags(names) {
+function flags(names: string[]): Record<string, string> {
   const out = {};
   const argv = Bun.argv.slice(2);
   for (let i = 0; i < argv.length; i++) {
@@ -46,7 +46,7 @@ const args = flags(["mode", "out", "user", "password"]);
 
 // The wallet made on this box, sealed into this browser the way
 // wallet/hot.ts seals it (nix/tests/box-wallet-name.ts does the same).
-async function seal({ phrase, address, password }) {
+async function seal({ phrase, address, password }: { phrase: string; address: string; password: string }) {
   const enc = new TextEncoder();
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -82,7 +82,7 @@ async function settle(page) {
 }
 
 // The row in the middle of the window, light and dark.
-async function shoot(page, row, state) {
+async function shoot(page, row, state: string) {
   await row.scrollIntoViewIfNeeded();
   await row.evaluate((el) => el.scrollIntoView({ block: "center" }));
   for (const colorScheme of ["light", "dark"]) {
@@ -115,7 +115,7 @@ async function open(browser) {
   });
   if (!reply.ok()) throw new Error(`sign-in answered ${reply.status()}: ${await reply.text()}`);
   const page = await ctx.newPage();
-  const errors = [];
+  const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(String(e)));
   await page.goto(`${BASE}/`);
   await page.waitForLoadState("networkidle");

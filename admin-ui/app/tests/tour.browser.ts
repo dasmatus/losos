@@ -5,7 +5,7 @@
  * name to be paid at, chat, Build with AI and profiles, twelve in all.
  *
  * What is checked: it opens over the app when this browser has it pending
- * (the wizard's Finish sets that; wizard.browser.mjs follows that path), the
+ * (the wizard's Finish sets that; wizard.browser.ts follows that path), the
  * buttons, the dots and the arrow keys move between steps, Skip, Escape and
  * Done close it and it stays closed on a reload, the About pane opens it
  * again, the picture moves and holds still under prefers-reduced-motion, and

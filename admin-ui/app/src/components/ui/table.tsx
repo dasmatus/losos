@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
  * eleven switches in a grid would promise sortable data that is not there.
  *
  * The wrapper scrolls sideways on a phone instead of the page doing it: the
- * one layout rule tests/app.browser.mjs checks on a 390px viewport. */
+ * one layout rule tests/app.browser.ts checks on a 390px viewport. */
 export function Table({ className, ...props }: React.ComponentPropsWithoutRef<"table">) {
   return (
     <div data-slot="table-container" className="relative w-full overflow-x-auto">

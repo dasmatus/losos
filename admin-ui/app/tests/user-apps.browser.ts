@@ -2,7 +2,7 @@
  * preview, saved, and used on its own page.
  *
  * The real dist/ bundle under the admin page's CSP, and the app frame under
- * its own (harness.mjs, APP_FRAME_CSP), the API stubbed with page.route().
+ * its own (harness.ts, APP_FRAME_CSP), the API stubbed with page.route().
  * The app is a real one: tests/fixtures/user-app.json is its source and the
  * script lososd compiled from it. The builder stub plays the box's half of
  * a build (backend/src/builder.rs): it writes, checks, asks the page to try

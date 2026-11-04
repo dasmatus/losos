@@ -27,7 +27,7 @@
 
 import { chromium } from 'playwright-core';
 
-const join = (...parts) => parts.join('/');
+const join = (...parts: string[]): string => parts.join('/');
 
 export const VIEWPORT = { width: 1280, height: 900 };
 export const DPR = 2;
@@ -39,10 +39,20 @@ const QUIET = `
 const BUSY = '[data-slot=spinner], [data-slot=skeleton], [data-sonner-toast], [role=status][data-state=open]';
 const TOASTS = '[data-sonner-toast], li[role=status]';
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+type ShotsSettings = {
+  feature: string;
+  test: string;
+  base: string;
+  scheme?: string;
+  commit?: string;
+  host?: string | null;
+  locale?: string;
+};
 
 export class Shots {
-  constructor(out, { feature, test, base, scheme = 'dark', commit = '', host = null, locale = 'en-US' }) {
+  constructor(out: string, { feature, test, base, scheme = 'dark', commit = '', host = null, locale = 'en-US' }: ShotsSettings) {
     this.out = out;
     this.feature = feature;
     this.test = test;
@@ -55,7 +65,7 @@ export class Shots {
     Bun.spawnSync(["mkdir", "-p", out]);
   }
 
-  url(path) {
+  url(path: string): string {
     return this.base + path;
   }
 
@@ -80,7 +90,7 @@ export class Shots {
 
   /* Sign in at LosOS Login the way its page does; the cookie stays in the
    * browser for every page after. */
-  async signIn(page, name, password) {
+  async signIn(page, name: string, password: string) {
     const answer = await page.request.post(this.url('/auth/api/firstfactor'), {
       data: { username: name, password },
     });
@@ -131,14 +141,14 @@ export class Shots {
     }
   }
 
-  static async box(locator) {
+  static async box(locator): Promise<{ x: number; y: number; w: number; h: number }> {
     const b = await locator.boundingBox();
     if (b === null) throw new Error(`${locator} is not on screen`);
     return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) };
   }
 
   /* One full-viewport PNG, numbered in order, and its manifest step. */
-  async take(page, slug, title, { action = null, targets = {}, settle = true } = {}) {
+  async take(page, slug: string, title: string, { action = null, targets = {}, settle = true } = {}): Promise<string> {
     if (settle) await this.settle(page);
     const file = `${String(this.steps.length + 1).padStart(2, '0')}-${slug}.png`;
     await page.screenshot({ path: join(this.out, file) });

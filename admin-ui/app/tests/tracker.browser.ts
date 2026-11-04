@@ -332,7 +332,7 @@ async function open(
   await page.goto(`${origin}/git${path}`);
   await page.waitForLoadState('networkidle');
   /* The toast stacks' own <style> at load is refused and harmless (see
-   * tests/git.browser.mjs). Nothing after that may add a violation. */
+   * tests/git.browser.ts). Nothing after that may add a violation. */
   const atLoad = await page.evaluate(() => window.__violations);
   assert.deepEqual(atLoad, [], `CSP violations at load: ${JSON.stringify(atLoad)}`);
   const settle = async () => {

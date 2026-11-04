@@ -1088,7 +1088,7 @@ await check('a flick down closes the phone sheet', async () => {
 /* The signed-in Overview, the first page anyone sees, logs no violation
  * under the real policy at either width. Sonner used to inject its
  * stylesheet as a <style> element at load, which the policy refused on
- * every page; vite.sonner-quiet.ts drops that copy and main.tsx bundles
+ * every page; sonner-quiet.ts drops that copy and main.tsx bundles
  * the file. */
 await check('under the appliance CSP the signed-in Overview logs no violation', async () => {
   const { origin: strict, close } = await serve({ csp: true });
@@ -1143,7 +1143,7 @@ for (const { name, now, file, tip } of [
     const logo = page.locator('header').getByRole('img', { name: 'LosOS', exact: true });
     await logo.waitFor();
     assert.ok(await logo.evaluate((img) => (img as HTMLImageElement).complete && (img as HTMLImageElement).naturalWidth > 0), 'the logo did not load');
-    // Vite names a bundled file <name>-<hash>.png, the hash eight letters,
+    // The build names a bundled file <name>-<hash>.png, the hash eight letters,
     // digits, _ or -, so losos-<hash> cannot match losos-halloween-<hash>.
     const bundled = new RegExp(`^/assets/${file}-[\\w-]{8}\\.png$`);
     const src = await logo.getAttribute('src');
@@ -2558,16 +2558,16 @@ await check('the Backup pane keeps backups on storage bought on the mesh, keyed 
   await offer.getByText('ord_0a1b2c3d4e5f60718293a4b5').waitFor();
   assert.equal(await offer.getByTestId('backup-bought-use').count(), 2, 'a lapsed, unpaid or unbound order is offered');
   await page.getByText('Or a bucket you rent', { exact: true }).waitFor();
-  if (process.env.BACKUP_SHOTS) await page.screenshot({ path: `${process.env.BACKUP_SHOTS}/offer.png`, fullPage: true });
+  if (Bun.env.BACKUP_SHOTS) await page.screenshot({ path: `${Bun.env.BACKUP_SHOTS}/offer.png`, fullPage: true });
   await offer.getByTestId('backup-bought-use').first().click();
   const shown = page.getByTestId('backup-bought');
   await shown.getByText('ord_0a1b2c3d4e5f60718293a4b5', { exact: true }).waitFor();
   await shown.getByText('https://edge.example.net', { exact: true }).waitFor();
   await shown.getByText(/^50 GB bought on the mesh$/).waitFor();
   await page.getByText('Backups go to the storage you bought', { exact: true }).first().waitFor();
-  if (process.env.BACKUP_SHOTS) {
+  if (Bun.env.BACKUP_SHOTS) {
     await page.waitForTimeout(1000);
-    await page.screenshot({ path: `${process.env.BACKUP_SHOTS}/bought.png`, fullPage: true });
+    await page.screenshot({ path: `${Bun.env.BACKUP_SHOTS}/bought.png`, fullPage: true });
   }
   assert.deepEqual(backupPosts[0], ['POST', '/api/backup/target/bought', { order: 'ord_0a1b2c3d4e5f60718293a4b5' }]);
   assert.doesNotMatch(await page.locator('main').innerText(), /b3c1d2e4/, 'the recovery code is on the screen');

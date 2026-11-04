@@ -5,14 +5,14 @@ import { applyFavicon } from "@/lib/logo";
 import { applyStoredTheme } from "@/lib/theme";
 /* Sonner's stylesheet, as a file in the bundle: the library would inject it
  * as a <style> element at load, which the appliance CSP (style-src 'self')
- * refuses, so vite.sonner-quiet.ts drops that copy and this import is what
+ * refuses, so the bundler's sonner patch drops that copy and this import is what
  * styles the notification stack on the box.
  * Before index.css, so the house rules there win the cascade. */
 import "sonner/dist/styles.css";
 import "@/styles/index.css";
 
 /* The theme is already on <html> by now — /theme-boot.js stamped it before
- * the first paint (see vite.config.ts). This second call is the belt to that
+ * the first paint (see scripts/bundler.ts). This second call is the belt to that
  * pair of braces: if the boot script ever fails to load, the app still comes
  * up in the stored theme, one frame late instead of not at all. */
 applyStoredTheme();

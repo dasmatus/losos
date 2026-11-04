@@ -19,10 +19,11 @@
  * test script asserts on. Playwright is nixpkgs' playwright-core, named by
  * LOSOS_PLAYWRIGHT. */
 
-const join = (...parts) => parts.join('/');
+const join = (...parts: string[]): string => parts.join('/');
 
 const { chromium } = await import(Bun.env.LOSOS_PLAYWRIGHT);
-const plan = JSON.parse(Bun.argv[2]);
+type Plan = { origin: string; map: string; password: string; out: string };
+const plan = JSON.parse(Bun.argv[2]) as Plan;
 Bun.spawnSync(["mkdir", "-p", plan.out]);
 
 /* Milliseconds into the motion: the desktop arriving (900 ms) and the card
@@ -30,7 +31,8 @@ Bun.spawnSync(["mkdir", "-p", plan.out]);
 const ARRIVE = [0, 150, 300, 450, 600, 900];
 const GROW = [0, 120, 240, 360, 500, 700];
 
-const WORDS = {
+type Words = { go: string; signIn: string; password: string; skip: string };
+const WORDS: Record<string, Words> = {
   'en-US': { go: "Let's go", signIn: 'Sign in', password: 'Password', skip: 'Skip the tour' },
   'sk-SK': { go: 'Poďme na to', signIn: 'Prihlásiť sa', password: 'Heslo', skip: 'Preskočiť prehliadku' },
   'de-DE': { go: "Los geht's", signIn: 'Anmelden', password: 'Passwort', skip: 'Tour überspringen' },
@@ -40,7 +42,7 @@ const browser = await chromium.launch({
   args: ['--no-sandbox', `--host-resolver-rules=MAP mattbox.local ${plan.map}`],
 });
 
-async function open({ locale = 'en-US', colorScheme = 'light', width = 1280, height = 800, motion = false, seed = null }) {
+async function open({ locale = 'en-US', colorScheme = 'light', width = 1280, height = 800, motion = false, seed = null } = {}) {
   const context = await browser.newContext({
     viewport: { width, height },
     ignoreHTTPSErrors: true,
@@ -69,7 +71,7 @@ async function open({ locale = 'en-US', colorScheme = 'light', width = 1280, hei
   });
   const page = await context.newPage();
   page.setDefaultTimeout(120000);
-  const errors = [];
+  const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   return { context, page, errors };
 }
@@ -88,7 +90,7 @@ async function freeze(context, page) {
 }
 
 /* Each animation started since `freeze` moved to each time, and photographed. */
-async function frames(page, name, times) {
+async function frames(page, name: string, times: number[]) {
   for (const ms of times) {
     const count = await page.evaluate((time) => {
       const fresh = document.getAnimations().filter((a) => !window.__before.has(a) && a.effect?.getComputedTiming().iterations !== Infinity);

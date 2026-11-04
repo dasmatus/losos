@@ -44,7 +44,8 @@ type Plan = {
 const plan = (await Bun.file(planFile).json()) as Plan;
 const HIDE = "*, *::before, *::after { caret-color: transparent !important; }";
 
-async function settle(page) {  await page.waitForLoadState("networkidle");
+async function settle(page) {
+  await page.waitForLoadState("networkidle");
   await page.evaluate(() => document.fonts.ready.then(() => true));
   // Spinners and skeletons announce themselves; wait them out.
   await page.waitForFunction(
@@ -55,7 +56,7 @@ async function settle(page) {  await page.waitForLoadState("networkidle");
   await page.waitForTimeout(500);
 }
 
-async function runStep(page, step) {
+async function runStep(page, step: Step) {
   const at = () => page.locator(step.target).first();
   switch (step.kind) {
     case "click":
@@ -104,11 +105,11 @@ if (user) {
   if (!r.ok()) throw new Error(`sign-in refused: ${r.status()} ${await r.text()}`);
 }
 const page = await context.newPage();
-const failed = [];
+const failed: string[] = [];
 page.on("response", (r) => {
   if (r.status() >= 500) failed.push(`${r.status()} ${r.url()}`);
 });
-const missed = [];
+const missed: string[] = [];
 for (const shot of plan.shots) {
   try {
     await take(shot);
@@ -125,7 +126,7 @@ if (missed.length) {
   throw new Error(`missed: ${missed.join(", ")}`);
 }
 
-async function take(shot) {
+async function take(shot: Shot) {
   // Under TCG the first load of a pane can take longer than Playwright's 30 s.
   await page.goto(`${origin}${shot.path}`, { timeout: 180_000 });
   // A constructed sheet, since the admin page's CSP refuses <style>.
@@ -144,7 +145,7 @@ async function take(shot) {
     console.log(`warning: ${shot.file}: the box answered ${failed.join(", ")}`);
     failed.length = 0;
   }
-  const targets = {};
+  const targets: Record<string, Record<string, number>> = {};
   for (const [name, sel] of Object.entries(shot.targets ?? {})) {
     const box = await page.locator(sel).first().boundingBox();
     if (box) targets[name] = Object.fromEntries(Object.entries(box).map(([k, v]) => [k, Math.round(v)]));

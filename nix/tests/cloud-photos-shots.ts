@@ -13,11 +13,11 @@
 // Playwright comes from PLAYWRIGHT_CORE (a path to playwright-core, as
 // nixpkgs' playwright-driver is) or the `playwright-core` package.
 
-const join = (...parts) => parts.join("/");
+const join = (...parts: string[]): string => parts.join("/");
 
 const { chromium } = await import(Bun.env.PLAYWRIGHT_CORE ?? "playwright-core");
 
-const [which, out, login, password, lan] = Bun.argv.slice(2);
+const [which, out, login, password, lan] = (Bun.argv.slice(2) as [string, string, string, string, string]);
 if (!["after", "before", "film"].includes(which) || !lan) {
   // Thrown: an uncaught error is what makes Bun exit non-zero.
   throw new Error("usage: cloud-photos-shots.ts after|before|film OUT NAME PASSWORD ADDRESS");
@@ -37,7 +37,7 @@ const context = await browser.newContext({
 const page = await context.newPage();
 page.setDefaultTimeout(300_000);
 page.setDefaultNavigationTimeout(300_000);
-const errors = [];
+const errors: string[] = [];
 // The admin page's policy (style-src 'self') refuses anything a library
 // injects; a refusal is a bug, not a look. What a plain load of LosOS
 // Cloud's Files page already logs (sonner's stylesheet, which the bundle
@@ -65,7 +65,7 @@ async function settle() {
   await page.waitForTimeout(800);
 }
 
-async function take(file) {
+async function take(file: string) {
   await settle();
   await page.screenshot({ path: join(out, file), timeout: 300_000 });
   console.log(file);
@@ -76,12 +76,12 @@ async function photos(query = "") {
   await page.locator("[data-photos] img").first().waitFor();
 }
 
-async function viewer(name) {
+async function viewer(name: string) {
   await page.getByRole("button", { name, exact: true }).first().click();
   await page.locator("#cloud-viewer-title").waitFor();
 }
 
-const steps = [];
+const steps: unknown[] = [];
 async function box(locator) {
   // A target that is not on screen is a broken frame, not a wait.
   if ((await locator.count()) === 0) throw new Error(`no ${locator} on screen`);

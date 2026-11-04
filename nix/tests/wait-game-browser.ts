@@ -12,20 +12,25 @@
  * assert on. Playwright is nixpkgs' playwright-core, named by
  * LOSOS_PLAYWRIGHT. */
 
-const exists = (file) => Bun.file(file).exists();
+const exists = (file: string): Promise<boolean> => Bun.file(file).exists();
 
 const { chromium } = await import(Bun.env.LOSOS_PLAYWRIGHT);
-const plan = JSON.parse(Bun.argv[2]);
+type Plan = { origin: string; mode?: string; token?: string; out: string; sync: string };
+const plan = JSON.parse(Bun.argv[2]) as Plan;
 Bun.spawnSync(['mkdir', '-p', plan.out]);
 // Thrown: an uncaught error is what makes Bun exit non-zero.
-const fail = (message) => {
+const fail = (message: string): never => {
   throw new Error(message);
 };
-const ask = (step) => Bun.write(`${plan.sync}/${step}`, '');
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const ask = (step: string) => Bun.write(`${plan.sync}/${step}`, '');
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 const browser = await chromium.launch({ args: ['--no-sandbox'] });
-const found = { games: {}, violations: [] };
+const found: {
+  games: Record<string, unknown>;
+  violations: string[];
+  [key: string]: unknown;
+} = { games: {}, violations: [] };
 
 async function newPage({ width = 1280, height = 860, colorScheme = 'light', hasTouch = false, video = null } = {}) {
   const context = await browser.newContext({
@@ -40,7 +45,7 @@ async function newPage({ width = 1280, height = 860, colorScheme = 'light', hasT
   });
   const page = await context.newPage();
   page.setDefaultTimeout(90000);
-  const errors = [];
+  const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.addInitScript((token) => {
     if (token !== null) window.sessionStorage.setItem('losos-token', token);
@@ -55,10 +60,10 @@ async function newPage({ width = 1280, height = 860, colorScheme = 'light', hasT
 const offer = (page) => page.getByRole('button', { name: 'Play while you wait' });
 const game = (page) => page.getByTestId('game');
 const canvas = (page) => game(page).locator('canvas');
-const attr = (page, name) => game(page).getAttribute(name);
+const attr = (page, name: string) => game(page).getAttribute(name);
 const score = async (page) => Number(/(\d+)/.exec(await page.getByTestId('game-score').innerText())?.[1] ?? NaN);
 
-async function switchTo(page, id) {
+async function switchTo(page, id: string) {
   for (let i = 0; i < 40; i++) {
     if ((await attr(page, 'data-game')) === id) return;
     await page.getByRole('button', { name: 'Another game' }).click();
@@ -89,7 +94,7 @@ const PLAY = {
     for (let i = 0; i < 24; i++) await canvas(page).press(keys[i % 4]);
   },
   async bricks(page) {
-    const box = await canvas(page).boundingBox();
+    const box = (await canvas(page).boundingBox())!;
     await page.mouse.click(box.x + box.width / 2, box.y + box.height * 0.9);
     for (let i = 0; i < 12; i++) {
       await page.mouse.move(box.x + box.width * (0.3 + 0.4 * (i % 2)), box.y + box.height * 0.9, { steps: 6 });
@@ -97,7 +102,7 @@ const PLAY = {
     }
   },
   async pairs(page) {
-    const box = await canvas(page).boundingBox();
+    const box = (await canvas(page).boundingBox())!;
     const cell = box.width / 4;
     for (const [a, b] of [[0, 1], [2, 3], [5, 10]]) {
       for (const i of [a, b]) await page.mouse.click(box.x + cell * ((i % 4) + 0.5), box.y + cell * (Math.floor(i / 4) + 0.5));
@@ -110,7 +115,7 @@ const PLAY = {
  * style-src 'self') is not the game's: count from just before the press. */
 const baseline = (page) => page.evaluate(() => (window.__base = window.__violations.length));
 
-async function collect(page, errors, where) {
+async function collect(page, errors: string[], where: string) {
   const violations = await page.evaluate(() => window.__violations.slice(window.__base ?? 0));
   if (violations.length > 0) console.error(`${where}: refused since the press: ${violations.join('; ')}`);
   // The toaster mounts with the first notification and logs its own; only
@@ -174,7 +179,7 @@ async function collect(page, errors, where) {
     await baseline(page);
     await offer(page).tap();
     await switchTo(page, 'pairs');
-    const box = await canvas(page).boundingBox();
+    const box = (await canvas(page).boundingBox())!;
     await page.touchscreen.tap(box.x + box.width / 8, box.y + box.height / 8);
     await page.touchscreen.tap(box.x + (box.width * 3) / 8, box.y + box.height / 8);
     found.phoneTries = await score(page);

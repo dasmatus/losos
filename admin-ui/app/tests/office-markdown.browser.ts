@@ -1,7 +1,7 @@
 /* Markdown documents and presentations in LosOS Office
  * (src/cloud/office/markdown/), inside LosOS Cloud.
  *
- * What is checked (a new document is a .paper, tests/paper.browser.mjs): a
+ * What is checked (a new document is a .paper, tests/paper.browser.ts): a
  * .md opens at /cloud/office/<id> as LosOS's own editor, never in
  * Collabora, under the Office bar with the name, Markdown and the saved
  * state; the formatting bar writes what Obsidian and GitHub read for each

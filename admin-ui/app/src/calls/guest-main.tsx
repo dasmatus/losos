@@ -1,5 +1,5 @@
 /* The guest page's entry: guest.html loads this. It is its own build
- * (vite.guest.config.ts) under /calls/guest/, because nginx serves it to
+ * (scripts/build.ts builds it as its own bundle) under /calls/guest/, because nginx serves it to
  * anyone holding a link, from the internet too, while every other page and
  * the shared /assets/ stay on the LAN behind LosOS Login. */
 

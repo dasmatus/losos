@@ -11,7 +11,15 @@
  * address. nix/tests/git-pages.nix and nix/tests/git-federation.nix run the
  * same pages against real boxes. */
 
-import type { Request, Route } from 'playwright';
+import { type Page, type Request, type Route } from 'playwright';
+
+declare global {
+  interface Window {
+    __violations: string[];
+    __owned?: number;
+  }
+}
+
 import assert from './assert.ts';
 import { launch, runner, serve } from './harness.ts';
 
@@ -61,10 +69,11 @@ const PATCH = [
   '',
 ].join('\n');
 
-interface ModelCall {
+/* A call the page made: `body` is the JSON or partial body the page sent. */
+interface Call {
   method: string;
   path: string;
-  body: Record<string, unknown>;
+  body: any;
 }
 
 function model() {
@@ -81,7 +90,7 @@ function model() {
       html_url: '/git/notshared/notes/pulls/3',
       pull_request: { head: 'plant-earlier', base: 'main', merged: false, merge_commit_sha: null },
       merged: false,
-      merged_by: null as null | { login: string },
+      merged_by: null as { login: string } | null,
       merged_at: null as string | null,
       merge_commit_sha: null as string | null,
       head: { ref: 'plant-earlier', sha: HEAD },
@@ -90,7 +99,7 @@ function model() {
       ahead_by: 1,
       behind_by: 0,
       mergeable: true,
-      conflicts: [],
+      conflicts: [] as string[],
       fast_forward: true,
       reviewers: [
         { login: 'losos-reviewer', is_bot: true, state: 'requested', previous: null, requested: true },
@@ -113,7 +122,7 @@ function model() {
         commit_id: HEAD,
         body: 'Beans need warmer soil, so May is right.',
         resolved: false,
-        resolved_by: null as null | { login: string },
+        resolved_by: null as { login: string } | null,
         created_at: '2026-10-21T08:31:00Z',
       },
     ],
@@ -121,26 +130,23 @@ function model() {
       { id: 5, user: { login: 'eva' }, state: 'commented', body: '', commit_id: HEAD, submitted_at: '2026-10-21T08:31:00Z' },
     ],
     repo: { ...REPO, chat_room: null as string | null },
-    calls: [] as ModelCall[],
+    calls: [] as Call[],
   };
 }
 
 /* `me` is who LosOS Git says is signed in: an account, null for a visitor
  * (401), or a function of the request. */
-async function open(
-  path: string,
-  {
-    locale = 'en-US',
-    viewport = { width: 1280, height: 900 },
-    me = ME,
-    room = null,
-  }: {
-    locale?: string;
-    viewport?: { width: number; height: number };
-    me?: typeof ME | ((req: Request) => typeof ME | null) | null;
-    room?: string | null;
-  } = {},
-) {
+async function open(path: string, {
+  locale = 'en-US',
+  viewport = { width: 1280, height: 900 },
+  me = ME as typeof ME | null | ((req: Request) => typeof ME | null),
+  room = null as string | null,
+}: {
+  locale?: string;
+  viewport?: { width: number; height: number };
+  me?: typeof ME | null | ((req: Request) => typeof ME | null);
+  room?: string | null;
+} = {}): Promise<{ page: Page; m: ReturnType<typeof model>; settle: () => Promise<void> }> {
   const m = model();
   m.repo.chat_room = room;
   const page = await browser.newPage({ viewport, locale });
@@ -259,7 +265,7 @@ async function open(
   await page.goto(`${origin}/git${path}`);
   await page.waitForLoadState('networkidle');
   /* The toast stacks' own <style> at load is refused and harmless (their
-   * stylesheet is in the bundle; see tests/mail.browser.mjs). Nothing
+   * stylesheet is in the bundle; see tests/mail.browser.ts). Nothing
    * after that may add a violation. */
   const atLoad = await page.evaluate(() => window.__violations);
   assert.deepEqual(atLoad, [], `CSP violations at load: ${JSON.stringify(atLoad)}`);
@@ -428,7 +434,7 @@ await check('a visitor goes to their own box to say who they are', async () => {
 
 await check('back from their box, someone of another box keeps to their own branches', async () => {
   const { page, m, settle } = await open('/notshared/notes#chat-token=openid-tok&chat-server=kitchenbox.local&chat-name=Eva', {
-    me: (req) => (req.headers().authorization === 'token chat-tok' ? EVA : null),
+    me: (req: Request) => (req.headers().authorization === 'token chat-tok' ? EVA : null),
     room: ROOM,
   });
   await page.locator('[data-testid="signed-in-name"]', { hasText: 'Eva' }).waitFor();
@@ -468,8 +474,8 @@ await check('on a phone LosOS Git has a bar along the bottom: the places of the 
   await bar.waitFor();
   assert.deepEqual((await bar.getByRole('listitem').allInnerTexts()).map((l) => l.trim()), ['Repositories', 'Code', 'Pull requests', 'Issues', 'More']);
   assert.equal(await bar.locator('a[aria-current="page"]').innerText(), 'Pull requests');
-  const box = (await bar.boundingBox())!;
-  assert.ok(Math.abs(box.y + box.height - 844) <= 1, `the bar is not on the bottom edge: ${JSON.stringify(box)}`);
+  const box = await bar.boundingBox();
+  assert.ok(Math.abs(box!.y + box!.height - 844) <= 1, `the bar is not on the bottom edge: ${JSON.stringify(box)}`);
   await bar.getByRole('button', { name: 'More', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: 'LosOS Git' });
   await sheet.waitFor();
@@ -478,7 +484,7 @@ await check('on a phone LosOS Git has a bar along the bottom: the places of the 
   await sheet.waitFor({ state: 'detached' });
   await bar.getByRole('link', { name: 'Repositories', exact: true }).click();
   await page.waitForURL(/\/git\/?$/);
-  await bar.getByRole('link', { name: 'Code', exact: true }).waitFor({ state: 'detached' });
+  await bar.getByRole('link', { name: 'Repositories', exact: true }).waitFor({ state: 'detached' });
   assert.deepEqual((await bar.getByRole('listitem').allInnerTexts()).map((l) => l.trim()), ['Repositories', 'Issues', 'More']);
   await settle();
   await page.close();
