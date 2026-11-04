@@ -17,10 +17,11 @@ weder über die Verwaltungsseiten noch über LosOS Cloud lesen.
 
 Kontakte bewahrt deine Kontakte in [LosOS Cloud](losos-cloud) auf, also gibt
 es Kontakte auf jeder Box, auf der LosOS Cloud läuft, ob die Box ihren
-Speicher teilt oder nicht. [Mail](mail) und [Chat](chat) laufen nur,
-solange die Box mit einem Mesh teilt, dem sie beigetreten ist. Ist das
-Teilen aus, hat die Seite einer Person keinen Knopf **Mail**, **Chat**,
-**Anruf** oder **Video**, und das Adressbuch bleibt, wie es ist.
+Speicher teilt oder nicht. [Chat](chat) läuft auf jeder Box, auf der du ihn
+nicht ausgeschaltet hast; [Mail](mail) läuft nur, solange die Box mit einem
+Mesh teilt, dem sie beigetreten ist. Ohne sie hat die Seite einer Person
+keinen Knopf **Mail**, **Chat**, **Anruf** oder **Video**, und das Adressbuch
+bleibt, wie es ist.
 
 Der Ersatzschlüssel öffnet die Verwaltungsseiten, hat aber kein Adressbuch.
 Kontakte bittet dich deshalb, dich mit deinem eigenen Konto anzumelden.

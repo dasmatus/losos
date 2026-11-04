@@ -157,7 +157,7 @@ and Notes.
 
 ![The admin search with "free space" typed, finding issue BT-6 under Issues in LosOS Git.](../img/issues-search.png)
 
-Mail, Chat and Contacts are there when the box shares and is in a mesh.
+Chat and Contacts are there on every box that runs them; Mail when the box shares and is in a mesh.
 Every issue with a due date that is given to you is also in a calendar
 feed, at `https://<box>.local/git/api/v1/tracker/calendar.ics`. A calendar
 app subscribes to it with your name and a LosOS Git access token with the
