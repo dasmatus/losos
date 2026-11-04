@@ -169,7 +169,7 @@ ebenso im Link-Knopf über markierten Wörtern in Office und Notizen.
 
 ![Die Suche der Admin-Seiten mit "free space", die Issue BT-6 unter den Issues in LosOS Git findet.](@site/docs/img/issues-search.png)
 
-Mail, Chat und Kontakte gibt es, wenn die Box teilt und in einem Mesh ist.
+Chat und Kontakte gibt es auf jeder Box, auf der sie laufen; Mail, wenn die Box teilt und in einem Mesh ist.
 Jedes dir zugewiesene Issue mit Fälligkeitsdatum steht auch in einem
 Kalender-Abo unter `https://<box>.local/git/api/v1/tracker/calendar.ics`.
 Eine Kalender-App abonniert es mit deinem Namen und einem Zugriffstoken von

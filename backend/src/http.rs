@@ -759,8 +759,8 @@ fn gate_at(
     Ok(who)
 }
 
-/// The apps on the shared side that are live on this box now, by name:
-/// mail, chat and Mesh CI run only while the box shares its storage, and the admin
+/// The apps that are live on this box now, by name: mail and Mesh CI run
+/// only on the shared side, chat wherever it is on, and the admin
 /// UI draws their entries only when they are listed here. The spare key
 /// and an edge are nobody, so they get none.
 fn shared_apps(api: &Api) -> Vec<&'static str> {

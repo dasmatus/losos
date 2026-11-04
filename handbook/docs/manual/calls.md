@@ -24,10 +24,10 @@ encryption keys use MatrixRTC's own events. Picture and sound go through
 
 ## When calls are there
 
-Calls are part of chat, so they need what chat needs: the box shares its
-storage and has joined a mesh. They also need
+Calls are part of chat, so they are there wherever chat is, with or without a
+mesh or an edge. They also need
 **Settings → Advanced → `losos.calls.enable`**, which is on unless you turn
-it off. With any of these off, rooms have no call buttons and the box runs
+it off. With chat or this off, rooms have no call buttons and the box runs
 nothing for calls. Turning one back on brings them back after the next
 Apply.
 

@@ -23,10 +23,10 @@ Schlüssel nutzen die eigenen Ereignisse von MatrixRTC. Bild und Ton laufen
 
 ## Wann es Anrufe gibt \{#when-calls-are-there}
 
-Anrufe gehören zum Chat und brauchen deshalb dasselbe wie der Chat: Die Box
-teilt ihren Speicher und ist einem Mesh beigetreten. Außerdem brauchen sie
+Anrufe gehören zum Chat und sind deshalb überall da, wo der Chat ist, mit
+oder ohne Mesh und Edge. Außerdem brauchen sie
 **Einstellungen → Erweitert → `losos.calls.enable`**, das an ist, solange
-du es nicht ausschaltest. Ist eines davon aus, haben Räume keine
+du es nicht ausschaltest. Ist der Chat oder dies aus, haben Räume keine
 Anruf-Knöpfe und die Box startet nichts für Anrufe. Schaltest du es wieder
 ein, sind die Anrufe nach dem nächsten Anwenden zurück.
 

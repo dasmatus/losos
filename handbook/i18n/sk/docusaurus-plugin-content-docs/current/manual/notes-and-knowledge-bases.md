@@ -116,7 +116,7 @@ poznámky.
 ## Zverejnite priečinok ako znalostnú bázu \{#publish-a-folder-as-a-knowledge-base}
 
 Znalostné bázy potrebujú, aby zariadenie zdieľalo a bolo v sieti
-zariadení, rovnako ako chat a pošta. Bez oboch položka v ponuke chýba a
+zariadení, rovnako ako pošta. Bez oboch položka v ponuke chýba a
 stránky sú vypnuté.
 
 1. V časti **Súbory** kliknite pravým tlačidlom na priečinok a vyberte

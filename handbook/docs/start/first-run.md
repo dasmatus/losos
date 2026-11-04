@@ -116,8 +116,8 @@ small moving picture of the page, with the sidebar entry where that feature
 lives. Every box has six steps: LosOS Cloud's apps, adding more, storage,
 lending the box at night, the nightly update and where to find the tour
 again. The tour asks the box what else it has and adds a step for each:
-Office, lending memory to AI models, a name to be paid at, chat and calls
-(only while the box shares its storage in a mesh), Build with AI and
+Office, lending memory to AI models, a name to be paid at, chat and calls,
+Build with AI and
 profile pictures. A box with none of these sees the six steps.
 **Skip the tour** closes it, and that browser does not open it by
 itself again. **Take the tour** under Settings, About brings it back.
