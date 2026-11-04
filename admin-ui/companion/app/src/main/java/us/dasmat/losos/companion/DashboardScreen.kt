@@ -1,13 +1,17 @@
 package us.dasmat.losos.companion
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -15,13 +19,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -29,45 +36,31 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
+import org.json.JSONObject
 
 /*
- * The one screen that mirrors the box's admin homepage: the connection
- * card, the storage card, the app tiles and the widget board — and the
- * two other tabs of the phone shape, Cloud and Settings.
+ * The shell: one bar with the box's panes, in the phone's order. Each tab is
+ * a pane over the routes the admin SPA drives (Panes.kt, SettingsPanes.kt);
+ * eleven of them scroll, the way a phone carries the terminal client's panes.
  */
 
 @Composable
 fun DashboardScreen(config: BoxConfig, update: (BoxConfig) -> Unit) {
-    val tabs = listOf("Dashboard", "Cloud", "Settings")
+    val tabs = listOf(
+        "Dashboard", "Storage", "Mesh", "Apps", "Network",
+        "Security", "Advanced", "History", "Backup", "Cloud", "Settings",
+    )
     var current by remember { mutableIntStateOf(0) }
     Scaffold(
-        bottomBar = {
-            NavigationBar(containerColor = LocalTokens.current.scheme.surface) {
-                tabs.forEachIndexed { index, name ->
-                    NavigationBarItem(
-                        selected = current == index,
-                        onClick = { current = index },
-                        label = { Text(name) },
-                        icon = {
-                            Box(
-                                modifier = Modifier
-                                    .size(22.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (current == index) LocalTokens.current.scheme.primary
-                                        else LocalTokens.current.scheme.outline,
-                                    ),
-                            )
-                        },
-                    )
-                }
-            }
-        },
+        bottomBar = { PaneBar(tabs, current) { current = it } },
     ) { padding ->
         Column(
             modifier = Modifier
@@ -76,17 +69,76 @@ fun DashboardScreen(config: BoxConfig, update: (BoxConfig) -> Unit) {
                 .padding(horizontal = 16.dp, vertical = 8.dp),
         ) {
             when (current) {
-                0 -> DashboardTab(config)
-                1 -> CloudTab(config)
-                2 -> SettingsTab(config, update)
-                else -> {}
+                0 -> OverviewPane(config, update)
+                1 -> StoragePane(config, update)
+                2 -> MeshPane(config, update)
+                3 -> AppsPane(config, update)
+                4 -> NetworkPane(config, update)
+                5 -> SecurityPane(config, update)
+                6 -> AdvancedPane(config, update)
+                7 -> HistoryPane(config, update)
+                8 -> BackupPane(config, update)
+                9 -> CloudTab(config, update)
+                10 -> SettingsTab(config, update)
+            }
+        }
+    }
+}
+
+/* The tab bar wears the palette like a NavigationBar but scrolls: the TUI's
+ * panes number more than a thumb's width holds at once. */
+@Composable
+private fun PaneBar(tabs: List<String>, current: Int, pick: (Int) -> Unit) {
+    val tokens = LocalTokens.current
+    Surface(color = tokens.scheme.surface, tonalElevation = 6.dp) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 6.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            tabs.forEachIndexed { index, name ->
+                val selected = current == index
+                Column(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(
+                            if (selected) tokens.scheme.secondaryContainer
+                            else Color.Transparent
+                        )
+                        .clickable { pick(index) }
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(22.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (selected) tokens.scheme.primary
+                                else tokens.scheme.outline,
+                            ),
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        name,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (selected) tokens.scheme.onSecondaryContainer
+                                else tokens.scheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-fun Card2(content: @Composable () -> Unit) {
+fun Card2(
+    demo: Boolean = false,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     val tokens = LocalTokens.current
     Card(
         modifier = Modifier
@@ -98,205 +150,95 @@ fun Card2(content: @Composable () -> Unit) {
             contentColor = tokens.scheme.onSurface,
         ),
     ) {
-        Column(Modifier.padding(16.dp)) { content() }
+        Column(Modifier.padding(16.dp)) {
+            if (demo) {
+                DemoChip(Modifier.align(Alignment.End).padding(bottom = 6.dp))
+            }
+            content()
+        }
     }
 }
 
 @Composable
-fun DashboardTab(config: BoxConfig) {
-    val tokens = LocalTokens.current
-    var probe by remember(config.host) { mutableStateOf<ProbeResult?>(null) }
-    LaunchedEffect(config.host, config.demo) {
-        if (!config.demo && config.host.isNotBlank()) probe = BoxProbe.probe(config)
-    }
-
+fun CloudTab(config: BoxConfig, update: (BoxConfig) -> Unit) {
     Row(
         Modifier.padding(vertical = 12.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.weight(1f)) {
-            Text("Your box", style = MaterialTheme.typography.headlineMedium)
-            val subtitle = if (config.demo && config.host.isBlank()) {
-                "Demo data — nothing phones home"
-            } else {
-                config.host
+        Text("LosOS Cloud", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
+        if (config.demo) DemoChip()
+    }
+    Text(
+        "Your files, photos, calendars and boards live here.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = LocalTokens.current.scheme.onSurfaceVariant,
+        modifier = Modifier.padding(bottom = 6.dp, start = 4.dp),
+    )
+    if (config.demo) {
+        Card2(demo = true) {
+            CloudRow("Documents", "108 files · 2.3 GB")
+            CloudRow("Photos", "1,208 · last import today")
+            CloudRow("Music", "213 · 1.1 GB")
+            CloudRow("Boards", "Chore chart · 3 left today")
+        }
+    } else {
+        ReadRoute("/api/cloud/files?path=%2F", config, update) { read ->
+            CloudFilesCard(read, "Files")
+        }
+    }
+    Card2(demo = config.demo) {
+        Text("Folders kept on the box only:", style = MaterialTheme.typography.labelSmall)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Deleted from /persist the day you wipe the box, kept in every daily snapshot.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+    Spacer(Modifier.height(20.dp))
+}
+
+/** GET /api/cloud/files?path=…, the root listing, folders first. */
+@Composable
+private fun CloudFilesCard(read: Read, title: String) {
+    val tokens = LocalTokens.current
+    ReadCard(title, read) { c ->
+        if (c.maybeBool("available")) {
+            val entries = c.itemsOf("entries")
+            if (entries.isEmpty()) {
+                Text(
+                    "Nothing at the top yet.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = tokens.scheme.onSurfaceVariant,
+                )
             }
+            entries.forEach { entry ->
+                CloudRow(
+                    name = entry.maybeString("name") ?: "-",
+                    meta = if (entry.maybeBool("folder")) {
+                        "folder"
+                    } else {
+                        formatBytes(entry.maybeDouble("size"))
+                    },
+                )
+            }
+            if (c.maybeBool("more")) {
+                Text(
+                    "There are more; deeper browsing stays in LosOS Cloud for now.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = tokens.scheme.onSurfaceVariant,
+                )
+            }
+        } else {
             Text(
-                subtitle,
+                when (c.maybeString("reason")) {
+                    "signIn" -> "Your files unlock the first time you sign in on the box's pages."
+                    else -> "LosOS Cloud is not answering right now."
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = tokens.scheme.onSurfaceVariant,
             )
         }
     }
-
-    Card2 {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier
-                    .size(10.dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (probe is ProbeResult.Reachable || config.demo) tokens.extra.ok
-                        else tokens.extra.warn,
-                    ),
-            )
-            Spacer(Modifier.width(10.dp))
-            Column {
-                val state = when {
-                    config.demo -> "Demo mode"
-                    probe is ProbeResult.Reachable -> "Linked · ${(probe as ProbeResult.Reachable).ms} ms"
-                    probe is ProbeResult.Unreachable -> "Box unreachable"
-                    else -> "Probing…"
-                }
-                Text(state, style = MaterialTheme.typography.titleMedium)
-                Text(
-                    config.base,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = tokens.scheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
-
-    val storage = BoxProbe.demoStorage
-    Card2 {
-        Text("Storage", style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(8.dp))
-        LinearProgressIndicator(
-            progress = { storage.fraction },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(8.dp)
-                .clip(RoundedCornerShape(4.dp)),
-            color = tokens.scheme.primary,
-            trackColor = tokens.scheme.surfaceVariant,
-        )
-        Spacer(Modifier.height(8.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(storage.phrase, style = MaterialTheme.typography.bodyMedium)
-            Text(
-                storage.label,
-                style = MaterialTheme.typography.bodySmall,
-                color = tokens.scheme.onSurfaceVariant,
-            )
-        }
-    }
-
-    Text(
-        "Apps",
-        style = MaterialTheme.typography.titleMedium,
-        modifier = Modifier.padding(top = 10.dp, start = 4.dp),
-    )
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(vertical = 6.dp)) {
-        AppTile("Cloud", "LosOS Cloud", "1,204 files", Modifier.weight(1f))
-        AppTile("Git", "LosOS Git", "12 repos", Modifier.weight(1f))
-        AppTile("Admin", "Admin pages", "LAN only", Modifier.weight(1f))
-    }
-
-    Text(
-        "Widgets",
-        style = MaterialTheme.typography.titleMedium,
-        modifier = Modifier.padding(top = 10.dp, start = 4.dp),
-    )
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(vertical = 6.dp)) {
-        Widget("Photos", "1,208", "on the box", Modifier.weight(1f))
-        Widget("Board", "Chores", "3 left today", Modifier.weight(1f))
-        Widget("Mail", "42", "unread", Modifier.weight(1f))
-    }
-
-    Card2 {
-        Text("Lent to the mesh", style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(6.dp))
-        Text(
-            "1.2 TB spare disk, replicated. Spare CPU 18:00–22:00, only when idle.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = tokens.scheme.onSurfaceVariant,
-        )
-    }
-    Spacer(Modifier.height(20.dp))
-}
-
-@Composable
-private fun AppTile(glyph: String, name: String, sub: String, modifier: Modifier = Modifier) {
-    val tokens = LocalTokens.current
-    Card(
-        modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = tokens.scheme.surface,
-            contentColor = tokens.scheme.onSurface,
-        ),
-    ) {
-        Column(Modifier.padding(12.dp)) {
-            Box(
-                Modifier
-                    .size(38.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(tokens.scheme.primaryContainer),
-            ) {
-                Text(
-                    glyph,
-                    modifier = Modifier.align(Alignment.Center),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = tokens.scheme.onPrimaryContainer,
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            Text(name, style = MaterialTheme.typography.labelSmall)
-            Text(sub, style = MaterialTheme.typography.bodySmall, color = tokens.scheme.onSurfaceVariant)
-        }
-    }
-}
-
-@Composable
-private fun Widget(title: String, big: String, sub: String, modifier: Modifier = Modifier) {
-    val tokens = LocalTokens.current
-    Card(
-        modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = tokens.scheme.primaryContainer,
-            contentColor = tokens.scheme.onPrimaryContainer,
-        ),
-    ) {
-        Column(Modifier.padding(12.dp)) {
-            Text(title, style = MaterialTheme.typography.labelSmall)
-            Text(big, style = MaterialTheme.typography.headlineSmall)
-            Text(sub, style = MaterialTheme.typography.bodySmall)
-        }
-    }
-}
-
-@Composable
-fun CloudTab(config: BoxConfig) {
-    val tokens = LocalTokens.current
-    Row(
-        Modifier.padding(vertical = 12.dp, horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text("LosOS Cloud", style = MaterialTheme.typography.headlineMedium)
-    }
-    Text(
-        "Your files, photos, calendars and boards live here; the Nextcloud apps sync with the box too.",
-        style = MaterialTheme.typography.bodyMedium,
-        color = tokens.scheme.onSurfaceVariant,
-        modifier = Modifier.padding(bottom = 6.dp, start = 4.dp),
-    )
-    Card2 {
-        CloudRow("Documents", "108 files · 2.3 GB")
-        CloudRow("Photos", "1,208 · last import today")
-        CloudRow("Music", "213 · 1.1 GB")
-        CloudRow("Boards", "Chore chart · 3 left today")
-    }
-    Card2 {
-        Text("Folders kept on the box only:", style = MaterialTheme.typography.labelSmall)
-        Spacer(Modifier.height(4.dp))
-        Text(
-            "Documents, Photos, Music — deleted from /persist the day you wipe the box, kept in every daily snapshot.",
-            style = MaterialTheme.typography.bodyMedium,
-        )
-    }
-    Spacer(Modifier.height(20.dp))
 }
 
 @Composable
@@ -331,18 +273,20 @@ fun SettingsTab(config: BoxConfig, update: (BoxConfig) -> Unit) {
     var host by remember(config.host) { mutableStateOf(config.host) }
     var token by remember(config.token) { mutableStateOf(config.token) }
     var probe by remember { mutableStateOf<ProbeResult?>(null) }
+    val scope = rememberCoroutineScope()
 
     Row(
         Modifier.padding(vertical = 12.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("Settings", style = MaterialTheme.typography.headlineMedium)
+        Text("Settings", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
+        if (config.demo) DemoChip()
     }
 
-    Card2 {
+    Card2(demo = config.demo) {
         Text("Box", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(10.dp))
-        androidx.compose.material3.OutlinedTextField(
+        OutlinedTextField(
             value = host,
             onValueChange = { host = it },
             modifier = Modifier.fillMaxWidth(),
@@ -350,7 +294,7 @@ fun SettingsTab(config: BoxConfig, update: (BoxConfig) -> Unit) {
             label = { Text("Address") },
         )
         Spacer(Modifier.height(8.dp))
-        androidx.compose.material3.OutlinedTextField(
+        OutlinedTextField(
             value = token,
             onValueChange = { token = it },
             modifier = Modifier.fillMaxWidth(),
@@ -359,13 +303,15 @@ fun SettingsTab(config: BoxConfig, update: (BoxConfig) -> Unit) {
         )
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            androidx.compose.material3.OutlinedButton(onClick = {
+            OutlinedButton(onClick = {
                 probe = null
                 update(config.copy(host = host.trim(), token = token.trim(), demo = config.demo))
             }) { Text("Save") }
-            androidx.compose.material3.Button(onClick = {
-                update(config.copy(host = host.trim(), token = token.trim(), demo = config.demo))
-                kotlinx.coroutines.runBlocking { probe = BoxProbe.probe(config.copy(host = host.trim(), token = token.trim())) }
+            Button(onClick = {
+                val candidate = config.copy(host = host.trim(), token = token.trim(), demo = config.demo)
+                update(candidate)
+                // Reachability, not identity: the probe carries no token (BoxStore.kt).
+                scope.launch { probe = BoxProbe.probe(candidate) }
             }) { Text("Probe now") }
         }
         probe?.let { result ->
@@ -383,31 +329,32 @@ fun SettingsTab(config: BoxConfig, update: (BoxConfig) -> Unit) {
         }
     }
 
-    Card2 {
+    Card2(demo = config.demo) {
         Text("Theme", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ThemeMode.entries.forEach { mode ->
-                val label = mode.name
-                val colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
+                val colors = FilterChipDefaults.filterChipColors(
                     containerColor = tokens.scheme.surfaceVariant,
                     labelColor = tokens.scheme.onSurfaceVariant,
                 )
-                androidx.compose.material3.FilterChip(
+                FilterChip(
                     selected = config.themeMode == mode,
                     onClick = { update(config.copy(themeMode = mode)) },
-                    label = { Text(label) },
+                    label = { Text(mode.name) },
                     colors = colors,
                 )
             }
         }
     }
 
-    Card2 {
+    Card2(demo = config.demo) {
         Text("About", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(4.dp))
         Text(
-            "LosOS Companion 0.1.0 — the box in a phone's pocket. Built from the LosOS admin family design tokens; the palette here is the one palette three front ends share.",
+            "LosOS Companion 0.1.0 — the box's panes in a phone's pocket, the same " +
+                "routes the admin pages and the losos terminal read. The destructive " +
+                "two, factory reset and erase, stay in the web UI.",
             style = MaterialTheme.typography.bodyMedium,
             color = tokens.scheme.onSurfaceVariant,
         )

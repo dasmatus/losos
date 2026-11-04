@@ -3,3 +3,5 @@
 build/
 app/build/
 local.properties
+# A build's own dependency cache, kept out of the repo
+gradle-home/
