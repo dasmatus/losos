@@ -74,13 +74,23 @@
 
   # A small, sensible base package set. Service-specific packages
   # (the cluster tooling, LosOS Cloud) are pulled in by their modules.
-  environment.systemPackages = with pkgs; [
-    curl
-    git
-    vim
-    htop
-    cryptsetup
-  ];
+  # tinycode (losos.tinycode.package) is the box's coding agent CLI
+  # (github.com/dasmatus/tinycode, AGPL-3.0-or-later). It replaced the
+  # Node-based agent stack the way it replaced OpenCode on the
+  # multi-purpose VPS: the appliance is stateless and has no memory to
+  # spare for a Node runtime, so agentic work on a box runs through one
+  # small static-ish binary. It reads its provider config from OpenCode's
+  # own config files, so nothing about the credentials changes.
+  environment.systemPackages =
+    with pkgs;
+    [
+      curl
+      git
+      vim
+      htop
+      cryptsetup
+    ]
+    ++ lib.optionals (config.losos.tinycode.package != null) [ config.losos.tinycode.package ];
 
   # Set-and-forget appliance: no remote shell access. SSH is off (and nothing
   # in the target config enables it), so the only way to reach a shell would be
