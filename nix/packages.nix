@@ -76,6 +76,16 @@
 #                set (modules/configuration.nix via losos.tinycode.package).
 #                Passed in as tinycodeSrc from the flake's pinned `tinycode`
 #                input, like pm is.
+#   losos-plugins-tinycode — tinycode adapted as a lososd plugin: the one
+#                WebAssembly component (backend/plugins/tinycode, which
+#                runs the tinycode binary through the exec import) and its
+#                manifest, without the rest of the plugin set the box
+#                loads.
+#   tinycode    — the coding agent CLI (github.com/dasmatus/tinycode,
+#                AGPL-3.0-or-later) the appliance ships in its base package
+#                set (modules/configuration.nix via losos.tinycode.package).
+#                Passed in as tinycodeSrc from the flake's pinned `tinycode`
+#                input, like pm is.
 {
   pkgs,
   # nix/version.nix, the release tag. Only the terminal client carries
@@ -313,7 +323,7 @@ let
   # build a set with the probe in it.
   # backend/plugins' vendored crates: lososd's plugins and Mesh CI's pm
   # plugin are built from the one workspace.
-  pluginsCargoHash = "sha256-30apxXXXZwQQcm+GUoXqqQPLZlkNggwwjlntT8/UWb4=";
+  pluginsCargoHash = "sha256-jDDtWK5AQGowDQ8Qs/uFhEbxbvibXffMgx9Y7ClZN6A=";
   lososPlugins =
     {
       pname ? "losos-plugins",
@@ -328,6 +338,7 @@ let
         "hidden"
         "basic"
         "pages"
+        "tinycode"
       ],
     }:
     pkgs.rustPlatform.buildRustPackage {
@@ -564,6 +575,15 @@ images
   losos-themes = (import ./../admin-ui/themes { inherit pkgs; }).package;
 
   losos-plugins = lososPlugins { };
+
+  # tinycode adapted as a lososd plugin, on its own: the one component and
+  # its manifest, without the rest of the set. `nix build
+  # .#losos-plugins-tinycode`. What the box loads is still the whole
+  # losos-plugins directory above, tinycode in it.
+  losos-plugins-tinycode = lososPlugins {
+    pname = "losos-plugins-tinycode";
+    names = [ "tinycode" ];
+  };
 
   # The mail server, Stalwart 1.0 (nix/stalwart.nix), for modules/mail.nix.
   losos-stalwart = pkgs.callPackage ./stalwart.nix { };

@@ -1,0 +1,22 @@
+{
+  "name": "tinycode",
+  "description": "Agentic work on the box: an administrator's task runs through tinycode, the coding agent CLI the appliance ships.",
+  "routes": [
+    { "method": "GET", "path": "/api/tinycode" },
+    { "method": "POST", "path": "/api/tinycode/asks", "maxBody": 1048576 },
+    { "method": "GET", "path": "/api/tinycode/asks/{id}" },
+    { "method": "DELETE", "path": "/api/tinycode/asks/{id}" }
+  ],
+  "files": [
+    { "path": "${LOSOS_TINYCODE_DIR:-/var/lib/losos/tinycode}", "access": "rw" }
+  ],
+  "exec": ["tinycode"],
+  "locks": ["tinycode"],
+  "timers": [{ "name": "start" }],
+  "limits": { "memoryMiB": 32, "timeoutSecs": 30, "jobSecs": 3600, "jobs": 2 },
+  "config": {
+    "dir": "${LOSOS_TINYCODE_DIR:-/var/lib/losos/tinycode}",
+    "opencodeConfig": "${LOSOS_TINYCODE_OPENCODE_CONFIG:-}",
+    "opencodeAuth": "${LOSOS_TINYCODE_OPENCODE_AUTH:-}"
+  }
+}
