@@ -49,9 +49,14 @@ pub fn same(a: &str, b: &str) -> bool {
 
 /// `Sun, 06 Nov 1994 08:49:37 GMT`, the date format of `getlastmodified`
 /// and `Last-Modified`.
+///
+/// A file's time comes from the client (`X-OC-Mtime`) or from the disk, and
+/// httpdate panics on a year past 9999, which closed the connection of every
+/// listing of the folder it sat in. The time is held to 9999-12-31 here.
 pub fn http_date(secs: i64) -> String {
+    const LAST: i64 = 253_402_300_799;
     httpdate::fmt_http_date(
-        std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs.max(0) as u64),
+        std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs.clamp(0, LAST) as u64),
     )
 }
 
@@ -116,6 +121,16 @@ mod tests {
         assert_eq!(t.len(), 72);
         assert!(t.chars().all(|c| c.is_ascii_alphanumeric()));
         assert_ne!(random_token(32), random_token(32));
+    }
+
+    #[test]
+    fn a_time_past_year_9999_does_not_panic() {
+        assert_eq!(http_date(i64::MAX), "Fri, 31 Dec 9999 23:59:59 GMT");
+        assert_eq!(
+            http_date(99_999_999_999_999_999),
+            "Fri, 31 Dec 9999 23:59:59 GMT"
+        );
+        assert_eq!(http_date(-5), "Thu, 01 Jan 1970 00:00:00 GMT");
     }
 
     #[test]
