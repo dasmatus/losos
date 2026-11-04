@@ -664,6 +664,7 @@
           # The check is the shipped package with its browser checks added.
           ui = self.packages.${system}.losos-admin-ui;
           callsPackage = self.packages.${system}.losos-ctl;
+          voice = self.packages.${system}.losos-voice;
         };
         # Not a VM: the option document of the install configuration
         # (nix/options-doc.nix via modules/config-repo.nix), forced here so

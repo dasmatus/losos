@@ -67,7 +67,7 @@ správu, ktorá to vysvetľuje.
 Každý človek má svoju dlaždicu. Dlaždica ukazuje jeho kameru, alebo jeho
 obrázok, kým má kameru vypnutú. Tlačidlá dole vypínajú a zapínajú váš
 mikrofón a kameru, zdieľajú obrazovku, prepínajú pozadie, pozývajú hosťa,
-otvárajú režim podcastu a ukončia vašu účasť v hovore. Vypnutie kamery ju
+menia hlas, pridávajú LosOS, otvárajú režim podcastu a ukončia vašu účasť v hovore. Vypnutie kamery ju
 zastaví, takže zhasne jej svetlo, a kým ju znova nezapnete, neposiela sa
 nič.
 
@@ -78,6 +78,14 @@ nechá plynulý; zdieľaná obrazovka robí opak a text nechá ostrý.
 
 Štítok **Šifrované end-to-end** hore ukazuje, koľko snímok váš prehliadač
 poslal zašifrovaných a koľko prijal a otvoril.
+
+## Váš hlas \{#your-voice}
+
+**Zmeniť môj hlas** mení, ako vás počujú ostatní: **Hlbší**, **Vyšší**,
+**Obor**, **Veverička** alebo **Robot**, a **Prirodzený** je váš vlastný
+hlas. Deje sa to vo vašom prehliadači pred zašifrovaním hovoru, takže
+zariadenie aj ostatní dostanú len zmenený hlas a nikto nepozná, že nie je
+váš. Voľba sa zapamätá pre ďalšie hovory, kým nezvolíte **Prirodzený**.
 
 ## Vaše pozadie \{#your-background}
 
@@ -144,12 +152,77 @@ dohodnú na kľúči len pre dvojicu, s kľúčmi vytvorenými len pre tento
 hovor, a až potom si odovzdajú kľúče hovoru. Kto má odkaz bez časti za
 `#`, dostane sa do hovoru, ale nič nevidí ani nepočuje.
 
+## LosOS v hovore \{#losos-in-the-call}
+
+**Pridať LosOS** privedie do hovoru asistenta zariadenia. Počúva, a keď
+niekto povie jeho meno, odpovie nahlas, všetkým, vlastným hlasom. Povedzte
+„LosOS, čo je v piatok na zozname?“ a odpovie. Asi dvadsať sekúnd po
+odpovedi môže ten istý človek pokračovať bez mena. „Stop“ ho umlčí, nech
+to povie ktokoľvek, rovnako ako **Prestať hovoriť** v jeho paneli.
+**Odstrániť LosOS** ho z hovoru vyberie.
+
+Jeho dlaždica má namiesto obrázka robota a vidí ju každý v hovore, takže
+nikoho nepočúva bez toho, aby to vedel.
+
+Hovory sú šifrované od konca ku koncu, takže ich zariadenie nepočuje, a
+nepočuje ich ani asistent, ktorý beží na zariadení. LosOS sa preto pripojí
+z prehliadača toho, kto ho pridal, ako druhý člen hovoru, s kľúčmi, ktoré
+tento človek už má. Počúva a hovorí práve tento prehliadač:
+
+- Whisper, rozpoznávač reči, mení hlas každého na text. Každý človek
+  prichádza vo vlastnom prúde, takže sa vie, kto čo povedal.
+- Kokoro, syntetizátor reči, hovorí odpoveď.
+- Oba bežia ako WebAssembly na počítači toho človeka. Novší počítač
+  stíha, na pomalom prídu odpovede neskôr.
+
+Prvýkrát si prehliadač stiahne dva modely, spolu asi 150 MB, zo zariadenia
+a ponechá si ich. Z ničoho iného sa nič nesťahuje. Potom už hovor začne
+bez sťahovania.
+
+Z prehliadača odchádza otázka, ako text, k asistentovi zariadenia, LosOS
+Tag, spolu s posledným úsekom rozhovoru, aby „čo si o tom myslíš?“ malo
+o čom byť. Zaznamenaný zvuk zostáva v prehliadači a zmizne hneď, ako sa
+prečíta. Keď človek, ktorý LosOS pridal, opustí hovor alebo zavrie stránku,
+LosOS odíde s ním.
+
+Odpoveď sa číta nahlas všetkým v hovore, takže asistent predvolene
+nepoužíva súbory, poštu ani miestnosti toho, kto ho pridal. **Môže použiť
+moje súbory, poštu a miestnosti** v jeho paneli to pre tento hovor zapne.
+
+LosOS zatiaľ rozumie a hovorí po anglicky. Je zapnutý, kým ho nevypnete v
+**Nastavenia → Pokročilé → `losos.calls.agent.enable`**; po vypnutí
+zariadenie nedodáva rečové modely a tlačidlo zmizne.
+
+## Hovor s vašimi asistentmi \{#calling-your-assistants}
+
+Každý asistent, ktorého vytvoríte v LosOS Tag, je v LosOS Chate človek ako
+každý iný a chat s ním je obyčajný chat, s tlačidlom telefónu a kamery v
+záhlaví. Stlačte jedno z nich a hovor sa začne s asistentom, ktorý v ňom už
+je: netreba hovoriť jeho meno ani stláčať **Pridať LosOS**. Pri kamere
+odpovedá s tvárou, ktorá žmurká, pri premýšľaní hľadí nahor a otvára ústa
+podľa hlasitosti hlasu. Pri telefóne je to hlasový hovor.
+
+Každý asistent má hlas, ktorý zostáva z hovoru na hovor rovnaký a vyberá sa
+podľa mena. Stačí hovoriť. Odpovedá s tým, čo smiete čítať aj vy, lebo
+odpoveď počujete len vy, takže **Môže použiť moje súbory, poštu a
+miestnosti** je od začiatku zapnuté a v jeho paneli to môžete vypnúť. Čo
+vie a čo smie, nastavíte v **Nastavenia → LosOS Tag** pri danom asistentovi.
+
+Funguje ako LosOS v skupinovom hovore. Pripája sa z vášho prehliadača, takže
+hovor zostane šifrovaný, a potrebuje tie isté dva rečové modely. Vidí váš
+hlas, nie váš obraz: kamera ide ľuďom v hovore a asistentovi nikdy. Keď
+zložíte, je preč.
+
 ## Čo vidí zariadenie \{#what-the-box-sees}
 
 Zariadenie každý snímok posunie ostatným v hovore bez toho, aby ho otvorilo.
 Vie, kto je v ktorom hovore a kedy, aké veľké sú snímky a ako často
 prichádzajú. Obraz ani zvuk nikdy nemá, okrem vysielania podcastu, ktoré
 mu niekto pošle, aby ho odovzdalo ďalej.
+
+Pridanie LosOS na tom pre zariadenie nič nemení: pripojí sa z prehliadača
+a drží rovnaký druh kľúčov, takže zariadenie stále vidí iba zašifrované
+snímky. Počuje to, čo sa rozhodne priniesť ten, kto ho pridal.
 
 Prehliadač každého človeka si pre hovor vytvorí vlastný kľúč. Prehliadače
 si kľúče odovzdávajú v šifrovaných správach chatu medzi zariadeniami, ktoré

@@ -1322,6 +1322,21 @@ in
       '';
     };
 
+    calls.agent.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Let a person add LosOS to a call as a voice agent. Calls are
+        encrypted end to end, so the box cannot hear them: the agent runs in
+        the browser of the person who adds it, as one more member of the
+        call. It listens with Whisper and speaks with Kokoro, both in
+        WebAssembly there, and asks the box's LosOS Tag only for what was
+        said to it. This option serves the two models and their engines at
+        /voice/ (about 160 MB of the box's store); the box itself does no
+        speech work. Needs calls.
+      '';
+    };
+
     calls.udpPort = lib.mkOption {
       type = lib.types.port;
       default = 7882;

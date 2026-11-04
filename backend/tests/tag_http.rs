@@ -271,3 +271,44 @@ fn an_ask_queues_and_stops_and_the_search_answers() {
     assert_eq!(suggest.status, 200, "{}", suggest.body);
     assert_eq!(suggest.json()["suggest"], false);
 }
+
+#[test]
+fn a_voice_ask_runs_as_a_mention_and_its_state_can_be_read() {
+    let daemon = Daemon::start();
+
+    // A call's agent asks for a voice answer: no room to post into, and
+    // none of the asker's own material unless the page says they allowed it.
+    let asked = daemon.admin(
+        "POST",
+        "/api/tag/ask",
+        Some(r#"{"question":"what is due?","voice":true,"room":"!x:box"}"#),
+    );
+    assert_eq!(asked.status, 200, "{}", asked.body);
+    let id = asked.json()["id"].as_str().unwrap().to_string();
+
+    let view = daemon.admin("GET", "/api/tag", None).json();
+    let job = view["jobs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|j| j["id"] == id)
+        .expect("the ask on the queue");
+    assert_eq!(job["origin"], "mention");
+    assert!(job.get("room").is_none_or(|r| r.is_null()), "{job}");
+    assert!(job.get("material").is_none_or(|m| m.is_null()), "{job}");
+
+    // The page reads it back by id while the answer grows.
+    let read = daemon.admin("GET", &format!("/api/tag/asks/{id}"), None);
+    assert_eq!(read.status, 200, "{}", read.body);
+    let state = read.json();
+    assert_eq!(state["id"], id);
+    assert!(state["answer"].is_string() || state["answer"].is_null());
+
+    // An ask nobody made is not found.
+    let missing = daemon.admin("GET", "/api/tag/asks/nosuchask", None);
+    assert_eq!(missing.status, 404, "{}", missing.body);
+
+    // Without the token the route is closed like the rest.
+    let refused = daemon.request("GET", &format!("/api/tag/asks/{id}"), None, None);
+    assert_eq!(refused.status, 401);
+}
