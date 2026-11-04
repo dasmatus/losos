@@ -1,9 +1,9 @@
 # Calls in LosOS chat: losos-calls, the box's own SFU (backend/src/calls/),
 # and the one nginx location the chat page reaches it on.
 #
-# Calls belong to the shared side, like chat itself: they exist only while
-# chat runs (lososInternal.chat: the box shares its storage in a mesh it has
-# joined, behind LosOS Login) and losos.calls.enable is on. Otherwise there
+# Calls come with chat: they exist wherever chat runs (lososInternal.chat,
+# behind LosOS Login, with or without a mesh or an edge) and
+# losos.calls.enable is on. Otherwise there
 # is no unit, no open port and no /calls/api/, and the chat page, which asks
 # /calls/api/health once, draws no call button.
 #
@@ -16,7 +16,7 @@
 # their room was invited to. The SFU admits only people of this box, so a
 # Matrix OpenID token would only repeat what LosOS Login already said.
 #
-# It runs as `shared`, keeps nothing on disk, and answers HTTP on a unix
+# It runs as `notshared`, keeps nothing on disk, and answers HTTP on a unix
 # socket only nginx can open, so a Remote-User it reads is nginx's.
 #
 # Where the media goes depends on the edge. A box that tunnels through one
@@ -47,8 +47,8 @@ let
   runDir = "/run/losos-calls";
   socket = "${runDir}/http.sock";
   tap = config.lososInternal.callsTap;
-  # The account the shared side runs as (lososInternal.sideUser).
-  user = if config.lososInternal.sideUser == null then "shared" else config.lososInternal.sideUser;
+  # The account chat runs as.
+  user = config.lososInternal.chatUser;
   proxy = config.losos.proxy;
   throughEdge = proxy.enable;
   edgePathEnv = "/run/losos/edge-path.env";

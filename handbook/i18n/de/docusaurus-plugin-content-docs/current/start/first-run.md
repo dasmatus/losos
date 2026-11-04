@@ -130,8 +130,8 @@ Schritte: die Apps von LosOS Cloud, weitere Apps hinzufügen, den Speicher,
 das Verleihen der Box in der Nacht, das nächtliche Update und wo du die Tour
 wiederfindest. Die Tour fragt die Box, was sie sonst noch hat, und fügt für
 jedes einen Schritt hinzu: Office, Arbeitsspeicher für KI-Modelle verleihen,
-einen Namen, über den man sie bezahlt, Chat und Anrufe (nur solange die Box
-ihren Speicher in einem Mesh teilt), Mit KI bauen und Profilbilder. Eine Box
+einen Namen, über den man sie bezahlt, Chat und Anrufe,
+Mit KI bauen und Profilbilder. Eine Box
 ohne all das zeigt die sechs Schritte.
 **Tour überspringen** schließt sie, und dieser Browser öffnet sie nicht
 mehr von selbst. **Tour starten** unter Einstellungen, Über holt sie zurück.

@@ -1317,8 +1317,8 @@ in
       default = true;
       description = ''
         Let people on the box call each other from LosOS chat, by voice or
-        video. Calls belong to the box's shared side, like chat: they exist
-        only while the box shares its storage and is in a mesh. Every
+        video. Calls come with chat: they run wherever chat runs, with or
+        without a mesh or an edge. Every
         frame is encrypted in the caller's browser and decrypted in the
         others', so the box forwards media it cannot read.
       '';
@@ -2018,10 +2018,10 @@ in
         /chat/, where everyone with a LosOS Login account can talk in rooms
         and direct messages, with end-to-end encryption, files, reactions,
         threads and voice and video calls on the box's network. Chat runs
-        as the shared user and keeps everything in the shared data domain,
-        so it is there only while the box shares its storage in a mesh it
-        has joined. Signing in to
-        chat is always through LosOS Login; there are no chat passwords.
+        as the owner's account (`notshared`) and keeps everything in its
+        data folder, so it is there on every box: it needs no mesh, no
+        edge and no shared storage. Signing in to chat is always through
+        LosOS Login; there are no chat passwords.
       '';
     };
 
@@ -4182,8 +4182,8 @@ in
   };
 
   # ── The shared side ───────────────────────────────────────────────────
-  # The shared user's apps (mail, chat) exist only while the box's storage
-  # counts as shared: sharing on AND the box in a mesh. Sharing switched on
+  # The shared user's apps (mail, Mesh CI, the hosted knowledge bases) exist
+  # only while the box's storage counts as shared: sharing on AND the box in a mesh. Sharing switched on
   # without a mesh to share with is not enough. Read-only.
   options.lososInternal.sharedSide = lib.mkOption {
     type = lib.types.bool;
@@ -4207,8 +4207,8 @@ in
   };
 
   # ── Who runs the shared side's apps ───────────────────────────────────
-  # Chat, mail, calls, Mesh CI and the hosted knowledge bases are one
-  # instance each, and they run as whichever sharing account is live: `shared`
+  # Mail, Mesh CI and the hosted knowledge bases are one instance each, and
+  # they run as whichever sharing account is live: `shared`
   # on a box in the mesh, else `kindashared` on a box that shares only with
   # its local gateways. Their data is in that account's own domain
   # (/home/<user>/data), so a box that moves from one side to the other
@@ -4241,20 +4241,33 @@ in
     description = "The shared side's apps run: lososInternal.sideUser is set.";
   };
 
+  # The account chat and calls run as, on every box: the owner's own, whose
+  # data folder is open whether or not the box shares anything. Chat used to
+  # follow the shared side (lososInternal.sideUser), which kept it off every
+  # box that was alone; one fixed account also keeps a room's history when
+  # the box later joins a mesh. Read-only.
+  options.lososInternal.chatUser = lib.mkOption {
+    type = lib.types.enum [ "notshared" ];
+    internal = true;
+    readOnly = true;
+    default = "notshared";
+    description = "The account LosOS Chat and the calls run as.";
+  };
+
   # Whether this box runs chat, as it actually runs: the switch and the
-  # sharing gate together. Chat belongs to the shared user and keeps its
-  # data in the shared domain (modules/chat.nix). Read-only.
+  # sign-in it stands behind. Chat needs no mesh, no edge and no shared
+  # storage; federation is a separate switch (losos.chat.federation.enable)
+  # and, with a .local server name, answers the LAN alone. Read-only.
   options.lososInternal.chat = lib.mkOption {
     type = lib.types.bool;
     internal = true;
     readOnly = true;
     default =
       config.losos.chat.enable
-      && config.lososInternal.sideLive
       && config.losos.identity.enable
       && config.losos.admin.enable
       && config.losos.admin.ui != null;
-    description = "LosOS Chat runs: losos.chat.enable, the shared side's apps (lososInternal.sideLive) and LosOS Login.";
+    description = "LosOS Chat runs: losos.chat.enable and LosOS Login with the admin pages.";
   };
 
   # ── Mesh CI, as it actually runs ────────────────────────────────────────

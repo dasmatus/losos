@@ -22,15 +22,25 @@ geteilten Speicher, aber Chat liest sie nicht mehr.
 
 ## Wann Chat da ist
 
-Chat gehört zu dem Teil des Geräts, den du mit dem Mesh teilst, und
-speichert alles in dessen Speicher. Er läuft nur, solange das Gerät seinen
-Speicher teilt und einem Mesh beigetreten ist. Dann erscheint **Chat** in der
-Seitenleiste der Verwaltungsseiten.
+Chat ist standardmäßig auf jeder Box an. Er braucht kein Mesh, keinen Edge
+und keinen geteilten Speicher: Auch eine Box, die allein auf dem Schreibtisch
+steht, hat ihn. **Chat** steht in der Seitenleiste der Verwaltungsseiten,
+sobald die Box übernommen ist.
 
-Wenn du das Teilen beendest, hält Chat mit an. Der Eintrag in der
-Seitenleiste verschwindet, und die Adresse des Chats führt zurück zu den
-Verwaltungsseiten. Die Nachrichten bleiben im geteilten Speicher und kommen
-zurück, wenn du wieder teilst.
+Chat gehört zum Konto des Besitzers auf der Box und speichert alles in dessen
+Datenordner, auf der verschlüsselten Platte der Box und in ihren Backups. Ein
+Mesh beizutreten, Speicher zu teilen oder das Teilen wieder zu beenden ändert
+daran nichts: Räume, Nachrichten und Dateien bleiben, wo sie sind. Eine Box,
+die Chat früher auf der geteilten Seite hatte, verschiebt ihre Nachrichten
+einmal in den Ordner des Besitzers, beim ersten Start nach dem Update.
+
+Mit Leuten auf anderen Boxen zu sprechen ist eine eigene Einstellung,
+**Föderation** (`losos.chat.federation.enable`). Mit dem Standardnamen
+`.local` erreicht sie die Boxen in deinem eigenen Netzwerk und sonst nichts.
+
+Um Chat auszuschalten, schalte `losos.chat.enable` unter **Einstellungen** >
+**Erweitert** aus. Der Eintrag in der Seitenleiste verschwindet, und die
+Adresse des Chats führt zurück zu den Verwaltungsseiten.
 
 ## Anmelden
 

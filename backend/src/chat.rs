@@ -24,9 +24,9 @@
 //!   * Removing a person ([`Chat::close`]) also signs every one of their
 //!     devices out of Synapse, so nothing they held keeps working anywhere.
 //!
-//! Chat belongs to the `shared` user: Synapse runs as it and keeps
-//! everything in the shared data domain, which is unlocked only while the
-//! box shares its storage.
+//! Chat belongs to the owner's account, `notshared`: Synapse runs as it and
+//! keeps everything in its data folder. It needs no mesh, no edge and no
+//! shared storage, so it is on wherever `losos.chat.enable` is.
 //!
 //! Everything goes over loopback as one HTTP/1.0 exchange (an answer to 1.0
 //! is never chunked), behind the two traits below so the logic is tested
@@ -326,8 +326,8 @@ impl Chat {
         }
     }
 
-    /// Whether the box runs chat now: it is on and the box shares its
-    /// storage (`modules/chat.nix` sets the environment only then).
+    /// Whether the box runs chat now: `losos.chat.enable` is on
+    /// (`modules/chat.nix` sets the environment only then).
     #[must_use]
     pub fn live(&self) -> bool {
         self.inner.is_some()

@@ -635,9 +635,9 @@ export default defineMessages({
     de: "Keines erreichbar",
   },
   "panes.mesh.local.runsAs": {
-    en: "Chat, mail, calls and Mesh CI run as",
-    sk: "Chat, pošta, hovory a Mesh CI bežia ako",
-    de: "Chat, Mail, Anrufe und Mesh CI laufen als",
+    en: "Mail and Mesh CI run as",
+    sk: "Pošta a Mesh CI bežia ako",
+    de: "Mail und Mesh CI laufen als",
   },
   "panes.mesh.local.runsAsNone": {
     en: "Off",
@@ -660,9 +660,9 @@ export default defineMessages({
     de: "Wartet auf ein Gateway",
   },
   "panes.mesh.local.caption": {
-    en: "Kinda shared: the box keeps a third account, kindashared, with its own encrypted folder, for the gateways of the network it sits on, a company's or your own. Nothing in it goes to an official edge or the wider mesh, and nothing in it is sold on the market. While it is on, chat, mail, calls and Mesh CI run as kindashared when the box is not in the mesh, and apps can be installed as kindashared. Your own files stay apart either way.",
-    sk: "Tak trochu zdieľané: zariadenie má tretí účet, kindashared, s vlastným šifrovaným priečinkom, pre brány siete, v ktorej je, firemnej alebo vašej. Nič z neho nejde na oficiálny okrajový server ani do širšej siete mesh a nič z neho sa nepredáva na trhu. Kým je zapnuté, chat, pošta, hovory a Mesh CI bežia ako kindashared, ak zariadenie nie je v sieti mesh, a aplikácie možno inštalovať ako kindashared. Vaše vlastné súbory zostávajú oddelené tak či tak.",
-    de: "Ein bisschen geteilt: Die Box führt ein drittes Konto, kindashared, mit einem eigenen verschlüsselten Ordner, für die Gateways des Netzwerks, in dem sie steht, das einer Firma oder dein eigenes. Nichts darin geht an einen offiziellen Edge oder ins weitere Mesh, und nichts darin wird auf dem Markt verkauft. Solange es an ist, laufen Chat, Mail, Anrufe und Mesh CI als kindashared, wenn die Box nicht im Mesh ist, und Apps lassen sich als kindashared installieren. Deine eigenen Dateien bleiben so oder so getrennt.",
+    en: "Kinda shared: the box keeps a third account, kindashared, with its own encrypted folder, for the gateways of the network it sits on, a company's or your own. Nothing in it goes to an official edge or the wider mesh, and nothing in it is sold on the market. While it is on, mail and Mesh CI run as kindashared when the box is not in the mesh, and apps can be installed as kindashared. Your own files stay apart either way.",
+    sk: "Tak trochu zdieľané: zariadenie má tretí účet, kindashared, s vlastným šifrovaným priečinkom, pre brány siete, v ktorej je, firemnej alebo vašej. Nič z neho nejde na oficiálny okrajový server ani do širšej siete mesh a nič z neho sa nepredáva na trhu. Kým je zapnuté, pošta a Mesh CI bežia ako kindashared, ak zariadenie nie je v sieti mesh, a aplikácie možno inštalovať ako kindashared. Vaše vlastné súbory zostávajú oddelené tak či tak.",
+    de: "Ein bisschen geteilt: Die Box führt ein drittes Konto, kindashared, mit einem eigenen verschlüsselten Ordner, für die Gateways des Netzwerks, in dem sie steht, das einer Firma oder dein eigenes. Nichts darin geht an einen offiziellen Edge oder ins weitere Mesh, und nichts darin wird auf dem Markt verkauft. Solange es an ist, laufen Mail und Mesh CI als kindashared, wenn die Box nicht im Mesh ist, und Apps lassen sich als kindashared installieren. Deine eigenen Dateien bleiben so oder so getrennt.",
   },
   "panes.mesh.manage.title": {
     en: "Managed from the edge",
