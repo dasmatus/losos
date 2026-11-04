@@ -221,9 +221,9 @@ export interface Me {
   /** What LosOS Login's rules hold this person to their own account for
    *  (backend/src/login.rs). Empty or missing: nothing. */
   locked?: LoginReason[];
-  /** The apps on the shared side live on this box now ("mail", "chat"):
-   *  they run only while the box shares its storage, and their menu
-   *  entries are drawn only when listed here. */
+  /** The apps live on this box now ("mail", "chat", "ci", "cloud"): mail
+   *  and Mesh CI run only while the box shares its storage, chat wherever
+   *  it is on, and their menu entries are drawn only when listed here. */
   shared?: string[];
   /** Their role (backend/src/roles.rs); missing on an older lososd. */
   role?: Role;
