@@ -171,17 +171,28 @@ export function cssRegistry(env: BuildEnv, appCss: string): CssRegistry {
   files.set(appKey, appCss);
 
   /* The registry itself, compiled into the page: linking is all it does,
-   * and it is idempotent, so five imports of one sheet make one <link>. */
+   * and it is idempotent, so five imports of one sheet make one <link>.
+   * The base is the build's (import.meta.env: the define above), not the
+   * document's — the SPA's client-side routes change document.baseURI, and
+   * a link resolved off /settings/network would 404. */
   const REGISTRY = `export function inject(key) {
   if (typeof document === "undefined") return;
-  const href = new URL(\`assets/css/\${key}.css\`, ${JSON.stringify(env.base)}).href;
+  const base = \`\${location.origin}\${import.meta.env.BASE_URL}\`;
+  const href = new URL(\`assets/css/\${key}.css\`, base).href;
   for (const link of document.querySelectorAll("link[rel=stylesheet]")) {
     if (link.href === href) return;
   }
   const link = document.createElement("link");
   link.rel = "stylesheet";
   link.href = href;
-  document.head.appendChild(link);
+  /* Before the app sheet, if the document carries one: the sources import
+   * the component sheets before the app's own (main.tsx imports Sonner's
+   * stylesheet first), so the house rules load after theirs and win the
+   * cascade — the same order the single-file build used to bake into one
+   * file. The marker is the app stylesheet's own <link>, written in. */
+  const app = document.querySelector("link[data-losos-app]");
+  if (app) app.before(link);
+  else document.head.appendChild(link);
 }
 `;
 
@@ -500,7 +511,7 @@ export function rewriteHtml(html: string, entryTag: string, env: BuildEnv, chunk
     .replaceAll(`href="/src/assets/losos.png"`, `href="${base}assets/losos.png"`)
     .replaceAll(`src="/src/assets/losos.png"`, `src="${base}assets/losos.png"`)
     .replace(`<script type="module" src="${entryTag}"></script>`, script)
-    .replace("</head>", `\n  <link rel="stylesheet" href="${base}assets/css/${appKey}.css">\n  </head>`);
+    .replace("</head>", `\n  <link rel="stylesheet" href="${base}assets/css/${appKey}.css" data-losos-app="1">\n  </head>`);
   if (!out.includes(script)) {
     throw new Error(`an HTML page does not name ${entryTag} the way the bundler expects it to`);
   }
