@@ -553,8 +553,7 @@
         # The edge-prefilled medium (nixosConfigurations.iso-edge): the autorun
         # install starts itself on a chip and asks the medium's edge, and a
         # chip-less box stops with a reason and touches nothing disks.
-        losos-installer-edge =
-          import ./nix/tests/installer-edge.nix { inherit pkgs self; };
+        losos-installer-edge = import ./nix/tests/installer-edge.nix { inherit pkgs self; };
         losos-admin-daemon = import ./nix/tests/admin-vm.nix { inherit pkgs; };
         losos-edge-proxy = import ./nix/tests/edge-vm.nix { inherit pkgs; };
         losos-quic = import ./nix/tests/quic.nix { inherit pkgs; };
