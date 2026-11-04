@@ -69,10 +69,10 @@ module, `process`, `Buffer` or `require`, but Bun's (`Bun.file`, `Bun.serve`,
 `Bun.spawn`, `Bun.$`) and the web's. Every script runs on Bun's runtime
 (`bun --bun`, `bunx --bun`), and `src/` typechecks without Bun's or Node's
 types (`build.ts`, `bundler.ts` and `dev.ts` have `tsconfig.tools.json`).
-The admin UI is bundled by Bun's own bundler, not Vite: `build.ts` runs
-`Bun.build` over its pages, and `dev.ts` is `Bun.serve` with hot reloading
-(plugins in `bundler.ts`, named for the dev server in `bunfig.toml`). The
-handbook alone keeps a bundler of its own, Docusaurus's. Nix installs each
+Bun's own bundler builds the admin UI, and Vite is gone. `build.ts` runs
+`Bun.build` over the pages, and `dev.ts` is `Bun.serve` with hot reloading
+(the plugins are in `bundler.ts`, and `bunfig.toml` gives them to the dev
+server). Only the handbook keeps another bundler, Docusaurus's. Nix installs each
 `node_modules` from its `bun.lock` alone (`nix/bun-deps.nix`, one hash per
 workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
 `node:` import. Playwright's API wants a Node `Buffer` for bytes

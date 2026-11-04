@@ -107,15 +107,16 @@ Node's: no `node:` module, `process`, `Buffer` or `require`. The pages
 under `src/` typecheck without Bun's or Node's types; the build and the
 dev server, which run on Bun, are typechecked by `tsconfig.tools.json`.
 
-The admin UI is bundled by Bun itself. `build.ts` runs `Bun.build` over the
-pages (`index.html`, `chat/`, `manage/`, `cloud/`, `kb/`, `git/`, `wiki/`,
-and `guest.html` on its own under `/calls/guest/`) into `dist/`, with
-Tailwind's Bun plugin and the app's own in `bundler.ts`: `losos:build` (the
-build's settings), `?url` imports, `new URL("…", import.meta.url)` files
-and workers, and the two packages patched quiet for the CSP. `bun run dev`
-is `dev.ts`, `Bun.serve` with hot reloading over the same pages and plugins
-(`bunfig.toml`), proxying the APIs to `LOSOS_API_ORIGIN`. The handbook keeps
-Docusaurus's own bundler, which Docusaurus does not let a site replace.
+Bun bundles the admin UI. `build.ts` runs `Bun.build` over the pages
+(`index.html`, `chat/`, `manage/`, `cloud/`, `kb/`, `git/`, `wiki/`, and
+`guest.html` on its own under `/calls/guest/`) into `dist/`. It uses
+Tailwind's Bun plugin and the app's own plugin in `bundler.ts`, which
+provides `losos:build` (the build's settings), `?url` imports, the files
+and workers that `new URL("…", import.meta.url)` names, and two patches
+that keep sonner and MediaPipe from tripping the CSP. `bun run dev` is
+`dev.ts`, `Bun.serve` with hot reloading over the same pages and plugins
+(`bunfig.toml`), and it proxies the APIs to `LOSOS_API_ORIGIN`. The
+handbook keeps Docusaurus's bundler, which a Docusaurus site cannot swap.
 
 `nix build .#losos-admin-ui` installs `node_modules` from `bun.lock`
 (`nix/bun-deps.nix`), then runs `tsc --noEmit && bun build.ts`, so the
