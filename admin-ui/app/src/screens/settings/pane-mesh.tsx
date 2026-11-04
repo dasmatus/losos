@@ -8,6 +8,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Alert02Icon, Cancel01Icon, CheckmarkBadge01Icon } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
 import { Rich, useT } from "@/lib/i18n-react";
+import { pageOf } from "@/pages/page";
 import { postEdgeCluster, postEdgeManage, useMe, type EdgePath, type EdgeProxy, type EdgeTier, type PublicTls } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
@@ -584,13 +585,50 @@ export function MeshPane({ form }: { form: SettingsForm }) {
    * and setting the hours is still one trip. */
   const windowDisabled = disabled || !joined;
 
-  return (
-    <>
-      <EdgeGroup view={edge} />
-      <ClusterGroup view={edge} locked={form.locked} />
-      <LocalShareGroup view={edge} form={form} />
-      <ManageGroup view={edge} locked={form.locked} />
+  return <MeshPage facts={{ form, edge, joinId, shareId, startId, endId, windowErrorId, draft, joined, sharing, start, end, disabled, joinRefused, needs, joinDisabled, windowDisabled }} />;
+}
 
+interface MeshFacts {
+  form: SettingsForm;
+  edge: ReturnType<typeof useEdge>;
+  joinId: string;
+  shareId: string;
+  startId: string;
+  endId: string;
+  windowErrorId: string;
+  draft: SettingsForm["draft"];
+  joined: boolean;
+  sharing: boolean;
+  start: string;
+  end: string;
+  disabled: boolean;
+  joinRefused: boolean;
+  needs: string | null;
+  joinDisabled: boolean;
+  windowDisabled: boolean;
+}
+
+const MeshPage = pageOf<"settings.mesh", MeshFacts>("settings.mesh", {
+  Edge({ facts }) {
+    const { edge } = facts;
+    return <EdgeGroup view={edge} />;
+  },
+  Cluster({ facts }) {
+    const { form, edge } = facts;
+    return <ClusterGroup view={edge} locked={form.locked} />;
+  },
+  LocalShare({ facts }) {
+    const { form, edge } = facts;
+    return <LocalShareGroup view={edge} form={form} />;
+  },
+  Manage({ facts }) {
+    const { form, edge } = facts;
+    return <ManageGroup view={edge} locked={form.locked} />;
+  },
+  Join({ facts }) {
+    const t = useT();
+    const { form, joinId, joined, disabled, joinRefused, needs, joinDisabled } = facts;
+    return (
       <PaneSection>
         <GroupTitle>{t("panes.mesh.otherBoxes")}</GroupTitle>
         <Group>
@@ -608,7 +646,12 @@ export function MeshPane({ form }: { form: SettingsForm }) {
         </Group>
         <GroupCaption>{t("panes.mesh.joinCaption")}</GroupCaption>
       </PaneSection>
-
+    );
+  },
+  SpareTime({ facts }) {
+    const t = useT();
+    const { form, shareId, startId, endId, windowErrorId, sharing, start, end, disabled, windowDisabled } = facts;
+    return (
       <PaneSection>
         <GroupTitle>{t("panes.mesh.spareTime")}</GroupTitle>
         <Group>
@@ -679,6 +722,6 @@ export function MeshPane({ form }: { form: SettingsForm }) {
           <Rich k="panes.mesh.windowCaption" vars={{ your: <em>{t("panes.mesh.your")}</em> }} />
         </GroupCaption>
       </PaneSection>
-    </>
-  );
-}
+    );
+  },
+});

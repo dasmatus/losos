@@ -605,6 +605,21 @@ fn settings_form(ctx: &Ctx, pane: &str, rebuild: &Rebuild, fields: Html, after: 
     pane_column(ctx, pane, body, Html::new())
 }
 
+/// A pane of one block: the block itself, or the administrator's page with
+/// the block where the page places it (`custom`, crate::custom).
+fn placed(custom: Option<&str>, block: Html, named: &str) -> Html {
+    match custom {
+        None => block,
+        Some(html) => crate::custom::splice(html, |name, _| {
+            if name == named {
+                block.clone()
+            } else {
+                Html::new()
+            }
+        }),
+    }
+}
+
 /// A switch row and the value it showed, so only a change is sent.
 fn switch(id: &'static str, settings: &Value, title: &str, detail: &str, disabled: bool) -> Html {
     let on = settings[id].as_bool().unwrap_or(false);
@@ -620,10 +635,12 @@ fn switch(id: &'static str, settings: &Value, title: &str, detail: &str, disable
     h
 }
 
-pub fn hardware(ctx: &Ctx, settings: &Value, rebuild: &Rebuild) -> Html {
+/// The Hardware pane, or the administrator's page in its place, whose one
+/// block is the switch.
+pub fn hardware(ctx: &Ctx, settings: &Value, rebuild: &Rebuild, custom: Option<&str>) -> Html {
     let m = &ctx.m;
     let off = rebuild.busy();
-    let fields = ui::pane_section()
+    let section = ui::pane_section()
         .child(ui::group_title(&m.t("panes.hardware.graphics")))
         .child(ui::group().child(switch(
             "gpuEnable",
@@ -635,7 +652,8 @@ pub fn hardware(ctx: &Ctx, settings: &Value, rebuild: &Rebuild) -> Html {
         .child(ui::group_caption(Html::text(
             &m.t("panes.hardware.caption"),
         )));
-    settings_form(ctx, "hardware", rebuild, fields.into(), Html::new())
+    let fields = placed(custom, Html::from(section), "Graphics");
+    settings_form(ctx, "hardware", rebuild, fields, Html::new())
 }
 
 pub const HARDWARE: &[&str] = &["gpuEnable"];
@@ -648,7 +666,15 @@ pub const SECURITY: &[&str] = &[
 pub const NETWORK_SWITCHES: &[&str] = &["proxyEnable"];
 pub const NETWORK_TEXTS: &[&str] = &["hostName"];
 
-pub fn security(ctx: &Ctx, settings: &Value, options: Option<&Value>, rebuild: &Rebuild) -> Html {
+/// The Security pane, or the administrator's page in its place, whose one
+/// block is the switches and the notice above them.
+pub fn security(
+    ctx: &Ctx,
+    settings: &Value,
+    options: Option<&Value>,
+    rebuild: &Rebuild,
+    custom: Option<&str>,
+) -> Html {
     let m = &ctx.m;
     let off = rebuild.busy();
     let mut group = ui::group();
@@ -678,13 +704,14 @@ pub fn security(ctx: &Ctx, settings: &Value, options: Option<&Value>, rebuild: &
             .class("mb-5"),
         );
     }
-    let fields = section
+    let section = section
         .child(ui::group_title(&m.t("panes.security.group")))
         .child(group)
         .child(ui::group_caption(Html::text(
             &m.t("panes.security.caption"),
         )));
-    settings_form(ctx, "security", rebuild, fields.into(), Html::new())
+    let fields = placed(custom, Html::from(section), "Protections");
+    settings_form(ctx, "security", rebuild, fields, Html::new())
 }
 
 /// components/no-tpm-notice.tsx's runsWithoutTpm: the options document
@@ -700,12 +727,18 @@ fn runs_without_tpm(options: Option<&Value>) -> bool {
 /// when it no longer matches its old value: a `pattern` that refuses the
 /// old value, read as `:valid` (basic.css), on a form that does not let the
 /// browser hold it back (`novalidate`); lososd checks the shape.
+///
+/// An administrator's page in its place splices the name and the reach
+/// into the form. The domains have forms of their own, so they stay after
+/// it, drawn only while the page keeps them; the Windows and hidden
+/// address blocks have no page without a script.
 pub fn network(
     ctx: &Ctx,
     settings: &Value,
     rebuild: &Rebuild,
     problem: Option<&str>,
     domains: Html,
+    custom: Option<&str>,
 ) -> Html {
     let m = &ctx.m;
     let off = rebuild.busy();
@@ -768,9 +801,24 @@ pub fn network(
         .child(ui::group_caption(Html::text(
             &m.t("panes.network.reachCaption"),
         )));
-    let mut fields = Html::from(names);
-    fields.push(reach);
-    settings_form(ctx, "network", rebuild, fields, domains)
+    let Some(html) = custom else {
+        let mut fields = Html::from(names);
+        fields.push(reach);
+        return settings_form(ctx, "network", rebuild, fields, domains);
+    };
+    let (names, reach) = (Html::from(names), Html::from(reach));
+    let mut keeps_domains = false;
+    let fields = crate::custom::splice(html, |name, _| match name {
+        "Name" => names.clone(),
+        "Reaching" => reach.clone(),
+        "Domains" => {
+            keeps_domains = true;
+            Html::new()
+        }
+        _ => Html::new(),
+    });
+    let after = if keeps_domains { domains } else { Html::new() };
+    settings_form(ctx, "network", rebuild, fields, after)
 }
 
 /// A `pattern` every value but `old` matches. The browser compiles it with

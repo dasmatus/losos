@@ -28,6 +28,7 @@ import { toast } from "@/components/ui/toast";
 import type { AccessExpiry, AccessKey, AccessResponse, AccessScope, AccessToken } from "@/lib/api";
 import { intlTag, type MessageKey } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-react";
+import { pageOf } from "@/pages/page";
 import { copyText } from "@/screens/wizard/copy";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, StackRow } from "./rows";
 import { useAccess, type AccessData } from "./use-access";
@@ -73,59 +74,98 @@ const EXPIRIES: { id: string; days: AccessExpiry; label: MessageKey }[] = [
   { id: "never", days: null, label: "access.form.never" },
 ];
 
+/* The pane is src/pages/settings.access.mdx (src/pages/README.md): the status
+ * block stands in until the pane has loaded, and the others draw nothing
+ * until then. */
 export function AccessPane({ locked }: { locked: boolean }) {
-  const t = useT();
   const access = useAccess(!locked);
-  const { state } = access;
-
-  if (state.kind === "loading") {
-    return (
-      <PaneSection>
-        <Group>
-          <Row last>
-            <RowText title={t("access.loading")} />
-            <Spinner size={16} />
-          </Row>
-        </Group>
-      </PaneSection>
-    );
-  }
-  if (state.kind === "unavailable") {
-    return (
-      <PaneSection data-testid="access-unavailable">
-        <Group>
-          <Row last>
-            <RowText title={t("access.unavailable")} />
-          </Row>
-        </Group>
-      </PaneSection>
-    );
-  }
-  if (state.kind === "failed") {
-    return (
-      <PaneSection>
-        <Group>
-          <Row last>
-            <RowText title={t("access.failed")} detail={state.message} />
-            <Button size="sm" variant="secondary" disabled={locked} onClick={access.refresh}>
-              {t("access.retry")}
-            </Button>
-          </Row>
-        </Group>
-      </PaneSection>
-    );
-  }
-
-  const { view } = state;
-  return (
-    <>
-      <HostKeySection view={view} />
-      <KeysSection keys={view.keys} />
-      <TokensSection view={view} access={access} disabled={locked || access.busy} />
-      <NewTokenSection view={view} access={access} locked={locked} />
-    </>
-  );
+  return <AccessPage facts={{ locked, access }} />;
 }
+
+interface AccessFacts {
+  locked: boolean;
+  access: ReturnType<typeof useAccess>;
+}
+
+/** What the pane draws once it has loaded, or null before. */
+function readyOf({ access }: AccessFacts) {
+  const { state } = access;
+  if (state.kind !== "ready") return null;
+  const { view } = state;
+  return { view };
+}
+
+const AccessPage = pageOf<"settings.access", AccessFacts>("settings.access", {
+  Status({ facts }) {
+    const t = useT();
+    const { locked, access } = facts;
+    const { state } = access;
+    if (state.kind === "loading") {
+      return (
+        <PaneSection>
+          <Group>
+            <Row last>
+              <RowText title={t("access.loading")} />
+              <Spinner size={16} />
+            </Row>
+          </Group>
+        </PaneSection>
+      );
+    }
+    if (state.kind === "unavailable") {
+      return (
+        <PaneSection data-testid="access-unavailable">
+          <Group>
+            <Row last>
+              <RowText title={t("access.unavailable")} />
+            </Row>
+          </Group>
+        </PaneSection>
+      );
+    }
+    if (state.kind === "failed") {
+      return (
+        <PaneSection>
+          <Group>
+            <Row last>
+              <RowText title={t("access.failed")} detail={state.message} />
+              <Button size="sm" variant="secondary" disabled={locked} onClick={access.refresh}>
+                {t("access.retry")}
+              </Button>
+            </Row>
+          </Group>
+        </PaneSection>
+      );
+    }
+    return null;
+  },
+  HostKey({ facts }) {
+    const ready = readyOf(facts);
+    if (ready === null) return null;
+    const { view } = ready;
+    return <HostKeySection view={view} />;
+  },
+  Keys({ facts }) {
+    const ready = readyOf(facts);
+    if (ready === null) return null;
+    const { view } = ready;
+    return <KeysSection keys={view.keys} />;
+  },
+  Tokens({ facts }) {
+    const ready = readyOf(facts);
+    if (ready === null) return null;
+    const { view } = ready;
+    const { locked, access } = facts;
+    return <TokensSection view={view} access={access} disabled={locked || access.busy} />;
+  },
+  NewToken({ facts }) {
+    const ready = readyOf(facts);
+    if (ready === null) return null;
+    const { view } = ready;
+    const { locked, access } = facts;
+    return <NewTokenSection view={view} access={access} locked={locked} />;
+  },
+});
 
 // ── The box's own key ───────────────────────────────────────────────────
 

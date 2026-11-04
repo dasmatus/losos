@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useT } from "@/lib/i18n-react";
+import { pageOf } from "@/pages/page";
 import { openTour } from "@/tour/store";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue } from "./rows";
 import { describeWindow } from "./window";
@@ -16,7 +17,6 @@ import type { SettingsForm } from "./use-settings-form";
  */
 
 export function AboutPane({ form }: { form: SettingsForm }) {
-  const t = useT();
   const saved = form.saved;
 
   /* Two addresses, and the order matters. `here` is the one this browser is
@@ -45,8 +45,20 @@ export function AboutPane({ form }: { form: SettingsForm }) {
     );
   }
 
-  return (
-    <>
+  return <AboutPage facts={{ saved, here, byName }} />;
+}
+
+interface AboutFacts {
+  saved: NonNullable<SettingsForm["saved"]>;
+  here: string;
+  byName: string;
+}
+
+const AboutPage = pageOf<"settings.about", AboutFacts>("settings.about", {
+  ThisBox({ facts }) {
+    const t = useT();
+    const { saved, here, byName } = facts;
+    return (
       <PaneSection>
         <GroupTitle>{t("panes.about.thisBox")}</GroupTitle>
         <Group>
@@ -82,7 +94,11 @@ export function AboutPane({ form }: { form: SettingsForm }) {
         </Group>
         <GroupCaption>{t("panes.about.addressCaption", { name: `${saved.hostName}.local` })}</GroupCaption>
       </PaneSection>
-
+    );
+  },
+  Handbook() {
+    const t = useT();
+    return (
       <PaneSection>
         <GroupTitle>{t("panes.about.handbook")}</GroupTitle>
         <Group>
@@ -108,7 +124,11 @@ export function AboutPane({ form }: { form: SettingsForm }) {
         </Group>
         <GroupCaption>{t("panes.about.handbookCaption")}</GroupCaption>
       </PaneSection>
-
+    );
+  },
+  Tour() {
+    const t = useT();
+    return (
       <PaneSection>
         <GroupTitle>{t("panes.about.tour")}</GroupTitle>
         <Group>
@@ -127,7 +147,12 @@ export function AboutPane({ form }: { form: SettingsForm }) {
         </Group>
         <GroupCaption>{t("panes.about.tourCaption")}</GroupCaption>
       </PaneSection>
-
+    );
+  },
+  SpareTime({ facts }) {
+    const t = useT();
+    const { saved } = facts;
+    return (
       <PaneSection>
         <GroupTitle>{t("panes.about.spareTime")}</GroupTitle>
         <Group>
@@ -150,7 +175,11 @@ export function AboutPane({ form }: { form: SettingsForm }) {
             : t("panes.about.idle")}
         </GroupCaption>
       </PaneSection>
-
+    );
+  },
+  Updates() {
+    const t = useT();
+    return (
       <PaneSection>
         <GroupTitle>{t("panes.about.current")}</GroupTitle>
         <Group>
@@ -165,9 +194,9 @@ export function AboutPane({ form }: { form: SettingsForm }) {
         </Group>
         <GroupCaption>{t("panes.about.caption")}</GroupCaption>
       </PaneSection>
-    </>
-  );
-}
+    );
+  },
+});
 
 type StorageState = "local" | "waiting" | "shared";
 

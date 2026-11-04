@@ -14,6 +14,7 @@ import { toast } from "@/components/ui/toast";
 import type { MarketAccount, MarketOrder, MarketShelfListing, VmCatalogue, VmMachine } from "@/lib/api";
 import type { MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
+import { pageOf } from "@/pages/page";
 import { paneHref } from "@/lib/routes";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, StackRow } from "./rows";
 import { formatBytes, useMachines, type MachinesData } from "./machines";
@@ -61,57 +62,100 @@ function replicaWord(status: string, t: ReturnType<typeof useT>): string {
   return key === undefined ? status : t(key);
 }
 
+/* The pane is src/pages/settings.machines.mdx (src/pages/README.md): the
+ * status block stands in until the edge has answered, and the other blocks
+ * draw nothing until then. */
 export function MachinesPane({ locked }: { locked: boolean }) {
-  const t = useT();
   const machines = useMachines(!locked);
-  const { state } = machines;
-
-  if (state.kind === "loading") {
-    return (
-      <PaneSection>
-        <Group>
-          <Row last>
-            <RowText title={t("machines.loading")} />
-            <Spinner size={16} />
-          </Row>
-        </Group>
-      </PaneSection>
-    );
-  }
-  if (state.kind === "failed") {
-    return (
-      <PaneSection>
-        <Group>
-          <Row last>
-            <RowText title={t("machines.failed")} detail={state.message} />
-            <Button size="sm" variant="secondary" disabled={locked} onClick={machines.refresh}>
-              {t("machines.refresh")}
-            </Button>
-          </Row>
-        </Group>
-      </PaneSection>
-    );
-  }
-  if (state.kind === "unavailable") {
-    return <Unavailable reason={state.reason} />;
-  }
-
-  const disabled = locked || machines.busy || machines.uploading !== null;
-  return (
-    <>
-      <StartSection
-        catalogue={state.catalogue}
-        listings={state.listings}
-        account={state.account}
-        machines={machines}
-        disabled={disabled}
-      />
-      <MineSection account={state.account} catalogue={state.catalogue} statuses={state.machines} />
-      <ImagesSection catalogue={state.catalogue} account={state.account} machines={machines} disabled={disabled} />
-      <HostSection catalogue={state.catalogue} account={state.account} machines={machines} disabled={disabled} />
-    </>
-  );
+  return <MachinesPage facts={{ locked, machines }} />;
 }
+
+interface MachinesFacts {
+  locked: boolean;
+  machines: ReturnType<typeof useMachines>;
+}
+
+/** What the edge answered once it has, or null before. */
+function ready({ locked, machines }: MachinesFacts) {
+  const { state } = machines;
+  if (state.kind !== "ready") return null;
+  return { state, disabled: locked || machines.busy || machines.uploading !== null };
+}
+
+const MachinesPage = pageOf<"settings.machines", MachinesFacts>("settings.machines", {
+  Status({ facts }) {
+    const t = useT();
+    const { locked, machines } = facts;
+    const { state } = machines;
+    if (state.kind === "loading") {
+      return (
+        <PaneSection>
+          <Group>
+            <Row last>
+              <RowText title={t("machines.loading")} />
+              <Spinner size={16} />
+            </Row>
+          </Group>
+        </PaneSection>
+      );
+    }
+    if (state.kind === "failed") {
+      return (
+        <PaneSection>
+          <Group>
+            <Row last>
+              <RowText title={t("machines.failed")} detail={state.message} />
+              <Button size="sm" variant="secondary" disabled={locked} onClick={machines.refresh}>
+                {t("machines.refresh")}
+              </Button>
+            </Row>
+          </Group>
+        </PaneSection>
+      );
+    }
+    if (state.kind === "unavailable") {
+      return <Unavailable reason={state.reason} />;
+    }
+    return null;
+  },
+  Start({ facts }) {
+    const r = ready(facts);
+    if (r === null) return null;
+    return (
+      <StartSection
+        catalogue={r.state.catalogue}
+        listings={r.state.listings}
+        account={r.state.account}
+        machines={facts.machines}
+        disabled={r.disabled}
+      />
+    );
+  },
+  Mine({ facts }) {
+    const r = ready(facts);
+    if (r === null) return null;
+    return <MineSection account={r.state.account} catalogue={r.state.catalogue} statuses={r.state.machines} />;
+  },
+  Images({ facts }) {
+    const r = ready(facts);
+    if (r === null) return null;
+    return (
+      <ImagesSection
+        catalogue={r.state.catalogue}
+        account={r.state.account}
+        machines={facts.machines}
+        disabled={r.disabled}
+      />
+    );
+  },
+  Host({ facts }) {
+    const r = ready(facts);
+    if (r === null) return null;
+    return (
+      <HostSection catalogue={r.state.catalogue} account={r.state.account} machines={facts.machines} disabled={r.disabled} />
+    );
+  },
+});
 
 /* Greyed: the whole pane is one sentence while machines are not offered. */
 function Unavailable({ reason }: { reason: "notSharing" | "noOfficialEdge" | "notOffered" }) {

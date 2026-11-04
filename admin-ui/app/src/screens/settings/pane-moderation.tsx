@@ -22,6 +22,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import type { ModerationLogEntry, ModerationPerson, ModerationView, Report } from "@/lib/api";
 import { intlTag, type MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
+import { pageOf } from "@/pages/page";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, StackRow } from "./rows";
 import { useModeration, type HoldKind, type ModerationData } from "./use-moderation";
 
@@ -35,60 +36,94 @@ import { useModeration, type HoldKind, type ModerationData } from "./use-moderat
  * Moderators see the people they may act on with buttons; everyone else is
  * listed without, since lososd would refuse. */
 
+/* The pane is src/pages/settings.moderation.mdx (src/pages/README.md): the status
+ * block stands in until the pane has loaded, and the others draw nothing
+ * until then. */
 export function ModerationPane({ locked }: { locked: boolean }) {
-  const t = useT();
   const data = useModeration(!locked);
-  const { state } = data;
-
-  if (state.kind === "loading") {
-    return (
-      <PaneSection>
-        <Group>
-          <Row last>
-            <RowText title={t("moderation.loading")} />
-            <Spinner size={16} />
-          </Row>
-        </Group>
-      </PaneSection>
-    );
-  }
-  if (state.kind === "unavailable") {
-    return (
-      <PaneSection data-testid="moderation-unavailable">
-        <Group>
-          <Row last>
-            <RowText title={t("users.unavailable")} />
-          </Row>
-        </Group>
-      </PaneSection>
-    );
-  }
-  if (state.kind === "failed") {
-    return (
-      <PaneSection>
-        <Alert variant="crit">
-          <HugeiconsIcon icon={Alert02Icon} strokeWidth={1.5} aria-hidden="true" />
-          <AlertTitle>{t("moderation.failed")}</AlertTitle>
-          <AlertDescription>
-            <p>{state.message}</p>
-            <Button size="sm" variant="secondary" className="mt-2" onClick={data.refresh}>
-              {t("moderation.retry")}
-            </Button>
-          </AlertDescription>
-        </Alert>
-      </PaneSection>
-    );
-  }
-
-  const disabled = locked || data.busy;
-  return (
-    <>
-      <ReportsSection view={state.view} data={data} disabled={disabled} />
-      <PeopleSection view={state.view} data={data} disabled={disabled} />
-      <LogSection view={state.view} />
-    </>
-  );
+  return <ModerationPage facts={{ locked, data }} />;
 }
+
+interface ModerationFacts {
+  locked: boolean;
+  data: ReturnType<typeof useModeration>;
+}
+
+/** What the pane draws once it has loaded, or null before. */
+function readyOf({ data, locked }: ModerationFacts) {
+  const { state } = data;
+  if (state.kind !== "ready") return null;
+  const disabled = locked || data.busy;
+  return { state, disabled };
+}
+
+const ModerationPage = pageOf<"settings.moderation", ModerationFacts>("settings.moderation", {
+  Status({ facts }) {
+    const t = useT();
+    const { data } = facts;
+    const { state } = data;
+    if (state.kind === "loading") {
+      return (
+        <PaneSection>
+          <Group>
+            <Row last>
+              <RowText title={t("moderation.loading")} />
+              <Spinner size={16} />
+            </Row>
+          </Group>
+        </PaneSection>
+      );
+    }
+    if (state.kind === "unavailable") {
+      return (
+        <PaneSection data-testid="moderation-unavailable">
+          <Group>
+            <Row last>
+              <RowText title={t("users.unavailable")} />
+            </Row>
+          </Group>
+        </PaneSection>
+      );
+    }
+    if (state.kind === "failed") {
+      return (
+        <PaneSection>
+          <Alert variant="crit">
+            <HugeiconsIcon icon={Alert02Icon} strokeWidth={1.5} aria-hidden="true" />
+            <AlertTitle>{t("moderation.failed")}</AlertTitle>
+            <AlertDescription>
+              <p>{state.message}</p>
+              <Button size="sm" variant="secondary" className="mt-2" onClick={data.refresh}>
+                {t("moderation.retry")}
+              </Button>
+            </AlertDescription>
+          </Alert>
+        </PaneSection>
+      );
+    }
+    return null;
+  },
+  Reports({ facts }) {
+    const ready = readyOf(facts);
+    if (ready === null) return null;
+    const { state, disabled } = ready;
+    const { data } = facts;
+    return <ReportsSection view={state.view} data={data} disabled={disabled} />;
+  },
+  People({ facts }) {
+    const ready = readyOf(facts);
+    if (ready === null) return null;
+    const { state, disabled } = ready;
+    const { data } = facts;
+    return <PeopleSection view={state.view} data={data} disabled={disabled} />;
+  },
+  Log({ facts }) {
+    const ready = readyOf(facts);
+    if (ready === null) return null;
+    const { state } = ready;
+    return <LogSection view={state.view} />;
+  },
+});
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 

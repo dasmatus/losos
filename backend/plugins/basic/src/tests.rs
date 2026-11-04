@@ -894,3 +894,55 @@ fn a_problem_is_read_sent_and_dismissed_by_forms() {
     );
     assert!(f.posted("/api/problems/0badc0de/dismiss").is_some());
 }
+
+#[test]
+fn the_settings_panes_take_a_changed_page() {
+    let mut f = Fake::owner();
+    let get_pane = |f: &mut Fake, pane: &str| {
+        html(&get(
+            f,
+            "/api/basic/settings/{pane}",
+            &format!("/api/basic/settings/{pane}"),
+        ))
+    };
+    let network = get_pane(&mut f, "network");
+    assert!(network.contains("data-page=\"settings.network\""));
+    assert!(network.contains("data-testid=\"custom-domains\""));
+    f.set(
+        "/api/pages",
+        changed_pages(
+            &[
+                (
+                    "settings.network",
+                    "Ask before renaming the box.\n\n<Name />\n",
+                ),
+                ("settings.hardware", "Leave this off.\n\n<Graphics />\n"),
+                ("settings.security", "<Protections />\n\nAsk first.\n"),
+            ],
+            None,
+        ),
+    );
+    let network = get_pane(&mut f, "network");
+    no_script(&network);
+    assert!(network.contains("Ask before renaming the box."));
+    assert!(network.contains("name=\"hostName\""), "the name is kept");
+    assert!(
+        !network.contains("name=\"proxyEnable\""),
+        "the reach was left out"
+    );
+    assert!(
+        !network.contains("data-testid=\"custom-domains\""),
+        "the domains were left out"
+    );
+    assert!(!network.contains("losos-block"));
+    let hardware = get_pane(&mut f, "hardware");
+    assert!(hardware.contains("Leave this off."));
+    assert!(hardware.contains("name=\"gpuEnable\""));
+    assert!(hardware.contains("data-page=\"settings.hardware\""));
+    let security = get_pane(&mut f, "security");
+    let switches = security.find("name=\"hardeningUsbguard\"").unwrap();
+    assert!(
+        switches < security.find("Ask first.").unwrap(),
+        "the text follows the block"
+    );
+}

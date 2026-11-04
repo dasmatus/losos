@@ -18,6 +18,7 @@ import { intlTag } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-react";
 import type { MessageKey } from "@/lib/i18n";
 import { nixUnquote } from "@/lib/option-value";
+import { pageOf } from "@/pages/page";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue, StackRow } from "./rows";
 import { SelectRow, slotFor } from "./site-settings";
 import type { SettingsForm } from "./use-settings-form";
@@ -130,8 +131,27 @@ export function HistoryPane({ form }: { form: SettingsForm }) {
   const cloneAddress = repo === null ? null : `${browserOrigin()}${repo.url}.git`;
   const when = (iso: string): string => formatWhen(iso, locale);
 
-  return (
-    <>
+  return <HistoryPage facts={{ locked, config, syncing, syncNow, repo, cloneAddress, when, channelId, channel, picked }} />;
+}
+
+interface HistoryFacts {
+  locked: boolean;
+  config: ConfigResponse;
+  syncing: boolean;
+  syncNow: () => Promise<void>;
+  repo: ConfigResponse["repository"];
+  cloneAddress: string | null;
+  when: (iso: string) => string;
+  channelId: string;
+  channel: ReturnType<typeof slotFor>;
+  picked: (typeof CHANNELS)[number] | null | undefined;
+}
+
+const HistoryPage = pageOf<"settings.history", HistoryFacts>("settings.history", {
+  Repository({ facts }) {
+    const t = useT();
+    const { config, repo, cloneAddress } = facts;
+    return (
       <PaneSection>
         <GroupTitle>{t("history.repo.title")}</GroupTitle>
         <Group>
@@ -170,44 +190,56 @@ export function HistoryPane({ form }: { form: SettingsForm }) {
         </Group>
         <GroupCaption>{repo === null ? t("history.repo.off") : t("history.repo.caption")}</GroupCaption>
       </PaneSection>
-
-      {repo !== null && (
-        <PaneSection>
-          <GroupTitle>{t("history.sync.title")}</GroupTitle>
-          <Group>
-            <Row last>
-              <RowText
-                title={
-                  <span className="flex flex-wrap items-center gap-2">
-                    <Badge variant={syncTone(config.sync.state)} data-testid="history-sync-state">
-                      {t(`history.sync.state.${config.sync.state}`)}
-                    </Badge>
-                    {config.sync.syncedAt !== null && (
-                      <span className="text-[12.5px] text-muted">
-                        {t("history.sync.lastAt", { when: when(config.sync.syncedAt) })}
-                      </span>
-                    )}
-                  </span>
-                }
-                detail={
-                  <>
-                    {config.sync.detail}
-                    {config.sync.remoteHead !== null && (
-                      <span className="numeric block text-faint">
-                        {t("history.sync.remote", { sha: short(config.sync.remoteHead) })}
-                      </span>
-                    )}
-                  </>
-                }
-              />
-              <Button variant="secondary" size="sm" disabled={locked || syncing} onClick={() => void syncNow()}>
-                {syncing ? t("history.sync.syncing") : t("history.sync.now")}
-              </Button>
-            </Row>
-          </Group>
-        </PaneSection>
-      )}
-
+    );
+  },
+  Clone({ facts }) {
+    const t = useT();
+    const { locked, config, syncing, syncNow, repo, when } = facts;
+    return (
+      <>
+        {repo !== null && (
+          <PaneSection>
+            <GroupTitle>{t("history.sync.title")}</GroupTitle>
+            <Group>
+              <Row last>
+                <RowText
+                  title={
+                    <span className="flex flex-wrap items-center gap-2">
+                      <Badge variant={syncTone(config.sync.state)} data-testid="history-sync-state">
+                        {t(`history.sync.state.${config.sync.state}`)}
+                      </Badge>
+                      {config.sync.syncedAt !== null && (
+                        <span className="text-[12.5px] text-muted">
+                          {t("history.sync.lastAt", { when: when(config.sync.syncedAt) })}
+                        </span>
+                      )}
+                    </span>
+                  }
+                  detail={
+                    <>
+                      {config.sync.detail}
+                      {config.sync.remoteHead !== null && (
+                        <span className="numeric block text-faint">
+                          {t("history.sync.remote", { sha: short(config.sync.remoteHead) })}
+                        </span>
+                      )}
+                    </>
+                  }
+                />
+                <Button variant="secondary" size="sm" disabled={locked || syncing} onClick={() => void syncNow()}>
+                  {syncing ? t("history.sync.syncing") : t("history.sync.now")}
+                </Button>
+              </Row>
+            </Group>
+          </PaneSection>
+        )}
+      </>
+    );
+  },
+  Update({ facts }) {
+    const t = useT();
+    const { config, when, channelId, channel, picked } = facts;
+    return (
       <PaneSection>
         <GroupTitle>{t("history.update.title")}</GroupTitle>
         <Group>
@@ -255,7 +287,12 @@ export function HistoryPane({ form }: { form: SettingsForm }) {
         </Group>
         <GroupCaption>{config.upstream.url === null ? t("history.update.off") : t("history.update.caption")}</GroupCaption>
       </PaneSection>
-
+    );
+  },
+  Commits({ facts }) {
+    const t = useT();
+    const { config, when } = facts;
+    return (
       <PaneSection>
         <GroupTitle>{t("history.commits.title")}</GroupTitle>
         <Group>
@@ -274,9 +311,9 @@ export function HistoryPane({ form }: { form: SettingsForm }) {
         </Group>
         <GroupCaption>{t("history.commits.caption")}</GroupCaption>
       </PaneSection>
-    </>
-  );
-}
+    );
+  },
+});
 
 /* The document with every field present, whatever the box sent: an older
  * daemon answers the route with an empty object, and a missing field must

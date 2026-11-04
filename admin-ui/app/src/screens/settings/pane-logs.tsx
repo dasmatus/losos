@@ -29,6 +29,7 @@ import {
 } from "@/lib/api";
 import { t as translate, type MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
+import { pageOf } from "@/pages/page";
 import { cn } from "@/lib/utils";
 
 /* Settings › Logs: what the box's services wrote to the journal, so an owner
@@ -87,8 +88,10 @@ type View =
   | { kind: "ready"; sources: string[]; lines: LogLine[]; older: string | null; newer: string | null; error: string | null }
   | { kind: "failed"; message: string };
 
+/* The pane is src/pages/settings.logs.mdx (src/pages/README.md): the
+ * filters, the notices, the lines and the note on what is hidden are its
+ * blocks. */
 export function LogsPane({ locked }: { locked: boolean }) {
-  const t = useT();
   const location = useLocation();
   const navigate = useNavigate();
   const filter = React.useMemo(() => filterFrom(location.search), [location.search]);
@@ -228,6 +231,35 @@ export function LogsPane({ locked }: { locked: boolean }) {
 
   return (
     <div data-testid="logs-pane">
+      <LogsPage
+        facts={{ locked, draft, setDraft, show, follow, setFollow, download, options, downloadFailed, view, setAttempt, listRef, loadingOlder, older }}
+      />
+    </div>
+  );
+}
+
+interface LogsFacts {
+  locked: boolean;
+  draft: LogFilter;
+  setDraft: (filter: LogFilter) => void;
+  show: (filter: LogFilter) => void;
+  follow: boolean;
+  setFollow: React.Dispatch<React.SetStateAction<boolean>>;
+  download: () => Promise<void>;
+  options: string[];
+  downloadFailed: boolean;
+  view: View;
+  setAttempt: React.Dispatch<React.SetStateAction<number>>;
+  listRef: React.RefObject<HTMLDivElement | null>;
+  loadingOlder: boolean;
+  older: () => Promise<void>;
+}
+
+const LogsPage = pageOf<"settings.logs", LogsFacts>("settings.logs", {
+  Filters({ facts }) {
+    const t = useT();
+    const { locked, draft, setDraft, show, follow, setFollow, download, options } = facts;
+    return (
       <form
         role="search"
         data-slot="log-filters"
@@ -320,73 +352,90 @@ export function LogsPane({ locked }: { locked: boolean }) {
           </Button>
         </div>
       </form>
-
-      {downloadFailed && <ErrorAlert text={t("logs.downloadFailed")} />}
-      {view.kind === "ready" && view.error !== null && (
-        <ErrorAlert text={t("logs.error", { message: view.error })} />
-      )}
-
-      {view.kind === "loading" && (
-        <div className="flex items-center gap-2 rounded-card border border-line bg-surface px-3.5 py-3 text-[13px] text-muted shadow-card">
-          <Spinner size={16} />
-          <span>{t("logs.loading")}</span>
-        </div>
-      )}
-      {view.kind === "failed" && (
-        <Alert variant="crit" className="mb-4">
-          <HugeiconsIcon icon={Alert02Icon} size={19} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
-          <AlertDescription>
-            <p className="text-ink">{t("logs.error", { message: view.message })}</p>
-            <p>
-              <Button size="sm" variant="secondary" onClick={() => setAttempt((n) => n + 1)}>
-                {t("logs.retry")}
-              </Button>
-            </p>
-          </AlertDescription>
-        </Alert>
-      )}
-      {view.kind === "ready" &&
-        (view.lines.length === 0 && view.error === null ? (
-          <Empty>
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <HugeiconsIcon icon={ComputerTerminal01Icon} size={24} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
-              </EmptyMedia>
-              <EmptyTitle>{t("logs.empty.title")}</EmptyTitle>
-              <EmptyDescription>{t("logs.empty.body")}</EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        ) : (
-          <div
-            data-slot="log-view"
-            ref={listRef}
-            className="max-h-[70dvh] overflow-auto rounded-card border border-line bg-surface shadow-card animate-rise"
-          >
-            {view.older !== null && (
-              <div className="flex justify-center border-b border-hair px-3.5 py-1.5">
-                <Button size="sm" variant="ghost" disabled={loadingOlder} onClick={() => void older()}>
-                  {loadingOlder ? <Spinner size={16} /> : <Glyph icon={ArrowUp01Icon} />}
-                  <span>{t("logs.older")}</span>
-                </Button>
-              </div>
-            )}
-            <Lines lines={view.lines} />
-            {follow && (
-              <p
-                role="status"
-                data-slot="log-following"
-                className="flex items-center gap-2 border-t border-hair px-3.5 py-2 text-[12.5px] text-muted"
-              >
-                <StatusDot state="pending" />
-                <span>{t("logs.following")}</span>
-              </p>
-            )}
+    );
+  },
+  Notices({ facts }) {
+    const t = useT();
+    const { downloadFailed, view } = facts;
+    return (
+      <>
+        {downloadFailed && <ErrorAlert text={t("logs.downloadFailed")} />}
+        {view.kind === "ready" && view.error !== null && (
+          <ErrorAlert text={t("logs.error", { message: view.error })} />
+        )}
+      </>
+    );
+  },
+  Lines({ facts }) {
+    const t = useT();
+    const { view, setAttempt, listRef, loadingOlder, older, follow } = facts;
+    return (
+      <>
+        {view.kind === "loading" && (
+          <div className="flex items-center gap-2 rounded-card border border-line bg-surface px-3.5 py-3 text-[13px] text-muted shadow-card">
+            <Spinner size={16} />
+            <span>{t("logs.loading")}</span>
           </div>
-        ))}
-      <p className="mt-2 text-[12.5px] leading-snug text-muted">{t("logs.hidden")}</p>
-    </div>
-  );
-}
+        )}
+        {view.kind === "failed" && (
+          <Alert variant="crit" className="mb-4">
+            <HugeiconsIcon icon={Alert02Icon} size={19} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+            <AlertDescription>
+              <p className="text-ink">{t("logs.error", { message: view.message })}</p>
+              <p>
+                <Button size="sm" variant="secondary" onClick={() => setAttempt((n) => n + 1)}>
+                  {t("logs.retry")}
+                </Button>
+              </p>
+            </AlertDescription>
+          </Alert>
+        )}
+        {view.kind === "ready" &&
+          (view.lines.length === 0 && view.error === null ? (
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <HugeiconsIcon icon={ComputerTerminal01Icon} size={24} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+                </EmptyMedia>
+                <EmptyTitle>{t("logs.empty.title")}</EmptyTitle>
+                <EmptyDescription>{t("logs.empty.body")}</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          ) : (
+            <div
+              data-slot="log-view"
+              ref={listRef}
+              className="max-h-[70dvh] overflow-auto rounded-card border border-line bg-surface shadow-card animate-rise"
+            >
+              {view.older !== null && (
+                <div className="flex justify-center border-b border-hair px-3.5 py-1.5">
+                  <Button size="sm" variant="ghost" disabled={loadingOlder} onClick={() => void older()}>
+                    {loadingOlder ? <Spinner size={16} /> : <Glyph icon={ArrowUp01Icon} />}
+                    <span>{t("logs.older")}</span>
+                  </Button>
+                </div>
+              )}
+              <Lines lines={view.lines} />
+              {follow && (
+                <p
+                  role="status"
+                  data-slot="log-following"
+                  className="flex items-center gap-2 border-t border-hair px-3.5 py-2 text-[12.5px] text-muted"
+                >
+                  <StatusDot state="pending" />
+                  <span>{t("logs.following")}</span>
+                </p>
+              )}
+            </div>
+          ))}
+      </>
+    );
+  },
+  Hidden() {
+    const t = useT();
+    return <p className="mt-2 text-[12.5px] leading-snug text-muted">{t("logs.hidden")}</p>;
+  },
+});
 
 function Lines({ lines }: { lines: LogLine[] }) {
   const t = useT();

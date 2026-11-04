@@ -26,6 +26,7 @@ import {
   type SettingsResponse,
 } from "@/lib/api";
 import { useT } from "@/lib/i18n-react";
+import { pageOf } from "@/pages/page";
 import {
   nixList,
   nixStringList,
@@ -143,8 +144,34 @@ export function AdvancedPane({ form }: { form: SettingsForm }) {
   const groups = groupBy(shown);
   const strays = options.stray.filter((stray) => stray.key in form.extra);
 
-  return (
-    <>
+  return <AdvancedPage facts={{ form, search, setSearch, searchId, options, disabled, revision, guard, pending, dialogTitleId, dialogBodyId, decline, accept, query, shown, groups, strays }} />;
+}
+
+interface AdvancedFacts {
+  form: SettingsForm;
+  search: string;
+  setSearch: (search: string) => void;
+  searchId: string;
+  options: NonNullable<SettingsForm["options"]>;
+  disabled: boolean;
+  revision: number;
+  guard: (option: OptionDoc, commit: () => void) => void;
+  pending: { name: string; commit: () => void } | null;
+  dialogTitleId: string;
+  dialogBodyId: string;
+  decline: () => void;
+  accept: () => void;
+  query: string;
+  shown: OptionDoc[];
+  groups: ReturnType<typeof groupBy>;
+  strays: NonNullable<SettingsForm["options"]>["stray"];
+}
+
+const AdvancedPage = pageOf<"settings.advanced", AdvancedFacts>("settings.advanced", {
+  Search({ facts }) {
+    const t = useT();
+    const { search, setSearch, searchId, shown } = facts;
+    return (
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <label htmlFor={searchId} className="sr-only">
           {t("advanced.search.label")}
@@ -163,112 +190,140 @@ export function AdvancedPane({ form }: { form: SettingsForm }) {
           {t("advanced.search.count", { count: shown.length })}
         </span>
       </div>
-
-      {shown.length === 0 && (
-        <p className="px-1.5 py-6 text-center text-[13px] text-muted" role="status">
-          {t("advanced.search.noMatch", { query: search.trim() })}
-        </p>
-      )}
-
-      {groups.map(([group, rows]) => (
-        <PaneSection key={group}>
-          <GroupTitle>
-            <span className="numeric">{group === "general" ? t("advanced.group.general") : `losos.${group}`}</span>
-          </GroupTitle>
-          <Group>
-            {rows.map((option, index) => (
-              <OptionRow
-                key={`${option.name}:${revision}`}
-                option={option}
-                form={form}
-                disabled={disabled}
-                guard={guard}
-                last={index === rows.length - 1}
-              />
-            ))}
-          </Group>
-        </PaneSection>
-      ))}
-
-      {strays.length > 0 && query.length === 0 && (
-        <PaneSection>
-          <GroupTitle>{t("advanced.stray.title")}</GroupTitle>
-          <Group className="border-crit/35">
-            {strays.map((stray, index) => (
-              <Row key={stray.key} last={index === strays.length - 1} data-option={stray.key} data-kind="stray">
-                <RowText
-                  title={
-                    <span className="numeric text-[13px]">
-                      losos.{stray.key} = {stray.value};
-                    </span>
-                  }
-                  detail={<Badge variant="destructive">{t("advanced.badge.stray")}</Badge>}
-                />
-                <Button
-                  variant="secondary"
-                  size="sm"
+    );
+  },
+  Nothing({ facts }) {
+    const t = useT();
+    const { search, shown } = facts;
+    return (
+      <>
+        {shown.length === 0 && (
+          <p className="px-1.5 py-6 text-center text-[13px] text-muted" role="status">
+            {t("advanced.search.noMatch", { query: search.trim() })}
+          </p>
+        )}
+      </>
+    );
+  },
+  Options({ facts }) {
+    const t = useT();
+    const { form, disabled, revision, guard, pending, dialogTitleId, dialogBodyId, decline, accept, groups } = facts;
+    return (
+      <>
+        {groups.map(([group, rows]) => (
+          <PaneSection key={group}>
+            <GroupTitle>
+              <span className="numeric">{group === "general" ? t("advanced.group.general") : `losos.${group}`}</span>
+            </GroupTitle>
+            <Group>
+              {rows.map((option, index) => (
+                <OptionRow
+                  key={`${option.name}:${revision}`}
+                  option={option}
+                  form={form}
                   disabled={disabled}
-                  onClick={() => form.setExtra(stray.key, null)}
-                >
-                  {t("advanced.stray.remove")}
-                </Button>
-              </Row>
+                  guard={guard}
+                  last={index === rows.length - 1}
+                />
+              ))}
+            </Group>
+          </PaneSection>
+        ))}
+
+        <Dialog
+          open={pending !== null}
+          onOpenChange={(open) => {
+            if (!open) decline();
+          }}
+          labelledBy={dialogTitleId}
+          describedBy={dialogBodyId}
+        >
+          <DialogHeader>
+            <DialogTitle id={dialogTitleId} className="flex items-center gap-2">
+              <HugeiconsIcon
+                icon={Alert02Icon}
+                size={19}
+                strokeWidth={1.5}
+                color="currentColor"
+                className="text-warn"
+                aria-hidden="true"
+              />
+              <span className="numeric">{t("advanced.danger.title", { name: pending?.name ?? "" })}</span>
+            </DialogTitle>
+            <DialogDescription id={dialogBodyId}>{t("advanced.danger.body")}</DialogDescription>
+          </DialogHeader>
+          <DialogBody />
+          <DialogFooter>
+            <Button variant="ghost" onClick={decline}>
+              {t("advanced.danger.keep")}
+            </Button>
+            <Button variant="destructive" onClick={accept}>
+              {t("advanced.danger.confirm")}
+            </Button>
+          </DialogFooter>
+        </Dialog>
+      </>
+    );
+  },
+  Strays({ facts }) {
+    const t = useT();
+    const { form, disabled, query, strays } = facts;
+    return (
+      <>
+        {strays.length > 0 && query.length === 0 && (
+          <PaneSection>
+            <GroupTitle>{t("advanced.stray.title")}</GroupTitle>
+            <Group className="border-crit/35">
+              {strays.map((stray, index) => (
+                <Row key={stray.key} last={index === strays.length - 1} data-option={stray.key} data-kind="stray">
+                  <RowText
+                    title={
+                      <span className="numeric text-[13px]">
+                        losos.{stray.key} = {stray.value};
+                      </span>
+                    }
+                    detail={<Badge variant="destructive">{t("advanced.badge.stray")}</Badge>}
+                  />
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={disabled}
+                    onClick={() => form.setExtra(stray.key, null)}
+                  >
+                    {t("advanced.stray.remove")}
+                  </Button>
+                </Row>
+              ))}
+            </Group>
+            <GroupCaption>{t("advanced.stray.caption")}</GroupCaption>
+          </PaneSection>
+        )}
+      </>
+    );
+  },
+  About({ facts }) {
+    const t = useT();
+    const { options, query } = facts;
+    return (
+      <>
+        {query.length === 0 && (
+          <PaneSection>
+            <GroupCaption className="pt-0">{t("advanced.caption")}</GroupCaption>
+            <GroupCaption>
+              {t("advanced.commits")}{" "}
+              <PaneLink pane="history" className="text-accent underline-offset-4 hover:underline">
+                {paneById("history").label}
+              </PaneLink>
+            </GroupCaption>
+            {Object.entries(options.excluded).map(([prefix, reason]) => (
+              <GroupCaption key={prefix}>{t("advanced.excluded", { prefix, reason })}</GroupCaption>
             ))}
-          </Group>
-          <GroupCaption>{t("advanced.stray.caption")}</GroupCaption>
-        </PaneSection>
-      )}
-
-      {query.length === 0 && (
-        <PaneSection>
-          <GroupCaption className="pt-0">{t("advanced.caption")}</GroupCaption>
-          <GroupCaption>
-            {t("advanced.commits")}{" "}
-            <PaneLink pane="history" className="text-accent underline-offset-4 hover:underline">
-              {paneById("history").label}
-            </PaneLink>
-          </GroupCaption>
-          {Object.entries(options.excluded).map(([prefix, reason]) => (
-            <GroupCaption key={prefix}>{t("advanced.excluded", { prefix, reason })}</GroupCaption>
-          ))}
-        </PaneSection>
-      )}
-
-      <Dialog
-        open={pending !== null}
-        onOpenChange={(open) => {
-          if (!open) decline();
-        }}
-        labelledBy={dialogTitleId}
-        describedBy={dialogBodyId}
-      >
-        <DialogHeader>
-          <DialogTitle id={dialogTitleId} className="flex items-center gap-2">
-            <HugeiconsIcon
-              icon={Alert02Icon}
-              size={19}
-              strokeWidth={1.5}
-              color="currentColor"
-              className="text-warn"
-              aria-hidden="true"
-            />
-            <span className="numeric">{t("advanced.danger.title", { name: pending?.name ?? "" })}</span>
-          </DialogTitle>
-          <DialogDescription id={dialogBodyId}>{t("advanced.danger.body")}</DialogDescription>
-        </DialogHeader>
-        <DialogBody />
-        <DialogFooter>
-          <Button variant="ghost" onClick={decline}>
-            {t("advanced.danger.keep")}
-          </Button>
-          <Button variant="destructive" onClick={accept}>
-            {t("advanced.danger.confirm")}
-          </Button>
-        </DialogFooter>
-      </Dialog>
-    </>
-  );
-}
+          </PaneSection>
+        )}
+      </>
+    );
+  },
+});
 
 // ── Rows ──────────────────────────────────────────────────────────────────
 

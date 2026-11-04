@@ -14,7 +14,7 @@ import { formatBytes } from "./format";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue, StackRow } from "./rows";
 import type { SettingsForm } from "./use-settings-form";
 import type { Storage } from "./use-storage";
-import { Page, type BlockMap } from "@/pages/page";
+import { pageOf } from "@/pages/page";
 
 /* The disk only: how big it is, what it holds, and the reserve. Sharing it
  * with the mesh used to be the second group here and now lives on the Market
@@ -29,22 +29,12 @@ export interface StoragePaneProps {
 /* The pane is src/pages/settings.storage.mdx, which places its one block;
  * an administrator may write around it (src/pages/README.md). */
 export function StoragePane(props: StoragePaneProps) {
-  return (
-    <StorageContext.Provider value={props}>
-      <Page id="settings.storage" blocks={STORAGE_BLOCKS} />
-    </StorageContext.Provider>
-  );
+  return <StoragePage facts={props} />;
 }
 
-const StorageContext = React.createContext<StoragePaneProps | null>(null);
-
-const STORAGE_BLOCKS: BlockMap<"settings.storage"> = {
-  Disk() {
-    const props = React.useContext(StorageContext);
-    if (props === null) throw new Error("a storage block outside the Storage pane");
-    return <Disk {...props} />;
-  },
-};
+const StoragePage = pageOf<"settings.storage", StoragePaneProps>("settings.storage", {
+  Disk: ({ facts }) => <Disk {...facts} />,
+});
 
 function Disk({ form, storage }: StoragePaneProps) {
   const t = useT();

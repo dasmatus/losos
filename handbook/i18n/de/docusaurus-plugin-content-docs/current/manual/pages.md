@@ -12,8 +12,15 @@ Reihenfolge sie ihre Teile zeigt, eigene Schaltflächen hinzufügen und allen
 Seiten ein Stylesheet geben. Eine Seite, die niemand geändert hat, sieht
 genau so aus, wie LosOS sie ausliefert.
 
-Bisher lassen sich die Übersicht und Speicher ändern. Die anderen
-Bildschirme und die Apps folgen.
+Bisher lassen sich die Übersicht und jeder Bereich der Einstellungen
+ändern. Die Apps und die übrigen Bildschirme folgen.
+
+Ein Bereich der Einstellungen, der seinen Inhalt von der Box liest, etwa
+Zugriffstokens oder Benutzer, hat einen Block `<Status />`: Er sagt, dass
+der Bereich lädt oder warum er es nicht kann, und die übrigen Blöcke des
+Bereichs zeichnen nichts, bis er geladen ist. Die Liste der Seiten unter
+**Einstellungen → Aussehen** ist kein Block dieses Bereichs, deshalb behält
+eine geänderte Seite Aussehen immer den Weg zurück.
 
 ## Wer sie ändern kann \{#who-can-change-them}
 

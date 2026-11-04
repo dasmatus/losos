@@ -14,6 +14,7 @@ import { Spinner } from "@/components/ui/progress";
 import type { Credential, CredentialKey } from "@/lib/api";
 import { intlTag } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-react";
+import { pageOf } from "@/pages/page";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, StackRow } from "./rows";
 import {
   APP_ORDER,
@@ -38,60 +39,92 @@ import { useCredentials, type CredentialsData } from "./use-credentials";
  * Grouped by what the secret belongs to, so "LosOS Login" reads as one
  * thing with three keys rather than three unrelated rows. */
 
+/* The pane is src/pages/settings.credentials.mdx (src/pages/README.md): the status
+ * block stands in until the pane has loaded, and the others draw nothing
+ * until then. */
 export function CredentialsPane({ locked }: { locked: boolean }) {
-  const t = useT();
   const data = useCredentials(!locked);
+  return <CredentialsPage facts={{ locked, data }} />;
+}
+
+interface CredentialsFacts {
+  locked: boolean;
+  data: ReturnType<typeof useCredentials>;
+}
+
+/** What the pane draws once it has loaded, or null before. */
+function readyOf({ data }: CredentialsFacts) {
   const { state } = data;
-
-  if (state.kind === "loading") {
-    return (
-      <PaneSection>
-        <Group>
-          <Row last>
-            <RowText title={t("credentials.loading")} />
-            <Spinner size={16} />
-          </Row>
-        </Group>
-      </PaneSection>
-    );
-  }
-  if (state.kind === "unavailable" || (state.kind === "ready" && state.view.key === null)) {
-    return (
-      <PaneSection data-testid="credentials-unavailable">
-        <Group>
-          <Row last>
-            <RowText title={t("credentials.unavailable")} />
-          </Row>
-        </Group>
-      </PaneSection>
-    );
-  }
-  if (state.kind === "failed") {
-    return (
-      <PaneSection>
-        <Group>
-          <Row last>
-            <RowText title={t("credentials.failed")} detail={state.message} />
-            <Button size="sm" variant="secondary" disabled={locked} onClick={data.refresh}>
-              {t("credentials.retry")}
-            </Button>
-          </Row>
-        </Group>
-      </PaneSection>
-    );
-  }
-
+  if (state.kind !== "ready" || state.view.key === null) return null;
   const { view } = state;
   const groups = groupByApp(view.credentials);
-  return (
-    <>
-      <SealSection sealedWith={view.key ?? "host"} count={view.credentials.length} />
-      {groups.map(([app, list]) => (
-        <AppSection key={app} app={app} list={list} data={data} locked={locked} />
-      ))}
-    </>
-  );
+  return { view, groups };
 }
+
+const CredentialsPage = pageOf<"settings.credentials", CredentialsFacts>("settings.credentials", {
+  Status({ facts }) {
+    const t = useT();
+    const { locked, data } = facts;
+    const { state } = data;
+    if (state.kind === "loading") {
+      return (
+        <PaneSection>
+          <Group>
+            <Row last>
+              <RowText title={t("credentials.loading")} />
+              <Spinner size={16} />
+            </Row>
+          </Group>
+        </PaneSection>
+      );
+    }
+    if (state.kind === "unavailable" || (state.kind === "ready" && state.view.key === null)) {
+      return (
+        <PaneSection data-testid="credentials-unavailable">
+          <Group>
+            <Row last>
+              <RowText title={t("credentials.unavailable")} />
+            </Row>
+          </Group>
+        </PaneSection>
+      );
+    }
+    if (state.kind === "failed") {
+      return (
+        <PaneSection>
+          <Group>
+            <Row last>
+              <RowText title={t("credentials.failed")} detail={state.message} />
+              <Button size="sm" variant="secondary" disabled={locked} onClick={data.refresh}>
+                {t("credentials.retry")}
+              </Button>
+            </Row>
+          </Group>
+        </PaneSection>
+      );
+    }
+    return null;
+  },
+  Seal({ facts }) {
+    const ready = readyOf(facts);
+    if (ready === null) return null;
+    const { view } = ready;
+    return <SealSection sealedWith={view.key ?? "host"} count={view.credentials.length} />;
+  },
+  Apps({ facts }) {
+    const ready = readyOf(facts);
+    if (ready === null) return null;
+    const { groups } = ready;
+    const { locked, data } = facts;
+    return (
+      <>
+        {groups.map(([app, list]) => (
+          <AppSection key={app} app={app} list={list} data={data} locked={locked} />
+        ))}
+      </>
+    );
+  },
+});
 
 function groupByApp(list: Credential[]): [string, Credential[]][] {
   const byApp = new Map<string, Credential[]>();

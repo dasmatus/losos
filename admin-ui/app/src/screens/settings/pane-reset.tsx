@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useT } from "@/lib/i18n-react";
+import { pageOf } from "@/pages/page";
 import { EraseSection } from "./erase-section";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText } from "./rows";
 import type { SettingsForm } from "./use-settings-form";
@@ -35,7 +36,6 @@ import { useBackup } from "./use-backup";
  */
 
 export function ResetPane({ form }: { form: SettingsForm }) {
-  const t = useT();
   const [confirming, setConfirming] = React.useState(false);
   const titleId = React.useId();
   const bodyId = React.useId();
@@ -49,85 +49,107 @@ export function ResetPane({ form }: { form: SettingsForm }) {
   const backingUp = view?.job?.state === "running";
   const blocked = form.locked || !form.ready || form.applying || erasing || backingUp;
 
-  return (
-    <>
-      <PaneSection>
-        <GroupTitle>{t("panes.reset.startOver")}</GroupTitle>
-        <Group className="border-crit/35">
-          <Row last>
-            <RowText
-              title={t("panes.reset.title")}
-              detail={
-                erasing
-                  ? t("panes.reset.waitErase")
-                  : backingUp
-                    ? t("panes.reset.waitBackup")
-                    : t("panes.reset.detail")
-              }
-            />
-            <Button variant="destructive" disabled={blocked} onClick={() => setConfirming(true)}>
-              {t("panes.reset.button")}
-            </Button>
-          </Row>
-        </Group>
-        <GroupCaption>{t("panes.reset.caption")}</GroupCaption>
-      </PaneSection>
-
-      <EraseSection locked={form.locked} backup={backup} rebuilding={form.applying} />
-
-      <Dialog
-        open={confirming}
-        onOpenChange={setConfirming}
-        labelledBy={titleId}
-        describedBy={bodyId}
-      >
-        <DialogHeader>
-          <DialogTitle id={titleId} className="flex items-center gap-2">
-            <HugeiconsIcon
-              icon={Alert02Icon}
-              size={19}
-              strokeWidth={1.5}
-              color="currentColor"
-              className="text-crit"
-              aria-hidden="true"
-            />
-            {t("panes.reset.dialogTitle")}
-          </DialogTitle>
-          <DialogDescription id={bodyId}>
-            {t("panes.reset.dialogBody")}
-          </DialogDescription>
-        </DialogHeader>
-        <DialogBody>
-          <ul className="flex flex-col gap-1.5 text-[13px] leading-snug text-muted">
-            <li className="flex gap-2">
-              <span aria-hidden="true" className="mt-2 size-1.5 shrink-0 rounded-full bg-crit" />
-              {t("panes.reset.goes")}
-            </li>
-            <li className="flex gap-2">
-              <span aria-hidden="true" className="mt-2 size-1.5 shrink-0 rounded-full bg-ok" />
-              {t("panes.reset.stays")}
-            </li>
-            <li className="flex gap-2">
-              <span aria-hidden="true" className="mt-2 size-1.5 shrink-0 rounded-full bg-faint" />
-              {t("panes.reset.rebuilds")}
-            </li>
-          </ul>
-        </DialogBody>
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => setConfirming(false)}>
-            {t("panes.reset.keep")}
-          </Button>
-          <Button
-            variant="destructive"
-            onClick={() => {
-              setConfirming(false);
-              form.factoryReset();
-            }}
-          >
-            {t("panes.reset.confirm")}
-          </Button>
-        </DialogFooter>
-      </Dialog>
-    </>
-  );
+  return <ResetPage facts={{ form, confirming, setConfirming, titleId, bodyId, backup, erasing, backingUp, blocked }} />;
 }
+
+interface ResetFacts {
+  form: SettingsForm;
+  confirming: boolean;
+  setConfirming: (open: boolean) => void;
+  titleId: string;
+  bodyId: string;
+  backup: ReturnType<typeof useBackup>;
+  erasing: boolean;
+  backingUp: boolean;
+  blocked: boolean;
+}
+
+const ResetPage = pageOf<"settings.reset", ResetFacts>("settings.reset", {
+  StartOver({ facts }) {
+    const t = useT();
+    const { form, confirming, setConfirming, titleId, bodyId, erasing, backingUp, blocked } = facts;
+    return (
+      <>
+        <PaneSection>
+          <GroupTitle>{t("panes.reset.startOver")}</GroupTitle>
+          <Group className="border-crit/35">
+            <Row last>
+              <RowText
+                title={t("panes.reset.title")}
+                detail={
+                  erasing
+                    ? t("panes.reset.waitErase")
+                    : backingUp
+                      ? t("panes.reset.waitBackup")
+                      : t("panes.reset.detail")
+                }
+              />
+              <Button variant="destructive" disabled={blocked} onClick={() => setConfirming(true)}>
+                {t("panes.reset.button")}
+              </Button>
+            </Row>
+          </Group>
+          <GroupCaption>{t("panes.reset.caption")}</GroupCaption>
+        </PaneSection>
+
+        <Dialog
+          open={confirming}
+          onOpenChange={setConfirming}
+          labelledBy={titleId}
+          describedBy={bodyId}
+        >
+          <DialogHeader>
+            <DialogTitle id={titleId} className="flex items-center gap-2">
+              <HugeiconsIcon
+                icon={Alert02Icon}
+                size={19}
+                strokeWidth={1.5}
+                color="currentColor"
+                className="text-crit"
+                aria-hidden="true"
+              />
+              {t("panes.reset.dialogTitle")}
+            </DialogTitle>
+            <DialogDescription id={bodyId}>
+              {t("panes.reset.dialogBody")}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody>
+            <ul className="flex flex-col gap-1.5 text-[13px] leading-snug text-muted">
+              <li className="flex gap-2">
+                <span aria-hidden="true" className="mt-2 size-1.5 shrink-0 rounded-full bg-crit" />
+                {t("panes.reset.goes")}
+              </li>
+              <li className="flex gap-2">
+                <span aria-hidden="true" className="mt-2 size-1.5 shrink-0 rounded-full bg-ok" />
+                {t("panes.reset.stays")}
+              </li>
+              <li className="flex gap-2">
+                <span aria-hidden="true" className="mt-2 size-1.5 shrink-0 rounded-full bg-faint" />
+                {t("panes.reset.rebuilds")}
+              </li>
+            </ul>
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setConfirming(false)}>
+              {t("panes.reset.keep")}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setConfirming(false);
+                form.factoryReset();
+              }}
+            >
+              {t("panes.reset.confirm")}
+            </Button>
+          </DialogFooter>
+        </Dialog>
+      </>
+    );
+  },
+  Erase({ facts }) {
+    const { form, backup } = facts;
+    return <EraseSection locked={form.locked} backup={backup} rebuilding={form.applying} />;
+  },
+});

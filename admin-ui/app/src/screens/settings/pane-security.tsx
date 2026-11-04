@@ -1,6 +1,7 @@
 import * as React from "react";
 import { NoTpmNotice, runsWithoutTpm } from "@/components/no-tpm-notice";
 import { useT } from "@/lib/i18n-react";
+import { pageOf } from "@/pages/page";
 import { Group, GroupCaption, GroupTitle, PaneSection, SwitchRow } from "./rows";
 import type { SettingsForm } from "./use-settings-form";
 
@@ -28,7 +29,16 @@ import type { SettingsForm } from "./use-settings-form";
  * and not a control.
  */
 
+/* The pane is src/pages/settings.security.mdx (src/pages/README.md). */
 export function SecurityPane({ form }: { form: SettingsForm }) {
+  return <SecurityPage facts={{ form }} />;
+}
+
+const SecurityPage = pageOf<"settings.security", { form: SettingsForm }>("settings.security", {
+  Protections: ({ facts }) => <ProtectionsSection {...facts} />,
+});
+
+function ProtectionsSection({ form }: { form: SettingsForm }) {
   const t = useT();
   const apparmorId = React.useId();
   const mallocId = React.useId();

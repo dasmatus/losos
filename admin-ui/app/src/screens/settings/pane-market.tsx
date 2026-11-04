@@ -25,6 +25,7 @@ import { toast } from "@/components/ui/toast";
 import type { MarketKind, MarketOrder, MarketShelfListing, UsdcPublic } from "@/lib/api";
 import { t as translate, type MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
+import { pageOf } from "@/pages/page";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue, StackRow, SwitchRow } from "./rows";
 import {
   formatDay,
@@ -94,28 +95,53 @@ function quantityOf(count: number, unit: string): string {
   return `${count} ${key === undefined ? unit : translate(key, { count })}`;
 }
 
+/* The pane is src/pages/settings.market.mdx (src/pages/README.md). The
+ * sharing switches draw whatever the market answers; the status block
+ * stands in for the shelf until it has loaded, and the shelf's blocks draw
+ * nothing until then. */
 export function MarketPane({ form }: { form: SettingsForm }) {
-  const t = useT();
   const market = useMarket(!form.locked);
   const { state } = market;
   // AI models are paid in USDC through the escrow, so only an edge that
   // settles in USDC is asked for them.
   const llm = useLlm(!form.locked && state.kind === "ready" && state.account.usdc != null);
-  const sharing = (
-    <>
-      <SharingSection form={form} />
+  return <MarketPage facts={{ form, market, llm }} />;
+}
+
+interface MarketFacts {
+  form: SettingsForm;
+  market: ReturnType<typeof useMarket>;
+  llm: ReturnType<typeof useLlm>;
+}
+
+/** The shelf once the market has answered, or null before. */
+function useReady({ form, market }: MarketFacts) {
+  const { state } = market;
+  if (state.kind !== "ready") return null;
+  const { account, listings } = state;
+  return { account, listings, disabled: form.locked || market.busy };
+}
+
+const MarketPage = pageOf<"settings.market", MarketFacts>("settings.market", {
+  Sharing({ facts }) {
+    return <SharingSection form={facts.form} />;
+  },
+  Lend({ facts }) {
+    const { form, llm } = facts;
+    return (
       <LendSection
         form={form}
         lending={llm.state.kind === "ready" ? llm.state.lending : null}
         models={llm.state.kind === "ready" ? llm.state.models : []}
       />
-    </>
-  );
-
-  if (state.kind === "loading") {
-    return (
-      <>
-        {sharing}
+    );
+  },
+  Status({ facts }) {
+    const t = useT();
+    const { form, market } = facts;
+    const { state } = market;
+    if (state.kind === "loading") {
+      return (
         <PaneSection>
           <Group>
             <Row last>
@@ -124,13 +150,10 @@ export function MarketPane({ form }: { form: SettingsForm }) {
             </Row>
           </Group>
         </PaneSection>
-      </>
-    );
-  }
-  if (state.kind === "failed") {
-    return (
-      <>
-        {sharing}
+      );
+    }
+    if (state.kind === "failed") {
+      return (
         <PaneSection>
           <Group>
             <Row last>
@@ -141,13 +164,10 @@ export function MarketPane({ form }: { form: SettingsForm }) {
             </Row>
           </Group>
         </PaneSection>
-      </>
-    );
-  }
-  if (state.kind === "unavailable") {
-    return (
-      <>
-        {sharing}
+      );
+    }
+    if (state.kind === "unavailable") {
+      return (
         <PaneSection>
           <Group>
             <Row last>
@@ -162,16 +182,16 @@ export function MarketPane({ form }: { form: SettingsForm }) {
             </Row>
           </Group>
         </PaneSection>
-      </>
-    );
-  }
-
-  const { account, listings } = state;
-  const disabled = form.locked || market.busy;
-  return (
-    <>
-      {sharing}
-
+      );
+    }
+    return null;
+  },
+  Yours({ facts }) {
+    const t = useT();
+    const ready = useReady(facts);
+    if (ready === null) return null;
+    const { account } = ready;
+    return (
       <PaneSection>
         <GroupTitle>{t("panes.market.yours")}</GroupTitle>
         <Group>
@@ -216,7 +236,15 @@ export function MarketPane({ form }: { form: SettingsForm }) {
           </Group>
         )}
       </PaneSection>
-
+    );
+  },
+  Buy({ facts }) {
+    const t = useT();
+    const ready = useReady(facts);
+    if (ready === null) return null;
+    const { account, listings, disabled } = ready;
+    const { market } = facts;
+    return (
       <PaneSection>
         <GroupTitle>{t("panes.market.buy")}</GroupTitle>
         <Group>
@@ -265,22 +293,48 @@ export function MarketPane({ form }: { form: SettingsForm }) {
             : t("panes.market.payCaption")}
         </GroupCaption>
       </PaneSection>
-
-      {account.usdc && <AiModelsSection usdc={account.usdc} llm={llm} disabled={disabled} />}
-
+    );
+  },
+  AiModels({ facts }) {
+    const ready = useReady(facts);
+    if (ready === null) return null;
+    const { account, disabled } = ready;
+    const { llm } = facts;
+    return (
+      <>
+        {account.usdc && <AiModelsSection usdc={account.usdc} llm={llm} disabled={disabled} />}
+      </>
+    );
+  },
+  Sell({ facts }) {
+    const ready = useReady(facts);
+    if (ready === null) return null;
+    const { disabled } = ready;
+    const { market } = facts;
+    return (
       <SellSection market={market} disabled={disabled} />
-      {account.payouts && account.payouts.held + account.payouts.ready + account.payouts.paying > 0 && (
-        <EarningsSection
-          payouts={account.payouts}
-          currency={account.currency}
-          offlineSecs={account.offline_refund_secs ?? 86400}
-          disabled={disabled}
-          onPayOut={() => void market.release()}
-        />
-      )}
-    </>
-  );
-}
+    );
+  },
+  Earnings({ facts }) {
+    const ready = useReady(facts);
+    if (ready === null) return null;
+    const { account, disabled } = ready;
+    const { market } = facts;
+    return (
+      <>
+        {account.payouts && account.payouts.held + account.payouts.ready + account.payouts.paying > 0 && (
+          <EarningsSection
+            payouts={account.payouts}
+            currency={account.currency}
+            offlineSecs={account.offline_refund_secs ?? 86400}
+            disabled={disabled}
+            onPayOut={() => void market.release()}
+          />
+        )}
+      </>
+    );
+  },
+});
 
 /* The disk-sharing switch and what it buys the owner. Disabled on `locked`
  * and until the form has loaded, like every other control on the form; the

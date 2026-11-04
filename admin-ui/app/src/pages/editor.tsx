@@ -274,12 +274,12 @@ function PageSourceEditor({ id }: { id: PageId }) {
           {blockList.map(([block, about]) => (
             <li key={block}>
               <code className="font-mono text-ink">{`<${block} />`}</code>
-              <span className="text-muted"> {t(`pages.block.${block}` as MessageKey)}</span>
+              <span className="text-muted"> {t(`pages.block.${id}.${block}` as MessageKey)}</span>
               {Object.entries(about.props ?? {}).map(([prop, p]) => (
                 <div key={prop} className="ml-3 text-muted">
                   <code className="font-mono text-ink">{prop}</code>
                   {p.type === "flag" ? ` (${t("pages.editor.flag")})` : ""}{" "}
-                  {t(`pages.block.${block}.${prop}` as MessageKey)}
+                  {t(`pages.block.${id}.${block}.${prop}` as MessageKey)}
                 </div>
               ))}
             </li>

@@ -37,7 +37,13 @@ components and `Button`.
    (`settings.storage`), its title, its path and its blocks.
 2. Write `<id>.mdx` with the blocks in the order the screen draws them.
 3. Draw it with `<Page id="…" blocks={…} />`, a `BlockMap<"…">` that names
-   exactly the blocks `blocks.json` lists (the type checks it).
-4. Give it `pages.page.<id>` and each block `pages.block.<Name>` in
+   exactly the blocks `blocks.json` lists (the type checks it). A screen
+   whose sections read what the screen holds uses `pageOf(id, blocks)`
+   instead: the screen keeps its state and hands it over as `facts`, and
+   each block is one of its sections. A screen that loads has a `Status`
+   block for the wait and the failure, and its other blocks draw nothing
+   until it has loaded (the settings panes do both).
+4. Give it `pages.page.<id>` and each block `pages.block.<id>.<Name>` in
    `src/i18n/pages.ts`, and its blocks in the pages without a script
-   (`backend/plugins/basic/src/custom.rs`'s callers).
+   (`backend/plugins/basic/src/custom.rs`'s callers). A block's name must
+   not be one of the document components (`Details`, `Table` and the rest).

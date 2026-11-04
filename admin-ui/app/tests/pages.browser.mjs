@@ -227,7 +227,9 @@ await check('only administrators see the Pages section', async () => {
   await section.waitFor();
   assert.ok(await section.getByText('Overview').isVisible());
   assert.ok(await section.getByText('Storage').isVisible());
-  assert.equal(await section.getByText('As shipped').count(), 2);
+  assert.ok(await section.getByText('Access tokens').isVisible());
+  // Every page blocks.json lists, each as LosOS ships it.
+  assert.equal(await section.getByText('As shipped').count(), Object.keys(JSON.parse(REGISTRY).pages).length);
   await admin.page.close();
 
   const viewer = await open({

@@ -67,6 +67,41 @@ export function Page<P extends PageId>({ id, blocks: map }: { id: P; blocks: Blo
   return <>{draw(nodes, map as Readonly<Record<string, React.ComponentType<BlockProps>>>, true)}</>;
 }
 
+/** Every block of a screen whose blocks all draw from what the screen
+ *  hands them, `facts`, beside their own props. */
+export type FactBlocks<P extends PageId, F> = {
+  readonly [N in BlockName<P>]: React.ComponentType<BlockProps & { facts: F }>;
+};
+
+/** A screen as a page: `<Screen facts={…} />` draws the page `id`, and each
+ *  block it places gets those facts. The screen keeps its state where it
+ *  was and the blocks are its sections, so the default page draws the
+ *  screen as it was. */
+export function pageOf<P extends PageId, F>(id: P, blocks: FactBlocks<P, F>): React.ComponentType<{ facts: F }> {
+  const Facts = React.createContext<{ facts: F } | null>(null);
+  const map = Object.fromEntries(
+    Object.entries<React.ComponentType<BlockProps & { facts: F }>>(blocks).map(([name, Block]) => {
+      function Placed(props: BlockProps) {
+        const held = React.useContext(Facts);
+        if (held === null) throw new Error(`the block ${name} outside the page ${id}`);
+        return <Block {...props} facts={held.facts} />;
+      }
+      Placed.displayName = name;
+      return [name, Placed];
+    }),
+  ) as unknown as BlockMap<P>;
+  function Screen({ facts }: { facts: F }) {
+    const held = React.useMemo(() => ({ facts }), [facts]);
+    return (
+      <Facts.Provider value={held}>
+        <Page id={id} blocks={map} />
+      </Facts.Provider>
+    );
+  }
+  Screen.displayName = `Page(${id})`;
+  return Screen;
+}
+
 function parse(html: string): ChildNode[] {
   const doc = new DOMParser().parseFromString(`<body>${html}</body>`, "text/html");
   return [...doc.body.childNodes];

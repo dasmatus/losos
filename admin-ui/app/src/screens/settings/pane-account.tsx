@@ -25,6 +25,7 @@ import {
 } from "@/lib/api";
 import { intlTag } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
+import { pageOf } from "@/pages/page";
 import { cn } from "@/lib/utils";
 import { MIN_PASSWORD_CHARS, passwordRules } from "@/screens/wizard/api";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue, StackRow } from "./rows";
@@ -49,62 +50,116 @@ function when(seconds: number): string {
   return new Intl.DateTimeFormat(intlTag(), { dateStyle: "long" }).format(new Date(seconds * 1000));
 }
 
+/* The pane is src/pages/settings.account.mdx (src/pages/README.md): the status
+ * block stands in until the pane has loaded, and the others draw nothing
+ * until then. */
 export function AccountPane({ locked }: { locked: boolean }) {
-  const t = useT();
   const account = useAccount(!locked);
-  const { state } = account;
-
-  if (state.kind === "loading") {
-    return (
-      <PaneSection>
-        <Group>
-          <Row last>
-            <RowText title={t("account.loading")} />
-            <Spinner size={16} />
-          </Row>
-        </Group>
-      </PaneSection>
-    );
-  }
-  if (state.kind === "noAccount") {
-    return (
-      <PaneSection data-testid="account-none">
-        <Group>
-          <Row last>
-            <RowText title={t("account.noAccount")} />
-          </Row>
-        </Group>
-      </PaneSection>
-    );
-  }
-  if (state.kind === "failed") {
-    return (
-      <PaneSection>
-        <Group>
-          <Row last>
-            <RowText title={t("account.failed")} detail={state.message} />
-            <Button size="sm" variant="secondary" disabled={locked} onClick={account.refresh}>
-              {t("account.retry")}
-            </Button>
-          </Row>
-        </Group>
-      </PaneSection>
-    );
-  }
-
-  const disabled = locked || account.busy;
-  return (
-    <>
-      {state.account.locked.length > 0 && <HeldNotice reasons={state.account.locked} />}
-      <ProfileSection name={state.account.name} displayName={state.account.displayName} disabled={disabled} />
-      <DetailsSection account={state.account} data={account} disabled={disabled} />
-      <PasswordSection account={state.account} data={account} disabled={disabled} />
-      <FactorsSection account={state.account} disabled={disabled} />
-      <PicturesSection disabled={disabled} />
-      <WindowsSection disabled={disabled} />
-    </>
-  );
+  return <AccountPage facts={{ locked, account }} />;
 }
+
+interface AccountFacts {
+  locked: boolean;
+  account: ReturnType<typeof useAccount>;
+}
+
+/** What the pane draws once it has loaded, or null before. */
+function readyOf({ account, locked }: AccountFacts) {
+  const { state } = account;
+  if (state.kind !== "ready") return null;
+  const disabled = locked || account.busy;
+  return { state, disabled };
+}
+
+const AccountPage = pageOf<"settings.account", AccountFacts>("settings.account", {
+  Status({ facts }) {
+    const t = useT();
+    const { locked, account } = facts;
+    const { state } = account;
+    if (state.kind === "loading") {
+      return (
+        <PaneSection>
+          <Group>
+            <Row last>
+              <RowText title={t("account.loading")} />
+              <Spinner size={16} />
+            </Row>
+          </Group>
+        </PaneSection>
+      );
+    }
+    if (state.kind === "noAccount") {
+      return (
+        <PaneSection data-testid="account-none">
+          <Group>
+            <Row last>
+              <RowText title={t("account.noAccount")} />
+            </Row>
+          </Group>
+        </PaneSection>
+      );
+    }
+    if (state.kind === "failed") {
+      return (
+        <PaneSection>
+          <Group>
+            <Row last>
+              <RowText title={t("account.failed")} detail={state.message} />
+              <Button size="sm" variant="secondary" disabled={locked} onClick={account.refresh}>
+                {t("account.retry")}
+              </Button>
+            </Row>
+          </Group>
+        </PaneSection>
+      );
+    }
+    return null;
+  },
+  Held({ facts }) {
+    const ready = readyOf(facts);
+    if (ready === null) return null;
+    const { state } = ready;
+    return state.account.locked.length > 0 && <HeldNotice reasons={state.account.locked} />;
+  },
+  Profile({ facts }) {
+    const ready = readyOf(facts);
+    if (ready === null) return null;
+    const { state, disabled } = ready;
+    return <ProfileSection name={state.account.name} displayName={state.account.displayName} disabled={disabled} />;
+  },
+  Contact({ facts }) {
+    const ready = readyOf(facts);
+    if (ready === null) return null;
+    const { state, disabled } = ready;
+    const { account } = facts;
+    return <DetailsSection account={state.account} data={account} disabled={disabled} />;
+  },
+  Password({ facts }) {
+    const ready = readyOf(facts);
+    if (ready === null) return null;
+    const { state, disabled } = ready;
+    const { account } = facts;
+    return <PasswordSection account={state.account} data={account} disabled={disabled} />;
+  },
+  Factors({ facts }) {
+    const ready = readyOf(facts);
+    if (ready === null) return null;
+    const { state, disabled } = ready;
+    return <FactorsSection account={state.account} disabled={disabled} />;
+  },
+  Pictures({ facts }) {
+    const ready = readyOf(facts);
+    if (ready === null) return null;
+    const { disabled } = ready;
+    return <PicturesSection disabled={disabled} />;
+  },
+  Windows({ facts }) {
+    const ready = readyOf(facts);
+    if (ready === null) return null;
+    const { disabled } = ready;
+    return <WindowsSection disabled={disabled} />;
+  },
+});
 
 // ── Held by a rule ──────────────────────────────────────────────────────
 

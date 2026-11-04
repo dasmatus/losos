@@ -1,5 +1,6 @@
 import * as React from "react";
 import { useT } from "@/lib/i18n-react";
+import { pageOf } from "@/pages/page";
 import { Group, GroupCaption, GroupTitle, PaneSection, SwitchRow } from "./rows";
 import type { SettingsForm } from "./use-settings-form";
 
@@ -12,7 +13,16 @@ import type { SettingsForm } from "./use-settings-form";
  * would be worse than a short pane.
  */
 
+/* The pane is src/pages/settings.hardware.mdx (src/pages/README.md). */
 export function HardwarePane({ form }: { form: SettingsForm }) {
+  return <HardwarePage facts={{ form }} />;
+}
+
+const HardwarePage = pageOf<"settings.hardware", { form: SettingsForm }>("settings.hardware", {
+  Graphics: ({ facts }) => <GraphicsSection {...facts} />,
+});
+
+function GraphicsSection({ form }: { form: SettingsForm }) {
   const t = useT();
   const gpuId = React.useId();
   const disabled = form.locked || !form.ready;

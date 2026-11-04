@@ -26,6 +26,7 @@ import {
 } from "@/lib/api";
 import { intlTag, type MessageKey } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-react";
+import { pageOf } from "@/pages/page";
 import { formatBytes } from "./format";
 import {
   Group,
@@ -116,21 +117,48 @@ function Ready({
   /* lososd refuses a backup or a restore while a change is being applied
    * (erase.rs, ensure_idle); the buttons say so before anyone clicks. */
   const waiting = rebuilding && !running;
-  return (
-    <>
-      {waiting && <WaitingForChange />}
+  return <BackupPage facts={{ view, backup, locked, running, volumes, disabled, waiting }} />;
+}
+
+interface BackupFacts {
+  view: BackupResponse;
+  backup: BackupData;
+  locked: boolean;
+  running: boolean;
+  volumes: ReturnType<typeof useBoughtVolumes>;
+  disabled: boolean;
+  waiting: boolean;
+}
+
+const BackupPage = pageOf<"settings.backup", BackupFacts>("settings.backup", {
+  Waiting({ facts }) {
+    const { waiting } = facts;
+    return waiting && <WaitingForChange />;
+  },
+  Target({ facts }) {
+    const { view, backup, running, volumes, disabled } = facts;
+    return (
       <TargetSection
         view={view}
         backup={backup}
         volumes={volumes}
         disabled={disabled || running}
       />
-      <CodeSection locked={locked} />
-      <BackupsSection view={view} backup={backup} disabled={disabled || running || waiting} />
-      <RestoreSection view={view} backup={backup} disabled={disabled || running || waiting} />
-    </>
-  );
-}
+    );
+  },
+  Code({ facts }) {
+    const { locked } = facts;
+    return <CodeSection locked={locked} />;
+  },
+  Backups({ facts }) {
+    const { view, backup, running, disabled, waiting } = facts;
+    return <BackupsSection view={view} backup={backup} disabled={disabled || running || waiting} />;
+  },
+  Restore({ facts }) {
+    const { view, backup, running, disabled, waiting } = facts;
+    return <RestoreSection view={view} backup={backup} disabled={disabled || running || waiting} />;
+  },
+});
 
 // ── The bucket ──────────────────────────────────────────────────────────
 

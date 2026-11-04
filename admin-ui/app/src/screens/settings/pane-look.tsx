@@ -34,7 +34,7 @@ import {
 } from "@/lib/look";
 import { cn } from "@/lib/utils";
 import { addHand, removeHandTiles } from "@/lib/widgets";
-import { PAGE_IDS, type PageId } from "@/pages/page";
+import { PAGE_IDS, pageOf, type PageId } from "@/pages/page";
 import { getPagesState, openPageEditor, subscribePages } from "@/pages/store";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, StackRow } from "./rows";
 
@@ -140,29 +140,85 @@ export function LookPane({ locked }: { locked: boolean }) {
 
   return (
     <>
-      {state.status === "failed" && (
-        <div
-          role="alert"
-          className={cn(
-            "mb-4 flex items-start gap-2.5 rounded-card border border-crit/35 bg-crit/8 p-3",
-            "text-[13px] leading-snug text-crit",
-          )}
-        >
-          <HugeiconsIcon
-            icon={Alert02Icon}
-            size={17}
-            strokeWidth={1.5}
-            color="currentColor"
-            className="mt-px shrink-0"
-            aria-hidden="true"
-          />
-          <p className="min-w-0 flex-1">{t("look.notLoaded", { message: state.error ?? "" })}</p>
-          <Button variant="secondary" size="sm" onClick={() => void loadLook()}>
-            {t("look.tryAgain")}
-          </Button>
-        </div>
-      )}
+      <LookPage facts={{ state, look, limits, disabled, uploading, editing, setEditing, fileRef, veilId, mb, shipped, background, pick, upload, remove, deleteWidget, locked, personal, widgets }} />
 
+      <PagesSection locked={locked} />
+
+      {editing !== null && (
+        <React.Suspense fallback={null}>
+          <HandEditor
+            open
+            onOpenChange={(next) => {
+              if (!next) setEditing(null);
+            }}
+            {...(editing.widget === undefined ? {} : { widget: editing.widget })}
+            onSaved={(widget, created) => {
+              if (created) addHand(widget.id);
+            }}
+          />
+        </React.Suspense>
+      )}
+    </>
+  );
+}
+
+interface LookFacts {
+  state: ReturnType<typeof getLookState>;
+  look: ReturnType<typeof getLookState>["look"];
+  limits: ReturnType<typeof lookLimits>;
+  disabled: boolean;
+  uploading: boolean;
+  editing: { widget?: HandWidget } | null;
+  setEditing: (editing: { widget?: HandWidget } | null) => void;
+  fileRef: React.RefObject<HTMLInputElement | null>;
+  veilId: string;
+  mb: number;
+  shipped: typeof SHIPPED_BACKGROUNDS;
+  background: LookBackground;
+  pick: (choice: { kind: "none" } | { kind: "shipped"; name: string }) => Promise<void>;
+  upload: (file: File) => Promise<void>;
+  remove: () => Promise<void>;
+  deleteWidget: (widget: HandWidget) => Promise<void>;
+  locked: boolean;
+  personal: boolean;
+  widgets: boolean;
+}
+
+const LookPage = pageOf<"settings.look", LookFacts>("settings.look", {
+  NotLoaded({ facts }) {
+    const t = useT();
+    const { state } = facts;
+    return (
+      <>
+        {state.status === "failed" && (
+          <div
+            role="alert"
+            className={cn(
+              "mb-4 flex items-start gap-2.5 rounded-card border border-crit/35 bg-crit/8 p-3",
+              "text-[13px] leading-snug text-crit",
+            )}
+          >
+            <HugeiconsIcon
+              icon={Alert02Icon}
+              size={17}
+              strokeWidth={1.5}
+              color="currentColor"
+              className="mt-px shrink-0"
+              aria-hidden="true"
+            />
+            <p className="min-w-0 flex-1">{t("look.notLoaded", { message: state.error ?? "" })}</p>
+            <Button variant="secondary" size="sm" onClick={() => void loadLook()}>
+              {t("look.tryAgain")}
+            </Button>
+          </div>
+        )}
+      </>
+    );
+  },
+  Background({ facts }) {
+    const t = useT();
+    const { look, limits, disabled, uploading, fileRef, veilId, mb, shipped, background, pick, upload, remove, personal } = facts;
+    return (
       <PaneSection>
         <GroupTitle>{t(personal ? "look.background.groupMine" : "look.background.group")}</GroupTitle>
         <Group>
@@ -290,8 +346,13 @@ export function LookPane({ locked }: { locked: boolean }) {
         </Group>
         <GroupCaption>{t(personal ? "look.background.caption" : "look.background.captionBox", { mb })}</GroupCaption>
       </PaneSection>
-
-      {widgets && (
+    );
+  },
+  Widgets({ facts }) {
+    const t = useT();
+    const { look, limits, disabled, setEditing, deleteWidget, widgets } = facts;
+    if (!widgets) return null;
+    return (
       <PaneSection>
         <GroupTitle>
           {t("look.widgets.group")}
@@ -372,27 +433,9 @@ export function LookPane({ locked }: { locked: boolean }) {
         </Group>
         <GroupCaption>{t("look.widgets.caption")}</GroupCaption>
       </PaneSection>
-      )}
-
-      <PagesSection locked={locked} />
-
-      {editing !== null && (
-        <React.Suspense fallback={null}>
-          <HandEditor
-            open
-            onOpenChange={(next) => {
-              if (!next) setEditing(null);
-            }}
-            {...(editing.widget === undefined ? {} : { widget: editing.widget })}
-            onSaved={(widget, created) => {
-              if (created) addHand(widget.id);
-            }}
-          />
-        </React.Suspense>
-      )}
-    </>
-  );
-}
+    );
+  },
+});
 
 /* The pages as MDX (src/pages/): each page, whether an administrator
  * changed it, and the stylesheet they all share. Administrators only, like

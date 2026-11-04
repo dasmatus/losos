@@ -11,8 +11,14 @@ An administrator can change what a page says and in which order it shows
 its parts, add buttons of their own, and give every page a stylesheet. A
 page nobody changed looks exactly as LosOS ships it.
 
-So far the Overview and Storage are pages you can change. The other screens
-and the apps follow.
+So far the Overview and every settings pane are pages you can change. The
+apps and the rest of the screens follow.
+
+A settings pane that reads its contents from the box, such as Access tokens
+or Users, has a `<Status />` block: it says that the pane is loading, or
+why it cannot, and the pane's other blocks draw nothing until it has
+loaded. The list of pages on **Settings → Look** is not a block of that
+pane, so a changed Look page always keeps the way back.
 
 ## Who can change them
 

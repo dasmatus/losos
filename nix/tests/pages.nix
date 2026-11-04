@@ -12,8 +12,10 @@
 #     stylesheet and a reset;
 #   * someone who is not an administrator reads the changed pages and
 #     cannot write one, nor read a page's source;
-#   * the changed Overview and Storage are drawn with JavaScript on and
-#     off, the stylesheet with them, and no page trips the policy;
+#   * every settings pane is a page and is shot as it ships, so a before
+#     run of the same test shows each one unchanged;
+#   * the changed Overview, Storage and Network are drawn with JavaScript
+#     on and off, the stylesheet with them, and no page trips the policy;
 #   * the editor docks beside the page and draws what is typed into it.
 #
 # The laptop's pictures are the ones the pull request shows: the
@@ -67,6 +69,13 @@ let
 
     <Disk />
   '';
+  networkPage = ''
+    Ask Matus before you rename the box: every link to it changes.
+
+    <Name />
+
+    <Domains />
+  '';
   style = ''
     html[data-page="overview"] .mdx-page-text h2 { color: var(--accent); }
   '';
@@ -96,8 +105,119 @@ let
     selector = "[data-testid=pages-section]";
   };
 
-  # The three screens the change touches, as they are before anything is
-  # changed: the Overview, Storage and the Look pane.
+  # Every settings pane but Storage and Look, which have shots of their
+  # own: each is a page now, and each must look as it did. The heading is
+  # the pane's title.
+  panes = [
+    [
+      "network"
+      "/settings/network"
+      "Network"
+    ]
+    [
+      "hardware"
+      "/settings/hardware"
+      "Hardware"
+    ]
+    [
+      "security"
+      "/settings/security"
+      "Security"
+    ]
+    [
+      "statistics"
+      "/settings/statistics"
+      "Statistics"
+    ]
+    [
+      "about"
+      "/settings/about"
+      "About"
+    ]
+    [
+      "reset"
+      "/settings/reset"
+      "Reset"
+    ]
+    [
+      "mesh"
+      "/mesh"
+      "Mesh"
+    ]
+    [
+      "market"
+      "/settings/market"
+      "Market"
+    ]
+    [
+      "machines"
+      "/machines"
+      "Machines"
+    ]
+    [
+      "apps"
+      "/apps"
+      "Apps"
+    ]
+    [
+      "credentials"
+      "/settings/credentials"
+      "Credentials"
+    ]
+    [
+      "problems"
+      "/settings/problems"
+      "Problems"
+    ]
+    [
+      "access"
+      "/settings/access"
+      "Access tokens"
+    ]
+    [
+      "account"
+      "/settings/account"
+      "Your account"
+    ]
+    [
+      "users"
+      "/settings/users"
+      "Users"
+    ]
+    [
+      "moderation"
+      "/settings/moderation"
+      "Moderation"
+    ]
+    [
+      "advanced"
+      "/settings/advanced"
+      "Advanced"
+    ]
+    [
+      "history"
+      "/settings/history"
+      "History"
+    ]
+    [
+      "logs"
+      "/settings/logs"
+      "Logs"
+    ]
+    [
+      "backup"
+      "/settings/backup"
+      "Backup"
+    ]
+  ];
+  paneShots = map (p: {
+    name = builtins.elemAt p 0;
+    path = builtins.elemAt p 1;
+    waitFor = heading (builtins.elemAt p 2);
+  }) panes;
+
+  # The screens the change touches, as they are before anything is
+  # changed: the Overview, Storage, the Look pane and every other pane.
   screensNow = [
     {
       name = "overview";
@@ -118,7 +238,8 @@ let
       };
       steps = [ { scroll = "end"; } ];
     }
-  ];
+  ]
+  ++ paneShots;
 
   plan =
     name: attrs:
@@ -145,7 +266,19 @@ let
           waitFor = signInPage;
           steps = signIn;
         }
-      ];
+      ]
+      ++
+        map
+          (name: {
+            inherit name;
+            path = "/settings/${name}";
+            waitFor = heading (lib.toUpper (lib.substring 0 1 name) + lib.substring 1 (-1) name);
+          })
+          [
+            "network"
+            "hardware"
+            "security"
+          ];
     };
   }
   // lib.optionalAttrs after {
@@ -210,6 +343,13 @@ let
             text = "The reserve is for the photo archive. Ask Matus before you use it.";
           };
         }
+        {
+          name = "network";
+          path = "/settings/network";
+          waitFor = {
+            text = "Ask Matus before you rename the box: every link to it changes.";
+          };
+        }
       ];
     };
     changed-off = plan "changed-off" {
@@ -226,6 +366,13 @@ let
           path = "/storage";
           waitFor = {
             text = "The reserve is for the photo archive. Ask Matus before you use it.";
+          };
+        }
+        {
+          name = "network";
+          path = "/settings/network";
+          waitFor = {
+            text = "Ask Matus before you rename the box: every link to it changes.";
           };
         }
       ];
@@ -278,6 +425,7 @@ pkgs.testers.nixosTest {
           // {
             "losos-test/overview.mdx".text = overviewPage;
             "losos-test/storage.mdx".text = storagePage;
+            "losos-test/network.mdx".text = networkPage;
             "losos-test/style.css".text = style;
           };
         virtualisation.vlans = [ 1 ];
@@ -390,10 +538,13 @@ pkgs.testers.nixosTest {
             assert "Welcome to the office box" in listed["pages"]["overview"]["html"], listed
             assert listed["pages"]["overview"]["by"] == "${user}", listed
             assert api("/api/pages/settings.storage", cookie, "PUT", {"source": storage})[0] == 200
+            network = laptop.succeed("cat /etc/losos-test/network.mdx")
+            assert api("/api/pages/settings.network", cookie, "PUT", {"source": network})[0] == 200
             assert api("/api/pages/style.css", cookie, "PUT", {"source": style})[0] == 200
             commits = commits_made()
-            assert commits[:3] == [
+            assert commits[:4] == [
                 "${user}|${user}@losos.invalid|Add a stylesheet for the pages",
+                "${user}|${user}@losos.invalid|Change the Network page",
                 "${user}|${user}@losos.invalid|Change the Storage page",
                 "${user}|${user}@losos.invalid|Change the Overview page",
             ], commits
@@ -451,6 +602,10 @@ pkgs.testers.nixosTest {
             # Named as the script page names it, so the stylesheet's page
             # selectors hold with JavaScript off too.
             assert 'data-page="overview"' in page, page[:800]
+            page = curl(f"-H 'Cookie: {cookie}' https://{BOX}/basic/settings/network")
+            assert "Ask Matus before you rename the box" in page, page[:800]
+            assert 'name="hostName"' in page and 'name="proxyEnable"' not in page, page[:800]
+            assert 'data-page="settings.network"' in page, page[:800]
 
         with subtest("a reset is a commit too, and the page is LosOS's again"):
             code, body = api("/api/pages/settings.storage", cookie, "DELETE")

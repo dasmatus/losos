@@ -13,7 +13,10 @@
         "Apps": {
           "about": "The apps on this box as tiles, with the storage strip under them.",
           "props": {
-            "hideStorage": { "type": "flag", "about": "Leave the storage strip out." }
+            "hideStorage": {
+              "type": "flag",
+              "about": "Leave the storage strip out."
+            }
           }
         },
         "Glance": {
@@ -27,6 +30,399 @@
       "blocks": {
         "Disk": {
           "about": "How full the disk is, and the reserve the box can add to it."
+        }
+      }
+    },
+    "settings.network": {
+      "title": "Network",
+      "path": "/settings/network",
+      "blocks": {
+        "Name": {
+          "about": "The box's name and the address it is reached at on this network."
+        },
+        "Reaching": {
+          "about": "Whether the box can be reached from outside this network."
+        },
+        "Windows": {
+          "about": "Whether the box shows up under Network in File Explorer. Shows nothing on a box without it."
+        },
+        "Hidden": {
+          "about": "The Tor and I2P addresses. Shows nothing on a box without them."
+        },
+        "Domains": {
+          "about": "The box's own domain names."
+        }
+      }
+    },
+    "settings.hardware": {
+      "title": "Hardware",
+      "path": "/settings/hardware",
+      "blocks": {
+        "Graphics": {
+          "about": "The switch for the graphics chip."
+        }
+      }
+    },
+    "settings.security": {
+      "title": "Security",
+      "path": "/settings/security",
+      "blocks": {
+        "Protections": {
+          "about": "The extra protections, each with what it costs, and the note on a box without a TPM."
+        }
+      }
+    },
+    "settings.statistics": {
+      "title": "Statistics",
+      "path": "/settings/statistics",
+      "blocks": {
+        "Counts": {
+          "about": "What was counted on the apps' ports, as charts."
+        }
+      }
+    },
+    "settings.about": {
+      "title": "About",
+      "path": "/settings/about",
+      "blocks": {
+        "ThisBox": {
+          "about": "The box's name, its addresses and how its storage is used."
+        },
+        "Handbook": {
+          "about": "The link to the handbook."
+        },
+        "Tour": {
+          "about": "The link that shows the tour again."
+        },
+        "SpareTime": {
+          "about": "Whether the box is on a mesh and when it lends its time."
+        },
+        "Updates": {
+          "about": "When the box updates and restarts."
+        }
+      }
+    },
+    "settings.reset": {
+      "title": "Reset",
+      "path": "/settings/reset",
+      "blocks": {
+        "StartOver": {
+          "about": "The button that resets the settings, and its confirmation."
+        },
+        "Erase": {
+          "about": "Erasing the box, with a backup first."
+        }
+      }
+    },
+    "settings.look": {
+      "title": "Look",
+      "path": "/settings/look",
+      "blocks": {
+        "NotLoaded": {
+          "about": "Why the look did not load. Shows nothing once it has."
+        },
+        "Background": {
+          "about": "The background picture."
+        },
+        "Widgets": {
+          "about": "The widgets written by hand."
+        }
+      }
+    },
+    "settings.mesh": {
+      "title": "Mesh",
+      "path": "/mesh",
+      "blocks": {
+        "Edge": {
+          "about": "The edges in reach and the one this box uses."
+        },
+        "Cluster": {
+          "about": "The mesh this box is in."
+        },
+        "LocalShare": {
+          "about": "Sharing with the gateways of this network only."
+        },
+        "Manage": {
+          "about": "Who may manage this box from the edge."
+        },
+        "Join": {
+          "about": "The switch that joins the mesh."
+        },
+        "SpareTime": {
+          "about": "When the box lends its processor to the mesh."
+        }
+      }
+    },
+    "settings.market": {
+      "title": "Market",
+      "path": "/settings/market",
+      "blocks": {
+        "Sharing": {
+          "about": "The switch that shares the disk with the mesh."
+        },
+        "Lend": {
+          "about": "Lending this box to AI models on the mesh."
+        },
+        "Status": {
+          "about": "While the market loads, or when it cannot be reached: why. Shows nothing once it has answered."
+        },
+        "Yours": {
+          "about": "What this box has bought."
+        },
+        "Buy": {
+          "about": "What is on offer."
+        },
+        "AiModels": {
+          "about": "AI models paid for in USDC. Shows nothing on an edge without them."
+        },
+        "Sell": {
+          "about": "What this box offers for sale."
+        },
+        "Earnings": {
+          "about": "What this box has earned. Shows nothing before it has."
+        }
+      }
+    },
+    "settings.machines": {
+      "title": "Machines",
+      "path": "/machines",
+      "blocks": {
+        "Status": {
+          "about": "While the machines load, or when they are not offered: why. Shows nothing once they have."
+        },
+        "Start": {
+          "about": "Starting a new machine."
+        },
+        "Mine": {
+          "about": "The machines this box runs on the mesh."
+        },
+        "Images": {
+          "about": "The disk images to start machines from."
+        },
+        "Host": {
+          "about": "The machines this box hosts for others."
+        }
+      }
+    },
+    "settings.apps": {
+      "title": "Apps",
+      "path": "/apps",
+      "blocks": {
+        "Sites": {
+          "about": "LosOS Cloud's and LosOS Git's settings, each folded."
+        },
+        "Yours": {
+          "about": "The apps built on this box."
+        },
+        "Box": {
+          "about": "The apps installed on this box, and finding more."
+        }
+      }
+    },
+    "settings.credentials": {
+      "title": "Credentials",
+      "path": "/settings/credentials",
+      "blocks": {
+        "Status": {
+          "about": "While the pane loads, or when it cannot: why. Shows nothing once it has."
+        },
+        "Seal": {
+          "about": "What the box's secrets are sealed to."
+        },
+        "Apps": {
+          "about": "The secrets of each app, and making new ones."
+        }
+      }
+    },
+    "settings.access": {
+      "title": "Access tokens",
+      "path": "/settings/access",
+      "blocks": {
+        "Status": {
+          "about": "While the pane loads, or when it cannot: why. Shows nothing once it has."
+        },
+        "HostKey": {
+          "about": "The box's own key, to check it by."
+        },
+        "Keys": {
+          "about": "The keys that may sign calls to this box."
+        },
+        "Tokens": {
+          "about": "The access tokens made so far."
+        },
+        "NewToken": {
+          "about": "Making a new access token."
+        }
+      }
+    },
+    "settings.account": {
+      "title": "Your account",
+      "path": "/settings/account",
+      "blocks": {
+        "Status": {
+          "about": "While the pane loads, or when it cannot: why. Shows nothing once it has."
+        },
+        "Held": {
+          "about": "Why the account is held, while it is. Shows nothing otherwise."
+        },
+        "Profile": {
+          "about": "The name and the picture others see."
+        },
+        "Contact": {
+          "about": "The account's details, such as its email address."
+        },
+        "Password": {
+          "about": "Changing the password."
+        },
+        "Factors": {
+          "about": "The second steps of signing in."
+        },
+        "Pictures": {
+          "about": "The pictures kept for the account."
+        },
+        "Windows": {
+          "about": "Signing in to the files from Windows."
+        }
+      }
+    },
+    "settings.users": {
+      "title": "Users",
+      "path": "/settings/users",
+      "blocks": {
+        "Status": {
+          "about": "While the pane loads, or when it cannot: why. Shows nothing once it has."
+        },
+        "People": {
+          "about": "The people who use this box."
+        },
+        "Roles": {
+          "about": "What each role may do."
+        },
+        "CustomRoles": {
+          "about": "The roles made on this box. Shows nothing where there are none."
+        },
+        "Rules": {
+          "about": "The rules for new people. Shows nothing where there are none."
+        },
+        "NewPerson": {
+          "about": "Adding a person."
+        }
+      }
+    },
+    "settings.moderation": {
+      "title": "Moderation",
+      "path": "/settings/moderation",
+      "blocks": {
+        "Status": {
+          "about": "While the pane loads, or when it cannot: why. Shows nothing once it has."
+        },
+        "Reports": {
+          "about": "What people have reported."
+        },
+        "People": {
+          "about": "The people held or warned."
+        },
+        "Log": {
+          "about": "What was done, and by whom."
+        }
+      }
+    },
+    "settings.advanced": {
+      "title": "Advanced",
+      "path": "/settings/advanced",
+      "blocks": {
+        "Search": {
+          "about": "The search over every option, and how many there are."
+        },
+        "Nothing": {
+          "about": "What a search that finds nothing says."
+        },
+        "Options": {
+          "about": "Every option, by group, and the question before a dangerous change."
+        },
+        "Strays": {
+          "about": "Lines in the settings file that no option names. Shows nothing where there are none."
+        },
+        "About": {
+          "about": "Where the options are kept and what is left out."
+        }
+      }
+    },
+    "settings.history": {
+      "title": "History",
+      "path": "/settings/history",
+      "blocks": {
+        "Repository": {
+          "about": "The Git repository the settings are kept in."
+        },
+        "Clone": {
+          "about": "How to clone it, and syncing now. Shows nothing without a repository."
+        },
+        "Update": {
+          "about": "Where the box takes its updates from."
+        },
+        "Commits": {
+          "about": "The latest changes."
+        }
+      }
+    },
+    "settings.backup": {
+      "title": "Backup",
+      "path": "/settings/backup",
+      "blocks": {
+        "Waiting": {
+          "about": "While a change is applied: that backups wait for it. Shows nothing otherwise."
+        },
+        "Target": {
+          "about": "Where backups go."
+        },
+        "Code": {
+          "about": "The recovery code the backups are encrypted with."
+        },
+        "Backups": {
+          "about": "The backups made so far, and making one now."
+        },
+        "Restore": {
+          "about": "Restoring from a backup."
+        }
+      }
+    },
+    "settings.problems": {
+      "title": "Problems",
+      "path": "/settings/problems",
+      "blocks": {
+        "Status": {
+          "about": "Loading, and what shows when the problems cannot be read."
+        },
+        "Reporting": {
+          "about": "Whether reports can be sent, and where they go."
+        },
+        "List": {
+          "about": "The problems the box found."
+        },
+        "Dismissed": {
+          "about": "The problems put aside."
+        },
+        "Report": {
+          "about": "The report you read before you send it."
+        }
+      }
+    },
+    "settings.logs": {
+      "title": "Logs",
+      "path": "/settings/logs",
+      "blocks": {
+        "Filters": {
+          "about": "The service, level, time and text to show."
+        },
+        "Notices": {
+          "about": "What went wrong while reading or downloading."
+        },
+        "Lines": {
+          "about": "The lines themselves."
+        },
+        "Hidden": {
+          "about": "The note on what is hidden."
         }
       }
     }

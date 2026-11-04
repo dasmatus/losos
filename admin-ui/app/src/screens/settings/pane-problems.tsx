@@ -16,6 +16,7 @@ import type { Problem, ProblemSending } from "@/lib/api";
 import { HANDBOOK_BASE } from "@/lib/handbook";
 import { intlTag } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-react";
+import { pageOf } from "@/pages/page";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, StackRow } from "./rows";
 import { useProblems, type ProblemsData } from "./use-problems";
 
@@ -31,54 +32,79 @@ import { useProblems, type ProblemsData } from "./use-problems";
  * github.com/login/device: nothing leaves the box before that, and the
  * report goes to an issue anyone can read. */
 
+/* The pane is src/pages/settings.problems.mdx (src/pages/README.md): the status
+ * block stands in until the pane has loaded, and the others draw nothing
+ * until then. */
 export function ProblemsPane({ locked }: { locked: boolean }) {
-  const t = useT();
   const data = useProblems(!locked);
+  return <ProblemsPage facts={{ locked, data }} />;
+}
+
+interface ProblemsFacts {
+  locked: boolean;
+  data: ProblemsData;
+}
+
+/** What the pane draws once it has loaded, or null before. */
+function readyOf({ data }: ProblemsFacts) {
   const { state } = data;
-
-  if (state.kind === "loading") {
-    return (
-      <PaneSection>
-        <Group>
-          <Row last>
-            <RowText title={t("problems.loading")} />
-            <Spinner size={16} />
-          </Row>
-        </Group>
-      </PaneSection>
-    );
-  }
-  if (state.kind === "unavailable") {
-    return (
-      <PaneSection data-testid="problems-unavailable">
-        <Group>
-          <Row last>
-            <RowText title={t("problems.unavailable")} />
-          </Row>
-        </Group>
-      </PaneSection>
-    );
-  }
-  if (state.kind === "failed") {
-    return (
-      <PaneSection>
-        <Group>
-          <Row last>
-            <RowText title={t("problems.failed")} detail={state.message} />
-            <Button size="sm" variant="secondary" disabled={locked} onClick={data.refresh}>
-              {t("problems.retry")}
-            </Button>
-          </Row>
-        </Group>
-      </PaneSection>
-    );
-  }
-
+  if (state.kind !== "ready") return null;
   const { view } = state;
   const open = view.problems.filter((p) => !p.dismissed);
   const dismissed = view.problems.filter((p) => p.dismissed);
-  return (
-    <>
+  return { state, view, open, dismissed };
+}
+
+const ProblemsPage = pageOf<"settings.problems", ProblemsFacts>("settings.problems", {
+  Status({ facts }) {
+    const t = useT();
+    const { locked, data } = facts;
+    const { state } = data;
+    if (state.kind === "loading") {
+      return (
+        <PaneSection>
+          <Group>
+            <Row last>
+              <RowText title={t("problems.loading")} />
+              <Spinner size={16} />
+            </Row>
+          </Group>
+        </PaneSection>
+      );
+    }
+    if (state.kind === "unavailable") {
+      return (
+        <PaneSection data-testid="problems-unavailable">
+          <Group>
+            <Row last>
+              <RowText title={t("problems.unavailable")} />
+            </Row>
+          </Group>
+        </PaneSection>
+      );
+    }
+    if (state.kind === "failed") {
+      return (
+        <PaneSection>
+          <Group>
+            <Row last>
+              <RowText title={t("problems.failed")} detail={state.message} />
+              <Button size="sm" variant="secondary" disabled={locked} onClick={data.refresh}>
+                {t("problems.retry")}
+              </Button>
+            </Row>
+          </Group>
+        </PaneSection>
+      );
+    }
+    return null;
+  },
+  Reporting({ facts }) {
+    const t = useT();
+    const ready = readyOf(facts);
+    if (ready === null) return null;
+    const { view } = ready;
+    return (
       <PaneSection data-testid="problems-reporting">
         <GroupTitle>{t("problems.reports.title")}</GroupTitle>
         <Group>
@@ -101,7 +127,15 @@ export function ProblemsPane({ locked }: { locked: boolean }) {
           <HelpLink entry="problem-reports" label={t("problems.reports.more")} />
         </GroupCaption>
       </PaneSection>
-
+    );
+  },
+  List({ facts }) {
+    const t = useT();
+    const ready = readyOf(facts);
+    if (ready === null) return null;
+    const { view, open } = ready;
+    const { locked, data } = facts;
+    return (
       <PaneSection data-testid="problems-list">
         <GroupTitle>{t("problems.list.title")}</GroupTitle>
         <Group>
@@ -123,30 +157,45 @@ export function ProblemsPane({ locked }: { locked: boolean }) {
           )}
         </Group>
       </PaneSection>
-
-      {dismissed.length > 0 && (
-        <PaneSection data-testid="problems-dismissed">
-          <GroupTitle>{t("problems.dismissed.title")}</GroupTitle>
-          <Group>
-            {dismissed.map((p, i) => (
-              <ProblemRow
-                key={p.id}
-                problem={p}
-                last={i === dismissed.length - 1}
-                data={data}
-                locked={locked}
-                canSend={view.reporting !== null}
-              />
-            ))}
-          </Group>
-          <GroupCaption>{t("problems.dismissed.caption")}</GroupCaption>
-        </PaneSection>
-      )}
-
-      <ReportDialog data={data} canSend={view.reporting !== null} repository={view.reporting?.repository ?? null} />
-    </>
-  );
-}
+    );
+  },
+  Dismissed({ facts }) {
+    const t = useT();
+    const ready = readyOf(facts);
+    if (ready === null) return null;
+    const { view, dismissed } = ready;
+    const { locked, data } = facts;
+    return (
+      <>
+        {dismissed.length > 0 && (
+          <PaneSection data-testid="problems-dismissed">
+            <GroupTitle>{t("problems.dismissed.title")}</GroupTitle>
+            <Group>
+              {dismissed.map((p, i) => (
+                <ProblemRow
+                  key={p.id}
+                  problem={p}
+                  last={i === dismissed.length - 1}
+                  data={data}
+                  locked={locked}
+                  canSend={view.reporting !== null}
+                />
+              ))}
+            </Group>
+            <GroupCaption>{t("problems.dismissed.caption")}</GroupCaption>
+          </PaneSection>
+        )}
+      </>
+    );
+  },
+  Report({ facts }) {
+    const ready = readyOf(facts);
+    if (ready === null) return null;
+    const { view } = ready;
+    const { data } = facts;
+    return <ReportDialog data={data} canSend={view.reporting !== null} repository={view.reporting?.repository ?? null} />;
+  },
+});
 
 /* Reads the language on screen, so a switch of language re-renders it. */
 function useWhen(): (seconds: number) => string {

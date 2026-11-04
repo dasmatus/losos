@@ -36,6 +36,7 @@ import { Spinner } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { t as translate, type MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
+import { pageOf } from "@/pages/page";
 import type { InstalledApp } from "@/lib/api";
 import { useCatalogue, type CatalogueApp, type CatalogueState } from "./catalogue";
 import { InstallDialog, type InstallTarget } from "./install-dialog";
@@ -59,7 +60,6 @@ import { YourApps } from "@/apps/your-apps";
  */
 
 export function AppsPane({ form }: { form: SettingsForm }) {
-  const t = useT();
 
   const disabled = form.locked || !form.ready;
   const location = useLocation();
@@ -71,42 +71,63 @@ export function AppsPane({ form }: { form: SettingsForm }) {
     return hash === "cloud" || hash === "git" ? [hash] : [];
   });
 
-  return (
-    <>
-      {/* LosOS Cloud and LosOS Git, each folded in an accordion of its own:
-          each app's settings for everyone, the ones its own admin pages
-          would otherwise hold. */}
-      {(showCloud || showGit) && (
-        <Accordion
-          aria-label={t("panes.apps.onThisBox")}
-          value={folds}
-          onValueChange={(open) => setFolds(open.map(String))}
-        >
-          {showCloud && (
-            <AccordionItem value="cloud" data-testid="accordion-cloud">
-              <AccordionTrigger detail={t("cloudApps.git.detail")}>LosOS Cloud</AccordionTrigger>
-              <AccordionContent>
-                <SiteSettings form={form} app="cloud" />
-              </AccordionContent>
-            </AccordionItem>
-          )}
-          {showGit && (
-            <AccordionItem value="git" data-testid="accordion-git">
-              <AccordionTrigger detail={t("cloudApps.git.detail")}>LosOS Git</AccordionTrigger>
-              <AccordionContent>
-                <SiteSettings form={form} app="git" />
-              </AccordionContent>
-            </AccordionItem>
-          )}
-        </Accordion>
-      )}
-
-      <YourApps active={!form.locked} disabled={form.locked} />
-
-      <BoxApps active={!form.locked} disabled={disabled} />
-    </>
-  );
+  return <AppsPage facts={{ form, disabled, showCloud, showGit, folds, setFolds }} />;
 }
+
+interface AppsFacts {
+  form: SettingsForm;
+  disabled: boolean;
+  showCloud: boolean;
+  showGit: boolean;
+  folds: string[];
+  setFolds: (folds: string[]) => void;
+}
+
+const AppsPage = pageOf<"settings.apps", AppsFacts>("settings.apps", {
+  Sites({ facts }) {
+    const t = useT();
+    const { form, showCloud, showGit, folds, setFolds } = facts;
+    return (
+      <>
+        {/* LosOS Cloud and LosOS Git, each folded in an accordion of its own:
+            each app's settings for everyone, the ones its own admin pages
+            would otherwise hold. */}
+        {(showCloud || showGit) && (
+          <Accordion
+            aria-label={t("panes.apps.onThisBox")}
+            value={folds}
+            onValueChange={(open) => setFolds(open.map(String))}
+          >
+            {showCloud && (
+              <AccordionItem value="cloud" data-testid="accordion-cloud">
+                <AccordionTrigger detail={t("cloudApps.git.detail")}>LosOS Cloud</AccordionTrigger>
+                <AccordionContent>
+                  <SiteSettings form={form} app="cloud" />
+                </AccordionContent>
+              </AccordionItem>
+            )}
+            {showGit && (
+              <AccordionItem value="git" data-testid="accordion-git">
+                <AccordionTrigger detail={t("cloudApps.git.detail")}>LosOS Git</AccordionTrigger>
+                <AccordionContent>
+                  <SiteSettings form={form} app="git" />
+                </AccordionContent>
+              </AccordionItem>
+            )}
+          </Accordion>
+        )}
+      </>
+    );
+  },
+  Yours({ facts }) {
+    const { form } = facts;
+    return <YourApps active={!form.locked} disabled={form.locked} />;
+  },
+  Box({ facts }) {
+    const { form, disabled } = facts;
+    return <BoxApps active={!form.locked} disabled={disabled} />;
+  },
+});
 
 /** The apps installed from the search, and the search itself, with their
  *  dialogs. Also the apps half of a company edge's page for a box

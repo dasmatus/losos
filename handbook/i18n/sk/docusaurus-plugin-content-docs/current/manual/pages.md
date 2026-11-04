@@ -11,8 +11,14 @@ značkami. Správca môže zmeniť, čo stránka hovorí a v akom poradí ukazuj
 svoje časti, pridať vlastné tlačidlá a dať všetkým stránkam štýly. Stránka,
 ktorú nikto nezmenil, vyzerá presne tak, ako ju LosOS dodáva.
 
-Zatiaľ sa dajú meniť Prehľad a Úložisko. Ostatné obrazovky a aplikácie
-pribudnú.
+Zatiaľ sa dajú meniť Prehľad a všetky časti nastavení. Aplikácie a ostatné
+obrazovky pribudnú.
+
+Časť nastavení, ktorá číta svoj obsah zo zariadenia, napríklad Prístupové
+tokeny alebo Používatelia, má blok `<Status />`: hovorí, že sa časť
+načítava, alebo prečo sa to nedá, a ostatné bloky časti nič nekreslia,
+kým sa nenačíta. Zoznam stránok v **Nastavenia → Vzhľad** nie je blokom
+tejto časti, takže zmenená stránka Vzhľad si vždy necháva cestu späť.
 
 ## Kto ich môže meniť \{#who-can-change-them}
 

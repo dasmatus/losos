@@ -489,7 +489,16 @@ fn page(host: &mut dyn Host, req: &Request, cookies: &Cookies, now: u64) -> Resp
                         let r = rebuild.unwrap_or(pages::Rebuild { watch: Watch::Idle });
                         let title = ctx.m.t("settings.panes.network.label");
                         let domains = pages::domains(&ctx, host.get("/api/domains").as_ref(), true);
-                        let main = pages::network(&ctx, &shown, &r, Some(&problem), domains);
+                        ctx.page = Some("settings.network");
+                        let custom = custom::changed(changed.as_ref(), "settings.network");
+                        let main = pages::network(
+                            &ctx,
+                            &shown,
+                            &r,
+                            Some(&problem),
+                            domains,
+                            custom.as_deref(),
+                        );
                         return finish(
                             400,
                             pages::frame(&ctx, &title, notice(&ctx), &toasts, main),
@@ -582,10 +591,31 @@ fn page(host: &mut dyn Host, req: &Request, cookies: &Cookies, now: u64) -> Resp
                 ctx.refresh = Some(30);
             }
             let domains = pages::domains(&ctx, answer.as_ref(), false);
+            ctx.page = Some("settings.network");
             (
                 200,
                 ctx.m.t("settings.panes.network.label"),
-                pages::network(&ctx, s, r, None, domains),
+                pages::network(
+                    &ctx,
+                    s,
+                    r,
+                    None,
+                    domains,
+                    custom::changed(changed.as_ref(), "settings.network").as_deref(),
+                ),
+            )
+        }
+        (_, Some("hardware")) => {
+            ctx.page = Some("settings.hardware");
+            (
+                200,
+                ctx.m.t("settings.panes.hardware.label"),
+                pages::hardware(
+                    &ctx,
+                    s,
+                    r,
+                    custom::changed(changed.as_ref(), "settings.hardware").as_deref(),
+                ),
             )
         }
         (_, Some("look")) => (
@@ -593,17 +623,19 @@ fn page(host: &mut dyn Host, req: &Request, cookies: &Cookies, now: u64) -> Resp
             ctx.m.t("settings.panes.look.label"),
             pages::look(&ctx, look.as_ref()),
         ),
-        (_, Some("hardware")) => (
-            200,
-            ctx.m.t("settings.panes.hardware.label"),
-            pages::hardware(&ctx, s, r),
-        ),
         (_, Some("security")) => {
             let options = host.get("/api/options");
+            ctx.page = Some("settings.security");
             (
                 200,
                 ctx.m.t("settings.panes.security.label"),
-                pages::security(&ctx, s, options.as_ref(), r),
+                pages::security(
+                    &ctx,
+                    s,
+                    options.as_ref(),
+                    r,
+                    custom::changed(changed.as_ref(), "settings.security").as_deref(),
+                ),
             )
         }
         (_, Some("problems")) => {

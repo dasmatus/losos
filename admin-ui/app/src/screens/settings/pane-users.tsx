@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { Link } from "react-router-dom";
 import type { MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
+import { pageOf } from "@/pages/page";
 import { MIN_PASSWORD_CHARS, passwordRules } from "@/screens/wizard/api";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, StackRow, SwitchRow } from "./rows";
 import { usePeople, type PeopleData } from "./use-people";
@@ -139,78 +140,131 @@ export function roleOf(groups: readonly string[]): Role {
   return "member";
 }
 
+/* The pane is src/pages/settings.users.mdx (src/pages/README.md): the status
+ * block stands in until the pane has loaded, and the others draw nothing
+ * until then. */
 export function UsersPane({ locked }: { locked: boolean }) {
-  const t = useT();
   const people = usePeople(!locked);
-  const { state } = people;
-
-  if (state.kind === "loading") {
-    return (
-      <PaneSection>
-        <Group>
-          <Row last>
-            <RowText title={t("users.loading")} />
-            <Spinner size={16} />
-          </Row>
-        </Group>
-      </PaneSection>
-    );
-  }
-  if (state.kind === "unavailable") {
-    return (
-      <PaneSection data-testid="users-unavailable">
-        <Group>
-          <Row last>
-            <RowText title={t("users.unavailable")} />
-          </Row>
-        </Group>
-      </PaneSection>
-    );
-  }
-  if (state.kind === "failed") {
-    return (
-      <PaneSection>
-        <Group>
-          <Row last>
-            <RowText title={t("users.failed")} detail={state.message} />
-            <Button size="sm" variant="secondary" disabled={locked} onClick={people.refresh}>
-              {t("users.retry")}
-            </Button>
-          </Row>
-        </Group>
-      </PaneSection>
-    );
-  }
-  if (!state.view.standalone) {
-    return (
-      <PaneSection data-testid="users-elsewhere">
-        <Empty className="bg-surface">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <HugeiconsIcon icon={UserMultipleIcon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
-            </EmptyMedia>
-            <EmptyTitle>{t("users.elsewhere.title")}</EmptyTitle>
-            <EmptyDescription>{t("users.elsewhere.body")}</EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      </PaneSection>
-    );
-  }
-
-  return (
-    <>
-      <PeopleSection view={state.view} people={people} disabled={locked || people.busy} />
-      <RoleTableSection />
-      {state.view.roles !== undefined && (
-        <CustomRolesSection view={state.view} people={people} disabled={locked || people.busy} />
-      )}
-      {state.view.rules !== undefined && (
-        <RulesSection rules={state.view.rules} people={people} disabled={locked || people.busy} />
-      )}
-      <NewPersonSection view={state.view} people={people} locked={locked} />
-    </>
-  );
+  return <UsersPage facts={{ locked, people }} />;
 }
+
+interface UsersFacts {
+  locked: boolean;
+  people: ReturnType<typeof usePeople>;
+}
+
+/** What the pane draws once it has loaded, or null before. */
+function readyOf({ people }: UsersFacts) {
+  const { state } = people;
+  if (state.kind !== "ready" || !state.view.standalone) return null;
+  return { state };
+}
+
+const UsersPage = pageOf<"settings.users", UsersFacts>("settings.users", {
+  Status({ facts }) {
+    const t = useT();
+    const { locked, people } = facts;
+    const { state } = people;
+    if (state.kind === "loading") {
+      return (
+        <PaneSection>
+          <Group>
+            <Row last>
+              <RowText title={t("users.loading")} />
+              <Spinner size={16} />
+            </Row>
+          </Group>
+        </PaneSection>
+      );
+    }
+    if (state.kind === "unavailable") {
+      return (
+        <PaneSection data-testid="users-unavailable">
+          <Group>
+            <Row last>
+              <RowText title={t("users.unavailable")} />
+            </Row>
+          </Group>
+        </PaneSection>
+      );
+    }
+    if (state.kind === "failed") {
+      return (
+        <PaneSection>
+          <Group>
+            <Row last>
+              <RowText title={t("users.failed")} detail={state.message} />
+              <Button size="sm" variant="secondary" disabled={locked} onClick={people.refresh}>
+                {t("users.retry")}
+              </Button>
+            </Row>
+          </Group>
+        </PaneSection>
+      );
+    }
+    if (!state.view.standalone) {
+      return (
+        <PaneSection data-testid="users-elsewhere">
+          <Empty className="bg-surface">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <HugeiconsIcon icon={UserMultipleIcon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+              </EmptyMedia>
+              <EmptyTitle>{t("users.elsewhere.title")}</EmptyTitle>
+              <EmptyDescription>{t("users.elsewhere.body")}</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        </PaneSection>
+      );
+    }
+    return null;
+  },
+  People({ facts }) {
+    const ready = readyOf(facts);
+    if (ready === null) return null;
+    const { state } = ready;
+    const { locked, people } = facts;
+    return <PeopleSection view={state.view} people={people} disabled={locked || people.busy} />;
+  },
+  Roles({ facts }) {
+    const ready = readyOf(facts);
+    if (ready === null) return null;
+    return <RoleTableSection />;
+  },
+  CustomRoles({ facts }) {
+    const ready = readyOf(facts);
+    if (ready === null) return null;
+    const { state } = ready;
+    const { locked, people } = facts;
+    return (
+      <>
+        {state.view.roles !== undefined && (
+          <CustomRolesSection view={state.view} people={people} disabled={locked || people.busy} />
+        )}
+      </>
+    );
+  },
+  Rules({ facts }) {
+    const ready = readyOf(facts);
+    if (ready === null) return null;
+    const { state } = ready;
+    const { locked, people } = facts;
+    return (
+      <>
+        {state.view.rules !== undefined && (
+          <RulesSection rules={state.view.rules} people={people} disabled={locked || people.busy} />
+        )}
+      </>
+    );
+  },
+  NewPerson({ facts }) {
+    const ready = readyOf(facts);
+    if (ready === null) return null;
+    const { state } = ready;
+    const { locked, people } = facts;
+    return <NewPersonSection view={state.view} people={people} locked={locked} />;
+  },
+});
 
 // ── The list ────────────────────────────────────────────────────────────
 
