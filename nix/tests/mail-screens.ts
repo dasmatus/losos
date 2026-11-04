@@ -16,7 +16,7 @@
 // records where the film may point (bounding boxes in CSS px).
 
 /* One line more at the end of a file the earlier calls of this script began. */
-async function append(path, line) {
+async function append(path: string, line: string) {
   const file = Bun.file(path);
   await Bun.write(file, ((await file.exists()) ? await file.text() : '') + line);
 }
@@ -85,13 +85,13 @@ async function settle(page) {
   await page.waitForTimeout(600);
 }
 
-async function target(locator) {
+async function target(locator): Promise<{ x: number; y: number; w: number; h: number }> {
   const b = await locator.boundingBox();
   if (b === null) throw new Error(`no box for ${locator}`);
   return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) };
 }
 
-async function shot(page, file, title, action = { kind: 'none' }, targets = {}) {
+async function shot(page, file: string, title: string, action = { kind: 'none' }, targets = {}) {
   await settle(page);
   Bun.spawnSync(['mkdir', '-p', OUT]);
   // A modal's blurred backdrop at device scale 2 is slow to paint in a
@@ -110,7 +110,7 @@ async function noToasts(page) {
   }
 }
 
-async function sidebar(number, slug, title, expect) {
+async function sidebar(number: string, slug: string, title: string, expect: string) {
   const context = await browser();
   const page = await signedIn(context);
   await page.goto(`${BASE}/storage`);
@@ -125,9 +125,9 @@ async function sidebar(number, slug, title, expect) {
   await context.close();
 }
 
-async function mail(first) {
+async function mail(first: string) {
   let n = Number(first);
-  const name = (slug) => `${String(n++).padStart(2, '0')}-${slug}.png`;
+  const name = (slug: string) => `${String(n++).padStart(2, '0')}-${slug}.png`;
   const context = await browser();
   const page = await signedIn(context);
   await page.goto(`${BASE}/mail`);
@@ -175,9 +175,9 @@ async function mail(first) {
   await context.close();
 }
 
-async function folders(first) {
+async function folders(first: string) {
   let n = Number(first);
-  const name = (slug) => `${String(n++).padStart(2, '0')}-${slug}.png`;
+  const name = (slug: string) => `${String(n++).padStart(2, '0')}-${slug}.png`;
   const context = await browser();
   const page = await signedIn(context);
   await page.goto(`${BASE}/mail`);
@@ -232,7 +232,7 @@ async function folders(first) {
   await context.close();
 }
 
-async function manifest(test) {
+async function manifest(test: string) {
   const steps = (await Bun.file(`${OUT}/steps.jsonl`).text())
     .split('\n')
     .filter((l) => l !== '')

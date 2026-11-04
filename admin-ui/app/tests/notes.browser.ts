@@ -31,6 +31,8 @@ import { launch, runner, serve, shellRoutes, SHELL_ME, type ShellMe } from './ha
 declare global {
   interface Window {
     __violations: string[];
+    /* The .note sandbox check plants this to see nothing ran. */
+    __ran?: string;
   }
 }
 

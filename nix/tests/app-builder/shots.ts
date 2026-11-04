@@ -24,7 +24,7 @@
 
 import { chromium } from 'playwright';
 
-const join = (...parts) => parts.join('/');
+const join = (...parts: string[]): string => parts.join('/');
 
 const env = Bun.env;
 const BOX = env.BOX ?? 'https://mattbox.local';
@@ -42,8 +42,8 @@ const WORK_FRAMES = Number(env.WORK_FRAMES ?? 12);
 const FIRST = Number(env.FIRST ?? 1);
 
 Bun.spawnSync(["mkdir", "-p", OUT]);
-const steps = [];
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const steps: unknown[] = [];
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 async function box(locator) {
   const b = await locator.boundingBox().catch(() => null);
@@ -57,7 +57,7 @@ async function settle(page) {
   await sleep(400);
 }
 
-async function shot(page, slug, title, action = 'none', targets = {}, wait = true) {
+async function shot(page, slug: string, title: string, action = 'none', targets = {}, wait = true) {
   if (wait) await settle(page);
   const name = `${String(steps.length + FIRST).padStart(2, '0')}-${slug}.png`;
   // An emulated laptop at twice the density can take minutes on a busy host.
@@ -74,7 +74,7 @@ async function shot(page, slug, title, action = 'none', targets = {}, wait = tru
   console.log(`shot ${name}: ${title}`);
 }
 
-async function signIn(page, then) {
+async function signIn(page, then: string) {
   await page.goto(`${BOX}/auth/?rd=${BOX}${then}`);
   await page.locator('#username-textfield').fill(OWNER);
   await page.locator('#password-textfield').fill(PASSWORD);
@@ -115,7 +115,7 @@ await context.addInitScript(() => {
   });
 });
 const page = await context.newPage();
-const errors = [];
+const errors: string[] = [];
 page.on('pageerror', (e) => errors.push(String(e)));
 
 await signIn(page, '/apps');

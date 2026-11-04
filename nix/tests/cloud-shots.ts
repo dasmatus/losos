@@ -22,7 +22,7 @@
 // Europe/Bratislava. Each picture waits for the page to settle: no request
 // in flight, fonts and pictures loaded, no spinner and no toast on screen.
 
-const join = (...parts) => parts.join("/");
+const join = (...parts: string[]): string => parts.join("/");
 
 const VIEW = { width: 1280, height: 900 };
 
@@ -30,11 +30,11 @@ const { chromium } = await import(Bun.env.PLAYWRIGHT_CORE ?? "playwright-core");
 
 /** The certificate's public key hash, which Chromium pins to: SHA-256 over
  * the DER SubjectPublicKeyInfo, read out of the PEM by walking its ASN.1. */
-async function spkiPin(pemFile) {
+async function spkiPin(pemFile: string): Promise<string> {
   const pem = await Bun.file(pemFile).text();
   const der = Uint8Array.fromBase64(/-----BEGIN CERTIFICATE-----([^-]+)-----END CERTIFICATE-----/.exec(pem)[1].replace(/\s/g, ""));
   // One DER element at `at`: where its contents start and where it ends.
-  const element = (at) => {
+  const element = (at: number): { start: number; end: number } => {
     let len = der[at + 1];
     let start = at + 2;
     if (len & 0x80) {
@@ -55,7 +55,7 @@ async function spkiPin(pemFile) {
 }
 
 class Shots {
-  constructor(page, base, out, meta) {
+  constructor(page, base: string, out: string, meta: { commit: string; test: string }) {
     this.page = page;
     this.host = new URL(base).hostname;
     this.out = out;
@@ -93,7 +93,7 @@ class Shots {
     await p.waitForTimeout(300);
   }
 
-  async take(slug, title, action = { kind: "none" }, targets = {}) {
+  async take(slug: string, title: string, action = { kind: "none" }, targets = {}) {
     await this.settle();
     const file = `${String(this.steps.length + 1).padStart(2, "0")}-${slug}.png`;
     await this.page.screenshot({ path: join(this.out, file), timeout: 600_000 });
@@ -117,7 +117,7 @@ class Shots {
  * LosOS Login, as its page does it, from inside its page: the request and
  * the cookie are the browser's, which trusts the box by the pin above.
  */
-async function signIn(page, base, name, password) {
+async function signIn(page, base: string, name: string, password: string) {
   await page.goto(`${base}/auth/`);
   const status = await page.evaluate(
     async ([username, password, targetURL]) => {
@@ -203,7 +203,7 @@ async function after(s, base) {
 }
 
 /** The page the desktop client opens to sign in, before and after Allow. */
-async function connect(s, loginUrl) {
+async function connect(s, loginUrl: string) {
   const p = s.page;
   await p.goto(loginUrl);
   await p.waitForSelector("[data-connect]");
@@ -225,9 +225,9 @@ async function before(s, base) {
   }
 }
 
-function parse(argv) {
-  const pos = [];
-  const opts = {};
+function parse(argv: string[]) {
+  const pos: string[] = [];
+  const opts: Record<string, string | boolean> = {};
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--before") opts.before = true;
@@ -291,7 +291,7 @@ const stop = listen((text) => baseline.add(text));
 await page.goto(`${base}/`);
 await page.waitForLoadState("networkidle");
 stop();
-const problems = [];
+const problems: string[] = [];
 listen((text) => {
   if (!baseline.has(text)) problems.push(text);
 });

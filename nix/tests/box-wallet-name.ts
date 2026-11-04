@@ -18,9 +18,9 @@
 //
 // Playwright is nixpkgs' playwright-driver, named by $PLAYWRIGHT_CORE.
 
-const exists = (file) => Bun.file(file).exists();
-const join = (...parts) => parts.join("/");
-const dirname = (file) => file.slice(0, file.lastIndexOf("/"));
+const exists = (file: string): Promise<boolean> => Bun.file(file).exists();
+const join = (...parts: string[]): string => parts.join("/");
+const dirname = (file: string): string => file.slice(0, file.lastIndexOf("/"));
 
 const { chromium } = await import(join(Bun.env.PLAYWRIGHT_CORE, "index.mjs"));
 
@@ -32,7 +32,7 @@ const VIEWPORT = { width: 1280, height: 900 };
 const NAME = "mattbox.boxes.losos.dasmat.us";
 
 /* `--name value` or `--name=value`, for each of `names`; anything else is refused. */
-function flags(names) {
+function flags(names: string[]): Record<string, string> {
   const out = {};
   const argv = Bun.argv.slice(2);
   for (let i = 0; i < argv.length; i++) {
@@ -45,7 +45,7 @@ function flags(names) {
 
 const args = flags(["mode", "out", "user", "password"]);
 
-async function seal({ phrase, address, password }) {
+async function seal({ phrase, address, password }: { phrase: string; address: string; password: string }) {
   const enc = new TextEncoder();
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -93,7 +93,7 @@ async function settle(page) {
   await page.waitForTimeout(400);
 }
 
-async function save(page, path) {
+async function save(page, path: string) {
   const full = join(args.out, path);
   Bun.spawnSync(["mkdir", "-p", dirname(full)]);
   await page.screenshot({ path: full });
@@ -109,7 +109,7 @@ async function writeManifest() {
   );
 }
 
-async function film(page, slug, title, action, targets = {}) {
+async function film(page, slug: string, title: string, action, targets = {}) {
   const file = `${String(steps.length + 1).padStart(2, "0")}-${slug}.png`;
   await save(page, join("film/name-pay", file));
   const boxes = {};
@@ -120,7 +120,7 @@ async function film(page, slug, title, action, targets = {}) {
   steps.push({ file, url: page.url().split("://")[1], title, action, targets: boxes });
 }
 
-async function context(browser, colorScheme) {
+async function context(browser, colorScheme: string) {
   const ctx = await browser.newContext({
     viewport: VIEWPORT,
     deviceScaleFactor: 2,
@@ -151,7 +151,7 @@ async function openNetwork(page) {
   }
 }
 
-async function prShots(browser, name) {
+async function prShots(browser, name: string) {
   for (const scheme of ["light", "dark"]) {
     const ctx = await context(browser, scheme);
     const page = await ctx.newPage();

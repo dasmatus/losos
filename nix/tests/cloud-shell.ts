@@ -28,7 +28,7 @@ const { chromium } = await import(process.env.PLAYWRIGHT_CORE ?? "playwright-cor
 const VIEW = { width: 1280, height: 900 };
 
 const [base, name, password, out, ...rest] = process.argv.slice(2);
-const opt = (key, fallback) => {
+const opt = (key: string, fallback: string) => {
   const at = rest.indexOf(`--${key}`);
   return at < 0 ? fallback : rest[at + 1];
 };
@@ -37,7 +37,7 @@ const davUser = opt("dav-user", name);
 const davPassword = opt("dav-password", password);
 mkdirSync(out, { recursive: true });
 
-function spkiPin(pemFile) {
+function spkiPin(pemFile: string): string {
   const cert = new X509Certificate(readFileSync(pemFile));
   const der = cert.publicKey.export({ type: "spki", format: "der" });
   return createHash("sha256").update(der).digest("base64");
