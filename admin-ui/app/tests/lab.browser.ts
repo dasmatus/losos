@@ -79,6 +79,9 @@ interface OpenOptions {
   view?: string;
   on?: Browser;
   setup?: string | null;
+  /* Passed to newPage as-is: 'block' pins a check to the page as the browser
+   * serves it, without the admin UI's service worker. */
+  serviceWorkers?: 'allow' | 'block';
 }
 async function open({
   viewport = { width: 1440, height: 900 },
@@ -90,8 +93,9 @@ async function open({
   view = 'logical',
   on = browser,
   setup = null,
+  serviceWorkers,
 }: OpenOptions = {}) {
-  const page = await on.newPage({ viewport, locale, colorScheme: scheme, acceptDownloads: true });
+  const page = await on.newPage({ viewport, locale, colorScheme: scheme, acceptDownloads: true, serviceWorkers });
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.addInitScript(() => {
@@ -795,6 +799,13 @@ await check('GPU canvas: SVG first, then the swap carries the setup, the selecti
     setup: 'two-sites',
     on: gpuBrowser,
     canvas: 'gpu',
+    // The admin UI's service worker takes the hashed bundles cache-first, so
+    // it fetches the wasm itself, and a service worker's own network requests
+    // bypass page.route: the hold below would never hold, the module would
+    // load before the box is placed, and the swap would race the check. This
+    // check is about the swap, not the worker, so run its page without the
+    // worker.
+    serviceWorkers: 'block',
     routes: async (p) => {
       await p.route('**/losos_lab_render_bg*.wasm', async (route) => {
         await held;

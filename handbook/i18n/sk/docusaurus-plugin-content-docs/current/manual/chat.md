@@ -23,14 +23,24 @@ ich už nečíta.
 
 ## Kedy je chat k dispozícii
 
-Chat patrí k časti zariadenia, ktorú zdieľate so sieťou zariadení (mesh), a
-všetko si ukladá do jej úložiska. Beží len vtedy, keď zariadenie zdieľa
-svoje úložisko a je pripojené k sieti zariadení. Vtedy sa na bočnom paneli
-stránok správy objaví **Chat**.
+Chat je predvolene zapnutý na každom zariadení. Nepotrebuje sieť zariadení
+(mesh), okrajový server ani zdieľané úložisko: má ho aj zariadenie, ktoré
+stojí samo na stole. **Chat** je na bočnom paneli stránok správy hneď po
+prevzatí zariadenia.
 
-Keď zdieľanie vypnete, chat sa zastaví s ním. Položka na bočnom paneli
-zmizne a adresa chatu vedie späť na stránky správy. Správy zostanú v
-zdieľanom úložisku a vrátia sa, keď zdieľanie znova zapnete.
+Chat patrí k účtu majiteľa na zariadení a všetko si ukladá do jeho
+dátového priečinka, na šifrovanom disku zariadenia a v jeho zálohách.
+Pripojenie k sieti, zdieľanie úložiska ani opätovné ukončenie zdieľania na
+ňom nič nemení: miestnosti, správy a súbory zostávajú, kde sú. Zariadenie,
+ktoré malo chat predtým na zdieľanej strane, presunie svoje správy do
+priečinka majiteľa raz, pri prvom štarte po aktualizácii.
+
+Rozprávať sa s ľuďmi na iných zariadeniach je samostatné nastavenie,
+**Federácia** (`losos.chat.federation.enable`). S predvoleným názvom
+`.local` dosiahne zariadenia vo vašej vlastnej sieti a nič iné.
+
+Chat vypnete vypnutím `losos.chat.enable` v **Nastavenia** > **Rozšírené**.
+Položka na bočnom paneli zmizne a adresa chatu vedie späť na stránky správy.
 
 ## Prihlásenie
 

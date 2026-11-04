@@ -1,21 +1,25 @@
 # LosOS Chat: a Matrix homeserver (Synapse) on the box, the chat page at
 # /chat/, and lososd between the two (backend/src/chat.rs).
 #
-# Chat belongs to the `shared` user. Synapse runs as it, and every room,
-# message, upload and key it keeps is in the shared data domain
-# (/home/shared/data/chat/synapse), which is unlocked only while the box
-# shares its storage (modules/fscrypt.nix). So all of this exists only while
-# losos.chat.enable is on and the box shares its storage in a mesh it has
-# joined (lososInternal.sharedSide: losos.sharingMyStorage and
-# losos.cluster.enable; lososInternal.chat): otherwise there is no homeserver, no nginx
-# location for /chat/ or /_matrix/, and lososd is told nothing, so
-# /api/me names no chat and the page draws no entry for it.
+# Chat is on by default and needs nothing else: no edge, no mesh, no shared
+# storage. It belongs to the owner's account (`notshared`): Synapse runs as
+# it, and every room, message, upload and key it keeps is in that account's
+# data folder (/home/notshared/data/chat/synapse), on the box's encrypted
+# volume like the owner's other files. Only losos.chat.enable, LosOS Login
+# and the admin pages decide whether it runs (lososInternal.chat); with
+# losos.chat.enable off there is no homeserver, no nginx location for /chat/
+# or /_matrix/, and lososd is told nothing, so /api/me names no chat and the
+# page draws no entry for it.
+#
+# A box that ran chat on the shared side before keeps its history: the setup
+# unit moves a Synapse folder out of the shared (or kindashared) domain into
+# the owner's folder once, while that domain is unlocked, and never touches
+# a folder that is already there.
 #
 # Synapse because calls need two things only it has: sticky events
 # (MSC4354, a call membership that ends with its sender's connection) and
 # delayed events (MSC4140, the leave a crashed tab still sends). The box ran
-# Dendrite before; its files stay in /home/shared/data/chat beside the new
-# folder, unread.
+# Dendrite before; its files stay beside the new folder, unread.
 #
 # Nobody signs in to chat with a Matrix password; there are none. lososd is
 # an application service whose namespace is every user on this server, and
@@ -27,7 +31,7 @@
 # that same person. Signing out of LosOS Login ends chat at the next
 # request; removing a person also signs their devices out of Synapse.
 #
-# Synapse answers on loopback only, and only root, nginx and `shared` may
+# Synapse answers on loopback only, and only root, nginx and `notshared` may
 # open that port (the same owner rule identity.nix puts on the apps). The
 # client API is LAN-only, like the admin pages. With
 # losos.chat.federation.enable (on by default) the federation and key APIs
@@ -51,16 +55,16 @@ let
   pkg = config.losos.backend.package;
   synapse = pkgs.matrix-synapse;
   inherit (cfg) port;
-  # The account the shared side runs as (lososInternal.sideUser): `shared`
-  # in a mesh, `kindashared` with the local gateways only. Its uid is pinned
-  # in modules/configuration.nix.
-  user = if config.lososInternal.sideUser == null then "shared" else config.lososInternal.sideUser;
-  sharedUid =
-    {
-      shared = 1001;
-      kindashared = 1004;
-    }
-    .${user};
+  # The owner's account (lososInternal.chatUser). Its uid is pinned in
+  # modules/configuration.nix.
+  user = config.lososInternal.chatUser;
+  userUid = 1000;
+  # Where an older box kept Synapse: the shared side's account, which was
+  # whichever sharing domain was live.
+  olderHomes = [
+    "/home/shared/data/chat/synapse"
+    "/home/kindashared/data/chat/synapse"
+  ];
 
   # Dendrite's files are the rest of /home/<user>/data/chat.
   chatDir = "/home/${user}/data/chat";
@@ -236,19 +240,33 @@ let
         rooms: []
       EOF
       mv ${secretsDir}/appservice.yaml.tmp ${secretsDir}/appservice.yaml
-      # The domain is unlocked (this unit runs after the unlock); the folders
-      # are the shared user's, inside it.
-      install -d -m 0700 -o ${user} -g ${user} ${chatDir} ${stateDir}
+      # Synapse's folders are the owner's. A box that ran chat on the shared
+      # side has its homeserver in that domain, unlocked now (this unit runs
+      # after the unlock): take it over once, rooms, messages and files with
+      # it, and never over a folder that is already here.
+      install -d -m 0700 -o ${user} -g ${user} ${chatDir}
+      if [ ! -e ${stateDir}/homeserver.db ]; then
+        for older in ${lib.escapeShellArgs olderHomes}; do
+          if [ -s "$older/homeserver.db" ]; then
+            echo "losos-chat: moving the homeserver from $older to ${stateDir}"
+            rmdir ${stateDir} 2>/dev/null || true
+            mv "$older" ${stateDir}
+            break
+          fi
+        done
+      fi
+      install -d -m 0700 -o ${user} -g ${user} ${stateDir}
+      chown -R ${user}:${user} ${stateDir}
     '';
   };
 
   # Only these may open Synapse's port on loopback: root (lososd), nginx and
-  # `shared` (Synapse itself). modules/daemon.nix says why an owner match.
+  # the owner's account (Synapse itself). modules/daemon.nix says why an owner match.
   loopbackRule = lib.concatStringsSep " " (
     [
       "OUTPUT -o lo -p tcp -d 127.0.0.1 --dport ${toString port}"
       "-m owner ! --uid-owner 0"
-      "-m owner ! --uid-owner ${toString sharedUid}"
+      "-m owner ! --uid-owner ${toString userUid}"
     ]
     ++ lib.optional config.services.nginx.enable "-m owner ! --uid-owner ${config.services.nginx.user}"
     ++ [ "-j REJECT --reject-with tcp-reset" ]
@@ -311,8 +329,16 @@ in
             description = "Prepare LosOS Chat: the homeserver's keys and lososd's application service";
             wantedBy = [ "multi-user.target" ];
             before = [ "losos-chat.service" ];
-            after = [ "losos-fscrypt-${user}.service" ];
-            wants = [ "losos-fscrypt-${user}.service" ];
+            # Only for taking an older homeserver over: where a sharing
+            # domain exists, wait for its unlock.
+            after = [
+              "losos-fscrypt-shared.service"
+              "losos-fscrypt-kindashared.service"
+            ];
+            wants = [
+              "losos-fscrypt-shared.service"
+              "losos-fscrypt-kindashared.service"
+            ];
             serviceConfig = {
               Type = "oneshot";
               RemainAfterExit = true;
@@ -326,10 +352,8 @@ in
             after = [
               "network.target"
               "losos-chat-setup.service"
-              "losos-fscrypt-${user}.service"
             ];
             requires = [ "losos-chat-setup.service" ];
-            wants = [ "losos-fscrypt-${user}.service" ];
             serviceConfig = {
               Type = "notify";
               NotifyAccess = "main";
@@ -351,7 +375,7 @@ in
               RestartSec = "5s";
               LimitNOFILE = 65535;
               MemoryMax = "1G";
-              # Its own folder of the shared domain, and nothing else of /home.
+              # Its own folder of the owner's data, and nothing else of /home.
               ProtectHome = "tmpfs";
               BindPaths = [ stateDir ];
               ProtectSystem = "strict";

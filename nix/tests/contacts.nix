@@ -243,12 +243,16 @@ pkgs.testers.nixosTest {
           git.enable = false;
           # LosOS Cloud keeps the book.
           cloud.enable = true;
-          # The shared user's side of the box: chat's gate, and mail's.
+          # The shared user's side of the box: mail's gate. Chat runs anyway.
           sharingMyStorage = true;
           cluster.enable = true;
           shared.fscrypt.enable = false;
         };
-        specialisation.unshared.configuration.losos.sharingMyStorage = lib.mkForce false;
+        # No shared side, and no chat either.
+        specialisation.unshared.configuration.losos = {
+          sharingMyStorage = lib.mkForce false;
+          chat.enable = lib.mkForce false;
+        };
 
         networking.hostName = "mattbox";
         users.users.shared = {
@@ -258,7 +262,17 @@ pkgs.testers.nixosTest {
           homeMode = "700";
         };
         users.groups.shared.gid = 1001;
-        systemd.tmpfiles.rules = [ "d /home/shared/data 0700 shared shared -" ];
+        users.users.notshared = {
+          isNormalUser = true;
+          uid = 1000;
+          group = "notshared";
+          homeMode = "700";
+        };
+        users.groups.notshared.gid = 1000;
+        systemd.tmpfiles.rules = [
+          "d /home/shared/data 0700 shared shared -"
+          "d /home/notshared/data 0700 notshared notshared -"
+        ];
 
         systemd.services.lososd.path = lib.mkForce [ pkgs.coreutils ];
         environment.systemPackages = [
@@ -601,7 +615,7 @@ pkgs.testers.nixosTest {
             found = ok("/api/contacts/suggest?q=silvia&want=email", matus)["contacts"]
             assert found[0]["emails"] == ["silvia@firma.example"], found
 
-        with subtest("with sharing off the book stays, without chat and mail"):
+        with subtest("with chat off and sharing off the book stays, without chat and mail"):
             switch("unshared")
             box.wait_until_fails("systemctl is-active losos-chat.service")
             assert len(ok(C, matus)["contacts"]) == 5
@@ -614,7 +628,7 @@ pkgs.testers.nixosTest {
             assert code == "200", code
             browser("off")
 
-        with subtest("with sharing on again the pages use the book in Mail and Chat"):
+        with subtest("with chat and sharing back on the pages use the book in Mail and Chat"):
             switch(None)
             box.wait_for_unit("losos-chat.service")
             box.wait_until_succeeds("curl -sf http://127.0.0.1:8008/_matrix/client/versions")

@@ -79,8 +79,8 @@ import { rememberShell, shellHint } from "@/lib/shell-hint";
  *     Machines              virtual machines on the mesh
  *   Diagrams                (LosOS Diagrams at /diagrams)
  *   Wiki                    (LosOS Wiki at /wikis, every wiki on the box)
- *   Chat                    (LosOS Chat at /chat/, only on the shared side)
- *   Mail                    (LosOS Mail at /mail, the same)
+ *   Chat                    (LosOS Chat at /chat/, wherever chat is on)
+ *   Mail                    (LosOS Mail at /mail, only on the shared side)
  *   Contacts                (LosOS Contacts at /contacts, wherever LosOS Cloud runs)
  *   Calendar                (LosOS Calendar at /calendar, the same)
  *   Mesh CI                 (workflows at /ci, only on the shared side)
@@ -115,9 +115,9 @@ interface LinkEntry {
   icon: IconSvgElement;
   /** The settings pane behind it, for matching and for "is this current". */
   pane?: SettingsPaneId;
-  /** An app GET /api/me lists in `shared` while it is up: mail and chat
-   * only while the box shares its storage, contacts wherever LosOS Cloud
-   * runs. */
+  /** An app GET /api/me lists in `shared` while it is up: mail only while
+   * the box shares its storage, chat wherever it is on, contacts wherever
+   * LosOS Cloud runs. */
   shared?: string;
   /** More addresses that are this entry, besides `to` and below it. */
   also?: readonly string[];

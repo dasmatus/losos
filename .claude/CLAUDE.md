@@ -115,8 +115,9 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   opens `kindashared`; lososd refuses it without a Secondary-tier edge
   (`edge::check_local_gate`, 409 `localGatewayRequired`) and pauses it like
   sharing. `lososInternal.sideUser` (`shared` while in the mesh, else
-  `kindashared`) is the account chat, mail, calls and Mesh CI run as;
-  `sideLive` gates them.
+  `kindashared`) is the account mail, Mesh CI and the knowledge bases run as;
+  `sideLive` gates them. Chat and calls are not among them: they run on
+  every box as `notshared` (`lososInternal.chatUser`).
 - `daemon.nix` + `backend/`: `lososd` is a root daemon owning
   `/var/lib/losos/state.json`, exporting one D-Bus method per subcommand
   (`org.losos1`, `/org/losos1`, `org.losos.Control1`) and a Bearer-authed
@@ -188,9 +189,9 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   `gh`, never an edge-made key. `losos cloud setup` and `losos git setup` mint an
   app password and a LosOS Git token per computer with the owner's password
   (`backend/src/devices.rs`); `losos git credential` is git's helper.
-- Calls (`modules/calls.nix`, `losos.calls.enable`, only while chat runs):
+- Calls (`modules/calls.nix`, `losos.calls.enable`, wherever chat runs):
   `losos-calls` (`backend/src/calls/`, str0m, ICE-lite, VP8 and Opus) is an
-  SFU as `shared` on `/run/losos-calls/http.sock` (nginx's group only),
+  SFU as `notshared` on `/run/losos-calls/http.sock` (nginx's group only),
   `/calls/api/` behind LosOS Login with no spare-key bypass. nginx hands
   the SFU the signed-in person as `Remote-User` (`calls/person.rs`), the
   Matrix id `@<name>:<server>`. Calls are a MatrixRTC application of
@@ -344,10 +345,12 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   edge's manage page). `nix/tests/podman-apps.nix` boots it.
 - `chat.nix` + `backend/src/chat.rs` + `admin-ui/app/src/chat/` (LosOS
   Chat, `/chat/`, its own page of the admin UI's build): Synapse (unit
-  `losos-chat`, SQLite) as `shared` in `/home/shared/data/chat/synapse`
-  (a box that ran Dendrite keeps its files beside it, unread), only while
-  `lososInternal.sharedSide` (`sharingMyStorage` and `cluster.enable`, the
-  gate mail shares); off, nginx
+  `losos-chat`, SQLite) as `notshared` in `/home/notshared/data/chat/synapse`
+  (a box that ran Dendrite keeps its files beside it, unread), on by
+  default with no edge, mesh or sharing (`lososInternal.chat`: only
+  `losos.chat.enable`, LosOS Login and the admin pages gate it);
+  `losos-chat-setup` moves a Synapse folder an older box kept in the
+  `shared` or `kindashared` domain into the owner's once; off, nginx
   sends `/chat/` home and `/_matrix/` 404s. No Matrix passwords: lososd is an
   application service over every user and the only way in
   (`/api/chat/session`), and nginx asks `/internal/chat/authz` before every
@@ -355,7 +358,7 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   person). The application service's user namespace is not exclusive:
   Synapse leaves an exclusive one's users out of its directory. The client is matrix-js-sdk with its Rust
   crypto under the Lab's CSP arm. `nix/tests/chat.nix` boots it and drives
-  two browsers (`chat-browser.mjs`); its output holds the screenshots.
+  two browsers (`chat-browser.ts`); its output holds the screenshots.
 - `mail.nix` + `backend/src/mail.rs` (`losos.mail.*`): LosOS Mail. Stalwart
   as `shared`, mailboxes in `/home/shared/data/mail`, loopback HTTP only (no
   SMTP or IMAP listener), its own unit rather than nixpkgs' module because a
@@ -896,7 +899,7 @@ running value, danger and read-only flags); lososd joins the current
 `overrides.nix` into it at `GET /api/options`, and the Advanced pane draws a
 typed editor per row. `classify` in the Nix file is the gate: a declaration
 with a type it does not know is a `throw`, so the eval job goes red rather
-than an empty row landing on the pane, and `tests/advanced.browser.mjs`
+than an empty row landing on the pane, and `tests/advanced.browser.ts`
 renders the real document (`nix/tests/admin-ui.nix` passes the
 `losos-options-doc` check) and fails on any row the pane cannot draw.
 `POST /api/apply` is now checked line by line against the document

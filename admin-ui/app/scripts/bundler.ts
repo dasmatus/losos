@@ -163,7 +163,7 @@ export interface CssRegistry {
   write(dist: string): Promise<string>;
 }
 
-export function cssRegistry(env: BuildEnv, appCss: string): CssRegistry {
+export function cssRegistry(appCss: string): CssRegistry {
   const files = new Map<string, string>();
   const keyOf = (text: string): string =>
     new Bun.CryptoHasher("sha256").update(text).digest("hex").slice(0, 16);
@@ -435,7 +435,7 @@ export interface BundleResult {
 export async function bundleAll(env: BuildEnv, appCss: string): Promise<BundleResult> {
   const specs = pageSpecs(env);
   const entrypoints = [...new Set(specs.map((p) => `${ROOT}/${p.entry}`))];
-  const boxCss = cssRegistry(env, appCss);
+  const boxCss = cssRegistry(appCss);
   const outputs = await runBuild(env, boxCss.plugin(), entrypoints, DIST);
   const chunks = new Map<string, string>();
   for (const spec of specs) {
@@ -448,7 +448,7 @@ export async function bundleAll(env: BuildEnv, appCss: string): Promise<BundleRe
    * /calls/guest/ too. */
   const guestEnv: BuildEnv = { ...env, base: "/calls/guest/" };
   const guestOut = `${DIST}/calls/guest`;
-  const guestCss = cssRegistry(guestEnv, appCss);
+  const guestCss = cssRegistry(appCss);
   const guest = await runBuild(guestEnv, guestCss.plugin(), [`${SRC}/calls/guest-main.tsx`], guestOut);
   chunks.set("guest.html", chunkFor(guest, guestOut, "src/calls/guest-main.tsx", "src/calls"));
   const guestAppKey = await guestCss.write(guestOut);

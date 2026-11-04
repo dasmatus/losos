@@ -1,8 +1,8 @@
 // The browser half of nix/tests/chat.nix: two people on the chat page in
 // Chromium, and the pictures of it.
 //
-//   bun chat-browser.ts off <out>   the admin pages with sharing off
-//   bun chat-browser.ts on  <out>   everything else, once sharing is on
+//   bun chat-browser.ts off <out>   the admin pages with chat switched off
+//   bun chat-browser.ts on  <out>   everything else, on a box that is alone
 //
 // The test driver runs it with CHAT_PLAYWRIGHT naming the playwright
 // package, PLAYWRIGHT_BROWSERS_PATH at nixpkgs' browsers, and the box
@@ -165,8 +165,8 @@ async function off() {
   await owner.goto(`${ORIGIN}/`);
   await owner.getByRole("link", { name: "Overview", exact: true }).waitFor();
   await owner.waitForTimeout(3000);
-  if ((await chatLink(owner).count()) !== 0) throw new Error("Chat is in the sidebar with sharing off");
-  await film(owner, "sharing-off", `${HOST}/`, "the admin pages with sharing off: no Chat");
+  if ((await chatLink(owner).count()) !== 0) throw new Error("Chat is in the sidebar with chat switched off");
+  await film(owner, "chat-off", `${HOST}/`, "the admin pages with chat switched off: no Chat");
   await shot(owner, "sidebar-before");
 }
 
@@ -174,7 +174,7 @@ async function on() {
   const owner = await person("matus");
   await owner.goto(`${ORIGIN}/`);
   await chatLink(owner).waitFor();
-  await film(owner, "sharing-on", `${HOST}/`, "the admin pages with sharing on: Chat in the sidebar", "click", { chat: chatLink(owner) });
+  await film(owner, "chat-on", `${HOST}/`, "the admin pages of a box with no mesh and no edge: Chat in the sidebar", "click", { chat: chatLink(owner) });
   await shot(owner, "sidebar-after");
   await chatLink(owner).click();
   await owner.waitForURL(`${ORIGIN}/chat/**`);

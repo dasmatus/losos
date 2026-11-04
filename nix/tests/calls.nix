@@ -6,10 +6,10 @@
 # and the SFU writes a copy of every frame it forwards, so the test can show
 # what the box itself holds. What only a booted box can show:
 #
-#   * calls are there only while chat is and losos.calls.enable is on: with
-#     either off there is no unit, no UDP port, no /calls/api/ and no call
-#     button in a room;
-#   * the SFU runs as `shared`, its socket only nginx may open, and
+#   * calls are there wherever chat is and losos.calls.enable is on, on a
+#     box with no mesh and no shared storage too: with either off there is
+#     no unit, no UDP port, no /calls/api/ and no call button in a room;
+#   * the SFU runs as `notshared`, its socket only nginx may open, and
 #     /calls/api/ wants a LosOS Login sign-in, with no spare-key bypass;
 #   * a video call in a DM rings the other person, who answers, and both
 #     see and hear each other through the box;
@@ -353,9 +353,8 @@ pkgs.testers.nixosTest {
           backend.package = lososPkgs.losos-ctl;
           admin.ui = ui;
           git.enable = false;
-          # The shared user's side of the box: chat's gate, and so calls'.
-          sharingMyStorage = true;
-          cluster.enable = true;
+          # A box that is alone: no mesh, no shared storage. Chat, and so
+          # calls, run all the same.
           calls.udpPort = mediaPort;
           proxy = lib.mkIf throughEdge {
             enable = true;
@@ -372,22 +371,26 @@ pkgs.testers.nixosTest {
           callsTap = tap;
           callsAddresses = lib.optional (!throughEdge) "10.0.2.15=127.0.0.1";
         };
-        # The same box with calls switched off, and with sharing off; the
-        # test switches to each and back (switch-to-configuration, as an
-        # Apply would).
+        # The same box with calls switched off, and with the box in a mesh
+        # and sharing; the test switches to each and back
+        # (switch-to-configuration, as an Apply would).
         specialisation.nocalls.configuration.losos.calls.enable = lib.mkForce false;
-        specialisation.unshared.configuration.losos.sharingMyStorage = lib.mkForce false;
+        specialisation.mesh.configuration.losos = {
+          sharingMyStorage = true;
+          cluster.enable = true;
+        };
 
         # lososd takes the box's name for the claim's Host check from here.
         networking.hostName = lib.mkForce "mattbox";
 
-        users.users.shared = {
+        users.users.notshared = {
           isNormalUser = true;
-          uid = 1001;
-          group = "shared";
+          uid = 1000;
+          group = "notshared";
           homeMode = "700";
         };
-        users.groups.shared.gid = 1001;
+        users.groups.notshared.gid = 1000;
+        systemd.tmpfiles.rules = [ "d /home/notshared/data 0700 notshared notshared -" ];
 
         # curl for the edge scan's /health probe.
         systemd.services.lososd.path = lib.mkForce [
@@ -397,7 +400,7 @@ pkgs.testers.nixosTest {
           pkgs.systemd
         ];
         # ICE and DTLS in the log, for a call that does not connect. Only
-        # where the unit exists: with sharing off this line alone would
+        # where the unit exists: with calls off this line alone would
         # make a unit with no ExecStart.
         systemd.services.losos-calls = lib.mkIf (config.losos.calls.enable && config.lososInternal.chat) {
           environment.RUST_LOG = "info,str0m=debug";
@@ -606,9 +609,9 @@ pkgs.testers.nixosTest {
             box.wait_until_succeeds(f"grep -q {name} {PEOPLE}")
         time.sleep(5)
 
-    with subtest("the SFU runs as shared, and only LosOS Login reaches it"):
-        assert box.succeed("ps -o user= -C losos-calls").split() == ["shared"]
-        assert box.succeed("stat -c '%a %U %G' /run/losos-calls/http.sock").strip() == "660 shared losos-calls"
+    with subtest("the SFU runs as notshared, and only LosOS Login reaches it"):
+        assert box.succeed("ps -o user= -C losos-calls").split() == ["notshared"]
+        assert box.succeed("stat -c '%a %U %G' /run/losos-calls/http.sock").strip() == "660 notshared losos-calls"
         box.fail("runuser -u nobody -- curl -sf --unix-socket /run/losos-calls/http.sock http://x/calls/api/health")
         if EDGE is not None:
             # The box opens no port for calls; the edge took one for it,
@@ -1472,13 +1475,11 @@ pkgs.testers.nixosTest {
         for page in (her, owner):
             page.locator("[data-call-view]").wait_for(state="detached", timeout=60000)
 
-    with subtest("with sharing off there are no calls at all"):
-        switch("unshared")
-        box.wait_until_fails("systemctl is-active losos-calls.service")
-        box.fail("systemctl cat losos-calls.service")
-        box.fail("ss -uln | grep -q ':${toString mediaPort} '")
-        # Nothing answers but the admin page's index.html.
-        assert call("/calls/api/health", matus)[1] != "ok"
+    with subtest("a box that joins a mesh and shares keeps its calls"):
+        switch("mesh")
+        box.wait_for_unit("losos-calls.service")
+        assert box.succeed("ps -o user= -C losos-calls").split() == ["notshared"]
+        assert call("/calls/api/health", matus)[1].strip() == "ok"
 
     with subtest("the pages broke no rule of their policy"):
         assert problems == [], problems
