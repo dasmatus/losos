@@ -839,6 +839,7 @@ async fn get_me(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
                     "displayName": p.display_name,
                     "picture": shown["picture"],
                     "accent": shown["accent"],
+                    "accentChosen": shown["accentChosen"],
                     "groups": p.groups,
                     "role": shown["role"],
                     "roleName": role_name(&api, &p.groups),

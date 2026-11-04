@@ -204,6 +204,10 @@ export interface Me {
   picture?: string | null;
   /** Their colour, one of ACCENTS. */
   accent?: Accent;
+  /** Whether they picked it (Your account › Profile) rather than having the
+   *  one their name gives them. Only a picked colour becomes their accent
+   *  (lib/person-accent.ts). Missing on an older lososd. */
+  accentChosen?: boolean;
   groups: string[];
   /** In losos-admins, or the spare key: every pane is theirs. */
   admin: boolean;
