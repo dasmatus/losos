@@ -21,7 +21,7 @@
 // `--dpr` change the window from 1280x900 at 2x, and `--video` records the
 // walk as WebM into DIR as well, all for a film.
 
-const join = (...parts) => parts.join("/");
+const join = (...parts: string[]): string => parts.join("/");
 
 let VIEW = { width: 1280, height: 900 };
 let DPR = 2;
@@ -31,11 +31,11 @@ const EVA = "eva@mattbox.home.arpa";
 
 const { chromium } = await import(Bun.env.PLAYWRIGHT_CORE ?? "playwright-core");
 
-async function spkiPin(pemFile) {
+async function spkiPin(pemFile: string): Promise<string> {
   const pem = await Bun.file(pemFile).text();
   const der = Uint8Array.fromBase64(/-----BEGIN CERTIFICATE-----([^-]+)-----END CERTIFICATE-----/.exec(pem)[1].replace(/\s/g, ""));
   // One DER element at `at`: where its contents start and where it ends.
-  const element = (at) => {
+  const element = (at: number): { start: number; end: number } => {
     let len = der[at + 1];
     let start = at + 2;
     if (len & 0x80) {
@@ -56,7 +56,7 @@ async function spkiPin(pemFile) {
 }
 
 class Shots {
-  constructor(base, out, meta) {
+  constructor(base: string, out: string, meta: { commit: string; test: string; verb: string }) {
     this.host = new URL(base).hostname;
     this.out = out;
     this.meta = meta;
@@ -77,7 +77,7 @@ class Shots {
     await p.waitForTimeout(500);
   }
 
-  async take(p, slug, title, action = { kind: "none" }, targets = {}) {
+  async take(p, slug: string, title: string, action = { kind: "none" }, targets = {}) {
     await this.settle(p);
     const file = `${String(this.steps.length + 1).padStart(2, "0")}-${slug}.png`;
     // A modal's backdrop at 2x on an emulated machine is slow to paint.
@@ -98,7 +98,7 @@ class Shots {
   }
 }
 
-async function signIn(context, base, name, password) {
+async function signIn(context, base: string, name: string, password: string) {
   const r = await context.request.post(`${base}/auth/api/firstfactor`, {
     data: { username: name, password, keepMeLoggedIn: false, targetURL: `${base}/` },
   });
@@ -106,7 +106,7 @@ async function signIn(context, base, name, password) {
 }
 
 const menu = (p) => p.locator('[data-slot="context-menu"]');
-const item = (p, id) => menu(p).locator(`[data-item="${id}"]`);
+const item = (p, id: string) => menu(p).locator(`[data-item="${id}"]`);
 
 async function openMessage(p, base) {
   await p.goto(`${base}/mail`);
@@ -244,9 +244,9 @@ async function closed(s, p, base) {
   });
 }
 
-function parse(argv) {
-  const pos = [];
-  const opts = {};
+function parse(argv: string[]) {
+  const pos: string[] = [];
+  const opts: Record<string, string | number | boolean> = {};
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--test") opts.test = argv[++i];
     else if (argv[i] === "--ca") opts.ca = argv[++i];
@@ -302,7 +302,7 @@ if (opts.typing) {
 }
 const page = await context.newPage();
 page.setDefaultTimeout(180_000);
-const problems = [];
+const problems: string[] = [];
 page.on("pageerror", (e) => problems.push(String(e)));
 await signIn(context, base, name, password);
 

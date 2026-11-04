@@ -16,7 +16,7 @@
 // the page has settled, with where the film may point.
 
 /* One line more at the end of a file the earlier calls of this script began. */
-async function append(path, line) {
+async function append(path: string, line: string) {
   const file = Bun.file(path);
   await Bun.write(file, ((await file.exists()) ? await file.text() : '') + line);
 }
@@ -30,11 +30,11 @@ const HIDE_CARET = '*, *::before, *::after { caret-color: transparent !important
 const DOMAIN = 'mattbox.home.arpa';
 const SECRET = 'The spare key is under the blue pot by the door.';
 
-function fail(message) {
+function fail(message: string): never {
   throw new Error(message);
 }
 
-async function browser(name) {
+async function browser(name: string) {
   const context = await chromium.launchPersistentContext(`/tmp/profile-${name}`, {
     viewport: VIEWPORT,
     deviceScaleFactor: 2,
@@ -57,7 +57,7 @@ async function browser(name) {
   return context;
 }
 
-async function signedIn(context, name, password) {
+async function signedIn(context, name: string, password: string) {
   let me = await context.request.get(`${BASE}/api/me`);
   if (me.status() !== 200) {
     const r = await context.request.post(`${BASE}/auth/api/firstfactor`, {
@@ -91,16 +91,16 @@ async function noToasts(page) {
   }
 }
 
-async function target(locator) {
+async function target(locator): Promise<{ x: number; y: number; w: number; h: number }> {
   const b = await locator.boundingBox();
   if (b === null) fail(`no box for ${locator}`);
   return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) };
 }
 
 /* Numbered shots, or none when the first number is "-". */
-function shooter(first) {
+function shooter(first: string) {
   let n = first === '-' ? null : Number(first);
-  return async (page, slug, title, action = { kind: 'none' }, targets = {}) => {
+  return async (page, slug: string, title: string, action = { kind: 'none' }, targets = {}) => {
     if (n === null) return;
     await settle(page);
     Bun.spawnSync(['mkdir', '-p', OUT]);
@@ -114,7 +114,7 @@ function shooter(first) {
 
 /* Wait for a condition polled from here: the page's policy refuses
  * Playwright's own evaluation in waitForFunction. */
-async function until(what, test, timeout = 120_000) {
+async function until(what: string, test, timeout = 120_000) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
     if (await test()) return;
@@ -123,7 +123,7 @@ async function until(what, test, timeout = 120_000) {
   fail(`timed out: ${what}`);
 }
 
-async function key(name, password, passphrase, first) {
+async function key(name: string, password: string, passphrase: string, first: string) {
   const shot = shooter(first);
   const context = await browser(name);
   const page = await signedIn(context, name, password);
@@ -158,7 +158,7 @@ async function key(name, password, passphrase, first) {
   await context.close();
 }
 
-async function compose(page, to) {
+async function compose(page, to: string) {
   await page.getByRole('button', { name: 'Write' }).click();
   const dialog = page.getByRole('dialog');
   const field = dialog.getByRole('combobox').first();
@@ -166,7 +166,7 @@ async function compose(page, to) {
   return dialog;
 }
 
-async function unlockWith(page, passphrase, shot, slug, title) {
+async function unlockWith(page, passphrase: string, shot, slug: string, title: string) {
   const dialog = page.getByRole('dialog', { name: 'Unlock your key' });
   await dialog.waitFor();
   const field = dialog.getByLabel('Passphrase');
@@ -176,7 +176,7 @@ async function unlockWith(page, passphrase, shot, slug, title) {
   await dialog.waitFor({ state: 'detached', timeout: 60_000 });
 }
 
-async function send(password, passphrase, first) {
+async function send(password: string, passphrase: string, first: string) {
   const shot = shooter(first);
   const context = await browser('matus');
   const page = await signedIn(context, 'matus', password);
@@ -209,7 +209,7 @@ async function send(password, passphrase, first) {
   await context.close();
 }
 
-async function outside(password, first) {
+async function outside(password: string, first: string) {
   const shot = shooter(first);
   const context = await browser('matus');
   const page = await signedIn(context, 'matus', password);
@@ -229,7 +229,7 @@ async function outside(password, first) {
   await context.close();
 }
 
-async function read(password, passphrase, first) {
+async function read(password: string, passphrase: string, first: string) {
   const shot = shooter(first);
   const context = await browser('eva');
   const page = await signedIn(context, 'eva', password);
@@ -262,7 +262,7 @@ async function read(password, passphrase, first) {
   await context.close();
 }
 
-async function sent(password, passphrase) {
+async function sent(password: string, passphrase: string) {
   const context = await browser('matus');
   const page = await signedIn(context, 'matus', password);
   await page.goto(`${BASE}/mail`);
@@ -279,7 +279,7 @@ async function sent(password, passphrase) {
 /* The pull request's "before" pictures, on the admin pages from before
  * OpenPGP: Eva's inbox and the message, and Matus writing to her. Same
  * window and state as 08-eva-inbox, 11-opened and 06-compose. */
-async function before(evaPassword, matusPassword) {
+async function before(evaPassword: string, matusPassword: string) {
   const dir = `${OUT}-before`;
   Bun.spawnSync(['mkdir', '-p', dir]);
   const shot = async (page, slug) => {
@@ -309,7 +309,7 @@ async function before(evaPassword, matusPassword) {
   await matus.close();
 }
 
-async function manifest(test) {
+async function manifest(test: string) {
   const steps = (await Bun.file(`${OUT}/steps.jsonl`).text())
     .split('\n')
     .filter((l) => l !== '')

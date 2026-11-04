@@ -41,8 +41,8 @@
 // Europe/Bratislava. Each picture waits for the page to settle: no request
 // in flight, fonts and pictures loaded, no skeleton and no toast on screen.
 
-const exists = (file) => Bun.file(file).exists();
-const join = (...parts) => parts.join("/");
+const exists = (file: string): Promise<boolean> => Bun.file(file).exists();
+const join = (...parts: string[]): string => parts.join("/");
 
 const VIEW = { width: 1280, height: 900 };
 const REPO = "/git/notshared/backup-tool";
@@ -51,11 +51,11 @@ const { chromium } = await import(Bun.env.PLAYWRIGHT_CORE ?? "playwright-core");
 
 /** The certificate's public key hash, which Chromium pins to: SHA-256 over
  * the DER SubjectPublicKeyInfo, read out of the PEM by walking its ASN.1. */
-async function spkiPin(pemFile) {
+async function spkiPin(pemFile: string): Promise<string> {
   const pem = await Bun.file(pemFile).text();
   const der = Uint8Array.fromBase64(/-----BEGIN CERTIFICATE-----([^-]+)-----END CERTIFICATE-----/.exec(pem)[1].replace(/\s/g, ""));
   // One DER element at `at`: where its contents start and where it ends.
-  const element = (at) => {
+  const element = (at: number): { start: number; end: number } => {
     let len = der[at + 1];
     let start = at + 2;
     if (len & 0x80) {
@@ -76,7 +76,7 @@ async function spkiPin(pemFile) {
 }
 
 class Shots {
-  constructor(page, base, out, meta, steps) {
+  constructor(page, base: string, out: string, meta: { commit: string; test: string }, steps: unknown[]) {
     this.page = page;
     this.host = new URL(base).hostname;
     this.out = out;
@@ -85,7 +85,7 @@ class Shots {
   }
 
   /** A run that goes on from the manifest an earlier phase left in `out`. */
-  static async open(page, base, out, meta) {
+  static async open(page, base: string, out: string, meta: { commit: string; test: string }) {
     const manifest = Bun.file(join(out, "manifest.json"));
     const steps = (await manifest.exists()) ? (await manifest.json()).steps : [];
     return new Shots(page, base, out, meta, steps);
@@ -120,7 +120,7 @@ class Shots {
     await p.waitForTimeout(300);
   }
 
-  async take(slug, title, action = { kind: "none" }, targets = {}) {
+  async take(slug: string, title: string, action = { kind: "none" }, targets = {}) {
     await this.settle();
     const file = `${String(this.steps.length + 1).padStart(2, "0")}-${slug}.png`;
     await this.page.screenshot({ path: join(this.out, file), timeout: 180_000 });
@@ -144,7 +144,7 @@ class Shots {
  * LosOS Login, as its page does it, from inside its page: the request and
  * the cookie are the browser's, which trusts the box by the pin above.
  */
-async function signIn(page, base, name, password) {
+async function signIn(page, base: string, name: string, password: string) {
   await page.goto(`${base}/auth/`);
   const status = await page.evaluate(
     async ([username, password, targetURL]) => {
@@ -160,7 +160,7 @@ async function signIn(page, base, name, password) {
   if (status !== 200) throw new Error(`sign-in refused: ${status}`);
 }
 
-async function browse(s, base) {
+async function browse(s, base: string) {
   const p = s.page;
   await p.goto(`${base}/git/`);
   await p.waitForSelector("[data-repos]");
@@ -231,7 +231,7 @@ async function browse(s, base) {
   });
 }
 
-async function finish(s, base) {
+async function finish(s, base: string) {
   const p = s.page;
   await p.goto(`${base}${REPO}/pulls/1/files`);
   const thread = p.locator("[data-thread]").first();
@@ -275,7 +275,7 @@ async function finish(s, base) {
   });
 }
 
-async function before(s, base) {
+async function before(s, base: string) {
   for (const [path, slug, title] of [
     ["/git/", "repos", "the repositories address, before the pages"],
     [REPO, "code", "the repository's address, before the pages"],
@@ -288,7 +288,7 @@ async function before(s, base) {
   }
 }
 
-async function reviewer(s, base, reviewed) {
+async function reviewer(s, base: string, reviewed: boolean) {
   const p = s.page;
   for (const scheme of ["dark", "light"]) {
     await p.emulateMedia({ colorScheme: scheme });
@@ -337,7 +337,7 @@ async function reviewer(s, base, reviewed) {
   }
 }
 
-async function visibility(s, base, old) {
+async function visibility(s, base: string, old: boolean) {
   const p = s.page;
   await p.goto(`${base}/git/`);
   await p.getByRole("button", { name: "New repository" }).click();
@@ -407,9 +407,9 @@ async function visibility(s, base, old) {
   await visitor.close();
 }
 
-function parse(argv) {
-  const pos = [];
-  const opts = {};
+function parse(argv: string[]) {
+  const pos: string[] = [];
+  const opts: Record<string, string | boolean> = {};
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (["--commit", "--test", "--ca"].includes(a)) opts[a.slice(2)] = argv[++i];
@@ -478,7 +478,7 @@ const stop = listen((text) => baseline.add(text));
 await page.goto(`${base}/`);
 await page.waitForLoadState("networkidle");
 stop();
-const problems = [];
+const problems: string[] = [];
 listen((text) => {
   if (!baseline.has(text)) problems.push(text);
 });

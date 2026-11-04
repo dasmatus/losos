@@ -12,7 +12,7 @@
 
 const { chromium } = await import(Bun.env.CALENDAR_PLAYWRIGHT ?? "playwright");
 
-const [phase, out] = Bun.argv.slice(2);
+const [phase, out] = (Bun.argv.slice(2) as [string, string]);
 const HOST = Bun.env.CALENDAR_HOST ?? "mattbox.local";
 const ORIGIN = `https://${HOST}`;
 const PROXY = Bun.env.CALENDAR_PROXY ?? "socks5://127.0.0.1:1080";
@@ -23,10 +23,10 @@ const ZONE = "Europe/Bratislava";
 Bun.spawnSync(["mkdir", "-p", `${out}/pr`]);
 
 const browser = await chromium.launch({ chromiumSandbox: false, proxy: { server: PROXY } });
-const problems = [];
-const pages = [];
+const problems: string[] = [];
+const pages: unknown[] = [];
 
-async function person(name, password, { film = false, phone = false } = {}) {
+async function person(name: string, password: string, { film = false, phone = false } = {}) {
   const context = await browser.newContext({
     viewport: phone ? { width: 390, height: 844 } : film ? { width: 1280, height: 900 } : { width: 1280, height: 860 },
     deviceScaleFactor: 2,
@@ -59,14 +59,14 @@ async function settle(page) {
   await page.waitForTimeout(1000);
 }
 
-async function shot(page, name) {
+async function shot(page, name: string) {
   await settle(page);
   await page.screenshot({ path: `${out}/pr/${name}.png`, timeout: 300_000 });
   console.log(`shot ${name}`);
 }
 
 /** `ms` as the page's wall clock in Bratislava, `2026-10-22T14:05`. */
-function local(ms) {
+function local(ms: number): string {
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat("en-CA", {
       timeZone: ZONE,
@@ -97,7 +97,7 @@ async function overview(page) {
 }
 
 /** A message in the person's inbox, open. */
-async function openMail(page, subject) {
+async function openMail(page, subject: string) {
   await page.goto(`${ORIGIN}/mail`);
   const row = page.getByRole("button", { name: new RegExp(subject) }).first();
   for (let i = 0; i < 20 && (await row.count()) === 0; i++) {
@@ -267,17 +267,17 @@ async function on() {
 // One 1280x900 picture at 2x per state, and the whole walk as one 60 fps
 // clip at the same size, as nix/tests/contacts-browser.ts makes them.
 
-const steps = [];
-const frames = [];
-let clipStart = null;
+const steps: unknown[] = [];
+const frames: { name: string; t: number }[] = [];
+let clipStart: number | null = null;
 
-async function box(locator) {
+async function box(locator): Promise<{ x: number; y: number; w: number; h: number }> {
   const b = await locator.boundingBox();
   if (b === null) throw new Error("a film target is not on the screen");
   return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) };
 }
 
-async function frame(page, title, action = { kind: "none" }, targets = {}) {
+async function frame(page, title: string, action = { kind: "none" }, targets = {}) {
   await settle(page);
   const file = `${String(steps.length + 1).padStart(2, "0")}-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}.png`;
   await page.screenshot({ path: `${out}/film/${file}`, timeout: 300_000 });

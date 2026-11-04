@@ -27,17 +27,17 @@
 // Europe/Bratislava. Each picture waits for the page to settle: no request
 // in flight, fonts and pictures loaded, no skeleton and no toast on screen.
 
-const exists = (file) => Bun.file(file).exists();
-const join = (...parts) => parts.join("/");
+const exists = (file: string): Promise<boolean> => Bun.file(file).exists();
+const join = (...parts: string[]): string => parts.join("/");
 
 const VIEW = { width: 1280, height: 900 };
 const { chromium } = await import(Bun.env.PLAYWRIGHT_CORE ?? "playwright-core");
 
-async function spkiPin(pemFile) {
+async function spkiPin(pemFile: string): Promise<string> {
   const pem = await Bun.file(pemFile).text();
   const der = Uint8Array.fromBase64(/-----BEGIN CERTIFICATE-----([^-]+)-----END CERTIFICATE-----/.exec(pem)[1].replace(/\s/g, ""));
   // One DER element at `at`: where its contents start and where it ends.
-  const element = (at) => {
+  const element = (at: number): { start: number; end: number } => {
     let len = der[at + 1];
     let start = at + 2;
     if (len & 0x80) {
@@ -58,7 +58,7 @@ async function spkiPin(pemFile) {
 }
 
 class Shots {
-  constructor(page, base, out, meta, steps) {
+  constructor(page, base: string, out: string, meta: { commit: string; test: string }, steps: unknown[]) {
     this.page = page;
     this.host = new URL(base).hostname;
     this.out = out;
@@ -67,7 +67,7 @@ class Shots {
   }
 
   /** A run that goes on from the manifest an earlier phase left in `out`. */
-  static async open(page, base, out, meta) {
+  static async open(page, base: string, out: string, meta: { commit: string; test: string }) {
     const manifest = Bun.file(join(out, "manifest.json"));
     const steps = (await manifest.exists()) ? (await manifest.json()).steps : [];
     return new Shots(page, base, out, meta, steps);
@@ -98,7 +98,7 @@ class Shots {
     await p.waitForTimeout(300);
   }
 
-  async take(slug, title, action = { kind: "none" }, targets = {}) {
+  async take(slug: string, title: string, action = { kind: "none" }, targets = {}) {
     await this.settle();
     const file = `${String(this.steps.length + 1).padStart(2, "0")}-${slug}.png`;
     await this.page.screenshot({ path: join(this.out, file), timeout: 180_000 });
@@ -118,7 +118,7 @@ class Shots {
   }
 }
 
-async function signIn(page, base, name, password) {
+async function signIn(page, base: string, name: string, password: string) {
   await page.goto(`${base}/auth/`);
   const status = await page.evaluate(
     async ([username, password, targetURL]) => {
@@ -134,10 +134,10 @@ async function signIn(page, base, name, password) {
   if (status !== 200) throw new Error(`sign-in refused: ${status}`);
 }
 
-const row = (p, key) => p.locator(`[data-issue-key="${key}"]`).first();
+const row = (p, key: string) => p.locator(`[data-issue-key="${key}"]`).first();
 
 /** Typed one word at a time, a picture after each, as the film shows typing. */
-async function typeWords(s, text, slug, title, targets) {
+async function typeWords(s, text: string, slug: string, title: string, targets) {
   const words = text.split(" ");
   for (let i = 0; i < words.length; i++) {
     await s.page.keyboard.type((i > 0 ? " " : "") + words[i]);
@@ -145,7 +145,7 @@ async function typeWords(s, text, slug, title, targets) {
   }
 }
 
-async function tracker(s, base) {
+async function tracker(s, base: string) {
   const p = s.page;
   await p.goto(`${base}/git/issues`);
   await p.locator("[data-tracker-scope=mine]").waitFor();
@@ -297,7 +297,7 @@ async function tracker(s, base) {
   await s.take("search-opened", "the issue, opened from the admin page");
 }
 
-async function before(s, base) {
+async function before(s, base: string) {
   const p = s.page;
   await p.goto(`${base}/git/notshared/backup-tool`);
   await p.locator("[data-readme]").waitFor();
@@ -315,9 +315,9 @@ async function before(s, base) {
   await s.take("search", "the admin page's search for free space");
 }
 
-function parse(argv) {
-  const pos = [];
-  const opts = {};
+function parse(argv: string[]) {
+  const pos: string[] = [];
+  const opts: Record<string, string> = {};
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (["--commit", "--test", "--ca"].includes(a)) opts[a.slice(2)] = argv[++i];
@@ -373,7 +373,7 @@ const stop = listen((text) => baseline.add(text));
 await page.goto(`${base}/`);
 await page.waitForLoadState("networkidle");
 stop();
-const problems = [];
+const problems: string[] = [];
 listen((text) => {
   if (!baseline.has(text)) problems.push(text);
 });

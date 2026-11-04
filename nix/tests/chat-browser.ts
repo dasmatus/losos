@@ -12,11 +12,11 @@
 // <out>/pr/ (the pull request's). It exits non-zero at the first step that
 // does not happen, after a picture of every open page.
 
-const exists = (file) => Bun.file(file).exists();
+const exists = (file: string): Promise<boolean> => Bun.file(file).exists();
 
 const { chromium } = await import(Bun.env.CHAT_PLAYWRIGHT ?? "playwright");
 
-const [phase, out] = Bun.argv.slice(2);
+const [phase, out] = (Bun.argv.slice(2) as [string, string]);
 const HOST = Bun.env.CHAT_HOST ?? "mattbox.local";
 const ORIGIN = `https://${HOST}`;
 const PROXY = Bun.env.CHAT_PROXY ?? "socks5://127.0.0.1:1080";
@@ -32,19 +32,19 @@ const PEOPLE = {
 Bun.spawnSync(["mkdir", "-p", `${out}/film`]);
 Bun.spawnSync(["mkdir", "-p", `${out}/pr`]);
 const stepsFile = `${out}/film/steps.json`;
-const steps = await exists(stepsFile) ? (await Bun.file(stepsFile).json()) : [];
+const steps: unknown[] = await exists(stepsFile) ? (await Bun.file(stepsFile).json()) : [];
 
 const browser = await chromium.launch({
   chromiumSandbox: false,
   proxy: { server: PROXY },
   args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"],
 });
-const problems = [];
-const network = [];
+const problems: string[] = [];
+const network: string[] = [];
 const start = performance.now();
 
 /** A browser of its own for one person, signed in through LosOS Login. */
-async function person(name) {
+async function person(name: string) {
   const context = await browser.newContext({
     viewport: { width: 1280, height: 900 },
     deviceScaleFactor: 2,
@@ -66,7 +66,7 @@ async function person(name) {
   page.on("request", (r) => began.set(r, performance.now()));
   page.on("requestfinished", async (r) => {
     const took = ((performance.now() - (began.get(r) ?? 0)) / 1000).toFixed(1);
-    const status = (await r.response().catch(() => null))?.status() ?? "-";
+    const status: number | string = (await r.response().catch(() => null))?.status() ?? "-";
     network.push(`${at()} ${name} ${status} ${took}s ${r.method()} ${r.url().replace(ORIGIN, "")}`);
   });
   page.on("requestfailed", (r) => network.push(`${at()} ${name} failed ${r.method()} ${r.url().replace(ORIGIN, "")} ${r.failure()?.errorText}`));
@@ -92,13 +92,13 @@ async function settle(page) {
   await page.waitForTimeout(1000);
 }
 
-async function boxOf(locator) {
+async function boxOf(locator): Promise<{ x: number; y: number; w: number; h: number } | null> {
   const b = await locator.boundingBox();
   return b === null ? null : { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) };
 }
 
 /** One state of the launch film: a PNG and its line in manifest.json. */
-async function film(page, slug, url, title, action = "none", targets = {}) {
+async function film(page, slug: string, url: string, title: string, action = "none", targets = {}) {
   await settle(page);
   const file = `${String(steps.length + 1).padStart(2, "0")}-${slug}.png`;
   await page.screenshot({ path: `${out}/film/${file}` });
@@ -108,7 +108,7 @@ async function film(page, slug, url, title, action = "none", targets = {}) {
   steps.push({ file, url, title, action: action === "none" || target === undefined ? { kind: action } : { kind: action, target }, targets: boxes });
 }
 
-async function shot(page, name) {
+async function shot(page, name: string) {
   await settle(page);
   await page.screenshot({ path: `${out}/pr/${name}.png` });
 }
@@ -116,12 +116,12 @@ async function shot(page, name) {
 /** The handbook's picture of the conversation (handbook/docs/img/chat*.png),
  *  light, in each of its languages, on a device of Matus's unlocked with the
  *  recovery key. The labels are src/i18n/chat.ts's. */
-const UNLOCK = {
+const UNLOCK: Record<string, [string, string, string, string]> = {
   en: ["Unlock this device to read encrypted messages", "Recovery key", "Unlock", "This device is unlocked"],
   sk: ["Odomknite toto zariadenie na čítanie šifrovaných správ", "Kľúč na obnovenie", "Odomknúť", "Toto zariadenie je odomknuté"],
   de: ["Entsperre dieses Gerät, um verschlüsselte Nachrichten zu lesen", "Wiederherstellungsschlüssel", "Entsperren", "Dieses Gerät ist entsperrt"],
 };
-async function handbook(key) {
+async function handbook(key: string) {
   for (const [lang, locale] of [["en", "en-US"], ["sk", "sk-SK"], ["de", "de-DE"]]) {
     const [unlock, field, button, unlocked] = UNLOCK[lang];
     const context = await browser.newContext({
@@ -390,7 +390,7 @@ async function on() {
  * a picture received and one about to be sent, card and IBAN numbers drawn
  * black, the report dialog, and the adult mark that allows "No one". */
 async function safety(owner, eva) {
-  const api = (page, path, body) =>
+  const api = (page, path: string, body?: unknown) =>
     page.evaluate(
       async ([path, body]) => {
         const r = await fetch(path, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });

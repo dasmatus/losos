@@ -17,7 +17,7 @@
 // files bar, a .paper file's menu, and the files the way that UI opened
 // them.
 
-const join = (...parts) => parts.join("/");
+const join = (...parts: string[]): string => parts.join("/");
 
 const VIEW = { width: 1280, height: 900 };
 const DOC = "Untitled document.paper";
@@ -28,11 +28,11 @@ const PICTURE = "/tmp/tomato.png";
 
 const { chromium } = await import(Bun.env.PLAYWRIGHT_CORE ?? "playwright-core");
 
-async function spkiPin(pemFile) {
+async function spkiPin(pemFile: string): Promise<string> {
   const pem = await Bun.file(pemFile).text();
   const der = Uint8Array.fromBase64(/-----BEGIN CERTIFICATE-----([^-]+)-----END CERTIFICATE-----/.exec(pem)[1].replace(/\s/g, ""));
   // One DER element at `at`: where its contents start and where it ends.
-  const element = (at) => {
+  const element = (at: number): { start: number; end: number } => {
     let len = der[at + 1];
     let start = at + 2;
     if (len & 0x80) {
@@ -53,7 +53,7 @@ async function spkiPin(pemFile) {
 }
 
 class Shots {
-  constructor(base, out, meta) {
+  constructor(base: string, out: string, meta: { commit: string; test: string }) {
     this.host = new URL(base).hostname;
     this.out = out;
     this.meta = meta;
@@ -94,7 +94,7 @@ class Shots {
     await p.waitForTimeout(400);
   }
 
-  async take(p, slug, title, action = { kind: "none" }, targets = {}) {
+  async take(p, slug: string, title: string, action = { kind: "none" }, targets = {}) {
     await this.settle(p);
     const file = `${String(this.steps.length + 1).padStart(2, "0")}-${slug}.png`;
     await p.screenshot({ path: join(this.out, file), timeout: 300_000 });
@@ -114,7 +114,7 @@ class Shots {
   }
 }
 
-async function signIn(page, base, name, password) {
+async function signIn(page, base: string, name: string, password: string) {
   await page.goto(`${base}/auth/`);
   const status = await page.evaluate(
     async ([username, password, targetURL]) => {
@@ -131,7 +131,7 @@ async function signIn(page, base, name, password) {
 }
 
 /** Waits for the editor, live with the box and drawn. */
-async function waitPaper(p, name) {
+async function waitPaper(p, name: string) {
   await p.locator("[data-paper-office]").waitFor();
   await p.getByRole("heading", { level: 1, name }).waitFor();
   await p.locator('[data-testid=office-saved][data-connection="live"]').waitFor();
@@ -140,9 +140,9 @@ async function waitPaper(p, name) {
 }
 
 const pm = (p) => p.locator("[data-testid=paper-editor] .ProseMirror");
-const act = (p, key) => p.locator(`[data-testid=paper-toolbar] [data-action="${key}"]`);
+const act = (p, key: string) => p.locator(`[data-testid=paper-toolbar] [data-action="${key}"]`);
 
-async function insert(p, id) {
+async function insert(p, id: string) {
   await p.getByTestId("paper-insert").click();
   await p.locator(`[data-insert="${id}"]`).click();
   await p.locator("[data-insert]").first().waitFor({ state: "hidden" });
@@ -155,7 +155,7 @@ async function typing(p) {
 }
 
 /** Puts the cursor right after `words` on the page. */
-async function caretAfter(p, words) {
+async function caretAfter(p, words: string) {
   await p.evaluate((w) => {
     const root = document.querySelector("[data-testid=paper-editor] .ProseMirror");
     const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -178,12 +178,12 @@ async function caretAfter(p, words) {
 }
 
 /** Selects the `n` characters before the cursor. */
-async function selectBack(p, n) {
+async function selectBack(p, n: number) {
   for (let i = 0; i < n; i++) await p.keyboard.press("Shift+ArrowLeft");
   await p.waitForTimeout(300);
 }
 
-async function after(s, p, base) {
+async function after(s, p, base: string) {
   await p.goto(`${base}/cloud/files`);
   const newDoc = p.getByRole("button", { name: "New document" });
   await newDoc.waitFor();
@@ -334,7 +334,7 @@ async function after(s, p, base) {
 }
 
 /** The files bar with the files in it, and the document's menu. */
-async function files(s, p, old) {
+async function files(s, p, old: boolean) {
   const row = p.locator(`[data-entry="${DOC}"]`);
   await row.waitFor();
   await s.take(p, "files", old ? "the files bar" : "the files bar: New document makes a .paper, New presentation a .slides", { kind: "click", target: "newDoc" }, {
@@ -350,7 +350,7 @@ async function files(s, p, old) {
   await p.keyboard.press("Escape");
 }
 
-async function before(s, p, base) {
+async function before(s, p, base: string) {
   await p.goto(`${base}/cloud/files`);
   await files(s, p, true);
   // The files the way this UI opened them: their first opener, if any.
@@ -370,9 +370,9 @@ async function before(s, p, base) {
   }
 }
 
-function parse(argv) {
-  const pos = [];
-  const opts = {};
+function parse(argv: string[]) {
+  const pos: string[] = [];
+  const opts: Record<string, string | boolean> = {};
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--before") opts.before = true;
@@ -404,7 +404,7 @@ await signIn(page, base, name, password);
 
 // What the page logs on a plain load: Office may log nothing beyond it.
 const baseline = new Set();
-const problems = [];
+const problems: string[] = [];
 let collecting = false;
 page.on("console", (m) => {
   if (m.type() !== "error") return;

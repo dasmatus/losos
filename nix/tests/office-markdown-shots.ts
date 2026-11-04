@@ -17,7 +17,7 @@
 // files bar, a Markdown file's menu, and the two files the way that UI
 // opened them.
 
-const join = (...parts) => parts.join("/");
+const join = (...parts: string[]): string => parts.join("/");
 
 const VIEW = { width: 1280, height: 900 };
 const DOC = "Untitled document.md";
@@ -25,11 +25,11 @@ const DECK = "Untitled presentation.md";
 
 const { chromium } = await import(Bun.env.PLAYWRIGHT_CORE ?? "playwright-core");
 
-async function spkiPin(pemFile) {
+async function spkiPin(pemFile: string): Promise<string> {
   const pem = await Bun.file(pemFile).text();
   const der = Uint8Array.fromBase64(/-----BEGIN CERTIFICATE-----([^-]+)-----END CERTIFICATE-----/.exec(pem)[1].replace(/\s/g, ""));
   // One DER element at `at`: where its contents start and where it ends.
-  const element = (at) => {
+  const element = (at: number): { start: number; end: number } => {
     let len = der[at + 1];
     let start = at + 2;
     if (len & 0x80) {
@@ -50,7 +50,7 @@ async function spkiPin(pemFile) {
 }
 
 class Shots {
-  constructor(base, out, meta) {
+  constructor(base: string, out: string, meta: { commit: string; test: string }) {
     this.host = new URL(base).hostname;
     this.out = out;
     this.meta = meta;
@@ -91,7 +91,7 @@ class Shots {
     await p.waitForTimeout(400);
   }
 
-  async take(p, slug, title, action = { kind: "none" }, targets = {}) {
+  async take(p, slug: string, title: string, action = { kind: "none" }, targets = {}) {
     await this.settle(p);
     const file = `${String(this.steps.length + 1).padStart(2, "0")}-${slug}.png`;
     await p.screenshot({ path: join(this.out, file), timeout: 300_000 });
@@ -111,7 +111,7 @@ class Shots {
   }
 }
 
-async function signIn(page, base, name, password) {
+async function signIn(page, base: string, name: string, password: string) {
   await page.goto(`${base}/auth/`);
   const status = await page.evaluate(
     async ([username, password, targetURL]) => {
@@ -128,24 +128,24 @@ async function signIn(page, base, name, password) {
 }
 
 /** Waits for the Markdown editor, live with the box. */
-async function waitOffice(p, name) {
+async function waitOffice(p, name: string) {
   await p.locator("[data-markdown-office]").waitFor();
   await p.getByRole("heading", { level: 1, name }).waitFor();
   await p.locator('[data-testid=office-saved][data-connection="live"]').waitFor();
   await p.locator("[data-testid=md-toolbar] [data-action=bold]:not([disabled])").waitFor();
 }
 
-const tool = (p, name) => p.getByTestId("md-toolbar").getByRole("button", { name, exact: true });
+const tool = (p, name: string) => p.getByTestId("md-toolbar").getByRole("button", { name, exact: true });
 
 /** Types at the end of the text, as a person would. */
-async function write(p, text) {
+async function write(p, text: string) {
   await p.locator(".cm-content").focus();
   await p.keyboard.press("Control+End");
   await p.keyboard.insertText(text);
 }
 
 /** Opens `name`, at the top of the files, in LosOS Office. */
-async function openInOffice(p, base, name) {
+async function openInOffice(p, base: string, name: string) {
   await p.goto(`${base}/cloud/files`);
   await p.locator(`[data-entry="${name}"]`).waitFor();
   const id = await p.evaluate(async (n) => {
@@ -156,7 +156,7 @@ async function openInOffice(p, base, name) {
 }
 
 /** Selects `word` on the line that ends the text. */
-async function selectLast(p, word) {
+async function selectLast(p, word: string) {
   await p.keyboard.press("Control+End");
   for (let i = 0; i < word.length; i++) await p.keyboard.press("Shift+ArrowLeft");
 }
@@ -227,7 +227,7 @@ async function after(s, p, base) {
 }
 
 /** The files bar with both files in it, and the presentation's menu. */
-async function files(s, p, old) {
+async function files(s, p, old: boolean) {
   const row = p.locator(`[data-entry="${DECK}"]`);
   await row.waitFor();
   await s.take(p, "files", old ? "the files bar" : "the files bar, with New document and New presentation", { kind: "click", target: "newDoc" }, {
@@ -264,9 +264,9 @@ async function before(s, p, base) {
   }
 }
 
-function parse(argv) {
-  const pos = [];
-  const opts = {};
+function parse(argv: string[]) {
+  const pos: string[] = [];
+  const opts: Record<string, string | boolean> = {};
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--before") opts.before = true;
@@ -298,7 +298,7 @@ await signIn(page, base, name, password);
 
 // What the page logs on a plain load: Office may log nothing beyond it.
 const baseline = new Set();
-const problems = [];
+const problems: string[] = [];
 let collecting = false;
 page.on("console", (m) => {
   if (m.type() !== "error") return;

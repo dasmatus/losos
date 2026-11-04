@@ -16,18 +16,18 @@
 // note as the editor showed it before Notes, the folder's menu and the
 // site's address.
 
-const join = (...parts) => parts.join("/");
+const join = (...parts: string[]): string => parts.join("/");
 
 const VIEW = { width: 1280, height: 900 };
 const VAULT = "Kitchen garden";
 
 const { chromium } = await import(Bun.env.PLAYWRIGHT_CORE ?? "playwright-core");
 
-async function spkiPin(pemFile) {
+async function spkiPin(pemFile: string): Promise<string> {
   const pem = await Bun.file(pemFile).text();
   const der = Uint8Array.fromBase64(/-----BEGIN CERTIFICATE-----([^-]+)-----END CERTIFICATE-----/.exec(pem)[1].replace(/\s/g, ""));
   // One DER element at `at`: where its contents start and where it ends.
-  const element = (at) => {
+  const element = (at: number): { start: number; end: number } => {
     let len = der[at + 1];
     let start = at + 2;
     if (len & 0x80) {
@@ -48,7 +48,7 @@ async function spkiPin(pemFile) {
 }
 
 class Shots {
-  constructor(base, out, meta) {
+  constructor(base: string, out: string, meta: { commit: string; test: string }) {
     this.host = new URL(base).hostname;
     this.out = out;
     this.meta = meta;
@@ -82,7 +82,7 @@ class Shots {
     await p.waitForTimeout(400);
   }
 
-  async take(p, slug, title, action = { kind: "none" }, targets = {}) {
+  async take(p, slug: string, title: string, action = { kind: "none" }, targets = {}) {
     await this.settle(p);
     const file = `${String(this.steps.length + 1).padStart(2, "0")}-${slug}.png`;
     // A frame at 2x on an emulated machine can take minutes, a dialog above
@@ -104,7 +104,7 @@ class Shots {
   }
 }
 
-async function signIn(page, base, name, password) {
+async function signIn(page, base: string, name: string, password: string) {
   await page.goto(`${base}/auth/`);
   const status = await page.evaluate(
     async ([username, password, targetURL]) => {
@@ -120,14 +120,14 @@ async function signIn(page, base, name, password) {
   if (status !== 200) throw new Error(`sign-in refused: ${status}`);
 }
 
-const vaultUrl = (base, note, extra = "") =>
+const vaultUrl = (base: string, note: string, extra = "") =>
   `${base}/cloud/notes?${new URLSearchParams({ vault: VAULT, ...(note ? { note } : {}) }).toString()}${extra}`;
 
-async function waitNote(p, path) {
+async function waitNote(p, path: string) {
   await p.waitForSelector(`[data-note="${path}"] .note-body h1`);
 }
 
-async function after(s, page, anon, base) {
+async function after(s, page, anon, base: string) {
   const p = page;
   // Notes on a box with no notes yet: the page makes the Notes folder and
   // offers the first note, rather than loading for ever.
@@ -298,7 +298,7 @@ async function after(s, page, anon, base) {
   await s.take(anon, "kb-graph", "the knowledge base's graph", { kind: "none" });
 }
 
-async function before(s, page, anon, base) {
+async function before(s, page, anon, base: string) {
   const p = page;
   // A note as it opened before Notes: its text in the editor.
   const ids = await p.evaluate(async (vault) => {
@@ -329,9 +329,9 @@ async function before(s, page, anon, base) {
   await s.take(anon, "kb", "the site's address with knowledge bases off");
 }
 
-function parse(argv) {
-  const pos = [];
-  const opts = {};
+function parse(argv: string[]) {
+  const pos: string[] = [];
+  const opts: Record<string, string | boolean> = {};
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--before") opts.before = true;
@@ -368,7 +368,7 @@ await signIn(page, base, name, password);
 // What the admin page logs on a plain load (Sonner's refused stylesheet):
 // Notes and the site may log nothing beyond it.
 const baseline = new Set();
-const problems = [];
+const problems: string[] = [];
 let collecting = false;
 for (const p of [page, anon]) {
   p.on("console", (m) => {

@@ -30,19 +30,19 @@
 // that a plain Files page does not also log fails the run, except in the
 // before phase.
 
-const exists = (file) => Bun.file(file).exists();
-const join = (...parts) => parts.join("/");
+const exists = (file: string): Promise<boolean> => Bun.file(file).exists();
+const join = (...parts: string[]): string => parts.join("/");
 
 const VIEW = { width: 1280, height: 900 };
 const WAIT = 180_000;
 
 const { chromium } = await import(Bun.env.PLAYWRIGHT_CORE ?? "playwright-core");
 
-async function spkiPin(pemFile) {
+async function spkiPin(pemFile: string): Promise<string> {
   const pem = await Bun.file(pemFile).text();
   const der = Uint8Array.fromBase64(/-----BEGIN CERTIFICATE-----([^-]+)-----END CERTIFICATE-----/.exec(pem)[1].replace(/\s/g, ""));
   // One DER element at `at`: where its contents start and where it ends.
-  const element = (at) => {
+  const element = (at: number): { start: number; end: number } => {
     let len = der[at + 1];
     let start = at + 2;
     if (len & 0x80) {
@@ -64,20 +64,20 @@ async function spkiPin(pemFile) {
 
 /** The pictures of both windows, in the order a person sees them. */
 class Shots {
-  constructor(out, meta, steps) {
+  constructor(out: string, meta: { commit?: string; test?: string }, steps: unknown[]) {
     this.out = out;
     this.steps = steps;
     this.meta = meta;
   }
 
   /** A run that goes on from the manifest an earlier phase left in `out`. */
-  static async open(out, meta) {
+  static async open(out: string, meta: { commit?: string; test?: string }) {
     const manifest = Bun.file(join(out, "manifest.json"));
     const steps = (await manifest.exists()) ? (await manifest.json()).steps : [];
     return new Shots(out, meta, steps);
   }
 
-  async take(w, slug, title, action = { kind: "none" }, targets = {}) {
+  async take(w, slug: string, title: string, action = { kind: "none" }, targets = {}) {
     await settle(w.page);
     const file = `${String(this.steps.length + 1).padStart(2, "0")}-${w.box}-${slug}.png`;
     await w.page.screenshot({ path: join(this.out, file), timeout: WAIT });
@@ -127,7 +127,7 @@ async function settle(p) {
 }
 
 /** One person's window: their own browser profile, signed in to their box. */
-async function window(browser, who, box, problems, strict) {
+async function window(browser, who: { base: string; name: string; password: string }, box: string, problems: string[], strict: boolean) {
   const context = await browser.newContext({
     viewport: VIEW,
     deviceScaleFactor: 2,
@@ -177,7 +177,7 @@ async function text(p) {
   return editorOf(p).evaluate((el) => el.innerText.replace(/ /g, " "));
 }
 
-async function waitText(p, pred, what) {
+async function waitText(p, pred, what: string) {
   const until = Date.now() + WAIT;
   for (;;) {
     const t = await text(p).catch(() => "");
@@ -193,12 +193,12 @@ async function openEditor(w) {
 }
 
 /** One row of Shared with you, by the file's name. */
-function incoming(page, file) {
+function incoming(page, file: string) {
   return page.locator("[data-incoming-share]").filter({ hasText: file });
 }
 
 /** The guest's copy, from Shared with you. */
-async function openShared(w, file) {
+async function openShared(w, file: string) {
   await w.page.goto(`${w.base}/cloud/shared`);
   const open = incoming(w.page, file).locator("[data-open]");
   await open.waitFor({ timeout: WAIT });
@@ -207,7 +207,7 @@ async function openShared(w, file) {
 }
 
 /** The owner's file, from Files. */
-async function openOwn(w, file) {
+async function openOwn(w, file: string) {
   await w.page.goto(`${w.base}/cloud/files`);
   const row = w.page.locator(`[data-entry="${file}"]`);
   await row.waitFor({ timeout: WAIT });
@@ -404,7 +404,7 @@ const phases = {
   },
 };
 
-const [phase, configFile, out] = Bun.argv.slice(2);
+const [phase, configFile, out] = (Bun.argv.slice(2) as [string, string, string]);
 if (!(phase in phases) || configFile === undefined || out === undefined) {
   // Thrown: an uncaught error is what makes Bun exit non-zero.
   throw new Error(`usage: mesh-collab-shots.ts ${Object.keys(phases).join("|")} CONFIG OUT`);
@@ -420,9 +420,9 @@ const strict = phase !== "before";
 const browser = await chromium.launch({
   args: [`--ignore-certificate-errors-spki-list=${cfg.certs.map(spkiPin).join(",")}`],
 });
-const problems = [];
+const problems: string[] = [];
 const s = await Shots.open(out, { commit: cfg.commit ?? "", test: cfg.test ?? "" });
-const hostOf = (who) => new URL(who.base).hostname.split(".")[0];
+const hostOf = (who: { base: string }) => new URL(who.base).hostname.split(".")[0];
 const m = await window(browser, cfg.owner, hostOf(cfg.owner), problems, strict);
 const e = await window(browser, cfg.guest, hostOf(cfg.guest), problems, strict);
 try {

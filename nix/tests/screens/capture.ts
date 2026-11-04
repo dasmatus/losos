@@ -67,13 +67,13 @@
 // only what comes after is taken frame by frame). A shot fails the run when a step does or the page throws:
 // a picture of a half-loaded page is worse than none.
 
-const join = (...parts) => parts.join('/');
+const join = (...parts: string[]): string => parts.join('/');
 
 // Playwright's driver from nixpkgs, which the wrapper names.
 const { chromium } = await import(Bun.env.PLAYWRIGHT_CORE ?? 'playwright-core');
 
 /* `--name value` or `--name=value`, for each of `names`; anything else is refused. */
-function flags(names) {
+function flags(names: string[]): Record<string, string> {
   const out = {};
   const argv = Bun.argv.slice(2);
   for (let i = 0; i < argv.length; i++) {
@@ -143,7 +143,7 @@ async function step(page, s, { force = false } = {}) {
   else throw new Error(`unknown step ${JSON.stringify(s)}`);
 }
 
-async function strip(variant, width, shot, name, storageState) {
+async function strip(variant, width: number, shot, name: string, storageState) {
   const context = await browser.newContext({
     viewport: { width, height: variant.height ?? plan.height ?? 800 },
     ignoreHTTPSErrors: true,
@@ -261,8 +261,8 @@ const browser = await chromium.launch({
   ...(args.proxy ? { proxy: { server: args.proxy } } : {}),
 });
 const variants = plan.variants ?? [{ suffix: null }];
-const report = [];
-const film = [];
+const report: unknown[] = [];
+const film: unknown[] = [];
 try {
   for (const variant of variants) {
     const width = variant.width ?? plan.width ?? 1280;
@@ -319,10 +319,10 @@ try {
           }
         }, shot.storage);
       }
-      const errors = [];
+      const errors: string[] = [];
       page.on('pageerror', (e) => errors.push(String(e)));
       // Without a script the page cannot count its own refusals.
-      const refused = [];
+      const refused: string[] = [];
       if (!script) {
         page.on('console', (m) => {
           if (/Content Security Policy/.test(m.text())) refused.push(m.text());

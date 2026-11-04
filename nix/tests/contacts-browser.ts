@@ -13,7 +13,7 @@
 
 const { chromium } = await import(Bun.env.CONTACTS_PLAYWRIGHT ?? "playwright");
 
-const [phase, out] = Bun.argv.slice(2);
+const [phase, out] = (Bun.argv.slice(2) as [string, string]);
 const HOST = Bun.env.CONTACTS_HOST ?? "mattbox.local";
 const ORIGIN = `https://${HOST}`;
 const PROXY = Bun.env.CONTACTS_PROXY ?? "socks5://127.0.0.1:1080";
@@ -24,10 +24,10 @@ await Bun.write(PHONE_CARD, Bun.file(OLD_CARD));
 Bun.spawnSync(["mkdir", "-p", `${out}/pr`]);
 
 const browser = await chromium.launch({ chromiumSandbox: false, proxy: { server: PROXY } });
-const problems = [];
-const pages = [];
+const problems: string[] = [];
+const pages: unknown[] = [];
 
-async function person(name, password, film = false) {
+async function person(name: string, password: string, film = false) {
   const context = await browser.newContext({
     viewport: film ? { width: 1280, height: 900 } : { width: 1280, height: 860 },
     deviceScaleFactor: 2,
@@ -61,7 +61,7 @@ async function settle(page) {
   await page.waitForTimeout(1000);
 }
 
-async function shot(page, name) {
+async function shot(page, name: string) {
   await settle(page);
   await page.screenshot({ path: `${out}/pr/${name}.png` });
   console.log(`shot ${name}`);
@@ -80,7 +80,7 @@ async function overview(page) {
 }
 
 /** Mail's To field with "ev" typed into it. */
-async function mailTo(page, name) {
+async function mailTo(page, name: string) {
   await page.goto(`${ORIGIN}/mail`);
   await page.getByRole("button", { name: "Write" }).first().click();
   const to = page.locator("#mail-to");
@@ -93,7 +93,7 @@ async function mailTo(page, name) {
 }
 
 /** Chat's "Message someone", open. */
-async function chatPicker(page, name) {
+async function chatPicker(page, name: string) {
   await page.goto(`${ORIGIN}/chat/`);
   await page.getByRole("heading", { name: "Conversations" }).waitFor();
   await page.getByRole("button", { name: "Message someone" }).first().click();
@@ -246,17 +246,17 @@ async function on() {
 // their own timestamps. The manifest says where each picture leads, what it
 // may point at, and where it sits in the clip.
 
-const steps = [];
-const frames = [];
-let clipStart = null;
+const steps: unknown[] = [];
+const frames: { name: string; t: number }[] = [];
+let clipStart: number | null = null;
 
-async function box(locator) {
+async function box(locator): Promise<{ x: number; y: number; w: number; h: number }> {
   const b = await locator.boundingBox();
   if (b === null) throw new Error("a film target is not on the screen");
   return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) };
 }
 
-async function frame(page, title, action = { kind: "none" }, targets = {}) {
+async function frame(page, title: string, action = { kind: "none" }, targets = {}) {
   await settle(page);
   const file = `${String(steps.length + 1).padStart(2, "0")}-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}.png`;
   await page.screenshot({ path: `${out}/film/${file}` });
@@ -269,7 +269,7 @@ async function frame(page, title, action = { kind: "none" }, targets = {}) {
 }
 
 /** Types `text` a letter at a time, a picture after each. */
-async function typed(page, field, text, title) {
+async function typed(page, field, text: string, title: string) {
   await field.click();
   for (let i = 1; i <= text.length; i++) {
     await field.pressSequentially(text[i - 1], { delay: 40 });

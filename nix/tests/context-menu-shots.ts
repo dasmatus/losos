@@ -22,17 +22,17 @@
 // OUT/handbook: light, in English, Slovak and German, named the way the
 // handbook names them (`context-menu-file.png`, `-sk`, `-de`).
 
-const join = (...parts) => parts.join("/");
+const join = (...parts: string[]): string => parts.join("/");
 
 // The three checks this script makes, strict like node:assert/strict.
 const assert = {
-  ok(value, message) {
+  ok(value, message?: string) {
     if (!value) throw new Error(message ?? `expected a truthy value, got ${Bun.inspect(value)}`);
   },
-  equal(actual, expected, message) {
+  equal(actual, expected, message?: string) {
     if (!Object.is(actual, expected)) throw new Error(message ?? `${Bun.inspect(actual)} !== ${Bun.inspect(expected)}`);
   },
-  deepEqual(actual, expected, message) {
+  deepEqual(actual, expected, message?: string) {
     if (!Bun.deepEquals(actual, expected, true)) throw new Error(message ?? `${Bun.inspect(actual)} does not equal ${Bun.inspect(expected)}`);
   },
 };
@@ -42,11 +42,11 @@ const { chromium } = await import(Bun.env.PLAYWRIGHT_CORE ?? "playwright-core");
 const DESKTOP = { width: 1280, height: 900 };
 const PHONE = { width: 390, height: 844 };
 
-async function spkiPin(pemFile) {
+async function spkiPin(pemFile: string): Promise<string> {
   const pem = await Bun.file(pemFile).text();
   const der = Uint8Array.fromBase64(/-----BEGIN CERTIFICATE-----([^-]+)-----END CERTIFICATE-----/.exec(pem)[1].replace(/\s/g, ""));
   // One DER element at `at`: where its contents start and where it ends.
-  const element = (at) => {
+  const element = (at: number): { start: number; end: number } => {
     let len = der[at + 1];
     let start = at + 2;
     if (len & 0x80) {
@@ -67,17 +67,17 @@ async function spkiPin(pemFile) {
 }
 
 const argv = Bun.argv.slice(2);
-const flag = (name) => argv.includes(name);
-const option = (name, fallback) => (argv.includes(name) ? argv[argv.indexOf(name) + 1] : fallback);
+const flag = (name: string) => argv.includes(name);
+const option = (name: string, fallback: string) => (argv.includes(name) ? argv[argv.indexOf(name) + 1] : fallback);
 const [base, name, password, out] = argv.filter((a, i) => !a.startsWith("--") && !argv[i - 1]?.startsWith("--ca"));
 const before = flag("--before");
 const ca = option("--ca", "/etc/losos-box.pem");
 Bun.spawnSync(["mkdir", "-p", out]);
 
 const browser = await chromium.launch({ args: [`--ignore-certificate-errors-spki-list=${await spkiPin(ca)}`] });
-const steps = [];
+const steps: unknown[] = [];
 
-async function session(scheme, viewport, touch = false, locale = "en-US") {
+async function session(scheme: string, viewport, touch = false, locale = "en-US") {
   const context = await browser.newContext({
     viewport,
     deviceScaleFactor: 2,
@@ -95,7 +95,7 @@ async function session(scheme, viewport, touch = false, locale = "en-US") {
     });
   });
   const page = await context.newPage();
-  const errors = [];
+  const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(String(e)));
   await page.goto(`${base}/auth/`);
   const status = await page.evaluate(
@@ -131,7 +131,7 @@ async function settle(page) {
   await page.waitForTimeout(400);
 }
 
-async function take(page, slug, title) {
+async function take(page, slug: string, title: string) {
   await settle(page);
   const file = `${slug}.png`;
   await page.screenshot({ path: join(out, file) });
@@ -159,7 +159,7 @@ async function close(page) {
   if (!before) await page.locator('[data-slot="context-menu"]').first().waitFor({ state: "detached" });
 }
 
-async function desktop(scheme) {
+async function desktop(scheme: string) {
   const { context, page, errors } = await session(scheme, DESKTOP);
   await page.goto(`${base}/`);
   const main = page.getByRole("main");
@@ -310,7 +310,7 @@ async function phone() {
 
 // The handbook's pictures: the page's own menu with Appearance open, and a
 // file's menu in LosOS Cloud, in each language the handbook has.
-async function handbook(locale, suffix) {
+async function handbook(locale: string, suffix: string) {
   const { context, page, errors } = await session("light", DESKTOP, false, locale);
   const dir = join(out, "handbook");
   Bun.spawnSync(["mkdir", "-p", dir]);

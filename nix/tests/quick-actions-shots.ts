@@ -18,16 +18,16 @@
 // --before takes the same states with the admin UI as it was before, where
 // a selection brings up nothing.
 
-const join = (...parts) => parts.join("/");
+const join = (...parts: string[]): string => parts.join("/");
 
 const VIEW = { width: 1280, height: 900 };
 const { chromium } = await import(Bun.env.PLAYWRIGHT_CORE ?? "playwright-core");
 
-async function spkiPin(pemFile) {
+async function spkiPin(pemFile: string): Promise<string> {
   const pem = await Bun.file(pemFile).text();
   const der = Uint8Array.fromBase64(/-----BEGIN CERTIFICATE-----([^-]+)-----END CERTIFICATE-----/.exec(pem)[1].replace(/\s/g, ""));
   // One DER element at `at`: where its contents start and where it ends.
-  const element = (at) => {
+  const element = (at: number): { start: number; end: number } => {
     let len = der[at + 1];
     let start = at + 2;
     if (len & 0x80) {
@@ -48,7 +48,7 @@ async function spkiPin(pemFile) {
 }
 
 class Shots {
-  constructor(base, out, meta) {
+  constructor(base: string, out: string, meta: { commit: string; test: string }) {
     this.host = new URL(base).hostname === "192.168.1.1" ? "mattbox.local" : new URL(base).hostname;
     this.out = out;
     this.meta = meta;
@@ -79,7 +79,7 @@ class Shots {
     await p.waitForTimeout(500);
   }
 
-  async take(p, slug, title, action = { kind: "none" }, targets = {}) {
+  async take(p, slug: string, title: string, action = { kind: "none" }, targets = {}) {
     await this.settle(p);
     const file = `${String(this.steps.length + 1).padStart(2, "0")}-${slug}.png`;
     await p.screenshot({ path: join(this.out, file), timeout: 300_000 });
@@ -93,7 +93,7 @@ class Shots {
     console.log(file, title);
   }
 
-  clip(file, title) {
+  clip(file: string, title: string) {
     this.steps.push({ file, url: `${this.host}/cloud/office`, title, action: { kind: "none" }, targets: {} });
     console.log(file, title);
   }
@@ -104,7 +104,7 @@ class Shots {
   }
 }
 
-async function signIn(page, base, name, password) {
+async function signIn(page, base: string, name: string, password: string) {
   await page.goto(`${base}/auth/`);
   const status = await page.evaluate(
     async ([username, password, targetURL]) => {
@@ -121,7 +121,7 @@ async function signIn(page, base, name, password) {
 }
 
 /** A file's number in LosOS Cloud, from its folder's listing. */
-async function fileId(p, folder, name) {
+async function fileId(p, folder: string, name: string): Promise<number> {
   const id = await p.evaluate(
     async ([folder, name]) => {
       const r = await fetch(`/cloud/api/files?path=${encodeURIComponent(folder)}`);
@@ -135,10 +135,10 @@ async function fileId(p, folder, name) {
 }
 
 const quick = (p) => p.locator("[data-slot=quick-actions]");
-const action = (p, id) => quick(p).locator(`[data-action="${id}"]`);
+const action = (p, id: string) => quick(p).locator(`[data-action="${id}"]`);
 
 /** Picks `word` on the line with `line` on it, from the keyboard. */
-async function pick(p, line, word) {
+async function pick(p, line: string, word: string) {
   const l = p.locator(".cm-line", { hasText: line }).first();
   await l.click();
   await p.keyboard.press("End");
@@ -208,7 +208,7 @@ async function office(s, p, base, old) {
 /** The bar arriving over a selection and gliding to the next one, filmed
  *  at a tenth of real speed in its own context with motion on. */
 /** Centre of `word` on the line with `line` on it, for a double click. */
-async function wordAt(p, line, word) {
+async function wordAt(p, line: string, word: string): Promise<{ x: number; y: number }> {
   const l = p.locator(".cm-line", { hasText: line }).first();
   await l.waitFor();
   return l.evaluate((el, word) => {
@@ -233,7 +233,7 @@ async function wordAt(p, line, word) {
  * slowly it runs. A still stretch is one screenshot copied.
  */
 class Reel {
-  constructor(p, dir) {
+  constructor(p, dir: string) {
     this.p = p;
     this.dir = dir;
     this.n = 0;
@@ -249,7 +249,7 @@ class Reel {
     this.n++;
   }
 
-  async hold(frames) {
+  async hold(frames: number) {
     await this.frame();
     const last = join(this.dir, `${String(this.n - 1).padStart(4, "0")}.png`);
     for (let i = 1; i < frames; i++) {
@@ -280,7 +280,7 @@ class Reel {
   }
 }
 
-async function film(browser, base, name, password, s, old) {
+async function film(browser, base: string, name: string, password: string, s, old: boolean) {
   const dir = join(s.out, "clip");
   await Bun.$`rm -rf ${dir}`;
   Bun.spawnSync(["mkdir", "-p", dir]);
@@ -327,7 +327,7 @@ async function film(browser, base, name, password, s, old) {
   s.clip(file, old ? "picking words in a document" : "the bar arrives over picked words and glides to the next ones");
 }
 
-async function notes(s, p, base, old) {
+async function notes(s, p, base: string, old: boolean) {
   await p.goto(`${base}/cloud/notes?vault=Notes&note=Planting%20calendar.md&view=edit`);
   await p.locator("[data-note-editor] .cm-line", { hasText: "Sow the beans" }).first().waitFor();
   await p.locator('[data-note-editor] [data-connection="live"]').waitFor();
@@ -350,7 +350,7 @@ async function notes(s, p, base, old) {
   });
 }
 
-async function diagrams(s, p, base, old) {
+async function diagrams(s, p, base: string, old: boolean) {
   await p.goto(`${base}/diagrams/?canvas=svg&file=Diagrams%2Fgarden.canvas`);
   await p.getByTestId("lab-splash").waitFor({ state: "detached", timeout: 180_000 });
   const card = (label) => p.locator(`[data-testid=diagram] [data-node][aria-label="${label}"]`);
@@ -384,9 +384,9 @@ async function diagrams(s, p, base, old) {
   await p.waitForTimeout(3000);
 }
 
-function parse(argv) {
-  const pos = [];
-  const opts = {};
+function parse(argv: string[]) {
+  const pos: string[] = [];
+  const opts: Record<string, string | boolean> = {};
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--before") opts.before = true;
@@ -417,7 +417,7 @@ const page = await context.newPage();
 page.setDefaultTimeout(120_000);
 await signIn(page, base, name, password);
 
-const problems = [];
+const problems: string[] = [];
 page.on("pageerror", (e) => problems.push(String(e)));
 
 const s = new Shots(base, out, { commit: opts.commit ?? "", test: opts.test ?? "" });
