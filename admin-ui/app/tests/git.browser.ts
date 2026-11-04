@@ -16,7 +16,7 @@ import { type Page, type Request, type Route } from 'playwright';
 declare global {
   interface Window {
     __violations: string[];
-    __owned?: number;
+    __owned?: unknown;
   }
 }
 
@@ -139,7 +139,7 @@ function model() {
 async function open(path: string, {
   locale = 'en-US',
   viewport = { width: 1280, height: 900 },
-  me = ME as typeof ME | null | ((req: Request) => typeof ME | null),
+  me = ME,
   room = null as string | null,
 }: {
   locale?: string;
@@ -484,7 +484,7 @@ await check('on a phone LosOS Git has a bar along the bottom: the places of the 
   await sheet.waitFor({ state: 'detached' });
   await bar.getByRole('link', { name: 'Repositories', exact: true }).click();
   await page.waitForURL(/\/git\/?$/);
-  await bar.getByRole('link', { name: 'Repositories', exact: true }).waitFor({ state: 'detached' });
+  await bar.getByRole('link', { name: 'Code', exact: true }).waitFor({ state: 'detached' });
   assert.deepEqual((await bar.getByRole('listitem').allInnerTexts()).map((l) => l.trim()), ['Repositories', 'Issues', 'More']);
   await settle();
   await page.close();

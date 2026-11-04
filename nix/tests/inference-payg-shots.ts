@@ -19,8 +19,8 @@
 // JSON line per frame: its file, the action that follows it and the boxes of
 // what it shows, in CSS pixels.
 
-const join = (...parts) => parts.join("/");
-const dirname = (file) => file.slice(0, file.lastIndexOf("/"));
+const join = (...parts: string[]): string => parts.join("/");
+const dirname = (file: string): string => file.slice(0, file.lastIndexOf("/"));
 
 const { chromium } = await import(join(Bun.env.PLAYWRIGHT_CORE, "index.mjs"));
 
@@ -37,7 +37,7 @@ const LOOKS = {
 // The spare key before the page's own scripts run, the theme the look asks
 // for, and no text caret. A constructed sheet, because the page's CSP
 // refuses a <style> element.
-function init({ token, theme }) {
+function init({ token, theme }: { token: string; theme: string }) {
   try {
     sessionStorage.setItem("losos-token", token);
     localStorage.setItem("losos-theme", theme);
@@ -88,7 +88,7 @@ async function settle(page, timeoutMs = 180_000) {
 // The page of the command that is running, for the report when it fails.
 let current = null;
 
-async function browser(look) {
+async function browser(look: string) {
   const opts = LOOKS[look];
   Bun.spawnSync(["mkdir", "-p", PROFILE]);
   const ctx = await chromium.launchPersistentContext(PROFILE, {
@@ -119,7 +119,7 @@ async function browser(look) {
   return { ctx, page };
 }
 
-async function toTop(page, anchor) {
+async function toTop(page, anchor: string) {
   const section = page.locator(`[data-testid="${anchor}"]`);
   await section.waitFor();
   // Below the sticky header, with the section's title above it in view.
@@ -160,7 +160,7 @@ async function targets(names) {
 }
 
 class Frames {
-  constructor(page, outdir) {
+  constructor(page, outdir: string) {
     this.page = page;
     this.outdir = outdir;
     if (outdir === "-") return;
@@ -182,7 +182,7 @@ class Frames {
 
 const modelRow = (page) => page.locator('[data-testid="ai-catalogue"] [data-model]').first();
 
-async function importWallet(phrase, password) {
+async function importWallet(phrase: string, password: string) {
   const { ctx, page } = await browser("pr");
   await openPane(page);
   const field = page.getByPlaceholder("12 or 24 words");
@@ -206,7 +206,7 @@ async function importWallet(phrase, password) {
   await ctx.close();
 }
 
-async function shot(look, out, anchor) {
+async function shot(look: string, out: string, anchor: string) {
   const { ctx, page } = await browser(look);
   await openPane(page, anchor);
   Bun.spawnSync(["mkdir", "-p", dirname(out)]);
@@ -214,7 +214,7 @@ async function shot(look, out, anchor) {
   await ctx.close();
 }
 
-async function start(limit, topUp, password, outdir) {
+async function start(limit: string, topUp: string, password: string, outdir: string) {
   const { ctx, page } = await browser("film");
   await openPane(page);
   const frames = new Frames(page, outdir);
@@ -254,7 +254,7 @@ async function start(limit, topUp, password, outdir) {
   await ctx.close();
 }
 
-async function chat(prompt, maxTokens, outdir) {
+async function chat(prompt: string, maxTokens: string, outdir: string) {
   const { ctx, page } = await browser("film");
   await openPane(page, "ai-chat");
   const frames = new Frames(page, outdir);
@@ -279,7 +279,7 @@ async function chat(prompt, maxTokens, outdir) {
   await ctx.close();
 }
 
-async function stop(outdir) {
+async function stop(outdir: string) {
   const { ctx, page } = await browser("film");
   await openPane(page, "ai-meters");
   const frames = new Frames(page, outdir);
@@ -290,7 +290,7 @@ async function stop(outdir) {
   await ctx.close();
 }
 
-async function settled(outdir) {
+async function settled(outdir: string) {
   const { ctx, page } = await browser("film");
   await openPane(page, "ai-models");
   const frames = new Frames(page, outdir);

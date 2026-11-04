@@ -11,8 +11,8 @@
  * LOSOS_ESCROW_PROGRAM set to the program the validator loaded at
  * LosEscrow111…, it also pays into the escrow and reads the deposit back.
  *
- *   bun tests/solana.unit.mjs
- *   LOSOS_SOLANA_RPC=http://127.0.0.1:8899 bun tests/solana.unit.mjs
+ *   bun tests/solana.unit.ts
+ *   LOSOS_SOLANA_RPC=http://127.0.0.1:8899 bun tests/solana.unit.ts
  */
 
 import assert from './assert.ts';
@@ -39,9 +39,9 @@ async function check(name: string, fn: () => void | Promise<void>) {
   }
 }
 
-const freshOwner = () => base58.encode(ed25519.getPublicKey(ed25519.utils.randomSecretKey()));
-const randomBytes = (n: number) => crypto.getRandomValues(new Uint8Array(n));
-const memo = () => `0x${randomBytes(32).toHex()}`;
+const freshOwner = (): string => base58.encode(ed25519.getPublicKey(ed25519.utils.randomSecretKey()));
+const randomBytes = (n: number): Uint8Array => crypto.getRandomValues(new Uint8Array(n));
+const memo = (): string => `0x${randomBytes(32).toHex()}`;
 const buyer = sol.solanaKeyFromPhrase(JUNK);
 
 await check('junk mnemonic derives the address solana-keygen prints', () => {
@@ -211,21 +211,15 @@ await check('escrow pay refuses a fee over the gross or a short nonce', () => {
 
 /* A compiled message read back: keys and instructions with their account
  * keys and data. Every count here is under 128, one byte of compact-u16. */
-interface ParsedInstruction {
-  program: string;
-  accounts: string[];
-  data: Uint8Array;
-}
-
-function parseMessage(msg: Uint8Array): { header: number[]; keys: string[]; ixs: ParsedInstruction[] } {
+function parseMessage(msg: Uint8Array) {
   const header = [...msg.subarray(0, 3)];
   const n = msg[3]!;
   const keys = Array.from({ length: n }, (_, i) => base58.encode(msg.subarray(4 + 32 * i, 36 + 32 * i)));
   let at = 4 + 32 * n + 32;
   const count = msg[at++]!;
-  const ixs: ParsedInstruction[] = [];
+  const ixs: { program: string | undefined; accounts: (string | undefined)[]; data: Uint8Array }[] = [];
   for (let k = 0; k < count; k++) {
-    const program = keys[msg[at++]!]!;
+    const program = keys[msg[at++]!];
     const m = msg[at++]!;
     const accounts = [...msg.subarray(at, at + m)].map((x) => keys[x]!);
     at += m;
@@ -247,7 +241,7 @@ await check('balance and tap addresses match the edge', () => {
   assert.equal(sol.escrowBalanceAddress(ESCROW, config, owner), '4p1yaXiRqaKiAUnnaeZStCXtG4krcWCnTnddBvDdXTHx');
 });
 
-function escrowTaps(taps: number, topUp: bigint = 4_000_000n) {
+function escrowTaps(taps: number, topUp = 4_000_000n) {
   return {
     payer: buyer.address,
     program: ESCROW,
@@ -269,9 +263,9 @@ await check('taps layout: top_up, then one open_tap per box with its id, rate an
   const config = sol.escrowConfigAddress(ESCROW, p.treasury, p.mint);
   const balance = sol.escrowBalanceAddress(ESCROW, config, p.payer);
   assert.equal(ixs.length, 1 + p.taps.length);
-  const [top, ...opens] = ixs as [ParsedInstruction, ...ParsedInstruction[]];
-  assert.equal(top.program, ESCROW);
-  assert.deepEqual(top.accounts, [
+  const [top, ...opens] = ixs;
+  assert.equal(top!.program, ESCROW);
+  assert.deepEqual(top!.accounts, [
     buyer.address,
     sol.associatedTokenAddress(buyer.address, p.mint),
     config,
@@ -281,9 +275,9 @@ await check('taps layout: top_up, then one open_tap per box with its id, rate an
     sol.TOKEN_PROGRAM,
     sol.SYSTEM_PROGRAM,
   ]);
-  assert.equal(top.data.length, 9);
-  assert.equal(top.data[0], 6);
-  assert.equal(new DataView(top.data.buffer, top.data.byteOffset).getBigUint64(1, true), p.topUp);
+  assert.equal(top!.data.length, 9);
+  assert.equal(top!.data[0], 6);
+  assert.equal(new DataView(top!.data.buffer, top!.data.byteOffset).getBigUint64(1, true), p.topUp);
   opens.forEach((ix, i) => {
     const tap = p.taps[i]!;
     const id = Uint8Array.fromHex(tap.key.slice(2));
@@ -379,12 +373,12 @@ if (RPC === undefined || RPC === '') {
 
     assert.equal(tx.meta.err, null);
     assert.equal(tx.transaction.signatures[0], signature);
-    const memoIx = tx.transaction.message.instructions.find((ix: { programId?: string }) => ix.programId === sol.MEMO_PROGRAM);
+    const memoIx = tx.transaction.message.instructions.find((ix: any) => ix.programId === sol.MEMO_PROGRAM);
     assert.equal(memoIx?.program, 'spl-memo');
     assert.equal(memoIx.parsed, t.memo);
 
-    const byOwner = (list?: { mint: string; owner: string; uiTokenAmount: { amount: string } }[]) => {
-      const out = new Map();
+    const byOwner = (list: any) => {
+      const out = new Map<string, bigint>();
       for (const b of list ?? []) {
         if (b.mint !== t.mint) continue;
         out.set(b.owner, (out.get(b.owner) ?? 0n) + BigInt(b.uiTokenAmount.amount));

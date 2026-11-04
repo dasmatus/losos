@@ -26,7 +26,7 @@ import { type BrowserContext, type Page, type Route } from 'playwright';
 declare global {
   interface Window {
     __violations: string[];
-    __ran?: number;
+    __ran?: string | number;
   }
 }
 

@@ -17,7 +17,7 @@ import { launch, runner, serve } from './harness.ts';
 declare global {
   interface Window {
     __violations: string[];
-    __owned: unknown;
+    __owned?: unknown;
   }
 }
 
