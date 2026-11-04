@@ -10,9 +10,8 @@
  *            so Market can lend its memory to AI models.
  *   byName   GET /api/domains: the edge gave this box names, which carry
  *            its wallet.
- *   chat     GET /api/me: `shared` lists chat. Chat, mail and calls run as
- *            the shared user, so lososd lists them only while the box
- *            shares its storage and has joined a mesh.
+ *   chat     GET /api/me: `shared` lists chat. Chat and calls run on every
+ *            box that has not switched chat off, with or without a mesh.
  *   builder  GET /api/options: losos.builder.enable is on in the running
  *            generation (Build with AI, under Look).
  *   profile  GET /api/me carries `picture`: this lososd keeps profiles.

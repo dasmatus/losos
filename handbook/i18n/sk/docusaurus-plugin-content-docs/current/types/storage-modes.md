@@ -60,11 +60,12 @@ s lokálnymi bránami tejto siete a s ničím ďalším.
   Nakupovať na trhu sa dá ďalej.
 - Keď sa desať minút neozve žiadna lokálna brána, zariadenie ho samo vypne
   a znova zapne minútu po tom, ako sa niektorá opäť ozve.
-- Kým je zapnuté a zariadenie nie je v sieti mesh, chat, pošta, hovory
-  a Mesh CI bežia ako `kindashared` a ich dáta sú v jeho adresári. Aj
-  aplikácie možno inštalovať ako `kindashared`. Zariadenie, ktoré sa neskôr
-  pripojí k sieti mesh, ich spúšťa ako `shared` a začína tam odznova; čo
-  má `kindashared`, zostáva v jeho vlastnom adresári.
+- Kým je zapnuté a zariadenie nie je v sieti mesh, pošta a Mesh CI bežia
+  ako `kindashared` a ich dáta sú v jeho adresári. Aj aplikácie možno
+  inštalovať ako `kindashared`. Zariadenie, ktoré sa neskôr pripojí k sieti
+  mesh, ich spúšťa ako `shared` a začína tam odznova; čo má `kindashared`,
+  zostáva v jeho vlastnom adresári. Chat a hovory sem nepatria: bežia ako
+  `notshared` na každom zariadení.
 - Prepínač **Zdieľať s bránami tejto siete** je na paneli **Mesh** spolu
   s dostupnými bránami a účtom, pod ktorým beží zdieľaná strana.
 
