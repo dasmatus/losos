@@ -10,10 +10,11 @@
  * place of Olm. */
 
 import { CallSession, type KeyChannel, type KeyMessage, type Member } from '../../../src/calls/session';
-import { VoiceAgent, type Caption, type Phase } from '../../../src/voice/agent';
+import { VoiceAgent, type Caption, type Persona, type Phase } from '../../../src/voice/agent';
 import { Ears } from '../../../src/voice/ears';
 import { KeyHub } from '../../../src/voice/keys';
-import { openMouth } from '../../../src/voice/mouth';
+import { openMouth, voiceFor } from '../../../src/voice/mouth';
+import { HEIGHT, WIDTH } from '../../../src/voice/avatar';
 import { Segmenter, RATE } from '../../../src/voice/vad';
 import { VoiceChain, type VoicePreset } from '../../../src/calls/voice-changer';
 
@@ -35,6 +36,7 @@ const state = {
   /* Per sender: blocks the worklet handed over, and the loudest. */
   tap: {} as Record<string, { blocks: number; peak: number }>,
   context: '',
+  voice: '',
 };
 w.state = state;
 
@@ -257,4 +259,106 @@ w.pitch = async (ms: number) => {
   }
   void last;
   return { hz: crossings / (seen / ctx.sampleRate), peak };
+};
+
+
+/* A call of one person with one of their assistants, as src/chat/calls.tsx
+ * makes it in a chat with an assistant: the person's own session speaks with
+ * a Kokoro voice of its own, the assistant joins from the same page as a
+ * second session with a face, and what comes back from it (its picture and
+ * its voice, sealed and opened again) is read from the person's session. */
+const faces = { frames: 0, width: 0, height: 0 };
+w.faces = faces;
+w.joinPerson = async (o: { socket: string; call: string; me: Who; assistant: string; name: string; video: boolean; voice?: string }) => {
+  const mouth = await openMouth(undefined, o.voice ?? 'am_adam');
+  said = (text) => mouth.say(text);
+  const hub = new KeyHub(busKeys(o.me), o.me);
+  const session = new CallSession({
+    socket: o.socket,
+    call: o.call,
+    device: o.me.device,
+    local: mouth.stream,
+    keys: hub.channel(),
+    worker: () => new Worker('/e2ee-worker.js', { type: 'module' }),
+    events: {
+      ...events(),
+      track: (pid, stream, screen) => {
+        if (screen) return;
+        // The only other member with a picture is the assistant.
+        const video = stream.getVideoTracks()[0];
+        if (video === undefined) return;
+        // The assistant's face, decoded from the call into a <video> the
+        // test can read pixels from.
+        const el = document.createElement('video');
+        el.muted = true;
+        el.playsInline = true;
+        el.srcObject = new MediaStream([video]);
+        el.addEventListener('resize', () => {
+          faces.width = el.videoWidth;
+          faces.height = el.videoHeight;
+        });
+        (el as HTMLVideoElement & { requestVideoFrameCallback(cb: () => void): void }).requestVideoFrameCallback(function count() {
+          faces.frames++;
+          (el as HTMLVideoElement & { requestVideoFrameCallback(cb: () => void): void }).requestVideoFrameCallback(count);
+        });
+        document.body.append(el);
+        void el.play().catch(() => undefined);
+        w.face = el;
+      },
+    },
+  });
+  session.start();
+  w.session = session;
+  const persona: Persona = { slug: o.assistant, name: o.name, voice: voiceFor(o.assistant), direct: true, video: o.video };
+  state.voice = persona.voice;
+  w.agent = await VoiceAgent.start({
+    socket: o.socket,
+    call: o.call,
+    device: o.me.device,
+    keys: hub.channel(),
+    persona,
+    nameOf: (user) => user.replace(/^@|:.*$/g, ''),
+    grounded: () => true,
+    events: {
+      phase: (p) => state.phases.push(p),
+      load: () => undefined,
+      heard: (pid, text) => state.heard.push(`p${pid}: ${text}`),
+      caption: (c) => state.captions.push(c),
+      state: (s, reason) => state.states.push(`agent:${reason ? `${s}:${reason}` : s}`),
+    },
+  });
+};
+
+/* The share of the face's pixels that are ink (the eyes, the mouth) inside
+ * the box that holds the mouth, and of skin over the whole picture, from the
+ * last decoded frame. */
+w.faceLook = () => {
+  const el = w.face as HTMLVideoElement | undefined;
+  if (el === undefined || el.videoWidth === 0) return null;
+  const c = document.createElement('canvas');
+  c.width = el.videoWidth;
+  c.height = el.videoHeight;
+  const g = c.getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D;
+  g.drawImage(el, 0, 0);
+  const u = Math.min(c.width, c.height) / 360;
+  const area = (x: number, y: number, w2: number, h2: number) => {
+    const d = g.getImageData(Math.round(x), Math.round(y), Math.round(w2), Math.round(h2)).data;
+    let ink = 0;
+    let skin = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i]!;
+      const gr = d[i + 1]!;
+      const b = d[i + 2]!;
+      if (r < 90 && gr < 70 && b < 70) ink++;
+      if (r > 190 && gr > 100 && gr < 170 && b > 70 && b < 150) skin++;
+    }
+    return { ink: ink / (d.length / 4), skin: skin / (d.length / 4) };
+  };
+  const cx = c.width / 2;
+  const hy = c.height * 0.46;
+  return {
+    mouth: area(cx - 34 * u, hy + 18 * u, 68 * u, 62 * u),
+    all: area(0, 0, c.width, c.height),
+    size: [c.width, c.height, WIDTH, HEIGHT],
+  };
 };

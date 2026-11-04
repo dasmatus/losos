@@ -88,7 +88,17 @@ export function isStop(text: string): boolean {
   return asked !== null && STOP.test(asked);
 }
 
+export interface DialogOptions {
+  /* A call of one person with the assistant: whatever they say is for it,
+   * with no name needed. */
+  direct?: boolean;
+  /* What the assistant is called in the conversation it keeps. */
+  name?: string;
+}
+
 export class Dialog {
+  constructor(private opts: DialogOptions = {}) {}
+
   private lines: Heard[] = [];
   private followUp = new Map<string, number>();
   /* What the agent said last, for the echo check. */
@@ -106,7 +116,7 @@ export class Dialog {
     const context = this.context(line.at);
     this.lines.push({ ...line, text });
     if (this.lines.length > 200) this.lines.splice(0, this.lines.length - 200);
-    if (asked === null && !following) return null;
+    if (asked === null && !following && this.opts.direct !== true) return null;
     const question = (asked ?? text).trim();
     // "LosOS." on its own is a person getting its attention.
     return { user: line.user, name: line.name, text: question, context };
@@ -121,7 +131,7 @@ export class Dialog {
     this.followUp.set(user, now + FOLLOW_UP_MS);
     this.spoken = text;
     this.spokeAt = now;
-    this.lines.push({ user: "agent", name: "LosOS", text, at: now });
+    this.lines.push({ user: "agent", name: this.opts.name ?? "LosOS", text, at: now });
   }
 
   /* The agent is done with `user`: the next sentence needs the name again. */
@@ -132,14 +142,16 @@ export class Dialog {
 
 /* The ask the box's assistant answers: the conversation, then the
  * question, and the register of a voice. */
-export function prompt(q: Question): string {
+export function prompt(q: Question, as: { name: string; direct: boolean } = { name: "LosOS", direct: false }): string {
   const lines = q.context.map((l) => `${l.name}: ${l.text}`).join("\n");
   return [
-    "You are LosOS, taking part in a voice call. Your answer is read aloud to everyone in the call.",
+    as.direct
+      ? `You are ${as.name}, in a video call with ${q.name}, who is talking to you. Your answer is read aloud to them.`
+      : `You are ${as.name}, taking part in a voice call. Your answer is read aloud to everyone in the call.`,
     "Answer in plain spoken English, in at most three short sentences. No lists, no markdown, no links, no emoji.",
     "If you need to look something up on the box, do it, then say only the result.",
     lines === "" ? "" : `\nThe conversation so far:\n${lines}`,
-    `\n${q.name} asks you: ${q.text === "" ? "(they said your name and nothing else; ask what they need)" : q.text}`,
+    `\n${q.name} ${as.direct ? "says" : "asks you"}: ${q.text === "" ? "(they said your name and nothing else; ask what they need)" : q.text}`,
   ]
     .filter((l) => l !== "")
     .join("\n");

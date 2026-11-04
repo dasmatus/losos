@@ -159,6 +159,11 @@ export default defineMessages({
     sk: "Počúva. Povedzte „LosOS“ a opýtajte sa.",
     de: "Hört zu. Sag „LosOS“ und frag.",
   },
+  "calls.agentPhase.listeningDirect": {
+    en: "Listening. Just talk.",
+    sk: "Počúva. Stačí hovoriť.",
+    de: "Hört zu. Sprich einfach.",
+  },
   "calls.agentPhase.thinking": { en: "Thinking…", sk: "Premýšľa…", de: "Denkt nach…" },
   "calls.agentPhase.speaking": { en: "Speaking", sk: "Hovorí", de: "Spricht" },
   "calls.agentHint": {
@@ -176,6 +181,16 @@ export default defineMessages({
     sk: "Predvolene vypnuté, lebo odpoveď sa číta nahlas všetkým v hovore.",
     de: "Standardmäßig aus, weil die Antwort allen im Anruf vorgelesen wird.",
   },
+  "calls.agentGroundedDirect": {
+    en: "On by default, because only you hear the answer.",
+    sk: "Predvolene zapnuté, lebo odpoveď počujete len vy.",
+    de: "Standardmäßig an, weil nur du die Antwort hörst.",
+  },
+  "calls.agentPrivacyDirect": {
+    en: "{name} joins from your browser, so the call stays encrypted. Speech is turned into text on this computer, and only what you say to {name} goes to your box as text. It leaves when you leave.",
+    sk: "{name} sa pripojí z vášho prehliadača, takže hovor zostane šifrovaný. Reč sa mení na text v tomto počítači a do vášho boxu ide ako text iba to, čo {name} poviete. Odíde, keď odídete vy.",
+    de: "{name} tritt aus deinem Browser bei, der Anruf bleibt also verschlüsselt. Sprache wird auf diesem Computer zu Text, und nur was du zu {name} sagst, geht als Text an deine Box. Es geht, wenn du gehst.",
+  },
   "calls.agentPrivacy": {
     en: "LosOS joins from your browser, so the call stays encrypted. Speech is turned into text on this computer, and only a question you put to LosOS goes to your box as text. It leaves when you leave.",
     sk: "LosOS sa pripojí z vášho prehliadača, takže hovor zostane šifrovaný. Reč sa mení na text v tomto počítači a do vášho boxu ide ako text iba otázka, ktorú LosOS položíte. Odíde, keď odídete vy.",
@@ -183,6 +198,7 @@ export default defineMessages({
   },
   "calls.agentHush": { en: "Stop talking", sk: "Prestať hovoriť", de: "Nicht mehr sprechen" },
   "calls.agentRemove": { en: "Remove LosOS", sk: "Odstrániť LosOS", de: "LosOS entfernen" },
+  "calls.agentRemoveNamed": { en: "Remove {name}", sk: "Odstrániť {name}", de: "{name} entfernen" },
   "calls.agentFailed": { en: "LosOS could not join", sk: "LosOS sa nepodarilo pripojiť", de: "LosOS konnte nicht beitreten" },
   "calls.agentNoAudio": {
     en: "This browser cannot run the speech models.",

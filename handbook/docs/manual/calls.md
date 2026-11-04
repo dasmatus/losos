@@ -196,6 +196,27 @@ LosOS understands and speaks English for now. It is on unless you turn off
 **Settings → Advanced → `losos.calls.agent.enable`**, and with that off the
 box serves no speech models and the button is gone.
 
+## Calling your assistants \{#calling-your-assistants}
+
+Each assistant you make in LosOS Tag is a person in LosOS Chat, and a
+chat with one is a chat like any other, with the phone and the camera
+button in its header. Press one and the call starts with the assistant
+already in it: no name to say, no **Add LosOS** to press. Press the camera
+and it answers with a face, which blinks, looks up while it thinks and
+opens its mouth as far as its voice is loud. Press the phone and it is a
+voice call.
+
+Every assistant has a voice that stays the same from call to call, picked
+from the name. You just talk. It answers with what you may read yourself,
+since only you hear the answer, so **May use my files, mail and rooms** is
+on from the start and you can turn it off in its panel. What it knows and
+may do is what you set in **Settings → LosOS Tag** for that assistant.
+
+It works the way LosOS in a group call does. It joins from your browser,
+so the call stays encrypted, and it needs the same two speech models. It
+sees your voice and not your picture: your camera goes to the people in the
+call and never to the assistant. Hang up and it is gone.
+
 ## What the box sees
 
 The box forwards each frame to the others in the call without opening it.

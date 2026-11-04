@@ -22,9 +22,10 @@ import { InvitePanel } from "@/calls/invite-panel";
 import { preferredVoice, rememberVoice, type VoicePreset } from "@/calls/voice-changer";
 import { VoicePanel } from "@/calls/voice-panel";
 import { newSecret } from "@/calls/guests";
-import { VoiceAgent, type Caption, type Phase } from "@/voice/agent";
+import { VoiceAgent, type Caption, type Persona, type Phase } from "@/voice/agent";
 import { AgentPanel } from "@/voice/agent-panel";
 import { KeyHub } from "@/voice/keys";
+import { voiceFor } from "@/voice/mouth";
 import { CallControl, CallView, RingingCard, type Screen, type Tile } from "@/calls/view";
 import { Avatar } from "./avatar";
 import { roomName } from "./model";
@@ -161,6 +162,19 @@ const joinedUsers = (room: Room): string[] =>
     .getMembers()
     .filter((m) => m.membership === KnownMembership.Join)
     .map((m) => m.userId);
+
+/** The assistant this room is a chat with: a direct chat whose other
+ *  member is one of LosOS Tag's (`@tag-<slug>:<server>`, backend/src/tag.rs).
+ *  A call in it is a call with that assistant, which joins by itself. */
+export function assistantOf(room: Room): { slug: string; name: string } | null {
+  const joined = room.getMembers().filter((m) => m.membership === KnownMembership.Join);
+  if (joined.length !== 2) return null;
+  for (const m of joined) {
+    const slug = /^@tag-([a-z0-9-]+):/.exec(m.userId)?.[1];
+    if (slug !== undefined && m.userId !== room.myUserId) return { slug, name: m.name };
+  }
+  return null;
+}
 
 /** Whether this person can have a call in `room`. Call keys go to the
  *  members' devices over Olm, and the crypto keeps device lists only for
@@ -580,7 +594,10 @@ function CallScreen({
   const [agentPhase, setAgentPhase] = React.useState<Phase | null>(null);
   const [agentLoad, setAgentLoad] = React.useState(0);
   const [captions, setCaptions] = React.useState<Caption[]>([]);
-  const [grounded, setGrounded] = React.useState(false);
+  /* A chat with one of their own assistants: it answers with what the
+   * person may read, to them alone, so their material is on from the start. */
+  const assistant = React.useMemo(() => (room === null ? null : assistantOf(room)), [room]);
+  const [grounded, setGrounded] = React.useState(assistant !== null);
   const groundedNow = React.useRef(false);
   groundedNow.current = grounded;
   /* The voice changer (calls/voice-changer.ts): the preset the others hear. */
@@ -738,6 +755,15 @@ function CallScreen({
         toast.error(t("calls.voice.failed"), undefined, { help: "calls" });
       });
   }, [state, voice, media, t]);
+
+  // In a chat with one of the person's assistants the assistant is the
+  // other end of the call: it joins as soon as the call is up.
+  const assistantStarted = React.useRef(false);
+  React.useEffect(() => {
+    if (state !== "connected" || assistant === null || assistantStarted.current) return;
+    assistantStarted.current = true;
+    startAgentRef.current();
+  }, [state, assistant]);
 
   // In a direct chat, the other person declining ends the call that rang
   // them (MSC4310).
@@ -931,9 +957,12 @@ function CallScreen({
       setAgentOpen(!agentOpen);
       return;
     }
+    const persona: Persona | undefined =
+      assistant === null ? undefined : { slug: assistant.slug, name: assistant.name, voice: voiceFor(assistant.slug), direct: true, video: active.video };
     setInvite(null);
     setPodcastOpen(false);
-    setAgentOpen(true);
+    // An assistant that joins by itself does not cover the call with its panel.
+    setAgentOpen(persona === undefined);
     setAgentPhase("loading");
     setAgentLoad(0);
     setCaptions([]);
@@ -942,6 +971,7 @@ function CallScreen({
       call: active.call,
       device: client.getDeviceId() ?? "",
       keys: keys.channel(),
+      ...(persona !== undefined && { persona }),
       nameOf,
       grounded: () => groundedNow.current,
       events: {
@@ -968,6 +998,9 @@ function CallScreen({
       });
   };
 
+  const startAgentRef = React.useRef(startAgent);
+  startAgentRef.current = startAgent;
+
   const removeAgent = (): void => {
     agent.current?.stop();
     agent.current = null;
@@ -978,7 +1011,7 @@ function CallScreen({
   const tiles: Tile[] = members.list.map((m) => {
     const self = m.pid === members.you;
     const person = m.guest === undefined ? room?.getMember(m.user) : undefined;
-    const name = m.agent === true ? "LosOS" : memberName(m);
+    const name = m.agent === true ? (assistant?.name ?? "LosOS") : memberName(m);
     const stream = self ? media.stream : streams.get(m.pid);
     return {
       pid: m.pid,
@@ -1087,6 +1120,8 @@ function CallScreen({
       {voiceOpen ? <VoicePanel voice={voice} busy={voiceBusy} onChoose={chooseVoice} onClose={() => setVoiceOpen(false)} /> : null}
       {agentOpen && agentPhase !== null ? (
         <AgentPanel
+          name={assistant?.name ?? "LosOS"}
+          direct={assistant !== null}
           phase={agentPhase}
           load={agentLoad}
           captions={captions}

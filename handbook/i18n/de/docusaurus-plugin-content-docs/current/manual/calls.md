@@ -209,6 +209,28 @@ LosOS versteht und spricht vorerst Englisch. Es ist an, solange du
 ausschaltest; ohne sie liefert die Box keine Sprachmodelle aus, und der
 Knopf fehlt.
 
+## Mit deinen Assistenten anrufen \{#calling-your-assistants}
+
+Jeder Assistent, den du in LosOS Tag anlegst, ist in LosOS Chat eine Person
+wie jede andere, und ein Chat mit ihm ist ein gewöhnlicher Chat, mit
+Telefon- und Kamerataste in der Kopfzeile. Drück eine davon, und der Anruf
+beginnt mit dem Assistenten schon darin: kein Name zu sagen, kein **LosOS
+hinzufügen** zu drücken. Mit der Kamera antwortet er mit einem Gesicht, das
+blinzelt, beim Nachdenken nach oben schaut und den Mund so weit öffnet, wie
+seine Stimme laut ist. Mit dem Telefon ist es ein Sprachanruf.
+
+Jeder Assistent hat eine Stimme, die von Anruf zu Anruf gleich bleibt und
+nach dem Namen gewählt wird. Du sprichst einfach. Er antwortet mit dem, was
+du selbst lesen darfst, weil nur du die Antwort hörst, deshalb ist **Darf
+meine Dateien, Mails und Räume nutzen** von Anfang an an, und du kannst es
+in seinem Fenster ausschalten. Was er weiß und darf, stellst du unter
+**Einstellungen → LosOS Tag** für diesen Assistenten ein.
+
+Es funktioniert wie LosOS im Gruppenanruf. Er tritt aus deinem Browser bei,
+der Anruf bleibt also verschlüsselt, und er braucht dieselben zwei
+Sprachmodelle. Er sieht deine Stimme, nicht dein Bild: Deine Kamera geht an
+die Leute im Anruf und nie an den Assistenten. Leg auf, und er ist weg.
+
 ## Was die Box sieht \{#what-the-box-sees}
 
 Die Box leitet jedes Bild an die anderen im Anruf weiter, ohne es zu

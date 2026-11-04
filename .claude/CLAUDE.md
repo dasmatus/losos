@@ -232,7 +232,13 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   `/chat/` is cross-origin isolated (COOP/COEP in `containers.nix`) for
   their threads, so nothing cross-origin may load there.
   `tests/voice-agent.browser.mjs` speaks a question through the real SFU
-  and reads the answer back. The voice changer is a worklet on the
+  and reads the answer back. A direct chat with an assistant
+  (`@tag-<slug>`, `assistantOf` in `chat/calls.tsx`) is a call it joins by
+  itself, as a `direct` persona: no name to say, its own Kokoro voice from
+  the slug (`voiceFor`), a face drawn on a canvas as its camera
+  (`voice/avatar.ts`), asks addressed to that assistant with `grounded` on;
+  `tests/voice-assistant.browser.mjs` reads the face through the SFU. The
+  voice changer is a worklet on the
   microphone before the seal (`calls/voice-changer.ts`,
   `public/voice-worklet/voice-changer.js`). Guests: only an official edge answers
   `POST /calls/guest-link`; the box serves `/calls/guest/` (its own Vite

@@ -18,15 +18,35 @@ export interface Mouth {
   stop(): void;
   /* Whether anything is being said or waiting to be. */
   readonly speaking: boolean;
+  /* How loud it is right now, 0 to 1: what a face moves its mouth by. */
+  level(): number;
   close(): void;
 }
 
-export function openMouth(progress?: (loaded: number, total: number) => void): Promise<Mouth> {
+/* The Kokoro voices the box ships (nix/voice.nix): women and men, American
+ * and British. */
+export const VOICES = ["af_heart", "af_bella", "am_michael", "am_adam", "bf_emma", "bm_george"] as const;
+
+/* The voice an assistant always has: the built-in one the default, every
+ * other one a fixed pick from its name, so it sounds like itself in every
+ * call and on every device. */
+export function voiceFor(slug: string): string {
+  if (slug === "" || slug === "losos") return VOICE;
+  let h = 0;
+  for (const c of slug) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return VOICES[h % VOICES.length] as string;
+}
+
+export function openMouth(progress?: (loaded: number, total: number) => void, voice: string = VOICE): Promise<Mouth> {
   const worker = new Worker(new URL("./tts-worker.ts", import.meta.url), { type: "module" });
   const context = new AudioContext({ latencyHint: "interactive" });
   const destination = context.createMediaStreamDestination();
   const gain = context.createGain();
   gain.connect(destination);
+  const meter = context.createAnalyser();
+  meter.fftSize = 512;
+  gain.connect(meter);
+  const wave = new Float32Array(meter.fftSize);
   const runtime = `${import.meta.env.BASE_URL}ort/`;
 
   return new Promise((resolve, reject) => {
@@ -40,12 +60,20 @@ export function openMouth(progress?: (loaded: number, total: number) => void): P
       get speaking() {
         return speeches.size > 0 || playing.size > 0;
       },
+      level() {
+        meter.getFloatTimeDomainData(wave);
+        let sum = 0;
+        for (const x of wave) sum += x * x;
+        // Speech sits around 0.05 to 0.2 RMS; a mouth should be wide open
+        // well before that is clipped.
+        return Math.min(1, Math.sqrt(sum / wave.length) * 5);
+      },
       say(text) {
         const id = ids++;
         return new Promise<void>((done, fail) => {
           speeches.set(id, { done, fail, pending: 0, closed: false });
           void context.resume();
-          worker.postMessage({ type: "speak", id, text, voice: VOICE, speed: 1 } satisfies TtsIn);
+          worker.postMessage({ type: "speak", id, text, voice, speed: 1 } satisfies TtsIn);
         });
       },
       stop() {

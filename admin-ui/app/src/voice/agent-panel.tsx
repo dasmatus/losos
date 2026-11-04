@@ -12,6 +12,11 @@ import { useT } from "@/lib/i18n-react";
 import type { Caption, Phase } from "./agent";
 
 export interface AgentPanelProps {
+  /* What the assistant is called; LosOS is the box's own. */
+  name?: string;
+  /* A call of one person with the assistant: no name to say, and the
+   * answer is for them alone. */
+  direct?: boolean;
   phase: Phase;
   /* 0 to 1 while the engine and the models are coming. */
   load: number;
@@ -26,6 +31,7 @@ export interface AgentPanelProps {
 
 export function AgentPanel(p: AgentPanelProps) {
   const t = useT();
+  const own = p.name === undefined || p.name === "LosOS";
   const log = React.useRef<HTMLOListElement>(null);
   React.useEffect(() => {
     log.current?.scrollTo({ top: log.current.scrollHeight });
@@ -41,9 +47,9 @@ export function AgentPanel(p: AgentPanelProps) {
     >
       <header className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="font-medium text-ink">{t("calls.agent")}</h3>
+          <h3 className="font-medium text-ink">{own ? t("calls.agent") : p.name}</h3>
           <p className="text-[13px] text-muted" data-agent-status="">
-            {t(`calls.agentPhase.${p.phase}`)}
+            {t(p.direct === true && p.phase === "listening" ? "calls.agentPhase.listeningDirect" : `calls.agentPhase.${p.phase}`)}
           </p>
         </div>
         <Button variant="ghost" size="sm" className="size-8 p-0" aria-label={t("calls.close")} onClick={p.onClose}>
@@ -65,14 +71,14 @@ export function AgentPanel(p: AgentPanelProps) {
       <label className="flex items-start justify-between gap-4">
         <span>
           <span className="block text-[14px] font-medium text-ink">{t("calls.agentGrounded")}</span>
-          <span className="block text-[13px] text-muted">{t("calls.agentGroundedDetail")}</span>
+          <span className="block text-[13px] text-muted">{t(p.direct === true ? "calls.agentGroundedDirect" : "calls.agentGroundedDetail")}</span>
         </span>
         <Switch aria-label={t("calls.agentGrounded")} isSelected={p.grounded} onChange={p.onGrounded} />
       </label>
 
       <Alert>
         <HugeiconsIcon icon={LockKeyIcon} />
-        <AlertDescription>{t("calls.agentPrivacy")}</AlertDescription>
+        <AlertDescription>{t(p.direct === true ? "calls.agentPrivacyDirect" : "calls.agentPrivacy", { name: p.name ?? "LosOS" })}</AlertDescription>
       </Alert>
 
       <div className="flex justify-between gap-2">
@@ -81,7 +87,7 @@ export function AgentPanel(p: AgentPanelProps) {
           {t("calls.agentHush")}
         </Button>
         <Button variant="ghost" onClick={p.onRemove}>
-          {t("calls.agentRemove")}
+          {own ? t("calls.agentRemove") : t("calls.agentRemoveNamed", { name: p.name ?? "" })}
         </Button>
       </div>
     </section>

@@ -193,6 +193,26 @@ LosOS zatiaľ rozumie a hovorí po anglicky. Je zapnutý, kým ho nevypnete v
 **Nastavenia → Pokročilé → `losos.calls.agent.enable`**; po vypnutí
 zariadenie nedodáva rečové modely a tlačidlo zmizne.
 
+## Hovor s vašimi asistentmi \{#calling-your-assistants}
+
+Každý asistent, ktorého vytvoríte v LosOS Tag, je v LosOS Chate človek ako
+každý iný a chat s ním je obyčajný chat, s tlačidlom telefónu a kamery v
+záhlaví. Stlačte jedno z nich a hovor sa začne s asistentom, ktorý v ňom už
+je: netreba hovoriť jeho meno ani stláčať **Pridať LosOS**. Pri kamere
+odpovedá s tvárou, ktorá žmurká, pri premýšľaní hľadí nahor a otvára ústa
+podľa hlasitosti hlasu. Pri telefóne je to hlasový hovor.
+
+Každý asistent má hlas, ktorý zostáva z hovoru na hovor rovnaký a vyberá sa
+podľa mena. Stačí hovoriť. Odpovedá s tým, čo smiete čítať aj vy, lebo
+odpoveď počujete len vy, takže **Môže použiť moje súbory, poštu a
+miestnosti** je od začiatku zapnuté a v jeho paneli to môžete vypnúť. Čo
+vie a čo smie, nastavíte v **Nastavenia → LosOS Tag** pri danom asistentovi.
+
+Funguje ako LosOS v skupinovom hovore. Pripája sa z vášho prehliadača, takže
+hovor zostane šifrovaný, a potrebuje tie isté dva rečové modely. Vidí váš
+hlas, nie váš obraz: kamera ide ľuďom v hovore a asistentovi nikdy. Keď
+zložíte, je preč.
+
 ## Čo vidí zariadenie \{#what-the-box-sees}
 
 Zariadenie každý snímok posunie ostatným v hovore bez toho, aby ho otvorilo.

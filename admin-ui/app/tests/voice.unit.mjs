@@ -11,6 +11,8 @@ const { Segmenter, RATE, END_QUIET_MS } = await import('../src/voice/vad.ts');
 const d = await import('../src/voice/dialog.ts');
 const { SentenceStream, plain } = await import('../src/voice/sentences.ts');
 const { KeyHub } = await import('../src/voice/keys.ts');
+const { voiceFor, VOICES, VOICE } = await import('../src/voice/mouth.ts');
+const { blinking } = await import('../src/voice/avatar.ts');
 
 let passed = 0;
 const pending = [];
@@ -136,6 +138,48 @@ test('the prompt carries the conversation and the register of a voice', () => {
   assert.match(p, /read aloud/);
   assert.match(p, /Jan: Fine with me\./);
   assert.match(p, /Eva asks you: is Thursday free\?/);
+});
+
+test('in a call of one person with their assistant every sentence is for it', () => {
+  const dialog = new d.Dialog({ direct: true, name: 'Gardener' });
+  const jan = { user: '@jan:b', name: 'Jan' };
+  const q = dialog.hear({ ...jan, text: 'What is on my calendar tomorrow?', at: 1000 });
+  assert.equal(q.text, 'What is on my calendar tomorrow?');
+  // The name is still taken off when it is said, and noise is still noise.
+  assert.equal(dialog.hear({ ...jan, text: 'LosOS, and the day after?', at: 5000 }).text, 'and the day after?');
+  assert.equal(dialog.hear({ ...jan, text: '[BLANK_AUDIO]', at: 9000 }), null);
+  // Its own voice coming back is still not heard as a request.
+  dialog.answered(jan.user, 'Tomorrow you have a review at ten and lunch with Eva.', 20_000);
+  assert.equal(dialog.hear({ ...jan, text: 'a review at ten and lunch with Eva', at: 21_000 }), null);
+  assert.equal(dialog.hear({ ...jan, text: 'Move the review to eleven.', at: 40_000 }).text, 'Move the review to eleven.');
+  // Without the option nothing changes: the name is needed.
+  assert.equal(new d.Dialog().hear({ ...jan, text: 'What is on my calendar tomorrow?', at: 1000 }), null);
+});
+
+test('the prompt tells an assistant it is talking to one person', () => {
+  const q = { user: '@jan:b', name: 'Jan', text: 'is Thursday free?', context: [] };
+  const p = d.prompt(q, { name: 'Gardener', direct: true });
+  assert.match(p, /You are Gardener, in a video call with Jan/);
+  assert.match(p, /read aloud to them/);
+  assert.match(p, /Jan says: is Thursday free\?/);
+  assert.doesNotMatch(p, /everyone in the call/);
+});
+
+test('an assistant sounds the same in every call, and the built-in one is af_heart', () => {
+  assert.equal(voiceFor('losos'), VOICE);
+  assert.equal(voiceFor('gardener'), voiceFor('gardener'));
+  for (const slug of ['gardener', 'tax-helper', 'a', 'x'.repeat(40)]) assert.ok(VOICES.includes(voiceFor(slug)), slug);
+  // Not everyone gets the same voice.
+  assert.ok(new Set(['gardener', 'tax-helper', 'scribe', 'cook', 'planner', 'butler', 'coach'].map(voiceFor)).size >= 3);
+});
+
+test('the face blinks briefly and not all the time', () => {
+  let shut = 0;
+  for (let t = 0; t < 60; t += 0.04) if (blinking(t)) shut++;
+  const share = shut / 1500;
+  assert.ok(share > 0.01 && share < 0.08, String(share));
+  assert.equal(blinking(0.05), true);
+  assert.equal(blinking(1), false);
 });
 
 test('stop is a command only when it is the whole sentence', () => {

@@ -13,9 +13,10 @@
 
 import { getTagAsk, postTagAsk } from "@/lib/api";
 import { CallSession, type CallState, type KeyChannel, type Member } from "@/calls/session";
+import { Avatar } from "./avatar";
 import { Dialog, isStop, prompt, type Question } from "./dialog";
 import { Ears } from "./ears";
-import { openMouth, type Mouth } from "./mouth";
+import { openMouth, VOICE, type Mouth } from "./mouth";
 import { SentenceStream } from "./sentences";
 import { RATE, Segmenter } from "./vad";
 
@@ -28,12 +29,31 @@ export interface Caption {
   agent: boolean;
 }
 
+/* Who the agent is. LosOS by default; in a call of one person with one of
+ * their assistants, that assistant. */
+export interface Persona {
+  /* The assistant asked (`@tag-<slug>`); absent is the box's own. */
+  slug?: string;
+  /* What it is called in the call. */
+  name: string;
+  /* Its Kokoro voice. */
+  voice: string;
+  /* A call of one person: no need to say its name. */
+  direct: boolean;
+  /* Send a face as the assistant's camera. */
+  video: boolean;
+}
+
+export const LOSOS: Persona = { name: "LosOS", voice: VOICE, direct: false, video: false };
+
 export interface AgentOptions {
   socket: string;
   call: string;
   /* The device of the page that adds the agent; the agent joins as it. */
   device: string;
   keys: KeyChannel;
+  /* Who it is; LosOS when absent. */
+  persona?: Persona;
   /* A member's name for the captions and the conversation. */
   nameOf(user: string): string;
   /* Whether the asker's own files, mail and rooms may help an answer, which
@@ -68,7 +88,7 @@ export class VoiceAgent {
   private session: CallSession | null = null;
   private listeners = new Map<number, Listener>();
   private members: Member[] = [];
-  private dialog = new Dialog();
+  private dialog: Dialog;
   private input: AudioContext | null = null;
   private busy = false;
   private later: Question | null = null;
@@ -81,11 +101,18 @@ export class VoiceAgent {
     private opts: AgentOptions,
     private ears: Ears,
     private mouth: Mouth,
-  ) {}
+    private persona: Persona,
+  ) {
+    this.dialog = new Dialog({ direct: persona.direct, name: persona.name });
+  }
+
+  private avatar: Avatar | null = null;
+  private phase_: Phase = "loading";
 
   /* Open the ears and the mouth (the engine and the models are fetched
    * once and kept by the browser), then join the call. */
   static async start(opts: AgentOptions): Promise<VoiceAgent> {
+    const persona = opts.persona ?? LOSOS;
     opts.events.phase("loading");
     const loaded = { ears: { got: 0, of: 1 }, mouth: { got: 0, of: 1 } };
     const report = (): void => {
@@ -101,9 +128,9 @@ export class VoiceAgent {
       openMouth((l, t) => {
         loaded.mouth = { got: l, of: Math.max(t, 1) };
         report();
-      }),
+      }, persona.voice),
     ]);
-    const agent = new VoiceAgent(opts, ears, mouth);
+    const agent = new VoiceAgent(opts, ears, mouth, persona);
     try {
       await agent.join();
     } catch (e) {
@@ -117,20 +144,27 @@ export class VoiceAgent {
     const context = new AudioContext({ sampleRate: RATE });
     await context.audioWorklet.addModule(`${import.meta.env.BASE_URL}voice-worklet/pcm-tap.js`);
     this.input = context;
+    // What the call sends as its camera: a face, when there is a camera.
+    let local = this.mouth.stream;
+    if (this.persona.video) {
+      this.avatar = new Avatar(this.persona.name, () => this.mouth.level());
+      this.avatar.setPhase(this.phase_);
+      local = new MediaStream([...this.mouth.stream.getAudioTracks(), ...this.avatar.stream.getVideoTracks()]);
+    }
     this.session = new CallSession({
       socket: this.opts.socket,
       call: this.opts.call,
       device: this.opts.device,
       agent: true,
-      local: this.mouth.stream,
+      local,
       keys: this.opts.keys,
       events: {
         state: (state, reason) => {
           if (state === "connected") {
-            this.opts.events.phase("listening");
+            this.phase("listening");
             if (!this.greeted) {
               this.greeted = true;
-              void this.say(GREETING);
+              void this.say(this.persona.direct ? `Hi, I'm ${this.persona.name}. Go ahead, I'm listening.` : GREETING);
             }
           }
           if (state === "failed" || state === "ended") this.stop();
@@ -144,6 +178,12 @@ export class VoiceAgent {
       },
     });
     this.session.start();
+  }
+
+  private phase(phase: Phase): void {
+    this.phase_ = phase;
+    this.avatar?.setPhase(phase);
+    this.opts.events.phase(phase);
   }
 
   /* Who is in the call now. The agent hears people, not other agents. */
@@ -222,18 +262,18 @@ export class VoiceAgent {
     this.later = null;
     this.cancel?.abort();
     this.mouth.stop();
-    if (!this.closed) this.opts.events.phase("listening");
+    if (!this.closed) this.phase("listening");
   }
 
   private async say(text: string): Promise<void> {
     if (this.closed) return;
-    this.opts.events.phase("speaking");
+    this.phase("speaking");
     try {
       await this.mouth.say(text);
     } catch {
       // A sentence the voice could not make is skipped.
     }
-    if (!this.busy && !this.closed) this.opts.events.phase("listening");
+    if (!this.busy && !this.closed) this.phase("listening");
   }
 
   private async answer(q: Question): Promise<void> {
@@ -241,17 +281,21 @@ export class VoiceAgent {
     const abort = new AbortController();
     this.cancel = abort;
     this.busy = true;
-    this.opts.events.phase("thinking");
+    this.phase("thinking");
     this.opts.events.caption({ who: q.name, text: q.text === "" ? "…" : q.text, agent: false });
     const spoken: string[] = [];
     const speeches: Promise<void>[] = [];
     const speak = (sentence: string): void => {
       spoken.push(sentence);
-      this.opts.events.phase("speaking");
+      this.phase("speaking");
       speeches.push(this.mouth.say(sentence).catch(() => undefined));
     };
     try {
-      const ask = await postTagAsk(prompt(q), { voice: true, grounded: this.opts.grounded() });
+      const ask = await postTagAsk(prompt(q, this.persona), {
+        voice: true,
+        grounded: this.opts.grounded(),
+        ...(this.persona.slug !== undefined && { assistant: this.persona.slug }),
+      });
       const stream = new SentenceStream();
       const until = Date.now() + ANSWER_WITHIN_MS;
       for (;;) {
@@ -274,7 +318,7 @@ export class VoiceAgent {
       if (generation === this.generation) {
         const said = spoken.join(" ");
         if (said !== "") {
-          this.opts.events.caption({ who: "LosOS", text: said, agent: true });
+          this.opts.events.caption({ who: this.persona.name, text: said, agent: true });
           this.dialog.answered(q.user, said, Date.now());
         }
       }
@@ -284,7 +328,7 @@ export class VoiceAgent {
         this.cancel = null;
       }
       if (current && generation === this.generation && !this.closed) {
-        this.opts.events.phase("listening");
+        this.phase("listening");
         const next = this.later;
         this.later = null;
         if (next !== null) void this.answer(next);
@@ -302,6 +346,8 @@ export class VoiceAgent {
     for (const pid of [...this.listeners.keys()]) this.deafen(pid);
     void this.session?.leave();
     this.session = null;
+    this.avatar?.close();
+    this.avatar = null;
     this.mouth.close();
     this.ears.close();
     void this.input?.close();
