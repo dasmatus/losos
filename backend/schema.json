@@ -2436,9 +2436,15 @@
       },
       "POST /api/tag/ask": {
         "auth": true,
-        "in": "{\"question\",\"assistant\" (optional, a slug; the built-in by default),\"room\" (optional),\"skills\" (optional, at most 8 slugs)}",
+        "in": "{\"question\",\"assistant\" (optional, a slug; the built-in by default),\"room\" (optional),\"skills\" (optional, at most 8 slugs),\"voice\" (optional, true from the call agent),\"grounded\" (optional, with voice: search the asker's own files, mail and rooms for it)}",
         "out": "{\"id\":\"<24 hex>\",\"state\":\"queued\"}",
-        "note": "One ask, backgrounded: the material is gathered at the assistant's clearance and the queue answers it on the box's harness (T3 Code, OpenCode, or the box's own model). With a room, the answer posts into it as the assistant. 429-style refusals are 400 with the queue's own sentence past 128 asks."
+        "note": "One ask, backgrounded: the material is gathered at the assistant's clearance and the queue answers it on the box's harness (T3 Code, OpenCode, or the box's own model). With a room, the answer posts into it as the assistant. With `voice` set the ask runs as a mention (a person is waiting, so the memory-pressure gate does not pause it), posts nowhere and gathers none of the asker's own material unless `grounded` is set too: its answer is read aloud to a whole call. The caller reads the answer from `GET /api/tag/asks/{id}`. 429-style refusals are 400 with the queue's own sentence past 128 asks."
+      },
+      "GET /api/tag/asks/{id}": {
+        "auth": true,
+        "in": "none",
+        "out": "{\"id\":\"<24 hex>\",\"state\":\"queued|running|paused|done|failed|stopped\",\"answer\":\"...\",\"error\":null}",
+        "note": "One ask's state and the answer so far: the caller's own, an administrator's anything; 404 for anything else. The answer of a running turn grows between reads, which is how the call agent starts speaking before the turn is done."
       },
       "DELETE /api/tag/asks/{id}": {
         "auth": true,

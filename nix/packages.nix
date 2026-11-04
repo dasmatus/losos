@@ -491,7 +491,7 @@ images
       nodeModules = bunDeps {
         pname = "losos-admin-ui";
         src = ./../admin-ui/app;
-        hash = "sha256-84ymtRH4rgabFBZVk2Z2uHAtkHuVUuDQaXyz4XiZUZ4=";
+        hash = "sha256-3AhE7TLf2R56A+xpgASYDp8grZLJpj6PKmPS/4PTUIU=";
       };
     };
   });
@@ -560,6 +560,11 @@ images
   losos-stalwart = pkgs.callPackage ./stalwart.nix { };
 
   # Photos' face models (nix/face-models.nix), read by losos-cloud-photos.
+  # The call agent's speech models and the whisper.cpp engine built to
+  # WebAssembly (nix/voice.nix): served at /voice/ by modules/calls.nix, and
+  # what tests/voice-agent.browser.mjs runs in Chromium.
+  losos-voice = import ./voice.nix { inherit pkgs; };
+
   losos-face-models = import ./face-models.nix { inherit pkgs; };
   # The TPM makers' certificates boxes check gateways against
   # (nix/gateway/tpm-roots.nix, losos.proxy.gateways.tpmRoots).

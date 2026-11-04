@@ -39,6 +39,12 @@ pub enum ClientMsg {
     Join {
         call: String,
         device: String,
+        /// The page is joining on behalf of an agent (`voice/agent.ts`): a
+        /// participant that listens and speaks for the person who added it.
+        /// It is shown as an agent, never counts as a person of the room,
+        /// and is sent the call's audio but none of its video.
+        #[serde(default)]
+        agent: bool,
     },
     /// A guest's first message, on `/calls/guest/ws`.
     Guest {
@@ -80,6 +86,9 @@ pub struct MemberInfo {
     /// Whether this member is sharing their screen now.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub screen: bool,
+    /// An agent added by the member `user` (same user, same device).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub agent: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -150,7 +159,11 @@ mod tests {
     fn messages_have_the_documented_shape() {
         let m: ClientMsg =
             serde_json::from_str(r#"{"type":"join","call":"c","device":"D"}"#).unwrap();
-        assert!(matches!(m, ClientMsg::Join { ref device, .. } if device == "D"));
+        assert!(matches!(m, ClientMsg::Join { ref device, agent: false, .. } if device == "D"));
+        let m: ClientMsg =
+            serde_json::from_str(r#"{"type":"join","call":"c","device":"D","agent":true}"#)
+                .unwrap();
+        assert!(matches!(m, ClientMsg::Join { agent: true, .. }));
         let m: ClientMsg = serde_json::from_str(r#"{"type":"screen","on":true}"#).unwrap();
         assert!(matches!(m, ClientMsg::Screen { on: true }));
         let m: ClientMsg = serde_json::from_str(r#"{"type":"leave"}"#).unwrap();
@@ -168,6 +181,7 @@ mod tests {
                 user: "@m:b".into(),
                 device: "D".into(),
                 screen: false,
+                agent: false,
             }],
         })
         .unwrap();
@@ -182,6 +196,7 @@ mod tests {
                 user: "@e:b".into(),
                 device: "E".into(),
                 screen: true,
+                agent: false,
             }],
             live: None,
         })

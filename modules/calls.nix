@@ -51,6 +51,7 @@ let
   user = if config.lososInternal.sideUser == null then "shared" else config.lososInternal.sideUser;
   proxy = config.losos.proxy;
   throughEdge = proxy.enable;
+  voice = import ../nix/voice.nix { inherit pkgs; };
   edgePathEnv = "/run/losos/edge-path.env";
   edgeNone = "/run/losos/edge-none";
 
@@ -178,7 +179,17 @@ in
 
     networking.firewall.allowedUDPPorts = lib.optional (!throughEdge) cfg.udpPort;
 
-    services.nginx.virtualHosts."losos-front".locations = {
+    services.nginx.virtualHosts."losos-front".locations = lib.optionalAttrs cfg.agent.enable {
+      # The call agent's models and engines (nix/voice.nix, src/voice/): the
+      # page fetches each once and keeps it. Static files, LAN only; the
+      # worker scripts among them carry the COEP header the chat page's
+      # isolation needs (modules/containers.nix).
+      "/voice/" = {
+        alias = "${voice}/";
+        extraConfig = lanOnly;
+      };
+    }
+    // {
       # Creating a call and its signalling socket. LosOS Login first, with
       # no spare-key bypass: a call is a person's, never the box's.
       "/calls/api/" = {

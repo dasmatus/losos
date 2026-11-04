@@ -4966,20 +4966,37 @@ async fn post_tag_ask(
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
-        let material = tag_material(&api, &person, &clearance, &question)
-            .map(|hits| serde_json::json!({ "hits": hits, "skills": skills }))
-            .map_err(|e| err(StatusCode::BAD_REQUEST, &e))
-            .ok();
+        // A voice ask is a person waiting on the line, so it runs like a
+        // mention (the queue's pressure gate never pauses it), and its
+        // answer goes back to the call, not into a room. Its answer is read
+        // aloud to everyone in the call, so the asker's files, mail and
+        // rooms are not searched for it unless the page says the asker
+        // allowed that for this call (`grounded`).
+        let voice = body.get("voice").and_then(serde_json::Value::as_bool) == Some(true);
+        let grounded = body.get("grounded").and_then(serde_json::Value::as_bool) == Some(true);
+        let material = if voice && !grounded {
+            None
+        } else {
+            tag_material(&api, &person, &clearance, &question)
+                .map(|hits| serde_json::json!({ "hits": hits, "skills": skills }))
+                .map_err(|e| err(StatusCode::BAD_REQUEST, &e))
+                .ok()
+        };
         let mut job = crate::tag::queue::Job::queued(
             &person,
             &format!("{}{}", crate::tag::TAG_PREFIX, assistant.slug),
-            crate::tag::queue::Origin::Suggestion,
+            if voice {
+                crate::tag::queue::Origin::Mention
+            } else {
+                crate::tag::queue::Origin::Suggestion
+            },
             &question,
         );
         job.material = material;
         job.room = body
             .get("room")
             .and_then(serde_json::Value::as_str)
+            .filter(|_| !voice)
             .map(str::to_string);
         // The web step is the ask's own opt-in: the composer's pill and
         // the MCP's schema send it, and the query still carries the
@@ -4990,6 +5007,32 @@ async fn post_tag_ask(
                 "id": job.id, "state": job.state,
             })),
             Err(e) => err(StatusCode::BAD_REQUEST, &e),
+        }
+    })
+}
+
+/// `GET /api/tag/asks/{id}` — one ask's state and the answer so far, for
+/// the caller's own, an administrator's anything. A running turn's answer
+/// grows between reads; the voice agent speaks it a sentence at a time.
+async fn get_tag_ask(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    path: web::Path<String>,
+) -> HttpResponse {
+    guarded_as(&api, &req, "/api/tag/asks/{id}", false, |who| {
+        let (person, admin) = tag_who(who);
+        let id = path.into_inner();
+        let state = api.tag.state();
+        match state
+            .jobs
+            .iter()
+            .find(|j| j.id == id && (admin || j.person == person))
+        {
+            Some(job) => HttpResponse::Ok().json(serde_json::json!({
+                "id": job.id, "state": job.state,
+                "answer": job.answer, "error": job.error,
+            })),
+            None => err(StatusCode::NOT_FOUND, "no such ask"),
         }
     })
 }
@@ -7736,6 +7779,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/tag/clearance", web::post().to(post_tag_clearance))
                 .route("/api/search", web::get().to(get_search))
                 .route("/api/tag/ask", web::post().to(post_tag_ask))
+                .route("/api/tag/asks/{id}", web::get().to(get_tag_ask))
                 .route("/api/tag/asks/{id}", web::delete().to(delete_tag_ask))
                 .route("/api/tag/suggest", web::get().to(get_tag_suggest))
                 // Everything else is a plugin's, or nobody's (crate::plugin).

@@ -5020,12 +5020,25 @@ export function putTagClearance(level: string): Promise<{ ok: true }> {
 }
 
 /** POST /api/tag/ask — a background ask, the suggestion's own send. */
-export function postTagAsk(question: string, options: { assistant?: string; room?: string; skills?: string[] } = {}): Promise<{ id: string; state: string }> {
+export function postTagAsk(question: string, options: { assistant?: string; room?: string; skills?: string[]; voice?: boolean; grounded?: boolean } = {}): Promise<{ id: string; state: string }> {
   return call<{ id: string; state: string }>("/api/tag/ask", {
     method: "POST",
     contentType: "application/json",
-    body: JSON.stringify({ question, ...(options.assistant !== undefined && { assistant: options.assistant }), ...(options.room !== undefined && { room: options.room }), ...(options.skills !== undefined && { skills: options.skills }) }),
+    body: JSON.stringify({ question, ...(options.assistant !== undefined && { assistant: options.assistant }), ...(options.room !== undefined && { room: options.room }), ...(options.skills !== undefined && { skills: options.skills }), ...(options.voice === true && { voice: true }), ...(options.grounded === true && { grounded: true }) }),
   });
+}
+
+export interface TagAsk {
+  id: string;
+  state: "queued" | "running" | "paused" | "done" | "failed" | "stopped";
+  /** The answer so far; it grows while the turn runs. */
+  answer: string;
+  error: string | null;
+}
+
+/** GET /api/tag/asks/{id} — one ask, as it stands. */
+export function getTagAsk(id: string, options: RequestOptions = {}): Promise<TagAsk> {
+  return call<TagAsk>(`/api/tag/asks/${encodeURIComponent(id)}`, options);
 }
 
 /** POST /api/tag/asks/{id} — stop one ask. */

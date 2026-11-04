@@ -84,6 +84,7 @@
     "POST /api/tag/clearance": "signed-in",
     "GET /api/search": "signed-in",
     "POST /api/tag/ask": "signed-in",
+    "GET /api/tag/asks/{id}": "signed-in",
     "DELETE /api/tag/asks/{id}": "signed-in",
     "GET /api/tag/suggest": "signed-in",
     "POST /api/mail/folders": "signed-in",
