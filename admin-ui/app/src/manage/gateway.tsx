@@ -143,14 +143,50 @@ function Passport({
   );
 }
 
+/** The largest settings or signature file the form reads, matching the edge's
+ *  own cap on the settings it accepts. */
+const MAX_FILE = 512 * 1024;
+
 function ClaimForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
   const t = useT();
   const settingsId = React.useId();
   const signatureId = React.useId();
+  const settingsFileId = React.useId();
+  const signatureFileId = React.useId();
   const [settings, setSettings] = React.useState("");
   const [signature, setSignature] = React.useState("");
   const [problem, setProblem] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
+
+  /** Take a chosen file whole, so an owner uploads the settings and the
+   *  detached signature without pasting either. */
+  const readFile = async (file: File | undefined, set: (text: string) => void) => {
+    if (file === undefined) return;
+    if (file.size > MAX_FILE) {
+      setProblem(t("manage.gateway.fileTooBig", { name: file.name }));
+      return;
+    }
+    set(await file.text());
+  };
+
+  /** A hidden file input the label opens: paste stays, and the same content
+   *  arrives as one upload. */
+  const pickFile = (id: string, testid: string, set: (text: string) => void, accept: string) => (
+    <label htmlFor={id} className="ml-2 cursor-pointer text-accent underline-offset-2 hover:underline">
+      {t("manage.gateway.chooseFile")}
+      <input
+        id={id}
+        type="file"
+        hidden
+        accept={accept}
+        data-testid={testid}
+        onChange={(event) => {
+          void readFile(event.target.files?.[0], set);
+          event.target.value = "";
+        }}
+      />
+    </label>
+  );
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -172,9 +208,12 @@ function ClaimForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => v
     <StackRow last>
       <form className="flex flex-col gap-3" onSubmit={(event) => void submit(event)} noValidate>
         <div>
-          <label htmlFor={settingsId} className="mb-1.5 block text-[13px] font-medium">
-            {t("manage.gateway.settingsLabel")}
-          </label>
+          <p className="mb-1.5 text-[13px]">
+            <label htmlFor={settingsId} className="font-medium">
+              {t("manage.gateway.settingsLabel")}
+            </label>
+            {pickFile(settingsFileId, "gateway-settings-file", setSettings, ".txt,.asc,.md,.json,text/plain,application/json")}
+          </p>
           <Textarea
             id={settingsId}
             rows={5}
@@ -185,9 +224,12 @@ function ClaimForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => v
           />
         </div>
         <div>
-          <label htmlFor={signatureId} className="mb-1.5 block text-[13px] font-medium">
-            {t("manage.gateway.signatureLabel")}
-          </label>
+          <p className="mb-1.5 text-[13px]">
+            <label htmlFor={signatureId} className="font-medium">
+              {t("manage.gateway.signatureLabel")}
+            </label>
+            {pickFile(signatureFileId, "gateway-signature-file", setSignature, ".txt,.asc,.sig,text/plain,application/pgp-signature")}
+          </p>
           <Textarea
             id={signatureId}
             rows={4}
