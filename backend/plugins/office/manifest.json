@@ -1,0 +1,12 @@
+{
+  "name": "office",
+  "description": "LosOS Office's conversions: a document to Word, OpenDocument, PDF, a web page or PowerPoint, and a Word or OpenDocument file back to a document.",
+  "routes": [
+    { "method": "GET", "path": "/api/office/formats" },
+    { "method": "POST", "path": "/api/office/export/{format}", "maxBody": 67108864 },
+    { "method": "POST", "path": "/api/office/import/{format}", "maxBody": 67108864 }
+  ],
+  "http": ["unix:${LOSOS_CONVERT_SOCKET:-/run/losos-convert.sock}"],
+  "limits": { "memoryMiB": 512, "timeoutSecs": 240 },
+  "config": { "socket": "${LOSOS_CONVERT_SOCKET:-/run/losos-convert.sock}" }
+}

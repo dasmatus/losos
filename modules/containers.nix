@@ -675,6 +675,20 @@ in
               proxy_send_timeout 1200s;
             '';
           };
+          # LosOS Office's conversions (modules/office-convert.nix): a
+          # document with its pictures, or a Word file, up to the office
+          # plugin's 64 MiB, and a container to start under emulation.
+          "/api/office/" = {
+            proxyPass = "http://127.0.0.1:${toString adminApiPort}";
+            extraConfig = ''
+              ${lanOnly}
+              proxy_set_header X-Real-IP $remote_addr;
+              ${notTheEdge}
+              client_max_body_size 64m;
+              proxy_read_timeout 300s;
+              proxy_send_timeout 300s;
+            '';
+          };
         })
         # The terminal's two routes (docs/terminal-access.md), the one part
         # of /api/ the tunnel may reach, so that `losos` reaches the box away

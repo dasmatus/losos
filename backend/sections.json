@@ -35,6 +35,9 @@
     "GET /internal/chat/authz": "internal",
 
     "GET /api/me": "signed-in",
+    "GET /api/office/formats": "signed-in",
+    "POST /api/office/export/{format}": "signed-in",
+    "POST /api/office/import/{format}": "signed-in",
     "GET /api/state": "signed-in",
     "GET /api/settings": "signed-in",
     "GET /api/status": "signed-in",

@@ -153,6 +153,8 @@ const CLASSES: &[&str] = &[
     "mdx-",
     "menclose-",
     "page-break",
+    // Speaker notes as Pandoc reads them, in an export.
+    "notes",
     "task-box",
     "task-list-item",
     // Notes' own syntax (its pass in this crate).
@@ -216,7 +218,7 @@ fn make(extra: &[&'static str]) -> ammonia::Builder<'static> {
                 }
                 map
             })
-            .generic_attributes(["class", "id"].into_iter().collect())
+            .generic_attributes(["class", "id", "role"].into_iter().collect())
             .generic_attribute_prefixes(["data-"].into_iter().collect())
             .url_schemes(["http", "https", "mailto"].into_iter().collect())
             .url_relative(ammonia::UrlRelative::PassThrough)
@@ -233,6 +235,9 @@ fn make(extra: &[&'static str]) -> ammonia::Builder<'static> {
                     (!kept.is_empty()).then(|| kept.join(" ").into())
                 }
                 "id" => id_ok(value).then(|| value.into()),
+                // The footnotes' roles, which screen readers and Pandoc read.
+                "role" => matches!(value, "doc-noteref" | "doc-endnotes" | "doc-backlink")
+                    .then(|| value.into()),
                 "align" => matches!(value, "left" | "center" | "right").then(|| value.into()),
                 "colspan" | "rowspan" | "start" => (value.len() <= 6
                     && value.bytes().all(|b| b.is_ascii_digit()))

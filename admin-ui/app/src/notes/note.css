@@ -235,7 +235,7 @@
 .note-body .footnotes-sep {
   margin: 2em 0 1em;
 }
-.note-body .footnote-ref a,
+.note-body .footnote-ref,
 .note-body .footnote-backref {
   text-decoration: none;
 }

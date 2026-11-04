@@ -867,6 +867,7 @@ in
         "/api/".extraConfig = askAuthelia;
         "= /api/vms/images".extraConfig = askAuthelia;
         "= /api/market/llm/chat".extraConfig = askAuthelia;
+        "/api/office/".extraConfig = askAuthelia;
       }
       # LosOS Login's cookie is Secure, so the pages without JavaScript are
       # https too, the sign-in steps first.

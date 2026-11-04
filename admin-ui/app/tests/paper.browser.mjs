@@ -14,8 +14,11 @@
  * presentation has its slides in a strip and plays full screen, and a
  * strip longer than the window scrolls inside itself instead of growing
  * the page; a document with script in it runs none of it and keeps it as
- * written; the file's menu offers Office; and none of it adds to the
- * policy violations a plain load logs.
+ * written; the file's menu offers Office; Download sends the shared text
+ * and its pictures to the box's converter and saves what comes back under
+ * the file's name; a Word file opens as a document made beside it, the
+ * original untouched; and none of it adds to the policy violations a plain
+ * load logs.
  *
  * The box's live-editing room is tests/yroom.mjs, reached through the
  * harness's routeWebSocket on the whole context, so a tab an opener opens
@@ -47,7 +50,7 @@ const entry = (id, path, mime = 'text/vnd.losos.paper') => ({
 /* LosOS Cloud for one person, with a folder holding `taken` names already
  * and `files` listed. Every PUT is kept in `made`, with its body. A room
  * named in `room` answers the live-editing socket. */
-async function openCloud(path, { files = [], taken = [], byId = {}, room = null, login = 'matus', name = 'Matus', perm = 'edit' } = {}) {
+async function openCloud(path, { files = [], taken = [], byId = {}, room = null, login = 'matus', name = 'Matus', perm = 'edit', office = null } = {}) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: 'en-US', colorScheme: 'light' });
   const errors = [];
   // Every tab of the context, the ones an opener opens included.
@@ -66,7 +69,19 @@ async function openCloud(path, { files = [], taken = [], byId = {}, room = null,
     const url = new URL(req.url());
     const p = url.pathname.slice('/cloud/api'.length);
     if (p === '/me') return json(route, 200, { login, name, email: '', used: 1e9, free: 9e9, product: 'LosOS Cloud' });
-    if (p === '/files') return json(route, 200, { folder: { ...entry(1, ''), dir: true }, entries: files });
+    if (p === '/files') {
+      // A folder for an import's pictures is free; every other folder lists `files`.
+      if (/-files(-\d+)?$/.test(url.searchParams.get('path') ?? '')) return json(route, 404, { code: 'notFound', error: 'no' });
+      return json(route, 200, { folder: { ...entry(1, ''), dir: true }, entries: files });
+    }
+    if (p === '/files/folder' && req.method() === 'POST') {
+      const at = JSON.parse(req.postData()).path;
+      made.push({ path: at, folder: true });
+      return json(route, 201, { ...entry(next++, at), dir: true });
+    }
+    if (p === '/files/content' && req.method() === 'GET') {
+      return route.fulfill({ status: 200, contentType: 'application/octet-stream', body: `bytes of ${url.searchParams.get('path')}` });
+    }
     if (p === '/files/content' && req.method() === 'PUT') {
       const at = url.searchParams.get('path');
       if (taken.includes(at)) return json(route, 409, { code: 'exists', error: 'exists' });
@@ -91,13 +106,26 @@ async function openCloud(path, { files = [], taken = [], byId = {}, room = null,
     if (p === '/office/open') return json(route, 500, { error: 'not Collabora' });
     return json(route, 200, {});
   });
+  // LosOS Office's conversions (lososd's office plugin), on a box whose
+  // converter is on; elsewhere the page offers none.
+  const converted = [];
+  await context.route('**/api/office/**', async (route) => {
+    const req = route.request();
+    const url = new URL(req.url());
+    // Collabora's calls are under /cloud/api/office, the cloud's own.
+    if (!url.pathname.startsWith('/api/office/')) return route.fallback();
+    if (office === null) return json(route, 503, { error: 'off' });
+    if (url.pathname === '/api/office/formats') return json(route, 200, { exports: ['docx', 'odt', 'pdf', 'html', 'pptx'], imports: ['docx', 'odt'] });
+    converted.push({ path: url.pathname, query: url.search, type: req.headers()['content-type'], body: req.postData() });
+    return office(route, url);
+  });
   if (room !== null) await routeWebSocket(context, /\/cloud\/api\/collab\/ws/, (ws) => room.connect(ws, login));
   await context.addInitScript(() => {
     window.__violations = [];
     document.addEventListener('securitypolicyviolation', (e) => window.__violations.push(`${e.violatedDirective} ${e.blockedURI}`));
   });
   await page.goto(origin + path);
-  return { page, context, errors, made };
+  return { page, context, errors, made, converted };
 }
 
 const violations = (page) => page.evaluate(() => [...new Set(window.__violations)].sort());
@@ -520,6 +548,120 @@ await check('a .paper opens in Office from its menu, with its text one item away
   room.close();
 });
 
+await check('Download turns the document into Word on the box, with its pictures, and saves it under its name', async () => {
+  const source = `${SAMPLE}\n<Figure src="pictures/view.png" alt="View" />\n`;
+  const office = (route) => route.fulfill({ status: 200, contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', body: 'PK word' });
+  const { page, context, errors, converted, room } = await openPaper('Trip.paper', source, { office });
+  await page.getByTestId('paper-download').click();
+  const items = page.locator('[data-export]');
+  await items.first().waitFor();
+  assert.deepEqual(await items.evaluateAll((els) => els.map((e) => e.dataset.export)), ['docx', 'odt', 'pdf', 'html']);
+  const [download] = await Promise.all([page.waitForEvent('download'), page.locator('[data-export=docx]').click()]);
+  assert.equal(download.suggestedFilename(), 'Trip.docx');
+  assert.equal(converted.length, 1);
+  assert.equal(converted[0].path, '/api/office/export/docx');
+  const sent = JSON.parse(converted[0].body);
+  assert.equal(sent.source, room.text(), 'the shared text as it is');
+  assert.deepEqual(Object.keys(sent.pictures), ['pictures/view.png']);
+  assert.equal(atob(sent.pictures['pictures/view.png']), 'bytes of pictures/view.png');
+  assert.match(sent.lang, /^en/);
+  assert.deepEqual(errors, []);
+  await context.close();
+  room.close();
+});
+
+await check('a presentation downloads as PowerPoint or a web page, and a refusal is said on the page', async () => {
+  const office = (route) => json(route, 422, { error: 'Pandoc could not read it' });
+  const { page, context, errors, room } = await openPaper('Talk.slides', '<Slide layout="title">\n# Hello\n</Slide>\n', { office });
+  await page.getByTestId('paper-download').click();
+  await page.locator('[data-export]').first().waitFor();
+  assert.deepEqual(await page.locator('[data-export]').evaluateAll((els) => els.map((e) => e.dataset.export)), ['pptx', 'html']);
+  await page.locator('[data-export=pptx]').click();
+  await page.getByTestId('paper-export-error').waitFor();
+  assert.match(await page.getByTestId('paper-export-error').innerText(), /Pandoc could not read it/);
+  assert.deepEqual(errors, []);
+  await context.close();
+  room.close();
+});
+
+await check('a box whose converter is off offers no Download', async () => {
+  const { page, context, errors, room } = await openPaper('Trip.paper', SAMPLE);
+  await page.waitForTimeout(500);
+  assert.equal(await page.getByTestId('paper-download').count(), 0);
+  assert.deepEqual(errors, []);
+  await context.close();
+  room.close();
+});
+
+await check('a Word file opens as a document: the box converts it, its pictures and a .paper land beside it, the original untouched', async () => {
+  const docx = entry(90, 'Reports/Garden day.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  const room = yroom('# Garden day\n\n![Bed](Garden-day-files/media/image1.png)\n');
+  const office = (route) =>
+    json(route, 200, {
+      source: '# Garden day\n\n![Bed](Garden-day-files/media/image1.png)\n',
+      pictures: { 'Garden-day-files/media/image1.png': btoa('png bytes') },
+    });
+  const { page, context, errors, made, converted } = await openCloud('/cloud/office/90?as=paper', { byId: { 90: docx }, room, office });
+  await page.waitForURL(/\/cloud\/office\/\d+$/);
+  await page.locator('[data-testid=paper-editor][data-ready]').waitFor();
+  assert.equal(converted.length, 1);
+  assert.equal(converted[0].path, '/api/office/import/docx');
+  assert.equal(converted[0].query, '?folder=Garden-day-files');
+  assert.equal(converted[0].body, 'bytes of Reports/Garden day.docx');
+  assert.deepEqual(
+    made.map((m) => m.path),
+    ['Reports/Garden-day-files', 'Reports/Garden-day-files/media', 'Reports/Garden-day-files/media/image1.png', 'Reports/Garden day.paper'],
+  );
+  assert.equal(made[2].body, 'png bytes');
+  assert.equal(made[3].body, '# Garden day\n\n![Bed](Garden-day-files/media/image1.png)\n');
+  assert.ok(made.every((m) => m.folder || m.ifNew === '1'), 'nothing is overwritten');
+  assert.match(page.url(), new RegExp(`/cloud/office/${made[3].entry.id}$`));
+  assert.deepEqual(errors, []);
+  await context.close();
+  room.close();
+});
+
+await check('a Word file opens again into the document made from it while that is the newer', async () => {
+  const docx = { ...entry(92, 'Plan.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'), mtime: 10 };
+  const paper = { ...entry(93, 'Plan.paper'), mtime: 20 };
+  const room = yroom('# Plan\n');
+  const { page, context, errors, made, converted } = await openCloud('/cloud/office/92?as=paper', { files: [docx, paper], byId: { 92: docx, 93: paper }, room, office: (route) => json(route, 500, {}) });
+  await page.waitForURL(/\/cloud\/office\/93$/);
+  await page.locator('[data-testid=paper-editor][data-ready]').waitFor();
+  assert.deepEqual(converted, [], 'nothing was converted');
+  assert.deepEqual(made, [], 'nothing was written');
+  assert.deepEqual(errors, []);
+  await context.close();
+  room.close();
+});
+
+await check('a Word file the box cannot convert says so and offers the way back', async () => {
+  const docx = entry(91, 'Broken.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  const office = (route) => json(route, 422, { error: 'pandoc: not a Word file' });
+  const { page, context, errors, made } = await openCloud('/cloud/office/91?as=paper', { byId: { 91: docx }, office });
+  await page.locator('[data-testid=paper-import][data-state=failed]').waitFor();
+  assert.match(await page.getByRole('alert').innerText(), /not a Word file/);
+  assert.deepEqual(made, [], 'nothing was written');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await check('a Word file opens as a document from its menu where the box converts and has no Collabora', async () => {
+  const docx = entry(94, 'Notes.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  const { page, context, errors } = await openCloud('/cloud/files', { files: [docx], byId: { 94: docx }, office: (route) => json(route, 500, {}) });
+  const row = page.locator('[data-entry="Notes.docx"]');
+  await row.waitFor();
+  await row.click({ button: 'right' });
+  // The only opener there is, so it is the file's own Open.
+  const item = page.getByRole('menuitem', { name: 'Open', exact: true });
+  await item.waitFor();
+  const [tab] = await Promise.all([context.waitForEvent('page'), item.click()]);
+  await tab.waitForURL(/\/cloud\/office\/94\?as=paper$/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 await browser.close();
 await closeServer();
 finish();
+

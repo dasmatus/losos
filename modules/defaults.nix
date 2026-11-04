@@ -30,6 +30,8 @@ in
   # SPA the front vhost serves, so the admin endpoint works out of the box.
   losos.backend.package = lib.mkDefault pkgs'.losos-ctl;
   losos.backend.plugins = lib.mkDefault pkgs'.losos-plugins;
+  losos.office.convert.package = lib.mkDefault pkgs'.losos-convert;
+  losos.office.convert.image = lib.mkDefault pkgs'.losos-image-convert;
   losos.ci.pm = lib.mkDefault pkgs'.pm;
   losos.ci.pmPlugin = lib.mkDefault pkgs'.losos-ci-pm-plugin;
   losos.admin.ui = lib.mkDefault pkgs'.losos-admin-ui;

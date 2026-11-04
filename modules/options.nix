@@ -1487,6 +1487,30 @@ in
       '';
     };
 
+    # ── Office conversions (modules/office-convert.nix) ─────────────────
+    office.convert.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Download LosOS Office documents as Word, OpenDocument, PDF, web
+        pages and PowerPoint, and open Word and OpenDocument files as
+        LosOS documents. Pandoc does the work in a container with no
+        network, started for each conversion and gone after it.
+      '';
+    };
+
+    office.convert.package = lib.mkOption {
+      type = lib.types.nullOr lib.types.package;
+      default = null;
+      description = "losos-convert, which serves the conversion socket and runs inside the container.";
+    };
+
+    office.convert.image = lib.mkOption {
+      type = lib.types.nullOr lib.types.package;
+      default = null;
+      description = "The container image a conversion runs in: Pandoc, typst and losos-convert.";
+    };
+
     startupSound.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;

@@ -51,6 +51,11 @@ pub struct Writer<'a> {
     header_row: bool,
     /// What a `<Date>` is written in: `en`, `sk` or `de`.
     lang: &'static str,
+    /// Written for Pandoc to read (`Parsed::render_for_export`): page parts
+    /// left out, callouts as styled blocks, slides split by rules.
+    export: bool,
+    /// Slides written so far, for the rule between two of them.
+    slides: usize,
 }
 
 /// Where `<TableOfContents>` puts the headings, once they are all known.
@@ -61,6 +66,7 @@ pub(crate) fn render(
     resolver: &dyn Resolver,
     hook: Option<&dyn Hook>,
     lang: &'static str,
+    export: bool,
 ) -> Output {
     let mut w = Writer {
         out: String::new(),
@@ -79,6 +85,8 @@ pub(crate) fn render(
         tight: false,
         header_row: false,
         lang,
+        export,
+        slides: 0,
     };
     w.collect(&parsed.tree);
     w.node(&parsed.tree);
@@ -538,7 +546,7 @@ impl<'a> Writer<'a> {
                         .or_insert(next);
                     let id = slug(&f.identifier);
                     self.raw(&format!(
-                        "<sup><a href=\"#fn-{id}\" id=\"fnref-{id}\" class=\"footnote-ref\">{n}</a></sup>"
+                        "<a href=\"#fn-{id}\" id=\"fnref-{id}\" class=\"footnote-ref\" role=\"doc-noteref\"><sup>{n}</sup></a>"
                     ));
                 }
                 None => self.text(&format!(
@@ -668,21 +676,24 @@ impl<'a> Writer<'a> {
         match name {
             "Callout" => {
                 let kind = props.get("type").cloned().unwrap_or_else(|| "note".into());
-                self.open(
-                    "aside",
-                    node,
-                    &[
-                        ("class", format!("callout callout-{kind}")),
-                        ("data-callout", kind.clone()),
-                    ],
-                );
+                let mut attrs = vec![
+                    ("class", format!("callout callout-{kind}")),
+                    ("data-callout", kind.clone()),
+                ];
+                // Pandoc reads `data-custom-style` as the Word paragraph
+                // style of what is inside, which a template can dress.
+                if self.export {
+                    attrs.push(("data-custom-style", "Callout".to_string()));
+                }
+                let tag = if self.export { "div" } else { "aside" };
+                self.open(tag, node, &attrs);
                 if let Some(title) = props.get("title") {
                     self.raw("<p class=\"callout-title\">");
                     self.text(title);
                     self.raw("</p>");
                 }
                 self.blocks(node);
-                self.close("aside");
+                self.close(tag);
             }
             "Details" => {
                 let mut attrs = vec![("class", "mdx-details".to_string())];
@@ -790,6 +801,11 @@ impl<'a> Writer<'a> {
                 }
             }
             "Slide" => {
+                // Pandoc starts a new slide at a rule.
+                if self.export && self.slides > 0 {
+                    self.raw("<hr>");
+                }
+                self.slides += 1;
                 let mut attrs = vec![("class", "mdx-slide".to_string())];
                 if let Some(layout) = props.get("layout") {
                     attrs.push(("data-layout", layout.clone()));
@@ -799,6 +815,12 @@ impl<'a> Writer<'a> {
                 self.close("section");
             }
             "PageBreak" => self.raw("<div class=\"page-break\"></div>"),
+            // Pandoc's speaker notes are a `notes` block.
+            "Notes" if self.export => {
+                self.open("div", node, &[("class", "notes".into())]);
+                self.blocks(node);
+                self.close("div");
+            }
             "Notes" => {
                 self.open("aside", node, &[("class", "mdx-speaker-notes".into())]);
                 self.blocks(node);
@@ -815,6 +837,9 @@ impl<'a> Writer<'a> {
                 self.raw(TOC_MARK);
                 self.close("nav");
             }
+            // A page's header and footer belong to the template a file is
+            // made with, not to its text.
+            "Header" | "Footer" | "PageNumber" if self.export => {}
             "Header" | "Footer" => {
                 let (tag, class) = if name == "Header" {
                     ("header", "mdx-page-header")
@@ -1031,7 +1056,7 @@ impl<'a> Writer<'a> {
             .filter_map(|(id, f)| self.footnote_numbers.get(id).map(|n| (*n, *f)))
             .collect();
         used.sort_by_key(|(n, _)| *n);
-        self.raw("<section class=\"footnotes\"><ol>");
+        self.raw("<section class=\"footnotes\" role=\"doc-endnotes\"><ol>");
         for (_, f) in used {
             let id = slug(&f.identifier);
             self.raw(&format!("<li id=\"fn-{id}\">"));
@@ -1042,7 +1067,7 @@ impl<'a> Writer<'a> {
             }
             self.tight = was;
             self.raw(&format!(
-                " <a href=\"#fnref-{id}\" class=\"footnote-backref\">\u{21a9}</a></li>"
+                " <a href=\"#fnref-{id}\" class=\"footnote-backref\" role=\"doc-backlink\">\u{21a9}</a></li>"
             ));
         }
         self.raw("</ol></section>");

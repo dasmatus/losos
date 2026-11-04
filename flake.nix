@@ -381,6 +381,9 @@
             # Office documents in the browser: Collabora Online and its WOPI
             # host (backend/src/office/).
             ./modules/office.nix
+            # LosOS Office's conversions: Pandoc in a container with no
+            # network, one per request (backend/mdx/src/bin/losos-convert.rs).
+            ./modules/office-convert.nix
             # Its files in Windows' Network view, as an SMB share.
             ./modules/windows.nix
             # LosOS Lab's guests under libvirt on the box (losos.lab.libvirt,
@@ -696,6 +699,10 @@
         # edited as they look, and a document full of script that runs
         # nowhere (nix/tests/office-paper.nix).
         losos-office-paper = import ./nix/tests/office-paper.nix { inherit pkgs; };
+        # LosOS Office's conversions: Word, OpenDocument, PDF, a web page and
+        # PowerPoint out, Word and OpenDocument in, Pandoc in a container
+        # with no network (nix/tests/office-convert.nix).
+        losos-office-convert = import ./nix/tests/office-convert.nix { inherit pkgs; };
         losos-quick-actions = import ./nix/tests/quick-actions.nix { inherit pkgs; };
         # Not a VM: losos-mdx's browser package in Node, against the crate's
         # own expectations and its limits inside a wasm stack

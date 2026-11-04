@@ -383,6 +383,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "losos-plugin-office"
+version = "0.1.0"
+dependencies = [
+ "losos-plugin",
+ "serde_json",
+]
+
+[[package]]
 name = "losos-plugin-pages"
 version = "0.1.0"
 dependencies = [

@@ -183,6 +183,7 @@ fn assert_inert(r: &Rendered, source: &str) {
                             "mdx-",
                             "menclose-",
                             "page-break",
+                            "notes",
                             "task-",
                             "losos-",
                             "is-"
@@ -243,6 +244,26 @@ const MARKDOWN_ATTACKS: &[&str] = &[
     "<table><tr><td background=\"javascript:alert(1)\">x</td></tr></table>",
     "`<script>` and ```\n<script>\n```",
 ];
+
+#[test]
+fn an_export_is_as_inert_as_a_page() {
+    for attack in MARKDOWN_ATTACKS.iter().chain(MDX_ATTACKS) {
+        for flavour in [Flavour::Md, Flavour::Mdx] {
+            if let Ok(p) = parse(attack, flavour) {
+                assert_inert(&p.render_for_export(&Plain), attack);
+            }
+        }
+    }
+}
+
+#[test]
+fn only_the_footnotes_roles_get_through() {
+    let r = html(
+        "<a role=\"button\" href=\"x\">x</a> <span role=\"dialog\">y</span>",
+        Flavour::Md,
+    );
+    assert!(!r.html.contains("role="), "{}", r.html);
+}
 
 #[test]
 fn raw_html_in_markdown_comes_out_inert() {

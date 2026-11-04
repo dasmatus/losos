@@ -123,6 +123,30 @@ Vollbild ab; die Pfeiltasten, die Leertaste und Bild ab gehen weiter, Escape
 beendet sie. Der PDF-Knopf druckt ein Dokument als Seiten und eine
 Präsentation mit einer Folie pro Seite.
 
+## Word, PDF und PowerPoint \{#word-pdf-and-powerpoint}
+
+Ein LosOS-Dokument (`.paper`) oder eine Präsentation (`.slides`) speicherst
+du über **Herunterladen** in der Leiste über der Seite in anderen Formaten.
+Ein Dokument wird zu Word (`.docx`), OpenDocument (`.odt`), PDF oder einer
+Webseite (`.html`), eine Präsentation zu PowerPoint (`.pptx`) oder einer
+Webseite. Formeln bleiben Formeln: Word bekommt seine eigenen Gleichungen,
+die Webseite MathML. Fußnoten, Tabellen, Bilder und Hinweiskästen kommen
+mit, und in PowerPoint ist jede Folie eine Folie mit ihren Notizen. Die
+Webseite ist eine Datei mit den Bildern darin und ohne Skripte.
+
+Eine Word- oder OpenDocument-Datei in LosOS Cloud bietet im Rechtsklickmenü
+**Als LosOS-Dokument öffnen** an, und auf einer Box ohne Collabora tut ein
+Klick auf ihren Namen dasselbe. Die Box macht daraus ein `.paper` neben dem
+Original, legt die Bilder in einen Ordner mit dessen Namen und öffnet das
+neue Dokument. Das Original bleibt, wie es war. Öffnest du die Datei noch
+einmal, kommst du zum selben Dokument, solange es das neuere der beiden
+ist. OpenDocument-Dateien verlieren dabei ihre Formeln und Tabellenköpfe.
+
+Die Box wandelt mit Pandoc um, in einem Container ohne Netzwerk, der für
+jede Datei neu startet, also wird nichts verschickt. Es ist von Anfang an
+eingeschaltet (`losos.office.convert.enable`). Wie die Verwaltungsseiten
+antwortet es nur im eigenen Netzwerk der Box.
+
 ## Was privat bleibt \{#what-stays-private}
 
 Der Editor läuft auf der Box und liest das Dokument direkt von ihrer

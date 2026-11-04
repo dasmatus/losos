@@ -2,10 +2,12 @@
  * takes the width and the height under the cloud's top bar, like a text
  * document at /cloud/edit/:file. A `.paper` or `.slides` file is LosOS
  * Office's own (paper/), a Markdown file opens in the Markdown editor
- * (markdown/), and everything else is Collabora's. */
+ * (markdown/), a Word or OpenDocument file asked for with `?as=paper`
+ * becomes a `.paper` beside it (paper/import-page.tsx), and everything else
+ * is Collabora's. */
 
 import * as React from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Spinner } from "@/components/ui/spinner";
 import { useT } from "@/lib/i18n-react";
 import { cloud, isAbort, type Entry } from "../api";
@@ -13,6 +15,8 @@ import { OfficeEditor } from "./editor";
 import { openOffice } from "./api";
 import { MarkdownOffice } from "./markdown/editor";
 import { isMarkdown } from "./markdown/new";
+import { importsAs } from "./paper/convert";
+import { ImportPage } from "./paper/import-page";
 import { isPaper } from "./paper/new";
 
 const PaperOffice = React.lazy(() => import("./paper/editor").then((m) => ({ default: m.PaperOffice })));
@@ -21,6 +25,7 @@ export function OfficePage() {
   const t = useT();
   const { file = "" } = useParams();
   const navigate = useNavigate();
+  const [search] = useSearchParams();
   const load = React.useCallback(() => openOffice(file), [file]);
   // Back where the person came from; a document opened in a tab of its own
   // goes to the files.
@@ -66,6 +71,10 @@ export function OfficePage() {
         <PaperOffice key={file} entry={entry.entry} onClose={close} />
       </React.Suspense>
     );
+  }
+  // A Word or OpenDocument file asked for as a document of LosOS Office's own.
+  if (entry.entry !== null && search.get("as") === "paper" && importsAs(entry.entry.name ?? "") !== null) {
+    return <ImportPage key={file} entry={entry.entry} onClose={close} />;
   }
   if (entry.entry !== null && isMarkdown(entry.entry.name ?? "")) {
     return <MarkdownOffice key={file} entry={entry.entry} onClose={close} />;

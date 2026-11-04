@@ -307,7 +307,14 @@ impl Parsed {
     /// Writes the document out, handing the reserved `losos:` elements a
     /// pass put in the tree to `hook`.
     pub fn render_with(&self, resolver: &dyn Resolver, hook: Option<&dyn Hook>) -> Rendered {
-        self.finish(resolver, hook, sanitize::clean)
+        self.finish(resolver, hook, sanitize::clean, false)
+    }
+
+    /// Writes the document out for Pandoc to make a file of: the header,
+    /// footer and page number are left to the template, a callout is a
+    /// block with a Word style, and slides are split by rules.
+    pub fn render_for_export(&self, resolver: &dyn Resolver) -> Rendered {
+        self.finish(resolver, None, sanitize::clean, true)
     }
 
     /// Writes the tree out and runs `clean`, an allowlist, over the HTML.
@@ -316,6 +323,7 @@ impl Parsed {
         resolver: &dyn Resolver,
         hook: Option<&dyn Hook>,
         clean: fn(&str) -> String,
+        export: bool,
     ) -> Rendered {
         let (properties, properties_error) = properties(self.front_matter.as_deref());
         let lang = properties
@@ -324,7 +332,7 @@ impl Parsed {
             .and_then(|l| l.as_str())
             .or(self.lang.as_deref())
             .map_or("en", date::lang);
-        let out = render::render(self, resolver, hook, lang);
+        let out = render::render(self, resolver, hook, lang, export);
         let mut problems = self.problems.clone();
         problems.extend(out.problems);
         problems.sort_by_key(|p| (p.place.line, p.place.column));

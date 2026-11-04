@@ -459,7 +459,7 @@ pub fn blocks_used(rendered: &Rendered) -> Vec<String> {
 impl Parsed {
     /// Writes a page out, its placeholders kept by the page allowlist.
     pub(crate) fn render_page(&self, resolver: &dyn Resolver, hook: &dyn Hook) -> Rendered {
-        self.finish(resolver, Some(hook), crate::sanitize::clean_page)
+        self.finish(resolver, Some(hook), crate::sanitize::clean_page, false)
     }
 }
 

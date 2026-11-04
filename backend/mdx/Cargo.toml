@@ -22,6 +22,13 @@ crate-type = ["cdylib", "rlib"]
 [features]
 # The browser package (nix/packages.nix, losos-mdx-wasm).
 wasm = ["dep:wasm-bindgen"]
+# losos-convert, Office's conversions through Pandoc (src/bin/losos-convert.rs,
+# nix/packages.nix's losos-convert).
+convert = ["dep:base64"]
+
+[[bin]]
+name = "losos-convert"
+required-features = ["convert"]
 
 [dependencies]
 # markdown-rs: CommonMark, GFM, front matter, maths and MDX's JSX, to mdast.
@@ -36,6 +43,7 @@ serde_yaml = "0.9"
 # any other version (as admin-ui/lab/core does).
 wasm-bindgen = { version = "=0.2.127", optional = true }
 math-core = "0.9.0"
+base64 = { version = "0.22", optional = true }
 
 [profile.release]
 opt-level = "z"

@@ -12,7 +12,9 @@
  * A presentation is a run of `<Slide>`s: the strip on the left draws them,
  * the page shows each as a 16:9 card, and Present plays them full screen.
  * Print, or Save as PDF in the print dialog, prints the page with its
- * header, footer and page numbers in the margins. */
+ * header, footer and page numbers in the margins. Download hands the text
+ * to the box, which makes Word, OpenDocument, PDF, PowerPoint or a web
+ * page of it (convert.ts). */
 
 import * as React from "react";
 import { baseKeymap, chainCommands, exitCode } from "prosemirror-commands";
@@ -25,9 +27,10 @@ import { EditorView } from "prosemirror-view";
 import { WebsocketProvider } from "y-websocket";
 import * as Y from "yjs";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ArrowLeft01Icon, PlayIcon, PrinterIcon } from "@hugeicons/core-free-icons";
+import { ArrowDown01Icon, ArrowLeft01Icon, Download01Icon, PlayIcon, PrinterIcon } from "@hugeicons/core-free-icons";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { getProfile, type Profile } from "@/lib/api";
@@ -42,6 +45,7 @@ import type { Connection, Presence } from "../../collab/editor";
 import { Faces } from "../../collab/faces";
 import { accentFor, nameOf as loginOf } from "../../collab/people";
 import { NameDialog, explain } from "../../dialogs";
+import { EXPORTS, exportDocument, officeFormats, save, type ExportFormat } from "./convert";
 import { hardBreak, insertBlock, markdownRules, splitItem, toggle, indent, outdent, applyMark, marks as M } from "./commands";
 import { Fields } from "./fields";
 import { DEFAULT_PAGE, pageOf, printRule, properties, withPage, type PageSetup } from "./page";
@@ -65,6 +69,16 @@ interface Comment {
   author: string | null;
   date: string | null;
   quote: string;
+}
+
+/** The pictures a document shows, by the names it writes them with. */
+function picturesOf(state: EditorState): string[] {
+  const out: string[] = [];
+  state.doc.descendants((node) => {
+    if (node.type.name === "figure" || node.type.name === "image") out.push(String(node.attrs["src"]));
+    return true;
+  });
+  return out;
 }
 
 function commentsOf(state: EditorState): Comment[] {
@@ -145,6 +159,17 @@ export function PaperOffice({ entry: first, onClose }: { entry: Entry; onClose: 
   const [renaming, setRenaming] = React.useState(false);
   const [presenting, setPresenting] = React.useState<number | null>(null);
   const [pictureError, setPictureError] = React.useState<string | null>(null);
+  const [exporting, setExporting] = React.useState<ExportFormat | null>(null);
+  const [exportError, setExportError] = React.useState<string | null>(null);
+  const textRef = React.useRef<Y.Text | null>(null);
+  // What the box converts to; nothing is offered while it does not say.
+  const [convertible, setConvertible] = React.useState<readonly ExportFormat[]>([]);
+  React.useEffect(() => {
+    officeFormats().then(
+      (f) => setConvertible(f.exports),
+      () => setConvertible([]),
+    );
+  }, []);
   const mountRef = React.useRef<HTMLDivElement>(null);
   const fileInput = React.useRef<HTMLInputElement>(null);
   const history = React.useRef<{ undo: () => boolean; redo: () => boolean } | null>(null);
@@ -204,6 +229,7 @@ export function PaperOffice({ entry: first, onClose }: { entry: Entry; onClose: 
     if (!ready || meta === null || host === null) return;
     const doc = new Y.Doc();
     const ytext = doc.getText(TEXT);
+    textRef.current = ytext;
     const provider = new WebsocketProvider(collab.server(), "ws", doc, {
       params: collab.params(entry.id),
       disableBc: true,
@@ -287,6 +313,7 @@ export function PaperOffice({ entry: first, onClose }: { entry: Entry; onClose: 
       pm.destroy();
       doc.destroy();
       history.current = null;
+      textRef.current = null;
       setView(null);
       setState(null);
       delete host.dataset["ready"];
@@ -371,6 +398,24 @@ export function PaperOffice({ entry: first, onClose }: { entry: Entry; onClose: 
     window.print();
   };
 
+  // A download is the shared text as it is now, the file the box saves a
+  // moment later, converted on the box.
+  const download = async (format: ExportFormat) => {
+    const text = textRef.current;
+    if (text === null || view === null) return;
+    setExportError(null);
+    setExporting(format);
+    try {
+      const blob = await exportDocument(text.toString(), picturesOf(view.state), folder, format, intlTag());
+      save(blob, `${entry.name.replace(/\.(paper|slides)$/i, "")}.${format}`);
+    } catch (err) {
+      setExportError(`${t("paper.downloadFailed")}: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setExporting(null);
+    }
+  };
+  const offered = EXPORTS[kind].filter((f) => convertible.includes(f));
+
   const comments = state === null ? [] : commentsOf(state);
   const sync = state === null ? null : (syncKey.getState(state) ?? null);
 
@@ -448,6 +493,28 @@ export function PaperOffice({ entry: first, onClose }: { entry: Entry; onClose: 
           </TooltipTrigger>
           <TooltipContent side="bottom">{t("paper.print")}</TooltipContent>
         </Tooltip>
+        {offered.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={<Button variant="ghost" size="sm" disabled={view === null || exporting !== null} data-testid="paper-download" aria-busy={exporting !== null} />}
+            >
+              {exporting !== null ? (
+                <Spinner size={16} label={t("paper.downloading")} />
+              ) : (
+                <HugeiconsIcon icon={Download01Icon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+              )}
+              <span className="max-md:sr-only">{t("paper.download")}</span>
+              <HugeiconsIcon icon={ArrowDown01Icon} size={14} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {offered.map((f) => (
+                <DropdownMenuItem key={f} data-export={f} onClick={() => void download(f)}>
+                  {t(`paper.download.${f}`)}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
         {kind === "slides" && (
           <Button size="sm" onClick={() => setPresenting(current)} disabled={slides.length === 0} data-testid="paper-present">
             <HugeiconsIcon icon={PlayIcon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
@@ -483,6 +550,11 @@ export function PaperOffice({ entry: first, onClose }: { entry: Entry; onClose: 
           <a href={`/cloud/edit/${entry.id}`} className={buttonVariants({ variant: "secondary", size: "sm" })}>
             {t("paper.openText")}
           </a>
+        </div>
+      )}
+      {exportError !== null && (
+        <div role="alert" className="paper-chrome-bar border-b border-hair bg-crit/10 px-3 py-2 text-[13px]" data-testid="paper-export-error">
+          {exportError}
         </div>
       )}
       {pictureError !== null && (

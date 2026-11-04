@@ -113,6 +113,30 @@ ju prehrá na celú obrazovku; šípky, medzerník a Page Down ňou posúvajú a
 Escape ju ukončí. Tlačidlo PDF vytlačí dokument ako strany a prezentáciu po
 jednej snímke na stranu.
 
+## Word, PDF a PowerPoint \{#word-pdf-and-powerpoint}
+
+Dokument LosOS (`.paper`) alebo prezentáciu (`.slides`) uložíte v inom
+formáte cez **Stiahnuť** na lište nad stránkou. Z dokumentu sa stane Word
+(`.docx`), OpenDocument (`.odt`), PDF alebo webová stránka (`.html`), z
+prezentácie PowerPoint (`.pptx`) alebo webová stránka. Vzorce zostanú
+vzorcami: Word dostane svoje vlastné rovnice a webová stránka MathML.
+Poznámky pod čiarou, tabuľky, obrázky a zvýraznené bloky idú s nimi a v
+PowerPointe je každá snímka snímkou aj s poznámkami rečníka. Webová stránka
+je jeden súbor s obrázkami vo vnútri a bez skriptov.
+
+Súbor Word alebo OpenDocument v LosOS Cloud ponúka v ponuke pravého
+tlačidla **Otvoriť ako dokument LosOS** a na boxe bez Collabory to isté
+urobí aj kliknutie na jeho názov. Box z neho urobí `.paper` vedľa
+pôvodného súboru, jeho obrázky uloží do priečinka pomenovaného podľa neho a
+otvorí nový dokument. Pôvodný súbor zostane nezmenený. Keď ho otvoríte
+znova, otvorí sa ten istý dokument, kým je novší z tých dvoch. Súbory
+OpenDocument pri tom prídu o vzorce a hlavičky tabuliek.
+
+Box prevádza súbory Pandocom v kontajneri, ktorý nemá sieť a pre každý
+súbor sa spúšťa nanovo, takže sa nikam nič neposiela. Je zapnutý od
+začiatku (`losos.office.convert.enable`). Ako stránky správy odpovedá iba
+vo vlastnej sieti boxu.
+
 ## Čo zostáva súkromné \{#what-stays-private}
 
 Editor beží na zariadení a dokument číta priamo z jeho disku. Nič sa

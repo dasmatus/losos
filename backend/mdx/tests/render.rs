@@ -1,6 +1,6 @@
 //! What a document becomes: Markdown, the components, the result's fields.
 
-use losos_mdx::{render, Flavour, Plain, Rendered, Resolver};
+use losos_mdx::{parse, render, Flavour, Plain, Rendered, Resolver};
 
 fn mdx(source: &str) -> Rendered {
     render(source, Flavour::Mdx, &Plain).unwrap()
@@ -73,10 +73,10 @@ fn tables_tasks_and_footnotes() {
     assert!(r.html.contains("<ul class=\"contains-task-list\"><li class=\"task-list-item\"><span class=\"task-box\" data-checked=\"true\">\u{2611}</span> done</li>"));
     assert!(r
         .html
-        .contains("<sup><a href=\"#fn-n\" id=\"fnref-n\" class=\"footnote-ref\""));
-    assert!(r
-        .html
-        .contains("<section class=\"footnotes\"><ol><li id=\"fn-n\"><p>The note.</p>"));
+        .contains("<a href=\"#fn-n\" id=\"fnref-n\" class=\"footnote-ref\" role=\"doc-noteref\" rel=\"noopener noreferrer\"><sup>"), "{}", r.html);
+    assert!(r.html.contains(
+        "<section class=\"footnotes\" role=\"doc-endnotes\"><ol><li id=\"fn-n\"><p>The note.</p>"
+    ));
 }
 
 #[test]
@@ -349,4 +349,30 @@ fn a_date_is_words_in_the_documents_language_then_the_readers() {
         .render(&Plain)
         .html
         .contains(">28. októbra 2026</time>"));
+}
+
+#[test]
+fn an_export_leaves_page_parts_to_the_template() {
+    let doc =
+        "<Callout type=\"tip\">\nGloves\n</Callout>\n\n<Footer>Page <PageNumber /></Footer>\n";
+    let r = parse(doc, Flavour::Mdx).unwrap().render_for_export(&Plain);
+    assert!(r.html.starts_with("<div "), "{}", r.html);
+    assert!(
+        r.html.contains("data-custom-style=\"Callout\""),
+        "{}",
+        r.html
+    );
+    assert!(!r.html.contains("Page"), "{}", r.html);
+    // The same document on a page keeps its footer.
+    assert!(mdx(doc).html.contains("<footer class=\"mdx-page-footer\">"));
+
+    let deck =
+        "<Slide>\n# One\n</Slide>\n\n<Slide>\n# Two\n\n<Notes>\nSay hi\n</Notes>\n</Slide>\n";
+    let r = parse(deck, Flavour::Mdx).unwrap().render_for_export(&Plain);
+    assert_eq!(r.html.matches("<hr>").count(), 1, "{}", r.html);
+    assert!(
+        r.html.contains("<div class=\"notes\"><p>Say hi</p></div>"),
+        "{}",
+        r.html
+    );
 }

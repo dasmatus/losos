@@ -169,8 +169,58 @@ let
     dir = ./../backend/mdx;
     wasm = "losos_mdx";
     features = [ "wasm" ];
-    cargoHash = "sha256-hyHEBRx7gLddFz4Y/Dqir9q4NpIr5wvRwDeTA1QyTvU=";
+    cargoHash = "sha256-uD8ur6hwn8t2leTMX+A85THnX3IkqK/berAOOVJQWzc=";
   };
+  # losos-convert (backend/mdx/src/bin/losos-convert.rs): LosOS Office's
+  # conversions. The same program serves the socket on the box and runs
+  # Pandoc inside the container below. Same lock as losos-mdx-wasm, so the
+  # same vendored crates.
+  losos-convert = pkgs.rustPlatform.buildRustPackage {
+    pname = "losos-convert";
+    version = "0.1.0";
+    src = lib.cleanSource ./../backend/mdx;
+    cargoHash = "sha256-uD8ur6hwn8t2leTMX+A85THnX3IkqK/berAOOVJQWzc=";
+    buildFeatures = [ "convert" ];
+    cargoBuildFlags = [
+      "--bin"
+      "losos-convert"
+    ];
+    doCheck = false;
+    meta.mainProgram = "losos-convert";
+  };
+  # What a conversion runs in (modules/office-convert.nix): Pandoc, typst for
+  # PDF with Inter beside the fonts typst carries, and losos-convert as the
+  # entry point. No shell, no network tools. The tag is dockerTools' hash of
+  # the contents, so a new build is a new name and is loaded again.
+  losos-image-convert = pkgs.dockerTools.buildLayeredImage {
+    name = "losos-convert";
+    contents = [
+      pkgs.pandoc
+      pkgs.typst
+      losos-convert
+      pkgs.dockerTools.fakeNss
+    ];
+    extraCommands = ''
+      mkdir -p tmp
+      chmod 1777 tmp
+    '';
+    config = {
+      Entrypoint = [ "${losos-convert}/bin/losos-convert" ];
+      Env = [
+        "PATH=${
+          lib.makeBinPath [
+            pkgs.pandoc
+            pkgs.typst
+          ]
+        }"
+        "HOME=/tmp"
+        "LANG=C.UTF-8"
+        "TYPST_FONT_PATHS=${pkgs.inter}/share/fonts"
+      ];
+      WorkingDir = "/tmp";
+    };
+  };
+
   # Copied to src/mdx/pkg (gitignored; `bun run mdx` writes it in a
   # checkout) by both builds of the UI, in preConfigure rather than preBuild:
   # the VM tests that build the UI without the Lab replace preBuild, and
@@ -304,7 +354,7 @@ let
   # build a set with the probe in it.
   # backend/plugins' vendored crates: lososd's plugins and Mesh CI's pm
   # plugin are built from the one workspace.
-  pluginsCargoHash = "sha256-30apxXXXZwQQcm+GUoXqqQPLZlkNggwwjlntT8/UWb4=";
+  pluginsCargoHash = "sha256-50Z69FTNvnF0FK7u+5ss5FE26SmQlhhjXJLtvst/TV4=";
   lososPlugins =
     {
       pname ? "losos-plugins",
@@ -319,6 +369,7 @@ let
         "hidden"
         "basic"
         "pages"
+        "office"
       ],
     }:
     pkgs.rustPlatform.buildRustPackage {
@@ -401,7 +452,7 @@ images
   inherit losos-image-ci-base;
   inherit losos-basic-classes;
   inherit losos-lab-core losos-lab-render losos-lab-virt;
-  inherit losos-mdx-wasm;
+  inherit losos-mdx-wasm losos-convert losos-image-convert;
 
   losos-admin-ui = pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
     pname = "losos-admin-ui";

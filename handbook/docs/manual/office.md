@@ -112,6 +112,30 @@ the right as it will look. **Present** plays it full screen; the arrow
 keys, Space and Page Down move through it and Escape ends it. The PDF
 button prints a document as pages, or a presentation one slide a page.
 
+## Word, PDF and PowerPoint
+
+A LosOS document (`.paper`) or presentation (`.slides`) goes out in other
+formats from **Download** in the bar above the page. A document becomes
+Word (`.docx`), OpenDocument (`.odt`), PDF or a web page (`.html`); a
+presentation becomes PowerPoint (`.pptx`) or a web page. Equations stay
+equations: Word gets its own maths and the web page gets MathML. Footnotes,
+tables, pictures and callouts come along, and in PowerPoint each slide is a
+slide with its speaker notes. The web page is one file with the pictures
+inside it and no script.
+
+A Word or OpenDocument file in LosOS Cloud offers **Open as a LosOS
+document** in its right-click menu, and clicking its name does the same on
+a box without Collabora. The box makes a `.paper` of it beside the
+original, puts its pictures in a folder named after it and opens the new
+document. The original stays as it was. Opening it again goes to the same
+document while that document is the newer of the two. OpenDocument files
+lose their equations and table headings on the way in.
+
+The box converts with Pandoc, in a container that has no network and
+starts fresh for each file, so nothing is sent anywhere. It is on by
+default (`losos.office.convert.enable`). Like the admin pages, it answers
+on the box's own network only.
+
 ## What stays private
 
 The editor runs on the box and reads the document straight from the box's
