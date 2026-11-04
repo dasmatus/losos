@@ -491,7 +491,7 @@ images
       nodeModules = bunDeps {
         pname = "losos-admin-ui";
         src = ./../admin-ui/app;
-        hash = "sha256-DFmqewfobquHdVcqVeEHcuSr1pV5loAp5wt2JJM55bY=";
+        hash = "sha256-On9ughoIxHYcBPYpm1b3mi1RtSaz3JnimOZCX9p8+Es=";
       };
     };
   });
