@@ -54,10 +54,10 @@ let
     { click = sel "[data-slot=${slot}]"; }
     { waitFor = sel "[data-slot=${slot}-choices]"; }
   ];
-  # A person's own background, as the pane names it (before: the box's).
+  # A person's own background, as the pane names it.
   lookPane = {
     role = "radiogroup";
-    name = if after then "Your background" else "Background";
+    name = "Your background";
   };
   pick = name: toast: [
     {
