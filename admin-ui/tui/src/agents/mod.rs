@@ -180,10 +180,7 @@ pub const TOOLS: &[Tool] = &[
         programs: &["t3", "t3code"],
         dirs: &[Place::Config("t3")],
         method: Method::Json {
-            files: &[
-                Place::Config("t3/t3.json"),
-                Place::Config("t3/t3.jsonc"),
-            ],
+            files: &[Place::Config("t3/t3.json"), Place::Config("t3/t3.jsonc")],
             container: &["mcp"],
             shape: Shape::Opencode,
         },
@@ -1054,8 +1051,7 @@ mod tests {
             assert!(!t.programs.is_empty() || !t.dirs.is_empty(), "{}", t.id);
             assert!(TOOLS[..i].iter().all(|o| o.id != t.id), "{}", t.id);
             assert!(
-                t.id
-                    .bytes()
+                t.id.bytes()
                     .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-'),
                 "{}",
                 t.id
