@@ -60,11 +60,12 @@ share with the local gateways of that network and with nothing further.
   Buying from the market is unaffected.
 - With no local gateway for ten minutes the box turns it off by itself, and
   back on a minute after one answers again.
-- While it is on and the box is not in the mesh, chat, mail, calls and Mesh
-  CI run as `kindashared`, with their data in its directory. Apps can be
-  installed as `kindashared` too. A box that later joins the mesh runs them
-  as `shared` and starts them afresh there; what `kindashared` holds stays
-  in its own directory.
+- While it is on and the box is not in the mesh, mail and Mesh CI run as
+  `kindashared`, with their data in its directory. Apps can be installed as
+  `kindashared` too. A box that later joins the mesh runs them as `shared`
+  and starts them afresh there; what `kindashared` holds stays in its own
+  directory. Chat and calls are not part of this: they run as `notshared` on
+  every box.
 - The switch, **Share with this network's gateways**, is on the **Mesh**
   pane, with the gateways in reach and the account the shared side runs as.
 
