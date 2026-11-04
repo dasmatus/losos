@@ -16,7 +16,7 @@ Bisher lassen sich die Übersicht und jeder Bereich der Einstellungen
 ändern. Die Apps und die übrigen Bildschirme folgen.
 
 Ein Bereich der Einstellungen, der seinen Inhalt von der Box liest, etwa
-Zugriffstokens oder Benutzer, hat einen Block `<Status />`: Er sagt, dass
+Zugriffstokens oder Benutzer, hat einen Block `<Status />`. Er sagt, dass
 der Bereich lädt oder warum er es nicht kann, und die übrigen Blöcke des
 Bereichs zeichnen nichts, bis er geladen ist. Die Liste der Seiten unter
 **Einstellungen → Aussehen** ist kein Block dieses Bereichs, deshalb behält

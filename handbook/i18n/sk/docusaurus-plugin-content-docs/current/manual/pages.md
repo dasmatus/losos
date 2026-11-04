@@ -15,7 +15,7 @@ Zatiaľ sa dajú meniť Prehľad a všetky časti nastavení. Aplikácie a ostat
 obrazovky pribudnú.
 
 Časť nastavení, ktorá číta svoj obsah zo zariadenia, napríklad Prístupové
-tokeny alebo Používatelia, má blok `<Status />`: hovorí, že sa časť
+tokeny alebo Používatelia, má blok `<Status />`. Hovorí, že sa časť
 načítava, alebo prečo sa to nedá, a ostatné bloky časti nič nekreslia,
 kým sa nenačíta. Zoznam stránok v **Nastavenia → Vzhľad** nie je blokom
 tejto časti, takže zmenená stránka Vzhľad si vždy necháva cestu späť.

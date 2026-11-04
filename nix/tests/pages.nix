@@ -234,7 +234,7 @@ let
       path = "/settings/look";
       waitFor = {
         role = "radiogroup";
-        name = "Background";
+        name = "Your background";
       };
       steps = [ { scroll = "end"; } ];
     }
