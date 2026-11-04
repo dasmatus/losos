@@ -82,6 +82,10 @@
   # losos-project/pm's source (the flake's `pm` input). The tests that
   # import this file directly pass none and get no pm.
   pmSrc ? null,
+  # dasmatus/tinycode's source (the flake's `tinycode` input). Same deal
+  # as pmSrc: callers that import this file directly pass nothing and get
+  # no tinycode package.
+  tinycodeSrc ? null,
   ...
 }:
 
@@ -673,5 +677,25 @@ images
       pkgs.gnused
     ];
     text = builtins.readFile ./sign-iso.sh;
+  };
+
+  # tinycode (github.com/dasmatus/tinycode), the coding agent CLI the
+  # appliance ships instead of the node-based agent stack (what
+  # replaced OpenCode on the multi-purpose VPS): one binary, a few MB of
+  # RSS for a full run, no Node runtime on the box. Configured by
+  # OpenCode's own config files, driven over NDJSON. AGPL-3.0-or-later;
+  # its license text ships in the binary's repository, and the module that
+  # installs it (modules/configuration.nix) says why it is on the box.
+  tinycode = buildRustPackage {
+    pname = "tinycode";
+    version = "0.1.0";
+    src = lib.cleanSource tinycodeSrc;
+    # SHA256 of the vendored crate tarball. If deps change, `nix build
+    # .#tinycode` will print the new hash to paste here.
+    cargoHash = "sha256-2WZu3+Twz1XaGkzKmtgNCBIjq+cEilkweLKIoPW7+Ok=";
+    # Pure Rust with rustls (no openssl); regex and ureq need no system
+    # library. The suite runs via cargo test outside the build, like the
+    # crates above.
+    doCheck = false;
   };
 }
