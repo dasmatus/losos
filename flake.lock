@@ -101,7 +101,26 @@
         "disko": "disko",
         "impermanence": "impermanence",
         "nixpkgs": "nixpkgs",
-        "pm": "pm"
+        "pm": "pm",
+        "tinycode": "tinycode"
+      }
+    },
+    "tinycode": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1793814624,
+        "narHash": "sha256-cJkUzW6/RoVDB6HWPLWb++UJDW95klv2d/m241T8Xzg=",
+        "ref": "main",
+        "rev": "8a8844ad7613dc584dcea205e6262a20ee964be8",
+        "revCount": 4,
+        "type": "git",
+        "url": "https://github.com/dasmatus/tinycode"
+      },
+      "original": {
+        "ref": "main",
+        "rev": "8a8844ad7613dc584dcea205e6262a20ee964be8",
+        "type": "git",
+        "url": "https://github.com/dasmatus/tinycode"
       }
     }
   },

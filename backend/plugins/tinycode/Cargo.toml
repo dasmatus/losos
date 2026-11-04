@@ -1,0 +1,19 @@
+[package]
+name = "losos-plugin-tinycode"
+description = "lososd plugin: agentic work on the box through tinycode, the coding agent CLI the box ships"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+losos-plugin.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

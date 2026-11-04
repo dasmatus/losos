@@ -156,6 +156,22 @@ pub fn valid_name(name: &str) -> bool {
         && name.trim() == name
 }
 
+/// The most bytes a file name can have on the disk.
+const NAME_MAX: usize = 255;
+
+/// `name` with `tail` after it, kept within [`NAME_MAX`] bytes by cutting the
+/// end of `name` (on a character boundary). The trash bin and a restore add a
+/// suffix to a name that may already be 255 bytes long, which the disk
+/// refuses with "File name too long".
+fn with_tail(name: &str, tail: &str) -> String {
+    let room = NAME_MAX.saturating_sub(tail.len());
+    let mut end = name.len().min(room);
+    while !name.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}{tail}", &name[..end])
+}
+
 /// Normalise a client path: strip slashes at both ends, refuse empty
 /// components, `.` and `..`. The root is `""`.
 pub fn clean_path(path: &str) -> Result<String> {
@@ -931,10 +947,10 @@ impl Store {
         let t = now();
         let trash = self.trash_dir(owner);
         fs::create_dir_all(&trash)?;
-        let mut stored = format!("{}.d{t}", e.name);
+        let mut stored = with_tail(&e.name, &format!(".d{t}"));
         let mut n = 1;
         while trash.join(&stored).exists() {
-            stored = format!("{}.d{t}-{n}", e.name);
+            stored = with_tail(&e.name, &format!(".d{t}-{n}"));
             n += 1;
         }
         fs::rename(self.disk_path(owner, path), trash.join(&stored)).map_err(map_io)?;
@@ -1008,10 +1024,10 @@ impl Store {
         };
         let trash = self.trash_dir(owner);
         fs::create_dir_all(&trash)?;
-        let mut stored = format!("{name}.d{deleted}");
+        let mut stored = with_tail(&name, &format!(".d{deleted}"));
         let mut n = 1;
         while trash.join(&stored).exists() {
-            stored = format!("{name}.d{deleted}-{n}");
+            stored = with_tail(&name, &format!(".d{deleted}-{n}"));
             n += 1;
         }
         fs::rename(from, trash.join(&stored)).map_err(map_io)?;
@@ -1094,7 +1110,7 @@ impl Store {
                 };
                 target = join(
                     parent_of(&t.original).unwrap_or(""),
-                    &format!("{stem}{suffix}{ext}"),
+                    &with_tail(&stem, &format!("{suffix}{ext}")),
                 );
                 n += 1;
             }
@@ -1170,9 +1186,12 @@ impl Store {
                 created: false,
             });
         }
-        if is_within(to, from) {
+        if is_within(to, from) || is_within(from, to) {
             return Err(StoreError::Loop);
         }
+        // The source first: a move of something that is not there must leave
+        // the destination alone, not send it to the trash.
+        self.stat(owner, from)?;
         let existed = match self.stat(owner, to) {
             Ok(_) if !overwrite => return Err(StoreError::Precondition),
             Ok(_) => {
@@ -1223,7 +1242,7 @@ impl Store {
         if from.is_empty() || to.is_empty() {
             return Err(StoreError::Conflict);
         }
-        if is_within(to, from) {
+        if is_within(to, from) || is_within(from, to) {
             return Err(StoreError::Loop);
         }
         let src = self.stat(owner, from)?;
@@ -1614,6 +1633,66 @@ mod tests {
         assert_eq!(back.path, "a");
         assert_eq!(s.read_bytes("alice", "a/f.txt").unwrap(), b"abc");
         assert!(s.trash("alice").unwrap().is_empty());
+    }
+
+    #[test]
+    fn moving_what_is_not_there_leaves_the_destination_alone() {
+        let (_d, s) = store();
+        put(&s, "keep.txt", b"important");
+        assert!(matches!(
+            s.rename("alice", "missing.txt", "keep.txt", true),
+            Err(StoreError::NotFound)
+        ));
+        assert_eq!(s.read_bytes("alice", "keep.txt").unwrap(), b"important");
+        assert!(s.trash("alice").unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_folder_is_never_moved_or_copied_onto_its_own_parent() {
+        let (_d, s) = store();
+        s.mkdir("alice", "a").unwrap();
+        s.mkdir("alice", "a/b").unwrap();
+        put(&s, "a/b/f.txt", b"inner");
+        put(&s, "a/top.txt", b"top");
+        assert!(matches!(
+            s.rename("alice", "a/b", "a", true),
+            Err(StoreError::Loop)
+        ));
+        assert!(matches!(
+            s.copy("alice", "a/b", "a", true),
+            Err(StoreError::Loop)
+        ));
+        assert_eq!(s.read_bytes("alice", "a/b/f.txt").unwrap(), b"inner");
+        assert_eq!(s.read_bytes("alice", "a/top.txt").unwrap(), b"top");
+        assert!(s.trash("alice").unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_name_of_the_longest_length_can_be_deleted_and_restored() {
+        let (_d, s) = store();
+        let name = format!("{}.txt", "n".repeat(251));
+        assert_eq!(name.len(), 255);
+        put(&s, &name, b"x");
+        let t = s.delete("alice", &name, None).unwrap();
+        assert!(t.stored.len() <= 255);
+        assert!(s.trash_disk_path("alice", &t).exists());
+        // The name is taken again before the restore: the new one is made
+        // by adding to the old, and must fit as well.
+        put(&s, &name, b"y");
+        let back = s.restore("alice", t.id, None).unwrap();
+        assert!(back.name.len() <= 255);
+        assert_eq!(s.read_bytes("alice", &back.path).unwrap(), b"x");
+        assert_eq!(s.read_bytes("alice", &name).unwrap(), b"y");
+    }
+
+    #[test]
+    fn names_with_a_tail_are_cut_on_a_character_boundary() {
+        let name = "é".repeat(127);
+        assert_eq!(name.len(), 254);
+        let cut = with_tail(&name, ".d1762000000");
+        assert!(cut.len() <= 255);
+        assert!(cut.ends_with(".d1762000000"));
+        assert_eq!(with_tail("f.txt", ".d1"), "f.txt.d1");
     }
 
     #[test]

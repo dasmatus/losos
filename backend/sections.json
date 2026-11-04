@@ -212,6 +212,10 @@
     "GET /api/problems/{id}/send": "admin",
     "POST /api/problems/{id}/cancel": "admin",
     "POST /api/problems/{id}/dismiss": "admin",
+    "GET /api/tinycode": "admin",
+    "POST /api/tinycode/asks": "admin",
+    "GET /api/tinycode/asks/{id}": "admin",
+    "DELETE /api/tinycode/asks/{id}": "admin",
     "POST /api/roles": "admin",
     "POST /api/roles/remove": "admin",
 
