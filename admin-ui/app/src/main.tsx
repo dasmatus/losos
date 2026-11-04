@@ -18,6 +18,12 @@ import "@/styles/index.css";
 applyStoredTheme();
 applyFavicon();
 
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  });
+}
+
 const container = document.getElementById("root");
 if (container === null) throw new Error("#root is missing from index.html");
 
