@@ -2,8 +2,8 @@ import { defineMessages } from "./define";
 
 /* The first-run tour (src/tour/), shown once after setup and again from
  * the About pane. One title and one sentence per step: the scene above
- * them does the showing. The chat step is drawn only on a box that shares
- * its storage in a mesh. */
+ * them does the showing. The chat step is drawn only on a box that runs
+ * chat. */
 export default defineMessages({
   "tour.count": { en: "{n} of {total}", sk: "{n} z {total}", de: "{n} von {total}" },
   "tour.skip": { en: "Skip the tour", sk: "Preskočiť prehliadku", de: "Tour überspringen" },
@@ -78,9 +78,9 @@ export default defineMessages({
     de: "Chat und Anrufe",
   },
   "tour.chat.body": {
-    en: "While this box shares its storage in the mesh, it has chat with end-to-end encrypted rooms and video calls. Type @ to name someone.",
-    sk: "Kým toto zariadenie zdieľa úložisko v mesh, má chat so šifrovanými miestnosťami a videohovory. Napíšte @ a označte niekoho.",
-    de: "Solange diese Box ihren Speicher im Mesh teilt, hat sie Chat mit Ende-zu-Ende-verschlüsselten Räumen und Videoanrufe. Tipp @, um jemanden zu nennen.",
+    en: "This box has chat with end-to-end encrypted rooms and video calls, for everyone with an account on it. Type @ to name someone.",
+    sk: "Toto zariadenie má chat so šifrovanými miestnosťami a videohovory pre každého, kto má na ňom účet. Napíšte @ a označte niekoho.",
+    de: "Diese Box hat Chat mit Ende-zu-Ende-verschlüsselten Räumen und Videoanrufe, für alle, die ein Konto darauf haben. Tipp @, um jemanden zu nennen.",
   },
   "tour.profile.title": { en: "Put a face to your name", sk: "Pridajte k menu tvár", de: "Gib deinem Namen ein Gesicht" },
   "tour.profile.body": {

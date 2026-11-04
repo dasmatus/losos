@@ -119,8 +119,7 @@ listet jeden Tag auf; klick auf einen, um seine Notizen zu sehen.
 
 ## Einen Ordner als Wissensbasis veröffentlichen \{#publish-a-folder-as-a-knowledge-base}
 
-Wissensbasen brauchen eine Box, die teilt und in einem Mesh ist, wie Chat
-und Mail. Ohne beides fehlt der Menüpunkt und die Seiten sind aus.
+Wissensbasen brauchen eine Box, die teilt und in einem Mesh ist, wie Mail. Ohne beides fehlt der Menüpunkt und die Seiten sind aus.
 
 1. Klick in **Dateien** mit der rechten Maustaste auf den Ordner und wähl
    **Als Wissensbasis veröffentlichen**.

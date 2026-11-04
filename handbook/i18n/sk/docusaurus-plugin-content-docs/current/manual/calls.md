@@ -22,10 +22,10 @@ udalosti MatrixRTC. Obraz a zvuk idú cez `losos-calls`, nie cez LiveKit.
 
 ## Kedy sú hovory k dispozícii \{#when-calls-are-there}
 
-Hovory patria k chatu, takže potrebujú to isté čo chat: zariadenie zdieľa
-svoje úložisko a pripojilo sa k sieti mesh. Potrebujú aj
+Hovory patria k chatu, takže sú všade tam, kde je chat, so sieťou mesh aj
+okrajovým serverom, alebo bez nich. Potrebujú aj
 **Nastavenia → Rozšírené → `losos.calls.enable`**, ktoré je zapnuté, kým ho
-nevypnete. Ak je čokoľvek z toho vypnuté, miestnosti nemajú tlačidlá na
+nevypnete. Ak je chat alebo toto vypnuté, miestnosti nemajú tlačidlá na
 volanie a zariadenie pre hovory nespúšťa nič. Keď niečo z toho znova
 zapnete, hovory sa vrátia po ďalšom Použiť.
 

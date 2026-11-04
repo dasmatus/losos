@@ -17,10 +17,10 @@ prečítať cez administráciu ani cez LosOS Cloud.
 
 Kontakty uchovávajú vaše kontakty v [LosOS Cloud](losos-cloud), takže sú
 k dispozícii na každom zariadení, na ktorom beží LosOS Cloud, či zariadenie
-zdieľa svoje úložisko, alebo nie. [Pošta](mail) a [Chat](chat) bežia len
-vtedy, keď zariadenie zdieľa so sieťou, do ktorej sa pripojilo. Keď je
-zdieľanie vypnuté, stránka človeka nemá tlačidlá **Pošta**, **Chat**,
-**Hovor** ani **Video** a adresár zostáva taký, aký je.
+zdieľa svoje úložisko, alebo nie. [Chat](chat) beží na každom zariadení,
+na ktorom ho nevypnete; [Pošta](mail) beží len vtedy, keď zariadenie zdieľa
+so sieťou, do ktorej sa pripojilo. Bez nich stránka človeka nemá tlačidlá
+**Pošta**, **Chat**, **Hovor** ani **Video** a adresár zostáva taký, aký je.
 
 Náhradný kľúč otvorí administráciu, ale nemá adresár, preto vás Kontakty
 požiadajú o prihlásenie vlastným účtom.

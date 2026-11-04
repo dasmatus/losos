@@ -17,9 +17,10 @@ admin pages or through LosOS Cloud.
 
 Contacts keeps your contacts in [LosOS Cloud](losos-cloud), so it is there
 on every box that runs LosOS Cloud, whether or not the box shares its
-storage. [Mail](mail) and [Chat](chat) run only while the box shares with a
-mesh it has joined. With sharing off, a person's page has no **Mail**,
-**Chat**, **Call** or **Video** button, and the book itself stays as it is.
+storage. [Chat](chat) runs on every box that has not switched it off;
+[Mail](mail) runs only while the box shares with a mesh it has joined. Without
+them, a person's page has no **Mail**, **Chat**, **Call** or **Video** button,
+and the book itself stays as it is.
 
 The spare key opens the admin pages but has no address book, so Contacts
 asks you to sign in with your own account.
