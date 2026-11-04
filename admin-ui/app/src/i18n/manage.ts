@@ -76,14 +76,20 @@ export default defineMessages({
   "manage.gateway.claim": { en: "Claim this gateway", sk: "Prevziať túto bránu", de: "Dieses Gateway übernehmen" },
   "manage.gateway.change": { en: "Change the settings", sk: "Zmeniť nastavenia", de: "Einstellungen ändern" },
   "manage.gateway.claimDetail": {
-    en: "Paste the settings file and your detached OpenPGP signature over it. The gateway restarts to measure them.",
-    sk: "Vložte súbor s nastaveniami a k nemu oddelený podpis OpenPGP. Brána sa reštartuje, aby ich zmerala.",
-    de: "Fügen Sie die Einstellungsdatei und Ihre abgetrennte OpenPGP-Signatur dazu ein. Das Gateway startet neu, um sie zu messen.",
+    en: "Paste the settings file and your detached OpenPGP signature over it, or open either straight from a file. The gateway restarts to measure them.",
+    sk: "Vložte súbor s nastaveniami a k nemu oddelený podpis OpenPGP, alebo oboch priamo otvorte zo súboru. Brána sa reštartuje, aby ich zmerala.",
+    de: "Fügen Sie die Einstellungsdatei und Ihre abgetrennte OpenPGP-Signatur dazu ein, oder öffnen Sie beides direkt aus einer Datei. Das Gateway startet neu, um sie zu messen.",
   },
   "manage.gateway.claimButton": { en: "Claim", sk: "Prevziať", de: "Übernehmen" },
   "manage.gateway.changeButton": { en: "Change", sk: "Zmeniť", de: "Ändern" },
   "manage.gateway.settingsLabel": { en: "Settings file", sk: "Súbor s nastaveniami", de: "Einstellungsdatei" },
   "manage.gateway.signatureLabel": { en: "Signature", sk: "Podpis", de: "Signatur" },
+  "manage.gateway.chooseFile": { en: "Open a file", sk: "Otvoriť súbor", de: "Datei öffnen" },
+  "manage.gateway.fileTooBig": {
+    en: "The file {name} is too large.",
+    sk: "Súbor {name} je príliš veľký.",
+    de: "Die Datei {name} ist zu groß.",
+  },
   "manage.gateway.cancel": { en: "Cancel", sk: "Zrušiť", de: "Abbrechen" },
   "manage.gateway.save": { en: "Save", sk: "Uložiť", de: "Speichern" },
   "manage.gateway.accepted": {
