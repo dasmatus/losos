@@ -1104,3 +1104,121 @@ async fn office_opens_and_saves_a_cloud_document() {
     .await;
     assert_ne!(r.status(), 200, "the token is for one file");
 }
+
+/// A MOVE whose source is missing or sits inside the destination used to
+/// send the destination to the trash before it failed.
+#[actix_web::test]
+async fn a_failed_move_leaves_the_destination_alone() {
+    let (_d, c) = cloud();
+    let app = app!(c);
+    for (verb, path, body) in [
+        ("MKCOL", "/remote.php/webdav/a", ""),
+        ("MKCOL", "/remote.php/webdav/a/b", ""),
+        ("PUT", "/remote.php/webdav/a/b/f.txt", "inner"),
+        ("PUT", "/remote.php/webdav/keep.txt", "important"),
+    ] {
+        let r = call_service(
+            &app,
+            as_alice(method(verb, path)).set_payload(body).to_request(),
+        )
+        .await;
+        assert!(r.status().is_success(), "{verb} {path}");
+    }
+    let r = call_service(
+        &app,
+        as_alice(method("MOVE", "/remote.php/webdav/missing.txt"))
+            .insert_header(("destination", "http://box.local/remote.php/webdav/keep.txt"))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(r.status(), 404);
+    let r = call_service(
+        &app,
+        as_alice(method("MOVE", "/remote.php/webdav/a/b"))
+            .insert_header(("destination", "http://box.local/remote.php/webdav/a"))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(r.status(), 403);
+    let r = call_service(
+        &app,
+        as_alice(method("COPY", "/remote.php/webdav/a/b"))
+            .insert_header(("destination", "http://box.local/remote.php/webdav/a"))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(r.status(), 403);
+    for (path, want) in [("keep.txt", "important"), ("a/b/f.txt", "inner")] {
+        let r = call_service(
+            &app,
+            as_alice(method("GET", &format!("/remote.php/webdav/{path}"))).to_request(),
+        )
+        .await;
+        assert_eq!(r.status(), 200, "{path}");
+        assert_eq!(text(r).await, want);
+    }
+}
+
+/// A file time past the year 9999 (`X-OC-Mtime` comes from the client)
+/// panicked the date formatter and closed the connection of every listing
+/// of its folder.
+#[actix_web::test]
+async fn a_far_future_file_time_does_not_break_the_listing() {
+    let (_d, c) = cloud();
+    let app = app!(c);
+    let r = call_service(
+        &app,
+        as_alice(method("PUT", "/remote.php/webdav/future.txt"))
+            .insert_header(("x-oc-mtime", "99999999999999999"))
+            .set_payload("x")
+            .to_request(),
+    )
+    .await;
+    assert!(r.status().is_success());
+    let r = call_service(
+        &app,
+        as_alice(method("PROPFIND", "/remote.php/webdav/"))
+            .insert_header(("depth", "1"))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(r.status(), 207);
+    assert!(text(r).await.contains("Fri, 31 Dec 9999 23:59:59 GMT"));
+}
+
+/// Ticking a folder and something inside it deletes both without an error.
+#[actix_web::test]
+async fn deleting_a_folder_and_its_content_together_works() {
+    let (_d, c) = cloud();
+    let app = app!(c);
+    for (verb, path) in [
+        ("MKCOL", "/remote.php/webdav/m"),
+        ("PUT", "/remote.php/webdav/m/f.txt"),
+        ("PUT", "/remote.php/webdav/z.txt"),
+    ] {
+        let body = if verb == "MKCOL" { "" } else { "1" };
+        let r = call_service(
+            &app,
+            as_alice(method(verb, path)).set_payload(body).to_request(),
+        )
+        .await;
+        assert!(r.status().is_success(), "{verb} {path}");
+    }
+    let r = call_service(
+        &app,
+        as_alice(TestRequest::post().uri("/cloud/api/files/delete"))
+            .set_json(serde_json::json!({ "paths": ["m", "m/f.txt", "z.txt"] }))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(r.status(), 200);
+    let v: serde_json::Value = serde_json::from_str(&text(r).await).unwrap();
+    assert_eq!(v["trashed"].as_array().unwrap().len(), 2);
+    let r = call_service(
+        &app,
+        as_alice(TestRequest::get().uri("/cloud/api/files?path=")).to_request(),
+    )
+    .await;
+    let v: serde_json::Value = serde_json::from_str(&text(r).await).unwrap();
+    assert!(v["entries"].as_array().unwrap().is_empty());
+}

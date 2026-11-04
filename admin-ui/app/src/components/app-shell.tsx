@@ -38,7 +38,8 @@ export function ShellBar({ signedIn }: { signedIn: boolean }) {
     const tip = me.spareKey
       ? t("shell.me.spareKeyTip")
       : `${t("shell.me.signedIn", { name: me.name ?? name })} ${t(me.admin ? "shell.me.admin" : "shell.me.limited")}`;
-    person = { label: name, tip };
+    // Only a colour they picked becomes their accent; the spare key keeps the teal.
+    person = { label: name, tip, accent: !me.spareKey && me.accentChosen === true ? (me.accent ?? null) : null };
     if (!me.spareKey && me.name) {
       person.avatar = (
         <PersonAvatar
