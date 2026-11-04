@@ -60,14 +60,20 @@ jobs:
           bun run lab:core
           bun run lab:virt
           bun run mdx
-          # render is large and only needed for the Lab page; stub it for screens
+          # render is large and only needed for the Lab page; stub it for
+          # screens. The build typechecks now, and tsc reads the stub's .d.ts
+          # (not its .js), so the stand-in keeps the surfaces the page imports:
+          # the init, Lab and LabCanvas (render.ts, bevy-canvas.tsx).
           mkdir -p src/lab/render-pkg/webgl2 src/lab/render-pkg/webgpu
-          echo "export default {};" > src/lab/render-pkg/webgl2/losos_lab_render.js
-          echo "export default {};" > src/lab/render-pkg/webgpu/losos_lab_render.js
-          echo "export {};" > src/lab/render-pkg/webgl2/losos_lab_render.d.ts
-          echo "export {};" > src/lab/render-pkg/webgpu/losos_lab_render.d.ts
-          touch src/lab/render-pkg/webgl2/losos_lab_render_bg.wasm
-          touch src/lab/render-pkg/webgpu/losos_lab_render_bg.wasm
+          for api in webgl2 webgpu; do
+            echo "export default {};" > "src/lab/render-pkg/$api/losos_lab_render.js"
+            {
+              echo 'export default function init(opts?: any): Promise<any>;'
+              echo 'export declare const Lab: any;'
+              echo 'export declare class LabCanvas { constructor(...args: any[]); [key: string]: any; static [key: string]: any; }'
+            } > "src/lab/render-pkg/$api/losos_lab_render.d.ts"
+            touch "src/lab/render-pkg/$api/losos_lab_render_bg.wasm"
+          done
 
       - name: build admin UI
         working-directory: admin-ui/app
