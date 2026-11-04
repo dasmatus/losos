@@ -119,7 +119,7 @@ Dokument LosOS (`.paper`) alebo prezentáciu (`.slides`) uložíte v inom
 formáte cez **Stiahnuť** na lište nad stránkou. Z dokumentu sa stane Word
 (`.docx`), OpenDocument (`.odt`), PDF alebo webová stránka (`.html`), z
 prezentácie PowerPoint (`.pptx`) alebo webová stránka. Vzorce zostanú
-vzorcami: Word dostane svoje vlastné rovnice a webová stránka MathML.
+vzorcami. Word dostane svoje vlastné rovnice a webová stránka MathML.
 Poznámky pod čiarou, tabuľky, obrázky a zvýraznené bloky idú s nimi a v
 PowerPointe je každá snímka snímkou aj s poznámkami rečníka. Webová stránka
 je jeden súbor s obrázkami vo vnútri a bez skriptov.

@@ -118,7 +118,7 @@ A LosOS document (`.paper`) or presentation (`.slides`) goes out in other
 formats from **Download** in the bar above the page. A document becomes
 Word (`.docx`), OpenDocument (`.odt`), PDF or a web page (`.html`); a
 presentation becomes PowerPoint (`.pptx`) or a web page. Equations stay
-equations: Word gets its own maths and the web page gets MathML. Footnotes,
+equations. Word gets its own maths and the web page gets MathML. Footnotes,
 tables, pictures and callouts come along, and in PowerPoint each slide is a
 slide with its speaker notes. The web page is one file with the pictures
 inside it and no script.

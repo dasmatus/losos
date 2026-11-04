@@ -129,7 +129,7 @@ Ein LosOS-Dokument (`.paper`) oder eine Präsentation (`.slides`) speicherst
 du über **Herunterladen** in der Leiste über der Seite in anderen Formaten.
 Ein Dokument wird zu Word (`.docx`), OpenDocument (`.odt`), PDF oder einer
 Webseite (`.html`), eine Präsentation zu PowerPoint (`.pptx`) oder einer
-Webseite. Formeln bleiben Formeln: Word bekommt seine eigenen Gleichungen,
+Webseite. Formeln bleiben Formeln. Word bekommt seine eigenen Gleichungen,
 die Webseite MathML. Fußnoten, Tabellen, Bilder und Hinweiskästen kommen
 mit, und in PowerPoint ist jede Folie eine Folie mit ihren Notizen. Die
 Webseite ist eine Datei mit den Bildern darin und ohne Skripte.
