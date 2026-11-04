@@ -46,7 +46,7 @@ tried:
    see [Only the local network works](only-the-lan-works).
 2. **Is the address right?** Open Settings → Advanced and find
    `losos.proxy.registrarUrl`. It is the base address of the edge's API,
-   `https://losos-edge.dasmat.us` for the LosOS edge's control plane. A
+   `https://register.dasmat.us` for the LosOS edge's control plane. A
    company edge on the LAN announces its own, usually
    `http://<edge>.local:8443`.
 3. **Company edge on the LAN: same network segment?** mDNS announcements

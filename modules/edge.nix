@@ -313,6 +313,34 @@ let
     };
   };
 
+  # The edge's own name in a browser. Nothing routes `edge.<domain>`: a box
+  # is `<id>.<zone>` and the registrar is `register.<domain>`, so Traefik
+  # answered "404 page not found" under its default self-signed certificate,
+  # which a browser shows as "not secure". This router has a certificate of
+  # its own and sends the visitor on to the handbook. Priority 1, the
+  # lowest, so a box or the registrar that does hold one of these names
+  # keeps it.
+  landingYml = (pkgs.formats.yaml { }).generate "losos-edge-landing.yml" {
+    http = {
+      middlewares.edge-landing.redirectRegex = {
+        regex = "^https?://[^/]+.*$";
+        replacement = cfg.landing.url;
+        permanent = false;
+      };
+      routers.edge-landing = {
+        rule = lib.concatMapStringsSep " || " (h: "Host(`${h}`)") cfg.landing.hosts;
+        service = "noop@internal";
+        middlewares = [ "edge-landing" ];
+        entryPoints = [ "websecure" ];
+        priority = 1;
+        tls = {
+          certResolver = "le";
+          domains = map (h: { main = h; }) cfg.landing.hosts;
+        };
+      };
+    };
+  };
+
   # tenants.json: id → {hostname, cluster, token_file}. token_file is a PATH
   # (not the secret), so this file can live in the world-readable store — the
   # secret is the file's *contents*, read by the registrar at reconcile time.
@@ -1552,6 +1580,12 @@ in
       # The tunnel's file, written by the registrar, read by losos-tunnel.
       "d /etc/losos-tunnel 0755 root root - -"
       "L+ /etc/traefik/dynamic/register.yml - - - - ${toString registerYml}"
+      (
+        if cfg.landing.hosts == [ ] then
+          "r /etc/traefik/dynamic/edge-landing.yml - - - - -"
+        else
+          "L+ /etc/traefik/dynamic/edge-landing.yml - - - - ${toString landingYml}"
+      )
       "r /etc/traefik/dynamic/losos.yml - - - - -"
       "r /etc/traefik/dynamic/losos-vms.yml - - - - -"
       "r /etc/traefik/dynamic/hidden.yml - - - - -"
