@@ -23,6 +23,15 @@
     pm.url = "git+https://github.com/losos-project/pm?ref=master&rev=30abe308587967a71ee9142915d735d784430a9e";
     pm.flake = false;
 
+    # tinycode (github.com/dasmatus/tinycode), the coding agent CLI the
+    # appliance ships (modules/configuration.nix): AGPL-3.0-or-later, the
+    # static musl CLI that replaced the node-based agent stack on the VPS.
+    # Pinned by rev like pm above: main moves on its own schedule and a
+    # ref-following input would rebuild the package (and drag a fetch) on
+    # every eval.
+    tinycode.url = "git+https://github.com/dasmatus/tinycode?ref=main&rev=8a8844ad7613dc584dcea205e6262a20ee964be8";
+    tinycode.flake = false;
+
     # devenv is deliberately NOT a flake input. The dev environment lives in
     # devenv.nix, driven by the devenv CLI against devenv.yaml (standalone
     # mode). Wiring it through the flake instead — devenv.lib.mkShell — fails
@@ -45,6 +54,7 @@
       impermanence,
       disko,
       pm,
+      tinycode,
     }:
     let
       system = "x86_64-linux";
@@ -75,6 +85,7 @@
         import ./nix/packages.nix {
           inherit pkgs version;
           pmSrc = pm;
+          tinycodeSrc = tinycode;
         }
         # Bootable media, built off nixosConfigurations.install. Separate from
         # packages.nix because these are the only outputs that reach back into
