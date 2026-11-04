@@ -50,6 +50,7 @@ import quick from "./quick";
 import report from "./report";
 import settings from "./settings";
 import statistics from "./statistics";
+import tag from "./tag";
 import shell from "./shell";
 import together from "./together";
 import tour from "./tour";
@@ -115,6 +116,7 @@ export const MESSAGES = {
   ...quick,
   ...wiki,
   ...statistics,
+  ...tag,
   ...basic,
 };
 

@@ -11,7 +11,7 @@
   "limits": { "memoryMiB": 32, "timeoutSecs": 10, "jobSecs": 1800, "jobs": 1 },
   "config": {
     "url": "${LOSOS_ASSISTANT_URL:-}",
-    "model": "${LOSOS_ASSISTANT_MODEL:-gemma3:1b}",
+    "model": "${LOSOS_ASSISTANT_MODEL:-MichelRosselli/bonsai-27b}",
     "context": "${LOSOS_ASSISTANT_CONTEXT:-8192}"
   }
 }

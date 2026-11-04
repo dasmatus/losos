@@ -12,6 +12,7 @@
 
 import { BlackBackground, preferredBackground, rememberBackground } from "./background";
 import { CAMERA, MIC } from "./quality";
+import { VoiceChain, type VoicePreset } from "./voice-changer";
 
 /* Ask for `audio` and `video` together, as one permission prompt; when
  * that fails, for each on its own; and with neither, for nothing. */
@@ -38,6 +39,8 @@ export class LocalMedia {
   private camera: MediaStreamTrack | null = null;
   private black: BlackBackground | null = null;
   private screenTrack: MediaStreamTrack | null = null;
+  private voice: VoiceChain | null = null;
+  private voiceSource: MediaStreamTrack | null = null;
   /* What was asked for and could not be opened. */
   readonly missing: { mic: boolean; camera: boolean };
 
@@ -138,11 +141,35 @@ export class LocalMedia {
     this.screenTrack = null;
   }
 
+  /* The track to send for `preset`: the microphone itself for "off", else
+   * the microphone through the voice changer. Muting acts on the microphone,
+   * which the changer is fed from, so a muted changer is silent too. */
+  async applyVoice(preset: VoicePreset): Promise<MediaStreamTrack | null> {
+    const mic = this.stream.getAudioTracks()[0];
+    if (mic === undefined) return null;
+    if (this.voice !== null && this.voiceSource !== mic) {
+      this.voice.close();
+      this.voice = null;
+    }
+    if (preset === "off") {
+      this.voice?.close();
+      this.voice = null;
+      return mic;
+    }
+    if (this.voice === null) {
+      this.voice = await VoiceChain.open(mic);
+      this.voiceSource = mic;
+    }
+    this.voice.set(preset);
+    return this.voice.track;
+  }
+
   setMuted(muted: boolean): void {
     for (const t of this.stream.getAudioTracks()) t.enabled = !muted;
   }
 
   stop(): void {
+    this.voice?.close();
     this.black?.stop();
     this.camera?.stop();
     this.stopSharing();
