@@ -13,7 +13,6 @@
 { pkgs }:
 
 let
-  inherit (pkgs) lib;
   lososPkgs = import ../../packages.nix { inherit pkgs; };
 
   python = pkgs.python3.withPackages (ps: [ ps.requests ]);
