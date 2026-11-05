@@ -1,0 +1,117 @@
+name: package-freshness
+
+# Actively checks whether the Linux kernel and other security-/stability-
+# critical system packages in the pinned nixos-unstable input have fallen behind
+# their latest stable upstream releases. A lag here means the appliance would
+# benefit from a quicker update cycle than nixos-unstable is currently
+# providing: usually by taking a newer nixpkgs pin, or by carrying a short-lived
+# targeted override until nixpkgs catches up.
+#
+# This is a monitor, not an auto-bumper. The weekly lockfile refresh already
+# moves the nixpkgs pin; this workflow supplies the signal that a package needs
+# attention sooner than that cadence, or that nixpkgs itself is behind.
+
+on:
+  schedule:
+    # Daily at 05:23 UTC, off the round hour and away from the weekly Monday
+    # lockfile/CI runs. "Active" checks: a fast-moving kernel/security fix
+    # should be noticed within a day, not a week.
+    - cron: "23 5 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: package-freshness
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    name: "bot: kernel and system package freshness"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-nix
+        with:
+          github-token: ${{ github.token }}
+
+      # Resolves each tracked package's version from the exact nixpkgs revision
+      # in flake.lock and compares it with the latest stable upstream release.
+      # Network access reaches kernel.org / GitHub / GitLab / sourceware; the
+      # flake's nixpkgs ref is fetched by rev, not from the mutable branch tip.
+      - name: Check upstream freshness
+        id: check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          report="$(mktemp)"
+          set +e
+          python3 .github/scripts/check-package-freshness.py >"$report"
+          status=$?
+          set -e
+          cat "$report" >> "$GITHUB_STEP_SUMMARY"
+          cp "$report" "$RUNNER_TEMP/package-freshness.md"
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          # Parse the "Behind upstream" count out of the report for the issue
+          # title/body decision; tolerate format drift.
+          behind="$(grep -oP '(?<=\*\*Behind upstream:\*\* )\d+' "$report" | head -n1 || echo 0)"
+          echo "behind=${behind:-0}" >> "$GITHUB_OUTPUT"
+          # Individual upstream lookups degrade to "unknown" inside the script;
+          # exit 2 means the report itself could not be produced.
+          if [ "$status" -eq 2 ]; then
+            echo "::error::package freshness check failed to produce a report"
+            exit 1
+          fi
+
+      - name: Open or update tracking issue
+        if: steps.check.outputs.behind != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BEHIND: ${{ steps.check.outputs.behind }}
+        run: |
+          set -euo pipefail
+          marker='<!-- package-freshness -->'
+          title="package freshness: ${BEHIND} system package(s) behind upstream"
+          body="$(mktemp)"
+          {
+            printf '%s\n' "$marker"
+            cat "$RUNNER_TEMP/package-freshness.md"
+            printf '\n_Last checked: %s_\n' "$(date -u +'%Y-%m-%d %H:%M:%SZ')"
+          } >"$body"
+
+          number="$(
+            gh issue list --state open --search "\"$marker\" in:body" --json number,body \
+              --jq '.[] | select(.body | contains("'"$marker"'")) | .number' | head -n1
+          )"
+          if [ -n "$number" ]; then
+            gh issue edit "$number" --title "$title" --body-file "$body"
+            echo "Updated tracking issue #$number"
+          else
+            gh issue create --title "$title" --body-file "$body"
+          fi
+
+      - name: Close tracking issue when current
+        if: steps.check.outputs.behind == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          marker='<!-- package-freshness -->'
+          number="$(
+            gh issue list --state open --search "\"$marker\" in:body" --json number,body \
+              --jq '.[] | select(.body | contains("'"$marker"'")) | .number' | head -n1
+          )"
+          if [ -n "$number" ]; then
+            gh issue close "$number" --comment \
+              "All tracked kernel/system packages are up to date with the versions available upstream relative to the current nixpkgs pin. Closing this tracking issue; the next lagging check will reopen the signal by creating a new issue."
+          fi
