@@ -1,6 +1,5 @@
 /* Native LosOS Office: capabilities and open/import routing. */
 
-
 export type OfficeKind = "native" | "import" | "view";
 
 export interface OfficeType {

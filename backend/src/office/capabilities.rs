@@ -77,9 +77,7 @@ impl Capabilities {
             add(ext, OfficeMode::Import, false, Some("paper"));
         }
         // View-only / import as content where supported later.
-        for ext in ["pdf"] {
-            add(ext, OfficeMode::View, false, None);
-        }
+        add("pdf", OfficeMode::View, false, None);
 
         Self { types }
     }
