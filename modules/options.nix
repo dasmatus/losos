@@ -2248,6 +2248,44 @@ in
       description = "The largest file one person can send in chat, in MiB.";
     };
 
+
+    # ── LosOS Forum (modules/forum.nix, design: docs/superpowers/specs/2026-11-05-losos-forum-design.md) ──
+    forum.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Enable the LosOS Forum scaffold (from-scratch Discourse+Slack hybrid,
+        @LosOS mentions, ActivityPub + Matrix DM federation via the edge proxy
+        network, edge-local routing). This is an early scaffold: the full
+        product is not implemented yet. Depends on the box having a valid
+        edge/proxy path; exact mesh-join gating is an open design decision.
+      '';
+    };
+
+    forum.edgeLocalRouting = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Route forum federation/traffic through the selected edge (design default).";
+    };
+
+    forum.activityPub.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Enable ActivityPub federation support in the forum design/scaffold (implementation pending).";
+    };
+
+    forum.matrixDmBridge.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Enable Matrix DM bridging so Forum DMs can appear in LosOS Chat (implementation pending).";
+    };
+
+    forum.assistant.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "@LosOS mention assistant. Disabled until a provider is configured/implemented.";
+    };
+
     # ── Standalone admin endpoint (lososd HTTP API + static admin UI) ──────
     admin.enable = lib.mkOption {
       type = lib.types.bool;
@@ -4494,6 +4532,19 @@ in
   # sign-in it stands behind. Chat needs no mesh, no edge and no shared
   # storage; federation is a separate switch (losos.chat.federation.enable)
   # and, with a .local server name, answers the LAN alone. Read-only.
+
+  options.lososInternal.forum = lib.mkOption {
+    type = lib.types.bool;
+    internal = true;
+    readOnly = true;
+    default =
+      config.losos.forum.enable
+      && config.losos.proxy.enable
+      && config.losos.admin.enable
+      && config.losos.admin.ui != null;
+    description = "LosOS Forum scaffold runs: forum enabled with proxy/edge dependency and admin pages present (exact mesh gate TBD).";
+  };
+
   options.lososInternal.chat = lib.mkOption {
     type = lib.types.bool;
     internal = true;

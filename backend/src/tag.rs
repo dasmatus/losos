@@ -188,9 +188,15 @@ pub struct Assistant {
     pub slug: String,
     /// The name people see and may tag.
     pub display: String,
+    /// Short owner-facing description (not used as persona).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub description: String,
     /// The persona, appended to the tag's system prompt for this ask.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub prompt: String,
+    /// Optional UI colour token (for example `#4f8cff`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub color: String,
     /// The level ([`Level::name`]) this assistant may read up to.
     pub clearance: String,
     /// Who made it: a person, or [`EVERYONE`] for the built-in, whom only
@@ -237,6 +243,9 @@ pub struct Skill {
 
 /// The longest a skill's prompt.
 pub const MAX_SKILL_CHARS: usize = 2000;
+
+/// The longest an assistant's owner-facing description.
+pub const MAX_ASSISTANT_DESCRIPTION_CHARS: usize = 200;
 
 /// The LosOS skills every box sees. Deliberately few and generic: they
 /// teach the tag its sources.
@@ -338,7 +347,9 @@ impl State {
             assistants: vec![Assistant {
                 slug: BUILTIN_SLUG.into(),
                 display: BUILTIN_NAME.into(),
+                description: String::new(),
                 prompt: String::new(),
+                color: String::new(),
                 clearance: DEFAULT_LEVEL.into(),
                 owner: EVERYONE.into(),
                 enabled: true,
@@ -520,8 +531,19 @@ impl Assistant {
         if self.display.trim().is_empty() || self.display.chars().count() > 64 {
             return Err("an assistant shows one name, at most 64 characters".into());
         }
+        if self.description.chars().count() > MAX_ASSISTANT_DESCRIPTION_CHARS {
+            return Err(format!(
+                "a description is at most {MAX_ASSISTANT_DESCRIPTION_CHARS} characters"
+            ));
+        }
+        if self.description.chars().any(char::is_control) {
+            return Err("a description is one line".into());
+        }
         if self.prompt.chars().count() > MAX_SKILL_CHARS {
             return Err(format!("a persona is at most {MAX_SKILL_CHARS} characters"));
+        }
+        if self.color.chars().count() > 32 || self.color.chars().any(char::is_control) {
+            return Err("a colour is a short token".into());
         }
         if state.rank(&self.clearance).is_none() {
             return Err(format!("no such level: {}", self.clearance));
@@ -1269,29 +1291,47 @@ fn private_call(call: &mut std::process::Command) {
 pub enum Harness {
     /// T3 Code, the box's default when the module ships it.
     T3,
-    /// OpenCode, when no T3 Code was configured.
-    OpenCode,
+    /// The lososd harness, when no T3 Code was configured.
+    Lososd,
     /// Ollama on loopback, the built-in path.
     Builtin,
 }
 
-/// Pick the ask's harness: a configured T3 Code first, then OpenCode,
-/// then the model the box runs itself.
-pub fn harness(t3: Option<&str>, opencode: Option<&str>) -> Harness {
+/// Pick the ask's harness: a configured T3 Code first, then the lososd
+/// harness, then the model the box runs itself.
+pub fn harness(t3: Option<&str>, lososd: Option<&str>) -> Harness {
     let chosen = |v: Option<&str>| v.is_some_and(|v| !v.trim().is_empty());
     if chosen(t3) {
         Harness::T3
-    } else if chosen(opencode) {
-        Harness::OpenCode
+    } else if chosen(lososd) {
+        Harness::Lososd
     } else {
         Harness::Builtin
     }
 }
 
-/// T3 Code's own turn, one prompt on its command line. T3 Code has its
-/// own provider settings, so the model comes from there and not from the
-/// box's Ollama.
+/// T3 Code harness backed by tinycode, run in the background. The prompt
+/// is passed via `--task-file` as tinycode expects.
 pub fn t3_command(bin: &str, prompt: &str) -> std::process::Command {
+    // Write prompt to a temp file for tinycode
+    let mut tmp = std::env::temp_dir();
+    tmp.push(format!("losos-tinycode-{}-{}.txt", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()));
+    let _ = std::fs::write(&tmp, prompt.as_bytes());
+    let mut call = std::process::Command::new(bin);
+    call.arg("run")
+        .arg("--json")
+        .arg("--max-turns")
+        .arg("24")
+        .arg("--task-file")
+        .arg(&tmp);
+    private_call(&mut call);
+    // Store temp file path in env for cleanup (spawn_turn will handle)
+    call.env("LOSOS_TINYCODE_TASK_FILE", tmp);
+    call
+}
+
+/// The lososd harness's own `run`, one non-interactive turn with the prompt.
+pub fn lososd_command(bin: &str, prompt: &str) -> std::process::Command {
     let mut call = std::process::Command::new(bin);
     call.arg("run").arg(prompt);
     private_call(&mut call);
@@ -1299,11 +1339,9 @@ pub fn t3_command(bin: &str, prompt: &str) -> std::process::Command {
 }
 
 /// OpenCode's own `run`, one non-interactive turn with the prompt.
+#[deprecated(note = "use lososd_command")]
 pub fn opencode_command(bin: &str, prompt: &str) -> std::process::Command {
-    let mut call = std::process::Command::new(bin);
-    call.arg("run").arg(prompt);
-    private_call(&mut call);
-    call
+    lososd_command(bin, prompt)
 }
 
 #[cfg(test)]
@@ -1425,7 +1463,9 @@ mod tests {
         let good = Assistant {
             slug: "gardener".into(),
             display: "Gardener".into(),
+            description: String::new(),
             prompt: String::new(),
+            color: String::new(),
             clearance: DEFAULT_LEVEL.into(),
             owner: "eva".into(),
             enabled: true,
@@ -1445,12 +1485,56 @@ mod tests {
     }
 
     #[test]
+    fn assistant_metadata_is_optional_and_validated() {
+        let state = seeded();
+        let mut good = Assistant {
+            slug: "gardener".into(),
+            display: "Gardener".into(),
+            description: "Tends notes".into(),
+            prompt: String::new(),
+            color: "#4f8cff".into(),
+            clearance: DEFAULT_LEVEL.into(),
+            owner: "eva".into(),
+            enabled: true,
+            minted: false,
+        };
+        assert!(good.checked(&state).is_ok());
+        good.description = "x".repeat(MAX_ASSISTANT_DESCRIPTION_CHARS + 1);
+        assert!(good.checked(&state).is_err());
+        good.description = "ok".into();
+        good.color = "line\nbreak".into();
+        assert!(good.checked(&state).is_err());
+        good.color = "x".repeat(33);
+        assert!(good.checked(&state).is_err());
+        good.color = String::new();
+        assert!(good.checked(&state).is_ok());
+    }
+
+    #[test]
+    fn assistant_deserializes_without_new_metadata_fields() {
+        let old: Assistant = serde_json::from_value(serde_json::json!({
+            "slug": "gardener",
+            "display": "Gardener",
+            "prompt": "",
+            "clearance": "everyday",
+            "owner": "eva",
+            "enabled": true,
+            "minted": false
+        }))
+        .expect("old assistant json");
+        assert_eq!(old.description, "");
+        assert_eq!(old.color, "");
+    }
+
+    #[test]
     fn mentions_reach_the_builtin_and_the_slugs() {
         let mut state = seeded();
         state.assistants.push(Assistant {
             slug: "gardener".into(),
             display: "Gardener".into(),
+            description: String::new(),
             prompt: String::new(),
+            color: String::new(),
             clearance: DEFAULT_LEVEL.into(),
             owner: "eva".into(),
             enabled: true,
@@ -1642,8 +1726,8 @@ mod tests {
 
     #[test]
     fn the_harness_takes_t3_first() {
-        assert_eq!(harness(Some("t3"), Some("opencode")), Harness::T3);
-        assert_eq!(harness(None, Some("opencode")), Harness::OpenCode);
+        assert_eq!(harness(Some("t3"), Some("lososd")), Harness::T3);
+        assert_eq!(harness(None, Some("lososd")), Harness::Lososd);
         assert_eq!(harness(None, None), Harness::Builtin);
         assert_eq!(harness(Some("  "), None), Harness::Builtin);
     }

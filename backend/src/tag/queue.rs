@@ -304,7 +304,9 @@ impl Post for Record {
 pub struct Runner {
     /// `LOSOS_TAG_T3_BIN`: the box's T3 Code, the default harness.
     pub t3: Option<String>,
-    /// `LOSOS_TAG_OPENCODE_BIN`: the fallback harness.
+    /// `LOSOS_TAG_LOSOSD_BIN`: the lososd harness.
+    pub lososd: Option<String>,
+    /// `LOSOS_TAG_OPENCODE_BIN`: deprecated alias for the lososd harness.
     pub opencode: Option<String>,
     /// `LOSOS_TAG_MODEL`: the built-in path's model tag on Ollama.
     pub model: Option<String>,
@@ -325,9 +327,11 @@ impl Runner {
     /// The environment `modules/tag.nix` hands over.
     pub fn from_env() -> Self {
         let read = |name: &str| std::env::var(name).ok().filter(|v| !v.trim().is_empty());
+        let lososd = read("LOSOS_TAG_LOSOSD_BIN").or_else(|| read("LOSOS_TAG_OPENCODE_BIN"));
         Runner {
             t3: read("LOSOS_TAG_T3_BIN"),
-            opencode: read("LOSOS_TAG_OPENCODE_BIN"),
+            lososd: lososd.clone(),
+            opencode: lososd,
             model: read("LOSOS_TAG_MODEL"),
             mesh_url: read("LOSOS_TAG_MESH_URL"),
             mesh_model: read("LOSOS_TAG_MESH_MODEL"),
@@ -604,12 +608,19 @@ pub fn turn(
         &material,
         &job.question,
     );
-    match crate::tag::harness(config.t3.as_deref(), config.opencode.as_deref()) {
+    match crate::tag::harness(
+        config.t3.as_deref(),
+        config.lososd.as_deref().or(config.opencode.as_deref()),
+    ) {
         crate::tag::Harness::T3 => {
             spawn_turn(config.t3.as_deref().expect("t3 configured"), &prompt, true)
         }
-        crate::tag::Harness::OpenCode => spawn_turn(
-            config.opencode.as_deref().expect("opencode configured"),
+        crate::tag::Harness::Lososd => spawn_turn(
+            config
+                .lososd
+                .as_deref()
+                .or(config.opencode.as_deref())
+                .expect("lososd configured"),
             &prompt,
             false,
         ),
@@ -697,15 +708,27 @@ fn join_prompt(system: &str, material: &str, question: &str) -> String {
     format!("{system}\n\n<material>{material}</material>\n\nQuestion: {question}")
 }
 
-/// One turn on a command line: `t3 run …` or `opencode run …`. The
+/// One turn on a command line: `t3 run …` or the lososd harness `run …`. The
 /// prompt is on stdin? On the command line both take it, capped at what a
 /// command line carries.
 fn spawn_turn(bin: &str, prompt: &str, t3: bool) -> Result<String, String> {
     let mut call = if t3 {
         crate::tag::t3_command(bin, prompt)
     } else {
-        crate::tag::opencode_command(bin, prompt)
+        crate::tag::lososd_command(bin, prompt)
     };
+    // Best-effort cleanup of any temp files created by tinycode harness
+    if t3 {
+        let _ = std::fs::read_dir(std::env::temp_dir()).map(|entries| {
+            for entry in entries.flatten() {
+                if let Ok(name) = entry.file_name().into_string() {
+                    if name.starts_with("losos-tinycode-") {
+                        let _ = std::fs::remove_file(entry.path());
+                    }
+                }
+            }
+        });
+    }
     let out = call
         .output()
         .map_err(|e| format!("{bin} did not start: {e}"))?;
@@ -843,7 +866,10 @@ mod tests {
         };
         assert_eq!(
             Harness::Builtin,
-            crate::tag::harness(config.t3.as_deref(), config.opencode.as_deref())
+            crate::tag::harness(
+                config.t3.as_deref(),
+                config.lososd.as_deref().or(config.opencode.as_deref())
+            )
         );
         let prompt = join_prompt("you are tag", "material", "what is due?");
         assert!(prompt.starts_with("you are tag"));
@@ -859,7 +885,9 @@ mod tests {
         let gardener = crate::tag::Assistant {
             slug: "gardener".into(),
             display: "Gardener".into(),
+            description: String::new(),
             prompt: String::new(),
+            color: String::new(),
             clearance: crate::tag::DEFAULT_LEVEL.into(),
             owner: "eva".into(),
             enabled: true,

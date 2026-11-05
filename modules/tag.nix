@@ -5,10 +5,11 @@
 # lososd (`backend/src/tag.rs`), fed by Ollama on loopback through the
 # same service `modules/builder.nix` runs. The tag's asks run on the ask's
 # harness (backend/src/tag.rs `harness`): when the box has T3 Code
-# (`tag.t3Bin`) that is the default, else OpenCode (`tag.opencodeBin`),
-# else the box's own model over Ollama. The harnesses carry their own
-# provider settings — T3 Code has no Ollama provider — and the built-in
-# path is the one that answers when neither harness is configured.
+# (`tag.t3Bin`) that is the default, else the lososd harness
+# (`tag.lososdBin`), else the box's own model over Ollama. The harnesses
+# carry their own provider settings — T3 Code has no Ollama provider —
+# and the built-in path is the one that answers when neither harness is
+# configured.
 #
 # `tag.model` is the box's built-in model, and everything on the box's AI
 # shares one: the assistant's Ask AI, the builder and the tag ask the
@@ -62,8 +63,11 @@ in
     // lib.optionalAttrs (cfg.t3Bin != "") {
       LOSOS_TAG_T3_BIN = cfg.t3Bin;
     }
-    // lib.optionalAttrs (cfg.opencodeBin != "") {
-      LOSOS_TAG_OPENCODE_BIN = cfg.opencodeBin;
+    // lib.optionalAttrs ((cfg.lososdBin or cfg.opencodeBin or "") != "") {
+      LOSOS_TAG_LOSOSD_BIN = cfg.lososdBin or cfg.opencodeBin or "";
+    }
+    // lib.optionalAttrs ((cfg.lososdBin or cfg.opencodeBin or "") != "") {
+      LOSOS_TAG_OPENCODE_BIN = cfg.lososdBin or cfg.opencodeBin or "";
     }
     // lib.optionalAttrs (cfg.browser && cfg.enable) {
       # The ask's one reader. `midori` puts Playwright's WebKit shell in
