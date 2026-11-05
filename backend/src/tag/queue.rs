@@ -708,28 +708,31 @@ fn join_prompt(system: &str, material: &str, question: &str) -> String {
     format!("{system}\n\n<material>{material}</material>\n\nQuestion: {question}")
 }
 
-/// One turn on a command line: `t3 run …` or the lososd harness `run …`. The
-/// prompt is on stdin? On the command line both take it, capped at what a
-/// command line carries.
+/// One turn on a command line. T3 Code runs on tinycode in the
+/// background (`t3 run --json`, the prompt on stdin) and its NDJSON is
+/// parsed into the answer; the lososd harness takes the prompt whole, on
+/// its command line. Both are capped at what an answer carries.
 fn spawn_turn(bin: &str, prompt: &str, t3: bool) -> Result<String, String> {
-    let mut call = if t3 {
-        crate::tag::t3_command(bin, prompt)
-    } else {
-        crate::tag::lososd_command(bin, prompt)
-    };
-    // Best-effort cleanup of any temp files created by tinycode harness
+    use std::io::Write;
     if t3 {
-        let _ = std::fs::read_dir(std::env::temp_dir()).map(|entries| {
-            for entry in entries.flatten() {
-                if let Ok(name) = entry.file_name().into_string() {
-                    if name.starts_with("losos-tinycode-") {
-                        let _ = std::fs::remove_file(entry.path());
-                    }
-                }
-            }
-        });
+        let mut child = crate::tag::t3_command(bin)
+            .spawn()
+            .map_err(|e| format!("{bin} did not start: {e}"))?;
+        // The prompt on stdin can hold anything, and no shell sees it;
+        // dropping the handle ends the CLI's read.
+        if let Some(mut stdin) = child.stdin.take() {
+            let _ = stdin.write_all(prompt.as_bytes());
+        }
+        let out = child
+            .wait_with_output()
+            .map_err(|e| format!("{bin} did not answer: {e}"))?;
+        if !out.status.success() {
+            return Err(format!("{bin} answered {}", out.status));
+        }
+        return crate::tag::tinycode_answer(&out.stdout)
+            .map(|answer| crate::tag::web_browse_bytes(answer.as_bytes(), MAX_ANSWER_CHARS));
     }
-    let out = call
+    let out = crate::tag::lososd_command(bin, prompt)
         .output()
         .map_err(|e| format!("{bin} did not start: {e}"))?;
     if !out.status.success() {

@@ -1310,24 +1310,63 @@ pub fn harness(t3: Option<&str>, lososd: Option<&str>) -> Harness {
     }
 }
 
-/// T3 Code harness backed by tinycode, run in the background. The prompt
-/// is passed via `--task-file` as tinycode expects.
-pub fn t3_command(bin: &str, prompt: &str) -> std::process::Command {
-    // Write prompt to a temp file for tinycode
-    let mut tmp = std::env::temp_dir();
-    tmp.push(format!("losos-tinycode-{}-{}.txt", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()));
-    let _ = std::fs::write(&tmp, prompt.as_bytes());
+/// T3 Code harness backed by tinycode, run in the background: one
+/// non-interactive ask on the command line the plugin's exec import uses
+/// (`tinycode run --json`), the prompt on stdin, the answer parsed out of
+/// the NDJSON events by [`crate::tag::tinycode_answer`]. 24 is tinycode's
+/// own turn cap.
+pub fn t3_command(bin: &str) -> std::process::Command {
     let mut call = std::process::Command::new(bin);
     call.arg("run")
         .arg("--json")
         .arg("--max-turns")
         .arg("24")
         .arg("--task-file")
-        .arg(&tmp);
-    private_call(&mut call);
-    // Store temp file path in env for cleanup (spawn_turn will handle)
-    call.env("LOSOS_TINYCODE_TASK_FILE", tmp);
+        .arg("-");
+    call.stdin(std::process::Stdio::piped());
+    call.stdout(std::process::Stdio::piped());
+    call.stderr(std::process::Stdio::null());
     call
+}
+    call
+/// The answer out of tinycode's NDJSON stdout: the `done` event's `text`,
+/// or the terminal `error` event's message. Unparsed lines — narration
+/// escaping onto stdout — are ignored; the run that used its turns up
+/// without finishing fails with the unparsed tail.
+pub fn tinycode_answer(out: &[u8]) -> Result<String, String> {
+    let mut answer = None;
+    let mut error: Option<String> = None;
+    let mut max_turns = false;
+    let mut unparsed: Option<String> = None;
+    for line in String::from_utf8_lossy(out).lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let Ok(doc) = serde_json::from_str::<serde_json::Value>(line) else {
+            unparsed = Some(line.chars().take(200).collect());
+            continue;
+        };
+        match doc.get("type").and_then(serde_json::Value::as_str) {
+            Some("done") => answer = doc["text"].as_str().map(String::from),
+            Some("error") => error = doc["message"].as_str().map(String::from),
+            Some("max_turns") => max_turns = true,
+            _ => {}
+        }
+    }
+    if let Some(answer) = answer {
+        return Ok(answer);
+    }
+    if let Some(error) = error {
+        return Err(error);
+    }
+    if max_turns {
+        return Err("tinycode used its turns up without finishing".into());
+    }
+    match unparsed {
+        Some(tail) => Err(format!("tinycode was not JSON: {tail}")),
+        None => Err("tinycode answered nothing".into()),
+    }
 }
 
 /// The lososd harness's own `run`, one non-interactive turn with the prompt.
@@ -1730,6 +1769,26 @@ mod tests {
         assert_eq!(harness(None, Some("lososd")), Harness::Lososd);
         assert_eq!(harness(None, None), Harness::Builtin);
         assert_eq!(harness(Some("  "), None), Harness::Builtin);
+    }
+
+    #[test]
+    fn tinycodes_ndjson_gives_the_done_text() {
+        let out = br#"{"type":"start","session":"s.json"}
+{"type":"done","text":"the answer","turns":2}"#;
+        assert_eq!(tinycode_answer(out).unwrap(), "the answer");
+        // Narration escaping onto stdout is ignored; the answer stands.
+        let noisy = br#"narration on stdout
+{"type":"done","text":"second"}"#;
+        assert_eq!(tinycode_answer(noisy).unwrap(), "second");
+        // The CLI's own terminal error wins.
+        let failed = br#"{"type":"error","message":"no provider key"}"#;
+        assert_eq!(
+            tinycode_answer(failed).unwrap_err(),
+            "no provider key".to_string()
+        );
+        // A run that used its turns up is one that failed.
+        assert!(tinycode_answer(br#"{"type":"max_turns","session":"s"}"#).is_err());
+        assert!(tinycode_answer(b"").is_err());
     }
 
     #[test]
