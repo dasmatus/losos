@@ -5,7 +5,7 @@
  *   bun tests/voice.unit.mjs
  */
 
-import assert from './assert.mjs';
+import assert from './assert.ts';
 
 const { Segmenter, RATE, END_QUIET_MS } = await import('../src/voice/vad.ts');
 const d = await import('../src/voice/dialog.ts');
