@@ -517,7 +517,7 @@ The next three things:
   --features webgpu`. These cover `src/app/` and `web.rs` too, need no
   system libraries, and take about 2 GB of disk each. devenv's `lint-wasm`
   and CI's `clippy-wasm` job run both, one after the other.
-- `admin-ui/app/tests/lab.browser.mjs` loads the page under the Lab's own
+- `admin-ui/app/tests/lab.browser.ts` loads the page under the Lab's own
   policy and checks that the SVG canvas draws first. On WebGL2 it then
   checks that the setup, the selection and the camera survive the swap,
   that a click on the Bevy canvas picks a device, and that Delete removes

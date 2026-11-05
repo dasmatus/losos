@@ -5,7 +5,7 @@
 #
 # The box runs the same pieces as nix/tests/mail.nix (Stalwart, lososd,
 # LosOS Login, the front vhost) with the real admin pages. The laptop is
-# Matus and Eva, each in their own Chromium profile (nix/tests/mail-pgp.mjs),
+# Matus and Eva, each in their own Chromium profile (nix/tests/mail-pgp.ts),
 # and GnuPG for what a mail program elsewhere would do. `elsewhere` is the
 # rest of the internet: the mail domain example.org with a WKD, and
 # keys.example.net standing in for keys.openpgp.org, on certificates from a
@@ -85,7 +85,7 @@ let
 
   shots = pkgs.writeShellScriptBin "mail-pgp" ''
     export PLAYWRIGHT_CORE=${pkgs.playwright-driver}
-    exec ${pkgs.bun}/bin/bun ${./mail-pgp.mjs} "$@"
+    exec ${pkgs.bun}/bin/bun ${./mail-pgp.ts} "$@"
   '';
 
   # The test numbers its machines by name: box .1, elsewhere .2, laptop .3.

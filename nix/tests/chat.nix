@@ -31,7 +31,7 @@
 #     numbers are black bars, asked about before sending; Report opens.
 #
 # The browser is Chromium under Playwright in the test driver
-# (nix/tests/chat-browser.mjs), talking to the box through a SOCKS proxy on
+# (nix/tests/chat-browser.ts), talking to the box through a SOCKS proxy on
 # the laptop, so the address bar says
 # https://mattbox.local/ and LosOS Login's cookie is the box's own. Every
 # screenshot lands in the test's output: `nix build
@@ -485,7 +485,7 @@ pkgs.testers.nixosTest {
         )
         assert whoami(petra, token)[0] in (401, 403)
 
-    # The browser: nix/tests/chat-browser.mjs, run here in the driver.
+    # The browser: nix/tests/chat-browser.ts, run here in the driver.
     browser_env = {
         **os.environ,
         "HOME": os.environ.get("TMPDIR", "/tmp"),
@@ -503,7 +503,7 @@ pkgs.testers.nixosTest {
 
     def browser(phase):
         run = subprocess.Popen(
-            ["${pkgs.bun}/bin/bun", "${./chat-browser.mjs}", phase, SHOTS],
+            ["${pkgs.bun}/bin/bun", "${./chat-browser.ts}", phase, SHOTS],
             env=browser_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         )
         # How loaded the box is while the page works, in case a step stalls.

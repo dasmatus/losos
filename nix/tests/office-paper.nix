@@ -4,7 +4,7 @@
 # lososd claiming the box. The box runs LosOS Cloud and no Collabora.
 #
 # The laptop is the owner's computer on the LAN. Chromium
-# (nix/tests/office-paper-shots.mjs) starts a document and a presentation
+# (nix/tests/office-paper-shots.ts) starts a document and a presentation
 # from the files bar, writes into them with the bar above the page and its
 # Insert menu, sets the page up, plays the presentation full screen, and
 # opens a document full of script; then
@@ -63,7 +63,7 @@ let
       }
     }
     export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
-    exec ${pkgs.bun}/bin/bun ${./office-paper-shots.mjs} "$@"
+    exec ${pkgs.bun}/bin/bun ${./office-paper-shots.ts} "$@"
   '';
 in
 

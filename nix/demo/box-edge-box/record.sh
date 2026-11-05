@@ -3,7 +3,7 @@
 # photograph it.
 #
 # Builds the driver of checks.losos-box-edge-box (demo.nix), starts
-# record.mjs beside it and runs the demo with LOSOS_RECORD_DIR set, so the VM
+# record.ts beside it and runs the demo with LOSOS_RECORD_DIR set, so the VM
 # script pauses at each step while the recorder photographs both boxes' Mesh
 # pane and the edge's manage page through the VMs' real admin UI.
 #
@@ -31,7 +31,7 @@ log "building the demo driver"
 nix build "${nix_args[@]}" -o "$out/driver" "$repo#checks.x86_64-linux.losos-box-edge-box.driver"
 
 log "starting the recorder"
-LOSOS_RECORD_DIR="$out" bun "$here/record.mjs" >"$out/recorder.log" 2>&1 &
+LOSOS_RECORD_DIR="$out" bun "$here/record.ts" >"$out/recorder.log" 2>&1 &
 recorder=$!
 
 log "running the demo (log in $out/driver.log)"

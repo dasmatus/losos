@@ -222,7 +222,7 @@ CSSOM nutzt. Der Switch ist die React-Aria-Variante von shadcn
 (`react-aria-components`), die `SwitchRow` als shadcn-Field „Switch with a
 description“ in Einstellungszeilen setzt. Nur der Bestätigungs-Toast ist aus
 Radix, und er braucht keine Scroll-Sperre. Dialog bleibt beim nativen
-`<dialog>`. `tests/app.browser.mjs` liefert den echten CSP-Header aus und
+`<dialog>`. `tests/app.browser.ts` liefert den echten CSP-Header aus und
 schlägt bei jeder neuen Verletzung fehl, sodass ein Bibliothekswechsel, der
 Styles einschleust, einen Check rot werden lässt.
 
@@ -246,7 +246,7 @@ der Bereich Erweitert zeichnet pro Zeile einen typisierten Editor.
 
 `classify` in der Nix-Datei ist das Tor. Eine Deklaration mit einem Typ, den
 es nicht kennt, ist ein `throw`, sodass der Eval-Job rot wird, statt dass
-eine leere Zeile im Bereich landet. `tests/advanced.browser.mjs` rendert das
+eine leere Zeile im Bereich landet. `tests/advanced.browser.ts` rendert das
 echte Dokument (`nix/tests/admin-ui.nix` übergibt den Check `losos-options-doc`)
 und schlägt bei jeder Zeile fehl, die der Bereich nicht zeichnen kann.
 `POST /api/apply` prüft jede Zeile gegen das Dokument (`check_body`). Es

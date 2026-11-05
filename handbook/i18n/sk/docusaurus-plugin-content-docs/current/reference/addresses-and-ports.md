@@ -68,7 +68,8 @@ prichádzajúci port.
 | --------------------------- | -------------------------------------------------------- |
 | `<name>.local`              | Zariadenie vo vlastnej sieti, cez mDNS                   |
 | `<name>.<edge domain>`      | Zariadenie cez svoj edge, pre LosOS Cloud a LosOS Git    |
-| `losos-edge.dasmat.us`      | Riadiaca časť edge LosOS a stránka „find my box“         |
+| `register.dasmat.us`        | Riadiaca časť edge LosOS (predvolená adresa edge) |
+| `losos-edge.dasmat.us`      | Stránka „find my box“         |
 | `proxy.losos.dasmat.us`     | Binárna cache, z ktorej sa zariadenie aktualizuje        |
 | `127.0.0.1:8787`            | Lokálna Nix cache z GHCR na zariadení a inštalačnom médiu |
 | `127.0.0.1:8790`            | Lokálna kópia všetkých týchto cache na disku zariadenia |

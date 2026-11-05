@@ -21,7 +21,7 @@
 #              (nix/tests/open-gateway.nix).
 #   * `laptop`: Chromium through Playwright on mattbox's LAN, signed in with
 #              the spare key, driving the Market pane's AI models section
-#              (nix/tests/inference-payg-shots.mjs).
+#              (nix/tests/inference-payg-shots.ts).
 #
 # The buyer the assertions use is a third tenant with no VM: the registrar
 # only checks its token. It pays from anvil's third account with cast. The
@@ -160,7 +160,7 @@ let
     export PLAYWRIGHT_BROWSERS_PATH=${browsers}
     export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
     export PLAYWRIGHT_CORE=${pkgs.playwright}
-    exec ${pkgs.bun}/bin/bun ${./inference-payg-shots.mjs} "$@"
+    exec ${pkgs.bun}/bin/bun ${./inference-payg-shots.ts} "$@"
   '';
   # The wallet the owner keeps in mattbox's page: anvil's first account,
   # imported from its phrase.
@@ -548,7 +548,7 @@ pkgs.testers.nixosTest {
 
 
     def shots(*args):
-        """One call of the laptop's Chromium (nix/tests/inference-payg-shots.mjs)."""
+        """One call of the laptop's Chromium (nix/tests/inference-payg-shots.ts)."""
         return laptop.succeed("shots " + " ".join(shlex.quote(str(a)) for a in args), timeout=2400)
 
 

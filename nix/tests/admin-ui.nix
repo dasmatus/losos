@@ -30,7 +30,7 @@
 {
   pkgs,
   # The option document (flake.nix passes the `losos-options-doc` check). With
-  # it, tests/advanced.browser.mjs renders every option the install
+  # it, tests/advanced.browser.ts renders every option the install
   # configuration declares; without it the test falls back to its fixture.
   optionsJson ? null,
   # The shipped package (nix/packages.nix, losos-admin-ui): its source, its
@@ -39,7 +39,7 @@
   # pages' imports do not resolve and `tsc` fails.
   ui,
   # The SFU behind calls (the losos-ctl package's losos-calls), which
-  # tests/calls.browser.mjs runs a call through. Without it that file
+  # tests/calls.browser.ts runs a call through. Without it that file
   # cannot run, so the check needs it.
   callsPackage,
   # The call agent's engine and models (nix/voice.nix), which
@@ -56,7 +56,7 @@ assert lib.assertMsg (pinnedPlaywright == pkgs.playwright-driver.version)
 ui.overrideAttrs (old: {
   pname = "losos-admin-ui-browser";
 
-  # tests/calls.browser.mjs decodes the SFU's tap with ffmpeg.
+  # tests/calls.browser.ts decodes the SFU's tap with ffmpeg.
   # The calls browser test starts the SFU with its edge client; curl is a
   # runtime dependency of that client and must exist in the sandbox.
   nativeBuildInputs = old.nativeBuildInputs ++ [

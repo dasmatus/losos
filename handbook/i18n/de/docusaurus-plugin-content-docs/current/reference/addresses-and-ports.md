@@ -68,7 +68,8 @@ keinen eingehenden Port öffnest.
 | --------------------------- | -------------------------------------------------------- |
 | `<name>.local`              | Die Box, in ihrem eigenen Netzwerk, über mDNS            |
 | `<name>.<edge domain>`      | Die Box über ihre Edge, für LosOS Cloud und LosOS Git    |
-| `losos-edge.dasmat.us`      | Die Steuerebene der LosOS-Edge und die Seite „Find my box“ |
+| `register.dasmat.us`        | Die Steuerebene der LosOS-Edge (die Standard-Adresse der Edge) |
+| `losos-edge.dasmat.us`      | Die Seite „Find my box“ |
 | `proxy.losos.dasmat.us`     | Der Binär-Cache, aus dem sich die Box aktualisiert       |
 | `127.0.0.1:8787`            | Lokaler GHCR-Nix-Cache auf Gerät und Installationsmedium |
 | `127.0.0.1:8790`            | Die lokale Kopie all dieser Caches auf der Platte der Box |

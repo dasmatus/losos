@@ -213,7 +213,7 @@ posúvania používa CSSOM. Switch je varianta shadcn pre React Aria
 (`react-aria-components`), ktorú `SwitchRow` vkladá do riadkov nastavení ako
 shadcn Field „Switch with a description“. Iba potvrdzovací Toast je z Radixu
 a zámok posúvania nepotrebuje. Dialog zostáva na natívnom `<dialog>`.
-`tests/app.browser.mjs` servíruje skutočnú hlavičku CSP a zlyhá pri každom
+`tests/app.browser.ts` servíruje skutočnú hlavičku CSP a zlyhá pri každom
 novom porušení, takže výmena knižnice, ktorá vkladá štýly, zmení kontrolu na
 červenú.
 
@@ -237,7 +237,7 @@ pre každý riadok typovaný editor.
 
 Bránou je `classify` v Nix súbore. Deklarácia s typom, ktorý nepozná, je
 `throw`, takže úloha eval zčervenie namiesto toho, aby na panel dopadol
-prázdny riadok. `tests/advanced.browser.mjs` vykreslí skutočný dokument
+prázdny riadok. `tests/advanced.browser.ts` vykreslí skutočný dokument
 (`nix/tests/admin-ui.nix` odovzdáva kontrolu `losos-options-doc`) a zlyhá pri
 každom riadku, ktorý panel nevie vykresliť. `POST /api/apply` overí každý
 riadok proti dokumentu (`check_body`). Odmietne nedeklarované kľúče, kľúče

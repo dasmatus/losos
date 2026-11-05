@@ -569,12 +569,14 @@ in
 
     proxy.registrarUrl = lib.mkOption {
       type = lib.types.str;
-      # The demo edge (edge/vercel/, the registrar as a Vercel Function at the
-      # owner's domain). Not proxy.losos.dasmat.us: that name is the Nix binary
-      # cache proxy (`losos.cache.substituters`). A
-      # self-hosted edge is register.<losos.edge.publicDomain>, e.g.
-      # https://register.losos.cfd; set this to that when one exists.
-      default = "https://losos-edge.dasmat.us";
+      # The official edge's control plane, register.<losos.edge.publicDomain>
+      # of the live edge (/health, /register, /tunnel-pin; its manage page is
+      # /manage/). Not losos-edge.dasmat.us: that name pointed at the Vercel
+      # demo host (edge/vercel/) and now lands on the edge server's Traefik,
+      # which has no router for it (404, self-signed certificate). Not
+      # proxy.losos.dasmat.us either: that is the Nix binary cache proxy
+      # (`losos.cache.substituters`).
+      default = "https://register.dasmat.us";
       description = "Base URL of the edge losos-registrar HTTP API (fronted by Traefik at a static hostname, or the Vercel demo host).";
     };
 
@@ -2587,6 +2589,26 @@ in
       '';
     };
 
+    installer.tangEdge = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        The edge-prefilled medium: the autorun install runs with
+        `--tang-edge`, sealing the disk key to the TPM2 AND the medium's edge
+        (`losos.proxy.registrarUrl`, which `--tang-edge` with no address
+        asks). The edge then stops answering for the box once its owner
+        reports it stolen (modules/network-unlock.nix,
+        nix/tests/edge-unlock.nix). The prefilled flag sits ahead of every
+        typed one, is not passed on the CLI wrapper, and never answers a
+        `--no-tpm`: on a `--tang-edge` run the box needs a chip, and stops
+        with that reason instead of installing weaker than the medium was
+        built for. Meaningful only with `losos.installer.autorun`, and the
+        module asserts it: the flavor is the autorun's default, nothing
+        else's. Set on `nixosConfigurations.iso-edge` (flake.nix), built
+        with `LOSOS_EDGE_URL` naming the medium's edge.
+      '';
+    };
+
     # ── Secure Boot (the installer medium) ──────────────────────────────────
     secureBoot.enable = lib.mkOption {
       type = lib.types.bool;
@@ -2636,6 +2658,31 @@ in
       type = lib.types.str;
       default = "losos.cfd";
       description = "Apex domain. The static registration router is register.<publicDomain>; per-appliance hostnames live under it.";
+    };
+
+    edge.landing.hosts = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ "edge.${config.losos.edge.publicDomain}" ];
+      defaultText = lib.literalExpression ''[ "edge.''${config.losos.edge.publicDomain}" ]'';
+      example = [
+        "edge.example.org"
+        "example.org"
+      ];
+      description = ''
+        Host names that are not a box and not the registrar, but that
+        people type into a browser, such as the edge's own name. Traefik
+        redirects every request to them to `edge.landing.url` with a
+        certificate of its own, where it used to answer a bare
+        "404 page not found" under its default self-signed certificate.
+        Each name needs a DNS record that reaches this edge, for the
+        Let's Encrypt certificate. An empty list leaves them unrouted.
+      '';
+    };
+
+    edge.landing.url = lib.mkOption {
+      type = lib.types.str;
+      default = "https://losos.dasmat.us";
+      description = "Where `edge.landing.hosts` send a browser: the handbook, which says what an edge is.";
     };
 
     edge.tunnelBindAddr = lib.mkOption {

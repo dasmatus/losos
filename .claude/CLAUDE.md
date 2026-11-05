@@ -75,9 +75,9 @@ Bun's own bundler builds the admin UI, and Vite is gone. `build.ts` runs
 server). Only the handbook keeps another bundler, Docusaurus's. Nix installs each
 `node_modules` from its `bun.lock` alone (`nix/bun-deps.nix`, one hash per
 workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
-`node:` import. Playwright's API wants a Node `Buffer` for bytes
+`node:` import. Playwright's API wants bytes only in its own Buffer shape
 (`setInputFiles`, `route.fulfill`, a WebSocket route): hand it a file path
-(`stash` in `tests/harness.mjs`) or `wsBytes`.
+(`stash` in `tests/harness.ts`) or `wsBytes`.
 
 ## Layout
 
@@ -376,7 +376,7 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   person). The application service's user namespace is not exclusive:
   Synapse leaves an exclusive one's users out of its directory. The client is matrix-js-sdk with its Rust
   crypto under the Lab's CSP arm. `nix/tests/chat.nix` boots it and drives
-  two browsers (`chat-browser.mjs`); its output holds the screenshots.
+  two browsers (`chat-browser.ts`); its output holds the screenshots.
 - `mail.nix` + `backend/src/mail.rs` (`losos.mail.*`): LosOS Mail. Stalwart
   as `shared`, mailboxes in `/home/shared/data/mail`, loopback HTTP only (no
   SMTP or IMAP listener), its own unit rather than nixpkgs' module because a
@@ -927,7 +927,7 @@ Base UI, whose scroll lock is CSSOM; the Switch is shadcn's React Aria
 flavour (`react-aria-components`), laid into settings rows by `SwitchRow` as
 shadcn's "Switch with a description" Field; only the confirmation Toast is
 Radix, which needs no scroll lock. Dialog stays on the native `<dialog>`.
-`tests/app.browser.mjs` serves the real CSP header and fails on any new
+`tests/app.browser.ts` serves the real CSP header and fails on any new
 violation, so a library swap that injects styles turns a check red. The command layer is written against a `Losos` effect
 **trait** with a real (`io_backend`) and an in-memory (`fake`) implementation,
 so the state machine is unit-tested with no filesystem; the installer repeats
@@ -945,7 +945,7 @@ running value, danger and read-only flags); lososd joins the current
 `overrides.nix` into it at `GET /api/options`, and the Advanced pane draws a
 typed editor per row. `classify` in the Nix file is the gate: a declaration
 with a type it does not know is a `throw`, so the eval job goes red rather
-than an empty row landing on the pane, and `tests/advanced.browser.mjs`
+than an empty row landing on the pane, and `tests/advanced.browser.ts`
 renders the real document (`nix/tests/admin-ui.nix` passes the
 `losos-options-doc` check) and fails on any row the pane cannot draw.
 `POST /api/apply` is now checked line by line against the document

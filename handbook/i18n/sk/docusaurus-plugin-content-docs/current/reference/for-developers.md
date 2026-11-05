@@ -60,7 +60,7 @@ python3 .github/scripts/fix-hashes.py
 
 Obrázky sú v `handbook/docs/img/`. Sú troch druhov:
 
-- **Admin stránky a sprievodca.** `admin-ui/app/tests/handbook-screens.mjs`
+- **Admin stránky a sprievodca.** `admin-ui/app/tests/handbook-screens.ts`
   ich nasníma zo zostavenej SPA voči náhradnému lososd, takže ukazujú
   aktuálne rozhranie a logo bez zariadenia. Zapisuje PNG v rozlíšení 2x,
   ktoré idú do príručky zmenšené na šírku 1600 px a zredukované na
@@ -79,8 +79,8 @@ Obrázky sú v `handbook/docs/img/`. Sú troch druhov:
 ```sh
 cd admin-ui/app
 bun run build
-bun tests/handbook-screens.mjs /tmp/handbook-screens           # every shot
-bun tests/handbook-screens.mjs /tmp/handbook-screens mesh      # names containing "mesh"
+bun tests/handbook-screens.ts /tmp/handbook-screens           # every shot
+bun tests/handbook-screens.ts /tmp/handbook-screens mesh      # names containing "mesh"
 ```
 
 :::note[Keď Playwright nemá Chromium]

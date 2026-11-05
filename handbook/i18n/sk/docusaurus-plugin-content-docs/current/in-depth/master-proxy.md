@@ -18,6 +18,11 @@ Importujte výstup flaku `nixosModules.edge` do konfigurácie VPS a nastavte
 `losos.edge.*`:
 
 - `losos.edge.publicDomain` je doména, pod ktorou sa zariadenia sprístupňujú.
+- `losos.edge.landing.hosts` (predvolene `edge.<publicDomain>`) sú názvy, ktoré
+  ľudia píšu do prehliadača a ktoré nie sú ani zariadením, ani registrarom.
+  Každý dostane vlastný certifikát a presmeruje na `losos.edge.landing.url`,
+  teda na príručku, namiesto holého 404 so self-signed certifikátom. Každý
+  potrebuje záznam DNS, ktorý vedie na edge.
 - `losos.edge.tenants` je zoznam povolených zariadení, každé s názvom hostiteľa
   a súborom s tokenom. Registrar vytvára trasy a certifikáty iba pre
   identifikátory, ktoré sú uvedené tu.
@@ -509,15 +514,15 @@ overením. Náhrada verejného DNS na edge potom neodpovie nič, nepodpísaný
 záznam a overený záznam, ako test zónu deleguje a zverejní jej DS, a panel
 nasleduje každý krok. `edge/registrar/tests/domains.rs` prevedie tok
 nárokov aj peňaženiek proti skutočnému registraru a falošnému serveru
-DNS-over-HTTPS. `admin-ui/app/tests/ens.unit.mjs` cez relay prehrá
+DNS-over-HTTPS. `admin-ui/app/tests/ens.unit.ts` cez relay prehrá
 vyhľadanie názvu DNS zaznamenané z Ethereum mainnet a brány ENS.
 :::
 
 ## Demo nasadenie na Verceli {#demo-deployment-on-vercel}
 
 `edge/vercel/` spúšťa API registrara, ten istý router a tú istú kontrolu
-tokenu, ako Vercel Function na `https://losos-edge.dasmat.us`, čo je
-predvolená hodnota `losos.proxy.registrarUrl`. Register je uložený v Neon
+tokenu, ako Vercel Function, na prezentácie. Predvolená hodnota
+`losos.proxy.registrarUrl` je živý edge, `https://register.dasmat.us`. Register je uložený v Neon
 Postgres a stavová stránka na `/` ukazuje registrované zariadenia a konfiguráciu
 Traefiku, ktorú by pre ne edge zapísal. Je to iba riadiaca vrstva. Tunel,
 TLS Traefiku, mesh a trh nemôžu bežať na serverless hostiteľovi,

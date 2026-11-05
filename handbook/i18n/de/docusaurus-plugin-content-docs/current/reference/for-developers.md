@@ -63,7 +63,7 @@ python3 .github/scripts/fix-hashes.py
 
 Die Bilder liegen in `handbook/docs/img/`. Es gibt drei Arten:
 
-- **Admin-Seiten und Assistent.** `admin-ui/app/tests/handbook-screens.mjs`
+- **Admin-Seiten und Assistent.** `admin-ui/app/tests/handbook-screens.ts`
   nimmt sie aus der gebauten SPA gegen ein nachgebildetes lososd auf, sodass
   sie die aktuelle Oberfläche und das aktuelle Logo ohne Box zeigen. Es
   schreibt PNGs in doppelter Auflösung, die auf 1600 px Breite verkleinert
@@ -84,8 +84,8 @@ Die Bilder liegen in `handbook/docs/img/`. Es gibt drei Arten:
 ```sh
 cd admin-ui/app
 bun run build
-bun tests/handbook-screens.mjs /tmp/handbook-screens           # every shot
-bun tests/handbook-screens.mjs /tmp/handbook-screens mesh      # names containing "mesh"
+bun tests/handbook-screens.ts /tmp/handbook-screens           # every shot
+bun tests/handbook-screens.ts /tmp/handbook-screens mesh      # names containing "mesh"
 ```
 
 :::note[Wenn Playwright kein Chromium hat]

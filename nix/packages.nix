@@ -384,7 +384,7 @@ let
     src = lib.fileset.toSource {
       root = ./..;
       fileset = lib.fileset.unions [
-        ./../admin-ui/app/scripts/basic-classes.mjs
+        ./../admin-ui/app/scripts/basic-classes.ts
         ./../backend/plugins/page/src
         ./../backend/plugins/basic/src
       ];
@@ -393,7 +393,7 @@ let
     buildPhase = ''
       runHook preBuild
       mkdir -p $out
-      bun admin-ui/app/scripts/basic-classes.mjs --repo . --out $out
+      bun admin-ui/app/scripts/basic-classes.ts --repo . --out $out
       test -s $out/basic-classes.db
       test -s $out/basic-classes.txt
       runHook postBuild

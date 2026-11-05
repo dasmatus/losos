@@ -2,7 +2,7 @@
 # nix/demo/record.sh: run a VM test and photograph it through the real box.
 #
 # Builds the driver of a flake check whose script carries the hooks in
-# nix/demo/recorder.py, starts nix/demo/record.mjs beside it, and runs the
+# nix/demo/recorder.py, starts nix/demo/record.ts beside it, and runs the
 # test with LOSOS_RECORD_DIR set, so the VM script pauses at each step while
 # the recorder photographs the pages that step names.
 #
@@ -31,7 +31,7 @@ log "building the driver of $check"
 $nix build "${nix_args[@]}" -o "$out/driver" "$repo#checks.x86_64-linux.$check.driver"
 
 log "starting the recorder"
-(cd "$repo/admin-ui/app" && LOSOS_RECORD_DIR="$out" bun "$here/record.mjs" >"$out/recorder.log" 2>&1) &
+(cd "$repo/admin-ui/app" && LOSOS_RECORD_DIR="$out" bun "$here/record.ts" >"$out/recorder.log" 2>&1) &
 recorder=$!
 
 log "running $check (log in $out/driver.log)"

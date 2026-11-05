@@ -5,7 +5,7 @@
 # from Apply as a real `losos-rebuild-<job>` unit and watches like any
 # other. A stand-in makes it last as long as the test needs: the
 # `nixos-rebuild` lososd runs waits for the script before it exits 0. (The
-# wizard's wait is tests/games.browser.mjs's: nothing on a real box has to
+# wizard's wait is tests/games.browser.ts's: nothing on a real box has to
 # start before the first password any more.) What is asserted:
 #
 #   * on a claimed box, Apply starts a rebuild unit and the apply bar offers
@@ -46,7 +46,7 @@ let
   };
   # fonts.nix: the generic families mapped, or the pictures come out serif.
   fonts = import ./fonts.nix { inherit pkgs; };
-  driver = ./wait-game-browser.mjs;
+  driver = ./wait-game-browser.ts;
 in
 
 pkgs.testers.nixosTest {
@@ -105,7 +105,7 @@ pkgs.testers.nixosTest {
     box.forward_port(host_port=PORT, guest_port=80)
 
     def browse(mode, on_step, **plan):
-        """One run of the browser (nix/tests/wait-game-browser.mjs). It asks
+        """One run of the browser (nix/tests/wait-game-browser.ts). It asks
         for each step by writing a file into SYNC; on_step answers it."""
         for name in os.listdir(SYNC):
             os.remove(os.path.join(SYNC, name))

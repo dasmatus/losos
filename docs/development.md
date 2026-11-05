@@ -124,9 +124,9 @@ typecheck is part of the package. `bun run test:browser` is the playwright
 check that `.#checks.x86_64-linux.losos-admin-ui` wraps; that check also
 fails on any `node:` import. Playwright takes binary data only as a Node
 `Buffer`, so the checks hand it a file path instead (`stash` in
-`tests/harness.mjs`), and `wsBytes` for a WebSocket route.
+`tests/harness.ts`), and `wsBytes` for a WebSocket route.
 
-`tests/advanced.browser.mjs` renders every option the box declares. Outside
+`tests/advanced.browser.ts` renders every option the box declares. Outside
 nix it reads `tests/fixtures/options.json`, a copy of the document
 `nix/options-doc.nix` generates; refresh it after changing
 `modules/options.nix` with

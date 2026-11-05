@@ -18,6 +18,11 @@ Import the `nixosModules.edge` flake output into the VPS configuration and set
 `losos.edge.*`:
 
 - `losos.edge.publicDomain` is the domain appliances are served under.
+- `losos.edge.landing.hosts` (default `edge.<publicDomain>`) are the names
+  people type into a browser that are neither a box nor the registrar. Each
+  gets its own certificate and redirects to `losos.edge.landing.url`, the
+  handbook, instead of a bare 404 under a self-signed certificate. Each needs
+  a DNS record that reaches the edge.
 - `losos.edge.tenants` is the allow-list of appliances, each with a hostname
   and a token file. The registrar creates routes and certificates only for
   ids listed here.
@@ -516,15 +521,15 @@ nothing, an unsigned record and a validated one as the test delegates the
 zone and publishes its DS, and the pane follows each step.
 `edge/registrar/tests/domains.rs` drives the claim and wallet flows against a
 real registrar and a fake DNS-over-HTTPS server.
-`admin-ui/app/tests/ens.unit.mjs` replays, through the relay, a DNS name's
+`admin-ui/app/tests/ens.unit.ts` replays, through the relay, a DNS name's
 lookup recorded from Ethereum mainnet and ENS's gateway.
 :::
 
 ## Demo deployment on Vercel
 
 `edge/vercel/` runs the registrar's API, the same router and the same token
-check, as a Vercel Function at `https://losos-edge.dasmat.us`, which is the
-default `losos.proxy.registrarUrl`. The registry lives in a Neon Postgres,
+check, as a Vercel Function, for presentations. The default
+`losos.proxy.registrarUrl` is the live edge, `https://register.dasmat.us`. The registry lives in a Neon Postgres,
 and a status page at `/` shows the registered boxes and the Traefik
 configuration the edge would write for them. It is the control plane only.
 The tunnel, Traefik's TLS, the mesh and the market cannot run on a

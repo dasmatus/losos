@@ -32,7 +32,7 @@ let
       }
     }
     export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
-    exec ${pkgs.bun}/bin/bun ${./cloud-move-shots.mjs} "$@"
+    exec ${pkgs.bun}/bin/bun ${./cloud-move-shots.ts} "$@"
   '';
 in
 

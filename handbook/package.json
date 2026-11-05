@@ -13,10 +13,10 @@
     "write-translations": "bunx --bun docusaurus write-translations",
     "write-heading-ids": "bunx --bun docusaurus write-heading-ids",
     "typecheck": "bun --bun tsc",
-    "check:links": "bun scripts/check-links.mjs",
+    "check:links": "bun scripts/check-links.ts",
     "theme": "scripts/derisk-theme.sh",
     "check": "bun run check:links && bun run check:braces",
-    "check:braces": "bun scripts/check-braces.mjs"
+    "check:braces": "bun scripts/check-braces.ts"
   },
   "dependencies": {
     "@docusaurus/core": "3.10.2",

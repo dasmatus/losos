@@ -207,7 +207,7 @@ on Base UI, whose scroll lock uses CSSOM. The Switch is shadcn's React Aria
 flavour (`react-aria-components`), which `SwitchRow` lays into settings rows
 as shadcn's "Switch with a description" Field. Only the confirmation Toast is
 Radix, and it needs no scroll lock. Dialog stays on the native `<dialog>`.
-`tests/app.browser.mjs` serves the real CSP header and fails on any new
+`tests/app.browser.ts` serves the real CSP header and fails on any new
 violation, so a library swap that injects styles turns a check red.
 
 The command layer is written against a `Losos` effect trait with a real
@@ -230,7 +230,7 @@ typed editor per row.
 
 `classify` in the Nix file is the gate. A declaration with a type it does not
 know is a `throw`, so the eval job goes red instead of an empty row landing
-on the pane. `tests/advanced.browser.mjs` renders the real document
+on the pane. `tests/advanced.browser.ts` renders the real document
 (`nix/tests/admin-ui.nix` passes the `losos-options-doc` check) and fails on any
 row the pane cannot draw. `POST /api/apply` checks each line against the
 document (`check_body`). It refuses undeclared keys, read-only ones

@@ -23,6 +23,13 @@
 # shows its menu, its steps and how it ended on the screen's panel
 # (backend/src/install_screen.rs). Elsewhere it prints them on tty1 as text.
 # tty2 is reserved for live command logs; tty3 to tty6 log root in to a shell.
+#
+# With `losos.installer.tangEdge` too (the edge-prefilled medium,
+# nixosConfigurations.iso-edge), the autorun unit runs the installer with
+# `--tang-edge` ahead of any typed flags: the disk key is sealed to the TPM2
+# AND the medium's edge (losos.proxy.registrarUrl). Assertions keep the
+# flavor legal at eval time: it implies the autorun, and the edge it names
+# is an http(s) address.
 {
   pkgs,
   lib,
@@ -33,6 +40,19 @@
 let
   ctl = config.losos.installer.package;
   autorun = config.losos.installer.autorun;
+  tangEdge = config.losos.installer.tangEdge;
+
+  # The medium's edge: what `--tang-edge` with no address asks, and what
+  # the flavor asserts below is a usable address.
+  registrarUrl = config.losos.proxy.registrarUrl;
+  registrarUsable = lib.hasPrefix "http://" registrarUrl || lib.hasPrefix "https://" registrarUrl;
+
+  # The flavor's prefilled flag, ahead of "$@": the autorun install asks the
+  # edge without anyone typing `--tang-edge`, and whatever is typed after
+  # still outranks anything the medium preselects. escapeShellArgs holds it
+  # to the CLI's spelling; the LOSOS_REGISTRAR_URL the wrapper carries as a
+  # set-default is the edge, so no address is passed here.
+  prefillArgs = lib.escapeShellArgs (lib.optionals (autorun && tangEdge) [ "--tang-edge" ]);
 
   # The tools losos-ctl install shells out to at runtime: disko + git for the
   # full path, util-linux for lsblk (drive detection), coreutils for cp/chmod
@@ -153,6 +173,27 @@ let
 in
 {
   config = lib.mkIf (ctl != null) {
+    # The flavor is the autorun's default and nowhere else's: without the
+    # autorun there is no unattended install for --tang-edge to prefetch, and
+    # an empty or relative address would die mid-unattended-install on the
+    # edge's own check (backend/src/installer.rs, EdgeAddress) after the 30
+    # s firmware menu, warranty wiped onto whatever disk was in the slot.
+    # Eval-time here, where CI's check job reaches it, beats run-time there.
+    assertions = [
+      {
+        assertion = tangEdge -> autorun;
+        message =
+          "losos.installer.tangEdge prefills the autorun install with"
+          + " --tang-edge; set losos.installer.autorun too";
+      }
+      {
+        assertion = tangEdge -> registrarUsable;
+        message =
+          "losos.installer.tangEdge needs the medium's edge as an http(s)"
+          + " address in losos.proxy.registrarUrl, not ${registrarUrl}";
+      }
+    ];
+
     environment.systemPackages = [ losos-install-wrapped ];
 
     # Destructive reinstall medium: booting the ISO starts the installer on tty1.
@@ -194,7 +235,7 @@ in
       script = ''
         source /etc/profile
         export TERM=linux
-        exec ${lib.getExe losos-install-tty1-wrapped} "$@"
+        exec ${lib.getExe losos-install-tty1-wrapped} ${prefillArgs} "$@"
       '';
       serviceConfig = {
         Type = "idle";

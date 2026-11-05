@@ -1,7 +1,7 @@
 # nixos-test-vms config for the bar over a selection
 # (admin-ui/app/src/components/quick-actions.tsx) on a real box: lososd,
 # nginx, LosOS Login and LosOS Cloud, with a laptop on the LAN whose
-# Chromium (nix/tests/quick-actions-shots.mjs) picks words in a LosOS Office
+# Chromium (nix/tests/quick-actions-shots.ts) picks words in a LosOS Office
 # document and in a note, and cards in a LosOS Diagrams file, and uses the
 # bar on them. Then:
 #
@@ -105,7 +105,7 @@ let
     }
     export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
     export FFMPEG=${pkgs.ffmpeg-headless}/bin/ffmpeg
-    exec ${pkgs.bun}/bin/bun ${./quick-actions-shots.mjs} "$@"
+    exec ${pkgs.bun}/bin/bun ${./quick-actions-shots.ts} "$@"
   '';
 in
 

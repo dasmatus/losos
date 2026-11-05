@@ -2,7 +2,7 @@
 # nix/demo/edge-lan/record.sh — run the two-box walkthrough and photograph it.
 #
 # Builds the driver of checks.losos-edge-lan-two-boxes (nix/demo/edge-lan/
-# two-boxes.nix), starts nix/demo/edge-lan/record.mjs beside it, and runs the
+# two-boxes.nix), starts nix/demo/edge-lan/record.ts beside it, and runs the
 # walkthrough with LOSOS_RECORD_DIR set, so the VM script pauses at each step
 # while the recorder photographs the Mesh pane of both boxes through their
 # real admin UI. Afterwards compose.sh turns the pictures and captions into a
@@ -32,7 +32,7 @@ log "building the walkthrough driver"
 nix build "${nix_args[@]}" -o "$out/driver" "$repo#checks.x86_64-linux.losos-edge-lan-two-boxes.driver"
 
 log "starting the recorder"
-(cd "$repo/admin-ui/app" && LOSOS_RECORD_DIR="$out" bun "$here/record.mjs" >"$out/recorder.log" 2>&1) &
+(cd "$repo/admin-ui/app" && LOSOS_RECORD_DIR="$out" bun "$here/record.ts" >"$out/recorder.log" 2>&1) &
 recorder=$!
 
 log "running the walkthrough (log in $out/driver.log)"

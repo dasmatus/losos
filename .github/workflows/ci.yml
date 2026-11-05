@@ -453,7 +453,7 @@ jobs:
             ${{ runner.os }}-evm-compiler-cache-
       - name: forge suite and the anvil payment run
         run: |
-          nix develop .#ci -c nix shell --inputs-from . nixpkgs#foundry nixpkgs#nodejs nixpkgs#jq \
+          nix develop .#ci -c nix shell --inputs-from . nixpkgs#foundry nixpkgs#nodejs nixpkgs#bun nixpkgs#jq \
             -c bash edge/contracts/test-payment.sh
 
   eval:
@@ -491,11 +491,16 @@ jobs:
       # the merge.
       - run: nix eval --raw .#nixosConfigurations.install.config.system.build.toplevel.drvPath
       - run: nix eval --raw .#nixosConfigurations.iso.config.system.build.toplevel.drvPath
+      - run: nix eval --raw .#nixosConfigurations.iso-edge.config.system.build.toplevel.drvPath
       - run: nix eval --raw .#nixosConfigurations.edge-gateway.config.system.build.toplevel.drvPath
       # `flake check` does not reach the ISO *image* derivation, so without this
       # an eval-reachable regression in the iso block or isoImage.* would
       # surface only in the ISO build.
       - run: nix path-info --derivation .#nixosConfigurations.iso.config.system.build.isoImage
+      # The edge-prefilled medium (flake.nix), for the same two: its toplevel
+      # forces the flavor's module merge, its image derivation catches any
+      # eval-reachable regression in its isoImage.* wiring.
+      - run: nix path-info --derivation .#nixosConfigurations.iso-edge.config.system.build.isoImage
       # The edge gateway image (nix/disk-images.nix), for the same reason.
       - run: nix path-info --derivation .#losos-disk-edge-qcow2
 
@@ -622,7 +627,7 @@ jobs:
           name: losos-registrar-dev-machine
           path: dev-machine
           retention-days: 1
-      # The Playwright suite (admin-ui/app/tests/*.browser.mjs) against the
+      # The Playwright suite (admin-ui/app/tests/*.browser.ts) against the
       # production bundle, in headless chromium from nixpkgs. No /dev/kvm
       # needed, unlike the VM tests. Reuses the node_modules fetched just above.
       - name: build the Playwright check
