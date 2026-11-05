@@ -43,6 +43,9 @@
   # tests/calls.browser.ts runs a call through. Without it that file
   # cannot run, so the check needs it.
   callsPackage,
+  # The call agent's engine and models (nix/voice.nix), which
+  # tests/voice-agent.browser.mjs runs a spoken question and answer through.
+  voice,
 }:
 let
   inherit (pkgs) lib;
@@ -78,6 +81,7 @@ ui.overrideAttrs (old: {
       LOSOS_CALLS_BIN = "${callsPackage}/bin/losos-calls";
       # The sandbox has only loopback; Chromium takes a loopback candidate.
       LOSOS_CALLS_ADDRESS = "127.0.0.1";
+      LOSOS_VOICE_DIR = voice;
     }
     // lib.optionalAttrs (optionsJson != null) {
       LOSOS_OPTIONS_JSON = optionsJson;

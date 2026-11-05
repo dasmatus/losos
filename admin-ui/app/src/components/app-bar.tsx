@@ -7,9 +7,11 @@ import { KbdGroup } from "@/components/ui/kbd";
 import { popupMotion } from "@/components/ui/motion";
 import { DisplayMenu, menuItemClass, PreferenceItems } from "@/components/preferences-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import type { Accent } from "@/lib/api";
 import { useT } from "@/lib/i18n-react";
 import { logoFor } from "@/lib/logo";
 import { isSignOutShortcut, signOutKeys } from "@/lib/shortcuts";
+import { applyPersonAccent } from "@/lib/person-accent";
 import { cn } from "@/lib/utils";
 
 /* The bar across the top of every page the box serves: the admin UI and
@@ -43,6 +45,11 @@ export interface AppBarPerson {
   /** Your account, as a link element: `<a href="/settings/account" />` or a
    *  router `<Link to="/settings/account" />`. Left out, no such entry. */
   accountLink?: React.ReactElement | undefined;
+  /** The colour they picked for themselves, which becomes the page's accent
+   *  (lib/person-accent.ts); null when they picked none, which keeps the
+   *  box's teal. Left out while the page does not know yet, which keeps
+   *  whatever the last page load showed. */
+  accent?: Accent | null | undefined;
 }
 
 export interface AppBarProps {
@@ -83,6 +90,7 @@ export function AppBar({
     const onKey = (event: KeyboardEvent) => {
       if (!isSignOutShortcut(event)) return;
       event.preventDefault();
+      applyPersonAccent(null);
       onSignOut();
     };
     window.addEventListener("keydown", onKey);
@@ -173,6 +181,20 @@ export function PersonMenu({
   className?: string;
 }) {
   const t = useT();
+  const accent = person.accent;
+  React.useEffect(() => {
+    if (accent !== undefined) applyPersonAccent(accent);
+  }, [accent]);
+  // The next person to sign in on this browser starts from the teal.
+  const signOut = React.useMemo(
+    () =>
+      onSignOut &&
+      (() => {
+        applyPersonAccent(null);
+        onSignOut();
+      }),
+    [onSignOut],
+  );
   return (
     <Menu.Root>
       <Menu.Trigger
@@ -222,8 +244,8 @@ export function PersonMenu({
                 <span className="flex-1">{t("settings.panes.account.label")}</span>
               </Menu.LinkItem>
             )}
-            {onSignOut !== undefined && (
-              <Menu.Item onClick={onSignOut} className={menuItemClass} data-testid="sign-out">
+            {signOut !== undefined && (
+              <Menu.Item onClick={signOut} className={menuItemClass} data-testid="sign-out">
                 <ItemIcon icon={Logout01Icon} />
                 <span className="flex-1">{t("shell.signOut")}</span>
                 <KbdGroup keys={signOutKeys()} />

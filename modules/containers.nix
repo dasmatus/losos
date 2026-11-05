@@ -458,6 +458,35 @@ let
     }
   ];
 
+  # ── Cross-origin isolation for LosOS Chat ─────────────────────────────
+  # The call agent's ears (whisper.cpp in WebAssembly) and mouth (ONNX
+  # Runtime) use threads, which a browser gives only to a page that is
+  # cross-origin isolated: COOP same-origin and COEP require-corp on the
+  # document, and COEP on every worker script it starts, which are the files
+  # under /assets/ and /voice/. The chat document is the only one that opts
+  # in: its policy already allows no origin but its own, and it opens no
+  # frames or windows, so there is nothing for the stricter embedder policy
+  # to refuse. The admin page is left out because its widget frame is a
+  # same-origin document that loads from anywhere, which COEP would block.
+  isolationMaps = ''
+    map $uri $losos_coop {
+        default     "";
+        ~^/chat/    "same-origin";
+    }
+    map $uri $losos_coep {
+        default     "";
+        ~^/chat/    "require-corp";
+        ~^/assets/  "require-corp";
+        ~^/voice/   "require-corp";
+        ~^/ort/     "require-corp";
+        ~^/voice-worklet/ "require-corp";
+    }
+  '';
+  isolationDirectives = ''
+    add_header Cross-Origin-Opener-Policy $losos_coop always;
+    add_header Cross-Origin-Embedder-Policy $losos_coep always;
+  '';
+
   adminHeaderMaps = lib.concatMapStrings (
     h:
     adminHeaderMap h.variable h.value (h.handbookValue or h.value) (h.chatValue or h.value
@@ -499,20 +528,23 @@ in
     # for, for its <noscript> (letters, digits and `/_-`, anything else is
     # the overview), the page a sign-in returns to, and the spare key as a
     # Bearer header.
-    appendHttpConfig = adminHeaderMaps + ''
-      map $request_uri $losos_basic_here {
-          "~^(?<p>/[A-Za-z0-9/_-]*)(\?.*)?$" $p;
-          default "/";
-      }
-      map $uri $losos_basic_back {
-          "~^/basic/[A-Za-z0-9/_-]*$" $uri;
-          default "/basic/";
-      }
-      map $cookie_losos_spare $losos_basic_bearer {
-          "" "";
-          default "Bearer $cookie_losos_spare";
-      }
-    '';
+    appendHttpConfig =
+      adminHeaderMaps
+      + isolationMaps
+      + ''
+        map $request_uri $losos_basic_here {
+            "~^(?<p>/[A-Za-z0-9/_-]*)(\?.*)?$" $p;
+            default "/";
+        }
+        map $uri $losos_basic_back {
+            "~^/basic/[A-Za-z0-9/_-]*$" $uri;
+            default "/basic/";
+        }
+        map $cookie_losos_spare $losos_basic_bearer {
+            "" "";
+            default "Bearer $cookie_losos_spare";
+        }
+      '';
 
     virtualHosts."losos-front" = {
       default = true; # default_server — master-proxy traffic arrives with a public hostname
@@ -541,7 +573,7 @@ in
         ++ hiddenListen
       );
       root = lib.mkIf adminEnabled "${adminUi}";
-      extraConfig = adminHeaderDirectives;
+      extraConfig = adminHeaderDirectives + isolationDirectives;
       locations = lib.mkMerge [
         (lib.mkIf adminEnabled {
           # The whole admin surface is one location now: one SPA, one

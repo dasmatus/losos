@@ -453,7 +453,7 @@ jobs:
             ${{ runner.os }}-evm-compiler-cache-
       - name: forge suite and the anvil payment run
         run: |
-          nix develop .#ci -c nix shell --inputs-from . nixpkgs#foundry nixpkgs#nodejs nixpkgs#jq \
+          nix develop .#ci -c nix shell --inputs-from . nixpkgs#foundry nixpkgs#nodejs nixpkgs#bun nixpkgs#jq \
             -c bash edge/contracts/test-payment.sh
 
   eval:

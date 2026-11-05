@@ -31,6 +31,7 @@ an, der Anmeldung der Box selbst, in deinem Browser.
 | Cursor | ein Eintrag in `~/.cursor/mcp.json` |
 | VS Code und VSCodium | ein Eintrag in `mcp.json` in den Benutzereinstellungen des Editors |
 | Cline | ein Eintrag in seinen MCP-Einstellungen in VS Code |
+| T3 Code | ein Eintrag in `~/.config/t3/t3.json` |
 | Windsurf | ein Eintrag in `~/.codeium/windsurf/mcp_config.json` |
 | Zed | ein Eintrag unter `context_servers` in Zeds `settings.json` |
 | LM Studio | ein Eintrag in `~/.lmstudio/mcp.json` |

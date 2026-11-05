@@ -122,6 +122,29 @@ export async function compileAppCss(): Promise<string> {
   return await Bun.file(out).text();
 }
 
+/* PNGs the pages import (the salmon logos) become their public URL. The
+ * browser checks want `/assets/<name>-<8 char hash>.<ext>`, which Bun's
+ * own `[hash]` naming does not produce, so this copies the file itself. */
+export function imageFiles(outDir: string, base: string): BunPlugin {
+  return {
+    name: "losos:image-files",
+    setup(build) {
+      build.onLoad({ filter: /\.(png|jpe?g|gif|webp|svg)$/ }, async (args) => {
+        const bytes = await Bun.file(args.path).bytes();
+        const hash = new Bun.CryptoHasher("sha256").update(bytes).digest("hex").slice(0, 8);
+        const file = args.path.slice(args.path.lastIndexOf("/") + 1);
+        const dot = file.lastIndexOf(".");
+        const name = `${file.slice(0, dot)}-${hash}${file.slice(dot)}`;
+        await Bun.write(`${outDir}/assets/${name}`, bytes);
+        return {
+          contents: `export default ${JSON.stringify(`${base}assets/${name}`)};\n`,
+          loader: "js",
+        };
+      });
+    },
+  };
+}
+
 /* The `?url` suffix a couple of src files attach to WebAssembly imports
  * (src/mdx/wasm.ts, src/lab/{core,render}.ts, src/lab/engine/virt-rpc.ts).
  * Bun has no asset-query syntax, so the suffix comes off here and the file
@@ -472,7 +495,7 @@ async function runBuild(
     minify: true,
     naming: hashedNaming(),
     define: defines(env, true),
-    plugins: [wasmUrl(), cssPlugin, pagesVirtual(), sonnerQuiet(), segmenterQuiet()],
+    plugins: [imageFiles(outDir, env.base), wasmUrl(), cssPlugin, pagesVirtual(), sonnerQuiet(), segmenterQuiet()],
   });
   if (!result.success) throw new AggregateError(result.logs, `bundling ${entrypoints.join(", ")} failed`);
   return result.outputs;

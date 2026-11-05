@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { ApplyBar } from "./settings/apply-bar";
 import { AboutPane } from "./settings/pane-about";
 import { AccessPane } from "./settings/pane-access";
+import { TagPane } from "./settings/pane-tag";
 import { CredentialsPane } from "./settings/pane-credentials";
 import { ProblemsPane } from "./settings/pane-problems";
 import { AccountPane } from "./settings/pane-account";
@@ -141,6 +142,10 @@ function Pane({
     case "access":
       // No draft, no Apply bar: every token is its own request.
       return <AccessPane locked={form.locked} />;
+    case "tag":
+      // No draft, no Apply bar: the levels, the areas, the assistants and
+      // the skills are each their own request.
+      return <TagPane locked={form.locked} />;
     case "advanced":
       return <AdvancedPane form={form} />;
     case "history":

@@ -92,8 +92,10 @@ export async function buildSite(
     await Bun.write(`${DIST}/chat/calls-ml/selfie_segmenter.tflite`, Bun.file(env.segmenterModel));
   }
   const ort = `${ROOT}/node_modules/onnxruntime-web/dist`;
-  await Bun.write(`${DIST}/nudity/ort-wasm-simd-threaded.mjs`, Bun.file(`${ort}/ort-wasm-simd-threaded.mjs`));
-  await Bun.write(`${DIST}/nudity/ort-wasm-simd-threaded.wasm`, Bun.file(`${ort}/ort-wasm-simd-threaded.wasm`));
+  /* Shared by the nudity warning and Kokoro (mouth.ts): both point at /ort/.
+   * The model stays under /nudity/. */
+  await Bun.write(`${DIST}/ort/ort-wasm-simd-threaded.mjs`, Bun.file(`${ort}/ort-wasm-simd-threaded.mjs`));
+  await Bun.write(`${DIST}/ort/ort-wasm-simd-threaded.wasm`, Bun.file(`${ort}/ort-wasm-simd-threaded.wasm`));
   if (env.nudityModel !== undefined) {
     await Bun.write(`${DIST}/nudity/model.onnx`, Bun.file(env.nudityModel));
   }

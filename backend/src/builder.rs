@@ -84,9 +84,10 @@ use losos_widget::{is_file_name, validate_files, WidgetFile, ENTRY_FILE, MAX_FIL
 pub const WIDGET_PROMPT: &str = include_str!("builder-widget-prompt.md");
 /// What the model is told before an app, as chat turns.
 pub const APP_PROMPT: &str = include_str!("builder-app-prompt.md");
-/// The model Ollama serves when the configuration names none: the coding
-/// model that fits the smallest box LosOS runs on (`modules/builder.nix`).
-pub const DEFAULT_MODEL: &str = "qwen2.5-coder:1.5b";
+/// The model Ollama serves when the configuration names none: the box's
+/// one unified model, shared with the assistant and the tag
+/// (`modules/builder.nix`).
+pub const DEFAULT_MODEL: &str = "MichelRosselli/bonsai-27b";
 /// The context window when the configuration names none, in tokens. Either
 /// prompt is about 2,300, an answer at most [`MAX_ANSWER_TOKENS`], and the
 /// rest is the request and the widget or app to change.
@@ -1850,7 +1851,7 @@ mod tests {
             try_wait: Duration::from_secs(1),
         };
         let body = chat_body(&config, &r, None);
-        assert_eq!(body["model"], "qwen2.5-coder:1.5b");
+        assert_eq!(body["model"], DEFAULT_MODEL);
         assert_eq!(body["stream"], true);
         assert_eq!(body["options"]["num_ctx"], 8192);
         assert_eq!(body["options"]["num_predict"], MAX_ANSWER_TOKENS);

@@ -13,7 +13,10 @@
 #     the widgets, which stay the look section's;
 #   * the theme and the language sit in the person menu, with JavaScript on
 #     and off, and a choice there changes the page;
-#   * the background is behind the pages without JavaScript too.
+#   * the background is behind the pages without JavaScript too;
+#   * a colour a person picks for their profile is the accent of their own
+#     pages, with JavaScript and without, and a colour their name gives
+#     them is not.
 #
 # The laptop's pictures are the ones the pull request shows: the
 # derivation's output holds them, one folder per plan. `before`, a path to
@@ -51,10 +54,10 @@ let
     { click = sel "[data-slot=${slot}]"; }
     { waitFor = sel "[data-slot=${slot}-choices]"; }
   ];
-  # A person's own background, as the pane names it (before: the box's).
+  # A person's own background, as the pane names it.
   lookPane = {
     role = "radiogroup";
-    name = if after then "Your background" else "Background";
+    name = "Your background";
   };
   pick = name: toast: [
     {
@@ -143,6 +146,40 @@ let
         )
       ]
       ++ lib.optionals after [ (home "ada-home-dusk") ];
+    };
+    # Matus picks Rose as his colour, which (after) becomes the accent of
+    # his pages.
+    accent = plan "accent" {
+      shots = [
+        {
+          name = "accent-account";
+          path = "/settings/account";
+          waitFor = sel "[data-testid=profile-save]";
+          steps = [
+            { click = sel "[data-testid=profile-accent][data-accent=rose]"; }
+            { click = sel "[data-testid=profile-save]"; }
+            { waitText = "Profile saved"; }
+            { sleep = 1500; }
+          ];
+        }
+        (home "accent-home")
+        {
+          name = "accent-look";
+          path = "/settings/look";
+          waitFor = lookPane;
+          settle = 2000;
+        }
+      ];
+    };
+    "basic-accent" = plan "basic-accent" {
+      script = false;
+      shots = [
+        {
+          name = "basic-accent";
+          path = "/";
+          waitFor = basicHome;
+        }
+      ];
     };
     # Without JavaScript, as Matus.
     basic = plan "basic" {
@@ -341,6 +378,10 @@ pkgs.testers.nixosTest {
         capture("ada", "ada")
         capture("basic", "matus")
 
+    with subtest("Matus picks a colour, and it is the accent of his pages"):
+        capture("accent", "matus")
+        capture("basic-accent", "matus")
+
     if AFTER:
         with subtest("each pick stayed its person's"):
             code, body = api("/api/look", matus)
@@ -357,6 +398,15 @@ pkgs.testers.nixosTest {
             href = m.group(1).replace("&amp;", "&")
             sheet = curl(f"-H 'Cookie: {matus}' 'https://{BOX}{href}'")
             assert "/backgrounds/tide.svg" in sheet, sheet
+            # His colour, picked: the accent of his pages with and without
+            # JavaScript; Ada's, given by her name, is not hers to wear.
+            code, body = api("/api/me", matus)
+            me = json.loads(body)
+            assert me["accent"] == "rose" and me["accentChosen"] is True, me
+            assert ' data-person-accent="rose"' in page, page[:600]
+            code, body = api("/api/me", ada)
+            assert json.loads(body)["accentChosen"] is False, body
+            assert "data-person-accent" not in curl(f"-H 'Cookie: {ada}' https://{BOX}/basic/")
 
     laptop.copy_from_machine("/tmp/screens", "")
   '';

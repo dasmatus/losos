@@ -66,6 +66,8 @@ async function getJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (await response.json()) as T;
 }
 
+export { getJson };
+
 async function errorOf(response: Response): Promise<string> {
   try {
     const body = (await response.json()) as { error?: unknown };
