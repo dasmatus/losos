@@ -151,7 +151,7 @@ function Passport({
 
 /** The largest settings or signature file the form reads, matching the edge's
  *  own cap on the settings it accepts. */
-const MAX_FILE = 512 * 1024;
+const MAX_FILE = 64 * 1024;
 
 function ClaimForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
   const t = useT();
