@@ -16,7 +16,7 @@ import git from "./git/index.html";
 import wiki from "./wiki/index.html";
 import diagrams from "./diagrams/index.html";
 import guest from "./guest.html";
-import { basicClasses } from "./scripts/basic-classes.mjs";
+import { basicClasses } from "./scripts/basic-classes.ts";
 import { appFrame, classicScripts, copiedFiles, themeBoot } from "./build";
 import { devWorkers, settings, workers } from "./bundler";
 

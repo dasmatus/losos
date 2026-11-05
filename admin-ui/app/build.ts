@@ -8,7 +8,7 @@
  * and a handful of files are written at fixed names beside them. */
 import tailwind from "bun-plugin-tailwind";
 import { losos, settings, workers } from "./bundler";
-import { basicClasses } from "./scripts/basic-classes.mjs";
+import { basicClasses } from "./scripts/basic-classes.ts";
 import { compilePages } from "./pages";
 
 const root = import.meta.dirname;
