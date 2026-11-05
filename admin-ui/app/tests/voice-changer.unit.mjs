@@ -5,7 +5,7 @@
  *   bun tests/voice-changer.unit.mjs
  */
 
-import assert from './assert.ts';
+import assert from './assert.mjs';
 import { SETTINGS, VOICE_PRESETS } from '../src/calls/voice-changer.ts';
 
 const RATE = 48000;
