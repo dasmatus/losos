@@ -393,9 +393,9 @@ LosOS Desktop, not the desktop itself.
   then `bun run dev` serves the page at `/diagrams/`. `bun run lab:render` builds
   the GPU canvas's two modules into `src/lab/render-pkg/` the same way, and
   runs `wasm-opt` on them when `WASM_OPT` names it. The page does not
-  build without them, and building them takes about 13 minutes. `tests/lab.browser.mjs`
+  build without them, and building them takes about 13 minutes. `tests/lab.browser.ts`
   checks the network views under the page's own policy, the relay path
-  against a fake libvirt daemon, and `tests/diagrams.browser.mjs` the
+  against a fake libvirt daemon, and `tests/diagrams.browser.ts` the
   diagram: cards, arrows, an Obsidian file, the pictures, LosOS Cloud,
   editing together and the machine cards. `nix/tests/diagrams-together.nix`
   boots two boxes, shares a diagram from one to the other and has both

@@ -37,7 +37,7 @@ these from `/persist`: `/nix`, `/var`, `/etc/ssh`, `/etc/keys`,
 | -------------- | ---- |
 | `lososd`       | Root systemd daemon (Rust). Sole writer of `/var/lib/losos/state.json`. D-Bus service `org.losos1` and a token-authenticated JSON API on `127.0.0.1:8082`. |
 | `losos-ctl`    | CLI that forwards each subcommand to `lososd` over D-Bus. `losos-ctl install` runs standalone on the ISO. |
-| `losos-admin-ui` | React + Vite + Tailwind SPA, served by nginx, which proxies `/api/*` to `lososd`. |
+| `losos-admin-ui` | React + Tailwind v4 SPA, built by Bun's bundler, served by nginx, which proxies `/api/*` to `lososd`. |
 
 Rebuilds run as transient systemd units (`losos-rebuild-<job>`).
 `nixos-rebuild switch` restarts `lososd`, so on startup it re-attaches to any
@@ -182,7 +182,7 @@ D-Bus. `losos-ctl install` stays local, because the ISO installer runs as
 root and needs no bus.
 
 The admin UI (`admin-ui/app/`, packaged as `losos-admin-ui` with
-Bun) is a React 19, Vite and Tailwind v4 SPA on real paths
+Bun) is a React 19 and Tailwind v4 SPA on real paths, built on Bun
 (`/`, `/apps`, `/storage`, `/mesh`, `/settings/<pane>`). Its built `dist/`
 **is** the front nginx vhost's document root, served with
 `try_files $uri $uri/ /index.html`. Without that line every deep link and
@@ -207,7 +207,7 @@ on Base UI, whose scroll lock uses CSSOM. The Switch is shadcn's React Aria
 flavour (`react-aria-components`), which `SwitchRow` lays into settings rows
 as shadcn's "Switch with a description" Field. Only the confirmation Toast is
 Radix, and it needs no scroll lock. Dialog stays on the native `<dialog>`.
-`tests/app.browser.mjs` serves the real CSP header and fails on any new
+`tests/app.browser.ts` serves the real CSP header and fails on any new
 violation, so a library swap that injects styles turns a check red.
 
 The command layer is written against a `Losos` effect trait with a real
@@ -230,7 +230,7 @@ typed editor per row.
 
 `classify` in the Nix file is the gate. A declaration with a type it does not
 know is a `throw`, so the eval job goes red instead of an empty row landing
-on the pane. `tests/advanced.browser.mjs` renders the real document
+on the pane. `tests/advanced.browser.ts` renders the real document
 (`nix/tests/admin-ui.nix` passes the `losos-options-doc` check) and fails on any
 row the pane cannot draw. `POST /api/apply` checks each line against the
 document (`check_body`). It refuses undeclared keys, read-only ones

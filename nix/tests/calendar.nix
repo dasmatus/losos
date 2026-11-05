@@ -26,7 +26,7 @@
 #     the phone layout.
 #
 # The browser is Chromium under Playwright in the test driver
-# (nix/tests/calendar-browser.mjs). Screenshots land in result/shots/pr/,
+# (nix/tests/calendar-browser.ts). Screenshots land in result/shots/pr/,
 # the launch film's pictures in result/shots/film/.
 #
 # With `beforeSrc` (admin-ui/app of the branch this one is based on) the
@@ -415,7 +415,7 @@ pkgs.testers.nixosTest {
 
     def browser(phase):
         run = subprocess.run(
-            ["${pkgs.bun}/bin/bun", "${./calendar-browser.mjs}", phase, SHOTS],
+            ["${pkgs.bun}/bin/bun", "${./calendar-browser.ts}", phase, SHOTS],
             env=browser_env, capture_output=True, text=True, timeout=3600,
         )
         print(run.stdout)

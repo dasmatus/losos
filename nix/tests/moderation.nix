@@ -21,7 +21,7 @@
 #   * every action is a line in moderation.log, which only root reads.
 #
 # `screens = true` is the same run with the real admin pages and Chromium
-# on the laptop (nix/tests/moderation-screens.mjs): the PR's shots and the
+# on the laptop (nix/tests/moderation-screens.ts): the PR's shots and the
 # film's in dark, and the handbook's pictures in light in English, Slovak
 # and German, under `shots/` in the run's output directory. With `before =
 # true` (pass the older lososd and admin pages as `lososCtl` and `adminUi`)
@@ -58,8 +58,8 @@ let
   scripts = pkgs.runCommand "moderation-screens-scripts" { } ''
     mkdir -p $out/node_modules
     ln -s ${pkgs.playwright-driver} $out/node_modules/playwright-core
-    cp ${./screens.mjs} $out/screens.mjs
-    cp ${./moderation-screens.mjs} $out/moderation-screens.mjs
+    cp ${./screens.ts} $out/screens.ts
+    cp ${./moderation-screens.ts} $out/moderation-screens.ts
   '';
 
   # Tom's picture and banner: a plain figure and a plain sky, in the
@@ -454,9 +454,9 @@ pkgs.testers.nixosTest {
         laptop.succeed("rm -rf /tmp/shots")
         if not BEFORE:
             for locale in ["en-US", "sk-SK", "de-DE"]:
-                laptop.succeed(f"cd ${scripts} && bun moderation-screens.mjs handbook {locale} /tmp/shots/handbook >&2", timeout=3600)
+                laptop.succeed(f"cd ${scripts} && bun moderation-screens.ts handbook {locale} /tmp/shots/handbook >&2", timeout=3600)
         mode = "before" if BEFORE else "after"
-        laptop.succeed(f"cd ${scripts} && bun moderation-screens.mjs {mode} dark /tmp/shots/{mode} >&2", timeout=3600)
+        laptop.succeed(f"cd ${scripts} && bun moderation-screens.ts {mode} dark /tmp/shots/{mode} >&2", timeout=3600)
         steps = json.loads(laptop.succeed(f"cat /tmp/shots/{mode}/manifest.json"))["steps"]
         assert len(steps) >= 2, steps
         for step in steps:

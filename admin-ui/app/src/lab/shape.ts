@@ -6,7 +6,7 @@
  * qemu-wasm) has neither. Either copy probes for qemu-wasm at run time.
  *
  * LOSOS_LAB_MEME at build time names a folder with no.jpg and yes.jpg; the
- * splash then draws them left of its two halves (vite.config.ts copies them
+ * splash then draws them left of its two halves (scripts/build.ts copies them
  * into dist/lab/ and sets __LAB_MEME__). The repository carries no such
  * folder. */
 

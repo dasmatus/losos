@@ -2,7 +2,7 @@
  * the bridge to the admin page, as one classic script.
  *
  * public/app-frame/index.html loads this as /app-frame/runtime.js (built by
- * vite.config.ts's appFrame plugin, an IIFE like theme-boot.js). It is a
+ * scripts/bundler.ts's classic build, an IIFE like theme-boot.js). It is a
  * classic script on purpose: the frame is an opaque origin (the admin page
  * embeds it with `sandbox="allow-scripts"` and no `allow-same-origin`), and
  * a module script would be fetched in CORS mode, which nginx does not answer

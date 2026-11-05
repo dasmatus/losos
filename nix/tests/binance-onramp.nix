@@ -12,7 +12,7 @@
 #                :8444, where Binance's notifications arrive too.
 #   * `box`    — mattbox: lososd, the front vhost with the real admin UI and
 #                LosOS Login, with the master proxy pointed at the edge.
-#   * `laptop` — Chromium driven by Playwright (binance-onramp.mjs), signed
+#   * `laptop` — Chromium driven by Playwright (binance-onramp.ts), signed
 #                in as the owner, with a wallet made on this box.
 #
 # Binance has no sandbox, so the stand-in plays it: it checks every call's
@@ -246,7 +246,7 @@ let
       "PLAYWRIGHT_CORE=${pkgs.playwright-driver}"
       "PLAYWRIGHT_BROWSERS_PATH=${browsers}"
       "PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true"
-      "${pkgs.bun}/bin/bun ${./binance-onramp.mjs}"
+      "${pkgs.bun}/bin/bun ${./binance-onramp.ts}"
       "--mode ${mode} --out /tmp/shots --user matus --password ${password} >&2"
     ];
   credDir = "/var/secrets";

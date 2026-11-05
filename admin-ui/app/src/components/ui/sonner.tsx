@@ -23,8 +23,8 @@ import { useConfirmationsHeight } from "./corner";
  *   Sonner injects its stylesheet with a <style> element when the module
  *   loads, and `style-src 'self'` refuses that element. main.tsx imports
  *   `sonner/dist/styles.css` into the bundle instead, so the same rules
- *   arrive as a file the policy allows, and vite.sonner-quiet.ts drops the
- *   injection at build, so nothing is refused. tests/toasts.browser.mjs
+ *   arrive as a file the policy allows, and the bundler's sonner patch drops the
+ *   injection at build, so nothing is refused. tests/toasts.browser.ts
  *   serves the bundle under the real policy and checks the stack is styled.
  *
  *   The per-toast `--index`, `--offset` and heights Sonner sets through

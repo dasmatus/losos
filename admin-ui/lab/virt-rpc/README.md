@@ -42,7 +42,7 @@ lab` (`edge/registrar/src/lab/virt.rs`; on a box, `/api/lab/virt`): it
 finds the socket for its `--connect` URI, admits a WebSocket only with a
 single-use ticket from `POST /lab/v1/virt-ticket` sent as the
 `ticket.<hex>` subprotocol beside `losos-lab`, and applies the helper's
-Origin and Host checks. `relay/ws-relay.mjs` is a standalone test relay:
+Origin and Host checks. `relay/ws-relay.ts` is a standalone test relay:
 about 110 lines of Bun with no dependencies. `websockify` would also work.
 None of them parses the protocol; all the libvirt logic is in the page.
 
@@ -106,7 +106,7 @@ import init, { VirtClient } from './pkg/losos_lab_virt.js';
 await init();
 const { ticket } = await (await fetch('http://127.0.0.1:8095/lab/v1/virt-ticket', { method: 'POST' })).json();
 const virt = await VirtClient.connect('ws://127.0.0.1:8095/lab/v1/virt', ['losos-lab', `ticket.${ticket}`]);
-// or VirtClient.connect('ws://127.0.0.1:8771/virt?token=…') through ws-relay.mjs,
+// or VirtClient.connect('ws://127.0.0.1:8771/virt?token=…') through ws-relay.ts,
 // or VirtClient.connect('tcp://127.0.0.1:16509') in an IWA
 await virt.open('qemu:///system');
 await virt.version();                       // { hypervisor: '11.1.0', library: '12.7.0', … }
@@ -152,10 +152,10 @@ cargo test --test live -- --nocapture
 
 # In a browser: the demo page through the relay
 LOSOS_VIRT_SOCKET=/run/libvirt/virtqemud-sock LOSOS_VIRT_TOKEN=secret \
-  bun relay/ws-relay.mjs --port 8771 --static demo
+  bun relay/ws-relay.ts --port 8771 --static demo
 # open http://127.0.0.1:8771/index.html?token=secret&guest=/path/with/images
 
-# ... or through losos-registrar lab's relay (ws-relay.mjs then only serves
+# ... or through losos-registrar lab's relay (ws-relay.ts then only serves
 # the page; its own /virt goes unused)
 losos-registrar lab --connect 'qemu:///system?socket=/run/libvirt/virtqemud-sock' \
   --origin http://127.0.0.1:8771
@@ -176,7 +176,7 @@ test` in CI and in `devenv test` runs only the protocol tests.
 - **A relay on loopback is not private.** Any site open in the owner's
   browser can try `ws://127.0.0.1:<port>`. WebSockets are not bound by
   CORS: the browser opens the connection, sends the other site's Origin
-  header, and leaves the decision to the server. `ws-relay.mjs` therefore checks `Origin` against
+  header, and leaves the decision to the server. `ws-relay.ts` therefore checks `Origin` against
   an allowlist (`LOSOS_VIRT_ORIGINS`), requires a token
   (`LOSOS_VIRT_TOKEN`), binds 127.0.0.1, and refuses unmasked or oversized
   frames. Tested: a foreign Origin, or the right Origin with a wrong

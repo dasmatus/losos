@@ -23,7 +23,7 @@
 #     opening a conversation with them.
 #
 # The browser is Chromium under Playwright in the test driver
-# (nix/tests/contacts-browser.mjs). Screenshots land in result/shots/pr/.
+# (nix/tests/contacts-browser.ts). Screenshots land in result/shots/pr/.
 #
 # With `beforeSrc` (admin-ui/app of the branch this one is based on) the
 # same box serves the admin pages from before Contacts, and the run takes
@@ -431,7 +431,7 @@ pkgs.testers.nixosTest {
 
     def browser(phase):
         run = subprocess.run(
-            ["${pkgs.bun}/bin/bun", "${./contacts-browser.mjs}", phase, SHOTS],
+            ["${pkgs.bun}/bin/bun", "${./contacts-browser.ts}", phase, SHOTS],
             env=browser_env, capture_output=True, text=True, timeout=2400,
         )
         print(run.stdout)

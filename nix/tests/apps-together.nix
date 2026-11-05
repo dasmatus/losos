@@ -11,7 +11,7 @@
 #
 #   * Eva mails Matus a plan as an attachment, which lososd uploads to
 #     Stalwart as Eva, and Matus's copy downloads byte for byte;
-#   * Chromium (nix/tests/together-shots.mjs), as Matus, saves the file from
+#   * Chromium (nix/tests/together-shots.ts), as Matus, saves the file from
 #     the message into LosOS Cloud's Mail folder, opens it from the message
 #     in Notes (through /cloud/open), right-clicks it in Cloud to ask the AI
 #     about it and to send it on by mail, which opens Mail's composer with
@@ -68,7 +68,7 @@ let
       }
     }
     export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
-    exec ${pkgs.bun}/bin/bun ${./together-shots.mjs} "$@"
+    exec ${pkgs.bun}/bin/bun ${./together-shots.ts} "$@"
   '';
 in
 
