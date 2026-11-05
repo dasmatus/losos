@@ -29,7 +29,7 @@ function open() {
     ort.env.wasm.numThreads = 1;
     ort.env.wasm.proxy = false;
     // The runtime's own files, from the box (build.ts copies them).
-    ort.env.wasm.wasmPaths = "/nudity/";
+    ort.env.wasm.wasmPaths = "/ort/";
     const run = await ort.InferenceSession.create(MODEL_URL, { executionProviders: ["wasm"] });
     return { run, tensor: ort.Tensor };
   });

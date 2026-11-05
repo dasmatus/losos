@@ -421,7 +421,7 @@ export function ClusterGroup({ view, locked }: { view: EdgeView; locked: boolean
  * not being one, so the switch is greyed with that reason when none does,
  * unless it is already on and must stay possible to turn off. Like the
  * mesh's switches it goes out with Apply. The last row says which account
- * the shared side's apps (chat, mail, calls, Mesh CI) run as, from the saved
+ * the shared side's apps (mail, Mesh CI) run as, from the saved
  * settings: shared in the mesh, else kindashared, else none
  * (lososInternal.sideUser). */
 export function LocalShareGroup({ view, form }: { view: EdgeView; form: SettingsForm }) {

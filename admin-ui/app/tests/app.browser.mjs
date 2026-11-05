@@ -1639,6 +1639,42 @@ await check('the gallery offers each widget as an Item with its own action', asy
   await page.close();
 });
 
+await check('a colour the person picked is the accent of their pages, in light and in dark', async () => {
+  const matus = { name: 'matus', displayName: 'Matus', groups: ['losos-admins'], admin: true, spareKey: false, sections: [] };
+  const { page } = await open({ person: { ...matus, accent: 'rose', accentChosen: true } });
+  await page.getByTestId('signed-in-as').waitFor();
+  const read = () =>
+    page.evaluate(() => {
+      const css = getComputedStyle(document.documentElement);
+      return {
+        stamp: document.documentElement.dataset.personAccent ?? null,
+        accent: css.getPropertyValue('--accent').trim(),
+        rose: css.getPropertyValue('--person-rose').trim(),
+        teal: css.getPropertyValue('--person-teal').trim(),
+      };
+    });
+  await page.waitForFunction(() => document.documentElement.dataset.personAccent === 'rose');
+  const light = await read();
+  assert.equal(light.accent, light.rose, `the accent is not their rose: ${JSON.stringify(light)}`);
+  await choose(page, 'theme-menu', 'Dark');
+  const dark = await read();
+  assert.equal(dark.accent, dark.rose, `the dark accent is not their dark rose: ${JSON.stringify(dark)}`);
+  assert.notEqual(dark.rose, light.rose, 'the theme did not move the person colour');
+  assert.equal(await page.evaluate(() => localStorage.getItem('losos-accent')), 'rose', 'the next page load would start from the teal');
+  await page.close();
+
+  // The colour their name gives them stays theirs; their pages keep the teal.
+  const named = await open({ person: { ...matus, accent: 'rose', accentChosen: false } });
+  await named.page.getByTestId('signed-in-as').waitFor();
+  await named.page.waitForFunction(() => document.documentElement.dataset.personAccent === undefined);
+  const plain = await named.page.evaluate(() => {
+    const css = getComputedStyle(document.documentElement);
+    return [css.getPropertyValue('--accent').trim(), css.getPropertyValue('--person-teal').trim()];
+  });
+  assert.equal(plain[0], plain[1], 'a name-given colour changed the accent');
+  await named.page.close();
+});
+
 await check('the theme is a submenu of the person menu that the arrow keys move through', async () => {
   const { page } = await open({ stored: true });
   await page.getByTestId('signed-in-as').click();

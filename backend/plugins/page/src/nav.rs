@@ -82,6 +82,8 @@ pub struct Me {
     pub standalone: bool,
     pub picture: Option<String>,
     pub accent: Option<String>,
+    /// Whether they picked `accent` rather than having their name's.
+    pub accent_chosen: bool,
 }
 
 impl Me {
@@ -115,6 +117,7 @@ impl Me {
             // Only an address on this box: the page's policy loads nothing else.
             picture: text("picture").filter(|p| p.starts_with('/') && !p.starts_with("//")),
             accent: text("accent").filter(|a| a.bytes().all(|b| b.is_ascii_lowercase())),
+            accent_chosen: v["accentChosen"].as_bool().unwrap_or(false),
         }
     }
 
@@ -173,6 +176,7 @@ impl Me {
             label,
             tip,
             accent: self.accent.clone(),
+            page_accent: self.accent.clone().filter(|_| self.accent_chosen),
             picture: self.picture.clone(),
             account: self.name.is_some(),
         }

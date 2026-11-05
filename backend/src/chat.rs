@@ -24,9 +24,9 @@
 //!   * Removing a person ([`Chat::close`]) also signs every one of their
 //!     devices out of Synapse, so nothing they held keeps working anywhere.
 //!
-//! Chat belongs to the `shared` user: Synapse runs as it and keeps
-//! everything in the shared data domain, which is unlocked only while the
-//! box shares its storage.
+//! Chat belongs to the owner's account, `notshared`: Synapse runs as it and
+//! keeps everything in its data folder. It needs no mesh, no edge and no
+//! shared storage, so it is on wherever `losos.chat.enable` is.
 //!
 //! Everything goes over loopback as one HTTP/1.0 exchange (an answer to 1.0
 //! is never chunked), behind the two traits below so the logic is tested
@@ -326,8 +326,8 @@ impl Chat {
         }
     }
 
-    /// Whether the box runs chat now: it is on and the box shares its
-    /// storage (`modules/chat.nix` sets the environment only then).
+    /// Whether the box runs chat now: `losos.chat.enable` is on
+    /// (`modules/chat.nix` sets the environment only then).
     #[must_use]
     pub fn live(&self) -> bool {
         self.inner.is_some()
@@ -756,11 +756,34 @@ impl Chat {
 
     /// Post a notice into `room` as LosOS Git's account.
     pub fn git_notice(&self, room: &str, notice: &Notice) -> Result<(), ChatError> {
+        self.agent_message(
+            room,
+            GIT_BOT,
+            GIT_BOT_NAME,
+            &notice.text,
+            Some(&notice.html),
+        )
+    }
+
+    /// Post a message into `room` as one of the box's own agents: LosOS
+    /// Git's bot (`@losos-git`) or a LosOS Tag assistant
+    /// (`@tag-<slug>`). The application service mints the account once
+    /// ([`Self::account`]) and sends with its own `user_id`, which is the
+    /// only way a program posts as someone on this homeserver.
+    pub fn agent_message(
+        &self,
+        room: &str,
+        agent_localpart: &str,
+        display: &str,
+        text: &str,
+        html: Option<&str>,
+    ) -> Result<(), ChatError> {
         let inner = self.inner()?;
         let token = inner.as_token()?;
-        let bot = self.git_bot(&token)?;
+        let agent = self.account(&token, agent_localpart, display)?;
         let txn = format!(
-            "losos-git-{}-{}",
+            "{}-{}-{}",
+            agent_localpart,
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_nanos())
@@ -773,15 +796,24 @@ impl Chat {
                 "/_matrix/client/v3/rooms/{}/send/m.room.message/{}?user_id={}",
                 encode(room),
                 encode(&txn),
-                encode(&bot)
+                encode(&agent)
             ),
             &token,
-            Some(&json!({
-                "msgtype": "m.notice",
-                "body": notice.text,
-                "format": "org.matrix.custom.html",
-                "formatted_body": notice.html,
-            })),
+            Some(&{
+                let with_html = html.filter(|h| !h.trim().is_empty());
+                match with_html {
+                    Some(html) => json!({
+                        "msgtype": "m.notice",
+                        "body": text,
+                        "format": "org.matrix.custom.html",
+                        "formatted_body": html,
+                    }),
+                    None => json!({
+                        "msgtype": "m.notice",
+                        "body": text,
+                    }),
+                }
+            }),
         )?;
         if sent.status != 200 {
             return Err(ChatError::Homeserver {
@@ -790,6 +822,41 @@ impl Chat {
             });
         }
         Ok(())
+    }
+
+    /// One pull of the application service's own `/sync`: everything on
+    /// this box's rooms, since `since`. LosOS Tag's listener cross-reads
+    /// it for `@handle`s; when `since` is `None` the homeserver hands the
+    /// room list at once and `next_batch` where the live one goes on.
+    pub fn sync(&self, since: Option<&str>) -> Result<(String, Value), ChatError> {
+        let inner = self.inner()?;
+        let token = inner.as_token()?;
+        let since = match since {
+            Some(since) => format!("&since={}", encode(since)),
+            None => String::new(),
+        };
+        let pulled = inner.homeserver.call(
+            "GET",
+            &format!("/_matrix/client/v3/sync?set=offline&timeout=0{since}",),
+            &token,
+            None,
+        )?;
+        if pulled.status != 200 {
+            return Err(ChatError::Homeserver {
+                status: pulled.status,
+                errcode: pulled.errcode(),
+            });
+        }
+        let next_batch = pulled
+            .body
+            .get("next_batch")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .ok_or(ChatError::Homeserver {
+                status: 200,
+                errcode: "the sync answer names no next_batch".to_string(),
+            })?;
+        Ok((next_batch, pulled.body))
     }
 }
 

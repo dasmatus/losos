@@ -24,10 +24,10 @@ encryption keys use MatrixRTC's own events. Picture and sound go through
 
 ## When calls are there
 
-Calls are part of chat, so they need what chat needs: the box shares its
-storage and has joined a mesh. They also need
+Calls are part of chat, so they are there wherever chat is, with or without a
+mesh or an edge. They also need
 **Settings → Advanced → `losos.calls.enable`**, which is on unless you turn
-it off. With any of these off, rooms have no call buttons and the box runs
+it off. With chat or this off, rooms have no call buttons and the box runs
 nothing for calls. Turning one back on brings them back after the next
 Apply.
 
@@ -68,9 +68,9 @@ one. Until then, anyone else who tries gets a message saying so.
 Each person has a tile. A tile shows their camera, or their picture while
 their camera is off. The buttons at the bottom turn your microphone and
 your camera off and on, share your screen, switch your background, invite
-a guest, open podcast mode, and leave the call. Turning the camera off
-stops it, so its light goes out, and sends nothing until you turn it on
-again.
+a guest, change your voice, add LosOS, open podcast mode, and leave the call. Turning the
+camera off stops it, so its light goes out, and sends nothing until you
+turn it on again.
 
 Your voice goes out at 128 kb/s over the full range of hearing, with the
 browser's echo cancellation and noise suppression on. Your camera sends a
@@ -80,6 +80,14 @@ opposite and keeps its text sharp.
 
 The **End-to-end encrypted** label at the top says how many frames your
 browser has sent encrypted, and how many it has received and opened.
+
+## Your voice \{#your-voice}
+
+**Change my voice** changes how the others hear you: **Deeper**, **Higher**,
+**Giant**, **Chipmunk** or **Robot**, and **Natural** for your own voice.
+It happens in your browser before the call is encrypted, so the box and
+the others get only the changed voice, and nobody can tell it from yours.
+The choice is remembered for your next calls until you pick **Natural**.
 
 ## Your background
 
@@ -145,12 +153,80 @@ the two of them with keys made for this call only, and only then hand
 over the call's keys. Someone with the link but without the part after
 `#` gets into the call and sees and hears nothing.
 
+## LosOS in the call \{#losos-in-the-call}
+
+**Add LosOS** brings the box's assistant into the call. It listens, and
+when someone says its name it answers out loud, to everyone, in a voice of
+its own. Say "LosOS, what is on the list for Friday?" and it answers. For
+about twenty seconds after it has answered, the same person can go on
+without saying the name. "Stop" silences it, whoever says it, and so does
+**Stop talking** in its panel. **Remove LosOS** takes it out of the call.
+
+Its tile has a robot in place of a picture, and every person's call shows
+it, so nobody is listened to without knowing.
+
+Calls are end-to-end encrypted, so the box cannot hear them, and neither
+can an assistant that runs on the box. LosOS therefore joins from the
+browser of the person who added it, as a second member of the call, with
+the keys that person already has. That browser does the listening and the
+speaking:
+
+- Whisper, a speech recognizer, turns each person's voice into text. Each
+  person arrives on a stream of their own, so it knows who said what.
+- Kokoro, a speech synthesizer, speaks the answer.
+- Both run as WebAssembly on that person's computer. A recent computer
+  keeps up; on a slow one the answers come later.
+
+The first time, the browser downloads the two models, about 150 MB, from
+the box and keeps them. Nothing is fetched from anywhere else. After that
+a call starts without a download.
+
+What leaves the browser is the question, as text, to the box's assistant,
+LosOS Tag, with the last few minutes of the conversation so that "what do
+you think?" has something to be about. The recorded sound stays in the
+browser and is gone as soon as it has been read. When the person who added
+LosOS leaves the call or closes the page, LosOS leaves with them.
+
+The answer is read aloud to everyone in the call, so by default the
+assistant does not use the files, mail and rooms of the person who added
+it. **May use my files, mail and rooms** in its panel turns that on for
+this call.
+
+LosOS understands and speaks English for now. It is on unless you turn off
+**Settings → Advanced → `losos.calls.agent.enable`**, and with that off the
+box serves no speech models and the button is gone.
+
+## Calling your assistants \{#calling-your-assistants}
+
+Each assistant you make in LosOS Tag is a person in LosOS Chat, and a
+chat with one is a chat like any other, with the phone and the camera
+button in its header. Press one and the call starts with the assistant
+already in it: no name to say, no **Add LosOS** to press. Press the camera
+and it answers with a face, which blinks, looks up while it thinks and
+opens its mouth as far as its voice is loud. Press the phone and it is a
+voice call.
+
+Every assistant has a voice that stays the same from call to call, picked
+from the name. You just talk. It answers with what you may read yourself,
+since only you hear the answer, so **May use my files, mail and rooms** is
+on from the start and you can turn it off in its panel. What it knows and
+may do is what you set in **Settings → LosOS Tag** for that assistant.
+
+It works the way LosOS in a group call does. It joins from your browser,
+so the call stays encrypted, and it needs the same two speech models. It
+sees your voice and not your picture: your camera goes to the people in the
+call and never to the assistant. Hang up and it is gone.
+
 ## What the box sees
 
 The box forwards each frame to the others in the call without opening it.
 It knows who is in which call and when, how large the frames are and how
 often they come. It never has the picture or the sound, apart from a
 podcast stream that someone sends it to pass on.
+
+Adding LosOS changes none of this for the box: it joins from a browser
+and holds the same kind of keys, so the box still sees only encrypted
+frames. What it hears is what the person who added it chooses to bring.
 
 Each person's browser makes its own key for the call. Browsers hand their
 keys to each other in chat's encrypted messages between devices, which

@@ -92,7 +92,7 @@ let
         backend.package = lososPkgs.losos-ctl;
         admin.ui = ui;
         git.enable = name == "mattbox";
-        # The shared user's side of the box: chat's gate.
+        # The shared user's side of the box. Chat runs without it.
         sharingMyStorage = true;
         cluster.enable = true;
       };
@@ -106,6 +106,14 @@ let
         homeMode = "700";
       };
       users.groups.shared.gid = 1001;
+      # The owner's account, whose folder chat lives in.
+      users.users.notshared = {
+        isNormalUser = true;
+        uid = 1000;
+        group = "notshared";
+        homeMode = "700";
+      };
+      users.groups.notshared.gid = 1000;
       environment.systemPackages = [
         pkgs.jq
         pkgs.curl

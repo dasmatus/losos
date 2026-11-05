@@ -225,9 +225,21 @@ pub async fn handle(
             if let Some(r) = locked(cloud, login, &refs) {
                 return r;
             }
-            let mut trashed = Vec::new();
+            let mut trashed: Vec<crate::cloud::store::Trashed> = Vec::new();
             for p in &b.paths {
-                match clean_path(p).and_then(|p| store.delete(login, &p, None)) {
+                let p = match clean_path(p) {
+                    Ok(p) => p,
+                    Err(e) => return store_error(&e),
+                };
+                // A folder and something inside it, both ticked: the folder
+                // took the file along, so the file is done, not missing.
+                if trashed
+                    .iter()
+                    .any(|t| crate::cloud::store::is_within(&p, &t.original))
+                {
+                    continue;
+                }
+                match store.delete(login, &p, None) {
                     Ok(t) => trashed.push(t),
                     Err(e) => return store_error(&e),
                 }

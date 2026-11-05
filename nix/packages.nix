@@ -71,6 +71,21 @@
 #                enters a store (modules/secure-boot.nix, nix/sign-iso.sh).
 #                CI runs it with the SECURE_BOOT_DB_KEY secret;
 #                nix/tests/secure-boot.nix with a throwaway key.
+#   tinycode    — the coding agent CLI (github.com/dasmatus/tinycode,
+#                AGPL-3.0-or-later) the appliance ships in its base package
+#                set (modules/configuration.nix via losos.tinycode.package).
+#                Passed in as tinycodeSrc from the flake's pinned `tinycode`
+#                input, like pm is.
+#   losos-plugins-tinycode — tinycode adapted as a lososd plugin: the one
+#                WebAssembly component (backend/plugins/tinycode, which
+#                runs the tinycode binary through the exec import) and its
+#                manifest, without the rest of the plugin set the box
+#                loads.
+#   tinycode    — the coding agent CLI (github.com/dasmatus/tinycode,
+#                AGPL-3.0-or-later) the appliance ships in its base package
+#                set (modules/configuration.nix via losos.tinycode.package).
+#                Passed in as tinycodeSrc from the flake's pinned `tinycode`
+#                input, like pm is.
 {
   pkgs,
   # nix/version.nix, the release tag. Only the terminal client carries
@@ -308,7 +323,7 @@ let
   # build a set with the probe in it.
   # backend/plugins' vendored crates: lososd's plugins and Mesh CI's pm
   # plugin are built from the one workspace.
-  pluginsCargoHash = "sha256-30apxXXXZwQQcm+GUoXqqQPLZlkNggwwjlntT8/UWb4=";
+  pluginsCargoHash = "sha256-jDDtWK5AQGowDQ8Qs/uFhEbxbvibXffMgx9Y7ClZN6A=";
   lososPlugins =
     {
       pname ? "losos-plugins",
@@ -323,6 +338,7 @@ let
         "hidden"
         "basic"
         "pages"
+        "tinycode"
       ],
     }:
     pkgs.rustPlatform.buildRustPackage {
@@ -560,10 +576,24 @@ images
 
   losos-plugins = lososPlugins { };
 
+  # tinycode adapted as a lososd plugin, on its own: the one component and
+  # its manifest, without the rest of the set. `nix build
+  # .#losos-plugins-tinycode`. What the box loads is still the whole
+  # losos-plugins directory above, tinycode in it.
+  losos-plugins-tinycode = lososPlugins {
+    pname = "losos-plugins-tinycode";
+    names = [ "tinycode" ];
+  };
+
   # The mail server, Stalwart 1.0 (nix/stalwart.nix), for modules/mail.nix.
   losos-stalwart = pkgs.callPackage ./stalwart.nix { };
 
   # Photos' face models (nix/face-models.nix), read by losos-cloud-photos.
+  # The call agent's speech models and the whisper.cpp engine built to
+  # WebAssembly (nix/voice.nix): served at /voice/ by modules/calls.nix, and
+  # what tests/voice-agent.browser.mjs runs in Chromium.
+  losos-voice = import ./voice.nix { inherit pkgs; };
+
   losos-face-models = import ./face-models.nix { inherit pkgs; };
   # The TPM makers' certificates boxes check gateways against
   # (nix/gateway/tpm-roots.nix, losos.proxy.gateways.tpmRoots).
@@ -587,7 +617,7 @@ images
     src = lib.cleanSource ./../backend;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-ctl-rs` will print the new hash to paste here.
-    cargoHash = "sha256-HOWKAROLNgpoWCslwvP0xiTDrmUIBm5dkCus2/VKThg=";
+    cargoHash = "sha256-cf4nUn9XQXcGlOJ95i4Akv3dZINTCoqHZAD2gpnD41M=";
     # No system deps: zbus speaks the D-Bus wire protocol natively, so there is
     # no libdbus to link against.
     # doCheck is off, and the tests still run — in CI's lint job and in
@@ -613,7 +643,7 @@ images
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-registrar` will print the new hash to paste here.
-    cargoHash = "sha256-AKuhgUY1X03EyclNVMrJmTrt+AQgHgVXf20GhL4Ke6M=";
+    cargoHash = "sha256-4cJuU+UuczOt4p8jcJoKC/bvcLbSWSmMPpAUqqoR9Ac=";
     # No system deps; pure Rust with rustls (no openssl).
     # Same reasoning as losos-ctl above: the suite runs via cargo test in the
     # lint job, not inside this derivation.
@@ -638,7 +668,7 @@ images
     pname = "losos-registrar-static";
     version = "0.1.0";
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
-    cargoHash = "sha256-AKuhgUY1X03EyclNVMrJmTrt+AQgHgVXf20GhL4Ke6M=";
+    cargoHash = "sha256-4cJuU+UuczOt4p8jcJoKC/bvcLbSWSmMPpAUqqoR9Ac=";
     doCheck = false;
   };
 

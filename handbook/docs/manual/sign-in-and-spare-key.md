@@ -169,7 +169,10 @@ the spare key, which has no account.
   box crops the picture again and saves it as a new file, so the place and
   camera a photo was taken with stay on your device. Your sign-in name is
   always shown beside the profile, so a picture cannot pass you off as
-  someone else.
+  someone else. The colour you pick is also the accent of your own pages.
+  It colours buttons, links and the selected place in the sidebar, in the
+  admin pages, LosOS Cloud and LosOS Git, with or without JavaScript. Until
+  you pick one, your pages stay teal.
 - **Your details**: your full name and email address. LosOS Cloud and LosOS
   Git show the same ones. Only an administrator can change your sign-in
   name.

@@ -66,11 +66,12 @@ darüber hinaus.
   den Markt bringen. Kaufen auf dem Markt geht weiter.
 - Antwortet zehn Minuten lang kein lokales Gateway, schaltet die Box es
   selbst aus und eine Minute, nachdem wieder eines antwortet, wieder ein.
-- Solange es an ist und die Box nicht im Mesh ist, laufen Chat, Mail,
-  Anrufe und Mesh CI als `kindashared`, mit ihren Daten in dessen
-  Verzeichnis. Auch Apps lassen sich als `kindashared` installieren. Tritt
-  die Box später dem Mesh bei, laufen sie als `shared` und fangen dort neu
-  an; was `kindashared` hält, bleibt in seinem eigenen Verzeichnis.
+- Solange es an ist und die Box nicht im Mesh ist, laufen Mail und Mesh CI
+  als `kindashared`, mit ihren Daten in dessen Verzeichnis. Auch Apps
+  lassen sich als `kindashared` installieren. Tritt die Box später dem Mesh
+  bei, laufen sie als `shared` und fangen dort neu an; was `kindashared`
+  hält, bleibt in seinem eigenen Verzeichnis. Chat und Anrufe gehören nicht
+  dazu: Sie laufen auf jeder Box als `notshared`.
 - Der Schalter **Mit den Gateways dieses Netzwerks teilen** ist im Bereich
   **Mesh**, zusammen mit den erreichbaren Gateways und dem Konto, als das
   die geteilte Seite läuft.

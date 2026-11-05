@@ -54,7 +54,7 @@ const MEDIAPIPE = {
 
 /* The files whose `new URL("…", import.meta.url)` are rewritten: our own
  * source and the Matrix crypto package's wasm. Others (ONNX Runtime's, whose
- * files nudity.ts points at /nudity/ instead) are left as they are. */
+ * files nudity.ts and mouth.ts point at /ort/ instead) are left as they are. */
 const URL_SOURCES = /[\\/](src[\\/].*\.(ts|tsx)|@matrix-org[\\/]matrix-sdk-crypto-wasm[\\/]index\.mjs)$/;
 const NEW_URL = /new URL\(\s*(["'])(\.{1,2}\/[^"']+)\1\s*,\s*import\.meta\.url\s*\)/g;
 

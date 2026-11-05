@@ -105,8 +105,8 @@ The search field above the notes finds words in names and in the text.
 
 ## Publish a folder as a knowledge base
 
-Knowledge bases need the box to share and to be in a mesh, as chat and mail
-do. Without both, the menu item is not there and the sites are off.
+Knowledge bases need the box to share and to be in a mesh, as mail
+does. Without both, the menu item is not there and the sites are off.
 
 1. In **Files**, right-click the folder and choose **Publish as knowledge
    base**.

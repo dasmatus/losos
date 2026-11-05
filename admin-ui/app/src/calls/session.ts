@@ -22,6 +22,9 @@ export interface Member {
   /* Sharing their screen now. A stopped share only leaves its track quiet,
    * so the SFU passes on what the sharing page says. */
   screen?: boolean;
+  /* An agent that `user` added to the call (voice/agent.ts): the same
+   * user and device, another place in the call. */
+  agent?: boolean;
 }
 
 export interface Sender {
@@ -67,6 +70,10 @@ export interface CallOptions {
   /* A member's device; a guest has none. Who the member is, nginx tells
    * the SFU from LosOS Login. */
   device?: string;
+  /* This session is an agent's, run by the page for the person whose user
+   * and device it joins as: the SFU sends it the call's audio and no video,
+   * and does not count it as a person of the room. */
+  agent?: boolean;
   /* A guest's side: the invite from the link, the name it gave and the
    * secret from the link's fragment. */
   guest?: { invite: string; name: string; secret: string };
@@ -190,7 +197,7 @@ export class CallSession {
       this.signal(
         g
           ? { type: 'guest', call: this.opts.call, invite: g.invite, name: g.name }
-          : { type: 'join', call: this.opts.call, device: this.opts.device },
+          : { type: 'join', call: this.opts.call, device: this.opts.device, ...(this.opts.agent ? { agent: true } : {}) },
       );
     ws.onmessage = (ev) => {
       let m: { type: string; [k: string]: unknown };

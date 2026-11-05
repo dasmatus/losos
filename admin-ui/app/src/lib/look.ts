@@ -26,6 +26,7 @@
  * shipped one from /backgrounds/, and all of them are this origin.
  */
 
+import { applyPersonAccent } from "./person-accent";
 import {
   deleteBackground,
   deleteHandWidget,
@@ -290,6 +291,22 @@ export async function paintOwnLook(): Promise<void> {
     applyBackground(revive(await response.json()));
   } catch {
     /* no background is not worth a word */
+  }
+}
+
+/** The same for the person's colour (lib/person-accent.ts), for the pages
+ *  whose own sign-in says nothing of it: GET /api/me with the LosOS Login
+ *  cookie. Off the LAN /api/ does not answer, and the colour the last page
+ *  load showed stays. */
+export async function paintOwnAccent(): Promise<void> {
+  try {
+    const response = await fetch("/api/me", { cache: "no-store", credentials: "same-origin" });
+    if (!response.ok) return;
+    const me = (await response.json()) as { name?: unknown; accent?: unknown; accentChosen?: unknown };
+    if (typeof me.name !== "string") return;
+    applyPersonAccent(me.accentChosen === true && typeof me.accent === "string" ? me.accent : null);
+  } catch {
+    /* the colour is not worth a word either */
   }
 }
 

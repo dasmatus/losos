@@ -166,6 +166,10 @@ pub struct Person {
     pub initial: Option<String>,
     /// components/person.tsx's colour name.
     pub accent: Option<String>,
+    /// The colour they picked for themselves, which is also the page's
+    /// accent (`data-person-accent` on `<html>`, lib/person-accent.ts);
+    /// `None` keeps the box's teal.
+    pub page_accent: Option<String>,
     /// The profile picture's address, when they have one.
     pub picture: Option<String>,
     /// Whether "Your account" is in their menu.
@@ -237,6 +241,7 @@ pub fn page(f: &Frame<'_>, main: Html) -> Html {
     document(
         f.m.locale,
         f.prefs.theme,
+        f.person.and_then(|p| p.page_accent.as_deref()),
         f.title,
         f.assets,
         f.refresh,
@@ -247,9 +252,11 @@ pub fn page(f: &Frame<'_>, main: Html) -> Html {
 
 /// The `<html>` around a body: the script page's head, without a script.
 #[must_use]
+#[allow(clippy::too_many_arguments)]
 pub fn document(
     locale: Locale,
     theme: Theme,
+    accent: Option<&str>,
     title: &str,
     assets: &Assets,
     refresh: Option<u32>,
@@ -290,11 +297,19 @@ pub fn document(
         })
         .map(|p| format!(" data-page=\"{p}\""))
         .unwrap_or_default();
+    // styles/index.css has a rule for each of these; teal is the default.
+    let accent_attr = match accent {
+        Some(a @ ("blue" | "violet" | "rose" | "amber" | "green")) => {
+            format!(" data-person-accent=\"{a}\"")
+        }
+        _ => String::new(),
+    };
     Html::trusted(format!(
-        "<!doctype html><html lang=\"{}\"{}{} data-basic=\"\"><head>{}</head><body>{}</body></html>",
+        "<!doctype html><html lang=\"{}\"{}{}{} data-basic=\"\"><head>{}</head><body>{}</body></html>",
         locale.code(),
         theme_attr,
         page_attr,
+        accent_attr,
         head.as_str(),
         body.as_str()
     ))
@@ -1194,5 +1209,28 @@ mod tests {
         assert!(html.contains("for=\"fold-d-settings\""));
         assert!(html.contains("id=\"fold-p-settings\""));
         assert!(html.contains("action=\"/basic/sign-out\""));
+        // No colour picked: the box's teal, so no attribute.
+        assert!(!html.contains("data-person-accent"));
+
+        // A picked colour is the page's accent; anything else is not.
+        let picked = Person {
+            page_accent: Some("rose".into()),
+            ..person.clone()
+        };
+        let f = frame_with(&m, &assets, &prefs, &nav, Some(&picked));
+        let html = page(&f, Html::text("hello")).into_string();
+        assert!(html.starts_with(
+            "<!doctype html><html lang=\"en\" data-theme=\"dark\" data-person-accent=\"rose\" data-basic"
+        ));
+        for odd in ["teal", "mauve", "rose\" onload=\"x"] {
+            let other = Person {
+                page_accent: Some(odd.into()),
+                ..person.clone()
+            };
+            let f = frame_with(&m, &assets, &prefs, &nav, Some(&other));
+            assert!(!page(&f, Html::text("hello"))
+                .into_string()
+                .contains("data-person-accent"));
+        }
     }
 }

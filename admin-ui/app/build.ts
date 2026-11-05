@@ -99,9 +99,9 @@ export function classicScripts(html: Response | string): Response {
  *
  * The nudity warning (src/lib/nudity.ts) runs ONNX Runtime's WebAssembly
  * build on a ViT-Tiny from LOSOS_NUDITY_MODEL, which nix/packages.nix pins
- * to one download. Both land under nudity/, outside assets/, so the 14 MB
- * runtime and the 22 MB model load only on a page whose owner turned the
- * warning on.
+ * to one download. The runtime lands under ort/ — Kokoro (src/voice/mouth.ts)
+ * loads the same files — and the model under nudity/, both outside assets/,
+ * so the 14 MB runtime and the 22 MB model load only when a page asks.
  *
  * LosOS Lab's splash can carry a two-panel meme: LOSOS_LAB_MEME names a
  * folder with no.jpg and yes.jpg, copied beside dist/diagrams/index.html as
@@ -115,8 +115,8 @@ export function copiedFiles(): [string, string][] {
   const list: [string, string][] = [
     ["chat/calls-ml/vision_wasm_internal.js", `${wasm}/vision_wasm_internal.js`],
     ["chat/calls-ml/vision_wasm_internal.wasm", `${wasm}/vision_wasm_internal.wasm`],
-    ["nudity/ort-wasm-simd-threaded.mjs", `${ort}/ort-wasm-simd-threaded.mjs`],
-    ["nudity/ort-wasm-simd-threaded.wasm", `${ort}/ort-wasm-simd-threaded.wasm`],
+    ["ort/ort-wasm-simd-threaded.mjs", `${ort}/ort-wasm-simd-threaded.mjs`],
+    ["ort/ort-wasm-simd-threaded.wasm", `${ort}/ort-wasm-simd-threaded.wasm`],
   ];
   const segmenter = Bun.env["LOSOS_SEGMENTER_MODEL"];
   if (segmenter) list.push(["chat/calls-ml/selfie_segmenter.tflite", segmenter]);
