@@ -282,7 +282,7 @@ w.joinPerson = async (o: { socket: string; call: string; me: Who; assistant: str
     worker: () => new Worker('/e2ee-worker.js', { type: 'module' }),
     events: {
       ...events(),
-      track: (pid, stream, screen) => {
+      track: (_pid, stream, screen) => {
         if (screen) return;
         // The only other member with a picture is the assistant.
         const video = stream.getVideoTracks()[0];
