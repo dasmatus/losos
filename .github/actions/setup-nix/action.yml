@@ -54,6 +54,14 @@ runs:
           extra-trusted-public-keys = losos-1:35OIuYFMKDrlC6yTzqivDPqNqZTMjM0l2MB89bRRreg=
           connect-timeout = 5
           fallback = true
+          # Cap every builder's thread use at four. It has to be here and not
+          # in a workflow-level NIX_CONFIG (see the top of this file: a
+          # multi-user install discards untrusted settings), and it has to be
+          # per-builder because nix's `cores`, not the OS, is what a build
+          # sees as its core count. The hosted runners have four CPUs, so on
+          # CI this changes nothing — it holds the cap on any runner that
+          # exceeds it.
+          cores = 4
     - name: Start the local GHCR cache
       shell: bash
       run: |

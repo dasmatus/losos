@@ -43,8 +43,15 @@ runs:
           printf 'Failed Nix build: `%s`\n\n' "${TARGET:-nix build}"
           printf '[Failed workflow run](%s)\n\n' "$RUN_URL"
           printf '```text\n'
-          cat "$log" 2>/dev/null \
-            || printf 'No build log was captured. See the workflow run for output.\n'
+          if [ -f "$log" ]; then
+            # GitHub caps an issue body at 65536 characters. A whole `nix build`
+            # log is megabytes, and the failure is at the end, so keep the tail:
+            # overshoot here and `gh issue create` answers "Body is too long",
+            # the issue never opens, and the failure itself is the only signal.
+            tail -c 60000 "$log"
+          else
+            printf 'No build log was captured. See the workflow run for output.\n'
+          fi
           printf '```\n'
         } > "$body_file"
 

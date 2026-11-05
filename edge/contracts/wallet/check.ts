@@ -3,7 +3,7 @@
 // Anvil's well-known mnemonic is the fixture: account 0 and account 1 must
 // come out as anvil's first two addresses, or the wallet is not the one a
 // buyer can import into a wallet they already use.
-// Run with: bun contracts/wallet/check.ts [chainId]
+// Run with: bun edge/contracts/wallet/check.ts [chainId]
 import { english, generateMnemonic, mnemonicToAccount } from "viem/accounts";
 
 const ANVIL = "test test test test test test test test test test test junk";
