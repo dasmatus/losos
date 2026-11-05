@@ -74,7 +74,6 @@
 
   # A small, sensible base package set. Service-specific packages
   # (the cluster tooling, LosOS Cloud) are pulled in by their modules.
-  #
   # tinycode (losos.tinycode.package) is the box's coding agent CLI
   # (github.com/dasmatus/tinycode, AGPL-3.0-or-later). It replaced the
   # Node-based agent stack the way it replaced OpenCode on the

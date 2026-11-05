@@ -46,7 +46,7 @@ nenašlo žiadny, veta pod **Žiadny okrajový proxy server sa nenašiel** hovor
    [Funguje iba lokálna sieť](only-the-lan-works).
 2. **Je adresa správna?** Otvorte Nastavenia → Rozšírené a nájdite
    `losos.proxy.registrarUrl`. Je to základná adresa API edge, pre riadiacu
-   vrstvu edge LosOS `https://losos-edge.dasmat.us`. Firemný edge v LAN
+   vrstvu edge LosOS `https://register.dasmat.us`. Firemný edge v LAN
    ohlasuje svoju vlastnú, zvyčajne `http://<edge>.local:8443`.
 3. **Firemný edge v LAN: ten istý segment siete?** Ohlásenia mDNS
    neprechádzajú cez routery ani VLAN. Namiesto spoliehania sa na

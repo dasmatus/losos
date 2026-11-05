@@ -247,6 +247,17 @@ pkgs.testers.nixosTest {
     edge.wait_until_succeeds(f"{https} | grep -q hello-losos", timeout=120)
     headers = edge.succeed(f"{https} -D - -o /dev/null")
     assert 'alt-svc: h3=":443"' in headers.lower(), headers
+
+    # 4c. The edge's own name is not a box and not the registrar, and used to
+    #     get Traefik's bare 404 under its default certificate. It redirects
+    #     to the handbook now, under its own router.
+    landing = edge.wait_until_succeeds(
+        "curl -sSk --max-time 10 --resolve edge.losos.cfd:443:127.0.0.1 "
+        "-D - -o /dev/null https://edge.losos.cfd/",
+        timeout=120,
+    )
+    assert landing.startswith("HTTP/2 302"), landing
+    assert "location: https://losos.dasmat.us" in landing.lower(), landing
     edge_v4 = appliance.succeed("getent ahostsv4 edge | awk 'NR==1{print $1}'").strip()
     edge_addr = edge_v4 or "[" + appliance.succeed("getent ahostsv6 edge | awk 'NR==1{print $1}'").strip() + "]"
     h3 = (

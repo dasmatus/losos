@@ -48,7 +48,7 @@ die Box versucht hat:
    [Nur das lokale Netzwerk funktioniert](only-the-lan-works).
 2. **Stimmt die Adresse?** Öffne Einstellungen → Erweitert und such
    `losos.proxy.registrarUrl`. Das ist die Basisadresse der API der Edge,
-   `https://losos-edge.dasmat.us` für die Steuerungsebene der LosOS-Edge.
+   `https://register.dasmat.us` für die Steuerungsebene der LosOS-Edge.
    Eine Firmen-Edge im LAN kündigt ihre eigene an, meist
    `http://<edge>.local:8443`.
 3. **Firmen-Edge im LAN: dasselbe Netzwerksegment?** mDNS-Ankündigungen
