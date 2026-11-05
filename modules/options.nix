@@ -1322,6 +1322,21 @@ in
       '';
     };
 
+    calls.agent.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Let a person add LosOS to a call as a voice agent. Calls are
+        encrypted end to end, so the box cannot hear them: the agent runs in
+        the browser of the person who adds it, as one more member of the
+        call. It listens with Whisper and speaks with Kokoro, both in
+        WebAssembly there, and asks the box's LosOS Tag only for what was
+        said to it. This option serves the two models and their engines at
+        /voice/ (about 160 MB of the box's store); the box itself does no
+        speech work. Needs calls.
+      '';
+    };
+
     calls.udpPort = lib.mkOption {
       type = lib.types.port;
       default = 7882;
@@ -1526,14 +1541,17 @@ in
 
     builder.model = lib.mkOption {
       type = lib.types.str;
-      default = "qwen2.5-coder:1.5b";
+      default = "MichelRosselli/bonsai-27b";
       description = ''
-        The Ollama model the builder asks. The default, Qwen2.5-Coder 1.5B
-        (Apache License 2.0), fits the smallest box LosOS runs on: 4 GiB of
-        memory and two processor cores, beside LosOS Cloud and LosOS Git.
-        The prompts are written for it. A larger Qwen2.5-Coder such as
-        `qwen2.5-coder:7b` writes better apps on a box with 8 GiB or more
-        to spare, and takes several times as long.
+        The Ollama model the builder asks. The default has been unified
+        with the assistant's and the tag's (one model for everything the
+        box's own AI does): Bonsai 27B, a 1-bit Q1_0 recording of
+        Qwen3.6-27B, 4.4 GB and a 262,144-token context, Apache License
+        2.0, Ollama 0.32.5 or newer. A smaller, faster coder like the
+        older default — `qwen2.5-coder:1.5b` — still answers well, and
+        builds widgets on the smallest box at its own speed; set this to
+        that model and `assistant.model` with it if the box runs one
+        model at a time on 8 GiB.
       '';
     };
 
@@ -1564,16 +1582,15 @@ in
 
     assistant.model = lib.mkOption {
       type = lib.types.str;
-      default = "gemma3:1b";
+      default = "MichelRosselli/bonsai-27b";
       description = ''
         The Ollama model the apps' questions go to: everything that is not
-        code. The builder and LosOS Reviewer keep `builder.model`. The
-        default, Gemma 3 1B (Gemma Terms of Use, ai.google.dev/gemma/terms),
-        fits the smallest box LosOS runs on: 4 GiB of memory and two
-        processor cores. Ollama holds one model at a time, so the two never
-        need memory together. On a box with 8 GiB or more, `gemma4:e2b`
-        (Apache License 2.0, about 5 GiB while it answers) writes better
-        summaries.
+        code. Unified with the builder's and the tag's by default (one
+        model for everything the box's own AI does). The default, Bonsai
+        27B (Apache License 2.0), reads a 262,144-token context, calls
+        tools, thinks and sees pictures; a box shorter of memory runs it
+        with part of the model on the slower side. The older `gemma3:1b`
+        is the smaller, faster choice for the smallest box.
       '';
     };
 
@@ -1585,6 +1602,148 @@ in
         material (cut at 9,000 characters, about 2,500 tokens), the question
         and the answer. Each token of window costs the model some memory
         while it runs.
+      '';
+    };
+
+    tag.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        LosOS Tag: the assistant people tag in LosOS Chat (`@LosOS`),
+        beside the custom assistants anyone on the box makes. Its asks run
+        on a queue that pauses, never drops, while the box is short of
+        memory, and answer with what the unified search of the box's
+        files, repositories, mail and rooms found, graded by the box's
+        own confidentiality levels. Runs on the same Ollama service as
+        the builder and the assistant (`modules/builder.nix`).
+      '';
+    };
+
+    tag.model = lib.mkOption {
+      type = lib.types.str;
+      default = "MichelRosselli/bonsai-27b";
+      description = ''
+        The built-in model the tag (and, by `modules/builder.nix`'s own
+        defaults the builder and the assistant with it) asks. The default,
+        Bonsai 27B, is a 1-bit SDK recording of Qwen3.6-27B: 4.4 GB, a
+        262,144-token context, tools, thinking and vision, Apache License
+        2.0, Ollama 0.32.5 or newer. A box shorter of memory than the
+        model spills part of it, 50 to 75 percent, to the lenders and the
+        slower storage the queue's own memory-pressure sweep reads.
+      '';
+    };
+
+    tag.t3Bin = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      description = ''
+        The T3 Code binary the tag's asks run on, when the box has it.
+        T3 Code carries its own provider settings; the tag's default is
+        to take whatever the box ships. Empty runs the built-in path on
+        Ollama, OpenCode (`tag.opencode`) as the fallback harness.
+      '';
+    };
+
+    tag.opencodeBin = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      description = ''
+        The OpenCode binary the tag's asks fall back to when no T3 Code
+        is configured, with `opencode run` taking the prompt's whole
+        turn. Empty runs the built-in path on Ollama.
+      '';
+    };
+
+    tag.searxng = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      description = ''
+        The SearXNG instance the tag's own web search goes to, as an
+        http://127.0.0.1:port sandbox URL. Empty tells the tag there is
+        no web search, so it never leaves the box.
+      '';
+    };
+
+    tag.meshUrl = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      description = ''
+        An OpenAI-compatible endpoint on the network the tag falls back
+        to when the box cannot hold its own model — in a mesh, the
+        llama.cpp head the edge runs for a model group
+        (`edge.inference.models`, its lenders' RAM reached over the
+        tunnels), which is how a box with 4 GiB asks Qwen 3.8 Max or
+        DeepSeek R1: the head serves them, the boxes lend the memory.
+        The built-in path answers first when Ollama holds
+        `tag.model`; this one answers when it cannot, or when Ollama is
+        off.
+      '';
+    };
+
+    tag.meshModel = lib.mkOption {
+      type = lib.types.str;
+      default = "qwen3-8max";
+      description = ''
+        The model id the tag asks at `tag.meshUrl` (the catalogue's own
+        ids: `qwen3-8max`, `deepseek-r1`, …).
+      '';
+    };
+
+    tag.browser = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Read one page with the box's own Playwright wrapper (chromium).
+        Public addresses only, no sign-ins, its text alone: for the ask's
+        own reading, never its private files to leak through.
+      '';
+    };
+
+    tag.browserEngine = lib.mkOption {
+      type = lib.types.enum [
+        "chromium"
+        "midori"
+      ];
+      default = "chromium";
+      description = ''
+        Which engine the box's Playwright wrapper drives when
+        `tag.browser` is on. `midori` runs Playwright's WebKit build in
+        place of Chromium — the WebKitGTK-class engine, the lighter
+        renderer on a box you also keep LosOS Cloud and LosOS Git on —
+        while the ask reads one page and nothing else either way.
+      '';
+    };
+
+    tag.midoriBin = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      description = ''
+        The Midori binary the adapter runs instead of Playwright's own
+        engine (`tag.browserEngine = "midori"`; nixpkgs does not carry
+        Midori, so this is a store path when the owner puts one there).
+        Midori reads its page with its own process; text alone still
+        goes into the ask.
+      '';
+    };
+
+    tag.spilloverStart = lib.mkOption {
+      type = lib.types.ints.between 50 75;
+      default = 50;
+      description = ''
+        The layers' spillover percent when the box holds the model
+        comfortably: half the layers sit on the slower side. Climbs to
+        `tag.spilloverPressured` under the ask queue's memory-pressure
+        sweep.
+      '';
+    };
+
+    tag.spilloverPressured = lib.mkOption {
+      type = lib.types.ints.between 50 75;
+      default = 75;
+      description = ''
+        The layers' spillover percent under memory pressure: three
+        quarters of the layers to the lenders' memory, when the box
+        cannot hold the model it was asked to run.
       '';
     };
 
@@ -1985,6 +2144,22 @@ in
         (`<name>.wasm`) beside its manifest (`<name>.json`). lososd loads
         them only from the read-only Nix store. When null, lososd serves no
         plugin routes, and the panes they back (the look) answer 404.
+      '';
+    };
+
+    # tinycode (github.com/dasmatus/tinycode), the box's coding agent CLI.
+    # When non-null the binary ships in the base package set
+    # (modules/configuration.nix); it is how an admin runs agentic work on
+    # the box — a single small AGPL-3.0-or-later binary in place of a
+    # Node-based agent stack this stateless appliance has no memory to
+    # spare for.
+    tinycode.package = lib.mkOption {
+      type = lib.types.nullOr lib.types.package;
+      default = null;
+      description = ''
+        The tinycode derivation (Rust, AGPL-3.0-or-later). When non-null,
+        `tinycode` is installed in the base package set. Leave null to ship
+        no agent CLI; set to null to strip it from a minimal image.
       '';
     };
 
@@ -3495,7 +3670,39 @@ in
         }
       );
       default = [ ];
-      description = "The models this edge offers. Written to /etc/losos/inference-models.json for the registrar.";
+      example = lib.literalExpression ''
+        [
+          {
+            id = "qwen3-8max";
+            name = "Qwen 3.8 Max";
+            file = pkgs.fetchurl { url = "https://…/qwen3-8max-q4.gguf"; hash = "sha256-…"; };
+            needMiB = 184320;
+            context = 32768;
+            priceIn = 400000;
+            priceOut = 1600000;
+            licence = "Apache-2.0";
+          }
+          {
+            id = "deepseek-r1";
+            name = "DeepSeek R1";
+            file = pkgs.fetchurl { url = "https://…/deepseek-r1-q4.gguf"; hash = "sha256-…"; };
+            needMiB = 402653;
+            context = 16384;
+            priceIn = 550000;
+            priceOut = 2200000;
+            licence = "MIT";
+          }
+        ]
+      '';
+      description = ''
+        The models this edge offers. Written to
+        /etc/losos/inference-models.json for the registrar. The bigger the
+        model, the more boxes lend to hold it: a group's `needMiB` is split
+        over the lenders' `inference.lend.memoryMiB`, one `losos-llm-head`
+        per group, and a box in the mesh reaches the head over its tunnel —
+        which is how LosOS Tag asks a model no box can hold alone
+        (`losos.tag.meshUrl`): the head answers, the boxes lend the memory.
+      '';
     };
 
     edge.inference.portRange = {

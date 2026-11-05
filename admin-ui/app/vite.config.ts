@@ -205,16 +205,36 @@ function segmenterFiles(): Plugin {
  * runtime and the 22 MB model load only on a page whose owner turned the
  * warning on. A build without the model still builds; the warning then
  * finds no model and lets every picture through as it was before. */
+/* ONNX Runtime's own WebAssembly, served from the box at /ort/: the nudity
+ * warning and the call agent's voice both run models on it, and neither page
+ * may fetch it from a CDN. */
+function ortFiles(): Plugin {
+  const dist = "node_modules/onnxruntime-web/dist";
+  const files: [string, string][] = [
+    ["ort-wasm-simd-threaded.mjs", `${dist}/ort-wasm-simd-threaded.mjs`],
+    ["ort-wasm-simd-threaded.wasm", `${dist}/ort-wasm-simd-threaded.wasm`],
+  ];
+  return {
+    name: "losos:ort-files",
+    configureServer(server) {
+      for (const [name, src] of files) {
+        server.middlewares.use(`/ort/${name}`, async (_req, res) => {
+          res.end(await Bun.file(src).bytes());
+        });
+      }
+    },
+    async buildStart() {
+      for (const [name, src] of files) {
+        this.emitFile({ type: "asset", fileName: `ort/${name}`, source: await Bun.file(src).bytes() });
+      }
+    },
+  };
+}
+
 function nudityFiles(): Plugin {
-  const ort = "node_modules/onnxruntime-web/dist";
   const files = (): [string, string][] => {
-    const list: [string, string][] = [
-      ["ort-wasm-simd-threaded.mjs", `${ort}/ort-wasm-simd-threaded.mjs`],
-      ["ort-wasm-simd-threaded.wasm", `${ort}/ort-wasm-simd-threaded.wasm`],
-    ];
     const model = Bun.env["LOSOS_NUDITY_MODEL"];
-    if (model) list.push(["model.onnx", model]);
-    return list;
+    return model ? [["model.onnx", model]] : [];
   };
   return {
     name: "losos:nudity-files",
@@ -260,7 +280,7 @@ function labMeme(): Plugin {
 const root = import.meta.dirname;
 
 export default defineConfig({
-  plugins: [basicClasses(), react(), tailwindcss(), themeBoot(), appFrame(), basicMessages(), labMeme(), segmenterFiles(), nudityFiles(), segmenterQuiet(), sonnerQuiet(), pages()],
+  plugins: [basicClasses(), react(), tailwindcss(), themeBoot(), appFrame(), basicMessages(), labMeme(), segmenterFiles(), ortFiles(), nudityFiles(), segmenterQuiet(), sonnerQuiet(), pages()],
   // Served from the vhost root by nginx.
   base: "/",
   resolve: {

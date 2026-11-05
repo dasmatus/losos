@@ -32,6 +32,7 @@ box's own sign-in, in your browser.
 | Cursor | an entry in `~/.cursor/mcp.json` |
 | VS Code and VSCodium | an entry in `mcp.json` in the editor's user settings |
 | Cline | an entry in its MCP settings inside VS Code |
+| T3 Code | an entry in `~/.config/t3/t3.json` |
 | Windsurf | an entry in `~/.codeium/windsurf/mcp_config.json` |
 | Zed | an entry under `context_servers` in Zed's `settings.json` |
 | LM Studio | an entry in `~/.lmstudio/mcp.json` |

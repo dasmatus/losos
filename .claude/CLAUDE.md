@@ -220,7 +220,28 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   files under `/chat/calls-ml/`, model from `LOSOS_SEGMENTER_MODEL`).
   Podcast mode composites on the host's canvas and sends WebM to
   `/calls/api/stream`, which ffmpeg passes to RTMP: the one plaintext path,
-  marked public in the UI. Guests: only an official edge answers
+  marked public in the UI. LosOS in the call (`admin-ui/app/src/voice/`,
+  `nix/voice.nix`, `nix/whisper-wasm.nix`, `losos.calls.agent.enable`): the
+  box cannot hear an E2EE call, so the agent is a second `CallSession` of
+  the page that added it (same user and device, `agent:true`; the SFU sends
+  it audio only and does not count it as a person), its keys passed to the
+  page's first session in memory (`voice/keys.ts`). Whisper (whisper.cpp
+  built to WebAssembly) reads each member's stream, Kokoro (ONNX Runtime
+  Web) speaks into its microphone, and a question goes to LosOS Tag as a
+  `voice` ask (`POST /api/tag/ask`, polled at `GET /api/tag/asks/{id}`).
+  The models are served by nginx at `/voice/`, not put in the UI package;
+  `/chat/` is cross-origin isolated (COOP/COEP in `containers.nix`) for
+  their threads, so nothing cross-origin may load there.
+  `tests/voice-agent.browser.mjs` speaks a question through the real SFU
+  and reads the answer back. A direct chat with an assistant
+  (`@tag-<slug>`, `assistantOf` in `chat/calls.tsx`) is a call it joins by
+  itself, as a `direct` persona: no name to say, its own Kokoro voice from
+  the slug (`voiceFor`), a face drawn on a canvas as its camera
+  (`voice/avatar.ts`), asks addressed to that assistant with `grounded` on;
+  `tests/voice-assistant.browser.mjs` reads the face through the SFU. The
+  voice changer is a worklet on the
+  microphone before the seal (`calls/voice-changer.ts`,
+  `public/voice-worklet/voice-changer.js`). Guests: only an official edge answers
   `POST /calls/guest-link`; the box serves `/calls/guest/` (its own Vite
   build, `vite.guest.config.ts`) and `/calls/guest/ws` without LosOS Login,
   and the link's `#` secret, which no server sees, keys an ECDH pair per
@@ -371,6 +392,34 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   changed is re-read); Git is `git grep` per query as `losos-git`. Both answer
   on Accept=yes sockets under `/run/losos-search` that only root (lososd's
   `/api/{cloud,git}/text`) can open. `nix/tests/search.nix` boots it.
+- `tag.nix` + `backend/src/tag.rs` + `backend/src/tag/queue.rs`
+  (`losos.tag.*`, Settings › LosOS Tag): LosOS Tag, the assistant people
+  tag in LosOS Chat. Every assistant is a real Matrix user
+  (`@tag-<slug>:<serverName>`) lososd mints through its application
+  service; a listener thread pulls the AS `/sync`, remembers the rooms'
+  bodies in a 4,000-event ring, and every `@handle` mention becomes an
+  ask on the queue. The queue is the T3 Code fork's scheduler shape: a
+  5 s cached `/proc/meminfo` probe (<10% available = pressure), pressure
+  pauses suggestion-origin work and never drops it, the reaper sweeps
+  done jobs on the normal or the compressed (60 s floor) threshold and
+  logs why, and an answer's own `@handle` hands the turn to the next
+  assistant (three handoffs, then the thread stops). Asks run on T3 Code
+  when the box ships it (`tag.t3Bin`), OpenCode else, and the box's own
+  Ollama model when neither — one unified model (`tag.model`, Bonsai 27B
+  by default, shared with the builder and assistant), spilling 50–75% of
+  layers to the mesh's head (`tag.meshUrl`, OpenAI-compatible) when the
+  box cannot hold it. User-defined confidentiality levels grade areas
+  (cloud paths, repos, rooms, mailboxes, units); a tag reads an area only
+  at or above its clearance, and `GET /api/search` is the unified search
+  (cloud FTS + git grep + the person's JMAP + the ring), every hit
+  graded. No-gos are a guard, not a prompt alone: no sudo/shell, no
+  market or storage trades, nothing on disk in `notshared`'s
+  directories. `losos-mcp` (`backend/src/bin/losos-mcp.rs`) exposes the
+  box's features as one stateless MCP server (JSON-RPC over stdio, one
+  HTTP call per tool, `LOSOS_MCP_TOKEN`); the tag's web tools go to the
+  box's own SearXNG (`tag.searxng`) and its Playwright wrapper
+  (`tag.browser`, `losos-tag-browse`) reads public pages only, never
+  confidential terms in a query.
 - `ci.nix` + `backend/src/ci/` (`losos-ci`, page at `/ci`): Mesh CI, the
   GitHub Actions workflows of LosOS Git's repositories, only on a box that
   shares and is in a mesh. `losos-ci serve` (user `losos-ci`) plans runs

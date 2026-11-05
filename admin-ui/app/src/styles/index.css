@@ -634,3 +634,28 @@ html:has(.desktop-stage[data-stage="preview"]) body {
   --person: var(--person-green);
   --person-wash: var(--person-green-wash);
 }
+
+/* The signed-in person's picked colour as the whole page's accent
+ * (lib/person-accent.ts, and the page plugin without JavaScript). `html:root`
+ * outranks tokens.css's theme rules, which set `--accent` on :root too; the
+ * person tokens follow the theme, so these do. No attribute is the teal. */
+html:root[data-person-accent="blue"] {
+  --accent: var(--person-blue);
+  --accent-wash: var(--person-blue-wash);
+}
+html:root[data-person-accent="violet"] {
+  --accent: var(--person-violet);
+  --accent-wash: var(--person-violet-wash);
+}
+html:root[data-person-accent="rose"] {
+  --accent: var(--person-rose);
+  --accent-wash: var(--person-rose-wash);
+}
+html:root[data-person-accent="amber"] {
+  --accent: var(--person-amber);
+  --accent-wash: var(--person-amber-wash);
+}
+html:root[data-person-accent="green"] {
+  --accent: var(--person-green);
+  --accent-wash: var(--person-green-wash);
+}

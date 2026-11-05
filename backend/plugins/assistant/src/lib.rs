@@ -6,7 +6,8 @@
 //! session, so the model sees nothing the person could not open, and sends
 //! it here with the question. This plugin asks Ollama on loopback, the
 //! model for everything that is not code (`modules/builder.nix`,
-//! `losos.assistant.model`, Gemma 3 1B; the builder keeps its coder):
+//! `losos.assistant.model`, the box's one unified model — Bonsai 27B by
+//! default, shared with the builder and the tag):
 //! the question and the material never leave the box, and nothing is kept
 //! but the answer, in lososd's memory, for an hour.
 //!
@@ -38,7 +39,7 @@ fn base_url() -> Option<String> {
 }
 
 fn model_name() -> String {
-    config::get_or("model", "gemma3:1b")
+    config::get_or("model", "MichelRosselli/bonsai-27b")
 }
 
 fn context() -> u32 {
