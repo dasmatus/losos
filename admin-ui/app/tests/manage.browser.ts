@@ -313,7 +313,7 @@ await check('the gateway is set up from the page: its owner, its hub and the box
   assert.equal(await page.getByLabel('Settings file').inputValue(), '{"version":2}');
   await section.getByRole('button', { name: 'Save' }).click();
   await page.getByText('Settings accepted', { exact: true }).waitFor();
-  claim = writes.filter((w) => w.path === '/passport/settings').at(-1);
+  claim = writes.filter((w) => w.path === '/passport/settings').at(-1)!;
   assert.equal(claim.body.settings, '{"version":2}\n');
   assert.equal(claim.body.signature, '-----BEGIN PGP SIGNATURE-----\nabc\n-----END PGP SIGNATURE-----\n');
 
