@@ -2164,22 +2164,6 @@ in
     };
 
     # ── Sign-in (modules/identity.nix) ───────────────────────────────────
-    # tinycode (github.com/dasmatus/tinycode), the box's coding agent CLI.
-    # When non-null the binary ships in the base package set
-    # (modules/configuration.nix); it is how an admin runs agentic work on
-    # the box - a single small AGPL-3.0-or-later binary in place of a
-    # Node-based agent stack this stateless appliance has no memory to
-    # spare for.
-    tinycode.package = lib.mkOption {
-      type = lib.types.nullOr lib.types.package;
-      default = null;
-      description = ''
-        The tinycode derivation (Rust, AGPL-3.0-or-later). When non-null,
-        `tinycode` is installed in the base package set. Leave null to ship
-        no agent CLI; set to null to strip it from a minimal image.
-      '';
-    };
-
     identity.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
