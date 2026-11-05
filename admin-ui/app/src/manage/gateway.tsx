@@ -127,7 +127,13 @@ function Passport({
         </code>
       </Row>
       {open ? (
-        <ClaimForm onDone={onClaimed} onCancel={() => setOpen(false)} />
+        <ClaimForm
+          onDone={() => {
+            setOpen(false);
+            onClaimed();
+          }}
+          onCancel={() => setOpen(false)}
+        />
       ) : (
         <Row last>
           <RowText
