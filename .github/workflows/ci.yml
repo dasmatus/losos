@@ -111,6 +111,19 @@ concurrency:
 permissions:
   contents: read
 
+# Thread use capped at four, the whole workflow through. Nix gets the cap in
+# setup-nix's extra-conf (`cores = 4`), where the comment there explains why it
+# cannot arrive here by environment instead. These two cover the cargo that
+# runs bare in the dev shells (`nix develop .#ci -c bash …`), which the
+# workflow-level env reaches — the hosted runners have four CPUs, so this
+# changes nothing on CI; it holds the cap on any runner that exceeds it.
+env:
+  # How many rustc jobs `cargo` may run together.
+  CARGO_BUILD_JOBS: '4'
+  # How many threads the default libtest harness may spread a crate's suite
+  # over. A crate that says its own --test-threads unchanged outranks it.
+  RUST_TEST_THREADS: '4'
+
 jobs:
   pins:
     name: "pins: flake.lock = devenv.yaml = devenv.lock"
