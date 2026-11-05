@@ -3032,6 +3032,58 @@ async fn post_chat_openid(api: web::Data<Api>, req: HttpRequest) -> HttpResponse
     }
 }
 
+/// `POST /api/chat/client-password` `{"password": "..."}` or
+/// `{"rotate": true}`: set or rotate the Matrix password used by standard
+/// Matrix clients (Element, etc.) for the signed-in LosOS person. LosOS
+/// Login remains authoritative; this manages the homeserver credential.
+/// `{"rotate": true}` sets a fresh random password and returns it once.
+async fn post_chat_client_password(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    let person = match chat_person(&api, &req, "/api/chat/client-password", true) {
+        Ok(p) => p,
+        Err(refused) => return *refused,
+    };
+    let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+    let rotate = doc.get("rotate").and_then(serde_json::Value::as_bool).unwrap_or(false);
+    let password = if rotate {
+        match crate::io_backend::random_bytes::<24>() {
+            Ok(bytes) => bytes.iter().map(|b| format!("{b:02x}")).collect(),
+            Err(e) => {
+                return HttpResponse::InternalServerError()
+                    .json(serde_json::json!({ "error": e.to_string() }))
+            }
+        }
+    } else {
+        doc.get("password")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    };
+    if password.is_empty() {
+        return err(
+            StatusCode::BAD_REQUEST,
+            r#"body must be JSON: {"password":"..."} or {"rotate":true}"#,
+        );
+    }
+    let password_for_reply = if rotate { Some(password.clone()) } else { None };
+    let api = api.clone();
+    let made = web::block(move || api.chat.set_matrix_password(&person, &password)).await;
+    match made {
+        Ok(Ok(())) => HttpResponse::Ok()
+            .insert_header(("Cache-Control", "no-store"))
+            .json(serde_json::json!({
+                "set": true,
+                "rotated": rotate,
+                "password": password_for_reply.map(serde_json::Value::String).unwrap_or(serde_json::Value::Null),
+            })),
+        Ok(Err(e)) => chat_refused(&e),
+        Err(_) => HttpResponse::ServiceUnavailable().finish(),
+    }
+}
+
 /// `POST /api/chat/git-room` `{"owner": "...", "repo": "..."}`: give a
 /// LosOS Git repository a chat room (`crate::git_rooms`). Only an
 /// administrator of the repository, asked of LosOS Git as that person. A
@@ -7768,6 +7820,7 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/chat/session", web::post().to(post_chat_session))
                 .route("/api/chat/people", web::get().to(get_chat_people))
                 .route("/api/chat/openid", web::post().to(post_chat_openid))
+                .route("/api/chat/client-password", web::post().to(post_chat_client_password))
                 .route("/api/chat/git-room", web::post().to(post_chat_git_room))
                 .route("/api/contacts/suggest", web::get().to(get_contacts_suggest))
                 .route("/internal/chat/authz", web::get().to(get_chat_authz))

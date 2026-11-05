@@ -138,8 +138,12 @@ let
     report_stats = false;
     enable_metrics = false;
     enable_registration = false;
-    # Accounts and devices come from lososd alone.
-    password_config.enabled = false;
+    # LosOS provisions accounts/devices through the application service and
+    # LosOS Login remains authoritative. Password login is enabled so standard
+    # Matrix clients (Element, etc.) can sign in with a LosOS-managed Matrix
+    # client password set via lososd (`/api/chat/client-password`); accounts
+    # have no password until LosOS sets one.
+    password_config.enabled = true;
     allow_guest_access = false;
     # No identity servers: there is no mail or phone number to look up.
     enable_3pid_lookup = false;

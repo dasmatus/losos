@@ -595,6 +595,17 @@ impl Chat {
     /// `token` is the Matrix token it carries, if any. `muted` says whether
     /// a moderator has muted someone (`crate::moderation`): they keep
     /// reading, and nothing they would say reaches a room.
+    ///
+    /// Two paths, both LosOS-controlled:
+    /// * **LosOS web chat** (cookie present): the LosOS Login session must be
+    ///   live and name the same person as the Matrix token. This is the
+    ///   existing path and its guarantees are unchanged.
+    /// * **External Matrix clients** (no cookie, bearer token present):
+    ///   allowed only when the token belongs to an active, non-locked local
+    ///   LosOS person on this box. This lets standard Matrix clients
+    ///   (Element, etc.) use Synapse-issued tokens without a browser session,
+    ///   while keeping LosOS Login/person state as the authority. Requests
+    ///   with neither cookie nor token still get `SignIn`.
     pub fn authorize(
         &self,
         people: &crate::people::People,
@@ -604,7 +615,14 @@ impl Chat {
     ) -> Result<Verdict, ChatError> {
         let inner = self.inner()?;
         let url = &asked.original_url;
+        let token = token.filter(|t| !t.is_empty());
         if asked.cookie.as_deref().is_none_or(str::is_empty) {
+            if let Some(token) = token {
+                return self.authorize_external_client(inner, people, asked, token, muted);
+            }
+            if unauthenticated_client_entry(&asked.original_method, url) {
+                return Ok(Verdict::Allow);
+            }
             tracing::info!(%url, "chat: no LosOS Login cookie");
             return Ok(Verdict::SignIn);
         }
@@ -631,7 +649,7 @@ impl Chat {
             tracing::info!(%url, name = %person.name, "chat: muted");
             return Ok(Verdict::Refuse);
         }
-        let Some(token) = token.filter(|t| !t.is_empty()) else {
+        let Some(token) = token else {
             return Ok(Verdict::Allow);
         };
         match inner.owner_of(token)? {
@@ -644,6 +662,49 @@ impl Chat {
             // so, in its own words, so the page signs the device in again.
             None => Ok(Verdict::Allow),
         }
+    }
+
+    fn authorize_external_client(
+        &self,
+        inner: &Inner,
+        people: &crate::people::People,
+        asked: &Asked,
+        token: &str,
+        muted: &dyn Fn(&str) -> bool,
+    ) -> Result<Verdict, ChatError> {
+        let url = &asked.original_url;
+        let owner = match inner.owner_of(token)? {
+            Some(owner) => owner,
+            // Unknown to the homeserver: let Synapse answer (401/unknown token).
+            None => return Ok(Verdict::Allow),
+        };
+        let Some(name) = self.localpart_of(&owner) else {
+            tracing::info!(%url, %owner, "chat: external client token is not a local user");
+            return Ok(Verdict::Refuse);
+        };
+        let person = people.get(name).ok().flatten();
+        let Some(person) = person else {
+            tracing::info!(%url, %owner, "chat: external client token belongs to no current person");
+            return Ok(Verdict::Refuse);
+        };
+        if person.groups.iter().any(|g| g == crate::people::LOCKED) {
+            tracing::info!(%url, name = %person.name, "chat: external client person may not use chat");
+            return Ok(Verdict::Refuse);
+        }
+        if muted(&person.name) && speaks(&asked.original_method, url) {
+            tracing::info!(%url, name = %person.name, "chat: external client muted");
+            return Ok(Verdict::Refuse);
+        }
+        Ok(Verdict::Allow)
+    }
+
+    /// The LosOS sign-in name in a local Matrix user ID (`@name:server`), or
+    /// `None` when the ID is not for this box.
+    fn localpart_of<'a>(&self, user_id: &'a str) -> Option<&'a str> {
+        let inner = self.inner.as_ref()?;
+        let rest = user_id.strip_prefix('@')?;
+        let (name, server) = rest.split_once(':')?;
+        (server == inner.config.server_name && !name.is_empty()).then_some(name)
     }
 
     /// `POST /api/chat/openid`: a Matrix OpenID token for the person. Another
@@ -763,6 +824,77 @@ impl Chat {
             &notice.text,
             Some(&notice.html),
         )
+    }
+
+    /// Set or rotate the Matrix password for a local LosOS person so a
+    /// standard Matrix client (Element, etc.) can sign in with
+    /// `m.login.password`. LosOS Login remains the source of truth for who
+    /// may use chat; this only gives that person a homeserver credential for
+    /// external clients. Call with a freshly generated secret; revocation is
+    /// rotation to an unknown secret.
+    pub fn set_matrix_password(
+        &self,
+        person: &crate::people::Person,
+        new_password: &str,
+    ) -> Result<(), ChatError> {
+        let inner = self.inner()?;
+        if person.groups.iter().any(|g| g == crate::people::LOCKED) {
+            return Err(ChatError::NotForYou(
+                "finish what LosOS Login asks of your account first".to_string(),
+            ));
+        }
+        if new_password.is_empty() || new_password.len() > 512 {
+            return Err(ChatError::NotForYou(
+                "a Matrix client password must be 1 to 512 characters".to_string(),
+            ));
+        }
+        let token = inner.as_token()?;
+        let hs = &*inner.homeserver;
+        let user_id = self.account(&token, &person.name, &person.display_name)?;
+        // Act as the user through the application service to change their
+        // password on the client API. This avoids requiring Synapse admin API
+        // exposure while keeping account control in lososd.
+        let login = hs.call(
+            "POST",
+            "/_matrix/client/v3/login",
+            &token,
+            Some(&json!({
+                "type": "m.login.application_service",
+                "identifier": { "type": "m.id.user", "user": person.name },
+                "initial_device_display_name": "LosOS password change",
+            })),
+        )?;
+        let theirs = login
+            .body
+            .get("access_token")
+            .and_then(Value::as_str)
+            .filter(|_| login.status == 200)
+            .ok_or(ChatError::Homeserver {
+                status: login.status,
+                errcode: login.errcode(),
+            })?;
+        let as_user = encode(&user_id);
+        let out = hs.call(
+            "POST",
+            &format!("/_matrix/client/v3/account/password?user_id={as_user}"),
+            theirs,
+            Some(&json!({
+                "new_password": new_password,
+                "logout_devices": true,
+                "auth": { "type": "m.login.application_service" }
+            })),
+        )?;
+        if out.status != 200 {
+            return Err(ChatError::Homeserver {
+                status: out.status,
+                errcode: out.errcode(),
+            });
+        }
+        // The temporary login/device is no longer useful after logout_devices.
+        let _ = hs.call("POST", "/_matrix/client/v3/logout", theirs, Some(&json!({})));
+        lock(&inner.owners).clear();
+        lock(&inner.accounts).remove(&person.name);
+        Ok(())
     }
 
     /// Post a message into `room` as one of the box's own agents: LosOS
@@ -930,6 +1062,29 @@ fn clean_device_name(n: &str) -> String {
 
 /// Percent-encode one path segment or query value.
 #[must_use]
+/// Standard Matrix client entry points that may be reached without a LosOS
+/// Login cookie or Matrix token: discovery and login/registration flows.
+/// Synapse still enforces its own authentication and policy for everything
+/// that needs it.
+fn unauthenticated_client_entry(method: &str, url: &str) -> bool {
+    let path = url.split('?').next().unwrap_or(url);
+    if !path.contains("/_matrix/client/") {
+        return false;
+    }
+    if method.eq_ignore_ascii_case("GET") || method.eq_ignore_ascii_case("HEAD") {
+        return path.contains("/_matrix/client/versions")
+            || path.ends_with("/login")
+            || path.contains("/login/");
+    }
+    if method.eq_ignore_ascii_case("POST") {
+        return path.ends_with("/login")
+            || path.ends_with("/refresh")
+            || path.ends_with("/register")
+            || path.ends_with("/logout");
+    }
+    false
+}
+
 /// Whether a request to the homeserver says something others see: a
 /// message, a reaction, an edit or a redaction, a room's state, a new room,
 /// an invite, a profile change or an upload. A muted person's are refused.
@@ -1209,6 +1364,22 @@ mod tests {
                         return no(401, "M_UNKNOWN_TOKEN");
                     };
                     s.tokens.retain(|_, (u, _)| *u != user);
+                    ok(json!({}))
+                }
+                ("POST", "/_matrix/client/v3/logout") => {
+                    if !s.tokens.contains_key(token) {
+                        return no(401, "M_UNKNOWN_TOKEN");
+                    }
+                    s.tokens.remove(token);
+                    ok(json!({}))
+                }
+                ("POST", "/_matrix/client/v3/account/password") => {
+                    if !s.tokens.contains_key(token) && token != AS {
+                        return no(401, "M_UNKNOWN_TOKEN");
+                    }
+                    if body["new_password"].as_str().is_none_or(str::is_empty) {
+                        return no(400, "M_MISSING_PARAM");
+                    }
                     ok(json!({}))
                 }
                 ("GET", "/_matrix/client/v3/account/whoami") => match s.tokens.get(token) {
@@ -1593,13 +1764,14 @@ mod tests {
             .session(&person("matus", "M", &[]), None, None)
             .unwrap();
 
-        // No cookie, or LosOS Login does not know it: sign in.
+        // No cookie and no token: sign in (LosOS web flow). Standard Matrix
+        // entry points (versions/login) are allowed through without a cookie so
+        // external clients can discover and authenticate; other requests need
+        // either a LosOS session or a valid Matrix token.
         let mut no_cookie = asked();
         no_cookie.cookie = None;
         assert_eq!(
-            r.chat
-                .authorize(&r.people, &no_cookie, Some(&eva.access_token), &|_| false)
-                .unwrap(),
+            r.chat.authorize(&r.people, &no_cookie, None, &|_| false).unwrap(),
             Verdict::SignIn
         );
         assert_eq!(
@@ -1715,6 +1887,132 @@ mod tests {
             // Key uploads keep encryption working; typing says nothing.
             assert!(!speaks(method, &url), "{method} {url}");
         }
+    }
+
+    #[test]
+    fn external_matrix_client_uses_token_without_losos_cookie() {
+        let r = rig();
+        add(&r.people, "eva");
+        add(&r.people, "matus");
+        let eva = r
+            .chat
+            .session(&person("eva", "Eva", &[]), None, None)
+            .unwrap();
+        let matus = r
+            .chat
+            .session(&person("matus", "M", &[]), None, None)
+            .unwrap();
+
+        let mut no_cookie = asked();
+        no_cookie.cookie = None;
+        assert_eq!(
+            r.chat
+                .authorize(&r.people, &no_cookie, Some(&eva.access_token), &|_| false)
+                .unwrap(),
+            Verdict::Allow
+        );
+        // Another local person's token is still refused only when it does not
+        // belong to the acting context? External clients present their own
+        // token; a token that belongs to matus is allowed for matus's access.
+        assert_eq!(
+            r.chat
+                .authorize(&r.people, &no_cookie, Some(&matus.access_token), &|_| false)
+                .unwrap(),
+            Verdict::Allow
+        );
+        // Unknown token: let Synapse reject it.
+        assert_eq!(
+            r.chat
+                .authorize(&r.people, &no_cookie, Some("stale"), &|_| false)
+                .unwrap(),
+            Verdict::Allow
+        );
+        // No cookie, no token, ordinary API path: sign in.
+        assert_eq!(
+            r.chat.authorize(&r.people, &no_cookie, None, &|_| false).unwrap(),
+            Verdict::SignIn
+        );
+        // Standard Matrix entry points work without cookie/token.
+        let mut versions = no_cookie.clone();
+        versions.original_url = "https://mattbox.local/_matrix/client/versions".into();
+        versions.original_method = "GET".into();
+        assert_eq!(
+            r.chat.authorize(&r.people, &versions, None, &|_| false).unwrap(),
+            Verdict::Allow
+        );
+        let mut login = no_cookie.clone();
+        login.original_url = "https://mattbox.local/_matrix/client/v3/login".into();
+        login.original_method = "POST".into();
+        assert_eq!(
+            r.chat.authorize(&r.people, &login, None, &|_| false).unwrap(),
+            Verdict::Allow
+        );
+
+        // Locked, disabled/removed, or muted-speaking people are refused.
+        *r.gate.0.lock().unwrap() = Some(("eva".into(), vec![crate::people::LOCKED.into()]));
+        // Lock is enforced via person state for external clients too; use the
+        // person record (people file) as authority here.
+        drop(r.gate.0.lock().unwrap());
+        let mut marks = std::collections::BTreeMap::new();
+        marks.insert("eva".to_string(), vec![crate::people::LOCKED]);
+        r.people.set_marks(&marks).unwrap();
+        assert_eq!(
+            r.chat
+                .authorize(&r.people, &no_cookie, Some(&eva.access_token), &|_| false)
+                .unwrap(),
+            Verdict::Refuse
+        );
+        r.people.set_marks(&std::collections::BTreeMap::new()).unwrap();
+        r.people.remove("eva", Some("matus")).unwrap();
+        assert_eq!(
+            r.chat
+                .authorize(&r.people, &no_cookie, Some(&eva.access_token), &|_| false)
+                .unwrap(),
+            Verdict::Refuse
+        );
+
+        let mut say = Asked {
+            cookie: None,
+            original_url: "https://mattbox.local/_matrix/client/v3/rooms/!r:mattbox/send/m.room.message/1"
+                .into(),
+            original_method: "PUT".into(),
+            forwarded_for: "192.168.1.2".into(),
+        };
+        assert_eq!(
+            r.chat
+                .authorize(&r.people, &say, Some(&matus.access_token), &|n| n == "matus")
+                .unwrap(),
+            Verdict::Refuse
+        );
+        say.original_method = "GET".into();
+        say.original_url = "https://mattbox.local/_matrix/client/v3/sync".into();
+        assert_eq!(
+            r.chat
+                .authorize(&r.people, &say, Some(&matus.access_token), &|n| n == "matus")
+                .unwrap(),
+            Verdict::Allow
+        );
+    }
+
+    #[test]
+    fn a_matrix_client_password_can_be_set_for_a_person() {
+        let r = rig();
+        let p = person("eva", "Eva", &[]);
+        r.chat.set_matrix_password(&p, "correct horse battery staple").unwrap();
+        let state = r.hs.state.lock().unwrap();
+        assert!(state
+            .calls
+            .iter()
+            .any(|c| c.starts_with("POST /_matrix/client/v3/account/password")));
+        drop(state);
+        assert!(matches!(
+            r.chat.set_matrix_password(&person("held", "", &[crate::people::LOCKED]), "x"),
+            Err(ChatError::NotForYou(_))
+        ));
+        assert!(matches!(
+            r.chat.set_matrix_password(&p, ""),
+            Err(ChatError::NotForYou(_))
+        ));
     }
 
     #[test]
