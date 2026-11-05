@@ -982,11 +982,13 @@ async fn office_opens_and_imports_a_cloud_document() {
     let v: serde_json::Value = serde_json::from_str(&text(r).await).unwrap();
     let exts = v["extensions"].as_array().unwrap();
     assert!(
-        exts.iter().any(|e| e["extension"] == "docx" && e["mode"] == "import"),
+        exts.iter()
+            .any(|e| e["extension"] == "docx" && e["mode"] == "import"),
         "docx should be importable: {v}"
     );
     assert!(
-        exts.iter().any(|e| e["extension"] == "paper" && e["mode"] == "native" && e["edit"] == true),
+        exts.iter()
+            .any(|e| e["extension"] == "paper" && e["mode"] == "native" && e["edit"] == true),
         "paper should be natively editable: {v}"
     );
 
@@ -1057,8 +1059,14 @@ async fn office_opens_and_imports_a_cloud_document() {
         imported["name"].as_str().unwrap().ends_with(".paper"),
         "expected .paper import: {imported}"
     );
-    let created = c.store.stat("alice", imported["name"].as_str().unwrap()).unwrap();
-    let bytes = c.store.read_bytes("alice", imported["name"].as_str().unwrap()).unwrap();
+    let created = c
+        .store
+        .stat("alice", imported["name"].as_str().unwrap())
+        .unwrap();
+    let bytes = c
+        .store
+        .read_bytes("alice", imported["name"].as_str().unwrap())
+        .unwrap();
     assert!(!bytes.is_empty());
     assert!(created.id > 0);
 }

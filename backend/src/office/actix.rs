@@ -70,20 +70,19 @@ async fn open_handler(
     let Some(person) = person(&req) else {
         return HttpResponse::Unauthorized().json(serde_json::json!({ "error": "signedOut" }));
     };
-    open_answer(
-        person,
-        body.into_inner().file_id,
-        sessions.into_inner(),
-    )
-    .await
+    open_answer(person, body.into_inner().file_id, sessions.into_inner()).await
 }
 
-pub async fn open_answer(
-    person: Person,
-    file_id: String,
-    sessions: Arc<Sessions>,
-) -> HttpResponse {
-    let answer = web::block(move || open(sessions.store.as_ref(), &sessions.capabilities, &person, &file_id)).await;
+pub async fn open_answer(person: Person, file_id: String, sessions: Arc<Sessions>) -> HttpResponse {
+    let answer = web::block(move || {
+        open(
+            sessions.store.as_ref(),
+            &sessions.capabilities,
+            &person,
+            &file_id,
+        )
+    })
+    .await;
     match answer {
         Ok(Ok(session)) => HttpResponse::Ok().json(session),
         Ok(Err(OpenError::Unsupported(ext))) => HttpResponse::UnprocessableEntity()
@@ -132,15 +131,31 @@ async fn import_handler(
         let bytes = sessions.store.read(&person.login, &file_id)?;
         let text = super::import::extract_text(&info.name, &bytes);
         let ext = extension(&info.name).unwrap_or_default();
-        let target = sessions.capabilities.action(&ext).and_then(|a| a.import_target).unwrap_or("paper");
+        let target = sessions
+            .capabilities
+            .action(&ext)
+            .and_then(|a| a.import_target)
+            .unwrap_or("paper");
         let (new_name, body) = super::import::native_body(&info.name, &text, target);
-        let (id, info) = sessions.store.create(&person.login, &file_id, &new_name, body.as_bytes(), super::store::CreateMode::Unique)?;
+        let (id, info) = sessions.store.create(
+            &person.login,
+            &file_id,
+            &new_name,
+            body.as_bytes(),
+            super::store::CreateMode::Unique,
+        )?;
         Ok(serde_json::json!({ "id": id, "name": info.name, "kind": target }))
-    }).await;
+    })
+    .await;
     match result {
         Ok(Ok(v)) => HttpResponse::Ok().json(v),
-        Ok(Err(StoreError::NotFound | StoreError::Forbidden)) => HttpResponse::NotFound().json(serde_json::json!({"error":"notFound"})),
-        Ok(Err(e)) => { tracing::warn!(error=%e, "office import failed"); HttpResponse::InternalServerError().json(serde_json::json!({"error":"store"})) }
+        Ok(Err(StoreError::NotFound | StoreError::Forbidden)) => {
+            HttpResponse::NotFound().json(serde_json::json!({"error":"notFound"}))
+        }
+        Ok(Err(e)) => {
+            tracing::warn!(error=%e, "office import failed");
+            HttpResponse::InternalServerError().json(serde_json::json!({"error":"store"}))
+        }
         Err(_) => HttpResponse::InternalServerError().finish(),
     }
 }

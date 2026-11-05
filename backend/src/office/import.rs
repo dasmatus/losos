@@ -18,7 +18,11 @@ pub fn extract_text(name: &str, bytes: &[u8]) -> String {
         let targets: &[&str] = match ext.as_str() {
             "odt" | "odp" | "ods" => &["content.xml"],
             "docx" => &["word/document.xml"],
-            "pptx" => &["ppt/slides/slide1.xml", "ppt/slides/slide2.xml", "ppt/slides/slide3.xml"],
+            "pptx" => &[
+                "ppt/slides/slide1.xml",
+                "ppt/slides/slide2.xml",
+                "ppt/slides/slide3.xml",
+            ],
             "xlsx" => &["xl/sharedStrings.xml"],
             _ => &[],
         };
@@ -61,10 +65,7 @@ pub fn native_body(name: &str, text: &str, target: &str) -> (String, String) {
     let safe = escape_mdx(text);
     let title = escape_mdx(stem);
     if target == "slides" {
-        (
-            format!("{stem}.slides"),
-            format!("# {title}\n\n{safe}\n"),
-        )
+        (format!("{stem}.slides"), format!("# {title}\n\n{safe}\n"))
     } else {
         (format!("{stem}.paper"), format!("# {title}\n\n{safe}\n"))
     }

@@ -174,7 +174,12 @@ async fn open(
             "a request from another site",
         );
     }
-    open_answer(person(&who), body.into_inner().file_id, sessions.into_inner()).await
+    open_answer(
+        person(&who),
+        body.into_inner().file_id,
+        sessions.into_inner(),
+    )
+    .await
 }
 
 async fn extensions(_who: Who, sessions: web::Data<Sessions>) -> HttpResponse {
@@ -188,7 +193,11 @@ struct ImportBody {
 }
 
 fn escape_mdx(text: &str) -> String {
-    text.replace('\\', "\\\\").replace('{', "\\{").replace('}', "\\}").replace('<', "&lt;").replace('>', "&gt;")
+    text.replace('\\', "\\\\")
+        .replace('{', "\\{")
+        .replace('}', "\\}")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 fn extract_text(name: &str, bytes: &[u8]) -> String {
@@ -201,7 +210,11 @@ fn extract_text(name: &str, bytes: &[u8]) -> String {
         let targets: &[&str] = match ext.as_str() {
             "odt" | "odp" | "ods" => &["content.xml"],
             "docx" => &["word/document.xml"],
-            "pptx" => &["ppt/slides/slide1.xml", "ppt/slides/slide2.xml", "ppt/slides/slide3.xml"],
+            "pptx" => &[
+                "ppt/slides/slide1.xml",
+                "ppt/slides/slide2.xml",
+                "ppt/slides/slide3.xml",
+            ],
             "xlsx" => &["xl/sharedStrings.xml"],
             _ => &[],
         };
@@ -215,14 +228,19 @@ fn extract_text(name: &str, bytes: &[u8]) -> String {
                     for c in xml.chars() {
                         match c {
                             '<' => in_tag = true,
-                            '>' => { in_tag = false; text.push(' '); }
+                            '>' => {
+                                in_tag = false;
+                                text.push(' ');
+                            }
                             _ if !in_tag => text.push(c),
                             _ => {}
                         }
                     }
                     let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
                     if !collapsed.is_empty() {
-                        if !out.is_empty() { out.push_str("\n\n"); }
+                        if !out.is_empty() {
+                            out.push_str("\n\n");
+                        }
                         out.push_str(&collapsed);
                     }
                 }
@@ -233,22 +251,39 @@ fn extract_text(name: &str, bytes: &[u8]) -> String {
             for i in 0..zip.len() {
                 if let Ok(mut f) = zip.by_index(i) {
                     let n = f.name().map(|s| s.to_string()).unwrap_or_default();
-                    if n.starts_with("word/") && n.ends_with(".xml") && !n.contains("fontTable") && !n.contains("settings") {
+                    if n.starts_with("word/")
+                        && n.ends_with(".xml")
+                        && !n.contains("fontTable")
+                        && !n.contains("settings")
+                    {
                         let mut xml = String::new();
                         if std::io::Read::read_to_string(&mut f, &mut xml).is_ok() {
                             let mut text = String::new();
                             let mut in_tag = false;
                             for c in xml.chars() {
-                                match c { '<' => in_tag = true, '>' => { in_tag = false; text.push(' '); } _ if !in_tag => text.push(c), _ => {} }
+                                match c {
+                                    '<' => in_tag = true,
+                                    '>' => {
+                                        in_tag = false;
+                                        text.push(' ');
+                                    }
+                                    _ if !in_tag => text.push(c),
+                                    _ => {}
+                                }
                             }
                             let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
-                            if collapsed.len() > 40 { out = collapsed; break; }
+                            if collapsed.len() > 40 {
+                                out = collapsed;
+                                break;
+                            }
                         }
                     }
                 }
             }
         }
-        if !out.is_empty() { return out; }
+        if !out.is_empty() {
+            return out;
+        }
     }
     format!("Imported from {name}. Formatting was not preserved.")
 }
@@ -260,7 +295,11 @@ async fn import_legacy(
     sessions: web::Data<Sessions>,
 ) -> HttpResponse {
     if crate::cloud::server::cross_site(&req) {
-        return crate::cloud::api::error(actix_web::http::StatusCode::FORBIDDEN, "crossSite", "a request from another site");
+        return crate::cloud::api::error(
+            actix_web::http::StatusCode::FORBIDDEN,
+            "crossSite",
+            "a request from another site",
+        );
     }
     let sessions = sessions.into_inner();
     let login = who.login.clone();
@@ -282,8 +321,13 @@ async fn import_legacy(
     }).await;
     match result {
         Ok(Ok(v)) => HttpResponse::Ok().json(v),
-        Ok(Err(StoreError::NotFound | StoreError::Forbidden)) => HttpResponse::NotFound().json(serde_json::json!({"error":"notFound"})),
-        Ok(Err(e)) => { tracing::warn!(error=%e, "office import failed"); HttpResponse::InternalServerError().json(serde_json::json!({"error":"store"})) }
+        Ok(Err(StoreError::NotFound | StoreError::Forbidden)) => {
+            HttpResponse::NotFound().json(serde_json::json!({"error":"notFound"}))
+        }
+        Ok(Err(e)) => {
+            tracing::warn!(error=%e, "office import failed");
+            HttpResponse::InternalServerError().json(serde_json::json!({"error":"store"}))
+        }
         Err(_) => HttpResponse::InternalServerError().finish(),
     }
 }

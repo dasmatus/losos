@@ -46,17 +46,18 @@ pub struct Capabilities {
 impl Capabilities {
     pub fn native() -> Self {
         let mut types = BTreeMap::new();
-        let mut add = |ext: &str, mode: OfficeMode, edit: bool, import_target: Option<&'static str>| {
-            types.insert(
-                ext.to_ascii_lowercase(),
-                OfficeType {
-                    extension: ext.to_ascii_lowercase(),
-                    mode,
-                    edit,
-                    import_target,
-                },
-            );
-        };
+        let mut add =
+            |ext: &str, mode: OfficeMode, edit: bool, import_target: Option<&'static str>| {
+                types.insert(
+                    ext.to_ascii_lowercase(),
+                    OfficeType {
+                        extension: ext.to_ascii_lowercase(),
+                        mode,
+                        edit,
+                        import_target,
+                    },
+                );
+            };
 
         // Native LosOS Office formats.
         add("md", OfficeMode::Native, true, None);
