@@ -49,6 +49,7 @@ import { RoomList } from "./room-list";
 import { isStartNotice, liveCall } from "./rtc";
 import { SecurityDialog, useTrust, VerificationDialog } from "./security";
 import { ChatRefused, goSignIn, type Refusal, type Signed, session, signedNow, signedOutListeners } from "./session";
+import { SuggestPill } from "./suggest";
 import { RoomTimeline, type RowActions } from "./timeline";
 import { ThreadPanel } from "./thread-panel";
 
@@ -593,6 +594,7 @@ function RoomView({ signed, room, onBack, onDialog }: { signed: Signed; room: Ro
   const [editing, setEditing] = React.useState<MatrixEvent | null>(null);
   const [panel, setPanel] = React.useState<{ root: string | null } | null>(null);
   const [image, setImage] = React.useState<string | null>(null);
+  const [seed, setSeed] = React.useState<{ text: string; nonce: number } | null>(null);
   const partner = directPartner(client, room, directRooms(client));
   const topic = room.currentState.getStateEvents(EventType.RoomTopic, "")?.getContent()["topic"];
   const encrypted = room.hasEncryptionStateEvent();
@@ -667,6 +669,7 @@ function RoomView({ signed, room, onBack, onDialog }: { signed: Signed; room: Ro
         ) : (
           <>
             <RoomTimeline client={client} room={room} me={me} actions={actions} />
+            <SuggestPill room={room} seed={(text) => setSeed({ text, nonce: Date.now() })} />
             <Composer
               client={client}
               room={room}
@@ -677,6 +680,8 @@ function RoomView({ signed, room, onBack, onDialog }: { signed: Signed; room: Ro
                 setEditing(null);
               }}
               placeholder={t("chat.composer.placeholder", { room: roomName(room) })}
+              seed={seed}
+              onSeedApplied={() => setSeed(null)}
             />
           </>
         )}

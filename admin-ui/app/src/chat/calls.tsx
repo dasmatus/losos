@@ -11,7 +11,7 @@ import type { ToDevicePayload } from "matrix-js-sdk/lib/models/ToDeviceMessage";
 import { toast } from "@/components/ui/toast";
 import { useT } from "@/lib/i18n-react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { LiveStreaming02Icon, PodcastIcon, UserAdd01Icon } from "@hugeicons/core-free-icons";
+import { AiVoiceIcon, AudioWave01Icon, LiveStreaming02Icon, PodcastIcon, Robot02Icon, UserAdd01Icon } from "@hugeicons/core-free-icons";
 import { Badge } from "@/components/ui/badge";
 import { CallSession, canEncrypt, type KeyChannel, type KeyMessage, type Member } from "@/calls/session";
 import type { WorkerStats } from "@/calls/e2ee-protocol";
@@ -19,7 +19,13 @@ import { LocalMedia, type Background } from "@/calls/local";
 import { Podcast, type PodcastSource } from "@/calls/podcast";
 import { PodcastPanel, type PodcastFields } from "@/calls/podcast-panel";
 import { InvitePanel } from "@/calls/invite-panel";
+import { preferredVoice, rememberVoice, type VoicePreset } from "@/calls/voice-changer";
+import { VoicePanel } from "@/calls/voice-panel";
 import { newSecret } from "@/calls/guests";
+import { VoiceAgent, type Caption, type Persona, type Phase } from "@/voice/agent";
+import { AgentPanel } from "@/voice/agent-panel";
+import { KeyHub } from "@/voice/keys";
+import { voiceFor } from "@/voice/mouth";
 import { CallControl, CallView, RingingCard, type Screen, type Tile } from "@/calls/view";
 import { Avatar } from "./avatar";
 import { roomName } from "./model";
@@ -156,6 +162,19 @@ const joinedUsers = (room: Room): string[] =>
     .getMembers()
     .filter((m) => m.membership === KnownMembership.Join)
     .map((m) => m.userId);
+
+/** The assistant this room is a chat with: a direct chat whose other
+ *  member is one of LosOS Tag's (`@tag-<slug>:<server>`, backend/src/tag.rs).
+ *  A call in it is a call with that assistant, which joins by itself. */
+export function assistantOf(room: Room): { slug: string; name: string } | null {
+  const joined = room.getMembers().filter((m) => m.membership === KnownMembership.Join);
+  if (joined.length !== 2) return null;
+  for (const m of joined) {
+    const slug = /^@tag-([a-z0-9-]+):/.exec(m.userId)?.[1];
+    if (slug !== undefined && m.userId !== room.myUserId) return { slug, name: m.name };
+  }
+  return null;
+}
 
 /** Whether this person can have a call in `room`. Call keys go to the
  *  members' devices over Olm, and the crypto keeps device lists only for
@@ -567,6 +586,25 @@ function CallScreen({
   const [streaming, setStreaming] = React.useState<"off" | "starting" | "live">("off");
   const [podcast, setPodcast] = React.useState<Podcast | null>(null);
   const [invite, setInvite] = React.useState<{ link: string | null } | null>(null);
+  /* The assistant that joined this call from this page (voice/agent.ts),
+   * while there is one: its phase, how much of it has loaded and what it
+   * heard asked and answered. */
+  const agent = React.useRef<VoiceAgent | null>(null);
+  const [agentOpen, setAgentOpen] = React.useState(false);
+  const [agentPhase, setAgentPhase] = React.useState<Phase | null>(null);
+  const [agentLoad, setAgentLoad] = React.useState(0);
+  const [captions, setCaptions] = React.useState<Caption[]>([]);
+  /* A chat with one of their own assistants: it answers with what the
+   * person may read, to them alone, so their material is on from the start. */
+  const assistant = React.useMemo(() => (room === null ? null : assistantOf(room)), [room]);
+  const [grounded, setGrounded] = React.useState(assistant !== null);
+  const groundedNow = React.useRef(false);
+  groundedNow.current = grounded;
+  /* The voice changer (calls/voice-changer.ts): the preset the others hear. */
+  const [voice, setVoice] = React.useState<VoicePreset>(preferredVoice);
+  const [voiceOpen, setVoiceOpen] = React.useState(false);
+  const [voiceBusy, setVoiceBusy] = React.useState(false);
+  const hub = React.useRef<KeyHub | null>(null);
   const session = React.useRef<CallSession | null>(null);
   const rtcSession = React.useRef<MatrixRTCSession | null>(null);
   /* The ring this device sent, if it was the first in the call. */
@@ -601,6 +639,7 @@ function CallScreen({
     const stop = (error: unknown): void => {
       if (finished.current) return;
       finished.current = true;
+      agent.current?.stop();
       void session.current?.leave();
       const rtc = rtcSession.current;
       rtcSession.current = null;
@@ -609,13 +648,17 @@ function CallScreen({
       callbacks.current.onEnd(false);
     };
     warnBackground();
+    // The page's sessions (its own, and the assistant's if it is added)
+    // pass each other keys in memory and everyone else's over Olm.
+    const keys = new KeyHub(olmKeys(client, active.roomId), { user: client.getSafeUserId(), device: client.getDeviceId() ?? "" });
+    hub.current = keys;
     try {
       const call = new CallSession({
         socket: sfuUrl(),
         call: active.call,
         device: client.getDeviceId() ?? "",
         local: media.stream,
-        keys: olmKeys(client, active.roomId),
+        keys: keys.channel(),
         events: {
           state: (next, reason) => {
             if (next === "connected") setState("connected");
@@ -623,7 +666,7 @@ function CallScreen({
           },
           members: (list, you, liveBy) => {
             const before = others.current;
-            others.current = list.filter((m) => m.pid !== you).length;
+            others.current = list.filter((m) => m.pid !== you && m.agent !== true).length;
             // Once everyone else has hung up the call is over, as on a
             // phone; whoever is left does not sit in it alone.
             if (before > 0 && others.current === 0) setDeserted(true);
@@ -687,6 +730,9 @@ function CallScreen({
       stop(error);
     }
     return () => {
+      agent.current?.stop();
+      agent.current = null;
+      hub.current = null;
       if (!finished.current) void session.current?.leave();
       session.current = null;
       const rtc = rtcSession.current;
@@ -694,6 +740,30 @@ function CallScreen({
       if (rtc !== null) leaving = rtc.leave(5000).finally(() => rtc.stop());
     };
   }, [client, active.call, active.roomId, active.video, media, warnBackground, room]);
+
+  // A voice chosen in an earlier call is on from the start of this one.
+  const voiceStarted = React.useRef(false);
+  React.useEffect(() => {
+    if (state !== "connected" || voiceStarted.current) return;
+    voiceStarted.current = true;
+    if (voice === "off") return;
+    void media
+      .applyVoice(voice)
+      .then((track) => session.current?.setAudioTrack(track))
+      .catch(() => {
+        setVoice("off");
+        toast.error(t("calls.voice.failed"), undefined, { help: "calls" });
+      });
+  }, [state, voice, media, t]);
+
+  // In a chat with one of the person's assistants the assistant is the
+  // other end of the call: it joins as soon as the call is up.
+  const assistantStarted = React.useRef(false);
+  React.useEffect(() => {
+    if (state !== "connected" || assistant === null || assistantStarted.current) return;
+    assistantStarted.current = true;
+    startAgentRef.current();
+  }, [state, assistant]);
 
   // In a direct chat, the other person declining ends the call that rang
   // them (MSC4310).
@@ -725,6 +795,7 @@ function CallScreen({
     if (finished.current) return;
     finished.current = true;
     podcast?.dispose();
+    agent.current?.stop();
     // The SFU says who hung up last: two people who leave at once each
     // still see the other in their own list.
     const guess = others.current === 0;
@@ -751,6 +822,19 @@ function CallScreen({
     }
     media.setMuted(!micOff);
     setMicOff(!micOff);
+  };
+
+  const chooseVoice = (preset: VoicePreset): void => {
+    setVoiceBusy(true);
+    media
+      .applyVoice(preset)
+      .then(async (track) => {
+        await session.current?.setAudioTrack(track);
+        setVoice(preset);
+        rememberVoice(preset);
+      })
+      .catch(() => toast.error(t("calls.voice.failed"), undefined, { help: "calls" }))
+      .finally(() => setVoiceBusy(false));
   };
 
   // Off stops the camera, so its light goes out, and sends nothing; on
@@ -838,6 +922,8 @@ function CallScreen({
     const call = session.current;
     if (call === null) return;
     setPodcastOpen(false);
+    setVoiceOpen(false);
+    setAgentOpen(false);
     setInvite({ link: null });
     (async () => {
       const response = await fetch("/calls/api/invites", {
@@ -861,17 +947,85 @@ function CallScreen({
       });
   };
 
+  /* Add LosOS to this call: it joins from this page as a second session,
+   * since only a member holding the call's keys can hear an encrypted call. */
+  const startAgent = (): void => {
+    const keys = hub.current;
+    const call = session.current;
+    if (keys === null || call === null) return;
+    if (agent.current !== null || agentPhase !== null) {
+      setAgentOpen(!agentOpen);
+      return;
+    }
+    const persona: Persona | undefined =
+      assistant === null ? undefined : { slug: assistant.slug, name: assistant.name, voice: voiceFor(assistant.slug), direct: true, video: active.video };
+    setInvite(null);
+    setPodcastOpen(false);
+    // An assistant that joins by itself does not cover the call with its panel.
+    setAgentOpen(persona === undefined);
+    setAgentPhase("loading");
+    setAgentLoad(0);
+    setCaptions([]);
+    VoiceAgent.start({
+      socket: sfuUrl(),
+      call: active.call,
+      device: client.getDeviceId() ?? "",
+      keys: keys.channel(),
+      ...(persona !== undefined && { persona }),
+      nameOf,
+      grounded: () => groundedNow.current,
+      events: {
+        phase: setAgentPhase,
+        load: setAgentLoad,
+        caption: (c) => setCaptions((list) => [...list, c].slice(-40)),
+        state: (next, reason) => {
+          if (next !== "failed" && next !== "ended") return;
+          agent.current = null;
+          setAgentPhase(null);
+          setAgentOpen(false);
+          if (next === "failed" && !finished.current) toast.error(t("calls.agentFailed"), reason, { help: "calls" });
+        },
+      },
+    })
+      .then((started) => {
+        if (finished.current) started.stop();
+        else agent.current = started;
+      })
+      .catch((error: unknown) => {
+        setAgentPhase(null);
+        setAgentOpen(false);
+        toast.error(t("calls.agentFailed"), error instanceof Error ? error.message : t("calls.agentNoAudio"), { help: "calls" });
+      });
+  };
+
+  const startAgentRef = React.useRef(startAgent);
+  startAgentRef.current = startAgent;
+
+  const removeAgent = (): void => {
+    agent.current?.stop();
+    agent.current = null;
+    setAgentPhase(null);
+    setAgentOpen(false);
+  };
+
   const tiles: Tile[] = members.list.map((m) => {
     const self = m.pid === members.you;
     const person = m.guest === undefined ? room?.getMember(m.user) : undefined;
-    const name = memberName(m);
+    const name = m.agent === true ? (assistant?.name ?? "LosOS") : memberName(m);
     const stream = self ? media.stream : streams.get(m.pid);
     return {
       pid: m.pid,
       name,
       self,
       dark: self && cameraOff,
-      avatar: <Avatar client={client} id={m.user} name={name} mxc={person?.getMxcAvatarUrl()} size={64} />,
+      avatar:
+        m.agent === true ? (
+          <span className="grid size-16 place-items-center rounded-full bg-accent text-surface" data-agent-avatar="">
+            <HugeiconsIcon icon={Robot02Icon} size={32} />
+          </span>
+        ) : (
+          <Avatar client={client} id={m.user} name={name} mxc={person?.getMxcAvatarUrl()} size={64} />
+        ),
       ...(stream !== undefined ? { stream } : {}),
     };
   });
@@ -927,11 +1081,35 @@ function CallScreen({
             onClick={() => (invite !== null ? setInvite(null) : makeInvite())}
           />
           <CallControl
+            label={t("calls.voice.control")}
+            pressed={voiceOpen || voice !== "off"}
+            icon={AudioWave01Icon}
+            onClick={() => {
+              setInvite(null);
+              setPodcastOpen(false);
+              setAgentOpen(false);
+              setVoiceOpen(!voiceOpen);
+            }}
+          />
+          <CallControl
+            label={t("calls.agentAdd")}
+            pressed={agentOpen}
+            icon={AiVoiceIcon}
+            onClick={() => {
+              setInvite(null);
+              setPodcastOpen(false);
+              setVoiceOpen(false);
+              startAgent();
+            }}
+          />
+          <CallControl
             label={t("calls.podcast")}
             pressed={podcastOpen}
             icon={PodcastIcon}
             onClick={() => {
               setInvite(null);
+              setAgentOpen(false);
+              setVoiceOpen(false);
               openPodcast();
             }}
           />
@@ -939,6 +1117,21 @@ function CallScreen({
       }
     >
       {invite !== null ? <InvitePanel link={invite.link} onAnother={makeInvite} onClose={() => setInvite(null)} /> : null}
+      {voiceOpen ? <VoicePanel voice={voice} busy={voiceBusy} onChoose={chooseVoice} onClose={() => setVoiceOpen(false)} /> : null}
+      {agentOpen && agentPhase !== null ? (
+        <AgentPanel
+          name={assistant?.name ?? "LosOS"}
+          direct={assistant !== null}
+          phase={agentPhase}
+          load={agentLoad}
+          captions={captions}
+          grounded={grounded}
+          onGrounded={setGrounded}
+          onHush={() => agent.current?.hush()}
+          onRemove={removeAgent}
+          onClose={() => setAgentOpen(false)}
+        />
+      ) : null}
       {podcastOpen && podcast !== null ? (
         <PodcastPanel
           podcast={podcast}

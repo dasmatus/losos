@@ -69,8 +69,8 @@ bekommt jede andere Person, die es versucht, eine Meldung dazu.
 Jede Person hat eine Kachel. Die Kachel zeigt ihre Kamera, oder ihr Bild,
 solange ihre Kamera aus ist. Die Knöpfe unten schalten dein Mikrofon und
 deine Kamera aus und ein, teilen deinen Bildschirm, wechseln deinen
-Hintergrund, laden einen Gast ein, öffnen den Podcast-Modus und verlassen
-den Anruf. Die Kamera auszuschalten hält sie an, ihr Licht geht aus, und
+Hintergrund, laden einen Gast ein, verändern die Stimme, fügen LosOS hinzu, öffnen den
+Podcast-Modus und verlassen den Anruf. Die Kamera auszuschalten hält sie an, ihr Licht geht aus, und
 bis du sie wieder einschaltest, wird nichts gesendet.
 
 Deine Stimme geht mit 128 kb/s über den ganzen hörbaren Bereich hinaus,
@@ -81,6 +81,15 @@ macht es umgekehrt und hält seinen Text scharf.
 
 Das Schild **Ende-zu-Ende-verschlüsselt** oben zeigt, wie viele Bilder dein
 Browser verschlüsselt gesendet und wie viele er empfangen und geöffnet hat.
+
+## Deine Stimme \{#your-voice}
+
+**Meine Stimme verändern** verändert, wie die anderen dich hören:
+**Tiefer**, **Höher**, **Riese**, **Eichhörnchen** oder **Roboter**, und
+**Natürlich** ist deine eigene Stimme. Das passiert in deinem Browser,
+bevor der Anruf verschlüsselt wird, die Box und die anderen bekommen also
+nur die veränderte Stimme, und niemand erkennt, dass es nicht deine ist.
+Die Wahl bleibt für deine nächsten Anrufe, bis du **Natürlich** wählst.
 
 ## Dein Hintergrund \{#your-background}
 
@@ -154,12 +163,85 @@ Schlüsseln, die nur für diesen Anruf entstehen, auf einen Schlüssel für die
 beiden und geben erst dann die Schlüssel des Anrufs weiter. Wer den Link
 ohne den Teil nach `#` hat, kommt in den Anruf, sieht und hört aber nichts.
 
+## LosOS im Anruf \{#losos-in-the-call}
+
+**LosOS hinzufügen** holt den Assistenten der Box in den Anruf. Er hört
+zu, und wenn jemand seinen Namen sagt, antwortet er laut, allen, mit einer
+eigenen Stimme. Sag „LosOS, was steht am Freitag auf der Liste?“, und er
+antwortet. Etwa zwanzig Sekunden nach einer Antwort kann dieselbe Person
+ohne den Namen weitersprechen. „Stopp“ bringt ihn zum Schweigen, wer auch
+immer es sagt, ebenso **Nicht mehr sprechen** in seinem Panel. **LosOS
+entfernen** nimmt ihn aus dem Anruf.
+
+Seine Kachel zeigt statt eines Bildes einen Roboter, und alle im Anruf
+sehen ihn, damit niemand abgehört wird, ohne es zu wissen.
+
+Anrufe sind Ende-zu-Ende-verschlüsselt, die Box kann sie also nicht hören,
+und ein Assistent, der auf der Box läuft, auch nicht. LosOS tritt deshalb
+aus dem Browser der Person bei, die es hinzugefügt hat, als zweites Mitglied
+des Anrufs, mit den Schlüsseln, die diese Person schon hat. Dieser Browser
+hört zu und spricht:
+
+- Whisper, eine Spracherkennung, macht aus der Stimme jeder Person Text.
+  Jede Person kommt auf einem eigenen Strom an, es ist also klar, wer was
+  gesagt hat.
+- Kokoro, eine Sprachsynthese, spricht die Antwort.
+- Beide laufen als WebAssembly auf dem Computer dieser Person. Ein neuerer
+  Computer kommt mit, auf einem langsamen kommen die Antworten später.
+
+Beim ersten Mal lädt der Browser die beiden Modelle, zusammen etwa 150 MB,
+von der Box und behält sie. Von sonst woher wird nichts geladen. Danach
+startet ein Anruf ohne Download.
+
+Den Browser verlässt die Frage, als Text, an den Assistenten der Box,
+LosOS Tag, zusammen mit den letzten Minuten des Gesprächs, damit „was
+meinst du dazu?“ einen Bezug hat. Der aufgenommene Ton bleibt im Browser
+und ist weg, sobald er gelesen wurde. Verlässt die Person, die LosOS
+hinzugefügt hat, den Anruf oder schließt die Seite, geht LosOS mit.
+
+Die Antwort wird allen im Anruf vorgelesen, deshalb nutzt der Assistent
+standardmäßig nicht die Dateien, Mails und Räume der Person, die ihn
+hinzugefügt hat. **Darf meine Dateien, Mails und Räume nutzen** in seinem
+Panel schaltet das für diesen Anruf ein.
+
+LosOS versteht und spricht vorerst Englisch. Es ist an, solange du
+**Einstellungen → Erweitert → `losos.calls.agent.enable`** nicht
+ausschaltest; ohne sie liefert die Box keine Sprachmodelle aus, und der
+Knopf fehlt.
+
+## Mit deinen Assistenten anrufen \{#calling-your-assistants}
+
+Jeder Assistent, den du in LosOS Tag anlegst, ist in LosOS Chat eine Person
+wie jede andere, und ein Chat mit ihm ist ein gewöhnlicher Chat, mit
+Telefon- und Kamerataste in der Kopfzeile. Drück eine davon, und der Anruf
+beginnt mit dem Assistenten schon darin: kein Name zu sagen, kein **LosOS
+hinzufügen** zu drücken. Mit der Kamera antwortet er mit einem Gesicht, das
+blinzelt, beim Nachdenken nach oben schaut und den Mund so weit öffnet, wie
+seine Stimme laut ist. Mit dem Telefon ist es ein Sprachanruf.
+
+Jeder Assistent hat eine Stimme, die von Anruf zu Anruf gleich bleibt und
+nach dem Namen gewählt wird. Du sprichst einfach. Er antwortet mit dem, was
+du selbst lesen darfst, weil nur du die Antwort hörst, deshalb ist **Darf
+meine Dateien, Mails und Räume nutzen** von Anfang an an, und du kannst es
+in seinem Fenster ausschalten. Was er weiß und darf, stellst du unter
+**Einstellungen → LosOS Tag** für diesen Assistenten ein.
+
+Es funktioniert wie LosOS im Gruppenanruf. Er tritt aus deinem Browser bei,
+der Anruf bleibt also verschlüsselt, und er braucht dieselben zwei
+Sprachmodelle. Er sieht deine Stimme, nicht dein Bild: Deine Kamera geht an
+die Leute im Anruf und nie an den Assistenten. Leg auf, und er ist weg.
+
 ## Was die Box sieht \{#what-the-box-sees}
 
 Die Box leitet jedes Bild an die anderen im Anruf weiter, ohne es zu
 öffnen. Sie weiß, wer wann in welchem Anruf ist, wie groß die Bilder sind
 und wie oft sie kommen. Bild und Ton hat sie nie, außer einem
 Podcast-Stream, den ihr jemand zum Weitergeben schickt.
+
+Das Hinzufügen von LosOS ändert daran für die Box nichts: Es tritt aus
+einem Browser bei und hält dieselbe Art Schlüssel, die Box sieht also
+weiterhin nur verschlüsselte Frames. Was es hört, bringt die Person mit,
+die es hinzugefügt hat.
 
 Der Browser jeder Person macht für den Anruf einen eigenen Schlüssel. Die
 Browser geben sich ihre Schlüssel in den verschlüsselten Nachrichten des

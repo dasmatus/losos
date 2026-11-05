@@ -91,6 +91,7 @@ pub mod setup;
 pub mod signin;
 pub mod site;
 pub mod supervisor;
+pub mod tag;
 pub mod textsearch;
 pub mod trace;
 pub mod user_apps;

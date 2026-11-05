@@ -51,6 +51,7 @@ let
   user = config.lososInternal.chatUser;
   proxy = config.losos.proxy;
   throughEdge = proxy.enable;
+  voice = import ../nix/voice.nix { inherit pkgs; };
   edgePathEnv = "/run/losos/edge-path.env";
   edgeNone = "/run/losos/edge-none";
 
@@ -178,71 +179,82 @@ in
 
     networking.firewall.allowedUDPPorts = lib.optional (!throughEdge) cfg.udpPort;
 
-    services.nginx.virtualHosts."losos-front".locations = {
-      # Creating a call and its signalling socket. LosOS Login first, with
-      # no spare-key bypass: a call is a person's, never the box's.
-      "/calls/api/" = {
-        proxyPass = "http://unix:${socket}";
-        proxyWebsockets = true;
-        recommendedProxySettings = false;
-        extraConfig = ''
-          ${lanOnly}
-          auth_request /internal/losos-calls-authz;
-          # The person LosOS Login signed in, the only one the SFU takes
-          # (backend/src/calls/person.rs). Set on every request, so a
-          # client's own Remote-User never reaches it.
-          auth_request_set $losos_calls_user $upstream_http_remote_user;
-          proxy_set_header Host $host;
-          proxy_set_header Remote-User $losos_calls_user;
-          proxy_set_header Remote-Groups "";
-          proxy_set_header X-Losos-As "";
-          client_max_body_size 64k;
-          # A call's socket is quiet between renegotiations.
-          proxy_read_timeout 1h;
-          proxy_send_timeout 1h;
-        '';
+    services.nginx.virtualHosts."losos-front".locations =
+      lib.optionalAttrs cfg.agent.enable {
+        # The call agent's models and engines (nix/voice.nix, src/voice/): the
+        # page fetches each once and keeps it. Static files, LAN only; the
+        # worker scripts among them carry the COEP header the chat page's
+        # isolation needs (modules/containers.nix).
+        "/voice/" = {
+          alias = "${voice}/";
+          extraConfig = lanOnly;
+        };
+      }
+      // {
+        # Creating a call and its signalling socket. LosOS Login first, with
+        # no spare-key bypass: a call is a person's, never the box's.
+        "/calls/api/" = {
+          proxyPass = "http://unix:${socket}";
+          proxyWebsockets = true;
+          recommendedProxySettings = false;
+          extraConfig = ''
+            ${lanOnly}
+            auth_request /internal/losos-calls-authz;
+            # The person LosOS Login signed in, the only one the SFU takes
+            # (backend/src/calls/person.rs). Set on every request, so a
+            # client's own Remote-User never reaches it.
+            auth_request_set $losos_calls_user $upstream_http_remote_user;
+            proxy_set_header Host $host;
+            proxy_set_header Remote-User $losos_calls_user;
+            proxy_set_header Remote-Groups "";
+            proxy_set_header X-Losos-As "";
+            client_max_body_size 64k;
+            # A call's socket is quiet between renegotiations.
+            proxy_read_timeout 1h;
+            proxy_send_timeout 1h;
+          '';
+        };
+        "= /internal/losos-calls-authz" = {
+          proxyPass = "http://127.0.0.1:${toString identityPort}/auth/api/authz/auth-request";
+          extraConfig = ''
+            internal;
+            proxy_intercept_errors on;
+            error_page 500 502 503 504 = @losos-calls-authz-down;
+            # The request's body never comes here, but its length is held to
+            # this location's limit first (modules/identity.nix, askAboutRequest).
+            client_max_body_size 0;
+            proxy_pass_request_body off;
+            proxy_set_header Content-Length "";
+            proxy_set_header X-Original-Method $request_method;
+            proxy_set_header X-Original-URL https://$host$request_uri;
+            proxy_set_header X-Forwarded-For $remote_addr;
+          '';
+        };
+        "@losos-calls-authz-down".extraConfig = "return 401;";
+      }
+      // lib.optionalAttrs (throughEdge && config.losos.admin.ui != null) {
+        # A guest's page and socket, the only part of calls that answers
+        # without LosOS Login and off the LAN: the edge carries the guest
+        # link's host to the box through the tunnel. The page is static, the
+        # socket admits a guest only with an invite for that one call
+        # (backend/src/calls/guests.rs), and nothing here reaches chat.
+        "/calls/guest/".tryFiles = "$uri /calls/guest/guest.html";
+        # The segmenter for the black background, from the chat page's copy.
+        "/calls/guest/chat/calls-ml/".alias = "${config.losos.admin.ui}/chat/calls-ml/";
+        "= /calls/guest/ws" = {
+          proxyPass = "http://unix:${socket}";
+          proxyWebsockets = true;
+          recommendedProxySettings = false;
+          extraConfig = ''
+            proxy_set_header Host $host;
+            proxy_set_header Remote-User "";
+            proxy_set_header Remote-Groups "";
+            proxy_set_header X-Losos-As "";
+            client_max_body_size 64k;
+            proxy_read_timeout 1h;
+            proxy_send_timeout 1h;
+          '';
+        };
       };
-      "= /internal/losos-calls-authz" = {
-        proxyPass = "http://127.0.0.1:${toString identityPort}/auth/api/authz/auth-request";
-        extraConfig = ''
-          internal;
-          proxy_intercept_errors on;
-          error_page 500 502 503 504 = @losos-calls-authz-down;
-          # The request's body never comes here, but its length is held to
-          # this location's limit first (modules/identity.nix, askAboutRequest).
-          client_max_body_size 0;
-          proxy_pass_request_body off;
-          proxy_set_header Content-Length "";
-          proxy_set_header X-Original-Method $request_method;
-          proxy_set_header X-Original-URL https://$host$request_uri;
-          proxy_set_header X-Forwarded-For $remote_addr;
-        '';
-      };
-      "@losos-calls-authz-down".extraConfig = "return 401;";
-    }
-    // lib.optionalAttrs (throughEdge && config.losos.admin.ui != null) {
-      # A guest's page and socket, the only part of calls that answers
-      # without LosOS Login and off the LAN: the edge carries the guest
-      # link's host to the box through the tunnel. The page is static, the
-      # socket admits a guest only with an invite for that one call
-      # (backend/src/calls/guests.rs), and nothing here reaches chat.
-      "/calls/guest/".tryFiles = "$uri /calls/guest/guest.html";
-      # The segmenter for the black background, from the chat page's copy.
-      "/calls/guest/chat/calls-ml/".alias = "${config.losos.admin.ui}/chat/calls-ml/";
-      "= /calls/guest/ws" = {
-        proxyPass = "http://unix:${socket}";
-        proxyWebsockets = true;
-        recommendedProxySettings = false;
-        extraConfig = ''
-          proxy_set_header Host $host;
-          proxy_set_header Remote-User "";
-          proxy_set_header Remote-Groups "";
-          proxy_set_header X-Losos-As "";
-          client_max_body_size 64k;
-          proxy_read_timeout 1h;
-          proxy_send_timeout 1h;
-        '';
-      };
-    };
   };
 }
