@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // Build the hosted copy of LosOS Lab. Shim target for build.sh.
-import { chmodSync, cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { cpus } from "node:os";
@@ -40,8 +40,9 @@ sh(["git", "-C", join(WORK, "qemu-wasm"), "fetch", "-q", "--depth", "1", "https:
 sh(["git", "-C", join(WORK, "qemu-wasm"), "checkout", "-q", "FETCH_HEAD"]);
 sh(["sed", "-i", 's|https://zlib.net/zlib-\\$ZLIB_VERSION.tar.xz|https://github.com/madler/zlib/releases/download/v$ZLIB_VERSION/zlib-$ZLIB_VERSION.tar.xz|', join(WORK, "qemu-wasm/Dockerfile")]);
 sh(["grep", "-q", "madler/zlib/releases", join(WORK, "qemu-wasm/Dockerfile")]);
-sh(["docker", "build", "-q", "-t", "losos-lab-qemu-env", "-"], { cwd: WORK, capture: false }); // stdin-less? keep simple
-spawnSync("docker", ["build", "-q", "-t", "losos-lab-qemu-env", "-"], { input: Bun.file(join(WORK, "qemu-wasm/Dockerfile")).text() as any, stdio: ["pipe", "inherit", "inherit"] });
+const dockerfile = readFileSync(join(WORK, "qemu-wasm/Dockerfile"), "utf8");
+const db = spawnSync("docker", ["build", "-q", "-t", "losos-lab-qemu-env", "-"], { input: dockerfile, stdio: ["pipe", "inherit", "inherit"] });
+if (db.status !== 0) process.exit(db.status ?? 1);
 sh(["docker", "run", "-d", "--name", "losos-lab-qemu", "-v", `${join(WORK,"qemu-wasm")}:/qemu/`, "losos-lab-qemu-env"]);
 const EXTRA_CFLAGS = "-O3 -Wno-error=unused-command-line-argument -matomics -mbulk-memory -DNDEBUG -DG_DISABLE_ASSERT -D_GNU_SOURCE -sASYNCIFY=1 -pthread -sPROXY_TO_PTHREAD=1 -sFORCE_FILESYSTEM -sALLOW_TABLE_GROWTH -sTOTAL_MEMORY=1024MB -sWASM_BIGINT -sMALLOC=mimalloc --js-library=/build/node_modules/xterm-pty/emscripten-pty.js -sEXPORT_ES6=1 -sASYNCIFY_IMPORTS=ffi_call_js";
 sh(["docker", "exec", "losos-lab-qemu", "emconfigure", "/qemu/configure", "--static", "--target-list=x86_64-softmmu", "--cpu=wasm32", "--cross-prefix=", "--without-default-features", "--enable-system", "--with-coroutine=fiber", `--extra-cflags=${EXTRA_CFLAGS}`, `--extra-cxxflags=${EXTRA_CFLAGS}`, "--extra-ldflags=-sEXPORTED_RUNTIME_METHODS=getTempRet0,setTempRet0,addFunction,removeFunction,TTY,FS"]);
