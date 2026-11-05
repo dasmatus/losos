@@ -21,7 +21,7 @@
 # review, and the owner merges it, which closes it.
 #
 # Then Chromium on the laptop signs in as the owner through LosOS Login and
-# works through the pages (nix/tests/issue-shots.mjs): the list, an issue,
+# works through the pages (nix/tests/issue-shots.ts): the list, an issue,
 # the status menu from the keyboard, the board and a drag, the palette, a
 # new issue, the inbox, the cycles, the Garden board. After it the test
 # reads the tracker's API to see that each change the page showed was made.
@@ -45,7 +45,7 @@ let
       }
     }
     export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
-    exec ${pkgs.bun}/bin/bun ${./issue-shots.mjs} "$@"
+    exec ${pkgs.bun}/bin/bun ${./issue-shots.ts} "$@"
   '';
 
   # LosOS Cloud's boards as backend/src/cloud/boards.rs keeps them, its

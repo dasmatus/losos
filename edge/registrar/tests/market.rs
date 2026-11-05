@@ -1226,7 +1226,16 @@ async fn the_backup_door_opens_with_the_buyers_key_and_starts_a_server() {
 
     // A wrong key, the key on another order's path, or a path that is not
     // restic's are refused before anything reaches the cluster.
-    let before = kube.seen().len();
+    // The reconciler asks whether the seller's node is Ready on its own
+    // passes (`seller_presence`), which a heartbeat or a tick can start
+    // inside this window; that read is not the door's, so it is not counted.
+    let door_calls = || {
+        kube.seen()
+            .into_iter()
+            .filter(|s| !s.starts_with("GET /api/v1/nodes/"))
+            .count()
+    };
+    let before = door_calls();
     assert_eq!(
         door(&edge, &config, Some((&order_id, "guess"))).await.0,
         401
@@ -1251,7 +1260,7 @@ async fn the_backup_door_opens_with_the_buyers_key_and_starts_a_server() {
         .0,
         404
     );
-    assert_eq!(kube.seen().len(), before, "{:?}", kube.seen());
+    assert_eq!(door_calls(), before, "{:?}", kube.seen());
 
     // The right key reaches the cluster. The stub's Service has an address
     // nothing answers on, so the door says to come back.

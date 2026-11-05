@@ -99,6 +99,9 @@ pub struct Member {
     pub device: String,
     /// A guest who came in through a link, with the name they gave.
     pub guest: Option<Guest>,
+    /// An agent a person added to the call: it speaks as that person's
+    /// user and device, and is not a person of the room itself.
+    pub agent: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -111,6 +114,12 @@ pub struct Guest {
 impl Member {
     pub fn is_guest(&self) -> bool {
         self.guest.is_some()
+    }
+
+    /// Someone of the room: not a guest, not an agent. A call lasts as long
+    /// as one of them is in it.
+    pub fn is_person(&self) -> bool {
+        self.guest.is_none() && !self.agent
     }
 }
 
@@ -331,6 +340,7 @@ impl Calls {
                 user,
                 device: device.to_owned(),
                 guest: None,
+                agent: false,
             },
         );
         Ok(call)
@@ -348,7 +358,7 @@ impl Calls {
     ) -> Result<(), Refusal> {
         let call = self.calls.get_mut(id).ok_or(Refusal::NoSuchCall)?;
         match call.members.get(&pid) {
-            Some(m) if m.is_guest() => return Err(Refusal::GuestsCannot),
+            Some(m) if !m.is_person() => return Err(Refusal::GuestsCannot),
             Some(m) if &m.user == user => {}
             _ => return Err(Refusal::NotMember),
         }
@@ -382,7 +392,7 @@ impl Calls {
             return Err(Refusal::NotInvited);
         }
         // A link needs someone of the room in the call to let its guest in.
-        if !call.members.values().any(|m| !m.is_guest()) {
+        if !call.members.values().any(Member::is_person) {
             return Err(Refusal::NoSuchCall);
         }
         if call
@@ -404,15 +414,24 @@ impl Calls {
                     name: name.to_owned(),
                     invite: invite.to_owned(),
                 }),
+                agent: false,
             },
         );
         Ok(call)
     }
 
-    /// The guests left in call `id` once none of its own people are.
+    /// Mark `pid`, just admitted, as an agent of the person it speaks as.
+    pub fn mark_agent(&mut self, id: &CallId, pid: ParticipantId) {
+        if let Some(m) = self.calls.get_mut(id).and_then(|c| c.members.get_mut(&pid)) {
+            m.agent = true;
+        }
+    }
+
+    /// The guests and agents left in call `id` once none of its own people
+    /// are.
     pub fn stranded_guests(&self, id: &CallId) -> Vec<ParticipantId> {
         match self.calls.get(id) {
-            Some(c) if c.members.values().all(Member::is_guest) => {
+            Some(c) if !c.members.is_empty() && !c.members.values().any(Member::is_person) => {
                 c.members.keys().copied().collect()
             }
             _ => Vec::new(),
@@ -423,7 +442,7 @@ impl Calls {
     pub fn has_people(&self, id: &CallId) -> bool {
         self.calls
             .get(id)
-            .is_some_and(|c| c.members.values().any(|m| !m.is_guest()))
+            .is_some_and(|c| c.members.values().any(Member::is_person))
     }
 
     /// `pid` left. Returns the call it was in, if any.
@@ -453,7 +472,7 @@ impl Calls {
     ) -> Result<(), Refusal> {
         let call = self.calls.get_mut(id).ok_or(Refusal::NoSuchCall)?;
         match call.members.get(&pid) {
-            Some(m) if m.is_guest() => return Err(Refusal::GuestsCannot),
+            Some(m) if !m.is_person() => return Err(Refusal::GuestsCannot),
             Some(m) if &m.user == user => {}
             _ => return Err(Refusal::NotMember),
         }
@@ -705,6 +724,36 @@ mod tests {
         calls.leave(8, t1 + EMPTY_TTL * 3);
         calls.reap(t1 + EMPTY_TTL * 4);
         assert!(calls.get(&cid(2)).is_none());
+    }
+
+    #[test]
+    fn an_agent_is_not_a_person_of_the_room() {
+        let mut calls = Calls::new("b");
+        let now = Instant::now();
+        calls
+            .create(cid(1), uid("@m:b"), ROOM, &[], false, now)
+            .unwrap();
+        calls.admit(&cid(1), 1, uid("@m:b"), "D", now).unwrap();
+        // The agent a person added speaks as that person, on the same device.
+        calls.admit(&cid(1), 2, uid("@m:b"), "D", now).unwrap();
+        calls.mark_agent(&cid(1), 2);
+        assert!(calls.has_people(&cid(1)));
+        assert!(calls.stranded_guests(&cid(1)).is_empty());
+
+        // An agent invites nobody and streams nothing.
+        assert_eq!(
+            calls.invite(&cid(1), 2, &uid("@m:b"), "x".repeat(22), now),
+            Err(Refusal::GuestsCannot)
+        );
+        assert_eq!(
+            calls.go_live(&cid(1), 2, &uid("@m:b")),
+            Err(Refusal::GuestsCannot)
+        );
+
+        // Once the person is gone the agent is stranded, like a guest.
+        calls.leave(1, now);
+        assert!(!calls.has_people(&cid(1)));
+        assert_eq!(calls.stranded_guests(&cid(1)), vec![2]);
     }
 
     #[test]

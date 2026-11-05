@@ -118,8 +118,8 @@ funkcia je. Každé zariadenie má šesť krokov: aplikácie LosOS Cloud,
 pridávanie ďalších, úložisko, požičiavanie zariadenia v noci, nočnú
 aktualizáciu a to, kde prehliadku znova nájdete. Prehliadka sa zariadenia
 spýta, čo ešte má, a za každú takú vec pridá krok: Office, požičiavanie
-pamäte modelom AI, názov, na ktorý mu možno platiť, chat a hovory (len kým
-zariadenie zdieľa úložisko v mesh), Vytvoriť s AI a profilové fotky.
+pamäte modelom AI, názov, na ktorý mu možno platiť, chat a hovory,
+Vytvoriť s AI a profilové fotky.
 Zariadenie bez nich ukáže šesť krokov.
 **Preskočiť prehliadku** ju zavrie a v tom prehliadači sa už
 sama neotvorí. **Spustiť prehliadku** v časti Nastavenia, O zariadení ju

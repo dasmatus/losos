@@ -1,5 +1,5 @@
 # Screenshots of a booted box for any VM test: a NixOS module that turns a
-# node into a laptop with a browser and `losos-capture` (capture.mjs says
+# node into a laptop with a browser and `losos-capture` (capture.ts says
 # what a plan looks like). The pictures in a pull request and the frames of
 # a film come from here, so they show the real box: lososd, nginx, LosOS
 # Login and the built admin UI, never a dev server or a mocked API.
@@ -19,7 +19,7 @@ let
     export PLAYWRIGHT_BROWSERS_PATH=${driver.browsers-chromium}
     export FONTCONFIG_FILE=${fonts}
     export PLAYWRIGHT_CORE=${driver}/index.mjs
-    exec ${pkgs.bun}/bin/bun ${./capture.mjs} "$@"
+    exec ${pkgs.bun}/bin/bun ${./capture.ts} "$@"
   '';
 in
 {
@@ -30,7 +30,7 @@ in
   #
   #   handbook_pictures(laptop, BASE, "matus", PASSWORD, [ {shot}, … ])
   #
-  # with shots as in capture.mjs, named as the handbook names its files.
+  # with shots as in capture.ts, named as the handbook names its files.
   # They are taken only when the driver runs with LOSOS_HANDBOOK_SHOTS=1,
   # so the test costs nothing more otherwise: light, 1280 x 900 at twice
   # the pixels, once in each language the handbook has, into handbook/en,

@@ -235,10 +235,21 @@ async fn signal(
     };
     let joined = async {
         match serde_json::from_str::<ClientMsg>(&first) {
-            Ok(ClientMsg::Join { call, device }) if user.is_some() => {
+            Ok(ClientMsg::Join {
+                call,
+                device,
+                agent,
+            }) if user.is_some() => {
                 let call = CallId::parse(&call)?;
                 let user = user.unwrap_or(Err(Refusal::Unauthenticated))?;
-                Ok((call, Who::Member { user, device }))
+                Ok((
+                    call,
+                    Who::Member {
+                        user,
+                        device,
+                        agent,
+                    },
+                ))
             }
             Ok(ClientMsg::Guest { call, invite, name }) if user.is_none() => {
                 Ok((CallId::parse(&call)?, Who::Guest { invite, name }))

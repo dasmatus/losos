@@ -27,6 +27,10 @@ export interface ComposerProps {
   editing: MatrixEvent | null;
   onDone: () => void;
   placeholder: string;
+  /** One seed to type out, from the suggestion's pill or a link: applied
+   *  once, then handed back cleared. */
+  seed?: { text: string; nonce: number } | null;
+  onSeedApplied?: () => void;
 }
 
 /** Where a new message points: a reply, a thread, both, or nowhere. */
@@ -45,7 +49,7 @@ function relationFor(threadRoot: string | null, threadLatest: string | null, rep
 }
 
 /** Type, attach and record a message. Enter sends, Shift+Enter breaks a line. */
-export function Composer({ client, room, threadRoot = null, threadLatest = null, replyTo, editing, onDone, placeholder }: ComposerProps) {
+export function Composer({ client, room, threadRoot = null, threadLatest = null, replyTo, editing, onDone, placeholder, seed = null, onSeedApplied }: ComposerProps) {
   const t = useT();
   // A share link from LosOS Cloud may leave words for this room's composer.
   const [text, setText] = React.useState(() => (threadRoot === null ? takeDraft(room.roomId) : ""));
@@ -74,6 +78,18 @@ export function Composer({ client, room, threadRoot = null, threadLatest = null,
   React.useEffect(() => {
     if (replyTo !== null) area.current?.focus();
   }, [replyTo]);
+
+  // A seed lands once, into whatever is typed already, and tells the
+  // giver it was taken.
+  React.useEffect(() => {
+    if (seed === null) return;
+    setText((current) => (current.trim() === "" ? seed.text : `${current}\n${seed.text}`));
+    area.current?.focus();
+    onSeedApplied?.();
+    // The seed rides to the composer through RoomView; editing text is
+    // what it changes, so its nonce is its identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seed?.nonce]);
 
   // The box grows with what is typed, up to a third of the window.
   React.useLayoutEffect(() => {

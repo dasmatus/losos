@@ -23,6 +23,15 @@
     pm.url = "git+https://github.com/losos-project/pm?ref=master&rev=30abe308587967a71ee9142915d735d784430a9e";
     pm.flake = false;
 
+    # tinycode (github.com/dasmatus/tinycode), the coding agent CLI the
+    # appliance ships (modules/configuration.nix): AGPL-3.0-or-later, the
+    # static musl CLI that replaced the node-based agent stack on the VPS.
+    # Pinned by rev like pm above: main moves on its own schedule and a
+    # ref-following input would rebuild the package (and drag a fetch) on
+    # every eval.
+    tinycode.url = "git+https://github.com/dasmatus/tinycode?ref=main&rev=8a8844ad7613dc584dcea205e6262a20ee964be8";
+    tinycode.flake = false;
+
     # devenv is deliberately NOT a flake input. The dev environment lives in
     # devenv.nix, driven by the devenv CLI against devenv.yaml (standalone
     # mode). Wiring it through the flake instead — devenv.lib.mkShell — fails
@@ -45,6 +54,7 @@
       impermanence,
       disko,
       pm,
+      tinycode,
     }:
     let
       system = "x86_64-linux";
@@ -75,6 +85,7 @@
         import ./nix/packages.nix {
           inherit pkgs version;
           pmSrc = pm;
+          tinycodeSrc = tinycode;
         }
         # Bootable media, built off nixosConfigurations.install. Separate from
         # packages.nix because these are the only outputs that reach back into
@@ -335,6 +346,8 @@
             ./modules/startup-sound.nix
             # The model the widget builder asks, on loopback.
             ./modules/builder.nix
+            # LosOS Tag, the assistant tagged in chat (`modules/tag.nix`).
+            ./modules/tag.nix
             ./modules/services.nix
             ./modules/containers.nix
             # The local k3s cluster (the `shared` apps) and the mesh rke2
@@ -626,6 +639,7 @@
         # the palette's keys on all of them, uploads from the browser and a
         # 4.5 GiB copy over WebDAV (nix/tests/cloud-shell.nix).
         losos-cloud-shell = import ./nix/tests/cloud-shell.nix { inherit pkgs; };
+        losos-live-edge-proof = import ./nix/demo/live-edge/proof.nix { inherit pkgs; };
         # How fast LosOS Cloud and LosOS Git take files in on a two-core,
         # 4 GiB box, as numbers to compare trees by (nix/tests/upload-speed.nix).
         losos-upload-speed = import ./nix/tests/upload-speed.nix { inherit pkgs; };
@@ -662,6 +676,7 @@
           # The check is the shipped package with its browser checks added.
           ui = self.packages.${system}.losos-admin-ui;
           callsPackage = self.packages.${system}.losos-ctl;
+          voice = self.packages.${system}.losos-voice;
         };
         # Not a VM: the option document of the install configuration
         # (nix/options-doc.nix via modules/config-repo.nix), forced here so

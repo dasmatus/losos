@@ -96,7 +96,7 @@ cp "$WORK/xterm/package/lib/xterm.js" "$WORK/xterm/package/css/xterm.css" "$ENG/
 cp "$WORK/xterm-pty/package/index.js" "$ENG/vendor/xterm-pty.js"
 
 echo "== the page"
-# The Lab page is admin-ui/app's second Vite entry. Its Rust core, its
+# The Lab page is admin-ui/app's hosted Diagrams entry. Its Rust core, its
 # libvirt client and its Bevy canvas (one webgpu/ and one webgl2/ module)
 # come from nix (the same derivations the box's build copies in), so the
 # runner needs no wasm32 toolchain.
@@ -114,10 +114,10 @@ rm -rf "$APP/src/mdx/pkg"
 mkdir -p "$APP/src/mdx/pkg"
 cp -r "$WORK/mdx"/* "$APP/src/mdx/pkg/"
 chmod -R u+w "$APP/src/mdx/pkg"
-# The main build only: `bun run build --outDir` would hand the flags to
-# the guest call page's build, the script's last step, which then empties
-# the folder Diagrams was just built into.
-(cd "$APP" && bun install --frozen-lockfile --ignore-scripts && bun run typecheck && VITE_LAB_HOSTED=1 bun --bun vite build --outDir "$WORK/dist" --emptyOutDir)
+# The lab wasm packages are copied in above (they are not in the tree), so
+# `bun run build` — its typecheck and its Bun build — runs just as it does
+# in nix/packages.nix, with VITE_LAB_HOSTED=1 naming the hosted page.
+(cd "$APP" && bun install --frozen-lockfile --ignore-scripts && VITE_LAB_HOSTED=1 bun run build && cp -r dist "$WORK/dist")
 cp -r "$WORK/dist/diagrams/." "$OUT/diagrams/"
 cp -r "$WORK/dist/assets" "$WORK/dist/theme-boot.js" "$OUT/"
 cp "$LAB/vercel.json" "$LAB/serve.json" "$OUT/"

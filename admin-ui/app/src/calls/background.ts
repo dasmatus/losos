@@ -19,7 +19,7 @@
 
 import type { ImageSegmenter } from "@mediapipe/tasks-vision";
 
-/* Where the vite build puts the segmenter's files (vite.config.ts). */
+/* Where the build puts the segmenter's files (scripts/build.ts). */
 const BASE = `${import.meta.env.BASE_URL}chat/calls-ml`;
 const FPS = 30;
 /* How much of the previous mask each new one keeps. */

@@ -6,7 +6,7 @@
 # unit as `shared`, mailboxes under /home/shared/data/mail), lososd with
 # backend/src/mail.rs, LosOS Login (modules/identity.nix) and the front
 # vhost (modules/containers.nix, modules/tls.nix). The admin pages are a
-# stub index.html; tests/mail.browser.mjs covers the Mail screen.
+# stub index.html; tests/mail.browser.ts covers the Mail screen.
 # The shared domain's fscrypt key is off here, because no VM test has the
 # TPM-less keyring set-up modules/fscrypt.nix expects; the directory is the
 # same one.
@@ -32,7 +32,7 @@
 #     sharing back on, Eva's mail is still there.
 #
 # `losos-mail-screens` is the same run with the real admin pages and
-# Chromium on the laptop (nix/tests/mail-screens.mjs): the screenshots of the
+# Chromium on the laptop (nix/tests/mail-screens.ts): the screenshots of the
 # sidebar with sharing off and on, the inbox, a message, a reply typed word
 # by word and the reply in Sent, with a manifest of where things are. They
 # land in the run's output directory under mail-shots/.
@@ -52,7 +52,7 @@ let
 
   shots = pkgs.writeShellScriptBin "mail-screens" ''
     export PLAYWRIGHT_CORE=${pkgs.playwright-driver}
-    exec ${pkgs.bun}/bin/bun ${./mail-screens.mjs} "$@"
+    exec ${pkgs.bun}/bin/bun ${./mail-screens.ts} "$@"
   '';
   pictures = import ./screens { inherit pkgs; };
 in

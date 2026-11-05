@@ -14,7 +14,7 @@
 #     a review; a check reports on her commit.
 #
 # Then Chromium signs in as the owner through LosOS Login and walks the
-# pages (nix/tests/git-shots.mjs): the repositories, the code, a file, the
+# pages (nix/tests/git-shots.ts): the repositories, the code, a file, the
 # pull requests, the pull request, its files; a comment on a line kept for
 # a review and the review sent with Approve. Eva answers on the line, and
 # the owner resolves the thread, looks at the worktrees, squash-merges and
@@ -76,7 +76,7 @@ let
       }
     }
     export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
-    exec ${pkgs.bun}/bin/bun ${./git-shots.mjs} "$@"
+    exec ${pkgs.bun}/bin/bun ${./git-shots.ts} "$@"
   '';
   screens = import ./screens { inherit pkgs; };
 in

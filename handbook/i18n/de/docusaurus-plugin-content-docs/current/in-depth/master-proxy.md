@@ -19,6 +19,12 @@ VPS und setze `losos.edge.*`:
 
 - `losos.edge.publicDomain` ist die Domain, unter der die Appliances
   ausgeliefert werden.
+- `losos.edge.landing.hosts` (Standard `edge.<publicDomain>`) sind die Namen,
+  die Leute in den Browser tippen und die weder eine Box noch der Registrar
+  sind. Jeder bekommt ein eigenes Zertifikat und leitet auf
+  `losos.edge.landing.url` um, das Handbuch, statt eines nackten 404 unter
+  einem selbstsignierten Zertifikat. Jeder braucht einen DNS-Eintrag, der die
+  Edge erreicht.
 - `losos.edge.tenants` ist die Allowlist der Appliances, jede mit einem
   Hostnamen und einer Token-Datei. Der Registrar legt Routen und Zertifikate
   nur für die hier aufgeführten IDs an.
@@ -561,7 +567,7 @@ mit nichts, einem unsignierten und einem validierten Eintrag, während der
 Test die Zone delegiert und ihren DS veröffentlicht, und der Bereich folgt
 jedem Schritt. `edge/registrar/tests/domains.rs` spielt den Anspruchs- und den
 Wallet-Ablauf gegen einen echten Registrar und einen nachgebildeten
-DNS-over-HTTPS-Server durch. `admin-ui/app/tests/ens.unit.mjs` spielt über
+DNS-over-HTTPS-Server durch. `admin-ui/app/tests/ens.unit.ts` spielt über
 das Relay die Suche nach einem DNS-Namen ab, aufgezeichnet von Ethereum
 Mainnet und dem Gateway von ENS.
 :::
@@ -569,8 +575,8 @@ Mainnet und dem Gateway von ENS.
 ## Demo-Betrieb auf Vercel {#demo-deployment-on-vercel}
 
 `edge/vercel/` betreibt die API des Registrars, denselben Router und dieselbe
-Token-Prüfung, als Vercel Function unter `https://losos-edge.dasmat.us`, dem
-Standardwert von `losos.proxy.registrarUrl`. Die Registry liegt in einer Neon
+Token-Prüfung, als Vercel Function, für Präsentationen. Der Standardwert von
+`losos.proxy.registrarUrl` ist die Live-Edge, `https://register.dasmat.us`. Die Registry liegt in einer Neon
 Postgres, und eine Statusseite unter `/` zeigt die registrierten Boxen und
 die Traefik-Konfiguration, die die Edge für sie schreiben würde. Es ist nur
 die Control Plane. Der Tunnel, das TLS von Traefik, das Mesh und der

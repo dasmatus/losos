@@ -156,7 +156,7 @@ vybranými slovami v Office a Poznámkach.
 
 ![Vyhľadávanie správcovských stránok s napísaným "free space", ktoré nachádza úlohu BT-6 v skupine úloh LosOS Git.](@site/docs/img/issues-search.png)
 
-Mail, Chat a Kontakty sú tam, keď zariadenie zdieľa a je v sieti mesh.
+Chat a Kontakty sú tam na každom zariadení, na ktorom bežia; Mail, keď zariadenie zdieľa a je v sieti mesh.
 Každá vaša úloha s termínom je aj v odbere kalendára na
 `https://<box>.local/git/api/v1/tracker/calendar.ics`. Kalendárová
 aplikácia sa naň prihlási vaším menom a prístupovým tokenom LosOS Git s

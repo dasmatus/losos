@@ -1,4 +1,4 @@
-// Browser showcase mounted by tests/browser.test.mjs. Renders one instance of
+// Browser showcase mounted by tests/browser.test.ts. Renders one instance of
 // every visual state the computed-style assertions read, with the same content
 // vocabulary as the appliance pages.
 import { createRoot } from 'react-dom/client';

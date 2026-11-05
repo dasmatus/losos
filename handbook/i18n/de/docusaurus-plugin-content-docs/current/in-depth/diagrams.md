@@ -436,9 +436,9 @@ ein Bild von LosOS Desktop, nicht der Desktop selbst.
   `/diagrams/` aus. `bun run lab:render` baut die zwei Module der GPU-Fläche auf
   dieselbe Weise nach `src/lab/render-pkg/` und führt `wasm-opt` darauf
   aus, wenn `WASM_OPT` es benennt. Ohne sie baut die Seite nicht, und ihr
-  Build dauert etwa 13 Minuten. `tests/lab.browser.mjs` prüft die
+  Build dauert etwa 13 Minuten. `tests/lab.browser.ts` prüft die
   Netzwerkansichten unter der eigenen Policy der Seite, den Relay-Weg gegen
-  einen gefälschten libvirt-Daemon, und `tests/diagrams.browser.mjs` das
+  einen gefälschten libvirt-Daemon, und `tests/diagrams.browser.ts` das
   Diagramm: Karten, Pfeile, eine Obsidian-Datei, die Bilder, LosOS Cloud,
   das gemeinsame Bearbeiten und die Maschinenkarten.
   `nix/tests/diagrams-together.nix` startet zwei Boxen, teilt ein Diagramm

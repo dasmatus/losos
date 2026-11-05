@@ -453,7 +453,7 @@ jobs:
             ${{ runner.os }}-evm-compiler-cache-
       - name: forge suite and the anvil payment run
         run: |
-          nix develop .#ci -c nix shell --inputs-from . nixpkgs#foundry nixpkgs#nodejs nixpkgs#jq \
+          nix develop .#ci -c nix shell --inputs-from . nixpkgs#foundry nixpkgs#nodejs nixpkgs#bun nixpkgs#jq \
             -c bash edge/contracts/test-payment.sh
 
   eval:
@@ -575,7 +575,7 @@ jobs:
       - uses: ./.github/actions/setup-nix
       # Compiles only; the registrar's tests run in the test job.
       # losos-admin-ui is a Bun build: node_modules from the committed bun.lock
-      # (nix/bun-deps.nix), then `tsc --noEmit && vite build` on Bun. So this
+      # (nix/bun-deps.nix), then `tsc --noEmit` and `bun run build` on Bun. So this
       # step is also the typecheck gate for admin-ui/app, and the one place in
       # CI that proves the dependency fetch still resolves. losos-handbook is
       # the same shape: its bun.lock, then `docusaurus build` of handbook/, rooted at
@@ -622,7 +622,7 @@ jobs:
           name: losos-registrar-dev-machine
           path: dev-machine
           retention-days: 1
-      # The Playwright suite (admin-ui/app/tests/*.browser.mjs) against the
+      # The Playwright suite (admin-ui/app/tests/*.browser.ts) against the
       # production bundle, in headless chromium from nixpkgs. No /dev/kvm
       # needed, unlike the VM tests. Reuses the node_modules fetched just above.
       - name: build the Playwright check
@@ -638,7 +638,7 @@ jobs:
       # Export the built SPA and the handbook for the iso job, exactly as the
       # losos-ctl job exports its crate and for the same reason. flake.nix
       # puts both in isoImage.storeContents, so without this the ISO job
-      # would fetch the packages and run vite and docusaurus itself.
+      # would fetch the packages and run the Bun builds themselves.
       #
       # A dist/ tree with no store references: about 1 MiB of page, plus the
       # GPU canvas's two WebAssembly modules (about 16 MiB each), which are

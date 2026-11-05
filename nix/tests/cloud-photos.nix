@@ -25,7 +25,7 @@
 # of the landscapes alone.
 #
 # The pictures for the pull request come from a browser on the box
-# (nix/tests/cloud-photos-shots.mjs). `beforeUi`, when given, is the admin
+# (nix/tests/cloud-photos-shots.ts). `beforeUi`, when given, is the admin
 # UI as it was before Photos grouped anything: the box switches to it for
 # the "before" pictures. The flake check runs without it.
 {
@@ -115,7 +115,7 @@ let
       }
     }
     export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
-    exec ${pkgs.bun}/bin/bun ${./cloud-photos-shots.mjs} "$@"
+    exec ${pkgs.bun}/bin/bun ${./cloud-photos-shots.ts} "$@"
   '';
 in
 

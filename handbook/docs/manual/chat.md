@@ -17,19 +17,29 @@ rooms are end-to-end encrypted, so the box stores only what it cannot read.
 Chat uses Matrix, an open standard for messaging, and runs on the box
 itself. Nothing goes to an outside service. The Matrix server on the box is
 Synapse. A box that had chat before it moved to Synapse starts with an empty
-chat: the old conversations stay in the shared storage, but chat no longer
+chat: the old Dendrite conversations stay where they were, but chat no longer
 reads them.
 
 ## When chat is there
 
-Chat belongs to the part of the box you share with the mesh, and it keeps
-everything in that part's storage. It runs only while the box shares its
-storage and has joined a mesh. Then **Chat** appears in the sidebar of the
-admin pages.
+Chat is on by default, on every box. It needs no mesh, no edge and no shared
+storage: a box that sits alone on a desk has it. **Chat** is in the sidebar of
+the admin pages as soon as the box is claimed.
 
-When you stop sharing, chat stops with it. The sidebar entry goes, and the
-chat address leads back to the admin pages. The messages stay in the shared
-storage and come back when you share again.
+Chat belongs to the owner's account on the box and keeps everything in its
+data folder, on the box's encrypted disk and in its backups. Joining a mesh,
+sharing storage or leaving again changes nothing about it: the rooms, the
+messages and the files stay where they are. A box that ran chat on the shared
+side before moves its messages into the owner's folder once, on the first
+start after the update.
+
+Talking with people on other boxes is a separate setting, **Federation**
+(`losos.chat.federation.enable`). With the default `.local` name it reaches the
+boxes on your own network and nothing else.
+
+To turn chat off, switch `losos.chat.enable` off under **Settings** >
+**Advanced**. The sidebar entry goes, and the chat address leads back to the
+admin pages.
 
 ## Signing in
 

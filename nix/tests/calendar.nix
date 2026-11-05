@@ -26,7 +26,7 @@
 #     the phone layout.
 #
 # The browser is Chromium under Playwright in the test driver
-# (nix/tests/calendar-browser.mjs). Screenshots land in result/shots/pr/,
+# (nix/tests/calendar-browser.ts). Screenshots land in result/shots/pr/,
 # the launch film's pictures in result/shots/film/.
 #
 # With `beforeSrc` (admin-ui/app of the branch this one is based on) the
@@ -160,7 +160,7 @@ pkgs.testers.nixosTest {
           git.enable = false;
           # LosOS Cloud keeps the calendars.
           cloud.enable = true;
-          # The shared user's side of the box: chat's gate, and mail's.
+          # The shared user's side of the box: mail's gate. Chat runs anyway.
           sharingMyStorage = true;
           cluster.enable = true;
           shared.fscrypt.enable = false;
@@ -176,7 +176,17 @@ pkgs.testers.nixosTest {
           homeMode = "700";
         };
         users.groups.shared.gid = 1001;
-        systemd.tmpfiles.rules = [ "d /home/shared/data 0700 shared shared -" ];
+        users.users.notshared = {
+          isNormalUser = true;
+          uid = 1000;
+          group = "notshared";
+          homeMode = "700";
+        };
+        users.groups.notshared.gid = 1000;
+        systemd.tmpfiles.rules = [
+          "d /home/shared/data 0700 shared shared -"
+          "d /home/notshared/data 0700 notshared notshared -"
+        ];
 
         systemd.services.lososd.path = lib.mkForce [ pkgs.coreutils ];
         environment.systemPackages = [
@@ -405,7 +415,7 @@ pkgs.testers.nixosTest {
 
     def browser(phase):
         run = subprocess.run(
-            ["${pkgs.bun}/bin/bun", "${./calendar-browser.mjs}", phase, SHOTS],
+            ["${pkgs.bun}/bin/bun", "${./calendar-browser.ts}", phase, SHOTS],
             env=browser_env, capture_output=True, text=True, timeout=3600,
         )
         print(run.stdout)

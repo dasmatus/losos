@@ -42,7 +42,7 @@ let
   };
   # fonts.nix: the generic families mapped, or the pictures come out serif.
   fonts = import ./fonts.nix { inherit pkgs; };
-  driver = ./setup-desktop-browser.mjs;
+  driver = ./setup-desktop-browser.ts;
 in
 
 pkgs.testers.nixosTest {

@@ -569,12 +569,14 @@ in
 
     proxy.registrarUrl = lib.mkOption {
       type = lib.types.str;
-      # The demo edge (edge/vercel/, the registrar as a Vercel Function at the
-      # owner's domain). Not proxy.losos.dasmat.us: that name is the Nix binary
-      # cache proxy (`losos.cache.substituters`). A
-      # self-hosted edge is register.<losos.edge.publicDomain>, e.g.
-      # https://register.losos.cfd; set this to that when one exists.
-      default = "https://losos-edge.dasmat.us";
+      # The official edge's control plane, register.<losos.edge.publicDomain>
+      # of the live edge (/health, /register, /tunnel-pin; its manage page is
+      # /manage/). Not losos-edge.dasmat.us: that name pointed at the Vercel
+      # demo host (edge/vercel/) and now lands on the edge server's Traefik,
+      # which has no router for it (404, self-signed certificate). Not
+      # proxy.losos.dasmat.us either: that is the Nix binary cache proxy
+      # (`losos.cache.substituters`).
+      default = "https://register.dasmat.us";
       description = "Base URL of the edge losos-registrar HTTP API (fronted by Traefik at a static hostname, or the Vercel demo host).";
     };
 
@@ -1315,10 +1317,25 @@ in
       default = true;
       description = ''
         Let people on the box call each other from LosOS chat, by voice or
-        video. Calls belong to the box's shared side, like chat: they exist
-        only while the box shares its storage and is in a mesh. Every
+        video. Calls come with chat: they run wherever chat runs, with or
+        without a mesh or an edge. Every
         frame is encrypted in the caller's browser and decrypted in the
         others', so the box forwards media it cannot read.
+      '';
+    };
+
+    calls.agent.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Let a person add LosOS to a call as a voice agent. Calls are
+        encrypted end to end, so the box cannot hear them: the agent runs in
+        the browser of the person who adds it, as one more member of the
+        call. It listens with Whisper and speaks with Kokoro, both in
+        WebAssembly there, and asks the box's LosOS Tag only for what was
+        said to it. This option serves the two models and their engines at
+        /voice/ (about 160 MB of the box's store); the box itself does no
+        speech work. Needs calls.
       '';
     };
 
@@ -1526,14 +1543,17 @@ in
 
     builder.model = lib.mkOption {
       type = lib.types.str;
-      default = "qwen2.5-coder:1.5b";
+      default = "MichelRosselli/bonsai-27b";
       description = ''
-        The Ollama model the builder asks. The default, Qwen2.5-Coder 1.5B
-        (Apache License 2.0), fits the smallest box LosOS runs on: 4 GiB of
-        memory and two processor cores, beside LosOS Cloud and LosOS Git.
-        The prompts are written for it. A larger Qwen2.5-Coder such as
-        `qwen2.5-coder:7b` writes better apps on a box with 8 GiB or more
-        to spare, and takes several times as long.
+        The Ollama model the builder asks. The default has been unified
+        with the assistant's and the tag's (one model for everything the
+        box's own AI does): Bonsai 27B, a 1-bit Q1_0 recording of
+        Qwen3.6-27B, 4.4 GB and a 262,144-token context, Apache License
+        2.0, Ollama 0.32.5 or newer. A smaller, faster coder like the
+        older default — `qwen2.5-coder:1.5b` — still answers well, and
+        builds widgets on the smallest box at its own speed; set this to
+        that model and `assistant.model` with it if the box runs one
+        model at a time on 8 GiB.
       '';
     };
 
@@ -1564,16 +1584,15 @@ in
 
     assistant.model = lib.mkOption {
       type = lib.types.str;
-      default = "gemma3:1b";
+      default = "MichelRosselli/bonsai-27b";
       description = ''
         The Ollama model the apps' questions go to: everything that is not
-        code. The builder and LosOS Reviewer keep `builder.model`. The
-        default, Gemma 3 1B (Gemma Terms of Use, ai.google.dev/gemma/terms),
-        fits the smallest box LosOS runs on: 4 GiB of memory and two
-        processor cores. Ollama holds one model at a time, so the two never
-        need memory together. On a box with 8 GiB or more, `gemma4:e2b`
-        (Apache License 2.0, about 5 GiB while it answers) writes better
-        summaries.
+        code. Unified with the builder's and the tag's by default (one
+        model for everything the box's own AI does). The default, Bonsai
+        27B (Apache License 2.0), reads a 262,144-token context, calls
+        tools, thinks and sees pictures; a box shorter of memory runs it
+        with part of the model on the slower side. The older `gemma3:1b`
+        is the smaller, faster choice for the smallest box.
       '';
     };
 
@@ -1585,6 +1604,148 @@ in
         material (cut at 9,000 characters, about 2,500 tokens), the question
         and the answer. Each token of window costs the model some memory
         while it runs.
+      '';
+    };
+
+    tag.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        LosOS Tag: the assistant people tag in LosOS Chat (`@LosOS`),
+        beside the custom assistants anyone on the box makes. Its asks run
+        on a queue that pauses, never drops, while the box is short of
+        memory, and answer with what the unified search of the box's
+        files, repositories, mail and rooms found, graded by the box's
+        own confidentiality levels. Runs on the same Ollama service as
+        the builder and the assistant (`modules/builder.nix`).
+      '';
+    };
+
+    tag.model = lib.mkOption {
+      type = lib.types.str;
+      default = "MichelRosselli/bonsai-27b";
+      description = ''
+        The built-in model the tag (and, by `modules/builder.nix`'s own
+        defaults the builder and the assistant with it) asks. The default,
+        Bonsai 27B, is a 1-bit SDK recording of Qwen3.6-27B: 4.4 GB, a
+        262,144-token context, tools, thinking and vision, Apache License
+        2.0, Ollama 0.32.5 or newer. A box shorter of memory than the
+        model spills part of it, 50 to 75 percent, to the lenders and the
+        slower storage the queue's own memory-pressure sweep reads.
+      '';
+    };
+
+    tag.t3Bin = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      description = ''
+        The T3 Code binary the tag's asks run on, when the box has it.
+        T3 Code carries its own provider settings; the tag's default is
+        to take whatever the box ships. Empty runs the built-in path on
+        Ollama, OpenCode (`tag.opencode`) as the fallback harness.
+      '';
+    };
+
+    tag.opencodeBin = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      description = ''
+        The OpenCode binary the tag's asks fall back to when no T3 Code
+        is configured, with `opencode run` taking the prompt's whole
+        turn. Empty runs the built-in path on Ollama.
+      '';
+    };
+
+    tag.searxng = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      description = ''
+        The SearXNG instance the tag's own web search goes to, as an
+        http://127.0.0.1:port sandbox URL. Empty tells the tag there is
+        no web search, so it never leaves the box.
+      '';
+    };
+
+    tag.meshUrl = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      description = ''
+        An OpenAI-compatible endpoint on the network the tag falls back
+        to when the box cannot hold its own model — in a mesh, the
+        llama.cpp head the edge runs for a model group
+        (`edge.inference.models`, its lenders' RAM reached over the
+        tunnels), which is how a box with 4 GiB asks Qwen 3.8 Max or
+        DeepSeek R1: the head serves them, the boxes lend the memory.
+        The built-in path answers first when Ollama holds
+        `tag.model`; this one answers when it cannot, or when Ollama is
+        off.
+      '';
+    };
+
+    tag.meshModel = lib.mkOption {
+      type = lib.types.str;
+      default = "qwen3-8max";
+      description = ''
+        The model id the tag asks at `tag.meshUrl` (the catalogue's own
+        ids: `qwen3-8max`, `deepseek-r1`, …).
+      '';
+    };
+
+    tag.browser = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Read one page with the box's own Playwright wrapper (chromium).
+        Public addresses only, no sign-ins, its text alone: for the ask's
+        own reading, never its private files to leak through.
+      '';
+    };
+
+    tag.browserEngine = lib.mkOption {
+      type = lib.types.enum [
+        "chromium"
+        "midori"
+      ];
+      default = "chromium";
+      description = ''
+        Which engine the box's Playwright wrapper drives when
+        `tag.browser` is on. `midori` runs Playwright's WebKit build in
+        place of Chromium — the WebKitGTK-class engine, the lighter
+        renderer on a box you also keep LosOS Cloud and LosOS Git on —
+        while the ask reads one page and nothing else either way.
+      '';
+    };
+
+    tag.midoriBin = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      description = ''
+        The Midori binary the adapter runs instead of Playwright's own
+        engine (`tag.browserEngine = "midori"`; nixpkgs does not carry
+        Midori, so this is a store path when the owner puts one there).
+        Midori reads its page with its own process; text alone still
+        goes into the ask.
+      '';
+    };
+
+    tag.spilloverStart = lib.mkOption {
+      type = lib.types.ints.between 50 75;
+      default = 50;
+      description = ''
+        The layers' spillover percent when the box holds the model
+        comfortably: half the layers sit on the slower side. Climbs to
+        `tag.spilloverPressured` under the ask queue's memory-pressure
+        sweep.
+      '';
+    };
+
+    tag.spilloverPressured = lib.mkOption {
+      type = lib.types.ints.between 50 75;
+      default = 75;
+      description = ''
+        The layers' spillover percent under memory pressure: three
+        quarters of the layers to the lenders' memory, when the box
+        cannot hold the model it was asked to run.
       '';
     };
 
@@ -1988,6 +2149,22 @@ in
       '';
     };
 
+    # tinycode (github.com/dasmatus/tinycode), the box's coding agent CLI.
+    # When non-null the binary ships in the base package set
+    # (modules/configuration.nix); it is how an admin runs agentic work on
+    # the box — a single small AGPL-3.0-or-later binary in place of a
+    # Node-based agent stack this stateless appliance has no memory to
+    # spare for.
+    tinycode.package = lib.mkOption {
+      type = lib.types.nullOr lib.types.package;
+      default = null;
+      description = ''
+        The tinycode derivation (Rust, AGPL-3.0-or-later). When non-null,
+        `tinycode` is installed in the base package set. Leave null to ship
+        no agent CLI; set to null to strip it from a minimal image.
+      '';
+    };
+
     # ── Sign-in (modules/identity.nix) ───────────────────────────────────
     identity.enable = lib.mkOption {
       type = lib.types.bool;
@@ -2016,10 +2193,10 @@ in
         /chat/, where everyone with a LosOS Login account can talk in rooms
         and direct messages, with end-to-end encryption, files, reactions,
         threads and voice and video calls on the box's network. Chat runs
-        as the shared user and keeps everything in the shared data domain,
-        so it is there only while the box shares its storage in a mesh it
-        has joined. Signing in to
-        chat is always through LosOS Login; there are no chat passwords.
+        as the owner's account (`notshared`) and keeps everything in its
+        data folder, so it is there on every box: it needs no mesh, no
+        edge and no shared storage. Signing in to chat is always through
+        LosOS Login; there are no chat passwords.
       '';
     };
 
@@ -2461,6 +2638,31 @@ in
       type = lib.types.str;
       default = "losos.cfd";
       description = "Apex domain. The static registration router is register.<publicDomain>; per-appliance hostnames live under it.";
+    };
+
+    edge.landing.hosts = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ "edge.${config.losos.edge.publicDomain}" ];
+      defaultText = lib.literalExpression ''[ "edge.''${config.losos.edge.publicDomain}" ]'';
+      example = [
+        "edge.example.org"
+        "example.org"
+      ];
+      description = ''
+        Host names that are not a box and not the registrar, but that
+        people type into a browser, such as the edge's own name. Traefik
+        redirects every request to them to `edge.landing.url` with a
+        certificate of its own, where it used to answer a bare
+        "404 page not found" under its default self-signed certificate.
+        Each name needs a DNS record that reaches this edge, for the
+        Let's Encrypt certificate. An empty list leaves them unrouted.
+      '';
+    };
+
+    edge.landing.url = lib.mkOption {
+      type = lib.types.str;
+      default = "https://losos.dasmat.us";
+      description = "Where `edge.landing.hosts` send a browser: the handbook, which says what an edge is.";
     };
 
     edge.tunnelBindAddr = lib.mkOption {
@@ -3475,7 +3677,39 @@ in
         }
       );
       default = [ ];
-      description = "The models this edge offers. Written to /etc/losos/inference-models.json for the registrar.";
+      example = lib.literalExpression ''
+        [
+          {
+            id = "qwen3-8max";
+            name = "Qwen 3.8 Max";
+            file = pkgs.fetchurl { url = "https://…/qwen3-8max-q4.gguf"; hash = "sha256-…"; };
+            needMiB = 184320;
+            context = 32768;
+            priceIn = 400000;
+            priceOut = 1600000;
+            licence = "Apache-2.0";
+          }
+          {
+            id = "deepseek-r1";
+            name = "DeepSeek R1";
+            file = pkgs.fetchurl { url = "https://…/deepseek-r1-q4.gguf"; hash = "sha256-…"; };
+            needMiB = 402653;
+            context = 16384;
+            priceIn = 550000;
+            priceOut = 2200000;
+            licence = "MIT";
+          }
+        ]
+      '';
+      description = ''
+        The models this edge offers. Written to
+        /etc/losos/inference-models.json for the registrar. The bigger the
+        model, the more boxes lend to hold it: a group's `needMiB` is split
+        over the lenders' `inference.lend.memoryMiB`, one `losos-llm-head`
+        per group, and a box in the mesh reaches the head over its tunnel —
+        which is how LosOS Tag asks a model no box can hold alone
+        (`losos.tag.meshUrl`): the head answers, the boxes lend the memory.
+      '';
     };
 
     edge.inference.portRange = {
@@ -4155,8 +4389,8 @@ in
   };
 
   # ── The shared side ───────────────────────────────────────────────────
-  # The shared user's apps (mail, chat) exist only while the box's storage
-  # counts as shared: sharing on AND the box in a mesh. Sharing switched on
+  # The shared user's apps (mail, Mesh CI, the hosted knowledge bases) exist
+  # only while the box's storage counts as shared: sharing on AND the box in a mesh. Sharing switched on
   # without a mesh to share with is not enough. Read-only.
   options.lososInternal.sharedSide = lib.mkOption {
     type = lib.types.bool;
@@ -4180,8 +4414,8 @@ in
   };
 
   # ── Who runs the shared side's apps ───────────────────────────────────
-  # Chat, mail, calls, Mesh CI and the hosted knowledge bases are one
-  # instance each, and they run as whichever sharing account is live: `shared`
+  # Mail, Mesh CI and the hosted knowledge bases are one instance each, and
+  # they run as whichever sharing account is live: `shared`
   # on a box in the mesh, else `kindashared` on a box that shares only with
   # its local gateways. Their data is in that account's own domain
   # (/home/<user>/data), so a box that moves from one side to the other
@@ -4214,20 +4448,33 @@ in
     description = "The shared side's apps run: lososInternal.sideUser is set.";
   };
 
+  # The account chat and calls run as, on every box: the owner's own, whose
+  # data folder is open whether or not the box shares anything. Chat used to
+  # follow the shared side (lososInternal.sideUser), which kept it off every
+  # box that was alone; one fixed account also keeps a room's history when
+  # the box later joins a mesh. Read-only.
+  options.lososInternal.chatUser = lib.mkOption {
+    type = lib.types.enum [ "notshared" ];
+    internal = true;
+    readOnly = true;
+    default = "notshared";
+    description = "The account LosOS Chat and the calls run as.";
+  };
+
   # Whether this box runs chat, as it actually runs: the switch and the
-  # sharing gate together. Chat belongs to the shared user and keeps its
-  # data in the shared domain (modules/chat.nix). Read-only.
+  # sign-in it stands behind. Chat needs no mesh, no edge and no shared
+  # storage; federation is a separate switch (losos.chat.federation.enable)
+  # and, with a .local server name, answers the LAN alone. Read-only.
   options.lososInternal.chat = lib.mkOption {
     type = lib.types.bool;
     internal = true;
     readOnly = true;
     default =
       config.losos.chat.enable
-      && config.lososInternal.sideLive
       && config.losos.identity.enable
       && config.losos.admin.enable
       && config.losos.admin.ui != null;
-    description = "LosOS Chat runs: losos.chat.enable, the shared side's apps (lososInternal.sideLive) and LosOS Login.";
+    description = "LosOS Chat runs: losos.chat.enable and LosOS Login with the admin pages.";
   };
 
   # ── Mesh CI, as it actually runs ────────────────────────────────────────

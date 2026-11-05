@@ -99,8 +99,15 @@ pub enum Command {
 /// Who is joining: a person of the room, or a guest on a link.
 #[derive(Debug)]
 pub enum Who {
-    Member { user: UserId, device: String },
-    Guest { invite: String, name: String },
+    Member {
+        user: UserId,
+        device: String,
+        agent: bool,
+    },
+    Guest {
+        invite: String,
+        name: String,
+    },
 }
 
 pub struct Config {
@@ -279,8 +286,14 @@ impl Sfu {
                 reply,
             } => {
                 let pid = self.next_pid;
+                let mut agent_join = false;
                 let admitted = match who {
-                    Who::Member { user, device } => {
+                    Who::Member {
+                        user,
+                        device,
+                        agent,
+                    } => {
+                        agent_join = agent;
                         self.calls.admit(&call, pid, user, &device, now)
                     }
                     Who::Guest { invite, name } => {
@@ -316,7 +329,11 @@ impl Sfu {
                             tracks_out: Vec::new(),
                             screen: false,
                             lost: None,
+                            audio_only: agent_join,
                         };
+                        if agent_join {
+                            self.calls.mark_agent(&call, pid);
+                        }
                         let members = self.members(&call);
                         let _ = client.out.send(ServerMsg::Joined {
                             you: pid,
@@ -439,6 +456,7 @@ impl Sfu {
                         device: m.device.clone(),
                         guest: m.guest.as_ref().map(|g| g.name.clone()),
                         screen: self.clients.iter().any(|c| c.pid == *pid && c.screen),
+                        agent: m.agent,
                     })
                     .collect()
             })
@@ -643,6 +661,10 @@ struct Client {
     screen: bool,
     /// When ICE last lost the page, while it has not come back.
     lost: Option<Instant>,
+    /// An agent's page hears the call and never sees it: no video is
+    /// offered to it, which spares the box and the page the picture it
+    /// would only throw away.
+    audio_only: bool,
 }
 
 impl Client {
@@ -859,6 +881,9 @@ impl Client {
     }
 
     fn track_open(&mut self, track: Weak<TrackIn>) {
+        if self.audio_only && track.upgrade().is_some_and(|t| t.kind == MediaKind::Video) {
+            return;
+        }
         self.tracks_out.push(TrackOut {
             track,
             state: OutState::ToOpen,

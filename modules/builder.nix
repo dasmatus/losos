@@ -16,29 +16,36 @@
 # /persist, so they are pulled once per box, not once per boot. Until then
 # the tabs and the Ask AI buttons say the model is still downloading.
 #
-# Ollama runs on the processor. The defaults, Qwen2.5-Coder 1.5B and
-# Gemma 3 1B, are sized for the smallest box LosOS supports (4 GiB, two
-# cores, LosOS Cloud and LosOS Git running beside them): about 1.5 GiB and
-# 1 GiB of memory while they write. Ollama holds one at a time
-# (`OLLAMA_MAX_LOADED_MODELS`), because the two together would not fit;
-# asking the other one unloads the first, which takes a few seconds, and
-# each gives its memory back five minutes after its last use.
+# Ollama runs on the processor. The default model, Bonsai 27B
+# (`MichelRosselli/bonsai-27b`), is the box's one unified model: a 1-bit
+# Q1_0 recording of Qwen3.6-27B, 4.4 GB with a Q8_0 vision projector,
+# 262,144 tokens of context, tools, thinking and vision, Apache License
+# 2.0, Ollama 0.32.5 or newer. A box that cannot hold it runs the older,
+# smaller defaults (`qwen2.5-coder:1.5b`, `gemma3:1b`) at a word in
+# `builder.model` / `assistant.model`, or asks over the network
+# (`losos.tag.meshUrl`, the mesh's llama.cpp head). Ollama holds one at a
+# time (`OLLAMA_MAX_LOADED_MODELS`); asking another unloads the first,
+# which takes a few seconds, and each gives its memory back five minutes
+# after its last use.
 { config, lib, ... }:
 
 let
   cfg = config.losos.builder;
   assistant = config.losos.assistant;
+  tag = config.losos.tag;
   port = 11434;
   url = "http://127.0.0.1:${toString port}";
 in
 {
-  config = lib.mkIf (cfg.enable || assistant.enable) {
+  config = lib.mkIf (cfg.enable || assistant.enable || tag.enable) {
     services.ollama = {
       enable = true;
       host = "127.0.0.1";
       inherit port;
       loadModels = lib.unique (
-        lib.optional cfg.enable cfg.model ++ lib.optional assistant.enable assistant.model
+        lib.optional cfg.enable cfg.model
+        ++ lib.optional assistant.enable assistant.model
+        ++ lib.optional tag.enable tag.model
       );
       environmentVariables = {
         # One answer at a time, one model in memory: a mini PC shares its

@@ -310,7 +310,7 @@ in
   # `devenv test`; CI's `evm-escrow` job runs it.
   scripts.test-evm-escrow.exec = ''
     set -eu
-    export PATH=${pkgs.foundry}/bin:${pkgs.nodejs}/bin:${pkgs.jq}/bin:$PATH
+    export PATH=${pkgs.foundry}/bin:${pkgs.nodejs}/bin:${pkgs.bun}/bin:${pkgs.jq}/bin:$PATH
     bash "$DEVENV_ROOT/edge/contracts/test-payment.sh"
   '';
   scripts.test-evm-escrow.description = "Test the EVM escrow and pay through it on a local chain.";

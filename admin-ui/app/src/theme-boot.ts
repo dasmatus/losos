@@ -5,11 +5,16 @@
  * <head>. It runs before the body is parsed, so the palette is already
  * decided by the time anything is painted.
  *
- * Keep it importing nothing but lib/theme.ts, and keep lib/theme.ts free of
- * React: whatever this file reaches ends up inlined into that script, and a
+ * It stamps the last signed-in person's colour too (lib/person-accent.ts),
+ * so their accent does not arrive a moment after the page.
+ *
+ * Keep it importing nothing but lib/theme.ts and lib/person-accent.ts, and
+ * keep both free of React: whatever this file reaches ends up inlined into that script, and a
  * blocking script in <head> is the one place in the app where every byte is
  * paid for before the user sees anything.
  */
+import { applyStoredPersonAccent } from "./lib/person-accent";
 import { applyStoredTheme } from "./lib/theme";
 
 applyStoredTheme();
+applyStoredPersonAccent();

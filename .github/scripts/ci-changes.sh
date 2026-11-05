@@ -96,7 +96,7 @@ lane_ui=(
   "handbook/*"
   "edge/registrar/*" "backend/access/*"
   # The no-JavaScript pages' classes are generated into the bundle from
-  # these sources (admin-ui/app/scripts/basic-classes.mjs).
+  # these sources (admin-ui/app/scripts/basic-classes.ts).
   "backend/plugins/page/*" "backend/plugins/basic/*"
   # LosOS Office and Notes parse documents with losos-mdx in the page.
   "backend/mdx/*"

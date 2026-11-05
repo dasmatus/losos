@@ -1,11 +1,11 @@
-# Screenshots of profiles on a booted box (nix/tests/profile-screens.mjs).
+# Screenshots of profiles on a booted box (nix/tests/profile-screens.ts).
 #
 # The box of nix/tests/profile-box.nix with the real admin pages, and a
 # laptop that opens them in Chromium, signed in to LosOS Login as the owner,
 # and walks Your account: a picture and a banner through the crop dialog, a
 # colour, pronouns and a line, then the top bar and the Users pane. Each
 # step is a PNG at 1280 x 900 CSS pixels, twice the density, dark and then
-# light, beside a manifest (nix/tests/screens.mjs). They come out of the VM
+# light, beside a manifest (nix/tests/screens.ts). They come out of the VM
 # into the test's output directory under `shots/<scheme>/`.
 #
 # `before = true` boots the same box with no profiles to show: Your account
@@ -32,8 +32,8 @@ let
   scripts = pkgs.runCommand "profile-screens-scripts" { } ''
     mkdir -p $out/node_modules
     ln -s ${pkgs.playwright-driver} $out/node_modules/playwright-core
-    cp ${./screens.mjs} $out/screens.mjs
-    cp ${./profile-screens.mjs} $out/profile-screens.mjs
+    cp ${./screens.ts} $out/screens.ts
+    cp ${./profile-screens.ts} $out/profile-screens.ts
   '';
   # The owner's picture, a figure drawn in the palette, and a banner: a
   # river at dusk. No brand mark and no photo, so neither reads as the logo.
@@ -184,7 +184,7 @@ pkgs.testers.nixosTest {
         with subtest(f"the profile screens, {scheme}"):
             reset()
             laptop.succeed(
-                f"cd ${scripts} && bun profile-screens.mjs ${mode} {scheme} /tmp/shots/{scheme} ${pictures}"
+                f"cd ${scripts} && bun profile-screens.ts ${mode} {scheme} /tmp/shots/{scheme} ${pictures}"
                 " >&2"
             )
             steps = json.loads(laptop.succeed(f"cat /tmp/shots/{scheme}/manifest.json"))["steps"]

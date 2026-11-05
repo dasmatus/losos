@@ -38,7 +38,7 @@ Neuen Zustand trägst du in `modules/impermanence.nix` ein.
 | -------------- | ---- |
 | `lososd`       | Systemd-Daemon als root (Rust). Einziger Schreiber von `/var/lib/losos/state.json`. D-Bus-Dienst `org.losos1` und eine per Token authentifizierte JSON-API auf `127.0.0.1:8082`. |
 | `losos-ctl`    | CLI, die jeden Unterbefehl über D-Bus an `lososd` weiterreicht. `losos-ctl install` läuft eigenständig auf der ISO. |
-| `losos-admin-ui` | SPA aus React + Vite + Tailwind, ausgeliefert von nginx, das `/api/*` an `lososd` weiterleitet. |
+| `losos-admin-ui` | SPA aus React + Tailwind v4 (gebaut mit Buns Bundler), ausgeliefert von nginx, das `/api/*` an `lososd` weiterleitet. |
 
 Rebuilds laufen als transiente systemd-Units (`losos-rebuild-<job>`).
 `nixos-rebuild switch` startet `lososd` neu, daher hängt sich der Daemon beim
@@ -194,7 +194,7 @@ reicht jeden Aufruf über D-Bus an lososd weiter. `losos-ctl install` bleibt
 lokal, weil der ISO-Installer als root läuft und keinen Bus braucht.
 
 Die Admin-UI (`admin-ui/app/`, paketiert als `losos-admin-ui` mit
-Bun) ist eine SPA aus React 19, Vite und Tailwind v4 auf echten
+Bun) ist eine React-19- und Tailwind-v4-SPA auf Bun gebaut, auf echten
 Pfaden (`/`, `/apps`, `/storage`, `/mesh`, `/settings/<pane>`). Ihr gebautes
 `dist/` **ist** das Document Root des vorderen nginx-vhosts, ausgeliefert mit
 `try_files $uri $uri/ /index.html`. Ohne diese Zeile ist jeder Deep Link und
@@ -222,7 +222,7 @@ CSSOM nutzt. Der Switch ist die React-Aria-Variante von shadcn
 (`react-aria-components`), die `SwitchRow` als shadcn-Field „Switch with a
 description“ in Einstellungszeilen setzt. Nur der Bestätigungs-Toast ist aus
 Radix, und er braucht keine Scroll-Sperre. Dialog bleibt beim nativen
-`<dialog>`. `tests/app.browser.mjs` liefert den echten CSP-Header aus und
+`<dialog>`. `tests/app.browser.ts` liefert den echten CSP-Header aus und
 schlägt bei jeder neuen Verletzung fehl, sodass ein Bibliothekswechsel, der
 Styles einschleust, einen Check rot werden lässt.
 
@@ -246,7 +246,7 @@ der Bereich Erweitert zeichnet pro Zeile einen typisierten Editor.
 
 `classify` in der Nix-Datei ist das Tor. Eine Deklaration mit einem Typ, den
 es nicht kennt, ist ein `throw`, sodass der Eval-Job rot wird, statt dass
-eine leere Zeile im Bereich landet. `tests/advanced.browser.mjs` rendert das
+eine leere Zeile im Bereich landet. `tests/advanced.browser.ts` rendert das
 echte Dokument (`nix/tests/admin-ui.nix` übergibt den Check `losos-options-doc`)
 und schlägt bei jeder Zeile fehl, die der Bereich nicht zeichnen kann.
 `POST /api/apply` prüft jede Zeile gegen das Dokument (`check_body`). Es

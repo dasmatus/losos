@@ -67,7 +67,8 @@ at home.
 | --------------------------- | -------------------------------------------------------- |
 | `<name>.local`              | The box, on its own network, over mDNS                   |
 | `<name>.<edge domain>`      | The box through its edge, for LosOS Cloud and LosOS Git  |
-| `losos-edge.dasmat.us`      | The LosOS edge's control plane and the "find my box" page |
+| `register.dasmat.us`        | The LosOS edge's control plane (the default edge address) |
+| `losos-edge.dasmat.us`      | The "find my box" page                                   |
 | `proxy.losos.dasmat.us`     | The binary cache the box updates from                    |
 | `127.0.0.1:8787`            | Local GHCR-backed Nix cache, on the box and installer |
 | `127.0.0.1:8790`            | The box's local copy of all of these, kept on its disk |

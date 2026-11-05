@@ -34,6 +34,10 @@ in
   losos.ci.pmPlugin = lib.mkDefault pkgs'.losos-ci-pm-plugin;
   losos.admin.ui = lib.mkDefault pkgs'.losos-admin-ui;
   # The owner's handbook the same vhost serves at /handbook/.
+
+  # The box's coding agent CLI (modules/configuration.nix), in place of the
+  # Node-based agent stack.
+  losos.tinycode.package = lib.mkDefault pkgs'.tinycode;
   losos.admin.handbook = lib.mkDefault pkgs'.losos-handbook;
   # Its guests run under libvirt only when the owner asks for it: libvirtd is
   # a daemon the appliance otherwise has no use for (modules/lab.nix).

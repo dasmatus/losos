@@ -183,7 +183,11 @@ für den Ersatzschlüssel, der kein Konto hat.
   willst, und wähl **Übernehmen**. Die Box schneidet das Bild erneut zu und
   speichert es als neue Datei, sodass Ort und Kamera eines Fotos auf deinem
   Gerät bleiben. Neben dem Profil steht immer dein Anmeldename, damit sich
-  niemand mit einem Bild als du ausgeben kann.
+  niemand mit einem Bild als du ausgeben kann. Die Farbe, die du wählst, ist
+  auch die Akzentfarbe deiner eigenen Seiten. Sie färbt Knöpfe, Links und
+  den gewählten Platz in der Seitenleiste, in den Verwaltungsseiten, in
+  LosOS Cloud und in LosOS Git, mit oder ohne JavaScript. Solange du keine
+  wählst, bleiben deine Seiten petrolfarben.
 - **Deine Angaben**: vollständiger Name und E-Mail-Adresse. LosOS Cloud und
   LosOS Git zeigen dieselben. Nur ein Administrator kann deinen
   Anmeldenamen ändern.

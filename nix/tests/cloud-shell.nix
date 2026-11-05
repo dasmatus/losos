@@ -7,7 +7,7 @@
 #
 #   * copies an ISO-sized file of 4.5 GiB in over WebDAV, as a file manager
 #     does, and reads its size and its checksum back;
-#   * opens the box in Chromium (nix/tests/cloud-shell.mjs) and, on the
+#   * opens the box in Chromium (nix/tests/cloud-shell.ts) and, on the
 #     Overview, Storage, About, LosOS Cloud's Files, Recent, Notes and
 #     Photos, and a document open in LosOS Office, measures the top bar,
 #     the logo and the sidebar as soon as the sidebar is drawn and once the
@@ -36,7 +36,7 @@ let
     }
     export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
     export PATH=${pkgs.curl}/bin:$PATH
-    exec ${pkgs.nodejs}/bin/node ${./cloud-shell.mjs} "$@"
+    exec ${pkgs.nodejs}/bin/node ${./cloud-shell.ts} "$@"
   '';
   # 4.5 GiB: more than any 32-bit length, about a Windows installer's size.
   bigBytes = 4831838208;

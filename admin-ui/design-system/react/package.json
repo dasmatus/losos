@@ -16,7 +16,7 @@
   "scripts": {
     "typecheck": "bun --bun tsc -p tsconfig.test.json",
     "test": "bun tests/render.test.tsx",
-    "test:browser": "bun tests/browser.test.mjs",
+    "test:browser": "bun tests/browser.test.ts",
     "build": "bun build src/index.ts --format=esm --external react --external react-dom --outfile=dist/index.js && bun --bun tsc --emitDeclarationOnly && cp ../tokens.css ../losos.css dist/ && cat ../tokens.css ../losos.css > dist/styles.css"
   },
   "peerDependencies": {

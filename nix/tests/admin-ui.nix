@@ -1,6 +1,7 @@
 # Browser check for the admin UI (admin-ui/app).
 #
-# Builds the real production bundle — `tsc --noEmit && vite build`, the same
+# Builds the real production bundle — `tsc --noEmit && bun run build` on Bun,
+# the same
 # command that produces what nginx serves — and then drives it in headless
 # chromium against a stubbed API.
 #
@@ -30,7 +31,7 @@
 {
   pkgs,
   # The option document (flake.nix passes the `losos-options-doc` check). With
-  # it, tests/advanced.browser.mjs renders every option the install
+  # it, tests/advanced.browser.ts renders every option the install
   # configuration declares; without it the test falls back to its fixture.
   optionsJson ? null,
   # The shipped package (nix/packages.nix, losos-admin-ui): its source, its
@@ -39,9 +40,12 @@
   # pages' imports do not resolve and `tsc` fails.
   ui,
   # The SFU behind calls (the losos-ctl package's losos-calls), which
-  # tests/calls.browser.mjs runs a call through. Without it that file
+  # tests/calls.browser.ts runs a call through. Without it that file
   # cannot run, so the check needs it.
   callsPackage,
+  # The call agent's engine and models (nix/voice.nix), which
+  # tests/voice-agent.browser.mjs runs a spoken question and answer through.
+  voice,
 }:
 let
   inherit (pkgs) lib;
@@ -53,7 +57,7 @@ assert lib.assertMsg (pinnedPlaywright == pkgs.playwright-driver.version)
 ui.overrideAttrs (old: {
   pname = "losos-admin-ui-browser";
 
-  # tests/calls.browser.mjs decodes the SFU's tap with ffmpeg.
+  # tests/calls.browser.ts decodes the SFU's tap with ffmpeg.
   # The calls browser test starts the SFU with its edge client; curl is a
   # runtime dependency of that client and must exist in the sandbox.
   nativeBuildInputs = old.nativeBuildInputs ++ [
@@ -77,6 +81,7 @@ ui.overrideAttrs (old: {
       LOSOS_CALLS_BIN = "${callsPackage}/bin/losos-calls";
       # The sandbox has only loopback; Chromium takes a loopback candidate.
       LOSOS_CALLS_ADDRESS = "127.0.0.1";
+      LOSOS_VOICE_DIR = voice;
     }
     // lib.optionalAttrs (optionsJson != null) {
       LOSOS_OPTIONS_JSON = optionsJson;
@@ -91,7 +96,7 @@ ui.overrideAttrs (old: {
 
     # The UI runs on Bun and the browser, never on Node: no node: module
     # may come back into the source, the checks or the build scripts.
-    if grep -rnE "(from |import\()[\"']node:|require\([\"']" src tests scripts vite*.ts; then
+    if grep -rnE "(from |import\()[\"']node:|require\([\"']" src tests scripts; then
       echo "admin-ui/app: Node modules are not used here; use Bun's or the web's APIs" >&2
       exit 1
     fi
@@ -105,7 +110,7 @@ ui.overrideAttrs (old: {
     # index.html is hand-written, so Vite's HTML pipeline cannot rewrite it),
     # and it must still be referenced as a CLASSIC script: adding `type=module`
     # or `defer` would defer it past the first paint and reintroduce the
-    # light/dark flash it exists to prevent. See admin-ui/app/vite.config.ts.
+    # light/dark flash it exists to prevent. See admin-ui/app/scripts/bundler.ts.
     test -f dist/theme-boot.js
     grep -q 'src="/theme-boot.js"' dist/index.html
     # The tag must NOT have picked up type=module/defer/async. Matching the

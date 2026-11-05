@@ -45,7 +45,7 @@ import { t as translate, type MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
 import { ContextMenuHost, usePageMenu } from "@/components/context-menu";
 import { logoFor } from "@/lib/logo";
-import { paintOwnLook } from "@/lib/look";
+import { paintOwnAccent, paintOwnLook } from "@/lib/look";
 import { cn } from "@/lib/utils";
 import { chatServerOf, chatToken, dropChatToken, git, GitError, matrixSignIn, whenSignedOut, type User } from "./api";
 import { ErrorAlert, failed, Loading, NotFound } from "./parts";
@@ -106,7 +106,10 @@ function Shell() {
         signedIn.current = true;
         setMe(u);
         // Someone of this box sees the background they picked.
-        if (!u.matrix_id) void paintOwnLook();
+        if (!u.matrix_id) {
+          void paintOwnLook();
+          void paintOwnAccent();
+        }
       },
       (e: unknown) => {
         if (controller.signal.aborted) return;

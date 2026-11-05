@@ -64,16 +64,22 @@ Inside the shell `bcd` and `rcd` cd into the two in-flake crates.
 `admin-ui/design-system/react` has its own `bun run typecheck` and `bun run test`
 and is never served or built by nix.
 The JS workspaces (`admin-ui/app`, `handbook/`, the design system) are Bun
-workspaces with a `bun.lock`, and their code uses no Node API: no `node:`
-module, `process`, `Buffer` or `require`, but Bun's (`Bun.file`, `Bun.serve`,
-`Bun.spawn`, `Bun.$`) and the web's. Every script runs on Bun's runtime
-(`bun --bun`, `bunx --bun`), and `src/` typechecks without Bun's or Node's
-types (the Vite configs have `tsconfig.tools.json`). Nix installs each
+workspaces with a `bun.lock`, and their code is TypeScript with no Node API:
+no `node:` module, `process`, `Buffer` or `require`, but Bun's (`Bun.file`,
+`Bun.serve`, `Bun.spawn`, `Bun.$`) and the web's. Every script runs on Bun's
+runtime (`bun --bun`, `bunx --bun`). `src/` typechecks without Bun's or
+Playwright's types; the build scripts (`admin-ui/app/scripts/`) and the
+checks have `tsconfig.tools.json`. The admin UI's build is Bun's alone:
+`bun run build` runs scripts/build.ts (Bun.build over the pages, Tailwind
+through @tailwindcss/cli, classic theme-boot.js and app-frame builds,
+dist/pages/ and basic/messages.<locale>.json for the plugins), and
+`bun run dev` runs scripts/dev.ts, which rebuilds on each save and reloads
+over SSE. Nix installs each
 `node_modules` from its `bun.lock` alone (`nix/bun-deps.nix`, one hash per
 workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
-`node:` import. Playwright's API wants a Node `Buffer` for bytes
+`node:` import. Playwright's API wants bytes only in its own Buffer shape
 (`setInputFiles`, `route.fulfill`, a WebSocket route): hand it a file path
-(`stash` in `tests/harness.mjs`) or `wsBytes`.
+(`stash` in `tests/harness.ts`) or `wsBytes`.
 
 ## Layout
 
@@ -109,8 +115,9 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   opens `kindashared`; lososd refuses it without a Secondary-tier edge
   (`edge::check_local_gate`, 409 `localGatewayRequired`) and pauses it like
   sharing. `lososInternal.sideUser` (`shared` while in the mesh, else
-  `kindashared`) is the account chat, mail, calls and Mesh CI run as;
-  `sideLive` gates them.
+  `kindashared`) is the account mail, Mesh CI and the knowledge bases run as;
+  `sideLive` gates them. Chat and calls are not among them: they run on
+  every box as `notshared` (`lososInternal.chatUser`).
 - `daemon.nix` + `backend/`: `lososd` is a root daemon owning
   `/var/lib/losos/state.json`, exporting one D-Bus method per subcommand
   (`org.losos1`, `/org/losos1`, `org.losos.Control1`) and a Bearer-authed
@@ -132,7 +139,7 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   plugins so far;
   `nix/tests/plugins.nix` boots them with a browser that takes the PR's screenshots
   (`nix/tests/screens/`, reusable by any VM test).
-- `admin-ui/app`: React 19 + Vite + Tailwind SPA on real paths. Its `dist/`
+- `admin-ui/app`: React 19 + Tailwind v4 SPA on real paths, built by scripts/build.ts. Its `dist/`
   is the front nginx vhost's root (`try_files … /index.html`), `/api/*` is
   proxied to lososd. Palette in `src/styles/tokens.css`.
 - `admin-ui/app/src/games/` + `components/play-while-waiting.tsx`: the
@@ -182,9 +189,9 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   `gh`, never an edge-made key. `losos cloud setup` and `losos git setup` mint an
   app password and a LosOS Git token per computer with the owner's password
   (`backend/src/devices.rs`); `losos git credential` is git's helper.
-- Calls (`modules/calls.nix`, `losos.calls.enable`, only while chat runs):
+- Calls (`modules/calls.nix`, `losos.calls.enable`, wherever chat runs):
   `losos-calls` (`backend/src/calls/`, str0m, ICE-lite, VP8 and Opus) is an
-  SFU as `shared` on `/run/losos-calls/http.sock` (nginx's group only),
+  SFU as `notshared` on `/run/losos-calls/http.sock` (nginx's group only),
   `/calls/api/` behind LosOS Login with no spare-key bypass. nginx hands
   the SFU the signed-in person as `Remote-User` (`calls/person.rs`), the
   Matrix id `@<name>:<server>`. Calls are a MatrixRTC application of
@@ -219,9 +226,31 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   files under `/chat/calls-ml/`, model from `LOSOS_SEGMENTER_MODEL`).
   Podcast mode composites on the host's canvas and sends WebM to
   `/calls/api/stream`, which ffmpeg passes to RTMP: the one plaintext path,
-  marked public in the UI. Guests: only an official edge answers
-  `POST /calls/guest-link`; the box serves `/calls/guest/` (its own Vite
-  build, `vite.guest.config.ts`) and `/calls/guest/ws` without LosOS Login,
+  marked public in the UI. LosOS in the call (`admin-ui/app/src/voice/`,
+  `nix/voice.nix`, `nix/whisper-wasm.nix`, `losos.calls.agent.enable`): the
+  box cannot hear an E2EE call, so the agent is a second `CallSession` of
+  the page that added it (same user and device, `agent:true`; the SFU sends
+  it audio only and does not count it as a person), its keys passed to the
+  page's first session in memory (`voice/keys.ts`). Whisper (whisper.cpp
+  built to WebAssembly) reads each member's stream, Kokoro (ONNX Runtime
+  Web) speaks into its microphone, and a question goes to LosOS Tag as a
+  `voice` ask (`POST /api/tag/ask`, polled at `GET /api/tag/asks/{id}`).
+  The models are served by nginx at `/voice/`, not put in the UI package;
+  `/chat/` is cross-origin isolated (COOP/COEP in `containers.nix`) for
+  their threads, so nothing cross-origin may load there.
+  `tests/voice-agent.browser.mjs` speaks a question through the real SFU
+  and reads the answer back. A direct chat with an assistant
+  (`@tag-<slug>`, `assistantOf` in `chat/calls.tsx`) is a call it joins by
+  itself, as a `direct` persona: no name to say, its own Kokoro voice from
+  the slug (`voiceFor`), a face drawn on a canvas as its camera
+  (`voice/avatar.ts`), asks addressed to that assistant with `grounded` on;
+  `tests/voice-assistant.browser.mjs` reads the face through the SFU. The
+  voice changer is a worklet on the
+  microphone before the seal (`calls/voice-changer.ts`,
+  `public/voice-worklet/voice-changer.js`). Guests: only an official edge answers
+  `POST /calls/guest-link`; the box serves `/calls/guest/` (guest.html, the
+  admin UI build's second bundle under dist/calls/guest/) and `/calls/guest/ws`
+  without LosOS Login,
   and the link's `#` secret, which no server sees, keys an ECDH pair per
   guest (`calls/guests.ts`). lososd runs `HTTP_WORKERS` (8) and a 120 s
   `client_request_timeout` because its handlers block; one worker per core
@@ -284,7 +313,7 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   verdict, requested reviewers, merge (merge, squash, fast-forward) in a
   temporary worktree (`forge/pulls.rs`). Worktrees are marked by push
   options `worktree=` and `computer=` (`forge/worktrees.rs`). The pages
-  are a fifth Vite page of the admin UI (`admin-ui/app/git/`, `src/git/`)
+  are a fifth page of the admin UI's build (`admin-ui/app/git/`, `src/git/`)
   at `/git/`: nginx serves them, strips `/git` from `/git/api/` and the
   smart-HTTP paths to the socket. A write with sign-in headers and no
   token is refused when `Sec-Fetch-Site`/`Origin` say another site sent
@@ -307,7 +336,7 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   changed meanwhile. `/wikis` in the admin SPA is the box's directory of
   wikis (spaces, LosOS Cloud's knowledge bases from `GET /kb/api/`, the
   handbook) and the editor; `/wiki/<owner>/<name>/` is each space as a
-  site, its own Vite page under nginx's `/wiki/` location beside `/git/`,
+  site, its own page of the admin UI's build under nginx's `/wiki/` location beside `/git/`,
   not LAN-guarded. Pictures come from `…/wiki/raw/`, raster only.
   `nix/tests/wiki.nix` boots it.
 - `apps.nix` + `backend/src/apps.rs` + `backend/src/compose.rs`: the run-as
@@ -336,11 +365,13 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   the Overview's Statistics tile draw `src/statistics/` (shared with the
   edge's manage page). `nix/tests/podman-apps.nix` boots it.
 - `chat.nix` + `backend/src/chat.rs` + `admin-ui/app/src/chat/` (LosOS
-  Chat, `/chat/`, its own Vite page of the admin UI): Synapse (unit
-  `losos-chat`, SQLite) as `shared` in `/home/shared/data/chat/synapse`
-  (a box that ran Dendrite keeps its files beside it, unread), only while
-  `lososInternal.sharedSide` (`sharingMyStorage` and `cluster.enable`, the
-  gate mail shares); off, nginx
+  Chat, `/chat/`, its own page of the admin UI's build): Synapse (unit
+  `losos-chat`, SQLite) as `notshared` in `/home/notshared/data/chat/synapse`
+  (a box that ran Dendrite keeps its files beside it, unread), on by
+  default with no edge, mesh or sharing (`lososInternal.chat`: only
+  `losos.chat.enable`, LosOS Login and the admin pages gate it);
+  `losos-chat-setup` moves a Synapse folder an older box kept in the
+  `shared` or `kindashared` domain into the owner's once; off, nginx
   sends `/chat/` home and `/_matrix/` 404s. No Matrix passwords: lososd is an
   application service over every user and the only way in
   (`/api/chat/session`), and nginx asks `/internal/chat/authz` before every
@@ -348,7 +379,7 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   person). The application service's user namespace is not exclusive:
   Synapse leaves an exclusive one's users out of its directory. The client is matrix-js-sdk with its Rust
   crypto under the Lab's CSP arm. `nix/tests/chat.nix` boots it and drives
-  two browsers (`chat-browser.mjs`); its output holds the screenshots.
+  two browsers (`chat-browser.ts`); its output holds the screenshots.
 - `mail.nix` + `backend/src/mail.rs` (`losos.mail.*`): LosOS Mail. Stalwart
   as `shared`, mailboxes in `/home/shared/data/mail`, loopback HTTP only (no
   SMTP or IMAP listener), its own unit rather than nixpkgs' module because a
@@ -368,6 +399,34 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   changed is re-read); Git is `git grep` per query as `losos-git`. Both answer
   on Accept=yes sockets under `/run/losos-search` that only root (lososd's
   `/api/{cloud,git}/text`) can open. `nix/tests/search.nix` boots it.
+- `tag.nix` + `backend/src/tag.rs` + `backend/src/tag/queue.rs`
+  (`losos.tag.*`, Settings › LosOS Tag): LosOS Tag, the assistant people
+  tag in LosOS Chat. Every assistant is a real Matrix user
+  (`@tag-<slug>:<serverName>`) lososd mints through its application
+  service; a listener thread pulls the AS `/sync`, remembers the rooms'
+  bodies in a 4,000-event ring, and every `@handle` mention becomes an
+  ask on the queue. The queue is the T3 Code fork's scheduler shape: a
+  5 s cached `/proc/meminfo` probe (<10% available = pressure), pressure
+  pauses suggestion-origin work and never drops it, the reaper sweeps
+  done jobs on the normal or the compressed (60 s floor) threshold and
+  logs why, and an answer's own `@handle` hands the turn to the next
+  assistant (three handoffs, then the thread stops). Asks run on T3 Code
+  when the box ships it (`tag.t3Bin`), OpenCode else, and the box's own
+  Ollama model when neither — one unified model (`tag.model`, Bonsai 27B
+  by default, shared with the builder and assistant), spilling 50–75% of
+  layers to the mesh's head (`tag.meshUrl`, OpenAI-compatible) when the
+  box cannot hold it. User-defined confidentiality levels grade areas
+  (cloud paths, repos, rooms, mailboxes, units); a tag reads an area only
+  at or above its clearance, and `GET /api/search` is the unified search
+  (cloud FTS + git grep + the person's JMAP + the ring), every hit
+  graded. No-gos are a guard, not a prompt alone: no sudo/shell, no
+  market or storage trades, nothing on disk in `notshared`'s
+  directories. `losos-mcp` (`backend/src/bin/losos-mcp.rs`) exposes the
+  box's features as one stateless MCP server (JSON-RPC over stdio, one
+  HTTP call per tool, `LOSOS_MCP_TOKEN`); the tag's web tools go to the
+  box's own SearXNG (`tag.searxng`) and its Playwright wrapper
+  (`tag.browser`, `losos-tag-browse`) reads public pages only, never
+  confidential terms in a query.
 - `ci.nix` + `backend/src/ci/` (`losos-ci`, page at `/ci`): Mesh CI, the
   GitHub Actions workflows of LosOS Git's repositories, only on a box that
   shares and is in a mesh. `losos-ci serve` (user `losos-ci`) plans runs
@@ -749,7 +808,7 @@ Inside the dev shell, `bcd` → `cd backend`, `rcd` → `cd edge/registrar`.
 
 `admin-ui/app` is the shipped SPA and **is** built by nix
 (`nix build .#losos-admin-ui` installs `node_modules` from `bun.lock`, then runs
-`tsc --noEmit && vite build` on Bun, so the typecheck is part of the package).
+`tsc --noEmit` and the Bun build, so the typecheck is part of the package).
 For an iteration loop it also has `bun run dev` (with `LOSOS_API_ORIGIN`
 pointed at a real box), `bun run typecheck`, and `bun run test:browser` — the
 last is the playwright check that `.#checks.x86_64-linux.losos-admin-ui` wraps.
@@ -849,7 +908,7 @@ thin **facade** CLI that keeps the old subcommand/JSON surface
 `factory-reset`; `--json` no-op) and relays each call to lososd over D-Bus.
 `losos-ctl install` stays a local subcommand (the ISO installer runs as root,
 no bus needed). The admin UI (`admin-ui/app/`, packaged as `losos-admin-ui`
-with Bun) is a React 19 + Vite + Tailwind v4 SPA on real paths
+with Bun) is a React 19 + Tailwind v4 SPA on real paths
 (`/`, `/apps`, `/storage`, `/mesh`, `/settings/<pane>`), whose built `dist/`
 **is** the front Nginx vhost's document root — served with
 `try_files $uri $uri/ /index.html`, without which every deep link and every
@@ -871,7 +930,7 @@ Base UI, whose scroll lock is CSSOM; the Switch is shadcn's React Aria
 flavour (`react-aria-components`), laid into settings rows by `SwitchRow` as
 shadcn's "Switch with a description" Field; only the confirmation Toast is
 Radix, which needs no scroll lock. Dialog stays on the native `<dialog>`.
-`tests/app.browser.mjs` serves the real CSP header and fails on any new
+`tests/app.browser.ts` serves the real CSP header and fails on any new
 violation, so a library swap that injects styles turns a check red. The command layer is written against a `Losos` effect
 **trait** with a real (`io_backend`) and an in-memory (`fake`) implementation,
 so the state machine is unit-tested with no filesystem; the installer repeats
@@ -889,7 +948,7 @@ running value, danger and read-only flags); lososd joins the current
 `overrides.nix` into it at `GET /api/options`, and the Advanced pane draws a
 typed editor per row. `classify` in the Nix file is the gate: a declaration
 with a type it does not know is a `throw`, so the eval job goes red rather
-than an empty row landing on the pane, and `tests/advanced.browser.mjs`
+than an empty row landing on the pane, and `tests/advanced.browser.ts`
 renders the real document (`nix/tests/admin-ui.nix` passes the
 `losos-options-doc` check) and fails on any row the pane cannot draw.
 `POST /api/apply` is now checked line by line against the document

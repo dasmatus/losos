@@ -4,16 +4,20 @@
 # The box runs LosOS Login, lososd, nginx and Synapse as they ship; a laptop
 # on the LAN carries the browser's traffic. What only a booted box can show:
 #
-#   * chat is there only while the box shares its storage in a mesh: with
-#     either off there is no homeserver, no /_matrix/ route, no /api/chat,
-#     no Chat in the sidebar, and /chat/ goes home;
+#   * chat is there on a box that is alone, with no mesh, no edge and no
+#     shared storage, and stays when the box joins a mesh and shares, with
+#     its history; with losos.chat.enable off there is no homeserver, no
+#     /_matrix/ route, no /api/chat, no Chat in the sidebar, and /chat/
+#     goes home;
+#   * a homeserver an older box kept in the shared data domain is moved to
+#     the owner's folder once, and a folder already there is never replaced;
 #   * nobody has a Matrix password: an account and a device come only from
 #     lososd for the person LosOS Login signed in, and every request to the
 #     homeserver needs that sign-in and a token of that same person;
 #   * signing out of LosOS Login ends chat at the next request, and removing
 #     a person signs their devices out of the homeserver;
-#   * Synapse runs as `shared`, keeps everything in the shared data domain,
-#     and only root, nginx and `shared` may open its port;
+#   * Synapse runs as `notshared`, keeps everything in the owner's data
+#     folder, and only root, nginx and `notshared` may open its port;
 #   * messages, uploads and the thread list work through nginx;
 #   * a moderator's hide redacts a reported message as its sender, and a
 #     muted person reads on but sends nothing until unmuted;
@@ -27,7 +31,7 @@
 #     numbers are black bars, asked about before sending; Report opens.
 #
 # The browser is Chromium under Playwright in the test driver
-# (nix/tests/chat-browser.mjs), talking to the box through a SOCKS proxy on
+# (nix/tests/chat-browser.ts), talking to the box through a SOCKS proxy on
 # the laptop, so the address bar says
 # https://mattbox.local/ and LosOS Login's cookie is the box's own. Every
 # screenshot lands in the test's output: `nix build
@@ -131,19 +135,32 @@ pkgs.testers.nixosTest {
           backend.plugins = lososPkgs.losos-plugins;
           admin.ui = ui;
           git.enable = false;
-          # The shared user's side of the box: chat's gate.
-          sharingMyStorage = true;
-          cluster.enable = true;
+          # A box that is alone: no mesh, no edge, no shared storage. Chat
+          # runs all the same.
           # LosOS Cloud, for sending files from it and keeping files in it.
           cloud.enable = true;
         };
-        # The same box, sharing switched off; the test switches to it and
-        # back (switch-to-configuration, as an Apply would).
-        specialisation.unshared.configuration.losos.sharingMyStorage = lib.mkForce false;
+        # The same box with chat switched off, and with the box in a mesh
+        # and sharing; the test switches to each and back
+        # (switch-to-configuration, as an Apply would).
+        specialisation.chatOff.configuration.losos.chat.enable = lib.mkForce false;
+        specialisation.mesh.configuration.losos = {
+          sharingMyStorage = true;
+          cluster.enable = true;
+        };
 
         # The name a real box has; the claim wants it in Host.
         networking.hostName = "mattbox";
-        # configuration.nix's two data users, without the rest of it.
+        # configuration.nix's data users, without the rest of it: the
+        # owner's, whose folder chat lives in, and the shared one, whose
+        # domain an older box kept chat in.
+        users.users.notshared = {
+          isNormalUser = true;
+          uid = 1000;
+          group = "notshared";
+          homeMode = "700";
+        };
+        users.groups.notshared.gid = 1000;
         users.users.shared = {
           isNormalUser = true;
           uid = 1001;
@@ -151,6 +168,10 @@ pkgs.testers.nixosTest {
           homeMode = "700";
         };
         users.groups.shared.gid = 1001;
+        systemd.tmpfiles.rules = [
+          "d /home/notshared/data 0700 notshared notshared -"
+          "d /home/shared/data 0700 shared shared -"
+        ];
 
         systemd.services.lososd.path = lib.mkForce [ pkgs.coreutils ];
         environment.systemPackages = [
@@ -267,8 +288,7 @@ pkgs.testers.nixosTest {
     def saved(shared):
         """Write the box's saved settings to match the switch, as an Apply
         would. The mesh banner and /api/settings read these, not the
-        evaluated system, so without them the chat page would sit under a
-        "not joined a mesh" banner."""
+        evaluated system."""
         value = "true" if shared else "false"
         content = "\n".join([
             "{ ... }:",
@@ -306,18 +326,20 @@ pkgs.testers.nixosTest {
         time.sleep(5)
         eva = sign_in("eva", EVA_PASSWORD)
 
-    with subtest("Synapse runs as shared, inside the shared data domain"):
+    with subtest("a box that is alone runs Synapse as the owner, in the owner's data folder"):
+        # No mesh, no sharing, no edge: and chat is up.
         pid = box.succeed("systemctl show -P MainPID losos-chat.service").strip()
-        assert box.succeed(f"ps -o user= -p {pid}").split() == ["shared"]
-        assert box.succeed("stat -c '%U %a' /home/shared/data/chat").strip() == "shared 700"
-        assert box.succeed("stat -c '%U %a' /home/shared/data/chat/synapse").strip() == "shared 700"
-        box.wait_until_succeeds("test -s /home/shared/data/chat/synapse/homeserver.db")
-        assert "shared" in box.succeed("stat -c '%U' /home/shared/data/chat/synapse/homeserver.db")
+        assert box.succeed(f"ps -o user= -p {pid}").split() == ["notshared"]
+        assert box.succeed("stat -c '%U %a' /home/notshared/data/chat").strip() == "notshared 700"
+        assert box.succeed("stat -c '%U %a' /home/notshared/data/chat/synapse").strip() == "notshared 700"
+        box.wait_until_succeeds("test -s /home/notshared/data/chat/synapse/homeserver.db")
+        assert "notshared" in box.succeed("stat -c '%U' /home/notshared/data/chat/synapse/homeserver.db")
+        box.fail("test -e /home/shared/data/chat")
         # Sticky and delayed events, which calls need.
         versions = json.loads(box.succeed("curl -sf http://127.0.0.1:8008/_matrix/client/versions"))
         assert versions["unstable_features"].get("org.matrix.msc4354") is True, versions
         assert versions["unstable_features"].get("org.matrix.msc4140") is True, versions
-        # Only root, nginx and shared may open its port on loopback.
+        # Only root, nginx and the owner's account may open its port on loopback.
         box.succeed("curl -sf http://127.0.0.1:8008/_matrix/client/versions")
         box.fail("runuser -u nobody -- curl -sf -m 5 http://127.0.0.1:8008/_matrix/client/versions")
         # Nothing but loopback.
@@ -414,7 +436,7 @@ pkgs.testers.nixosTest {
         assert code == 200 and "rent,900" in body, (code, body)
         code, body = call(f"/_matrix/client/v1/media/download/{server}/{media}", token=et)
         assert code == 401, (code, body)
-        assert box.succeed("find /home/shared/data/chat/synapse/media -type f | wc -l").strip() != "0"
+        assert box.succeed("find /home/notshared/data/chat/synapse/media -type f | wc -l").strip() != "0"
 
     with subtest("a moderator hides a reported message and mutes someone in chat"):
         code, body = call(f"/_matrix/client/v3/rooms/{q}/send/m.room.message/t3", eva, method="PUT",
@@ -474,7 +496,7 @@ pkgs.testers.nixosTest {
         )
         assert whoami(petra, token)[0] in (401, 403)
 
-    # The browser: nix/tests/chat-browser.mjs, run here in the driver.
+    # The browser: nix/tests/chat-browser.ts, run here in the driver.
     browser_env = {
         **os.environ,
         "HOME": os.environ.get("TMPDIR", "/tmp"),
@@ -492,7 +514,7 @@ pkgs.testers.nixosTest {
 
     def browser(phase):
         run = subprocess.Popen(
-            ["${pkgs.bun}/bin/bun", "${./chat-browser.mjs}", phase, SHOTS],
+            ["${pkgs.bun}/bin/bun", "${./chat-browser.ts}", phase, SHOTS],
             env=browser_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         )
         # How loaded the box is while the page works, in case a step stalls.
@@ -512,9 +534,8 @@ pkgs.testers.nixosTest {
             print(box.execute("journalctl -b --no-pager -o cat -n 1500 -u lososd -u losos-chat -u authelia-losos -u nginx")[1])
         assert done.returncode == 0, f"the chat page, {phase}: {done.stderr[-2000:]}"
 
-    with subtest("with sharing off there is no chat anywhere"):
-        switch("unshared")
-        saved(False)
+    with subtest("with chat switched off there is no chat anywhere"):
+        switch("chatOff")
         box.wait_until_fails("systemctl is-active losos-chat.service")
         box.fail("systemctl cat losos-chat.service")
         code, body = call("/api/chat", matus)
@@ -528,12 +549,57 @@ pkgs.testers.nixosTest {
         assert loc == f"https://{HOST}/", loc
         browser("off")
 
-    with subtest("with sharing on, two people use the chat page"):
+    with subtest("a box that is alone has chat, and two people use the chat page"):
         switch(None)
-        saved(True)
         box.wait_for_unit("losos-chat.service")
         box.wait_until_succeeds("curl -sf http://127.0.0.1:8008/_matrix/client/versions")
         assert "chat" in json.loads(call("/api/me", matus)[1])["shared"]
         browser("on")
+
+    def rooms(cookie, token):
+        code, body = call("/_matrix/client/v3/joined_rooms", cookie, token=token)
+        assert code == 200, (code, body)
+        return sorted(json.loads(body)["joined_rooms"])
+
+    with subtest("joining a mesh and sharing keeps chat, its account and its history"):
+        before = rooms(matus, session(matus)["accessToken"])
+        assert before, before
+        switch("mesh")
+        saved(True)
+        box.wait_for_unit("losos-chat.service")
+        box.wait_until_succeeds("curl -sf http://127.0.0.1:8008/_matrix/client/versions")
+        pid = box.succeed("systemctl show -P MainPID losos-chat.service").strip()
+        assert box.succeed(f"ps -o user= -p {pid}").split() == ["notshared"]
+        assert "chat" in json.loads(call("/api/me", matus)[1])["shared"]
+        assert rooms(matus, session(matus)["accessToken"]) == before
+        switch(None)
+        saved(False)
+        box.wait_for_unit("losos-chat.service")
+        assert rooms(matus, session(matus)["accessToken"]) == before
+
+    with subtest("a homeserver an older box kept in the shared domain moves to the owner's folder"):
+        before = rooms(matus, session(matus)["accessToken"])
+        box.succeed("systemctl stop losos-chat.service")
+        # What an older box looks like: Synapse's folder in the shared
+        # user's domain, the owner's folder empty.
+        box.succeed("install -d -m 0700 -o shared -g shared /home/shared/data/chat")
+        box.succeed("mv /home/notshared/data/chat/synapse /home/shared/data/chat/synapse")
+        box.succeed("chown -R shared:shared /home/shared/data/chat")
+        box.succeed("systemctl restart losos-chat-setup.service")
+        box.succeed("systemctl start losos-chat.service")
+        box.wait_until_succeeds("curl -sf http://127.0.0.1:8008/_matrix/client/versions")
+        box.succeed("test -s /home/notshared/data/chat/synapse/homeserver.db")
+        box.fail("test -e /home/shared/data/chat/synapse")
+        assert box.succeed("stat -c '%U' /home/notshared/data/chat/synapse/homeserver.db").strip() == "notshared"
+        assert rooms(matus, session(matus)["accessToken"]) == before
+        # A folder that is already there is never written over.
+        box.succeed("systemctl stop losos-chat.service")
+        box.succeed("install -d -m 0700 -o shared -g shared /home/shared/data/chat/synapse")
+        box.succeed("echo old > /home/shared/data/chat/synapse/homeserver.db")
+        box.succeed("systemctl restart losos-chat-setup.service")
+        box.succeed("test -s /home/shared/data/chat/synapse/homeserver.db")
+        box.succeed("test $(wc -c < /home/notshared/data/chat/synapse/homeserver.db) -gt 100000")
+        box.succeed("systemctl start losos-chat.service")
+        box.wait_until_succeeds("curl -sf http://127.0.0.1:8008/_matrix/client/versions")
   '';
 }

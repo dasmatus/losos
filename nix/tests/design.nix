@@ -14,7 +14,7 @@
 #     not light.
 #
 # It also takes the shared motion frame by frame (`motion-*-<ms>ms.png`, see
-# screens/capture.mjs): the person's menu opening from its button, the
+# screens/capture.ts): the person's menu opening from its button, the
 # palette's dialog coming in and a switch thrown. Each strip has a still
 # beside it with the motion finished.
 #

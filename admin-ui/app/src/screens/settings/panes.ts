@@ -2,6 +2,7 @@ import type { IconSvgElement } from "@hugeicons/react";
 import {
   Alert02Icon,
   ArrowReloadHorizontalIcon,
+  ArtificialIntelligence02Icon,
   ChartLineData01Icon,
   Flag02Icon,
   CloudUploadIcon,
@@ -64,6 +65,7 @@ export type SettingsPaneId =
   | "users"
   | "moderation"
   | "access"
+  | "tag"
   | "advanced"
   | "history"
   | "logs"
@@ -336,6 +338,25 @@ export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
     "ssh",
     "losos",
   ]),
+  /* LosOS Tag right after Access tokens: the assistant people tag in chat,
+   * with its levels, areas, custom assistants and skills. */
+  pane("tag", ArtificialIntelligence02Icon, [
+    "tag",
+    "assistant",
+    "ai",
+    "ask",
+    "chat ai",
+    "agent",
+    "levels",
+    "confidentiality",
+    "privacy",
+    "clearance",
+    "areas",
+    "skills",
+    "custom",
+    "mention",
+    "search",
+  ]),
   /* Credentials right after Access tokens: the ways into the box, then the
    * secrets the box keeps for itself. */
   pane("credentials", LockPasswordIcon, [
@@ -474,6 +495,7 @@ const PANE_SECTION: Record<SettingsPaneId, string> = {
   users: "admin",
   moderation: "moderation",
   access: "access",
+  tag: "signed-in",
   advanced: "admin",
   history: "admin",
   logs: "admin",
