@@ -4,7 +4,7 @@
 # checks are the caller's I/O.
 [package]
 name = "losos-edge-path"
-version = "0.1.0"
+version = "0.6.1"
 edition = "2021"
 publish = false
 authors = ["Matus Mastena <shadiness9530+ou1rlygj@pm.me>"]

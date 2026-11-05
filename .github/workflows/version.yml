@@ -10,11 +10,12 @@ on:
 #
 # nix/version.nix is the release a tree is: the boot menus, the boot screen,
 # os-release, the console banners and `losos --version` show it, and boxes
-# build from main. This keeps it on the newest `v*` tag without anyone bumping
-# it by hand. A tag push commits the tag to main; a push to main checks the
-# file again, so a tag pushed while this workflow was missing, failing or
-# disabled is caught up by the next merge. A file already ahead of every tag
-# is left alone, and so is one that matches.
+# build from main. This GitHub Action keeps it and every first-party
+# Cargo.toml/package.json manifest version tied to the newest `v*` tag, so no
+# one bumps them by hand. A tag push commits the tag + manifests to main; a
+# push to main checks again, so a tag pushed while this workflow was missing,
+# failing or disabled is caught up by the next merge. Files already ahead of
+# every tag are left alone, and so is a tree that already matches.
 #
 # The tag's own media do not wait for this: the release and terminal client
 # jobs in ci.yml write the tag over the file before they build.
@@ -44,7 +45,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: main
-      - name: commit the newest tag to main if the file is behind
+      - name: sync version + manifests to the newest tag on main
         id: sync
         env:
           GH_TOKEN: ${{ github.token }}

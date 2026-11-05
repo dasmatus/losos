@@ -11,7 +11,7 @@
 # which Bevy 0.19.1 accepts; README.md says what to change together.
 [package]
 name = "losos-lab-render"
-version = "0.1.0"
+version = "0.6.1"
 edition = "2021"
 publish = false
 authors = ["Matus Mastena <shadiness9530+ou1rlygj@pm.me>"]

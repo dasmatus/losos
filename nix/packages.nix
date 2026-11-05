@@ -88,11 +88,11 @@
 #                input, like pm is.
 {
   pkgs,
-  # nix/version.nix, the release tag. Only the terminal client carries
-  # it; the crates, the SPA and the handbook keep their own package
-  # versions, so a release does not rebuild what the release job imports
-  # from its sibling jobs. flake.nix passes it; the tests that import this
-  # file directly get the same file.
+  # nix/version.nix, the LosOS release tag (`vX.Y.Z`). It is the source of
+  # truth for package/crate versions across the tree: checked-in manifests are
+  # kept in sync by .github/scripts/sync-version.sh, and Nix builds also
+  # rewrite manifest version lines to `semver` so they cannot drift. flake.nix
+  # passes it; tests that import this file directly get the same file.
   version ? import ./version.nix,
   # losos-project/pm's source (the flake's `pm` input). The tests that
   # import this file directly pass none and get no pm.
@@ -106,6 +106,20 @@
 
 let
   inherit (pkgs) lib;
+  # The release as Cargo/npm semver (nix/version.nix keeps the "v" tag form).
+  semver = lib.removePrefix "v" version;
+  # Belt-and-suspenders with .github/scripts/sync-version.sh: force manifest
+  # versions in Rust/JS sources built by Nix to the LosOS release. Only
+  # line-start `version = "..."` (package / workspace.package), never
+  # dependency tables or `version.workspace`.
+  setManifestVersions = ''
+    find . -name Cargo.toml -not -path '*/vendor/*' -not -path '*/target/*' | while IFS= read -r f; do
+      sed -i -E 's/^version = "[^"]*"/version = "${semver}"/' "$f"
+    done
+    find . -name package.json -not -path '*/node_modules/*' -not -path '*/vendor/*' | while IFS= read -r f; do
+      sed -i -E 's/^([[:space:]]*"version"[[:space:]]*:[[:space:]]*)"[^"]*"/\1"${semver}"/' "$f"
+    done
+  '';
   bunDeps = import ./bun-deps.nix { inherit pkgs; };
 
   # Only derivations may come out of this file — every attribute here becomes a
@@ -140,8 +154,9 @@ let
     }:
     pkgs.rustPlatform.buildRustPackage {
       inherit pname cargoHash;
-      version = "0.1.0";
+      version = semver;
       src = lib.cleanSource dir;
+      postPatch = setManifestVersions;
       nativeBuildInputs = [
         pkgs.wasm-bindgen-cli
         pkgs.lld
@@ -218,7 +233,8 @@ let
   # sections wasm-opt would rewrite.
   losos-lab-render = pkgs.rustPlatform.buildRustPackage {
     pname = "losos-lab-render";
-    version = "0.1.0";
+    version = semver;
+    postPatch = setManifestVersions;
     src = lib.fileset.toSource {
       root = ./../admin-ui/lab;
       fileset = lib.fileset.unions [
@@ -343,8 +359,9 @@ let
     }:
     pkgs.rustPlatform.buildRustPackage {
       inherit pname;
-      version = "0.1.0";
+      version = semver;
       inherit (import ./plugins-src.nix { inherit lib; }) src sourceRoot;
+      postPatch = setManifestVersions;
       cargoHash = pluginsCargoHash;
       nativeBuildInputs = [
         pkgs.wasm-tools
@@ -380,7 +397,7 @@ let
   # (admin-ui/app/scripts/basic-classes.mjs), and git ignores them.
   losos-basic-classes = pkgs.stdenvNoCC.mkDerivation {
     pname = "losos-basic-classes";
-    version = "0.1.0";
+    version = semver;
     src = lib.fileset.toSource {
       root = ./..;
       fileset = lib.fileset.unions [
@@ -425,7 +442,8 @@ images
 
   losos-admin-ui = pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
     pname = "losos-admin-ui";
-    version = "0.1.0";
+    version = semver;
+    postPatch = setManifestVersions;
 
     # admin-ui/app, not admin-ui/. The source ROOT is the exclusion: it is what
     # keeps admin-ui/design-system/react out of the closure, and unlike the
@@ -527,7 +545,8 @@ images
   # search index is built into the bundle for the same reason.
   losos-handbook = pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
     pname = "losos-handbook";
-    version = "0.1.0";
+    version = semver;
+    postPatch = setManifestVersions;
     src = ./../handbook;
 
     nativeBuildInputs = [ pkgs.bun ];
@@ -613,7 +632,8 @@ images
 
   losos-ctl = buildRustPackage {
     pname = "losos-ctl";
-    version = "0.1.0";
+    version = semver;
+    postPatch = setManifestVersions;
     src = lib.cleanSource ./../backend;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-ctl-rs` will print the new hash to paste here.
@@ -639,7 +659,8 @@ images
 
   losos-registrar = buildRustPackage {
     pname = "losos-registrar";
-    version = "0.1.0";
+    version = semver;
+    postPatch = setManifestVersions;
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-registrar` will print the new hash to paste here.
@@ -666,7 +687,8 @@ images
   # together.
   losos-registrar-static = pkgs.pkgsStatic.rustPlatform.buildRustPackage {
     pname = "losos-registrar-static";
-    version = "0.1.0";
+    version = semver;
+    postPatch = setManifestVersions;
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
     cargoHash = "sha256-4cJuU+UuczOt4p8jcJoKC/bvcLbSWSmMPpAUqqoR9Ac=";
     doCheck = false;
@@ -676,7 +698,8 @@ images
   # terminal) run via cargo test in CI's test job, as with the crates above.
   losos = buildRustPackage {
     pname = "losos";
-    version = "0.1.0";
+    version = semver;
+    postPatch = setManifestVersions;
     inherit (tuiSource) src cargoRoot buildAndTestSubdir;
     cargoHash = "sha256-0VQK6reYxlHCgLQuyAb0ttNCIRVy3PBvs9nFSAqj/7U=";
     # `losos --version` and the About pane say the release (VERSION in
@@ -689,7 +712,8 @@ images
   # install line puts it: musl, no dynamic library, same cargoHash.
   losos-static = pkgs.pkgsStatic.rustPlatform.buildRustPackage {
     pname = "losos-static";
-    version = "0.1.0";
+    version = semver;
+    postPatch = setManifestVersions;
     inherit (tuiSource) src cargoRoot buildAndTestSubdir;
     cargoHash = "sha256-0VQK6reYxlHCgLQuyAb0ttNCIRVy3PBvs9nFSAqj/7U=";
     env.LOSOS_VERSION = version;

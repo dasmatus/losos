@@ -11,7 +11,7 @@ resolver = "2"
 members = ["sdk", "page", "basic", "widget", "names", "look", "pins", "mail", "ci", "probe", "assistant", "pm-ci", "statistics", "hidden", "report", "problems", "pages", "tinycode"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.6.1"
 edition = "2021"
 publish = false
 authors = ["Matus Mastena <shadiness9530+ou1rlygj@pm.me>"]

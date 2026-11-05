@@ -1,7 +1,7 @@
 {
   "name": "losos-admin-ui",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.6.1",
   "type": "module",
   "license": "EUPL-1.2",
   "description": "LosOS appliance admin UI. Built to static files and served by the front Nginx vhost.",

@@ -10,7 +10,7 @@
 # of nixpkgs' `wasm-bindgen-cli` (0.2.127), which refuses any other.
 [package]
 name = "losos-lab-virt"
-version = "0.1.0"
+version = "0.6.1"
 edition = "2021"
 publish = false
 authors = ["Matus Mastena <shadiness9530+ou1rlygj@pm.me>"]
