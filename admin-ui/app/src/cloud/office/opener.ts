@@ -1,4 +1,4 @@
-import { Doc01Icon, FileImportIcon, PresentationBarChart01Icon } from "@hugeicons/core-free-icons";
+import { FileImportIcon, PresentationBarChart01Icon } from "@hugeicons/core-free-icons";
 import { registerOpener, registeringOpener } from "../openers";
 import { officeTypes, opensInOffice } from "./api";
 import { isMarkdown } from "./markdown/new";

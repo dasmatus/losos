@@ -1,6 +1,5 @@
 /* Native LosOS Office: capabilities and open/import routing. */
 
-import { INTL_TAG, type Locale } from "@/lib/i18n";
 
 export type OfficeKind = "native" | "import" | "view";
 
