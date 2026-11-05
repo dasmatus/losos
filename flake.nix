@@ -736,21 +736,11 @@
         # its sandbox, PDFs, a changed file, the Git search and who may ask
         # (nix/tests/search.nix).
         losos-search = import ./nix/tests/search.nix { inherit pkgs; };
-        # Collabora Online behind the front vhost over the folder host: open,
-        # type, save, save as PDF, two people in one document, the token
-        # rules and what nginx refuses (nix/tests/office.nix).
-        losos-office = import ./nix/tests/office.nix { inherit pkgs; };
-        # Office over LosOS Cloud's own files: discovery saved for a cloud
-        # with no network, coolwsd through nginx's loopback bridge to the
-        # cloud's socket, a save landing in the person's cloud
-        # (nix/tests/office-cloud.nix).
-        losos-office-cloud = import ./nix/tests/office-cloud.nix { inherit pkgs; };
-        # Markdown documents and presentations in LosOS Office, with no
-        # Collabora on the box (nix/tests/office-markdown.nix).
+        # Collabora-backed Office VM tests removed with native LosOS Office.
+        # Markdown documents and presentations in native LosOS Office
+        # (nix/tests/office-markdown.nix).
         losos-office-markdown = import ./nix/tests/office-markdown.nix { inherit pkgs; };
-        # LosOS Office's own documents and presentations, .paper and .slides
-        # edited as they look, and a document full of script that runs
-        # nowhere (nix/tests/office-paper.nix).
+        # LosOS Office's own .paper/.slides documents (nix/tests/office-paper.nix).
         losos-office-paper = import ./nix/tests/office-paper.nix { inherit pkgs; };
         losos-quick-actions = import ./nix/tests/quick-actions.nix { inherit pkgs; };
         # Not a VM: losos-mdx's browser package in Node, against the crate's
