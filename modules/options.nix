@@ -1471,27 +1471,23 @@ in
       type = lib.types.bool;
       default = false;
       description = ''
-        Open, edit and co-edit Word, Excel, PowerPoint and OpenDocument
-        files in the browser with Collabora Online, a LibreOffice that runs
-        on the box. Documents never leave the box: the editor reads and
-        saves them through LosOS Cloud. It runs while the box is up and
-        uses about 550 MB of memory with no document open.
+        Enable the standalone LosOS Office folder host for `losos.office.folder`.
+        Native LosOS Office for `.md`, `.paper`, and `.slides` is available in
+        LosOS Cloud; legacy Microsoft/ODF formats are imported into native
+        formats. Collabora Online is no longer used.
       '';
     };
 
     office.port = lib.mkOption {
       type = lib.types.port;
       default = 9980;
-      description = "Loopback port Collabora Online listens on. nginx serves it at /browser/ and /cool/.";
+      description = "Reserved for compatibility. Collabora Online has been removed.";
     };
 
     office.wopiPort = lib.mkOption {
       type = lib.types.port;
       default = 8093;
-      description = ''
-        Loopback port of the server Collabora Online reads documents from
-        and saves them to (the WOPI host): LosOS Cloud, or the folder below.
-      '';
+      description = "Reserved for compatibility. The Collabora WOPI bridge has been removed.";
     };
 
     office.folder = lib.mkOption {
@@ -1499,8 +1495,8 @@ in
       default = null;
       example = "/var/lib/losos-office/files";
       description = ''
-        Edit the documents in this folder instead of LosOS Cloud's, with a
-        small host of its own (losos-office). For a box without LosOS Cloud.
+        Serve documents from this folder through the standalone native LosOS
+        Office host instead of LosOS Cloud.
       '';
     };
 
@@ -1534,10 +1530,13 @@ in
         Build widgets and apps with AI: the "Build with AI" tabs of the
         widget editor and of Your apps ask a language model that runs on
         this box (Ollama, on loopback only). What the owner types never
-        leaves the box, and building is free. The model is downloaded once,
-        about 1 GB, in the background, the first time the box is online.
-        While it writes, it needs about 1.5 GiB of memory; it lets go of it
-        five minutes after the last build.
+        leaves the box, and building is free. The default model is the box's
+        unified Bonsai 27B (`builder.model`), about 4.4 GB, downloaded once
+        in the background the first time the box is online and shared with
+        the assistant and tag through the same Ollama service. A box that
+        cannot hold the full model in memory may run it more slowly or use a
+        smaller model/fallback; Ollama gives memory back five minutes after
+        the last use. See `builder.model` and the box-AI readiness notes.
       '';
     };
 
@@ -1575,10 +1574,12 @@ in
         Ask the box's AI: "Ask AI about this" in LosOS Cloud, Summarise in
         Mail and the other apps' questions about a file or a message go to
         a language model that runs on this box (Ollama, on loopback only,
-        beside the builder's). The material and the question never leave
-        the box. The model is downloaded once, about 800 MB, the first
-        time the box is online. While it answers it needs about 1 GiB of
-        memory; it lets go of it five minutes after the last question.
+        through the same service as the builder and tag). The material and
+        the question never leave the box. The default model is the box's
+        unified Bonsai 27B (`assistant.model`), about 4.4 GB, downloaded once
+        the first time the box is online when not already present. A smaller
+        box can use a lighter model or a mesh fallback; Ollama gives memory
+        back five minutes after the last use.
       '';
     };
 
@@ -1641,8 +1642,18 @@ in
       description = ''
         The T3 Code binary the tag's asks run on, when the box has it.
         T3 Code carries its own provider settings; the tag's default is
-        to take whatever the box ships. Empty runs the built-in path on
-        Ollama, OpenCode (`tag.opencode`) as the fallback harness.
+        to take whatever the box ships. Empty runs the lososd harness
+        (`tag.lososdBin`), else the built-in path on Ollama.
+      '';
+    };
+
+    tag.lososdBin = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      description = ''
+        The lososd harness binary the tag's asks fall back to when no T3
+        Code is configured, with `run` taking the prompt's whole turn.
+        Empty runs the built-in path on Ollama.
       '';
     };
 
@@ -1650,9 +1661,7 @@ in
       type = lib.types.str;
       default = "";
       description = ''
-        The OpenCode binary the tag's asks fall back to when no T3 Code
-        is configured, with `opencode run` taking the prompt's whole
-        turn. Empty runs the built-in path on Ollama.
+        Deprecated alias for `tag.lososdBin`.
       '';
     };
 

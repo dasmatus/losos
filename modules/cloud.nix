@@ -331,13 +331,6 @@ in
             " --mesh" + lib.optionalString mesh.selfSigned " --mesh-self-signed"
           )
           + lib.optionalString knowledgeBases " --knowledge-bases"
-          # Office documents open in Collabora (modules/office.nix): coolwsd
-          # reaches /wopi/files/ through nginx on the WOPI port, and the types
-          # it opens come from the copy of its discovery saved under /run.
-          + lib.optionalString office (
-            " --office-wopi http://127.0.0.1:${toString config.losos.office.wopiPort}"
-            + " --coolwsd /run/losos-office-discovery/discovery.xml"
-          )
           # Files the Windows share writes, into the table as they land
           # (modules/windows.nix).
           + lib.optionalString cfg.windows.enable " --watch";
