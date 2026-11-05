@@ -14,7 +14,7 @@
 import type { Page } from 'playwright';
 import assert from './assert.ts';
 import { launch } from './harness.ts';
-import { startFront } from './fixtures/calls/front.mjs';
+import { startFront } from './fixtures/calls/front.ts';
 import type { CallSession, KeyMessage, Member } from '../src/calls/session.ts';
 import type { LocalMedia } from '../src/calls/local.ts';
 import type { Podcast } from '../src/calls/podcast.ts';

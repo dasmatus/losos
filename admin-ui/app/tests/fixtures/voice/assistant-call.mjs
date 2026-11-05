@@ -21,7 +21,7 @@
 
 import assert from '../../assert.mjs';
 import { launch } from '../../harness.mjs';
-import { startFront } from '../calls/front.mjs';
+import { startFront } from '../calls/front.ts';
 
 /* Paths as tests/ has them. */
 const here = (p) => `${import.meta.dir}/../../${p}`;
