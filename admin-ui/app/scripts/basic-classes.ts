@@ -101,9 +101,9 @@ export async function writeBasicClasses(repo: string, out: string): Promise<stri
   return dbPath;
 }
 
-function arg(flag, fallback) {
+function arg(flag: string, fallback: string): string {
   const i = process.argv.indexOf(flag);
-  return i === -1 ? fallback : process.argv[i + 1];
+  return i === -1 ? fallback : (process.argv[i + 1] ?? fallback);
 }
 
 /** Write the gitignored class list before Tailwind scans, where the plugin
@@ -117,7 +117,7 @@ export async function basicClasses() {
   try {
     new Bun.Glob("*").scanSync({ cwd: sources }).next();
   } catch (error) {
-    if (error.code === "ENOENT") return;
+    if ((error as { code?: string }).code === "ENOENT") return;
     throw error;
   }
   await writeBasicClasses(repo, styles);
