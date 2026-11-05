@@ -7,7 +7,7 @@
  *   LOSOS_CALLS_BIN=../../backend/target/debug/losos-calls bun tests/voice-changer.browser.mjs
  */
 
-import assert from './assert.mjs';
+import assert from './assert.ts';
 import { launch } from './harness.mjs';
 import { startFront } from './fixtures/calls/front.ts';
 
