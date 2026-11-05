@@ -706,7 +706,7 @@ images
       pkgs.gawk
       pkgs.gnused
     ];
-    text = builtins.readFile ./sign-iso.sh;
+    text = builtins.readFile ./sign-iso-impl.sh;
   };
 
   # tinycode (github.com/dasmatus/tinycode), the coding agent CLI the
