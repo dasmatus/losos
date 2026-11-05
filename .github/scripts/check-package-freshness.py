@@ -27,6 +27,7 @@ import re
 import subprocess
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -73,7 +74,8 @@ class Failure(Exception):
 def http_json(url: str) -> object:
     req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "application/json"})
     token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
-    if token and "api.github.com" in url:
+    host = urllib.parse.urlsplit(url).hostname
+    if token and host == "api.github.com":
         req.add_header("Authorization", f"Bearer {token}")
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
