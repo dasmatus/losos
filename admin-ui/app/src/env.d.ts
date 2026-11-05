@@ -23,3 +23,11 @@ declare module "*.png" {
 
 /* Stylesheets are imported for their effect: the bundler links them. */
 declare module "*.css";
+
+interface ImportMetaEnv {
+  readonly BASE_URL: string;
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
+}

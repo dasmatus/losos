@@ -76,7 +76,7 @@ let ready: Promise<unknown> | null = null;
 
 /** Loads the module; every other call here needs it done first. */
 export function loadMdx(): Promise<unknown> {
-  ready ??= init({ module_or_path: wasmUrl });
+  ready ??= init({ module_or_path: wasmUrl }) as Promise<unknown>;
   return ready;
 }
 
