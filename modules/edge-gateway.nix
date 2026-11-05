@@ -136,6 +136,77 @@ in
     # tunnel server's own, and the hub's pin is fetched on first contact.
     systemd.tmpfiles.rules = [ "d ${stateDir} 0700 root root - -" ];
 
+    # ── 512 MB RAM, USB-stick friendly ───────────────────────────────────
+    # A gateway is a small, always-on LAN appliance: it may boot from a USB
+    # stick and run in 512 MiB. Keep the edge proxy's steady footprint low,
+    # give it compressed swap headroom, and avoid wearing flash with logs.
+    zramSwap = {
+      enable = true;
+      algorithm = "zstd";
+      memoryPercent = 50;
+      priority = 100;
+    };
+
+    boot.kernel.sysctl = {
+      "vm.swappiness" = 100;
+      "vm.min_free_kbytes" = 16384;
+      "vm.vfs_cache_pressure" = 200;
+    };
+
+    services.journald.extraConfig = ''
+      Storage=persistent
+      SystemMaxUse=32M
+      RuntimeMaxUse=32M
+      MaxRetentionSec=1week
+      Compress=yes
+    '';
+
+    systemd.coredump.extraConfig = ''
+      Storage=none
+      ProcessSizeMax=0
+    '';
+
+    documentation.enable = lib.mkDefault false;
+    documentation.nixos.enable = lib.mkDefault false;
+    documentation.man.enable = lib.mkDefault false;
+
+    # Keep Go heaps (Traefik) and the Rust proxy services bounded. These are
+    # guardrails for a gateway profile: the VPS edge module does not set
+    # them, because a full edge may legitimately need more.
+    systemd.services.traefik = {
+      environment = {
+        GOGC = "50";
+        GOMEMLIMIT = "128MiB";
+      };
+      serviceConfig = {
+        MemoryHigh = "160M";
+        MemoryMax = "220M";
+        MemorySwapMax = "64M";
+      };
+    };
+
+    systemd.services.losos-registrar.serviceConfig = {
+      MemoryHigh = "96M";
+      MemoryMax = "160M";
+      MemorySwapMax = "32M";
+      # Keep glibc's arenas from hoarding RSS on a long-lived daemon.
+      Environment = [ "MALLOC_ARENA_MAX=2" ];
+    };
+
+    systemd.services.losos-tunnel.serviceConfig = {
+      MemoryHigh = "48M";
+      MemoryMax = "96M";
+      MemorySwapMax = "16M";
+      Environment = [ "MALLOC_ARENA_MAX=2" ];
+    };
+
+    systemd.services.losos-tunnel-uplink.serviceConfig = {
+      MemoryHigh = "32M";
+      MemoryMax = "64M";
+      MemorySwapMax = "16M";
+      Environment = [ "MALLOC_ARENA_MAX=2" ];
+    };
+
     # ── No shell ─────────────────────────────────────────────────────────
     # No login prompt on any terminal, serial line or container console,
     # no SSH, and a root account with no password: the manage page is the

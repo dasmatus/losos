@@ -442,18 +442,21 @@ let
     memSize = 2048;
     copyChannel = false;
   };
-  # User-mode networking is enough to log in and look around, but a gateway
-  # on QEMU's private 10.0.2.0/24 advertises an address no box can reach; put
-  # it on the LAN with a bridge (Proxmox and libvirt do) to use it for real.
-  # The registrar API is forwarded to :8443 on the host.
+  # User-mode networking is enough to reach the manage page and registrar
+  # API, but a gateway on QEMU's private 10.0.2.0/24 advertises an address no
+  # box can reach; put it on the LAN with a bridge (Proxmox and libvirt do)
+  # to use it for real. The registrar API is forwarded to :8443 on the host.
+  # Sized for 512 MiB RAM (the gateway profile uses zram and bounded service
+  # heaps); override with LOSOS_EDGE_VM_MEM.
   edgeRunner = vmRun {
     name = "losos-edge-vm-run";
     env = "LOSOS_EDGE_VM";
     file = "${edgeImage}/losos-edge-gateway.qcow2";
     cpus = 2;
-    mem = 2048;
+    mem = 512;
     fwd = "hostfwd=tcp::8443-:8443";
-    banner = ''echo "console:   root / losos (change it at first login); registrar API on localhost:8443"'';
+    banner = ''echo "manage UI: http://localhost:8443/manage/ (LAN-only; :8443 is forwarded)"
+      echo "console:   no login/SSH (see tty1 in a graphical run, or the host's LAN address)"'';
   };
 in
 {

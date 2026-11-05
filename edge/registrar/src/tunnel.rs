@@ -89,8 +89,11 @@ const SERVER_RELOAD: Duration = Duration::from_secs(1);
 const CLIENT_RELOAD: Duration = Duration::from_secs(2);
 
 /// Streams the edge may have open to one box at a time: concurrent requests
-/// to it, each a browser connection Traefik holds open.
-const MAX_STREAMS: u32 = 4096;
+/// to it, each a browser connection Traefik holds open. 512 is plenty for a
+/// small/LAN gateway and keeps per-connection state bounded on low-memory
+/// edges; a very busy single box can still be served, just with less
+/// concurrency than the old 4096.
+const MAX_STREAMS: u32 = 512;
 
 /// The file the registrar writes and the server reads: every service the
 /// edge carries, keyed by name. Absent means none yet.
@@ -425,11 +428,11 @@ const GRACE: Duration = Duration::from_secs(30);
 const TCP_PING: Duration = Duration::from_secs(10);
 const TCP_PING_WAIT: Duration = Duration::from_secs(20);
 
-/// Per-stream and per-connection HTTP/2 windows. The defaults (64 KiB) cap
-/// one download at 64 KiB per round trip, a few hundred KiB/s to a box an
-/// ocean away.
-const H2_STREAM_WINDOW: u32 = 4 << 20;
-const H2_CONN_WINDOW: u32 = 32 << 20;
+/// Per-stream and per-connection HTTP/2 windows. Large enough for good
+/// throughput on typical links, but bounded so a TCP-fallback tunnel on a
+/// 512 MiB gateway does not reserve excessive flow-control headroom.
+const H2_STREAM_WINDOW: u32 = 1 << 20;
+const H2_CONN_WINDOW: u32 = 8 << 20;
 
 fn io_err(e: h2::Error) -> std::io::Error {
     if e.is_io() {

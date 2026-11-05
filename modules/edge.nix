@@ -1570,6 +1570,18 @@ in
       package = lib.mkIf echOn (pkgs.callPackage ../nix/traefik-ech.nix { });
     };
 
+    # Generous guardrails: Traefik is a Go process and will otherwise keep a
+    # large heap/idle state on a small edge. The gateway profile tightens
+    # these further for 512 MiB appliances.
+    systemd.services.traefik.environment = {
+      GOGC = lib.mkDefault "50";
+      GOMEMLIMIT = lib.mkDefault "512MiB";
+    };
+    systemd.services.traefik.serviceConfig = {
+      MemoryHigh = lib.mkDefault "512M";
+      MemoryMax = lib.mkDefault "1G";
+    };
+
     # /etc/traefik/dynamic: real dir (0755, root) holding the static
     # register*.yml files (symlinked from the store). The `r` lines take
     # away what the registrar wrote there before Traefik discovered the boxes
@@ -1656,6 +1668,11 @@ in
         # Runs as root; deliberately no ProtectSystem (would make /etc RO).
         PrivateTmp = true;
         NoNewPrivileges = true;
+        # Keep glibc arenas from hoarding RSS on a long-lived daemon. A
+        # generous ceiling; the gateway profile overrides this down.
+        Environment = lib.mkDefault [ "MALLOC_ARENA_MAX=2" ];
+        MemoryHigh = lib.mkDefault "384M";
+        MemoryMax = lib.mkDefault "768M";
       }
       // lib.optionalAttrs gateOn {
         # Second layer behind the gate: the registrar cannot read the sealed
@@ -1927,6 +1944,9 @@ in
           "AF_INET6"
           "AF_UNIX"
         ];
+        Environment = lib.mkDefault [ "MALLOC_ARENA_MAX=2" ];
+        MemoryHigh = lib.mkDefault "192M";
+        MemoryMax = lib.mkDefault "384M";
       };
     };
 
@@ -1959,6 +1979,9 @@ in
         RestartSec = 5;
         PrivateTmp = true;
         NoNewPrivileges = true;
+        Environment = lib.mkDefault [ "MALLOC_ARENA_MAX=2" ];
+        MemoryHigh = lib.mkDefault "96M";
+        MemoryMax = lib.mkDefault "192M";
       };
     };
     systemd.paths.losos-tunnel-uplink = lib.mkIf cfg.uplink.enable {

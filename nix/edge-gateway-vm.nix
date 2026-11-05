@@ -24,13 +24,24 @@
       device = "/dev/disk/by-label/losos-edge";
       fsType = "ext4";
       autoResize = true;
+      # A gateway may live on a USB stick; avoid access-time writes.
+      options = [ "noatime" ];
     };
     "/boot" = {
       device = "/dev/disk/by-label/ESP";
       fsType = "vfat";
-      options = [ "umask=0077" ];
+      options = [ "umask=0077" "noatime" ];
     };
   };
+
+  # Compressed swap in RAM is the margin that makes 512 MiB workable.
+  zramSwap = {
+    enable = true;
+    algorithm = "zstd";
+    memoryPercent = 50;
+  };
+
+  services.fstrim.enable = false;
 
   boot.loader.systemd-boot.enable = true;
   # The build VM has no efivarfs and a QCOW2 has no NVRAM; the boot entry
