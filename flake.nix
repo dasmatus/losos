@@ -296,6 +296,43 @@
             ./modules/splash.nix
           ];
         };
+        # Edge-prefilled installer medium: `iso` whose autorun install seals
+        # the disk key to the TPM2 AND the edge this medium was built for
+        # (modules/options.nix, losos.installer.tangEdge). The questions stay
+        # the questions: the firmware menu still waits out its 30 s, and an
+        # explicit flag an operator types onto `losos-install` outranks the
+        # prefill. What the medium does not do is silently fall back: a box
+        # with no chip stops with the reason, it does not install weaker
+        # than the medium was built for.
+        #
+        # The medium's edge is `losos.proxy.registrarUrl` here — what
+        # `--tang-edge` with no address asks. Like LOSOS_ABRT_VAR in `iso`
+        # above, an env read so a build can name it: `LOSOS_EDGE_URL` sets
+        # it, pure evaluation sees "" and the module default stays. Whoever
+        # bakes a medium names the edge they mean: `LOSOS_EDGE_URL` in the
+        # environment of the build, the same `--impure` reading that brings
+        # LOSOS_ABRT_VAR in.
+        #
+        # A distinct volume label and file name, for the same reason
+        # nix/disk-images.nix gives for losos-disk-iso: a stick written and
+        # its shell history gone still says what it installs onto.
+        iso-edge = self.nixosConfigurations.iso.extendModules {
+          modules = [
+            (
+              { lib, ... }:
+              {
+                losos.installer.tangEdge = true;
+                losos.proxy.registrarUrl =
+                  let
+                    url = builtins.getEnv "LOSOS_EDGE_URL";
+                  in
+                  lib.mkIf (url != "") (lib.mkDefault url);
+                image.baseName = lib.mkForce "losos-installer-edge";
+                isoImage.volumeID = lib.mkForce "LOSOS_EDGE";
+              }
+            )
+          ];
+        };
         # The target system installed onto the machine.
         install = nixpkgs.lib.nixosSystem {
           inherit system;
@@ -513,6 +550,10 @@
         # losos-install --tang-edge: the edge is the box's Tang server, and
         # refuses it once the owner reports it stolen.
         losos-edge-unlock = import ./nix/tests/edge-unlock.nix { inherit pkgs disko; };
+        # The edge-prefilled medium (nixosConfigurations.iso-edge): the autorun
+        # install starts itself on a chip and asks the medium's edge, and a
+        # chip-less box stops with a reason and touches nothing disks.
+        losos-installer-edge = import ./nix/tests/installer-edge.nix { inherit pkgs self; };
         losos-admin-daemon = import ./nix/tests/admin-vm.nix { inherit pkgs; };
         losos-edge-proxy = import ./nix/tests/edge-vm.nix { inherit pkgs; };
         losos-quic = import ./nix/tests/quic.nix { inherit pkgs; };

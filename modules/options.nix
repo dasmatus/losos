@@ -2589,6 +2589,26 @@ in
       '';
     };
 
+    installer.tangEdge = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        The edge-prefilled medium: the autorun install runs with
+        `--tang-edge`, sealing the disk key to the TPM2 AND the medium's edge
+        (`losos.proxy.registrarUrl`, which `--tang-edge` with no address
+        asks). The edge then stops answering for the box once its owner
+        reports it stolen (modules/network-unlock.nix,
+        nix/tests/edge-unlock.nix). The prefilled flag sits ahead of every
+        typed one, is not passed on the CLI wrapper, and never answers a
+        `--no-tpm`: on a `--tang-edge` run the box needs a chip, and stops
+        with that reason instead of installing weaker than the medium was
+        built for. Meaningful only with `losos.installer.autorun`, and the
+        module asserts it: the flavor is the autorun's default, nothing
+        else's. Set on `nixosConfigurations.iso-edge` (flake.nix), built
+        with `LOSOS_EDGE_URL` naming the medium's edge.
+      '';
+    };
+
     # ── Secure Boot (the installer medium) ──────────────────────────────────
     secureBoot.enable = lib.mkOption {
       type = lib.types.bool;
