@@ -9,7 +9,7 @@
 
 import assert from './assert.mjs';
 import { launch } from './harness.mjs';
-import { startFront } from './fixtures/calls/front.mjs';
+import { startFront } from './fixtures/calls/front.ts';
 
 const here = (p) => `${import.meta.dir}/${p}`;
 const BIN = Bun.env.LOSOS_CALLS_BIN ?? here('../../../backend/target/debug/losos-calls');
