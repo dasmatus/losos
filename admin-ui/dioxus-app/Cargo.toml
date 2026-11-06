@@ -1,0 +1,64 @@
+[package]
+name = "losos-frontend"
+version = "0.1.0"
+edition = "2021"
+publish = false
+authors = ["Matus Mastena <shadiness9530+ou1rlygj@pm.me>"]
+description = "LosOS cross-platform frontend (Dioxus) — replaces the Kotlin companion and targets web, desktop, and mobile"
+license = "AGPL-3.0-or-later"
+
+# Keep its own workspace, consistent with other crates in this repo.
+[workspace]
+
+[lib]
+name = "losos_frontend"
+path = "src/lib.rs"
+
+[[bin]]
+name = "losos-frontend"
+path = "src/main.rs"
+required-features = ["gui"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+thiserror = "2"
+url = "2"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
+urlencoding = "2"
+
+# Shared client primitives (trust, formatting) reused with the TUI.
+losos-client = { path = "../losos-client" }
+
+# HTTP client — platform-appropriate backends via features.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+# Reuse shared crypto/envelope primitives from the workspace backend.
+losos-access = { path = "../../backend/access", optional = true }
+
+# GUI (Dioxus). Optional so the core client compiles in constrained envs.
+dioxus = { version = "0.6", features = ["router"], optional = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+directories = "6"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-sys = { version = "0.3", features = ["Window", "Storage"] }
+
+[features]
+default = ["gui", "desktop"]
+gui = ["dep:dioxus"]
+desktop = ["gui", "dioxus/desktop"]
+web = ["gui", "dioxus/web"]
+mobile = ["gui", "dioxus/mobile"]
+# Enable access-envelope/TUI-shared crypto integration.
+access = ["dep:losos-access"]
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+[profile.release]
+strip = true
+lto = "thin"
+opt-level = "z"

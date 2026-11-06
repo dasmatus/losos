@@ -1,0 +1,9 @@
+# Reproducible cross-platform checks:
+#   core:    cargo test --no-default-features
+#   web:     cargo check --no-default-features --features gui,web --target wasm32-unknown-unknown
+#   desktop: cargo check --no-default-features --features gui,desktop (Linux: webkit2gtk/gtk deps)
+# Mobile packaging requires platform SDKs and `dx`.
+[alias]
+check-core = "check --no-default-features"
+test-core = "test --no-default-features"
+check-web = "check --no-default-features --features gui,web --target wasm32-unknown-unknown"

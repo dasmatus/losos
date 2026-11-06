@@ -150,7 +150,24 @@
               ++ [
                 pkgs.rust-analyzer
                 pkgs.bun
+              ]
+              ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
+                pkgs.pkg-config
               ];
+            buildInputs = pkgs.lib.optionals pkgs.stdenv.isLinux [
+              # Dioxus desktop (admin-ui/dioxus-app) / wry webview deps.
+              pkgs.openssl
+              pkgs.glib
+              pkgs.gtk3
+              pkgs.webkitgtk_4_1
+              pkgs.libsoup_3
+              pkgs.gdk-pixbuf
+              pkgs.cairo
+              pkgs.pango
+              pkgs.atk
+              pkgs.librsvg
+              pkgs.xdotool
+            ];
             inherit (fast) env;
             # The git hooks (nix/hooks) run CI's gates before a commit
             # or a push; this shell installs them as devenv's does.

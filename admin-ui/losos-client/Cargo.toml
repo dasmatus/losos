@@ -1,0 +1,15 @@
+[package]
+name = "losos-client"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Shared LosOS client primitives (trust, formatting, API helpers) reused by the TUI and Dioxus frontend"
+license = "AGPL-3.0-or-later"
+
+[workspace]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+thiserror = "2"
+urlencoding = "2"
