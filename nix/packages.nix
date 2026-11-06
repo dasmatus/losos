@@ -12,7 +12,7 @@
 #                modules/installer.nix draws the installer wrapper from the
 #                same derivation (losos.installer.package).
 #   losos-admin-ui — the admin SPA: React 19 + Tailwind v4, built from
-#                admin-ui/app/ with Bun. $out IS the document root
+#                admin-ui/app/ by Bun's bundler. $out IS the document root
 #                (index.html, hashed assets/, theme-boot.js), served by the
 #                front Nginx vhost with an SPA fallback — one app on real
 #                paths (/, /storage, /mesh, /apps, /settings/<pane>), not the
@@ -376,8 +376,8 @@ let
   # database in the same build. It is its own package so the cache publish
   # (proxy-push, and the Pages copy) stores the database, not a file that
   # would otherwise be committed and then conflict. losos-admin-ui copies
-  # the text into the tree before the build; a checkout writes both itself
-  # (admin-ui/app/scripts/basic-classes.ts), and git ignores them.
+  # the text into the tree before the bundler; a checkout writes both itself
+  # (admin-ui/app/scripts/basic-classes.mjs), and git ignores them.
   losos-basic-classes = pkgs.stdenvNoCC.mkDerivation {
     pname = "losos-basic-classes";
     version = "0.1.0";
@@ -465,8 +465,8 @@ images
       ${finalAttrs.passthru.nodeModules.install}
       runHook postConfigure
     '';
-    # LosOS Lab (lab/index.html, the hosted Diagrams page) imports the Rust core,
-    # the GPU canvas and, for guests on the relay path, the libvirt client.
+    # LosOS Diagrams (src/lab/) imports the Rust core, the GPU canvas and,
+    # for guests on the relay path, the libvirt client.
     preConfigure = mdxPkg;
     preBuild =
       labCorePkg
@@ -476,9 +476,9 @@ images
         mkdir -p src/styles
         cp ${losos-basic-classes}/basic-classes.txt src/styles/basic-classes.txt
       '';
-    # `bun run build` runs `tsc --noEmit` then the Bun build (the guest page
-    # too), all on Bun's runtime, so unlike the Rust crates (doCheck = off,
-    # see below) the typecheck IS part of building the shipping artefact. It
+    # `bun run build` is `tsc --noEmit` and then build.ts, Bun's bundler
+    # (the guest page too), so unlike the Rust crates (doCheck = off, see
+    # below) the typecheck IS part of building the shipping artefact. It
     # costs seconds, not the minutes doCheck costs rustc.
     buildPhase = ''
       runHook preBuild
@@ -489,8 +489,8 @@ images
 
     # $out is the document root itself rather than a packed tarball: index.html
     # at the top, content-hashed bundles under assets/, and the deliberately
-    # unhashed theme-boot.js beside them (admin-ui/app/scripts/bundler.ts explains
-    # why that one file must keep a stable name). modules/containers.nix serves
+    # unhashed theme-boot.js beside them (admin-ui/app/build.ts explains why
+    # that one file must keep a stable name). modules/containers.nix serves
     # $out directly, with an SPA fallback because the app routes on real paths.
     installPhase = ''
       runHook preInstall
@@ -511,7 +511,7 @@ images
       nodeModules = bunDeps {
         pname = "losos-admin-ui";
         src = ./../admin-ui/app;
-        hash = "sha256-ufTZQEkbm+hT4TCyyhCKnVZLdilWQcBcNaqeSnZX8XI=";
+        hash = "sha256-2seXIECP2t5mpVOL+h/ypaxnkoZ17br6r0GoH5ZTXXA=";
       };
     };
   });

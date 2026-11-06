@@ -1088,7 +1088,7 @@ await check('a flick down closes the phone sheet', async () => {
 /* The signed-in Overview, the first page anyone sees, logs no violation
  * under the real policy at either width. Sonner used to inject its
  * stylesheet as a <style> element at load, which the policy refused on
- * every page; sonner-quiet.ts drops that copy and main.tsx bundles
+ * every page; bundler.ts drops that copy and main.tsx bundles
  * the file. */
 await check('under the appliance CSP the signed-in Overview logs no violation', async () => {
   const { origin: strict, close } = await serve({ csp: true });
@@ -1142,9 +1142,9 @@ for (const { name, now, file, tip } of [
     const { page } = await open({ path: '/storage', stored: true, now });
     const logo = page.locator('header').getByRole('img', { name: 'LosOS', exact: true });
     await logo.waitFor();
-    assert.ok(await logo.evaluate((img) => (img as HTMLImageElement).complete && (img as HTMLImageElement).naturalWidth > 0), 'the logo did not load');
-    // The build names a bundled file <name>-<hash>.png, the hash eight letters,
-    // digits, _ or -, so losos-<hash> cannot match losos-halloween-<hash>.
+    assert.ok(await logo.evaluate((img) => img.complete && img.naturalWidth > 0), 'the logo did not load');
+    // The bundler names a bundled file <name>-<hash>.png, the hash eight
+    // letters or digits, so losos-<hash> cannot match losos-halloween-<hash>.
     const bundled = new RegExp(`^/assets/${file}-[\\w-]{8}\\.png$`);
     const src = await logo.getAttribute('src');
     assert.match(src, bundled, `the logo is not the bundled ${file}.png: ${src}`);
