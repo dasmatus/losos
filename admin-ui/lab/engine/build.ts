@@ -1,9 +1,8 @@
 #!/usr/bin/env bun
 // Build the hosted copy of LosOS Lab. Shim target for build.sh.
-import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir, cpus } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { cpus } from "node:os";
 import { spawnSync } from "node:child_process";
 
 function sh(cmd: string[], opts: { cwd?: string; allowFail?: boolean; capture?: boolean } = {}) {
@@ -71,20 +70,25 @@ sh(["tar","xzf",join(WORK,`xterm-${XTERM_VERSION}.tgz`),"-C",join(WORK,"xterm")]
 sh(["tar","xzf",join(WORK,`xterm-pty-${XTERM_PTY_VERSION}.tgz`),"-C",join(WORK,"xterm-pty")]);
 cpSync(join(WORK,"xterm/package/lib/xterm.js"), join(ENG,"vendor/xterm.js")); cpSync(join(WORK,"xterm/package/css/xterm.css"), join(ENG,"vendor/xterm.css"));
 cpSync(join(WORK,"xterm-pty/package/index.js"), join(ENG,"vendor/xterm-pty.js"));
+function copyContents(src: string, dest: string) {
+  const real = realpathSync(src);
+  for (const e of readdirSync(real)) cpSync(join(real, e), join(dest, e), { recursive: true });
+  sh(["chmod", "-R", "u+w", dest]);
+}
+
 console.log("== the page");
 const APP = join(ROOT, "admin-ui/app");
-for (const pkg of ["core","virt","render"]) {
+for (const pkg of ["core", "virt", "render"]) {
   sh(["nix", "build", `${ROOT}#losos-lab-${pkg}`, "--out-link", join(WORK, `lab-${pkg}`)]);
   rmSync(join(APP, `src/lab/${pkg}-pkg`), { recursive: true, force: true });
   mkdirSync(join(APP, `src/lab/${pkg}-pkg`), { recursive: true });
-  cpSync(join(WORK, `lab-${pkg}`), join(APP, `src/lab/${pkg}-pkg`), { recursive: true });
-  chmodSync(join(APP, `src/lab/${pkg}-pkg`), 0o755);
+  copyContents(join(WORK, `lab-${pkg}`), join(APP, `src/lab/${pkg}-pkg`));
 }
-sh(["nix","build", `${ROOT}#losos-mdx-wasm`, "--out-link", join(WORK,"mdx")]);
-rmSync(join(APP,"src/mdx/pkg"), { recursive: true, force: true });
-mkdirSync(join(APP,"src/mdx/pkg"), { recursive: true });
-cpSync(join(WORK,"mdx"), join(APP,"src/mdx/pkg"), { recursive: true });
-sh(["bash","-lc", `cd ${APP} && bun install --frozen-lockfile --ignore-scripts && VITE_LAB_HOSTED=1 bun run build && cp -r dist ${WORK}/dist`]);
+sh(["nix", "build", `${ROOT}#losos-mdx-wasm`, "--out-link", join(WORK, "mdx")]);
+rmSync(join(APP, "src/mdx/pkg"), { recursive: true, force: true });
+mkdirSync(join(APP, "src/mdx/pkg"), { recursive: true });
+copyContents(join(WORK, "mdx"), join(APP, "src/mdx/pkg"));
+sh(["bash", "-lc", `cd ${APP} && bun install --frozen-lockfile --ignore-scripts && bun run typecheck && LOSOS_LAB_HOSTED=1 bun build.ts --outdir ${WORK}/dist`]);
 cpSync(join(WORK,"dist/diagrams"), join(OUT,"diagrams"), { recursive: true });
 cpSync(join(WORK,"dist/assets"), join(OUT,"assets"), { recursive: true });
 cpSync(join(WORK,"dist/theme-boot.js"), join(OUT,"theme-boot.js"));
