@@ -3,7 +3,8 @@ name: handbook-screens
 # Regenerates the handbook's UI screenshots when the admin UI changes.
 #
 # On pull requests: builds the UI, takes the shots, and posts a comment with
-# before/after for any that differ from main.
+# before/after for any that differ from main. The images themselves are hidden
+# inside a collapsible <details> summary so the PR timeline stays readable.
 # On main: takes the shots and commits any that changed, so the handbook
 # stays in step with the UI.
 #
@@ -115,20 +116,66 @@ jobs:
           path: /tmp/handbook-screens/*.png
           retention-days: 7
 
+      - name: publish temporary screenshots for the comment
+        if: github.event_name == 'pull_request' && steps.changes.outputs.changed != ''
+        id: publish
+        run: |
+          # Forks cannot be pushed to with the default token.
+          if [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
+            echo "skipping image publish on fork PR"
+            exit 0
+          fi
+          mkdir -p .github/screenshots/pr-temp
+          # shellcheck disable=SC2086
+          for f in ${{ steps.changes.outputs.changed }}; do
+            cp "/tmp/handbook-screens/$f" ".github/screenshots/pr-temp/$f"
+          done
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/screenshots/pr-temp
+          if git diff --cached --quiet; then
+            echo "no images to publish"
+            exit 0
+          fi
+          git commit -m "chore: temporary handbook screenshots for PR comment"
+          git push
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: comment on PR (before/after)
         if: github.event_name == 'pull_request' && steps.changes.outputs.changed != ''
         uses: actions/github-script@v9
+        env:
+          PUBLISH_SHA: ${{ steps.publish.outputs.sha }}
         with:
           script: |
             const changed = `${{ steps.changes.outputs.changed }}`.trim().split(/\s+/).filter(Boolean);
+            const sha = process.env.PUBLISH_SHA || context.sha;
+            const afterBase = `https://raw.githubusercontent.com/${context.repo.owner}/${context.repo.repo}/${sha}/.github/screenshots/pr-temp`;
+            const beforeBase = `https://raw.githubusercontent.com/${context.repo.owner}/${context.repo.repo}/main/handbook/docs/img`;
+            const rows = changed.map(f => {
+              const before = `![before](${beforeBase}/${encodeURIComponent(f)})`;
+              const after = `![after](${afterBase}/${encodeURIComponent(f)})`;
+              return `| \`${f}\` | ${before} | ${after} |`;
+            });
             const body = [
               '### Handbook screenshots',
               '',
-              'These shots differ from the ones currently in `handbook/docs/img`:',
+              `These ${changed.length} shot${changed.length === 1 ? '' : 's'} differ from the ones currently in \`handbook/docs/img\`.`,
               '',
-              ...changed.map(f => `- \`${f}\``),
+              '<details>',
+              `<summary>View changed screenshots</summary>`,
+              '',
+              '| File | Before | After |',
+              '| ---- | ------ | ----- |',
+              ...rows,
+              '',
+              '</details>',
               '',
               'The full set is in the `handbook-screens` artifact. On merge to main this workflow will commit the updated images.',
+              '',
+              process.env.PUBLISH_SHA
+                ? 'Temporary copies of the new shots live on this branch under `.github/screenshots/pr-temp/` so they can be embedded; feel free to remove that directory before merging.'
+                : 'Images could not be published (fork PR or no changes to commit). Download the artifact to see them.',
             ].join('\n');
             github.rest.issues.createComment({
               owner: context.repo.owner,
