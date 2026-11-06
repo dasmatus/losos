@@ -1,3 +1,4 @@
+import * as React from "react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useT } from "@/lib/i18n-react";
@@ -5,6 +6,7 @@ import { openTour } from "@/tour/store";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue } from "./rows";
 import { describeWindow } from "./window";
 import type { SettingsForm } from "./use-settings-form";
+import { Page, type BlockMap } from "@/pages/page";
 
 /* What this box IS, as opposed to what it is about to become.
  *
@@ -13,9 +15,53 @@ import type { SettingsForm } from "./use-settings-form";
  * "This box is called" would tell an owner their box answers to something it
  * does not yet answer to — on the screen they would go to precisely because
  * they had lost track of that.
+ *
+ * The pane is src/pages/settings.about.mdx, which places its block; an
+ * administrator may write around it (src/pages/README.md).
  */
 
-export function AboutPane({ form }: { form: SettingsForm }) {
+export interface AboutPaneProps {
+  form: SettingsForm;
+}
+
+export function AboutPane(props: AboutPaneProps) {
+  /* The saved facts may not have arrived yet. Show the same skeleton the
+   * pane always showed; <Page> needs the page HTML to be ready, but the
+   * placeholder is independent of page customization. */
+  if (props.form.saved === null) return <AboutSkeleton />;
+  return (
+    <AboutContext.Provider value={props}>
+      <Page id="settings.about" blocks={ABOUT_BLOCKS} />
+    </AboutContext.Provider>
+  );
+}
+
+const AboutContext = React.createContext<AboutPaneProps | null>(null);
+
+const ABOUT_BLOCKS: BlockMap<"settings.about"> = {
+  About() {
+    const props = React.useContext(AboutContext);
+    if (props === null) throw new Error("an about block outside the About pane");
+    return <AboutContent {...props} />;
+  },
+};
+
+function AboutSkeleton() {
+  return (
+    <PaneSection>
+      <Group>
+        {[0, 1, 2, 3].map((row) => (
+          <Row key={row} last={row === 3}>
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-4 w-24" />
+          </Row>
+        ))}
+      </Group>
+    </PaneSection>
+  );
+}
+
+function AboutContent({ form }: AboutPaneProps) {
   const t = useT();
   const saved = form.saved;
 
@@ -28,22 +74,8 @@ export function AboutPane({ form }: { form: SettingsForm }) {
    * who had just reached the box by its IP address to go somewhere that did
    * not load. */
   const here = browserOrigin();
-  const byName = saved === null ? "" : `${window.location.protocol}//${saved.hostName}.local`;
-
-  if (saved === null) {
-    return (
-      <PaneSection>
-        <Group>
-          {[0, 1, 2, 3].map((row) => (
-            <Row key={row} last={row === 3}>
-              <Skeleton className="h-4 w-40" />
-              <Skeleton className="h-4 w-24" />
-            </Row>
-          ))}
-        </Group>
-      </PaneSection>
-    );
-  }
+  if (saved === null) return <AboutSkeleton />;
+  const byName = `${window.location.protocol}//${saved.hostName}.local`;
 
   return (
     <>
