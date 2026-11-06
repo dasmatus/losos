@@ -61,12 +61,14 @@ let
     "admin-ui/dioxus-app"
   ];
   # dioxus-app is core-only in generic gates (no desktop webview deps needed).
-  clippyArgs = c:
+  clippyArgs =
+    c:
     if c == "admin-ui/dioxus-app" then
       "--manifest-path ${c}/Cargo.toml --no-default-features --all-targets -- -D warnings"
     else
       "--manifest-path ${c}/Cargo.toml --all-targets -- -D warnings";
-  testArgs = c:
+  testArgs =
+    c:
     if c == "admin-ui/dioxus-app" then
       "--manifest-path ${c}/Cargo.toml --no-default-features"
     else
@@ -229,21 +231,24 @@ in
       jq
       curl
     ])
-    ++ (lib.optionals pkgs.stdenv.isLinux (with pkgs; [
-      # Dioxus desktop (admin-ui/dioxus-app) / wry: Linux webview deps.
-      pkg-config
-      openssl
-      glib
-      gtk3
-      webkitgtk_4_1
-      libsoup_3
-      gdk-pixbuf
-      cairo
-      pango
-      atk
-      librsvg
-      xdotool
-    ]))
+    ++ (lib.optionals pkgs.stdenv.isLinux (
+      with pkgs;
+      [
+        # Dioxus desktop (admin-ui/dioxus-app) / wry: Linux webview deps.
+        pkg-config
+        openssl
+        glib
+        gtk3
+        webkitgtk_4_1
+        libsoup_3
+        gdk-pixbuf
+        cairo
+        pango
+        atk
+        librsvg
+        xdotool
+      ]
+    ))
     ++ (with pkgs; [
       # Shell UX, carried over from the flake/devshell.nix this file replaces:
       # the host fish config minus Zellij, which would wrap the shell in a
