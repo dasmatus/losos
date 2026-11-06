@@ -476,6 +476,11 @@ jobs:
           # fails before any NixOS configuration can be evaluated.
           fetch-depth: 0
       - uses: ./.github/actions/setup-nix
+      # lint-nix.sh and check-flake.sh are Bun. The pins job already installs
+      # it; this job calls the same shims and does not.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
       # Mirrors devenv.nix's `lint-nix` and the git hooks: nixfmt, deadnix
       # and statix over every tracked .nix file. Without it the tree drifted
       # until the hooks refused every commit that touched an unformatted file.
