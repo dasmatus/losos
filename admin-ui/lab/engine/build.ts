@@ -50,7 +50,7 @@ sh(["docker", "exec", "losos-lab-qemu", "emmake", "make", `-j${cpus().length}`, 
 sh(["docker", "cp", "losos-lab-qemu:/build/qemu-system-x86_64", join(ENG, "qemu/out.js")]);
 sh(["docker", "cp", "losos-lab-qemu:/build/qemu-system-x86_64.wasm", join(ENG, "qemu/")]);
 sh(["docker", "cp", "losos-lab-qemu:/build/qemu-system-x86_64.worker.js", join(ENG, "qemu/")]);
-for (const f of ["bios-256k.bin", "vgabios-stdvga.bin", "kvmvapic.bin", "linuxboot_dma.bin", "efi-virtio.rom"]) cpSync(join(WORK,"qemu-wasm/pc-bios",f), join(ENG,"qemu/pc-bios/"));
+for (const f of ["bios-256k.bin", "vgabios-stdvga.bin", "kvmvapic.bin", "linuxboot_dma.bin", "efi-virtio.rom"]) cpSync(join(WORK,"qemu-wasm/pc-bios",f), join(ENG,"qemu/pc-bios",f));
 console.log("== guest kernel and the LosOS stand-in rootfs");
 const ctx = join(WORK, "guest");
 cpSync(join(HERE, "guest"), ctx, { recursive: true });
@@ -58,7 +58,7 @@ sh(["bash", "-lc", `curl -sSfL "https://cdn.kernel.org/pub/linux/kernel/v6.x/lin
 sh(["bash", "-lc", `mv "${ctx}/linux-${LINUX_VERSION}" "${ctx}/linux"`]);
 sh(["curl", "-sSfL", "-o", join(ctx, BUSYBOX_TARBALL), `http://archive.ubuntu.com/ubuntu/pool/main/b/busybox/${BUSYBOX_TARBALL}`]);
 sh(["docker", "build", "-q", "-o", join(WORK, "guest-out"), ctx]);
-cpSync(join(WORK,"guest-out/bzImage"), join(ENG,"guest/")); cpSync(join(WORK,"guest-out/rootfs.bin"), join(ENG,"guest/"));
+cpSync(join(WORK,"guest-out/bzImage"), join(ENG,"guest/bzImage")); cpSync(join(WORK,"guest-out/rootfs.bin"), join(ENG,"guest/rootfs.bin"));
 console.log("== Netzgeräte Betriebssystem (nix, against the flake's own nixpkgs)");
 const NIXPKGS = sh(["nix", "eval", "--raw", "--impure", "--expr", `let lock = builtins.fromJSON (builtins.readFile "${ROOT}/flake.lock"); in (builtins.fetchTree lock.nodes.\${lock.nodes.root.inputs.nixpkgs}.locked).outPath`], { capture: true }).stdout.trim();
 sh(["nix-build", join(HERE, "gear/netzgeraete.nix"), "--arg", "nixpkgs", NIXPKGS, "-o", join(WORK, "gear")]);
@@ -69,7 +69,7 @@ sh(["curl", "-fsSL", "-o", join(WORK, `xterm-pty-${XTERM_PTY_VERSION}.tgz`), `ht
 mkdirSync(join(WORK,"xterm"),{recursive:true}); mkdirSync(join(WORK,"xterm-pty"),{recursive:true});
 sh(["tar","xzf",join(WORK,`xterm-${XTERM_VERSION}.tgz`),"-C",join(WORK,"xterm")]);
 sh(["tar","xzf",join(WORK,`xterm-pty-${XTERM_PTY_VERSION}.tgz`),"-C",join(WORK,"xterm-pty")]);
-cpSync(join(WORK,"xterm/package/lib/xterm.js"), join(ENG,"vendor/")); cpSync(join(WORK,"xterm/package/css/xterm.css"), join(ENG,"vendor/"));
+cpSync(join(WORK,"xterm/package/lib/xterm.js"), join(ENG,"vendor/xterm.js")); cpSync(join(WORK,"xterm/package/css/xterm.css"), join(ENG,"vendor/xterm.css"));
 cpSync(join(WORK,"xterm-pty/package/index.js"), join(ENG,"vendor/xterm-pty.js"));
 console.log("== the page");
 const APP = join(ROOT, "admin-ui/app");
