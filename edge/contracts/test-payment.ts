@@ -53,7 +53,7 @@ if(bal(PAY)!=="2000000"||bal(SELLER)!=="0") process.exit(1);
 const receipt = sh(`curl -sf -X POST -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"eth_getTransactionReceipt","params":["${TX}"]}' ${RPC} | jq .result`,{capture:true}).stdout;
 console.log("== wallet: MetaMask derivation, then a real payment ==");
 if(!existsSync("wallet/node_modules/viem")) sh("npm install --prefix wallet --silent");
-sh("bun contracts/wallet/check.ts 84532 > /tmp/losos-payout.json");
+sh("bun wallet/check.ts 84532 > /tmp/losos-payout.json");
 writeFileSync("/tmp/losos-anvil-payment.json", JSON.stringify({pay:PAY,seller:SELLER,order_id_hash:HASH,gross:"2000000",fee:"80000",deadline:DEADLINE,buyer_box:BUYER_BOX,seller_box:SELLER_BOX,deposit:1,receipt:JSON.parse(receipt),payout_address:JSON.parse(readFileSync("/tmp/losos-payout.json","utf8")).address,payout_message:JSON.parse(readFileSync("/tmp/losos-payout.json","utf8")).message,payout_signature:JSON.parse(readFileSync("/tmp/losos-payout.json","utf8")).signature}));
 console.log("wrote /tmp/losos-anvil-payment.json");
 writeFileSync("/tmp/losos-anvil-escrow.json", JSON.stringify({rpc:RPC,escrow:PAY,deposit:1,releaser_key:RELEASER_KEY,seller_box_key:SELLER_BOX_KEY}));
