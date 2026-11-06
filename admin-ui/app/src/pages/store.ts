@@ -157,8 +157,8 @@ export function closePageEditor(): void {
 
 // ── The administrators' stylesheet ────────────────────────────────────────
 
-/* A <link> at the end of <body>, after every stylesheet Vite puts in
- * <head> (the lazy screens' included), so an equal rule of the
+/* A <link> at the end of <body>, after every stylesheet the bundler puts
+ * in <head> (the lazy screens' included), so an equal rule of the
  * administrator's wins. Served from the box, which the admin page's
  * `style-src 'self'` allows. */
 const LINK_ID = "losos-pages-style";

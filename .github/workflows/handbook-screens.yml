@@ -77,7 +77,7 @@ jobs:
 
       - name: build admin UI
         working-directory: admin-ui/app
-        run: bun run build
+        run: bun build.ts
 
       - name: install Playwright Chromium
         working-directory: admin-ui/app

@@ -38,7 +38,7 @@ Neuen Zustand trägst du in `modules/impermanence.nix` ein.
 | -------------- | ---- |
 | `lososd`       | Systemd-Daemon als root (Rust). Einziger Schreiber von `/var/lib/losos/state.json`. D-Bus-Dienst `org.losos1` und eine per Token authentifizierte JSON-API auf `127.0.0.1:8082`. |
 | `losos-ctl`    | CLI, die jeden Unterbefehl über D-Bus an `lososd` weiterreicht. `losos-ctl install` läuft eigenständig auf der ISO. |
-| `losos-admin-ui` | SPA aus React + Tailwind v4 (gebaut mit Buns Bundler), ausgeliefert von nginx, das `/api/*` an `lososd` weiterleitet. |
+| `losos-admin-ui` | SPA aus React + Tailwind, gebündelt von Bun, ausgeliefert von nginx, das `/api/*` an `lososd` weiterleitet. |
 
 Rebuilds laufen als transiente systemd-Units (`losos-rebuild-<job>`).
 `nixos-rebuild switch` startet `lososd` neu, daher hängt sich der Daemon beim
@@ -194,7 +194,7 @@ reicht jeden Aufruf über D-Bus an lososd weiter. `losos-ctl install` bleibt
 lokal, weil der ISO-Installer als root läuft und keinen Bus braucht.
 
 Die Admin-UI (`admin-ui/app/`, paketiert als `losos-admin-ui` mit
-Bun) ist eine React-19- und Tailwind-v4-SPA auf Bun gebaut, auf echten
+Bun) ist eine SPA aus React 19 und Tailwind v4, gebündelt von Bun, auf echten
 Pfaden (`/`, `/apps`, `/storage`, `/mesh`, `/settings/<pane>`). Ihr gebautes
 `dist/` **ist** das Document Root des vorderen nginx-vhosts, ausgeliefert mit
 `try_files $uri $uri/ /index.html`. Ohne diese Zeile ist jeder Deep Link und

@@ -21,10 +21,10 @@ let
   ui = shipped.overrideAttrs (o: {
     pname = "losos-admin-ui-svg-only";
     preBuild = o.passthru.labCorePkg + o.passthru.labVirtPkg + noGpu;
-    # vite alone: the type check needs the real module's declarations.
+    # The bundler alone: the type check needs the real module's declarations.
     buildPhase = ''
       runHook preBuild
-      bun --bun vite build
+      bun build.ts
       runHook postBuild
     '';
   });

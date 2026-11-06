@@ -15,8 +15,8 @@
 
 import assert from './assert.ts';
 
-// The editor fetches the wasm by URL; the Bun build serves it from the
-// bundle, and here initSync below has already handed the module over.
+// What bundler.ts does for `?url`: the editor fetches the wasm by that URL, and
+// here initSync below has already handed the module over.
 Bun.plugin({
   name: 'wasm-url',
   setup(build) {

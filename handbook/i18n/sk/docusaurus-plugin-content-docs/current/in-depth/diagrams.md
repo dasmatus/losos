@@ -151,7 +151,7 @@ prehliadač smel skompilovať jadro; stránka smie skompilovať WebAssembly a
 nič viac, a skripty stále prichádzajú iba z vlastných súborov zariadenia.
 
 Hostovaná kópia je tá istá obrazovka na vlastnej stránke
-(`admin-ui/app/diagrams/index.html`, zostavenej iba s `VITE_LAB_HOSTED=1`), plus
+(`admin-ui/app/diagrams/index.html`, zostavenej iba s `LOSOS_LAB_HOSTED=1`), plus
 [qemu-wasm](https://github.com/ktock/qemu-wasm): QEMU skompilované do
 WebAssembly, takže každá konzola je skutočný linuxový host v karte
 prehliadača. Zariadenia a edge bootujú busybox ako náhradu za LosOS a sieťové

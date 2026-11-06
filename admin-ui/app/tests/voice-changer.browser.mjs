@@ -8,7 +8,7 @@
  */
 
 import assert from './assert.mjs';
-import { launch } from './harness.mjs';
+import { launch } from './harness.ts';
 import { startFront } from './fixtures/calls/front.ts';
 
 const here = (p) => `${import.meta.dir}/${p}`;
