@@ -30,9 +30,9 @@ the token and lands back on the connect screen, like the SPA's eviction.
 | Tab | Reads | Status |
 |---|---|---|
 | Dashboard | `GET /api/health*`, `/api/status`, `/api/storage`, `/api/apps`, `/api/settings` | real, read-only |
-| Storage | `GET /api/storage` | real, read-only; spending the reserve (`POST /api/grow`) stays on the web UI |
+| Storage | `GET /api/storage`, `POST /api/grow` | real, with a guarded reserve-spend action (online grow, no rebuild) |
 | Mesh | `GET /api/edge`, `GET /api/settings` | real, read-only; the sharing toggles (`POST /api/apply`) stay on the web UI |
-| Apps | `GET /api/apps`, `GET /api/apps/search?q=` | real, read-only; install/remove (`POST /api/apps/install|remove`) stays on the web UI |
+| Apps | `GET /api/apps`, `GET /api/apps/search?q=`, `GET /api/apps/chart?...`, `POST /api/apps/install`, `POST /api/apps/remove` | real, with guarded install/remove actions (install uses chart details, confirms release, runs as `notshared` with default values) |
 | Network | `GET /api/settings` | real, read-only |
 | Security | `GET /api/settings` | real, read-only |
 | Advanced | `GET /api/options` | real, read-only |
