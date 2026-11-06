@@ -131,20 +131,19 @@ impl BoxApi {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn build_client(trust: &Trust) -> Result<reqwest::Client, ApiError> {
-    let mut b = reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(4))
-        .user_agent(format!("losos-frontend/{}", env!("CARGO_PKG_VERSION")));
-    match trust {
-        Trust::Public => {}
-        Trust::Permissive | Trust::FirstUse | Trust::Pinned(_) => {
-            // TODO: TOFU cert-hash verification mirroring admin-ui/tui/src/http.rs.
-            b = b.danger_accept_invalid_certs(true);
-        }
-    }
-    b.build().map_err(|e| ApiError {
+    let tls = crate::tls::client_config(trust).map_err(|e| ApiError {
         status: 0,
-        message: e.to_string(),
-    })
+        message: e,
+    })?;
+    reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(4))
+        .user_agent(format!("losos-frontend/{}", env!("CARGO_PKG_VERSION")))
+        .use_preconfigured_tls(tls)
+        .build()
+        .map_err(|e| ApiError {
+            status: 0,
+            message: e.to_string(),
+        })
 }
 
 #[cfg(target_arch = "wasm32")]

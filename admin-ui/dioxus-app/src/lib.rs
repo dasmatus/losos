@@ -6,6 +6,8 @@
 
 pub mod api;
 pub mod store;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod tls;
 
 #[cfg(feature = "gui")]
 pub mod app;

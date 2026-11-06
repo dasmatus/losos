@@ -42,6 +42,12 @@ dioxus = { version = "0.6", features = ["router"], optional = true }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 directories = "6"
+# TLS trust/TOFU verification (mirrors admin-ui/tui/src/http.rs), avoids blanket
+# danger_accept_invalid_certs for CodeQL/safety.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+webpki-roots = "0.26"
+sha2 = "0.10"
+hex = "0.4"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 web-sys = { version = "0.3", features = ["Window", "Storage"] }

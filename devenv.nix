@@ -229,7 +229,7 @@ in
       jq
       curl
     ])
-    ++ (pkgs.lib.optionals pkgs.stdenv.isLinux (with pkgs; [
+    ++ (lib.optionals pkgs.stdenv.isLinux (with pkgs; [
       # Dioxus desktop (admin-ui/dioxus-app) / wry: Linux webview deps.
       pkg-config
       openssl
