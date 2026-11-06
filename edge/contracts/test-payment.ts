@@ -28,7 +28,17 @@ const anvilLog = openSync("/tmp/losos-anvil.log", "w");
 const anvil = spawn("anvil", ["--port", PORT, "--silent"], { stdio: ["ignore", "ignore", anvilLog] });
 process.on("exit", ()=>{ try{anvil.kill();}catch{} });
 for(let i=0;i<50;i++){ if(spawnSync("curl",["-sf","-o","/dev/null","--max-time","1","-X","POST","-H","content-type: application/json","--data",'{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}',RPC]).status===0) break; await Bun.sleep(100); }
-const jf = (json:string,field:string)=>JSON.parse(json.split('\n').filter(l=>l.trim().startsWith('{')).join('\n')||json)[field];
+const jf = (json: string, field: string) => {
+  const tryParse = (s: string) => { try { return JSON.parse(s); } catch { return null; } };
+  const direct = tryParse(json.trim());
+  if (direct && typeof direct === "object" && field in direct) return direct[field];
+  const start = json.indexOf("{"), end = json.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    const obj = tryParse(json.slice(start, end + 1));
+    if (obj && typeof obj === "object" && field in obj) return obj[field];
+  }
+  throw new Error(`could not parse ${field} from forge/cast output: ${json.slice(0, 200)}`);
+};
 const USDC = jf(sh(`forge create src/MockUSDC.sol:MockUSDC --rpc-url ${RPC} --private-key ${KEY} --broadcast --json`,{capture:true}).stdout,"deployedTo");
 const PAY = jf(sh(`forge create src/LososEscrow.sol:LososEscrow --rpc-url ${RPC} --private-key ${KEY} --broadcast --json --constructor-args ${USDC} ${TREASURY} ${RELEASER}`,{capture:true}).stdout,"deployedTo");
 sh(`cast send ${USDC} "mint(address,uint256)" ${BUYER} 2000000 --rpc-url ${RPC} --private-key ${KEY} >/dev/null`);
