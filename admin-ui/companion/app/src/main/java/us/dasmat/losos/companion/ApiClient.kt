@@ -39,8 +39,12 @@ class BoxApi(
     suspend fun get(path: String, anonymous: Boolean = false): JSONObject =
         call(path, "GET", null, anonymous)
 
-    /** POST a bodyless action; none of the phone's ones carry a payload. */
+    /** POST a bodyless action. */
     suspend fun post(path: String): JSONObject = call(path, "POST", null, false)
+
+    /** POST JSON; app install/remove and other actions carry a body. */
+    suspend fun post(path: String, body: JSONObject): JSONObject =
+        call(path, "POST", body.toString(), false)
 
     private suspend fun call(
         path: String,
