@@ -12,7 +12,7 @@
  *             arm, so it wins in both directions.
  *
  * Deliberately framework-agnostic: src/theme-boot.ts compiles this file into
- * the tiny blocking script that runs before first paint (see scripts/bundler.ts),
+ * the tiny blocking script that runs before first paint (see build.ts),
  * and anything React in here would drag React into that script. The React
  * binding lives in components/ui/theme-toggle.tsx.
  *

@@ -1,2 +1,3 @@
-/** Vite plugin: write the gitignored class list before Tailwind scans. */
-export function basicClasses(): { name: string };
+/** Write the gitignored class list before Tailwind scans, where the plugin
+ * sources are beside the UI (a checkout). */
+export function basicClasses(): Promise<void>;

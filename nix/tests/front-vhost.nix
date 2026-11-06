@@ -223,7 +223,7 @@ pkgs.testers.nixosTest {
         # It cannot be inline (script-src 'self') and it cannot be a module
         # (deferred, so it would run after the paint), so its <script src> tag
         # in the served document is the only evidence the arrangement survived
-        # the build. See admin-ui/app/scripts/bundler.ts.
+        # the build. See admin-ui/app/build.ts.
         assert "/theme-boot.js" in body, f"the pre-paint theme script is not linked: {body!r}"
         # The fallback itself: a path that exists only as a client-side route
         # must return the SAME document, not a 404 and not a different page.

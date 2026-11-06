@@ -305,7 +305,7 @@ async function open({
   });
   await page.goto(origin + path, { waitUntil: 'networkidle' });
   /* Nothing is refused at load: Sonner's injected copy of its stylesheet is
-   * dropped at build by the Bun build scripts and the bundle carries the file.
+   * dropped at build (bundler.ts) and the bundle carries the file.
    * Nothing after that may add a violation either. */
   const atLoad = await page.evaluate(() => window.__violations);
   assert.deepEqual(atLoad, [], `CSP violations at load: ${JSON.stringify(atLoad)}`);
@@ -625,12 +625,18 @@ await check('filters are made, switched off and reordered, and saved whole', asy
   });
   await dialog.getByText('From contains "eva@" or Subject contains "lake" → LosOS box, Flag it').waitFor();
 
+  const beforeToggle = calls.filter((c) => 'filters' in c).length;
   await dialog.getByRole('switch', { name: 'Use "News"' }).click({ force: true });
   await dialog.getByText('Off', { exact: true }).waitFor();
-  assert.equal(saved.filters[0]!.enabled, false);
+  while (calls.filter((c) => 'filters' in c).length <= beforeToggle) await page.waitForTimeout(50);
+  const toggled = calls.filter((c) => 'filters' in c).at(-1)! as { filters: Filter[] };
+  assert.equal(toggled.filters[0]!.enabled, false);
+  const beforeMove = calls.filter((c) => 'filters' in c).length;
   await dialog.locator('[data-filter="Eva"]').getByRole('button', { name: 'Move up' }).click();
   await page.waitForFunction(() => document.querySelector('[data-filter]')?.getAttribute('data-filter') === 'Eva');
-  assert.deepEqual(saved.filters.map((f) => f.name), ['Eva', 'News']);
+  while (calls.filter((c) => 'filters' in c).length <= beforeMove) await page.waitForTimeout(50);
+  const moved = calls.filter((c) => 'filters' in c).at(-1)! as { filters: Filter[] };
+  assert.deepEqual(moved.filters.map((f) => f.name), ['Eva', 'News']);
   await dialog.getByRole('button', { name: 'Done' }).click();
   await dialog.waitFor({ state: 'detached' });
   await done();
