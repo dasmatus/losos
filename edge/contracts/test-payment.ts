@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Pay a real USDC deposit into LososEscrow on a local chain (anvil), etc.
 // Shim target for test-payment.sh. Preserves behavior.
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
@@ -24,7 +24,8 @@ const RPC="http://127.0.0.1:8545", KEY="0xac0974bec39a17e36ba4a6b4d238ff944bacb4
  BUYER_BOX="0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc", SELLER_BOX="0x976EA74026E726554dB657fA54763abd0C3a0aa9",
  SELLER_BOX_KEY="0x92db14e403b83dfe3df233f83dfa3a0d7096f21ca9b0d6d6b8d88b2b4ec1564e", PORT="8545";
 if (spawnSync("curl",["-sf","-o","/dev/null","--max-time","1",RPC]).status===0) { console.error(`something is already on ${PORT}`); process.exit(1); }
-const anvil = spawn("anvil", ["--port", PORT, "--silent"], { stdio: ["ignore", "ignore", Bun.file("/tmp/losos-anvil.log").writer() as any] });
+const anvilLog = openSync("/tmp/losos-anvil.log", "w");
+const anvil = spawn("anvil", ["--port", PORT, "--silent"], { stdio: ["ignore", "ignore", anvilLog] });
 process.on("exit", ()=>{ try{anvil.kill();}catch{} });
 for(let i=0;i<50;i++){ if(spawnSync("curl",["-sf","-o","/dev/null","--max-time","1","-X","POST","-H","content-type: application/json","--data",'{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}',RPC]).status===0) break; await Bun.sleep(100); }
 const jf = (json:string,field:string)=>JSON.parse(json.split('\n').filter(l=>l.trim().startsWith('{')).join('\n')||json)[field];
