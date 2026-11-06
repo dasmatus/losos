@@ -2307,7 +2307,7 @@ in
       default = null;
       internal = true;
       description = ''
-        Store path of the built admin SPA: a Vite `dist/` tree with index.html
+        Store path of the built admin SPA: a `dist/` tree with index.html
         at its root, content-hashed bundles under assets/, and the
         deliberately unhashed theme-boot.js beside them. This is the front
         vhost's document root, served with an SPA fallback

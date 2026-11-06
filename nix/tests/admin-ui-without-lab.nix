@@ -1,6 +1,6 @@
 # The admin UI for a VM test that never opens Diagrams.
 #
-# The SPA imports the Diagrams screen lazily, so `tsc` and Vite still
+# The SPA imports the Diagrams screen lazily, so `tsc` and the bundler still
 # resolve its three WebAssembly packages (src/lab/{core,virt,render}-pkg),
 # and those take most of an hour to build. Stand-ins with the same module
 # names take their place; every page and the normal `bun run build` stay.

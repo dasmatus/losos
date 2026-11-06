@@ -13,7 +13,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 losos-plugin.workspace = true
 # The same reader the build compiles the default pages with
-# (admin-ui/app/vite.pages.ts), so a page that saves here draws there.
+# (admin-ui/app/pages.ts), so a page that saves here draws there.
 losos-mdx = { path = "../../mdx" }
 serde.workspace = true
 serde_json.workspace = true
