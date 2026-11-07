@@ -89,6 +89,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-nix
+      - uses: oven-sh/setup-bun@v2
       - name: clone every branch and tag, bare
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

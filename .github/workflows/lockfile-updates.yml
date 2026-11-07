@@ -25,6 +25,7 @@ jobs:
           # The PR branch is pushed later with LOCKFILE_UPDATE_TOKEN so the
           # resulting push/PR can trigger downstream CI.
           persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
       - uses: ./.github/actions/setup-nix
       # flake.lock and devenv.{yaml,lock} are coupled: the flake's nixpkgs rev
       # must be copied into devenv.yaml before devenv.lock is regenerated.
