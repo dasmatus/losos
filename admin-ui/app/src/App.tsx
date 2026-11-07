@@ -89,6 +89,8 @@ const Mail = React.lazy(() => import("@/mail/app"));
 /* LosOS Wiki (src/wikis/): the box's directory of wikis and the editor of
  * LosOS Git's spaces. */
 const Wikis = React.lazy(() => import("@/wikis/app"));
+/* LosOS Forum (src/forum/): Phase 0 scaffold/contracts shell; full UI pending Phase 1+. */
+const Forum = React.lazy(() => import("@/forum/page"));
 /* LosOS Contacts (src/contacts/): kept in chat's homeserver, so on the
  * shared side only, like Mail and Chat. */
 const Contacts = React.lazy(() => import("@/contacts/app"));
@@ -439,6 +441,7 @@ function Shell() {
             <Route path="/ci" element={<Ci />} />
             <Route path="/ci/runs/:id" element={<Ci />} />
             <Route path="/diagrams/*" element={<Diagrams />} />
+            <Route path="/forum/*" element={<Forum />} />
             <Route path="/wikis/*" element={<Wikis />} />
             <Route path="/settings" element={<SettingsRoute />} />
             <Route path="/settings/:pane" element={<SettingsRoute />} />
