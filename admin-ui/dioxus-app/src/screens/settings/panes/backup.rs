@@ -68,6 +68,25 @@ pub fn BackupPane() -> Element {
                     },
                     if *busy.read() { "Working…" } else { "Run backup" }
                 }
+                if view().as_ref().and_then(|v| v.get("target")).is_some_and(|t| !t.is_null()) {
+                    Button {
+                        kind: "ghost".to_string(),
+                        disabled: *busy.read(),
+                        onclick: move |_| {
+                            let cfg = config();
+                            spawn(async move {
+                                busy.set(true);
+                                error.set(None);
+                                match api::delete_backup_target(&cfg).await {
+                                    Ok(_) => { let n = *refresh.read() + 1; refresh.set(n); }
+                                    Err(e) => { if e.status == 401 { clear_auth(config, auth_sig); } error.set(Some(e.message)); }
+                                }
+                                busy.set(false);
+                            });
+                        },
+                        "Remove backup target"
+                    }
+                }
                 Button { kind: "ghost".to_string(), onclick: move |_| { let n = *refresh.read() + 1; refresh.set(n); }, "Refresh" }
             }
 
