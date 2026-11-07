@@ -36,28 +36,34 @@ pub enum Action {
     Post(String, Value),
 }
 
-fn make_api(config: &BoxConfig) -> Result<BoxApi, ApiError> {
+pub(crate) fn make_api(config: &BoxConfig) -> Result<BoxApi, ApiError> {
     let trust = if let Some(pin) = config.tls_pin.as_deref().filter(|s| !s.is_empty()) {
         Trust::Pinned(pin.to_string())
     } else {
-        Trust::Permissive
+        // TOFU: accept and record the certificate on first use; callers can persist
+        // the observed pin. Prefer an explicit pin over implicit trust.
+        Trust::FirstUse
     };
     BoxApi::new(&config.host, &config.token, trust)
 }
 
-pub fn is_unauthorized(err: &ApiError) -> bool {
-    err.status == 401
-}
-
-/// Clear bearer auth on 401 and persist config. Callers should also update
-/// UI/auth gate state (e.g. set gate to Signin) as appropriate.
-pub fn on_unauthorized(config: &mut BoxConfig) {
-    auth::drop_token(config);
-    store::save(config);
-}
-
-pub async fn dispatch(config: &BoxConfig, action: Action) -> Result<Value, ApiError> {
+/// Dispatch an action and, on native TOFU (no configured pin), persist the
+/// observed certificate hash on success so subsequent requests use pinning.
+pub async fn dispatch_with_pin(config: &mut BoxConfig, action: Action) -> Result<Value, ApiError> {
     let api = make_api(config)?;
+    let res = dispatch_via(&api, action).await;
+    if res.is_ok() && config.tls_pin.as_deref().unwrap_or("").is_empty() {
+        if let Some(pin) = api.observed_tls_pin() {
+            if !pin.is_empty() {
+                config.tls_pin = Some(pin);
+                store::save(config);
+            }
+        }
+    }
+    res
+}
+
+async fn dispatch_via(api: &BoxApi, action: Action) -> Result<Value, ApiError> {
     match action {
         Action::Overview => api.get("/api/overview").await,
         Action::CloudStatus => api.get("/api/cloud/status").await,
@@ -79,6 +85,22 @@ pub async fn dispatch(config: &BoxConfig, action: Action) -> Result<Value, ApiEr
         Action::Get(path) => api.get(&path).await,
         Action::Post(path, body) => api.post_json(&path, body).await,
     }
+}
+
+pub fn is_unauthorized(err: &ApiError) -> bool {
+    err.status == 401
+}
+
+/// Clear bearer auth on 401 and persist config. Callers should also update
+/// UI/auth gate state (e.g. set gate to Signin) as appropriate.
+pub fn on_unauthorized(config: &mut BoxConfig) {
+    auth::drop_token(config);
+    store::save(config);
+}
+
+pub async fn dispatch(config: &BoxConfig, action: Action) -> Result<Value, ApiError> {
+    let api = make_api(config)?;
+    dispatch_via(&api, action).await
 }
 
 fn json_obj(pairs: &[(&str, &str)]) -> Value {

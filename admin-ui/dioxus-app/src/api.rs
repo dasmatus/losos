@@ -37,6 +37,8 @@ pub struct BoxApi {
     token: String,
     trust: Trust,
     http: reqwest::Client,
+    #[cfg(not(target_arch = "wasm32"))]
+    tls_obs: crate::tls::TlsObservation,
 }
 
 impl BoxApi {
@@ -46,12 +48,17 @@ impl BoxApi {
         } else {
             format!("https://{}", address.trim_end_matches('/'))
         };
+        #[cfg(not(target_arch = "wasm32"))]
+        let (http, tls_obs) = build_client(&trust)?;
+        #[cfg(target_arch = "wasm32")]
         let http = build_client(&trust)?;
         Ok(Self {
             base,
             token: token.into(),
             trust,
             http,
+            #[cfg(not(target_arch = "wasm32"))]
+            tls_obs,
         })
     }
 
@@ -60,6 +67,31 @@ impl BoxApi {
     }
     pub fn trust(&self) -> &Trust {
         &self.trust
+    }
+
+    /// Observed TLS certificate hash (native TOFU/pinning). `None` on wasm or
+    /// when the public CA chain was used without custom observation.
+    pub fn observed_tls_pin(&self) -> Option<String> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.tls_obs.seen_hash()
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            None
+        }
+    }
+
+    /// True when a pinned certificate was presented but did not match (native).
+    pub fn tls_pin_changed(&self) -> bool {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.tls_obs.pin_changed()
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            false
+        }
     }
 
     pub async fn get(&self, path: &str) -> Result<Value, ApiError> {
@@ -130,12 +162,12 @@ impl BoxApi {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn build_client(trust: &Trust) -> Result<reqwest::Client, ApiError> {
-    let tls = crate::tls::client_config(trust).map_err(|e| ApiError {
+fn build_client(trust: &Trust) -> Result<(reqwest::Client, crate::tls::TlsObservation), ApiError> {
+    let (tls, obs) = crate::tls::client_config(trust).map_err(|e| ApiError {
         status: 0,
         message: e,
     })?;
-    reqwest::Client::builder()
+    let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(4))
         .user_agent(format!("losos-frontend/{}", env!("CARGO_PKG_VERSION")))
         .use_preconfigured_tls(tls)
@@ -143,7 +175,8 @@ fn build_client(trust: &Trust) -> Result<reqwest::Client, ApiError> {
         .map_err(|e| ApiError {
             status: 0,
             message: e.to_string(),
-        })
+        })?;
+    Ok((client, obs))
 }
 
 #[cfg(target_arch = "wasm32")]

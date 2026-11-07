@@ -20,12 +20,30 @@ fn crypto_provider() -> Arc<CryptoProvider> {
     P.get_or_init(|| Arc::new(ring::default_provider())).clone()
 }
 
+/// Observed certificate state from the TLS verifier (native only).
+#[derive(Clone, Default, Debug)]
+pub struct TlsObservation {
+    seen: Arc<Mutex<Option<String>>>,
+    changed: Arc<Mutex<bool>>,
+}
+
+impl TlsObservation {
+    pub fn seen_hash(&self) -> Option<String> {
+        self.seen.lock().ok().and_then(|g| g.clone())
+    }
+
+    pub fn pin_changed(&self) -> bool {
+        self.changed.lock().ok().map(|g| *g).unwrap_or(false)
+    }
+}
+
 #[derive(Debug)]
 struct Verifier {
     web: Arc<WebPkiServerVerifier>,
     provider: Arc<CryptoProvider>,
     trust: Trust,
-    seen: Mutex<Option<String>>,
+    seen: Arc<Mutex<Option<String>>>,
+    changed: Arc<Mutex<bool>>,
 }
 
 fn sha256_hex(der: &[u8]) -> String {
@@ -55,12 +73,24 @@ impl ServerCertVerifier for Verifier {
         let hash = sha256_hex(end_entity.as_ref());
         match &self.trust {
             Trust::Pinned(pin) if pin.eq_ignore_ascii_case(&hash) => {
-                *self.seen.lock().unwrap() = Some(hash);
+                if let Ok(mut g) = self.seen.lock() {
+                    *g = Some(hash);
+                }
                 Ok(ServerCertVerified::assertion())
             }
-            Trust::Pinned(_) => Err(err),
+            Trust::Pinned(_) => {
+                if let Ok(mut g) = self.changed.lock() {
+                    *g = true;
+                }
+                Err(err)
+            }
+            // TOFU / explicit first-use: accept and record the certificate hash so
+            // the caller can persist it as a pin. `Permissive` is treated as first-use
+            // here (no silent accept-all without recording); prefer `FirstUse`/pins.
             Trust::FirstUse | Trust::Permissive => {
-                *self.seen.lock().unwrap() = Some(hash);
+                if let Ok(mut g) = self.seen.lock() {
+                    *g = Some(hash);
+                }
                 Ok(ServerCertVerified::assertion())
             }
             Trust::Public => Err(err),
@@ -102,7 +132,7 @@ impl ServerCertVerifier for Verifier {
     }
 }
 
-pub fn client_config(trust: &Trust) -> Result<rustls::ClientConfig, String> {
+pub fn client_config(trust: &Trust) -> Result<(rustls::ClientConfig, TlsObservation), String> {
     let provider = crypto_provider();
     // Ensure a process-wide default for libraries that rely on it (best-effort).
     let _ = ring::default_provider().install_default();
@@ -111,11 +141,13 @@ pub fn client_config(trust: &Trust) -> Result<rustls::ClientConfig, String> {
     let web = WebPkiServerVerifier::builder_with_provider(Arc::new(roots), provider.clone())
         .build()
         .map_err(|e| e.to_string())?;
+    let obs = TlsObservation::default();
     let verifier = Arc::new(Verifier {
         web,
         provider: provider.clone(),
         trust: trust.clone(),
-        seen: Mutex::new(None),
+        seen: Arc::clone(&obs.seen),
+        changed: Arc::clone(&obs.changed),
     });
     let config = rustls::ClientConfig::builder_with_provider(provider)
         .with_safe_default_protocol_versions()
@@ -123,5 +155,5 @@ pub fn client_config(trust: &Trust) -> Result<rustls::ClientConfig, String> {
         .dangerous()
         .with_custom_certificate_verifier(verifier)
         .with_no_client_auth();
-    Ok(config)
+    Ok((config, obs))
 }
