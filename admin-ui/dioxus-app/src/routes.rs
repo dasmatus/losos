@@ -1,6 +1,6 @@
 use crate::actions::{self, Action};
 use crate::app::{AppLayout, AuthSignal, AuthState, ConfigSignal};
-use crate::auth::{self, Gate};
+use crate::auth::{self, Gate, Me};
 use crate::components::ui::{Button, Card, Empty, Spinner};
 use crate::pages::{blocks, page::{Page, PageId}};
 use crate::screens::settings::SettingsShell;
@@ -8,8 +8,101 @@ use crate::store::{self, BoxConfig};
 use dioxus::prelude::*;
 use serde_json::Value;
 
+/// Top-level pane IDs that get top-level-style addresses or direct pane parity.
+/// Matches React `lib/routes.ts` + settings pane set used by the Dioxus shell.
+pub const TOP_LEVEL_PANES: &[&str] = &["storage", "mesh", "machines", "apps"];
+pub const SETTINGS_LANDING: &str = "network";
+
+pub fn pane_href(pane: &str) -> String {
+    if TOP_LEVEL_PANES.contains(&pane) {
+        format!("/{pane}")
+    } else {
+        format!("/settings/{pane}")
+    }
+}
+
+pub fn is_settings_pane_id(pane: &str) -> bool {
+    matches!(
+        pane,
+        "network"
+            | "hardware"
+            | "security"
+            | "credentials"
+            | "problems"
+            | "account"
+            | "users"
+            | "moderation"
+            | "access"
+            | "look"
+            | "tag"
+            | "advanced"
+            | "history"
+            | "logs"
+            | "backup"
+            | "reset"
+            | "statistics"
+            | "storage"
+            | "mesh"
+            | "market"
+            | "machines"
+            | "apps"
+            | "about"
+    )
+}
+
+pub fn pane_label(pane: &str) -> &'static str {
+    match pane {
+        "network" => "Network",
+        "hardware" => "Hardware",
+        "security" => "Security",
+        "credentials" => "Credentials",
+        "problems" => "Problems",
+        "account" => "Account",
+        "users" => "Users",
+        "moderation" => "Moderation",
+        "access" => "Access tokens",
+        "look" => "Look",
+        "tag" => "Tag",
+        "advanced" => "Advanced",
+        "history" => "History",
+        "logs" => "Logs",
+        "backup" => "Backup",
+        "reset" => "Reset",
+        "statistics" => "Statistics",
+        "storage" => "Storage",
+        "mesh" => "Mesh",
+        "market" => "Market",
+        "machines" => "Machines",
+        "apps" => "Apps",
+        "about" => "About",
+        _ => "Settings",
+    }
+}
+
+pub fn is_wide_route(route: &Route) -> bool {
+    matches!(
+        route,
+        Route::Diagrams {}
+            | Route::DiagramsPath { .. }
+            | Route::Calendar {}
+            | Route::CalendarPath { .. }
+            | Route::Wikis {}
+            | Route::WikisPath { .. }
+    )
+}
+
+pub fn held_account_lock_target(me: &Option<Me>) -> Option<Route> {
+    if me.as_ref().map(|m| m.is_held()).unwrap_or(false) {
+        Some(Route::SettingsPane {
+            pane: "account".to_string(),
+        })
+    } else {
+        None
+    }
+}
+
 /// Top-level app routes, mirroring the React admin UI structure.
-/// Incremental: routes render functional screens as ported; placeholders for the rest.
+/// Slice 6: expanded route tree with placeholders for parity.
 #[derive(Clone, Routable, Debug, PartialEq)]
 #[rustfmt::skip]
 pub enum Route {
@@ -18,6 +111,12 @@ pub enum Route {
         Home {},
         #[route("/apps")]
         Apps {},
+        #[route("/apps/new")]
+        AppNew {},
+        #[route("/apps/:id")]
+        AppScreen { id: String },
+        #[route("/apps/:id/edit")]
+        AppEdit { id: String },
         #[route("/storage")]
         Storage {},
         #[route("/mesh")]
@@ -28,10 +127,36 @@ pub enum Route {
         Machines {},
         #[route("/mesh/machines")]
         MeshMachines {},
+        #[route("/office")]
+        Office {},
+        #[route("/office/:..segments")]
+        OfficePath { segments: Vec<String> },
+        #[route("/cloud")]
+        Cloud {},
+        #[route("/mail")]
+        Mail {},
+        #[route("/contacts")]
+        Contacts {},
+        #[route("/calendar")]
+        Calendar {},
+        #[route("/calendar/:..segments")]
+        CalendarPath { segments: Vec<String> },
+        #[route("/chat")]
+        Chat {},
+        #[route("/chat/:..segments")]
+        ChatPath { segments: Vec<String> },
+        #[route("/ci")]
+        Ci {},
+        #[route("/ci/runs/:id")]
+        CiRun { id: String },
         #[route("/diagrams")]
         Diagrams {},
+        #[route("/diagrams/:..segments")]
+        DiagramsPath { segments: Vec<String> },
         #[route("/wikis")]
         Wikis {},
+        #[route("/wikis/:..segments")]
+        WikisPath { segments: Vec<String> },
         #[route("/settings")]
         SettingsRoot {},
         #[route("/settings/:pane")]
@@ -39,11 +164,10 @@ pub enum Route {
         #[route("/about")]
         About {},
         #[route("/:..segments")]
-        NotFound { segments: Vec<String> },
+        PlaceholderPath { segments: Vec<String> },
 }
 
 fn config_signal() -> Signal<BoxConfig> {
-    // Re-read from storage so route components get current config; AppLayout/App persist.
     use_context::<ConfigSignal>()
 }
 
@@ -95,7 +219,7 @@ fn Apps() -> Element {
         }
     });
     rsx! {
-        div { class: "page",
+        div { class: "page ls-page",
             h1 { "Apps" }
             p { class: "muted", "Apps available on this box and from the market." }
             match apps() {
@@ -105,6 +229,21 @@ fn Apps() -> Element {
             }
         }
     }
+}
+
+#[component]
+fn AppNew() -> Element {
+    rsx! { PlaceholderPage { title: "New app".to_string(), description: "App editor (new) — route parity placeholder.".to_string() } }
+}
+
+#[component]
+fn AppScreen(id: String) -> Element {
+    rsx! { PlaceholderPage { title: format!("App: {id}"), description: "App screen — route parity placeholder.".to_string() } }
+}
+
+#[component]
+fn AppEdit(id: String) -> Element {
+    rsx! { PlaceholderPage { title: format!("Edit app: {id}"), description: "App editor — route parity placeholder.".to_string() } }
 }
 
 #[component]
@@ -158,7 +297,7 @@ fn Storage() -> Element {
         }
     });
     rsx! {
-        div { class: "page",
+        div { class: "page ls-page",
             h1 { "Storage" }
             p { class: "muted", "Disk and storage status for this box." }
             match status() {
@@ -226,7 +365,7 @@ fn Mesh() -> Element {
         }
     });
     rsx! {
-        div { class: "page",
+        div { class: "page ls-page",
             h1 { "Mesh" }
             p { class: "muted", "Mesh status and participation." }
             match status() {
@@ -251,105 +390,78 @@ fn MeshMachines() -> Element {
     rsx! { Machines {} }
 }
 #[component]
+fn Office() -> Element {
+    rsx! { PlaceholderPage { title: "Documents".to_string(), description: "Office/documents route parity placeholder.".to_string() } }
+}
+#[component]
+fn OfficePath(segments: Vec<String>) -> Element {
+    let path = format!("/office/{}", segments.join("/"));
+    rsx! { PlaceholderPage { title: "Documents".to_string(), description: format!("Office route placeholder: {path}") } }
+}
+#[component]
+fn Cloud() -> Element {
+    rsx! { PlaceholderPage { title: "Cloud".to_string(), description: "LosOS Cloud entry (served by Cloud app on boxes where enabled).".to_string() } }
+}
+#[component]
+fn Mail() -> Element {
+    rsx! { PlaceholderPage { title: "Mail".to_string(), description: "LosOS Mail route parity placeholder (shared side).".to_string() } }
+}
+#[component]
+fn Contacts() -> Element {
+    rsx! { PlaceholderPage { title: "Contacts".to_string(), description: "LosOS Contacts route parity placeholder.".to_string() } }
+}
+#[component]
+fn Calendar() -> Element {
+    rsx! { PlaceholderPage { title: "Calendar".to_string(), description: "LosOS Calendar route parity placeholder (wide layout).".to_string() } }
+}
+#[component]
+fn CalendarPath(segments: Vec<String>) -> Element {
+    let path = format!("/calendar/{}", segments.join("/"));
+    rsx! { PlaceholderPage { title: "Calendar".to_string(), description: format!("Calendar route placeholder: {path}") } }
+}
+#[component]
+fn Chat() -> Element {
+    rsx! { PlaceholderPage { title: "Chat".to_string(), description: "LosOS Chat route parity placeholder.".to_string() } }
+}
+#[component]
+fn ChatPath(segments: Vec<String>) -> Element {
+    let path = format!("/chat/{}", segments.join("/"));
+    rsx! { PlaceholderPage { title: "Chat".to_string(), description: format!("Chat route placeholder: {path}") } }
+}
+#[component]
+fn Ci() -> Element {
+    rsx! { PlaceholderPage { title: "Mesh CI".to_string(), description: "Mesh CI route parity placeholder.".to_string() } }
+}
+#[component]
+fn CiRun(id: String) -> Element {
+    rsx! { PlaceholderPage { title: "Mesh CI run".to_string(), description: format!("CI run placeholder: {id}") } }
+}
+#[component]
 fn Diagrams() -> Element {
-    rsx! { PlaceholderPage { title: "Diagrams".to_string(), description: "LosOS Diagrams (Lab) — port in progress.".to_string() } }
+    rsx! { PlaceholderPage { title: "Diagrams".to_string(), description: "LosOS Diagrams (Lab) — route parity placeholder (wide layout).".to_string() } }
+}
+#[component]
+fn DiagramsPath(segments: Vec<String>) -> Element {
+    let path = format!("/diagrams/{}", segments.join("/"));
+    rsx! { PlaceholderPage { title: "Diagrams".to_string(), description: format!("Diagrams route placeholder: {path}") } }
 }
 #[component]
 fn Wikis() -> Element {
-    rsx! { PlaceholderPage { title: "Wikis".to_string(), description: "LosOS Wiki directory — port in progress.".to_string() } }
+    rsx! { PlaceholderPage { title: "Wikis".to_string(), description: "LosOS Wiki directory — route parity placeholder (wide layout).".to_string() } }
+}
+#[component]
+fn WikisPath(segments: Vec<String>) -> Element {
+    let path = format!("/wikis/{}", segments.join("/"));
+    rsx! { PlaceholderPage { title: "Wikis".to_string(), description: format!("Wikis route placeholder: {path}") } }
 }
 #[component]
 fn SettingsRoot() -> Element {
-    rsx! { SettingsPane { pane: "network".to_string() } }
+    rsx! { SettingsPane { pane: SETTINGS_LANDING.to_string() } }
 }
 
 #[component]
 fn SettingsPane(pane: String) -> Element {
     rsx! { SettingsShell { pane } }
-}
-
-fn pane_label(pane: &str) -> &str {
-    match pane {
-        "network" => "Network",
-        "hardware" => "Hardware",
-        "security" => "Security",
-        "credentials" => "Credentials",
-        "problems" => "Problems",
-        "account" => "Account",
-        "users" => "Users",
-        "moderation" => "Moderation",
-        "access" => "Access tokens",
-        "look" => "Look",
-        "tag" => "Tag",
-        "advanced" => "Advanced",
-        "history" => "History",
-        "logs" => "Logs",
-        "backup" => "Backup",
-        "reset" => "Reset",
-        "statistics" => "Statistics",
-        _ => "Settings",
-    }
-}
-
-fn settings_links(current: &str) -> Element {
-    let panes = ["network","hardware","security","credentials","problems","account","users","moderation","access","look","tag","advanced","history","logs","backup","reset"];
-    rsx! {
-        ul { class: "pane-list",
-            for p in panes {
-                {
-                    let active = p == current;
-                    let cls = if active { "nav-item active" } else { "nav-item" };
-                    rsx! { li { Link { to: Route::SettingsPane { pane: p.to_string() }, class: "{cls}", "{pane_label(p)}" } } }
-                }
-            }
-        }
-    }
-}
-
-#[component]
-fn PaneBody(pane: String, config: BoxConfig) -> Element {
-    match pane.as_str() {
-        "backup" => rsx! { ApiPane { config: config, action: Action::BackupStatus, title: "Backup".to_string() } },
-        "users" => rsx! { ApiPane { config: config, action: Action::UsersList, title: "Users".to_string() } },
-        "statistics" => rsx! { ApiPane { config: config, action: Action::Get("/api/statistics".into()), title: "Statistics".to_string() } },
-        "history" => rsx! { ApiPane { config: config, action: Action::MeshHistory, title: "History".to_string() } },
-        "logs" => rsx! { ApiPane { config: config, action: Action::Get("/api/logs".into()), title: "Logs".to_string() } },
-        "access" => rsx! { ApiPane { config: config, action: Action::Get("/api/tokens".into()), title: "Access tokens".to_string() } },
-        "network" | "hardware" | "security" | "credentials" | "problems" | "account" | "moderation" | "look" | "tag" | "advanced" | "reset" => {
-            rsx! { PlaceholderPage { title: pane_label(&pane).to_string(), description: format!("{pane} pane — RSX port in progress. Actions bind via /api/* and losos middle layer.") } }
-        }
-        _ => rsx! { PlaceholderPage { title: "Settings".to_string(), description: "Select a settings pane.".to_string() } },
-    }
-}
-
-#[component]
-fn ApiPane(config: BoxConfig, action: Action, title: String) -> Element {
-    let config_sig = config_signal();
-    let auth_sig = use_context::<AuthSignal>();
-    let mut data = use_signal(|| None::<Result<Value, String>>);
-    let action2 = action.clone();
-    let cfg = config.clone();
-    use_future(move || {
-        let cfg = cfg.clone();
-        let action = action2.clone();
-        async move {
-            let res = match actions::dispatch(&cfg, action).await {
-                Ok(v) => Ok(v),
-                Err(e) => {
-                    if actions::is_unauthorized(&e) {
-                        clear_auth_on_401(config_sig, auth_sig);
-                    }
-                    Err(e.message)
-                }
-            };
-            data.set(Some(res));
-        }
-    });
-    match data() {
-        None => rsx! { Spinner {} },
-        Some(Err(e)) => rsx! { Card { p { class: "error", "{e}" } p { class: "muted", "This box may not expose this endpoint or access may be restricted." } } },
-        Some(Ok(v)) => rsx! { Card { pre { class: "mono", "{serde_json::to_string_pretty(&v).unwrap_or_default()}" } } },
-    }
 }
 
 #[component]
@@ -365,7 +477,7 @@ fn About() -> Element {
 #[component]
 fn PlaceholderPage(title: String, description: String) -> Element {
     rsx! {
-        div { class: "page",
+        div { class: "page ls-page",
             h1 { "{title}" }
             Card {
                 p { "{description}" }
@@ -376,10 +488,10 @@ fn PlaceholderPage(title: String, description: String) -> Element {
 }
 
 #[component]
-fn NotFound(segments: Vec<String>) -> Element {
+fn PlaceholderPath(segments: Vec<String>) -> Element {
     let path = format!("/{}", segments.join("/"));
     rsx! {
-        div { class: "page",
+        div { class: "page ls-page",
             h1 { "Not found" }
             p { class: "muted", "No route for {path}" }
             Link { to: Route::Home {}, "Go to Overview" }

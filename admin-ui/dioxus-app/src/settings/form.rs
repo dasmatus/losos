@@ -5,7 +5,7 @@
 
 use super::api;
 use super::model::{OptionsResponse, SettingsResponse, StatusResponse};
-use super::nix::{build_overrides_nix, is_valid_host_name, is_valid_time};
+use super::nix::{build_overrides_nix, fits_editor, is_valid_host_name, is_valid_time};
 use super::{Extras, DEFAULT_HOST_NAME, DEFAULT_WINDOW_END, DEFAULT_WINDOW_START, SETTLE_MS};
 use crate::store::BoxConfig;
 use serde_json::Value;
@@ -103,16 +103,101 @@ impl SettingsFormState {
         FormProblems { host_name, compute_window }
     }
 
-    fn extra_problems_of(extra: &Extras) -> BTreeMap<String, String> {
-        // Minimal: ban Nix interpolation (React/lososd refuse it). Stray/opaque type
-        // checks require full options metadata; keep Apply blocked on interpolation.
+    fn options_metadata_usable(options_raw: Option<&Value>) -> bool {
+        let Some(doc) = options_raw else { return false };
+        if doc.get("available").and_then(Value::as_bool) == Some(false)
+            && doc.get("options").and_then(Value::as_array).is_none_or(|a| a.is_empty())
+        {
+            return false;
+        }
+        doc.get("options").is_some() || doc.get("stray").is_some()
+    }
+
+    fn extra_problems_of(
+        extra: &Extras,
+        saved_extra: &Extras,
+        options_raw: Option<&Value>,
+    ) -> BTreeMap<String, String> {
         let mut p = BTreeMap::new();
+        // Interpolation is always refused by the box; never allow it.
         for (k, v) in extra {
             if v.contains("${") {
                 p.insert(k.clone(), "Nix interpolation is not allowed here.".into());
             }
         }
+        if !Self::options_metadata_usable(options_raw) {
+            return p;
+        }
+        let doc = options_raw.unwrap();
+        let options = doc.get("options").and_then(Value::as_array);
+        let stray_keys: BTreeSet<&str> = doc
+            .get("stray")
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(|s| s.get("key").and_then(Value::as_str))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        for (name, raw) in extra {
+            if p.contains_key(name) {
+                continue;
+            }
+            let unchanged = saved_extra.get(name).is_some_and(|s| s == raw);
+            let opt = options.and_then(|arr| {
+                arr.iter()
+                    .find(|o| o.get("name").and_then(Value::as_str) == Some(name.as_str()))
+            });
+            if stray_keys.contains(name.as_str()) {
+                p.insert(
+                    name.clone(),
+                    "This override names no option the box declares (stray). Remove it before applying.".into(),
+                );
+                continue;
+            }
+            let Some(opt) = opt else {
+                // Not a declared option: treat as stray when metadata is present.
+                p.insert(
+                    name.clone(),
+                    "This override names no option the box declares. Remove it before applying.".into(),
+                );
+                continue;
+            };
+            let read_only = opt.get("readOnly").and_then(Value::as_bool).unwrap_or(false);
+            let Some(editor) = opt.get("editor") else {
+                // No editor metadata: avoid false blocks.
+                if !unchanged && read_only {
+                    p.insert(name.clone(), "This option is read-only.".into());
+                }
+                continue;
+            };
+            let is_opaque = editor.get("kind").and_then(Value::as_str) == Some("opaque");
+            if read_only || is_opaque {
+                // Without breaking: unchanged read-only/opaque values were already present;
+                // blocking apply on them would prevent unrelated settings changes.
+                if !unchanged {
+                    p.insert(
+                        name.clone(),
+                        if read_only {
+                            "This option is read-only.".into()
+                        } else {
+                            "This value has no form editor; changing it may be refused.".into()
+                        },
+                    );
+                }
+                continue;
+            }
+            if let Some(misfit) = fits_editor(editor, raw) {
+                p.insert(name.clone(), misfit.message);
+            }
+        }
         p
+    }
+
+    fn recompute_extra_problems(&mut self) {
+        self.extra_problems =
+            Self::extra_problems_of(&self.extra, &self.saved_extra, self.options_raw.as_ref());
     }
 
     pub fn valid(&self) -> bool {
@@ -126,7 +211,7 @@ impl SettingsFormState {
     pub fn discard(&mut self) {
         self.draft = self.saved.clone();
         self.extra = self.saved_extra.clone();
-        self.extra_problems = Self::extra_problems_of(&self.extra);
+        self.recompute_extra_problems();
         self.load_error = None;
     }
 
@@ -135,7 +220,7 @@ impl SettingsFormState {
             Some(v) => { self.extra.insert(name, v); }
             None => { self.extra.remove(&name); }
         }
-        self.extra_problems = Self::extra_problems_of(&self.extra);
+        self.recompute_extra_problems();
     }
 
     fn normalize(mut s: SettingsResponse) -> SettingsResponse {
@@ -173,11 +258,12 @@ impl SettingsFormState {
                 return;
             }
         };
-        if let Some(ref raw) = opts_raw {
-            if raw.get("error").is_some() && raw.get("options").is_none() {
-                // treat as unavailable but continue with settings
-            }
-        }
+        // An error-shaped or proxy-shaped answer is not a usable options document.
+        let opts_raw = match opts_raw {
+            Some(ref raw) if raw.get("error").is_some() && raw.get("options").is_none() => None,
+            Some(raw) if raw.get("options").is_none() && raw.get("stray").is_none() => None,
+            other => other,
+        };
         match api::get_settings(config).await {
             Ok(s) => {
                 let s = Self::normalize(s);
@@ -185,17 +271,22 @@ impl SettingsFormState {
                 if let Some(ref raw) = opts_raw {
                     api::extras_from_options_value(raw, &mut extra);
                 }
+                self.options_raw = opts_raw;
+                self.options = self.options_raw.as_ref().and_then(|raw| {
+                    serde_json::from_value(raw.clone()).ok()
+                });
                 self.saved = Some(s.clone());
                 self.draft = Some(s);
                 self.saved_extra = extra.clone();
                 self.extra = extra;
-                self.extra_problems = Self::extra_problems_of(&self.extra);
-                self.options_raw = opts_raw;
+                self.recompute_extra_problems();
                 self.ready = true;
                 self.locked = false;
-                // If box is building, reflect it (basic resume)
+                // If box is building, reflect it (resume in-flight rebuild).
                 if let Ok(st) = api::get_status(config).await {
                     self.on_status(st, now_ms());
+                } else {
+                    // ignore status fetch errors on load
                 }
             }
             Err(e) => {
@@ -207,47 +298,98 @@ impl SettingsFormState {
         }
     }
 
+    fn settle_active(now: f64, until: f64) -> bool {
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = (now, until);
+            false
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            now < until
+        }
+    }
+
     pub fn on_status(&mut self, status: StatusResponse, now: f64) {
         let state = status.state.as_str();
-        if state == "building" {
-            self.applying = true;
-            self.saw_building = true;
-            self.job = status.job.clone().or(self.job.clone());
-            self.rebuild = Some(RebuildBanner {
-                phase: "building".into(),
-                title: "Applying changes".into(),
-                message: if status.message.is_empty() { "Rebuilding the box...".into() } else { status.message.clone() },
-            });
-            return;
-        }
-        let terminal = state == "done" || state == "failed" || state == "idle";
-        if !terminal { return; }
-        // stale-terminal guard: if we started a job and haven't seen building and
-        // we're within settle window, ignore a terminal status for a different/old job.
-        if let Some(ref job) = self.job {
-            if let Some(ref sj) = status.job {
-                if sj != job && !self.saw_building && now < self.settle_until_ms {
-                    return;
-                }
-            } else if !self.saw_building && now < self.settle_until_ms {
+        let in_settle = self.applying && !self.saw_building && Self::settle_active(now, self.settle_until_ms);
+        // Job-id comparison: ignore statuses that belong to a different rebuild than ours.
+        if let (Some(ref ours), Some(ref theirs)) = (&self.job, &status.job) {
+            if ours != theirs {
+                // Another job entirely; never let it drive our UI.
                 return;
             }
         }
-        if self.applying || state == "failed" {
+
+        if state == "building" {
+            // If we know our job and this building status names a different one, ignore.
+            if let (Some(ref ours), Some(ref theirs)) = (&self.job, &status.job) {
+                if ours != theirs {
+                    return;
+                }
+            }
+            self.applying = true;
+            self.saw_building = true;
+            if self.job.is_none() {
+                self.job = status.job.clone();
+            }
+            self.rebuild = Some(RebuildBanner {
+                phase: "building".into(),
+                title: "Applying changes".into(),
+                message: if status.message.is_empty() {
+                    "Rebuilding the box...".into()
+                } else {
+                    status.message.clone()
+                },
+            });
+            return;
+        }
+
+        let terminal = state == "done" || state == "failed" || state == "idle";
+        if !terminal {
+            return;
+        }
+        // Stale-terminal guard: before the daemon has reported our new build as
+        // building, a terminal status (often with no/old job) may describe the
+        // previous rebuild. Rely on job-id when present; otherwise use settle window.
+        if in_settle {
+            match (&self.job, &status.job) {
+                (Some(ours), Some(theirs)) if ours == theirs => {}
+                (Some(_), Some(_)) => return,
+                (Some(_), None) => return,
+                (None, _) => return,
+            }
+        }
+
+        if self.applying || state == "failed" || (self.saw_building && terminal) {
             if state == "failed" {
                 self.rebuild = Some(RebuildBanner {
                     phase: "failed".into(),
                     title: "Rebuild failed".into(),
-                    message: if status.message.is_empty() { "The box could not apply the changes.".into() } else { status.message.clone() },
+                    message: if status.message.is_empty() {
+                        "The box could not apply the changes.".into()
+                    } else {
+                        status.message.clone()
+                    },
                 });
-            } else if state == "done" && self.applying {
-                self.rebuild = None;
-                self.load_error = None;
+                self.applying = false;
+                self.saw_building = false;
+            } else if state == "done" {
+                if self.applying || self.saw_building {
+                    self.rebuild = None;
+                    self.load_error = None;
+                }
+                self.applying = false;
+                self.saw_building = false;
+                self.settle_until_ms = 0.0;
             } else if state == "idle" {
-                self.rebuild = None;
+                if self.applying {
+                    self.rebuild = None;
+                }
+                self.applying = false;
+                self.saw_building = false;
+                self.settle_until_ms = 0.0;
             }
-            self.applying = false;
-            self.saw_building = false;
         }
     }
 
@@ -270,13 +412,12 @@ impl SettingsFormState {
             Ok(resp) => {
                 self.job = Some(resp.job.clone());
                 self.last_job = Some(resp.job);
-                // Mark draft as saved baseline for the apply intent? React keeps draft
-                // but saved becomes the applied values on success path; easier to update
-                // saved to draft now and let status confirm.
+                // Mark draft as saved baseline for the apply intent; status confirms outcome.
                 self.saved = Some(draft.clone());
                 self.draft = Some(draft);
                 self.saved_extra = extra.clone();
                 self.extra = extra;
+                self.recompute_extra_problems();
                 Ok(())
             }
             Err(e) => {

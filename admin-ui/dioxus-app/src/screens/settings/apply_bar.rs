@@ -6,6 +6,7 @@ pub fn ApplyBar(
     form: Signal<SettingsFormState>,
     on_apply: EventHandler<MouseEvent>,
     on_discard: EventHandler<MouseEvent>,
+    #[props(default)] on_refresh_status: Option<EventHandler<MouseEvent>>,
 ) -> Element {
     let f = form();
     let show = f.dirty() || f.applying || f.rebuild.is_some();
@@ -35,6 +36,16 @@ pub fn ApplyBar(
                 }
             }
             div { class: "apply-bar-actions",
+                if let Some(on_refresh) = on_refresh_status {
+                    if f.applying || f.rebuild.is_some() {
+                        button {
+                            class: "btn btn-secondary",
+                            disabled: false,
+                            onclick: move |e| on_refresh.call(e),
+                            "Refresh status"
+                        }
+                    }
+                }
                 button {
                     class: "btn btn-secondary",
                     disabled: f.applying || !f.dirty(),

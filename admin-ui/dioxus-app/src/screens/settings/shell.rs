@@ -192,6 +192,34 @@ pub fn SettingsShell(pane: String) -> Element {
                     if draft_pane {
                         ApplyBar {
                             form: form,
+                            on_refresh_status: move |_| {
+                                let cfg = config();
+                                spawn(async move {
+                                    match crate::settings::api::get_status(&cfg).await {
+                                        Ok(st) => {
+                                            let mut f = form();
+                                            f.on_status(st, now_ms());
+                                            form.set(f);
+                                        }
+                                        Err(e) if e.status == 401 => {
+                                            let mut f = form();
+                                            f.locked = true;
+                                            f.applying = false;
+                                            form.set(f);
+                                            let mut next = config();
+                                            crate::auth::drop_token(&mut next);
+                                            store::save(&next);
+                                            config.set(next);
+                                            auth_sig.set(AuthState {
+                                                gate: Gate::Signin,
+                                                me: None,
+                                                claim: auth_sig().claim,
+                                            });
+                                        }
+                                        Err(_) => {}
+                                    }
+                                });
+                            },
                             on_discard: move |_| {
                                 let mut f = form();
                                 f.discard();
@@ -230,6 +258,9 @@ fn PaneRouter(pane: String) -> Element {
         "network" => rsx! { panes::network::NetworkPane {} },
         "hardware" => rsx! { panes::hardware::HardwarePane {} },
         "security" => rsx! { panes::security::SecurityPane {} },
+        "mesh" => rsx! { panes::mesh::MeshPane {} },
+        "reset" => rsx! { panes::reset::ResetPane {} },
+        "storage" => rsx! { panes::storage::StoragePane {} },
         "about" => rsx! { panes::about::AboutPane {} },
         _ => rsx! {
             Card {

@@ -6,6 +6,7 @@
 //! resets it to defaults.
 
 use super::model::{owned_name_set, Extras, SettingsResponse};
+use serde_json::Value;
 
 pub fn nix_string(value: &str) -> String {
     // Matches React `nixString`: backslashes, quotes, then `${` interpolation.
@@ -81,6 +82,179 @@ pub fn is_valid_host_name(value: &str) -> bool {
         return false;
     }
     bytes.iter().all(|&b| ok_char(b))
+}
+
+/// The string inside one double-quoted Nix literal, or `None` when `raw` is not
+/// exactly one such literal. Inverse of `nix_string` (best-effort, matches
+/// `admin-ui/app/src/lib/option-value.ts:nixUnquote`).
+pub fn nix_unquote(raw: &str) -> Option<String> {
+    if raw.len() < 2 || !raw.starts_with('"') || !raw.ends_with('"') {
+        return None;
+    }
+    let inner = &raw[1..raw.len() - 1];
+    let mut out = String::with_capacity(inner.len());
+    let mut chars = inner.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            let Some(next) = chars.next() else { return None };
+            out.push(match next {
+                'n' => '\n',
+                't' => '\t',
+                'r' => '\r',
+                other => other,
+            });
+        } else if c == '"' {
+            // Unescaped quote means `raw` was two strings, not one.
+            return None;
+        } else {
+            out.push(c);
+        }
+    }
+    Some(out)
+}
+
+/// The elements of one `[ "a" "b" ]` Nix literal, or `None` for any other shape.
+pub fn nix_string_list(raw: &str) -> Option<Vec<String>> {
+    let raw = raw.trim();
+    if !raw.starts_with('[') || !raw.ends_with(']') {
+        return None;
+    }
+    let mut items = Vec::new();
+    let mut rest = raw[1..raw.len() - 1].trim_start();
+    while !rest.is_empty() {
+        if !rest.starts_with('"') {
+            return None;
+        }
+        // find the closing unescaped quote
+        let bytes = rest.as_bytes();
+        let mut i = 1usize;
+        loop {
+            if i >= bytes.len() {
+                return None;
+            }
+            match bytes[i] {
+                b'\\' => i += 2,
+                b'"' => break,
+                _ => i += 1,
+            }
+        }
+        let item = nix_unquote(&rest[..=i])?;
+        items.push(item);
+        let after = &rest[i + 1..];
+        if !after.is_empty() && !after.chars().next().is_some_and(|c| c.is_whitespace()) {
+            return None;
+        }
+        rest = after.trim_start();
+    }
+    Some(items)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExtraMisfit {
+    pub message: String,
+}
+
+/// Whether `raw`, one Nix literal, fits the option `editor` from `/api/options`.
+/// Mirrors `admin-ui/app/src/lib/option-value.ts:fits` (best-effort, basic kinds).
+/// Returns `None` when it fits or when the editor shape is unknown (no false block).
+pub fn fits_editor(editor: &Value, raw: &str) -> Option<ExtraMisfit> {
+    if raw.contains("${") {
+        return Some(ExtraMisfit {
+            message: "Nix interpolation is not allowed here.".into(),
+        });
+    }
+    let Some(kind) = editor.get("kind").and_then(Value::as_str) else {
+        // Unknown editor shape: don't block (without breaking).
+        return None;
+    };
+    match kind {
+        "bool" => {
+            if raw == "true" || raw == "false" {
+                None
+            } else {
+                Some(ExtraMisfit { message: "Must be true or false.".into() })
+            }
+        }
+        "int" => {
+            if !raw.bytes().all(|b| b.is_ascii_digit() || b == b'-') || raw.is_empty() || raw == "-" {
+                return Some(ExtraMisfit { message: "Must be a whole number.".into() });
+            }
+            let Ok(n) = raw.parse::<i64>() else {
+                return Some(ExtraMisfit { message: "Must be a whole number.".into() });
+            };
+            let min = editor.get("min").and_then(Value::as_i64);
+            let max = editor.get("max").and_then(Value::as_i64);
+            if min.is_some_and(|m| n < m) || max.is_some_and(|m| n > m) {
+                let msg = match (min, max) {
+                    (Some(a), Some(b)) => format!("Must be between {a} and {b}."),
+                    (Some(a), None) => format!("Must be at least {a}."),
+                    (None, Some(b)) => format!("Must be at most {b}."),
+                    _ => "Out of range.".into(),
+                };
+                return Some(ExtraMisfit { message: msg });
+            }
+            None
+        }
+        "float" => {
+            // Nix's isFloat is false for `1`: the literal must carry a point.
+            let has_dot = raw.contains('.');
+            let ok = has_dot
+                && !raw.is_empty()
+                && raw
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || b == b'-' || b == b'.');
+            let parses = raw.parse::<f64>().is_ok();
+            if ok && parses {
+                None
+            } else {
+                Some(ExtraMisfit { message: "Must be a number with a decimal point.".into() })
+            }
+        }
+        "str" => {
+            if nix_unquote(raw).is_some() {
+                None
+            } else {
+                Some(ExtraMisfit { message: "Must be a quoted string.".into() })
+            }
+        }
+        "enum" => {
+            let Some(s) = nix_unquote(raw) else {
+                return Some(ExtraMisfit { message: "Must be a quoted string.".into() });
+            };
+            let values = editor
+                .get("values")
+                .and_then(Value::as_array)
+                .map(|a| a.iter().filter_map(Value::as_str).collect::<Vec<_>>())
+                .unwrap_or_default();
+            if values.is_empty() || values.iter().any(|v| *v == s) {
+                None
+            } else {
+                Some(ExtraMisfit {
+                    message: format!("Must be one of: {}.", values.join(", ")),
+                })
+            }
+        }
+        "list" => {
+            if nix_string_list(raw).is_some() {
+                None
+            } else {
+                Some(ExtraMisfit { message: "Must be a list of quoted strings.".into() })
+            }
+        }
+        "nullable" => {
+            if raw == "null" {
+                None
+            } else if let Some(inner) = editor.get("inner") {
+                fits_editor(inner, raw)
+            } else {
+                None
+            }
+        }
+        "opaque" => Some(ExtraMisfit {
+            message: "This value has no form editor; edit carefully.".into(),
+        }),
+        _ => None, // unknown kind: don't block
+    }
 }
 
 #[cfg(test)]

@@ -1,6 +1,8 @@
 use crate::auth::{self, ClaimState, Gate, Me};
 use crate::components::auth_gate::{ConnectHostScreen, GateLoading, SetupScreen, SigninScreen};
+use crate::components::shell::RoutedShell;
 use crate::routes::Route;
+use crate::screens::settings::SettingsShell;
 use crate::store::{self, BoxConfig};
 use dioxus::prelude::*;
 
@@ -65,17 +67,8 @@ pub fn AppLayout() -> Element {
     // errors/empty states until a box address is configured.
     if current.demo && current.host.trim().is_empty() {
         return rsx! {
-            div { class: "shell-root",
-                crate::layout::AppBar { me: state.me.clone() }
-                div { class: "shell-body",
-                    crate::layout::Sidebar {}
-                    main { class: "app-main",
-                        div { class: "banner info", style: "margin-bottom: 12px;",
-                            "Demo mode: no box linked. Configure a box address to load live data."
-                        }
-                        Outlet::<Route> {}
-                    }
-                }
+            div { class: "shell-root ls-shell",
+                RoutedShell { me: state.me.clone() }
             }
         };
     }
@@ -126,24 +119,30 @@ pub fn AppLayout() -> Element {
                 },
             }
         },
-        Gate::Open => rsx! {
-            div { class: "shell-root",
-                crate::layout::AppBar { me: state.me.clone() }
-                div { class: "shell-body",
-                    crate::layout::Sidebar {}
-                    main { class: "app-main",
-                        Outlet::<Route> {}
+        Gate::Open => {
+            // Held accounts (LosOS Login lock) are restricted to account settings.
+            let held = state.me.as_ref().map(|m| m.is_held()).unwrap_or(false);
+            if held {
+                rsx! {
+                    crate::components::shell::ShellFrame { me: state.me.clone(), wide: false,
+                        div { class: "ls-held-notice muted", style: "margin-bottom: 12px;",
+                            "Your account needs attention before you can use the rest of this box."
+                        }
+                        SettingsShell { pane: "account".to_string() }
                     }
                 }
+            } else {
+                rsx! {
+                    RoutedShell { me: state.me.clone() }
+                }
             }
-        },
+        }
     }
 }
 
 async fn resolve_gate(config: BoxConfig, mut auth: AuthSignal, gate_gen: Signal<u64>, gen: u64) {
     let stale = || *gate_gen.read() != gen;
     if config.demo {
-        // Demo mode (with or without a linked box): open the shell.
         if !stale() {
             auth.set(AuthState {
                 gate: Gate::Open,
@@ -194,8 +193,6 @@ async fn resolve_gate(config: BoxConfig, mut auth: AuthSignal, gate_gen: Signal<
             Gate::Setup
         }
     } else if auth::has_token(&config) {
-        // Could not confirm claim state; with a token fall back to sign-in prompt
-        // (safer than assuming open).
         Gate::Signin
     } else {
         Gate::Signin

@@ -6,6 +6,7 @@
 
 use crate::api::{ApiError, BoxApi};
 use crate::auth;
+use crate::middle_layer::resources as res;
 use crate::store::{self, BoxConfig};
 use losos_client::Trust;
 use serde_json::Value;
@@ -34,6 +35,9 @@ pub enum Action {
     // Generic escape hatch for not-yet-modeled endpoints.
     Get(String),
     Post(String, Value),
+    // --- Credentials (middle-layer extension; do not refactor existing variants) ---
+    CredentialsList,
+    CredentialsRotate(String),
 }
 
 pub(crate) fn make_api(config: &BoxConfig) -> Result<BoxApi, ApiError> {
@@ -67,10 +71,16 @@ async fn dispatch_via(api: &BoxApi, action: Action) -> Result<Value, ApiError> {
     match action {
         Action::Overview => api.get("/api/overview").await,
         Action::CloudStatus => api.get("/api/cloud/status").await,
-        Action::AppsList => api.get("/api/market").await,
-        Action::MarketInstall(id) => api.post_json("/api/market/install", json_obj(&[("id", &id)])).await,
-        Action::StorageStatus => api.get("/api/storage/status").await,
-        Action::StorageGrow => api.post_json("/api/grow", serde_json::json!({})).await,
+        // Installed-apps contract (`GET /api/apps`); distinct from market shelf.
+        Action::AppsList => api.get(res::apps_installed_path()).await,
+        // Legacy/non-canonical: no TS endpoint for install-by-id; kept for caller
+        // compatibility and documented in `middle_layer::resources`.
+        Action::MarketInstall(id) => {
+            api.post_json(res::MARKET_INSTALL_LEGACY_PATH, json_obj(&[("id", &id)]))
+                .await
+        }
+        Action::StorageStatus => api.get(res::storage_status_path()).await,
+        Action::StorageGrow => api.post_json(res::storage_grow_path(), serde_json::json!({})).await,
         Action::MeshStatus => api.get("/api/mesh/status").await,
         Action::MeshEnable => api.post_json("/api/mesh/enable", serde_json::json!({})).await,
         Action::MeshEnableStorage => api.post_json("/api/mesh/enable-storage", serde_json::json!({})).await,
@@ -79,11 +89,15 @@ async fn dispatch_via(api: &BoxApi, action: Action) -> Result<Value, ApiError> {
         Action::MeshGC => api.post_json("/api/mesh/gc", serde_json::json!({})).await,
         Action::MeshHistory => api.get("/api/mesh/history").await,
         Action::ShareWith(id) => api.post_json("/api/cloud/share", json_obj(&[("with", &id)])).await,
-        Action::BackupStatus => api.get("/api/backup/status").await,
+        Action::BackupStatus => api.get(res::backup_status_path()).await,
         Action::About => api.get("/api/about").await,
-        Action::UsersList => api.get("/api/users").await,
-        Action::Get(path) => api.get(&path).await,
-        Action::Post(path, body) => api.post_json(&path, body).await,
+        // Canonical people/users contract (`GET /api/people`).
+        Action::UsersList => api.get(res::users_list_path()).await,
+        Action::Get(path) => api.get(res::normalize_api_path(&path)).await,
+        Action::Post(path, body) => api.post_json(res::normalize_api_path(&path), body).await,
+        // --- Credentials (middle-layer extension) ---
+        Action::CredentialsList => api.get("/api/credentials").await,
+        Action::CredentialsRotate(name) => crate::middle_layer::credentials::rotate_via_api(api, &name).await,
     }
 }
 

@@ -52,6 +52,12 @@ hex = "0.4"
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 web-sys = { version = "0.3", features = ["Window", "Storage"] }
 
+[build-dependencies]
+# Same losos-mdx pipeline as the React app/WASM package, used to embed default
+# page HTML at build time (no runtime MDX parser for defaults).
+losos-mdx = { path = "../../backend/mdx" }
+serde_json = "1"
+
 [features]
 default = ["gui", "desktop"]
 gui = ["dep:dioxus"]

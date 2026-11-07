@@ -74,6 +74,16 @@ pub struct Me {
     pub standalone: Option<bool>,
     #[serde(default)]
     pub shared: Option<Vec<String>>,
+    /// Login-lock reasons (LosOS Login): when non-empty, the person is held to
+    /// their own account settings until they comply.
+    #[serde(default)]
+    pub locked: Vec<Value>,
+}
+
+impl Me {
+    pub fn is_held(&self) -> bool {
+        !self.locked.is_empty()
+    }
 }
 
 impl Me {
