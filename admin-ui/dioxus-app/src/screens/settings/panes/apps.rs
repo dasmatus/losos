@@ -108,10 +108,53 @@ pub fn AppsPane() -> Element {
                 } else {
                     ul { class: "list",
                         for item in r.results.iter().cloned() {
-                            li { key: "{item.id}",
-                                strong { "{item.name}" }
-                                if let Some(s) = &item.summary { span { class: "muted", " — {s}" } }
-                                if let Some(v) = &item.version { span { class: "muted", " ({v})" } }
+                            {
+                                let chart = item.chart.clone();
+                                let release = chart
+                                    .as_ref()
+                                    .map(|c| c.name.clone())
+                                    .unwrap_or_else(|| item.id.clone());
+                                rsx! {
+                                    li { key: "{item.id}", class: "row",
+                                        div {
+                                            strong { "{item.name}" }
+                                            if let Some(s) = &item.summary { span { class: "muted", " — {s}" } }
+                                            if let Some(v) = &item.version { span { class: "muted", " ({v})" } }
+                                        }
+                                        if let Some(chart) = chart {
+                                            Button {
+                                                kind: "secondary".to_string(),
+                                                disabled: *busy.read(),
+                                                onclick: move |_| {
+                                                    let cfg = config();
+                                                    let release = release.clone();
+                                                    let chart = chart.clone();
+                                                    spawn(async move {
+                                                        busy.set(true);
+                                                        error.set(None);
+                                                        let req = serde_json::json!({
+                                                            "release": release,
+                                                            "chart": {
+                                                                "repo": chart.repo,
+                                                                "name": chart.name,
+                                                                "version": chart.version,
+                                                            },
+                                                            "runAs": "user",
+                                                            "values": {},
+                                                            "valuesYaml": null,
+                                                        });
+                                                        match api::post_app_install(&cfg, req).await {
+                                                            Ok(_) => { let n = *refresh.read() + 1; refresh.set(n); }
+                                                            Err(e) => { if e.status == 401 { clear_auth(config, auth_sig); } error.set(Some(e.message)); }
+                                                        }
+                                                        busy.set(false);
+                                                    });
+                                                },
+                                                "Install"
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
