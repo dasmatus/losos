@@ -8264,7 +8264,6 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/tag/asks/{id}", web::delete().to(delete_tag_ask))
                 .route("/api/tag/suggest", web::get().to(get_tag_suggest))
                 // Forum scaffold stub; TODO(backend-phase1): replace with full /api/forum/* routes.
-                .route("/api/forum", web::get().to(get_forum))
                 // Everything else is a plugin's, or nobody's (crate::plugin).
                 .default_service(web::route().to(plugin_route))
         })
@@ -8293,36 +8292,6 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
 // This stub is intentionally minimal and safe: it exposes scaffold/runtime
 // config hooks only when LOSOS_FORUM_SCAFFOLD=1 is present, and does NOT
 // implement risky federation/bridge logic.
-
-async fn get_forum(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
-    guarded_as(&api, &req, "/api/forum", false, |_who| {
-        match crate::forum_scaffold::ForumRuntimeConfig::from_env() {
-            Some(cfg) => HttpResponse::Ok().json(serde_json::json!({
-                "scaffold": true,
-                "implemented": false,
-                "enabled": cfg.enabled,
-                "stateDir": cfg.state_dir,
-                "statusFile": cfg.status_file,
-                "contractsFile": cfg.contracts_file,
-                "port": cfg.port,
-                "apiPath": cfg.api_path,
-                "uiPath": cfg.ui_path,
-                "edgeLocalRouting": cfg.edge.edge_local,
-                "activityPubEnabled": cfg.activity_pub.enabled,
-                "matrixDmBridgeEnabled": cfg.matrix_dm_bridge.enabled,
-                "assistantEnabled": cfg.assistant.enabled,
-                "design": crate::forum_scaffold::DESIGN_SPEC,
-                "todo": "Backend Phase 1 (feat/losos-forum-phase1-backend) wires backend/src/forum/ and full /api/forum/* handlers.",
-            })),
-            None => HttpResponse::Ok().json(serde_json::json!({
-                "scaffold": false,
-                "implemented": false,
-                "enabled": false,
-                "design": crate::forum_scaffold::DESIGN_SPEC,
-            })),
-        }
-    })
-}
 
 #[cfg(test)]
 mod tests {
