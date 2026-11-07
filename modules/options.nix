@@ -342,6 +342,26 @@ in
       description = "Open `cache.ghcr.port` in the firewall (for a VPS serving the GHCR cache).";
     };
 
+    cache.ghcr.ephemeral = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Keep the GHCR cache staging data on tmpfs (`/run/losos-ghcr-cache`)
+        instead of persistent storage. Useful for a VPS proxy that should be
+        stateless and cheap to discard.
+      '';
+    };
+
+    cache.ghcr.socketActivation = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Start the GHCR cache service on demand via systemd socket activation
+        (for example when pulled by CI or a client), instead of running it
+        continuously.
+      '';
+    };
+
     cache.trustedPublicKeys = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       # The public half of `NIX_CACHE_SIGNING_KEY`, the key CI signs the cache

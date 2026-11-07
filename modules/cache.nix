@@ -274,13 +274,13 @@ in
     })
   ];
 
-  # Nix speaks its ordinary binary-cache HTTP protocol to localhost. On a
-  # cache miss this service uses oras to pull the matching per-store-path OCI
-  # artifact from GHCR, rewrites only the unsigned URL field in narinfo, and
-  # serves the NAR locally. Nix still verifies the original narinfo signature.
+  # Nix speaks its ordinary binary-cache HTTP protocol. On a cache miss this
+  # service uses oras to pull the matching per-store-path OCI artifact from
+  # GHCR, rewrites only the unsigned URL field in narinfo, and serves the NAR
+  # locally. Nix still verifies the original narinfo signature.
   systemd.services.losos-ghcr-cache = lib.mkIf enabled {
     description = "Local GHCR-backed Nix binary cache";
-    wantedBy = [ "multi-user.target" ];
+    wantedBy = lib.optionals (!cfg.ghcr.socketActivation) [ "multi-user.target" ];
     after = [ "network.target" ];
     path = [ pkgs.oras ];
     environment = {
@@ -291,8 +291,9 @@ in
       # /mnt/persist is not mounted yet, and disko mounts the target over /mnt
       # mid-install, which would hide a cache kept there and force nixos-install
       # to refetch everything. The lasting copy lives in losos-nix-cache on the
-      # installed box.
-      LOSOS_GHCR_CACHE_DIR = "/var/cache/losos-ghcr-cache";
+      # installed box. Ephemeral mode uses a tmpfs runtime directory.
+      LOSOS_GHCR_CACHE_DIR =
+        if cfg.ghcr.ephemeral then "/run/losos-ghcr-cache" else "/var/cache/losos-ghcr-cache";
     }
     # Behind the local copy this is only a staging area between the narinfo
     # and the NAR request: losos-nix-cache keeps the lasting copy, under its
@@ -302,8 +303,30 @@ in
     };
     serviceConfig = {
       ExecStart = "${pkgs.python3}/bin/python3 ${../tools/losos-ghcr-cache.py}";
-      Restart = "on-failure";
+      Restart = if cfg.ghcr.socketActivation then "on-failure" else "on-failure";
       RestartSec = 3;
+    } // lib.optionalAttrs cfg.ghcr.ephemeral {
+      RuntimeDirectory = "losos-ghcr-cache";
+      RuntimeDirectoryMode = "0755";
+      # Ephemeral: no persistent cache dir needed.
+    } // lib.optionalAttrs cfg.ghcr.socketActivation {
+      # Socket-activated: systemd holds the listening socket.
+      StandardInput = "null";
+    };
+  };
+
+  systemd.sockets.losos-ghcr-cache = lib.mkIf (enabled && cfg.ghcr.socketActivation) {
+    description = "Socket for the GHCR-backed Nix binary cache";
+    wantedBy = [ "sockets.target" ];
+    socketConfig = {
+      ListenStream =
+        if cfg.ghcr.host == "0.0.0.0" then
+          toString cfg.ghcr.port
+        else if cfg.ghcr.host == "127.0.0.1" || cfg.ghcr.host == "localhost" then
+          "127.0.0.1:${toString cfg.ghcr.port}"
+        else
+          "${cfg.ghcr.host}:${toString cfg.ghcr.port}";
+      Accept = false;
     };
   };
 

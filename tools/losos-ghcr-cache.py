@@ -11,6 +11,7 @@ import http.server
 import os
 import re
 import shutil
+import socket
 import subprocess
 import tempfile
 import threading
@@ -171,6 +172,44 @@ class Handler(http.server.BaseHTTPRequestHandler):
         return self.respond(404, b"not found\n")
 
 
+class SocketHTTPServer(http.server.ThreadingHTTPServer):
+    def server_bind(self):
+        pass
+
+    def server_activate(self):
+        pass
+
+    @classmethod
+    def from_fd(cls, fd, handler):
+        # Inherit a listening socket from systemd socket activation.
+        # Detect family from the socket; systemd may pass IPv4 or IPv6.
+        for family in (socket.AF_INET6, socket.AF_INET):
+            try:
+                sock = socket.fromfd(fd, family, socket.SOCK_STREAM)
+                sock.getsockname()
+                self = cls.__new__(cls)
+                self.socket = sock
+                self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                self.server_address = self.socket.getsockname()[:2]
+                self.RequestHandlerClass = handler
+                self.process_request_lock = threading.Lock()
+                return self
+            except OSError:
+                try:
+                    sock.close()
+                except Exception:
+                    pass
+        raise OSError("could not inherit systemd socket")
+
+
 if __name__ == "__main__":
-    print(f"losos-ghcr-cache: serving {REPOSITORY} on http://{HOST}:{PORT}/", flush=True)
-    http.server.ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
+    listen_fds = int(os.environ.get("LISTEN_FDS", "0") or "0")
+    listen_pid = int(os.environ.get("LISTEN_PID", "0") or "0")
+    if listen_fds >= 1 and listen_pid == os.getpid():
+        # FD 3 is the first socket passed by systemd (SD_LISTEN_FDS_START).
+        server = SocketHTTPServer.from_fd(3, Handler)
+        print(f"losos-ghcr-cache: serving {REPOSITORY} via systemd socket activation", flush=True)
+    else:
+        print(f"losos-ghcr-cache: serving {REPOSITORY} on http://{HOST}:{PORT}/", flush=True)
+        server = http.server.ThreadingHTTPServer((HOST, PORT), Handler)
+    server.serve_forever()
