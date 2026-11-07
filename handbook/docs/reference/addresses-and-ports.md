@@ -72,5 +72,4 @@ at home.
 | `proxy.losos.dasmat.us`     | The binary cache the box updates from                    |
 | `127.0.0.1:8787`            | Local GHCR-backed Nix cache, on the box and installer |
 | `127.0.0.1:8790`            | The box's local copy of all of these, kept on its disk |
-| `losos.dasmat.us/proxy`     | A copy of that cache, used when the first does not answer |
 | `losos.dasmat.us`           | This handbook on the web                                 |
