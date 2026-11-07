@@ -138,6 +138,9 @@ jobs:
     # ran it. No nix needed: jq ships on the runner image.
     steps:
       - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
       - run: bash nix/check-pins.sh
 
   # The release channels' bot (.github/workflows/channels.yml) against a fake
@@ -194,6 +197,9 @@ jobs:
       - uses: actions/checkout@v7
         with:
           sparse-checkout: .github/scripts
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
       - id: pick
         env:
           GH_TOKEN: ${{ github.token }}
@@ -483,6 +489,11 @@ jobs:
           # fails before any NixOS configuration can be evaluated.
           fetch-depth: 0
       - uses: ./.github/actions/setup-nix
+      # lint-nix.sh and check-flake.sh are Bun. The pins job already installs
+      # it; this job calls the same shims and does not.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
       # Mirrors devenv.nix's `lint-nix` and the git hooks: nixfmt, deadnix
       # and statix over every tracked .nix file. Without it the tree drifted
       # until the hooks refused every commit that touched an unformatted file.
