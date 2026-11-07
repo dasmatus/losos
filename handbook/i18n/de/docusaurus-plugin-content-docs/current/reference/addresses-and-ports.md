@@ -73,5 +73,4 @@ keinen eingehenden Port öffnest.
 | `proxy.losos.dasmat.us`     | Der Binär-Cache, aus dem sich die Box aktualisiert       |
 | `127.0.0.1:8787`            | Lokaler GHCR-Nix-Cache auf Gerät und Installationsmedium |
 | `127.0.0.1:8790`            | Die lokale Kopie all dieser Caches auf der Platte der Box |
-| `losos.dasmat.us/proxy`     | Eine Kopie dieses Caches, die verwendet wird, wenn der erste nicht antwortet |
 | `losos.dasmat.us`           | Dieses Handbuch im Web                                   |
