@@ -45,8 +45,8 @@ let
           -DCMAKE_BUILD_TYPE=Release \
           -DWHISPER_SRC=${pkgs.whisper-cpp.src} \
           -DLOSOS_THREADS=${if threads then "ON" else "OFF"} \
-          -DCMAKE_C_FLAGS="-O3 -msimd128 ${lib.optionalString threads "-pthread"}" \
-          -DCMAKE_CXX_FLAGS="-O3 -msimd128 ${lib.optionalString threads "-pthread"}"
+          -DCMAKE_C_FLAGS="-O3 -msimd128 -flto=thin ${lib.optionalString threads "-pthread"}" \
+          -DCMAKE_CXX_FLAGS="-O3 -msimd128 -flto=thin ${lib.optionalString threads "-pthread"}"
         cmake --build build --target losos-whisper
         runHook postBuild
       '';

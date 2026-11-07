@@ -34,7 +34,7 @@ unreachable_pub = "warn"
 [profile.release]
 # Small modules load faster and the host keeps one compiled copy each.
 opt-level = "s"
-lto = true
+lto = "thin"
 codegen-units = 1
 panic = "abort"
 strip = "debuginfo"
