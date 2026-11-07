@@ -1,0 +1,14 @@
+[application]
+name = "losos-frontend"
+default_platform = "desktop"
+
+[web.app]
+title = "LosOS"
+
+[web.watcher]
+reload_html = true
+watch_path = ["src", "assets"]
+
+[bundle]
+identifier = "us.dasmat.losos.frontend"
+publisher = "Matus Mastena"

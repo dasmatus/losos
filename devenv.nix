@@ -48,11 +48,31 @@ let
     # wasm32-only dependency, so this lints and tests its plain Rust;
     # `lint-wasm` below lints the two wasm32 builds.
     "admin-ui/lab/render"
+    # Shared client primitives reused by the TUI and Dioxus frontend.
+    "admin-ui/losos-client"
     # losos, the terminal client (admin-ui/tui/README.md). Its suite runs a
     # mock box and edge over TLS and, where util-linux `script` exists, the
     # built binary in a pseudo-terminal.
     "admin-ui/tui"
+    # Dioxus cross-platform frontend (replaces the Kotlin companion).
+    # Default features require desktop webview deps (gtk/webkit on Linux), so
+    # generic lint/test target its core-only build; GUI targets use
+    # test-dioxus-frontend / platform checks.
+    "admin-ui/dioxus-app"
   ];
+  # dioxus-app is core-only in generic gates (no desktop webview deps needed).
+  clippyArgs =
+    c:
+    if c == "admin-ui/dioxus-app" then
+      "--manifest-path ${c}/Cargo.toml --no-default-features --all-targets -- -D warnings"
+    else
+      "--manifest-path ${c}/Cargo.toml --all-targets -- -D warnings";
+  testArgs =
+    c:
+    if c == "admin-ui/dioxus-app" then
+      "--manifest-path ${c}/Cargo.toml --no-default-features"
+    else
+      "--manifest-path ${c}/Cargo.toml";
   forEachCrate = cmd: lib.concatMapStringsSep "\n" (c: ''echo "── ${c}"; ${cmd c}'') crates;
   # The Solana escrow program (edge/contracts/solana/README.md). Linted with
   # the others; its suite runs the program `cargo build-sbf` makes, so it is
@@ -184,7 +204,9 @@ in
       "clippy"
       "rustfmt"
       "rust-analyzer"
+      "rust-src"
     ];
+    targets = [ "wasm32-unknown-unknown" ];
   };
 
   packages =
@@ -212,7 +234,26 @@ in
       # OCR (read screenshots/images) and Rust advisory auditing.
       tesseract
       cargo-audit
-
+    ])
+    ++ (lib.optionals pkgs.stdenv.isLinux (
+      with pkgs;
+      [
+        # Dioxus desktop (admin-ui/dioxus-app) / wry: Linux webview deps.
+        pkg-config
+        openssl
+        glib
+        gtk3
+        webkitgtk_4_1
+        libsoup_3
+        gdk-pixbuf
+        cairo
+        pango
+        atk
+        librsvg
+        xdotool
+      ]
+    ))
+    ++ (with pkgs; [
       # Shell UX, carried over from the flake/devshell.nix this file replaces:
       # the host fish config minus Zellij, which would wrap the shell in a
       # multiplexer and make cargo output noisier for no gain.
@@ -247,7 +288,7 @@ in
   scripts.lint.exec = ''
     set -e
     ${forEachLinted (c: "cargo fmt${fmtAll c} --manifest-path ${c}/Cargo.toml --check")}
-    ${forEachLinted (c: "cargo clippy --manifest-path ${c}/Cargo.toml --all-targets -- -D warnings")}
+    ${forEachLinted (c: "cargo clippy ${clippyArgs c}")}
   '';
   scripts.lint.description = "rustfmt --check + clippy -D warnings, every crate.";
 
@@ -285,9 +326,40 @@ in
     export LOSOS_TEST_BITCOIND=${pkgs.bitcoind}/bin/bitcoind
     export LOSOS_TEST_MONEROD=${pkgs.monero-cli}/bin/monerod
     export LOSOS_TEST_TANG=${pkgs.tang}
-    ${forEachCrate (c: "cargo test --manifest-path ${c}/Cargo.toml")}
+    ${forEachCrate (c: "cargo test ${testArgs c}")}
   '';
   scripts.test-rust.description = "Unit tests for every Rust crate.";
+
+  # Dioxus cross-platform frontend (admin-ui/dioxus-app): core tests/check,
+  # web/WASM check, and desktop check when Linux webview deps are present.
+  # Mobile packaging (Android/iOS) requires platform SDKs + `dx`; see
+  # admin-ui/dioxus-app/build-all.sh.
+  scripts.test-dioxus-frontend.exec = ''
+    set -euo pipefail
+    root="''${DEVENV_ROOT:-$(git rev-parse --show-toplevel)}"
+    cd "$root/admin-ui/dioxus-app"
+    echo "== losos-client =="
+    cargo test --manifest-path "$root/admin-ui/losos-client/Cargo.toml"
+    echo "== dioxus frontend core =="
+    cargo test --no-default-features
+    cargo check --no-default-features
+    if rustup target list --installed 2>/dev/null | grep -q '^wasm32-unknown-unknown$' || cargo check --no-default-features --features gui,web --target wasm32-unknown-unknown >/dev/null 2>&1; then
+      echo "== web (wasm32) =="
+      cargo check --no-default-features --features gui,web --target wasm32-unknown-unknown
+    else
+      echo "== web skipped (wasm32 target/std not available) =="
+    fi
+    if [ "''${PKG_CONFIG_PATH+x}" = x ] && pkg-config --exists glib-2.0 2>/dev/null; then
+      echo "== desktop (Linux webview deps present) =="
+      cargo check --no-default-features --features gui,desktop
+    else
+      echo "== desktop skipped (install webview deps; devenv on Linux provides them) =="
+    fi
+    echo "== mobile (requires SDKs) =="
+    echo "dx bundle --platform android  # Android SDK/NDK"
+    echo "dx bundle --platform ios      # macOS/Xcode"
+  '';
+  scripts.test-dioxus-frontend.description = "Check/test the Dioxus frontend across available targets (core, web, desktop when deps present).";
 
   # The escrow program built for the Solana VM, its suite in LiteSVM, then the
   # registrar against a real solana-test-validator running it. Needs Anza's
