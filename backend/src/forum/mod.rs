@@ -148,7 +148,7 @@ pub fn extract_mentions(body: &str) -> Vec<Mention> {
             });
         }
     }
-    out.sort_by(|a, b| a.target.to_lowercase().cmp(&b.target.to_lowercase()));
+    out.sort_by_key(|a| a.target.to_lowercase());
     out.dedup_by(|a, b| a.target.eq_ignore_ascii_case(&b.target));
     out
 }
