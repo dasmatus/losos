@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LosOS — Dioxus UI Preview</title>
+  <link rel="stylesheet" href="assets/main.css">
+  <style>
+    /* Ensure preview looks right */
+    body { margin: 0; }
+  </style>
+</head>
+<body>
+  <div class="shell-root">
+    <header class="app-bar">
+      <div class="app-bar-inner">
+        <a href="/" class="app-bar-home">LosOS</a>
+        <span class="app-bar-badge">this box</span>
+        <div class="app-bar-spacer"></div>
+        <span class="app-bar-person muted">Admin UI (Dioxus)</span>
+      </div>
+    </header>
+    <div class="shell-body">
+      <aside class="sidebar">
+        <nav class="sidebar-nav">
+          <div class="nav-section">
+            <div class="nav-section-label">Main</div>
+            <a class="nav-item active" href="#">Overview</a>
+            <a class="nav-item" href="#">Apps</a>
+            <a class="nav-item" href="#">Storage</a>
+            <a class="nav-item" href="#">Mesh</a>
+          </div>
+          <div class="nav-section">
+            <div class="nav-section-label">Mesh</div>
+            <a class="nav-item" href="#">Market</a>
+          </div>
+          <div class="nav-section">
+            <div class="nav-section-label">Tools</div>
+            <a class="nav-item" href="#">Diagrams</a>
+            <a class="nav-item" href="#">Wikis</a>
+          </div>
+          <div class="nav-section">
+            <div class="nav-section-label">Settings</div>
+            <a class="nav-item" href="#">Settings</a>
+            <a class="nav-item" href="#">About</a>
+          </div>
+        </nav>
+      </aside>
+      <main class="app-main">
+        <div class="losos-page" data-page="overview">
+          <div class="block box-name">
+            <h1 class="page-title">LosOS</h1>
+            <p class="muted">This box is managed from this frontend (Dioxus/RSX rewrite).</p>
+          </div>
+          <div class="block apps-block">
+            <h2>Apps</h2>
+            <div class="grid">
+              <div class="card"><strong>Nextcloud</strong></div>
+              <div class="card"><strong>Jellyfin</strong></div>
+              <div class="card"><strong>Home Assistant</strong></div>
+            </div>
+          </div>
+          <div class="block glance">
+            <h2>At a glance</h2>
+            <div class="card">
+              <pre class="mono">{
+  "host": "losos.local",
+  "status": "ok",
+  "frontend": "dioxus-rsx"
+}</pre>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+</body>
+</html>
