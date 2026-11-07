@@ -1,7 +1,7 @@
 /* A page drawn from its MDX (src/pages/README.md).
  *
  * The HTML comes from losos-mdx, on the box for a page an administrator
- * changed and at build time for the defaults (vite.pages.ts), and it has
+ * changed and at build time for the defaults (pages.ts), and it has
  * been through the crate's allowlist either way. It is read with
  * DOMParser, which runs nothing, and turned into React elements: each
  * `<losos-block>` placeholder becomes the page's own component for that
@@ -15,7 +15,7 @@
 
 import * as React from "react";
 import { Link } from "react-router-dom";
-import { DEFAULTS } from "virtual:losos-pages";
+import { DEFAULTS } from "losos:pages";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import blocks from "./blocks.json";
@@ -99,7 +99,7 @@ const ATTRIBUTES: Record<string, string> = {
 };
 
 /* The other documents on this origin (the admin SPA is one of several,
- * vite.config.ts): a link into one of them loads that page, a link
+ * build.ts): a link into one of them loads that page, a link
  * elsewhere on / is the router's. */
 const OTHER_DOCUMENTS = ["/api/", "/auth/", "/basic/", "/chat/", "/cloud/", "/git/", "/handbook/", "/kb/", "/manage/", "/wiki/"];
 

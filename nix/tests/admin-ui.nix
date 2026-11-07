@@ -1,7 +1,6 @@
 # Browser check for the admin UI (admin-ui/app).
 #
-# Builds the real production bundle — `tsc --noEmit && bun run build` on Bun,
-# the same
+# Builds the real production bundle — `tsc --noEmit && bun build.ts`, the same
 # command that produces what nginx serves — and then drives it in headless
 # chromium against a stubbed API.
 #
@@ -96,7 +95,7 @@ ui.overrideAttrs (old: {
 
     # The UI runs on Bun and the browser, never on Node: no node: module
     # may come back into the source, the checks or the build scripts.
-    if grep -rnE "(from |import\()[\"']node:|require\([\"']" src tests scripts; then
+    if grep -rnE "(from |import\()[\"']node:|require\([\"']" src tests scripts build.ts bundler.ts dev.ts pages.ts; then
       echo "admin-ui/app: Node modules are not used here; use Bun's or the web's APIs" >&2
       exit 1
     fi
@@ -106,17 +105,26 @@ ui.overrideAttrs (old: {
     # these break — and both break silently, at first paint, on a box with no
     # shell to read a console from.
     #
-    # theme-boot.js must exist at that exact unhashed name (the <script> tag in
-    # index.html is hand-written, so Vite's HTML pipeline cannot rewrite it),
-    # and it must still be referenced as a CLASSIC script: adding `type=module`
-    # or `defer` would defer it past the first paint and reintroduce the
-    # light/dark flash it exists to prevent. See admin-ui/app/scripts/bundler.ts.
+    # theme-boot.js must exist at that exact unhashed name (each page names
+    # it in a placeholder the build turns into the tag, because the bundler
+    # would fold a <script src> into the module bundle), and every page must
+    # still load it as a CLASSIC script: `type=module` or `defer` would defer
+    # it past the first paint and reintroduce the light/dark flash it exists
+    # to prevent. See admin-ui/app/build.ts.
     test -f dist/theme-boot.js
-    grep -q 'src="/theme-boot.js"' dist/index.html
-    # The tag must NOT have picked up type=module/defer/async. Matching the
-    # attributes rather than the whole tag keeps this from failing on
-    # whitespace if Vite ever reformats the document.
-    ! grep -E 'src="/theme-boot\.js"' dist/index.html | grep -Eq 'type=|defer|async'
+    for page in dist/index.html dist/{chat,manage,cloud,kb,git,wiki}/index.html; do
+      grep -q 'src="/theme-boot.js"' "$page"
+      ! grep -q 'losos:classic-script' "$page"
+      # The tag must NOT have picked up type=module/defer/async. Matching the
+      # attributes rather than the whole tag keeps this from failing on
+      # whitespace if the bundler ever reformats the document.
+      ! grep -E 'src="/theme-boot\.js"' "$page" | grep -Eq 'type=|defer|async'
+    done
+    # Bun's bundler, not Vite: nothing may bring it back.
+    if grep -qE '"(vite|@vitejs/[^"]*|@tailwindcss/vite)"' package.json; then
+      echo "admin-ui/app: the pages are bundled by Bun (build.ts, dev.ts), not Vite" >&2
+      exit 1
+    fi
 
     mkdir -p $out
     # The built bundle is worth keeping: when this check fails on a bundle that

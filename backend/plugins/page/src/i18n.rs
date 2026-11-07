@@ -1,5 +1,5 @@
 //! The admin UI's message catalogue, read from the copy its build writes
-//! (`basic/messages.<locale>.json`, admin-ui/app/vite.config.ts), so a page
+//! (`basic/messages.<locale>.json`, admin-ui/app/build.ts), so a page
 //! drawn here says what the script page says, in the same three languages.
 
 use serde_json::{Map, Value};
