@@ -11,7 +11,7 @@
  *   bun scripts/basic-classes.ts [--repo ROOT] [--out DIR]
  *
  * ROOT is the checkout (it holds backend/plugins). DIR receives
- * basic-classes.db and basic-classes.txt. From the build script, both
+ * basic-classes.db and basic-classes.txt. From build.ts and dev.ts, both
  * default to this repo and admin-ui/app/src/styles.
  */
 
@@ -102,8 +102,25 @@ export async function writeBasicClasses(repo: string, out: string): Promise<stri
 }
 
 function arg(flag: string, fallback: string): string {
-  const i = Bun.argv.indexOf(flag);
-  return i === -1 ? fallback : Bun.argv[i + 1] ?? fallback;
+  const i = process.argv.indexOf(flag);
+  return i === -1 ? fallback : (process.argv[i + 1] ?? fallback);
+}
+
+/** Write the gitignored class list before Tailwind scans, where the plugin
+ * sources are beside the UI (a checkout). */
+export async function basicClasses() {
+  const repo = `${here}/../../..`;
+  const styles = `${here}/../src/styles`;
+  const sources = `${repo}/backend/plugins/basic/src`;
+  // The Nix build has no plugin sources beside the UI. It copies the
+  // text file out of the cached database before the build starts.
+  try {
+    new Bun.Glob("*").scanSync({ cwd: sources }).next();
+  } catch (error) {
+    if ((error as { code?: string }).code === "ENOENT") return;
+    throw error;
+  }
+  await writeBasicClasses(repo, styles);
 }
 
 /* The build (scripts/build.ts) runs writeBasicClasses the same way, so a

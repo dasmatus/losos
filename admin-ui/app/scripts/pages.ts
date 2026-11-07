@@ -1,17 +1,16 @@
 /* Every page is an MDX file that places its blocks (src/pages/README.md).
  * The defaults are read here, at build time, by the same losos-mdx the box
  * reads an administrator's page with (src/mdx/pkg, the wasm-bindgen
- * package), so a box nobody customized draws its pages with no parser in
- * the browser, and a default that does not read, or places a block
+ * package), and the bundle carries the HTML they become as `losos:pages`
+ * (bundler.ts). So a box nobody customized draws its pages with no parser
+ * in the browser, and a default that does not read, or places a block
  * blocks.json does not list, fails the build here.
  *
- * The bundle carries the HTML they become as `virtual:losos-pages`
- * (scripts/bundler.ts wires the plugin). blocks.json and the default files
- * are also copied to dist/pages/, where the `pages` plugin
- * (backend/plugins/pages/) reads them: to check what an administrator saves
- * against the same table, and to show the editor the default it starts
- * from. nginx sends /pages/ nowhere, as it does /basic/. */
-
+ * build.ts also copies blocks.json and the default files to dist/pages/, where
+ * the `pages` plugin (backend/plugins/pages/) reads them: to check what an
+ * administrator saves against the same table, and to show the editor the
+ * default it starts from. nginx sends /pages/ nowhere, as it does
+ * /basic/. */
 const DIR = "src/pages";
 
 interface Registry {
@@ -76,5 +75,3 @@ export async function compilePages(root: string): Promise<{
   if (wrong.length > 0) throw new Error(`the default pages do not read:\n${wrong.join("\n")}`);
   return { registry, sources, html };
 }
-
-export const PAGES_DIR = DIR;

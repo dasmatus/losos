@@ -18,8 +18,8 @@
  * cross-origin isolated, so the threaded Whisper build and ONNX Runtime's
  * thread pool are the ones under test. */
 
-import assert from '../../assert.mjs';
-import { launch } from '../../harness.mjs';
+import assert from '../../assert.ts';
+import { launch } from '../../harness.ts';
 import { startFront } from '../calls/front.ts';
 
 /* Paths as tests/ has them. */
@@ -198,6 +198,8 @@ await check('the answer is spoken into the call and jan hears it, sealed, as tex
   // The words came from the agent's pid, not from jan.
   const agentPid = (await state(jan)).members.find((m) => m.agent === true).pid;
   assert.ok(heard.some((t) => t.startsWith(`p${agentPid}:`) && /bratislava/i.test(t)), JSON.stringify(heard));
+  // Heard text arrives before the caption list. Wait, or the assertion races the paint.
+  await until('captions name Bratislava', async () => (await state(eva)).captions.some((c) => c.agent && /Bratislava/.test(c.text)), 90000);
   const captions = (await state(eva)).captions;
   assert.ok(captions.some((c) => !c.agent && /capital of Slovakia/i.test(c.text)), JSON.stringify(captions));
   assert.ok(captions.some((c) => c.agent && /Bratislava/.test(c.text)), JSON.stringify(captions));
