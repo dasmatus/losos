@@ -283,6 +283,11 @@
     "POST /api/forum/channels": "signed-in",
     "POST /api/forum/reactions": "signed-in",
     "POST /api/forum/spaces": "signed-in",
-    "POST /api/forum/topics": "signed-in"
+    "POST /api/forum/topics": "signed-in",
+    "GET /api/forum/channels/{channel_id}/messages": "signed-in",
+    "POST /api/forum/channels/{channel_id}/messages": "signed-in",
+    "GET /api/forum/topics/{topic_id}/posts": "signed-in",
+    "POST /api/forum/topics/{topic_id}/posts": "signed-in",
+    "POST /api/forum/memberships": "signed-in"
   }
 }

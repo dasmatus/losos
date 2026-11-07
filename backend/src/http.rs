@@ -2982,7 +2982,41 @@ async fn get_forum(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
         if forum_principal(who).is_none() {
             return forum_deny();
         }
-        HttpResponse::Ok().json(api.forum.status())
+        let mut status = api.forum.status();
+        // Expose edge/federation scaffold contracts as verified stubs only.
+        // No ActivityPub/Matrix runtime handlers are executed here.
+        if let Some(obj) = status.as_object_mut() {
+            match crate::forum_scaffold::ForumRuntimeConfig::from_env() {
+                Some(cfg) => {
+                    obj.insert("scaffold".into(), serde_json::json!(true));
+                    obj.insert(
+                        "scaffoldConfig".into(),
+                        serde_json::json!({
+                            "stateDir": cfg.state_dir,
+                            "statusFile": cfg.status_file,
+                            "contractsFile": cfg.contracts_file,
+                            "port": cfg.port,
+                            "apiPath": cfg.api_path,
+                            "uiPath": cfg.ui_path,
+                            "edgeLocalRouting": cfg.edge.edge_local,
+                            "activityPubEnabled": cfg.activity_pub.enabled,
+                            "activityPubImplemented": false,
+                            "matrixDmBridgeEnabled": cfg.matrix_dm_bridge.enabled,
+                            "matrixDmBridgeImplemented": false,
+                            "assistantEnabled": cfg.assistant.enabled,
+                        }),
+                    );
+                }
+                None => {
+                    obj.insert("scaffold".into(), serde_json::json!(false));
+                }
+            }
+            obj.insert(
+                "design".into(),
+                serde_json::json!(crate::forum_scaffold::DESIGN_SPEC),
+            );
+        }
+        HttpResponse::Ok().json(status)
     })
 }
 
