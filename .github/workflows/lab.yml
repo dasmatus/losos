@@ -54,9 +54,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
-        with:
-          cache-url: ${{ vars.LOSOS_PROXY_URL }}
-          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: admin-ui/app/package.json
