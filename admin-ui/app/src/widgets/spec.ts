@@ -4,7 +4,7 @@
  * ------------------------
  * The scripting API is `async (losos) => ({ type, title, data, foot })`. The
  * five built-ins are exactly that — real functions, compiled into the bundle
- * by Vite, with the whole language available to them.
+ * by the bundler, with the whole language available to them.
  *
  * A widget typed into this page in a browser cannot be. `script-src 'self'`
  * without 'unsafe-eval' means `eval` and `new Function` throw, and every way

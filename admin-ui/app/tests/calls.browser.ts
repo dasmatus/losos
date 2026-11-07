@@ -14,6 +14,7 @@
 import type { Page } from 'playwright';
 import assert from './assert.ts';
 import { launch } from './harness.ts';
+import { losos } from '../bundler.ts';
 import { startFront } from './fixtures/calls/front.ts';
 import type { CallSession, KeyMessage, Member } from '../src/calls/session.ts';
 import type { LocalMedia } from '../src/calls/local.ts';
@@ -87,8 +88,9 @@ const bundle = async (entry: string) => {
     entrypoints: [entry],
     target: 'browser',
     format: 'esm',
-    // src/calls/background.ts reads the bundle's base path.
-    define: { 'import.meta.env.BASE_URL': '"/"' },
+    // src/calls/background.ts reads the page's base path from losos:build.
+    // The page serves the worker itself, at /e2ee-worker.js.
+    plugins: [losos({ publicPath: '/', workers: new Map([[Bun.resolveSync('../src/calls/e2ee-worker.ts', import.meta.dir), '/e2ee-worker.js']]) })],
   });
   if (!built.success) throw new AggregateError(built.logs, `bundling ${entry} failed`);
   return built.outputs[0]!.text();

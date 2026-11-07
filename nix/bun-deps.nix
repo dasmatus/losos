@@ -7,7 +7,7 @@
 #
 # $out/node_modules is the tree `bun install --frozen-lockfile` makes. No
 # install scripts run: Playwright's would download browsers, and the native
-# tools (rolldown, Tailwind's oxide, lightningcss) ship their binaries as
+# tools (Tailwind's oxide, lightningcss) ship their binaries as
 # platform packages. After a change to bun.lock, set `hash = lib.fakeHash`,
 # build, and paste the hash the error names; .github/scripts/fix-hashes.py
 # does that in CI. `local` names what a `file:` dependency installs from.
@@ -67,7 +67,7 @@ pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
   outputHashAlgo = "sha256";
   outputHashMode = "recursive";
 
-  # Copied rather than linked: Vite and webpack keep caches in node_modules.
+  # Copied rather than linked: Docusaurus's bundler keeps caches in node_modules.
   # Bun answers as `node` the way `bun --bun` makes it, by a link named node.
   passthru.install = ''
     cp -R ${finalAttrs.finalPackage}/node_modules .

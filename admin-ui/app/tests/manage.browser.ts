@@ -8,8 +8,9 @@
  * relay with the key; the box's LosOS Cloud and LosOS Git rows change only
  * the options named, through POST /api/site, and the bar follows the rebuild
  * to its end; the apps it lists have no link to their port and no pin; a
- * box that refuses the edge says so; a deep link reloads; and the page logs
- * no Content-Security-Policy violation under the edge's own policy beyond
+ * box that refuses the edge says so; a deep link reloads; the claim takes a
+ * pasted statement signature and a whole uploaded file as well; and the page
+ * logs no Content-Security-Policy violation under the edge's own policy beyond
  * what the admin page itself logs. On the
  * box, the switch sends POST /api/edge/manage, for a checked gateway on the
  * LAN as for any other edge there.
@@ -294,10 +295,27 @@ await check('the gateway is set up from the page: its owner, its hub and the box
   await section.getByRole('alert').filter({ hasText: "not from this gateway's owner" }).waitFor();
   await page.getByLabel('Signature').fill('-----BEGIN PGP SIGNATURE-----\nabc\n-----END PGP SIGNATURE-----');
   await section.getByRole('button', { name: 'Save' }).click();
-  await page.getByText('Settings accepted', { exact: true }).waitFor();
-  const claim = writes.filter((w) => w.path === '/passport/settings').at(-1)!;
+  await page.getByText('Settings accepted', { exact: true }).last().waitFor();
+  let claim = writes.filter((w) => w.path === '/passport/settings').at(-1)!;
   assert.equal(claim.auth, null);
   assert.equal(claim.body.settings, '{"version":1}\n');
+
+  // The same content may arrive as files: each field takes a whole file, so
+  // an owner uploads the settings and its detached signature without
+  // pasting either.
+  await section.getByRole('button', { name: 'Claim' }).click();
+  await page.getByTestId('gateway-settings-file').setInputFiles({
+    name: 'gateway.yml', mimeType: 'text/plain', buffer: Buffer.from('{"version":2}'),
+  });
+  await page.getByTestId('gateway-signature-file').setInputFiles({
+    name: 'settings-sig.asc', mimeType: 'application/pgp-signature', buffer: Buffer.from('-----BEGIN PGP SIGNATURE-----\nabc\n-----END PGP SIGNATURE-----'),
+  });
+  assert.equal(await page.getByLabel('Settings file').inputValue(), '{"version":2}');
+  await section.getByRole('button', { name: 'Save' }).click();
+  await page.getByText('Settings accepted', { exact: true }).last().waitFor();
+  claim = writes.filter((w) => w.path === '/passport/settings').at(-1)!;
+  assert.equal(claim.body.settings, '{"version":2}\n');
+  assert.equal(claim.body.signature, '-----BEGIN PGP SIGNATURE-----\nabc\n-----END PGP SIGNATURE-----\n');
 
   // The hub: a malformed endpoint is refused with the edge's words, a good
   // row is saved, then cleared.

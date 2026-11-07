@@ -54,6 +54,14 @@ runs:
           extra-trusted-public-keys = losos-1:35OIuYFMKDrlC6yTzqivDPqNqZTMjM0l2MB89bRRreg=
           connect-timeout = 5
           fallback = true
+          # nix (a multi-user daemon) reads the cores limit from nix.conf, which
+          # this writes to /etc/nix/nix.conf; NIX_CONFIG, a per-user daemon and
+          # nix.conf in that order, so a cores here in the workflow env is
+          # discarded on these runners (the user nix.conf carries none). Capped
+          # per-builder because nix's `cores`, not the OS, is what a build
+          # consumes: a derivation that spawns `nproc` threads eats all of them
+          # unless this tells nix it may hand it only four.
+          cores = 4
     - name: Start the local GHCR cache
       shell: bash
       run: |
