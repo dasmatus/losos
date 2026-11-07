@@ -313,11 +313,13 @@ in
       ExecStart = "${pkgs.python3}/bin/python3 ${../tools/losos-ghcr-cache.py}";
       Restart = if cfg.ghcr.socketActivation then "on-failure" else "on-failure";
       RestartSec = 3;
-    } // lib.optionalAttrs cfg.ghcr.ephemeral {
+    }
+    // lib.optionalAttrs cfg.ghcr.ephemeral {
       RuntimeDirectory = "losos-ghcr-cache";
       RuntimeDirectoryMode = "0755";
       # Ephemeral: no persistent cache dir needed.
-    } // lib.optionalAttrs cfg.ghcr.socketActivation {
+    }
+    // lib.optionalAttrs cfg.ghcr.socketActivation {
       # Socket-activated: systemd holds the listening socket.
       StandardInput = "null";
     };
