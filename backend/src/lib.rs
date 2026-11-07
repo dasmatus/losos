@@ -53,6 +53,8 @@ pub mod escrow_key;
 pub mod facade;
 pub mod fake;
 pub mod forge;
+/// Forum scaffold contracts/hooks (SCAFFOLD: no federation/bridge runtime yet).
+pub mod forum_scaffold;
 pub mod git_rooms;
 pub mod grow;
 pub mod guard;
