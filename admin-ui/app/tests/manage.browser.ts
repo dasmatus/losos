@@ -310,6 +310,10 @@ await check('the gateway is set up from the page: its owner, its hub and the box
   await page.getByTestId('gateway-signature-file').setInputFiles({
     name: 'settings-sig.asc', mimeType: 'application/pgp-signature', buffer: Buffer.from('-----BEGIN PGP SIGNATURE-----\nabc\n-----END PGP SIGNATURE-----'),
   });
+  await page.getByLabel('Settings file').waitFor();
+  await page.waitForFunction(
+    () => [...document.querySelectorAll('textarea')].some((t) => t instanceof HTMLTextAreaElement && t.value === '{"version":2}'),
+  );
   assert.equal(await page.getByLabel('Settings file').inputValue(), '{"version":2}');
   await section.getByRole('button', { name: 'Save' }).click();
   await page.getByText('Settings accepted', { exact: true }).waitFor();
