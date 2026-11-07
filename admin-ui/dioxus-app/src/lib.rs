@@ -15,3 +15,12 @@ pub mod app;
 pub mod screens;
 
 pub mod discovery;
+
+#[cfg(feature = "gui")]
+pub mod routes;
+#[cfg(feature = "gui")]
+pub mod layout;
+#[cfg(feature = "gui")]
+pub mod components;
+#[cfg(feature = "gui")]
+pub mod actions;

@@ -1,33 +1,49 @@
-use crate::screens::{connect::ConnectScreen, dashboard::DashboardScreen};
+use crate::routes::Route;
 use crate::store::{self, BoxConfig};
 use dioxus::prelude::*;
 
 const MAIN_CSS: Asset = asset!("/assets/main.css");
 
+/// Shared application config signal type.
+pub type ConfigSignal = Signal<BoxConfig>;
+
 #[component]
 pub fn App() -> Element {
-    let mut config = use_signal(store::load);
+    let config = use_context_provider(|| Signal::new(store::load()));
 
     // Persist whenever config changes.
     use_effect(move || {
         store::save(&config.read());
     });
 
-    let needs = config.read().needs_connect();
-
     rsx! {
         document::Stylesheet { href: MAIN_CSS }
-        div { class: "app-shell",
-            if needs {
-                ConnectScreen {
-                    config: config(),
+        Router::<Route> {}
+    }
+}
+
+#[component]
+pub fn AppLayout() -> Element {
+    let mut config: ConfigSignal = use_context();
+    let needs = config.read().needs_connect();
+
+    if needs {
+        let current = config();
+        return rsx! {
+            div { class: "app-shell",
+                crate::screens::connect::ConnectScreen {
+                    config: current,
                     on_change: move |next: BoxConfig| config.set(next),
                 }
-            } else {
-                DashboardScreen {
-                    config: config(),
-                    on_change: move |next: BoxConfig| config.set(next),
-                }
+            }
+        };
+    }
+
+    rsx! {
+        div { class: "app-layout",
+            crate::layout::Sidebar {}
+            main { class: "app-main",
+                Outlet::<Route> {}
             }
         }
     }
