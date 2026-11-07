@@ -1,0 +1,78 @@
+/* Text an administrator writes on a page (src/pages/README.md): losos-mdx
+ * wraps each run of it in `div.mdx-document.mdx-page-text`, so a page
+ * nobody changed has none of these and looks as it always did. The
+ * components inside it are document.css's. Tailwind's preflight leaves
+ * headings and lists bare, so the little type a page needs is here, on the
+ * palette in tokens.css, and as weak as `:where` makes it, so the
+ * administrators' stylesheet wins any rule it repeats. */
+
+:where(.mdx-page-text) {
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.6;
+}
+:where(.mdx-page-text) > :last-child {
+  margin-bottom: 0;
+}
+:where(.mdx-page-text) :where(p, ul, ol, blockquote, pre, table, figure) {
+  margin: 0 0 0.75em;
+}
+:where(.mdx-page-text) :where(h1, h2, h3, h4, h5, h6) {
+  margin: 0 0 0.5em;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+:where(.mdx-page-text) h1 {
+  font-size: 1.6em;
+}
+:where(.mdx-page-text) h2 {
+  font-size: 1.3em;
+}
+:where(.mdx-page-text) h3 {
+  font-size: 1.1em;
+}
+:where(.mdx-page-text) :where(ul, ol) {
+  padding-left: 1.4em;
+}
+:where(.mdx-page-text) ul {
+  list-style: disc;
+}
+:where(.mdx-page-text) ol {
+  list-style: decimal;
+}
+:where(.mdx-page-text) a:not(.mdx-button) {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+:where(.mdx-page-text) :not(pre) > code {
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: var(--sunk);
+  font-family: var(--font-code);
+  font-size: 0.9em;
+}
+:where(.mdx-page-text) pre {
+  overflow-x: auto;
+  padding: 0.75em 1em;
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  background: var(--sunk);
+  font-family: var(--font-code);
+  font-size: 0.9em;
+}
+:where(.mdx-page-text) blockquote {
+  padding-left: 1em;
+  border-left: 3px solid var(--hair);
+  color: var(--muted);
+}
+:where(.mdx-page-text) hr {
+  margin: 1em 0;
+  border: 0;
+  border-top: 1px solid var(--hair);
+}
+:where(.mdx-page-text) img {
+  max-width: 100%;
+  height: auto;
+}

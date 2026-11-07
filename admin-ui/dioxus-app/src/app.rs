@@ -40,10 +40,13 @@ pub fn AppLayout() -> Element {
     }
 
     rsx! {
-        div { class: "app-layout",
-            crate::layout::Sidebar {}
-            main { class: "app-main",
-                Outlet::<Route> {}
+        div { class: "shell-root",
+            crate::layout::AppBar {}
+            div { class: "shell-body",
+                crate::layout::Sidebar {}
+                main { class: "app-main",
+                    Outlet::<Route> {}
+                }
             }
         }
     }
