@@ -138,33 +138,18 @@ in
             scaffold = true;
             implemented = false;
             phase = 0;
-            edgeLocalRouting = cfg.edgeLocalRouting;
+            inherit (cfg) edgeLocalRouting;
             edge = {
-              requireProxy = edge.requireProxy;
-              requireMesh = edge.requireMesh;
-              registrationMode = edge.registrationMode;
-              pathFile = edge.pathFile;
+              inherit (edge) requireProxy requireMesh registrationMode pathFile;
             };
             activityPub = {
-              enable = ap.enable;
-              publicFederation = ap.publicFederation;
-              webfingerPath = ap.webfingerPath;
-              nodeinfoPath = ap.nodeinfoPath;
-              basePath = ap.basePath;
-              sharedInboxPath = ap.sharedInboxPath;
-              outboxHookPath = ap.outboxHookPath;
+              inherit (ap) enable publicFederation webfingerPath nodeinfoPath basePath sharedInboxPath outboxHookPath;
             };
             matrixDmBridge = {
-              enable = dm.enable;
-              mode = dm.mode;
-              requireChat = dm.requireChat;
-              appserviceNamespacePrefix = dm.appserviceNamespacePrefix;
-              e2eePolicy = dm.e2eePolicy;
-              dmRoomMapping = dm.dmRoomMapping;
+              inherit (dm) enable mode requireChat appserviceNamespacePrefix e2eePolicy dmRoomMapping;
             };
             assistant = {
-              enable = cfg.assistant.enable;
-              provider = cfg.assistant.provider;
+              inherit (cfg.assistant) enable provider;
             };
             design = "docs/superpowers/specs/2026-11-05-losos-forum-design.md";
           }}
@@ -193,8 +178,7 @@ in
             matrixDmBridge = {
               implemented = false;
               safety = "stub-contract-only; no appservice runtime, room sync, or E2EE bridge logic";
-              mode = dm.mode;
-              e2eePolicy = dm.e2eePolicy;
+              inherit (dm) mode e2eePolicy;
               requiresLososChat = dm.requireChat;
               mapping = {
                 contract = dm.dmRoomMapping;
