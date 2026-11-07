@@ -181,7 +181,15 @@ pub fn SettingsShell(pane: String) -> Element {
                 }
             }
             section { class: "settings-pane",
-                h1 { "{pane_label(&pane)}" }
+                div { class: "drill-in-header settings-pane-header",
+                    Link {
+                        to: Route::SettingsRoot {},
+                        class: "drill-in-back btn btn-ghost settings-back-link",
+                        "aria-label": "Back to Settings",
+                        "‹ Settings"
+                    }
+                    h1 { class: "drill-in-title", "{pane_label(&pane)}" }
+                }
                 if f.locked {
                     Card { p { class: "error", "Sign in to change settings." } }
                 } else if !f.ready && f.load_error.is_none() {

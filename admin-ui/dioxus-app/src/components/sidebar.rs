@@ -399,7 +399,9 @@ pub(crate) struct BottomTab {
 }
 
 pub(crate) fn bottom_tabs(base: &[Entry], current: &Route) -> Vec<BottomTab> {
-    let order = ["overview", "cloud", "chat", "mail", "apps", "storage", "mesh", "diagrams"];
+    // React parity priority (app-sidebar TABS): overview, cloud, chat, mail,
+    // apps, storage, mesh, lab — first 4 visible. Dioxus maps "lab" to diagrams.
+    let order = ["overview", "cloud", "chat", "mail", "apps", "storage", "mesh", "diagrams", "lab"];
     let mut out = Vec::new();
     for key in order {
         if out.len() >= 4 {

@@ -2,7 +2,6 @@ use crate::actions::{self, Action};
 use crate::app::{AppLayout, AuthSignal, AuthState, ConfigSignal};
 use crate::auth::{self, Gate, Me};
 use crate::components::ui::{Button, Card, Empty, Spinner};
-use crate::pages::{blocks, page::{Page, PageId}};
 use crate::screens::settings::SettingsShell;
 use crate::store::{self, BoxConfig};
 use dioxus::prelude::*;
@@ -185,15 +184,8 @@ fn clear_auth_on_401(mut config: ConfigSignal, mut auth_sig: AuthSignal) {
 
 #[component]
 fn Home() -> Element {
-    let config = config_signal();
-    let cfg = config();
     rsx! {
-        Page { id: PageId::Overview,
-            blocks::BoxName {}
-            blocks::Applying {}
-            blocks::Apps { config: cfg.clone() }
-            blocks::Glance { config: cfg }
-        }
+        crate::pages::OverviewPage {}
     }
 }
 
@@ -238,12 +230,22 @@ fn AppNew() -> Element {
 
 #[component]
 fn AppScreen(id: String) -> Element {
-    rsx! { PlaceholderPage { title: format!("App: {id}"), description: "App screen — route parity placeholder.".to_string() } }
+    rsx! {
+        div { class: "page ls-page",
+            DrillInHeader { to: Route::Apps {}, back_label: "Apps".to_string(), title: format!("App: {id}") }
+            Card { p { class: "muted", "App screen — port in progress." } }
+        }
+    }
 }
 
 #[component]
 fn AppEdit(id: String) -> Element {
-    rsx! { PlaceholderPage { title: format!("Edit app: {id}"), description: "App editor — route parity placeholder.".to_string() } }
+    rsx! {
+        div { class: "page ls-page",
+            DrillInHeader { to: Route::Apps {}, back_label: "Apps".to_string(), title: format!("Edit {id}") }
+            Card { p { class: "muted", "App editor — port in progress." } }
+        }
+    }
 }
 
 #[component]
@@ -434,7 +436,15 @@ fn Ci() -> Element {
 }
 #[component]
 fn CiRun(id: String) -> Element {
-    rsx! { PlaceholderPage { title: "Mesh CI run".to_string(), description: format!("CI run placeholder: {id}") } }
+    rsx! {
+        div { class: "page ls-page",
+            DrillInHeader { to: Route::Ci {}, back_label: "Mesh CI".to_string(), title: "Mesh CI run".to_string() }
+            Card {
+                p { class: "muted mono", "{id}" }
+                p { class: "muted", "CI run details — port in progress." }
+            }
+        }
+    }
 }
 #[component]
 fn Diagrams() -> Element {
@@ -466,10 +476,18 @@ fn SettingsPane(pane: String) -> Element {
 
 #[component]
 fn About() -> Element {
-    let config = config_signal();
     rsx! {
-        Page { id: PageId::SettingsAbout,
-            blocks::AboutBlock { config: config() }
+        crate::pages::AboutPage {}
+    }
+}
+
+/// Mobile-friendly drill-in header with a back affordance. Keeps desktop layout clean.
+#[component]
+fn DrillInHeader(to: Route, back_label: String, title: String) -> Element {
+    rsx! {
+        div { class: "drill-in-header",
+            Link { to, class: "drill-in-back btn btn-ghost", "aria-label": "Back to {back_label}", "‹ {back_label}" }
+            h1 { class: "drill-in-title", "{title}" }
         }
     }
 }

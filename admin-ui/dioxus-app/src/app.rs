@@ -39,6 +39,9 @@ pub fn App() -> Element {
 pub fn AppLayout() -> Element {
     let mut config: ConfigSignal = use_context();
     let mut auth: AuthSignal = use_context();
+    // Pages store: /api/pages customizations + defaults renderer (best-effort).
+    let pages = crate::pages::provide_pages_store();
+    crate::pages::use_load_pages(pages);
     let cfg = config();
     let refresh = use_signal(|| 0u64);
     let gate_gen = use_signal(|| 0u64);

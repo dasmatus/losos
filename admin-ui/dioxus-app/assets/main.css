@@ -269,6 +269,17 @@ pre { margin: 0; }
   :root[data-basic] [data-slot="basic-modal"] { background: Canvas; backdrop-filter: none; }
 }
 
+/* Drill-in routes (app detail, CI run, etc.) */
+.drill-in-header { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin-bottom: 8px; }
+.drill-in-back {
+  min-height: 44px;
+  padding-inline: 8px;
+  margin-left: -8px;
+  font-size: 14px;
+  color: var(--accent);
+}
+.drill-in-title { margin: 0; }
+
 @media (max-width: 768px) {
   .shell-body {
     flex-direction: column;
@@ -281,6 +292,8 @@ pre { margin: 0; }
   .bottom-nav { display: flex; }
   .app-bar-badge { display: none; }
   .app-bar-person { max-width: 7rem; }
+  .drill-in-header { gap: 2px; margin-bottom: 4px; }
+  .drill-in-title { font-size: 1.2rem; }
 }
 
 /* Global reduced motion (a11y) */

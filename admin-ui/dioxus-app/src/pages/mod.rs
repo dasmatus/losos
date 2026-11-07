@@ -47,23 +47,17 @@ pub fn use_pages_store() -> PagesSignal {
     }
 }
 
-/// Ensure `/api/pages` is loaded (best-effort). Call once where ConfigSignal exists.
+/// Ensure `/api/pages` is loaded (best-effort). Reloads when host/token changes.
 pub fn use_load_pages(mut pages: PagesSignal) {
     let config: ConfigSignal = use_context();
-    let loaded = use_signal(|| false);
-    use_future(move || {
-        let cfg: BoxConfig = config();
-        let mut loaded = loaded;
-        async move {
-            if *loaded.read() {
-                // Reload when host/token changes meaningfully by checking a simple key?
-                // Incremental: load once per mount; explicit reload can be added.
-            }
-            {
-                let mut st = pages.write();
-                store::load_pages(&cfg, &mut st).await;
-            }
-            loaded.set(true);
-        }
-    });
+    let cfg = config();
+    use_effect(use_reactive((&cfg.host, &cfg.token), move |(host, token)| {
+        let cfg = config();
+        // Avoid stale loads when host/token just changed.
+        let _ = (host, token);
+        spawn(async move {
+            let mut st = pages.write();
+            store::load_pages(&cfg, &mut st).await;
+        });
+    }));
 }
