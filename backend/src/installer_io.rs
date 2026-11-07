@@ -416,7 +416,9 @@ impl Install for IoInstall {
         // unreliable.
         let substituters = "http://127.0.0.1:8787";
         log_line("losos-install: starting nixos-install");
-        log_line(&format!("losos-install: substituter {substituters} (GHCR cache proxy)"));
+        log_line(&format!(
+            "losos-install: substituter {substituters} (GHCR cache proxy)"
+        ));
         log_line("losos-install: live nix output follows on this console");
         self.run_with_activity(
             "Substituting the system from the binary cache",
