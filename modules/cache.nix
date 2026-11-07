@@ -10,9 +10,10 @@
 # WHAT FILLS THE LOSOS CACHE. `.github/workflows/ci.yml` publishes signed GHCR
 # artifacts through .github/actions/proxy-push after each build job. Those are
 # exactly the paths cache.nixos.org cannot serve, because this flake builds
-# them. `losos-ghcr-cache` (tools/losos-ghcr-cache.py, 127.0.0.1:8787) speaks
-# Nix's binary-cache protocol and pulls one artifact with oras when Nix asks
-# for it. The GitHub Pages copy is a remote fallback signed with the same key.
+# them. `losos-ghcr-cache` (tools/losos-ghcr-cache.py, 127.0.0.1:8787 by
+# default) speaks Nix's binary-cache protocol and pulls one artifact with oras
+# when Nix asks for it. It can also run on a VPS/edge (`losos.cache.ghcr.*`)
+# as a shared GHCR-backed proxy.
 #
 # THE LOCAL COPY (losos.cache.local, on the box only). /nix is on /persist, so
 # a path the box has is never fetched again while it stays in the store. But
@@ -284,11 +285,14 @@ in
     path = [ pkgs.oras ];
     environment = {
       LOSOS_GHCR_CACHE = "ghcr.io/dasmatus/losos/nix-cache";
-      LOSOS_GHCR_CACHE_DIR =
-        if config.losos.installer.autorun then
-          "/mnt/persist/var/cache/losos-ghcr-cache"
-        else
-          "/var/cache/losos-ghcr-cache";
+      LOSOS_GHCR_CACHE_HOST = cfg.ghcr.host;
+      LOSOS_GHCR_CACHE_PORT = toString cfg.ghcr.port;
+      # Keep the staging cache on the live filesystem. On the installer ISO
+      # /mnt/persist is not mounted yet, and disko mounts the target over /mnt
+      # mid-install, which would hide a cache kept there and force nixos-install
+      # to refetch everything. The lasting copy lives in losos-nix-cache on the
+      # installed box.
+      LOSOS_GHCR_CACHE_DIR = "/var/cache/losos-ghcr-cache";
     }
     # Behind the local copy this is only a staging area between the narinfo
     # and the NAR request: losos-nix-cache keeps the lasting copy, under its
@@ -310,7 +314,10 @@ in
   };
   users.groups.losos-nix-cache = lib.mkIf local.enable { };
 
-  networking.firewall.allowedTCPPorts = lib.mkIf (local.enable && local.shareOnLan) [ local.port ];
+  networking.firewall.allowedTCPPorts = lib.mkMerge [
+    (lib.mkIf (local.enable && local.shareOnLan) [ local.port ])
+    (lib.mkIf (enabled && cfg.ghcr.openFirewall) [ cfg.ghcr.port ])
+  ];
 
   systemd.services.losos-nix-cache = lib.mkIf local.enable {
     description = "Local copy of the Nix binary caches";

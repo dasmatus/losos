@@ -504,6 +504,7 @@
       nixosModules.edge = {
         imports = [
           ./modules/options.nix
+          ./modules/cache.nix
           ./modules/edge.nix
           ./modules/edge-credentials.nix
           ./modules/edge-vms.nix

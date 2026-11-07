@@ -410,11 +410,13 @@ impl Install for IoInstall {
 
     fn run_nixos_install(&mut self, work: &Path) -> anyhow::Result<()> {
         let flake = format!("{}#install", work.to_string_lossy());
-        // Only the local GHCR cache proxy. The installer ISO starts
-        // losos-ghcr-cache.service on 127.0.0.1:8787 before this step.
-        // Trusted keys come from the system nix.conf that the ISO carries.
+        // The GHCR cache proxy serves signed on-demand artifacts. Pass it
+        // explicitly so nixos-install uses it even when the invocation
+        // overrides options; the Pages fallback was removed because it is
+        // unreliable.
+        let substituters = "http://127.0.0.1:8787";
         log_line("losos-install: starting nixos-install");
-        log_line("losos-install: substituter http://127.0.0.1:8787 (local GHCR cache proxy)");
+        log_line(&format!("losos-install: substituter {substituters} (GHCR cache proxy)"));
         log_line("losos-install: live nix output follows on this console");
         self.run_with_activity(
             "Substituting the system from the binary cache",
@@ -425,7 +427,7 @@ impl Install for IoInstall {
                 "--no-root-passwd",
                 "--option",
                 "extra-substituters",
-                "http://127.0.0.1:8787",
+                substituters,
                 "--option",
                 "fallback",
                 "true",
