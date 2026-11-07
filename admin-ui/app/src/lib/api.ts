@@ -549,7 +549,7 @@ export interface RequestOptions {
   token?: string;
 }
 
-interface CallOptions extends RequestOptions {
+export interface CallOptions extends RequestOptions {
   method?: "GET" | "POST" | "PUT" | "DELETE";
   /** JSON or Nix as text; a picture upload sends its bytes as a Blob. */
   body?: string | Blob;
@@ -578,7 +578,7 @@ export function apiPath(path: string): string {
   return routeBase !== null && path.startsWith("/api/") ? routeBase + path : path;
 }
 
-async function call<T>(path: string, options: CallOptions = {}): Promise<T> {
+export async function call<T>(path: string, options: CallOptions = {}): Promise<T> {
   const { method = "GET", body, contentType, signal, token, anonymous, ifMatch } = options;
   path = apiPath(path);
 
