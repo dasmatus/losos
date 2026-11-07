@@ -112,3 +112,7 @@ path = "src/lib.rs"
 [[bin]]
 name = "losos-registrar"
 path = "src/main.rs"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
