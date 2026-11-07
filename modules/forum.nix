@@ -27,8 +27,7 @@ let
   live = config.lososInternal.forum;
   ap = cfg.activityPub;
   dm = cfg.matrixDmBridge;
-  edge = cfg.edge;
-  inherit (cfg) stateDir;
+  inherit (cfg) edge stateDir;
   statusFile = "${stateDir}/scaffold-status.json";
   contractsFile = "${stateDir}/federation-contracts.json";
   hasFront = config.losos.admin.enable && config.services.nginx.enable;
@@ -49,7 +48,7 @@ let
           implemented = false;
           service = "losos-forum";
           hook = name;
-          edgeLocalRouting = cfg.edgeLocalRouting;
+          inherit (cfg) edgeLocalRouting;
           design = "docs/superpowers/specs/2026-11-05-losos-forum-design.md";
         }
         // extra
@@ -68,9 +67,8 @@ let
   };
   dmStub = scaffoldJson "matrix-dm-bridge" {
     note = "Matrix DM bridge hook point. Appservice/sync/E2EE logic is not implemented.";
-    mode = dm.mode;
-    e2eePolicy = dm.e2eePolicy;
-    requiresChat = dm.requireChat;
+    inherit (dm) mode e2eePolicy;
+    inherit (dm) requiresChat;
   };
 in
 {
@@ -138,15 +136,22 @@ in
             scaffold = true;
             implemented = false;
             phase = 0;
-            edgeLocalRouting = cfg.edgeLocalRouting;
+            inherit (cfg) edgeLocalRouting;
             edge = {
-              requireProxy = edge.requireProxy;
-              requireMesh = edge.requireMesh;
-              registrationMode = edge.registrationMode;
-              pathFile = edge.pathFile;
+              inherit (edge)
+                requireProxy
+                requireMesh
+                registrationMode
+                pathFile
+                ;
             };
             activityPub = {
-              inherit (ap) enable publicFederation webfingerPath nodeinfoPath;
+              inherit (ap)
+                enable
+                publicFederation
+                webfingerPath
+                nodeinfoPath
+                ;
               inherit (ap) basePath sharedInboxPath outboxHookPath;
             };
             matrixDmBridge = {
