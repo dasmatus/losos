@@ -330,6 +330,68 @@ pub async fn post_access_revoke(config: &BoxConfig, id: &str) -> Result<Value, A
         .await
 }
 
+// ── Edge / mesh (own requests; not draft /api/apply) ───────────────────────
+
+pub async fn get_edge(config: &BoxConfig) -> Result<Value, ApiError> {
+    api_for_config(config)?.get("/api/edge").await
+}
+
+pub async fn post_edge_manage(config: &BoxConfig, enabled: bool) -> Result<Value, ApiError> {
+    api_for_config(config)?
+        .post_json("/api/edge/manage", serde_json::json!({ "enabled": enabled }))
+        .await
+}
+
+pub async fn post_edge_cluster(config: &BoxConfig, cluster: Option<String>) -> Result<Value, ApiError> {
+    api_for_config(config)?
+        .post_json("/api/edge/cluster", serde_json::json!({ "cluster": cluster }))
+        .await
+}
+
+pub async fn post_erase(config: &BoxConfig, backup: bool) -> Result<Value, ApiError> {
+    api_for_config(config)?
+        .post_json("/api/erase", serde_json::json!({ "backup": backup }))
+        .await
+}
+
+pub async fn post_erase_cancel(config: &BoxConfig) -> Result<Value, ApiError> {
+    api_for_config(config)?.post("/api/erase/cancel").await
+}
+
+// ── People management (own requests) ────────────────────────────────────────
+
+pub async fn post_people_access(
+    config: &BoxConfig,
+    name: &str,
+    groups: Vec<String>,
+) -> Result<Value, ApiError> {
+    api_for_config(config)?
+        .post_json("/api/people/access", serde_json::json!({ "name": name, "groups": groups }))
+        .await
+}
+
+pub async fn post_people_password(
+    config: &BoxConfig,
+    name: &str,
+    password: &str,
+) -> Result<Value, ApiError> {
+    api_for_config(config)?
+        .post_json("/api/people/password", serde_json::json!({ "name": name, "password": password }))
+        .await
+}
+
+pub async fn post_people_remove(config: &BoxConfig, name: &str) -> Result<Value, ApiError> {
+    api_for_config(config)?
+        .post_json("/api/people/remove", serde_json::json!({ "name": name }))
+        .await
+}
+
+pub async fn post_people_rules(config: &BoxConfig, rules: Value) -> Result<Value, ApiError> {
+    api_for_config(config)?
+        .post_json("/api/people/rules", rules)
+        .await
+}
+
 // ── Backup ──────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]

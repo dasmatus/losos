@@ -1,10 +1,38 @@
 use super::super::shell::SettingsFormSignal;
-use crate::components::ui::Card;
+use crate::app::{AuthSignal, AuthState, ConfigSignal};
+use crate::auth::Gate;
+use crate::components::ui::{Button, Card, Spinner};
+use crate::settings::api;
+use crate::store;
 use dioxus::prelude::*;
+use serde_json::Value;
 
 #[component]
 pub fn MeshPane() -> Element {
     let mut form: SettingsFormSignal = use_context();
+    let mut config: ConfigSignal = use_context();
+    let mut auth_sig: AuthSignal = use_context();
+    let mut edge = use_signal(|| None::<Result<Value, String>>);
+    let mut busy = use_signal(|| false);
+    let mut refresh = use_signal(|| 0u64);
+
+    let cfg = config();
+    use_effect(use_reactive((&cfg.host, &cfg.token, &*refresh.read()), move |_| {
+        let cfg = config();
+        spawn(async move {
+            edge.set(None);
+            match api::get_edge(&cfg).await {
+                Ok(v) => edge.set(Some(Ok(v))),
+                Err(e) => {
+                    if e.status == 401 {
+                        clear_auth(config, auth_sig);
+                    }
+                    edge.set(Some(Err(e.message)));
+                }
+            }
+        });
+    }));
+
     let f = form();
     let Some(draft) = f.draft.clone() else {
         return rsx! { Card { p { class: "muted", "Settings not loaded." } } };
@@ -15,16 +43,62 @@ pub fn MeshPane() -> Element {
     let sharing = draft.share_compute;
     let window_disabled = disabled || !joined;
 
+    let edge_manage = edge()
+        .as_ref()
+        .and_then(|r| r.as_ref().ok())
+        .and_then(|v| v.get("manage"))
+        .cloned()
+        .unwrap_or(Value::Null);
+    let manage_active = edge_manage.get("active").and_then(Value::as_bool).unwrap_or(false);
+    let manage_candidate = edge_manage.get("candidate").is_some() && !edge_manage.get("candidate").unwrap_or(&Value::Null).is_null();
+
     rsx! {
         Card {
-            h3 { "Mesh / edge" }
+            h3 { "Edge (live)" }
             p { class: "muted",
-                "Edge discovery, cluster membership, and live gateway details are shown here as honest placeholders until full API/hook parity is ported. Changes below are draft settings and apply through the full /api/apply settings engine (overrides.nix), preserving unrelated keys."
+                "Live edge scan and management actions. Join/compute settings below are draft values applied through the full /api/apply settings flow (13 owned keys + extras preserved)."
             }
-            div { class: "facts",
-                dt { "Cluster (draft)" } dd { if joined { "Enabled" } else { "Disabled" } }
-                dt { "Share compute (draft)" } dd { if sharing { "Enabled" } else { "Disabled" } }
-                dt { "Compute window (draft)" } dd { "{draft.compute_window_start} – {draft.compute_window_end}" }
+            match edge() {
+                None => rsx! { Spinner {} },
+                Some(Err(e)) => rsx! { p { class: "error", "{e}" } },
+                Some(Ok(v)) => rsx! {
+                    div { class: "facts",
+                        dt { "Reachable" } dd { if v.get("reachable").and_then(Value::as_bool).unwrap_or(false) { "Yes" } else { "No" } }
+                        dt { "Official edge" } dd { if v.get("official").and_then(Value::as_bool).unwrap_or(false) { "Yes" } else { "No" } }
+                        dt { "Management" } dd { if manage_active { "Active" } else if manage_candidate { "Available" } else { "Unavailable" } }
+                    }
+                    details {
+                        summary { "Raw edge status" }
+                        pre { class: "mono", "{serde_json::to_string_pretty(&v).unwrap_or_default()}" }
+                    }
+                }
+            }
+            div { class: "actions", style: "display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;",
+                Button {
+                    kind: "ghost".to_string(),
+                    disabled: *busy.read(),
+                    onclick: move |_| { let n = *refresh.read() + 1; refresh.set(n); },
+                    "Refresh edge"
+                }
+                if manage_candidate || manage_active {
+                    Button {
+                        kind: "secondary".to_string(),
+                        disabled: *busy.read(),
+                        onclick: move |_| {
+                            let cfg = config();
+                            let enable = !manage_active;
+                            spawn(async move {
+                                busy.set(true);
+                                match api::post_edge_manage(&cfg, enable).await {
+                                    Ok(_) => { let n = *refresh.read() + 1; refresh.set(n); }
+                                    Err(e) => { if e.status == 401 { clear_auth(config, auth_sig); } edge.set(Some(Err(e.message))); }
+                                }
+                                busy.set(false);
+                            });
+                        },
+                        if manage_active { "Stop edge management" } else { "Allow edge management" }
+                    }
+                }
             }
         }
 
@@ -48,7 +122,7 @@ pub fn MeshPane() -> Element {
                     span { "Join the mesh (losos.cluster.enable)" }
                 }
                 p { class: "muted",
-                    "Full edge reachability/gating parity is pending in this RSX port. Applying uses the normal settings flow; the box may refuse settings it cannot honor."
+                    "The box may refuse sharing/cluster settings it cannot honor without a reachable edge."
                 }
             }
         }
@@ -122,4 +196,16 @@ pub fn MeshPane() -> Element {
             }
         }
     }
+}
+
+fn clear_auth(mut config: ConfigSignal, mut auth_sig: AuthSignal) {
+    let mut next = config();
+    crate::auth::drop_token(&mut next);
+    store::save(&next);
+    config.set(next);
+    auth_sig.set(AuthState {
+        gate: Gate::Signin,
+        me: None,
+        claim: auth_sig().claim,
+    });
 }

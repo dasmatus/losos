@@ -104,9 +104,11 @@ impl Me {
 }
 
 fn api_for_config(config: &BoxConfig) -> Result<BoxApi, ApiError> {
+    // Default to TOFU on native (self-signed box certs) rather than permissive;
+    // pinned cert hash is honored when configured.
     let trust = match config.tls_pin.as_deref().filter(|s| !s.is_empty()) {
         Some(pin) => Trust::Pinned(pin.to_string()),
-        None => Trust::Permissive,
+        None => Trust::FirstUse,
     };
     BoxApi::new(&config.host, &config.token, trust)
 }
