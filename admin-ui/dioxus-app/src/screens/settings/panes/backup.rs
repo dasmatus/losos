@@ -17,6 +17,14 @@ pub fn BackupPane() -> Element {
     let mut view = use_signal(|| None::<Value>);
     let mut busy = use_signal(|| false);
     let mut restore_code = use_signal(String::new);
+    let mut bought_order = use_signal(String::new);
+    let mut target_endpoint = use_signal(String::new);
+    let mut target_bucket = use_signal(String::new);
+    let mut target_prefix = use_signal(String::new);
+    let mut target_region = use_signal(String::new);
+    let mut target_access_key = use_signal(String::new);
+    let mut target_secret = use_signal(String::new);
+    let mut target_storage_class = use_signal(|| "standard".to_string());
     let mut refresh = use_signal(|| 0u64);
 
     let cfg = config();
@@ -88,6 +96,79 @@ pub fn BackupPane() -> Element {
                     }
                 }
                 Button { kind: "ghost".to_string(), onclick: move |_| { let n = *refresh.read() + 1; refresh.set(n); }, "Refresh" }
+            }
+
+            h4 { style: "margin-top:16px;", "Backup target (S3-compatible)" }
+            p { class: "muted", "Set where backups go. Leave secret key empty to keep an existing stored secret when supported by the box." }
+            div { class: "field", label { "Endpoint" } input { class: "input", value: "{target_endpoint}", oninput: move |e| target_endpoint.set(e.value()) } }
+            div { class: "field", label { "Bucket" } input { class: "input", value: "{target_bucket}", oninput: move |e| target_bucket.set(e.value()) } }
+            div { class: "field", label { "Prefix" } input { class: "input", value: "{target_prefix}", oninput: move |e| target_prefix.set(e.value()) } }
+            div { class: "field", label { "Region" } input { class: "input", value: "{target_region}", oninput: move |e| target_region.set(e.value()) } }
+            div { class: "field", label { "Access key ID" } input { class: "input", value: "{target_access_key}", oninput: move |e| target_access_key.set(e.value()) } }
+            div { class: "field", label { "Secret access key" } input { class: "input", r#type: "password", value: "{target_secret}", oninput: move |e| target_secret.set(e.value()) } }
+            div { class: "field",
+                label { "Storage class" }
+                select { class: "input", value: "{target_storage_class}", onchange: move |e| target_storage_class.set(e.value()),
+                    option { value: "standard", "Standard" }
+                    option { value: "infrequent", "Infrequent access" }
+                    option { value: "archive", "Archive" }
+                }
+            }
+            Button {
+                kind: "secondary".to_string(),
+                disabled: *busy.read() || target_bucket.read().trim().is_empty(),
+                onclick: move |_| {
+                    let cfg = config();
+                    let mut body = serde_json::json!({
+                        "endpoint": target_endpoint.read().trim(),
+                        "bucket": target_bucket.read().trim(),
+                        "prefix": target_prefix.read().trim(),
+                        "region": target_region.read().trim(),
+                        "accessKeyId": target_access_key.read().trim(),
+                        "storageClass": target_storage_class.read().trim(),
+                    });
+                    let secret = target_secret.read().trim().to_string();
+                    if !secret.is_empty() {
+                        body["secretAccessKey"] = serde_json::Value::String(secret);
+                    }
+                    spawn(async move {
+                        busy.set(true);
+                        error.set(None);
+                        match api::post_backup_target(&cfg, body).await {
+                            Ok(_) => { target_secret.set(String::new()); let n = *refresh.read() + 1; refresh.set(n); }
+                            Err(e) => { if e.status == 401 { clear_auth(config, auth_sig); } error.set(Some(e.message)); }
+                        }
+                        busy.set(false);
+                    });
+                },
+                "Save backup target"
+            }
+
+            h4 { style: "margin-top:16px;", "Bought storage (mesh)" }
+            p { class: "muted", "Use storage bought on the mesh for backups (POST /api/backup/target/bought)." }
+            div { class: "row", style: "gap:8px; flex-wrap:wrap; align-items:flex-end;",
+                div { class: "field", style: "flex:1; min-width:220px;",
+                    label { "Order ID" }
+                    input { class: "input", value: "{bought_order}", oninput: move |e| bought_order.set(e.value()) }
+                }
+                Button {
+                    kind: "secondary".to_string(),
+                    disabled: *busy.read() || bought_order.read().trim().is_empty(),
+                    onclick: move |_| {
+                        let cfg = config();
+                        let order = bought_order.read().trim().to_string();
+                        spawn(async move {
+                            busy.set(true);
+                            error.set(None);
+                            match api::post_backup_target_bought(&cfg, &order).await {
+                                Ok(_) => { bought_order.set(String::new()); let n = *refresh.read() + 1; refresh.set(n); }
+                                Err(e) => { if e.status == 401 { clear_auth(config, auth_sig); } error.set(Some(e.message)); }
+                            }
+                            busy.set(false);
+                        });
+                    },
+                    "Use bought storage"
+                }
             }
 
             h4 { style: "margin-top:16px;", "Restore" }
