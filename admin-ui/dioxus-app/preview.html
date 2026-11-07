@@ -2,13 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>LosOS — Dioxus UI Preview</title>
   <link rel="stylesheet" href="assets/main.css">
-  <style>
-    /* Ensure preview looks right */
-    body { margin: 0; }
-  </style>
+  <style>body { margin: 0; }</style>
 </head>
 <body>
   <div class="shell-root">
@@ -73,6 +70,13 @@
         </div>
       </main>
     </div>
+    <nav class="bottom-nav" aria-label="Primary navigation">
+      <a class="bottom-nav-tab active" href="#"><span class="bottom-nav-icon" aria-hidden="true">⌂</span><span class="bottom-nav-label">Overview</span></a>
+      <a class="bottom-nav-tab" href="#"><span class="bottom-nav-icon" aria-hidden="true">☁</span><span class="bottom-nav-label">Cloud</span></a>
+      <a class="bottom-nav-tab" href="#"><span class="bottom-nav-icon" aria-hidden="true">💬</span><span class="bottom-nav-label">Chat</span></a>
+      <a class="bottom-nav-tab" href="#"><span class="bottom-nav-icon" aria-hidden="true">✉</span><span class="bottom-nav-label">Mail</span></a>
+      <button type="button" class="bottom-nav-tab ls-bottom-nav-more" aria-label="More sections"><span class="bottom-nav-icon" aria-hidden="true">⋯</span><span class="bottom-nav-label">More</span></button>
+    </nav>
   </div>
 </body>
 </html>

@@ -1,15 +1,23 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>LosOS — Apps</title><link rel="stylesheet" href="assets/main.css"></head>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>LosOS — Apps</title><link rel="stylesheet" href="assets/main.css"><style>body{margin:0}</style></head>
 <body><div class="shell-root">
 <header class="app-bar"><div class="app-bar-inner"><a href="/" class="app-bar-home">LosOS</a><span class="app-bar-badge">this box</span><div class="app-bar-spacer"></div><span class="app-bar-person muted">Admin UI (Dioxus)</span></div></header>
 <div class="shell-body"><aside class="sidebar"><nav class="sidebar-nav">
 <div class="nav-section"><div class="nav-section-label">Main</div><a class="nav-item" href="#">Overview</a><a class="nav-item active" href="#">Apps</a><a class="nav-item" href="#">Storage</a><a class="nav-item" href="#">Mesh</a></div>
 <div class="nav-section"><div class="nav-section-label">Settings</div><a class="nav-item" href="#">Settings</a></div>
 </nav></aside>
-<main class="app-main"><div class="page"><h1>Apps</h1><p class="muted">Apps available on this box and from the market.</p>
+<main class="app-main"><div class="page"><div class="drill-in-header"><a class="drill-in-back btn btn-ghost" href="#">‹ Overview</a><h1 class="drill-in-title">Apps</h1></div><p class="muted">Apps available on this box and from the market.</p>
 <div class="grid">
 <div class="card"><h3>Nextcloud</h3><p class="muted">Files, sync, and collaboration.</p><p class="mono muted">nextcloud</p></div>
 <div class="card"><h3>Jellyfin</h3><p class="muted">Media server for your library.</p><p class="mono muted">jellyfin</p></div>
 <div class="card"><h3>Home Assistant</h3><p class="muted">Home automation.</p><p class="mono muted">home-assistant</p></div>
 <div class="card"><h3>Immich</h3><p class="muted">Photo and video management.</p><p class="mono muted">immich</p></div>
-</div></div></main></div></div></body></html>
+</div></div></main></div>
+<nav class="bottom-nav" aria-label="Primary navigation">
+  <a class="bottom-nav-tab" href="#"><span class="bottom-nav-icon" aria-hidden="true">⌂</span><span class="bottom-nav-label">Overview</span></a>
+  <a class="bottom-nav-tab" href="#"><span class="bottom-nav-icon" aria-hidden="true">☁</span><span class="bottom-nav-label">Cloud</span></a>
+  <a class="bottom-nav-tab" href="#"><span class="bottom-nav-icon" aria-hidden="true">💬</span><span class="bottom-nav-label">Chat</span></a>
+  <a class="bottom-nav-tab active" href="#"><span class="bottom-nav-icon" aria-hidden="true">✉</span><span class="bottom-nav-label">Mail</span></a>
+  <button type="button" class="bottom-nav-tab ls-bottom-nav-more" aria-label="More sections"><span class="bottom-nav-icon" aria-hidden="true">⋯</span><span class="bottom-nav-label">More</span></button>
+</nav>
+</div></body></html>

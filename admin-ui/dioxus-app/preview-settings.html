@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>LosOS — Settings</title><link rel="stylesheet" href="assets/main.css"></head>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>LosOS — Settings</title><link rel="stylesheet" href="assets/main.css"><style>body{margin:0}</style></head>
 <body><div class="shell-root">
 <header class="app-bar"><div class="app-bar-inner"><a href="/" class="app-bar-home">LosOS</a><span class="app-bar-badge">this box</span><div class="app-bar-spacer"></div><span class="app-bar-person muted">Admin UI (Dioxus)</span></div></header>
 <div class="shell-body">
@@ -11,6 +11,14 @@
 <aside class="settings-nav"><h2>Settings</h2><ul class="pane-list">
 <li><a class="nav-item active" href="#">Network</a></li><li><a class="nav-item" href="#">Hardware</a></li><li><a class="nav-item" href="#">Security</a></li><li><a class="nav-item" href="#">Credentials</a></li><li><a class="nav-item" href="#">Users</a></li><li><a class="nav-item" href="#">Access tokens</a></li><li><a class="nav-item" href="#">Backup</a></li><li><a class="nav-item" href="#">Reset</a></li>
 </ul></aside>
-<section class="settings-pane"><h1>Network</h1>
+<section class="settings-pane"><div class="drill-in-header settings-pane-header"><a class="drill-in-back btn btn-ghost" href="#">‹ Settings</a><h1 class="drill-in-title">Network</h1></div>
 <div class="card"><p>Network pane — RSX port in progress. Actions bind via <code>/api/*</code> and losos middle layer.</p><p class="muted">This screen is part of the ongoing Dioxus/RSX rewrite preserving the original design system.</p></div>
-</section></div></main></div></div></body></html>
+</section></div></main></div>
+<nav class="bottom-nav" aria-label="Primary navigation">
+  <a class="bottom-nav-tab" href="#"><span class="bottom-nav-icon" aria-hidden="true">⌂</span><span class="bottom-nav-label">Overview</span></a>
+  <a class="bottom-nav-tab" href="#"><span class="bottom-nav-icon" aria-hidden="true">▦</span><span class="bottom-nav-label">Apps</span></a>
+  <a class="bottom-nav-tab" href="#"><span class="bottom-nav-icon" aria-hidden="true">▣</span><span class="bottom-nav-label">Storage</span></a>
+  <a class="bottom-nav-tab active" href="#"><span class="bottom-nav-icon" aria-hidden="true">⋯</span><span class="bottom-nav-label">More</span></a>
+  <button type="button" class="bottom-nav-tab ls-bottom-nav-more" aria-label="More sections" style="display:none"></button>
+</nav>
+</div></body></html>
