@@ -127,23 +127,31 @@ pub fn AppsPane() -> Element {
                                                 disabled: *busy.read(),
                                                 onclick: move |_| {
                                                     let cfg = config();
-                                                    let release = release.clone();
+                                                    let release_fallback = release.clone();
                                                     let chart = chart.clone();
                                                     spawn(async move {
                                                         busy.set(true);
                                                         error.set(None);
-                                                        let req = serde_json::json!({
-                                                            "release": release,
-                                                            "chart": {
-                                                                "repo": chart.repo,
-                                                                "name": chart.name,
-                                                                "version": chart.version,
-                                                            },
-                                                            "runAs": "user",
-                                                            "values": {},
-                                                            "valuesYaml": null,
-                                                        });
-                                                        match api::post_app_install(&cfg, req).await {
+                                                        // Contract-aligned: fetch chart defaults first, then install.
+                                                        let install = async {
+                                                            let chart_info = api::get_app_chart(&cfg, &chart.repo, &chart.name, &chart.version).await?;
+                                                            let release = chart_info.get("release").and_then(|v| v.as_str()).unwrap_or(release_fallback.as_str()).to_string();
+                                                            let values = chart_info.get("values").cloned().unwrap_or_else(|| serde_json::json!({}));
+                                                            let values_yaml = chart_info.get("valuesYaml").cloned().or_else(|| chart_info.get("values_yaml").cloned());
+                                                            let req = serde_json::json!({
+                                                                "release": release,
+                                                                "chart": {
+                                                                    "repo": chart.repo,
+                                                                    "name": chart.name,
+                                                                    "version": chart.version,
+                                                                },
+                                                                "runAs": "user",
+                                                                "values": values,
+                                                                "valuesYaml": values_yaml,
+                                                            });
+                                                            api::post_app_install(&cfg, req).await
+                                                        };
+                                                        match install.await {
                                                             Ok(_) => { let n = *refresh.read() + 1; refresh.set(n); }
                                                             Err(e) => { if e.status == 401 { clear_auth(config, auth_sig); } error.set(Some(e.message)); }
                                                         }
