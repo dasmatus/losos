@@ -24,3 +24,5 @@ pub mod layout;
 pub mod components;
 #[cfg(feature = "gui")]
 pub mod actions;
+#[cfg(feature = "gui")]
+pub mod pages;

@@ -1,8 +1,8 @@
 use crate::actions::{self, Action};
 use crate::app::AppLayout;
 use crate::components::ui::{Button, Card, Empty, Spinner};
-use crate::screens::dashboard::DashboardScreen;
-use crate::store::{self, BoxConfig};
+use crate::pages::{blocks, page::{Page, PageId}};
+use crate::store::BoxConfig;
 use dioxus::prelude::*;
 use serde_json::Value;
 
@@ -45,11 +45,14 @@ fn config_signal() -> Signal<BoxConfig> {
 
 #[component]
 fn Home() -> Element {
-    let mut config = config_signal();
+    let config = config_signal();
+    let cfg = config();
     rsx! {
-        DashboardScreen {
-            config: config(),
-            on_change: move |next: BoxConfig| config.set(next),
+        Page { id: PageId::Overview,
+            blocks::BoxName {}
+            blocks::Applying {}
+            blocks::Apps { config: cfg.clone() }
+            blocks::Glance { config: cfg }
         }
     }
 }
@@ -277,7 +280,11 @@ fn ApiPane(config: BoxConfig, action: Action, title: String) -> Element {
 #[component]
 fn About() -> Element {
     let config = config_signal();
-    rsx! { ApiPane { config: config(), action: Action::About, title: "About".to_string() } }
+    rsx! {
+        Page { id: PageId::SettingsAbout,
+            blocks::AboutBlock { config: config() }
+        }
+    }
 }
 
 #[component]
