@@ -72,4 +72,4 @@ dx serve --platform ios
 
 - The companion is the clearest Kotlin-removal target; this rewrite ports its behavior first, then expands to cover admin surfaces.
 - The large web admin UI (`admin-ui/app/`, React/TS) is a separate, much larger migration; this Dioxus app establishes the cross-platform Rust UI foundation.
-- Security/TLS: preserve the TUI's intent (no silent trust downgrade). The current `danger_accept_invalid_certs` path for LAN boxes is a temporary implementation detail to be replaced with certificate hash verification as in `tui/src/http.rs`.
+- Security/TLS: no silent trust downgrade. Native requests use TOFU/certificate-hash verification (aligned with `tui/src/http.rs` patterns) instead of blanket `danger_accept_invalid_certs`; pinned hashes are honored when configured.
