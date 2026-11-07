@@ -2240,6 +2240,9 @@ in
     };
 
     # ── LosOS Forum (modules/forum.nix, design: docs/superpowers/specs/2026-11-05-losos-forum-design.md) ──
+    # SCAFFOLD: runtime/service shape, edge/federation hooks, and DM bridge
+    # contracts are intentionally conservative stubs. Do not treat these as a
+    # complete or security-reviewed federation implementation.
     forum.enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -2252,28 +2255,208 @@ in
       '';
     };
 
+    forum.port = lib.mkOption {
+      type = lib.types.port;
+      default = 8096;
+      description = ''
+        Loopback port reserved for the future first-party forum service
+        (lososd-backed or separate service). SCAFFOLD: no service binds this
+        port yet; it is exported as config/env plumbing only.
+      '';
+    };
+
+    forum.stateDir = lib.mkOption {
+      type = lib.types.str;
+      default = "/var/lib/losos/forum";
+      description = "Persistent state directory for forum data (SCAFFOLD).";
+    };
+
+    forum.apiPath = lib.mkOption {
+      type = lib.types.str;
+      default = "/api/forum";
+      description = ''
+        Internal/admin-facing forum API path prefix, proxied through lososd.
+        SCAFFOLD hook point; HTTP handlers are not implemented yet.
+      '';
+    };
+
+    forum.uiPath = lib.mkOption {
+      type = lib.types.str;
+      default = "/forum";
+      description = "UI path prefix for the forum frontend (served by admin UI / app shell when implemented).";
+    };
+
     forum.edgeLocalRouting = lib.mkOption {
       type = lib.types.bool;
       default = true;
-      description = "Route forum federation/traffic through the selected edge (design default).";
+      description = ''
+        Route forum federation/traffic through the selected edge/proxy path
+        (design default). When false, hook points remain available but lososd
+        is told not to prefer edge-local routing for forum federation.
+      '';
+    };
+
+    forum.edge.requireProxy = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Require losos.proxy.enable for forum federation/routing hook points.
+        This keeps federation traffic on the edge proxy network and avoids
+        unsolicited WAN listeners on the box. SCAFFOLD gate.
+      '';
+    };
+
+    forum.edge.requireMesh = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Open design decision: when true, require losos.cluster.enable / mesh
+        membership for forum. Default false keeps the scaffold on the safer
+        proxy+edge gate until the owner decides.
+      '';
+    };
+
+    forum.edge.registrationMode = lib.mkOption {
+      type = lib.types.enum [
+        "box"
+        "service-hook"
+        "disabled"
+      ];
+      default = "box";
+      description = ''
+        Edge proxy registration hook point for forum. "box" means forum routes
+        are served by the box nginx/front door and carried through the
+        existing box tunnel registration (current safe default). "service-hook"
+        reserves config/env for a future dedicated forum service registration.
+        "disabled" disables registration hook plumbing. SCAFFOLD only.
+      '';
+    };
+
+    forum.edge.pathFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = "/run/losos/edge-path.env";
+      description = ''
+        Edge path env file written by lososd (same contract as proxy/edge).
+        Forum runtime should read the selected edge path from here when
+        edgeLocalRouting is enabled. Null disables this hook.
+      '';
     };
 
     forum.activityPub.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
-      description = "Enable ActivityPub federation support in the forum design/scaffold (implementation pending).";
+      description = "Enable ActivityPub federation hook points/contracts in the forum scaffold (implementation pending).";
+    };
+
+    forum.activityPub.publicFederation = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Open design decision: expose public Fediverse-reachable ActivityPub
+        endpoints in v1. Default false keeps hook points scaffolded without
+        claiming public federation is ready.
+      '';
+    };
+
+    forum.activityPub.webfingerPath = lib.mkOption {
+      type = lib.types.str;
+      default = "/.well-known/webfinger";
+      description = "ActivityPub WebFinger endpoint path (SCAFFOLD hook; safe placeholder/stub response until implemented).";
+    };
+
+    forum.activityPub.nodeinfoPath = lib.mkOption {
+      type = lib.types.str;
+      default = "/.well-known/nodeinfo";
+      description = "NodeInfo discovery path (SCAFFOLD hook).";
+    };
+
+    forum.activityPub.basePath = lib.mkOption {
+      type = lib.types.str;
+      default = "/forum/ap";
+      description = "Base path for forum-scoped ActivityPub actor/object routes (SCAFFOLD contract).";
+    };
+
+    forum.activityPub.sharedInboxPath = lib.mkOption {
+      type = lib.types.str;
+      default = "/forum/ap/inbox";
+      description = "Shared inbox path hook (SCAFFOLD). Actual HTTP signature verification/delivery is not implemented.";
+    };
+
+    forum.activityPub.outboxHookPath = lib.mkOption {
+      type = lib.types.str;
+      default = "/forum/ap/outbox";
+      description = "Outbox hook path contract (SCAFFOLD). Delivery/queue logic is not implemented.";
     };
 
     forum.matrixDmBridge.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
-      description = "Enable Matrix DM bridging so Forum DMs can appear in LosOS Chat (implementation pending).";
+      description = "Enable Matrix DM bridge hook points/contracts so Forum DMs can appear in LosOS Chat (implementation pending).";
+    };
+
+    forum.matrixDmBridge.mode = lib.mkOption {
+      type = lib.types.enum [
+        "appservice-contract"
+        "lososd-mediated"
+        "disabled"
+      ];
+      default = "appservice-contract";
+      description = ''
+        Matrix DM bridge integration contract. "appservice-contract" reserves
+        the intended appservice/namespace shape; "lososd-mediated" reserves a
+        lososd synchronization path. Both are SCAFFOLD stubs until implemented
+        and verified against backend/src/chat.rs and Synapse constraints.
+      '';
+    };
+
+    forum.matrixDmBridge.requireChat = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Require losos.chat.enable when the Matrix DM bridge hook points are active (DMs must appear in LosOS Chat).";
+    };
+
+    forum.matrixDmBridge.appserviceNamespacePrefix = lib.mkOption {
+      type = lib.types.str;
+      default = "_losos_forum_";
+      description = "Reserved localpart/namespace prefix for future Matrix DM bridge identities/rooms (SCAFFOLD contract).";
+    };
+
+    forum.matrixDmBridge.e2eePolicy = lib.mkOption {
+      type = lib.types.enum [
+        "open-decision"
+        "unencrypted-v1-stub"
+        "passthrough-research"
+      ];
+      default = "open-decision";
+      description = ''
+        E2EE policy hook for bridged DMs. "open-decision" records the
+        unresolved design decision and enables no E2EE bridge behavior.
+        "unencrypted-v1-stub"/"passthrough-research" are explicit non-implemented
+        placeholders for future evaluation. No E2EE bridge logic is shipped.
+      '';
+    };
+
+    forum.matrixDmBridge.dmRoomMapping = lib.mkOption {
+      type = lib.types.str;
+      default = "forum-dm:<forum-conversation-id> -> matrix direct room visible in LosOS Chat";
+      description = "Human/machine-readable SCAFFOLD mapping contract for how Forum DMs map to Matrix/LosOS Chat.";
     };
 
     forum.assistant.enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
       description = "@LosOS mention assistant. Disabled until a provider is configured/implemented.";
+    };
+
+    forum.assistant.provider = lib.mkOption {
+      type = lib.types.enum [
+        "disabled"
+        "stub"
+        "external"
+        "edge-mesh"
+      ];
+      default = "disabled";
+      description = "Assistant provider hook (SCAFFOLD). Only disabled/stub are safe placeholders until implemented.";
     };
 
     # ── Standalone admin endpoint (lososd HTTP API + static admin UI) ──────
@@ -2344,7 +2527,7 @@ in
       default = null;
       internal = true;
       description = ''
-        Store path of the built admin SPA: a `dist/` tree with index.html
+        Store path of the built admin SPA: a Vite `dist/` tree with index.html
         at its root, content-hashed bundles under assets/, and the
         deliberately unhashed theme-boot.js beside them. This is the front
         vhost's document root, served with an SPA fallback
