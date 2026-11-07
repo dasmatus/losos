@@ -1,6 +1,7 @@
 # LosOS Forum — Design Spec (Phase 0 scaffold + Phase 1 foundation)
 
-- Status: **Phase 0 scaffold implemented; Phase 1 backend/UI foundation integrated in PR stack** (Phase 2–5 not implemented)
+- Status: **Phase 0 scaffold implemented; Phase 1 backend/UI foundation integrated in PR stack; owner decisions resolved for v1 direction** (Phase 2–5 runtime still largely not implemented — only verifiable contract/guard slices added incrementally)
+- Decisions update: 2026-11-07 (owner-directed): LosOS Chat is Matrix-first; forum private DMs are side chats spawned/linked in LosOS Chat; `@LosOS` v1 uses guarded configurable provider interface (default disabled, provenance/rate-limit hooks); ActivityPub v1 is adapter/safety-guard contracts only with no runtime federation; enablement gate remains proxy+admin UI provisional.
 - Date: 2026-11-05 (updated 2026-11-07)
 - Source: T3 item "Build LosOS Forum" + owner direction (2026-11-05 session) + implementation evidence (2026-11-07)
 
@@ -23,16 +24,16 @@ Build a **from-scratch LosOS Forum**: a hybrid of **Discourse-style topics** and
 
 1. **Edge-local routing.** Forum/federation traffic is intended to use the **edge the user/box is located in** (selected edge path; see `backend/src/edge.rs`, `modules/proxy.nix`, `GET /api/edge`). The design must respect edge failover, bans, and custom-domain hold behavior (`handbook/docs/in-depth/edge-federation.md`). *Phase 1:* hook/config contracts exist; full edge route registration/failover for forum federation runtime is not implemented.
 2. **Federation protocols.** Federate with **ActivityPub** and with **Matrix for DMs**. *Phase 1:* contracts/stubs only; no runtime federation/bridge handlers.
-3. **DMs appear in LosOS Chat.** DM conversations handled/federated by the Forum’s Matrix DM path must also appear in existing LosOS Chat (`modules/chat.nix`, `backend/src/chat.rs`, `/chat/`). This requires a bridge/sync design, not an isolated DM store. *Not implemented.*
+3. **DMs appear in LosOS Chat (Matrix-first, decided).** LosOS Chat is **Matrix-first**. Forum private DMs act as **side chats**: creating or using a private forum DM spawns/links a conversation in LosOS Chat (Matrix DM room mapping/contract), not an isolated store (`modules/chat.nix`, `backend/src/chat.rs`, `/chat/`). *Decision resolved; full Synapse appservice/bridge runtime and E2EE-correct behavior remain implementation follow-ups behind verified contracts.*
 4. **Edge proxy network.** Federation/bridged traffic goes through the **edge proxy network** (tunnel/Traefik/registrar-routed paths). No ad hoc unsolicited WAN listeners on the box. *Enforced as a design constraint; runtime paths not implemented.*
-5. **Mesh/edge dependency (implemented default, provisional).** Current scaffold/integration gates forum enablement on **`losos.proxy.enable` + admin UI presence** (`losos.admin.enable` and `losos.admin.ui`) and exposes status/config hooks. **`losos.cluster.enable`/mesh join is not a hard gate in the current implementation.** Owner decision still required: keep proxy+edge/admin gate only, or also require cluster/mesh join for v1.
+5. **Mesh/edge dependency (decided, provisional v1 default).** Forum enablement gates on **`losos.proxy.enable` + admin UI presence** (`losos.admin.enable` and `losos.admin.ui`) and exposes status/config hooks. **`losos.cluster.enable`/mesh join is not a hard gate in v1 by default.** Edge proxy network remains the transport constraint. Owner may tighten to require cluster/mesh join later.
 
 ## Default product assumptions (confirm/override)
 
 - One product, two interaction modes over a canonical model: **topics** (threaded, categorized/tagged, long-form/moderation) and **channels** (real-time timeline/threads/reactions). *Phase 1 foundation provides spaces/channels/topics/posts/messages models/routes/UI; full moderation primitives, realtime WebSocket/SSE, tags, and rich thread semantics remain follow-ups.*
 - Identity uses **LosOS Login**; federated identities map to stable LosOS/AP/Matrix identifiers. *Phase 1 uses guarded principals/forum principal mapping; full federated identity mapping not implemented.*
-- `@LosOS` mention invokes an **assistant actor** (like mentioning Grok on X). v1 target: pluggable provider interface; **disabled until configured**; responses carry provenance. *Current implementation:* mention hook/config surface exists; full provider runtime, authz/rate limits, context policy, and audited/provenance responses are **not implemented** (owner decision required for first provider).
-- Coexists with existing LosOS Chat in v1; DMs are bridged so they appear in Chat. *Owner decision/implementation pending; no bridge runtime.*
+- `@LosOS` mention invokes an **assistant actor** (like mentioning Grok on X). **v1 decided:** guarded configurable provider interface; **default disabled/stub**; configured external provider hook supported by contract; responses must carry **provenance metadata**; **authz/rate-limit/context-policy hooks** required. *Implementation is incremental:* contracts/guards/stubs may land before a production provider.
+- **LosOS Chat is Matrix-first (decided).** Forum coexists with LosOS Chat; private forum DMs are side chats that **spawn/link conversations in LosOS Chat** via Matrix DM mapping contracts. Full bridge/appservice runtime and E2EE semantics remain follow-ups.
 
 ## Architecture (draft)
 
@@ -68,34 +69,34 @@ Implementation form: prefer a **first-party host service/module** (patterns from
 - [ ] Real-time updates (WebSocket/SSE).
 - [ ] Full LosOS Login permissions/moderation primitives, pagination, and reconciliation of `forum_contracts` vs runtime models.
 
-### Phase 2 — `@LosOS` — **Not implemented (hook/stub only)**
+### Phase 2 — `@LosOS` — **Decision resolved; implementation incremental (guards/stubs before production provider)**
 - [ ] Mention parsing runtime behavior, authz/rate limits, context policy.
-- [ ] Provider interface + configured provider; provenance/audit. *Owner decision required for v1 backend.*
+- [ ] Provider interface + configured provider runtime; provenance/audit enforcement; production provider. *v1 direction decided (guarded configurable, default disabled, provenance/rate-limit hooks); runtime remains incremental.*
 
-### Phase 3 — ActivityPub — **Not implemented (stub contracts only)**
+### Phase 3 — ActivityPub — **Decision resolved; v1 runtime disabled by default (adapter/safety guards only until security review)**
 - [ ] WebFinger/actors/keys, inbox/outbox, HTTP signatures, object mapping.
 - [ ] Delivery queue/retries/idempotency, abuse controls.
-- [ ] Exposure/routing through selected edge proxy path. *Owner decision required for v1 scope/reachability.*
+- [ ] Exposure/routing through selected edge proxy path. *v1 direction decided: adapter/contracts/safety guards only now; no runtime inbox/outbox/delivery/fetch/signature verification; public Fediverse reachability deferred until security review + explicit enablement.*
 
-### Phase 4 — Matrix DM bridge to LosOS Chat — **Not implemented (stub contracts only)**
+### Phase 4 — Matrix DM bridge to LosOS Chat — **Decision resolved (Matrix-first side chats); runtime incremental**
 - [ ] Map Forum DMs to Matrix DM rooms/users visible in existing Chat/Synapse.
 - [ ] Route DM federation through edge proxy network.
 - [ ] Verify appearance in `/chat/`; document E2EE/authz implications.
-- [ ] Evaluate mechanism (appservice/bridge/lososd-mediated sync) against `backend/src/chat.rs` constraints. *Owner decision required for mechanism/E2EE.*
+- [ ] Evaluate/implement mechanism (appservice/bridge/lososd-mediated sync) against `backend/src/chat.rs` constraints. *Direction decided: Matrix-first side chats spawned/linked in LosOS Chat; contract allows limited E2EE for bridged/forum-spawned side chats until verified; full mechanism/E2EE implementation deferred.*
 
 ### Phase 5 — Hardening — **Not implemented**
 - [ ] Backups/restore, migrations, quotas, moderation/admin tools, audits, CSP/rate limits.
 - [ ] Handbook/in-depth docs and VM/integration tests (including edge-path/federation cases).
 
-## Open decisions (owner decision required)
+## Decisions (resolved for v1 direction, 2026-11-07)
 
-| # | Decision | Current implementation default (provisional) | Owner input needed |
-|---|----------|-----------------------------------------------|--------------------|
-| 1 | **Enablement gate** | Gates on `losos.proxy.enable` + admin UI (`losos.admin.enable`, `losos.admin.ui`); status/config hooks exposed. `losos.cluster.enable`/mesh join **not** required by current implementation. | Confirm: proxy+edge/admin only for v1, or also require `losos.cluster.enable`/mesh join? |
-| 2 | **Chat relationship** | Coexists conceptually with LosOS Chat; DMs intended to appear in Chat, but **no bridge runtime implemented**. | Confirm: coexist with bridge (v1) vs long-term convergence path? |
-| 3 | **`@LosOS` v1 backend** | Mention hook/config surface exists; provider/runtime behavior **disabled/stub-level**, no provenance/audit runtime. | Choose first concrete provider: stub-only, configured external, or edge/mesh/local inference? Define authz/rate limits/context policy. |
-| 4 | **ActivityPub v1 scope/reachability** | **Stub contracts only**; no runtime federation. No public Fediverse exposure implemented. | Decide which objects federate first (actors/topics/posts/reactions?), and whether v1 has public Fediverse reachability vs edge-local/private scope. |
-| 5 | **Matrix DM mechanism/E2EE** | **Stub contracts only**; no appservice/sync/bridge runtime. | Choose mechanism (appservice/bridge/lososd-mediated sync) and acceptable E2EE/authz limitations for bridged DMs in v1. |
+| # | Decision | Resolved direction | Implementation status / follow-ups |
+|---|----------|--------------------|-----------------------------------|
+| 1 | **Enablement gate** | **Proxy+admin UI provisional default.** `losos.proxy.enable` + admin UI required; `losos.cluster.enable`/mesh join not hard-required in v1. Edge proxy network remains transport constraint. | Implemented as current gate behavior; owner may tighten later. |
+| 2 | **Chat relationship** | **LosOS Chat is Matrix-first.** Forum private DMs act as **side chats** spawned/linked in LosOS Chat (Matrix DM conversation mapping), not an isolated store. | Decision resolved; full bridge/appservice runtime and verified UX in `/chat/` remain follow-ups. |
+| 3 | **`@LosOS` v1 backend** | **Guarded configurable provider interface.** Default **disabled/stub**; configured external provider hook allowed by contract; responses carry **provenance**; **authz/rate-limit/context-policy hooks** required. | Incremental: contracts/guards/stubs can land before production provider runtime. |
+| 4 | **ActivityPub v1 scope/reachability** | **Adapter/safety-guard contracts only.** No runtime inbox/outbox/delivery/fetch/signature verification enabled by default. Public Fediverse reachability deferred until security review + explicit owner enablement. | Runtime federation remains unimplemented; treat as security-sensitive. |
+| 5 | **Matrix DM mechanism/E2EE** | **Matrix-native integration via LosOS Chat/Synapse-compatible contract** (appservice/bridge/lososd-mediated path evaluated against `backend/src/chat.rs`). v1 contract allows **limited E2EE for bridged/forum-spawned side chats until verified**; sensitive cases must be explicit. | Full mechanism and E2EE-correct behavior deferred pending implementation/testing. |
 
 ## Risks
 
