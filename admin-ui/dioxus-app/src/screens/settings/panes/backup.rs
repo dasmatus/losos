@@ -114,6 +114,46 @@ pub fn BackupPane() -> Element {
                 },
                 "Restore"
             }
+
+            h4 { style: "margin-top:16px;", "Erase (destructive)" }
+            p { class: "muted", "Erase is destructive and follows the box's erase flow. Use only when you understand the consequences; cancel may be possible before it reaches the edge." }
+            div { class: "actions", style: "display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;",
+                Button {
+                    kind: "ghost".to_string(),
+                    disabled: *busy.read(),
+                    onclick: move |_| {
+                        let cfg = config();
+                        spawn(async move {
+                            busy.set(true);
+                            error.set(None);
+                            match api::post_erase_cancel(&cfg).await {
+                                Ok(_) => { let n = *refresh.read() + 1; refresh.set(n); }
+                                Err(e) => { if e.status == 401 { clear_auth(config, auth_sig); } error.set(Some(e.message)); }
+                            }
+                            busy.set(false);
+                        });
+                    },
+                    "Cancel erase"
+                }
+                Button {
+                    kind: "danger".to_string(),
+                    disabled: *busy.read(),
+                    onclick: move |_| {
+                        let cfg = config();
+                        spawn(async move {
+                            busy.set(true);
+                            error.set(None);
+                            // `backup: false` — conservative default; full erase UX parity pending.
+                            match api::post_erase(&cfg, false).await {
+                                Ok(_) => { let n = *refresh.read() + 1; refresh.set(n); }
+                                Err(e) => { if e.status == 401 { clear_auth(config, auth_sig); } error.set(Some(e.message)); }
+                            }
+                            busy.set(false);
+                        });
+                    },
+                    "Erase box"
+                }
+            }
         }
     }
 }

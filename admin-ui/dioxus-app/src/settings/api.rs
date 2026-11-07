@@ -731,6 +731,22 @@ pub async fn search_catalogue(config: &BoxConfig, query: &str) -> Result<Catalog
     parse_json(api.get(&path).await?, "catalogue").await
 }
 
+pub async fn get_app_chart(config: &BoxConfig, repo: &str, name: &str, version: &str) -> Result<Value, ApiError> {
+    let path = format!(
+        "/api/apps/chart?repo={}&name={}&version={}",
+        urlencoding::encode(repo),
+        urlencoding::encode(name),
+        urlencoding::encode(version)
+    );
+    api_for_config(config)?.get(&path).await
+}
+
+pub async fn post_people(config: &BoxConfig, person: Value) -> Result<Value, ApiError> {
+    api_for_config(config)?
+        .post_json("/api/people", person)
+        .await
+}
+
 // ── Look ────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
