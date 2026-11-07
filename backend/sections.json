@@ -2,8 +2,21 @@
   "about": "Who may call each lososd route. Read by lososd (src/sections.rs) and by modules/identity.nix. Keys are METHOD and the route as http.rs registers it. 'public' needs no sign-in, 'internal' is asked by nginx alone and never served to a client, 'signed-in' needs any person, 'admin' needs losos-admins or the spare key, and a named section needs losos-<name>, losos-admins or (for GET) losos-viewers. A route missing here is admin. 'private' lists the sections losos-viewers do not read. A person in losos-guests may call a 'signed-in' route that changes something only when 'guests' lists it, and a person a moderator muted may not call a route 'speech' lists. 'edge' lists the sections a company edge may use on a box whose owner let it manage the box, besides reading the 'signed-in' routes.",
   "admins": "losos-admins",
   "viewers": "losos-viewers",
-  "sections": ["storage", "backup", "apps", "market", "network", "look", "lab", "access", "account", "moderation"],
-  "private": ["moderation"],
+  "sections": [
+    "storage",
+    "backup",
+    "apps",
+    "market",
+    "network",
+    "look",
+    "lab",
+    "access",
+    "account",
+    "moderation"
+  ],
+  "private": [
+    "moderation"
+  ],
   "guests": [
     "POST /api/set-password",
     "POST /api/windows",
@@ -24,7 +37,9 @@
     "PUT /api/account/picture",
     "PUT /api/account/banner"
   ],
-  "edge": ["apps"],
+  "edge": [
+    "apps"
+  ],
   "routes": {
     "GET /api/health": "public",
     "GET /api/access/host-key": "public",
@@ -33,7 +48,6 @@
     "POST /api/setup/claim": "public",
     "GET /internal/cloud-share": "internal",
     "GET /internal/chat/authz": "internal",
-
     "GET /api/me": "signed-in",
     "GET /api/state": "signed-in",
     "GET /api/settings": "signed-in",
@@ -61,7 +75,6 @@
     "GET /api/windows": "signed-in",
     "GET /api/hidden": "network",
     "POST /api/windows": "signed-in",
-
     "GET /api/mail": "signed-in",
     "POST /api/mail/send": "signed-in",
     "GET /api/mail/messages": "signed-in",
@@ -74,7 +87,6 @@
     "POST /api/assistant/asks": "signed-in",
     "GET /api/assistant/asks/{id}": "signed-in",
     "DELETE /api/assistant/asks/{id}": "signed-in",
-
     "GET /api/tag": "signed-in",
     "POST /api/tag/levels": "admin",
     "POST /api/tag/areas": "signed-in",
@@ -97,7 +109,6 @@
     "PUT /api/mail/keys": "signed-in",
     "DELETE /api/mail/keys": "signed-in",
     "GET /api/mail/keys/find": "signed-in",
-
     "GET /api/ci": "signed-in",
     "PUT /api/ci/runner": "admin",
     "GET /api/ci/runs": "signed-in",
@@ -107,11 +118,9 @@
     "GET /api/ci/jobs/{id}/log": "signed-in",
     "GET /api/ci/workflows": "signed-in",
     "POST /api/ci/dispatch": "signed-in",
-
     "GET /api/storage": "storage",
     "POST /api/grow": "storage",
     "POST /api/change": "storage",
-
     "GET /api/backup": "backup",
     "GET /api/credentials": "admin",
     "POST /api/credentials/{name}/rotate": "admin",
@@ -119,7 +128,6 @@
     "DELETE /api/backup/target": "backup",
     "POST /api/backup/target/bought": "backup",
     "POST /api/backup/run": "backup",
-
     "GET /api/apps": "apps",
     "GET /api/statistics": "apps",
     "GET /api/apps/search": "apps",
@@ -141,7 +149,6 @@
     "GET /api/builder/builds/{id}": "apps",
     "DELETE /api/builder/builds/{id}": "apps",
     "POST /api/builder/builds/{id}/tried": "apps",
-
     "GET /api/market": "market",
     "POST /api/market/onboard": "market",
     "POST /api/market/listings": "market",
@@ -167,25 +174,20 @@
     "POST /api/vms/listings/close": "market",
     "PUT /api/vms/images": "market",
     "POST /api/vms/images/remove": "market",
-
     "GET /api/domains": "network",
     "POST /api/domains": "network",
     "POST /api/domains/remove": "network",
     "POST /api/domains/wallet": "network",
-
     "POST /api/look/widgets": "look",
     "DELETE /api/look/widgets/{id}": "look",
-
     "GET /api/lab/hello": "lab",
     "GET /api/lab/order": "lab",
     "POST /api/lab/order": "lab",
     "POST /api/lab/guests": "lab",
     "DELETE /api/lab/guests/{key}": "lab",
-
     "GET /api/access": "access",
     "POST /api/access/tokens": "access",
     "POST /api/access/tokens/revoke": "access",
-
     "GET /api/people": "admin",
     "POST /api/people": "admin",
     "POST /api/people/access": "admin",
@@ -218,7 +220,6 @@
     "DELETE /api/tinycode/asks/{id}": "admin",
     "POST /api/roles": "admin",
     "POST /api/roles/remove": "admin",
-
     "POST /api/reports": "signed-in",
     "GET /api/moderation": "moderation",
     "POST /api/moderation/reports/{id}": "moderation",
@@ -226,7 +227,6 @@
     "POST /api/moderation/unmute": "moderation",
     "POST /api/moderation/suspend": "moderation",
     "POST /api/moderation/unsuspend": "moderation",
-
     "POST /api/apply": "admin",
     "POST /api/factory-reset": "admin",
     "POST /api/backup/restore": "admin",
@@ -275,6 +275,19 @@
     "GET /api/basic/{page}": "signed-in",
     "POST /api/basic/{page}": "signed-in",
     "GET /api/basic/settings/{pane}": "signed-in",
-    "POST /api/basic/settings/{pane}": "signed-in"
+    "POST /api/basic/settings/{pane}": "signed-in",
+    "GET /api/forum": "signed-in",
+    "GET /api/forum/channels": "signed-in",
+    "GET /api/forum/spaces": "signed-in",
+    "GET /api/forum/topics": "signed-in",
+    "POST /api/forum/channels": "signed-in",
+    "POST /api/forum/reactions": "signed-in",
+    "POST /api/forum/spaces": "signed-in",
+    "POST /api/forum/topics": "signed-in",
+    "GET /api/forum/channels/{channel_id}/messages": "signed-in",
+    "POST /api/forum/channels/{channel_id}/messages": "signed-in",
+    "GET /api/forum/topics/{topic_id}/posts": "signed-in",
+    "POST /api/forum/topics/{topic_id}/posts": "signed-in",
+    "POST /api/forum/memberships": "signed-in"
   }
 }

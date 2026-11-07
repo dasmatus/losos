@@ -129,9 +129,14 @@ impl ForumDb {
         let mut conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         let tx = conn.transaction()?;
         let version: i64 = tx.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-        for (i, sql) in MIGRATIONS.iter().enumerate().skip(version as usize) {
+        let version = usize::try_from(version).unwrap_or(0);
+        for (i, sql) in MIGRATIONS.iter().enumerate().skip(version) {
             tx.execute_batch(sql)?;
-            tx.pragma_update(None, "user_version", (i + 1) as i64)?;
+            tx.pragma_update(
+                None,
+                "user_version",
+                i64::try_from(i + 1).unwrap_or(i64::from(i as u32) + 1),
+            )?;
         }
         tx.commit()?;
         Ok(())
