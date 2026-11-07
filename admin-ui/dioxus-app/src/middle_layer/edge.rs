@@ -503,17 +503,19 @@ mod tests {
     fn secret_value_redacts_debug_and_display() {
         let secret = SecretValue::new("top-secret");
         assert_eq!(format!("{secret}"), "[REDACTED]");
-        let dbg = format!("{secret:?}");
-        assert!(!dbg.contains("top-secret"), "debug leaked secret: {dbg}");
-        assert!(dbg.contains("REDACTED"));
+        // Compare exact redacted output; avoid interpolating formatted secret-derived
+        // values in assertion messages (CodeQL cleartext-logging sink).
+        assert_eq!(format!("{secret:?}"), "SecretValue([REDACTED])");
     }
 
     #[test]
     fn secret_set_request_redacts_debug_and_keeps_body_value() {
         let req = SecretSetRequest::new("API_KEY", SecretValue::new("abc123"));
         let dbg = format!("{req:?}");
-        assert!(!dbg.contains("abc123"), "debug leaked secret: {dbg}");
-        assert!(dbg.contains("API_KEY"));
+        assert!(
+            !dbg.contains("abc123") && dbg.contains("API_KEY") && dbg.contains("REDACTED"),
+            "debug must redact secret value while keeping name"
+        );
         let body = req.to_json_body();
         assert_eq!(body["name"], "API_KEY");
         assert_eq!(body["value"], "abc123");

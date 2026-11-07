@@ -177,12 +177,18 @@ pub async fn request_json_with_config(
         } else {
             Trust::FirstUse
         };
-        let danger = matches!(trust, Trust::Permissive | Trust::FirstUse);
+        // Use the TOFU/pinning verifier (native) instead of blanket
+        // danger_accept_invalid_certs, so TLS validation is explicit and
+        // self-signed box certs are handled without disabling checks.
+        let (tls, _obs) = crate::tls::client_config(&trust).map_err(|e| ApiError {
+            status: 0,
+            message: e,
+        })?;
         reqwest::Client::builder()
             .connect_timeout(std::time::Duration::from_secs(4))
             .timeout(std::time::Duration::from_secs(30))
             .user_agent(format!("losos-frontend/{}", env!("CARGO_PKG_VERSION")))
-            .danger_accept_invalid_certs(danger)
+            .use_preconfigured_tls(tls)
             .build()
             .map_err(|e| ApiError {
                 status: 0,
