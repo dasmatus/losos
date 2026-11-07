@@ -34,8 +34,9 @@ pub fn AppBar(me: Option<Me>, #[props(default = "wide".to_string())] width: Stri
                 div { class: "app-bar-spacer" }
                 span { class: "app-bar-person muted ls-app-bar-person", "{person}" }
                 button {
+                    r#type: "button",
                     class: "btn btn-ghost ls-app-bar-signout",
-                    style: "margin-left: 8px; padding: 4px 8px; font-size: 13px;",
+                    style: "margin-left: 8px; font-size: 13px;",
                     onclick: sign_out,
                     "Sign out"
                 }

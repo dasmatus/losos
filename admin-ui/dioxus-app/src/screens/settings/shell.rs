@@ -158,10 +158,19 @@ pub fn SettingsShell(pane: String) -> Element {
                             let label = pane_label(p);
                             rsx! {
                                 li {
-                                    Link {
-                                        to: Route::SettingsPane { pane: p.to_string() },
-                                        class: "{cls}",
-                                        "{label}"
+                                    if active {
+                                        Link {
+                                            to: Route::SettingsPane { pane: p.to_string() },
+                                            class: "{cls}",
+                                            "aria-current": "page",
+                                            "{label}"
+                                        }
+                                    } else {
+                                        Link {
+                                            to: Route::SettingsPane { pane: p.to_string() },
+                                            class: "{cls}",
+                                            "{label}"
+                                        }
                                     }
                                 }
                             }

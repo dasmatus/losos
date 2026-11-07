@@ -481,7 +481,7 @@ fn PlaceholderPage(title: String, description: String) -> Element {
             h1 { "{title}" }
             Card {
                 p { "{description}" }
-                p { class: "muted", "This screen is part of the ongoing Dioxus/RSX rewrite preserving the original design system. Actions are bound through the losos-client/TUI middle layer and /api/*." }
+                p { class: "muted", "This screen isn’t available in this app yet. Use the sidebar to open another section." }
             }
         }
     }
@@ -493,8 +493,8 @@ fn PlaceholderPath(segments: Vec<String>) -> Element {
     rsx! {
         div { class: "page ls-page",
             h1 { "Not found" }
-            p { class: "muted", "No route for {path}" }
-            Link { to: Route::Home {}, "Go to Overview" }
+            p { class: "muted", "No screen at {path}." }
+            p { "Choose a section from the sidebar, or " Link { to: Route::Home {}, "go to Overview" } "." }
         }
     }
 }

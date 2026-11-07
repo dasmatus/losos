@@ -6,16 +6,22 @@ pub fn Button(
     #[props(default)] class: String,
     #[props(default)] disabled: bool,
     #[props(default)] kind: String, // primary, secondary, danger, ghost
+    #[props(default = "button".to_string())] button_type: String,
     onclick: Option<EventHandler<MouseEvent>>,
     children: Element,
 ) -> Element {
-    let cls = if class.is_empty() {
-        format!("btn btn-{kind}")
+    let kind_cls = if kind.is_empty() {
+        "btn-secondary".to_string()
     } else {
-        format!("btn btn-{kind} {class}")
+        format!("btn-{kind}")
+    };
+    let cls = if class.is_empty() {
+        format!("btn {kind_cls}")
+    } else {
+        format!("btn {kind_cls} {class}")
     };
     rsx! {
-        button { class: "{cls}", disabled: disabled, onclick: move |e| if let Some(h) = &onclick { h.call(e) }, {children} }
+        button { r#type: "{button_type}", class: "{cls}", disabled: disabled, onclick: move |e| if let Some(h) = &onclick { h.call(e) }, {children} }
     }
 }
 

@@ -386,14 +386,18 @@ pub fn Sidebar(me: Option<Me>) -> Element {
                 {
                     let active = tab.active;
                     let cls = if active { "bottom-nav-tab active ls-bottom-nav-tab" } else { "bottom-nav-tab ls-bottom-nav-tab" };
-                    rsx! {
-                        Link { to: tab.route.clone(), class: "{cls}", "{tab.label}" }
+                    if active {
+                        rsx! { Link { to: tab.route.clone(), class: "{cls}", "aria-current": "page", "{tab.label}" } }
+                    } else {
+                        rsx! { Link { to: tab.route.clone(), class: "{cls}", "{tab.label}" } }
                     }
                 }
             }
             button {
+                r#type: "button",
                 class: "bottom-nav-tab ls-bottom-nav-more",
                 "aria-haspopup": "dialog",
+                "aria-label": "More sections",
                 onclick: move |_| {
                     let v = *mobile_open.read();
                     mobile_open.set(!v);
@@ -405,6 +409,7 @@ pub fn Sidebar(me: Option<Me>) -> Element {
         if *mobile_open.read() {
             div { class: "bottom-nav-sheet ls-bottom-nav-sheet", role: "dialog", "aria-label": "Navigation",
                 button {
+                    r#type: "button",
                     class: "btn btn-ghost",
                     onclick: move |_| mobile_open.set(false),
                     "Close"
@@ -492,14 +497,25 @@ fn render_entry(
         let key = entry.key.to_string();
         let route = route_for_entry(&entry);
         let row_cls = if contains { "nav-fold open ls-nav-fold" } else { "nav-fold ls-nav-fold" };
+        let toggle_label = if is_open {
+            format!("Hide {} sections", entry.label)
+        } else {
+            format!("Show {} sections", entry.label)
+        };
         return rsx! {
             div { class: "{row_cls}",
-                div { class: "nav-fold-row",
-                    Link { to: route, class: "{cls}", "{entry.label}" }
+                div { class: "nav-fold-row nav-row",
+                    if active {
+                        Link { to: route.clone(), class: "{cls}", "aria-current": "page", "{entry.label}" }
+                    } else {
+                        Link { to: route, class: "{cls}", "{entry.label}" }
+                    }
                     if has_children {
                         button {
+                            r#type: "button",
                             class: "nav-fold-toggle ls-nav-fold-toggle",
                             "aria-expanded": if is_open { "true" } else { "false" },
+                            "aria-label": "{toggle_label}",
                             onclick: move |_| {
                                 let mut next = open_folds();
                                 if next.contains(&key) { next.remove(&key); } else { next.insert(key.clone()); }
@@ -519,7 +535,11 @@ fn render_entry(
     let route = route_for_entry(&entry);
     rsx! {
         div { class: "nav-row ls-nav-row",
-            Link { to: route, class: "{cls}", "{entry.label}" }
+            if active {
+                Link { to: route, class: "{cls}", "aria-current": "page", "{entry.label}" }
+            } else {
+                Link { to: route, class: "{cls}", "{entry.label}" }
+            }
         }
     }
 }
