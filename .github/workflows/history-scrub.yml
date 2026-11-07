@@ -89,9 +89,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-nix
-        with:
-          cache-url: ${{ vars.LOSOS_PROXY_URL }}
-          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+      - uses: oven-sh/setup-bun@v2
       - name: clone every branch and tag, bare
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

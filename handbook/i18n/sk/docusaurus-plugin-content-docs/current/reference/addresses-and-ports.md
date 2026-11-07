@@ -73,5 +73,4 @@ prichádzajúci port.
 | `proxy.losos.dasmat.us`     | Binárna cache, z ktorej sa zariadenie aktualizuje        |
 | `127.0.0.1:8787`            | Lokálna Nix cache z GHCR na zariadení a inštalačnom médiu |
 | `127.0.0.1:8790`            | Lokálna kópia všetkých týchto cache na disku zariadenia |
-| `losos.dasmat.us/proxy`     | Kópia tejto cache, použije sa, keď prvá neodpovedá       |
 | `losos.dasmat.us`           | Táto príručka na webe                                    |

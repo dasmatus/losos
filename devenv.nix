@@ -209,6 +209,10 @@ in
       jq
       curl
 
+      # OCR (read screenshots/images) and Rust advisory auditing.
+      tesseract
+      cargo-audit
+
       # Shell UX, carried over from the flake/devshell.nix this file replaces:
       # the host fish config minus Zellij, which would wrap the shell in a
       # multiplexer and make cargo output noisier for no gain.
