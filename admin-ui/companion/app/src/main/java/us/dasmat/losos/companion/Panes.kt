@@ -15,6 +15,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LinearProgressIndicator
@@ -22,9 +24,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -36,6 +40,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
@@ -375,9 +380,16 @@ private fun OverviewAppsCard(read: Read) {
     ReadCard("Apps", read) { d -> InstalledAppsBody(d, "Nothing installed yet.") }
 }
 
+private data class AppJob(val release: String, val action: String)
+
 /** The rows the Apps pane and the Overview both draw out of /api/apps. */
 @Composable
-internal fun InstalledAppsBody(d: JSONObject, emptyWord: String) {
+internal fun InstalledAppsBody(
+    d: JSONObject,
+    emptyWord: String,
+    busy: AppJob? = null,
+    onRemove: ((String) -> Unit)? = null,
+) {
     val tokens = LocalTokens.current
     if (!d.maybeBool("available")) {
         Text(
@@ -395,11 +407,15 @@ internal fun InstalledAppsBody(d: JSONObject, emptyWord: String) {
             color = tokens.scheme.onSurfaceVariant,
         )
     }
-    records.forEach { app -> InstalledAppRow(app) }
+    records.forEach { app -> InstalledAppRow(app, busy, onRemove) }
 }
 
 @Composable
-internal fun InstalledAppRow(app: JSONObject) {
+internal fun InstalledAppRow(
+    app: JSONObject,
+    busy: AppJob? = null,
+    onRemove: ((String) -> Unit)? = null,
+) {
     val tokens = LocalTokens.current
     val release = app.maybeString("release") ?: "-"
     val phase = app.maybeString("phase") ?: "running"
@@ -409,16 +425,25 @@ internal fun InstalledAppRow(app: JSONObject) {
         add(app.maybeString("runAs") ?: "notshared")
         if (phase == "failed") add(app.maybeString("message").orEmpty())
     }.filter { it.isNotEmpty() }.joinToString(" · ")
-    PaneRow(
-        title = release,
-        detail = detail,
-        value = phaseWord(phase),
-        tone = when (phase) {
-            "failed" -> tokens.extra.crit
-            "running" -> tokens.extra.ok
-            else -> tokens.scheme.onSurfaceVariant
-        },
-    )
+    Column(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+        PaneRow(
+            title = release,
+            detail = detail,
+            value = phaseWord(phase),
+            tone = when (phase) {
+                "failed" -> tokens.extra.crit
+                "running" -> tokens.extra.ok
+                else -> tokens.scheme.onSurfaceVariant
+            },
+        )
+        if (onRemove != null) {
+            val canRemove = phase != "installing" && phase != "removing" && busy == null
+            OutlinedButton(
+                onClick = { onRemove(release) },
+                enabled = canRemove && release != "-",
+            ) { Text(if (busy?.release == release && busy.action == "remove") "Removing…" else "Remove") }
+        }
+    }
 }
 
 /** What the pool gets from this box, straight out of /api/settings. */
@@ -495,7 +520,8 @@ fun StoragePane(config: BoxConfig, update: (BoxConfig) -> Unit) {
         return
     }
     PaneHeader("Storage", "The disk as the box reports it", demo = false)
-    ReadRoute("/api/storage", config, update) { read ->
+    var refresh by remember { mutableIntStateOf(0) }
+    ReadRoute("/api/storage", config, update, refresh = refresh) { read ->
         ReadCard("Disk", read) { d ->
             val tokens = LocalTokens.current
             val used = d.maybeDouble("usedBytes")
@@ -524,25 +550,130 @@ fun StoragePane(config: BoxConfig, update: (BoxConfig) -> Unit) {
                 )
             }
         }
-        ReadCard("Held in reserve", read) { d ->
-            val reserve = d.maybeDouble("reserveBytes")
-            PaneRow(
-                "Reserve",
-                detail = when {
-                    reserve != null && reserve == 0.0 -> "Already spent — the disk is that much bigger now."
-                    reserve != null -> "Unallocated disk the box can claim without a repair."
-                    else -> "The box did not report a reserve."
-                },
-                value = formatBytes(reserve),
-            )
-            Text(
-                "Spending it (POST /api/grow) stays on the box's own pages.",
-                style = MaterialTheme.typography.bodySmall,
-                color = LocalTokens.current.scheme.onSurfaceVariant,
-            )
-        }
+        ReserveCard(read, config, update, onDone = { refresh++ })
     }
     Spacer(Modifier.height(20.dp))
+}
+
+/** The held-back space, and the guarded action to spend it (POST /api/grow). */
+@Composable
+private fun ReserveCard(
+    read: Read,
+    config: BoxConfig,
+    update: (BoxConfig) -> Unit,
+    onDone: () -> Unit,
+) {
+    val tokens = LocalTokens.current
+    val api = boxApi(config, update)
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
+    var failed by remember { mutableStateOf<String?>(null) }
+    var confirm by remember { mutableStateOf<Double?>(null) }
+    var grown by remember { mutableStateOf<String?>(null) }
+
+    Card2 {
+        Text("Held in reserve", style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(8.dp))
+        when (read) {
+            Read.Loading -> Text(
+                "Asking the box…",
+                style = MaterialTheme.typography.bodyMedium,
+                color = tokens.scheme.onSurfaceVariant,
+            )
+            is Read.Failed -> Text(
+                "Could not read: ${read.reason}",
+                style = MaterialTheme.typography.bodySmall,
+                color = tokens.extra.crit,
+            )
+            is Read.Done -> {
+                val reserve = read.data.maybeDouble("reserveBytes")
+                val hasReserve = reserve != null && reserve > 0.0
+                PaneRow(
+                    "Reserve",
+                    detail = when {
+                        reserve != null && reserve == 0.0 -> "Already spent — the disk is that much bigger now."
+                        reserve != null -> "Unallocated disk the box can claim without a repair."
+                        else -> "The box did not report a reserve."
+                    },
+                    value = formatBytes(reserve),
+                )
+                grown?.let {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = tokens.extra.ok,
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(
+                        onClick = { confirm = reserve ?: 0.0 },
+                        enabled = hasReserve && !busy,
+                    ) { Text(if (busy) "Claiming…" else "Use reserve") }
+                }
+                failed?.let {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Could not claim the reserve: $it",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = tokens.extra.crit,
+                    )
+                }
+                Text(
+                    "Online grow: the box claims the reserve now, with no rebuild.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = tokens.scheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+
+    val reserve = confirm
+    if (reserve != null) {
+        AlertDialog(
+            onDismissRequest = { if (!busy) confirm = null },
+            title = { Text("Use the reserve?") },
+            text = {
+                Text(
+                    "The box will claim ${formatBytes(reserve)} of unallocated disk now. " +
+                        "This is an online grow and does not rebuild the box.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        busy = true
+                        failed = null
+                        grown = null
+                        scope.launch {
+                            try {
+                                val result = api.post("/api/grow")
+                                if (result.maybeBool("grew")) {
+                                    val claimed = result.maybeDouble("claimedBytes")
+                                    grown = "Claimed ${formatBytes(claimed)}."
+                                } else {
+                                    failed = "The box had nothing to claim."
+                                }
+                                onDone()
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                failed = e.message ?: e.javaClass.simpleName
+                            } finally {
+                                busy = false
+                                confirm = null
+                            }
+                        }
+                    },
+                    enabled = !busy,
+                ) { Text("Use reserve") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirm = null }, enabled = !busy) { Text("Cancel") }
+            },
+        )
+    }
 }
 
 // ── Mesh ─────────────────────────────────────────────────────────────────
@@ -634,21 +765,137 @@ fun AppsPane(config: BoxConfig, update: (BoxConfig) -> Unit) {
         return
     }
     PaneHeader("Apps", "What the box runs, and what it could", demo = false)
-    ReadRoute("/api/apps", config, update) { read -> InstalledAppsCard(read) }
-    SearchCard(config, update)
+    var refresh by remember { mutableIntStateOf(0) }
+    var pendingRemove by remember { mutableStateOf<String?>(null) }
+    var pendingInstall by remember { mutableStateOf<JSONObject?>(null) }
+    var busy by remember { mutableStateOf<AppJob?>(null) }
+    var failed by remember { mutableStateOf<String?>(null) }
+    var notice by remember { mutableStateOf<String?>(null) }
+    val api = boxApi(config, update)
+    val scope = rememberCoroutineScope()
+    val tokens = LocalTokens.current
+
+    ReadRoute("/api/apps", config, update, refresh = refresh) { read ->
+        InstalledAppsCard(read, busy) { pendingRemove = it }
+    }
+    SearchCard(config, update, busy, onInstall = { pendingInstall = it })
+
+    notice?.let {
+        Text(it, style = MaterialTheme.typography.bodySmall, color = tokens.extra.ok,
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp))
+    }
+    failed?.let {
+        Text("App action failed: $it", style = MaterialTheme.typography.bodySmall, color = tokens.extra.crit,
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp))
+    }
+
+    val remove = pendingRemove
+    if (remove != null) {
+        AlertDialog(
+            onDismissRequest = { if (busy == null) pendingRemove = null },
+            title = { Text("Remove $remove?") },
+            text = { Text("The app will be removed from the box. Its data files stay in the user's app data directory, as the box normally keeps them.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        busy = AppJob(remove, "remove")
+                        failed = null; notice = null
+                        scope.launch {
+                            try {
+                                api.post("/api/apps/remove", JSONObject().put("release", remove))
+                                notice = "Removing $remove…"
+                                refresh++
+                            } catch (e: CancellationException) { throw e }
+                            catch (e: Exception) { failed = e.message ?: e.javaClass.simpleName }
+                            finally { busy = null; pendingRemove = null }
+                        }
+                    },
+                    enabled = busy == null,
+                ) { Text("Remove") }
+            },
+            dismissButton = { TextButton(onClick = { pendingRemove = null }, enabled = busy == null) { Text("Cancel") } },
+        )
+    }
+
+    val install = pendingInstall
+    if (install != null) {
+        val chart = install.maybeObject("chart")
+        val chartOk = chart?.maybeString("repo")?.isNotBlank() == true &&
+            chart.maybeString("name")?.isNotBlank() == true &&
+            chart.maybeString("version")?.isNotBlank() == true
+        AlertDialog(
+            onDismissRequest = { if (busy == null) pendingInstall = null },
+            title = { Text("Install ${install.maybeString("name") ?: "app"}?") },
+            text = {
+                Text(
+                    if (!chartOk) "This result does not include a chart the box can install."
+                    else "The box will fetch chart details, confirm the release name, and install ${chart?.maybeString("name")} ${chart?.maybeString("version")} as the notshared user (values left at defaults)."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (!chartOk || chart == null) { pendingInstall = null; return@TextButton }
+                        val key = "${chart.maybeString("repo")}/${chart.maybeString("name")}"
+                        busy = AppJob(key, "install")
+                        failed = null; notice = null
+                        scope.launch {
+                            try {
+                                val q = "repo=${encodeQuery(chart.maybeString("repo").orEmpty())}&name=${encodeQuery(chart.maybeString("name").orEmpty())}&version=${encodeQuery(chart.maybeString("version").orEmpty())}"
+                                val prepared = api.get("/api/apps/chart?$q")
+                                val release = prepared.maybeString("release")
+                                    ?: throw ApiError(0, "The box did not return a release name.")
+                                val chartRef = prepared.maybeObject("chart") ?: chart
+                                val body = JSONObject()
+                                    .put("release", release)
+                                    .put("chart", JSONObject()
+                                        .put("repo", chartRef.maybeString("repo"))
+                                        .put("name", chartRef.maybeString("name"))
+                                        .put("version", chartRef.maybeString("version")))
+                                    .put("runAs", "notshared")
+                                    .put("values", JSONObject())
+                                    .put("valuesYaml", JSONObject.NULL)
+                                api.post("/api/apps/install", body)
+                                notice = "Installing $release…"
+                                refresh++
+                            } catch (e: CancellationException) { throw e }
+                            catch (e: Exception) { failed = e.message ?: e.javaClass.simpleName }
+                            finally { busy = null; pendingInstall = null }
+                        }
+                    },
+                    enabled = busy == null && chartOk,
+                ) { Text("Install") }
+            },
+            dismissButton = { TextButton(onClick = { pendingInstall = null }, enabled = busy == null) { Text("Cancel") } },
+        )
+    }
+
     Spacer(Modifier.height(20.dp))
 }
 
 @Composable
-private fun InstalledAppsCard(read: Read) {
-    ReadCard("Installed", read) { d ->
-        InstalledAppsBody(d, "Nothing installed yet.")
+private fun InstalledAppsCard(read: Read, busy: AppJob?, onRemove: (String) -> Unit) {
+    Card2 {
+        Text("Installed", style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(8.dp))
+        when (read) {
+            Read.Loading -> Text("Asking the box…", style = MaterialTheme.typography.bodyMedium,
+                color = LocalTokens.current.scheme.onSurfaceVariant)
+            is Read.Failed -> Text("Could not read: ${read.reason}", style = MaterialTheme.typography.bodySmall,
+                color = LocalTokens.current.extra.crit)
+            is Read.Done -> InstalledAppsBody(read.data, "Nothing installed yet.", busy, onRemove)
+        }
     }
 }
 
-/** The catalogue search: GET /api/apps/search?q=…, as the SPA's search bar asks. */
+/** The catalogue search: GET /api/apps/search?q=…, with guarded install actions. */
 @Composable
-private fun SearchCard(config: BoxConfig, update: (BoxConfig) -> Unit) {
+private fun SearchCard(
+    config: BoxConfig,
+    update: (BoxConfig) -> Unit,
+    busy: AppJob?,
+    onInstall: (JSONObject) -> Unit,
+) {
     val tokens = LocalTokens.current
     val api = boxApi(config, update)
     val scope = rememberCoroutineScope()
@@ -663,7 +910,7 @@ private fun SearchCard(config: BoxConfig, update: (BoxConfig) -> Unit) {
             search = Read.Loading
             search = try {
                 Read.Done(api.get("/api/apps/search?q=$asked"))
-            } catch (e: kotlinx.coroutines.CancellationException) {
+            } catch (e: CancellationException) {
                 throw e
             } catch (e: ApiError) {
                 Read.Failed(e.message ?: "HTTP ${e.status}")
@@ -686,7 +933,7 @@ private fun SearchCard(config: BoxConfig, update: (BoxConfig) -> Unit) {
             keyboardActions = KeyboardActions(onSearch = { find() }),
         )
         Spacer(Modifier.height(8.dp))
-        OutlinedButton(onClick = { find() }) { Text("Find") }
+        OutlinedButton(onClick = { find() }, enabled = busy == null) { Text("Find") }
         when (val r = search) {
             null -> {}
             Read.Loading -> Text(
@@ -708,11 +955,11 @@ private fun SearchCard(config: BoxConfig, update: (BoxConfig) -> Unit) {
                         color = tokens.scheme.onSurfaceVariant,
                     )
                 }
-                hits.forEach { hit -> SearchHitRow(hit) }
+                hits.forEach { hit -> SearchHitRow(hit, busy, onInstall) }
                 val sources = searchSources(r.data)
                 Text(
                     "The box asked its ${sources.size} source${if (sources.size == 1) "" else "s"}; " +
-                        "install and remove stay on its pages.",
+                        "install uses the box's chart details and confirms before starting.",
                     style = MaterialTheme.typography.bodySmall,
                     color = tokens.scheme.onSurfaceVariant,
                 )
@@ -732,19 +979,28 @@ private fun searchSources(body: JSONObject): List<String> {
 }
 
 @Composable
-private fun SearchHitRow(hit: JSONObject) {
+private fun SearchHitRow(hit: JSONObject, busy: AppJob?, onInstall: (JSONObject) -> Unit) {
     val tokens = LocalTokens.current
     val name = hit.maybeString("name") ?: "-"
     val version = hit.maybeString("version")
+    val chart = hit.maybeObject("chart")
+    val canInstall = chart?.maybeString("repo")?.isNotBlank() == true &&
+        chart.maybeString("name")?.isNotBlank() == true &&
+        chart.maybeString("version")?.isNotBlank() == true
     val detail = buildList {
         add(hit.maybeString("summary").orEmpty())
         add("source: ${hit.maybeString("source") ?: "-"}")
     }.filter { it.isNotEmpty() }.joinToString("\n")
-    PaneRow(
-        title = if (version != null) "$name  $version" else name,
-        detail = detail,
-        tone = tokens.scheme.onSurface,
-    )
+    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        PaneRow(
+            title = if (version != null) "$name  $version" else name,
+            detail = detail,
+            tone = tokens.scheme.onSurface,
+        )
+        if (canInstall) {
+            OutlinedButton(onClick = { onInstall(hit) }, enabled = busy == null) { Text("Install") }
+        }
+    }
 }
 
 // ── The demo tiles, kept from the dashboard's first drafts ───────────────

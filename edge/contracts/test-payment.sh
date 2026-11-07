@@ -84,7 +84,7 @@ echo "== wallet: MetaMask derivation, then a real payment =="
 if [ ! -d wallet/node_modules/viem ]; then
   npm install --prefix wallet --silent
 fi
-bun contracts/wallet/check.ts 84532 > /tmp/losos-payout.json
+bun wallet/check.ts 84532 > /tmp/losos-payout.json
 
 jq -n \
   --slurpfile receipt "${RECEIPT}" \

@@ -19,9 +19,9 @@
  * cross-origin isolated, so the threaded Whisper build and ONNX Runtime's
  * thread pool are the ones under test. */
 
-import assert from '../../assert.mjs';
-import { launch } from '../../harness.mjs';
-import { startFront } from '../calls/front.mjs';
+import assert from '../../assert.ts';
+import { launch } from '../../harness.ts';
+import { startFront } from '../calls/front.ts';
 
 /* Paths as tests/ has them. */
 const here = (p) => `${import.meta.dir}/../../${p}`;

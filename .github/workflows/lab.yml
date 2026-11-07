@@ -1,7 +1,7 @@
 name: lab
 
 # Builds the hosted copy of LosOS Lab: the admin UI's Lab page
-# (admin-ui/app/diagrams/, VITE_LAB_HOSTED=1) plus the qemu-wasm engine and the
+# (admin-ui/app/diagrams/, LOSOS_LAB_HOSTED=1) plus the qemu-wasm engine and the
 # guest images (admin-ui/lab/engine/), so its consoles are real x86_64
 # guests. Every run uploads the result as the `losos-lab-hosted` artifact;
 # a push to main also deploys it to Vercel when the three secrets below

@@ -351,7 +351,7 @@ function parse<T>(method: string, text: string | undefined): T {
 /** A `Lab` from either module: core-pkg's, or the GPU canvas's, which
  *  exports the same class. A mapped type, so the two are interchangeable. */
 export type LabApi = { [K in keyof Lab]: Lab[K] };
-type LabMethod = { [K in keyof LabApi]: LabApi[K] extends (...a: never[]) => unknown ? K : never }[keyof LabApi];
+type LabMethod = { [K in keyof LabApi]: LabApi[K] extends (...a: never[]) => unknown ? K : never }[keyof LabApi & (string | number)];
 
 /** How many calls the journal keeps before it gives up (about 25 minutes of
  *  frames); past that the page stays on the canvas it has. */

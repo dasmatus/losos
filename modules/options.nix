@@ -2307,7 +2307,7 @@ in
       default = null;
       internal = true;
       description = ''
-        Store path of the built admin SPA: a Vite `dist/` tree with index.html
+        Store path of the built admin SPA: a `dist/` tree with index.html
         at its root, content-hashed bundles under assets/, and the
         deliberately unhashed theme-boot.js beside them. This is the front
         vhost's document root, served with an SPA fallback
@@ -2586,6 +2586,26 @@ in
         Run `losos-install` on tty1 at boot, under the boot screen where it
         draws. On the installer ISO, this starts the installer and its
         firmware-mode menu. Leave false on a normal target system.
+      '';
+    };
+
+    installer.tangEdge = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        The edge-prefilled medium: the autorun install runs with
+        `--tang-edge`, sealing the disk key to the TPM2 AND the medium's edge
+        (`losos.proxy.registrarUrl`, which `--tang-edge` with no address
+        asks). The edge then stops answering for the box once its owner
+        reports it stolen (modules/network-unlock.nix,
+        nix/tests/edge-unlock.nix). The prefilled flag sits ahead of every
+        typed one, is not passed on the CLI wrapper, and never answers a
+        `--no-tpm`: on a `--tang-edge` run the box needs a chip, and stops
+        with that reason instead of installing weaker than the medium was
+        built for. Meaningful only with `losos.installer.autorun`, and the
+        module asserts it: the flavor is the autorun's default, nothing
+        else's. Set on `nixosConfigurations.iso-edge` (flake.nix), built
+        with `LOSOS_EDGE_URL` naming the medium's edge.
       '';
     };
 

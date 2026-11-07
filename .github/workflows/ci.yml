@@ -111,6 +111,19 @@ concurrency:
 permissions:
   contents: read
 
+# Thread use capped at four, the whole workflow through. Nix gets the cap in
+# setup-nix's extra-conf (`cores = 4`), where the comment there explains why it
+# cannot arrive here by environment instead. These two cover the cargo that
+# runs bare in the dev shells (`nix develop .#ci -c bash …`), which the
+# workflow-level env reaches — the hosted runners have four CPUs, so this
+# changes nothing on CI; it holds the cap on any runner that exceeds it.
+env:
+  # How many rustc jobs `cargo` may run together.
+  CARGO_BUILD_JOBS: '4'
+  # How many threads the default libtest harness may spread a crate's suite
+  # over. A crate that says its own --test-threads unchanged outranks it.
+  RUST_TEST_THREADS: '4'
+
 jobs:
   pins:
     name: "pins: flake.lock = devenv.yaml = devenv.lock"
@@ -491,11 +504,16 @@ jobs:
       # the merge.
       - run: nix eval --raw .#nixosConfigurations.install.config.system.build.toplevel.drvPath
       - run: nix eval --raw .#nixosConfigurations.iso.config.system.build.toplevel.drvPath
+      - run: nix eval --raw .#nixosConfigurations.iso-edge.config.system.build.toplevel.drvPath
       - run: nix eval --raw .#nixosConfigurations.edge-gateway.config.system.build.toplevel.drvPath
       # `flake check` does not reach the ISO *image* derivation, so without this
       # an eval-reachable regression in the iso block or isoImage.* would
       # surface only in the ISO build.
       - run: nix path-info --derivation .#nixosConfigurations.iso.config.system.build.isoImage
+      # The edge-prefilled medium (flake.nix), for the same two: its toplevel
+      # forces the flavor's module merge, its image derivation catches any
+      # eval-reachable regression in its isoImage.* wiring.
+      - run: nix path-info --derivation .#nixosConfigurations.iso-edge.config.system.build.isoImage
       # The edge gateway image (nix/disk-images.nix), for the same reason.
       - run: nix path-info --derivation .#losos-disk-edge-qcow2
 
@@ -575,7 +593,7 @@ jobs:
       - uses: ./.github/actions/setup-nix
       # Compiles only; the registrar's tests run in the test job.
       # losos-admin-ui is a Bun build: node_modules from the committed bun.lock
-      # (nix/bun-deps.nix), then `tsc --noEmit` and `bun run build` on Bun. So this
+      # (nix/bun-deps.nix), then `tsc --noEmit` and Bun's bundler (build.ts). So this
       # step is also the typecheck gate for admin-ui/app, and the one place in
       # CI that proves the dependency fetch still resolves. losos-handbook is
       # the same shape: its bun.lock, then `docusaurus build` of handbook/, rooted at
@@ -638,7 +656,7 @@ jobs:
       # Export the built SPA and the handbook for the iso job, exactly as the
       # losos-ctl job exports its crate and for the same reason. flake.nix
       # puts both in isoImage.storeContents, so without this the ISO job
-      # would fetch the packages and run the Bun builds themselves.
+      # would fetch the packages and run the bundler and docusaurus itself.
       #
       # A dist/ tree with no store references: about 1 MiB of page, plus the
       # GPU canvas's two WebAssembly modules (about 16 MiB each), which are

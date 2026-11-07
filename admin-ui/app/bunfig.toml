@@ -1,0 +1,4 @@
+# The dev server (dev.ts) bundles each page with these, the plugins build.ts
+# gives Bun.build.
+[serve.static]
+plugins = ["bun-plugin-tailwind", "./bundler.ts"]
