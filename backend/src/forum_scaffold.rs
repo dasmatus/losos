@@ -11,12 +11,13 @@
 //! - Federation and bridge traffic, when implemented, must respect edge-local
 //!   routing via the selected edge/proxy path and must not open unsolicited
 //!   WAN listeners on the box.
-//! - Intentionally not wired into `lib.rs` yet to keep the scaffold
-//!   non-breaking; wire and test carefully when implementing Phase 1+.
 //!
 //! Planned responsibilities (not implemented): core hybrid model, @LosOS
 //! mention handling, ActivityPub adapter, Matrix DM bridge (appearing in LosOS
 //! Chat), edge-local routing via the selected edge/proxy network.
+//!
+//! Kept alongside `crate::forum` (Phase 1 foundation lives in
+//! `backend/src/forum/`). Edge/federation hooks here remain verified stubs only.
 
 #![allow(dead_code)]
 
