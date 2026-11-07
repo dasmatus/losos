@@ -287,12 +287,16 @@ impl Tokens {
 }
 
 /// Is `path` one a token may reach? It must be under one of `allowed`
-/// (`/api/` on a box), carry no `..`, no fragment and no whitespace, and not
-/// be under one of `forbidden` (`/api/access`, the token routes themselves).
+/// (`/api/` on a box), carry no `..`, no fragment, no percent-encoding,
+/// no backslash and no whitespace/control characters, and not be under one
+/// of `forbidden` (`/api/access`, the token routes themselves). Percent-
+/// encoding is rejected because the gate compares the raw route while the
+/// HTTP stack may decode it, which would let a token reach a forbidden path.
 pub fn path_allowed(path: &str, allowed: &[&str], forbidden: &[&str]) -> bool {
     let route = path.split('?').next().unwrap_or(path);
     if path.contains("..")
         || path.contains('#')
+        || path.contains('%')
         || path.contains('\\')
         || path.chars().any(|c| c.is_whitespace() || c.is_control())
         || route.contains("//")

@@ -1275,9 +1275,14 @@ async fn post_schizo(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) ->
             },
         };
         let was_on = api.schizo.on();
-        let is_password = |code: &crate::setup::Secret| {
-            api.people.check_password(&owner.name, code).unwrap_or(true)
+        let duress_matches_password = match duress.as_ref() {
+            Some(code) => match api.people.check_password(&owner.name, code) {
+                Ok(v) => v,
+                Err(e) => return error_response(e),
+            },
+            None => false,
         };
+        let is_password = move |_code: &crate::setup::Secret| duress_matches_password;
         if let Err(e) = api
             .schizo
             .set(on, full, duress.as_ref(), is_password, crate::login::now())
@@ -6267,7 +6272,8 @@ async fn find_mail_keys(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
 }
 
 /// `GET /api/mail/messages/{id}/raw` — the whole message, for the page to
-/// decrypt or check a signature on. Never shown as a document.
+/// decrypt or check a signature on. Never shown as a document. Held
+/// messages stay held (same as /api/mail/messages/{id}).
 async fn get_mail_raw(
     api: web::Data<Api>,
     req: HttpRequest,
@@ -6278,7 +6284,10 @@ async fn get_mail_raw(
         &req,
         "/api/mail/messages/raw",
         false,
-        |who| match mail_person(&api, who).map(|p| api.mail.raw(p, &path)) {
+        |who| match mail_person(&api, who)
+            .and_then(|p| not_held(&api, p, &path))
+            .map(|p| api.mail.raw(p, &path))
+        {
             Ok(Ok(bytes)) => HttpResponse::Ok()
                 .content_type("application/octet-stream")
                 .insert_header((

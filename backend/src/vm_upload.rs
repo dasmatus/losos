@@ -42,6 +42,17 @@ struct CurlConfig(PathBuf);
 
 impl CurlConfig {
     fn write(url: &str) -> anyhow::Result<Self> {
+        // The URL is written into a curl config file; refuse anything that
+        // could inject directives or break the quoted value.
+        if url
+            .bytes()
+            .any(|b| matches!(b, b'\n' | b'\r' | b'\0' | b'"' | b'\\'))
+        {
+            anyhow::bail!("the upload URL contains characters that cannot go into a curl config");
+        }
+        if !url.starts_with("https://") {
+            anyhow::bail!("the upload URL must be https://");
+        }
         let path = std::env::temp_dir().join(format!(
             "losos-vm-upload-{}-{}.curlrc",
             std::process::id(),
@@ -113,7 +124,7 @@ pub async fn stream_to_edge(
             Ok(chunk) => chunk,
             Err(e) => {
                 let _ = child.kill();
-                let _ = child.wait();
+                let _ = web::block(move || child.wait()).await;
                 anyhow::bail!("the upload broke off: {e}");
             }
         };

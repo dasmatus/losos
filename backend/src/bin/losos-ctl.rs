@@ -233,7 +233,8 @@ impl FirmwareMode {
 #[derive(Clone, Debug)]
 struct DriveList(Vec<String>);
 
-/// Split `--drives a,b,c`, rejecting a list that is empty once trimmed.
+/// Split `--drives a,b,c`, rejecting a list that is empty once trimmed and
+/// validating each path (must be a safe `/dev/...` path).
 fn parse_drives(s: &str) -> Result<DriveList, String> {
     let ds: Vec<String> = s
         .split(',')
@@ -241,10 +242,12 @@ fn parse_drives(s: &str) -> Result<DriveList, String> {
         .filter(|d| !d.is_empty())
         .collect();
     if ds.is_empty() {
-        Err("no drives given".to_string())
-    } else {
-        Ok(DriveList(ds))
+        return Err("no drives given".to_string());
     }
+    for d in &ds {
+        losos_ctl::installer::validate_drive(d)?;
+    }
+    Ok(DriveList(ds))
 }
 
 /// Reject an invalid mode while parsing, so no bad value ever reaches the bus.

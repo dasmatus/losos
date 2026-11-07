@@ -136,9 +136,19 @@ pub fn detect_candidates(devs: &[BlockDev]) -> Vec<String> {
 
 // ── Rendering ────────────────────────────────────────────────────────────────
 
+fn nix_string_safe(s: &str) -> bool {
+    !s.is_empty()
+        && s.bytes().all(|b| {
+            b.is_ascii_graphic()
+                && !matches!(b, b'"' | b'\\' | b'$' | b'`' | b'\'' | b';' | b'{' | b'}')
+        })
+}
+
 /// Render `modules/install-target.nix`.
 ///
 /// The format is asserted on by the installer VM test, so it is exact.
+/// Drive paths are interpolated into Nix strings; they must be pre-validated
+/// (see [`validate_drive`]).
 pub fn render_target(
     drives: &[String],
     tpm: bool,
@@ -148,7 +158,20 @@ pub fn render_target(
 ) -> String {
     let list = drives
         .iter()
-        .map(|d| format!("\"{d}\""))
+        .map(|d| {
+            if nix_string_safe(d) {
+                format!("\"{d}\"")
+            } else {
+                // Last-resort escaping for defense in depth; callers should
+                // validate and reject unsafe drives.
+                format!(
+                    "\"{}\"",
+                    d.replace('\\', "\\\\")
+                        .replace('"', "\\\"")
+                        .replace("${", "\\${")
+                )
+            }
+        })
         .collect::<Vec<_>>()
         .join(" ");
     let mut s = String::new();
@@ -619,10 +642,59 @@ fn install_tail(opts: &Options, work: &Path) -> Vec<InstallAction> {
     acts
 }
 
+/// Validate an explicit target drive path. It must be an absolute `/dev/...`
+/// path containing only safe characters (no whitespace/control/Nix injection
+/// metacharacters). This prevents Nix expression injection in
+/// `install-target.nix` and rejects obviously malformed paths.
+pub fn validate_drive(d: &str) -> Result<(), String> {
+    if !d.starts_with("/dev/") {
+        return Err(format!("--drives: {d} is not under /dev/"));
+    }
+    if d.bytes().any(|b| {
+        b <= b' '
+            || b == 0x7f
+            || matches!(
+                b,
+                b'"' | b'\''
+                    | b'\\'
+                    | b'$'
+                    | b'`'
+                    | b';'
+                    | b'{'
+                    | b'}'
+                    | b'|'
+                    | b'&'
+                    | b'<'
+                    | b'>'
+                    | b'('
+                    | b')'
+                    | b'!'
+                    | b'#'
+                    | b'?'
+                    | b'*'
+                    | b'['
+                    | b']'
+                    | b'\n'
+                    | b'\r'
+            )
+    }) {
+        return Err(format!("--drives: {d} contains unsafe characters"));
+    }
+    if d.contains("..") {
+        return Err(format!("--drives: {d} must not contain '..'"));
+    }
+    Ok(())
+}
+
 /// The explicit drive list, or auto-detection.
 pub fn resolve_drives(opts: &Options, devs: &[BlockDev]) -> Result<Vec<String>, String> {
     match &opts.drives {
-        Some(ds) if !ds.is_empty() => Ok(ds.clone()),
+        Some(ds) if !ds.is_empty() => {
+            for d in ds {
+                validate_drive(d)?;
+            }
+            Ok(ds.clone())
+        }
         Some(_) => Err("--drives given but empty".to_string()),
         None => {
             let cs = detect_candidates(devs);

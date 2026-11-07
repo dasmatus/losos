@@ -152,10 +152,18 @@ impl Config {
     }
 
     /// Only an `https://` registrar is accepted: the body carries the token.
+    /// The URL is later written into a curl config file, so characters that
+    /// could inject directives or break quoting are refused.
     #[must_use]
     pub fn from_parts(url: &str, appliance_id: &str, token_file: &str) -> Option<Self> {
         let url = url.trim().trim_end_matches('/');
         if !url.starts_with("https://") || url.len() <= "https://".len() {
+            return None;
+        }
+        if url
+            .bytes()
+            .any(|b| matches!(b, b'\n' | b'\r' | b'\0' | b'"' | b'\\' | b' ' | b'\t'))
+        {
             return None;
         }
         Some(Self {

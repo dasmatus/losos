@@ -532,19 +532,25 @@ in
       # does) and the alternative, Wants, buys a quiet ImagePullBackOff instead.
       # The shared data domain must be fully unlocked or fully locked before
       # any pod can see it, never half-way through (modules/fscrypt.nix): the
-      # `shared` apps' claims are folders in it.
-      systemd.services.k3s = {
-        after = [
-          "containerd.service"
-          "losos-workload-images.service"
-          "losos-fscrypt-shared.service"
-          "losos-fscrypt-kindashared.service"
-        ];
-        requires = [
-          "containerd.service"
-          "losos-workload-images.service"
-        ];
-      };
+      # `shared` apps' claims are folders in it. Depend only on the fscrypt
+      # domain units that actually exist: fscrypt.nix creates them only for
+      # enabled domains.
+      systemd.services.k3s =
+        let
+          fscryptAfter =
+            lib.optional config.losos.shared.fscrypt.enable "losos-fscrypt-shared.service"
+            ++ lib.optional config.losos.kindashared.fscrypt.enable "losos-fscrypt-kindashared.service";
+        in
+        {
+          after = [
+            "containerd.service"
+            "losos-workload-images.service"
+          ] ++ fscryptAfter;
+          requires = [
+            "containerd.service"
+            "losos-workload-images.service"
+          ] ++ fscryptAfter;
+        };
 
       # The static-pod directory the kubelet is pointed at. Nothing ships a
       # static pod today, but the flag stays so a later one needs no change

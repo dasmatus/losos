@@ -226,11 +226,16 @@ in
         fi
         url=$(jq -er .url ${edgeFile})
         case "$url" in
-          http://*/tang/* | https://*/tang/*) ;;
+          https://*/tang/*) ;;
+          http://*/tang/*)
+            echo "${edgeFile} uses plain http; refusing to send the claim secret without TLS: $url" >&2
+            exit 1
+            ;;
           *) echo "${edgeFile} names no edge key: $url" >&2; exit 1 ;;
         esac
         jq -c --arg lost "$lost" '{claim: .claim, lost: $lost}' ${edgeFile} \
           | curl -sS --fail-with-body --connect-timeout 10 --max-time 30 \
+              --proto '=https' --proto-redir '=https' \
               -H 'Content-Type: application/json' --data-binary @- "$url/owner"
         printf '%s\n' "$lost" > ${stateDir}/edge-owner
         echo "the edge knows how this box's owner reports it stolen"
