@@ -146,21 +146,12 @@ in
               pathFile = edge.pathFile;
             };
             activityPub = {
-              enable = ap.enable;
-              publicFederation = ap.publicFederation;
-              webfingerPath = ap.webfingerPath;
-              nodeinfoPath = ap.nodeinfoPath;
-              basePath = ap.basePath;
-              sharedInboxPath = ap.sharedInboxPath;
-              outboxHookPath = ap.outboxHookPath;
+              inherit (ap) enable publicFederation webfingerPath nodeinfoPath;
+              inherit (ap) basePath sharedInboxPath outboxHookPath;
             };
             matrixDmBridge = {
-              enable = dm.enable;
-              mode = dm.mode;
-              requireChat = dm.requireChat;
-              appserviceNamespacePrefix = dm.appserviceNamespacePrefix;
-              e2eePolicy = dm.e2eePolicy;
-              dmRoomMapping = dm.dmRoomMapping;
+              inherit (dm) enable mode requireChat;
+              inherit (dm) appserviceNamespacePrefix e2eePolicy dmRoomMapping;
             };
             assistant = {
               enable = cfg.assistant.enable;
@@ -193,8 +184,7 @@ in
             matrixDmBridge = {
               implemented = false;
               safety = "stub-contract-only; no appservice runtime, room sync, or E2EE bridge logic";
-              mode = dm.mode;
-              e2eePolicy = dm.e2eePolicy;
+              inherit (dm) mode e2eePolicy;
               requiresLososChat = dm.requireChat;
               mapping = {
                 contract = dm.dmRoomMapping;

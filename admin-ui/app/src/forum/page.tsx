@@ -186,7 +186,7 @@ function SpacesView({ status }: { status: ForumStatus | null }) {
         </CardContent>
       </Card>
 
-      <CreateSpaceDialog open={open} onOpenChange={setOpen} onCreated={(s) => { setOpen(false); toast({ title: "Space created", description: s.name }); void load(); }} />
+      <CreateSpaceDialog open={open} onOpenChange={setOpen} onCreated={(s) => { setOpen(false); toast.success("Space created", s.name); void load(); }} />
     </div>
   );
 }
@@ -297,8 +297,8 @@ function SpaceView() {
           </CardContent>
         </Card>
       </div>
-      <CreateChannelDialog open={chanOpen} onOpenChange={setChanOpen} spaceId={sid} onCreated={() => { setChanOpen(false); toast({ title: "Channel created" }); void load(); }} />
-      <CreateTopicDialog open={topicOpen} onOpenChange={setTopicOpen} channels={(channels ?? []).filter((c) => c.kind === "topic" || c.kind === "channel")} onCreated={(r) => { setTopicOpen(false); toast({ title: "Topic created", description: r.mentions.some((m) => m.isAssistant) ? "@LosOS was mentioned (assistant handling is Phase 2)." : undefined }); void load(); }} />
+      <CreateChannelDialog open={chanOpen} onOpenChange={setChanOpen} spaceId={sid} onCreated={() => { setChanOpen(false); toast.success("Channel created"); void load(); }} />
+      <CreateTopicDialog open={topicOpen} onOpenChange={setTopicOpen} channels={(channels ?? []).filter((c) => c.kind === "topic" || c.kind === "channel")} onCreated={(r) => { setTopicOpen(false); toast.success("Topic created", r.mentions.some((m) => m.isAssistant) ? "@LosOS was mentioned (assistant handling is Phase 2)." : undefined); void load(); }} />
     </div>
   );
 }
@@ -397,7 +397,7 @@ function TopicView() {
       <Card>
         <CardHeader><CardTitle>Reply</CardTitle><p className="text-sm text-muted">Add a post to this topic. Use <code>@LosOS</code> for the assistant hook (Phase 2).</p></CardHeader>
         <CardContent>
-          <form onSubmit={async (e) => { e.preventDefault(); if (!body.trim()) return; setBusy(true); try { await forum.createPost(tid, { body: body.trim() }); setBody(""); toast({ title: "Reply posted" }); void load(); } catch (e) { toast({ title: "Could not post reply", description: e instanceof ApiError ? e.message : "Try again." }); } finally { setBusy(false); } }} className="space-y-3">
+          <form onSubmit={async (e) => { e.preventDefault(); if (!body.trim()) return; setBusy(true); try { await forum.createPost(tid, { body: body.trim() }); setBody(""); toast.success("Reply posted"); void load(); } catch (e) { toast.error("Could not post reply", e instanceof ApiError ? e.message : "Try again.", { help: "index" }); } finally { setBusy(false); } }} className="space-y-3">
             <Field><FieldLabel htmlFor="topic-reply">Your reply</FieldLabel><Textarea id="topic-reply" value={body} onChange={(e) => setBody(e.target.value)} rows={4} required disabled={topic?.closed} /><FieldDescription>{topic?.closed ? "This topic is closed." : "Be clear and constructive."}</FieldDescription></Field>
             <Button type="submit" disabled={busy || !body.trim() || !!topic?.closed}>{busy ? <><Spinner /> Posting…</> : "Post reply"}</Button>
           </form>
@@ -450,7 +450,7 @@ function ChannelView() {
       <Card>
         <CardHeader><CardTitle>Send message</CardTitle></CardHeader>
         <CardContent>
-          <form onSubmit={async (e) => { e.preventDefault(); if (!body.trim()) return; setBusy(true); try { await forum.createMessage(cid, { body: body.trim() }); setBody(""); void load(); } catch (e) { toast({ title: "Could not send message", description: e instanceof ApiError ? e.message : "Try again." }); } finally { setBusy(false); } }} className="space-y-3">
+          <form onSubmit={async (e) => { e.preventDefault(); if (!body.trim()) return; setBusy(true); try { await forum.createMessage(cid, { body: body.trim() }); setBody(""); void load(); } catch (e) { toast.error("Could not send message", e instanceof ApiError ? e.message : "Try again.", { help: "index" }); } finally { setBusy(false); } }} className="space-y-3">
             <Field><FieldLabel htmlFor="chan-msg">Message</FieldLabel><Textarea id="chan-msg" value={body} onChange={(e) => setBody(e.target.value)} rows={3} required placeholder="Write a message…" /><FieldDescription>Press “Send message” to post. Use <code>@LosOS</code> to mark an assistant mention hook.</FieldDescription></Field>
             <Button type="submit" disabled={busy || !body.trim()}>{busy ? <><Spinner /> Sending…</> : "Send message"}</Button>
           </form>
