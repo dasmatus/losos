@@ -276,6 +276,13 @@
     "POST /api/basic/{page}": "signed-in",
     "GET /api/basic/settings/{pane}": "signed-in",
     "POST /api/basic/settings/{pane}": "signed-in",
-    "GET /api/forum": "signed-in"
+    "GET /api/forum": "signed-in",
+    "GET /api/forum/channels": "signed-in",
+    "GET /api/forum/spaces": "signed-in",
+    "GET /api/forum/topics": "signed-in",
+    "POST /api/forum/channels": "signed-in",
+    "POST /api/forum/reactions": "signed-in",
+    "POST /api/forum/spaces": "signed-in",
+    "POST /api/forum/topics": "signed-in"
   }
 }
