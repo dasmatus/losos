@@ -2930,7 +2930,10 @@ fn forum_principal(who: &Principal) -> Option<crate::forum::PrincipalRef> {
             p.groups.clone(),
             false,
         )),
-        Principal::Edge | Principal::Backups(_) => None,
+        Principal::Edge
+        | Principal::Backups(_)
+        | Principal::Companion(_)
+        | Principal::Directory(_) => None,
     }
 }
 
