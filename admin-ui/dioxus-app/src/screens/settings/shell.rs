@@ -11,12 +11,14 @@ use dioxus::prelude::*;
 pub type SettingsFormSignal = Signal<SettingsFormState>;
 
 fn is_draft_pane(pane: &str) -> bool {
-    // Draft panes edit the unified settings document and apply via full /api/apply.
-    // Own-request panes (storage grow, mesh edge actions details, apps install, etc.)
-    // manage their own requests; they can still show form applying/lock state.
+    // Draft panes edit the unified settings document and apply via full /api/apply
+    // (13 owned keys always emitted + extras preserved/sorted). Own-request panes
+    // (storage grow, edge actions, apps install/remove, backup targets, etc.) and
+    // read-only/special panes manage their own requests; they must not show the
+    // full-apply bar.
     matches!(
         pane,
-        "network" | "hardware" | "security" | "mesh" | "market" | "history"
+        "network" | "hardware" | "security" | "mesh" | "about" | "reset"
     )
 }
 
@@ -277,9 +279,23 @@ fn PaneRouter(pane: String) -> Element {
         "users" => rsx! { panes::users::UsersPane {} },
         "apps" => rsx! { panes::apps::AppsPane {} },
         "look" => rsx! { panes::look::LookPane {} },
+        "market" | "machines" => rsx! {
+            Card {
+                p { class: "muted",
+                    "This section uses its own requests and mesh/operator flows; it is not applied through the unified settings draft. Port in progress."
+                }
+            }
+        },
+        "history" => rsx! {
+            Card {
+                p { class: "muted",
+                    "Configuration history and rollback are read/inspect actions; unified draft apply is not used here. Port in progress."
+                }
+            }
+        },
         _ => rsx! {
             Card {
-                p { "{pane_label(&pane)} pane — RSX port in progress." }
+                p { "{pane_label(&pane)} — port in progress." }
                 p { class: "muted", "Draft panes use full /api/apply (overrides.nix) with extras preserved; own-request panes use their /api/* endpoints." }
             }
         },

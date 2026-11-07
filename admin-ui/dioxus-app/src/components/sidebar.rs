@@ -1,16 +1,16 @@
 use crate::auth::Me;
-use crate::routes::{pane_href, pane_label, Route};
+use crate::routes::{pane_label, Route};
 use dioxus::prelude::*;
 use std::collections::BTreeSet;
 
 #[derive(Clone, PartialEq)]
-enum EntryKind {
+pub(crate) enum EntryKind {
     Link,
     Fold,
 }
 
 #[derive(Clone, PartialEq)]
-struct Entry {
+pub(crate) struct Entry {
     kind: EntryKind,
     key: &'static str,
     label: &'static str,
@@ -258,7 +258,7 @@ fn placeholder_child(
     }
 }
 
-fn shared_ok(me: &Option<Me>, shared: Option<&str>) -> bool {
+pub(crate) fn shared_ok(me: &Option<Me>, shared: Option<&str>) -> bool {
     let Some(name) = shared else {
         return true;
     };
@@ -273,7 +273,7 @@ fn shared_ok(me: &Option<Me>, shared: Option<&str>) -> bool {
     }
 }
 
-fn visible(entries: Vec<Entry>, me: &Option<Me>) -> Vec<Entry> {
+pub(crate) fn visible(entries: Vec<Entry>, me: &Option<Me>) -> Vec<Entry> {
     let mut out = Vec::new();
     for entry in entries {
         let children = visible(entry.children, me);
@@ -292,13 +292,23 @@ fn visible(entries: Vec<Entry>, me: &Option<Me>) -> Vec<Entry> {
     out
 }
 
+/// Navigation entries for the current user (held users see account only).
+pub(crate) fn visible_nav(me: &Option<Me>) -> Vec<Entry> {
+    let is_held = me.as_ref().map(|m| m.is_held()).unwrap_or(false);
+    if is_held {
+        vec![pane_link("account")]
+    } else {
+        visible(tree(), me)
+    }
+}
+
 fn route_path(route: &Route) -> String {
     // Route implements Routable/Display-like formatting via router in practice;
     // use debug fallback patterns for active matching helpers.
     format!("{route:?}")
 }
 
-fn is_current(entry: &Entry, current: &Route) -> bool {
+pub(crate) fn is_current(entry: &Entry, current: &Route) -> bool {
     if let Some(r) = &entry.route {
         if r == current {
             return true;
@@ -328,11 +338,11 @@ fn is_current(entry: &Entry, current: &Route) -> bool {
     }
 }
 
-fn contains_current(entry: &Entry, current: &Route) -> bool {
+pub(crate) fn contains_current(entry: &Entry, current: &Route) -> bool {
     entry.children.iter().any(|c| is_current(c, current) || contains_current(c, current))
 }
 
-fn route_for_entry(entry: &Entry) -> Route {
+pub(crate) fn route_for_entry(entry: &Entry) -> Route {
     if let Some(pane) = entry.pane {
         // Top-level pane routes where React uses them.
         return match pane {
@@ -349,18 +359,14 @@ fn route_for_entry(entry: &Entry) -> Route {
     entry.route.clone().unwrap_or(Route::Home {})
 }
 
+/// Desktop sidebar navigation. Mobile primary navigation is owned by
+/// [`crate::components::bottom_nav::BottomNav`] (rendered by the shell) so the
+/// tab bar/sheet remain stable app chrome on narrow widths.
 #[component]
 pub fn Sidebar(me: Option<Me>) -> Element {
     let current = use_route::<Route>();
     let mut open_folds = use_signal(BTreeSet::<String>::new);
-    let mut mobile_open = use_signal(|| false);
-
-    let is_held = me.as_ref().map(|m| m.is_held()).unwrap_or(false);
-    let base = if is_held {
-        vec![pane_link("account")]
-    } else {
-        visible(tree(), &me)
-    };
+    let base = visible_nav(&me);
 
     // Auto-open folds/links with children when current is inside.
     let base_for_effect = base.clone();
@@ -374,50 +380,9 @@ pub fn Sidebar(me: Option<Me>) -> Element {
             }
         }
         open_folds.set(next);
-        mobile_open.set(false);
     }));
 
-    let tabs = bottom_tabs(&base, &current);
-
     rsx! {
-        // Mobile/bottom-nav structure (parity skeleton): shown via CSS hooks.
-        nav { class: "bottom-nav ls-bottom-nav", "aria-label": "Navigation",
-            for tab in tabs.iter() {
-                {
-                    let active = tab.active;
-                    let cls = if active { "bottom-nav-tab active ls-bottom-nav-tab" } else { "bottom-nav-tab ls-bottom-nav-tab" };
-                    if active {
-                        rsx! { Link { to: tab.route.clone(), class: "{cls}", "aria-current": "page", "{tab.label}" } }
-                    } else {
-                        rsx! { Link { to: tab.route.clone(), class: "{cls}", "{tab.label}" } }
-                    }
-                }
-            }
-            button {
-                r#type: "button",
-                class: "bottom-nav-tab ls-bottom-nav-more",
-                "aria-haspopup": "dialog",
-                "aria-label": "More sections",
-                onclick: move |_| {
-                    let v = *mobile_open.read();
-                    mobile_open.set(!v);
-                },
-                "More"
-            }
-        }
-
-        if *mobile_open.read() {
-            div { class: "bottom-nav-sheet ls-bottom-nav-sheet", role: "dialog", "aria-label": "Navigation",
-                button {
-                    r#type: "button",
-                    class: "btn btn-ghost",
-                    onclick: move |_| mobile_open.set(false),
-                    "Close"
-                }
-                SidebarTree { base: base.clone(), current: current.clone(), open_folds, nested: false }
-            }
-        }
-
         aside { class: "sidebar ls-sidebar",
             nav { class: "sidebar-nav ls-sidebar-nav", "aria-label": "Navigation",
                 SidebarTree { base, current, open_folds, nested: false }
@@ -427,13 +392,13 @@ pub fn Sidebar(me: Option<Me>) -> Element {
 }
 
 #[derive(Clone, PartialEq)]
-struct BottomTab {
-    label: &'static str,
-    route: Route,
-    active: bool,
+pub(crate) struct BottomTab {
+    pub(crate) label: &'static str,
+    pub(crate) route: Route,
+    pub(crate) active: bool,
 }
 
-fn bottom_tabs(base: &[Entry], current: &Route) -> Vec<BottomTab> {
+pub(crate) fn bottom_tabs(base: &[Entry], current: &Route) -> Vec<BottomTab> {
     let order = ["overview", "cloud", "chat", "mail", "apps", "storage", "mesh", "diagrams"];
     let mut out = Vec::new();
     for key in order {
@@ -452,7 +417,7 @@ fn bottom_tabs(base: &[Entry], current: &Route) -> Vec<BottomTab> {
 }
 
 #[component]
-fn SidebarTree(
+pub(crate) fn SidebarTree(
     base: Vec<Entry>,
     current: Route,
     open_folds: Signal<BTreeSet<String>>,
