@@ -302,7 +302,7 @@ await check('the gateway is set up from the page: its owner, its hub and the box
 
   // The same content may arrive as files: each field takes a whole file, so
   // an owner uploads the settings and its detached signature without
-  // pasting either.
+  // pasting either. Reading files is async in the UI, so wait for the fields.
   await section.getByRole('button', { name: 'Claim' }).click();
   await page.getByTestId('gateway-settings-file').setInputFiles({
     name: 'gateway.yml', mimeType: 'text/plain', buffer: Buffer.from('{"version":2}'),
@@ -310,7 +310,15 @@ await check('the gateway is set up from the page: its owner, its hub and the box
   await page.getByTestId('gateway-signature-file').setInputFiles({
     name: 'settings-sig.asc', mimeType: 'application/pgp-signature', buffer: Buffer.from('-----BEGIN PGP SIGNATURE-----\nabc\n-----END PGP SIGNATURE-----'),
   });
-  await page.waitForTimeout(500);
+  await page.getByLabel('Settings file').waitFor();
+  await (async () => {
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      if ((await page.getByLabel('Settings file').inputValue()) === '{"version":2}' &&
+          (await page.getByLabel('Signature').inputValue()) === '-----BEGIN PGP SIGNATURE-----\nabc\n-----END PGP SIGNATURE-----') return;
+      await page.waitForTimeout(50);
+    }
+  })();
   assert.equal(await page.getByLabel('Settings file').inputValue(), '{"version":2}');
   await section.getByRole('button', { name: 'Save' }).click();
   await page.getByText('Settings accepted', { exact: true }).last().waitFor();
