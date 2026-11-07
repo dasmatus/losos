@@ -230,6 +230,10 @@ in
       # Handy when poking at the appliance's own surfaces.
       jq
       curl
+
+      # OCR (read screenshots/images) and Rust advisory auditing.
+      tesseract
+      cargo-audit
     ])
     ++ (lib.optionals pkgs.stdenv.isLinux (
       with pkgs;
