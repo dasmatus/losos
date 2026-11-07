@@ -362,6 +362,17 @@ in
       '';
     };
 
+    cache.ghcr.vps = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Zero-setup VPS mode for the GHCR binary cache proxy: ephemeral tmpfs
+        storage, socket activation (starts when pulled from CI/GitHub Actions
+        or clients), and listens on all interfaces with the firewall opened.
+        Put a reverse proxy/TLS in front if exposing it publicly.
+      '';
+    };
+
     cache.trustedPublicKeys = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       # The public half of `NIX_CACHE_SIGNING_KEY`, the key CI signs the cache

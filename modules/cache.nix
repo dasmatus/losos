@@ -278,6 +278,14 @@ in
   # service uses oras to pull the matching per-store-path OCI artifact from
   # GHCR, rewrites only the unsigned URL field in narinfo, and serves the NAR
   # locally. Nix still verifies the original narinfo signature.
+  # VPS preset: zero-setup ephemeral, on-demand proxy.
+  losos.cache.ghcr = lib.mkIf cfg.ghcr.vps {
+    ephemeral = lib.mkDefault true;
+    socketActivation = lib.mkDefault true;
+    host = lib.mkDefault "0.0.0.0";
+    openFirewall = lib.mkDefault true;
+  };
+
   systemd.services.losos-ghcr-cache = lib.mkIf enabled {
     description = "Local GHCR-backed Nix binary cache";
     wantedBy = lib.optionals (!cfg.ghcr.socketActivation) [ "multi-user.target" ];
