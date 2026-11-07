@@ -52,6 +52,8 @@ pub mod escrow_key;
 pub mod facade;
 pub mod fake;
 pub mod forge;
+pub mod forum;
+pub mod forum_scaffold;
 pub mod git_rooms;
 pub mod grow;
 pub mod guard;
