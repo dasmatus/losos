@@ -27,7 +27,7 @@ let
   live = config.lososInternal.forum;
   ap = cfg.activityPub;
   dm = cfg.matrixDmBridge;
-  edge = cfg.edge;
+  inherit (cfg) edge;
   inherit (cfg) stateDir;
   statusFile = "${stateDir}/scaffold-status.json";
   contractsFile = "${stateDir}/federation-contracts.json";
@@ -49,7 +49,7 @@ let
           implemented = false;
           service = "losos-forum";
           hook = name;
-          edgeLocalRouting = cfg.edgeLocalRouting;
+          inherit (cfg) edgeLocalRouting;
           design = "docs/superpowers/specs/2026-11-05-losos-forum-design.md";
         }
         // extra
@@ -68,8 +68,7 @@ let
   };
   dmStub = scaffoldJson "matrix-dm-bridge" {
     note = "Matrix DM bridge hook point. Appservice/sync/E2EE logic is not implemented.";
-    mode = dm.mode;
-    e2eePolicy = dm.e2eePolicy;
+    inherit (dm) mode e2eePolicy;
     requiresChat = dm.requireChat;
   };
 in
@@ -140,13 +139,33 @@ in
             phase = 0;
             inherit (cfg) edgeLocalRouting;
             edge = {
-              inherit (edge) requireProxy requireMesh registrationMode pathFile;
+              inherit (edge)
+                requireProxy
+                requireMesh
+                registrationMode
+                pathFile
+                ;
             };
             activityPub = {
-              inherit (ap) enable publicFederation webfingerPath nodeinfoPath basePath sharedInboxPath outboxHookPath;
+              inherit (ap)
+                enable
+                publicFederation
+                webfingerPath
+                nodeinfoPath
+                basePath
+                sharedInboxPath
+                outboxHookPath
+                ;
             };
             matrixDmBridge = {
-              inherit (dm) enable mode requireChat appserviceNamespacePrefix e2eePolicy dmRoomMapping;
+              inherit (dm)
+                enable
+                mode
+                requireChat
+                appserviceNamespacePrefix
+                e2eePolicy
+                dmRoomMapping
+                ;
             };
             assistant = {
               inherit (cfg.assistant) enable provider;
