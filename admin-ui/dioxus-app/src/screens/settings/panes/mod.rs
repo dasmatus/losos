@@ -1,7 +1,13 @@
 pub mod about;
+pub mod access;
+pub mod apps;
+pub mod backup;
+pub mod credentials;
 pub mod hardware;
+pub mod look;
 pub mod mesh;
 pub mod network;
 pub mod reset;
 pub mod security;
 pub mod storage;
+pub mod users;

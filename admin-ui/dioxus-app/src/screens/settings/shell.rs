@@ -262,10 +262,16 @@ fn PaneRouter(pane: String) -> Element {
         "reset" => rsx! { panes::reset::ResetPane {} },
         "storage" => rsx! { panes::storage::StoragePane {} },
         "about" => rsx! { panes::about::AboutPane {} },
+        "credentials" => rsx! { panes::credentials::CredentialsPane {} },
+        "access" => rsx! { panes::access::AccessPane {} },
+        "backup" => rsx! { panes::backup::BackupPane {} },
+        "users" => rsx! { panes::users::UsersPane {} },
+        "apps" => rsx! { panes::apps::AppsPane {} },
+        "look" => rsx! { panes::look::LookPane {} },
         _ => rsx! {
             Card {
-                p { "{pane_label(&pane)} pane — RSX port in progress (draft/apply engine wired)." }
-                p { class: "muted", "Uses full /api/apply (overrides.nix) with extras preserved; no partial writes." }
+                p { "{pane_label(&pane)} pane — RSX port in progress." }
+                p { class: "muted", "Draft panes use full /api/apply (overrides.nix) with extras preserved; own-request panes use their /api/* endpoints." }
             }
         },
     }
