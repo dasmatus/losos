@@ -2912,7 +2912,6 @@ fn chat_refused(e: &crate::chat::ChatError) -> HttpResponse {
     )
 }
 
-
 // ---- LosOS Forum (Phase 1 foundation, scaffold-gated) -----------------------
 
 fn forum_refused(msg: &str, status: actix_web::http::StatusCode) -> HttpResponse {
@@ -2921,46 +2920,81 @@ fn forum_refused(msg: &str, status: actix_web::http::StatusCode) -> HttpResponse
 
 fn forum_principal(who: &Principal) -> Option<crate::forum::PrincipalRef> {
     match who {
-        Principal::Spare => Some(crate::forum::PrincipalRef::from_name_groups("spare", vec!["owner".into()], true)),
-        Principal::Person(p) => Some(crate::forum::PrincipalRef::from_name_groups(p.name.clone(), p.groups.clone(), false)),
-        Principal::Edge(_) | Principal::Backups(_) => None,
+        Principal::Spare => Some(crate::forum::PrincipalRef::from_name_groups(
+            "spare",
+            vec!["owner".into()],
+            true,
+        )),
+        Principal::Person(p) => Some(crate::forum::PrincipalRef::from_name_groups(
+            p.name.clone(),
+            p.groups.clone(),
+            false,
+        )),
+        Principal::Edge | Principal::Backups(_) => None,
     }
 }
 
 fn forum_deny() -> HttpResponse {
-    forum_refused("forum access denied", actix_web::http::StatusCode::FORBIDDEN)
+    forum_refused(
+        "forum access denied",
+        actix_web::http::StatusCode::FORBIDDEN,
+    )
 }
 
 fn forum_store_err(e: crate::forum::ForumStoreError) -> HttpResponse {
     use crate::forum::ForumStoreError;
     match e {
-        ForumStoreError::Disabled => forum_refused("forum is disabled", actix_web::http::StatusCode::NOT_FOUND),
-        ForumStoreError::Unavailable => forum_refused("forum storage unavailable", actix_web::http::StatusCode::SERVICE_UNAVAILABLE),
-        ForumStoreError::NotFound => forum_refused("not found", actix_web::http::StatusCode::NOT_FOUND),
-        ForumStoreError::InvalidInput(msg) => forum_refused(&msg, actix_web::http::StatusCode::BAD_REQUEST),
+        ForumStoreError::Disabled => {
+            forum_refused("forum is disabled", actix_web::http::StatusCode::NOT_FOUND)
+        }
+        ForumStoreError::Unavailable => forum_refused(
+            "forum storage unavailable",
+            actix_web::http::StatusCode::SERVICE_UNAVAILABLE,
+        ),
+        ForumStoreError::NotFound => {
+            forum_refused("not found", actix_web::http::StatusCode::NOT_FOUND)
+        }
+        ForumStoreError::InvalidInput(msg) => {
+            forum_refused(&msg, actix_web::http::StatusCode::BAD_REQUEST)
+        }
         ForumStoreError::Db(e) => {
             tracing::warn!(error = %e, "forum db error");
-            forum_refused("forum storage error", actix_web::http::StatusCode::INTERNAL_SERVER_ERROR)
+            forum_refused(
+                "forum storage error",
+                actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+            )
         }
         ForumStoreError::Io(e) => {
             tracing::warn!(error = %e, "forum io error");
-            forum_refused("forum storage error", actix_web::http::StatusCode::INTERNAL_SERVER_ERROR)
+            forum_refused(
+                "forum storage error",
+                actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+            )
         }
     }
 }
 
 async fn get_forum(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     guarded_as(&api, &req, "/api/forum", false, |who| {
-        if forum_principal(who).is_none() { return forum_deny(); }
+        if forum_principal(who).is_none() {
+            return forum_deny();
+        }
         HttpResponse::Ok().json(api.forum.status())
     })
 }
 
 async fn get_forum_spaces(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     guarded_as(&api, &req, "/api/forum/spaces", false, |who| {
-        let Some(p) = forum_principal(who) else { return forum_deny(); };
-        if crate::forum::ForumAuthz::can_read(&p) == crate::forum::AuthzDecision::Deny { return forum_deny(); }
-        let store = match api.forum.store() { Ok(s) => s, Err(e) => return forum_store_err(e) };
+        let Some(p) = forum_principal(who) else {
+            return forum_deny();
+        };
+        if crate::forum::ForumAuthz::can_read(&p) == crate::forum::AuthzDecision::Deny {
+            return forum_deny();
+        }
+        let store = match api.forum.store() {
+            Ok(s) => s,
+            Err(e) => return forum_store_err(e),
+        };
         match store.list_spaces() {
             Ok(v) => HttpResponse::Ok().json(v),
             Err(e) => forum_store_err(e),
@@ -2970,14 +3004,37 @@ async fn get_forum_spaces(api: web::Data<Api>, req: HttpRequest) -> HttpResponse
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CreateSpaceBody { slug: String, name: String, #[serde(default)] description: String }
+struct CreateSpaceBody {
+    slug: String,
+    name: String,
+    #[serde(default)]
+    description: String,
+}
 
-async fn post_forum_space(api: web::Data<Api>, req: HttpRequest, body: web::Json<CreateSpaceBody>) -> HttpResponse {
+async fn post_forum_space(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Json<CreateSpaceBody>,
+) -> HttpResponse {
     guarded_as(&api, &req, "/api/forum/spaces", true, |who| {
-        let Some(p) = forum_principal(who) else { return forum_deny(); };
-        if crate::forum::ForumAuthz::can_admin(&p) == crate::forum::AuthzDecision::Deny { return forum_deny(); }
-        let store = match api.forum.store() { Ok(s) => s, Err(e) => return forum_store_err(e) };
-        match store.create_space(&p.name, &crate::forum::CreateSpace { slug: body.slug.clone(), name: body.name.clone(), description: body.description.clone() }) {
+        let Some(p) = forum_principal(who) else {
+            return forum_deny();
+        };
+        if crate::forum::ForumAuthz::can_admin(&p) == crate::forum::AuthzDecision::Deny {
+            return forum_deny();
+        }
+        let store = match api.forum.store() {
+            Ok(s) => s,
+            Err(e) => return forum_store_err(e),
+        };
+        match store.create_space(
+            &p.name,
+            &crate::forum::CreateSpace {
+                slug: body.slug.clone(),
+                name: body.name.clone(),
+                description: body.description.clone(),
+            },
+        ) {
             Ok(v) => HttpResponse::Ok().json(v),
             Err(e) => forum_store_err(e),
         }
@@ -2986,14 +3043,30 @@ async fn post_forum_space(api: web::Data<Api>, req: HttpRequest, body: web::Json
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CreateChannelBody { space_id: Option<crate::forum::Id>, slug: String, name: String, kind: crate::forum::ChannelKind }
+struct CreateChannelBody {
+    space_id: Option<crate::forum::Id>,
+    slug: String,
+    name: String,
+    kind: crate::forum::ChannelKind,
+}
 
-async fn get_forum_channels(api: web::Data<Api>, req: HttpRequest, query: web::Query<std::collections::HashMap<String, String>>) -> HttpResponse {
+async fn get_forum_channels(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> HttpResponse {
     guarded_as(&api, &req, "/api/forum/channels", false, |who| {
-        let Some(p) = forum_principal(who) else { return forum_deny(); };
-        if crate::forum::ForumAuthz::can_read(&p) == crate::forum::AuthzDecision::Deny { return forum_deny(); }
+        let Some(p) = forum_principal(who) else {
+            return forum_deny();
+        };
+        if crate::forum::ForumAuthz::can_read(&p) == crate::forum::AuthzDecision::Deny {
+            return forum_deny();
+        }
         let space_id = query.get("spaceId").and_then(|s| s.parse().ok());
-        let store = match api.forum.store() { Ok(s) => s, Err(e) => return forum_store_err(e) };
+        let store = match api.forum.store() {
+            Ok(s) => s,
+            Err(e) => return forum_store_err(e),
+        };
         match store.list_channels(space_id) {
             Ok(v) => HttpResponse::Ok().json(v),
             Err(e) => forum_store_err(e),
@@ -3001,24 +3074,54 @@ async fn get_forum_channels(api: web::Data<Api>, req: HttpRequest, query: web::Q
     })
 }
 
-async fn post_forum_channel(api: web::Data<Api>, req: HttpRequest, body: web::Json<CreateChannelBody>) -> HttpResponse {
+async fn post_forum_channel(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Json<CreateChannelBody>,
+) -> HttpResponse {
     guarded_as(&api, &req, "/api/forum/channels", true, |who| {
-        let Some(p) = forum_principal(who) else { return forum_deny(); };
-        if crate::forum::ForumAuthz::can_admin(&p) == crate::forum::AuthzDecision::Deny { return forum_deny(); }
-        let store = match api.forum.store() { Ok(s) => s, Err(e) => return forum_store_err(e) };
-        match store.create_channel(&p.name, &crate::forum::CreateChannel { space_id: body.space_id, slug: body.slug.clone(), name: body.name.clone(), kind: body.kind }) {
+        let Some(p) = forum_principal(who) else {
+            return forum_deny();
+        };
+        if crate::forum::ForumAuthz::can_admin(&p) == crate::forum::AuthzDecision::Deny {
+            return forum_deny();
+        }
+        let store = match api.forum.store() {
+            Ok(s) => s,
+            Err(e) => return forum_store_err(e),
+        };
+        match store.create_channel(
+            &p.name,
+            &crate::forum::CreateChannel {
+                space_id: body.space_id,
+                slug: body.slug.clone(),
+                name: body.name.clone(),
+                kind: body.kind,
+            },
+        ) {
             Ok(v) => HttpResponse::Ok().json(v),
             Err(e) => forum_store_err(e),
         }
     })
 }
 
-async fn get_forum_topics(api: web::Data<Api>, req: HttpRequest, query: web::Query<std::collections::HashMap<String, String>>) -> HttpResponse {
+async fn get_forum_topics(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> HttpResponse {
     guarded_as(&api, &req, "/api/forum/topics", false, |who| {
-        let Some(p) = forum_principal(who) else { return forum_deny(); };
-        if crate::forum::ForumAuthz::can_read(&p) == crate::forum::AuthzDecision::Deny { return forum_deny(); }
+        let Some(p) = forum_principal(who) else {
+            return forum_deny();
+        };
+        if crate::forum::ForumAuthz::can_read(&p) == crate::forum::AuthzDecision::Deny {
+            return forum_deny();
+        }
         let channel_id = query.get("channelId").and_then(|s| s.parse().ok());
-        let store = match api.forum.store() { Ok(s) => s, Err(e) => return forum_store_err(e) };
+        let store = match api.forum.store() {
+            Ok(s) => s,
+            Err(e) => return forum_store_err(e),
+        };
         match store.list_topics(channel_id) {
             Ok(v) => HttpResponse::Ok().json(v),
             Err(e) => forum_store_err(e),
@@ -3028,26 +3131,60 @@ async fn get_forum_topics(api: web::Data<Api>, req: HttpRequest, query: web::Que
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CreateTopicBody { channel_id: crate::forum::Id, title: String, body: String }
+struct CreateTopicBody {
+    channel_id: crate::forum::Id,
+    title: String,
+    body: String,
+}
 
-async fn post_forum_topic(api: web::Data<Api>, req: HttpRequest, body: web::Json<CreateTopicBody>) -> HttpResponse {
+async fn post_forum_topic(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Json<CreateTopicBody>,
+) -> HttpResponse {
     guarded_as(&api, &req, "/api/forum/topics", true, |who| {
-        let Some(p) = forum_principal(who) else { return forum_deny(); };
-        if crate::forum::ForumAuthz::can_create(&p) == crate::forum::AuthzDecision::Deny { return forum_deny(); }
-        let store = match api.forum.store() { Ok(s) => s, Err(e) => return forum_store_err(e) };
-        match store.create_topic(&p.name, &crate::forum::CreateTopic { channel_id: body.channel_id, title: body.title.clone(), body: body.body.clone() }) {
-            Ok((topic, post, mentions)) => HttpResponse::Ok().json(serde_json::json!({"topic": topic, "post": post, "mentions": mentions})),
+        let Some(p) = forum_principal(who) else {
+            return forum_deny();
+        };
+        if crate::forum::ForumAuthz::can_create(&p) == crate::forum::AuthzDecision::Deny {
+            return forum_deny();
+        }
+        let store = match api.forum.store() {
+            Ok(s) => s,
+            Err(e) => return forum_store_err(e),
+        };
+        match store.create_topic(
+            &p.name,
+            &crate::forum::CreateTopic {
+                channel_id: body.channel_id,
+                title: body.title.clone(),
+                body: body.body.clone(),
+            },
+        ) {
+            Ok((topic, post, mentions)) => HttpResponse::Ok()
+                .json(serde_json::json!({"topic": topic, "post": post, "mentions": mentions})),
             Err(e) => forum_store_err(e),
         }
     })
 }
 
-async fn get_forum_posts(api: web::Data<Api>, req: HttpRequest, path: web::Path<crate::forum::Id>) -> HttpResponse {
+async fn get_forum_posts(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    path: web::Path<crate::forum::Id>,
+) -> HttpResponse {
     let topic_id = path.into_inner();
     guarded_as(&api, &req, "/api/forum/topics", false, |who| {
-        let Some(p) = forum_principal(who) else { return forum_deny(); };
-        if crate::forum::ForumAuthz::can_read(&p) == crate::forum::AuthzDecision::Deny { return forum_deny(); }
-        let store = match api.forum.store() { Ok(s) => s, Err(e) => return forum_store_err(e) };
+        let Some(p) = forum_principal(who) else {
+            return forum_deny();
+        };
+        if crate::forum::ForumAuthz::can_read(&p) == crate::forum::AuthzDecision::Deny {
+            return forum_deny();
+        }
+        let store = match api.forum.store() {
+            Ok(s) => s,
+            Err(e) => return forum_store_err(e),
+        };
         match store.list_posts(topic_id) {
             Ok(v) => HttpResponse::Ok().json(v),
             Err(e) => forum_store_err(e),
@@ -3057,27 +3194,60 @@ async fn get_forum_posts(api: web::Data<Api>, req: HttpRequest, path: web::Path<
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CreatePostBody { body: String }
+struct CreatePostBody {
+    body: String,
+}
 
-async fn post_forum_post(api: web::Data<Api>, req: HttpRequest, path: web::Path<crate::forum::Id>, body: web::Json<CreatePostBody>) -> HttpResponse {
+async fn post_forum_post(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    path: web::Path<crate::forum::Id>,
+    body: web::Json<CreatePostBody>,
+) -> HttpResponse {
     let topic_id = path.into_inner();
     guarded_as(&api, &req, "/api/forum/topics", true, |who| {
-        let Some(p) = forum_principal(who) else { return forum_deny(); };
-        if crate::forum::ForumAuthz::can_create(&p) == crate::forum::AuthzDecision::Deny { return forum_deny(); }
-        let store = match api.forum.store() { Ok(s) => s, Err(e) => return forum_store_err(e) };
-        match store.create_post(&p.name, &crate::forum::CreatePost { topic_id, body: body.body.clone() }) {
-            Ok((post, mentions)) => HttpResponse::Ok().json(serde_json::json!({"post": post, "mentions": mentions})),
+        let Some(p) = forum_principal(who) else {
+            return forum_deny();
+        };
+        if crate::forum::ForumAuthz::can_create(&p) == crate::forum::AuthzDecision::Deny {
+            return forum_deny();
+        }
+        let store = match api.forum.store() {
+            Ok(s) => s,
+            Err(e) => return forum_store_err(e),
+        };
+        match store.create_post(
+            &p.name,
+            &crate::forum::CreatePost {
+                topic_id,
+                body: body.body.clone(),
+            },
+        ) {
+            Ok((post, mentions)) => {
+                HttpResponse::Ok().json(serde_json::json!({"post": post, "mentions": mentions}))
+            }
             Err(e) => forum_store_err(e),
         }
     })
 }
 
-async fn get_forum_messages(api: web::Data<Api>, req: HttpRequest, path: web::Path<crate::forum::Id>) -> HttpResponse {
+async fn get_forum_messages(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    path: web::Path<crate::forum::Id>,
+) -> HttpResponse {
     let channel_id = path.into_inner();
     guarded_as(&api, &req, "/api/forum/channels", false, |who| {
-        let Some(p) = forum_principal(who) else { return forum_deny(); };
-        if crate::forum::ForumAuthz::can_read(&p) == crate::forum::AuthzDecision::Deny { return forum_deny(); }
-        let store = match api.forum.store() { Ok(s) => s, Err(e) => return forum_store_err(e) };
+        let Some(p) = forum_principal(who) else {
+            return forum_deny();
+        };
+        if crate::forum::ForumAuthz::can_read(&p) == crate::forum::AuthzDecision::Deny {
+            return forum_deny();
+        }
+        let store = match api.forum.store() {
+            Ok(s) => s,
+            Err(e) => return forum_store_err(e),
+        };
         match store.list_messages(channel_id) {
             Ok(v) => HttpResponse::Ok().json(v),
             Err(e) => forum_store_err(e),
@@ -3087,31 +3257,68 @@ async fn get_forum_messages(api: web::Data<Api>, req: HttpRequest, path: web::Pa
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CreateMessageBody { thread_id: Option<crate::forum::Id>, body: String }
+struct CreateMessageBody {
+    thread_id: Option<crate::forum::Id>,
+    body: String,
+}
 
-async fn post_forum_message(api: web::Data<Api>, req: HttpRequest, path: web::Path<crate::forum::Id>, body: web::Json<CreateMessageBody>) -> HttpResponse {
+async fn post_forum_message(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    path: web::Path<crate::forum::Id>,
+    body: web::Json<CreateMessageBody>,
+) -> HttpResponse {
     let channel_id = path.into_inner();
     guarded_as(&api, &req, "/api/forum/channels", true, |who| {
-        let Some(p) = forum_principal(who) else { return forum_deny(); };
-        if crate::forum::ForumAuthz::can_create(&p) == crate::forum::AuthzDecision::Deny { return forum_deny(); }
-        let store = match api.forum.store() { Ok(s) => s, Err(e) => return forum_store_err(e) };
-        match store.create_message(&p.name, &crate::forum::CreateMessage { channel_id, thread_id: body.thread_id, body: body.body.clone() }) {
-            Ok((message, mentions)) => HttpResponse::Ok().json(serde_json::json!({"message": message, "mentions": mentions})),
+        let Some(p) = forum_principal(who) else {
+            return forum_deny();
+        };
+        if crate::forum::ForumAuthz::can_create(&p) == crate::forum::AuthzDecision::Deny {
+            return forum_deny();
+        }
+        let store = match api.forum.store() {
+            Ok(s) => s,
+            Err(e) => return forum_store_err(e),
+        };
+        match store.create_message(
+            &p.name,
+            &crate::forum::CreateMessage {
+                channel_id,
+                thread_id: body.thread_id,
+                body: body.body.clone(),
+            },
+        ) {
+            Ok((message, mentions)) => HttpResponse::Ok()
+                .json(serde_json::json!({"message": message, "mentions": mentions})),
             Err(e) => forum_store_err(e),
         }
     })
 }
 
-
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CreateReactionBody { target_kind: String, target_id: crate::forum::Id, emoji: String }
+struct CreateReactionBody {
+    target_kind: String,
+    target_id: crate::forum::Id,
+    emoji: String,
+}
 
-async fn post_forum_reaction(api: web::Data<Api>, req: HttpRequest, body: web::Json<CreateReactionBody>) -> HttpResponse {
+async fn post_forum_reaction(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Json<CreateReactionBody>,
+) -> HttpResponse {
     guarded_as(&api, &req, "/api/forum/reactions", true, |who| {
-        let Some(p) = forum_principal(who) else { return forum_deny(); };
-        if crate::forum::ForumAuthz::can_create(&p) == crate::forum::AuthzDecision::Deny { return forum_deny(); }
-        let store = match api.forum.store() { Ok(s) => s, Err(e) => return forum_store_err(e) };
+        let Some(p) = forum_principal(who) else {
+            return forum_deny();
+        };
+        if crate::forum::ForumAuthz::can_create(&p) == crate::forum::AuthzDecision::Deny {
+            return forum_deny();
+        }
+        let store = match api.forum.store() {
+            Ok(s) => s,
+            Err(e) => return forum_store_err(e),
+        };
         match store.add_reaction(&p.name, &body.target_kind, body.target_id, &body.emoji) {
             Ok(v) => HttpResponse::Ok().json(v),
             Err(e) => forum_store_err(e),
@@ -3121,13 +3328,29 @@ async fn post_forum_reaction(api: web::Data<Api>, req: HttpRequest, body: web::J
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CreateMembershipBody { subject: String, space_id: Option<crate::forum::Id>, channel_id: Option<crate::forum::Id>, role: String }
+struct CreateMembershipBody {
+    subject: String,
+    space_id: Option<crate::forum::Id>,
+    channel_id: Option<crate::forum::Id>,
+    role: String,
+}
 
-async fn post_forum_membership(api: web::Data<Api>, req: HttpRequest, body: web::Json<CreateMembershipBody>) -> HttpResponse {
+async fn post_forum_membership(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Json<CreateMembershipBody>,
+) -> HttpResponse {
     guarded_as(&api, &req, "/api/forum/memberships", true, |who| {
-        let Some(p) = forum_principal(who) else { return forum_deny(); };
-        if crate::forum::ForumAuthz::can_admin(&p) == crate::forum::AuthzDecision::Deny { return forum_deny(); }
-        let store = match api.forum.store() { Ok(s) => s, Err(e) => return forum_store_err(e) };
+        let Some(p) = forum_principal(who) else {
+            return forum_deny();
+        };
+        if crate::forum::ForumAuthz::can_admin(&p) == crate::forum::AuthzDecision::Deny {
+            return forum_deny();
+        }
+        let store = match api.forum.store() {
+            Ok(s) => s,
+            Err(e) => return forum_store_err(e),
+        };
         match store.add_membership(&body.subject, body.space_id, body.channel_id, &body.role) {
             Ok(v) => HttpResponse::Ok().json(v),
             Err(e) => forum_store_err(e),
@@ -7997,12 +8220,27 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
                 .route("/api/forum/channels", web::post().to(post_forum_channel))
                 .route("/api/forum/topics", web::get().to(get_forum_topics))
                 .route("/api/forum/topics", web::post().to(post_forum_topic))
-                .route("/api/forum/topics/{topic_id}/posts", web::get().to(get_forum_posts))
-                .route("/api/forum/topics/{topic_id}/posts", web::post().to(post_forum_post))
-                .route("/api/forum/channels/{channel_id}/messages", web::get().to(get_forum_messages))
-                .route("/api/forum/channels/{channel_id}/messages", web::post().to(post_forum_message))
+                .route(
+                    "/api/forum/topics/{topic_id}/posts",
+                    web::get().to(get_forum_posts),
+                )
+                .route(
+                    "/api/forum/topics/{topic_id}/posts",
+                    web::post().to(post_forum_post),
+                )
+                .route(
+                    "/api/forum/channels/{channel_id}/messages",
+                    web::get().to(get_forum_messages),
+                )
+                .route(
+                    "/api/forum/channels/{channel_id}/messages",
+                    web::post().to(post_forum_message),
+                )
                 .route("/api/forum/reactions", web::post().to(post_forum_reaction))
-                .route("/api/forum/memberships", web::post().to(post_forum_membership))
+                .route(
+                    "/api/forum/memberships",
+                    web::post().to(post_forum_membership),
+                )
                 .route("/api/chat", web::get().to(get_chat))
                 .route("/api/chat/session", web::post().to(post_chat_session))
                 .route("/api/chat/people", web::get().to(get_chat_people))
