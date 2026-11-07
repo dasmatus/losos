@@ -4,6 +4,23 @@ use crate::routes::Route;
 use dioxus::prelude::*;
 use std::collections::BTreeSet;
 
+fn tab_icon(key: &str) -> &'static str {
+    // Simple parity-oriented glyphs (React uses icon components; Dioxus uses
+    // lightweight text glyphs where shared icon assets are unavailable).
+    match key {
+        "overview" => "⌂",
+        "cloud" => "☁",
+        "chat" => "💬",
+        "mail" => "✉",
+        "apps" => "▦",
+        "storage" => "▣",
+        "mesh" => "⎔",
+        "diagrams" | "lab" => "◇",
+        "ci" => "◎",
+        _ => "•",
+    }
+}
+
 /// Mobile app-chrome: primary bottom tab bar + "More" sheet.
 /// Rendered by the shell (not the desktop sidebar) so it persists as stable
 /// navigation chrome on narrow widths. Respects `apple-design` guidance:
@@ -36,25 +53,30 @@ pub fn BottomNav(me: Option<Me>) -> Element {
                     } else {
                         "bottom-nav-tab ls-bottom-nav-tab"
                     };
-                    if active {
-                        rsx! {
-                            Link {
-                                to: tab.route.clone(),
-                                class: "{cls}",
-                                role: "tab",
-                                "aria-selected": "true",
-                                "aria-current": "page",
-                                "{tab.label}"
+                    {
+                        let icon = tab_icon(tab.key);
+                        if active {
+                            rsx! {
+                                Link {
+                                    to: tab.route.clone(),
+                                    class: "{cls}",
+                                    role: "tab",
+                                    "aria-selected": "true",
+                                    "aria-current": "page",
+                                    span { class: "bottom-nav-icon", "aria-hidden": "true", "{icon}" }
+                                    span { class: "bottom-nav-label", "{tab.label}" }
+                                }
                             }
-                        }
-                    } else {
-                        rsx! {
-                            Link {
-                                to: tab.route.clone(),
-                                class: "{cls}",
-                                role: "tab",
-                                "aria-selected": "false",
-                                "{tab.label}"
+                        } else {
+                            rsx! {
+                                Link {
+                                    to: tab.route.clone(),
+                                    class: "{cls}",
+                                    role: "tab",
+                                    "aria-selected": "false",
+                                    span { class: "bottom-nav-icon", "aria-hidden": "true", "{icon}" }
+                                    span { class: "bottom-nav-label", "{tab.label}" }
+                                }
                             }
                         }
                     }
@@ -71,7 +93,8 @@ pub fn BottomNav(me: Option<Me>) -> Element {
                     let v = *mobile_open.read();
                     mobile_open.set(!v);
                 },
-                "More"
+                span { class: "bottom-nav-icon", "aria-hidden": "true", "⋯" }
+                span { class: "bottom-nav-label", "More" }
             }
         }
 

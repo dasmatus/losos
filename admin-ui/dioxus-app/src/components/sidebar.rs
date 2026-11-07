@@ -393,6 +393,7 @@ pub fn Sidebar(me: Option<Me>) -> Element {
 
 #[derive(Clone, PartialEq)]
 pub(crate) struct BottomTab {
+    pub(crate) key: &'static str,
     pub(crate) label: &'static str,
     pub(crate) route: Route,
     pub(crate) active: bool,
@@ -409,6 +410,7 @@ pub(crate) fn bottom_tabs(base: &[Entry], current: &Route) -> Vec<BottomTab> {
         }
         if let Some(entry) = base.iter().find(|e| e.key == key && e.kind == EntryKind::Link) {
             out.push(BottomTab {
+                key: entry.key,
                 label: entry.label,
                 route: route_for_entry(entry),
                 active: is_current(entry, current) || contains_current(entry, current),
