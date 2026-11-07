@@ -146,13 +146,13 @@ await check('an empty folder says so, and a failed list offers to try again', as
 await check('a document opens under the top bar, beside the sidebar, in the LosOS look', async () => {
   const { page, context, errors, opened } = await open();
   await page.getByRole('link', { name: /Trip plan\.odt/ }).click();
-  await page.getByRole('button', { name: 'Back to files' }).waitFor();
+  await page.getByRole('button', { name: 'Back to files' }).first().waitFor();
   assert.deepEqual(opened, [FILES[1].id]);
   assert.equal(new URL(page.url()).hash, `#file=${FILES[1].id}`);
   await page.getByTestId('signed-in-as').waitFor();
   await nav(page).waitFor();
   assert.ok((await page.getByRole('heading', { level: 2 }).allInnerTexts()).some((t) => t.includes('Trip plan.odt')));
-  await page.getByRole('button', { name: 'Back to files' }).click();
+  await page.getByRole('button', { name: 'Back to files' }).first().click();
   await page.getByRole('heading', { level: 1, name: 'Documents' }).waitFor();
   await nav(page).waitFor();
   assert.deepEqual(errors, []);
@@ -161,7 +161,7 @@ await check('a document opens under the top bar, beside the sidebar, in the LosO
 
 await check('the LosOS bars drive the document and show what it reports', async () => {
   const { page, context, errors } = await open({ path: `/office/#file=${FILES[1].id}` });
-  await page.getByRole('button', { name: 'Back to files' }).waitFor();
+  await page.getByRole('button', { name: 'Back to files' }).first().waitFor();
   assert.ok((await page.getByRole('heading', { level: 2 }).allInnerTexts()).some((t) => t.includes('Trip plan.odt')));
   await page.getByRole('button', { name: 'Import to LosOS Office' }).waitFor();
   assert.deepEqual(errors, []);
@@ -170,7 +170,7 @@ await check('the LosOS bars drive the document and show what it reports', async 
 
 await check('in the light theme the editor opens light, on a white page', async () => {
   const { page, context, errors } = await open({ path: `/office/#file=${FILES[1].id}`, colorScheme: 'light' });
-  await page.getByRole('button', { name: 'Back to files' }).waitFor();
+  await page.getByRole('button', { name: 'Back to files' }).first().waitFor();
   assert.ok((await page.getByRole('heading', { level: 2 }).allInnerTexts()).some((t) => t.includes('Trip plan.odt')));
   assert.deepEqual(errors, []);
   await context.close();
@@ -178,7 +178,7 @@ await check('in the light theme the editor opens light, on a white page', async 
 
 await check('a read-only document says so in the editor bar', async () => {
   const { page, context, errors } = await open({ path: `/office/#file=${FILES[2].id}` });
-  await page.getByRole('button', { name: 'Back to files' }).waitFor();
+  await page.getByRole('button', { name: 'Back to files' }).first().waitFor();
   assert.ok((await page.getByRole('heading', { level: 2 }).allInnerTexts()).some((t) => t.includes('Meeting notes.odt')));
   assert.deepEqual(errors, []);
   await context.close();
@@ -187,7 +187,7 @@ await check('a read-only document says so in the editor bar', async () => {
 await check('Documents and the editor add nothing to the policy violations a plain load logs', async () => {
   const { page, context } = await open();
   await page.getByRole('link', { name: /Trip plan\.odt/ }).click();
-  await page.getByRole('button', { name: 'Back to files' }).waitFor();
+  await page.getByRole('button', { name: 'Back to files' }).first().waitFor();
   await page.waitForTimeout(300);
   assert.deepEqual(await violations(page), BASELINE);
   await context.close();
@@ -249,9 +249,9 @@ await check('in LosOS Cloud a document opens in Office, in the same frame as the
     [...document.querySelectorAll('a')].some((a) => a.getAttribute('href') === '/cloud/office/42'),
   );
   await page.goto(`${origin}/cloud/office/42`);
-  await page.getByRole('button', { name: 'Back to files' }).waitFor();
+  await page.getByRole('button', { name: 'Back to files' }).first().waitFor();
   assert.deepEqual(opened, ['42']);
-  await page.getByRole('button', { name: 'Back to files' }).click();
+  await page.getByRole('button', { name: 'Back to files' }).first().click();
   await page.waitForURL(/\/cloud\/files/);
   assert.deepEqual(errors, []);
   await context.close();
