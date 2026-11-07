@@ -95,10 +95,9 @@ assert must
 assert must
   (lib.all (u: lib.elem u config.losos.cache.local.upstreams) [
     "https://cache.nixos.org"
-    "http://127.0.0.1:8787"
-    "https://losos.dasmat.us/proxy"
+    "http://127.0.0.1:${toString config.losos.cache.ghcr.port}"
   ])
-  "the local copy does not ask cache.nixos.org, the GHCR helper and the Pages copy (${toString config.losos.cache.local.upstreams}): the LosOS packages and images would be built on the box";
+  "the local copy does not ask cache.nixos.org and the GHCR helper (${toString config.losos.cache.local.upstreams}): the LosOS packages and images would be built on the box";
 assert must
   (lib.elem "/var" (map (d: d.directory) config.environment.persistence."/persist".directories))
   "/var is not persisted whole: the local copy in /var/cache/losos-nix-cache would vanish at the 00:07 restart";

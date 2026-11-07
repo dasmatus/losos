@@ -281,9 +281,9 @@ appliance run the same service from their system configuration. It pulls only
 the requested store-path artifact, caches the NAR on local disk, and rewrites
 only the unsigned `URL` field in narinfo; Nix still verifies the signed
 store path, NAR hash and references. `cache.nixos.org` remains enabled for
-upstream paths, and GitHub Pages remains a static fallback. The separate
-`LOSOS_PROXY_URL` deployment is still used by non-cache features such as
-update downloads, but it is not part of the binary-cache path.
+upstream paths. The separate `LOSOS_PROXY_URL` deployment is still used by
+non-cache features such as update downloads, but it is not part of the
+binary-cache path.
 Every job reports what it got from the cache. `setup-nix` puts a `nix` shim
 on `PATH` that counts nix's own `copying path '…' from '<url>'` and
 `building '…'` lines per invocation. It writes a **Nix binary cache use**
