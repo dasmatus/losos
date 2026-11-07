@@ -20,7 +20,10 @@ pub enum ThemeMode {
 pub struct BoxConfig {
     #[serde(default)]
     pub host: String,
+    /// Bearer token. On web this is kept in sessionStorage (`losos-token`, React
+    /// parity) and not persisted in localStorage config to reduce exposure.
     #[serde(default)]
+    #[cfg_attr(target_arch = "wasm32", serde(skip_serializing))]
     pub token: String,
     #[serde(default = "default_true")]
     pub demo: bool,
@@ -71,9 +74,24 @@ impl BoxConfig {
 const KEY: &str = "losos-frontend-config";
 
 pub fn load() -> BoxConfig {
-    load_raw()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+    let mut cfg = load_raw()
+        .and_then(|s| serde_json::from_str::<BoxConfig>(&s).ok())
+        .unwrap_or_default();
+    #[cfg(target_arch = "wasm32")]
+    {
+        // Migrate away from persisting bearer tokens in localStorage (React parity:
+        // sessionStorage `losos-token` is the web session source).
+        if !cfg.token.is_empty() {
+            cfg.token.clear();
+            // Persist sanitized config without token.
+            let _ = (|| -> Option<()> {
+                let s = serde_json::to_string(&cfg).ok()?;
+                save_raw(&s);
+                Some(())
+            })();
+        }
+    }
+    cfg
 }
 
 pub fn save(config: &BoxConfig) {
@@ -93,6 +111,22 @@ fn save_raw(value: &str) {
     if let Some(storage) = web_sys::window().and_then(|w| w.local_storage().ok().flatten()) {
         let _ = storage.set_item(KEY, value);
     }
+}
+
+/// On web, the auth token is also stored in sessionStorage under `losos-token`
+/// (React admin parity). This helper syncs the loaded config from that source
+/// when present so bearer `BoxApi` and the gate see the active session token.
+pub fn load_with_session_token() -> BoxConfig {
+    let mut cfg = load();
+    #[cfg(target_arch = "wasm32")]
+    {
+        if let Some(token) = crate::auth::load_token_web() {
+            if !token.trim().is_empty() {
+                cfg.token = token;
+            }
+        }
+    }
+    cfg
 }
 
 #[cfg(not(target_arch = "wasm32"))]

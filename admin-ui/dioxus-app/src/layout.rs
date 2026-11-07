@@ -1,3 +1,5 @@
+use crate::app::{AuthSignal, ConfigSignal};
+use crate::auth::{self, Me};
 use crate::routes::Route;
 use dioxus::prelude::*;
 
@@ -13,9 +15,9 @@ fn nav_items() -> Vec<NavItem> {
         NavItem { label: "Overview", route: Route::Home {}, section: "Main" },
         NavItem { label: "Apps", route: Route::Apps {}, section: "Main" },
         NavItem { label: "Storage", route: Route::Storage {}, section: "Main" },
-        NavItem { label: "Mesh", route: Route::Mesh {}, section: "Main" },
+        NavItem { label: "Mesh", route: Route::Mesh {}, section: "Mesh" },
         NavItem { label: "Market", route: Route::Market {}, section: "Mesh" },
-        NavItem { label: "Machines", route: Route::Machines {}, section: "Machines" },
+        NavItem { label: "Machines", route: Route::Machines {}, section: "Mesh" },
         NavItem { label: "Diagrams", route: Route::Diagrams {}, section: "Tools" },
         NavItem { label: "Wikis", route: Route::Wikis {}, section: "Tools" },
         NavItem { label: "Settings", route: Route::SettingsRoot {}, section: "Settings" },
@@ -25,24 +27,51 @@ fn nav_items() -> Vec<NavItem> {
 
 /// Top bar aligned with the React AppBar's visual structure.
 #[component]
-pub fn AppBar() -> Element {
+pub fn AppBar(me: Option<Me>) -> Element {
+    let mut config: ConfigSignal = use_context();
+    let mut auth: AuthSignal = use_context();
+    let person = me
+        .as_ref()
+        .map(|m| m.label())
+        .unwrap_or_else(|| "Signed in".to_string());
+
+    let sign_out = move |_| {
+        let mut next = config();
+        auth::drop_token(&mut next);
+        config.set(next);
+        auth.set(Default::default());
+    };
+
     rsx! {
         header { class: "app-bar",
             div { class: "app-bar-inner",
-                a { href: "/", class: "app-bar-home", "LosOS" }
+                Link { to: Route::Home {}, class: "app-bar-home", "LosOS" }
                 span { class: "app-bar-badge", "this box" }
                 div { class: "app-bar-spacer" }
-                span { class: "app-bar-person muted", "Admin UI (Dioxus)" }
+                span { class: "app-bar-person muted", "{person}" }
+                button { class: "btn btn-ghost", style: "margin-left: 8px; padding: 4px 8px; font-size: 13px;", onclick: sign_out, "Sign out" }
             }
         }
     }
+}
+
+fn is_route_current(current: &Route, item: &Route) -> bool {
+    if current == item {
+        return true;
+    }
+    matches!(
+        (current, item),
+        (Route::SettingsRoot {} | Route::SettingsPane { .. }, Route::SettingsRoot {})
+            | (Route::Mesh {} | Route::Market {} | Route::Machines {} | Route::MeshMachines {}, Route::Mesh {})
+            | (Route::Machines {} | Route::MeshMachines {}, Route::Machines {})
+    )
 }
 
 #[component]
 pub fn Sidebar() -> Element {
     let current = use_route::<Route>();
     let items = nav_items();
-    let sections = ["Main", "Mesh", "Machines", "Tools", "Settings"];
+    let sections = ["Main", "Mesh", "Tools", "Settings"];
 
     rsx! {
         aside { class: "sidebar",
@@ -56,9 +85,7 @@ pub fn Sidebar() -> Element {
                                 div { class: "nav-section-label", "{section}" }
                                 for item in section_items {
                                     {
-                                        let active = &current == &item.route
-                                            || (matches!(current, Route::SettingsRoot {} | Route::SettingsPane { .. }) && item.label == "Settings")
-                                            || (matches!(current, Route::Mesh {} | Route::Market {}) && item.label == "Mesh");
+                                        let active = is_route_current(&current, &item.route);
                                         let cls = if active { "nav-item active" } else { "nav-item" };
                                         rsx! {
                                             Link { to: item.route.clone(), class: "{cls}", "{item.label}" }

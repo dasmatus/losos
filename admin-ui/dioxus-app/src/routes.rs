@@ -1,8 +1,9 @@
 use crate::actions::{self, Action};
-use crate::app::AppLayout;
+use crate::app::{AppLayout, AuthSignal, AuthState, ConfigSignal};
+use crate::auth::{self, Gate};
 use crate::components::ui::{Button, Card, Empty, Spinner};
 use crate::pages::{blocks, page::{Page, PageId}};
-use crate::store::BoxConfig;
+use crate::store::{self, BoxConfig};
 use dioxus::prelude::*;
 use serde_json::Value;
 
@@ -22,8 +23,10 @@ pub enum Route {
         Mesh {},
         #[route("/mesh/market")]
         Market {},
-        #[route("/mesh/machines")]
+        #[route("/machines")]
         Machines {},
+        #[route("/mesh/machines")]
+        MeshMachines {},
         #[route("/diagrams")]
         Diagrams {},
         #[route("/wikis")]
@@ -40,7 +43,19 @@ pub enum Route {
 
 fn config_signal() -> Signal<BoxConfig> {
     // Re-read from storage so route components get current config; AppLayout/App persist.
-    use_context::<Signal<BoxConfig>>()
+    use_context::<ConfigSignal>()
+}
+
+fn clear_auth_on_401(mut config: ConfigSignal, mut auth_sig: AuthSignal) {
+    let mut next = config();
+    auth::drop_token(&mut next);
+    store::save(&next);
+    config.set(next);
+    auth_sig.set(AuthState {
+        gate: Gate::Signin,
+        me: None,
+        claim: auth_sig().claim,
+    });
 }
 
 #[component]
@@ -60,12 +75,21 @@ fn Home() -> Element {
 #[component]
 fn Apps() -> Element {
     let config = config_signal();
+    let auth_sig = use_context::<AuthSignal>();
     let mut apps = use_signal(|| None::<Result<Value, String>>);
     let cfg = config();
     use_future(move || {
         let cfg = cfg.clone();
         async move {
-            let res = actions::dispatch(&cfg, Action::AppsList).await.map_err(|e| e.message);
+            let res = match actions::dispatch(&cfg, Action::AppsList).await {
+                Ok(v) => Ok(v),
+                Err(e) => {
+                    if actions::is_unauthorized(&e) {
+                        clear_auth_on_401(config, auth_sig);
+                    }
+                    Err(e.message)
+                }
+            };
             apps.set(Some(res));
         }
     });
@@ -113,14 +137,23 @@ fn AppsList(data: Value) -> Element {
 #[component]
 fn Storage() -> Element {
     let config = config_signal();
+    let auth_sig = use_context::<AuthSignal>();
     let mut status = use_signal(|| None::<Result<Value, String>>);
     let mut busy = use_signal(|| false);
     let cfg = config();
-    let cfg2 = config();
     use_future(move || {
         let cfg = cfg.clone();
         async move {
-            status.set(Some(actions::dispatch(&cfg, Action::StorageStatus).await.map_err(|e| e.message)));
+            let res = match actions::dispatch(&cfg, Action::StorageStatus).await {
+                Ok(v) => Ok(v),
+                Err(e) => {
+                    if actions::is_unauthorized(&e) {
+                        clear_auth_on_401(config, auth_sig);
+                    }
+                    Err(e.message)
+                }
+            };
+            status.set(Some(res));
         }
     });
     rsx! {
@@ -137,11 +170,27 @@ fn Storage() -> Element {
                             kind: "primary".to_string(),
                             disabled: busy(),
                             onclick: move |_| {
-                                let cfg = cfg2.clone();
                                 spawn(async move {
                                     busy.set(true);
-                                    let _ = actions::dispatch(&cfg, Action::StorageGrow).await;
-                                    status.set(Some(actions::dispatch(&cfg, Action::StorageStatus).await.map_err(|e| e.message)));
+                                    let cfg = config();
+                                    if let Err(e) = actions::dispatch(&cfg, Action::StorageGrow).await {
+                                        if actions::is_unauthorized(&e) {
+                                            clear_auth_on_401(config, auth_sig);
+                                        }
+                                        status.set(Some(Err(e.message)));
+                                        busy.set(false);
+                                        return;
+                                    }
+                                    let res = match actions::dispatch(&cfg, Action::StorageStatus).await {
+                                        Ok(v) => Ok(v),
+                                        Err(e) => {
+                                            if actions::is_unauthorized(&e) {
+                                                clear_auth_on_401(config, auth_sig);
+                                            }
+                                            Err(e.message)
+                                        }
+                                    };
+                                    status.set(Some(res));
                                     busy.set(false);
                                 });
                             },
@@ -157,12 +206,22 @@ fn Storage() -> Element {
 #[component]
 fn Mesh() -> Element {
     let config = config_signal();
+    let auth_sig = use_context::<AuthSignal>();
     let mut status = use_signal(|| None::<Result<Value, String>>);
     let cfg = config();
     use_future(move || {
         let cfg = cfg.clone();
         async move {
-            status.set(Some(actions::dispatch(&cfg, Action::MeshStatus).await.map_err(|e| e.message)));
+            let res = match actions::dispatch(&cfg, Action::MeshStatus).await {
+                Ok(v) => Ok(v),
+                Err(e) => {
+                    if actions::is_unauthorized(&e) {
+                        clear_auth_on_401(config, auth_sig);
+                    }
+                    Err(e.message)
+                }
+            };
+            status.set(Some(res));
         }
     });
     rsx! {
@@ -179,15 +238,29 @@ fn Mesh() -> Element {
 }
 
 #[component]
-fn Market() -> Element { rsx! { PlaceholderPage { title: "Market".to_string(), description: "Sell storage and compute, and browse the market.".to_string() } } }
+fn Market() -> Element {
+    rsx! { PlaceholderPage { title: "Market".to_string(), description: "Sell storage and compute, and browse the market.".to_string() } }
+}
 #[component]
-fn Machines() -> Element { rsx! { PlaceholderPage { title: "Machines".to_string(), description: "Virtual machines on the mesh.".to_string() } } }
+fn Machines() -> Element {
+    rsx! { PlaceholderPage { title: "Machines".to_string(), description: "Virtual machines on the mesh.".to_string() } }
+}
 #[component]
-fn Diagrams() -> Element { rsx! { PlaceholderPage { title: "Diagrams".to_string(), description: "LosOS Diagrams (Lab) — port in progress.".to_string() } } }
+fn MeshMachines() -> Element {
+    rsx! { Machines {} }
+}
 #[component]
-fn Wikis() -> Element { rsx! { PlaceholderPage { title: "Wikis".to_string(), description: "LosOS Wiki directory — port in progress.".to_string() } } }
+fn Diagrams() -> Element {
+    rsx! { PlaceholderPage { title: "Diagrams".to_string(), description: "LosOS Diagrams (Lab) — port in progress.".to_string() } }
+}
 #[component]
-fn SettingsRoot() -> Element { rsx! { SettingsPane { pane: "network".to_string() } } }
+fn Wikis() -> Element {
+    rsx! { PlaceholderPage { title: "Wikis".to_string(), description: "LosOS Wiki directory — port in progress.".to_string() } }
+}
+#[component]
+fn SettingsRoot() -> Element {
+    rsx! { SettingsPane { pane: "network".to_string() } }
+}
 
 #[component]
 fn SettingsPane(pane: String) -> Element {
@@ -262,13 +335,26 @@ fn PaneBody(pane: String, config: BoxConfig) -> Element {
 
 #[component]
 fn ApiPane(config: BoxConfig, action: Action, title: String) -> Element {
+    let config_sig = config_signal();
+    let auth_sig = use_context::<AuthSignal>();
     let mut data = use_signal(|| None::<Result<Value, String>>);
     let action2 = action.clone();
     let cfg = config.clone();
     use_future(move || {
         let cfg = cfg.clone();
         let action = action2.clone();
-        async move { data.set(Some(actions::dispatch(&cfg, action).await.map_err(|e| e.message))); }
+        async move {
+            let res = match actions::dispatch(&cfg, action).await {
+                Ok(v) => Ok(v),
+                Err(e) => {
+                    if actions::is_unauthorized(&e) {
+                        clear_auth_on_401(config_sig, auth_sig);
+                    }
+                    Err(e.message)
+                }
+            };
+            data.set(Some(res));
+        }
     });
     match data() {
         None => rsx! { Spinner {} },

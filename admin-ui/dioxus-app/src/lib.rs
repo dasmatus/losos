@@ -5,6 +5,7 @@
 //! modules are compiled when the `gui` feature is enabled.
 
 pub mod api;
+pub mod auth;
 pub mod store;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod tls;

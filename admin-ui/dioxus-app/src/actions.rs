@@ -5,7 +5,8 @@
 //! `losos` CLI execution on desktop.
 
 use crate::api::{ApiError, BoxApi};
-use crate::store::BoxConfig;
+use crate::auth;
+use crate::store::{self, BoxConfig};
 use losos_client::Trust;
 use serde_json::Value;
 
@@ -42,6 +43,17 @@ fn make_api(config: &BoxConfig) -> Result<BoxApi, ApiError> {
         Trust::Permissive
     };
     BoxApi::new(&config.host, &config.token, trust)
+}
+
+pub fn is_unauthorized(err: &ApiError) -> bool {
+    err.status == 401
+}
+
+/// Clear bearer auth on 401 and persist config. Callers should also update
+/// UI/auth gate state (e.g. set gate to Signin) as appropriate.
+pub fn on_unauthorized(config: &mut BoxConfig) {
+    auth::drop_token(config);
+    store::save(config);
 }
 
 pub async fn dispatch(config: &BoxConfig, action: Action) -> Result<Value, ApiError> {
