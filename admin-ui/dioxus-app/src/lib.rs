@@ -6,6 +6,7 @@
 
 pub mod api;
 pub mod auth;
+pub mod settings;
 pub mod store;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod tls;

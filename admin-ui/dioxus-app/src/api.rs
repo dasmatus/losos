@@ -109,6 +109,54 @@ impl BoxApi {
             .await
     }
 
+    /// POST a raw body (e.g. `/api/apply` takes the full `modules/overrides.nix` Nix text).
+    pub async fn post_raw(
+        &self,
+        path: &str,
+        body: String,
+        content_type: &str,
+    ) -> Result<Value, ApiError> {
+        let url = format!("{}{}", self.base, path);
+        let mut req = self
+            .http
+            .request(reqwest::Method::POST, &url)
+            .timeout(Duration::from_secs(120))
+            .header(reqwest::header::CONTENT_TYPE, content_type);
+        if !self.token.is_empty() {
+            req = req.bearer_auth(&self.token);
+        }
+        req = req.body(body);
+        let resp = req.send().await.map_err(|e| ApiError {
+            status: 0,
+            message: format!("No answer from {}: {}", self.base, e),
+        })?;
+        let status = resp.status().as_u16();
+        let text = resp.text().await.unwrap_or_default();
+        if status == 401 {
+            return Err(ApiError {
+                status,
+                message: "The box wants its token again".into(),
+            });
+        }
+        if !(200..300).contains(&status) {
+            let msg = serde_json::from_str::<Value>(&text)
+                .ok()
+                .and_then(|v| v.get("error").and_then(Value::as_str).map(str::to_string))
+                .unwrap_or_else(|| format!("HTTP {status}"));
+            return Err(ApiError {
+                status,
+                message: msg,
+            });
+        }
+        if text.trim().is_empty() {
+            return Ok(json!({}));
+        }
+        serde_json::from_str(&text).map_err(|_| ApiError {
+            status,
+            message: "The box sent a response that was not JSON".into(),
+        })
+    }
+
     async fn request(
         &self,
         method: reqwest::Method,
