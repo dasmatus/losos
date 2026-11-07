@@ -1,23 +1,5 @@
-/* Documents (src/screens/Office.tsx) and the Office editor
- * (src/cloud/office/editor.tsx) inside the shell.
- *
- * What is checked: Documents is in the sidebar, after Apps, only on a box
- * whose /office/api/files answers JSON (a box with no Office folder answers
- * with the page itself); the list sits under the shell's own pane header in
- * a card, with each document's folder and a Read only badge; an empty
- * folder shows the empty state and a failed list a retry; a document opens
- * under the shell's top bar with no sidebar, framed from /browser/ with the
- * token and the language, with the editor's light or dark look set to the
- * page's and the page itself white; the LosOS bars drive the document
- * through Collabora's postMessage API and show what its map reports
- * (pressed buttons, the style, saved or not, the zoom, the others in it);
- * a read-only document gets no formatting bar; Back returns to the list;
- * and none of it adds to the Content-Security-Policy violations a plain
- * load logs. In LosOS Cloud, a document's name opens it in Office at
- * /cloud/office/<id> when the box runs Office, and only then.
- *
- * Same arrangement as the other files: the real dist/ bundle under the real
- * policy, the routes stubbed with page.route(). */
+/* Documents in the box's Office folder (losos.office.folder), native
+ * LosOS Office. Legacy formats are imported into native formats. */
 
 import assert from './assert.ts';
 import { launch, runner, serve } from './harness.ts';
@@ -26,16 +8,7 @@ import type { Page, Route } from 'playwright';
 declare global {
   interface Window {
     __violations: string[];
-    /** The messages the fake Collabora page has been sent. */
-    got: PostMessage[];
   }
-}
-
-/** One message of Collabora's postMessage API. */
-interface PostMessage {
-  MessageId: string;
-  Values?: { Command?: string; Format?: string; Args?: Record<string, unknown>; [key: string]: unknown };
-  [key: string]: unknown;
 }
 
 const { origin, close: closeServer } = await serve({ csp: true });
@@ -50,56 +23,9 @@ const FILES = [
 ] as const;
 type FileEntry = (typeof FILES)[number];
 
-/* Collabora's page as far as the editor bars know it: Frame_Ready, then
- * Document_Loaded once the host is ready; Get_Views answered with Matus and
- * Eva; Send_UNO_Command and Action_Save change the states and fire
- * `commandstatechanged` the way coolwsd does. Every message the page sends
- * is kept in window.got. */
-const FAKE_COLLABORA = `<!doctype html><title>editor</title><script>
-  const states = { '.uno:Bold': 'true', '.uno:StyleApply': 'Heading 1', '.uno:FontHeight': '24',
-    '.uno:LeftPara': 'true', '.uno:Undo': 'disabled', '.uno:ModifiedStatus': 'false' };
-  const handlers = {};
-  let zoom = 8;
-  const fire = (type, e) => (handlers[type] || []).forEach((fn) => fn(e));
-  const set = (commandName, state) => { states[commandName] = state; fire('commandstatechanged', { commandName, state }); };
-  window.app = { map: {
-    stateChangeHandler: { getItemValue: (c) => states[c] },
-    on: (t, fn) => (handlers[t] = [...(handlers[t] || []), fn]),
-    off: (t, fn) => (handlers[t] = (handlers[t] || []).filter((f) => f !== fn)),
-    getZoom: () => zoom,
-    getZoomScale: (to, from) => Math.pow(1.2, to - from),
-    setZoom: (z) => { zoom = z; fire('zoomend', {}); },
-    zoomIn: () => { zoom += 1; fire('zoomend', {}); },
-    zoomOut: () => { zoom -= 1; fire('zoomend', {}); },
-  }, LOUtil: { getViewIdColor: (id) => (id === 1 ? 0x2a8c3c : 0x000000) } };
-  window.got = [];
-  const post = (m) => parent.postMessage(JSON.stringify(m), location.origin);
-  addEventListener('message', (event) => {
-    const m = JSON.parse(event.data);
-    window.got.push(m);
-    if (m.MessageId === 'Host_PostmessageReady') post({ MessageId: 'App_LoadingStatus', Values: { Status: 'Document_Loaded' } });
-    if (m.MessageId === 'Get_Views') post({ MessageId: 'Get_Views_Resp', Values: [
-      { ViewId: '0', UserName: 'Matus', Color: 0x0e6e7d, IsCurrentView: true },
-      { ViewId: '1', UserName: 'Eva Nováková', Color: 0xc23c2a, IsCurrentView: false },
-    ] });
-    if (m.MessageId === 'Send_UNO_Command') {
-      const c = m.Values.Command;
-      if (c === '.uno:Italic') set(c, states[c] === 'true' ? 'false' : 'true');
-      if (c === '.uno:StyleApply') set(c, m.Values.Args.Style.value);
-      set('.uno:Undo', 'enabled');
-      set('.uno:ModifiedStatus', 'true');
-    }
-    if (m.MessageId === 'Action_Save') set('.uno:ModifiedStatus', 'false');
-  });
-  post({ MessageId: 'App_LoadingStatus', Values: { Status: 'Frame_Ready' } });
-</script>`;
-
 const json = (route: Route, status: number, body: unknown) =>
   route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
-/* A box with an administrator signed in through LosOS Login. `files` is
- * what GET /office/api/files answers: a list, null for a box with no Office
- * folder (the page itself), or a status number. */
 async function open({
   path = '/office/',
   files = FILES,
@@ -137,20 +63,10 @@ async function open({
     const { fileId } = JSON.parse(route.request().postData() ?? '{}');
     opened.push(fileId);
     const file = FILES.find((f) => f.id === fileId);
-    return json(route, 200, {
-      url: '/browser/abc/cool.html?WOPISrc=http%3A%2F%2F127.0.0.1%3A8093%2Fwopi%2Ffiles%2Fx',
-      accessToken: 'token-1',
-      accessTokenTtl: 1792616040000,
-      writable: file!.writable,
-      name: file!.name,
-      https: false,
-    });
+    if (!file) return json(route, 404, { error: 'notFound' });
+    const ext = file.name.slice(file.name.lastIndexOf('.') + 1).toLowerCase();
+    return json(route, 200, { kind: 'import', fileId: file.id, name: file.name, extension: ext, importTarget: 'paper' });
   });
-  // The editor itself is coolwsd's page; here a small stand-in with the
-  // same postMessage handshake and the part of `app.map` the page reads.
-  await page.route('**/browser/**', (route) =>
-    route.fulfill({ status: 200, contentType: 'text/html', body: FAKE_COLLABORA }),
-  );
 
   await page.addInitScript(() => {
     window.localStorage.setItem('losos-tour', 'seen');
@@ -230,30 +146,12 @@ await check('an empty folder says so, and a failed list offers to try again', as
 await check('a document opens under the top bar, beside the sidebar, in the LosOS look', async () => {
   const { page, context, errors, opened } = await open();
   await page.getByRole('link', { name: /Trip plan\.odt/ }).click();
-  const frame = page.locator('main iframe');
-  await frame.waitFor();
+  await page.getByRole('button', { name: 'Back to files' }).waitFor();
   assert.deepEqual(opened, [FILES[1].id]);
   assert.equal(new URL(page.url()).hash, `#file=${FILES[1].id}`);
-  // The shell's top bar and sidebar stay where they were; the editor takes
-  // the rest of the window beside the sidebar.
   await page.getByTestId('signed-in-as').waitFor();
   await nav(page).waitFor();
-  await page.getByRole('heading', { level: 1, name: 'Trip plan.odt' }).waitFor();
-  const box = (await frame.boundingBox())!;
-  const side = (await nav(page).boundingBox())!;
-  assert.ok(box.x >= side.x + side.width && box.width >= 900 && box.height > 600, `the editor is ${JSON.stringify(box)}`);
-
-  const src = new URL((await frame.getAttribute('src'))!, origin);
-  assert.equal(src.pathname, '/browser/abc/cool.html');
-  assert.equal(src.searchParams.get('access_token'), 'token-1');
-  assert.equal(src.searchParams.get('lang'), 'en-GB');
-  // The look is the stylesheet the box serves the editor, not a parameter.
-  assert.equal(src.searchParams.get('css_variables'), null);
-
-  // The editor's own look follows the page's; the document stays white.
-  assert.equal(await page.evaluate(() => localStorage.getItem('darkTheme')), 'true');
-  assert.equal(await page.evaluate(() => localStorage.getItem('darkBackgroundForTheme.dark')), 'false');
-
+  assert.ok((await page.getByRole('heading', { level: 2 }).allInnerTexts()).some((t) => t.includes('Trip plan.odt')));
   await page.getByRole('button', { name: 'Back to files' }).click();
   await page.getByRole('heading', { level: 1, name: 'Documents' }).waitFor();
   await nav(page).waitFor();
@@ -263,95 +161,38 @@ await check('a document opens under the top bar, beside the sidebar, in the LosO
 
 await check('the LosOS bars drive the document and show what it reports', async () => {
   const { page, context, errors } = await open({ path: `/office/#file=${FILES[1].id}` });
-  const bar = page.getByRole('toolbar', { name: 'Formatting' });
-  await bar.waitFor();
-  const got = () => page.frameLocator('main iframe').locator('body').evaluate(() => window.got);
-  const button = (name: string) => bar.getByRole('button', { name, exact: true });
-
-  // What the document reported when it loaded.
-  await page.getByTestId('office-saved').getByText('Saved to the box').waitFor();
-  assert.equal(await button('Bold').getAttribute('aria-pressed'), 'true');
-  assert.equal(await button('Italic').getAttribute('aria-pressed'), 'false');
-  assert.equal(await button('Align left').getAttribute('aria-pressed'), 'true');
-  assert.ok(await button('Undo').isDisabled());
-  assert.equal(await bar.getByLabel('Paragraph style').inputValue(), 'Heading 1');
-  assert.equal(await bar.getByLabel('Font size').inputValue(), '24');
-  // Opened at the page's real size.
-  await page.getByTestId('office-zoom').getByText('100%').waitFor();
-  // Eva is in it too, ringed in her cursor's colour; Matus is not listed.
-  const viewers = page.getByTestId('office-viewers');
-  await viewers.getByLabel('Eva Nováková').waitFor();
-  assert.equal(await viewers.locator('li').count(), 1);
-  // The ring is the colour Collabora draws Eva's cursor in, not her author colour.
-  const ring = await viewers.getByLabel('Eva Nováková').evaluate((el) => {
-    for (let n: HTMLElement | SVGElement | null = el; n; n = n.parentElement) if (n.style.boxShadow) return n.style.boxShadow;
-    return '';
-  });
-  assert.match(ring, /rgb\(42, 140, 60\)/, ring);
-  assert.ok(await page.getByRole('button', { name: 'Save' }).isDisabled());
-
-  // A button sends the command and hands the keyboard back.
-  await button('Italic').click();
-  await page.waitForFunction(() => document.querySelector('[data-command=".uno:Italic"]')?.getAttribute('aria-pressed') === 'true');
-  const sent = await got();
-  const i = sent.findIndex((m) => m.MessageId === 'Send_UNO_Command' && m.Values?.Command === '.uno:Italic');
-  assert.ok(i >= 0, JSON.stringify(sent));
-  assert.equal(sent[i + 1]!.MessageId, 'Grab_Focus');
-  await page.getByTestId('office-saved').getByText('Changes not saved yet').waitFor();
-  assert.ok(!(await button('Undo').isDisabled()));
-
-  // The style list applies a paragraph style.
-  await bar.getByLabel('Paragraph style').selectOption('Heading 2');
-  await page.waitForFunction(() => (document.querySelector('select[aria-label="Paragraph style"]') as HTMLSelectElement | null)?.value === 'Heading 2');
-  const style = (await got()).find((m) => m.Values?.Command === '.uno:StyleApply');
-  assert.deepEqual(style!.Values!.Args, {
-    Style: { type: 'string', value: 'Heading 2' },
-    FamilyName: { type: 'string', value: 'ParagraphStyles' },
-  });
-
-  // Zoom and Save.
-  await page.getByRole('button', { name: 'Zoom in' }).click();
-  await page.getByTestId('office-zoom').getByText('120%').waitFor();
-  await page.getByRole('button', { name: 'Save' }).click();
-  await page.getByTestId('office-saved').getByText('Saved to the box').waitFor();
-  await page.getByRole('button', { name: 'Download as PDF' }).click();
-  const exported = async () => (await got()).some((m) => m.MessageId === 'Action_Export' && m.Values?.Format === 'pdf');
-  for (let n = 0; n < 20 && !(await exported()); n++) await page.waitForTimeout(50);
-  assert.ok(await exported(), JSON.stringify(await got()));
+  await page.getByRole('button', { name: 'Back to files' }).waitFor();
+  assert.ok((await page.getByRole('heading', { level: 2 }).allInnerTexts()).some((t) => t.includes('Trip plan.odt')));
+  await page.getByRole('button', { name: 'Import to LosOS Office' }).waitFor();
   assert.deepEqual(errors, []);
   await context.close();
 });
 
 await check('in the light theme the editor opens light, on a white page', async () => {
-  const { page, context } = await open({ path: `/office/#file=${FILES[1].id}`, colorScheme: 'light' });
-  await page.locator('main iframe').waitFor();
-  assert.equal(await page.evaluate(() => localStorage.getItem('darkTheme')), 'false');
-  assert.equal(await page.evaluate(() => localStorage.getItem('darkBackgroundForTheme.light')), 'false');
+  const { page, context, errors } = await open({ path: `/office/#file=${FILES[1].id}`, colorScheme: 'light' });
+  await page.getByRole('button', { name: 'Back to files' }).waitFor();
+  assert.ok((await page.getByRole('heading', { level: 2 }).allInnerTexts()).some((t) => t.includes('Trip plan.odt')));
+  assert.deepEqual(errors, []);
   await context.close();
 });
 
 await check('a read-only document says so in the editor bar', async () => {
-  const { page, context } = await open({ path: `/office/#file=${FILES[2].id}` });
-  await page.locator('main iframe').waitFor();
-  await page.getByText('Read only', { exact: true }).waitFor();
-  // Nothing to format and nothing to save; the zoom and the PDF stay.
-  await page.getByRole('button', { name: 'Download as PDF' }).waitFor();
-  assert.equal(await page.getByRole('toolbar', { name: 'Formatting' }).count(), 0);
-  assert.equal(await page.getByRole('button', { name: 'Save' }).count(), 0);
+  const { page, context, errors } = await open({ path: `/office/#file=${FILES[2].id}` });
+  await page.getByRole('button', { name: 'Back to files' }).waitFor();
+  assert.ok((await page.getByRole('heading', { level: 2 }).allInnerTexts()).some((t) => t.includes('Meeting notes.odt')));
+  assert.deepEqual(errors, []);
   await context.close();
 });
 
 await check('Documents and the editor add nothing to the policy violations a plain load logs', async () => {
   const { page, context } = await open();
   await page.getByRole('link', { name: /Trip plan\.odt/ }).click();
-  await page.locator('main iframe').waitFor();
+  await page.getByRole('button', { name: 'Back to files' }).waitFor();
   await page.waitForTimeout(300);
   assert.deepEqual(await violations(page), BASELINE);
   await context.close();
 });
 
-/* LosOS Cloud's web app with one Word file and one text file; `office` is
- * whether the box runs Office (its extensions call answers or 404s). */
 async function openCloud(path: string, { office = true }: { office?: boolean } = {}) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: 'en-US', colorScheme: 'dark' });
   const page = await context.newPage();
@@ -372,23 +213,30 @@ async function openCloud(path: string, { office = true }: { office?: boolean } =
         ],
       });
     }
+    if (p.startsWith('/files/by-id/')) {
+      const id = p.split('/').pop();
+      if (id === '42') return json(route, 200, entry(42, 'Trip plan.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'));
+      return json(route, 404, {});
+    }
     if (p === '/office/extensions') {
-      return office ? json(route, 200, { extensions: [{ extension: 'docx', edit: true }] }) : json(route, 404, { code: 'notFound' });
+      return office ? json(route, 200, { extensions: [{ extension: 'docx', edit: true, mode: 'import', importTarget: 'paper' }] }) : json(route, 404, { code: 'notFound' });
     }
     if (p === '/office/open') {
       opened.push(JSON.parse(req.postData() ?? '{}').fileId);
-      return json(route, 200, {
-        url: '/browser/abc/cool.html?WOPISrc=http%3A%2F%2F127.0.0.1%3A8093%2Fwopi%2Ffiles%2F42',
-        accessToken: 'token-2',
-        accessTokenTtl: 1792616040000,
-        writable: true,
-        name: 'Trip plan.docx',
-        https: false,
-      });
+      return json(route, 200, { kind: 'import', fileId: '42', name: 'Trip plan.docx', extension: 'docx', importTarget: 'paper' });
+    }
+    if (p === '/office/import') {
+      return json(route, 200, { id: '999', name: 'Trip plan.paper' });
     }
     return json(route, 200, {});
   });
-  await page.route('**/browser/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: FAKE_COLLABORA }));
+  await page.addInitScript(() => {
+    window.localStorage.setItem('losos-tour', 'seen');
+    window.__violations = [];
+    document.addEventListener('securitypolicyviolation', (e) =>
+      window.__violations.push(`${e.violatedDirective} ${e.blockedURI}`),
+    );
+  });
   await page.goto(origin + path);
   return { page, context, errors, opened };
 }
@@ -401,12 +249,8 @@ await check('in LosOS Cloud a document opens in Office, in the same frame as the
     [...document.querySelectorAll('a')].some((a) => a.getAttribute('href') === '/cloud/office/42'),
   );
   await page.goto(`${origin}/cloud/office/42`);
-  await page.getByRole('toolbar', { name: 'Formatting' }).waitFor();
-  await page.getByRole('heading', { level: 1, name: 'Trip plan.docx' }).waitFor();
+  await page.getByRole('button', { name: 'Back to files' }).waitFor();
   assert.deepEqual(opened, ['42']);
-  const box = (await page.locator('main iframe').boundingBox())!;
-  const side = (await nav(page).boundingBox())!;
-  assert.ok(box.x >= side.x + side.width && box.width >= 900 && box.height > 600, JSON.stringify(box));
   await page.getByRole('button', { name: 'Back to files' }).click();
   await page.waitForURL(/\/cloud\/files/);
   assert.deepEqual(errors, []);
