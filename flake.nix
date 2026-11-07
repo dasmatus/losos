@@ -428,6 +428,10 @@
             # LosOS Cloud (backend/src/cloud/): files, calendars, contacts and
             # boards at /cloud/, and to the Nextcloud desktop and phone apps.
             ./modules/cloud.nix
+            # LosOS Forum (scaffold): Discourse+Slack hybrid, @LosOS, ActivityPub +
+            # Matrix DM bridge via the edge proxy network. Design:
+            # docs/superpowers/specs/2026-11-05-losos-forum-design.md
+            ./modules/forum.nix
             # Office documents in the browser: Collabora Online and its WOPI
             # host (backend/src/office/).
             ./modules/office.nix
