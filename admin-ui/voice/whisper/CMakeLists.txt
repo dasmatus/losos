@@ -30,8 +30,8 @@ set(LINK
   -sFORCE_FILESYSTEM=1 -sFILESYSTEM=1
   -sEXPORTED_FUNCTIONS=_malloc,_free
   -sEXPORTED_RUNTIME_METHODS=FS,HEAPF32,HEAPU8,UTF8ToString,ccall
-  --no-entry -O3 -flto=thin)
+  --no-entry -O3)
 if(LOSOS_THREADS)
-  list(APPEND LINK -pthread -sPTHREAD_POOL_SIZE=4)
+  list(APPEND LINK -flto=thin -pthread -sPTHREAD_POOL_SIZE=4)
 endif()
 target_link_options(losos-whisper PRIVATE ${LINK})
