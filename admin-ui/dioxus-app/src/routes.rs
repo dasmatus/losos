@@ -3,6 +3,7 @@ use crate::app::{AppLayout, AuthSignal, AuthState, ConfigSignal};
 use crate::auth::{self, Gate};
 use crate::components::ui::{Button, Card, Empty, Spinner};
 use crate::pages::{blocks, page::{Page, PageId}};
+use crate::screens::settings::SettingsShell;
 use crate::store::{self, BoxConfig};
 use dioxus::prelude::*;
 use serde_json::Value;
@@ -264,19 +265,7 @@ fn SettingsRoot() -> Element {
 
 #[component]
 fn SettingsPane(pane: String) -> Element {
-    let config = config_signal();
-    rsx! {
-        div { class: "page settings-layout",
-            aside { class: "settings-nav",
-                h2 { "Settings" }
-                {settings_links(&pane)}
-            }
-            section { class: "settings-pane",
-                h1 { "{pane_label(&pane)}" }
-                PaneBody { pane: pane.clone(), config: config() }
-            }
-        }
-    }
+    rsx! { SettingsShell { pane } }
 }
 
 fn pane_label(pane: &str) -> &str {
