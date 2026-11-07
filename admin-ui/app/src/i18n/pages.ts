@@ -15,6 +15,7 @@ export default defineMessages({
   },
   "pages.page.overview": { en: "Overview", sk: "Prehľad", de: "Übersicht" },
   "pages.page.settings.storage": { en: "Storage", sk: "Úložisko", de: "Speicher" },
+  "pages.page.settings.about": { en: "About", sk: "O zariadení", de: "Über" },
   "pages.changed": { en: "Changed", sk: "Zmenená", de: "Geändert" },
   "pages.shipped": { en: "As shipped", sk: "Ako ju dodáva LosOS", de: "Wie ausgeliefert" },
   "pages.edit": { en: "Edit {name}", sk: "Upraviť {name}", de: "{name} bearbeiten" },
@@ -168,5 +169,10 @@ export default defineMessages({
     en: "How full the disk is, and the reserve the box can add to it.",
     sk: "Ako je disk plný a rezerva, ktorú k nemu zariadenie môže pridať.",
     de: "Wie voll die Platte ist und die Reserve, die die Box hinzufügen kann.",
+  },
+  "pages.block.About": {
+    en: "What this box is: its name, addresses, storage, handbook, tour, spare time and updates.",
+    sk: "Čím je toto zariadenie: názov, adresy, úložisko, príručka, prehliadka, voľný čas a aktualizácie.",
+    de: "Was diese Box ist: Name, Adressen, Speicher, Handbuch, Tour, freie Zeit und Aktualisierungen.",
   },
 });

@@ -29,6 +29,15 @@
           "about": "How full the disk is, and the reserve the box can add to it."
         }
       }
+    },
+    "settings.about": {
+      "title": "About",
+      "path": "/settings/about",
+      "blocks": {
+        "About": {
+          "about": "What this box is: its name, addresses, storage, handbook, tour, spare time and updates."
+        }
+      }
     }
   }
 }
