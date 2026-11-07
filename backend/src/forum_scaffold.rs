@@ -21,6 +21,10 @@
 #![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
+//
+// Compatibility: edge/federation scaffold contracts/hooks live here.
+// Phase 1 runtime foundation may live in `backend/src/forum/` on integrated
+// branches; this module remains stub/contract-only (no AP/Matrix runtime).
 
 /// Placeholder status for scaffold verification.
 pub const SCAFFOLD: &str = "losos-forum-scaffold";
