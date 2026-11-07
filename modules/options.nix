@@ -299,26 +299,77 @@ in
     cache.substituters = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       # The local cache server fetches signed per-store-path OCI artifacts
-      # from GHCR with oras. GitHub Pages is a static fallback if GHCR is
-      # unreachable. Neither the installer nor the installed appliance needs
-      # a hosted cache proxy.
+      # from GHCR with oras on demand. The Pages copy was a static fallback but
+      # is not reliable; keep only the GHCR-backed proxy by default.
       default = [
         "http://127.0.0.1:8787"
-        "https://losos.dasmat.us/proxy"
       ];
       description = ''
         Extra Nix substituters, added to the appliance *and* to the installer
         medium. The local `http://127.0.0.1:8787` service pulls signed
-        per-store-path artifacts from GHCR with `oras`; the static copy of the
-        newest build on GitHub Pages (`https://losos.dasmat.us/proxy`) is a
-        remote fallback. `trustedPublicKeys` carries the key used to sign
-        those paths. Set this to `[ ]` to use cache.nixos.org alone.
+        per-store-path artifacts from GHCR with `oras`. `trustedPublicKeys`
+        carries the key used to sign those paths. Set this to `[ ]` to use
+        cache.nixos.org alone.
 
         This exists because `losos-ctl install` runs a bare `nixos-install`
         with no substituter flags, and the install closure carries the
         workload images and the LosOS packages, none of which cache.nixos.org
         has. The local server lets Nix pull those artifacts directly from GHCR
         without depending on a separately hosted cache proxy.
+      '';
+    };
+
+    cache.ghcr.host = lib.mkOption {
+      type = lib.types.str;
+      default = "127.0.0.1";
+      description = ''
+        Address the on-demand GHCR-backed Nix cache (`losos-ghcr-cache`)
+        listens on. Keep the default on an appliance; set to `0.0.0.0` on a
+        VPS/edge that serves it to other machines, and restrict access with a
+        reverse proxy or firewall.
+      '';
+    };
+
+    cache.ghcr.port = lib.mkOption {
+      type = lib.types.port;
+      default = 8787;
+      description = "Port the on-demand GHCR-backed Nix cache listens on.";
+    };
+
+    cache.ghcr.openFirewall = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Open `cache.ghcr.port` in the firewall (for a VPS serving the GHCR cache).";
+    };
+
+    cache.ghcr.ephemeral = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Keep the GHCR cache staging data on tmpfs (`/run/losos-ghcr-cache`)
+        instead of persistent storage. Useful for a VPS proxy that should be
+        stateless and cheap to discard.
+      '';
+    };
+
+    cache.ghcr.socketActivation = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Start the GHCR cache service on demand via systemd socket activation
+        (for example when pulled by CI or a client), instead of running it
+        continuously.
+      '';
+    };
+
+    cache.ghcr.vps = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Zero-setup VPS mode for the GHCR binary cache proxy: ephemeral tmpfs
+        storage, socket activation (starts when pulled from CI/GitHub Actions
+        or clients), and listens on all interfaces with the firewall opened.
+        Put a reverse proxy/TLS in front if exposing it publicly.
       '';
     };
 
@@ -2307,7 +2358,7 @@ in
       default = null;
       internal = true;
       description = ''
-        Store path of the built admin SPA: a Vite `dist/` tree with index.html
+        Store path of the built admin SPA: a `dist/` tree with index.html
         at its root, content-hashed bundles under assets/, and the
         deliberately unhashed theme-boot.js beside them. This is the front
         vhost's document root, served with an SPA fallback
