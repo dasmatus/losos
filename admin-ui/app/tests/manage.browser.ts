@@ -310,7 +310,14 @@ await check('the gateway is set up from the page: its owner, its hub and the box
   await page.getByTestId('gateway-signature-file').setInputFiles({
     name: 'settings-sig.asc', mimeType: 'application/pgp-signature', buffer: Buffer.from('-----BEGIN PGP SIGNATURE-----\nabc\n-----END PGP SIGNATURE-----'),
   });
-  assert.equal(await page.getByLabel('Settings file').inputValue(), '{"version":2}');
+  const settingsInput = page.getByLabel('Settings file');
+  let settingsValue = "";
+  for (let i = 0; i < 50; i += 1) {
+    settingsValue = await settingsInput.inputValue();
+    if (settingsValue === '{"version":2}') break;
+    await page.waitForTimeout(100);
+  }
+  assert.equal(settingsValue, '{"version":2}');
   await section.getByRole('button', { name: 'Save' }).click();
   await page.getByText('Settings accepted', { exact: true }).waitFor();
   claim = writes.filter((w) => w.path === '/passport/settings').at(-1)!;
