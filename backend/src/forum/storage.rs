@@ -128,10 +128,10 @@ impl ForumDb {
     fn migrate(&self) -> Result<(), ForumStoreError> {
         let mut conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         let tx = conn.transaction()?;
-        let version: usize = tx.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-        for (i, sql) in MIGRATIONS.iter().enumerate().skip(version) {
+        let version: i64 = tx.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        for (i, sql) in MIGRATIONS.iter().enumerate().skip(version as usize) {
             tx.execute_batch(sql)?;
-            tx.pragma_update(None, "user_version", i + 1)?;
+            tx.pragma_update(None, "user_version", (i + 1) as i64)?;
         }
         tx.commit()?;
         Ok(())
