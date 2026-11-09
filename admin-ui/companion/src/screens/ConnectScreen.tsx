@@ -21,7 +21,7 @@ import { useTokens } from "../theme/useTokens";
 import { LOSOS_RADIUS, LOSOS_TYPE, type LososTokens } from "../theme/tokens";
 import { probe } from "../api/probe";
 import { browseBoxes, type FoundBox } from "../api/discovery";
-import { useBoxConfig, type BoxConfig, type ProbeResult } from "../store/config";
+import { useBoxConfig, updateConfig, type BoxConfig, type ProbeResult } from "../store/config";
 
 export function ConnectScreen(): React.JSX.Element {
   const tokens = useTokens();

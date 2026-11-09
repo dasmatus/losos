@@ -5,11 +5,11 @@
  * README of the terminal client's panes).
  */
 
-import { Text, type StyleProp, type ViewStyle } from "react-native";
+import { Text, type StyleProp, type TextStyle } from "react-native";
 
 import { LOSOS_RADIUS, LOSOS_TYPE, type LososTokens } from "../theme/tokens";
 
-export function DemoChip({ tokens, style }: { tokens: LososTokens; style?: StyleProp<ViewStyle> }) {
+export function DemoChip({ tokens, style }: { tokens: LososTokens; style?: StyleProp<TextStyle> }) {
   return (
     <Text
       style={[

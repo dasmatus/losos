@@ -7,7 +7,7 @@
 import type { LososTokens } from "../theme/tokens";
 import { PaneRow } from "./PaneRow";
 import { maybeBool, maybeObject, maybeString } from "../api/wire";
-import type { JsonBody } from "../api/wire";
+import type { JsonBody } from "../api/api";
 
 export function OptionRow({ tokens, option }: { tokens: LososTokens; option: JsonBody }) {
   const name = maybeString(option, "name") ?? "-";

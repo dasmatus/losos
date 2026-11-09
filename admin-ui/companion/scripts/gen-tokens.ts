@@ -279,7 +279,10 @@ ${paletteBlock(dark, "    ")}
 } as const;
 
 /** One mode's palette: every slot is lowercase #rrggbb. */
-export type LososPalette = (typeof PALETTES)["light"];
+// The palette's shape, not one side's literals: a consumer must be able to
+// hold the dark palette in a slot typed "the palette" (tokens.ts does), so a
+// keyed map to string — same slots, widened values.
+export type LososPalette = { [K in keyof (typeof PALETTES)["light"]]: string }
 export type PaletteKey = keyof LososPalette;
 `;
 

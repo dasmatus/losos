@@ -38,12 +38,12 @@ export function CloudTab({ tokens }: { tokens: LososTokens }): React.JSX.Element
       </Text>
       {box.demo ? (
         <Card tokens={tokens} demo>
-          {[
+          {([
             ["Documents", "108 files · 2.3 GB"],
             ["Photos", "1,208 · last import today"],
             ["Music", "213 · 1.1 GB"],
             ["Boards", "Chore chart · 3 left today"],
-          ].map(([name, meta]) => (
+          ] as Array<[string, string]>).map(([name, meta]) => (
             <CloudRow key={name} tokens={tokens} name={name} meta={meta} />
           ))}
         </Card>

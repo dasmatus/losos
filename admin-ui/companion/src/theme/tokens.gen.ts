@@ -61,5 +61,5 @@ export const PALETTES = {
 } as const;
 
 /** One mode's palette: every slot is lowercase #rrggbb. */
-export type LososPalette = (typeof PALETTES)["light"];
-export type PaletteKey = keyof LososPalette;
+export type LososPalette = { [K in keyof (typeof PALETTES)["light"]]: string }
+export type PaletteKey = keyof LososPalette

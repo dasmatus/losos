@@ -27,7 +27,7 @@
  * third-party library, as the plan allows.
  */
 
-import { config, type FetchConfig } from "react-native-blob-util";
+import { config, type ReactNativeBlobUtilConfig } from "react-native-blob-util";
 
 /** The connect/read timeouts, ApiClient.kt's 4000/20000 pair. On the
  *  native-fetch path they are two phases: the connection must have begun
@@ -124,7 +124,6 @@ function beginWord(e: Error | undefined, began: boolean): string {
 
 /* ── https: react-native-blob-util, trusty, one wall-clock timer ────────── */
 
-let blobUtil: FetchConfig | null = null;
 
 async function throughBlob(
   url: string,
@@ -133,11 +132,13 @@ async function throughBlob(
   const method = options.method ?? "GET";
   const headers: Record<string, string> = { ...options.headers, "Cache-Control": "no-store" };
   try {
-    const util = blobUtil ?? (blobUtil = config);
-    const resp = await util
-      .config({ timeout: options.deadlineMs ?? CONNECT_TIMEOUT_MS + READ_TIMEOUT_MS, trusty: true })
-      .fetch(method, url, headers, options.body);
-    return { status: resp.info().status, text: resp.text() };
+    // The util's own builder: config(options).fetch — one per request, so a
+    // changed timeout between calls can not stick to a cached instance.
+    const resp = await config({
+      timeout: options.deadlineMs ?? CONNECT_TIMEOUT_MS + READ_TIMEOUT_MS,
+      trusty: true,
+    }).fetch(method, url, headers, options.body);
+    return { status: resp.info().status, text: await resp.text() };
   } catch (e) {
     throw new TransportError(blobWord(e as Error | undefined));
   }

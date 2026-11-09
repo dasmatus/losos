@@ -8,7 +8,7 @@ import * as React from "react";
 import { Text, View, type StyleProp, type ViewStyle } from "react-native";
 
 import { DemoChip } from "./DemoChip";
-import { LOSOS_RADIUS, type LososTokens } from "../theme/tokens";
+import { LOSOS_RADIUS, LOSOS_TYPE, type LososTokens } from "../theme/tokens";
 
 export function Card({
   tokens,
