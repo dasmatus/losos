@@ -44,9 +44,29 @@ module.exports = (async () => {
     if (moduleName === "losos:build") {
       return { type: "sourceFile", filePath: path.join(__dirname, "src", "lib", "build.gen.ts") };
     }
+    // The onnxruntime-web register file carries a computed import its own
+    // wasm backend's worker story needs (Metro's rewrite refuses the
+    // computed form), so the wasm backend's imports land on the answering
+    // shim (src/lib/ort-wasm-stub.ts, which throws the load's own text).
+    // tasks-vision is the same shape, same story (the calls background's
+    // segmenter).
+    if (moduleName.includes("onnxruntime-web/wasm") && platform !== "ios" && platform !== "android") {
+      // (The stub is a web-target fact; the native builds never see it.)
+      return { type: "sourceFile", filePath: path.join(__dirname, "src", "lib", "ort-wasm-stub.ts") };
+    }
+    if (moduleName.includes("@mediapipe/tasks-vision") && platform !== "ios" && platform !== "android") {
+      return { type: "sourceFile", filePath: path.join(__dirname, "src", "lib", "tasks-vision-stub.ts") };
+    }
     if (fallback) return fallback(context, moduleName, platform);
     return context.resolveRequest(context, moduleName, platform);
   };
+  // ... and the one transform exception the tree's only dependency with a
+  // computed import carries (transformers/passthrough-onnx.cjs's header).
+  config.transformer.babelTransformerPath = path.join(
+    __dirname,
+    "transformers",
+    "passthrough-onnx.cjs",
+  );
 
   return config;
 })();

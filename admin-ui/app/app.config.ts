@@ -97,12 +97,15 @@ const config: ExpoConfig = {
   web: {
     // Metro on web, like the other two targets: one bundler, one Babel
     // config, one dependency set (react-native-web + react-dom, the SDK 54
-    // pair `expo install` pinned). "static" pre-renders each router route
-    // to HTML at `expo export` time - the companion's screens are the box's
-    // panes, all behind the connect gate, so static is what a shareable
-    // page needs and the SPA fallback (single-file output) is not.
+    // pair `expo install` pinned). "single" is the SPA shape the vhost
+    // serves: one document, the hashed bundle, history routing in the
+    // browser (the pages are client-rendered; nobody cites a pane URL).
+    // The per-route static prerender (output "static") wants expo's SSR
+    // pass, whose node-env evalMetro pass the two react-dom tree entries
+    // (created with a Service worker flag) can't sit through — the follow
+    // ups for it sit in the loader twins' notes.
     bundler: "metro",
-    output: "static",
+    output: "single",
     // The brand salmon again, downscaled for the tab (assets/images/.
     // favicon.png is salmon.png box-filtered to 48x48).
     favicon: "./assets/images/favicon.png",
