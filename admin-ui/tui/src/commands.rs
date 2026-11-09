@@ -90,6 +90,7 @@ impl Io {
     }
 
     /// The full-screen view needs a terminal on both ends.
+    #[cfg(not(target_arch = "wasm32"))]
     fn terminal(&self) -> bool {
         self.stdin_tty && self.stdout_tty
     }
@@ -373,6 +374,7 @@ fn key(io: &mut Io, command: KeyCommand) -> Result<u8> {
 /// What `/api/access/host-key` (a box) or `/operator/host-key` (an edge)
 /// serves, and the certificate the host showed, when no authority vouched
 /// for it.
+#[cfg(not(target_arch = "wasm32"))]
 struct Served {
     kind: HostKind,
     fingerprint: String,
@@ -384,6 +386,7 @@ struct Served {
 
 /// The edge address a box's host key answer names, when it is a web
 /// address with TLS; anything else is not kept.
+#[cfg(not(target_arch = "wasm32"))]
 fn edge_url(kind: HostKind, doc: &Value) -> Option<String> {
     let raw = doc.get("edgeUrl").and_then(Value::as_str)?;
     (kind == HostKind::Box && raw.starts_with("https://"))
@@ -391,6 +394,7 @@ fn edge_url(kind: HostKind, doc: &Value) -> Option<String> {
         .flatten()
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn fetch_host_key(url: &str) -> Result<Served> {
     let http = Http::new(Trust::FirstUse);
     let mut last = String::new();
@@ -564,6 +568,7 @@ fn is_token(token: &str) -> bool {
 }
 
 /// A certificate's SHA-256, in groups of four.
+#[cfg(not(target_arch = "wasm32"))]
 fn group_pin(pin: &str) -> String {
     pin.to_ascii_uppercase()
         .as_bytes()
@@ -1829,6 +1834,7 @@ mod tests {
         assert!(!is_token("losos_pat_"));
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn a_pin_reads_in_groups() {
         assert_eq!(group_pin("abcdef0123"), "ABCD EF01 23");
