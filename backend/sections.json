@@ -31,6 +31,7 @@
     "POST /api/access/call": "public",
     "GET /api/setup/claim": "public",
     "POST /api/setup/claim": "public",
+    "GET /api/onion/": "public",
     "GET /internal/cloud-share": "internal",
     "GET /internal/chat/authz": "internal",
 

@@ -22,6 +22,12 @@ let
   pkg = config.losos.backend.package;
   domainCheck = config.losos.proxy.gateways.domain;
 
+  # The box's Tor and I2P addresses (modules/hidden-lib.nix): when either is
+  # on, lososd serves the onion surface on a second loopback listener
+  # (backend/src/http.rs), Traefik being its only caller.
+  hidden = import ./hidden-lib.nix { inherit lib pkgs; };
+  hiddenOn = config.losos.hidden.tor.enable || config.losos.hidden.i2p.enable;
+
   # System-bus policy: root owns org.losos1; members of the fixed `losos`
   # group may send to it (the facade runs as root or a losos-group caller).
   # Everyone else is denied.
@@ -57,7 +63,9 @@ in
 
     services.dbus.packages = [ dbusPolicy ];
 
-    # Only root and nginx may open a connection to the loopback API.
+    # Only root and nginx may open a connection to the loopback API, and —
+    # when the box has Tor or I2P addresses — only root and Traefik may open
+    # one to the onion surface's listener.
     #
     # lososd binds 127.0.0.1, which keeps the LAN out, but not this box: the
     # apps' pods are hostNetwork and share its loopback, and LosOS Git runs
@@ -75,35 +83,49 @@ in
     # socket changes every test that talks to :8082. An owner match on
     # OUTPUT says it at the kernel instead: a locally generated packet to the
     # port is rejected unless its socket belongs to root (the daemon's own
-    # tooling, the VM tests), nginx or the log reader. nix/tests/admin-vm.nix
-    # asserts both halves.
+    # tooling, the VM tests), nginx or the log reader. The onion surface's
+    # port ($LOSOS_ONION_PORT, backend/src/http.rs) is the same story with
+    # the same stakes — its callers name themselves in `Remote-User` — and
+    # Traefik is the only thing that may call it. nix/tests/admin-vm.nix
+    # asserts both halves of the API's rule.
     #
     # `-I`, so it sits ahead of anything appended later; the delete first
-    # makes a firewall reload idempotent. nginx is named only when it runs:
+    # makes a firewall reload idempotent. A user is named only when it runs:
     # iptables refuses an owner match for a user that does not exist, and a
     # firewall that fails to start is a box with no front door.
     networking.firewall =
       let
-        rule = lib.concatStringsSep " " (
-          [
-            "OUTPUT -o lo -p tcp -d 127.0.0.1 --dport ${toString config.losos.admin.apiPort}"
-            "-m owner ! --uid-owner 0"
-          ]
-          ++ lib.optional config.services.nginx.enable "-m owner ! --uid-owner ${config.services.nginx.user}"
-          # The log reader (modules/log-reader.nix) asks who is signed in,
-          # passing on the person nginx named to it.
-          ++ lib.optional (config.users.users ? losos-logs) "-m owner ! --uid-owner losos-logs"
-          ++ [ "-j REJECT --reject-with tcp-reset" ]
-        );
+        rule =
+          port: owners:
+          lib.concatStringsSep " " (
+            [
+              "OUTPUT -o lo -p tcp -d 127.0.0.1 --dport ${toString port}"
+              "-m owner ! --uid-owner 0"
+            ]
+            ++ map (owner: "-m owner ! --uid-owner ${owner}") owners
+            ++ [ "-j REJECT --reject-with tcp-reset" ]
+          );
+        # The log reader (modules/log-reader.nix) asks who is signed in,
+        # passing on the person nginx named to it.
+        apiOwners =
+          lib.optional config.services.nginx.enable (config.services.nginx.user)
+          ++ lib.optional (config.users.users ? losos-logs) "losos-logs";
+        # The onion surface (backend/src/http.rs): Traefik's forwardAuth
+        # middleware only, never nginx.
+        onionOwners = lib.optional (config.users.users ? losos-traefik) "losos-traefik";
+        rules = [
+          (rule config.losos.admin.apiPort apiOwners)
+        ]
+        ++ lib.optionals hiddenOn [ (rule hidden.adminPort onionOwners) ];
       in
       lib.mkIf config.networking.firewall.enable {
-        extraCommands = ''
-          iptables -w -D ${rule} 2>/dev/null || true
-          iptables -w -I ${rule}
-        '';
-        extraStopCommands = ''
-          iptables -w -D ${rule} 2>/dev/null || true
-        '';
+        extraCommands = lib.concatMapStrings (r: ''
+          iptables -w -D ${r} 2>/dev/null || true
+          iptables -w -I ${r}
+        '') rules;
+        extraStopCommands = lib.concatMapStrings (r: ''
+          iptables -w -D ${r} 2>/dev/null || true
+        '') rules;
       };
 
     # The seeded keys, one armoured block after another. Public keys, so the
@@ -145,6 +167,10 @@ in
       environment = {
         LOSOS_ADMIN_PORT = toString config.losos.admin.apiPort;
         LOSOS_ADMIN_TOKEN_FILE = "%d/admin-token";
+        # The onion surface's listener, when the box has Tor or I2P
+        # addresses (backend/src/http.rs): unset, the daemon serves the LAN
+        # API alone.
+        LOSOS_ONION_PORT = lib.mkIf hiddenOn (toString hidden.adminPort);
         LOSOS_ESCROW_KEY_FILE = "%d/market-escrow-key";
         # The credential list and what it is sealed to (backend/src/credentials.rs).
         LOSOS_CREDENTIALS_FILE = "/etc/losos/credentials.json";

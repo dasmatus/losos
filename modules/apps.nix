@@ -51,6 +51,16 @@
 #                     (losos.apps.traefikPort), for the job and for lososd's
 #                     statistics plugin.
 #
+# The same daemon fronts the box's onion addresses when hidden services are
+# on (modules/hidden-services.nix): entry points `onion-http` and
+# `onion-https` on the ports Tor and I2P deliver to, routers that carry
+# LosOS Login's forwardAuth, and the app's document behind lososd's second
+# listener — part B of docs/superpowers/specs/2026-11-09-csr-offload-design.md.
+# One Traefik for both roles, its static config split so hidden services
+# without apps do not drag the Podman provider along. The onion routers'
+# dynamic file is in traefikDir like everything else the file provider
+# watches.
+#
 # WHY THE SHAPING. The local cluster has no pod network, no kube-proxy and no
 # DNS, and its node is NotReady for life (modules/cluster.nix). A chart as
 # published would never start there. Shaping makes it run the way the box's
@@ -100,6 +110,16 @@ let
   enabled = cfg.enable && pkg != null;
   # Anything at all on Podman: installs, or the box's own apps.
   podmanOn = pkg != null && (cfg.enable || cfg.builtin != { });
+  # Traefik runs for the apps' ports, and for the box's onion addresses
+  # (modules/hidden-services.nix) — one daemon for both roles.
+  hidden = import ./hidden-lib.nix { inherit lib pkgs; };
+  hiddenOn = config.losos.hidden.tor.enable || config.losos.hidden.i2p.enable;
+  traefikOn = enabled || hiddenOn;
+  # Sign-in, as modules/identity.nix turns it on: the forwardAuth
+  # middleware needs an Authelia to ask. Without it the onion surface is
+  # the spare key's alone, as the LAN's would be.
+  identityOn =
+    config.losos.identity.enable && config.losos.admin.enable && config.losos.admin.ui != null;
   builtinNames = lib.attrNames cfg.builtin;
 
   owner = config.users.users.notshared;
@@ -224,6 +244,15 @@ let
       10268
       cfg.traefikPort
     ]
+    # The onion surface's four (modules/hidden-lib.nix): Tor's and I2P's
+    # two delivery ports, which Traefik holds, lososd's second listener,
+    # and the front vhost's onion listener.
+    ++ lib.optionals hiddenOn [
+      hidden.httpPort
+      hidden.httpsPort
+      hidden.adminPort
+      hidden.vhostPort
+    ]
     ++ lib.range cfg.ports.from cfg.ports.to
   );
   reservedArg = lib.concatMapStringsSep "," toString reserved;
@@ -271,6 +300,10 @@ let
   podmanApiSocket = "/run/losos-podman-api/podman.sock";
   yaml = pkgs.formats.yaml { };
 
+  # The admin app's response policy, the front vhost's own
+  # (modules/admin-csp.nix, shared with containers.nix).
+  adminCsp = import ./admin-csp.nix { inherit lib; };
+
   # The same guard as lan-only.nix, in Traefik's terms: the RFC 1918 ranges
   # with the mesh's pod network (10.42.0.0/16) cut out, because
   # ipAllowList has no deny. Loopback matches none of them, so the tunnel
@@ -295,9 +328,233 @@ let
     http.middlewares.lan-only.ipAllowList.sourceRange = lanRanges;
   };
 
-  # One entrypoint per port of the range, on every address. No read timeout:
-  # an upload to an app is as long as it is, and Traefik's default cuts a
-  # request at 60 s.
+  # One entrypoint per port of the range, on every address, plus — when the
+  # box has Tor or I2P addresses — the two the hidden services deliver to,
+  # loopback only. No read timeout on either kind: an upload to an app is as
+  # long as it is, and Traefik's default cuts a request at 60 s.
+  appsEntryPoints = lib.listToAttrs (
+    map (
+      port:
+      lib.nameValuePair "port-${toString port}" {
+        address = ":${toString port}";
+        transport.respondingTimeouts = {
+          readTimeout = "0s";
+          writeTimeout = "0s";
+          idleTimeout = "1h";
+        };
+      }
+    ) (lib.range cfg.ports.from cfg.ports.to)
+  );
+  onionEntryPoints = lib.optionalAttrs hiddenOn {
+    onion-http = {
+      address = "127.0.0.1:${toString hidden.httpPort}";
+      transport.respondingTimeouts = {
+        readTimeout = "0s";
+        writeTimeout = "0s";
+        idleTimeout = "1h";
+      };
+    };
+    onion-https = {
+      address = "127.0.0.1:${toString hidden.httpsPort}";
+      transport.respondingTimeouts = {
+        readTimeout = "0s";
+        writeTimeout = "0s";
+        idleTimeout = "1h";
+      };
+    };
+  };
+
+  # The onion routers' dynamic file, watched in traefikDir like the apps'
+  # route files (the middleware below is the same file provider's). One
+  # router per half, because TLS is a router's property in Traefik, not an
+  # entry point's: the https half carries `tls`, the plain half does not.
+  #
+  # The paths, and why:
+  #   /api/          lososd's second listener. forwardAuth asks LosOS Login
+  #                  (the Traefik spelling of the front vhost's
+  #                  auth_request, modules/identity.nix) and sets
+  #                  `Remote-User`/`Remote-Groups` for it; a router a step
+  #                  above it takes a Bearer request straight to the same
+  #                  listener, which checks the token itself — the spare
+  #                  key opens the box over Tor as it does on the LAN, with
+  #                  LosOS Login down or not.
+  #   /auth/         LosOS Login itself, from anywhere, as on the LAN. The
+  #                  plain half redirects to https, which its Secure cookies
+  #                  need.
+  #   not admin      LosOS Cloud, LosOS Git, the wiki, the knowledge bases,
+  #                  the handbook, the app's assets and boot script: the
+  #                  front vhost's loopback listener keeps them, same vhost,
+  #                  same locations. The LAN-only ones among them (the no-JS
+  #                  suite, the first-run wizard's files, the two frames)
+  #                  answer the guard's plain 403, as the design's Decided 14
+  #                  has it. Admin paths never reach nginx.
+  #   everything else the admin app's document, the onion plugin's answer
+  #                  behind the second listener: the browser renders the
+  #                  panes, the API guards the data. The app's own response
+  #                  headers go with it — the vhost's server-level
+  #                  add_header do not exist on this path.
+  #
+  # The claim and everything under /api/setup ride nowhere: the claim is a
+  # first-run, at-the-box act, and the second listener's route list does not
+  # have those routes (backend/src/http.rs).
+  onionFrontRule = lib.concatStringsSep " || " (
+    map (p: "PathPrefix(`${p}`)") [
+      "/cloud/"
+      "/git/"
+      "/wiki/"
+      "/kb/"
+      "/handbook/"
+      "/assets/"
+      "/basic/"
+      "/setup/"
+      "/app-frame/"
+      "/widget-frame/"
+    ]
+    ++ [ "Path(`/theme-boot.js`)" ]
+  );
+  onionMiddlewares = {
+    # The admin app's own headers on its document (modules/admin-csp.nix for
+    # the policy and its reasoning).
+    losos-onion-headers.headers.customResponseHeaders = {
+      Content-Security-Policy = adminCsp;
+      X-Frame-Options = "DENY";
+      X-Content-Type-Options = "nosniff";
+      Referrer-Policy = "no-referrer";
+    };
+    # The plain half's /auth/ is no good to a browser: LosOS Login refuses
+    # an http address and its cookies are Secure. The front vhost redirects
+    # on the LAN; here the router does.
+    losos-onion-https.redirectScheme = {
+      scheme = "https";
+      permanent = false;
+    };
+  }
+  // lib.optionalAttrs identityOn {
+    # The question LosOS Login answers before a request goes on: who is
+    # signed in, as headers the backend believes because only Traefik may
+    # reach the listener (modules/daemon.nix's owner rule). Traefik removes
+    # these names from the caller's request first, so a client cannot name
+    # itself.
+    losos-onion-auth.forwardAuth = {
+      address = "http://127.0.0.1:${toString config.losos.identity.port}/auth/api/authz/forward-auth";
+      authResponseHeaders = [
+        "Remote-User"
+        "Remote-Groups"
+      ];
+      trustForwardHeader = false;
+    };
+  };
+  onionRouters =
+    let
+      half =
+        name:
+        {
+          rule,
+          priority,
+          service,
+          auth ? false,
+          headers ? false,
+        }:
+        {
+          "losos-onion-${name}-http" = {
+            inherit rule priority service;
+            entryPoints = [ "onion-http" ];
+          }
+          // lib.optionalAttrs (auth && identityOn) {
+            middlewares = [ "losos-onion-auth@file" ];
+          }
+          // lib.optionalAttrs headers {
+            middlewares = [ "losos-onion-headers@file" ];
+          };
+          "losos-onion-${name}-https" = {
+            inherit rule priority service;
+            entryPoints = [ "onion-https" ];
+            tls = { };
+          }
+          // lib.optionalAttrs (auth && identityOn) {
+            middlewares = [ "losos-onion-auth@file" ];
+          }
+          // lib.optionalAttrs headers {
+            middlewares = [ "losos-onion-headers@file" ];
+          };
+        };
+      # `/auth/` is the one router pair that differs on the plain half: it
+      # redirects to https, which LosOS Login's Secure cookies need.
+      authHalf =
+        {
+          rule,
+          priority,
+          service,
+        }:
+        {
+          "losos-onion-auth-http" = {
+            inherit rule priority service;
+            entryPoints = [ "onion-http" ];
+            middlewares = lib.optionals identityOn [ "losos-onion-https@file" ];
+          };
+          "losos-onion-auth-https" = {
+            inherit rule priority service;
+            entryPoints = [ "onion-https" ];
+            tls = { };
+          };
+        };
+    in
+    # A fold, not mkMerge: this is data for yaml.generate, and the module
+    # system's markers must not leak into it.
+    builtins.foldl' (a: b: a // b) { } [
+      (half "spare" {
+        rule = "PathPrefix(`/api/`) && HeaderRegexp(`Authorization`, `(?i)^Bearer\\s`)";
+        priority = 110;
+        service = "losos-onion";
+      })
+      (half "api" {
+        rule = "PathPrefix(`/api/`)";
+        priority = 100;
+        service = "losos-onion";
+        auth = true;
+      })
+      (half "front" {
+        rule = onionFrontRule;
+        priority = 90;
+        service = "losos-vhost";
+      })
+      (authHalf {
+        rule = "PathPrefix(`/auth/`)";
+        priority = 95;
+        service = "losos-login";
+      })
+      (half "spa" {
+        rule = "PathPrefix(`/`)";
+        priority = 1;
+        service = "losos-onion";
+        auth = true;
+        headers = true;
+      })
+    ];
+  onionConfig = yaml.generate "losos-traefik-onion.yml" {
+    http = {
+      middlewares = onionMiddlewares;
+      routers = onionRouters;
+      services = {
+        losos-onion.loadBalancer.servers = [
+          { url = "http://127.0.0.1:${toString hidden.adminPort}"; }
+        ];
+        losos-vhost.loadBalancer.servers = [
+          { url = "http://127.0.0.1:${toString hidden.vhostPort}"; }
+        ];
+        losos-login.loadBalancer.servers = [
+          { url = "http://127.0.0.1:${toString config.losos.identity.port}"; }
+        ];
+      };
+    };
+    tls.certificates = [
+      {
+        certFile = "/var/lib/losos-hidden/tls/cert.pem";
+        keyFile = "/var/lib/losos-hidden/tls/key.pem";
+      }
+    ];
+  };
+
   traefikStatic = yaml.generate "losos-traefik.yml" {
     global = {
       checkNewVersion = false;
@@ -308,27 +565,20 @@ let
       # `api.insecure` serves the API on the entrypoint of this name.
       traefik.address = "127.0.0.1:${toString cfg.traefikPort}";
     }
-    // lib.listToAttrs (
-      map (
-        port:
-        lib.nameValuePair "port-${toString port}" {
-          address = ":${toString port}";
-          transport.respondingTimeouts = {
-            readTimeout = "0s";
-            writeTimeout = "0s";
-            idleTimeout = "1h";
-          };
-        }
-      ) (lib.range cfg.ports.from cfg.ports.to)
-    );
+    // (lib.optionalAttrs enabled appsEntryPoints)
+    // onionEntryPoints;
     providers = {
+      file = {
+        directory = traefikDir;
+        watch = true;
+      };
+    }
+    # The apps plumbing, only for the apps (Decided 13): a box with Tor and
+    # no apps runs the same daemon without it.
+    // lib.optionalAttrs enabled {
       docker = {
         endpoint = "unix://${podmanApiSocket}";
         exposedByDefault = false;
-        watch = true;
-      };
-      file = {
-        directory = traefikDir;
         watch = true;
       };
     };
@@ -666,6 +916,73 @@ let
 in
 {
   config = lib.mkMerge [
+    # Traefik, whenever it has anything to front: the apps' LAN ports, or
+    # the box's onion addresses (Decided 13 — one daemon for both roles,
+    # its static config split so hidden services without apps do not drag
+    # the apps plumbing along).
+    (lib.mkIf traefikOn {
+      users.users.losos-traefik = {
+        isSystemUser = true;
+        group = "losos-traefik";
+        description = "Traefik, the installed apps' LAN ports and this box's onion addresses";
+      };
+      users.groups.losos-traefik = { };
+
+      systemd.tmpfiles.rules = [
+        "d /var/lib/losos-apps 0755 root root -"
+        "d ${traefikDir} 0755 root root -"
+      ]
+      # The onion routers, the forwardAuth middleware and the hidden leaf
+      # certificate (modules/hidden-services.nix): only when the box has
+      # addresses to serve.
+      ++ lib.optionals hiddenOn [
+        "L+ ${traefikDir}/01-onion.yml - - - - ${onionConfig}"
+      ];
+
+      systemd.services.losos-traefik = {
+        description = "Traefik, the installed apps' LAN ports and this box's onion addresses";
+        wantedBy = [ "multi-user.target" ];
+        wants = [ "network-online.target" ] ++ lib.optionals enabled [ "losos-podman-api.socket" ];
+        after = [
+          "network-online.target"
+          "systemd-tmpfiles-setup.service"
+        ]
+        ++ lib.optionals enabled [ "losos-podman-api.socket" ];
+        serviceConfig = {
+          ExecStart = "${pkgs.traefik}/bin/traefik --configFile=${traefikStatic}";
+          User = "losos-traefik";
+          Group = "losos-traefik";
+          Restart = "always";
+          RestartSec = 2;
+          NoNewPrivileges = true;
+          CapabilityBoundingSet = "";
+          ProtectSystem = "strict";
+          ProtectHome = true;
+          PrivateTmp = true;
+          PrivateDevices = true;
+          ProtectKernelTunables = true;
+          ProtectKernelModules = true;
+          ProtectKernelLogs = true;
+          ProtectControlGroups = true;
+          ProtectClock = true;
+          ProtectHostname = true;
+          RestrictNamespaces = true;
+          RestrictRealtime = true;
+          RestrictSUIDSGID = true;
+          LockPersonality = true;
+          MemoryDenyWriteExecute = true;
+          RestrictAddressFamilies = [
+            "AF_INET"
+            "AF_INET6"
+            "AF_UNIX"
+          ];
+          SystemCallArchitectures = "native";
+          SystemCallFilter = [ "@system-service" ];
+          LimitNOFILE = 65536;
+        };
+      };
+    })
+
     (lib.mkIf enabled {
       systemd.services.lososd = {
         environment = {
@@ -687,19 +1004,11 @@ in
       };
 
       systemd.tmpfiles.rules = [
-        "d /var/lib/losos-apps 0755 root root -"
-        "d ${traefikDir} 0755 root root -"
+        # The lan-only middleware the apps' routers carry.
         "L+ ${traefikDir}/00-losos.yml - - - - ${traefikMiddleware}"
         # nginx's forwards, one file per app, before Traefik held the range.
         "R /var/lib/losos-apps/nginx - - - - -"
       ];
-
-      users.users.losos-traefik = {
-        isSystemUser = true;
-        group = "losos-traefik";
-        description = "Traefik, the LAN ports of the installed apps";
-      };
-      users.groups.losos-traefik = { };
 
       # notshared's Podman API, for Traefik alone: the socket is
       # notshared's and Traefik's group may open it. Socket-activated, so a
@@ -733,52 +1042,6 @@ in
           Restart = "on-failure";
           # Stopping the API must not take the apps' containers with it.
           KillMode = "process";
-        };
-      };
-
-      systemd.services.losos-traefik = {
-        description = "Traefik, the LAN ports of the installed apps";
-        wantedBy = [ "multi-user.target" ];
-        wants = [
-          "network-online.target"
-          "losos-podman-api.socket"
-        ];
-        after = [
-          "network-online.target"
-          "losos-podman-api.socket"
-          "systemd-tmpfiles-setup.service"
-        ];
-        serviceConfig = {
-          ExecStart = "${pkgs.traefik}/bin/traefik --configFile=${traefikStatic}";
-          User = "losos-traefik";
-          Group = "losos-traefik";
-          Restart = "always";
-          RestartSec = 2;
-          NoNewPrivileges = true;
-          CapabilityBoundingSet = "";
-          ProtectSystem = "strict";
-          ProtectHome = true;
-          PrivateTmp = true;
-          PrivateDevices = true;
-          ProtectKernelTunables = true;
-          ProtectKernelModules = true;
-          ProtectKernelLogs = true;
-          ProtectControlGroups = true;
-          ProtectClock = true;
-          ProtectHostname = true;
-          RestrictNamespaces = true;
-          RestrictRealtime = true;
-          RestrictSUIDSGID = true;
-          LockPersonality = true;
-          MemoryDenyWriteExecute = true;
-          RestrictAddressFamilies = [
-            "AF_INET"
-            "AF_INET6"
-            "AF_UNIX"
-          ];
-          SystemCallArchitectures = "native";
-          SystemCallFilter = [ "@system-service" ];
-          LimitNOFILE = 65536;
         };
       };
 
