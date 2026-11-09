@@ -115,7 +115,9 @@ impl Fake {
         // file test above does; if the two paths landed on different
         // devices, fall back to a copy — its count is the one thing `()`
         // is not, so map it off.
-        fs::rename(&mjs, &kept).or_else(|_| fs::copy(&mjs, &kept).map(|_| ())).unwrap();
+        fs::rename(&mjs, &kept)
+            .or_else(|_| fs::copy(&mjs, &kept).map(|_| ()))
+            .unwrap();
         let _ = fs::remove_file(&mjs);
         // tempdir drops here; the bundle itself lives on.
         kept
