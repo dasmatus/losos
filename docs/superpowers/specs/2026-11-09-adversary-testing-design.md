@@ -44,10 +44,12 @@ run forever: free models, bounded rounds, weekly.
 - **Not a replacement for source review.** Code-audit opinions, OPSEC gaps
   (the OPSEC-review gap map), and hardening advice belong to the existing
   review process. The adversary's finding is about a running box.
-- **Not fuzzing or brute-forcing** the appliance beyond what a boundary
-  check needs: no memory-corruption hunting, no k3s fuzzing, no DoS budget,
-  no long brute-force runs. Those are professions of their own; a VM CI run
-  cannot do them credibly.
+- **Not fuzzing** the appliance beyond what a boundary check needs: no
+  memory-corruption hunting, no k3s fuzzing, no DoS budget that degrades the
+  box for other rounds. Those are professions of their own; a VM CI run
+  cannot do them credibly. **Brute-forcing is in, as a bounded lane** (see
+  below) — credential guessing aimed at the rate-limiting boundaries, with
+  a budget.
 - **Not touching real infrastructure.** The agent's blast radius is a QEMU
   process on the Actions runner and the disk images it was handed. No
   requests to dasmat.us, the Vercel demo or the edge in production.
@@ -96,6 +98,42 @@ boundaries the box claims today:
    proven pattern here is the existing `nix/tests/edge-*.nix` family. A run
    should not attempt the whole edge surface every week; it picks the tier
    below by cadence input.
+7. **The shipped stack, UI first (RCE hunting).** Everything in the box
+   serves web pages and runs user-shaped code, so the tiers above are one
+   lane of two. The other lane walks the UI and every function the project
+   ships, hunting XSS-to-compromise chains beyond the *documented* CSP
+   failure (which is excluded, not attacked) and remote-code paths: the
+   admin UI app (`admin-ui/app`), the hand-written widget sandbox and its
+   postMessage contract, the Lab (the qemu-wasm engine — a guest console is
+   attacker-reachable code), the app-builder, the plugins and assistant
+   tool surfaces, the `losos` terminal client's call protocol, the edge
+   registrar's web surface, and the market's escrow contracts. The tier
+   drives a real browser (Playwright, the tooling the admin UI already ships
+   in CI) on the attacker's side of the net against the appliance.
+
+**The brute-force lane (bounded, its own round).** Credential guessing is
+in scope, aimed at *rate-limit boundaries*, not at hash strength the box
+cannot out-run:
+
+- **Budget.** At most ~2,000 guesses per run, several short salvos rather
+  than one long grind, all against the seeded victim accounts' own
+  endpoints. Nothing runs long enough to matter to the box's workload, and
+  the box is a VM the agent may not survive — testing can be generous in
+  counts, never in duration.
+- **What it attacks.** Authelia's own regulation on `/auth/` (window start,
+  doubling, expiry, whether the correct password inside a window clears or
+  keeps the lock); `lososd`'s per-address throttle on bad Bearer tokens
+  (the 10-failure window, `Retry-After`, correct-token-after-window);
+  the edge's 8-in-flight-per-address caps and its timing-matched decoy
+  reads; the spare key's 64-hex shape (a *weakened* token form must not
+  authenticate).
+- **What counts.** A limiter that does not fire, re-arm, decay or stop
+  exactly where the security model states it, or a callback that turns a
+  refused guess into an accepted one, is a finding like any other: boundary
+  behavior the model did not deliver.
+- **What stays out.** The documented per-address spoofability of the
+  throttle, and proofs that 256-bit entropy is entropy — a finding's
+  punchline is a boundary crossed, never an arithmetic fact.
 
 The brief also gives the agent **negative space**: where it found a boundary
 solid (a refusal that held), it says so in one line, so the report doubles as
@@ -124,6 +162,7 @@ collapses that to an afternoon.
 | `core` | appliance (installed disk; see below) | claim window fresh-state; claimed box, viewer victim; claimed box, spare-key and throttle |
 | `edge` | an edge gateway VM of `edge/` (pattern: `nix/tests/edge-*.nix`) + the appliance behind it | registration, token handling, unknown tenants, LAN-lookalike |
 | `mesh` | two appliances, one lending, networked | `shared` isolation, cross-reads, mesh pod reach-back |
+| `stack` | the appliance, driven by a real browser on the attacker side | admin UI XSS chains past the documented baseline, widget sandbox, Lab engine, app-builder, plugins and assistant tool surfaces, the terminal client's call protocol, escrow contracts — RCE hunting |
 | `full` | the union; bounded rounds | as the run gets to them |
 
 Round count is bounded by the run's concurrency budget and wall-clock, so a
@@ -189,6 +228,14 @@ boundary.
    Whatever the agent wrote in the findings files is not trusted markdown:
    the report job renders the run's headline through `github-script` from
    the validated frontmatter, so the PR body is never lost to injection.
+   **Auto-merge (the owner's call, recorded):** the report job then enables
+   auto-merge (`gh pr merge --auto --squash`) on the findings PR it opens,
+   so a green run's report lands the moment required checks pass; findings
+   PRs touch only `adversary/`, so nothing slow gates them, and a `hold`
+   label blocks the merge until a human asks the question it names.
+   (The repo needs "Allow auto-merge" on in its settings for this to have
+   an effect; the workflow warns in its log when the setting is off, it
+   does not fail.)
 
 **The coverage ledger.** `adversary/coverage.md` is committed, and the
 brief reads it first (my call): the frontier, not aspiration, carries
@@ -222,6 +269,53 @@ state: fresh-claim | claimed-viewer | claimed-no-creds | edge | mesh
 
 The frontmatter is so a downstream consumer (the report job, a human, a
 future CVSS-ish triage) can sort and validate mechanically.
+
+## The blue-team lane
+
+Two halves, one scheme (the owner's call, recorded): the adversary reports
+and the blue team mitigates — findings do not queue for a human to remember
+them.
+
+**Triggered mitigation.** A second trigger on the same workflow fires when
+the findings PR merges (`pull_request: closed` with `merged == true` on
+`adversary/**` paths), plus a monthly set-piece cron and a manual
+`workflow_dispatch`. The blue-team run's brief: read the ledger and every
+open finding, then work them — each mitigation lands as *its own* PR to
+`main` (module or code change, a `nix/tests` VM test that pins the fixed
+boundary, and the matching `docs/security-model.md` edit where behavior
+changed). Fix PRs are **not** auto-merged; only the findings report is,
+and the `hold` label stops that too. The blue-team run closes each
+finding in the ledger (`fixed <PR>` / `declined: reason`) and, when a
+finding turned out wrong, leaves a note instead of silence.
+
+**The standing pass over the shipped stack.** Beyond reacting to findings,
+the blue-team lane keeps a slow, human-paced review running over
+everything the project ships — the admin UI, the widget sandbox, the Lab,
+the app-builder, plugins and assistant tooling, the terminal client
+protocol, the registrar and the escrow contracts — a hunt for RCEs, the
+known XSS-to-compromise chain, and cross-boundary leaks the source shows
+frankly: analysis and proof-of-concept over the code and its tests, so
+suspicions arrive in the findings schema as `state: source-review` and
+become briefs for the next adversary run to demonstrate live.
+
+**First dispatch, out-of-band.** The scheme's first blue-team pass ran the
+day of this design: an isolated checkout, the top implementable
+mitigations from the security model's known limitations (respecting every
+trade-off that model declined on purpose), plus the source-review pass
+above; its commits come to `main` after human review, the same rule as
+always.
+
+## Follow-on: the same scheme for LosOS Desktop
+
+Once the first findings PR is up against this repository, port the whole
+scheme to `losos-project/desktop` — the second project the OPSEC review
+serves. The workflow, brief skeleton, finding schema and coverage ledger
+copy port; the surface list maps onto Desktop's own (`derisk`, `Danube`,
+the libvirt machines and their colour-label networks, `pm`,
+`losos-adblock`, homed), the boot targets build from Desktop's
+`nixos/tests` instead of `nix/tests`, and the repo keeps its own
+`OPENCODE_API_KEY` secret and its own ledger, so the two schemes never
+share a frontier.
 
 ## Where things land in the repo
 
@@ -271,6 +365,11 @@ what a test would observe instead.
   text*, inert; `docs/security-model.md` itself is edited by the fix's PR,
   never by the adversary's. The fix's review checklist is where the
   proposal converts into reality.
+- **Findings self-merge, by request.** The owner traded the pause before
+  the report lands for the coverage argument: a nonsense finding that
+  slips past schema validation commits itself. The ledger and the squash
+  history make such a commit visible for seconds — cheap to revert — and
+  the `hold` label is the way to read a run before its PR unpauses.
 - **Free model saturation means quiet weeks.** Some weeks produce
   artifact-only reports, few findings. Weekly repeats mean the next week
   picks up where it left off (the ledger), not a permanent drop in
