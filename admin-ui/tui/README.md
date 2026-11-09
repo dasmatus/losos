@@ -7,6 +7,21 @@ encrypted to the box's host key, and answered the same way. The wire
 contract is in [docs/terminal-access.md](../../docs/terminal-access.md) and,
 for an edge, [docs/edge-terminal.md](../../docs/edge-terminal.md).
 
+## Builds
+
+`cargo build` makes the desktop client: a TTY program, whose full-screen
+view takes raw mode and the alternate screen (src/tui/term.rs). The
+wasm32 build is a different fact of the same crate (nix's
+`losos-tui-wasm`): the API/drive surface — the reads and command arms a
+page can drive against the box's JSON API — not the TTY. The terminal
+half has no place on a browser page, so the tty-only pieces are
+`#[cfg(not(target_arch = "wasm32"))]` and the browser build answers the
+call arms with the same needsTerminal problem the desktop's non-TTY runs
+get: `run` and `read_hidden` keep their names, no call site branches.
+The clearest example of that split is the pty test suite
+(tests/terminal.rs): it is desktop-only and gated, while every other
+suite compiles under wasm32 too.
+
 ## Install
 
 On a 64-bit x86 Linux computer:
