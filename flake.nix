@@ -177,10 +177,13 @@
           # compiler you ship with is the only way that stays true, and it
           # also means an upstream Rust release cannot turn CI red on its own.
           ci = mkShell {
-            nativeBuildInputs = rust ++ fast.packages ++ [
-              pkgs.bun
-              pkgs.nodejs
-            ];
+            nativeBuildInputs =
+              rust
+              ++ fast.packages
+              ++ [
+                pkgs.bun
+                pkgs.nodejs
+              ];
             inherit (fast) env;
           };
         };
