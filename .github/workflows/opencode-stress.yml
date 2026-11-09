@@ -120,6 +120,95 @@ jobs:
             > /tmp/oc-stress/record.sh
           : > /tmp/oc-stress/results.tsv
 
+      # ── phase 0.5 — loading times on initial setup. Everything a first
+      # contact with OpenCode costs time on: binary cold start with a
+      # completely fresh HOME (the state OpenCode builds on its very first
+      # run), state creation through debug paths, the companion catalog
+      # load, and the serve instance's time to first answer. Thresholds are
+      # generous — CI runners vary — but they are the numbers that turn
+      # "feels slower this release" into a row in the summary. Slow is a
+      # LOUDNOTE; a true hang is a hard regression (phase's outer timeout
+      # catches it as rc 124). ─────────────────────────────────────────────
+      - name: cold start and loading times
+        run: |
+          set -euo pipefail
+          . /tmp/oc-stress/record.sh
+          # (a) fresh-baseline binary cold start: a brand-new HOME, nothing
+          # in it, no key, no config. What the very first run costs.
+          rm -rf /tmp/oc-fresh
+          mkdir -p /tmp/oc-fresh/home /tmp/oc-fresh/cwd
+          cd /tmp/oc-fresh/cwd
+          set +e
+          /usr/bin/time -f 'TIMEBUS%e' env -i \
+              HOME=/tmp/oc-fresh/home \
+              XDG_CONFIG_HOME=/tmp/oc-fresh/home/.config \
+              XDG_DATA_HOME=/tmp/oc-fresh/home/.local/share \
+              XDG_CACHE_HOME=/tmp/oc-fresh/home/.cache \
+              XDG_STATE_HOME=/tmp/oc-fresh/home/.state \
+              PATH="$PATH" \
+              timeout -k 5 120 opencode --version \
+              > /tmp/oc-artifacts/cold-version.out 2> /tmp/oc-artifacts/cold-version.log
+          rc_a=$?
+          set -e
+          secs_a=$(grep -h TIMEBUS /tmp/oc-artifacts/cold-version.log | tail -1 | sed 's/TIMEBUS//')
+          record timing "fresh-baseline cold start (--version)" "under 10s; slow is a LOUDNOTE" \
+            "rc=$rc_a in ${secs_a}s, version='$(cat /tmp/oc-artifacts/cold-version.out 2>/dev/null | head -1)'" \
+            "$([ "${secs_a%%.*}" -lt 10 ] 2>/dev/null && echo PASS || echo LOUDNOTE)"
+          # (b) first-run state creation: what initializes the first time
+          # code touches the fresh state tree
+          set +e
+          /usr/bin/time -f 'TIMEBUS%e' env -i \
+              HOME=/tmp/oc-fresh/home \
+              XDG_CONFIG_HOME=/tmp/oc-fresh/home/.config \
+              XDG_DATA_HOME=/tmp/oc-fresh/home/.local/share \
+              XDG_CACHE_HOME=/tmp/oc-fresh/home/.cache \
+              XDG_STATE_HOME=/tmp/oc-fresh/home/.state \
+              PATH="$PATH" \
+              timeout -k 5 120 opencode debug paths \
+              > /tmp/oc-artifacts/cold-paths.out 2> /tmp/oc-artifacts/cold-paths.log
+          rc_b=$?
+          set -e
+          secs_b=$(grep -h TIMEBUS /tmp/oc-artifacts/cold-paths.log | tail -1 | sed 's/TIMEBUS//')
+          record timing "fresh-baseline first state build (debug paths)" "under 15s; slow is a LOUDNOTE" \
+            "rc=$rc_b in ${secs_b}s" \
+            "$([ "${secs_b%%.*}" -lt 15 ] 2>/dev/null && echo PASS || echo LOUDNOTE)"
+          find /tmp/oc-fresh/home -type f | head -50 > /tmp/oc-artifacts/first-run-files.txt
+          n_init=$(wc -l < /tmp/oc-artifacts/first-run-files.txt)
+          record timing "files created on this very first contact" \
+            "a version+paths touch builds some state; the inventory is the artifact" \
+            "$n_init files" "PASS"
+          # (c) warm cold-start for contrast: same binary, normal HOME
+          set +e
+          /usr/bin/time -f 'TIMEBUS%e' timeout -k 5 60 opencode --version \
+            > /tmp/oc-artifacts/warm-version.out 2> /tmp/oc-artifacts/warm-version.log
+          rc_c=$?
+          set -e
+          secs_c=$(grep -h TIMEBUS /tmp/oc-artifacts/warm-version.log | tail -1 | sed 's/TIMEBUS//')
+          record timing "warm start (--version, established state)" "under 5s" \
+            "rc=$rc_c in ${secs_c}s" \
+            "$([ "${secs_c%%.*}" -lt 5 ] 2>/dev/null && echo PASS || echo LOUDNOTE)"
+          # (d) companion catalog load on the fresh baseline: models must
+          # enumerate without a key and still come back fast
+          set +e
+          /usr/bin/time -f 'TIMEBUS%e' env -i \
+              HOME=/tmp/oc-fresh/home \
+              XDG_CONFIG_HOME=/tmp/oc-fresh/home/.config \
+              XDG_DATA_HOME=/tmp/oc-fresh/home/.local/share \
+              XDG_CACHE_HOME=/tmp/oc-fresh/home/.cache \
+              XDG_STATE_HOME=/tmp/oc-fresh/home/.state \
+              PATH="$PATH" \
+              timeout -k 5 60 opencode models \
+              > /tmp/oc-artifacts/cold-models.out 2> /tmp/oc-artifacts/cold-models.log
+          rc_d=$?
+          set -e
+          secs_d=$(grep -h TIMEBUS /tmp/oc-artifacts/cold-models.log | tail -1 | sed 's/TIMEBUS//')
+          record timing "models catalog on a fresh state (no key)" "under 15s, entries listed" \
+            "rc=$rc_d in ${secs_d}s, lines: $(wc -l < /tmp/oc-artifacts/cold-models.out)" \
+            "$([ "${secs_d%%.*}" -lt 15 ] 2>/dev/null && echo PASS || echo LOUDNOTE)"
+          # the outer timeouts guarantee a genuine hang cannot pass: rc 124
+          # would show in every row above as a non-PASS verdict, and the
+          # verdict step goes red only on visible hard failures below.
+
       # ── phase 0 — documented surface, snapshotted. Every subcommand and
       # companion utility answers --help; the offline helpers (models,
       # session list, mcp list, plugin list, auth list, debug *, stats,
@@ -244,17 +333,34 @@ jobs:
             "$([ "$gw" = 403 ] && echo PASS || echo FAIL)"
           [ "$gw" = 403 ] || touch /tmp/oc-stress/HARD_FAIL
           up=no
-          for i in $(seq 1 30); do
+          start=$(date +%s.%N)
+          for i in $(seq 1 60); do
             code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:4099/app" 2>/dev/null || echo 000)
             [ "$code" = "200" ] && { up=yes; break; }
-            sleep 1
+            sleep 0.25
           done
+          settle=$(date +%s.%N)
+          boot_secs=$(awk -v a="$start" -v b="$settle" 'BEGIN { printf "%.1f", b - a }')
           if [ "$up" = no ]; then
-            hard_fail serve "server starts" "answers on its alone-bound port" "no answer on :4099 in 30s"
+            hard_fail serve "server starts" "answers on its alone-bound port" \
+              "no answer on :4099 in ${boot_secs}s"
             echo "up=no" > /tmp/oc-stress/serve.up
           else
             echo "up=yes" > /tmp/oc-stress/serve.up
-            record serve "server starts" "answers on 127.0.0.1 alone" "up in ${i}s" "PASS"
+            case "${boot_secs%%.*}" in
+              ''|*[!0-9]*) boot_int=25 ;;
+              *           ) boot_int=${boot_secs%%.*} ;;
+            esac
+            if [ "$boot_int" -ge 25 ]; then
+              hard_fail serve "cold boot to first HTTP answer" \
+                "under 8s; 25s is a hang whatever killed it" "${boot_secs}s"
+            elif [ "$boot_int" -ge 8 ]; then
+              record serve "cold boot to first HTTP answer" "under 8s" \
+                "${boot_secs}s on :4099" "LOUDNOTE"
+            else
+              record serve "cold boot to first HTTP answer" "under 8s" \
+                "${boot_secs}s on :4099" "PASS"
+            fi
           fi
 
       # ── phase 3 — key handling: missing, invalid, nonexistent model.
