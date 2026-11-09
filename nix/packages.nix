@@ -213,6 +213,12 @@ let
     mkdir -p src/mdx/pkg
     cp ${losos-mdx-wasm}/* src/mdx/pkg/
     chmod -R u+w src/mdx/pkg
+    # The wasm-URL twin metro.config.js resolves the ?url import to (nix/
+    # packages.nix's preBuild repeats it for the lab copies; here the
+    # parser's own: scripts/lab-core.ts is the checkout's hand).
+    mkdir -p public/wasm
+    cp src/mdx/pkg/losos_mdx_bg.wasm public/wasm/mdx.wasm
+    printf 'export default "/wasm/mdx.wasm";\n' > src/mdx/pkg/losos_mdx_bg.wasm.url.ts
   '';
 
   # The Lab's libvirt client (admin-ui/lab/virt-rpc/README.md), loaded
@@ -504,6 +510,20 @@ images
       + ''
         mkdir -p src/styles
         cp ${losos-basic-classes}/basic-classes.txt src/styles/basic-classes.txt
+        # The wasm-URL twins metro.config.js resolves the loaders' ?url
+        # imports to, and the public/wasm/ copies they name (mdxPkg wrote
+        # the parser's; scripts/lab-core.ts is the checkout's hand). The
+        # Bun build.ts copies public/. over dist/ as before, so the twin
+        # URL is served by both bundlers' outputs.
+        mkdir -p public/wasm
+        cp src/lab/core-pkg/losos_lab_core_bg.wasm public/wasm/core.wasm
+        printf 'export default "/wasm/core.wasm";\n' > src/lab/core-pkg/losos_lab_core_bg.wasm.url.ts
+        cp src/lab/virt-pkg/losos_lab_virt_bg.wasm public/wasm/virt.wasm
+        printf 'export default "/wasm/virt.wasm";\n' > src/lab/virt-pkg/losos_lab_virt_bg.wasm.url.ts
+        for backend in webgpu webgl2; do
+          cp src/lab/render-pkg/$backend/losos_lab_render_bg.wasm public/wasm/render-$backend.wasm
+          printf 'export default "/wasm/render-$backend.wasm";\n' > src/lab/render-pkg/$backend/losos_lab_render_bg.wasm.url.ts
+        done
       '';
     # `bun run build` is `tsc --noEmit` and then build.ts, Bun's bundler
     # (the guest page too), so unlike the Rust crates (doCheck = off, see

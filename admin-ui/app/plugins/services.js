@@ -3,13 +3,16 @@
  * writes the iOS Info.plist entries and by the browse itself
  * (src/api/discovery.ts). One keeps them in step by hand; there are four
  * spellings between the two consumers and no third one.
+ *
+ * ESM exports, not module.exports: package.json is "type": "module" now
+ * (the Expo project's own package), and a CommonJS .js beside it gets
+ * Node's "not defined in ES module scope" when Expo's config loader walks
+ * app.config.ts through plugins/.
  */
 
-module.exports = {
-  /** The DNS-SD type the companion browses, no protocol or domain. */
-  serviceType: "_losos",
-  protocol: "tcp",
-  /** For iOS NSBonjourServices: with and without the domain, since Apple's
-   *  and the Bonjour browser guides' spellings both show up in the wild. */
-  bonjourServices: ["_losos._tcp", "_losos._tcp.local."],
-};
+/** The DNS-SD type the browse walks, no protocol or domain. */
+export const serviceType = "_losos";
+export const protocol = "tcp";
+/** For iOS NSBonjourServices: with and without the domain, since Apple's
+ *  and the Bonjour browser guides' spellings both show up in the wild. */
+export const bonjourServices = ["_losos._tcp", "_losos._tcp.local."];

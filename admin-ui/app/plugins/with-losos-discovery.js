@@ -17,14 +17,15 @@
  * several Bonjour browser guides name the qualified one.
  */
 
-const SERVICES = require("./services");
+import { bonjourServices } from "./services.js";
 
-module.exports = function withLososDiscovery(config) {
+
+export default function withLososDiscovery(config) {
   const info = config.ios?.infoPlist ?? {};
 
   const bonjour = new Set([
     ...(Array.isArray(info.NSBonjourServices) ? info.NSBonjourServices : []),
-    ...SERVICES.bonjourServices,
+    ...bonjourServices,
   ]);
 
   return {

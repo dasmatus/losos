@@ -12,7 +12,7 @@ export function Brand({ tokens }: { tokens: LososTokens }) {
   return (
     <View style={{ flexDirection: "row", alignItems: "center" }}>
       <Image
-        source={require("../../assets/images/salmon.png")}
+        source={require("../../../assets/images/salmon.png")}
         style={{ width: 52, height: 52 }}
         resizeMode="contain"
         accessibilityRole="image"
