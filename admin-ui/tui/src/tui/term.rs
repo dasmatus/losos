@@ -11,8 +11,8 @@
 
 use std::time::{Duration, Instant};
 
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::buffer::Buffer;
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Rect;
 
 use super::app::{App, Key};
@@ -114,7 +114,9 @@ impl Guard {
 
         use ratatui::crossterm::event::EnableBracketedPaste;
         use ratatui::crossterm::execute;
-        use ratatui::crossterm::terminal::{Clear, ClearType, EnterAlternateScreen, enable_raw_mode};
+        use ratatui::crossterm::terminal::{
+            enable_raw_mode, Clear, ClearType, EnterAlternateScreen,
+        };
 
         let fail = |e: std::io::Error| Problem::new("losos::terminal", e.to_string());
         enable_raw_mode().map_err(fail)?;
