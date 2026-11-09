@@ -23,6 +23,7 @@ import { serviceType, bonjourServices } from "./plugins/services";
 
 const config: ExpoConfig = {
   name: "LosOS Admin",
+  owner: "thanks-lads",
   slug: "losos-admin-ui",
   // Parity with the Compose app's versionName (app/build.gradle.kts).
   version: "0.1.0",
@@ -123,9 +124,15 @@ const config: ExpoConfig = {
     ],
     "./plugins/with-losos-discovery.js",
   ],
-  // The browse type names the DNS-SD record the plugin wires the platform to
-  // (reference the plugin + src/api/discovery.ts, which browse the same one).
+  // The EAS project slug links the development-client cloud builds
+  // (extra.eas.projectId); `eas init --id` writes it here.
   extra: {
+    eas: {
+      projectId: "ec8f631b-a125-4735-af1c-7563f896525e",
+    },
+    // The browse type names the DNS-SD record the plugin wires the platform
+    // to (reference the plugin + src/api/discovery.ts, which browse the
+    // same one); the EAS link sits beside it (extra.eas.projectId above).
     lososServiceType: `${serviceType}._tcp`,
   },
   experiments: {

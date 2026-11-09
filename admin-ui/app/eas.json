@@ -32,12 +32,11 @@
  */
 {
   "cli": {
-    /* The account picks the project and, when a token lands, the bot;
-     * headless CI honors EXPO_TOKEN, and no key lives in-tree beside this
-     * comment (see the pointer above). */
-    "appVersionSource": "remote",
-    "version": ">= 13.0.0",
-    "requireCommit": false
+    /* The account picks the project (owner lives in app.config.ts), and the
+     * EAS link the CI's non-interactive job reads is app.config.ts's
+     * extra.eas.projectId; the token never lands in-tree (see the comment
+     * above). */
+    "version": ">= 13.0.0"
   },
   "build": {
     /* The dev client for the local machine's start (`expo start --dev-client`),
