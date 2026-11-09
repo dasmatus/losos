@@ -52,7 +52,7 @@ let
   dir = "/var/cache/losos-nix-cache";
 
   # A source is a binary cache the proxy asks: scheme, host[:port], and an
-  # optional path prefix (the Pages copy lives under /proxy).
+  # optional path prefix when the cache lives under one.
   parse =
     option: url:
     let
@@ -204,9 +204,9 @@ let
         add_header X-Losos-Nix-Cache $upstream_cache_status always;
 
         # A file rather than `return`: return runs before allow/deny, and
-        # nothing here should answer a stranger. Priority 10 puts this ahead
-        # of cache.nixos.org (40), which stays in nix.settings.substituters
-        # behind it as a fallback.
+        # nothing here should answer a stranger. Priority 10: there is no
+        # other cache on the substituter list any more, so this is simply
+        # what Nix reads first.
         location = /nix-cache-info {
           default_type text/x-nix-cache-info;
           alias ${cacheInfo};
@@ -257,20 +257,22 @@ in
     (lib.mkIf (enabled || local.enable) {
       extra-trusted-public-keys = cfg.trustedPublicKeys;
       connect-timeout = 5;
-      fallback = true;
+      fallback = false;
     })
     # The installer medium, and a box with the local copy off, ask the LosOS
-    # caches themselves. extra-* rather than replacing the defaults:
-    # cache.nixos.org still serves upstream NixOS paths.
+    # caches themselves — and nothing else. mkForce rather than extra-*, so
+    # nixpkgs' default upstream substituter (mkAfter) does not append itself
+    # behind the proxy: a medium that finds nothing at the proxy must build
+    # from source, not silently reach for a distant cache nobody stands up.
     (lib.mkIf (enabled && !local.enable) {
-      extra-substituters = cfg.substituters;
+      substituters = lib.mkForce cfg.substituters;
     })
-    # The box asks only its local copy, which asks everyone else. nixpkgs
-    # appends cache.nixos.org to this list (mkAfter), and that stays as the
-    # direct fallback for a night the proxy is down. The LosOS caches are not
-    # listed again: every path the proxy misses would be asked twice.
+    # The box asks only its local copy, which asks everyone else. mkForce
+    # keeps nixpkgs' default upstream substituter (mkAfter) off this list too,
+    # for the same reason as above. The LosOS caches are not listed again:
+    # every path the proxy misses would be asked twice.
     (lib.mkIf local.enable {
-      substituters = [ front ];
+      substituters = lib.mkForce [ front ];
     })
   ];
 
