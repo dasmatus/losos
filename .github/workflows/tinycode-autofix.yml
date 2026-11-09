@@ -23,14 +23,13 @@ name: tinycode autofix
 # endpoint and the same free models the opencode-autofix workflow uses
 # through the full opencode CLI.
 #
-# The agent model: OpenCode Zen's free tier only. Free models rotate as
-# providers sponsor them, so check https://opencode.ai/models/#free-models
-# when one here disappears; both lines below are zero-retention today
-# (November 2026). The second is the fallback for when the primary is
-# saturated. Zen notes free-tier chat models are meant for OpenCode; they
-# are served through the same OpenAI-compatible endpoint any client can
-# call — if that ever tightens, move these two lines to paid models or
-# OpenCode Go (the gateway tinycode itself special-cases).
+# The agent model: OpenCode Zen's free models, served through the Go
+# gateway. Free models rotate as providers sponsor them, so check
+# https://opencode.ai/models/#free-models when one here disappears; both
+# lines below are zero-retention today (November 2026). The second is the
+# fallback for when the primary is saturated. (The free tier is otherwise
+# gated to the OpenCode client, which tinycode presents on OpenCode
+# gateways — see dasmatus/tinycode #10.)
 #
 # Key: the repository's OPENCODE_API_KEY actions secret (a free OpenCode
 # Console key; sign-up is all it takes — https://opencode.ai/docs/zen/).
@@ -91,9 +90,11 @@ permissions:
   actions: read
 
 env:
-  # OpenCode Zen's OpenAI-compatible endpoint, without the chat-completions
-  # path tinycode appends (opencode.ai/docs/zen).
-  TINYCODE_BASE_URL: https://opencode.ai/inference/openai/v1
+  # OpenCode Zen's Go gateway, without the chat-completions path tinycode
+  # appends (opencode.ai/docs/console/harnesses). Free model ids ride the
+  # Go gateway by choice; `is_opencode_gateway` matches it, so the session
+  # and client identification headers go out as the Go API requires.
+  TINYCODE_BASE_URL: https://opencode.ai/inference/go/openai/v1
   TINYCODE_PROVIDER: openai
   TINYCODE_MODEL: glm-5.3-flash-free
   TINYCODE_FALLBACK_MODEL: deepseek-v4.1-flash-free

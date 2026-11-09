@@ -9,8 +9,8 @@ name: opencode autofix
 # passed to the agent as its brief, the agent edits and commits, and what
 # it did is reported in the pull request body.
 #
-# The agent talks to OpenCode Zen's OpenAI-compatible inference endpoint
-# (https://opencode.ai/inference/openai/v1) with the repository's
+# The agent talks to OpenCode Zen's Go gateway
+# (https://opencode.ai/inference/go/openai/v1) with the repository's
 # OPENCODE_API_KEY actions secret, on the same free models the tinycode
 # autofix workflow (CI fixing and main-merging) uses. Until the secret
 # exists the workflow is inert — the gate skips with a notice.
@@ -56,9 +56,12 @@ permissions:
   pull-requests: write
 
 env:
-  # OpenCode Zen, free tier, through its OpenAI-compatible endpoint (without
-  # the chat-completions path tinycode appends) — per opencode.ai/docs/zen.
-  TINYCODE_BASE_URL: https://opencode.ai/inference/openai/v1
+  # OpenCode Zen's Go gateway (without the chat-completions path tinycode
+  # appends) — per opencode.ai/docs/console/harnesses. Free model ids ride
+  # the Go gateway by choice; `is_opencode_gateway` matches it, so the
+  # session and client identification headers go out as the Go API
+  # requires.
+  TINYCODE_BASE_URL: https://opencode.ai/inference/go/openai/v1
   TINYCODE_PROVIDER: openai
   TINYCODE_MODEL: glm-5.3-flash-free
   TINYCODE_FALLBACK_MODEL: deepseek-v4.1-flash-free
