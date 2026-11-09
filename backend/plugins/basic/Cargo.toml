@@ -14,12 +14,12 @@ crate-type = ["cdylib", "rlib"]
 losos-plugin.workspace = true
 losos-page.workspace = true
 losos-report.workspace = true
+# The no-JS pages render a changed page's source themselves (custom.rs).
+losos-mdx = { path = "../../mdx" }
 serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
-# The checks draw a changed page from the HTML the pages plugin makes of it.
-losos-mdx = { path = "../../mdx" }
 
 [lints]
 workspace = true

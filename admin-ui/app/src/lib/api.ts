@@ -3425,10 +3425,11 @@ export function deleteHandWidget(
 
 // ── Pages as MDX (backend/plugins/pages, src/pages/) ────────────────────
 
-/** A page an administrator changed, as the box drew it. */
+/** A page an administrator changed, as the box keeps it. */
 export interface CustomPage {
-  /** The page's HTML, its blocks as placeholders (src/pages/README.md). */
-  html: string;
+  /** The page's MDX, as they saved it. The browser renders it
+   *  (src/mdx/wasm.ts `renderPage`); the box draws no page. */
+  source: string;
   /** When it was saved, ISO 8601, and by whom. */
   at: string;
   by: string;
@@ -3438,6 +3439,9 @@ export interface CustomPage {
  *  changed, and whether there is a stylesheet of theirs. */
 export interface PagesResponse {
   pages: Record<string, CustomPage>;
+  /** blocks.json as the box reads it — the no-JS pages render with it;
+   *  the SPA renders with the copy its bundle carries. */
+  registry: string;
   /** A version for `/api/pages/style.css?v=`, or null for none. */
   style: string | null;
 }

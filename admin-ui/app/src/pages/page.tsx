@@ -1,13 +1,16 @@
 /* A page drawn from its MDX (src/pages/README.md).
  *
- * The HTML comes from losos-mdx, on the box for a page an administrator
- * changed and at build time for the defaults (pages.ts), and it has
- * been through the crate's allowlist either way. It is read with
- * DOMParser, which runs nothing, and turned into React elements: each
- * `<losos-block>` placeholder becomes the page's own component for that
- * block, and everything else becomes the same element with the same few
- * attributes. No markup reaches the page as markup, so nothing in it can
- * run, and no attribute the table below does not name is carried over.
+ * A default page's HTML is in the bundle, made at build time by the same
+ * losos-mdx (pages.ts). A page an administrator changed arrives as its
+ * MDX source (GET /api/pages) and is rendered here, by losos-mdx in the
+ * page (src/mdx/wasm.ts) — the same read the editor and the box's save
+ * make of it. The HTML has been through the crate's allowlist either
+ * way. It is read with DOMParser, which runs nothing, and turned into
+ * React elements: each `<losos-block>` placeholder becomes the page's own
+ * component for that block, and everything else becomes the same element
+ * with the same few attributes. No markup reaches the page as markup, so
+ * nothing in it can run, and no attribute the table below does not name
+ * is carried over.
  *
  * A default page is only placeholders, so it draws exactly the blocks, in
  * order, with nothing around them: the screen looks as it did before it
@@ -20,6 +23,10 @@ import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import blocks from "./blocks.json";
 import { getPagesState, subscribePages } from "./store";
+
+/** The registry a page is rendered against: blocks.json as text, the same
+ *  read the editor makes of a change and the box makes of a save. */
+export const REGISTRY = JSON.stringify(blocks);
 
 export type PageId = keyof typeof blocks.pages;
 type BlocksOf<P extends PageId> = (typeof blocks.pages)[P]["blocks"];
@@ -38,13 +45,69 @@ export type BlockMap<P extends PageId> = { readonly [N in BlockName<P>]: React.C
 
 export const PAGE_IDS = Object.keys(blocks.pages) as PageId[];
 
-/** The HTML a page draws now: a draft, the administrator's page, or the
- *  default. Null while a first visit waits for the box. */
+/** The HTML a page draws now: a draft, the administrator's page rendered
+ *  here, or the default. Null while a first visit waits for the box. */
 export function usePageHtml(id: PageId): string | null {
   const state = React.useSyncExternalStore(subscribePages, getPagesState, getPagesState);
-  const html = state.drafts[id] ?? state.custom[id];
-  if (html !== undefined) return html;
-  return state.ready ? (DEFAULTS[id] ?? "") : null;
+  // The parser is a lazy chunk: a changed page draws the default until it
+  // has arrived, then what the administrator saved.
+  const [parser, setParser] = React.useState(() => parserReady());
+  React.useEffect(() => {
+    if (parser) return;
+    let alive = true;
+    void loadParser().then(() => {
+      if (alive) setParser(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [parser]);
+  const source = state.drafts[id] ?? state.custom[id];
+  if (source === undefined) return state.ready ? (DEFAULTS[id] ?? "") : null;
+  if (!parser) return DEFAULTS[id] ?? "";
+  return renderCached(id, source) ?? (DEFAULTS[id] ?? "");
+}
+
+/** The page renderer, loaded once: src/mdx/wasm.ts, the same losos-mdx
+ *  the editor reads with. Unavailable when it cannot load — the defaults
+ *  draw. */
+let mdx: typeof import("@/mdx/wasm") | null = null;
+let parserPromise: Promise<boolean> | null = null;
+let parserLoaded = false;
+
+function parserReady(): boolean {
+  return parserLoaded;
+}
+
+function loadParser(): Promise<boolean> {
+  parserPromise ??= import("@/mdx/wasm")
+    .then(async (m) => {
+      await m.loadMdx();
+      mdx = m;
+      parserLoaded = true;
+    })
+    .catch(() => {})
+    .then(() => parserLoaded);
+  return parserPromise;
+}
+
+/** A rendered page, kept per id until its source changes. A source that
+ *  does not read keeps the last good render, as the editor's preview
+ *  does; a first one that does not read draws the default. */
+const renderedBy = new Map<PageId, { source: string; html: string }>();
+
+function renderCached(id: PageId, source: string): string | null {
+  const hit = renderedBy.get(id);
+  if (hit?.source === source) return hit.html;
+  if (mdx === null) return hit?.html ?? null;
+  try {
+    const out = mdx.renderPage(source, REGISTRY, id);
+    const entry = { source, html: out.html };
+    renderedBy.set(id, entry);
+    return entry.html;
+  } catch {
+    return hit?.html ?? null;
+  }
 }
 
 /** Names the page on the root element, `html[data-page="overview"]`, for
