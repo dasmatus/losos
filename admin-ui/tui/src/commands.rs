@@ -1748,6 +1748,7 @@ fn agents_call(io: &mut Io, host: Option<&str>, method: &str, path: &str) -> Res
 
 /// Where the session bus is when nothing says: `$XDG_RUNTIME_DIR/bus`, or
 /// `/run/user/<uid>/bus`, where systemd puts it.
+#[cfg(unix)]
 fn session_bus(env: &HashMap<String, String>) -> Option<String> {
     use std::os::unix::fs::MetadataExt;
     let dir = match env.get("XDG_RUNTIME_DIR").filter(|d| !d.is_empty()) {
@@ -1759,6 +1760,14 @@ fn session_bus(env: &HashMap<String, String>) -> Option<String> {
     };
     let bus = dir.join("bus");
     bus.exists().then(|| format!("unix:path={}", bus.display()))
+}
+
+/// The session bus is a unix-socket address; the wasm32/browser leg has no
+/// D-Bus session. Window-side ownership lives outside the tui crate.
+#[cfg(not(unix))]
+fn session_bus(env: &HashMap<String, String>) -> Option<String> {
+    let _ = env;
+    None
 }
 
 /// `losos mcp`: serve the companion's tools on stdin and stdout.
