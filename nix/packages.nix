@@ -727,7 +727,7 @@ images
     pname = "losos";
     version = "0.1.0";
     inherit (tuiSource) src cargoRoot buildAndTestSubdir;
-    cargoHash = "sha256-h8JVS75qUyoDEGGoAsQsEVRjK3twWhQmwhFAcOjeuEU=";
+    cargoHash = "sha256-WN6QBs0ndmvMGHq/l0rqOb1gTm1RNCfk+Apa8oJjqpc=";
     # `losos --version` and the About pane say the release (VERSION in
     # admin-ui/tui/src/tui/panes.rs); without it they would say 0.1.0.
     env.LOSOS_VERSION = version;
@@ -740,7 +740,7 @@ images
     pname = "losos-static";
     version = "0.1.0";
     inherit (tuiSource) src cargoRoot buildAndTestSubdir;
-    cargoHash = "sha256-h8JVS75qUyoDEGGoAsQsEVRjK3twWhQmwhFAcOjeuEU=";
+    cargoHash = "sha256-WN6QBs0ndmvMGHq/l0rqOb1gTm1RNCfk+Apa8oJjqpc=";
     env.LOSOS_VERSION = version;
     doCheck = false;
   };
@@ -758,7 +758,7 @@ images
     dir = ./../admin-ui/tui;
     wasm = "losos";
     uiSrc = lososUiSrc;
-    cargoHash = "sha256-h8JVS75qUyoDEGGoAsQsEVRjK3twWhQmwhFAcOjeuEU=";
+    cargoHash = "sha256-WN6QBs0ndmvMGHq/l0rqOb1gTm1RNCfk+Apa8oJjqpc=";
   };
 
   losos-sign-iso = pkgs.stdenvNoCC.mkDerivation {
