@@ -12,11 +12,8 @@ up for I2P, can open LosOS Login, LosOS Cloud and LosOS Git at that address
 from anywhere. The box needs no edge and no domain for it. Nothing opens on
 your router either, because Tor and I2P both connect out from the box.
 
-The admin pages answer at these addresses too. Sign in with LosOS Login —
-or let a spare key speak in the `Authorization` header — and every pane the
-box's own network shows is there. The first-run setup is not among them:
-claiming a box is an act at the box itself, and an unclaimed box must not
-be claimable from the Tor network.
+The admin pages never answer at these addresses. They stay on the box's own
+network, as they do for every other address.
 
 ## Turning them on
 
@@ -45,10 +42,10 @@ setup trusts these addresses too. Other devices show a warning the first
 time, as for most onion sites. `http://` works too, but you can't sign in
 over it.
 
-At these addresses the box answers what its public name answers: LosOS
-Login at `/auth/`, LosOS Cloud at `/cloud/`, LosOS Git at `/git/`, the
-knowledge bases, the handbook and the admin pages with their API. Only the
-first-run setup stays home, as above.
+At these addresses the box answers the pages its public name answers
+through an edge: LosOS Login at `/auth/`, LosOS Cloud at `/cloud/` and
+LosOS Git at `/git/`. The admin pages, `/api/` and the first-run setup
+answer `403`, whatever name the browser sends.
 
 ## Addresses from your edge
 

@@ -138,34 +138,37 @@ fn known(registry: &Registry, id: &str) -> Result<(), NoSuchPage> {
     }
 }
 
-/// `GET /api/pages`: every changed page as its MDX source, for every
-/// signed-in person, with the blocks registry (`blocks.json`) the reader
-/// renders against — the browser renders the page, not the box. A page
-/// whose file went missing is left out; a page `blocks.json` no longer
-/// lists is left out, and the reader falls back to that page's default.
+/// `GET /api/pages`: every changed page as its HTML, for every signed-in
+/// person. A page whose file no longer reads (a block LosOS dropped since)
+/// is drawn with what still reads; a page `blocks.json` no longer lists is
+/// left out.
 pub fn cmd_list(store: &mut dyn Store) -> anyhow::Result<Value> {
-    let text = store.registry()?;
-    let registry = Registry::from_json(&text).map_err(|e| anyhow::anyhow!("blocks.json: {e}"))?;
+    let registry = registry(store)?;
     let meta = meta(store);
     let mut pages = serde_json::Map::new();
     for (id, saved) in &meta.pages {
-        if registry.page(id).is_none() {
+        let Some(spec) = registry.page(id) else {
             continue;
-        }
+        };
         let Some(source) = store.read(&page_file(id))? else {
             continue;
         };
-        pages.insert(
-            id.clone(),
-            json!({ "source": source, "at": saved.at, "by": saved.by }),
-        );
+        // A file that read when it was saved and no longer does (a build
+        // since moved the syntax) leaves the default drawn until an
+        // administrator saves it again.
+        if let Ok(rendered) = render_page(&source, spec) {
+            pages.insert(
+                id.clone(),
+                json!({ "html": rendered.html, "at": saved.at, "by": saved.by }),
+            );
+        }
     }
     let style = meta
         .style
         .as_ref()
         .map(|_| Value::String(meta.style_version.to_string()))
         .unwrap_or(Value::Null);
-    Ok(json!({ "pages": pages, "registry": text, "style": style }))
+    Ok(json!({ "pages": pages, "style": style }))
 }
 
 /// `GET /api/pages/{page}`: what the editor needs, for administrators.
@@ -459,12 +462,12 @@ mod tests {
         let mut s = Fake::new();
         assert_eq!(
             cmd_list(&mut s).unwrap(),
-            json!({ "pages": {}, "registry": REGISTRY, "style": null })
+            json!({ "pages": {}, "style": null })
         );
     }
 
     #[test]
-    fn a_saved_page_is_listed_as_its_source_and_committed_with_its_default() {
+    fn a_saved_page_is_listed_as_its_html_and_committed_with_its_default() {
         let mut s = Fake::new();
         let list = cmd_put(
             &mut s,
@@ -473,10 +476,11 @@ mod tests {
             &admin(),
         )
         .unwrap();
-        let page = &list["pages"]["overview"];
-        assert_eq!(page["source"], "# Hi\n\n<Apps hideStorage />\n");
-        assert_eq!(page["by"], "matus");
-        assert_eq!(page["at"], "2027-01-15T08:00:00Z");
+        let html = list["pages"]["overview"]["html"].as_str().unwrap();
+        assert!(html.contains("<h1 id=\"hi\">Hi</h1>"), "{html}");
+        assert!(html.contains("data-block=\"Apps\""), "{html}");
+        assert_eq!(list["pages"]["overview"]["by"], "matus");
+        assert_eq!(list["pages"]["overview"]["at"], "2027-01-15T08:00:00Z");
         assert_eq!(s.files["overview.mdx"], "# Hi\n\n<Apps hideStorage />\n");
         assert_eq!(
             s.files["defaults/overview.mdx"],
@@ -486,8 +490,6 @@ mod tests {
         assert_eq!(s.commits[0].1, "Change the Overview page");
         cmd_put(&mut s, "overview", "<Apps />", &admin()).unwrap();
         assert_eq!(s.commits[1].1, "Edit the Overview page");
-        // The answer names the registry the reader renders against.
-        assert_eq!(list["registry"], REGISTRY);
     }
 
     #[test]

@@ -383,13 +383,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "losos-plugin-onion"
-version = "0.1.0"
-dependencies = [
- "losos-plugin",
-]
-
-[[package]]
 name = "losos-plugin-pages"
 version = "0.1.0"
 dependencies = [

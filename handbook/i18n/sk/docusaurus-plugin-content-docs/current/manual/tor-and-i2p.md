@@ -13,12 +13,8 @@ LosOS Cloud a LosOS Git. Zariadenie na to nepotrebuje edge ani doménu. Na
 routeri sa nič neotvára, pretože Tor aj I2P sa zo zariadenia pripájajú
 smerom von.
 
-Stránky správy na týchto adresách odpovedajú tiež. Prihláste sa cez LosOS
-Login — alebo nech v hlavičke `Authorization` prehovorí náhradný kľúč — a
-máte každú tabuľu, ktorú ukazuje adresa vo vlastnej sieti zariadenia.
-Prvé nastavenie medzi nimi nie je: privlastniť si zariadenie je úkon pri
-zariadení samotnom, a nezprivlastnené zariadenie nesmie byť dosiahnuteľné
-zo siete Tor.
+Stránky správy na týchto adresách nikdy neodpovedajú. Zostávajú len v
+sieti zariadenia, rovnako ako pri každej inej adrese.
 
 ## Zapnutie
 
@@ -47,10 +43,10 @@ dôveruje aj týmto adresám. Iné zariadenia raz ukážu varovanie, ako pri
 väčšine stránok .onion. Funguje aj `http://`, ale prihlásiť sa cez neho
 nedá.
 
-Na týchto adresách zariadenie odpovedá na to, na čo odpovedá jeho verejné
-meno: LosOS Login na `/auth/`, LosOS Cloud na `/cloud/`, LosOS Git na
-`/git/`, znalostné bázy, príručku aj stránky správy s ich rozhraním. Iba
-prvé nastavenie zostáva doma, ako vyššie.
+Na týchto adresách zariadenie odpovedá na to isté, na čo odpovedá jeho
+verejné meno cez edge: LosOS Login na `/auth/`, LosOS Cloud na `/cloud/` a
+LosOS Git na `/git/`. Stránky správy, `/api/` a prvé nastavenie odpovedia
+`403`, nech prehliadač pošle akékoľvek meno.
 
 ## Adresy od vášho edge
 

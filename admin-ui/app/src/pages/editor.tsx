@@ -2,11 +2,10 @@
  *
  * It docks beside the page rather than over it, because the page IS the
  * preview: each keystroke is read by the same losos-mdx the box reads a
- * save with (src/mdx/wasm.ts), and the source goes into the store as a
- * draft (./store.ts), which the page under it renders in place of what is
- * saved. So what the panel shows is what a save will show, problems
- * included, and the box refuses a save the panel already said does not
- * read.
+ * save with (src/mdx/wasm.ts), and the HTML goes into the store as a draft
+ * (./store.ts), which the page under it draws in place of what is saved.
+ * So what the panel shows is what a save will show, problems included, and
+ * the box refuses a save the panel already said does not read.
  *
  * The stylesheet is previewed the same way: a constructed sheet adopted by
  * the document while the panel is open, with the saved one switched off.
@@ -36,8 +35,10 @@ import { useT } from "@/lib/i18n-react";
 import type { MessageKey } from "@/lib/i18n";
 import { loadMdx, renderPage, type Problem } from "@/mdx/wasm";
 import blocks from "./blocks.json";
-import { REGISTRY, type PageId } from "./page";
+import type { PageId } from "./page";
 import { closePageEditor, setDraft, setStyleDraft, takePages, type EditorTarget } from "./store";
+
+const REGISTRY = JSON.stringify(blocks);
 
 interface PropSpec {
   type: string;
@@ -171,16 +172,14 @@ function PageSourceEditor({ id }: { id: PageId }) {
     void loadMdx().then(() => setParser(true));
   }, [load]);
 
-  // Each change is read as the box will read it, a moment after typing
-  // stops, and the page under the dock draws the draft — the source as it
-  // stands, which ./page.tsx renders by the same read.
+  // Each change is read as the box will read it, a moment after typing stops.
   React.useEffect(() => {
     if (!parser || source === null) return;
     const timer = setTimeout(() => {
       try {
         const rendered = renderPage(text, REGISTRY, id);
         setProblems(rendered.problems);
-        setDraft(id, text);
+        setDraft(id, rendered.html);
       } catch (error) {
         setProblems([{ place: null, message: errorText(error) }]);
       }

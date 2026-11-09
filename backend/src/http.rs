@@ -1,10 +1,7 @@
 //! The loopback admin HTTP API.
 //!
-//! Bound to `127.0.0.1` only; Nginx proxies `/api/*` here for the admin UI,
-//! and — when the box has Tor or I2P addresses (`$LOSOS_ONION_PORT`) — a
-//! second listener serves the onion surface, through Traefik, off the same
-//! handlers with a narrower route list ([`routes`]). A call is made by one
-//! of two principals ([`Principal`]):
+//! Bound to `127.0.0.1` only; Nginx proxies `/api/*` here for the admin UI.
+//! A call is made by one of two principals ([`Principal`]):
 //!
 //!   * **a person**, signed in by Authelia (`modules/identity.nix`). nginx
 //!     asks Authelia about every `/api/` request and passes the answer on as
@@ -57,11 +54,6 @@ const TOKEN_HEX_LEN: usize = TOKEN_BYTES * 2;
 /// reaches this loopback port, and it gives up on slow clients itself.
 const HTTP_WORKERS: usize = 8;
 const HEAD_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
-
-/// Workers on the onion surface's listener: Traefik is its only caller, and
-/// a Tor visitor is in no hurry. The handlers are the same blocking ones,
-/// so it still wants its own small pool rather than the LAN's.
-const ONION_WORKERS: usize = 2;
 
 /// Shared handler state.
 struct Api {
@@ -6745,53 +6737,6 @@ fn kept_header(name: &str) -> bool {
     )
 }
 
-/// The onion surface's document, out of the onion plugin: the one page of
-/// the admin app that is not the API. Every path the app's router knows —
-/// `/`, a deep link, a reload — is this same document; the browser renders
-/// the rest, the way the front vhost's `try_files` does on the LAN.
-///
-/// The plugin never names a caller: it gets nobody, and the same bytes go
-/// to whoever asks. Who may reach the page at all is Traefik's and LosOS
-/// Login's business (the forwardAuth middleware, modules/apps.nix), and who
-/// may reach the listener is the firewall owner rule's (modules/daemon.nix).
-async fn onion_document(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
-    let Some(matched) = api.plugins.route("GET", "/api/onion/") else {
-        return err(StatusCode::NOT_FOUND, "not found");
-    };
-    let request = crate::plugin::bindings::losos::plugin::types::Request {
-        method: "GET".to_string(),
-        path: req.path().to_string(),
-        route: "/api/onion/".to_string(),
-        params: Vec::new(),
-        query: req.query_string().to_string(),
-        headers: Vec::new(),
-        body: Vec::new(),
-        caller: plugin_caller(None, remote_addr(&req), "public"),
-    };
-    let answer = api.plugins.handle(&matched.plugin, &request);
-    let mut resp = HttpResponse::build(
-        StatusCode::from_u16(answer.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-    );
-    for (k, v) in &answer.headers {
-        if kept_header(&k.to_ascii_lowercase()) {
-            resp.append_header((k.as_str(), v.as_str()));
-        }
-    }
-    resp.body(answer.body)
-}
-
-/// The onion listener's default service: the API paths a route is not
-/// registered for — the claim among them, which the onion never serves —
-/// are the plugins' or nobody's, exactly as on the LAN listener; everything
-/// else is the app's document.
-async fn onion_catchall(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
-    let path = req.path();
-    if path.starts_with("/api/") || path.starts_with("/internal/") {
-        return plugin_route(api, req, body).await;
-    }
-    onion_document(api, req).await
-}
-
 async fn plugin_route(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
     let method = req.method().as_str().to_ascii_uppercase();
     let Some(matched) = api.plugins.route(&method, req.path()) else {
@@ -7445,28 +7390,6 @@ fn admin_port() -> anyhow::Result<u16> {
     Ok(port)
 }
 
-/// The onion surface's port, from `$LOSOS_ONION_PORT`, or `None` for a box
-/// with neither Tor nor I2P on (modules/daemon.nix sets it then and only
-/// then). A malformed value is fatal for the same reason as
-/// [`admin_port`]'s.
-fn onion_port() -> anyhow::Result<Option<u16>> {
-    let Some(raw) = std::env::var_os("LOSOS_ONION_PORT") else {
-        return Ok(None);
-    };
-    if raw.is_empty() {
-        return Ok(None);
-    }
-    let raw = raw.to_string_lossy().to_string();
-    let port: u16 = raw
-        .trim()
-        .parse()
-        .with_context(|| format!("LOSOS_ONION_PORT is not a TCP port number: {raw:?}"))?;
-    if port == 0 {
-        anyhow::bail!("LOSOS_ONION_PORT is 0; nothing could reach an ephemeral port");
-    }
-    Ok(Some(port))
-}
-
 /// Put the person who claimed the box in `losos-owner`, which a box claimed
 /// before the group existed lacks. nginx signs that group in to LosOS Cloud
 /// and LosOS Git as the owner's own accounts (`modules/app-sign-in.nix`).
@@ -7496,7 +7419,6 @@ fn owner_in_owner_group(api: &Api) {
 /// the daemon stays up is invisible to systemd.
 pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Result<()> {
     let port = admin_port()?;
-    let onion_port = onion_port()?;
     let token_file =
         std::env::var("LOSOS_ADMIN_TOKEN_FILE").unwrap_or_else(|_| DEFAULT_TOKEN_FILE.to_string());
     let token = ensure_token(Path::new(&token_file))?;
@@ -7557,372 +7479,320 @@ pub fn serve(backend: IoLosos, plugins: crate::plugin::Runtime) -> anyhow::Resul
         listen_for_tag(&api);
         start_login_marks(api.clone());
         sync_names_later(api.clone(), None);
-        let lan_api = api.clone();
         let server = HttpServer::new(move || {
             App::new()
-                .app_data(lan_api.clone())
+                .app_data(api.clone())
                 // actix reads at most 256 KiB into `web::Bytes` by default.
                 // The cap is the largest `maxBody` a plugin route asks for,
                 // or a profile picture's; each plugin route's own limit is
                 // checked in `plugin_route`, and profiles.rs refuses a
                 // picture over its limit with a sentence.
                 .app_data(web::PayloadConfig::new(payload_cap))
-                .configure(|cfg| routes(cfg, false))
+                .route("/api/health", web::get().to(health))
+                .route("/api/mail", web::get().to(get_mail))
+                // A message carries its attachments, so this one route takes
+                // more than the cap above.
+                .service(
+                    web::resource("/api/mail/send")
+                        .app_data(web::PayloadConfig::new(crate::mail::MAX_SEND_BYTES))
+                        .route(web::post().to(post_mail_send)),
+                )
+                .route("/api/mail/messages", web::get().to(get_mail_messages))
+                .route("/api/mail/messages/{id}", web::get().to(get_mail_message))
+                .route("/api/mail/messages/{id}", web::post().to(post_mail_message))
+                .route(
+                    "/api/mail/messages/{id}",
+                    web::delete().to(delete_mail_message),
+                )
+                .route("/api/mail/messages/{id}/html", web::get().to(get_mail_html))
+                .route("/api/mail/messages/{id}/raw", web::get().to(get_mail_raw))
+                .route("/api/mail/keys", web::get().to(get_mail_keys))
+                .route("/api/mail/keys", web::put().to(put_mail_keys))
+                .route("/api/mail/keys", web::delete().to(delete_mail_keys))
+                .route("/api/mail/keys/find", web::get().to(find_mail_keys))
+                .route(
+                    "/api/mail/attachments/{blob}",
+                    web::get().to(get_mail_attachment),
+                )
+                .route("/api/me", web::get().to(get_me))
+                .route("/api/state", web::get().to(get_state))
+                .route("/api/settings", web::get().to(get_settings))
+                .route("/api/status", web::get().to(get_status))
+                .route("/api/edge", web::get().to(get_edge))
+                .route("/api/edge/manage", web::post().to(post_edge_manage))
+                .route("/api/edge/cluster", web::post().to(post_edge_cluster))
+                .route("/api/change", web::post().to(post_change))
+                .route("/api/apply", web::post().to(post_apply))
+                .route("/api/factory-reset", web::post().to(post_factory_reset))
+                .route("/api/backup", web::get().to(get_backup))
+                .route("/api/credentials", web::get().to(get_credentials))
+                .route(
+                    "/api/credentials/{name}/rotate",
+                    web::post().to(post_credential_rotate),
+                )
+                .route("/api/backup/target", web::post().to(post_backup_target))
+                .route("/api/backup/target", web::delete().to(delete_backup_target))
+                .route(
+                    "/api/backup/target/bought",
+                    web::post().to(post_backup_target_bought),
+                )
+                .route("/api/backup/run", web::post().to(post_backup_run))
+                .route("/api/backup/restore", web::post().to(post_backup_restore))
+                .route("/api/erase", web::post().to(post_erase))
+                .route("/api/erase/cancel", web::post().to(post_erase_cancel))
+                .route("/api/storage", web::get().to(get_storage))
+                .route("/api/grow", web::post().to(post_grow))
+                .route("/api/set-password", web::post().to(post_set_password))
+                .route("/api/people", web::get().to(get_people))
+                .route("/api/people", web::post().to(post_person))
+                .route("/api/people/access", web::post().to(post_person_access))
+                .route("/api/people/password", web::post().to(post_person_password))
+                .route("/api/people/remove", web::post().to(post_person_remove))
+                .route("/api/people/rules", web::post().to(post_people_rules))
+                .route("/api/roles", web::post().to(post_roles))
+                .route("/api/roles/remove", web::post().to(post_roles_remove))
+                .route("/api/reports", web::post().to(post_report))
+                .route("/api/moderation", web::get().to(get_moderation))
+                .route(
+                    "/api/moderation/reports/{id}",
+                    web::post().to(post_moderation_report),
+                )
+                .route("/api/moderation/mute", web::post().to(post_moderation_mute))
+                .route(
+                    "/api/moderation/unmute",
+                    web::post().to(post_moderation_unmute),
+                )
+                .route(
+                    "/api/moderation/suspend",
+                    web::post().to(post_moderation_suspend),
+                )
+                .route(
+                    "/api/moderation/unsuspend",
+                    web::post().to(post_moderation_unsuspend),
+                )
+                .route(
+                    "/api/people/two-factor/reset",
+                    web::post().to(post_person_factors_reset),
+                )
+                .route("/api/account", web::get().to(get_account))
+                .route("/api/account", web::post().to(post_account))
+                .route("/api/account/code", web::post().to(post_account_code))
+                .route("/api/windows", web::get().to(get_windows))
+                .route("/api/windows", web::post().to(post_windows))
+                .route("/api/account/profile", web::post().to(post_account_profile))
+                .route("/api/pictures", web::get().to(get_pictures))
+                .route("/api/pictures", web::post().to(post_pictures))
+                .route("/api/pictures/trust", web::post().to(post_pictures_trust))
+                .route("/api/pictures/sender", web::get().to(get_pictures_sender))
+                .route("/api/people/age", web::post().to(post_people_age))
+                .route("/api/account/picture", web::put().to(put_account_picture))
+                .route(
+                    "/api/account/picture",
+                    web::delete().to(delete_account_picture),
+                )
+                .route("/api/account/banner", web::put().to(put_account_banner))
+                .route(
+                    "/api/account/banner",
+                    web::delete().to(delete_account_banner),
+                )
+                .route("/api/profiles", web::get().to(get_profiles))
+                .route("/api/profiles/{name}", web::get().to(get_profile))
+                .route(
+                    "/api/profiles/{name}/{kind}",
+                    web::get().to(get_profile_image),
+                )
+                .route(
+                    "/api/people/profile/clear",
+                    web::post().to(post_people_profile_clear),
+                )
+                .route("/api/recovery", web::get().to(get_recovery))
+                .route("/api/schizo", web::get().to(get_schizo))
+                .route("/api/schizo", web::post().to(post_schizo))
+                .route(
+                    "/api/login-devices/self",
+                    web::post().to(post_login_device_self),
+                )
+                .route(
+                    "/api/login-devices/self/ack",
+                    web::post().to(post_login_device_ack),
+                )
+                .route(
+                    "/api/login-devices/self/duress",
+                    web::post().to(post_login_device_duress),
+                )
+                .route("/api/devices/backups", web::post().to(post_device_backups))
+                .route(
+                    "/api/devices/directory",
+                    web::get().to(get_device_directory),
+                )
+                .route(
+                    "/api/devices/directory",
+                    web::post().to(post_device_directory),
+                )
+                .route(
+                    "/api/devices/directory/{id}",
+                    web::delete().to(delete_device_directory),
+                )
+                .route("/api/directory/people", web::get().to(get_directory_people))
+                // Written out, as every route here is, so the sections test
+                // reads them; `directory::JOBS_*_ROUTE` are the same strings.
+                .route(
+                    "/api/directory/jobs/claim",
+                    web::post().to(post_directory_jobs),
+                )
+                .route(
+                    "/api/directory/jobs/report",
+                    web::post().to(post_directory_jobs),
+                )
+                .route("/api/devices/{kind}", web::post().to(post_device))
+                .route("/api/apps/search", web::get().to(get_apps_search))
+                .route("/api/cloud/text", web::get().to(get_cloud_text))
+                .route("/api/git/text", web::get().to(get_git_text))
+                .route("/api/apps", web::get().to(get_apps))
+                .route("/api/apps/chart", web::get().to(get_app_chart))
+                .route("/api/apps/install", web::post().to(post_app_install))
+                .route("/api/apps/compose", web::post().to(post_app_compose))
+                .route("/api/apps/remove", web::post().to(post_app_remove))
+                .route("/api/market", web::get().to(get_market))
+                .route("/api/market/onboard", web::post().to(post_market_onboard))
+                .route("/api/market/listings", web::post().to(post_market_listing))
+                .route(
+                    "/api/market/listings/close",
+                    web::post().to(post_market_close),
+                )
+                .route("/api/market/orders", web::post().to(post_market_order))
+                .route("/api/market/payout", web::post().to(post_market_payout))
+                .route("/api/market/release", web::post().to(post_market_release))
+                .route("/api/market/confirm", web::post().to(post_market_confirm))
+                .route("/api/market/fees/pay", web::post().to(post_market_fees_pay))
+                .route(
+                    "/api/market/coins/key",
+                    web::post().to(post_market_coin_key),
+                )
+                .route(
+                    "/api/market/coins/pay",
+                    web::post().to(post_market_coin_pay),
+                )
+                .route("/api/market/rpc", web::post().to(post_market_rpc))
+                .route("/api/user-apps", web::get().to(get_user_apps))
+                .route("/api/user-apps", web::post().to(post_user_app))
+                .route("/api/user-apps/check", web::post().to(post_user_app_check))
+                .route("/api/user-apps/{id}", web::get().to(get_user_app))
+                .route("/api/user-apps/{id}", web::delete().to(delete_user_app))
+                .route("/api/user-apps/{id}/data", web::get().to(get_user_app_data))
+                .route(
+                    "/api/user-apps/{id}/data",
+                    web::post().to(post_user_app_data),
+                )
+                .route("/api/market/onramp", web::post().to(post_market_onramp))
+                .route(
+                    "/api/market/onramp/status",
+                    web::post().to(post_market_onramp_status),
+                )
+                .route(
+                    "/api/market/llm/models",
+                    web::post().to(post_market_llm_models),
+                )
+                .route("/api/market/llm/chat", web::post().to(post_market_llm_chat))
+                .route("/api/market/taps", web::post().to(post_market_taps))
+                .route(
+                    "/api/market/taps/confirm",
+                    web::post().to(post_market_taps_confirm),
+                )
+                .route(
+                    "/api/market/taps/stop",
+                    web::post().to(post_market_taps_stop),
+                )
+                .route("/api/builder", web::get().to(get_builder))
+                .route("/api/builder/builds", web::post().to(post_builder_start))
+                .route("/api/builder/builds/{id}", web::get().to(get_builder_build))
+                .route(
+                    "/api/builder/builds/{id}",
+                    web::delete().to(delete_builder_build),
+                )
+                .route(
+                    "/api/builder/builds/{id}/tried",
+                    web::post().to(post_builder_tried),
+                )
+                .route("/api/vms", web::get().to(get_vms))
+                .route("/api/vms/orders", web::post().to(post_vm_order))
+                .route("/api/vms/listings", web::post().to(post_vm_listing))
+                .route(
+                    "/api/vms/listings/close",
+                    web::post().to(post_vm_listing_close),
+                )
+                .route("/api/vms/images", web::put().to(put_vm_image))
+                .route(
+                    "/api/vms/images/remove",
+                    web::post().to(post_vm_image_remove),
+                )
+                .route("/api/lab/hello", web::get().to(get_lab_hello))
+                .route("/api/lab/order", web::get().to(get_lab_order))
+                .route("/api/lab/order", web::post().to(post_lab_order))
+                .route("/api/lab/guests", web::post().to(post_lab_guest))
+                .route("/api/lab/guests/{key}", web::delete().to(delete_lab_guest))
+                .route("/api/lab/virt-ticket", web::post().to(post_lab_virt_ticket))
+                .route("/api/domains", web::get().to(get_domains))
+                .route("/api/domains", web::post().to(post_domain_add))
+                .route("/api/domains/remove", web::post().to(post_domain_remove))
+                .route("/api/domains/wallet", web::post().to(post_domain_wallet))
+                .route("/api/options", web::get().to(get_options))
+                .route("/api/site", web::get().to(get_site))
+                .route("/api/site", web::post().to(post_site))
+                .route("/api/config", web::get().to(get_config))
+                .route("/api/config/sync", web::post().to(post_config_sync))
+                .route("/api/cloud/files", web::get().to(get_cloud_files))
+                .route("/api/git/repos", web::get().to(get_git_repos))
+                // The web UI's side of terminal access (crate::access):
+                // Bearer-authed like every route above.
+                .route("/api/access", web::get().to(get_access))
+                .route("/api/access/tokens", web::post().to(post_access_token))
+                .route(
+                    "/api/access/tokens/revoke",
+                    web::post().to(post_access_revoke),
+                )
+                // The terminal's side: no Bearer, by nature. The host key is
+                // public, and a call carries its own two credentials inside
+                // the envelope (crate::access, docs/terminal-access.md).
+                .route("/api/access/host-key", web::get().to(get_access_host_key))
+                .route("/api/access/call", web::post().to(post_access_call))
+                // The unauthenticated routes besides /api/health. These two
+                // are first-run only: the state read is a single bit, and
+                // the claim refuses once the box has an owner.
+                .route("/api/setup/claim", web::get().to(get_claim_state))
+                .route("/api/setup/claim", web::post().to(post_claim))
+                // Asked by nginx alone, never proxied to a client
+                // (crate::cloud_share, modules/identity.nix).
+                .route("/internal/cloud-share", web::get().to(get_cloud_share))
+                .route("/api/chat", web::get().to(get_chat))
+                .route("/api/chat/session", web::post().to(post_chat_session))
+                .route("/api/chat/people", web::get().to(get_chat_people))
+                .route("/api/chat/openid", web::post().to(post_chat_openid))
+                .route("/api/chat/git-room", web::post().to(post_chat_git_room))
+                .route("/api/contacts/suggest", web::get().to(get_contacts_suggest))
+                .route("/internal/chat/authz", web::get().to(get_chat_authz))
+                .route("/api/tag", web::get().to(get_tag))
+                .route("/api/tag/levels", web::post().to(post_tag_level))
+                .route("/api/tag/areas", web::post().to(post_tag_area))
+                .route("/api/tag/assistants", web::post().to(post_tag_assistant))
+                .route("/api/tag/skills", web::post().to(post_tag_skill))
+                .route("/api/tag/skills/{slug}", web::delete().to(delete_tag_skill))
+                .route("/api/tag/clearance", web::post().to(post_tag_clearance))
+                .route("/api/search", web::get().to(get_search))
+                .route("/api/tag/ask", web::post().to(post_tag_ask))
+                .route("/api/tag/asks/{id}", web::get().to(get_tag_ask))
+                .route("/api/tag/asks/{id}", web::delete().to(delete_tag_ask))
+                .route("/api/tag/suggest", web::get().to(get_tag_suggest))
+                // Everything else is a plugin's, or nobody's (crate::plugin).
+                .default_service(web::route().to(plugin_route))
         })
         .workers(HTTP_WORKERS)
         .client_request_timeout(HEAD_TIMEOUT)
         .bind(("127.0.0.1", port))
         .with_context(|| format!("binding 127.0.0.1:{port}"))?;
-        let mut servers = vec![server.run()];
-        // The onion surface: lososd's second loopback listener, when the box
-        // has Tor or I2P addresses ($LOSOS_ONION_PORT, modules/daemon.nix).
-        // The same handlers and state, one narrower route list: the claim
-        // and the internal routes are not on it (part B of
-        // docs/superpowers/specs/2026-11-09-csr-offload-design.md). Traefik
-        // is the only thing that reaches it, and only the forwardAuth
-        // middleware's caller or the spare key rides it.
-        if let Some(onion_port) = onion_port {
-            let api = api.clone();
-            let server = HttpServer::new(move || {
-                App::new()
-                    .app_data(api.clone())
-                    .app_data(web::PayloadConfig::new(payload_cap))
-                    .configure(|cfg| routes(cfg, true))
-            })
-            .workers(ONION_WORKERS)
-            .client_request_timeout(HEAD_TIMEOUT)
-            .bind(("127.0.0.1", onion_port))
-            .with_context(|| format!("binding 127.0.0.1:{onion_port}"))?;
-            tracing::info!(port = onion_port, "onion surface listening on loopback");
-            servers.push(server.run());
-        }
-        for result in futures_util::future::join_all(servers).await {
-            result.context("admin HTTP server")?;
-        }
-        Ok(())
+        tracing::info!(port, "admin API listening on loopback");
+        server.run().await.context("admin HTTP server")
     })
-}
-
-/// The routes of the admin surface, on the LAN listener and — minus the
-/// claim and the internal routes — on the onion one. Written out as before,
-/// so the sections test (crate::sections) reads them; `onion` is what
-/// narrows the second listener's list, and anything new here rides both
-/// surfaces unless it is put under the claim guard below.
-///
-/// The onion listener is loopback and the firewall owner rule
-/// (modules/daemon.nix) keeps every local process but root and Traefik off
-/// it, so the forwardAuth headers are trusted the way `Remote-User` from
-/// nginx is: that trust story is the LAN's, on one more port.
-fn routes(cfg: &mut web::ServiceConfig, onion: bool) {
-    cfg.route("/api/health", web::get().to(health));
-    cfg.route("/api/mail", web::get().to(get_mail));
-    // A message carries its attachments, so this one route takes
-    // more than the cap above.
-    cfg.service(
-        web::resource("/api/mail/send")
-            .app_data(web::PayloadConfig::new(crate::mail::MAX_SEND_BYTES))
-            .route(web::post().to(post_mail_send)),
-    );
-    cfg.route("/api/mail/messages", web::get().to(get_mail_messages));
-    cfg.route("/api/mail/messages/{id}", web::get().to(get_mail_message));
-    cfg.route("/api/mail/messages/{id}", web::post().to(post_mail_message));
-    cfg.route(
-        "/api/mail/messages/{id}",
-        web::delete().to(delete_mail_message),
-    );
-    cfg.route("/api/mail/messages/{id}/html", web::get().to(get_mail_html));
-    cfg.route("/api/mail/messages/{id}/raw", web::get().to(get_mail_raw));
-    cfg.route("/api/mail/keys", web::get().to(get_mail_keys));
-    cfg.route("/api/mail/keys", web::put().to(put_mail_keys));
-    cfg.route("/api/mail/keys", web::delete().to(delete_mail_keys));
-    cfg.route("/api/mail/keys/find", web::get().to(find_mail_keys));
-    cfg.route(
-        "/api/mail/attachments/{blob}",
-        web::get().to(get_mail_attachment),
-    );
-    cfg.route("/api/me", web::get().to(get_me));
-    cfg.route("/api/state", web::get().to(get_state));
-    cfg.route("/api/settings", web::get().to(get_settings));
-    cfg.route("/api/status", web::get().to(get_status));
-    cfg.route("/api/edge", web::get().to(get_edge));
-    cfg.route("/api/edge/manage", web::post().to(post_edge_manage));
-    cfg.route("/api/edge/cluster", web::post().to(post_edge_cluster));
-    cfg.route("/api/change", web::post().to(post_change));
-    cfg.route("/api/apply", web::post().to(post_apply));
-    cfg.route("/api/factory-reset", web::post().to(post_factory_reset));
-    cfg.route("/api/backup", web::get().to(get_backup));
-    cfg.route("/api/credentials", web::get().to(get_credentials));
-    cfg.route(
-        "/api/credentials/{name}/rotate",
-        web::post().to(post_credential_rotate),
-    );
-    cfg.route("/api/backup/target", web::post().to(post_backup_target));
-    cfg.route("/api/backup/target", web::delete().to(delete_backup_target));
-    cfg.route(
-        "/api/backup/target/bought",
-        web::post().to(post_backup_target_bought),
-    );
-    cfg.route("/api/backup/run", web::post().to(post_backup_run));
-    cfg.route("/api/backup/restore", web::post().to(post_backup_restore));
-    cfg.route("/api/erase", web::post().to(post_erase));
-    cfg.route("/api/erase/cancel", web::post().to(post_erase_cancel));
-    cfg.route("/api/storage", web::get().to(get_storage));
-    cfg.route("/api/grow", web::post().to(post_grow));
-    cfg.route("/api/set-password", web::post().to(post_set_password));
-    cfg.route("/api/people", web::get().to(get_people));
-    cfg.route("/api/people", web::post().to(post_person));
-    cfg.route("/api/people/access", web::post().to(post_person_access));
-    cfg.route("/api/people/password", web::post().to(post_person_password));
-    cfg.route("/api/people/remove", web::post().to(post_person_remove));
-    cfg.route("/api/people/rules", web::post().to(post_people_rules));
-    cfg.route("/api/roles", web::post().to(post_roles));
-    cfg.route("/api/roles/remove", web::post().to(post_roles_remove));
-    cfg.route("/api/reports", web::post().to(post_report));
-    cfg.route("/api/moderation", web::get().to(get_moderation));
-    cfg.route(
-        "/api/moderation/reports/{id}",
-        web::post().to(post_moderation_report),
-    );
-    cfg.route("/api/moderation/mute", web::post().to(post_moderation_mute));
-    cfg.route(
-        "/api/moderation/unmute",
-        web::post().to(post_moderation_unmute),
-    );
-    cfg.route(
-        "/api/moderation/suspend",
-        web::post().to(post_moderation_suspend),
-    );
-    cfg.route(
-        "/api/moderation/unsuspend",
-        web::post().to(post_moderation_unsuspend),
-    );
-    cfg.route(
-        "/api/people/two-factor/reset",
-        web::post().to(post_person_factors_reset),
-    );
-    cfg.route("/api/account", web::get().to(get_account));
-    cfg.route("/api/account", web::post().to(post_account));
-    cfg.route("/api/account/code", web::post().to(post_account_code));
-    cfg.route("/api/windows", web::get().to(get_windows));
-    cfg.route("/api/windows", web::post().to(post_windows));
-    cfg.route("/api/account/profile", web::post().to(post_account_profile));
-    cfg.route("/api/pictures", web::get().to(get_pictures));
-    cfg.route("/api/pictures", web::post().to(post_pictures));
-    cfg.route("/api/pictures/trust", web::post().to(post_pictures_trust));
-    cfg.route("/api/pictures/sender", web::get().to(get_pictures_sender));
-    cfg.route("/api/people/age", web::post().to(post_people_age));
-    cfg.route("/api/account/picture", web::put().to(put_account_picture));
-    cfg.route(
-        "/api/account/picture",
-        web::delete().to(delete_account_picture),
-    );
-    cfg.route("/api/account/banner", web::put().to(put_account_banner));
-    cfg.route(
-        "/api/account/banner",
-        web::delete().to(delete_account_banner),
-    );
-    cfg.route("/api/profiles", web::get().to(get_profiles));
-    cfg.route("/api/profiles/{name}", web::get().to(get_profile));
-    cfg.route(
-        "/api/profiles/{name}/{kind}",
-        web::get().to(get_profile_image),
-    );
-    cfg.route(
-        "/api/people/profile/clear",
-        web::post().to(post_people_profile_clear),
-    );
-    cfg.route("/api/recovery", web::get().to(get_recovery));
-    cfg.route("/api/schizo", web::get().to(get_schizo));
-    cfg.route("/api/schizo", web::post().to(post_schizo));
-    cfg.route(
-        "/api/login-devices/self",
-        web::post().to(post_login_device_self),
-    );
-    cfg.route(
-        "/api/login-devices/self/ack",
-        web::post().to(post_login_device_ack),
-    );
-    cfg.route(
-        "/api/login-devices/self/duress",
-        web::post().to(post_login_device_duress),
-    );
-    cfg.route("/api/devices/backups", web::post().to(post_device_backups));
-    cfg.route(
-        "/api/devices/directory",
-        web::get().to(get_device_directory),
-    );
-    cfg.route(
-        "/api/devices/directory",
-        web::post().to(post_device_directory),
-    );
-    cfg.route(
-        "/api/devices/directory/{id}",
-        web::delete().to(delete_device_directory),
-    );
-    cfg.route("/api/directory/people", web::get().to(get_directory_people));
-    // Written out, as every route here is, so the sections test
-    // reads them; `directory::JOBS_*_ROUTE` are the same strings.
-    cfg.route(
-        "/api/directory/jobs/claim",
-        web::post().to(post_directory_jobs),
-    );
-    cfg.route(
-        "/api/directory/jobs/report",
-        web::post().to(post_directory_jobs),
-    );
-    cfg.route("/api/devices/{kind}", web::post().to(post_device));
-    cfg.route("/api/apps/search", web::get().to(get_apps_search));
-    cfg.route("/api/cloud/text", web::get().to(get_cloud_text));
-    cfg.route("/api/git/text", web::get().to(get_git_text));
-    cfg.route("/api/apps", web::get().to(get_apps));
-    cfg.route("/api/apps/chart", web::get().to(get_app_chart));
-    cfg.route("/api/apps/install", web::post().to(post_app_install));
-    cfg.route("/api/apps/compose", web::post().to(post_app_compose));
-    cfg.route("/api/apps/remove", web::post().to(post_app_remove));
-    cfg.route("/api/market", web::get().to(get_market));
-    cfg.route("/api/market/onboard", web::post().to(post_market_onboard));
-    cfg.route("/api/market/listings", web::post().to(post_market_listing));
-    cfg.route(
-        "/api/market/listings/close",
-        web::post().to(post_market_close),
-    );
-    cfg.route("/api/market/orders", web::post().to(post_market_order));
-    cfg.route("/api/market/payout", web::post().to(post_market_payout));
-    cfg.route("/api/market/release", web::post().to(post_market_release));
-    cfg.route("/api/market/confirm", web::post().to(post_market_confirm));
-    cfg.route("/api/market/fees/pay", web::post().to(post_market_fees_pay));
-    cfg.route(
-        "/api/market/coins/key",
-        web::post().to(post_market_coin_key),
-    );
-    cfg.route(
-        "/api/market/coins/pay",
-        web::post().to(post_market_coin_pay),
-    );
-    cfg.route("/api/market/rpc", web::post().to(post_market_rpc));
-    cfg.route("/api/user-apps", web::get().to(get_user_apps));
-    cfg.route("/api/user-apps", web::post().to(post_user_app));
-    cfg.route("/api/user-apps/check", web::post().to(post_user_app_check));
-    cfg.route("/api/user-apps/{id}", web::get().to(get_user_app));
-    cfg.route("/api/user-apps/{id}", web::delete().to(delete_user_app));
-    cfg.route("/api/user-apps/{id}/data", web::get().to(get_user_app_data));
-    cfg.route(
-        "/api/user-apps/{id}/data",
-        web::post().to(post_user_app_data),
-    );
-    cfg.route("/api/market/onramp", web::post().to(post_market_onramp));
-    cfg.route(
-        "/api/market/onramp/status",
-        web::post().to(post_market_onramp_status),
-    );
-    cfg.route(
-        "/api/market/llm/models",
-        web::post().to(post_market_llm_models),
-    );
-    cfg.route("/api/market/llm/chat", web::post().to(post_market_llm_chat));
-    cfg.route("/api/market/taps", web::post().to(post_market_taps));
-    cfg.route(
-        "/api/market/taps/confirm",
-        web::post().to(post_market_taps_confirm),
-    );
-    cfg.route(
-        "/api/market/taps/stop",
-        web::post().to(post_market_taps_stop),
-    );
-    cfg.route("/api/builder", web::get().to(get_builder));
-    cfg.route("/api/builder/builds", web::post().to(post_builder_start));
-    cfg.route("/api/builder/builds/{id}", web::get().to(get_builder_build));
-    cfg.route(
-        "/api/builder/builds/{id}",
-        web::delete().to(delete_builder_build),
-    );
-    cfg.route(
-        "/api/builder/builds/{id}/tried",
-        web::post().to(post_builder_tried),
-    );
-    cfg.route("/api/vms", web::get().to(get_vms));
-    cfg.route("/api/vms/orders", web::post().to(post_vm_order));
-    cfg.route("/api/vms/listings", web::post().to(post_vm_listing));
-    cfg.route(
-        "/api/vms/listings/close",
-        web::post().to(post_vm_listing_close),
-    );
-    cfg.route("/api/vms/images", web::put().to(put_vm_image));
-    cfg.route(
-        "/api/vms/images/remove",
-        web::post().to(post_vm_image_remove),
-    );
-    cfg.route("/api/lab/hello", web::get().to(get_lab_hello));
-    cfg.route("/api/lab/order", web::get().to(get_lab_order));
-    cfg.route("/api/lab/order", web::post().to(post_lab_order));
-    cfg.route("/api/lab/guests", web::post().to(post_lab_guest));
-    cfg.route("/api/lab/guests/{key}", web::delete().to(delete_lab_guest));
-    cfg.route("/api/lab/virt-ticket", web::post().to(post_lab_virt_ticket));
-    cfg.route("/api/domains", web::get().to(get_domains));
-    cfg.route("/api/domains", web::post().to(post_domain_add));
-    cfg.route("/api/domains/remove", web::post().to(post_domain_remove));
-    cfg.route("/api/domains/wallet", web::post().to(post_domain_wallet));
-    cfg.route("/api/options", web::get().to(get_options));
-    cfg.route("/api/site", web::get().to(get_site));
-    cfg.route("/api/site", web::post().to(post_site));
-    cfg.route("/api/config", web::get().to(get_config));
-    cfg.route("/api/config/sync", web::post().to(post_config_sync));
-    cfg.route("/api/cloud/files", web::get().to(get_cloud_files));
-    cfg.route("/api/git/repos", web::get().to(get_git_repos));
-    // The web UI's side of terminal access (crate::access):
-    // Bearer-authed like every route above.
-    cfg.route("/api/access", web::get().to(get_access));
-    cfg.route("/api/access/tokens", web::post().to(post_access_token));
-    cfg.route(
-        "/api/access/tokens/revoke",
-        web::post().to(post_access_revoke),
-    );
-    // The terminal's side: no Bearer, by nature. The host key is
-    // public, and a call carries its own two credentials inside
-    // the envelope (crate::access, docs/terminal-access.md).
-    cfg.route("/api/access/host-key", web::get().to(get_access_host_key));
-    cfg.route("/api/access/call", web::post().to(post_access_call));
-    cfg.route("/api/chat", web::get().to(get_chat));
-    cfg.route("/api/chat/session", web::post().to(post_chat_session));
-    cfg.route("/api/chat/people", web::get().to(get_chat_people));
-    cfg.route("/api/chat/openid", web::post().to(post_chat_openid));
-    cfg.route("/api/chat/git-room", web::post().to(post_chat_git_room));
-    cfg.route("/api/contacts/suggest", web::get().to(get_contacts_suggest));
-    cfg.route("/api/tag", web::get().to(get_tag));
-    cfg.route("/api/tag/levels", web::post().to(post_tag_level));
-    cfg.route("/api/tag/areas", web::post().to(post_tag_area));
-    cfg.route("/api/tag/assistants", web::post().to(post_tag_assistant));
-    cfg.route("/api/tag/skills", web::post().to(post_tag_skill));
-    cfg.route("/api/tag/skills/{slug}", web::delete().to(delete_tag_skill));
-    cfg.route("/api/tag/clearance", web::post().to(post_tag_clearance));
-    cfg.route("/api/search", web::get().to(get_search));
-    cfg.route("/api/tag/ask", web::post().to(post_tag_ask));
-    cfg.route("/api/tag/asks/{id}", web::get().to(get_tag_ask));
-    cfg.route("/api/tag/asks/{id}", web::delete().to(delete_tag_ask));
-    cfg.route("/api/tag/suggest", web::get().to(get_tag_suggest));
-
-    // The unauthenticated claim and the two nginx-only internal routes are
-    // the one deliberate absence on the onion: putting the claim on Tor
-    // would let anyone in the network claim an unclaimed box, and the
-    // internal routes are asked by nginx alone. Health stays.
-    if !onion {
-        // The unauthenticated routes besides /api/health. These two
-        // are first-run only: the state read is a single bit, and
-        // the claim refuses once the box has an owner.
-        cfg.route("/api/setup/claim", web::get().to(get_claim_state));
-        cfg.route("/api/setup/claim", web::post().to(post_claim));
-        // Asked by nginx alone, never proxied to a client
-        // (crate::cloud_share, modules/identity.nix).
-        cfg.route("/internal/cloud-share", web::get().to(get_cloud_share));
-        cfg.route("/internal/chat/authz", web::get().to(get_chat_authz));
-    }
-    // Everything else is a plugin's, or nobody's (crate::plugin) — and on
-    // the onion, past the API paths, the app's document.
-    if onion {
-        cfg.default_service(web::route().to(onion_catchall));
-    } else {
-        cfg.default_service(web::route().to(plugin_route));
-    }
 }
 
 #[cfg(test)]
