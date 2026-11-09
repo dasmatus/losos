@@ -9,10 +9,9 @@
 //! event maths that compiles under wasm32 untouched: the pages' pane port
 //! (nix/packages.nix, losos-tui-wasm) hangs off them.
 
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use ratatui::buffer::Buffer;
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::layout::Rect;
 
 use super::app::{App, Key};
@@ -77,8 +76,13 @@ impl Screen for Picker {
     }
 }
 
-/// crossterm's key, as the screens take it.
-pub fn key_of(event: KeyEvent) -> Option<Key> {
+/// crossterm's key, as the screens take it. The browser build owns its own
+/// input and does not touch crossterm's event types, so this translation
+/// exists only on the TTY side.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn key_of(event: ratatui::crossterm::event::KeyEvent) -> Option<Key> {
+    use ratatui::crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
+
     if event.kind == KeyEventKind::Release {
         return None;
     }
@@ -151,6 +155,7 @@ impl Drop for Guard {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn run(screen: &mut dyn Screen, theme: Theme) -> Result<()> {
     use std::io::{stdout, Stdout};
+    use std::time::Duration;
 
     use ratatui::backend::CrosstermBackend;
     use ratatui::crossterm::event::{self, DisableBracketedPaste, Event};

@@ -636,6 +636,22 @@ jobs:
             # not committed), so this is what the ui lane runs for them.
             cd admin-ui/app
             bun install --frozen-lockfile --ignore-scripts 2>&1 | tail -2
+            # tsc resolves the gitignored lab/mdx wasm pkg dirs (nix and
+            # labPkg supply the real ones; the throwaway check gets the
+            # handbook-screens stubs so module resolution stays true).
+            bun run lab:core
+            bun run lab:virt
+            bun run mdx
+            mkdir -p src/lab/render-pkg/webgl2 src/lab/render-pkg/webgpu
+            for api in webgl2 webgpu; do
+              echo "export default {};" > "src/lab/render-pkg/$api/losos_lab_render.js"
+              {
+                echo "export default function init(opts?: any): Promise<any>;"
+                echo "export declare const Lab: any;"
+                echo "export declare class LabCanvas { constructor(...args: any[]); [key: string]: any; static [key: string]: any; }"
+              } > "src/lab/render-pkg/$api/losos_lab_render.d.ts"
+              touch "src/lab/render-pkg/$api/losos_lab_render_bg.wasm"
+            done
             bun run typecheck
           '
       - name: file an issue for the failed nix build
