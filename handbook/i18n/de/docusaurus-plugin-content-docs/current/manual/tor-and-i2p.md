@@ -13,8 +13,12 @@ LosOS Cloud und LosOS Git. Die Box braucht dafür keinen Edge und keine
 Domain. An deinem Router öffnet sich auch nichts, denn Tor und I2P verbinden
 sich von der Box aus nach draußen.
 
-Die Verwaltungsseiten antworten unter diesen Adressen nie. Sie bleiben im
-Netz der Box, wie bei jeder anderen Adresse.
+Die Verwaltungsseiten antworten unter diesen Adressen auch. Melde dich mit
+LosOS Login an — oder lass in der `Authorization`-Kopfzeile einen
+Ersatzschlüssel sprechen — und du hast jede Ansicht, die die Adresse im
+eigenen Netz der Box zeigt. Die Ersteinrichtung gehört nicht dazu: eine
+Box in Besitz zu nehmen ist eine Handlung an der Box selbst, und eine
+herrenlose Box darf aus dem Tor-Netz nicht beanspruchbar sein.
 
 ## Einschalten
 
@@ -46,10 +50,9 @@ ersten Mal, wie bei den meisten .onion-Seiten. `http://` geht auch, aber
 anmelden kannst du dich darüber nicht.
 
 Unter diesen Adressen antwortet die Box mit dem, was ihr öffentlicher Name
-über einen Edge zeigt: LosOS Login unter `/auth/`, LosOS Cloud unter
-`/cloud/` und LosOS Git unter `/git/`. Die Verwaltungsseiten, `/api/` und
-die Ersteinrichtung antworten mit `403`, egal welchen Namen der Browser
-schickt.
+zeigt: LosOS Login unter `/auth/`, LosOS Cloud unter `/cloud/`, LosOS Git
+unter `/git/`, die Wissensbasen, das Handbuch und die Verwaltungsseiten
+mit ihrer API. Nur die Ersteinrichtung bleibt zu Hause, wie oben.
 
 ## Adressen von deinem Edge
 

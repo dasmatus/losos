@@ -451,11 +451,23 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   Each side writes a list of services; `losos-hidden-sync` turns it into a
   torrc fragment (`%include` of `/var/lib/losos-hidden/tor/`) and an i2pd
   tunnels file, reloads the daemon and collects the names into
-  `/var/lib/losos-hidden/addresses.json`. The box's address lands on the
-  front vhost's loopback listeners 8480 (http) and, through nginx's stream
-  TLS on 8443, 8481 (taken as https by `$losos_proto`), never on port 80,
-  where the manage vhost trusts loopback; the leaf certificate is signed
-  by the box's own. An edge makes one address per box and routes it on
+  `/var/lib/losos-hidden/addresses.json`. The box's address lands on
+  `losos-traefik`'s loopback entry points `onion-http` (8480, plain) and
+  `onion-https` (8443, TLS with the hidden leaf certificate the
+  `losos-hidden-tls` unit mints and Traefik's group reads), never on port
+  80, where the manage vhost trusts loopback; the leaf certificate is
+  signed by the box's own. Traefik fronts the admin pages there too (part
+  B of `docs/superpowers/specs/2026-11-09-csr-offload-design.md`):
+  routers carrying a forwardAuth middleware against LosOS Login — a Bearer
+  `Authorization` header takes a higher-priority router straight to the
+  backend — bring `/api/` and the admin document to lososd's second
+  loopback listener (`LOSOS_ONION_PORT`, 8083, the same handlers on a
+  narrower route list: the claim and the `/internal/` routes are not on
+  it), `/auth/` goes to Authelia, and everything that is not admin goes to
+  the front vhost's own loopback listener (8483), whose lan-only guard
+  still turns loopback away — the no-JS `/basic/` suite stays LAN-only.
+  The onion plugin serves the admin app's document on the second listener.
+  An edge makes one address per box and routes it on
   Traefik's loopback entry points `losos-hidden`/`losos-hidden-tls` only
   (`edge/registrar/src/hidden.rs`), and the heartbeat's answer hands the
   names to the box (`edge.json`). LosOS Login takes both as cookie

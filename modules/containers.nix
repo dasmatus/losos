@@ -180,78 +180,26 @@ let
   # is what the allows are for; there is no longer a carve-out to collide with.)
   lanOnly = import ./lan-only.nix;
 
-  # Tor and I2P (modules/hidden-services.nix) arrive on loopback listeners
-  # of their own. Loopback, so the guard above turns them away from the
-  # admin surface like the tunnel.
+  # Tor and I2P (modules/hidden-services.nix) deliver to a loopback listener
+  # of the vhost's — Traefik fronts them (modules/apps.nix) and proxies the
+  # paths that are not admin here. Loopback, so the guard above still turns
+  # the admin surface away: admin paths ride Traefik to lososd's second
+  # listener instead, and never reach nginx.
+  hiddenOn = config.losos.hidden.tor.enable || config.losos.hidden.i2p.enable;
   hiddenListen =
-    (import ./hidden-lib.nix { inherit lib pkgs; }).frontListen (
-      config.losos.hidden.tor.enable || config.losos.hidden.i2p.enable
-    )
+    (import ./hidden-lib.nix { inherit lib pkgs; }).frontListen hiddenOn
     # And what the box's own TLS for its public names hands on
     # (modules/public-tls.nix), loopback too.
     ++ (import ./public-tls-lib.nix { inherit lib; }).frontListen (
       config.losos.proxy.enable && config.losos.proxy.tlsPassthrough.enable
     );
 
-  # ── Security response headers ─────────────────────────────────────────────
   # The admin UI, /api/, /cloud/ and /git/ share one origin by design,
   # so a strict CSP is the only thing standing between an injected script on
   # the admin pages and the Bearer token the SPA keeps in sessionStorage.
-  #
-  # `add_header` at server level is inherited by every location that does
-  # not set one of its own, so the values are selected by a `map` on $uri:
-  # the routes with a policy of their own get theirs; nginx omits a header
-  # whose value
-  # is empty. Fail-closed on purpose: the default arm is the strict policy, so
-  # a new admin route is covered without anyone remembering to add it.
-  #
-  # (Chosen over per-location `add_header` because that form *replaces* the
-  # inherited set, so any header added at server level later would silently
-  # vanish from exactly the locations that need it most.)
-  #
-  # img-src carries `data:` for a small picture a library or a stylesheet
-  # writes inline, and a CSS background-image is an img-src fetch. Bun's
-  # bundler (admin-ui/app/build.ts) emits every imported file as a file under
-  # assets/, so the grant is currently unused — it is kept because the first
-  # inlined SVG would otherwise fail in a console nobody is watching, on a box
-  # with no shell.
-  # (It previously covered a chevron inlined by the plain-JS pages'
-  # design-system stylesheet, which is no longer served.)
-  #
-  # connect-src is plain 'self': it used to also carry http(s)://$host:3456
-  # for the dashboard's cross-origin probe of the Tahoe web UI, and Tahoe-LAFS
-  # is gone — with it the :3456 vhost, the probe, and any reason for this page
-  # to talk to a second origin.
-  #
-  # script-src carries 'wasm-unsafe-eval' for LosOS Diagrams, a screen of
-  # this page at /diagrams whose core is Rust compiled to WebAssembly
-  # (admin-ui/lab/core). It lets the page compile WebAssembly and nothing
-  # more: eval() and new Function() stay refused, and compiling a module
-  # takes script that is already running, which this policy still allows
-  # only from 'self'. It was a policy of its own while Diagrams was a page
-  # of its own; as a screen it is reached by the router without a page load,
-  # so the admin document needs it. img-src's blob: is the pictures and
-  # setup files Diagrams hands out.
-  adminCsp = lib.concatStringsSep "; " [
-    "default-src 'none'"
-    "script-src 'self' 'wasm-unsafe-eval'"
-    "style-src 'self'"
-    "img-src 'self' data: blob:"
-    "font-src 'self'"
-    "connect-src 'self'"
-    # The board embeds `/widget-frame/` (below) for the owner's hand-written
-    # widgets. It has to be spelled out: under CSP3 frame-src falls back to
-    # child-src and then to default-src, which is 'none' above, so an absent
-    # frame-src is a *block*, not an inherit. 'self' and nothing wider.
-    "frame-src 'self'"
-    "form-action 'none'"
-    # Unchanged, and it governs the OTHER direction: who may frame the admin
-    # page. Nothing about embedding a frame needs this loosened, and
-    # nix/tests/front-vhost.nix asserts it stayed DENY precisely because reaching
-    # for it is the obvious wrong way to unblock an iframe.
-    "frame-ancestors 'none'"
-    "base-uri 'none'"
-  ];
+  # The policy lives in modules/admin-csp.nix, which Traefik's onion
+  # document router imports too (modules/apps.nix), with the reasoning.
+  adminCsp = import ./admin-csp.nix { inherit lib; };
 
   # The handbook's policy. Docusaurus boots its colour mode from an inline
   # script in <head> and the pages carry inline style attributes, neither of
@@ -606,8 +554,20 @@ in
           # owner's.
           "/assets/" = {
             extraConfig = ''
-              ${lib.optionalString (!(config.lososInternal.appSignIn.cloud || signInGit)) lanOnly}
+              ${lib.optionalString (!(config.lososInternal.appSignIn.cloud || signInGit || hiddenOn)) lanOnly}
               expires 1y;
+            '';
+          };
+          # The one unhashed file in the bundle (admin-ui/app/build.ts): the
+          # document loads it before anything paints, so like /assets/ it is
+          # the app's code and holds nothing of the owner's — not LAN-only
+          # wherever /assets/ is not (the pages that load the bundle through
+          # the tunnel, and the onion visitor's, whose document this vhost's
+          # onion listener hands the bundle to). No `expires`: it keeps
+          # revalidating against its ETag.
+          "/theme-boot.js" = {
+            extraConfig = ''
+              ${lib.optionalString (!(config.lososInternal.appSignIn.cloud || signInGit || hiddenOn)) lanOnly}
             '';
           };
           # Fail closed rather than handing the SPA's index.html to a client
