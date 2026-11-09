@@ -494,7 +494,13 @@ images
       hash = "sha256-6TUOV2YIr+S1egif/rDrr6E4nNzqSILdYd8oxF8cJNI=";
     }}";
 
-    # The dependencies, from admin-ui/app/bun.lock alone (nix/bun-deps.nix).
+    # The terminal client's build.rs stamps the tag over this file's own
+    # (LOSOS_VERSION, what losos and losos-static read too), because the
+    # source this derivation gets is admin-ui/app alone: ../nix does not
+    # exist beside it, and app.config.ts respects the env first for that
+    # reason. The dependencies, from admin-ui/app/bun.lock alone
+    # (nix/bun-deps.nix).
+    env.LOSOS_VERSION = version;
     configurePhase = ''
       runHook preConfigure
       ${finalAttrs.passthru.nodeModules.install}
@@ -510,6 +516,10 @@ images
       + ''
         mkdir -p src/styles
         cp ${losos-basic-classes}/basic-classes.txt src/styles/basic-classes.txt
+        # The virtual modules bundler.ts answers on Bun (`losos:pages`,
+        # `losos:build`): the generated files metro.config.cjs's resolver
+        # points the imports at; `bun run virtuals` is the checkout's hand.
+        bun scripts/gen-virtuals.ts
         # The wasm-URL twins metro.config.js resolves the loaders' ?url
         # imports to, and the public/wasm/ copies they name (mdxPkg wrote
         # the parser's; scripts/lab-core.ts is the checkout's hand). The
