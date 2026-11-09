@@ -102,6 +102,9 @@ if (stagedLines.some((l) => /(^|\/)(Cargo\.lock|bun\.lock)$/.test(l))) {
   ]);
 }
 
+// The packages a staged file reaches: the admin SPA (its typecheck pulls
+// the wasm packages the checkout is missing, hookWasmPkgs) and the design
+// system's React wrappers.
 const cwd = process.cwd();
 for (const pkg of ["admin-ui/app", "admin-ui/design-system/react"]) {
   if (!stagedLines.some((l) => l.startsWith(`${pkg}/`))) continue;

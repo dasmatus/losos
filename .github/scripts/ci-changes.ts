@@ -73,7 +73,7 @@ const lanePatterns: Record<Lane, string[]> = {
     "modules/overrides.nix",
     ...tuiReads,
   ],
-  wasm: ["backend/plugins/*", "backend/mdx/*", "admin-ui/lab/*"],
+  wasm: ["backend/plugins/*", "backend/mdx/*", "admin-ui/lab/*", "admin-ui/tui/*"],
   solana: ["edge/contracts/solana/*", "edge/registrar/*", "backend/access/*"],
   evm: ["edge/contracts/*", "!edge/contracts/solana/*", "edge/registrar/*", "backend/access/*"],
   eval: [

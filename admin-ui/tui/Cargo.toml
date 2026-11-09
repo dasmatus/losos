@@ -43,6 +43,14 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 unicode-normalization = "0.1"
 unicode-width = "0.2"
 
+# The browser build (nix/packages.nix, losos-tui-wasm). On wasm32, getrandom
+# — the randomness rand and rustls' ring both draw from — refuses to compile
+# without a shim turned on, and features are additive across the graph: this
+# entry enables that shim on the same getrandom version. Native targets stay
+# untouched; nothing here is compiled on them.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
+
 [build-dependencies]
 png = "0.17"
 

@@ -271,6 +271,25 @@ const gates = async (changed: string[], base: string, localSha: string): Promise
         )
           return 1;
       }
+      // The TUI's wasm build is nix's losos-tui-wasm (the browser bundle
+      // install.ts serves beside the boxes' pages). Nothing like the render
+      // crate's feature splitting — the window in Cargo.toml switches the
+      // sources over target-systemically — so one clippy run after the Lab.
+      logLine("── admin-ui/tui (wasm32)");
+      if (
+        (await hookCargo([
+          "clippy",
+          "--manifest-path",
+          "admin-ui/tui/Cargo.toml",
+          "--target",
+          "wasm32-unknown-unknown",
+          "--all-targets",
+          "--",
+          "-D",
+          "warnings",
+        ])) !== 0
+      )
+        return 1;
       return 0;
     };
     await run("clippy-wasm", wasmClippy);
@@ -286,6 +305,24 @@ const gates = async (changed: string[], base: string, localSha: string): Promise
   }
   if (changed.some((l) => /(^|\/)(Cargo\.lock|bun\.lock)$/.test(l))) {
     await run("hashes", ["python3", ".github/scripts/fix-hashes.py", "--check", "--base", base]);
+  }
+
+  // The typechecks pre-commit runs, here over the whole pushed change
+  // against its merge base: admin UI (its wasm packages may need fetching
+  // into a fresh worktree) and the design system's React wrappers.
+  // Header comment says "typecheck" — this loop is it.
+  for (const pkg of ["admin-ui/app", "admin-ui/design-system/react"]) {
+    if (!changed.some((l) => l.startsWith(`${pkg}/`))) continue;
+    const typecheck = async (p: string): Promise<number> => {
+      const dir = path.join(hookRoot(), p);
+      if (p === "admin-ui/app" && (await hookWasmPkgs()) !== 0) return 1;
+      if (!existsSync(path.join(dir, "node_modules"))) {
+        process.chdir(dir);
+        if ((await hookBun(["install", "--frozen-lockfile", "--ignore-scripts"])) !== 0) return 1;
+      }
+      return hookBun(["--cwd", dir, "run", "typecheck"]);
+    };
+    await run(`typecheck:${pkg}`, typecheck, pkg);
   }
 
   if (laneOn("eval")) {

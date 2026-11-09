@@ -42,6 +42,9 @@
 #                machines without a Nix store; CI publishes it beside the
 #                bundled installer (install.mjs, from admin-ui/tui/
 #                install.ts). Both share one cargoHash.
+#   losos-tui-wasm — the same crate compiled to wasm32 and bound to the
+#                browser (labWasm): the TUI's panes a page draws with no
+#                binary to install. Same lock, so the same cargoHash.
 #   losos-image-pause — the OCI image the local k3s
 #                cluster builds its pods on, defined in nix/images.nix and
 #                merged in below. modules/defaults.nix wires it to
@@ -138,6 +141,12 @@ let
       wasm,
       cargoHash,
       features ? [ ],
+      # A source tree of files the crate's build script reads beside its own
+      # directory (the terminal client's LOSOS_UI_DIR, admin-ui/tui/build.rs;
+      # a checkout has them because the tree has them, the wasm build does
+      # not: its source is the crate alone). Copied out of the build tree and
+      # its env set, so the script's read paths are the checkout's own.
+      uiSrc ? null,
     }:
     pkgs.rustPlatform.buildRustPackage {
       inherit pname cargoHash;
@@ -149,6 +158,11 @@ let
       ];
       buildPhase = ''
         runHook preBuild
+        ${lib.optionalString (uiSrc != null) ''
+          mkdir -p ui-src
+          cp -r ${uiSrc}/. ui-src/
+          export LOSOS_UI_DIR=ui-src
+        ''}
         cargo build --release --offline --target wasm32-unknown-unknown ${
           lib.optionalString (features != [ ]) "--features ${lib.concatStringsSep "," features}"
         }
@@ -316,6 +330,20 @@ let
     buildAndTestSubdir = "admin-ui/tui";
   };
 
+  # That same build.rs read as LOSOS_UI_DIR, for a wasm build whose source
+  # is the crate alone (losos-tui-wasm's uiSrc): the admin-ui root keeps the
+  # app/Themes paths the script reads, so the env var is the checkout's own
+  # shape.
+  lososUiSrc = lib.fileset.toSource {
+    root = ./../admin-ui;
+    fileset = lib.fileset.unions [
+      ./../admin-ui/app/src/i18n
+      ./../admin-ui/app/src/styles/tokens.css
+      ./../admin-ui/app/src/screens/settings/panes.ts
+      ./../admin-ui/themes/brand/salmon-128.png
+    ];
+  };
+
   # lososd's plugins (backend/plugins/README.md): every crate of that
   # workspace but the test-only probe, built for wasm32 and wrapped as a
   # component, each beside its manifest. lososd loads this directory and
@@ -423,6 +451,7 @@ images
   inherit losos-basic-classes;
   inherit losos-lab-core losos-lab-render losos-lab-virt;
   inherit losos-mdx-wasm;
+  inherit losos-tui-wasm;
 
   losos-admin-ui = pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
     pname = "losos-admin-ui";
@@ -695,6 +724,22 @@ images
     cargoHash = "sha256-0VQK6reYxlHCgLQuyAb0ttNCIRVy3PBvs9nFSAqj/7U=";
     env.LOSOS_VERSION = version;
     doCheck = false;
+  };
+
+  # The browser build the web UI loads (admin-ui/tui/Cargo.toml's
+  # wasm32 window): the same crate's panes as a wasm module next to the
+  # Lab's, for a page that draws them with no binary to install. The
+  # labWasm helper fits: the crate has no feature split like the render
+  # crate (Cargo.toml switches the sources over target-systemically), and
+  # the getrandom js shim it enables under wasm32 keeps rustls' ring and
+  # rand compiling. Same lock as the native losos packages above, so the
+  # same cargoHash: lockfile hashes are target-blind.
+  losos-tui-wasm = labWasm {
+    pname = "losos-tui-wasm";
+    dir = ./../admin-ui/tui;
+    wasm = "losos";
+    uiSrc = lososUiSrc;
+    cargoHash = "sha256-0VQK6reYxlHCgLQuyAb0ttNCIRVy3PBvs9nFSAqj/7U=";
   };
 
   losos-sign-iso = pkgs.stdenvNoCC.mkDerivation {
