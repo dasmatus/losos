@@ -1,7 +1,14 @@
 # Automated adversary testing of LosOS main — design
 
 Date: 2026-11-09
-Status: draft, written for a builder
+Status: v1 of the red-team lane ships with this design —
+`.github/workflows/opencode-adversary.yml` runs the **core tier** on the
+discovery check's box, booted unclaimed, through the claim-window,
+sections-authorization, spare-key-and-throttle, LAN-guard and brute-force
+salvo rounds (drivers: `nix/tests/adversary/boot.py` and `report.py`; the
+ledger seam is `adversary/coverage.md`). The edge, mesh and stack tiers,
+the literal iso-install disk and the browser-driven runs are the design's
+next steps, left to the builder below. Written for a builder.
 
 ## Intent and why
 
