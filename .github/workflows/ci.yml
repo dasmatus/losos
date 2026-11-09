@@ -637,12 +637,45 @@ jobs:
             cd admin-ui/app
             bun install --frozen-lockfile --ignore-scripts 2>&1 | tail -2
             # tsc resolves the gitignored lab/mdx wasm pkg dirs (nix and
-            # labPkg supply the real ones; the throwaway check gets the
-            # handbook-screens stubs so module resolution stays true).
-            bun run lab:core
-            bun run lab:virt
-            bun run mdx
-            mkdir -p src/lab/render-pkg/webgl2 src/lab/render-pkg/webgpu
+            # labPkg supply the real ones; the throwaway check gets pure
+            # declaration stubs — no wasm-bindgen in the lean #ci shell).
+            mkdir -p src/lab/core-pkg src/lab/virt-pkg src/mdx/pkg src/lab/render-pkg/webgl2 src/lab/render-pkg/webgpu
+            echo 'export default {};' > src/lab/core-pkg/losos_lab_core.js
+            cat > src/lab/core-pkg/losos_lab_core.d.ts <<'DTS'
+            export class Lab { constructor(...args: any[]); [key: string]: any; }
+            export type InitInput = any;
+            export function initSync(module?: any): any;
+            export default function __wbg_init(module_or_path?: any): Promise<any>;
+            DTS
+            echo 'export default {};' > src/lab/virt-pkg/losos_lab_virt.js
+            cat > src/lab/virt-pkg/losos_lab_virt.d.ts <<'DTS'
+            export class VirtClient { [key: string]: any; static [key: string]: any; }
+            export class VirtConsole { [key: string]: any; }
+            export type InitInput = any;
+            export function initSync(module?: any): any;
+            export default function __wbg_init(module_or_path?: any): Promise<any>;
+            DTS
+            echo 'export default {};' > src/mdx/pkg/losos_mdx.js
+            cat > src/mdx/pkg/losos_mdx.d.ts <<'DTS'
+            export function date(value: string, long: boolean, lang: string): string;
+            export function mathml(tex: string, block: boolean): string | undefined;
+            export function page(source: string, registry: string, page: string): string;
+            export function render(source: string, flavour_name: string, resolver?: any, lang?: string | null): string;
+            export function renderNote(source: string, flavour_name: string, resolver?: any): string;
+            export function toNote(source: string): string;
+            export function tree(source: string, flavour_name: string): string;
+            export type InitInput = any;
+            export function initSync(module?: any): any;
+            export default function __wbg_init(module_or_path?: any): Promise<any>;
+            DTS
+            for d in src/lab/core-pkg src/lab/virt-pkg src/mdx/pkg; do
+              base=$(basename "$d")
+              [ "$d" = src/mdx/pkg ] && base=losos_mdx
+              [ "$d" = src/lab/core-pkg ] && base=losos_lab_core
+              [ "$d" = src/lab/virt-pkg ] && base=losos_lab_virt
+              touch "$d/${base}_bg.wasm"
+              echo 'declare const url: string; export default url;' > "$d/${base}_bg.wasm.d.ts"
+            done
             for api in webgl2 webgpu; do
               echo "export default {};" > "src/lab/render-pkg/$api/losos_lab_render.js"
               {
