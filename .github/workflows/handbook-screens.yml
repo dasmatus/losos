@@ -124,11 +124,16 @@ jobs:
             const body = [
               '### Handbook screenshots',
               '',
+              '<details>',
+              '<summary>Changed screenshots</summary>',
+              '',
               'These shots differ from the ones currently in `handbook/docs/img`:',
               '',
               ...changed.map(f => `- \`${f}\``),
               '',
               'The full set is in the `handbook-screens` artifact. On merge to main this workflow will commit the updated images.',
+              '',
+              '</details>',
             ].join('\n');
             github.rest.issues.createComment({
               owner: context.repo.owner,
