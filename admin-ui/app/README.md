@@ -53,17 +53,56 @@ Needs Node and [Bun](https://bun.sh) (the repo standard; deps are
 bun-managed), plus Android Studio / Xcode for the native shells. Expo Go
 cannot run the native targets — the mDNS browse and the box's TLS trust
 live in native code the Go runtime does not ship — so the workflow is
-prebuild plus a development client, with `android/` and `ios/` kept out
-of git (CNG):
+prebuild plus a development client
+([the docs' two routes][1]), with `android/` and `ios/` kept out
+of git (CNG): `npx expo prebuild --clean` writes them the first time and
+again only when a native dependency or a config plugin changes; `eas.json`
+is the profiles file, and it carries no credentials — the CI token is the
+repo secret `EXPO_TOKEN`, an `eas login` stays on the developer.
 
 ```sh
 bun install
-bun run tokens      # regenerate src/mobile/theme/tokens.gen.ts
-npx expo prebuild   # writes android/ and ios/ from app.config.ts + plugins/
-bun run start       # expo start --dev-client
-bun run android     # or: npx expo run:android
-bun run web         # expo start --web, the SPA under Metro
+bun run tokens          # regenerate src/mobile/theme/tokens.gen.ts
+npx expo prebuild --clean   # writes android/ and ios/, first time and
+                            # after any native-side change only
 ```
+
+**With Expo's services (the cloud route):** EAS builds the development
+client on its workers — no Android SDK or macOS on this machine — and
+`npx expo start` then feeds it running JS from this checkout:
+
+```sh
+eas build --platform android --profile development   # CI runs
+                                                     # --platform all
+bun run start        # expo start --dev-client; the launcher lists
+                     # this project, and "open" boots the panes
+```
+
+The launcher screen the profile builds lists the dev server and its
+deep links; a fresh install signs up under this project's name the first
+launch (the docs' [development builds][1] third step). CI's
+`expo-eas` job runs the same shape over both targets in one submission
+(`eas build --platform all --profile development --non-interactive
+--no-wait`), gated on the repo secret EXPO_TOKEN; without it the job
+prints its skip notice and exits 0.
+
+**Or on the local machine (the plain route):** Android Studio/Xcode
+make the debug build locally, same launcher story:
+
+```sh
+bun run android      # npx expo run:android (or: bun run ios)
+```
+
+A local simulator build for iOS through EAS (`ios.simulator` in the
+development profile) needs only Apple's tooling, not the paid account;
+the same-account device build is the TODO eas.json's comment carries.
+
+```sh
+bun run web          # expo start --web, the SPA under Metro
+```
+
+[1]: https://docs.expo.dev/develop/development-builds/introduction/
+
 
 Typecheck stays `bun run typecheck` (tsc --noEmit, one tsconfig for both
 targets). The admin browser tests are `bun run test:browser`.

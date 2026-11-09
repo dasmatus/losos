@@ -715,6 +715,54 @@ jobs:
           # export exists to prevent.
           include-hidden-files: true
 
+  # ── Expo Application Services: the development client, both phone targets ─
+  #
+  # The phone targets' sign-and-test artefacts, on Expo's cloud
+  # (docs/develop/development-builds, buildenv=build-with-expo-services), not
+  # a nix product: the ui lane above ships the web target's static export,
+  # and this one builds the dev client (`expo-dev-client` is in admin-ui/
+  # app's deps) for Android and iOS in one EAS submission —
+  # `--platform all` over eas.json's development profile. `--no-wait` leaves
+  # the cloud-side build logs on the expo.dev dashboard, this job green the
+  # moment the two submissions take. EXPO_TOKEN is the owner's API token: a
+  # fork's pull request and a repo that has not set it yet get the notice
+  # and a clean skip — the ISO signing job's guard is the pattern (`is not
+  # available here (fork or missing secret)`) — because the credential
+  # belongs to the user, not the tree (eas.json's comment says the same).
+  expo-eas:
+    name: "expo: EAS development client for android and ios (cloud)"
+    needs: [changes]
+    if: ${{ needs.changes.outputs.ui == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+      - name: skip cleanly when the token is not here
+        id: token
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::notice::EXPO_TOKEN is not available here (fork or missing secret): the EAS development build is skipped until the token lands"
+            echo "eas=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "eas=true" >> "$GITHUB_OUTPUT"
+      - name: the repo's node_modules, the expo-dev-client included
+        if: steps.token.outputs.eas == 'true'
+        run: |
+          cd admin-ui/app
+          bun install --frozen-lockfile --ignore-scripts 2>&1 | tail -2
+      - name: eas build (both phone targets, one submission)
+        if: steps.token.outputs.eas == 'true'
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          cd admin-ui/app
+          npx eas-cli@latest build --platform all --profile development \
+            --non-interactive --no-wait
+
   images:
     name: "nix: OCI images for the local cluster"
     needs: [changes]
