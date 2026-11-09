@@ -109,7 +109,7 @@ argon2 = "0.6"
 # Apps the builder writes are JSX (src/jsx.rs): parsed for the mistakes a
 # small model makes, then compiled to a plain script for the app frame, once,
 # on the box.
-oxc = { version = "0.156", default-features = false, features = ["transformer", "codegen", "semantic"] }
+oxc = { version = "0.157", default-features = false, features = ["transformer", "codegen", "semantic"] }
 
 # Profile pictures and banners (src/profiles.rs): decoded, turned upright,
 # cropped, scaled and encoded again, so no camera tag (a photo's position
