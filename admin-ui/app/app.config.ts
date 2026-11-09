@@ -24,7 +24,9 @@ import { serviceType, bonjourServices } from "./plugins/services";
 const config: ExpoConfig = {
   name: "LosOS Admin",
   owner: "thanks-lads",
-  slug: "losos-admin-ui",
+  // The EAS project's slug: extra.eas.projectId points at
+  // @thanks-lads/losos, and EAS reads the two as one identity.
+  slug: "losos",
   // Parity with the Compose app's versionName (app/build.gradle.kts).
   version: "0.1.0",
   scheme: "losos",
