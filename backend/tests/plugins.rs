@@ -580,7 +580,11 @@ fn the_pages_answer_on_a_box_where_nothing_was_saved_yet() {
 
     let a = d.admin("GET", "/api/pages", Value::Null);
     assert_eq!(a.status, 200, "{}", String::from_utf8_lossy(&a.body));
-    assert_eq!(a.json(), json!({"pages": {}, "style": null}));
+    let registry = std::fs::read_to_string(ui.path().join("pages/blocks.json")).unwrap();
+    assert_eq!(
+        a.json(),
+        json!({"pages": {}, "registry": registry, "style": null})
+    );
     let a = d.admin("GET", "/api/pages/overview", Value::Null);
     assert_eq!(a.status, 200, "{}", String::from_utf8_lossy(&a.body));
     let shipped = std::fs::read_to_string(pages.join("overview.mdx")).unwrap();

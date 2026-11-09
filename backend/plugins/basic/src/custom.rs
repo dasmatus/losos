@@ -198,7 +198,9 @@ mod tests {
             "style": "3"
         });
         assert_eq!(
-            changed(Some(&answer), "overview").as_deref().map(|h| h.contains("data-block=\"BoxName\"")),
+            changed(Some(&answer), "overview")
+                .as_deref()
+                .map(|h| h.contains("data-block=\"BoxName\"")),
             Some(true)
         );
         // A page the registry no longer lists leaves the default drawn.
@@ -209,11 +211,19 @@ mod tests {
         let mut broken = answer.clone();
         broken["pages"]["overview"]["source"] = Value::String("<Nope />".into());
         assert_eq!(
-            changed(Some(&broken), "overview").as_deref().map(|h| h.contains("losos-block")),
+            changed(Some(&broken), "overview")
+                .as_deref()
+                .map(|h| h.contains("losos-block")),
             Some(false)
         );
         // No registry in the answer, and no answer at all.
-        assert_eq!(changed(Some(&serde_json::json!({ "pages": {}, "style": "3" })), "overview"), None);
+        assert_eq!(
+            changed(
+                Some(&serde_json::json!({ "pages": {}, "style": "3" })),
+                "overview"
+            ),
+            None
+        );
         assert_eq!(changed(None, "overview"), None);
         assert_eq!(
             style_href(Some(&answer)).as_deref(),
