@@ -48,8 +48,34 @@ unicode-width = "0.2"
 # without a shim turned on, and features are additive across the graph: this
 # entry enables that shim on the same getrandom version. Native targets stay
 # untouched; nothing here is compiled on them.
+# The browser build (nix/packages.nix, losos-tui-wasm). On wasm32, getrandom
+# — the randomness rand and rustls' ring both draw from — refuses to compile
+# without a shim turned on, and features are additive across the graph: this
+# entry enables that shim on the same getrandom version. Native targets stay
+# untouched; nothing here is compiled on them.
+#
+# ratatui and crossterm drop their default features under wasm32: the header
+# is the unix/windows terminal sys half (terminal raw mode, cursor probes),
+# and wasm32-unknown-unknown is neither family, so the default tree cannot
+# compile there at all — even plain buffer/layout draws would, because
+# ratatui (0.30) depends on crossterm 0.29 with its default features on and
+# crossterm's cursor/sys.rs answers to the unix/windows swaps alone. The
+# two entries re-pin both crates on the same versions with the sys half off
+# (ratatui with none; crossterm with event-stream, the web events weave
+# web-sys carries — the profile's key is and nothing else). Features are
+# additive per platform and the native dependencies above keep theirs, so
+# the desktop build's CrosstermBackend tree is untouched.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }
+ratatui = { version = "0.30", default-features = false, features = [] }
+crossterm = { version = "0.29", default-features = false, features = ["event-stream"] }
+# rustls reads the clock through rustls-pki-types' UnixTime: which under
+# wasm32 needs that crate's web feature (web-time's clock; there is no
+# unix family to ask). The feature rides the direct page edge — rustls's
+# own table has only alloc — and features are additive across the graph,
+# so a tree entry on the same version turns it on for the whole wasm32
+# closure and none of the native lines.
+rustls-pki-types = { version = "1", default-features = false, features = ["web", "alloc"] }
 
 [build-dependencies]
 png = "0.17"

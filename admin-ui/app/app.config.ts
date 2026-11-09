@@ -19,6 +19,7 @@
 
 import type { ExpoConfig } from "expo/config";
 
+import { lososSemver } from "./scripts/losos-version.cjs";
 import { serviceType, bonjourServices } from "./plugins/services";
 
 const config: ExpoConfig = {
@@ -27,8 +28,20 @@ const config: ExpoConfig = {
   // The EAS project's slug: extra.eas.projectId points at
   // @thanks-lads/losos, and EAS reads the two as one identity.
   slug: "losos",
-  // Parity with the Compose app's versionName (app/build.gradle.kts).
-  version: "0.1.0",
+  // Parity with the Compose app's versionName (app/build.gradle.kts): the
+  // tag the tree is, not a counter anyone bumps. Resolution mirrors
+  // backend/build.rs's stamp_version exactly — LOSOS_VERSION first (nix's
+  // losos-admin-ui package exports it, because this fileset is
+  // admin-ui/app alone and its nix build cannot walk ../nix), then
+  // nix/version.nix — the sync contract version.yml keeps (its header
+  // explains), for a checkout that carries the nix tree — then the plain
+  // counter, the escape for a source tree without nix/ (nix/tests anchor
+  // the tagged spelling). tag() is build.rs's tag(); Expo's version field
+  // wants semver, so the display convention's leading v (the
+  // `losos --version` word) is not what the store metadata carries;
+  // buildNumber stays 1 on both platforms: that field is device-upgrade
+  // ordered, not tag-shaped, and deriving it would reshuffle on a bump.
+  version: lososSemver(),
   scheme: "losos",
   orientation: "portrait",
   // userInterfaceStyle is "automatic" so ThemeMode.System reads the system

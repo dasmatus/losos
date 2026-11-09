@@ -628,13 +628,16 @@ jobs:
           nix build .#losos-registrar .#losos-admin-ui .#losos-handbook .#losos-lab-virt -L 2>&1 | tee "$RUNNER_TEMP/nix-build.log"
       - name: typecheck the admin UI's mobile tree
         run: |
-          # admin-ui/app's own tsc — one tsconfig now covers both targets,
-          # the SPA's DOM tree and the mobile shell's react-native one. The
-          # native builds are Expo SDK 54's dev-client flow (CNG output is
-          # not committed), so this is what the ui lane runs for them.
-          cd admin-ui/app
-          bun install --frozen-lockfile --ignore-scripts 2>&1 | tail -2
-          bun run typecheck
+          set -o pipefail
+          nix develop .#ci -c bash -euo pipefail -c '
+            # admin-ui/app'"'"'s own tsc — one tsconfig now covers both targets,
+            # the SPA'"'"'s DOM tree and the mobile shell'"'"'s react-native one. The
+            # native builds are Expo SDK 54'"'"'s dev-client flow (CNG output is
+            # not committed), so this is what the ui lane runs for them.
+            cd admin-ui/app
+            bun install --frozen-lockfile --ignore-scripts 2>&1 | tail -2
+            bun run typecheck
+          '
       - name: file an issue for the failed nix build
         if: failure() && steps.build-registrar-ui.outcome == 'failure'
         uses: ./.github/actions/nix-build-failure
