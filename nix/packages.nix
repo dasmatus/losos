@@ -704,7 +704,10 @@ images
     # run), so the runtime closure carries the signing tools and a stub
     # binary but no Bun: an owner who runs this on their own machine
     # unpacks a NixOS ISO with no dev shell and no Bun.
-    nativeBuildInputs = [ pkgs.bun pkgs.makeWrapper ];
+    nativeBuildInputs = [
+      pkgs.bun
+      pkgs.makeWrapper
+    ];
     dontUnpack = true;
     buildPhase = ''
       bun build --compile --outfile=losos-sign-iso ${./sign-iso.ts}
@@ -713,9 +716,14 @@ images
       mkdir -p $out/bin
       cp losos-sign-iso $out/bin/
       wrapProgram $out/bin/losos-sign-iso \
-        --prefix PATH : ${pkgs.lib.makeBinPath [
-          pkgs.xorriso pkgs.mtools pkgs.sbsigntool pkgs.coreutils
-        ]}
+        --prefix PATH : ${
+          pkgs.lib.makeBinPath [
+            pkgs.xorriso
+            pkgs.mtools
+            pkgs.sbsigntool
+            pkgs.coreutils
+          ]
+        }
     '';
   };
 
