@@ -1,6 +1,9 @@
-//! install.sh under sh, with a fake curl that serves files from a folder, a
-//! fake unzip that opens them, and a fake uname, so every branch runs without
-//! the network.
+//! install.ts, bundled and run the way its users run it: bun packs the
+//! TypeScript into install.mjs (the same step CI's tui job publishes;
+//! .github/workflows/ci.yml) and node executes the bundle from stdin-like
+//! environment, with a fake curl that serves files from a folder, a fake
+//! unzip that opens them, and a fake uname, so every branch runs without
+//! the network or a real download.
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -17,6 +20,7 @@ const PROGRAM: &str = "#!/bin/sh\n\
 
 struct Fake {
     dir: tempfile::TempDir,
+    install_mjs: PathBuf,
 }
 
 fn write_exe(path: &Path, text: &str) {
@@ -26,6 +30,11 @@ fn write_exe(path: &Path, text: &str) {
 
 impl Fake {
     fn new() -> Fake {
+        // The bundle: the same `bun build --target=node` CI's tui job runs
+        // and SHA256SUMS sums below (^.github/workflows/ci.yml, publish-tool).
+        // Skipped when bun is missing so the rest of the suite still runs
+        // with a clear word about what it needs.
+        let install_mjs = Self::bundle();
         let dir = tempfile::tempdir().unwrap();
         // The build's zip as nightly.link hands it out: a file at
         // served/<branch>/losos-pages-updates.zip. The fake unzip below
@@ -75,7 +84,37 @@ impl Fake {
             &bin.join("sudo"),
             "#!/bin/sh\necho sudo was called >&2\nexit 99\n",
         );
-        Fake { dir }
+        Fake { dir, install_mjs }
+    }
+
+    /// The bundled installer for one test run, straight from the .ts source
+    /// beside this test. Lives in the fake's own temp tree, so a failed
+    /// build is reported with bun's wording.
+    fn bundle() -> PathBuf {
+        let dir = tempfile::tempdir().unwrap();
+        let mjs = dir.path().join("install.mjs");
+        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("install.ts");
+        let out = Command::new("bun")
+            .args(["build", "--target=node", "--outfile"])
+            .arg(&mjs)
+            .arg(&src)
+            .output()
+            .expect("bun is on the PATH: the installer tests bundle install.ts with it");
+        if !out.status.success() || !mjs.exists() {
+            panic!(
+                "bun build --target=node failed for install.ts: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+        // Out of the temp dir the bundler owns only for the flag.
+        let kept = std::env::temp_dir().join(format!(
+            "losos-install-tests-{}-install.mjs",
+            std::process::id(),
+        ));
+        fs::rename(&mjs, &kept).or_else(|_| fs::copy(&mjs, &kept)).unwrap();
+        let _ = fs::remove_file(&mjs);
+        // tempdir drops here; the bundle itself lives on.
+        kept
     }
 
     fn served(&self) -> PathBuf {
@@ -87,14 +126,11 @@ impl Fake {
     }
 
     fn run(&self, env: &[(&str, &str)]) -> Output {
-        self.run_script(
-            &Path::new(env!("CARGO_MANIFEST_DIR")).join("install.sh"),
-            env,
-        )
+        self.run_script(&self.install_mjs, env)
     }
 
     fn run_script(&self, script: &Path, env: &[(&str, &str)]) -> Output {
-        let mut cmd = Command::new("sh");
+        let mut cmd = Command::new("node");
         cmd.arg(script)
             .env_clear()
             .env(
@@ -110,8 +146,8 @@ impl Fake {
     }
 }
 
-/// The fakes go first; the rest (sh, awk, sha256sum) is this machine's own,
-/// wherever it keeps them.
+/// The fakes go first; the rest (node itself, sha checking happens in node)
+/// is this machine's own, wherever it keeps them.
 fn real_path() -> String {
     std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".into())
 }
@@ -209,12 +245,8 @@ fn installs_from_beside_itself_out_of_the_unzipped_build() {
     for name in ["losos", "SHA256SUMS"] {
         fs::copy(fake.build().join(name), unzipped.join(name)).unwrap();
     }
-    let script = unzipped.join("install.sh");
-    fs::copy(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("install.sh"),
-        &script,
-    )
-    .unwrap();
+    let script = unzipped.join("install.mjs");
+    fs::copy(&fake.install_mjs, &script).unwrap();
     let r = fake.run_script(&script, &[]);
     assert!(r.status.success(), "{}", text(&r.stderr));
     let installed = fake.dir.path().join("home/.local/bin/losos");

@@ -1,222 +1,388 @@
-#!/usr/bin/env bash
-# pre-push: CI's slower gates for exactly the commits being pushed.
-#
-# Each branch pushed is checked against its merge base with origin/main: the
-# files that differ pick CI's lanes (.github/scripts/ci-changes.sh), as they
-# do for a pull request. The checks run on the pushed commit itself, in
-# place when it is the checked-out, clean HEAD and in a temporary worktree
-# otherwise, so a merge of main (which runs no pre-commit) is checked too.
-# What runs, and its name for LOSOS_HOOKS_SKIP:
-#
-#   pre-commit's gates    rustfmt, clippy, nix-lints, pins,  as in pre-commit
-#                         hashes, typecheck, the eval lane
-#   test:<crate>          cargo test, each crate reached     rust lane
-#   clippy-wasm           clippy for wasm32: the plugins,    wasm lane
-#                         losos-mdx and the Lab canvas
-#                         (WebGL2, WebGPU)
-#   admin-ui              nix build .#checks…losos-admin-ui: ui lane
-#                         the built SPA (bun.lock, tsc, build.ts)
-#                         and its Playwright suite
-#   handbook              nix build .#losos-handbook         handbook/ changed
-#   vm:<check>            the VM tests the change touches,   nix/tests/ changed;
-#                         losos-iso-install too when the      install lane
-#                         installer or the boot path changed
-#                         with KVM through `nix build`, without it the
-#                         test driver under TCG; the driver's log and
-#                         output directory land in the logs
-#
-#   LOSOS_HOOKS_VM=all          every VM test the flake exports
-#   LOSOS_HOOKS_VM="a b"        these checks (losos-… names) instead
-#   LOSOS_HOOKS_VM=none         no VM tests (printed as a skip)
-#
-# A VM test counts as touched when its own file under nix/tests/ changed, or
-# a file it names (a browser script, a fixture, a helper folder) did. A
-# touched test whose derivation is the same as on the merge base (a change
-# that only reformats it) is not run: it would boot exactly what main boots.
-set -uo pipefail
-# shellcheck source=nix/hooks/lib.sh
-. "$(dirname "$0")/lib.sh"
+#!/usr/bin/env bun
+// pre-push: CI's slower gates for exactly the commits being pushed.
+//
+// Each branch pushed is checked against its merge base with origin/main: the
+// files that differ pick CI's lanes (.github/scripts/ci-changes.ts), as they
+// do for a pull request. The checks run on the pushed commit itself, in
+// place when it is the checked-out, clean HEAD and in a temporary worktree
+// otherwise, so a merge of main (which runs no pre-commit) is checked too.
+// What runs, and its name for LOSOS_HOOKS_SKIP:
+//
+//   pre-commit's gates    rustfmt, clippy, nix-lints, pins,  as in pre-commit
+//                         hashes, typecheck, the eval lane
+//   test:<crate>          cargo test, each crate reached     rust lane
+//   clippy-wasm           clippy for wasm32: the plugins,    wasm lane
+//                         losos-mdx and the Lab canvas
+//                         (WebGL2, WebGPU)
+//   admin-ui              nix build .#checks…losos-admin-ui: ui lane
+//                         the built SPA (bun.lock, tsc, build.ts)
+//                         and its Playwright suite
+//   handbook              nix build .#losos-handbook         handbook/ changed
+//   vm:<check>            the VM tests the change touches,   nix/tests/ changed;
+//                         losos-iso-install too when the      install lane
+//                         installer or the boot path changed
+//                         with KVM through `nix build`, without it the
+//                         test driver under TCG; the driver's log and
+//                         output directory land in the logs
+//
+//   LOSOS_HOOKS_VM=all          every VM test the flake exports
+//   LOSOS_HOOKS_VM="a b"        these checks (losos-… names) instead
+//   LOSOS_HOOKS_VM=none         no VM tests (printed as a skip)
+//
+// A VM test counts as touched when its own file under nix/tests/ changed, or
+// a file it names (a browser script, a fixture, a helper folder) did. A
+// touched test whose derivation is the same as on the merge base (a change
+// that only reformats it) is not run: it would boot exactly what main boots.
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import * as path from "node:path";
+import {
+  addSkipped,
+  hookBun,
+  hookCargo,
+  hookCratesFor,
+  hookEvalChecks,
+  hookFlake,
+  hookFmtAll,
+  hookGitEnv,
+  hookLanes,
+  hookLogdir,
+  hookNixLints,
+  hookRoot,
+  hookStart,
+  hookSummary,
+  laneOn,
+  logLine,
+  run,
+  setHookRoot,
+  setHookTree,
+  spawnForCheck,
+  captureForCheck,
+  unexportGit,
+} from "./lib.ts";
 
-zero=0000000000000000000000000000000000000000
-remote=${1:-origin}
-base_ref=$remote/main
-git rev-parse -q --verify "$base_ref" >/dev/null || base_ref=origin/main
+const git = (args: string[], allowFail = false): string => {
+  const p = Bun.spawnSync(["git", ...args]);
+  if (p.exitCode !== 0 && !allowFail) process.exit(1);
+  return (p.stdout ?? "").toString().trim();
+};
+const gitQuiet = (args: string[]): boolean =>
+  Bun.spawnSync(["git", ...args]).exitCode === 0;
 
-# Every ref this push updates: `<local ref> <local sha> <remote ref> <remote sha>`.
-mapfile -t updates
-for update in "${updates[@]}"; do
-  read -r local_ref local_sha _ _ <<<"$update"
-  [ "$local_sha" = "$zero" ] && continue # a delete
-  case $local_ref in refs/tags/*) continue ;; esac
+const zero = "0".repeat(40);
+const remote = process.argv[2] ?? "origin";
+let baseRef = `${remote}/main`;
+if (!gitQuiet(["rev-parse", "-q", "--verify", baseRef])) baseRef = "origin/main";
 
-  base=$(git merge-base "$local_sha" "$base_ref" 2>/dev/null || true)
-  if [ -z "$base" ]; then
-    echo "pre-push: no merge base with $base_ref; checking $local_ref against its own history"
-    base=$(git rev-list --max-parents=0 "$local_sha" | tail -1)
-  fi
-  changed=$(git diff --name-only "$base" "$local_sha")
-  [ -n "$changed" ] || continue
+// The checkout git ran the hook in; the worktree decision is always against
+// it, however many refs this push updates.
+const startRoot = hookRoot();
 
-  # Where to run: here, when what is pushed is what is checked out.
-  workdir=$hook_root
-  cleanup=""
-  if [ "$(git rev-parse HEAD)" != "$local_sha" ] || ! git diff --quiet HEAD; then
-    workdir=$(mktemp -d "${TMPDIR:-/tmp}/losos-pre-push.XXXXXX")
-    git worktree add -q --detach "$workdir" "$local_sha" || exit 1
-    cleanup=$workdir
-    trap 'git worktree remove --force "$cleanup"' EXIT
-  fi
+// Worktrees made along the way, removed however the run ends, an interrupt
+// included.
+const cleanups: Array<() => void> = [];
+function drainCleanups(): void {
+  for (const fn of cleanups.splice(0)) {
+    try {
+      fn();
+    } catch {
+      // best effort
+    }
+  }
+}
+process.on("exit", drainCleanups);
+process.on("SIGINT", () => process.exit(130));
+process.on("SIGTERM", () => process.exit(143));
 
-  (
-    cd "$workdir" || exit 1
-    # From a linked worktree git exports its GIT_DIR, which would point
-    # every git call below at that worktree rather than the one checked.
-    hook_unexport_git
-    hook_root=$workdir
-    hook_tree=$(git rev-parse "$local_sha^{tree}")
-    hook_start pre-push
-    echo "  $local_ref ($(git rev-parse --short "$local_sha")) against $(git rev-parse --short "$base") on $base_ref"
-    hook_lanes <<<"$changed"
+// A subprocess whose stdout is only inspected, not shown.
+const nixEvalQuiet = (ref: string): string | null => {
+  const p = spawnSync("nix", ["eval", "--raw", ref], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+  return p.status === 0 ? (p.stdout ?? "").trim() : null;
+};
 
-    # pre-commit's gates over the whole change.
-    if [ "${lane_rust:-false}" = true ]; then
-      run rustfmt hook_fmt_all
-      mapfile -t crates < <(hook_crates_for <<<"$changed")
-      for c in "${crates[@]}"; do
-        run "clippy:$c" hook_cargo clippy --manifest-path "$c/Cargo.toml" --all-targets -- -D warnings
-      done
-      for c in "${crates[@]}"; do
-        # The Solana program's suite runs what `cargo build-sbf` makes; CI's
-        # solana job builds it with Anza's tools, which this hook does not
-        # install.
-        [ "$c" = edge/contracts/solana ] && continue
-        run "test:$c" hook_cargo test --manifest-path "$c/Cargo.toml"
-      done
-    fi
+// Every VM test the flake exports.
+const vmAll = (): string[] =>
+  (readFileSync("flake.nix", "utf8").match(/losos-[a-z0-9-]+ = import \.\/nix\/tests\/[^ ]+\.nix/g) ?? []).map(
+    (m) => m.split(" ")[0],
+  );
 
-    if [ "${lane_wasm:-false}" = true ]; then
-      # shellcheck disable=SC2329 # called through run
-      wasm_clippy() {
-        echo "── backend/plugins (wasm32)"
-        hook_cargo clippy --manifest-path backend/plugins/Cargo.toml \
-          --target wasm32-unknown-unknown --all-targets -- -D warnings || return 1
-        echo "── backend/mdx (wasm32)"
-        hook_cargo clippy --manifest-path backend/mdx/Cargo.toml \
-          --target wasm32-unknown-unknown --features wasm -- -D warnings || return 1
-        local b
-        for b in webgl2 webgpu; do
-          echo "── admin-ui/lab/render ($b, wasm32)"
-          hook_cargo clippy --manifest-path admin-ui/lab/render/Cargo.toml \
-            --target wasm32-unknown-unknown --all-targets \
-            --no-default-features --features "$b" -- -D warnings || return 1
-        done
+// The VM tests this change touches: a test file that changed itself, and
+// every test file that names a changed file.
+const vmTouched = (changed: string[]): string[] => {
+  const hit = new Set<string>();
+  const tests = existsSync("nix/tests")
+    ? readdirSync("nix/tests").filter((f) => f.endsWith(".nix")).map((f) => `nix/tests/${f}`)
+    : [];
+  for (const f of changed) {
+    if (!f.startsWith("nix/tests/")) continue;
+    // The test file itself, and every test file that names this one.
+    if (f.endsWith(".nix")) hit.add(f);
+    const baseName = f.slice("nix/tests/".length).split("/")[0];
+    for (const t of tests) {
+      if (t === f) continue;
+      try {
+        if (readFileSync(t, "utf8").includes(`./${baseName}`)) hit.add(t);
+      } catch {
+        // unreadable is unnamed
       }
-      run clippy-wasm wasm_clippy
-    fi
-
-    mapfile -t nixfiles < <(git diff --name-only --diff-filter=ACMR "$base" "$local_sha" -- '*.nix')
-    hook_nix_lints "${nixfiles[@]}"
-
-    if grep -qxE 'flake.lock|devenv.yaml|devenv.lock' <<<"$changed"; then
-      run pins bash nix/check-pins.sh
-    fi
-    if grep -qE '(^|/)(Cargo.lock|bun.lock)$' <<<"$changed"; then
-      run hashes python3 .github/scripts/fix-hashes.py --check --base "$base"
-    fi
-
-    if [ "${lane_eval:-false}" = true ]; then
-      hook_eval_checks
-    fi
-
-    if [ "${lane_ui:-false}" = true ]; then
-      run admin-ui nix build --no-link -L "$(hook_flake)#checks.x86_64-linux.losos-admin-ui"
-    fi
-    if grep -q '^handbook/' <<<"$changed"; then
-      run handbook nix build --no-link -L "$(hook_flake)#losos-handbook"
-    fi
-
-    # The VM tests this change touches.
-    vm_all() {
-      grep -oE 'losos-[a-z0-9-]+ = import \./nix/tests/[^ ]+\.nix' flake.nix | cut -d' ' -f1
     }
-    vm_touched() {
-      local f base_name t
-      declare -A hit=()
-      while IFS= read -r f; do
-        case $f in nix/tests/*) ;; *) continue ;; esac
-        # The test file itself, and every test file that names this one.
-        if [[ $f == *.nix ]]; then hit[$f]=1; fi
-        base_name=${f#nix/tests/}
-        base_name=${base_name%%/*}
-        for t in nix/tests/*.nix; do
-          [ "$t" = "$f" ] && continue
-          grep -qF "./$base_name" "$t" && hit[$t]=1
-        done
-      done <<<"$changed"
-      for t in "${!hit[@]}"; do
-        grep -oE "losos-[a-z0-9-]+ = import \./$t " flake.nix | cut -d' ' -f1
-      done | sort -u
-    }
-    case ${LOSOS_HOOKS_VM:-} in
-      none) vms=() && echo "  - VM tests: SKIPPED (LOSOS_HOOKS_VM=none)" && hook_skipped+=(vm) ;;
-      all) mapfile -t vms < <(vm_all) ;;
-      "")
-        mapfile -t vms < <(vm_touched)
-        # The install check reaches past nix/tests: the installer, the disk
-        # layout and the boot path are its inputs too (CI's install lane).
-        if [ "${lane_install:-false}" = true ] && [[ " ${vms[*]} " != *" losos-iso-install "* ]]; then
-          vms+=(losos-iso-install)
-        fi
-        ;;
-      *) read -r -a vms <<<"$LOSOS_HOOKS_VM" ;;
-    esac
-    # shellcheck disable=SC2329 # called through run
-    vm_run() {
-      local check=$1 out="$hook_logdir/$1"
-      if [ -e /dev/kvm ] || ! nix eval --raw "$(hook_flake)#checks.x86_64-linux.$check.driver.drvPath" >/dev/null 2>&1; then
-        # With KVM, or a check that boots no VM (invariants, options-doc).
-        nix build -L --out-link "$out/result" "$(hook_flake)#checks.x86_64-linux.$check"
-      else
-        echo "no /dev/kvm: the test driver under TCG"
-        local driver
-        driver=$(nix build --no-link --print-out-paths "$(hook_flake)#checks.x86_64-linux.$check.driver") || return 1
-        mkdir -p "$out/output"
-        (cd "$out" && "$driver/bin/nixos-test-driver" --no-interactive -o "$out/output")
-      fi
-    }
-    # The test's derivation is the merge base's: nothing to run. The base is
-    # checked out once, on first use.
-    base_dir=""
-    # Removed however the run ends, an interrupt included.
-    trap '[ -z "$base_dir" ] || git worktree remove --force "$base_dir"' EXIT
-    vm_same_as_base() {
-      local check=$1 here there
-      if [ -z "$base_dir" ]; then
-        base_dir=$(mktemp -d "${TMPDIR:-/tmp}/losos-pre-push-base.XXXXXX")
-        git worktree add -q --detach "$base_dir" "$base" || return 1
-      fi
-      here=$(nix eval --raw "$(hook_flake)#checks.x86_64-linux.$check.drvPath" 2>/dev/null) || return 1
-      there=$(nix eval --raw "$(hook_flake "$base_dir")#checks.x86_64-linux.$check.drvPath" 2>/dev/null) || return 1
-      [ "$here" = "$there" ]
-    }
-    if [ ${#vms[@]} -gt 0 ]; then
-      echo "  VM tests: ${vms[*]}"
-      for v in "${vms[@]}"; do
-        if [ -z "${LOSOS_HOOKS_VM:-}" ] && vm_same_as_base "$v"; then
-          echo "  = vm:$v: the same derivation as on $(git rev-parse --short "$base"), not run"
-          continue
-        fi
-        run "vm:$v" vm_run "$v"
-      done
-    fi
+  }
+  const names = new Set<string>();
+  const flake = readFileSync("flake.nix", "utf8");
+  for (const t of hit) {
+    for (const m of flake.match(new RegExp(`losos-[a-z0-9-]+ = import \./${t} `, "g")) ?? [])
+      names.add(m.split(" ")[0]);
+  }
+  return [...names].sort();
+};
 
-    hook_finish
-  )
-  rc=$?
-  if [ -n "$cleanup" ]; then
-    git worktree remove --force "$cleanup"
-    trap - EXIT
-  fi
-  [ "$rc" -eq 0 ] || exit "$rc"
-done
-exit 0
+// A touched test whose derivation is the same as on the merge base (a
+// change that only reformats it) is not run: it would boot exactly what
+// main boots. The base is checked out once, on first use.
+let baseDir = "";
+const vmSameAsBase = (check: string, base: string): boolean => {
+  if (!baseDir) {
+    baseDir = mkdtempSync(path.join(process.env.TMPDIR ?? "/tmp", "losos-pre-push-base."));
+    if (!gitQuiet(["worktree", "add", "-q", "--detach", baseDir, base])) return false;
+    cleanups.push(() => {
+      rmSync(baseDir, { recursive: true, force: true });
+      spawnSync("git", ["worktree", "remove", "--force", baseDir], { stdio: "ignore" });
+    });
+  }
+  const here = nixEvalQuiet(`${hookFlake()}#checks.x86_64-linux.${check}.drvPath`);
+  const there = nixEvalQuiet(`${hookFlake(baseDir)}#checks.x86_64-linux.${check}.drvPath`);
+  return here !== null && here === there;
+};
+
+const vmRun = async (check: string): Promise<number> => {
+  const out = path.join(hookLogdir(), check);
+  if (existsSync("/dev/kvm") || nixEvalQuiet(`${hookFlake()}#checks.x86_64-linux.${check}.driver.drvPath`) === null) {
+    // With KVM, or a check that boots no VM (invariants, options-doc).
+    return spawnForCheck([
+      "nix",
+      "build",
+      "-L",
+      "--out-link",
+      path.join(out, "result"),
+      `${hookFlake()}#checks.x86_64-linux.${check}`,
+    ]);
+  }
+  logLine("no /dev/kvm: the test driver under TCG");
+  const built = await captureForCheck([
+    "nix",
+    "build",
+    "--no-link",
+    "--print-out-paths",
+    `${hookFlake()}#checks.x86_64-linux.${check}.driver`,
+  ]);
+  if (!built) return 1;
+  const driver = built.stdout.trim();
+  mkdirSync(path.join(out, "output"), { recursive: true });
+  return spawnForCheck([`${driver}/bin/nixos-test-driver`, "--no-interactive", "-o", path.join(out, "output")], {
+    cwd: out,
+  });
+};
+
+// pre-commit's gates over the whole change, plus pre-push's own.
+const gates = async (changed: string[], base: string, localSha: string): Promise<void> => {
+  await hookLanes(changed.join("\n"));
+
+  if (laneOn("rust")) {
+    await run("rustfmt", hookFmtAll);
+    const crates = hookCratesFor(changed.join("\n"));
+    for (const c of crates) {
+      await run(
+        `clippy:${c}`,
+        async (crate: string) =>
+          hookCargo([
+            "clippy",
+            "--manifest-path",
+            `${crate}/Cargo.toml`,
+            "--all-targets",
+            "--",
+            "-D",
+            "warnings",
+          ]),
+        c,
+      );
+    }
+    for (const c of crates) {
+      // The Solana program's suite runs what `cargo build-sbf` makes; CI's
+      // solana job builds it with Anza's tools, which this hook does not
+      // install.
+      if (c === "edge/contracts/solana") continue;
+      await run(`test:${c}`, (crate: string) => hookCargo(["test", "--manifest-path", `${crate}/Cargo.toml`]), c);
+    }
+  }
+
+  if (laneOn("wasm")) {
+    const wasmClippy = async (): Promise<number> => {
+      logLine("── backend/plugins (wasm32)");
+      if (
+        (await hookCargo([
+          "clippy",
+          "--manifest-path",
+          "backend/plugins/Cargo.toml",
+          "--target",
+          "wasm32-unknown-unknown",
+          "--all-targets",
+          "--",
+          "-D",
+          "warnings",
+        ])) !== 0
+      )
+        return 1;
+      logLine("── backend/mdx (wasm32)");
+      if (
+        (await hookCargo([
+          "clippy",
+          "--manifest-path",
+          "backend/mdx/Cargo.toml",
+          "--target",
+          "wasm32-unknown-unknown",
+          "--features",
+          "wasm",
+          "--",
+          "-D",
+          "warnings",
+        ])) !== 0
+      )
+        return 1;
+      for (const b of ["webgl2", "webgpu"]) {
+        logLine(`── admin-ui/lab/render (${b}, wasm32)`);
+        if (
+          (await hookCargo([
+            "clippy",
+            "--manifest-path",
+            "admin-ui/lab/render/Cargo.toml",
+            "--target",
+            "wasm32-unknown-unknown",
+            "--all-targets",
+            "--no-default-features",
+            "--features",
+            b,
+            "--",
+            "-D",
+            "warnings",
+          ])) !== 0
+        )
+          return 1;
+      }
+      return 0;
+    };
+    await run("clippy-wasm", wasmClippy);
+  }
+
+  const nixfiles = git(["diff", "--name-only", "--diff-filter=ACMR", base, localSha, "--", "*.nix"])
+    .split("\n")
+    .filter(Boolean);
+  await hookNixLints(nixfiles);
+
+  if (changed.some((l) => /^(flake\.lock|devenv\.yaml|devenv\.lock)$/.test(l))) {
+    await run("pins", () => hookBun(["nix/check-pins.ts"]));
+  }
+  if (changed.some((l) => /(^|\/)(Cargo\.lock|bun\.lock)$/.test(l))) {
+    await run("hashes", ["python3", ".github/scripts/fix-hashes.py", "--check", "--base", base]);
+  }
+
+  if (laneOn("eval")) {
+    await hookEvalChecks();
+  }
+
+  if (laneOn("ui")) {
+    await run("admin-ui", [
+      "nix",
+      "build",
+      "--no-link",
+      "-L",
+      `${hookFlake()}#checks.x86_64-linux.losos-admin-ui`,
+    ]);
+  }
+  if (changed.some((l) => l.startsWith("handbook/"))) {
+    await run("handbook", ["nix", "build", "--no-link", "-L", `${hookFlake()}#losos-handbook`]);
+  }
+
+  // The VM tests this change touches.
+  let vms: string[] = [];
+  const vmEnv = process.env.LOSOS_HOOKS_VM;
+  if (vmEnv === "none") {
+    console.log("  - VM tests: SKIPPED (LOSOS_HOOKS_VM=none)");
+    addSkipped("vm");
+  } else if (vmEnv === "all") {
+    vms = vmAll();
+  } else if (!vmEnv) {
+    vms = vmTouched(changed);
+    // The install check reaches past nix/tests: the installer, the disk
+    // layout and the boot path are its inputs too (CI's install lane).
+    if (laneOn("install") && !vms.includes("losos-iso-install")) vms.push("losos-iso-install");
+  } else {
+    vms = vmEnv.split(/\s+/).filter(Boolean);
+  }
+  if (vms.length > 0) {
+    console.log(`  VM tests: ${vms.join(" ")}`);
+    for (const v of vms) {
+      // Without an explicit LOSOS_HOOKS_VM, a test whose derivation is the
+      // merge base's boots exactly what main boots: nothing to run.
+      if (!vmEnv && vmSameAsBase(v, base)) {
+        console.log(`  = vm:${v}: the same derivation as on ${git(["rev-parse", "--short", base])}, not run`);
+        continue;
+      }
+      await run(`vm:${v}`, () => vmRun(v));
+    }
+  }
+};
+
+// Every ref this push updates: `<local ref> <local sha> <remote ref> <remote sha>`.
+const stdin = await Bun.stdin.text();
+for (const update of stdin.split("\n").filter((l) => l.trim().length > 0)) {
+  const [localRef, localSha] = update.trim().split(/\s+/);
+  if (localSha === zero) continue; // a delete
+  if (localRef.startsWith("refs/tags/")) continue;
+
+  let base = git(["merge-base", localSha, baseRef], true);
+  if (!base) {
+    console.log(`pre-push: no merge base with ${baseRef}; checking ${localRef} against its own history`);
+    base = git(["rev-list", "--max-parents=0", localSha]).split("\n").pop() ?? "";
+  }
+  const changed = git(["diff", "--name-only", base, localSha]).split("\n").filter(Boolean);
+  if (changed.length === 0) continue;
+
+  // Where to run: here, when what is pushed is what is checked out.
+  let workdir = startRoot;
+  let worktree: string | null = null;
+  if (git(["rev-parse", "HEAD"], true) !== localSha || !gitQuiet(["diff", "--quiet", "HEAD"])) {
+    workdir = mkdtempSync(path.join(process.env.TMPDIR ?? "/tmp", "losos-pre-push."));
+    if (!gitQuiet(["worktree", "add", "-q", "--detach", workdir, localSha])) process.exit(1);
+    worktree = workdir;
+    cleanups.push(() => spawnSync("git", ["worktree", "remove", "--force", worktree!], { stdio: "ignore" }));
+  }
+
+  // From a linked worktree git exports its GIT_DIR, which would point
+  // every git call below at that worktree rather than the one checked.
+  const savedGitEnv = hookGitEnv.map((k) => [k, process.env[k]] as const);
+  const prevCwd = process.cwd();
+  unexportGit();
+  process.chdir(workdir);
+  setHookRoot(workdir);
+  setHookTree(git(["rev-parse", `${localSha}^{tree}`]));
+  hookStart("pre-push");
+  console.log(
+    `  ${localRef} (${git(["rev-parse", "--short", localSha])}) against ` +
+      `(${git(["rev-parse", "--short", base])}) on ${baseRef}`,
+  );
+  await gates(changed, base, localSha);
+  const rc = hookSummary();
+
+  // Back out of this update: cwd, the exported git variables, the worktree.
+  process.chdir(prevCwd);
+  for (const [k, v] of savedGitEnv) {
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  }
+  drainCleanups();
+  if (rc !== 0) process.exit(rc);
+}
+process.exit(0);

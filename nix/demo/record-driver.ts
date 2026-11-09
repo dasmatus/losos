@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Driver for nix/demo/record.sh: builds a VM test driver, runs the Playwright
+// Driver for the demo recordings: builds a VM test driver, runs the Playwright
 // recorder (record.ts) beside it, and runs the test with LOSOS_RECORD_DIR set.
 import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";

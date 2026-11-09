@@ -1,6 +1,5 @@
 #!/usr/bin/env bun
 // Point LosOS Desktop's losos client and its box test at a release tag.
-// Shim target for desktop-pin.sh. Behavior preserved.
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
@@ -14,7 +13,7 @@ function run(cmd: string[], opts: { cwd?: string; allowFail?: boolean } = {}) {
 }
 
 if (Bun.argv.length !== 4) {
-  process.stderr.write("usage: desktop-pin.sh TAG DESKTOP_DIR\n");
+  process.stderr.write("usage: desktop-pin.ts TAG DESKTOP_DIR\n");
   process.exit(2);
 }
 const tag = Bun.argv[2];

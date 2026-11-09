@@ -39,8 +39,9 @@
 #                reads the web UI's catalogue, palette, pane keywords and the
 #                salmon from admin-ui/, so the source is those files too.
 #                losos-static is the same crate linked against musl for
-#                machines without a Nix store; CI publishes it beside
-#                install.sh. Both share one cargoHash.
+#                machines without a Nix store; CI publishes it beside the
+#                bundled installer (install.mjs, from admin-ui/tui/
+#                install.ts). Both share one cargoHash.
 #   losos-image-pause — the OCI image the local k3s
 #                cluster builds its pods on, defined in nix/images.nix and
 #                merged in below. modules/defaults.nix wires it to
@@ -68,7 +69,7 @@
 #                import, so the browser renders with the box's own code.
 #   losos-sign-iso — signs the installer ISO's UEFI loader in place with the
 #                Secure Boot db key, after `nix build`, so the key never
-#                enters a store (modules/secure-boot.nix, nix/sign-iso.sh).
+#                enters a store (modules/secure-boot.nix, nix/sign-iso.ts).
 #                CI runs it with the SECURE_BOOT_DB_KEY secret;
 #                nix/tests/secure-boot.nix with a throwaway key.
 #   tinycode    — the coding agent CLI (github.com/dasmatus/tinycode,
@@ -696,17 +697,26 @@ images
     doCheck = false;
   };
 
-  losos-sign-iso = pkgs.writeShellApplication {
+  losos-sign-iso = pkgs.stdenvNoCC.mkDerivation {
     name = "losos-sign-iso";
-    runtimeInputs = [
-      pkgs.xorriso
-      pkgs.mtools
-      pkgs.sbsigntool
-      pkgs.coreutils
-      pkgs.gawk
-      pkgs.gnused
-    ];
-    text = builtins.readFile ./sign-iso-impl.sh;
+    # Bun compiles TypeScript directly to a single executable at build
+    # time (nix/sign-iso.ts spawns xorriso/mtools/sbsigntool paths when
+    # run), so the runtime closure carries the signing tools and a stub
+    # binary but no Bun: an owner who runs this on their own machine
+    # unpacks a NixOS ISO with no dev shell and no Bun.
+    nativeBuildInputs = [ pkgs.bun pkgs.makeWrapper ];
+    dontUnpack = true;
+    buildPhase = ''
+      bun build --compile --outfile=losos-sign-iso ${./sign-iso.ts}
+    '';
+    installPhase = ''
+      mkdir -p $out/bin
+      cp losos-sign-iso $out/bin/
+      wrapProgram $out/bin/losos-sign-iso \
+        --prefix PATH : ${pkgs.lib.makeBinPath [
+          pkgs.xorriso pkgs.mtools pkgs.sbsigntool pkgs.coreutils
+        ]}
+    '';
   };
 
   # tinycode (github.com/dasmatus/tinycode), the coding agent CLI the
