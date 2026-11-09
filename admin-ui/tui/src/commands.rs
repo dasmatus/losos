@@ -25,8 +25,11 @@ use crate::problem::{Problem, Result};
 use crate::prompt::{read_hidden, read_piped};
 use crate::theme::{detect_mode, detect_truecolor, Theme};
 use crate::tr;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::tui::app::App;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::tui::login::{KeyChoice, Login, Picker};
+#[cfg(not(target_arch = "wasm32"))]
 use crate::tui::term;
 use crate::vault::{
     group_fingerprint, normalize_url, same_fingerprint, HostKind, HostRecord, Vault,
@@ -135,11 +138,7 @@ fn run_in(args: &[String], io: &mut Io, locale: Locale) -> u8 {
         }
     };
     crate::logging::init(cli.global.verbose, io.var("LOSOS_LOG"));
-    tracing::debug!(
-        locale = locale.code(),
-        "losos {}",
-        crate::tui::panes::VERSION
-    );
+    tracing::debug!(locale = locale.code(), "losos {}", crate::VERSION);
     match dispatch(cli, io) {
         Ok(code) => code,
         Err(problem) => {
@@ -574,6 +573,7 @@ fn group_pin(pin: &str) -> String {
         .join(" ")
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn login(
     io: &mut Io,
     raw: &str,
@@ -722,6 +722,20 @@ fn login(
     Ok(0)
 }
 
+#[cfg(target_arch = "wasm32")]
+fn login(
+    _io: &mut Io,
+    _raw: &str,
+    _wanted_key: Option<&str>,
+    _expected: Option<&str>,
+    _theme: Theme,
+) -> Result<u8> {
+    Err(Problem::new(
+        "losos::terminal",
+        crate::tr!("tui.open.needsTerminal"),
+    ))
+}
+
 fn logout(io: &mut Io, raw: &str) -> Result<u8> {
     let url = parse_url(raw)?;
     let vault = io.vault();
@@ -760,6 +774,7 @@ fn hosts(io: &mut Io) -> Result<u8> {
     Ok(0)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn open(io: &mut Io, named: Option<&str>, theme: Theme) -> Result<u8> {
     if !io.terminal() {
         return Err(Problem::new(
@@ -793,6 +808,14 @@ fn open(io: &mut Io, named: Option<&str>, theme: Theme) -> Result<u8> {
 }
 
 // ── One call ─────────────────────────────────────────────────────────────
+
+#[cfg(target_arch = "wasm32")]
+fn open(_io: &mut Io, _named: Option<&str>, _theme: Theme) -> Result<u8> {
+    Err(Problem::new(
+        "losos::terminal",
+        crate::tr!("tui.open.needsTerminal"),
+    ))
+}
 
 fn call(
     io: &mut Io,
