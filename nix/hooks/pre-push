@@ -51,6 +51,7 @@ import {
   hookRoot,
   hookStart,
   hookSummary,
+  hookWasmPkgs,
   laneOn,
   logLine,
   run,
