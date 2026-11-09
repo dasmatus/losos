@@ -1,14 +1,18 @@
 //! The pages an administrator changed (the pages plugin,
 //! `backend/plugins/pages/`), drawn without JavaScript.
 //!
-//! `GET /api/pages` hands back each changed page as the HTML losos-mdx made
-//! of it, already through the crate's allowlist, with every block the page
-//! keeps as a `<losos-block data-block data-props>` placeholder. Here each
+//! `GET /api/pages` hands back each changed page as its MDX source, with
+//! the blocks registry (`blocks.json`) to read it against. The page is
+//! rendered here, by the same losos-mdx the reader's browser would run,
+//! through the crate's allowlist, with every block the page keeps as a
+//! `<losos-block data-block data-props>` placeholder. Here each
 //! placeholder becomes what this plugin draws for that block, as the script
 //! page puts its own component there, and a `<Button>` gets the page's own
 //! button classes. A page nobody changed is not in the answer, and draws
-//! as it always has.
+//! as it always has; a source that no longer reads (a build moved the
+//! syntax) draws the default, as it did when the box rendered the list.
 
+use losos_mdx::page::{render_page, Registry};
 use losos_page::html::Html;
 use losos_page::ui::{self, Size, Variant};
 use serde_json::{Map, Value};
@@ -16,10 +20,16 @@ use serde_json::{Map, Value};
 const OPEN: &str = "<losos-block";
 const CLOSE: &str = "</losos-block>";
 
-/// The HTML of page `id` when an administrator changed it.
+/// The HTML of page `id` when an administrator changed it: the source the
+/// list answers, rendered against the registry it answers with.
 #[must_use]
 pub fn changed(pages: Option<&Value>, id: &str) -> Option<String> {
-    pages?["pages"][id]["html"].as_str().map(str::to_string)
+    let pages = pages?;
+    let source = pages["pages"][id]["source"].as_str()?;
+    let registry = Registry::from_json(pages["registry"].as_str()?).ok()?;
+    let spec = registry.page(id)?;
+    let rendered = render_page(source, spec).ok()?;
+    Some(rendered.html)
 }
 
 /// The address of the administrators' stylesheet, when there is one.
@@ -181,9 +191,39 @@ mod tests {
 
     #[test]
     fn a_page_nobody_changed_is_not_there() {
-        let answer = serde_json::json!({ "pages": { "overview": { "html": "x" } }, "style": "3" });
-        assert_eq!(changed(Some(&answer), "overview").as_deref(), Some("x"));
-        assert_eq!(changed(Some(&answer), "settings.storage"), None);
+        let registry = r#"{"pages":{"overview":{"title":"Overview","blocks":{"BoxName":{}}}}}"#;
+        let answer = serde_json::json!({
+            "pages": { "overview": { "source": "<BoxName />", "at": "2026-10-29T10:00:00Z", "by": "matus" } },
+            "registry": registry,
+            "style": "3"
+        });
+        assert_eq!(
+            changed(Some(&answer), "overview")
+                .as_deref()
+                .map(|h| h.contains("data-block=\"BoxName\"")),
+            Some(true)
+        );
+        // A page the registry no longer lists leaves the default drawn.
+        let mut gone = answer.clone();
+        gone["pages"]["gone"] = gone["pages"]["overview"].clone();
+        assert_eq!(changed(Some(&gone), "gone"), None);
+        // An unknown block is drawn as nothing, as the box's list drew it.
+        let mut broken = answer.clone();
+        broken["pages"]["overview"]["source"] = Value::String("<Nope />".into());
+        assert_eq!(
+            changed(Some(&broken), "overview")
+                .as_deref()
+                .map(|h| h.contains("losos-block")),
+            Some(false)
+        );
+        // No registry in the answer, and no answer at all.
+        assert_eq!(
+            changed(
+                Some(&serde_json::json!({ "pages": {}, "style": "3" })),
+                "overview"
+            ),
+            None
+        );
         assert_eq!(changed(None, "overview"), None);
         assert_eq!(
             style_href(Some(&answer)).as_deref(),

@@ -1,0 +1,14 @@
+{
+  "name": "onion",
+  "description": "The admin app's document for this box's Tor and I2P addresses. The onion surface's API routes are lososd's own handlers on the second listener (LOSOS_ONION_PORT, modules/daemon.nix); this plugin hands out the one page the API is not: the app's index.html, which the browser renders (docs/superpowers/specs/2026-11-09-csr-offload-design.md, part B). It never names a caller: whoever reaches it, the page it serves is the same.",
+  "routes": [
+    { "method": "GET", "path": "/api/onion/" }
+  ],
+  "files": [
+    { "path": "${LOSOS_ADMIN_UI_DIR:-}", "access": "ro" }
+  ],
+  "limits": { "memoryMiB": 32, "timeoutSecs": 5 },
+  "config": {
+    "ui": "${LOSOS_ADMIN_UI_DIR:-}"
+  }
+}

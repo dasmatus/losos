@@ -337,23 +337,17 @@ fn the_end_of_our_rebuild_is_a_toast_once() {
 }
 
 /// What the pages plugin answers GET /api/pages with for `pages` (id to
-/// source): each page as losos-mdx draws it against the admin page's
-/// blocks.json.
+/// source): the sources, and the registry they are rendered against.
 fn changed_pages(pages: &[(&str, &str)], style: Option<&str>) -> Value {
-    let registry = losos_mdx::page::Registry::from_json(include_str!(
-        "../../../../admin-ui/app/src/pages/blocks.json"
-    ))
-    .unwrap();
+    let registry = include_str!("../../../../admin-ui/app/src/pages/blocks.json");
     let mut out = serde_json::Map::new();
     for (id, source) in pages {
-        let rendered = losos_mdx::page::render_page(source, registry.page(id).unwrap()).unwrap();
-        assert!(rendered.problems.is_empty(), "{:?}", rendered.problems);
         out.insert(
             (*id).to_string(),
-            json!({ "html": rendered.html, "at": "2026-10-29T10:00:00Z", "by": "matus" }),
+            json!({ "source": source, "at": "2026-10-29T10:00:00Z", "by": "matus" }),
         );
     }
-    json!({ "pages": out, "style": style })
+    json!({ "pages": out, "registry": registry, "style": style })
 }
 
 #[test]
