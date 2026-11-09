@@ -451,7 +451,6 @@ images
   inherit losos-basic-classes;
   inherit losos-lab-core losos-lab-render losos-lab-virt;
   inherit losos-mdx-wasm;
-  inherit losos-tui-wasm;
 
   losos-admin-ui = pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
     pname = "losos-admin-ui";
