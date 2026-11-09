@@ -23,13 +23,12 @@ name: tinycode autofix
 # endpoint and the same free models the opencode-autofix workflow uses
 # through the full opencode CLI.
 #
-# The agent model: OpenCode Zen's free models, served through the Go
-# gateway. Free models rotate as providers sponsor them, so check
-# https://opencode.ai/models/#free-models when one here disappears; both
-# lines below are zero-retention today (November 2026). The second is the
-# fallback for when the primary is saturated. (The free tier is otherwise
-# gated to the OpenCode client, which tinycode presents on OpenCode
-# gateways — see dasmatus/tinycode #10.)
+# The agent model: OpenCode Zen's Go gateway. glm-5.3-flash is the
+# primary, deepseek-v4.1-flash the fallback for when the primary is
+# saturated. (The -free variants of these two do not route on Go — their
+# sponsored quota lives on the pay-as-you-go endpoint, which refuses every
+# non-OpenCode client; tinycode presents the OpenCode identification there
+# regardless — see dasmatus/tinycode #10.)
 #
 # Key: the repository's OPENCODE_API_KEY actions secret (a free OpenCode
 # Console key; sign-up is all it takes — https://opencode.ai/docs/zen/).
@@ -91,13 +90,16 @@ permissions:
 
 env:
   # OpenCode Zen's Go gateway, without the chat-completions path tinycode
-  # appends (opencode.ai/docs/console/harnesses). Free model ids ride the
-  # Go gateway by choice; `is_opencode_gateway` matches it, so the session
-  # and client identification headers go out as the Go API requires.
+  # appends (opencode.ai/docs/console/harnesses). The -free model ids do
+  # not route here — their sponsored quota lives on the pay-as-you-go
+  # endpoint, which free-tier-refuses every non-OpenCode client — so these
+  # are the paid variants of the same families. `is_opencode_gateway`
+  # matches the /inference/go path, so the session and client
+  # identification headers go out as the Go API requires.
   TINYCODE_BASE_URL: https://opencode.ai/inference/go/openai/v1
   TINYCODE_PROVIDER: openai
-  TINYCODE_MODEL: glm-5.3-flash-free
-  TINYCODE_FALLBACK_MODEL: deepseek-v4.1-flash-free
+  TINYCODE_MODEL: glm-5.3-flash
+  TINYCODE_FALLBACK_MODEL: deepseek-v4.1-flash
 
 jobs:
   # ── Job 1: a failed ci run → tinycode fixes the branch ────────────────────
