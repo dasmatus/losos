@@ -108,7 +108,7 @@ in
         # The log reader (modules/log-reader.nix) asks who is signed in,
         # passing on the person nginx named to it.
         apiOwners =
-          lib.optional config.services.nginx.enable (config.services.nginx.user)
+          lib.optional config.services.nginx.enable config.services.nginx.user
           ++ lib.optional (config.users.users ? losos-logs) "losos-logs";
         # The onion surface (backend/src/http.rs): Traefik's forwardAuth
         # middleware only, never nginx.
