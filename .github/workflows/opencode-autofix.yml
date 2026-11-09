@@ -1,0 +1,380 @@
+name: opencode autofix
+
+# ── What this is ────────────────────────────────────────────────────────────
+#
+# An OpenCode agent (the anomalyco/opencode GitHub action, running `opencode`
+# on the runner) that reworks a pull request's branch so it matches what the
+# pull request DESCRIPTION asks for: the description is passed to the agent
+# as its brief, the agent edits and commits, and what it did is reported in
+# the pull request body.
+#
+# Triggers and guards:
+#
+#   - Runs on same-repository pull requests only — a fork's pull request gets
+#     no secrets and nothing to push to, so the gate skips it with a notice.
+#   - The gate skips a pull request whose body carries our report fence for
+#     this head commit and this description text (`oc-autofix:<sha>:<hash>`):
+#     this is what keeps a running agent's own push (which re-triggers this
+#     workflow through `synchronize`) and the body-update edit itself (which
+#     re-triggers it through `edited`) from looping. A NEW head commit or a
+#     NEW description still runs the agent again, so editing the description
+#     after a fix is how you request the next pass.
+#   - Draft pull requests are left alone, and the whole workflow is inert
+#     until `OPENCODE_API_KEY` exists as an actions secret (a free OpenCode
+#     Console key; sign-up is all it takes, the Zen models picked here cost
+#     nothing — see https://opencode.ai/docs/zen/).
+#
+# Models: OpenCode Zen's free tier only. Free models rotate as providers
+# sponsor them, so check https://opencode.ai/models/#free-models when one
+# here disappears; both lines below are zero-retention today (November 2026).
+# The second run is the fallback for when the primary is saturated.
+#
+# Trust: this workflow gives an agent write over the PR's branch and its
+# body on the strength of the description text — which is itself an input.
+# That is fine for the branch-and-description flow of a single-developer
+# repo, but on a repo where strangers open pull requests, add an author
+# allowlist in the gate's step condition before this matters.
+#
+# Frontend: when the agent's edits touch admin-ui/app (the admin UI), the
+# same shots the handbook-screens workflow takes — built UI photographed by
+# Playwright against a stubbed lososd, from admin-ui/app/tests/handbook-screens.ts
+# — are taken from the fixed tree and attached to the pull request body as an
+# artifact link, so a UI change is visible without checking the branch out.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  # OpenCode Zen, free tier. `opencode/<model-id>`, per opencode.ai/docs/zen.
+  OC_MODEL: opencode/glm-5.3-flash-free
+  OC_FALLBACK_MODEL: opencode/deepseek-v4.1-flash-free
+
+concurrency:
+  # NOT cancelled in progress: an agent push re-enters this group while the
+  # first run is still writing its report, and that run must finish; the
+  # second one exits in the gate.
+  group: opencode-autofix-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: "gate: does this pull request want an autofix"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+      desc_sha: ${{ steps.decide.outputs.desc_sha }}
+    steps:
+      - name: decide
+        id: decide
+        env:
+          # A secret cannot be read directly, but it CAN go into a step's
+          # env (never into a run script): empty means the workflow runs
+          # inert until someone adds OPENCODE_API_KEY in the settings.
+          HAS_API_KEY: ${{ secrets.OPENCODE_API_KEY != '' }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+        run: |
+          set -euo pipefail
+          skip() { echo "run=false" >> "$GITHUB_OUTPUT"; echo "::notice::$1"; exit 0; }
+          [ "$HAS_API_KEY" = true ] || skip "OPENCODE_API_KEY is not set in the repository's actions secrets"
+          [ "$HEAD_REPO" = "$GH_REPO" ] || skip "the pull request is from a fork"
+          [ "$DRAFT" = false ] || skip "the pull request is a draft"
+          body=$(gh pr view "$PR" --json body --jq .body) || skip "the pull request could not be read"
+          # The description hash ignores our own report fence, so the body
+          # edit that reports a run does not count as a description change.
+          clean=$(sed -e '/<!-- oc-autofix:begin -->/,/<!-- oc-autofix:end -->/d' <<<"$body")
+          desc=$(printf '%s' "$clean" | sha256sum | cut -c1-16)
+          echo "desc_sha=$desc" >> "$GITHUB_OUTPUT"
+          if grep -Fq -- "<!-- oc-autofix: $HEAD_SHA:$desc -->" <<<"$body"; then
+            skip "this head commit and description are already handled"
+          fi
+          # Rare case, bounded: the report lands in the body a moment before
+          # the push, so one `edited`-triggered run can still carry the
+          # previous report's head sha. That run applies nothing and
+          # restamps the marker, after which the gate settles.
+          echo "run=true" >> "$GITHUB_OUTPUT"
+
+  autofix:
+    name: "autofix: OpenCode against the description"
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Note where the branch stands
+        id: position
+        run: |
+          set -euo pipefail
+          git config user.name "losos-ci-bot"
+          git config user.email "losos-ci-bot@users.noreply.github.com"
+          echo "pre_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      # Direct interpolation of the PR body into an action input, not into a
+      # run script: the text reaches the agent as data either way, and this
+      # keeps it out of a shell where it would be code. `.claude/CLAUDE.md`
+      # carries the repo's working agreements; the agent reads it first.
+      - name: OpenCode fixes against the description
+        id: oc
+        continue-on-error: true
+        uses: anomalyco/opencode/github@latest
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          model: ${{ env.OC_MODEL }}
+          # Sessions carry the PR brief, the description and the tree, and
+          # the share default for a public repository would publish them.
+          share: "false"
+          use_github_token: true
+          prompt: |
+            You are the LosOS pull-request autofix bot, working in a checkout
+            of the pull request's own branch.
+
+            Read .claude/CLAUDE.md before anything else and follow it where
+            it applies.
+
+            The author of pull request #${{ github.event.pull_request.number }}
+            wrote the description between the marks below. Work out what it
+            requires of the code that is NOT yet true on this branch, and
+            make those changes — exactly those: no drive-by fixes, no rename
+            sweeps, nothing the description does not ask for. If everything
+            it asks for is already there, change nothing.
+
+            Do not comment on the pull request, do not update its body, and
+            do not open pull requests; the workflow that ran you reports the
+            result. Commit your edits (`git add -A` and one commit, message
+            `fix: <one-line summary>`) but do NOT push and do not rebase.
+
+            ── pull request description ──
+            ${{ github.event.pull_request.body }}
+            ── end ──
+
+      # Free models rotate and saturate; when the primary can't run, a second
+      # one on the same brief usually can.
+      - name: OpenCode again, on the fallback free model
+        id: oc-fallback
+        if: steps.oc.outcome == 'failure'
+        uses: anomalyco/opencode/github@latest
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          model: ${{ env.OC_FALLBACK_MODEL }}
+          share: "false"
+          use_github_token: true
+          prompt: |
+            You are the LosOS pull-request autofix bot, working in a checkout
+            of the pull request's own branch.
+
+            Read .claude/CLAUDE.md before anything else and follow it where
+            it applies.
+
+            The author of pull request #${{ github.event.pull_request.number }}
+            wrote the description between the marks below. Work out what it
+            requires of the code that is NOT yet true on this branch, and
+            make those changes — exactly those: no drive-by fixes, no rename
+            sweeps, nothing the description does not ask for. If everything
+            it asks for is already there, change nothing.
+
+            Do not comment on the pull request, do not update its body, and
+            do not open pull requests; the workflow that ran you reports the
+            result. Commit your edits (`git add -A` and one commit, message
+            `fix: <one-line summary>`) but do NOT push and do not rebase.
+
+            ── pull request description ──
+            ${{ github.event.pull_request.body }}
+            ── end ──
+
+      - name: Commit, rebase, and take stock
+        id: changes
+        env:
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          PRE_SHA: ${{ steps.position.outputs.pre_sha }}
+        run: |
+          set -euo pipefail
+          # The sha the report below names: the pushed tip when the agent
+          # changed something, the unchanged tip when it did not. Either
+          # way the run the next event triggers must see it, or the gate
+          # would hold this loop open forever.
+          git add -A
+          # Everything the agent produced, committed or not, against where
+          # the run started.
+          if git diff --quiet "$PRE_SHA" --; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "pushed_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          files=$(git diff --name-only "$PRE_SHA" | tr '\n' ' ')
+          echo "files=$files" >> "$GITHUB_OUTPUT"
+          echo "file_count=$(git diff --name-only "$PRE_SHA" | wc -l | tr -d ' ')" >> "$GITHUB_OUTPUT"
+          frontend=false
+          for f in $files; do
+            case "$f" in
+              admin-ui/app|admin-ui/app/*) frontend=true ;;
+            esac
+          done
+          echo "frontend=$frontend" >> "$GITHUB_OUTPUT"
+          # One commit of the agent's leftovers, on top of whatever commits
+          # the agent made itself. Both rebased onto the branch's tip, which
+          # may have moved between run start and now, as rust-autofix.yml
+          # does.
+          if ! git diff --cached --quiet; then
+            git commit -m "fix: autofix per the pull request description"
+          fi
+          git fetch origin "$BRANCH"
+          if ! git rebase "refs/remotes/origin/$BRANCH"; then
+            git rebase --abort
+            echo "::error::The branch moved under this run and rebasing the autofix would conflict; it is left committed locally."
+            exit 1
+          fi
+          # The marker in the report below names THIS sha, and the run the
+          # push triggers sees it in the body and exits in its gate.
+          echo "pushed_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      # The same build-through-screens pipeline as handbook-screens.yml, on
+      # the fixed tree. The shots describe the branch as it is about to be
+      # pushed, tree state included.
+      - uses: oven-sh/setup-bun@v2
+        if: steps.changes.outputs.frontend == 'true'
+        with:
+          bun-version-file: admin-ui/app/package.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.changes.outputs.frontend == 'true'
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: install wasm-bindgen-cli
+        if: steps.changes.outputs.frontend == 'true'
+        run: cargo install wasm-bindgen-cli --version 0.2.127
+
+      - name: build lab packages
+        if: steps.changes.outputs.frontend == 'true'
+        working-directory: admin-ui/app
+        run: |
+          bun install --frozen-lockfile --ignore-scripts
+          bun run lab:core
+          bun run lab:virt
+          bun run mdx
+          # The render stub, exactly as handbook-screens builds it: render is
+          # large and only the Lab page needs it, and the .d.ts stand-in
+          # keeps the build typechecking while the screens run without the
+          # GPU canvas.
+          mkdir -p src/lab/render-pkg/webgl2 src/lab/render-pkg/webgpu
+          for api in webgl2 webgpu; do
+            echo "export default {};" > "src/lab/render-pkg/$api/losos_lab_render.js"
+            {
+              echo 'export default function init(opts?: any): Promise<any>;'
+              echo 'export declare const Lab: any;'
+              echo 'export declare class LabCanvas { constructor(...args: any[]); [key: string]: any; static [key: string]: any; }'
+            } > "src/lab/render-pkg/$api/losos_lab_render.d.ts"
+            touch "src/lab/render-pkg/$api/losos_lab_render_bg.wasm"
+          done
+
+      - name: build admin UI
+        if: steps.changes.outputs.frontend == 'true'
+        working-directory: admin-ui/app
+        run: bun build.ts
+
+      - name: install Playwright Chromium
+        if: steps.changes.outputs.frontend == 'true'
+        working-directory: admin-ui/app
+        run: bun --bun x playwright install chromium --with-deps
+
+      - name: take screenshots
+        if: steps.changes.outputs.frontend == 'true'
+        working-directory: admin-ui/app
+        run: bun tests/handbook-screens.ts /tmp/oc-screens
+
+      - uses: actions/upload-artifact@v7
+        if: steps.changes.outputs.frontend == 'true'
+        with:
+          name: oc-screens-pr${{ github.event.pull_request.number }}
+          path: /tmp/oc-screens/*.png
+          retention-days: 7
+
+      # Written after the commit and rebase, before the push: the marker
+      # names the sha this run is pushing, and it is what stops the
+      # `synchronize` run the push itself triggers. Only if someone pushes
+      # to the branch again between this edit and the push is the marker
+      # stale, and that next run goes around once more, changing nothing —
+      # a cheap round trip, not a loop.
+      - name: report in the pull request body
+        if: steps.oc.outcome == 'success' || steps.oc-fallback.outcome == 'success'
+        uses: actions/github-script@v9
+        env:
+          MODEL: ${{ steps.oc.outcome == 'success' && env.OC_MODEL || env.OC_FALLBACK_MODEL }}
+          HEAD_SHA: ${{ steps.changes.outputs.pushed_sha }}
+          DESC_SHA: ${{ needs.gate.outputs.desc_sha }}
+          CHANGED: ${{ steps.changes.outputs.changed }}
+          FILES: ${{ steps.changes.outputs.files }}
+          FILE_COUNT: ${{ steps.changes.outputs.file_count }}
+          FRONTEND: ${{ steps.changes.outputs.frontend }}
+          # github-script's own env contract has shifted across major
+          # versions; plain custom names do not.
+          OC_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          OC_ARTIFACTS_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts
+        with:
+          script: |
+            const pr = context.issue.number;
+            const current = (await github.rest.pulls.get({
+              owner: context.repo.owner, repo: context.repo.repo,
+              pull_number: pr,
+            })).data.body ?? '';
+            const begin = '<!-- oc-autofix:begin -->';
+            const end = '<!-- oc-autofix:end -->';
+            let body = current;
+            const i = body.lastIndexOf(begin);
+            const j = body.indexOf(end);
+            if (i >= 0 && j > i) body = (body.slice(0, i) + body.slice(j + end.length)).trimEnd();
+            const lines = ['### OpenCode autofix', ''];
+            if (process.env.CHANGED === 'true') {
+              const count = process.env.FILE_COUNT;
+              lines.push(`_${process.env.MODEL} applied the description: ${count} file${count === '1' ? '' : 's'} touched ([run](${process.env.OC_RUN_URL}))._`);
+              const files = process.env.FILES.trim().split(/\s+/);
+              for (const f of files.slice(0, 20)) lines.push(`- \`${f}\``);
+              if (files.length > 20) lines.push(`- … and ${files.length - 20} more`);
+            } else {
+              lines.push(`_${process.env.MODEL} found the description already implemented; nothing was edited. ([run](${process.env.OC_RUN_URL}))_`);
+            }
+            if (process.env.FRONTEND === 'true') {
+              lines.push('', `**Admin UI screenshots** of the fixed tree: [artifact](${process.env.OC_ARTIFACTS_URL}).`);
+            }
+            lines.push('');
+            lines.push(`<!-- oc-autofix: ${process.env.HEAD_SHA}:${process.env.DESC_SHA} -->`);
+            const section = [begin, ...lines, end].join('\n');
+            await github.rest.pulls.update({
+              owner: context.repo.owner, repo: context.repo.repo,
+              pull_number: pr,
+              body: `${body}\n\n${section}`,
+            });
+
+      - name: push the fixes to the branch
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          # Already committed and rebased in the previous step, so this is a
+          # plain push. If it fails because the branch moved again, the next
+          # `synchronize` event repeats this whole pass.
+          git push origin "HEAD:$BRANCH"
