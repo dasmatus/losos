@@ -761,14 +761,26 @@ jobs:
         run: |
           cd admin-ui/app
           bun install --frozen-lockfile --ignore-scripts 2>&1 | tail -2
+      # Quota, not the tree: a submission can die past upload with "This
+      # account has used its Android builds from the Free plan this
+      # month" (the plan's monthly allowance, or the credits meter) — the
+      # CLI then exits with a bare "Error: build command failed." Surface
+      # the real reason, so a red job reads as account billing, not code.
       - name: eas build (both phone targets, one submission)
         if: steps.token.outputs.eas == 'true'
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           cd admin-ui/app
-          npx eas-cli@latest build --platform all --profile development \
-            --non-interactive --no-wait
+          if ! out=$(npx eas-cli@latest build --platform all --profile development \
+              --non-interactive --no-wait 2>&1); then
+            printf '%s\n' "$out" | tail -30
+            if printf '%s' "$out" | grep -qiE "free plan this month|build credits|upgrade (your|the) plan|quota|billing"; then
+              echo "::error::EAS turned the submission away on the account's plan: the Free-plan build allowance is exhausted (resets monthly; eas billing:subscribe starter upgrades). Nothing in-tree can fix it; the bun pin in eas.json governs the next submission."
+              echo "(Full output above. The expo.dev dashboard has every cloud build's own log.)"
+            fi
+            exit 1
+          fi
 
   images:
     name: "nix: OCI images for the local cluster"
