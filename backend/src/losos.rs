@@ -264,6 +264,44 @@ pub trait Losos {
         report: &crate::config_repo::SyncReport,
     ) -> anyhow::Result<()>;
 
+    // ── The mesh configuration mirror (crate::autoprovision) ──────────────
+    // One git remote the mesh keeps its modified box configuration in, and
+    // every box keeps in step with the same kind of run as the LosOS Git
+    // sync above. The mirror is a plain git URL, so the effects are one
+    // method each here; the fetch is shallow and into a ref of its own, so
+    // the mirror's history never muddles the box's own.
+    /// The mirror this box keeps in step with, from the module's environment,
+    /// or `None` (`losos.autoprovision.enable` off): the box still commits
+    /// locally, and provisions have no mirror to record it in.
+    fn mesh_mirror(&mut self) -> Option<crate::autoprovision::Mesh>;
+    /// The mirror branch's head after a shallow fetch, `None` when the mirror
+    /// has no such branch yet (first contact). A source that cannot be
+    /// reached at all is a [`crate::config_repo::NotUp`] error.
+    fn mesh_fetch(&mut self, url: &str, branch: &str) -> anyhow::Result<Option<String>>;
+    /// The committer time of a mirror commit the box fetched (`None` when
+    /// that commit is not in the box's repository, an older mark telling it).
+    fn mesh_head_time(&mut self, sha: &str) -> anyhow::Result<Option<i64>>;
+    /// What the last sync recorded ([`crate::autoprovision::Mark`]).
+    fn mesh_mark(&mut self) -> anyhow::Result<Option<crate::autoprovision::Mark>>;
+    fn save_mesh_mark(&mut self, mark: &crate::autoprovision::Mark) -> anyhow::Result<()>;
+    /// Commit `text` as the shared `modules/overrides.nix` over `base` (a
+    /// fetched mirror head, or none to seed a mirror with no branch) and push
+    /// it to `refs/heads/<branch>`: fast-forward only, so two boxes pushing
+    /// at once refute each other instead of overwriting. The push's sha is
+    /// the answer.
+    fn mesh_push(
+        &mut self,
+        url: &str,
+        branch: &str,
+        base: Option<&str>,
+        text: &str,
+        subject: &str,
+        body: &str,
+    ) -> anyhow::Result<String>;
+    /// How the last look at the mirror went (the History pane).
+    fn load_mesh_report(&mut self) -> anyhow::Result<Option<crate::config_repo::SyncReport>>;
+    fn save_mesh_report(&mut self, report: &crate::config_repo::SyncReport) -> anyhow::Result<()>;
+
     // ── Backups and erasing the box (`crate::backup`, `crate::erase`) ───
     // The copying is done by scripts in transient units; these are the
     // handles lososd holds them by, and the few files it reads back.
@@ -1750,6 +1788,21 @@ pub fn cmd_config<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
             }),
         }),
     };
+    let mesh = match l.mesh_mirror() {
+        None => json!(null),
+        Some(mesh) => json!({
+            "url": mesh.url,
+            "box": mesh.box_name,
+            "report": l
+                .load_mesh_report()?
+                .unwrap_or_else(|| crate::config_repo::SyncReport {
+                    state: "pending".to_string(),
+                    detail: "Not checked against the mesh mirror yet.".to_string(),
+                    synced_at: None,
+                    remote_head: None,
+                }),
+        }),
+    };
     Ok(json!({
         "enabled": repo.is_some(),
         "repository": repo.map(|r| json!({
@@ -1763,6 +1816,7 @@ pub fn cmd_config<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
         "log": log,
         "sync": sync,
         "upstream": upstream,
+        "mesh": mesh,
     }))
 }
 
@@ -2047,6 +2101,178 @@ fn try_follow<L: Losos>(
     };
     report.remote_head = Some(fetched);
     Ok(report)
+}
+
+/// Keep `/etc/nixos` in step with the mesh's configuration mirror, once, and
+/// report (the daemon's reconciler on the config sync's thread; see
+/// `crate::autoprovision`). Every way it can fail is a *report*: a mirror
+/// that is down is the mesh's usual state, not a fault of the box.
+///
+/// The decision is [`crate::autoprovision::plan_mesh`] over the box's own
+/// text, the mirror head and the last mark: a take goes through the gates
+/// every Apply does (the shape, the option document, the edge gate), a push
+/// is a commit of this box's text with `Sync:` provenance, and a clash
+/// resolves last-writer-wins by the mirror head's committer time against the
+/// moment this box last pushed.
+pub fn cmd_mesh_sync<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
+    let report = mesh_once(l);
+    l.save_mesh_report(&report)?;
+    let Some(mesh) = l.mesh_mirror() else {
+        return Ok(json!({ "mirror": null }));
+    };
+    Ok(json!({
+        "mirror": mesh.url,
+        "box": mesh.box_name,
+        "sync": report,
+        "mark": l.mesh_mark()?,
+    }))
+}
+
+fn mesh_once<L: Losos>(l: &mut L) -> crate::config_repo::SyncReport {
+    use crate::config_repo::{NotUp, SyncReport};
+    let Some(mesh) = l.mesh_mirror() else {
+        return SyncReport::new(
+            "off",
+            "This box does not keep a mesh configuration mirror in step.",
+        );
+    };
+    match try_mesh(l, &mesh) {
+        Ok(report) => report,
+        Err(e) if e.downcast_ref::<NotUp>().is_some() => {
+            tracing::info!(reason = %e, "mesh sync: the mirror is not reachable");
+            SyncReport::new("unavailable", e.to_string())
+        }
+        Err(e) => {
+            tracing::warn!(error = ?e, "mesh sync failed");
+            SyncReport::new("error", format!("{e:#}"))
+        }
+    }
+}
+
+/// One mesh sync, in order: wait out a running rebuild (it is reading the
+/// tree), decide ([`crate::autoprovision::plan_mesh`]) from the mirror's
+/// branch, its text and its head, then take the mesh's word (gated, written,
+/// committed, rebuilt) or push this box's word (committed over the mirror
+/// head, pushed, marked).
+fn try_mesh<L: Losos>(
+    l: &mut L,
+    mesh: &crate::autoprovision::Mesh,
+) -> anyhow::Result<crate::config_repo::SyncReport> {
+    use crate::autoprovision::{
+        mesh_push_message, mesh_take_message, plan_mesh, MeshPlan, OVERRIDES_PATH,
+    };
+    use crate::config_repo::SyncReport;
+    use crate::losos::RebuildState;
+
+    // A state that cannot be read counts as building: writing under a
+    // running rebuild's back is the one wrong thing this can do.
+    let building = |l: &mut L| {
+        l.load_state().map_or(true, |state| {
+            state
+                .rebuild
+                .is_some_and(|rb| rb.state == RebuildState::Building)
+        })
+    };
+    let local = l.read_overrides()?;
+    let head = l.mesh_fetch(&mesh.url, crate::autoprovision::BRANCH)?;
+    let (remote_text, at) = match head.as_deref() {
+        Some(sha) => {
+            let text = l.config_show(sha, OVERRIDES_PATH)?;
+            let at = l.mesh_head_time(sha)?.unwrap_or(0);
+            (text, at)
+        }
+        None => (None, 0),
+    };
+    let mark = l.mesh_mark()?;
+    match plan_mesh(
+        &local,
+        remote_text
+            .as_deref()
+            .map(|t| (t, head.as_deref().unwrap_or(""), at)),
+        mark.as_ref(),
+    ) {
+        MeshPlan::Nothing => {
+            // Only the head can have moved (equal texts); refresh the mark so
+            // the next cycle sees it.
+            if let Some(sha) = head.as_deref() {
+                let old = mark.unwrap_or_else(crate::autoprovision::Mark::default);
+                l.save_mesh_mark(&crate::autoprovision::Mark {
+                    sha: sha.to_string(),
+                    text: local,
+                    pushed_at: old.pushed_at,
+                })?;
+            }
+            Ok(SyncReport::new(
+                "ok",
+                match head.as_deref().map(|h| h.get(..10).unwrap_or(h)) {
+                    Some(short) => format!("The mesh has this box's configuration at {short}."),
+                    None => "The mesh has no configuration to take yet.".to_string(),
+                },
+            ))
+        }
+        MeshPlan::Take => {
+            // It is the write that could land on the disk a running rebuild
+            // is reading; a push reads only the overrides file.
+            if building(l) {
+                return Ok(SyncReport::new(
+                    "waiting",
+                    "A rebuild is running; the mesh's configuration is taken at the next sync.",
+                ));
+            }
+            let sha = head.clone().unwrap_or_default();
+            let text = remote_text.unwrap_or_default();
+            let (subject, body) = mesh_take_message();
+            if let Err(why) = gate_overrides(l, &text) {
+                return Ok(SyncReport::new(
+                    "refused",
+                    format!("The mesh's configuration was not taken: {why}.",),
+                ));
+            }
+            l.write_overrides(&text)?;
+            let rebuilt = l.config_commit(&subject, &body)?.is_some();
+            l.save_mesh_mark(&crate::autoprovision::Mark {
+                sha,
+                text,
+                pushed_at: mark.and_then(|m| m.pushed_at),
+            })?;
+            if rebuilt {
+                queue_rebuild(l, MSG_STARTED)?;
+                Ok(SyncReport::new(
+                    "ok",
+                    "Took the mesh's configuration; rebuilding.",
+                ))
+            } else {
+                Ok(SyncReport::new(
+                    "ok",
+                    "The mesh's configuration matches this box's.",
+                ))
+            }
+        }
+        MeshPlan::Push => {
+            let box_head = l.config_head()?.map(|h| h.sha).unwrap_or_default();
+            let at = l.now() as i64;
+            let (subject, body) = mesh_push_message(&mesh.box_name, &box_head, at);
+            let base = head.clone();
+            let pushed = l.mesh_push(
+                &mesh.url.clone(),
+                crate::autoprovision::BRANCH,
+                base.as_deref(),
+                &local,
+                &subject,
+                &body,
+            )?;
+            let short = pushed.get(..10).unwrap_or(&pushed).to_string();
+            l.save_mesh_mark(&crate::autoprovision::Mark {
+                sha: pushed,
+                text: local,
+                pushed_at: Some(at),
+            })?;
+            Ok(SyncReport::new(
+                "ok",
+                format!("Pushed this box's configuration to the mirror as {short}."),
+            ))
+        }
+    }
 }
 
 fn ask<L: Losos>(
@@ -2663,6 +2889,43 @@ mod tests {
                 r: &crate::config_repo::SyncReport,
             ) -> anyhow::Result<()> {
                 self.0.save_upstream_report(r)
+            }
+            fn mesh_mirror(&mut self) -> Option<crate::autoprovision::Mesh> {
+                self.0.mesh_mirror()
+            }
+            fn mesh_fetch(&mut self, u: &str, b: &str) -> anyhow::Result<Option<String>> {
+                self.0.mesh_fetch(u, b)
+            }
+            fn mesh_head_time(&mut self, s: &str) -> anyhow::Result<Option<i64>> {
+                self.0.mesh_head_time(s)
+            }
+            fn mesh_mark(&mut self) -> anyhow::Result<Option<crate::autoprovision::Mark>> {
+                self.0.mesh_mark()
+            }
+            fn save_mesh_mark(&mut self, m: &crate::autoprovision::Mark) -> anyhow::Result<()> {
+                self.0.save_mesh_mark(m)
+            }
+            fn mesh_push(
+                &mut self,
+                u: &str,
+                b: &str,
+                base: Option<&str>,
+                text: &str,
+                s: &str,
+                body: &str,
+            ) -> anyhow::Result<String> {
+                self.0.mesh_push(u, b, base, text, s, body)
+            }
+            fn load_mesh_report(
+                &mut self,
+            ) -> anyhow::Result<Option<crate::config_repo::SyncReport>> {
+                self.0.load_mesh_report()
+            }
+            fn save_mesh_report(
+                &mut self,
+                r: &crate::config_repo::SyncReport,
+            ) -> anyhow::Result<()> {
+                self.0.save_mesh_report(r)
             }
             fn backup_target(&mut self) -> anyhow::Result<Option<crate::backup::Target>> {
                 self.0.backup_target()
@@ -4251,6 +4514,93 @@ mod tests {
         let out = cmd_config_sync(&mut f).unwrap();
         assert_eq!(out["sync"]["state"], "off");
         assert!(f.pushed.is_empty());
+        // No mirror, either: autoprovision is off on this box.
+        assert_eq!(out["mesh"], serde_json::Value::Null);
+        let out = cmd_mesh_sync(&mut f).unwrap();
+        assert_eq!(out["mirror"], serde_json::Value::Null);
+        assert_eq!(f.mesh_report.as_ref().unwrap().state, "off");
+    }
+
+    /// The mirror's branch carries the mesh's shared configuration; a box
+    /// that has never seen it takes it through the Apply gates and rebuilds.
+    #[test]
+    fn mesh_takes_the_mirror_through_the_gates_and_rebuilds() {
+        let mut f = with_doc(FakeLosos::new().with_mesh());
+        let head = "f".repeat(40);
+        f.mesh_head = Some(head.clone());
+        f.mesh_text = Some(
+            "{ ... }:\n{\n  losos.sharingMyStorage = true;\n  losos.git.enable = false;\n}\n"
+                .to_string(),
+        );
+        f.mesh_times.insert(head.clone(), f.clock as i64 - 7);
+        let out = cmd_mesh_sync(&mut f).unwrap();
+        assert_eq!(out["sync"]["state"], "ok", "{}", out["sync"]["detail"]);
+        assert_eq!(
+            f.commits.last().unwrap().subject,
+            "autoprovision: took the mesh's configuration"
+        );
+        assert!(f.spawned, "a take rebuilds");
+        assert_eq!(f.mesh_mark.as_ref().unwrap().sha, head);
+        // Nothing on the box was wrong, so nothing was pushed.
+        assert!(f.mesh_pushes.is_empty());
+    }
+
+    /// A mesh whose configuration fails the Apply gates stays refused, with
+    /// the box keeping its own; the next cycle tries the mirror again.
+    #[test]
+    fn mesh_refuses_a_configuration_the_gates_reject() {
+        let mut f = with_doc(FakeLosos::new().with_mesh());
+        cmd_mesh_sync(&mut f).unwrap();
+        f.mesh_head = Some("d".repeat(40));
+        f.mesh_text = Some("this is not nix at all".to_string());
+        let out = cmd_mesh_sync(&mut f).unwrap();
+        assert_eq!(out["sync"]["state"], "refused", "{}", out["sync"]["detail"]);
+        assert_eq!(f.commits.len(), 1, "nothing was taken");
+        assert!(!f.spawned);
+    }
+
+    /// A fresh mirror is seeded with the box's own text; from there every
+    /// later change pushes, and a mirror move pushes a change back.
+    #[test]
+    fn mesh_pushes_its_word_and_marks_the_push() {
+        let mut f = FakeLosos::new().with_mesh();
+        let out = cmd_mesh_sync(&mut f).unwrap();
+        assert_eq!(out["sync"]["state"], "ok", "{}", out["sync"]["detail"]);
+        assert_eq!(f.mesh_pushes.len(), 1, "the first run seeds the mirror");
+        assert_eq!(
+            f.mesh_mark.as_ref().unwrap().pushed_at,
+            Some(f.clock as i64)
+        );
+        // In step: nothing more happens.
+        cmd_mesh_sync(&mut f).unwrap();
+        assert_eq!(f.mesh_pushes.len(), 1);
+        // An apply moves the box ahead: pushed on the next run, with the
+        // box's own commit recorded beside it.
+        cmd_apply(&mut f, "{ losos.hostName = \"box2\"; }").unwrap();
+        let out = cmd_mesh_sync(&mut f).unwrap();
+        assert_eq!(f.mesh_pushes.len(), 2);
+        assert!(out["sync"]["detail"]
+            .as_str()
+            .unwrap()
+            .starts_with("Pushed "));
+        assert_eq!(f.mesh_pushes[0].0, None, "a seed has no base");
+        // The rebuild the apply queued has finished by the time the mirror
+        // moved (a peer's push): the box takes it.
+        let peer = "e".repeat(40);
+        f.mesh_head = Some(peer.clone());
+        f.mesh_text = Some("{ ... }:\n{\n  losos.hostName = \"box3\";\n}\n".to_string());
+        f.mesh_times.insert(peer.clone(), f.clock as i64 + 5);
+        f.state.rebuild = None;
+        let out = cmd_mesh_sync(&mut f).unwrap();
+        assert_eq!(out["sync"]["state"], "ok", "{}", out["sync"]["detail"]);
+        assert_eq!(
+            f.commits.last().unwrap().subject,
+            "autoprovision: took the mesh's configuration"
+        );
+        assert!(out["sync"]["detail"]
+            .as_str()
+            .unwrap()
+            .starts_with("Took the mesh"));
     }
 
     #[test]
