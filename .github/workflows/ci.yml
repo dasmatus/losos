@@ -870,7 +870,13 @@ jobs:
           echo "workspace: $workspace"
           listout=$(xcodebuild -list -json -workspace "$workspace")
           printf '%s\n' "$listout"
-          scheme=$(jq -r '[.project.schemes[] | select(test("pods"; "i") | not)][0]' <<<"$listout")
+          # The -list JSON nests under .workspace (not .project), and the
+          # app's own scheme is named like the workspace — the only way to
+          # stand out from the sea of per-pod schemes (AsyncStorage, boost,
+          # RCT-Folly, …) pod install generates alongside Pods-*.
+          scheme=$(jq -r '.workspace as $w |
+            ($w.schemes | map(select(. == $w.name))[0])
+            // ($w.schemes | map(select(test("^Pods-") | not))[0])' <<<"$listout")
           [ -n "$scheme" ] || { echo "::error::no app scheme in $workspace — the -list output is above"; exit 1; }
           echo "scheme: $scheme"
           # The simulator needs no Apple signing; CODE_SIGNING_ALLOWED=NO
