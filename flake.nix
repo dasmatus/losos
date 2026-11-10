@@ -558,10 +558,6 @@
             # mesh's configuration mirror rides the same daemon
             # (losos.autoprovision.*, backend/src/autoprovision.rs).
             ./modules/autoprovision.nix
-            # the mesh's configuration mirror: lososd keeps /etc/nixos in step
-            # with it, and a netbooted machine provisioned with it
-            # (modules/autoprovision.nix, backend/src/autoprovision.rs).
-            ./modules/autoprovision.nix
             # modules/overrides.nix is imported through onBox below, never here.
             ./modules/updates.nix
             ./modules/logs.nix

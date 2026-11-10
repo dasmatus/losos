@@ -26,29 +26,33 @@ let
   slugOk = builtins.match "[a-z0-9][a-z0-9-]{0,31}" cfg.box != null;
 in
 {
-  assertions = [
+  config = lib.mkMerge [
     {
-      assertion = cfg.enable -> cfg.mirror != null;
-      message =
-        "losos.autoprovision.enable needs the mesh's mirror URL in" + " losos.autoprovision.mirror";
+      assertions = [
+        {
+          assertion = cfg.enable -> cfg.mirror != null;
+          message =
+            "losos.autoprovision.enable needs the mesh's mirror URL in" + " losos.autoprovision.mirror";
+        }
+        {
+          assertion = !cfg.enable || slugOk;
+          message =
+            "losos.autoprovision.box must be lowercase letters, digits and" + " dashes, at most 32 characters";
+        }
+      ];
     }
-    {
-      assertion = !cfg.enable || slugOk;
-      message =
-        "losos.autoprovision.box must be lowercase letters, digits and" + " dashes, at most 32 characters";
-    }
+
+    (lib.mkIf on {
+      # The two fields `backend/src/autoprovision.rs` reads.
+      systemd.services.lososd.environment = {
+        LOSOS_MESH_CONFIG_URL = cfg.mirror;
+        LOSOS_MESH_CONFIG_BOX = cfg.box;
+      };
+
+      # The mirror a provision of this mesh runs against, for an operator
+      # standing at a netbooted box (`losos-autoprovision` names it so no typed
+      # address is needed, and `--mirror` outranks it anyway).
+      environment.variables.LOSOS_MESH_CONFIG_URL = cfg.mirror;
+    })
   ];
-
-  config = lib.mkIf on {
-    # The two fields `backend/src/autoprovision.rs` reads.
-    systemd.services.lososd.environment = {
-      LOSOS_MESH_CONFIG_URL = cfg.mirror;
-      LOSOS_MESH_CONFIG_BOX = cfg.box;
-    };
-
-    # The mirror a provision of this mesh runs against, for an operator
-    # standing at a netbooted box (`losos-autoprovision` names it so no typed
-    # address is needed, and `--mirror` outranks it anyway).
-    environment.variables.LOSOS_MESH_CONFIG_URL = cfg.mirror;
-  };
 }
