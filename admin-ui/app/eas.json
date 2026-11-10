@@ -41,11 +41,19 @@
     "appVersionSource": "remote"
   },
   "build": {
+    /* The package manager is Bun (bun.lock is in-tree), and bun.lock carries
+     * "lockfileVersion": 2, the text format Bun 1.4 writes. EAS's default
+     * SDK 54 images ship an older Bun (1.2.20), which dies in the Install
+     * dependencies stage with "error: Unknown lockfile version" and, the
+     * install being --frozen-lockfile, takes the build down with it — so
+     * every profile pins the package.json packageManager's Bun, the version
+     * that both wrote the lockfile and passes the repo's own CI. */
     /* The dev client for the local machine's start (`expo start --dev-client`),
      * Android on EAS's workers: a debug APK installs as its own launcher app on
      * a phone with the docs' own flow (Expo services, no Android SDK needed on
      * the building machine). */
     "development": {
+      "bun": "1.4.2",
       "developmentClient": true,
       "distribution": "internal",
       "android": {
@@ -67,9 +75,12 @@
     /* The App-Store-shaped preview the box's release flow runs later;
      * EAS does the prebuild, Expo's package publish scripts stay in-tree. */
     "preview": {
+      /* The shared comment above explains the pin: the lockfile's Bun. */
+      "bun": "1.4.2",
       "distribution": "store"
     },
     "production": {
+      "bun": "1.4.2",
       "autoIncrement": true,
       "channel": "production"
     }
