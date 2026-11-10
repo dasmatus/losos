@@ -149,7 +149,7 @@ file.
 ## Where the key lives
 
 The private key never enters a Nix build or a box. The owner makes it
-once, on their own computer, with `docs/provisioning/secure-boot/keygen.sh`, and
+once, on their own computer, with `docs/provisioning/secure-boot/keygen.ts`, and
 keeps it offline. The only other copy is the repository secret CI signs
 with. The certificate is committed as `nix/keys/secure-boot-db.pem`. Until that
 file carries one, releases say *Not signed* and the stick needs Secure Boot

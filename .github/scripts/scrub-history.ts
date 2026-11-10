@@ -1,6 +1,5 @@
 #!/usr/bin/env bun
 // Rewrite history in a bare clone to scrub Claude/session credits.
-// Shim target for scrub-history.sh. Behavior preserved.
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -13,7 +12,7 @@ function git(repo: string, args: string[], opts: { allowFail?: boolean } = {}) {
 }
 
 if (Bun.argv.length !== 4) {
-  process.stderr.write("usage: scrub-history.sh <bare-clone> <report-file>\n");
+  process.stderr.write("usage: scrub-history.ts <bare-clone> <report-file>\n");
   process.exit(2);
 }
 const repo = Bun.argv[2];

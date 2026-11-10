@@ -1,75 +1,126 @@
-#!/usr/bin/env bash
-# pre-commit: CI's quick gates for the staged files, before the commit exists.
-#
-# The staged paths pick CI's lanes (.github/scripts/ci-changes.sh); a lane
-# that is off runs nothing here either. What runs, and its name for
-# LOSOS_HOOKS_SKIP:
-#
-#   rustfmt               cargo fmt --check, every crate      rust lane
-#   clippy:<crate>        clippy --all-targets -D warnings,   rust lane
-#                         each crate the change reaches
-#   nix-lints             nixfmt, deadnix, statix over the    any .nix staged
-#                         staged .nix files (nix/lint-nix.sh)
-#   pins                  nix/check-pins.sh                   a lock or devenv.yaml
-#   hashes                fix-hashes.py --check               a Cargo.lock or bun.lock
-#   typecheck:<package>   bun run typecheck                   admin-ui/app, design-system/react
-#   check-flake, eval-*   CI's eval job: every flake output   eval lane
-#                         evaluated, the three systems'
-#                         module merge, the ISO and edge
-#                         image derivations
-#
-# The tests, the wasm32 lint, Playwright and the VM tests are pre-push's.
-# The checks read the working tree, so unstaged edits count; pre-push runs
-# on exactly the commits it sends.
-set -uo pipefail
-# shellcheck source=nix/hooks/lib.sh
-. "$(dirname "$0")/lib.sh"
-cd "$hook_root" || exit 1
+#!/usr/bin/env bun
+// pre-commit: CI's quick gates for the staged files, before the commit exists.
+//
+// The staged paths pick CI's lanes (.github/scripts/ci-changes.ts); a lane
+// that is off runs nothing here either. What runs, and its name for
+// LOSOS_HOOKS_SKIP:
+//
+//   rustfmt               cargo fmt --check, every crate      rust lane
+//   clippy:<crate>        clippy --all-targets -D warnings,   rust lane
+//                         each crate the change reaches
+//   nix-lints             nixfmt, deadnix, statix over the    any .nix staged
+//                         staged .nix files (nix/lint-nix.ts)
+//   pins                  nix/check-pins.ts                   a lock or devenv.yaml
+//   hashes                fix-hashes.py --check               a Cargo.lock or bun.lock
+//   typecheck:<package>   bun run typecheck                   admin-ui/app, design-system/react
+//   check-flake, eval-*   CI's eval job: every flake output   eval lane
+//                         evaluated, the three systems'
+//                         module merge, the ISO and edge
+//                         image derivations
+//
+// The tests, the wasm32 lint, Playwright and the VM tests are pre-push's.
+// The checks read the working tree, so unstaged edits count; pre-push runs
+// on exactly the commits it sends.
+import { existsSync } from "node:fs";
+import * as path from "node:path";
+import {
+  hookCargo,
+  hookCratesFor,
+  hookEvalChecks,
+  hookFinish,
+  hookFmtAll,
+  hookLanes,
+  hookNixLints,
+  hookRoot,
+  hookStart,
+  hookWasmPkgs,
+  hookBun,
+  laneOn,
+  run,
+  setHookTree,
+} from "./lib.ts";
 
-staged=$(git diff --cached --name-only --diff-filter=ACMRD)
-[ -n "$staged" ] || exit 0
+const git = (args: string[], allowFail = false): string => {
+  const p = Bun.spawnSync(["git", ...args], { cwd: hookRoot() });
+  if (p.exitCode !== 0 && !allowFail) process.exit(1);
+  return p.stdout.toString().trim();
+};
+const gitQuiet = (args: string[]): boolean =>
+  Bun.spawnSync(["git", ...args], { cwd: hookRoot() }).exitCode === 0;
 
-hook_start pre-commit
-if git diff --quiet; then
-  # The working tree is the index: what passes here is what is committed.
-  hook_tree=$(git write-tree)
-else
-  echo "  note: unstaged edits in the working tree are checked too"
-fi
-hook_lanes <<<"$staged"
+process.chdir(hookRoot());
 
-if [ "${lane_rust:-false}" = true ]; then
-  run rustfmt hook_fmt_all
-  while IFS= read -r c; do
-    run "clippy:$c" hook_cargo clippy --manifest-path "$c/Cargo.toml" --all-targets -- -D warnings
-  done < <(hook_crates_for <<<"$staged")
-fi
+const staged = git(["diff", "--cached", "--name-only", "--diff-filter=ACMRD"]);
+if (!staged) process.exit(0);
 
-mapfile -t nixfiles < <(git diff --cached --name-only --diff-filter=ACMR -- '*.nix')
-hook_nix_lints "${nixfiles[@]}"
+hookStart("pre-commit");
+if (gitQuiet(["diff", "--quiet"])) {
+  // The working tree is the index: what passes here is what is committed.
+  setHookTree(git(["write-tree"]));
+} else {
+  console.log("  note: unstaged edits in the working tree are checked too");
+}
+await hookLanes(staged);
 
-if grep -qxE 'flake.lock|devenv.yaml|devenv.lock' <<<"$staged"; then
-  run pins bash nix/check-pins.sh
-fi
-
-if grep -qE '(^|/)(Cargo.lock|bun.lock)$' <<<"$staged"; then
-  run hashes python3 .github/scripts/fix-hashes.py --check --base HEAD
-fi
-
-for pkg in admin-ui/app admin-ui/design-system/react; do
-  grep -q "^$pkg/" <<<"$staged" || continue
-  # shellcheck disable=SC2329 # called through run
-  typecheck() {
-    cd "$hook_root/$1" || return 1
-    [ "$1" != admin-ui/app ] || hook_wasm_pkgs || return 1
-    [ -d node_modules ] || hook_bun install --frozen-lockfile --ignore-scripts || return 1
-    hook_bun run typecheck
+if (laneOn("rust")) {
+  await run("rustfmt", hookFmtAll);
+  for (const c of hookCratesFor(staged)) {
+    await run(
+      `clippy:${c}`,
+      async (crate: string) =>
+        hookCargo([
+          "clippy",
+          "--manifest-path",
+          `${crate}/Cargo.toml`,
+          "--all-targets",
+          "--",
+          "-D",
+          "warnings",
+        ]),
+      c,
+    );
   }
-  run "typecheck:$pkg" typecheck "$pkg"
-done
+}
 
-if [ "${lane_eval:-false}" = true ]; then
-  hook_eval_checks
-fi
+const nixfiles = git(["diff", "--cached", "--name-only", "--diff-filter=ACMR", "--", "*.nix"])
+  .split("\n")
+  .filter(Boolean);
+await hookNixLints(nixfiles);
 
-hook_finish
+const stagedLines = staged.split("\n");
+if (stagedLines.some((l) => /^(flake\.lock|devenv\.yaml|devenv\.lock)$/.test(l))) {
+  await run("pins", () => hookBun(["nix/check-pins.ts"]));
+}
+
+if (stagedLines.some((l) => /(^|\/)(Cargo\.lock|bun\.lock)$/.test(l))) {
+  await run("hashes", [
+    "python3",
+    ".github/scripts/fix-hashes.py",
+    "--check",
+    "--base",
+    "HEAD",
+  ]);
+}
+
+// The packages a staged file reaches: the admin SPA (its typecheck pulls
+// the wasm packages the checkout is missing, hookWasmPkgs) and the design
+// system's React wrappers.
+const cwd = process.cwd();
+for (const pkg of ["admin-ui/app", "admin-ui/design-system/react"]) {
+  if (!stagedLines.some((l) => l.startsWith(`${pkg}/`))) continue;
+  const typecheck = async (p: string): Promise<number> => {
+    process.chdir(path.join(hookRoot(), p));
+    if (p === "admin-ui/app" && (await hookWasmPkgs()) !== 0) return 1;
+    if (!existsSync("node_modules") && (await hookBun(["install", "--frozen-lockfile", "--ignore-scripts"])) !== 0)
+      return 1;
+    return hookBun(["run", "typecheck"]);
+  };
+  await run(`typecheck:${pkg}`, typecheck, pkg);
+  process.chdir(cwd);
+}
+
+if (laneOn("eval")) {
+  await hookEvalChecks();
+}
+
+hookFinish();

@@ -7,7 +7,7 @@ internet only through an HTTPS proxy, so the tunnel's ports (UDP and TCP
 ## 1. Does this network reach the edge?
 
 ```sh
-nix/demo/live-edge/check.sh https://register.dasmat.us
+bun nix/demo/live-edge/check.ts https://register.dasmat.us
 ```
 
 It asks the control plane for `/health`, the tunnel pin, the gateway key and

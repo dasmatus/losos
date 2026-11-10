@@ -5,7 +5,7 @@
  *
  *   LOSOS_RECORD_DIR=<dir> bun nix/demo/box-edge-box/record.ts
  *
- * record.sh runs it beside the VM script. The script writes
+ * record-driver.ts runs it beside the VM script. The script writes
  * <dir>/{boxa,boxb,edge}.{token,key,port}, appends one JSON line per step
  * to <dir>/timeline.jsonl and waits for <dir>/ack-<n>; this writes
  * <dir>/<nn>-<box>-mesh.png and <dir>/<nn>-edge-manage.png, appends the

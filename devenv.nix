@@ -194,7 +194,12 @@ in
       # admin-ui/design-system/react) build, test and run on Bun, and the
       # shell carries no Node: each script asks for its runtime with
       # `bun --bun`, and `bun install` is each workspace's own first step.
+      # The one exception is the terminal client's installer
+      # (admin-ui/tui/install.ts, shipped as install.mjs): its tests bundle
+      # the .ts with bun and then run the result with plain node, the way
+      # end users do — hence nodejs here, used by nothing else.
       bun
+      nodejs
       # The wasm32 linker and the component wrapper for lososd's plugins
       # (backend/plugins/README.md), as nix/packages.nix builds them.
       lld
@@ -229,7 +234,7 @@ in
   # pre-push), not devenv's git-hooks, so a clone without devenv runs the
   # same ones: `nix develop` and a Claude Code session install them too
   # (flake.nix, .claude/settings.json), and anyone else runs
-  # `bash nix/hooks/install` once. enterShell below points this clone's
+  # `bun nix/hooks/install.ts` once. enterShell below points this clone's
   # core.hooksPath at them. They replay CI's gates for the files a commit or
   # a push touches; nix/hooks/pre-commit and nix/hooks/pre-push say which.
   # devenv's git-hooks would install pre-commit's own runner into
@@ -253,7 +258,7 @@ in
 
   # The Nix lints over the whole tree; CI's eval job and the git hooks run
   # the same script.
-  scripts.lint-nix.exec = ''bash "$DEVENV_ROOT/nix/lint-nix.sh" "$@"'';
+  scripts.lint-nix.exec = ''bun "$DEVENV_ROOT/nix/lint-nix.ts" "$@"'';
   scripts.lint-nix.description = "nixfmt --check, deadnix and statix over every tracked .nix file.";
 
   # The Lab canvas's two wasm32 builds, WebGL2 then WebGPU, with the target
@@ -308,14 +313,14 @@ in
   '';
   scripts.test-solana-escrow.description = "Build the Solana escrow program and test it and the registrar against it.";
 
-  # LososEscrow's Foundry suite, then edge/contracts/test-payment.sh on anvil:
+  # LososEscrow's Foundry suite, then edge/contracts/test-payment.ts on anvil:
   # deposits, coin fees and taps paid and settled by the registrar's signer.
   # It fetches forge-std, solc and the wallet's npm packages, so it is not in
   # `devenv test`; CI's `evm-escrow` job runs it.
   scripts.test-evm-escrow.exec = ''
     set -eu
     export PATH=${pkgs.foundry}/bin:${pkgs.nodejs}/bin:${pkgs.bun}/bin:${pkgs.jq}/bin:$PATH
-    bash "$DEVENV_ROOT/edge/contracts/test-payment.sh"
+    bun "$DEVENV_ROOT/edge/contracts/test-payment.ts"
   '';
   scripts.test-evm-escrow.description = "Test the EVM escrow and pay through it on a local chain.";
 
@@ -332,13 +337,13 @@ in
 
   # What `nix flake check --no-build` checks, one `nix eval` per derivation, so
   # the peak memory is one VM test's evaluation rather than all of them at
-  # once (nix/check-flake.sh says why). CI's eval job runs the same script.
+  # once (nix/check-flake.ts says why). CI's eval job runs the same script.
   # CI's `bots` job: the release channels' bot against a fake GitHub over a
   # real repository (.github/scripts/test_channels.py).
   scripts.test-bots.exec = ''${pkgs.python3}/bin/python3 "$DEVENV_ROOT/.github/scripts/test_channels.py"'';
   scripts.test-bots.description = "Test the release channels' bot.";
 
-  scripts.check-flake.exec = ''bash "$DEVENV_ROOT/nix/check-flake.sh" "$@"'';
+  scripts.check-flake.exec = ''bun "$DEVENV_ROOT/nix/check-flake.ts" "$@"'';
   scripts.check-flake.description = "Evaluate every flake output, one at a time (builds nothing).";
 
   # devenv runs standalone (see flake.nix), so there are two lock files:
@@ -354,7 +359,7 @@ in
   # from the build toolchain for two weeks after dependabot bumped flake.lock
   # (PR #4) and nobody bumped the other two. CI runs the same comparison in
   # its `pins` job; keep the two in step by hand, like every other gate here.
-  scripts.check-pins.exec = ''bash "$DEVENV_ROOT/nix/check-pins.sh"'';
+  scripts.check-pins.exec = ''bun "$DEVENV_ROOT/nix/check-pins.ts"'';
   scripts.check-pins.description = "Assert flake.lock, devenv.yaml and devenv.lock pin the same nixpkgs.";
 
   # flake check only forces each nixosConfiguration's toplevel *derivation*;
@@ -492,7 +497,7 @@ in
   '';
 
   enterShell = ''
-    bash "$DEVENV_ROOT/nix/hooks/install"
+    bun "$DEVENV_ROOT/nix/hooks/install.ts"
     echo "losos dev shell"
     echo "  fmt · lint · test-rust        Rust"
     echo "  lint-nix                      nixfmt, deadnix, statix"
