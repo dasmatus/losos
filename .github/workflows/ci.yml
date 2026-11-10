@@ -545,7 +545,11 @@ jobs:
         || needs.changes.outputs.iso == 'true'
         || needs.changes.outputs.discovery == 'true') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # 75, not 45: the Rust+TS-only move (f7e9c89a) grew the compile past the
+    # old budget — a run spent its last minute mid "build losos-ctl" and GH
+    # recorded the timeout as a cancelled job, which the result gate reads
+    # as a failure. The comment below asked for the re-time; this is it.
+    timeout-minutes: 75
     permissions:
       contents: read
       issues: write
