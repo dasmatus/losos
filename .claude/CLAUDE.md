@@ -89,6 +89,12 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   file in `docs/vm/`). Put new things inside one of them. `modules/` stays
   at the root: every box keeps its own `modules/install-target.nix` and
   `modules/overrides.nix` there (`config_repo::BOX_FILES`).
+- `modules/autoprovision.nix` (`backend/src/autoprovision.rs`): the mesh's
+  configuration mirror — `losos.autoprovision.enable` keeps every local-mesh
+  box's `modules/overrides.nix` in step through lososd's reconciler, and
+  `nixosConfigurations.netboot` (flake.nix) is the install medium for
+  machines the mesh netboots: its autorun runs `losos-ctl provision`,
+  `losos-ctl install` with the mesh's configuration fetched first.
 - `flake.nix` builds two systems from one module set: `iso` (options, disko,
   installer) and `install` (everything). `specialArgs.self` lets
   `defaults.nix` wire `losos-ctl` and `losos-admin-ui` in.
