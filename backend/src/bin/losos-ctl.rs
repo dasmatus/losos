@@ -139,6 +139,11 @@ enum Command {
     },
     /// The losos auto-installer. Destructive: it repartitions every target disk.
     Install(InstallArgs),
+    /// The netboot flavor of the installer: take the mesh's modified box
+    /// configuration from its mirror, install with it, and record this box
+    /// on the mirror. Same flags as install. Destructive exactly like it:
+    /// it repartitions every target disk.
+    Provision(ProvisionArgs),
     /// Check, as lososd does for an official edge, that an edge's https://
     /// name validates under DNSSEC and its HTTPS record carries an Encrypted
     /// Client Hello key. Runs locally with lososd's resolver settings
@@ -196,6 +201,23 @@ struct InstallArgs {
     /// seeds keys; the running box cannot add one.
     #[arg(long = "gpg-key", value_name = "FILE")]
     gpg_keys: Vec<PathBuf>,
+}
+
+/// Flags for autoprovision: where the mesh's modified box configuration is
+/// and what to call this machine, then everything the installer itself takes.
+#[derive(Args)]
+struct ProvisionArgs {
+    /// The mesh's configuration mirror (a git URL). Default: the medium's
+    /// (LOSOS_MESH_CONFIG_URL, the module's losos.autoprovision.mirror).
+    #[arg(long)]
+    mirror: Option<String>,
+    /// A name of this machine's own on the mirror: lowercase letters, digits
+    /// and dashes. Default: the medium's (LOSOS_MESH_CONFIG_BOX), then
+    /// `box-<first 8 hex of the machine id>`.
+    #[arg(long)]
+    name: Option<String>,
+    #[command(flatten)]
+    install: InstallArgs,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -386,131 +408,12 @@ fn main() -> ExitCode {
         };
     }
 
-    // The installer is local and prints its own progress as it goes; it does
-    // not produce a JSON document to relay.
+    // The two local, destructive commands run their own flow.
+    if let Command::Provision(provision) = &cli.command {
+        return provision_flow(provision);
+    }
     if let Command::Install(args) = &cli.command {
-        // Line-buffering matters when stdout is a pipe: block buffering would
-        // hold the installer's own progress lines until exit, after the output
-        // of the subprocesses they announce.
-        let explicit_bios = match (args.bios, args.uefi) {
-            (true, _) => Some(true),
-            (_, true) => Some(false),
-            _ => None,
-        };
-        let on_installer_iso = std::env::var_os("LOSOS_INSTALLER_ISO").is_some();
-        // The medium's boot screen, when it hosts the installer: the menu,
-        // the steps and the result go on its panel, and keys come from it.
-        let splash = Splash::detect().filter(|_| on_installer_iso && args.emit_target.is_none());
-        let interactive = on_installer_iso
-            && std::io::stdin().is_terminal()
-            && std::io::stdout().is_terminal()
-            && args.emit_target.is_none();
-        // Whether the firmware verified this medium before starting it, on
-        // the screen before anything else: it is the one place the person
-        // who booted the stick can read it (modules/secure-boot.nix).
-        if on_installer_iso {
-            println!("{}", secure_boot_state().banner());
-        }
-        let bios = match (splash, explicit_bios) {
-            (Some(splash), None) => splash_firmware(splash),
-            _ => match select_firmware(explicit_bios, interactive) {
-                Ok(bios) => bios,
-                Err(e) => {
-                    eprintln!("losos-install: cannot read firmware selection: {e}");
-                    return ExitCode::FAILURE;
-                }
-            },
-        };
-        if let Err(e) = validate_firmware_choice(bios, booted_in_bios()) {
-            return install_failed(splash, e);
-        }
-        let explicit_tpm = match (args.tpm, args.no_tpm) {
-            (true, _) => Some(true),
-            (_, true) => Some(false),
-            _ => None,
-        };
-        let tpm = match resolve_tpm(explicit_tpm, tpm_present()) {
-            Ok(tpm) => tpm,
-            Err(e) => return install_failed(splash, &e),
-        };
-        let gpg_keys = match load_gpg_keys(&args.gpg_keys) {
-            Ok(keys) => keys,
-            Err(e) => return install_failed(splash, &e),
-        };
-        let mut opts = options_from_env(
-            tpm,
-            args.tang.clone(),
-            bios,
-            args.drives.clone().map(|d| d.0),
-            args.no_install,
-            args.disko_script.clone(),
-            args.emit_target.clone(),
-            gpg_keys,
-        );
-        if let Some(edge) = &args.tang_edge {
-            if !opts.tpm {
-                return install_failed(
-                    splash,
-                    "--tang-edge needs the TPM2: the disk key is sealed to the chip AND the edge",
-                );
-            }
-            let edge = if edge.is_empty() {
-                std::env::var("LOSOS_REGISTRAR_URL").unwrap_or_default()
-            } else {
-                edge.clone()
-            };
-            match request_edge_tang(&edge, &staged_claim(&opts.keyfile)) {
-                Ok(t) => opts.tang.push(t),
-                Err(e) => return install_failed(splash, &format!("{e:#}")),
-            }
-        }
-        // Memory and processor, sampled while the install runs: the medium
-        // runs from memory, so a spike is worth hearing about even when the
-        // install finishes.
-        let watch = on_installer_iso.then(install_report::Watch::start);
-        let result = run_install(&opts, splash);
-        let spikes = watch.map(install_report::Watch::finish).unwrap_or_default();
-        let disks = opts
-            .drives
-            .as_ref()
-            .map_or_else(|| "picked by the installer".to_owned(), |d| d.join(", "));
-        return match result {
-            Ok(()) => {
-                if let Some(splash) = splash {
-                    let installed = !opts.no_install && opts.disko_script.is_none();
-                    let target = install_report::target();
-                    let report = target.as_ref().and_then(|_| {
-                        install::spike_report(&spikes, &install_report::system(), true)
-                    });
-                    let offer = if report.is_some() {
-                        install_screen::Offer::Report
-                    } else {
-                        install_screen::Offer::None
-                    };
-                    let lines: Vec<String> = spikes.iter().map(install::Spike::line).collect();
-                    let rows = install_screen::finished_with(installed, opts.tpm, &lines, &offer);
-                    match (target, report) {
-                        (Some(target), Some(report)) => {
-                            offer_report(splash, &rows, &target, &report)
-                        }
-                        _ => {
-                            splash.show(&rows);
-                            splash.key(None, None, |_| {});
-                        }
-                    }
-                    if installed {
-                        // The medium can come out now; nothing on it is
-                        // needed again. If the restart fails, the login
-                        // wrapper takes over with a shell.
-                        let _ = std::process::Command::new("systemctl")
-                            .arg("reboot")
-                            .status();
-                    }
-                }
-                ExitCode::SUCCESS
-            }
-            Err(e) => install_failed_with(splash, &format!("{e:#}"), &disks, &spikes),
-        };
+        return install_flow(args);
     }
 
     match run(cli) {
@@ -730,6 +633,7 @@ fn run(cli: Cli) -> Result<(), BackendFailure> {
         }
         // Handled before the bus is ever touched.
         Command::Install(_) => unreachable!("install is dispatched in main"),
+        Command::Provision(_) => unreachable!("provision is dispatched in main"),
         Command::EdgeDomain { .. } => unreachable!("edge-domain is dispatched in main"),
     };
     println!("{json}");
@@ -822,6 +726,29 @@ mod tests {
     }
 
     #[test]
+    fn provision_takes_a_mirror_and_the_installer_flags() {
+        let cli = Cli::try_parse_from([
+            "losos-ctl",
+            "provision",
+            "--mirror",
+            "https://mirror.example/mesh.git",
+            "--name",
+            "lease-3",
+            "--drives",
+            "vdb",
+        ])
+        .unwrap();
+        match cli.command {
+            Command::Provision(p) => {
+                assert_eq!(p.mirror.as_deref(), Some("https://mirror.example/mesh.git"));
+                assert_eq!(p.name.as_deref(), Some("lease-3"));
+                assert_eq!(p.install.drives.map(|d| d.0), Some(vec!["vdb".to_string()]));
+            }
+            _ => panic!("not the provision subcommand"),
+        }
+    }
+
+    #[test]
     fn drives_flag_parses_a_comma_list() {
         // clap reads `Option<Vec<_>>` as "many values of _", so a parser that
         // returns the whole Vec panicked on first access instead of parsing.
@@ -831,5 +758,193 @@ mod tests {
         );
         assert_eq!(install_drives(&["losos-ctl", "install"]), None);
         assert!(Cli::try_parse_from(["losos-ctl", "install", "--drives", " , "]).is_err());
+    }
+}
+
+/// The installer half, shared verbatim by `install` and `provision`:
+/// a provision only stages first.
+fn install_flow(args: &InstallArgs) -> ExitCode {
+    // Line-buffering matters when stdout is a pipe: block buffering would
+    // hold the installer's own progress lines until exit, after the output
+    // of the subprocesses they announce.
+    let explicit_bios = match (args.bios, args.uefi) {
+        (true, _) => Some(true),
+        (_, true) => Some(false),
+        _ => None,
+    };
+    let on_installer_iso = std::env::var_os("LOSOS_INSTALLER_ISO").is_some();
+    // The medium's boot screen, when it hosts the installer: the menu,
+    // the steps and the result go on its panel, and keys come from it.
+    let splash = Splash::detect().filter(|_| on_installer_iso && args.emit_target.is_none());
+    let interactive = on_installer_iso
+        && std::io::stdin().is_terminal()
+        && std::io::stdout().is_terminal()
+        && args.emit_target.is_none();
+    // Whether the firmware verified this medium before starting it, on
+    // the screen before anything else: it is the one place the person
+    // who booted the stick can read it (modules/secure-boot.nix).
+    if on_installer_iso {
+        println!("{}", secure_boot_state().banner());
+    }
+    let bios = match (splash, explicit_bios) {
+        (Some(splash), None) => splash_firmware(splash),
+        _ => match select_firmware(explicit_bios, interactive) {
+            Ok(bios) => bios,
+            Err(e) => {
+                eprintln!("losos-install: cannot read firmware selection: {e}");
+                return ExitCode::FAILURE;
+            }
+        },
+    };
+    if let Err(e) = validate_firmware_choice(bios, booted_in_bios()) {
+        return install_failed(splash, e);
+    }
+    let explicit_tpm = match (args.tpm, args.no_tpm) {
+        (true, _) => Some(true),
+        (_, true) => Some(false),
+        _ => None,
+    };
+    let tpm = match resolve_tpm(explicit_tpm, tpm_present()) {
+        Ok(tpm) => tpm,
+        Err(e) => return install_failed(splash, &e),
+    };
+    let gpg_keys = match load_gpg_keys(&args.gpg_keys) {
+        Ok(keys) => keys,
+        Err(e) => return install_failed(splash, &e),
+    };
+    let mut opts = options_from_env(
+        tpm,
+        args.tang.clone(),
+        bios,
+        args.drives.clone().map(|d| d.0),
+        args.no_install,
+        args.disko_script.clone(),
+        args.emit_target.clone(),
+        gpg_keys,
+    );
+    if let Some(edge) = &args.tang_edge {
+        if !opts.tpm {
+            return install_failed(
+                splash,
+                "--tang-edge needs the TPM2: the disk key is sealed to the chip AND the edge",
+            );
+        }
+        let edge = if edge.is_empty() {
+            std::env::var("LOSOS_REGISTRAR_URL").unwrap_or_default()
+        } else {
+            edge.clone()
+        };
+        match request_edge_tang(&edge, &staged_claim(&opts.keyfile)) {
+            Ok(t) => opts.tang.push(t),
+            Err(e) => return install_failed(splash, &format!("{e:#}")),
+        }
+    }
+    // Memory and processor, sampled while the install runs: the medium
+    // runs from memory, so a spike is worth hearing about even when the
+    // install finishes.
+    let watch = on_installer_iso.then(install_report::Watch::start);
+    let result = run_install(&opts, splash);
+    let spikes = watch.map(install_report::Watch::finish).unwrap_or_default();
+    let disks = opts
+        .drives
+        .as_ref()
+        .map_or_else(|| "picked by the installer".to_owned(), |d| d.join(", "));
+    return match result {
+        Ok(()) => {
+            if let Some(splash) = splash {
+                let installed = !opts.no_install && opts.disko_script.is_none();
+                let target = install_report::target();
+                let report = target
+                    .as_ref()
+                    .and_then(|_| install::spike_report(&spikes, &install_report::system(), true));
+                let offer = if report.is_some() {
+                    install_screen::Offer::Report
+                } else {
+                    install_screen::Offer::None
+                };
+                let lines: Vec<String> = spikes.iter().map(install::Spike::line).collect();
+                let rows = install_screen::finished_with(installed, opts.tpm, &lines, &offer);
+                match (target, report) {
+                    (Some(target), Some(report)) => offer_report(splash, &rows, &target, &report),
+                    _ => {
+                        splash.show(&rows);
+                        splash.key(None, None, |_| {});
+                    }
+                }
+                if installed {
+                    // The medium can come out now; nothing on it is
+                    // needed again. If the restart fails, the login
+                    // wrapper takes over with a shell.
+                    let _ = std::process::Command::new("systemctl")
+                        .arg("reboot")
+                        .status();
+                }
+            }
+            ExitCode::SUCCESS
+        }
+        Err(e) => install_failed_with(splash, &format!("{e:#}"), &disks, &spikes),
+    };
+}
+
+/// A provision is an install that first takes the mesh's word for what the
+/// box runs: the mirror's shared configuration is staged before the
+/// destructive work, and the install half lays it into the clone
+/// (backend/src/installer.rs) and records the box on the mirror.
+fn provision_flow(provision: &ProvisionArgs) -> ExitCode {
+    use losos_ctl::autoprovision::{
+        check_box_name, default_box_name, MIRROR_BOX_ENV, MIRROR_URL_ENV, STAGE_ENV,
+    };
+
+    let url = provision
+        .mirror
+        .clone()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            std::env::var(MIRROR_URL_ENV)
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+        });
+    let Some(url) = url else {
+        eprintln!(
+            "autoprovision: no mesh mirror named (pass --mirror URL, or build the medium with losos.autoprovision.mirror); `losos-ctl install` installs a stock box"
+        );
+        return ExitCode::FAILURE;
+    };
+    let name = provision
+        .name
+        .clone()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            std::env::var(MIRROR_BOX_ENV)
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+        })
+        .unwrap_or_else(|| {
+            let id = std::fs::read_to_string("/etc/machine-id").unwrap_or_default();
+            default_box_name(&id)
+        });
+    if let Err(why) = check_box_name(&name) {
+        eprintln!("autoprovision: {why}");
+        return ExitCode::FAILURE;
+    }
+    // The provision plan needs the stage, the mirror and the name; it gets
+    // them the same way a plain install gets its work dir: the environment
+    // the driver owns.
+    let stage = std::path::PathBuf::from(losos_ctl::autoprovision::STAGE_DIR);
+    match losos_ctl::installer_io::stage_provision(&url, &name, &stage) {
+        Ok(stage) => {
+            std::env::set_var(MIRROR_URL_ENV, &url);
+            std::env::set_var(MIRROR_BOX_ENV, &name);
+            std::env::set_var(STAGE_ENV, &stage);
+            install_flow(&provision.install)
+        }
+        Err(e) => {
+            eprintln!("autoprovision: {e:#}");
+            ExitCode::FAILURE
+        }
     }
 }

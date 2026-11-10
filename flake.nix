@@ -333,6 +333,90 @@
             )
           ];
         };
+        # autoprovision: the install medium over the network, for the machine
+        # with no stick. The same module set as `iso` above, PXE/iPXE boot
+        # shape (kernel + initrd + squashfs store) instead of an El Torito
+        # image — so no iso-specific module (live-branding, secure-boot) rides
+        # along — and its autorun ends in `losos-ctl provision` (the mesh's
+        # modified box configuration, from the mirror the netboot server's
+        # environment names) instead of the stock install. There is no Secure
+        # Boot half here: nothing signs a netboot chain, booting it is
+        # deliberately what a mesh operator does, and the firmware menu
+        # before any destructive work stays.
+        #
+        # The mirror is read at boot (LOSOS_MESH_CONFIG_URL) — a released
+        # medium cannot name a mesh that does not exist yet.
+        netboot = nixpkgs.lib.nixosSystem {
+          inherit system;
+          specialArgs.self = self;
+          modules = [
+            impermanence.nixosModules.impermanence
+            disko.nixosModules.disko
+            (
+              {
+                lib,
+                modulesPath,
+                pkgs,
+                config,
+                self,
+                ...
+              }:
+              let
+                lososPkgs = self.packages.${pkgs.system};
+              in
+              {
+                imports = [ "${modulesPath}/installer/netboot/netboot.nix" ];
+                # The same two the ISO carries: the installer binary, and the
+                # admin UI + handbook in the store of every machine that
+                # netboots (they were put there to keep the live medium off
+                # the network for them; PXE is the same story).
+                losos.installer.package = lososPkgs.losos-ctl;
+                losos.installer.autorun = true;
+                # The flavor: `losos-ctl provision`, not `install`.
+                losos.autoprovision.medium = true;
+                # Like the ISO: the payload the target would otherwise fetch.
+                netboot.storeContents = [
+                  lososPkgs.losos-admin-ui
+                  lososPkgs.losos-handbook
+                ];
+                # The runners' compression trade-off, for boots over a LAN.
+                netboot.squashfsCompression = "zstd -Xcompression-level 6 -mem 1G";
+                # The clean-up comment of `iso`'s `disko.enableConfig` above
+                # applies here in full: no target layout in the ramdisk.
+                disko.enableConfig = false;
+                # Everything to hand a PXE/iPXE client: kernel, initrd, the
+                # command line with the toplevel's init, and a boot.ipxe
+                # naming a server the operator fills in.
+                system.build.netbootImage =
+                  let
+                    cmdline = pkgs.writeText "cmdline" "init=${config.system.build.toplevel}/init ${toString config.boot.kernelParams}";
+                    ipxe = pkgs.writeText "boot.ipxe" ''
+                      #!ipxe
+                      # LosOS autoprovision. Serve this directory over http and
+                      # PXE to it; replace SERVER with the host. The installer
+                      # shows its menu on the console before touching disks.
+                      echo LosOS autoprovision - reading the mesh's configuration
+                      kernel http://SERVER/bzImage init=${config.system.build.toplevel}/init ${toString config.boot.kernelParams}
+                      initrd http://SERVER/initrd
+                      boot
+                    '';
+                  in
+                  pkgs.linkFarm "losos-netboot" [
+                    { name = "bzImage"; path = "${config.system.build.kernel}/${config.system.boot.loader.kernelFile}"; }
+                    { name = "initrd"; path = "${config.system.build.netbootRamdisk}/initrd"; }
+                    { name = "cmdline"; path = cmdline; }
+                    { name = "boot.ipxe"; path = ipxe; }
+                  ];
+              }
+            )
+            ./modules/options.nix
+            ./modules/cache.nix
+            ./modules/disko.nix
+            ./modules/installer.nix
+            ./modules/branding.nix
+            ./modules/splash.nix
+          ];
+        };
         # The target system installed onto the machine.
         install = nixpkgs.lib.nixosSystem {
           inherit system;
@@ -447,6 +531,14 @@
             # The option document and the configuration repository on LosOS
             # Git (modules/config-repo.nix, backend/src/{options,config_repo}.rs).
             ./modules/config-repo.nix
+            # The option document is read through modules/config-repo.nix; the
+            # mesh's configuration mirror rides the same daemon
+            # (losos.autoprovision.*, backend/src/autoprovision.rs).
+            ./modules/autoprovision.nix
+            # the mesh's configuration mirror: lososd keeps /etc/nixos in step
+            # with it, and a netbooted machine provisioned with it
+            # (modules/autoprovision.nix, backend/src/autoprovision.rs).
+            ./modules/autoprovision.nix
             # modules/overrides.nix is imported through onBox below, never here.
             ./modules/updates.nix
             ./modules/logs.nix

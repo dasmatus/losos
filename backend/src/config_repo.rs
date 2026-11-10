@@ -548,8 +548,8 @@ fn wait_for_nudge(at_most: std::time::Duration) {
 /// Every outcome is a report the History pane reads, so the thread itself
 /// never has anything to say beyond a debug line.
 pub fn start_reconciler(backend: &crate::io_backend::IoLosos) {
-    if RepoConfig::from_env().is_none() {
-        tracing::info!("no configuration repository configured; not syncing with LosOS Git");
+    if RepoConfig::from_env().is_none() && crate::autoprovision::Mesh::from_env().is_none() {
+        tracing::info!("no repository is configured; not syncing");
         return;
     }
     let backend = backend.clone();
@@ -558,12 +558,25 @@ pub fn start_reconciler(backend: &crate::io_backend::IoLosos) {
         .spawn(move || {
             std::thread::sleep(FIRST_SYNC_AFTER);
             loop {
-                match backend.serialized(crate::losos::cmd_config_sync) {
-                    Ok(doc) => tracing::debug!(
-                        state = doc["sync"]["state"].as_str().unwrap_or(""),
-                        "configuration sync"
-                    ),
-                    Err(e) => tracing::warn!(error = ?e, "configuration sync could not run"),
+                // The box's own repository, when the LosOS Git half is on.
+                if RepoConfig::from_env().is_some() {
+                    match backend.serialized(crate::losos::cmd_config_sync) {
+                        Ok(doc) => tracing::debug!(
+                            state = doc["sync"]["state"].as_str().unwrap_or(""),
+                            "configuration sync"
+                        ),
+                        Err(e) => tracing::warn!(error = ?e, "configuration sync could not run"),
+                    }
+                }
+                // The mesh's mirror, when autoprovision keeps them in step.
+                if crate::autoprovision::Mesh::from_env().is_some() {
+                    match backend.serialized(crate::losos::cmd_mesh_sync) {
+                        Ok(doc) => tracing::debug!(
+                            state = doc["sync"]["state"].as_str().unwrap_or(""),
+                            "mesh sync"
+                        ),
+                        Err(e) => tracing::warn!(error = ?e, "the mesh sync could not run"),
+                    }
                 }
                 // The owner's apps, each in a repository of its own
                 // (crate::app_repo), ride the same thread.

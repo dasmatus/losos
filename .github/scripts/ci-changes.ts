@@ -52,6 +52,7 @@ const tuiReads = [
 
 const installer = [
   "backend/src/installer*",
+  "backend/src/autoprovision.rs",
   "backend/src/install_screen.rs",
   "backend/src/install_report.rs",
   "backend/plugins/report/*",
@@ -149,6 +150,7 @@ const lanePatterns: Record<Lane, string[]> = {
     "modules/credentials.nix",
     "modules/console.nix",
     "modules/defaults.nix",
+    "modules/autoprovision.nix",
     "nix/tests/iso-install.nix",
     ...pkgs,
   ],
