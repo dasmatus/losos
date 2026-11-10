@@ -647,7 +647,7 @@ async function open({
             fingerprint: 'sha256:' + '4f'.repeat(32),
             fingerprintDisplay: Array.from({ length: 32 }, (_, i) => ['4F', '9A', 'C2', '17', 'E8', '3B', 'D0', '6C'][i % 8]).join(':'),
             expires: '2028-10-06T00:00:00Z',
-            install: { sh: '/setup/trust.sh', ps1: '/setup/trust.ps1' },
+            install: { node: '/setup/trust.ts', ps1: '/setup/trust.ps1' },
           }
         : null,
     }),
