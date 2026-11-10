@@ -17,7 +17,9 @@ use crate::cli::{
     EscrowCommand, GitCommand, KeyCommand, SecretCommand,
 };
 use crate::computer::{Computer, Service};
-use crate::envelope::{host_key_url, unreachable, Session, Transport};
+use crate::envelope::{unreachable, Session, Transport};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::envelope::host_key_url;
 use crate::http::{Http, Trust};
 use crate::i18n::{self, Locale};
 use crate::keychain::{Keychain, SecretTool};
