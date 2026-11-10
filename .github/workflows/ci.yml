@@ -851,6 +851,20 @@ jobs:
       - name: the workspace (the lockfile's tree, dev client included)
         working-directory: admin-ui/app
         run: bun install --frozen-lockfile --ignore-scripts
+      # React Native 0.81's fmt (React-Folly's bundled copy) cannot compile
+      # under Xcode 26's clang — every FMT_COMPILE_STRING consteval call in
+      # Pods/fmt/format-inl.h dies before one app file builds (the run of
+      # 2026-11-10 10:57). RN 0.81's supported toolchain is Xcode 16, so
+      # pods and xcodebuild both run under the newest 16.x the image has.
+      - name: pick Xcode 16 (RN 0.81's supported clang)
+        run: |
+          xcode16=$(ls -d -- /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -1)
+          [ -n "$xcode16" ] || {
+            echo "::error::no Xcode 16 on this runner image — RN 0.81's fmt does not compile under Xcode 26; pin a macos-15 runner (or the RN bump that carries a newer fmt) before this lane can build"
+            exit 1
+          }
+          echo "DEVELOPER_DIR=$xcode16/Contents/Developer" >> "$GITHUB_ENV"
+          echo "building with $(xcodebuild -version 2>/dev/null || DEVELOPER_DIR=$xcode16/Contents/Developer xcodebuild -version)"
       - name: prebuild ios (cocoapods run by prebuild)
         working-directory: admin-ui/app
         run: bunx expo prebuild --platform ios --no-install
