@@ -381,17 +381,6 @@ in
         server = {
           address = "tcp://127.0.0.1:${toString port}/auth";
           asset_path = themes.authelia.assets;
-          # The two questions asked about a request, each in its proxy's
-          # own words. `auth-request` is nginx's (X-Original-URL,
-          # X-Original-Method — the /internal/losos-authz location,
-          # below); `forward-auth` is Traefik's (X-Forwarded-*, which
-          # Traefik's forwardAuth middleware sets — the onion routers,
-          # modules/apps.nix). Naming both replaces the defaults with the
-          # same two, spelled out.
-          endpoints.authz = {
-            auth-request.implementation = "AuthRequest";
-            forward-auth.implementation = "ForwardAuth";
-          };
         };
         log.level = "info";
         # The box may have no internet, and the check only warns.
@@ -721,12 +710,13 @@ in
     # request through the tunnel as http from 127.0.0.1 with
     # `X-Forwarded-Proto: https`, which is believed from there only. The
     # box's Tor and I2P addresses (modules/hidden-services.nix) arrive on
-    # Traefik's loopback entry points, which set the same header — http on
-    # the plain one, https on the TLS one — so the second line believes
-    # them too; the first is the box's own TLS for its public names.
+    # loopback listeners of their own, one behind nginx's own TLS and one
+    # without, so for them the port decides and no header does.
     services.nginx.appendHttpConfig = ''
       map "$server_port|$remote_addr|$http_x_forwarded_proto" $losos_proto {
+        "~^${toString hidden.tlsPort}\|" https;
         "~^${toString publicTls.frontPort}\|" https;
+        "~^${toString hidden.plainPort}\|" http;
         "~^[0-9]+\|127\.0\.0\.1\|https$" https;
         default $scheme;
       }

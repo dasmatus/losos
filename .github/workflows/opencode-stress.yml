@@ -120,6 +120,7 @@ jobs:
             > /tmp/oc-stress/record.sh
           : > /tmp/oc-stress/results.tsv
 
+
       # ── phase 0 — documented surface, snapshotted. Every subcommand and
       # companion utility answers --help; the offline helpers (models,
       # session list, mcp list, plugin list, auth list, debug *, stats,
@@ -244,17 +245,34 @@ jobs:
             "$([ "$gw" = 403 ] && echo PASS || echo FAIL)"
           [ "$gw" = 403 ] || touch /tmp/oc-stress/HARD_FAIL
           up=no
-          for i in $(seq 1 30); do
+          start=$(date +%s.%N)
+          for i in $(seq 1 60); do
             code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:4099/app" 2>/dev/null || echo 000)
             [ "$code" = "200" ] && { up=yes; break; }
-            sleep 1
+            sleep 0.25
           done
+          settle=$(date +%s.%N)
+          boot_secs=$(awk -v a="$start" -v b="$settle" 'BEGIN { printf "%.1f", b - a }')
           if [ "$up" = no ]; then
-            hard_fail serve "server starts" "answers on its alone-bound port" "no answer on :4099 in 30s"
+            hard_fail serve "server starts" "answers on its alone-bound port" \
+              "no answer on :4099 in ${boot_secs}s"
             echo "up=no" > /tmp/oc-stress/serve.up
           else
             echo "up=yes" > /tmp/oc-stress/serve.up
-            record serve "server starts" "answers on 127.0.0.1 alone" "up in ${i}s" "PASS"
+            case "${boot_secs%%.*}" in
+              ''|*[!0-9]*) boot_int=25 ;;
+              *           ) boot_int=${boot_secs%%.*} ;;
+            esac
+            if [ "$boot_int" -ge 25 ]; then
+              hard_fail serve "cold boot to first HTTP answer" \
+                "under 8s; 25s is a hang whatever killed it" "${boot_secs}s"
+            elif [ "$boot_int" -ge 8 ]; then
+              record serve "cold boot to first HTTP answer" "under 8s" \
+                "${boot_secs}s on :4099" "LOUDNOTE"
+            else
+              record serve "cold boot to first HTTP answer" "under 8s" \
+                "${boot_secs}s on :4099" "PASS"
+            fi
           fi
 
       # ── phase 3 — key handling: missing, invalid, nonexistent model.

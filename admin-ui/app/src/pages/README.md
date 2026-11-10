@@ -22,14 +22,8 @@ One parser everywhere: losos-mdx (`backend/mdx`, its `page` module).
   (`bundler.ts`). A default that does not read fails the build.
 - On the box the `pages` plugin (`backend/plugins/pages`) reads an
   administrator's save the same way, against `dist/pages/blocks.json`, and
-  refuses one with any problem. It draws nothing: `GET /api/pages`
-  answers a changed page as its source, with `blocks.json` as the
-  registry.
-- In the browser, `src/mdx/wasm.ts`'s `renderPage` reads a changed page
-  (and the editor's each keystroke) against the bundle's own
-  `blocks.json`; a source that no longer reads draws the default.
-- On the no-JS pages, `backend/plugins/basic/src/custom.rs` renders a
-  changed page's source the same way.
+  refuses one with any problem.
+- In the editor, `src/mdx/wasm.ts`'s `renderPage` reads each keystroke.
 
 The crate writes each block as `<losos-block data-block data-props>` and
 each run of text as `div.mdx-document.mdx-page-text`. A page places a block
