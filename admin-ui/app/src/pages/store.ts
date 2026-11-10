@@ -1,28 +1,25 @@
 /* The pages an administrator changed, for every screen that draws one.
  *
- * GET /api/pages answers once per sign-in with the MDX source of each
- * changed page and whether there is a stylesheet of theirs; a page nobody
- * changed is not in it, and draws the default the bundle carries. The
- * page under it renders the source with the same losos-mdx the editor
- * reads it with (./page.tsx). The answer is also kept in localStorage, so
- * a reload draws the changed page at once instead of the default first,
- * and only a first visit waits for the box (a short while, then the
- * default).
+ * GET /api/pages answers once per sign-in with the HTML of each changed
+ * page and whether there is a stylesheet of theirs; a page nobody changed
+ * is not in it, and draws the default the bundle carries. The answer is
+ * also kept in localStorage, so a reload draws the changed page at once
+ * instead of the default first, and only a first visit waits for the box
+ * (a short while, then the default).
  *
- * An administrator's editor (./editor.tsx) puts a draft — the source as
- * they have it — here while they type, and the page under it draws the
- * draft. */
+ * An administrator's editor (./editor.tsx) puts a draft here while they
+ * type, and the page under it draws the draft. */
 
 import { getPages, hasToken, subscribeAuth, type PagesResponse } from "@/lib/api";
 
 export interface PagesState {
   /** False until the box has answered, or the wait for it ran out. */
   readonly ready: boolean;
-  /** Page id to the MDX an administrator saved. */
+  /** Page id to its HTML, for the pages an administrator changed. */
   readonly custom: Readonly<Record<string, string>>;
   /** The stylesheet's version, or null for none. */
   readonly style: string | null;
-  /** Page id to the MDX of a draft being edited. */
+  /** Page id to the HTML of a draft being edited. */
   readonly drafts: Readonly<Record<string, string>>;
   /** The stylesheet being edited, drawn in place of the saved one. */
   readonly styleDraft: string | null;
@@ -33,7 +30,7 @@ export interface PagesState {
 /** A page by id, or the stylesheet every page shares. */
 export type EditorTarget = { readonly kind: "page"; readonly id: string } | { readonly kind: "style" };
 
-const CACHE = "losos.pages.v2";
+const CACHE = "losos.pages";
 /** How long a first visit waits for the box before drawing the defaults. */
 const WAIT_MS = 800;
 
@@ -64,7 +61,7 @@ function revive(doc: unknown): { custom: Record<string, string>; style: string |
   const record = typeof doc === "object" && doc !== null ? (doc as Partial<PagesResponse>) : {};
   const pages = typeof record.pages === "object" && record.pages !== null ? record.pages : {};
   for (const [id, page] of Object.entries(pages)) {
-    if (typeof page === "object" && page !== null && typeof page.source === "string") custom[id] = page.source;
+    if (typeof page === "object" && page !== null && typeof page.html === "string") custom[id] = page.html;
   }
   const style = typeof record.style === "string" && record.style.length > 0 ? record.style : null;
   return { custom, style };
@@ -81,8 +78,8 @@ function readCache(): { custom: Record<string, string>; style: string | null } |
 
 function writeCache(doc: { custom: Record<string, string>; style: string | null }): void {
   try {
-    const pages: Record<string, { source: string }> = {};
-    for (const [id, source] of Object.entries(doc.custom)) pages[id] = { source };
+    const pages: Record<string, { html: string }> = {};
+    for (const [id, html] of Object.entries(doc.custom)) pages[id] = { html };
     localStorage.setItem(CACHE, JSON.stringify({ pages, style: doc.style }));
   } catch {
     /* private window or full storage: the next visit waits again */
@@ -135,12 +132,11 @@ export function followPages(): void {
   reload();
 }
 
-/** A draft for `id` from the editor — its MDX as they have it — or null
- *  to drop it. */
-export function setDraft(id: string, source: string | null): void {
+/** A draft for `id` from the editor, or null to drop it. */
+export function setDraft(id: string, html: string | null): void {
   const drafts = { ...state.drafts };
-  if (source === null) delete drafts[id];
-  else drafts[id] = source;
+  if (html === null) delete drafts[id];
+  else drafts[id] = html;
   set({ drafts });
 }
 

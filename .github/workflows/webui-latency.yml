@@ -1,0 +1,125 @@
+name: webui latency
+
+# ── What this is ────────────────────────────────────────────────────────────
+#
+# The impatient-user gate. Every owner meets the box on the webUI's welcome
+# screen (the setup wizard's first step, the "Trust this box" card), and an
+# owner who watches a blank frame for five seconds reads the appliance as
+# frozen and abandons it. This workflow measures the wait: from the first
+# request for the admin page to an interactive welcome screen, against the
+# real production bundle served by the stubbed harness the browser checks
+# use, in headless chromium — admin-ui/app/tests/welcome-latency.ts, five
+# samples by default, fresh page per sample so each one is a genuine cold
+# first contact.
+#
+# Numbers: median under 2.5s passes, under 5s warns, a median past 5s fails
+# the run, and a welcome screen that never renders at all fails it too.
+# Thresholds live in the test as env-overridable constants; the summary
+# below is where both numbers and verdicts are recorded, so a release that
+# regresses first contact is visible where the PR conversation is.
+#
+# Triggers: the same paths handbook-screens.yml watches, since that is
+# exactly what the UI build depends on. Chromium is installed once here and
+# nothing else shares state with the screenshots job.
+#
+# Trust: the workflow builds the repository's own UI and runs its own test
+# in an ephemeral runner VM; secrets are not needed and none are used.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "admin-ui/app/**"
+      - ".github/workflows/webui-latency.yml"
+  push:
+    branches: [main]
+    paths:
+      - "admin-ui/app/**"
+      - ".github/workflows/webui-latency.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: webui-latency-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  latency:
+    name: "impatient user: first contact to interactive welcome"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: admin-ui/app/package.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: install wasm-bindgen-cli
+        run: cargo install wasm-bindgen-cli --version 0.2.127
+
+      # Same through-build pipeline as handbook-screens.yml: the lab
+      # packages, the render stub so the build typechecks, then the bundle.
+      - name: build lab packages
+        working-directory: admin-ui/app
+        run: |
+          bun install --frozen-lockfile --ignore-scripts
+          bun run lab:core
+          bun run lab:virt
+          bun run mdx
+          mkdir -p src/lab/render-pkg/webgl2 src/lab/render-pkg/webgpu
+          for api in webgl2 webgpu; do
+            echo "export default {};" > "src/lab/render-pkg/$api/losos_lab_render.js"
+            {
+              echo 'export default function init(opts?: any): Promise<any>;'
+              echo 'export declare const Lab: any;'
+              echo 'export declare class LabCanvas { constructor(...args: any[]); [key: string]: any; static [key: string]: any; }'
+            } > "src/lab/render-pkg/$api/losos_lab_render.d.ts"
+            touch "src/lab/render-pkg/$api/losos_lab_render_bg.wasm"
+          done
+
+      - name: build admin UI
+        working-directory: admin-ui/app
+        run: bun build.ts
+
+      - name: install Playwright Chromium
+        working-directory: admin-ui/app
+        run: bun --bun x playwright install chromium --with-deps
+
+      - name: measure the welcome screen
+        id: latency
+        working-directory: admin-ui/app
+        run: bun tests/welcome-latency.ts /tmp/welcome-latency.json 7
+
+      - name: verdict
+        if: always() && steps.latency.outcome != ''
+        env:
+          OUTCOME: ${{ steps.latency.outcome }}
+        run: |
+          set -euo pipefail
+          {
+            echo "### webUI welcome-screen latency"
+            echo
+            if [ -e /tmp/welcome-latency.json ]; then
+              jq -r '"_median \(.median // "—") ms (pass ≤ \(.pass_ms) ms), worst good sample \(.max // "—") ms (cap \(.cap_ms) ms) over \(.samples) samples. Verdict: \(.verdict)._"' /tmp/welcome-latency.json
+              echo
+              echo "| sample | ms | note |"
+              echo "| --- | --- | --- |"
+              jq -r '.rows[] | "| \(.sample) | \(if .ms == null then "—" else .ms end) | \((.error // "" | .[:300])) |"' /tmp/welcome-latency.json
+            elif [ "$OUTCOME" = failure ]; then
+              echo "_no report; the step itself failed before one was written._"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: welcome-latency
+          path: /tmp/welcome-latency.json
+          if-no-files-found: warn
+          retention-days: 7

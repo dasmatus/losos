@@ -8,7 +8,7 @@
 #     an I2P floodfill router on network id 77, nothing like the real ones;
 #   * `edge` is an edge with losos.edge.hidden.{tor,i2p}.enable;
 #   * `box` is a box behind it with losos.hidden.{tor,i2p}.enable, the real
-#     lososd, nginx, Traefik, LosOS Login, LosOS Git and the admin UI;
+#     lososd, nginx, LosOS Login, LosOS Git and the admin UI;
 #   * `client` is a visitor with a Tor client, an I2P router and a browser.
 #
 # Every tor and i2pd here reads one more file that points it at the private
@@ -318,7 +318,6 @@ pkgs.testers.runNixOSTest (
         {
           imports = [
             ../../modules/options.nix
-            ../../modules/apps.nix
             ../../modules/containers.nix
             ../../modules/tls.nix
             ../../modules/daemon.nix
@@ -337,12 +336,6 @@ pkgs.testers.runNixOSTest (
             backend.plugins = lososPkgs.losos-plugins;
             admin.ui = lososPkgs.losos-admin-ui;
             git.enable = true;
-            # Traefik runs for the onion entry points alone (modules/apps.nix
-            # runs it whenever hidden services are on). The apps are off:
-            # this node does not import modules/configuration.nix, which
-            # defines `notshared`, and the apps' Podman plumbing is not what
-            # the test is about.
-            apps.enable = false;
             hidden.tor.enable = true;
             hidden.i2p.enable = true;
             proxy = {
@@ -491,13 +484,12 @@ pkgs.testers.runNixOSTest (
           assert "HiddenServicePort 443 127.0.0.1:8443" in conf, conf
           tunnels = box.succeed("cat /var/lib/losos-hidden/i2pd/services.conf")
           assert "[losos-front-https]" in tunnels and "inport = 443" in tunnels, tunnels
-          # Nothing of it on the LAN: Traefik's two onion entry points,
-          # lososd's second listener and the front vhost's onion listener
-          # are loopback only, and neither daemon has a port open to it.
+          # Nothing of it on the LAN: nginx's two listeners and the TLS
+          # one are loopback only, and neither daemon has a port open to it.
           listen = box.succeed("ss -Htln")
-          for port in ["8480", "8443", "8083", "8483"]:
+          for port in ["8480", "8481", "8443"]:
               assert f"127.0.0.1:{port}" in listen and f"0.0.0.0:{port}" not in listen, listen
-          box.fail("ss -Htln | grep -E ':(8481|9050|4444|4447|7070|7656) '")
+          box.fail("ss -Htln | grep -E ':(9050|4444|4447|7070|7656) '")
           # The certificate names both, and the box's own signed it.
           box.wait_until_succeeds(f"grep -qxF '{ONION}' /var/lib/losos-hidden/tls/names")
           box.succeed(
@@ -510,11 +502,10 @@ pkgs.testers.runNixOSTest (
 
       with subtest("Matus claims the box on the LAN"):
           body = json.dumps({"name": "matus", "password": PASSWORD})
-          reply = client.succeed(
+          client.succeed(
               "curl -skf -X POST https://mattbox.local/api/setup/claim"
               f" -H 'Content-Type: application/json' -d '{body}'"
           )
-          TOKEN = json.loads(reply)["token"]
           box.wait_for_unit("authelia-losos.service")
           box.wait_for_open_port(9091)
           # LosOS Login sets cookies for the box's own addresses too.
@@ -535,36 +526,18 @@ pkgs.testers.runNixOSTest (
 
       with subtest("the box over Tor"):
           client.wait_for_unit("tor.service")
-          box.wait_for_unit("losos-traefik.service")
           code, page = fetch(TOR, f"https://{ONION}/auth/")
           assert code == 200 and "<title>" in page, (code, page[:400])
           # Plain http on port 80 reaches the same door.
           code, _ = fetch(TOR, f"http://{ONION}/auth/")
           assert code in (200, 301, 302), code
-          # Not signed in, the admin app's document and the API are LosOS
-          # Login's to refuse (curl's Accept makes Authelia answer 401, not
-          # its redirect), and the claim is not on the onion at all: with a
-          # spare key to hand, the route is simply not served.
-          for url in [f"https://{ONION}/", f"https://{ONION}/api/state"]:
-              code, _ = fetch(TOR, url)
-              assert code in (401, 403), (url, code)
-          code, _ = fetch(TOR, f"https://{ONION}/api/setup/claim")
+          # The admin pages and the API stay on the LAN, whoever the
+          # visitor says they are.
+          for host in [ONION, "mattbox.local", "losos-manage.invalid", "localhost"]:
+              code, _ = fetch(TOR, f"http://{ONION}/", f"-H 'Host: {host}'")
+              assert code == 403, (host, code)
+          code, _ = fetch(TOR, f"https://{ONION}/api/state")
           assert code in (401, 403), code
-          code, _ = fetch(
-              TOR,
-              f"https://{ONION}/api/setup/claim",
-              "-X POST -H 'Content-Type: application/json' -H 'Authorization: Bearer garbage' -d '{}'",
-          )
-          assert code == 404, code
-          # The no-JS suite stays on the LAN: nginx's onion listener has the
-          # guard, and the box's plain 403 is what a no-JS browser draws.
-          code, _ = fetch(TOR, f"https://{ONION}/basic/")
-          assert code == 403, code
-          # The spare key opens the API over Tor without LosOS Login.
-          code, page = fetch(
-              TOR, f"https://{ONION}/api/state", f"-H 'Authorization: Bearer {TOKEN}'"
-          )
-          assert code == 200, (code, page[:200])
 
       with subtest("signing in over Tor and opening LosOS Git"):
           body = json.dumps({"username": "matus", "password": PASSWORD})
@@ -576,15 +549,6 @@ pkgs.testers.runNixOSTest (
           assert m, head
           code, page = fetch(TOR, f"https://{ONION}/git/", f"-H 'Cookie: {m.group(1)}'")
           assert code == 200 and "LosOS Git" in page, (code, page[:400])
-          # Signed in, the admin pages are the LAN's: the app's document and
-          # the API behind it.
-          code, page = fetch(TOR, f"https://{ONION}/", f"-H 'Cookie: {m.group(1)}'")
-          assert code == 200 and "<div id=\"root\">" in page, (code, page[:200])
-          code, page = fetch(TOR, f"https://{ONION}/api/state", f"-H 'Cookie: {m.group(1)}'")
-          assert code == 200, (code, page[:200])
-          # A deep link lands on the same document, as the LAN's try_files.
-          code, page = fetch(TOR, f"https://{ONION}/storage", f"-H 'Cookie: {m.group(1)}'")
-          assert code == 200 and "<div id=\"root\">" in page, (code, page[:200])
 
       with subtest("the box over I2P"):
           code, page = fetch(I2P, f"https://{B32}/auth/")
