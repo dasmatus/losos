@@ -1,3 +1,6 @@
+// Gated: the shots draw the TTY UI tree (src/tui), which the wasm32 build
+// gates out; an emptied bin target still wants a main, so no_main stands in.
+#![cfg_attr(target_arch = "wasm32", no_main)]
 #![cfg(not(target_arch = "wasm32"))]
 
 //! The PNGs in .github/screenshots/tui/: each screen drawn at 120x36 over

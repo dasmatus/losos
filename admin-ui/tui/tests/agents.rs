@@ -9,7 +9,9 @@ mod common;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use common::{fake_bin, mock, owner, Client, Mock, TOKEN};
+#[cfg(unix)]
+use common::fake_bin;
+use common::{mock, owner, Client, Mock, TOKEN};
 use losos::agents::companion;
 use losos::envelope::Transport;
 use losos::keychain::{Keychain, MemoryKeychain};
