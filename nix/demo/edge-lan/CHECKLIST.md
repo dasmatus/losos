@@ -3,9 +3,9 @@
 This is the verification checklist: what to do, what to look at, and what has to be
 there, for two LosOS boxes on one network, first with **no edge proxy**
 (scenario A) and then **with one** (scenario B). The same list is what
-`nix/demo/edge-lan/run.sh walk` performs over the API and what
+`nix/demo/edge-lan/run.ts walk` performs over the API and what
 `nix/demo/edge-lan/two-boxes.nix` asserts as a check and photographs as a
-recording (`record.sh`, `compose.sh`).
+recording (`record-driver.ts`, `compose.ts`).
 
 Setup for both scenarios: two boxes installed from the stock installer ISO,
 claimed in the first-run wizard, on one switch with no internet; one more
@@ -47,7 +47,7 @@ only through an official edge.
 
 | Steps | Covered by |
 | --- | --- |
-| A1–A4, B1, B2 (acceptance), B5, B6, B8 | `checks.losos-edge-lan-two-boxes` (`nix/demo/edge-lan/two-boxes.nix`: two boxes with the real admin UI, one edge, the exact order above; the recording made by `record.sh` is the same run photographed) and `checks.losos-edge-lan` (`nix/tests/edge-lan.nix`, one box). |
+| A1–A4, B1, B2 (acceptance), B5, B6, B8 | `checks.losos-edge-lan-two-boxes` (`nix/demo/edge-lan/two-boxes.nix`: two boxes with the real admin UI, one edge, the exact order above; the recording made by `record-driver.ts` is the same run photographed) and `checks.losos-edge-lan` (`nix/tests/edge-lan.nix`, one box). |
 | B2 (the rebuild and the node registering), B6 (the node's return) | `checks.losos-cluster` (`nix/tests/cluster-vm.nix`) for the rke2 agent joining the edge's server and surviving the edge's absence; the join route in `edge/registrar/tests/cluster_join.rs`. |
 | B3, B4, B7 | Manual on a real site. They are not reachable in the VM walkthrough yet, and not only for lack of KVM: see below. |
 

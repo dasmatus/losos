@@ -110,7 +110,7 @@ The first page is the setup wizard. Its first step is trusting the box's own
 certificate, so that the rest of the setup, and every later sign-in, travels
 over HTTPS and your browser can offer a passkey. The step shows one line to
 paste into a terminal, picked for the computer you are on. On macOS and Linux
-it is `curl -fsSL http://<address>/setup/trust.sh | sh`, on Windows
+it is `curl -fsSL http://<address>/setup/trust.ts | node`, on Windows
 `irm http://<address>/setup/trust.ps1 | iex`. The box itself serves the
 script as plain text, so open the link in a tab to read it first. The script
 adds the one certificate to the stores your browsers read, for your user

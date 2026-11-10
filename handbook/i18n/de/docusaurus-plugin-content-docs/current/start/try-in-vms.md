@@ -12,12 +12,12 @@ dazwischen ein, als virtuelle Maschinen in einem privaten Netz, und zeigt,
 was sie zusammen tun:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/dasmatus/losos/main/nix/demo/box-edge-box/bootstrap.sh | sh
+curl -fsSL https://raw.githubusercontent.com/dasmatus/losos/main/nix/demo/box-edge-box/bootstrap.ts | bun run -
 ```
 
-Außer [Nix](https://nixos.org/download) muss vorher nichts installiert
-sein. Fehlt Nix, gibt das Skript die Zeile aus, die es installiert, und
-hört auf. Nichts braucht root (außer `--host-mdns`, siehe unten), nichts
+Außer [Bun](https://bun.sh) und [Nix](https://nixos.org/download) muss
+vorher nichts installiert sein. Fehlt Nix, gibt das Skript die Zeile aus,
+die es installiert, und hört auf. Nichts braucht root (außer `--host-mdns`, siehe unten), nichts
 wird außerhalb von `/nix` und dem Demo-Ordner (`~/.local/share/losos-demo`)
 installiert, und nur dieser Rechner erreicht die VMs.
 
@@ -39,8 +39,8 @@ Rechner tragen kann:
 | Die Edge | eine Edge-VM, die auch der Router des Netzes ist | das [Edge-Gateway](../in-depth/edge-federation.md) |
 | Dauer | etwa eine halbe Stunde mit KVM | etwa 15 Minuten, mit oder ohne KVM, nach dem ersten Bauen |
 
-`--full` oder `--light` nach `sh -s --` wählt die Größe selbst, zum Beispiel
-`... | sh -s -- --light`.
+`--full` oder `--light` am Ende des Einzeilers wählt die Größe selbst, zum
+Beispiel `... | bun run - --light`.
 
 ## Was Sie sehen \{#what-you-see}
 
@@ -74,7 +74,7 @@ eingeschaltetem mDNS) und ob Programme ihn nach `.local`-Namen fragen
 (nss-mdns oder nss-resolve). Ist beides da, fügen Sie `--host-mdns` hinzu:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/dasmatus/losos/main/nix/demo/box-edge-box/bootstrap.sh | sh -s -- --host-mdns
+curl -fsSL https://raw.githubusercontent.com/dasmatus/losos/main/nix/demo/box-edge-box/bootstrap.ts | bun run - --host-mdns
 ```
 
 Es legt ein Netzwerkgerät an, `vde-tap77`, das diesen Rechner ins Netz der

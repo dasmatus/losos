@@ -2533,7 +2533,7 @@ in
         sockets, and the byte relay to libvirtd's socket that Diagrams'
         WebAssembly libvirt client uses (one ticket per socket, minted
         under the admin token). The guest images (bzImage, rootfs.bin, gear.bin from
-        admin-ui/lab/engine/build.sh) go in `lab.libvirt.images`. Off by
+        admin-ui/lab/engine/build.ts) go in `lab.libvirt.images`. Off by
         default: the appliance does not need libvirtd for anything else.
       '';
     };
