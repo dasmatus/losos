@@ -4,7 +4,9 @@
  * Compose Brand did with the two words under the image.
  */
 
-import { Image, Text, View } from "react-native";
+import { Image, Text, View, type ImageSourcePropType } from "react-native";
+
+import salmonPng from "../../../assets/images/salmon.png";
 
 import { LOSOS_TYPE, type LososTokens } from "../theme/tokens";
 
@@ -12,7 +14,7 @@ export function Brand({ tokens }: { tokens: LososTokens }) {
   return (
     <View style={{ flexDirection: "row", alignItems: "center" }}>
       <Image
-        source={require("../../../assets/images/salmon.png")}
+        source={salmonPng as unknown as ImageSourcePropType}
         style={{ width: 52, height: 52 }}
         resizeMode="contain"
         accessibilityRole="image"
