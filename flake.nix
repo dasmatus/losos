@@ -155,15 +155,19 @@
             # The git hooks (nix/hooks) run CI's gates before a commit
             # or a push; this shell installs them as devenv's does.
             shellHook = ''
-              root=$(git rev-parse --show-toplevel 2>/dev/null) && bash "$root/nix/hooks/install"
+              root=$(git rev-parse --show-toplevel 2>/dev/null) && bun "$root/nix/hooks/install.ts"
               echo "Toolchain-only shell. For the scripts:"
               echo "  devenv shell      (or: direnv allow)"
             '';
           };
 
-          # What CI lints in. Deliberately lean — no rust-analyzer, no node,
-          # no shell UX — because it is realised from scratch on every CI run
-          # against a 10-minute cap.
+          # What CI lints in. Deliberately lean — no rust-analyzer, no shell
+          # UX — because it is realised from scratch on every CI run
+          # against a 10-minute cap. Bun and node are here for the terminal
+          # client's installer, not for style: the tui job bundles
+          # admin-ui/tui/install.ts into the install.mjs it publishes, and
+          # tests/install.rs drives that bundle with plain node the way end
+          # users run it.
           #
           # It exists so lint uses the SAME rustc as `nix build .#losos-ctl`.
           # The lint job used to run on docker.io/rust:latest, which is a
@@ -173,7 +177,13 @@
           # compiler you ship with is the only way that stays true, and it
           # also means an upstream Rust release cannot turn CI red on its own.
           ci = mkShell {
-            nativeBuildInputs = rust ++ fast.packages;
+            nativeBuildInputs =
+              rust
+              ++ fast.packages
+              ++ [
+                pkgs.bun
+                pkgs.nodejs
+              ];
             inherit (fast) env;
           };
         };
@@ -584,7 +594,7 @@
       # The edge of the two-VM LAN demo (nix/demo/edge-lan/): the edge module on a
       # QEMU VM that is also the LAN's router. `nix build
       # .#nixosConfigurations.edge-demo.config.system.build.vm` makes the
-      # run script; nix/demo/edge-lan/run.sh drives it beside the installer ISO.
+      # run script; nix/demo/edge-lan/run.ts drives it beside the installer ISO.
       nixosConfigurations.edge-demo = nixpkgs.lib.nixosSystem {
         inherit system;
         modules = [
@@ -659,7 +669,7 @@
         losos-edge-clusters = import ./nix/tests/edge-clusters.nix { inherit pkgs; };
         losos-edge-lan-two-boxes = import ./nix/demo/edge-lan/two-boxes.nix { inherit pkgs; };
         # Two boxes and an edge gateway between them, the light mode of the
-        # demo nix/demo/box-edge-box/bootstrap.sh sets up.
+        # demo nix/demo/box-edge-box/bootstrap.ts sets up.
         losos-box-edge-box = import ./nix/demo/box-edge-box/demo.nix { inherit pkgs; };
         losos-edge-market = import ./nix/tests/market-vm.nix { inherit pkgs; };
         losos-edge-dns = import ./nix/tests/edge-dns.nix { inherit pkgs; };

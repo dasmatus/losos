@@ -5,9 +5,9 @@
 //   bun .github/scripts/ci-changes.ts --full "<reason>" every lane, and why
 //
 // Prints `<lane>=true|false` for every lane, plus `full=` and `reason=`.
-// With GITHUB_STEP_SUMMARY set it also writes a table. Output/behavior must
-// stay compatible with .github/scripts/ci-changes.sh and its callers
-// (.github/workflows/ci.yml, nix/hooks/lib.sh hook_lanes).
+// With GITHUB_STEP_SUMMARY set it also writes a table. Callers depend on
+// that output: the pick step of .github/workflows/ci.yml and
+// nix/hooks/lib.ts's hookLanes.
 
 import { appendFileSync } from "node:fs";
 
@@ -31,7 +31,6 @@ type Lane = (typeof lanes)[number];
 const fullPatterns = [
   ".github/workflows/ci.yml",
   ".github/actions/*",
-  ".github/scripts/ci-changes.sh",
   ".github/scripts/ci-changes.ts",
   "tools/losos-ghcr-cache.py",
   "flake.lock",
@@ -75,7 +74,7 @@ const lanePatterns: Record<Lane, string[]> = {
     "modules/overrides.nix",
     ...tuiReads,
   ],
-  wasm: ["backend/plugins/*", "backend/mdx/*", "admin-ui/lab/*"],
+  wasm: ["backend/plugins/*", "backend/mdx/*", "admin-ui/lab/*", "admin-ui/tui/*"],
   solana: ["edge/contracts/solana/*", "edge/registrar/*", "backend/access/*"],
   evm: ["edge/contracts/*", "!edge/contracts/solana/*", "edge/registrar/*", "backend/access/*"],
   eval: [
@@ -132,7 +131,6 @@ const lanePatterns: Record<Lane, string[]> = {
     "modules/brand-art.nix",
     "modules/splash/*",
     "admin-ui/themes/brand/*",
-    "nix/sign-iso.sh",
     "nix/sign-iso.ts",
     "nix/version.nix",
     "nix/keys/*",

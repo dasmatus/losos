@@ -57,7 +57,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: admin-ui/app/package.json
-      - run: admin-ui/lab/engine/build.sh lab-out
+      - run: bun admin-ui/lab/engine/build.ts lab-out
       - uses: actions/upload-artifact@v7
         with:
           name: losos-lab-hosted

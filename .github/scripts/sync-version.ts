@@ -6,8 +6,7 @@
 //   bun .github/scripts/sync-version.ts --write      update files in the working tree, no commit
 //
 // Behavior matches the #510 version-sync contract (nix/version.nix + first-party
-// Cargo.toml/package.json manifests). This is the implementation behind the
-// .sh shim (migrated to Bun/TypeScript).
+// Cargo.toml/package.json manifests).
 
 import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";

@@ -98,12 +98,12 @@ that is not a fault. See [Master proxy, Official
 edges](master-proxy.md#official-edges).
 
 :::note[Try it on virtual machines]
-`nix/demo/edge-lan/run.sh` boots two boxes and an edge on one virtual network and
+`nix/demo/edge-lan/run.ts` boots two boxes and an edge on one virtual network and
 walks through exactly this in the order of the verification checklist
 (`nix/demo/edge-lan/CHECKLIST.md`). First with no edge anywhere: nothing found,
 sharing refused, local use intact, a reboot changes nothing. Then with the
 edge on: found on both boxes within a scan, allowed, edge gone, refused,
-back. `nix/demo/edge-lan/record.sh` records the same walk from the boxes' admin
+back. `bun nix/demo/edge-lan/record-driver.ts` records the same walk from the boxes' admin
 UI.
 :::
 
