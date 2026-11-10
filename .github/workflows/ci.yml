@@ -785,6 +785,106 @@ jobs:
             exit 1
           fi
 
+  # ── Expo development clients, built here, published as artifacts ───────────
+  #
+  # The EAS job above submits to Expo's cloud, whose Free-plan allowance can
+  # be exhausted (it is, this month); these two build the very same dev
+  # clients on GitHub's runners instead — prebuild + gradle / xcodebuild, no
+  # EAS at all — and upload the installables as artifacts, so a dev client
+  # exists regardless of the account's billing. The same CNG flow the docs'
+  # local route uses (npx expo run:ios / run:android minus the device): a
+  # debug APK installs beside the launcher on a phone, and the simulator
+  # .app (zipped) is what `npx expo start` serves its JS to. Neither embeds
+  # a JS bundle: the dev client loads it from the dev server, so no metro
+  # run and no generated wasm packages are needed here — the artifacts are
+  # the shells, and `bun install --frozen-lockfile` proves the tree still
+  # resolves for the phone targets. The result gate does not depend on
+  # these (same as expo-eas): a first build of this shape is allowed to
+  # fail without blocking every ui change.
+  expo-apk:
+    name: "expo: Android dev client APK (artifact)"
+    needs: [changes]
+    if: ${{ needs.changes.outputs.ui == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: admin-ui/app/package.json
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+      - name: the workspace (the lockfile's tree, dev client included)
+        working-directory: admin-ui/app
+        run: bun install --frozen-lockfile --ignore-scripts
+      # CNG: the android/ project is generated, never committed (the
+      # config's own header says so), and autolinks the native modules.
+      - name: prebuild android
+        working-directory: admin-ui/app
+        run: bunx expo prebuild --platform android --no-install
+      - name: gradle assembleDebug (the phone's debug APK)
+        working-directory: admin-ui/app/android
+        run: ./gradlew assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v7
+        with:
+          name: losos-dev-client-android
+          path: admin-ui/app/android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  expo-ios-sim:
+    name: "expo: iOS dev client for the simulator (artifact)"
+    needs: [changes]
+    if: ${{ needs.changes.outputs.ui == 'true' }}
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: admin-ui/app/package.json
+      - name: the workspace (the lockfile's tree, dev client included)
+        working-directory: admin-ui/app
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: prebuild ios (cocoapods run by prebuild)
+        working-directory: admin-ui/app
+        run: bunx expo prebuild --platform ios --no-install
+      - name: pod install
+        working-directory: admin-ui/app/ios
+        run: pod install
+      # The simulator needs no Apple signing (the eas.json comment carries
+      # the same reasoning for the EAS side); CODE_SIGNING_ALLOWED=NO keeps
+      # xcodebuild from asking for an identity on a keyless runner.
+      - name: xcodebuild for the simulator
+        working-directory: admin-ui/app/ios
+        run: |
+          workspace=$(ls *.xcworkspace | head -1)
+          scheme=$(xcodebuild -list -json -workspace "$workspace" | jq -r '.project.schemes[]' | grep -vi pods | head -1)
+          echo "scheme: $scheme"
+          CODE_SIGNING_ALLOWED=NO xcodebuild \
+            -workspace "$workspace" \
+            -scheme "$scheme" \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build \
+            build
+      - name: zip the .app for the artifact
+        working-directory: admin-ui/app/ios/build/Build/Products/Debug-iphonesimulator
+        run: |
+          app=$(ls -d *.app | head -1)
+          echo "app: $app"
+          zip -r -y "$RUNNER_TEMP/losos-dev-client-ios-simulator.zip" "$app"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: losos-dev-client-ios-simulator
+          path: ${{ runner.temp }}/losos-dev-client-ios-simulator.zip
+          if-no-files-found: error
+          retention-days: 14
+
   images:
     name: "nix: OCI images for the local cluster"
     needs: [changes]

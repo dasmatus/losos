@@ -39,6 +39,12 @@ src/styles/basic-classes.db
 # Expo's own working cache (read by `expo start`, nothing user-visible in a
 # checkout).
 .expo/
+# The CNG output prebuild generates (`npx expo prebuild`, then expo run:ios /
+# run:android): app.config.ts's own header says git never carries it, and an
+# android/ that slips into a commit would reach EAS's archive and have the
+# cloud build the stale native project instead of running its own prebuild.
+android/
+ios/
 # The wasm twins' public copies: `bun run lab:*` / `bun run virtuals` write
 # them from the same generation run the pkg glues come from (src/lab/
 # *-pkg/ and src/mdx/pkg/ above); nix/packages.nix's preBuild is the build's
