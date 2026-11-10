@@ -2,11 +2,13 @@
 // check-pins: flake.lock, devenv.yaml and devenv.lock pin the same nixpkgs.
 //
 //   bun nix/check-pins.ts
-//   bash nix/check-pins.sh   (shim; used by devenv/CI/hooks)
 //
-// Mirrors nix/check-pins.sh behavior/output exactly: devenv runs standalone,
-// so two lock files pin nixpkgs and must agree (see script header in
-// check-pins.sh).
+// devenv runs standalone (devenv.nix says why), so two lock files pin
+// nixpkgs: flake.lock the one that builds the appliance, devenv.lock the one
+// whose rustc lints and tests it, and devenv.yaml names the rev devenv.lock
+// was made from. Nothing in either tool keeps them in step, and when they
+// drift a tree is clippy-clean in one and fails in the other. devenv's
+// `check-pins`, CI's `pins` job and the pre-commit hook all run this.
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";

@@ -1,6 +1,6 @@
 # Box, edge, box: two LosOS boxes and an edge gateway on one network, as
 # small VMs. This is the light mode of the demo that
-# nix/demo/box-edge-box/bootstrap.sh sets up (its full mode installs two real
+# nix/demo/box-edge-box/bootstrap.ts sets up (its full mode installs two real
 # boxes from the ISO instead and needs KVM), and it is a check:
 # `checks.losos-box-edge-box`.
 #
@@ -44,7 +44,7 @@ let
 
   # The VMs' network: 192.168.77.0/24, boxa .1, boxb .2, edge .3. Number 77
   # rather than the default 1 keeps it off the 192.168.1.0/24 so many home
-  # networks use, because bootstrap.sh --host-mdns puts the host on it at
+  # networks use, because bootstrap.ts --host-mdns puts the host on it at
   # .254: the test driver plugs a tap named vde-tap77 into this network
   # when one exists.
   vlans = [ 77 ];

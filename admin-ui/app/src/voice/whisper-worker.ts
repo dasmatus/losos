@@ -6,6 +6,8 @@
 
 import { fetchBytes, VOICE_BASE } from "./files";
 
+import { loadWhisperFactory, type WhisperModule } from "./whisper-load";
+
 export type WhisperIn =
   | { type: "init"; variant: "threads" | "single"; threads: number; prompt: string }
   | { type: "run"; id: number; pcm: Float32Array<ArrayBuffer> }
@@ -17,12 +19,7 @@ export type WhisperOut =
   | { type: "text"; id: number; text: string; ms: number }
   | { type: "error"; id?: number; message: string };
 
-interface Module {
-  FS: { writeFile(path: string, data: Uint8Array): void; unlink(path: string): void };
-  HEAPF32: Float32Array;
-  UTF8ToString(ptr: number): string;
-  ccall(name: string, ret: string | null, types: string[], args: unknown[]): number;
-}
+type Module = WhisperModule;
 
 const post = (m: WhisperOut): void => (self as unknown as Worker).postMessage(m);
 
@@ -32,7 +29,7 @@ let threads = 1;
 async function init(msg: Extract<WhisperIn, { type: "init" }>): Promise<void> {
   threads = msg.threads;
   const url = `${VOICE_BASE}/whisper/${msg.variant}/losos-whisper.js`;
-  const factory = ((await import(/* @vite-ignore */ url)) as { default: () => Promise<Module> }).default;
+  const factory = await loadWhisperFactory(url);
   const [module, model] = await Promise.all([
     factory(),
     fetchBytes(`${VOICE_BASE}/whisper.bin`, (loaded, total) => post({ type: "progress", loaded, total })),

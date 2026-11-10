@@ -425,7 +425,7 @@ fn initialize(params: &Value) -> Value {
         "serverInfo": {
             "name": super::NAME,
             "title": "LosOS",
-            "version": crate::tui::panes::VERSION,
+            "version": crate::VERSION,
         },
         "instructions": INSTRUCTIONS,
     })

@@ -3,7 +3,7 @@
 This directory is the reference deployment of the two halves of LosOS on
 one network: an **edge proxy** (`modules/edge.nix`, the piece that holds a
 mesh together and makes boxes reachable) and **boxes** installed from the
-installer ISO beside it. `run.sh` stands the whole thing up on one machine,
+installer ISO beside it. `run.ts` stands the whole thing up on one machine,
 as QEMU VMs on a private virtual switch, and walks through what the boxes do
 on their own, in the order of the verification checklist
 ([CHECKLIST.md](CHECKLIST.md)): **scenario A, no edge anywhere** — both boxes
@@ -14,12 +14,12 @@ within a scan, the Mesh pane says so and sharing is allowed; the edge is
 powered off and both notice; it returns and the gate reopens. The same
 script is the demo and the rehearsal for a real site.
 
-    nix/demo/edge-lan/run.sh build          # or: build --iso path/to/losos.iso
-    nix/demo/edge-lan/run.sh up             # LAN, edge, install both boxes, boot, claim
-    nix/demo/edge-lan/run.sh walk           # scenario A (edge off), then B, over the API
-    nix/demo/edge-lan/run.sh edge off|on    # take the edge away, bring it back
-    nix/demo/edge-lan/run.sh publish        # name the boxes, turn their edge path on, reach them through the edge
-    nix/demo/edge-lan/run.sh down           # stop (keeps the disks); `clean` wipes
+    nix/demo/edge-lan/run.ts build          # or: build --iso path/to/losos.iso
+    nix/demo/edge-lan/run.ts up             # LAN, edge, install both boxes, boot, claim
+    nix/demo/edge-lan/run.ts walk           # scenario A (edge off), then B, over the API
+    nix/demo/edge-lan/run.ts edge off|on    # take the edge away, bring it back
+    nix/demo/edge-lan/run.ts publish        # name the boxes, turn their edge path on, reach them through the edge
+    nix/demo/edge-lan/run.ts down           # stop (keeps the disks); `clean` wipes
 
 Open <http://127.0.0.1:8080/mesh> (box 1) and <http://127.0.0.1:8081/mesh>
 (box 2) while it runs and sign in with the password `up` printed, to watch
@@ -28,17 +28,17 @@ come through `nix shell`, nothing runs as root, and the only host ports are
 the forwards on 127.0.0.1. With `/dev/kvm` the whole thing takes minutes;
 without it, budget about an hour per box for the install and another for its
 first boot. `LOSOS_BOXES=1` runs it with one box. Requirements, knobs and the
-state directory are listed at the top of `run.sh`.
+state directory are listed at the top of `run.ts`.
 
 ## The recording
 
-[`record.sh`](record.sh) makes the recording of the same walk from the
+[`../record-driver.ts`](../record-driver.ts) makes the recording of the same walk from the
 boxes' own admin UI, in about twenty minutes without KVM: it builds and runs
 `checks.losos-edge-lan-two-boxes` ([`two-boxes.nix`](two-boxes.nix) — two
 boxes with the real front nginx and admin SPA, one edge, the checklist's
 order as assertions) with `LOSOS_RECORD_DIR` set, so the VM script pauses at
 each step while [`record.ts`](record.ts) photographs the Mesh pane of both
-boxes; [`compose.sh`](compose.sh) then turns the pictures and captions into a
+boxes; [`compose.ts`](compose.ts) then turns the pictures and captions into a
 slideshow video. The boxes there are the appliance's control plane rather
 than full installs (the install itself is in the installer recordings), which
 is what makes the run fit a laptop; the pictures are of the product. The
@@ -65,7 +65,7 @@ is the intended shape; a box acting as its own LAN's edge is not planned.
 | `vde_switch`, a unix socket | the office switch |
 | `edge-vm.nix`: `nixosModules.edge` with `losos.edge.lan.advertise = true`, plus DHCP, DNS and NAT for the LAN on its second NIC | one always-on machine or VM running `nixosModules.edge` with `lan.advertise` on; the existing router keeps DHCP and DNS if it has them (the module does not need to be the router, the demo's is only so the LAN has one) |
 | the boxes: the stock installer ISO, unattended, twice | the same ISO, written to a USB stick, one per mini-PC |
-| `run.sh walk` over `/api/*` | the Mesh pane in a browser on the same LAN, [CHECKLIST.md](CHECKLIST.md) in hand |
+| `run.ts walk` over `/api/*` | the Mesh pane in a browser on the same LAN, [CHECKLIST.md](CHECKLIST.md) in hand |
 
 Nothing on a box is demo-specific: it is the published `install`
 configuration, and finding the edge is what every box does
@@ -102,7 +102,7 @@ option it turns on, `losos.edge.lan.advertise`, is the one a real site sets
   <https://127.0.0.1:9443/>, with its own certificate, since there is no
   public name to get one for. [../box-edge-box/](../box-edge-box/README.md)
   runs `up`, `walk` and `publish` from one curl line.
-- The walk stops at the gate. `run.sh join N` performs a box's real join
+- The walk stops at the gate. `run.ts join N` performs a box's real join
   (the rebuild into mesh mode); the pooled-storage steps of the checklist
   (B3, B4) need the mesh wiring listed at its end, and cannot be shown
   before it lands.

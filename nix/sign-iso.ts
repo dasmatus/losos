@@ -1,7 +1,10 @@
 #!/usr/bin/env bun
 // losos-sign-iso: sign, verify or inspect the UEFI loader inside a LosOS
-// installer ISO, in place. Shim target for sign-iso.sh (repo entrypoint);
-// nix/packages.nix packages sign-iso-impl.sh for the Nix-wrapped app.
+// installer ISO, in place. The repository entrypoint; nix/packages.nix
+// compiles this into a single executable with `bun build --compile` at
+// build time, so the runtime needs only the signing tools on PATH — no
+// Bun where the ISO arrives (nix/sign-iso.ts once shipped as
+// the sign-iso-impl.sh that used to sit beside it).
 import { mkdtempSync, rmSync, statSync, readFileSync, copyFileSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
