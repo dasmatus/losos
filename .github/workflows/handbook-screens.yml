@@ -4,8 +4,9 @@ name: handbook-screens
 #
 # On pull requests: builds the UI, takes the shots, and posts a comment with
 # before/after for any that differ from main.
-# On main: takes the shots and commits any that changed, so the handbook
-# stays in step with the UI.
+# On main: takes the shots and opens a PR with any that changed (main's
+# ruleset rejects a direct bot push - required status checks, CodeQL), so the
+# handbook stays in step with the UI.
 #
 # The shots come from admin-ui/app/tests/handbook-screens.ts (stubbed lososd,
 # no box required). A change to a shot's name, path or fixture in that file,
@@ -131,7 +132,7 @@ jobs:
               '',
               ...changed.map(f => `- \`${f}\``),
               '',
-              'The full set is in the `handbook-screens` artifact. On merge to main this workflow will commit the updated images.',
+              'The full set is in the `handbook-screens` artifact. On merge to main this workflow opens a PR with the updated images.',
               '',
               '</details>',
             ].join('\n');
@@ -142,8 +143,10 @@ jobs:
               body,
             });
 
-      - name: commit updated screenshots on main
+      - name: "commit updated screenshots (a PR - main only takes PRs)"
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changes.outputs.changed != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -153,5 +156,19 @@ jobs:
             echo "no changes"
             exit 0
           fi
+          # main's ruleset requires the PR's status checks and CodeQL, so a
+          # direct bot push is rejected (GH013) and the workflow went red;
+          # the shots land through a PR instead, whose merge runs the same
+          # gates as any change here.
+          branch="handbook-screens/auto-${{ github.run_id }}-${{ github.run_attempt }}"
+          git checkout -b "$branch"
           git commit -m "handbook: update UI screenshots"
-          git push
+          git push origin "$branch"
+          {
+            echo "### Handbook screenshots"
+            echo ""
+            echo "Automated refresh from the \`handbook-screens\` workflow for commit ${{ github.sha }}; the shots it took live in \`handbook/docs/img\`. Merging lands the images the workflow could not push to main directly."
+          } > /tmp/screens-pr.md
+          gh pr create --base main --head "$branch" \
+            --title "handbook: update UI screenshots" \
+            --body-file /tmp/screens-pr.md
