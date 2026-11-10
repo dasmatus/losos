@@ -812,11 +812,6 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: admin-ui/app/package.json
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: 17
-          cache: gradle
       - name: the workspace (the lockfile's tree, dev client included)
         working-directory: admin-ui/app
         run: bun install --frozen-lockfile --ignore-scripts
@@ -825,6 +820,13 @@ jobs:
       - name: prebuild android
         working-directory: admin-ui/app
         run: bunx expo prebuild --platform android --no-install
+      # Java comes after the prebuild: setup-java's gradle cache resolves
+      # against the generated gradle files, which exist only past it.
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
       - name: gradle assembleDebug (the phone's debug APK)
         working-directory: admin-ui/app/android
         run: ./gradlew assembleDebug --no-daemon
