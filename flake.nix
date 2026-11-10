@@ -155,15 +155,19 @@
             # The git hooks (nix/hooks) run CI's gates before a commit
             # or a push; this shell installs them as devenv's does.
             shellHook = ''
-              root=$(git rev-parse --show-toplevel 2>/dev/null) && bash "$root/nix/hooks/install"
+              root=$(git rev-parse --show-toplevel 2>/dev/null) && bun "$root/nix/hooks/install.ts"
               echo "Toolchain-only shell. For the scripts:"
               echo "  devenv shell      (or: direnv allow)"
             '';
           };
 
-          # What CI lints in. Deliberately lean — no rust-analyzer, no node,
-          # no shell UX — because it is realised from scratch on every CI run
-          # against a 10-minute cap.
+          # What CI lints in. Deliberately lean — no rust-analyzer, no shell
+          # UX — because it is realised from scratch on every CI run
+          # against a 10-minute cap. Bun and node are here for the terminal
+          # client's installer, not for style: the tui job bundles
+          # admin-ui/tui/install.ts into the install.mjs it publishes, and
+          # tests/install.rs drives that bundle with plain node the way end
+          # users run it.
           #
           # It exists so lint uses the SAME rustc as `nix build .#losos-ctl`.
           # The lint job used to run on docker.io/rust:latest, which is a
@@ -173,7 +177,13 @@
           # compiler you ship with is the only way that stays true, and it
           # also means an upstream Rust release cannot turn CI red on its own.
           ci = mkShell {
-            nativeBuildInputs = rust ++ fast.packages;
+            nativeBuildInputs =
+              rust
+              ++ fast.packages
+              ++ [
+                pkgs.bun
+                pkgs.nodejs
+              ];
             inherit (fast) env;
           };
         };
