@@ -9,9 +9,11 @@
 //! yields a `Stage::StageIn`; the *plan* is data, exactly like the installer's,
 //! so a revision of either side cannot silently skip a step.
 //!
-//!     refs/heads/provision                a record per provisioned box
-//!     ├── modules/overrides.nix           ├── <name>/overrides.nix
-//!     └── boxes/                          └── <name>/install-target.nix
+//! ```text
+//! refs/heads/provision                a record per provisioned box
+//! ├── modules/overrides.nix           ├── <name>/overrides.nix
+//! └── boxes/                          └── <name>/install-target.nix
+//! ```
 //!
 //! The same mirror keeps the boxes in step afterwards: lososd, as the one
 //! writer of `/etc/nixos`, checks `provision` at its own pace and either
