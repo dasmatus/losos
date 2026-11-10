@@ -30,6 +30,14 @@
 # AND the medium's edge (losos.proxy.registrarUrl). Assertions keep the
 # flavor legal at eval time: it implies the autorun, and the edge it names
 # is an http(s) address.
+#
+# With `losos.autoprovision.medium` too (the netboot medium,
+# nixosConfigurations.netboot), the autorun unit runs `losos-autoprovision`
+# — `losos-ctl provision`, the mesh's configuration from the mirror — instead
+# of the stock install, and the mirror comes with the medium
+# (losos.autoprovision.mirror, or `--mirror` by hand). Same assertions hold:
+# the flavor is the autorun's, and the firmware menu stays ahead of every
+# destructive step.
 {
   pkgs,
   lib,
@@ -42,17 +50,31 @@ let
   autorun = config.losos.installer.autorun;
   tangEdge = config.losos.installer.tangEdge;
 
+  # Provision flavor: the autorun ends in `losos-ctl provision` (the mirror
+  # comes from the environment at boot), and everywhere else the stock
+  # installer runs.
+  provision = config.losos.autoprovision.medium;
+  mirror = config.losos.autoprovision.mirror;
+
   # The medium's edge: what `--tang-edge` with no address asks, and what
   # the flavor asserts below is a usable address.
   registrarUrl = config.losos.proxy.registrarUrl;
   registrarUsable = lib.hasPrefix "http://" registrarUrl || lib.hasPrefix "https://" registrarUrl;
 
-  # The flavor's prefilled flag, ahead of "$@": the autorun install asks the
+  # The flavor's prefilled flags, ahead of "$@": the autorun install asks the
   # edge without anyone typing `--tang-edge`, and whatever is typed after
   # still outranks anything the medium preselects. escapeShellArgs holds it
   # to the CLI's spelling; the LOSOS_REGISTRAR_URL the wrapper carries as a
-  # set-default is the edge, so no address is passed here.
-  prefillArgs = lib.escapeShellArgs (lib.optionals (autorun && tangEdge) [ "--tang-edge" ]);
+  # set-default is the edge, so no address is passed here. The provision
+  # flavor prefills `--tang` the same way (`losos.autoprovision.tang`): the
+  # disk key is sealed to the TPM2 AND a Tang server nobody types in.
+  prefillArgs = lib.escapeShellArgs (
+    lib.optionals (autorun && tangEdge) [ "--tang-edge" ]
+    ++ lib.concatMap (t: [
+      "--tang"
+      t
+    ]) (lib.optionals provision config.losos.autoprovision.tang)
+  );
 
   # The tools losos-ctl install shells out to at runtime: disko + git for the
   # full path, util-linux for lsblk (drive detection), coreutils for cp/chmod
@@ -101,6 +123,15 @@ let
   seededKeys = config.losos.access.gpgKeys;
   seededKeysFile = pkgs.writeText "losos-access-keys.asc" (lib.concatStringsSep "\n" seededKeys);
 
+  # The mesh's configuration mirror (losos.autoprovision.mirror), as a
+  # set-default: a medium built for a mesh carries the address, and
+  # `--mirror` still outranks it. Nothing when the medium has none —
+  # `losos-autoprovision` asks for one at run time (`--mirror`), or the
+  # operator's `$LOSOS_MESH_CONFIG_URL` answers.
+  mirrorEnv = lib.optionals (mirror != null) [
+    "--set-default LOSOS_MESH_CONFIG_URL ${lib.escapeShellArg mirror}"
+  ];
+
   # Two wrappers, because the command and tty1 need opposite exit behavior:
   #
   #   * the CLI command (systemPackages, the VM test, scripts) must exec
@@ -115,6 +146,13 @@ let
   losos-install = pkgs.writeShellScriptBin "losos-install" ''
     ${lib.optionalString autorun "export LOSOS_INSTALLER_ISO=1"}
     exec ${ctl}/bin/losos-ctl install "$@"
+  '';
+
+  # The provision flavor of the same: the flags are the installer's, and the
+  # mesh's configuration mirror comes with the medium (or --mirror).
+  losos-autoprovision = pkgs.writeShellScriptBin "losos-autoprovision" ''
+    ${lib.optionalString autorun "export LOSOS_INSTALLER_ISO=1"}
+    exec ${ctl}/bin/losos-ctl provision "$@"
   '';
 
   # Plymouth reads tty1's keyboard while it draws, so the installer takes
@@ -139,7 +177,7 @@ let
         plymouth quit --wait
       fi
     fi
-    ${ctl}/bin/losos-ctl install "$@"
+    ${if provision then lib.getExe losos-autoprovision-wrapped else "${ctl}/bin/losos-ctl install"} "$@"
     if [ -n "''${LOSOS_SPLASH-}" ]; then
       plymouth quit --wait
     fi
@@ -162,6 +200,7 @@ let
       ''
         install -Dm755 ${lib.getExe inner} $out/bin/${binName}
         wrapProgram $out/bin/${binName} --prefix PATH : ${tools} ${lib.concatStringsSep " " reportEnv} \
+          ${lib.concatStringsSep " " mirrorEnv} \
           --set-default LOSOS_FLAKE_BRANCH ${lib.escapeShellArg config.losos.configRepo.upstream.branch} \
           --set-default LOSOS_REGISTRAR_URL ${lib.escapeShellArg config.losos.proxy.registrarUrl}${
             lib.optionalString (seededKeys != [ ]) " --set LOSOS_INSTALL_GPG_KEYS_FILE ${seededKeysFile}"
@@ -169,6 +208,7 @@ let
       '';
 
   losos-install-wrapped = wrapWithTools "losos-install" losos-install { };
+  losos-autoprovision-wrapped = wrapWithTools "losos-autoprovision" losos-autoprovision { };
   losos-install-tty1-wrapped = wrapWithTools "losos-install-tty1" losos-install-tty1 { };
 in
 {
@@ -192,9 +232,33 @@ in
           "losos.installer.tangEdge needs the medium's edge as an http(s)"
           + " address in losos.proxy.registrarUrl, not ${registrarUrl}";
       }
+      {
+        assertion = provision -> autorun;
+        message =
+          "losos.autoprovision.medium is the autorun's flavor: it ends the"
+          + " boot in `losos-autoprovision`; set losos.installer.autorun too";
+      }
+      {
+        assertion = (config.losos.autoprovision.tang != [ ]) -> provision;
+        message =
+          "losos.autoprovision.tang prefills the provision medium's"
+          + " `--tang`; set losos.autoprovision.medium too";
+      }
+      {
+        assertion = lib.all (
+          t: builtins.match "https?://[^#[:space:]]+#[A-Za-z0-9_-]{20,}" t != null
+        ) config.losos.autoprovision.tang;
+        message =
+          "each losos.autoprovision.tang entry is `--tang URL#THUMBPRINT`:"
+          + " an http(s) address, then the base64url thumbprint"
+          + " `tang-show-keys` on the server prints";
+      }
     ];
 
-    environment.systemPackages = [ losos-install-wrapped ];
+    environment.systemPackages = [
+      losos-install-wrapped
+      losos-autoprovision-wrapped
+    ];
 
     # Destructive reinstall medium: booting the ISO starts the installer on tty1.
     # Gated so the VM test (which drives the installer manually) and normal

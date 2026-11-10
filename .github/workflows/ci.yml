@@ -545,7 +545,11 @@ jobs:
         || needs.changes.outputs.iso == 'true'
         || needs.changes.outputs.discovery == 'true') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # 75, not 45: the Rust+TS-only move (f7e9c89a) grew the compile past the
+    # old budget — a run spent its last minute mid "build losos-ctl" and GH
+    # recorded the timeout as a cancelled job, which the result gate reads
+    # as a failure. The comment below asked for the re-time; this is it.
+    timeout-minutes: 75
     permissions:
       contents: read
       issues: write
@@ -599,8 +603,11 @@ jobs:
     # losos-admin-ui builds losos-lab-render, Bevy for wasm32 twice, which
     # alone takes about 20 minutes from an empty cache. With the calls
     # browser checks the job took about 41 minutes on a warm run and hit 60
-    # on a slow runner.
-    timeout-minutes: 90
+    # on a slow runner. It has since outgrown 90 too: the run of
+    # 2026-11-10 12:06 was cancelled mid "build the Playwright check" at
+    # 90:17 — the same recorded-as-cancelled timeout the lososd job's
+    # budget got raised for — so 120 is the re-time.
+    timeout-minutes: 120
     permissions:
       contents: read
       issues: write
@@ -761,14 +768,163 @@ jobs:
         run: |
           cd admin-ui/app
           bun install --frozen-lockfile --ignore-scripts 2>&1 | tail -2
+      # Quota, not the tree: a submission can die past upload with "This
+      # account has used its Android builds from the Free plan this
+      # month" (the plan's monthly allowance, or the credits meter) — the
+      # CLI then exits with a bare "Error: build command failed." That is
+      # the missing-token case's class — the cloud cannot build right
+      # now, through no fault of the tree — so it ends green with a loud
+      # warning; any other submission failure stays red.
       - name: eas build (both phone targets, one submission)
         if: steps.token.outputs.eas == 'true'
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           cd admin-ui/app
-          npx eas-cli@latest build --platform all --profile development \
-            --non-interactive --no-wait
+          if ! out=$(npx eas-cli@latest build --platform all --profile development \
+              --non-interactive --no-wait 2>&1); then
+            printf '%s\n' "$out" | tail -30
+            if printf '%s' "$out" | grep -qiE "free plan this month|build credits|upgrade (your|the) plan|quota|billing"; then
+              echo "::warning::EAS turned the submission away on the account's plan: the Free-plan build allowance is exhausted (resets monthly; 'eas billing:subscribe starter' upgrades). The job is green because nothing in-tree can change this — the expo.dev dashboard keeps every cloud build's own log, and the next successful window builds with eas.json's bun pin."
+              exit 0
+            fi
+            echo "::error::eas build submission failed — the CLI's output is above; this is not a plan-quota rejection."
+            exit 1
+          fi
+
+  # ── Expo development clients, built here, published as artifacts ───────────
+  #
+  # The EAS job above submits to Expo's cloud, whose Free-plan allowance can
+  # be exhausted (it is, this month); these two build the very same dev
+  # clients on GitHub's runners instead — prebuild + gradle / xcodebuild, no
+  # EAS at all — and upload the installables as artifacts, so a dev client
+  # exists regardless of the account's billing. The same CNG flow the docs'
+  # local route uses (npx expo run:ios / run:android minus the device): a
+  # debug APK installs beside the launcher on a phone, and the simulator
+  # .app (zipped) is what `npx expo start` serves its JS to. Neither embeds
+  # a JS bundle: the dev client loads it from the dev server, so no metro
+  # run and no generated wasm packages are needed here — the artifacts are
+  # the shells, and `bun install --frozen-lockfile` proves the tree still
+  # resolves for the phone targets. The result gate does not depend on
+  # these (same as expo-eas): a first build of this shape is allowed to
+  # fail without blocking every ui change.
+  expo-apk:
+    name: "expo: Android dev client APK (artifact)"
+    needs: [changes]
+    if: ${{ needs.changes.outputs.ui == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: admin-ui/app/package.json
+      - name: the workspace (the lockfile's tree, dev client included)
+        working-directory: admin-ui/app
+        run: bun install --frozen-lockfile --ignore-scripts
+      # CNG: the android/ project is generated, never committed (the
+      # config's own header says so), and autolinks the native modules.
+      - name: prebuild android
+        working-directory: admin-ui/app
+        run: bunx expo prebuild --platform android --no-install
+      # Java comes after the prebuild: setup-java's gradle cache resolves
+      # against the generated gradle files, which exist only past it.
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+      - name: gradle assembleDebug (the phone's debug APK)
+        working-directory: admin-ui/app/android
+        run: ./gradlew assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v7
+        with:
+          name: losos-dev-client-android
+          path: admin-ui/app/android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  expo-ios-sim:
+    name: "expo: iOS dev client for the simulator (artifact)"
+    needs: [changes]
+    if: ${{ needs.changes.outputs.ui == 'true' }}
+    # macos-15, not latest: the migrated image carries only Xcode 26, whose
+    # clang cannot compile RN 0.81's fmt (the Xcode 16 step below names the
+    # error); the 15 image keeps a 16.x around for DEVELOPER_DIR to pick.
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: admin-ui/app/package.json
+      - name: the workspace (the lockfile's tree, dev client included)
+        working-directory: admin-ui/app
+        run: bun install --frozen-lockfile --ignore-scripts
+      # React Native 0.81's fmt (React-Folly's bundled copy) cannot compile
+      # under Xcode 26's clang — every FMT_COMPILE_STRING consteval call in
+      # Pods/fmt/format-inl.h dies before one app file builds (the run of
+      # 2026-11-10 10:57). RN 0.81's supported toolchain is Xcode 16, so
+      # pods and xcodebuild both run under the newest 16.x the image has.
+      - name: pick Xcode 16 (RN 0.81's supported clang)
+        run: |
+          xcode16=$(ls -d -- /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -1)
+          [ -n "$xcode16" ] || {
+            echo "::error::no Xcode 16 on this runner image — RN 0.81's fmt does not compile under Xcode 26; pin a macos-15 runner (or the RN bump that carries a newer fmt) before this lane can build"
+            exit 1
+          }
+          echo "DEVELOPER_DIR=$xcode16/Contents/Developer" >> "$GITHUB_ENV"
+          echo "building with $(xcodebuild -version 2>/dev/null || DEVELOPER_DIR=$xcode16/Contents/Developer xcodebuild -version)"
+      - name: prebuild ios (cocoapods run by prebuild)
+        working-directory: admin-ui/app
+        run: bunx expo prebuild --platform ios --no-install
+      - name: pod install
+        working-directory: admin-ui/app/ios
+        run: pod install
+      # The simulator needs no Apple signing (the eas.json comment carries
+      # the same reasoning for the EAS side); CODE_SIGNING_ALLOWED=NO keeps
+      # xcodebuild from asking for an identity on a keyless runner.
+      - name: xcodebuild for the simulator
+        working-directory: admin-ui/app/ios
+        run: |
+          # ls -d, not ls: on a single match plain ls lists the workspace's
+          # *contents*, and the run of 2026-11-10 10:33 handed xcodebuild
+          # '-workspace contents.xcworkspacedata' for its trouble.
+          workspace=$(ls -d -- *.xcworkspace | head -1)
+          echo "workspace: $workspace"
+          listout=$(xcodebuild -list -json -workspace "$workspace")
+          printf '%s\n' "$listout"
+          # The -list JSON nests under .workspace (not .project), and the
+          # app's own scheme is named like the workspace — the only way to
+          # stand out from the sea of per-pod schemes (AsyncStorage, boost,
+          # RCT-Folly, …) pod install generates alongside Pods-*.
+          scheme=$(jq -r '.workspace as $w |
+            ($w.schemes | map(select(. == $w.name))[0])
+            // ($w.schemes | map(select(test("^Pods-") | not))[0])' <<<"$listout")
+          [ -n "$scheme" ] || { echo "::error::no app scheme in $workspace — the -list output is above"; exit 1; }
+          echo "scheme: $scheme"
+          # The simulator needs no Apple signing; CODE_SIGNING_ALLOWED=NO
+          # keeps xcodebuild from asking for an identity on a keyless runner.
+          CODE_SIGNING_ALLOWED=NO xcodebuild \
+            -workspace "$workspace" \
+            -scheme "$scheme" \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build \
+            build
+      - name: zip the .app for the artifact
+        working-directory: admin-ui/app/ios/build/Build/Products/Debug-iphonesimulator
+        run: |
+          app=$(ls -d *.app | head -1)
+          echo "app: $app"
+          zip -r -y "$RUNNER_TEMP/losos-dev-client-ios-simulator.zip" "$app"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: losos-dev-client-ios-simulator
+          path: ${{ runner.temp }}/losos-dev-client-ios-simulator.zip
+          if-no-files-found: error
+          retention-days: 14
 
   images:
     name: "nix: OCI images for the local cluster"

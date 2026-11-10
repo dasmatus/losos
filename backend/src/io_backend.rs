@@ -109,6 +109,11 @@ impl Paths {
         self.state_dir.join("config-upstream.json")
     }
 
+    /// How the last look at the mesh mirror went (`crate::autoprovision`).
+    pub fn mesh_report_file(&self) -> PathBuf {
+        self.state_dir.join("mesh-sync.json")
+    }
+
     /// The git credential store for LosOS Git, written from the bot token
     /// before each fetch or push. 0600, in the daemon's 0700 state directory.
     pub fn git_credentials_file(&self) -> PathBuf {
@@ -1529,6 +1534,11 @@ fn git_scratch(paths: &Paths, index: &Path, args: &[&str]) -> anyhow::Result<Str
 const FETCHED_REF: &str = "refs/losos/fetched";
 const UPSTREAM_REF: &str = "refs/losos/upstream";
 const FOLLOWED_REF: &str = "refs/losos/followed";
+/// Where a fetch of the mesh mirror's branch is kept (crate::autoprovision).
+const MIRROR_FETCHED_REF: &str = "refs/losos/provision-mirror";
+/// The universal empty tree, for a mirror push onto a branch that does not
+/// exist yet.
+const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
 /// A ref's commit, `None` when the ref does not exist.
 fn git_ref(paths: &Paths, name: &str) -> anyhow::Result<Option<String>> {
@@ -3058,6 +3068,159 @@ impl Losos for IoLosos {
     ) -> anyhow::Result<()> {
         let text = serde_json::to_vec_pretty(report)?;
         atomic_write_secret(&self.paths.upstream_report_file(), &text)
+    }
+
+    fn mesh_mirror(&mut self) -> Option<crate::autoprovision::Mesh> {
+        crate::autoprovision::Mesh::from_env()
+    }
+
+    fn mesh_fetch(&mut self, url: &str, branch: &str) -> anyhow::Result<Option<String>> {
+        // Shallow and into a ref of its own, like the published tree: the
+        // box carries what plan_mesh compares, never the mirror's history,
+        // and fetching here leaves the LosOS Git sync's refs alone.
+        let refspec = format!("+refs/heads/{branch}:{MIRROR_FETCHED_REF}");
+        let out = git(
+            &self.paths,
+            false,
+            &[
+                "ls-remote",
+                "-q",
+                "--heads",
+                url,
+                &format!("refs/heads/{branch}"),
+            ],
+        )?;
+        if !out.status.success() {
+            return Err(crate::config_repo::NotUp(format!(
+                "the mesh mirror could not be reached ({})",
+                first_line(&out.stderr)
+            ))
+            .into());
+        }
+        if String::from_utf8_lossy(&out.stdout).trim().is_empty() {
+            return Ok(None);
+        }
+        git_ok(
+            &self.paths,
+            false,
+            &["fetch", "-q", "--depth", "1", "--no-tags", url, &refspec],
+        )?;
+        Ok(Some(git_ok(
+            &self.paths,
+            false,
+            &["rev-parse", MIRROR_FETCHED_REF],
+        )?))
+    }
+
+    fn mesh_head_time(&mut self, sha: &str) -> anyhow::Result<Option<i64>> {
+        // A shallow fetch keeps the commit itself, so its time is here.
+        let out = git(
+            &self.paths,
+            false,
+            &["log", "-1", "--no-walk", "--format=%ct", sha],
+        )?;
+        if !out.status.success() {
+            return Ok(None);
+        }
+        Ok(String::from_utf8_lossy(&out.stdout).trim().parse().ok())
+    }
+
+    fn mesh_mark(&mut self) -> anyhow::Result<Option<crate::autoprovision::Mark>> {
+        Ok(read_if_present(
+            self.paths
+                .mesh_report_file()
+                .with_file_name("mesh-mark.json"),
+            "reading the mesh mark",
+        )?
+        .and_then(|text| serde_json::from_str(&text).ok()))
+    }
+
+    fn save_mesh_mark(&mut self, mark: &crate::autoprovision::Mark) -> anyhow::Result<()> {
+        let text = serde_json::to_vec_pretty(mark)?;
+        atomic_write_secret(
+            &self
+                .paths
+                .mesh_report_file()
+                .with_file_name("mesh-mark.json"),
+            &text,
+        )
+    }
+
+    fn mesh_push(
+        &mut self,
+        url: &str,
+        branch: &str,
+        base: Option<&str>,
+        text: &str,
+        subject: &str,
+        body: &str,
+    ) -> anyhow::Result<String> {
+        // One commit the box makes in its own object store and pushes: the
+        // tree is the mirror head's (or nothing, seeding), with only
+        // modules/overrides.nix replaced — a registration record untouched,
+        // the branch fast-forward only.
+        let empty = EMPTY_TREE;
+        let base_tree = match base {
+            Some(b) => format!("{b}^{{tree}}"),
+            None => empty.to_string(),
+        };
+        std::fs::create_dir_all(&self.paths.state_dir)
+            .with_context(|| format!("creating {}", self.paths.state_dir.display()))?;
+        let index = self.paths.state_dir.join("mesh.push.index");
+        let _ = std::fs::remove_file(&index);
+        let staging = self.paths.state_dir.join("mesh-push-overrides.nix");
+        atomic_write_secret(&staging, text.as_bytes())?;
+        let tree = (|| -> anyhow::Result<String> {
+            git_scratch(&self.paths, &index, &["read-tree", &base_tree])?;
+            let blob = git_ok(
+                &self.paths,
+                false,
+                &["hash-object", "-w", "--", &staging.to_string_lossy()],
+            )?;
+            git_scratch(
+                &self.paths,
+                &index,
+                &[
+                    "update-index",
+                    "--add",
+                    "--cacheinfo",
+                    &format!("100644,{blob},{}", crate::autoprovision::OVERRIDES_PATH),
+                ],
+            )?;
+            git_scratch(&self.paths, &index, &["write-tree"])
+        })();
+        let _ = std::fs::remove_file(&index);
+        let _ = std::fs::remove_file(&staging);
+        let tree = tree?;
+        let commit = match base {
+            Some(b) => git_ok(
+                &self.paths,
+                false,
+                &["commit-tree", &tree, "-p", b, "-m", subject, "-m", body],
+            )?,
+            None => git_ok(
+                &self.paths,
+                false,
+                &["commit-tree", &tree, "-m", subject, "-m", body],
+            )?,
+        };
+        let refspec = format!("{commit}:refs/heads/{branch}");
+        git_ok(&self.paths, false, &["push", "-q", url, &refspec])?;
+        tracing::info!(sha = %commit, branch, "pushed to the mesh mirror");
+        Ok(commit)
+    }
+
+    fn load_mesh_report(&mut self) -> anyhow::Result<Option<crate::config_repo::SyncReport>> {
+        Ok(read_if_present(
+            self.paths.mesh_report_file(),
+            "reading the mesh sync report",
+        )?
+        .and_then(|text| serde_json::from_str(&text).ok()))
+    }
+
+    fn save_mesh_report(&mut self, report: &crate::config_repo::SyncReport) -> anyhow::Result<()> {
+        let text = serde_json::to_vec_pretty(report)?;
+        atomic_write_secret(&self.paths.mesh_report_file(), &text)
     }
 
     // ── Backups and erasing the box ─────────────────────────────────────

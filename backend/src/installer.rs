@@ -366,6 +366,16 @@ pub struct Options {
     /// credential (`report-client-id`), handed to the installed box. None
     /// on a medium built without one.
     pub report_client_id: Option<String>,
+    /// The stage `losos-ctl provision` laid the mesh's configuration into.
+    /// `Some` makes the plan chasing the provision variant: the staged
+    /// overrides are laid into the clone, and the finished box is recorded on
+    /// the mirror the install came from. The CLI is what guarantees the pair
+    /// (stage, mirror, name) is complete; the planner re-checks it.
+    pub provision_stage: Option<PathBuf>,
+    /// The mirror the provision came from (`crate::autoprovision::BRANCH`).
+    pub mirror: Option<String>,
+    /// The name this provisioned box takes on the mirror.
+    pub box_name: Option<String>,
 }
 
 /// Where the installer leaves the report client ID for the installed box:
@@ -394,6 +404,15 @@ pub enum InstallAction {
     /// Seal the keyfile (first) with Clevis under the policy (third) into a
     /// JWE (second): the TPM2 and a Tang server.
     BindTang(PathBuf, PathBuf, String),
+    /// Put the mesh's staged configuration into the clone: `stage`'s
+    /// `overrides.nix` becomes the clone's own [`crate::autoprovision::OVERRIDES_PATH`],
+    /// ahead of a `nixos-install` evaluation that builds it. Source
+    /// directory, clone.
+    LayProvision(PathBuf, PathBuf),
+    /// Record the box on the mirror: stage, work dir, mirror, name. The
+    /// clone already has the configuration to record (`files written by the
+    /// plan so far`); the push never makes an install fail.
+    RegisterProvision(PathBuf, PathBuf, String, String),
 }
 
 /// What a keyfile install costs, in one line the owner sees on the console. The
@@ -432,6 +451,25 @@ pub fn plan_install(opts: &Options, devs: &[BlockDev]) -> Result<Vec<InstallActi
             "--tang needs the TPM2: the disk key is sealed to the chip AND a Tang server"
                 .to_string(),
         );
+    }
+    if opts.provision_stage.is_some() {
+        // The CLI is what assembles the trio the plan needs; this keeps the
+        // planner honest against a caller that skipped its half of the work.
+        if opts.mirror.is_none() || opts.box_name.as_deref().is_none_or(str::is_empty) {
+            return Err("a provision needs --mirror and a name".to_string());
+        }
+        if opts.disko_script.is_some() {
+            // The script flow formats from a fixed file and stops: there is
+            // no clone to lay the mesh's configuration into, and a half
+            // provision would lie about a box that is not there.
+            return Err(
+                "provision runs a full install; it does not combine with a prebuilt disko script"
+                    .to_string(),
+            );
+        }
+        if opts.emit_target.is_some() {
+            return Err("provision cannot write a target file and stop; it installs the mesh's configuration".to_string());
+        }
     }
     let drives = resolve_drives(opts, devs)?;
     let target = render_target(&drives, opts.tpm, &opts.tang, opts.bios, &opts.gpg_keys);
@@ -489,6 +527,17 @@ pub fn plan_install(opts: &Options, devs: &[BlockDev]) -> Result<Vec<InstallActi
         work.join(&opts.target_rel),
         target,
     ));
+    if let Some(stage) = &opts.provision_stage {
+        let (mirror, name) = (
+            opts.mirror.as_deref().unwrap_or_default(),
+            opts.box_name.as_deref().unwrap_or_default(),
+        );
+        acts.push(InstallAction::Log(format!(
+            "autoprovision: installing the mesh's configuration ({}) as {name}",
+            mirror,
+        )));
+        acts.push(InstallAction::LayProvision(stage.clone(), work.clone()));
+    }
     acts.push(InstallAction::RunDisko(work.clone()));
     acts.extend(enroll(opts));
     acts.extend(install_tail(opts, work));
@@ -607,6 +656,18 @@ fn install_tail(opts: &Options, work: &Path) -> Vec<InstallAction> {
         work.to_path_buf(),
         PathBuf::from("/mnt/persist/etc/nixos"),
     ));
+    if let Some(stage) = &opts.provision_stage {
+        // After the configuration is on the disk, so the record the mirror
+        // gains is one of a box that exists. A failure here is logged, not
+        // failed: the mirror that does not hear the registration will do so
+        // at the box's first mesh sync push.
+        acts.push(InstallAction::RegisterProvision(
+            stage.clone(),
+            work.to_path_buf(),
+            opts.mirror.clone().unwrap_or_default(),
+            opts.box_name.clone().unwrap_or_default(),
+        ));
+    }
     // Said again as the last thing before `done`, because that is what stays
     // on the screen: the line at the top has scrolled away by then.
     if !opts.tpm {
@@ -653,6 +714,12 @@ pub trait Install {
     fn copy_keyfile(&mut self, src: &Path, dst: &Path) -> anyhow::Result<()>;
     fn enroll_tpm(&mut self, device: &Path, keyfile: &Path) -> anyhow::Result<()>;
     fn bind_tang(&mut self, keyfile: &Path, jwe: &Path, policy: &str) -> anyhow::Result<()>;
+    /// Copy the mesh's staged configuration into the clone.
+    fn lay_provision(&mut self, stage: &Path, work: &Path) -> anyhow::Result<()>;
+    /// Push the box's record onto the mirror. Best effort: what cannot be
+    /// pushed is logged, and the box's own mesh sync catches up at its first
+    /// run.
+    fn register_provision(&mut self, stage: &Path, work: &Path, mirror: &str, name: &str);
     fn log_info(&mut self, msg: &str);
 }
 
@@ -672,6 +739,10 @@ pub fn execute<I: Install>(installer: &mut I, acts: &[InstallAction]) -> anyhow:
             InstallAction::CopyKeyfile(s, d) => installer.copy_keyfile(s, d)?,
             InstallAction::EnrollTpm(dev, key) => installer.enroll_tpm(dev, key)?,
             InstallAction::BindTang(key, jwe, policy) => installer.bind_tang(key, jwe, policy)?,
+            InstallAction::LayProvision(stage, work) => installer.lay_provision(stage, work)?,
+            InstallAction::RegisterProvision(stage, work, mirror, name) => {
+                installer.register_provision(stage, work, mirror, name)
+            }
         }
     }
     Ok(())
@@ -698,6 +769,9 @@ mod tests {
             emit_file: PathBuf::from("/tmp/losos-install-target.nix"),
             gpg_keys: Vec::new(),
             report_client_id: None,
+            provision_stage: None,
+            mirror: None,
+            box_name: None,
         }
     }
 
@@ -1216,6 +1290,93 @@ mod tests {
                 Some("channel/daily")
             )
         );
+    }
+
+    /// A provision lays the mesh's staged configuration into the clone
+    /// before disko formats, and records the box on the mirror only after
+    /// the tree is on the disk.
+    #[test]
+    fn a_provision_installs_the_mesh_config_and_registers_the_box_last() {
+        let o = Options {
+            provision_stage: Some(PathBuf::from("/run/losos-provision")),
+            mirror: Some("https://mirror.example.org/mesh.git".into()),
+            box_name: Some("box-1".into()),
+            ..opts()
+        };
+        let acts = plan_install(&o, &targets()).unwrap();
+        let write_target = index_of(&acts, |a| matches!(a, InstallAction::WriteTarget(..)));
+        let lay = index_of(&acts, |a| matches!(a, InstallAction::LayProvision(..)));
+        let disko = index_of(&acts, |a| matches!(a, InstallAction::RunDisko(_)));
+        let lay_flake = index_of(&acts, |a| matches!(a, InstallAction::LayFlake(..)));
+        let register = index_of(&acts, |a| matches!(a, InstallAction::RegisterProvision(..)));
+
+        assert!(acts
+            .iter()
+            .any(|a| matches!(a, InstallAction::Log(t) if t.contains("box-1"))));
+        assert!(
+            write_target < lay && lay < disko,
+            "the mesh's overrides must ride the clone disko formats from"
+        );
+        assert!(
+            disko < register,
+            "the registration comes after destructive work, never before"
+        );
+        assert!(
+            lay_flake < register,
+            "the tree is on the disk when it is recorded"
+        );
+        match &acts[register] {
+            InstallAction::RegisterProvision(stage, _, mirror, name) => {
+                assert_eq!(stage.as_os_str(), "/run/losos-provision");
+                assert_eq!(mirror.as_str(), "https://mirror.example.org/mesh.git");
+                assert_eq!(name.as_str(), "box-1");
+            }
+            other => panic!("expected the registration, got {other:?}"),
+        }
+    }
+
+    /// The stock plan carries no provision actions; the trio is complete or
+    /// the plan refuses at all.
+    #[test]
+    fn a_provision_needs_its_mirror_its_name_and_a_full_install() {
+        let stage = PathBuf::from("/run/losos-provision");
+        let stage_opts = |m: Option<&str>, n: Option<&str>| Options {
+            provision_stage: Some(stage.clone()),
+            mirror: m.map(Into::into),
+            box_name: n.map(Into::into),
+            ..opts()
+        };
+        assert_eq!(
+            plan_install(&stage_opts(None, Some("box-1")), &targets()),
+            Err("a provision needs --mirror and a name".to_string())
+        );
+        assert_eq!(
+            plan_install(&stage_opts(Some("https://mirror/x"), None), &targets()),
+            Err("a provision needs --mirror and a name".to_string())
+        );
+        let script = PathBuf::from("/tmp/disko.json");
+        let o = Options {
+            disko_script: Some(script.clone()),
+            ..stage_opts(Some("https://mirror/x"), Some("box-1"))
+        };
+        assert!(plan_install(&o, &targets())
+            .unwrap_err()
+            .contains("full install"));
+        let o = Options {
+            emit_target: Some(PathBuf::from("/tmp/target.nix")),
+            ..stage_opts(Some("https://mirror/x"), Some("box-1"))
+        };
+        assert!(plan_install(&o, &targets())
+            .unwrap_err()
+            .contains("target file"));
+        // No stage set: the plan never behaves as a provision.
+        let acts = plan_install(&opts(), &targets()).unwrap();
+        assert!(!acts
+            .iter()
+            .any(|a| matches!(a, InstallAction::LayProvision(..))));
+        assert!(!acts
+            .iter()
+            .any(|a| matches!(a, InstallAction::RegisterProvision(..))),);
     }
 
     #[test]
