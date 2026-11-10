@@ -355,6 +355,7 @@
             (
               {
                 modulesPath,
+                lib,
                 pkgs,
                 config,
                 self,
