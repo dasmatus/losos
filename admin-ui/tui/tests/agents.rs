@@ -81,15 +81,22 @@ impl Desk {
 fn bin(home: &Path, tools: &[&str]) -> String {
     let dir = home.join("bin");
     std::fs::create_dir_all(&dir).unwrap();
-    for tool in tools {
-        std::os::unix::fs::symlink(fake_bin("agent-tool"), dir.join(tool)).unwrap();
+    #[cfg(unix)]
+    {
+        for tool in tools {
+            std::os::unix::fs::symlink(fake_bin("agent-tool"), dir.join(tool)).unwrap();
+        }
+        for program in ["basename", "dirname", "mkdir", "cp", "rm"] {
+            let found = std::env::split_paths(&std::env::var("PATH").unwrap())
+                .map(|d| d.join(program))
+                .find(|p| p.is_file())
+                .unwrap_or_else(|| panic!("{program} is not on PATH"));
+            std::os::unix::fs::symlink(found, dir.join(program)).unwrap();
+        }
     }
-    for program in ["basename", "dirname", "mkdir", "cp", "rm"] {
-        let found = std::env::split_paths(&std::env::var("PATH").unwrap())
-            .map(|d| d.join(program))
-            .find(|p| p.is_file())
-            .unwrap_or_else(|| panic!("{program} is not on PATH"));
-        std::os::unix::fs::symlink(found, dir.join(program)).unwrap();
+    #[cfg(not(unix))]
+    {
+        let _ = tools;
     }
     dir.display().to_string()
 }

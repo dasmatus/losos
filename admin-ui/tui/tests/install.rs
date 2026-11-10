@@ -6,6 +6,7 @@
 //! the network or a real download.
 
 use std::fs;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -25,7 +26,10 @@ struct Fake {
 
 fn write_exe(path: &Path, text: &str) {
     fs::write(path, text).unwrap();
-    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+    #[cfg(unix)]
+    {
+        fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+    }
 }
 
 impl Fake {

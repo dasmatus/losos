@@ -1,3 +1,5 @@
+#![cfg(not(target_arch = "wasm32"))]
+
 //! The PNGs in .github/screenshots/tui/: each screen drawn at 120x36 over
 //! the test fixtures, in truecolour, written as HTML and shot in headless
 //! Chromium with a monospace font. Dark and light for each.
