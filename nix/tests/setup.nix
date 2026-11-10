@@ -76,10 +76,12 @@ pkgs.testers.nixosTest {
       # For the script's own inspection of the certificate. The generator gets
       # openssl from its `path` in modules/tls.nix, and the publisher from its
       # own in modules/setup.nix; neither needs this. certutil is what
-      # trust.sh drives on Linux; here it stands in for the owner's laptop.
+      # trust.ts drives on Linux; node runs trust.ts the way the wizard's
+      # one-liner does, and here it stands in for the owner's laptop.
       environment.systemPackages = [
         pkgs.openssl
         pkgs.nssTools
+        pkgs.nodejs
       ];
 
       virtualisation = {
@@ -106,7 +108,7 @@ pkgs.testers.nixosTest {
     STATE = "/var/lib/losos-setup/state.json"
     CERT_URL = "/setup/losos-ca.crt"
     STATE_URL = "/setup/state.json"
-    SH_URL = "/setup/trust.sh"
+    SH_URL = "/setup/trust.ts"
     PS1_URL = "/setup/trust.ps1"
 
     # This node's own address on vlan 1. Spelled out rather than reached through
@@ -279,7 +281,7 @@ pkgs.testers.nixosTest {
         # serve a script that installs the literal text "@PEM@".
         doc = json.loads(appliance.succeed(lan(STATE_URL)))
         install = doc["certificate"]["install"]
-        assert install == {"sh": SH_URL, "ps1": PS1_URL}, install
+        assert install == {"node": SH_URL, "ps1": PS1_URL}, install
         display = doc["certificate"]["fingerprintDisplay"]
         for path in (SH_URL, PS1_URL):
             local = "/tmp" + path.replace("/setup/", "/")
@@ -296,26 +298,30 @@ pkgs.testers.nixosTest {
                 f"sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' {local} > {local}.pem"
                 f" && cmp {local}.pem {CERT}"
             )
-        appliance.succeed("sh -n /tmp/trust.sh")
+        appliance.succeed("cp /tmp/trust.ts /tmp/trust.mjs && node --check /tmp/trust.mjs")
 
-    with subtest("trust.sh installs the certificate into a user's browser stores"):
+    with subtest("trust.ts installs the certificate into a user's browser stores"):
         # As an ordinary user, with a home that has a Firefox profile in it:
         # the shape of the owner's laptop. Afterwards both NSS databases —
         # the one Chrome reads and the profile's — hold the certificate under
         # the box's name, trusted for TLS ("C"). Not root, so the system-store
         # branch is not taken: NixOS has none of those tools, and a script that
         # reached for sudo would fail the whole point.
+        #
+        # Executed the way the wizard's one-liner does it — piped into node —
+        # which is also what keeps this test honest about the delivery
+        # contract: stdin is where module-syntax detection happens, and "node
+        # < file" is the same machinery minus curl.
         HOME = "/tmp/owner"
         PROFILE = f"{HOME}/.mozilla/firefox/abc123.default-release"
         appliance.succeed(
             f"mkdir -p {PROFILE}"
             f" && certutil -d sql:{PROFILE} -N --empty-password"
             f" && chmod -R 777 {HOME}"
-            " && chmod 755 /tmp/trust.sh"
         )
         out = appliance.succeed(
             f"setpriv --reuid=nobody --regid=nogroup --clear-groups"
-            f" env HOME={HOME} PATH=$PATH sh /tmp/trust.sh"
+            f" env HOME={HOME} PATH=$PATH node < /tmp/trust.ts"
         )
         assert display in out, f"the script did not print the fingerprint to compare: {out}"
         for db in (f"{HOME}/.pki/nssdb", PROFILE):
@@ -324,25 +330,25 @@ pkgs.testers.nixosTest {
         # Running it again replaces rather than stacks the entry.
         appliance.succeed(
             f"setpriv --reuid=nobody --regid=nogroup --clear-groups"
-            f" env HOME={HOME} PATH=$PATH sh /tmp/trust.sh"
+            f" env HOME={HOME} PATH=$PATH node < /tmp/trust.ts"
         )
         n = appliance.succeed(f"certutil -d sql:{HOME}/.pki/nssdb -L | grep -c 'LosOS mattbox'").strip()
         assert n == "1", f"a second run stacked a duplicate: {n} entries"
         # And a script whose certificate does not match its fingerprint
         # installs nothing. One stray character in the base64 is enough.
-        appliance.succeed("sed '/^MII/s/.*/&x/' /tmp/trust.sh > /tmp/bad.sh")
-        appliance.fail("env HOME=/tmp/other sh /tmp/bad.sh")
+        appliance.succeed("sed '/^MII/s/.*/&x/' /tmp/trust.ts > /tmp/bad.ts")
+        appliance.fail("env HOME=/tmp/other node < /tmp/bad.ts")
         appliance.fail("test -e /tmp/other/.pki/nssdb/cert9.db")
 
     with subtest("the file is readable by nginx and holds nothing secret"):
         assert appliance.succeed(f"stat -c %a {STATE}").strip() == "644", \
             "nginx has to read this, and there is nothing in it to hide"
         assert appliance.succeed("stat -c %a /var/lib/losos-setup").strip() == "755"
-        for f in ("trust.sh", "trust.ps1"):
+        for f in ("trust.ts", "trust.ps1"):
             assert appliance.succeed(f"stat -c %a /var/lib/losos-setup/{f}").strip() == "644", f
         # temp+rename, so a request can never catch a half-written document.
         appliance.succeed(f"test ! -e {STATE}.new")
-        appliance.succeed("test ! -e /var/lib/losos-setup/trust.sh.new")
+        appliance.succeed("test ! -e /var/lib/losos-setup/trust.ts.new")
 
     with subtest("the vhost containers.nix owns is still intact"):
         # modules/setup.nix merges into the same attribute path rather than
@@ -356,9 +362,9 @@ pkgs.testers.nixosTest {
         # The unit runs on every boot. It must be a function of the certificate
         # on disk and nothing else — a fingerprint that moves is one the owner
         # already wrote down and can no longer match.
-        before = appliance.succeed(f"cat {STATE} /var/lib/losos-setup/trust.sh /var/lib/losos-setup/trust.ps1")
+        before = appliance.succeed(f"cat {STATE} /var/lib/losos-setup/trust.ts /var/lib/losos-setup/trust.ps1")
         appliance.succeed("systemctl restart losos-setup-state.service")
-        after = appliance.succeed(f"cat {STATE} /var/lib/losos-setup/trust.sh /var/lib/losos-setup/trust.ps1")
+        after = appliance.succeed(f"cat {STATE} /var/lib/losos-setup/trust.ts /var/lib/losos-setup/trust.ps1")
         assert before == after, "the published setup state is not stable across a restart"
   '';
 }

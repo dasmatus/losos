@@ -97,6 +97,7 @@ pub mod textsearch;
 pub mod trace;
 pub mod user_apps;
 pub mod vcard;
+pub mod version;
 pub mod vm_upload;
 pub mod windows;
 pub mod zcash_key;

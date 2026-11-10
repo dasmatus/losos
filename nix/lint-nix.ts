@@ -1,6 +1,5 @@
 #!/usr/bin/env bun
 // The Nix lints over the tree, or over the files named on the command line.
-// Shim target for nix/lint-nix.sh.
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
@@ -45,8 +44,8 @@ if (!has("nixfmt") || !has("deadnix") || !has("statix")) {
       "nixpkgs#deadnix",
       "nixpkgs#statix",
       "-c",
-      "bash",
-      resolve(root, "nix/lint-nix.sh"),
+      "bun",
+      resolve(root, "nix/lint-nix.ts"),
       ...files,
     ],
     { stdio: "inherit" },

@@ -446,9 +446,12 @@ mod tests {
         let first = HostKey::load_or_create(&path, "LosOS box test").unwrap();
         let second = HostKey::load_or_create(&path, "LosOS box test").unwrap();
         assert_eq!(first.fingerprint(), second.fingerprint());
-        use std::os::unix::fs::PermissionsExt;
-        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
-        assert_eq!(mode & 0o777, 0o600);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
         std::fs::write(&path, "garbage").unwrap();
         assert!(HostKey::load_or_create(&path, "x").is_err());
         let _ = std::fs::remove_dir_all(&dir);

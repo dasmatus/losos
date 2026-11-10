@@ -35,7 +35,7 @@ without saying so.
 ## What a pull request runs
 
 A pull request runs only the jobs its files reach. The `changes` job lists
-the pull request's files and `.github/scripts/ci-changes.sh` maps them to
+the pull request's files and `.github/scripts/ci-changes.ts` maps them to
 lanes, one per group of jobs:
 
 | Lane | Jobs | Turned on by |
@@ -67,7 +67,7 @@ label is read when the job runs, so add it and re-run the workflow.
 To see what a change would run before pushing it:
 
 ```sh
-git diff --name-only origin/main... | .github/scripts/ci-changes.sh
+git diff --name-only origin/main... | bun .github/scripts/ci-changes.ts
 ```
 
 When a new file is read by a job outside its lane (a `build.rs` reading the
@@ -182,7 +182,7 @@ os-release, the console banners and `losos --version` show
   show the new version once the channel takes that commit. The commit goes through the
   GitHub API with `GITHUB_TOKEN`, so GitHub signs it, and it only
   fast-forwards. A file already ahead of every tag is left alone.
-  `.github/scripts/sync-version.sh --dry-run` shows what it would commit.
+  `.github/scripts/sync-version.ts --dry-run` shows what it would commit.
 - The `tui` job writes the tag over the file before it builds `losos`, so
   the client published for the tag names it.
 - `desktop-pin.yml` opens a pull request on LosOS Desktop
@@ -191,7 +191,7 @@ os-release, the console banners and `losos --version` show
   `nixos/pkgs/losos-pin.nix`, to the tag. The desktop builds `losos` from
   that commit and boots a box from it beside the desktop in its
   `losos-box` VM test, so the pull request's CI is where a change here
-  that breaks the desktop shows up. `.github/scripts/desktop-pin.sh TAG
+  that breaks the desktop shows up. `.github/scripts/desktop-pin.ts TAG
   DIR` rewrites the file in a checkout of the desktop, hashes included.
   Opening the pull request needs the `DESKTOP_PIN_TOKEN` secret, a
   fine-grained token for the desktop repository with Contents and Pull
@@ -227,7 +227,7 @@ Microsoft's keys must refuse the medium, and the same OVMF store with the
 committed certificate added beside Microsoft's must boot it (`nix/tests/iso-boot.py --firmware
 uefi-sb-ms|uefi-sb`). A fork's pull request has no key, so it boots unsigned
 and skips the enrolled leg, and so does a run where signing failed. The key is made once on the owner's machine with
-`docs/provisioning/secure-boot/keygen.sh`.
+`docs/provisioning/secure-boot/keygen.ts`.
 
 Your release notes are kept. The download section goes between two marker
 comments, and a re-run replaces only that section.
@@ -332,7 +332,9 @@ against musl. The `registrar-and-ui` job builds it and the `publish-tool` job
 pushes it to GHCR as the OCI artifact
 `ghcr.io/dasmatus/losos/images:<channel>-x86_64`, one layer per file:
 `losos-registrar`, `losos` (the terminal client, `.#losos-static`, built
-the same way by the `tui` job), its `install.sh`, and `SHA256SUMS` over all three. That is the shape the proxy's
+the same way by the `tui` job), its `install.mjs` (the bundle CI builds from
+`admin-ui/tui/install.ts` with `bun build --target=node`), and `SHA256SUMS`
+over all three. That is the shape the proxy's
 `/updates/<channel>/<arch>/<file>` route serves. It picks the layer whose
 title is the file name and redirects to GHCR's storage, except `SHA256SUMS`,
 which it serves inline. LosOS Desktop's sysupdate reads the same route. The
@@ -647,5 +649,5 @@ Two things move USDC to the treasury for it, both into
   is refused. Solana is refused.
 
 `edge/registrar/tests/usdc.rs` covers both paths and the pause against a
-stand-in RPC. `edge/contracts/test-payment.sh` also sends a real fee transfer on
+stand-in RPC. `edge/contracts/test-payment.ts` also sends a real fee transfer on
 anvil and checks the registrar reads it.

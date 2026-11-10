@@ -64,7 +64,7 @@ install stick, so put yours there before you install. On 64-bit x86 Linux:
 ```sh
 curl -fsSLO https://nightly.link/dasmatus/losos/workflows/ci/main/losos-pages-updates.zip
 unzip -o losos-pages-updates.zip -d losos-pages-updates
-sh losos-pages-updates/install.sh
+node losos-pages-updates/install.mjs
 losos key import --gpg you@example.com
 losos login http://<address on the box's screen>
 ```

@@ -210,7 +210,7 @@ cez mDNS.
   doménu (jednu VLAN).
 :::
 
-`nix/demo/edge-lan/run.sh` postaví celé toto usporiadanie na jednom stroji ako
+`nix/demo/edge-lan/run.ts` postaví celé toto usporiadanie na jednom stroji ako
 VM na virtuálnom prepínači: edge, ktorý je zároveň routerom LAN, a dve zariadenia
 nainštalované z ISO. Prejde overovací kontrolný zoznam
 (`nix/demo/edge-lan/CHECKLIST.md`). Bez edge obe zariadenia odmietnu. Edge sa objaví,
