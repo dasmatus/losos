@@ -3,10 +3,13 @@
  * the page.
  *
  * Same arrangement as the other files: the real dist/ bundle under the admin
- * CSP, the API stubbed with page.route(). The stub answers what lososd's
- * pages plugin answers now: each changed page as its MDX source, with
- * blocks.json as the registry the page is rendered against — the same
- * losos-mdx the box's reader and this page's browser run (src/mdx/pkg). */
+ * CSP, the API stubbed with page.route(). The HTML a changed page arrives
+ * with is made here by the same losos-mdx the box runs (src/mdx/pkg), so
+ * what the stub answers is what lososd's pages plugin answers.
+ *
+ * With LOSOS_PAGES_BEFORE set to the dist/ of a build from before the pages
+ * were MDX, one more check draws the Overview and Storage in both and
+ * compares them pixel for pixel. */
 
 import type { Page, Route } from 'playwright';
 import assert from './assert.ts';
@@ -86,9 +89,8 @@ async function open({
   let version = css === '' ? 0 : 1;
   const list = () => ({
     pages: Object.fromEntries(
-      Object.entries(current).map(([id, source]) => [id, { source, at: '2026-10-29T10:00:00Z', by: 'matus' }]),
+      Object.entries(current).map(([id, source]) => [id, { html: render(source, id).html, at: '2026-10-29T10:00:00Z', by: 'matus' }]),
     ),
-    registry: REGISTRY,
     style: css === '' ? null : String(version),
   });
 
@@ -243,10 +245,9 @@ await check('only administrators see the Pages section', async () => {
   const admin = await open({ path: '/settings/look' });
   const section = admin.page.getByTestId('pages-section');
   await section.waitFor();
-  assert.equal(await section.getByText('Overview').isVisible(), true);
-  assert.equal(await section.getByText('Storage').isVisible(), true);
-  // Every page blocks.json lists ships its badge, until changed.
-  assert.equal(await section.getByText('As shipped').count(), Object.keys(JSON.parse(REGISTRY).pages).length);
+  assert.ok(await section.getByText('Overview').isVisible());
+  assert.ok(await section.getByText('Storage').isVisible());
+  assert.equal(await section.getByText('As shipped').count(), 2);
   await admin.page.close();
 
   const viewer = await open({

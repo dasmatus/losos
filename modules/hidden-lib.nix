@@ -51,36 +51,30 @@ rec {
   # writes them from the heartbeat's answer).
   edgeFile = "${state}/edge.json";
 
-  # The box's front door for what Tor and I2P deliver. Traefik
-  # (modules/apps.nix) holds both: plain http, and TLS with the hidden leaf
-  # certificate (modules/hidden-services.nix). Never port 80 itself: the
-  # edge's manage server (modules/proxy.nix) listens there for loopback, and
-  # a Tor client sends whatever Host header it likes.
-  httpPort = 8480;
-  httpsPort = 8443;
-  # lososd's second loopback listener, the onion surface's backend: the
-  # admin API's handlers on a narrower route list (backend/src/http.rs,
-  # $LOSOS_ONION_PORT in modules/daemon.nix). Apart from the 8082 admin API,
-  # so the two surfaces' guards stay things you can point at.
-  adminPort = 8083;
-  # The front vhost's loopback listener for the paths the onion serves that
-  # are not admin — LosOS Cloud, LosOS Git, the handbook, the app's own
-  # assets. Same vhost, so the same locations answer; the admin ones carry
-  # the LAN guard, which turns loopback away (modules/lan-only.nix), and
-  # Traefik never sends them here.
-  vhostPort = 8483;
-
+  # The box's front door for what Tor and I2P deliver, on loopback only and
+  # on the front vhost only (modules/containers.nix, modules/tls.nix): plain
+  # http, and the same after nginx's own TLS (`streamPort`, below), which
+  # LosOS Login believes is https (modules/identity.nix, `$losos_proto`).
+  # Never port 80: the edge's manage server (modules/proxy.nix) listens
+  # there for loopback, and a Tor client chooses its own Host header.
+  plainPort = 8480;
+  tlsPort = 8481;
+  streamPort = 8443;
   # The edge's Traefik entry points for the same (modules/edge-hidden.nix).
   edgePlainPort = 8480;
   edgeTlsPort = 8444;
 
-  # The front vhost's extra listener, for whichever of the two is on.
+  # The front vhost's extra listeners, for whichever of the two is on.
   frontListen =
     on:
     lib.optionals on [
       {
         addr = "127.0.0.1";
-        port = vhostPort;
+        port = plainPort;
+      }
+      {
+        addr = "127.0.0.1";
+        port = tlsPort;
       }
     ];
 
