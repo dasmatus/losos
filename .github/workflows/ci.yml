@@ -764,8 +764,10 @@ jobs:
       # Quota, not the tree: a submission can die past upload with "This
       # account has used its Android builds from the Free plan this
       # month" (the plan's monthly allowance, or the credits meter) — the
-      # CLI then exits with a bare "Error: build command failed." Surface
-      # the real reason, so a red job reads as account billing, not code.
+      # CLI then exits with a bare "Error: build command failed." That is
+      # the missing-token case's class — the cloud cannot build right
+      # now, through no fault of the tree — so it ends green with a loud
+      # warning; any other submission failure stays red.
       - name: eas build (both phone targets, one submission)
         if: steps.token.outputs.eas == 'true'
         env:
@@ -776,9 +778,10 @@ jobs:
               --non-interactive --no-wait 2>&1); then
             printf '%s\n' "$out" | tail -30
             if printf '%s' "$out" | grep -qiE "free plan this month|build credits|upgrade (your|the) plan|quota|billing"; then
-              echo "::error::EAS turned the submission away on the account's plan: the Free-plan build allowance is exhausted (resets monthly; eas billing:subscribe starter upgrades). Nothing in-tree can fix it; the bun pin in eas.json governs the next submission."
-              echo "(Full output above. The expo.dev dashboard has every cloud build's own log.)"
+              echo "::warning::EAS turned the submission away on the account's plan: the Free-plan build allowance is exhausted (resets monthly; 'eas billing:subscribe starter' upgrades). The job is green because nothing in-tree can change this — the expo.dev dashboard keeps every cloud build's own log, and the next successful window builds with eas.json's bun pin."
+              exit 0
             fi
+            echo "::error::eas build submission failed — the CLI's output is above; this is not a plan-quota rejection."
             exit 1
           fi
 
