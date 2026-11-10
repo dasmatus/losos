@@ -7,6 +7,21 @@ encrypted to the box's host key, and answered the same way. The wire
 contract is in [docs/terminal-access.md](../../docs/terminal-access.md) and,
 for an edge, [docs/edge-terminal.md](../../docs/edge-terminal.md).
 
+## Builds
+
+`cargo build` makes the desktop client: a TTY program, whose full-screen
+view takes raw mode and the alternate screen (src/tui/term.rs). The
+wasm32 build is a different fact of the same crate (nix's
+`losos-tui-wasm`): the API/drive surface — the reads and command arms a
+page can drive against the box's JSON API — not the TTY. The terminal
+half has no place on a browser page, so the tty-only pieces are
+`#[cfg(not(target_arch = "wasm32"))]` and the browser build answers the
+call arms with the same needsTerminal problem the desktop's non-TTY runs
+get: `run` and `read_hidden` keep their names, no call site branches.
+The clearest example of that split is the pty test suite
+(tests/terminal.rs): it is desktop-only and gated, while every other
+suite compiles under wasm32 too.
+
 ## Install
 
 On a 64-bit x86 Linux computer:
@@ -14,16 +29,18 @@ On a 64-bit x86 Linux computer:
 ```sh
 curl -fsSLO https://nightly.link/dasmatus/losos/workflows/ci/main/losos-pages-updates.zip
 unzip -o losos-pages-updates.zip -d losos-pages-updates
-sh losos-pages-updates/install.sh
+node losos-pages-updates/install.mjs
 ```
 
 The zip is the newest successful CI build of `main`, through
 [nightly.link](https://nightly.link): `losos`, `losos-registrar`,
-`install.sh` and `SHA256SUMS`. The script checks `losos` against the sums,
+`install.mjs` and `SHA256SUMS`. The script checks `losos` against the sums,
 and puts it in `~/.local/bin`, or in `/usr/local/bin` when run as root. It
-never runs sudo. Piped into `sh` on its own, it downloads the zip itself,
-and `LOSOS_CHANNEL` then picks another branch. Read
-[install.sh](install.sh) before you run it. It is short.
+never runs sudo. Run it outside the unzipped build and it downloads the zip
+itself, and `LOSOS_CHANNEL` then picks another branch. The script is
+TypeScript in the repository ([install.ts](install.ts)), bundled to
+plain-ESM `install.mjs` by CI's `bun build --target=node` step, so any node
+runs it; read it before you run it. It is short.
 
 `losos` keeps your keys and tokens in the desktop's keychain through
 `secret-tool`. The package is `libsecret-tools` on Debian and Ubuntu and
@@ -166,7 +183,7 @@ cargo test     --manifest-path admin-ui/tui/Cargo.toml
 cargo clippy   --manifest-path admin-ui/tui/Cargo.toml --all-targets -- -D warnings
 cargo run      --manifest-path admin-ui/tui/Cargo.toml -- --help
 cargo run      --manifest-path admin-ui/tui/Cargo.toml --example screenshots
-nix build .#losos-static   # the binary install.sh fetches: musl, no dynamic library
+nix build .#losos-static   # the binary install.mjs fetches: musl, no dynamic library
 ```
 
 `build.rs` reads the web UI and turns four things into Rust: the catalogue
@@ -196,7 +213,7 @@ ones. The suites cover:
 - the keychain;
 - every pane, drawn into a buffer, in three languages, and that every
   catalogue key the sources name exists;
-- `install.sh`;
+- `install.ts` (as the bundled `install.mjs` its users run);
 - the built binary in a real pseudo-terminal (util-linux `script`): the
   login screen, the full-screen view with its raw-mode keys, the hidden
   prompt of `edge secret set`, and the exit statuses. `LOSOS_BIN` runs

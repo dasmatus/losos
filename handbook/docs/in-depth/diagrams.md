@@ -131,7 +131,7 @@ takes unknown boxes on first use; and the admin routes refuse loopback.
 
 | | On the box (`/diagrams/`) | Hosted |
 | --- | --- | --- |
-| Built by | `nix build .#losos-admin-ui` (Diagrams is a screen of it) | `admin-ui/lab/engine/build.sh` in `lab.yml` |
+| Built by | `nix build .#losos-admin-ui` (Diagrams is a screen of it) | `admin-ui/lab/engine/build.ts` in `lab.yml` |
 | Consoles | simulated, or real guests under libvirt when the box runs the helper | real x86_64 guests under libvirt on your computer, else qemu-wasm |
 | Needs | nothing beyond the box | a cross-origin isolated host (COOP + COEP) |
 
@@ -164,7 +164,7 @@ headers on Vercel, and `serve.json` does the same for `serve` on your own
 machine:
 
 ```sh
-admin-ui/lab/engine/build.sh /tmp/lab     # docker, nix, bun
+admin-ui/lab/engine/build.ts /tmp/lab     # docker, nix, bun
 bunx serve@14.2.4 -l 8080 /tmp/lab        # then open http://localhost:8080/diagrams/
 ```
 
@@ -256,7 +256,7 @@ To use it next to virt-manager on your own PC:
    (`nix build .#losos-registrar`).
 2. Put the guest images in a folder named `guest`: `bzImage`, `rootfs.bin`
    and, for routers, switches and access points, `gear.bin`.
-   `admin-ui/lab/engine/build.sh` makes all three, and the hosted copy serves
+   `admin-ui/lab/engine/build.ts` makes all three, and the hosted copy serves
    them under `/diagrams/guest/`, so you can download them from there.
 3. Start the helper in the folder above `guest`:
 
