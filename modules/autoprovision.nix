@@ -30,13 +30,12 @@ in
     {
       assertion = cfg.enable -> cfg.mirror != null;
       message =
-        "losos.autoprovision.enable needs the mesh's mirror URL in"
-        + " losos.autoprovision.mirror";
+        "losos.autoprovision.enable needs the mesh's mirror URL in" + " losos.autoprovision.mirror";
     }
     {
       assertion = !cfg.enable || slugOk;
-      message = "losos.autoprovision.box must be lowercase letters, digits and"
-        + " dashes, at most 32 characters";
+      message =
+        "losos.autoprovision.box must be lowercase letters, digits and" + " dashes, at most 32 characters";
     }
   ];
 

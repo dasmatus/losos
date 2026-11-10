@@ -61,12 +61,20 @@ let
   registrarUrl = config.losos.proxy.registrarUrl;
   registrarUsable = lib.hasPrefix "http://" registrarUrl || lib.hasPrefix "https://" registrarUrl;
 
-  # The flavor's prefilled flag, ahead of "$@": the autorun install asks the
+  # The flavor's prefilled flags, ahead of "$@": the autorun install asks the
   # edge without anyone typing `--tang-edge`, and whatever is typed after
   # still outranks anything the medium preselects. escapeShellArgs holds it
   # to the CLI's spelling; the LOSOS_REGISTRAR_URL the wrapper carries as a
-  # set-default is the edge, so no address is passed here.
-  prefillArgs = lib.escapeShellArgs (lib.optionals (autorun && tangEdge) [ "--tang-edge" ]);
+  # set-default is the edge, so no address is passed here. The provision
+  # flavor prefills `--tang` the same way (`losos.autoprovision.tang`): the
+  # disk key is sealed to the TPM2 AND a Tang server nobody types in.
+  prefillArgs = lib.escapeShellArgs (
+    lib.optionals (autorun && tangEdge) [ "--tang-edge" ]
+    ++ lib.concatMap (t: [
+      "--tang"
+      t
+    ]) (lib.optionals provision config.losos.autoprovision.tang)
+  );
 
   # The tools losos-ctl install shells out to at runtime: disko + git for the
   # full path, util-linux for lsblk (drive detection), coreutils for cp/chmod
@@ -169,12 +177,7 @@ let
         plymouth quit --wait
       fi
     fi
-    ${
-      if provision then
-        lib.getExe losos-autoprovision-wrapped
-      else
-        "${ctl}/bin/losos-ctl install"
-    } "$@"
+    ${if provision then lib.getExe losos-autoprovision-wrapped else "${ctl}/bin/losos-ctl install"} "$@"
     if [ -n "''${LOSOS_SPLASH-}" ]; then
       plymouth quit --wait
     fi
@@ -234,6 +237,21 @@ in
         message =
           "losos.autoprovision.medium is the autorun's flavor: it ends the"
           + " boot in `losos-autoprovision`; set losos.installer.autorun too";
+      }
+      {
+        assertion = (config.losos.autoprovision.tang != [ ]) -> provision;
+        message =
+          "losos.autoprovision.tang prefills the provision medium's"
+          + " `--tang`; set losos.autoprovision.medium too";
+      }
+      {
+        assertion = lib.all (
+          t: builtins.match "https?://[^#[:space:]]+#[A-Za-z0-9_-]{20,}" t != null
+        ) config.losos.autoprovision.tang;
+        message =
+          "each losos.autoprovision.tang entry is `--tang URL#THUMBPRINT`:"
+          + " an http(s) address, then the base64url thumbprint"
+          + " `tang-show-keys` on the server prints";
       }
     ];
 

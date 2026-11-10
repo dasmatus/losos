@@ -354,7 +354,6 @@
             disko.nixosModules.disko
             (
               {
-                lib,
                 modulesPath,
                 pkgs,
                 config,
@@ -374,6 +373,17 @@
                 losos.installer.autorun = true;
                 # The flavor: `losos-ctl provision`, not `install`.
                 losos.autoprovision.medium = true;
+                # Like `iso-edge`'s `LOSOS_EDGE_URL`: a build of this system
+                # may bake its mesh's Tang server into the medium
+                # (LOSOS_TANG, one or more `URL#THUMBPRINT`, comma
+                # separated); `--tang` typed later outranks it, and pure
+                # evaluation sees "" and keeps the option's empty default.
+                # Necessarily behind the TPM2 half: `--tang` implies it.
+                losos.autoprovision.tang =
+                  let
+                    raw = builtins.getEnv "LOSOS_TANG";
+                  in
+                  lib.mkIf (raw != "") (lib.mkDefault (lib.splitString "," raw));
                 # Like the ISO: the payload the target would otherwise fetch.
                 netboot.storeContents = [
                   lososPkgs.losos-admin-ui
@@ -402,10 +412,22 @@
                     '';
                   in
                   pkgs.linkFarm "losos-netboot" [
-                    { name = "bzImage"; path = "${config.system.build.kernel}/${config.system.boot.loader.kernelFile}"; }
-                    { name = "initrd"; path = "${config.system.build.netbootRamdisk}/initrd"; }
-                    { name = "cmdline"; path = cmdline; }
-                    { name = "boot.ipxe"; path = ipxe; }
+                    {
+                      name = "bzImage";
+                      path = "${config.system.build.kernel}/${config.system.boot.loader.kernelFile}";
+                    }
+                    {
+                      name = "initrd";
+                      path = "${config.system.build.netbootRamdisk}/initrd";
+                    }
+                    {
+                      name = "cmdline";
+                      path = cmdline;
+                    }
+                    {
+                      name = "boot.ipxe";
+                      path = ipxe;
+                    }
                   ];
               }
             )

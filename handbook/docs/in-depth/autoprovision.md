@@ -77,6 +77,14 @@ choices (`--tpm`/`--no-tpm`, `--tang`/`--tang-edge`, `--bios`/`--uefi`, the
 drive list) and `--no-install`. It refuses the test paths a prebuilt disko
 script or `--emit-target` forms, because those do not build the box's tree.
 
+The medium can prefill its mesh's own choices, so nobody types at the box:
+`losos.autoprovision.tang` (or `LOSOS_TANG=URL#THUMBPRINT[,more]` in the
+environment of the build) has the autorun install with `--tang`, the disk
+key sealed to the TPM2 *and* the named Clevis Tang server (`tang-show-keys`
+on that server prints the thumbprint). A box provisioned that way cannot
+be opened from its disk alone, from the first boot; `--tpm`, `--tang-edge`
+and every other typed flag still outranks the prefill.
+
 ## How the boxes stay in step
 
 Enabling (`modules/autoprovision.nix`):

@@ -2044,6 +2044,18 @@ in
         and the destructive work stays behind it.
       '';
     };
+    autoprovision.tang = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = ''
+        What the provision medium prefills as `--tang URL#THUMBPRINT`, without
+        anyone typing it: the disk key opens only with the TPM2 AND one of
+        these Clevis Tang servers (`tang-show-keys` on the server prints the
+        thumbprint), so a box of this flavor cannot be opened from its disk
+        alone. Meaningful only with `losos.autoprovision.medium`, which the
+        assertions require; `--tang` typed later outranks it.
+      '';
+    };
 
     # ── Following the published tree ─────────────────────────────────────
     # The installer copies the published tree into /etc/nixos once, and both
