@@ -841,7 +841,10 @@ jobs:
     name: "expo: iOS dev client for the simulator (artifact)"
     needs: [changes]
     if: ${{ needs.changes.outputs.ui == 'true' }}
-    runs-on: macos-latest
+    # macos-15, not latest: the migrated image carries only Xcode 26, whose
+    # clang cannot compile RN 0.81's fmt (the Xcode 16 step below names the
+    # error); the 15 image keeps a 16.x around for DEVELOPER_DIR to pick.
+    runs-on: macos-15
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
