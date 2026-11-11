@@ -18,8 +18,12 @@ let loading: Promise<TuiWasmModule> | null = null;
 export async function loadLososTuiWasm(): Promise<TuiWasmModule> {
   if (!loading) {
     loading = (async () => {
-      // Served as a static asset from the web bundle / app package.
-      const mod = (await import(/* @vite-ignore */ "/tui/losos.js")) as TuiWasmModule;
+      // Served as a static asset from the web bundle / app package. The
+      // specifier goes in a variable: a literal import would be resolved
+      // ahead of time — tsc's typecheck is the shipped build's first step —
+      // against a module that only exists once the bundle is served.
+      const url = "/tui/losos.js";
+      const mod = (await import(url)) as TuiWasmModule;
       if (typeof mod.default === "function") {
         await mod.default({ module_or_path: "/tui/losos_bg.wasm" });
       }
