@@ -1,5 +1,9 @@
 import * as React from "react";
 import { ScrollView, Text, View } from "react-native";
+import {
+  Canvas as SkiaCanvas,
+  Rect as SkiaRect,
+} from "@shopify/react-native-skia";
 
 import { BoxApi, failWord } from "../../api/api";
 import {
@@ -465,24 +469,8 @@ function SkiaTile({
   fraction: number | null;
   label: string;
 }) {
-  // Skia is bundled for native targets (old arch). We render a simple,
-  // dependency-light bar visual when Canvas is available; otherwise fall back
-  // to a plain RN bar so typecheck/web paths stay safe.
-  let SkiaCanvas: React.ComponentType<any> | null = null;
-  let SkiaRect: React.ComponentType<any> | null = null;
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const skia = require("@shopify/react-native-skia") as {
-      Canvas?: React.ComponentType<any>;
-      Rect?: React.ComponentType<any>;
-    };
-    SkiaCanvas = skia.Canvas ?? null;
-    SkiaRect = skia.Rect ?? null;
-  } catch {
-    SkiaCanvas = null;
-    SkiaRect = null;
-  }
-
+  // Skia ships a Canvas for every native target this shell builds; the bar
+  // falls back to a plain RN bar only when there is no reading to draw.
   const pct = fraction !== null ? Math.max(0, Math.min(1, fraction)) : null;
   return (
     <View
@@ -515,7 +503,7 @@ function SkiaTile({
           backgroundColor: tokens.palette.surfaceVariant,
         }}
       >
-        {SkiaCanvas && SkiaRect && pct !== null ? (
+        {pct !== null ? (
           <SkiaCanvas style={{ flex: 1 }}>
             <SkiaRect
               x={0}
@@ -568,7 +556,7 @@ function SkiaTile({
           marginTop: 4,
         }}
       >
-        Skia-backed on native targets when available; plain fallback otherwise.
+        Skia-backed bar; a plain RN bar when there is no reading to draw.
       </Text>
     </View>
   );
