@@ -24,17 +24,13 @@
  * the same page→HTML map).
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const HERE = dirname(fileURLToPath(import.meta.url));
-const app = resolve(HERE, "..");
+const HERE = import.meta.dir;
+const app = `${HERE}/..`;
 
 /* ── losos:pages ───────────────────────────────────────────────────────── */
 const { compilePages } = await import(`${app}/pages.ts`);
 const compiled = await compilePages(app);
-writeFileSync(
+await Bun.write(
   `${app}/src/pages/pages-defaults.gen.ts`,
   `/* GENERATED FILE (scripts/gen-virtuals.ts, \`bun run virtuals\`): losos:pages' module for the Metro web build — the HTML pages.ts compiles the defaults into; src/pages/virtual.d.ts is the shape's record. Bun's bundler answers this import itself (bundler.ts), and never reads the file. */
 export const DEFAULTS = ${JSON.stringify(compiled.html) as string};
@@ -43,11 +39,11 @@ export const DEFAULTS = ${JSON.stringify(compiled.html) as string};
 
 /* ── losos:build ───────────────────────────────────────────────────────── */
 const settings = {
-  BASE: process.env.LOSOS_BASE ?? "/",
-  LAB_HOSTED: process.env.LOSOS_LAB_HOSTED === "1",
-  LAB_MEME: readDirMeme(),
+  BASE: Bun.env.LOSOS_BASE ?? "/",
+  LAB_HOSTED: Bun.env.LOSOS_LAB_HOSTED === "1",
+  LAB_MEME: await readDirMeme(),
 };
-writeFileSync(
+await Bun.write(
   `${app}/src/lib/build.gen.ts`,
   `/* GENERATED FILE (scripts/gen-virtuals.ts, \`bun run virtuals\`): losos:build's module for the Metro web build — the settings bundler.ts's settings() reads from environment; src/env.d.ts is the shape's record. Bun's bundler answers this import itself (bundler.ts), and never reads the file. */
 export const BASE = ${JSON.stringify(settings.BASE)};
@@ -58,12 +54,12 @@ export const LAB_MEME = ${String(settings.LAB_MEME)};
 
 /** The meme pictures the Lab splash asks for. LOSOS_LAB_MEME is a folder;
  * both non-pictures live beside the pages. */
-function readDirMeme(): boolean {
-  const dir = process.env.LOSOS_LAB_MEME;
+async function readDirMeme(): Promise<boolean> {
+  const dir = Bun.env.LOSOS_LAB_MEME;
   if (dir === undefined || dir === "") return false;
   try {
-    void readFileSync(join(dir, "no.jpg"));
-    void readFileSync(join(dir, "yes.jpg"));
+    void (await Bun.file(`${dir}/no.jpg`).exists());
+    void (await Bun.file(`${dir}/yes.jpg`).exists());
     return true;
   } catch {
     return false;
