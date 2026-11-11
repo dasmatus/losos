@@ -522,6 +522,10 @@
             # (backend/plugins/problems).
             ./modules/problems.nix
             ./modules/identity.nix
+            # LosOS Login and the admin pages' web UI as Podman quadlets,
+            # off by default (lososInternal.quadlets, nix/tests/quadlets.nix):
+            # each its own systemd unit, so a boot times each service apart.
+            ./modules/quadlets.nix
             # LosOS Chat: Synapse as the shared user while the box shares
             # its storage in a mesh, behind LosOS Login (backend/src/chat.rs).
             ./modules/chat.nix
@@ -677,6 +681,11 @@
         # chip-less box stops with a reason and touches nothing disks.
         losos-installer-edge = import ./nix/tests/installer-edge.nix { inherit pkgs self; };
         losos-admin-daemon = import ./nix/tests/admin-vm.nix { inherit pkgs; };
+        # LosOS Login and the admin web UI as Podman quadlets
+        # (modules/quadlets.nix): both containers up and answering, and
+        # each unit's start timed apart, which is what the conversion is
+        # for.
+        losos-quadlets = import ./nix/tests/quadlets.nix { inherit pkgs; };
         losos-edge-proxy = import ./nix/tests/edge-vm.nix { inherit pkgs; };
         losos-quic = import ./nix/tests/quic.nix { inherit pkgs; };
         losos-edge-lan = import ./nix/tests/edge-lan.nix { inherit pkgs; };

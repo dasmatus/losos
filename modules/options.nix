@@ -1042,6 +1042,19 @@ in
       '';
     };
 
+    apps.quadlets = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Run the installed `notshared` apps as Podman quadlets: one
+        .container file per service of the app's Compose project, generated
+        into /etc/containers/systemd, so every service is a systemd unit of
+        its own — a boot times each container apart, its journal is its
+        own, and an update is a restart of one unit. Off, the project runs
+        as one `podman-compose up`, the way it did before quadlets.
+      '';
+    };
+
     cluster.idleLoadThreshold = lib.mkOption {
       type = lib.types.float;
       default = 0.25;
@@ -4541,6 +4554,97 @@ in
     internal = true;
     default = null;
     description = "Hops of each I2P tunnel of the box's or edge's addresses; null for i2pd's default.";
+  };
+
+  # The box's own services as Podman quadlets (modules/quadlets.nix).
+  # Declared here, beside the other lososInternal options, because
+  # modules/console.nix reads `units` whether or not the quadlet module is
+  # imported.
+  options.lososInternal.quadlets = {
+    enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      internal = true;
+      description = ''
+        Run the box's own services as Podman quadlets instead of native
+        systemd services. Converts LosOS Login (modules/identity.nix) and
+        the admin pages' web UI; the units keep their native names, so the
+        rest of the configuration and the console banner read as before.
+      '';
+    };
+
+    uiPort = lib.mkOption {
+      type = lib.types.port;
+      default = 8291;
+      internal = true;
+      description = ''
+        Loopback port the web UI container serves the SPA on. The front
+        vhost proxies to it; nothing else listens there.
+      '';
+    };
+
+    autheliaUnit = lib.mkOption {
+      type = lib.types.submodule {
+        options = {
+          after = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            default = [ ];
+          };
+          wants = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            default = [ ];
+          };
+          requires = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            default = [ ];
+          };
+          conditionPathExists = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+          };
+          loadCredentials = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            default = [ ];
+          };
+        };
+      };
+      default = { };
+      internal = true;
+      description = ''
+        The native unit's ordering, conditions and credentials, set by
+        modules/identity.nix for the generated unit to carry.
+      '';
+    };
+
+    units = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      default = { };
+      internal = true;
+      description = ''
+        The units the quadlets generate, by name: what the console banner
+        lists as parts of LosOS even though no native unit of that name
+        exists.
+      '';
+    };
+
+    user = lib.mkOption {
+      type = lib.types.enum [
+        "notshared"
+        "shared"
+        "kindashared"
+      ];
+      default = "notshared";
+      internal = true;
+      description = ''
+        The account the containers run as: rootless Podman under it, the
+        way the apps run. `notshared`, the owner's account, on a box that
+        lends nothing to a mesh; `shared` in a mesh; `kindashared` on a
+        box of a local mesh of gateways (the same three accounts
+        lososInternal.sideUser picks between for the shared side's own
+        services). Each gets its own sub-id range and Podman store, so the
+        three variants never share a container or an image with another.
+      '';
+    };
   };
 
   # ── The shared side ───────────────────────────────────────────────────
