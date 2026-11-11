@@ -15,7 +15,17 @@
  */
 
 import * as React from "react";
-import { Image, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import {
+  Image,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+  type ImageSourcePropType,
+} from "react-native";
+
+import salmonPng from "../../../assets/images/salmon.png";
 
 import { useTokens } from "../theme/useTokens";
 import { LOSOS_RADIUS, LOSOS_TYPE, type LososTokens } from "../theme/tokens";
@@ -321,7 +331,7 @@ export function Brand({ tokens }: { tokens: LososTokens }) {
   return (
     <View style={{ flexDirection: "row", alignItems: "center" }}>
       <Image
-        source={require("../../../assets/images/salmon.png")}
+        source={salmonPng as unknown as ImageSourcePropType}
         style={{ width: 52, height: 52 }}
         resizeMode="contain"
         accessibilityRole="image"

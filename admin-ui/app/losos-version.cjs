@@ -2,11 +2,11 @@
  * stamp_version reads the same file the same way; nix/version.nix's header
  * is the sync contract that keeps it). The helper is plain CommonJS
  * because the ways this file gets evaluated split at the package's ESM /
- * CommonJS seam: @expo/config transpiles app.config.ts itself, and a
- * real `import { readFileSync } from "node:fs"` at its top made the
- * transpile land on the ESM path and break. One .cjs beside the config
- * reads both ways: require() from the transpiled config under node, and
- * bun's own require from ESM under the checkout and the nix build.
+ * CommonJS seam: @expo/config transpiles app.config.ts itself, so an
+ * ESM `import { readFileSync } from "node:fs"` at its top broke. One
+ * .cjs in the root, beside metro.config.cjs, reads both ways: require()
+ * from the transpiled config under node, and bun's own require from
+ * ESM under the checkout and the nix build.
  *
  * Order mirrors build.rs: LOSOS_VERSION first (nix's losos-admin-ui
  * exports it — its source fileset is admin-ui/app alone, so the in-nix
@@ -31,10 +31,10 @@ function lososTag() {
   }
   try {
     if (module.exports.__probeLog) console.error("[losos-version] dir=" + __dirname);
-    // scripts/ is two directories into the repo root, so the nix tree is two
-    // (version file) three further; backend/build.rs walks the same chain
+    // The app root is one directory under the repo root, so the nix tree is
+    // one (version file) two further; backend/build.rs walks the same chain
     const text = fs.readFileSync(
-      path.join(__dirname || process.cwd(), "..", "..", "..", "nix", "version.nix"),
+      path.join(__dirname || process.cwd(), "..", "..", "nix", "version.nix"),
       "utf8",
     );
     const start = text.indexOf('"');

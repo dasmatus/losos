@@ -37,13 +37,9 @@
  * tokens.css's header would do.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const HERE = dirname(fileURLToPath(import.meta.url));
-const TOKENS_CSS = resolve(HERE, "../src/styles/tokens.css");
-const OUT = resolve(HERE, "../src/mobile/theme/tokens.gen.ts");
+const HERE = import.meta.dir;
+const TOKENS_CSS = `${HERE}/../src/styles/tokens.css`;
+const OUT = `${HERE}/../src/mobile/theme/tokens.gen.ts`;
 
 /* The palette's slots (LosTheme.kt, lightColorScheme/darkColorScheme +
  * ExtraLight/ExtraDark): everything a pane reads, named the Compose port
@@ -249,8 +245,8 @@ function paletteBlock(values: Record<ColorKey, string>, indent: string): string 
   return COLOR_KEYS.map((k) => `${indent}${k}: "${values[k]}",`).join("\n");
 }
 
-function main(): void {
-  const arms = armsOf(readFileSync(TOKENS_CSS, "utf8"));
+async function main(): Promise<void> {
+  const arms = armsOf(await Bun.file(TOKENS_CSS).text());
   const light = paletteFor(paletteArm(arms, "light"), "light");
   const dark = paletteFor(paletteArm(arms, "dark"), "dark");
 
@@ -287,13 +283,12 @@ export type LososPalette = { [K in keyof (typeof PALETTES)["light"]]: string }
 export type PaletteKey = keyof LososPalette;
 `;
 
-  mkdirSync(dirname(OUT), { recursive: true });
-  writeFileSync(OUT, file);
+  await Bun.write(OUT, file);
   console.log(
     `wrote ${OUT} (light ${light.primary} / dark ${dark.primary}); ` +
       `${COLOR_KEYS.length} slots each`,
   );
 }
 
-main();
+await main();
 
