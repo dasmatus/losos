@@ -7,7 +7,13 @@ name: opencode autofix
 # the LosOS codebase itself) that reworks a pull request's branch so it
 # matches what the pull request DESCRIPTION asks for: the description is
 # passed to the agent as its brief, the agent edits and commits, and what
-# it did is reported in the pull request body.
+# it did is reported in the pull request body — and the body itself is
+# reshaped to `.github/pull_request_template.md`: prose first, then
+# Screenshots, How, Tested, Notes for the reviewer. Content is only ever
+# moved, never rewritten; sections the description lacks are added as bare
+# headings for the author to fill, and the template's instruction comments
+# are dropped, as the template asks. The report marker carries the hash of
+# the reshaped body, so the reshaping does not read as a description change.
 #
 # The agent talks to OpenCode Zen's Go gateway
 # (https://opencode.ai/inference/go/openai/v1) with the repository's
@@ -85,7 +91,6 @@ jobs:
       pull-requests: read
     outputs:
       run: ${{ steps.decide.outputs.run }}
-      desc_sha: ${{ steps.decide.outputs.desc_sha }}
     steps:
       - name: decide
         id: decide
@@ -107,11 +112,12 @@ jobs:
           [ "$HEAD_REPO" = "$GH_REPO" ] || skip "the pull request is from a fork"
           [ "$DRAFT" = false ] || skip "the pull request is a draft"
           body=$(gh pr view "$PR" --json body --jq .body) || skip "the pull request could not be read"
-          # The description hash ignores our own report fence, so the body
-          # edit that reports a run does not count as a description change.
+          # The description hash ignores our own report fence: the report
+          # step stamps the marker with the hash of the body it writes (the
+          # description reshaped to the template, plus the fence), so neither
+          # the report nor the reshaping counts as a description change.
           clean=$(sed -e '/<!-- oc-autofix:begin -->/,/<!-- oc-autofix:end -->/d' <<<"$body")
           desc=$(printf '%s' "$clean" | sha256sum | cut -c1-16)
-          echo "desc_sha=$desc" >> "$GITHUB_OUTPUT"
           if grep -Fq -- "<!-- oc-autofix: $HEAD_SHA:$desc -->" <<<"$body"; then
             skip "this head commit and description are already handled"
           fi
@@ -349,14 +355,15 @@ jobs:
       # `synchronize` run the push itself triggers. Only if someone pushes
       # to the branch again between this edit and the push is the marker
       # stale, and that next run goes around once more, changing nothing —
-      # a cheap round trip, not a loop.
+      # a cheap round trip, not a loop. The body outside the fence is
+      # reshaped to `.github/pull_request_template.md` here; the script
+      # below says exactly what that means.
       - name: report in the pull request body
         if: steps.agent.outcome == 'success'
         uses: actions/github-script@v9
         env:
           MODEL: ${{ steps.agent.outputs.model }}
           HEAD_SHA: ${{ steps.changes.outputs.pushed_sha }}
-          DESC_SHA: ${{ needs.gate.outputs.desc_sha }}
           CHANGED: ${{ steps.changes.outputs.changed }}
           FILES: ${{ steps.changes.outputs.files }}
           FILE_COUNT: ${{ steps.changes.outputs.file_count }}
@@ -367,6 +374,7 @@ jobs:
           OC_ARTIFACTS_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts
         with:
           script: |
+            const crypto = require('crypto');
             const pr = context.issue.number;
             const current = (await github.rest.pulls.get({
               owner: context.repo.owner, repo: context.repo.repo,
@@ -378,6 +386,74 @@ jobs:
             const i = body.lastIndexOf(begin);
             const j = body.indexOf(end);
             if (i >= 0 && j > i) body = (body.slice(0, i) + body.slice(j + end.length)).trimEnd();
+
+            // The description is reshaped to `.github/pull_request_template.md`
+            // before the report is appended: prose first, then Screenshots,
+            // How, Tested, Notes for the reviewer, in the template's order.
+            // Content is only ever MOVED — prose and section bodies are kept
+            // verbatim; the skeleton is what the template prescribes.
+            // Sections the description lacks are added as bare headings for
+            // the author to fill; headings the template does not know keep
+            // their content and follow the known ones, so nothing is dropped.
+            // The template's own instruction comments are deleted here, as
+            // the template asks.
+            const SECTIONS = ['Screenshots', 'How', 'Tested', 'Notes for the reviewer'];
+            const canon = (name) =>
+              SECTIONS.find((s) => s.toLowerCase() === name.trim().replace(/:$/, '').toLowerCase());
+            body = body.replace(
+              /<!--(?:(?!-->)[\s\S])*?(?:Keep every heading|Required for every change|The mechanism, briefly|What ran and what it showed|Where to look first)[\s\S]*?-->/g,
+              '',
+            );
+            const prose = [];
+            const blocks = new Map();
+            const other = [];
+            let bucket = prose;
+            let fence = false;
+            for (const raw of body.split('\n')) {
+              // Heading lines inside fenced code are content, not structure.
+              if (/^\s*(```|~~~)/.test(raw)) {
+                fence = !fence;
+                bucket.push(raw);
+                continue;
+              }
+              if (fence) {
+                bucket.push(raw);
+                continue;
+              }
+              const m = /^#{1,6}\s+(.+?)\s*$/.exec(raw);
+              if (!m) {
+                bucket.push(raw);
+                continue;
+              }
+              const name = canon(m[1]);
+              if (name) {
+                if (!blocks.has(name)) blocks.set(name, []);
+                bucket = blocks.get(name);
+              } else {
+                other.push([raw]);
+                bucket = other[other.length - 1];
+              }
+            }
+            const out = [];
+            const proseText = prose.join('\n').trim();
+            if (proseText) out.push(proseText);
+            for (const name of SECTIONS) {
+              const text = (blocks.get(name) ?? []).join('\n').trim();
+              out.push(text ? `## ${name}\n${text}` : `## ${name}`);
+            }
+            for (const block of other) {
+              const text = block.join('\n').trim();
+              if (text) out.push(text);
+            }
+            const reshaped = out.join('\n\n');
+
+            // The gate hashes the description with our fence removed. This
+            // edit changes the body OUTSIDE the fence too, so the marker
+            // carries the hash of the reshaped description rather than the
+            // one the gate computed on entry: the `edited` event this update
+            // triggers must land on "already handled", not run the agent
+            // again over a description that only changed shape.
+            const desc = crypto.createHash('sha256').update(reshaped).digest('hex').slice(0, 16);
             const lines = ['### tinycode autofix', ''];
             if (process.env.CHANGED === 'true') {
               const count = process.env.FILE_COUNT;
@@ -392,12 +468,12 @@ jobs:
               lines.push('', `**Admin UI screenshots** of the fixed tree: [artifact](${process.env.OC_ARTIFACTS_URL}).`);
             }
             lines.push('');
-            lines.push(`<!-- oc-autofix: ${process.env.HEAD_SHA}:${process.env.DESC_SHA} -->`);
+            lines.push(`<!-- oc-autofix: ${process.env.HEAD_SHA}:${desc} -->`);
             const section = [begin, ...lines, end].join('\n');
             await github.rest.pulls.update({
               owner: context.repo.owner, repo: context.repo.repo,
               pull_number: pr,
-              body: `${body}\n\n${section}`,
+              body: `${reshaped}\n\n${section}`,
             });
 
       - name: push the fixes to the branch
