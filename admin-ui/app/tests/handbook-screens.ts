@@ -20,7 +20,23 @@ import { launch, serve } from './harness.ts';
 
 type Rect = { x: number; y: number; width: number; height: number };
 
-const [outDir = '/tmp/handbook-screens', only = ''] = Bun.argv.slice(2);
+const [outDir = '/tmp/handbook-screens', only = '', platformArg = ''] = Bun.argv.slice(2);
+const platform = (process.env.SCREENSHOT_PLATFORM || platformArg || 'web').toLowerCase();
+const platformOut = platform === 'web' ? outDir : `${outDir}/${platform}`;
+// Platforms whose native shells cannot be rendered headlessly from this
+// Playwright/web harness. The matrix still lists them and the workflow
+// records them as skipped with a reason rather than silently omitting them.
+const UNSUPPORTED_PLATFORMS = new Set(['windows', 'visionos']);
+if (UNSUPPORTED_PLATFORMS.has(platform)) {
+  console.log(`  skip platform=${platform}: native shell cannot be rendered headlessly on Linux in this harness`);
+  process.exit(0);
+}
+// TV uses the same web render path as a leanback target marker; EXPO_TV is
+// set by the caller/matrix so platform-aware code can read it where honored.
+if (platform === 'tv') {
+  process.env.EXPO_TV = process.env.EXPO_TV || '1';
+}
+
 
 const TOKEN = '7c1e4a9d02f6b38e5d71c0a4e9b2f86d3a5c17e0b94d62f8c3e1a07d5b9f4c26'; // a fixture, not a key
 const PASSWORD = 'Correct-horse battery staple 1';
@@ -1195,8 +1211,10 @@ for (const shot of SHOTS) {
     try {
       if (act) await act(page, T(lang));
       const clip = await region(page, crop, full);
-      await page.screenshot({ path: `${outDir}/${file}.png`, fullPage: full || (clip ? clip.y + clip.height > page.viewportSize()!.height : false), ...(clip ? { clip } : {}) });
-      console.log('  wrote', file);
+      await import('node:fs/promises').then((fs) => fs.mkdir(platformOut, { recursive: true }));
+      const outPath = `${platformOut}/${file}.png`;
+      await page.screenshot({ path: outPath, fullPage: full || (clip ? clip.y + clip.height > page.viewportSize()!.height : false), ...(clip ? { clip } : {}) });
+      console.log(`  wrote [${platform}] ${outPath}`);
     } catch (e) {
       console.log('  FAIL', file, (e as Error).message.split('\n')[0]);
     }

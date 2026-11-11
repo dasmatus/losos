@@ -102,6 +102,32 @@
       },
       "channel": "preview"
     },
+    /* visionOS profiles. The app's default `react-native` dependency is the
+     * tvos fork (0.81); the visionOS fork (@callstack/react-native-visionos,
+     * RN 0.79) is a separate dependency set and cannot replace it in-place.
+     * These profiles exist so the visionOS target is a named, reproducible
+     * EAS/build entry point when run from a visionOS-prepared dependency set
+     * (see README "visionOS" and scripts/visionos-prebuild.sh). Actual
+     * visionOS compilation and simulator/device runs require macOS + Xcode +
+     * the visionOS SDK (or EAS cloud macOS builders); they cannot be
+     * verified on Linux CI runners without Apple tooling. */
+    "development_visionos": {
+      "extends": "development",
+      "env": {
+        "EXPO_VISIONOS": "1"
+      },
+      "ios": {
+        "simulator": false
+      },
+      "channel": "development"
+    },
+    "preview_visionos": {
+      "extends": "preview",
+      "env": {
+        "EXPO_VISIONOS": "1"
+      },
+      "channel": "preview"
+    },
     "production": {
       "bun": "1.4.2",
       "autoIncrement": true,

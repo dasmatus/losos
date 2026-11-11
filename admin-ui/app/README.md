@@ -143,21 +143,58 @@ the only difference.
 [3]: https://docs.expo.dev/guides/building-for-tv/
 
 
-## Other native targets, installed as eject-time packages
+## Other native targets
 
-Two out-of-tree React Native ports ride in devDependencies, unused by
-the web build and every current native target, so that ejecting the
-project onto their platforms starts from the matching versions rather
-than a hunt:
+Two out-of-tree React Native ports ride in devDependencies so their
+versions are pinned in-tree, but they are not interchangeable with the
+app's default `react-native` dependency:
 
-- **Windows** — `react-native-windows@0.81.38`, the v0.81-stable
-  release for this RN. The [Windows guide][4] takes it from there
-  (`npx react-native-windows-init` on a Windows machine).
-- **visionOS** — `@callstack/react-native-visionos@0.79.6`, the newest
-  the port publishes; it predates RN 0.81 (its peer pins only
-  `react ^19`), so a visionOS eject pairs this package with an RN
-  0.79-native tree — a deliberate fork of the dependency set, not a
-  drop-in here.
+- **Windows** — `react-native-windows@0.81.38`, the v0.81-stable release
+  for this RN line. The [Windows guide][4] takes it from there
+  (`npx react-native-windows-init` on a Windows machine). In this repo it
+  remains an eject-time/native-shell target: no Windows desktop build can
+  be compiled or run on Linux CI/runners without Windows tooling.
+- **visionOS** — `@callstack/react-native-visionos@0.79.6` (RN 0.79
+  fork). This cannot replace the app's default `react-native` alias to
+  `react-native-tvos@0.81.5-2` in-place, because both are full React
+  Native forks for different target/version lines. Treat visionOS as a
+  **separate, generatable dependency set/prebuild path**:
+  - Config: `eas.json` includes `development_visionos` and
+    `preview_visionos` profiles (with `EXPO_VISIONOS=1`) as named build
+    entry points for a visionOS-prepared install.
+  - Reproducible generation: `scripts/visionos-prebuild.sh` documents the
+    generation flow. Native `ios`/visionOS project outputs are gitignored
+    in this repo (CNG/EAS convention), so reproducibility is provided via
+    committed config/scripts/docs rather than checked-in generated native
+    projects.
+  - Compilation/run: requires macOS + Xcode + visionOS SDK/simulator or
+    EAS cloud macOS builders with appropriate Apple signing. This cannot
+    be built or run on Linux; CI verification here is limited to
+    dependency/config wiring, typecheck, and web/Playwright checks where
+    applicable.
+
+### visionOS UI adaptation (this tree)
+
+The mobile shell includes visionOS-aware layout (`src/mobile/platform.ts`,
+platform guards/files): roomier centred content, larger touch/selection
+targets, and a **Living room** dashboard presentation
+(`src/mobile/components/LivingRoomDashboard.tsx`) that reuses the same
+box reads/data layer as the normal panes to show big, glanceable status
+tiles with coarse previous/next navigation and an explicit return to
+normal mode (no dense editing/forms in living-room mode). A Skia-backed
+visual is used where `@shopify/react-native-skia` is available on native
+targets, with a plain RN fallback.
+
+**Persona / spatial APIs:** `@callstack/react-native-visionos@0.79.6`
+exposes JS modules such as `WindowManager` (open/close/update windows,
+`supportsMultipleScenes`) and `XR` request/end session in this package
+version, but it does **not** expose an ARKit/visionOS Persona /
+FaceTime-style shared-space avatar presentation API that this app can
+wire from JS. Persona is therefore **not implemented/faked** here; it is
+a follow-up that likely requires upstream fork support or a small native
+patch in the generated visionOS app. Any richer ornaments/volumes/glass
+treatments beyond what the fork's JS and generated Swift app provide are
+also follow-ups unless added as reproducible native config.
 
 [4]: https://microsoft.github.io/react-native-windows/
 

@@ -29,6 +29,8 @@ import salmonPng from "../../../assets/images/salmon.png";
 
 import { useTokens } from "../theme/useTokens";
 import { LOSOS_RADIUS, LOSOS_TYPE, type LososTokens } from "../theme/tokens";
+import { isTV, isVisionOS, tvFocusable } from "../platform";
+import { TvPressable } from "../components/TvPressable";
 import { probe } from "../../api/probe";
 import { browseBoxes, type FoundBox } from "../../api/discovery";
 import { useBoxConfig, updateConfig, type BoxConfig, type ProbeResult } from "../../store/config";
@@ -79,17 +81,27 @@ function ConnectScreenBody({
       contentContainerStyle={{
         flexGrow: 1,
         justifyContent: "center",
-        padding: 28,
+        padding: isTV ? 56 : isVisionOS ? 40 : 28,
         backgroundColor: tokens.palette.background,
       }}
     >
       <Brand tokens={tokens} />
       <View style={{ height: 36 }} />
-      <Text style={{ ...LOSOS_TYPE.headlineSmall, color: tokens.palette.onSurface }}>
+      <Text
+        style={{
+          ...(isTV || isVisionOS ? LOSOS_TYPE.headlineMedium : LOSOS_TYPE.headlineSmall),
+          color: tokens.palette.onSurface,
+        }}
+      >
         {unlocked ? "The box wants its token again" : "Find your box"}
       </Text>
       <View style={{ height: 4 }} />
-      <Text style={{ ...LOSOS_TYPE.bodyMedium, color: tokens.palette.onSurfaceVariant }}>
+      <Text
+        style={{
+          ...(isTV || isVisionOS ? LOSOS_TYPE.titleMedium : LOSOS_TYPE.bodyMedium),
+          color: tokens.palette.onSurfaceVariant,
+        }}
+      >
         {unlocked
           ? "The one you pasted no longer opens it - paste its current one."
           : "Reach it as <name>.local on the home network, or by the IP printed on the box's screen."}
@@ -111,7 +123,7 @@ function ConnectScreenBody({
         supporting="Settings → Access tokens in the admin pages"
       />
       <Gap height={20} />
-      <View style={{ flexDirection: "row", gap: 12 }}>
+      <View style={{ flexDirection: isTV ? "row" : "row", gap: isTV ? 16 : 12, flexWrap: "wrap" }}>
         <LosPress tokens={tokens} onPress={runProbe} kind="outlined">
           Probe
         </LosPress>
@@ -119,7 +131,7 @@ function ConnectScreenBody({
           Link box
         </LosPress>
       </View>
-      <Gap height={14} />
+      <Gap height={isTV ? 18 : 14} />
       <LosPress tokens={tokens} onPress={() => updateConfig({ host: host.trim(), token: token.trim(), demo: true })}>
         Look around in demo mode
       </LosPress>
@@ -183,16 +195,18 @@ function BoxRow({
       : box.port === 80
         ? `http://${box.address}`
         : `https://${box.address}:${box.port}`;
+  const Row = isTV ? TvPressable : Pressable;
   return (
-    <Pressable
+    <Row
       onPress={() => onPick(local)}
+      {...tvFocusable}
       style={({ pressed }) => ({
         width: "100%",
         marginTop: 6,
         backgroundColor: pressed ? tokens.palette.outline : tokens.palette.surfaceVariant,
         borderRadius: LOSOS_RADIUS.small,
-        paddingVertical: 10,
-        paddingHorizontal: 12,
+        paddingVertical: isTV ? 16 : 10,
+        paddingHorizontal: isTV ? 18 : 12,
         flexDirection: "row",
         alignItems: "center",
       })}
@@ -221,7 +235,7 @@ function BoxRow({
           <Text style={{ ...LOSOS_TYPE.labelSmall, color: tokens.palette.primary }}>IP</Text>
         </Pressable>
       ) : null}
-    </Pressable>
+    </Row>
   );
 }
 
@@ -240,14 +254,16 @@ function LosPress({
   kind?: "filled" | "outlined";
   children: React.ReactNode;
 }) {
+  const Button = isTV ? TvPressable : Pressable;
   return (
-    <Pressable
+    <Button
       onPress={onPress}
+      {...tvFocusable}
       style={({ pressed }) => ({
         alignSelf: "flex-start",
         borderRadius: LOSOS_RADIUS.large,
-        paddingVertical: 10,
-        paddingHorizontal: 16,
+        paddingVertical: isTV ? 14 : 10,
+        paddingHorizontal: isTV ? 22 : 16,
         overflow: "hidden",
         ...(kind === "filled"
           ? { backgroundColor: tokens.palette.primary }
@@ -261,14 +277,14 @@ function LosPress({
     >
       <Text
         style={{
-          ...LOSOS_TYPE.labelSmall,
+          ...(isTV ? LOSOS_TYPE.titleMedium : LOSOS_TYPE.labelSmall),
           fontWeight: "600",
           color: kind === "filled" ? tokens.palette.onPrimary : tokens.palette.primary,
         }}
       >
         {children}
       </Text>
-    </Pressable>
+    </Button>
   );
 }
 
