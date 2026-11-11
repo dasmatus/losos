@@ -1466,6 +1466,197 @@ async fn a_claim_that_is_not_bound_yet_is_not_reported_as_a_volume() {
     stripe.shutdown().await;
 }
 
+/// A restic-shaped stand-in for a volume's `rest-server`: it answers
+/// whatever reaches the port, which is all the edge's health probe asks.
+async fn rest_stub() -> (String, oneshot::Sender<()>, tokio::task::JoinHandle<()>) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:8000")
+        .await
+        .expect("bind the rest-server stub");
+    let (stop, rx) = oneshot::channel::<()>();
+    let join = tokio::spawn(async move {
+        let app = Router::new().fallback(|| async { axum::http::StatusCode::OK });
+        let _ = axum::serve(listener, app)
+            .with_graceful_shutdown(async move {
+                let _ = rx.await;
+            })
+            .await;
+    });
+    ("127.0.0.1".to_string(), stop, join)
+}
+
+/// Wait until the buyer's first purchase reports `volume_ok` as `up`.
+async fn wait_for_volume_ok(edge: &Edge, up: bool) -> Value {
+    for _ in 0..200 {
+        let account = buyer_account(edge).await;
+        if account["purchases"][0]["volume_ok"].as_bool() == Some(up) {
+            return account;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("volume_ok never became {up}");
+}
+
+/// Poll the buyer's account until `purchases[0]` satisfies `when`.
+async fn wait_for(edge: &Edge, when: impl Fn(&Value) -> bool, why: &str) -> Value {
+    for _ in 0..200 {
+        let account = buyer_account(edge).await;
+        if when(&account["purchases"][0]) {
+            return account;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("{why}");
+}
+
+#[tokio::test]
+async fn the_edge_probes_a_bought_volume_and_refunds_a_silent_one() {
+    let stripe = StripeStub::start().await;
+    let kube = KubeStub::start(201).await;
+    // The stub's Services answer with this address, so the probe reaches the
+    // rest-server stand-in below.
+    let (ip, stop, join) = rest_stub().await;
+    kube.set_cluster_ip(&ip);
+    let edge = Edge::start_market_and_mesh_tweaked(
+        "market-volume-health",
+        &tenants(),
+        &stripe.base,
+        MeshFixture::enabled(&kube.base),
+        |opts, _| {
+            let market = opts.market.as_mut().expect("market");
+            market.storage_image = Some("losos.local/rest-server:0.14.0".to_string());
+            // Refund a volume that has been silent for 2 s, so a test can
+            // watch it happen.
+            market.offline_refund_secs = 2;
+        },
+    )
+    .await;
+    let order_id = buy_paid(&edge, "storage", 5).await;
+    wait_for_volume(&edge).await;
+
+    // The buyer opens the door, and from then on the edge checks the volume
+    // on its passes until the slot is over.
+    let secret = "a secret only the recovery code makes";
+    let set = with(
+        auth("buyer-box", OTHER_TOKEN),
+        json!({ "order_id": order_id, "door": sha256_hex(secret) }),
+    );
+    assert_eq!(edge.post("/market/storage-door", set).await.0, 204);
+    let account = wait_for_volume_ok(&edge, true).await;
+    assert_eq!(account["purchases"][0]["volume_ok"], true);
+    assert_eq!(account["purchases"][0]["status"], "paid");
+
+    // The volume stops answering. Inside the operator's limit the slot ends
+    // and the buyer is made whole, the way an offline box is.
+    let _ = stop.send(());
+    let account = wait_for_volume_ok(&edge, false).await;
+    assert_eq!(account["purchases"][0]["volume_ok"], false);
+    let purchase = wait_for(
+        &edge,
+        |p| p["card"]["reason"].as_str() == Some("volumeDown"),
+        "the volume refund was never decided",
+    )
+    .await;
+    let purchase = &purchase["purchases"][0];
+    // The volume went silent at the slot's start, so the whole period comes
+    // back (step `refunded`); a partial window keeps a split amount (step
+    // `settled`). The reconcile pass settles the card in the same pass that
+    // decides the refund, so the observed step is the settled one.
+    let step = purchase["card"]["step"].as_str().expect("a step");
+    assert!(
+        step == "refunded" || step == "settled",
+        "unexpected card step value: {step}"
+    );
+    if step == "settled" {
+        let refunded = purchase["card"]["refund"].as_u64().expect("a split");
+        assert!(
+            refunded > 0 && refunded < purchase["amount"].as_u64().unwrap(),
+            "split refund amount out of expected bounds"
+        );
+    }
+
+    edge.shutdown().await;
+    kube.shutdown().await;
+    stripe.shutdown().await;
+    join.abort();
+}
+
+#[tokio::test]
+async fn a_lapsed_volume_serves_nothing_and_its_server_is_stopped() {
+    let stripe = StripeStub::start().await;
+    let kube = KubeStub::start_with_claim_phase(201, "Bound").await;
+    // A month-old order whose claim is still there, with the buyer's door
+    // key on record.
+    let order = json!({
+        "id": "ord_old", "listing_id": "lst_old", "buyer": "buyer-box",
+        "seller": "seller-box", "kind": "storage", "quantity": 10,
+        "unit_price": 100, "amount": 1000, "fee": 40, "currency": "eur",
+        "status": "paid", "session_id": "cs_test_old", "created_at": 0,
+        "paid_at": 0, "expires_at": 1,
+        "volume": "market-buyer-box/ord-old",
+    });
+    let state = json!({
+        "sellers": { "seller-box": { "account_id": "acct_test_1", "ready": true } },
+        "listings": { "lst_old": {
+            "id": "lst_old", "seller": "seller-box", "kind": "storage",
+            "unit_price": 100, "capacity": 10, "active": true, "created_at": 0,
+        }},
+        "orders": { "ord_old": order },
+        "doors": { "ord_old": {
+            "key": sha256_hex("a secret only the recovery code makes"),
+            "upstream": "ab".repeat(32),
+        }},
+    });
+    let edge = Edge::start_market_state_tweaked(
+        "market-door-expiry",
+        &tenants(),
+        &stripe.base,
+        MeshFixture::enabled(&kube.base),
+        &[("seller-box", true)],
+        &state,
+        |opts, _| {
+            opts.market.as_mut().expect("market").storage_image =
+                Some("losos.local/rest-server:0.14.0".to_string());
+        },
+    )
+    .await;
+
+    // The pass scales the server to zero and drops the door.
+    let patch =
+        "PATCH /apis/apps/v1/namespaces/market-buyer-box/deployments/rest-ord-old".to_string();
+    let mut seen = false;
+    for _ in 0..100 {
+        seen = kube.seen().contains(&patch);
+        if seen {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(seen, "{:?}", kube.seen());
+
+    // And the door itself is shut for the right key too, however long the
+    // buyer's box keeps trying.
+    for _ in 0..3 {
+        let (status, _) = door(
+            &edge,
+            "/market/storage/ord_old/config",
+            Some(("ord_old", "a secret only the recovery code makes")),
+        )
+        .await;
+        assert_eq!(status, 401);
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    // A key set on the lapsed order is refused as well.
+    let set = with(
+        auth("buyer-box", OTHER_TOKEN),
+        json!({ "order_id": "ord_old", "door": sha256_hex("another secret") }),
+    );
+    assert_eq!(edge.post("/market/storage-door", set).await.0, 404);
+
+    edge.shutdown().await;
+    kube.shutdown().await;
+    stripe.shutdown().await;
+}
+
 #[tokio::test]
 async fn compute_orders_are_a_credit_and_touch_no_cluster() {
     let stripe = StripeStub::start().await;

@@ -313,6 +313,31 @@ impl Edge {
         .await
     }
 
+    /// As [`Edge::start_market_and_mesh_tweaked`], with the test ledger
+    /// written before the edge starts: for a lapsed entitlement whose door
+    /// the edge should have shut.
+    pub async fn start_market_state_tweaked(
+        tag: &str,
+        tenants: &[TenantSpec],
+        stripe_api: &str,
+        mesh: MeshFixture,
+        enrolled: &[(&str, bool)],
+        market_state: &serde_json::Value,
+        tweak: impl FnOnce(&mut ServeOpts, &TempDir) + Send + 'static,
+    ) -> Self {
+        Self::start_inner_seeded(
+            tag,
+            tenants,
+            mesh,
+            None,
+            Some(stripe_api.to_string()),
+            enrolled,
+            Some(market_state),
+            Some(Box::new(tweak)),
+        )
+        .await
+    }
+
     /// As [`Edge::start_market`], with a last change to the options: how the
     /// machine tests turn on `--vm-*`, which has no fixture of its own.
     pub async fn start_market_tweaked(
@@ -958,6 +983,9 @@ struct StubState {
     /// Nodes that are not `Ready` (`false`) or not in the mesh at all
     /// (`true`, answered 404). Every other node is `Ready`.
     nodes_down: Arc<Mutex<BTreeMap<String, bool>>>,
+    /// The cluster IP every Service reports, so a test can point the backup
+    /// door's probe at an address it controls.
+    cluster_ip: Arc<Mutex<String>>,
 }
 
 impl KubeStub {
@@ -986,6 +1014,7 @@ impl KubeStub {
             expect_bearer,
             claim_phase: Arc::new(Mutex::new(phase.to_string())),
             nodes_down: Arc::new(Mutex::new(BTreeMap::new())),
+            cluster_ip: Arc::new(Mutex::new(STUB_CLUSTER_IP.to_string())),
         };
         let app = Router::new()
             .fallback(stub_handler)
@@ -1053,6 +1082,16 @@ impl KubeStub {
         }
     }
 
+    /// The cluster IP every Service reports from now on. Pointing it at a
+    /// loopback address lets a test stand in for a volume's server.
+    pub fn set_cluster_ip(&self, ip: &str) {
+        *self
+            .state
+            .cluster_ip
+            .lock()
+            .expect("the stub's cluster ip is not poisoned") = ip.to_string();
+    }
+
     pub async fn shutdown(mut self) {
         if let Some(stop) = self.stop.take() {
             let _ = stop.send(());
@@ -1093,8 +1132,15 @@ async fn stub_handler(
     }
     // A machine order's Service, for the address Traefik is pointed at.
     if method == Method::GET && uri.path().contains("/services/") {
-        return axum::Json(serde_json::json!({ "spec": { "clusterIP": STUB_CLUSTER_IP } }))
-            .into_response();
+        return axum::Json(serde_json::json!({
+            "spec": { "clusterIP": state.cluster_ip.lock().expect("the stub's cluster ip is not poisoned").clone() }
+        }))
+        .into_response();
+    }
+    // A backup server whose pod reports `Ready`, which is what the market's
+    // health probe waits for before it asks the volume itself.
+    if method == Method::GET && uri.path().contains("/deployments/") {
+        return axum::Json(serde_json::json!({ "status": { "readyReplicas": 1 } })).into_response();
     }
     // Every replica the stub was asked to create, running.
     if method == Method::GET && uri.path().ends_with("/virtualmachines") {

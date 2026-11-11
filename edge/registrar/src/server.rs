@@ -60,7 +60,7 @@ use std::time::{Duration, SystemTime};
 
 use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, Request, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::{header, HeaderMap, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -2874,6 +2874,9 @@ async fn fulfil_market(st: &AppState) {
         .saturating_mul(3)
         .max(300);
     market.slots_pass(&online, can_tell, max_gap).await;
+    // The volumes the buyers reach are checked on their own: a seller's node
+    // can be `Ready` while the claim its buyers back up to does not answer.
+    storage::volumes_pass(st, market).await;
     market.settle_escrow().await;
     if let Some(inference) = &st.inference {
         let lenders = llm::lenders_of(st).await;
@@ -3024,6 +3027,29 @@ async fn kube_create(
         return Ok(());
     }
     Err(ApiError::KubeApi(format!("POST {url} -> {status}")))
+}
+
+/// PATCH `body` (a strategic merge patch) to `url`; `200` and `404` are
+/// success — there is nothing to patch when the object is already gone.
+async fn kube_patch(
+    kube: &KubeAccess,
+    url: &str,
+    body: &serde_json::Value,
+) -> Result<(), ApiError> {
+    let response = kube
+        .client
+        .patch(url)
+        .bearer_auth(&kube.token)
+        .header(header::CONTENT_TYPE, "application/merge-patch+json")
+        .json(body)
+        .send()
+        .await
+        .map_err(|e| ApiError::KubeApi(format!("PATCH {url}: {e}")))?;
+    let status = response.status();
+    if status.is_success() || status == StatusCode::NOT_FOUND {
+        return Ok(());
+    }
+    Err(ApiError::KubeApi(format!("PATCH {url} -> {status}")))
 }
 
 /// The claim's `status.phase`, e.g. `Pending` or `Bound`.
