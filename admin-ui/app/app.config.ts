@@ -141,6 +141,16 @@ const config: ExpoConfig = {
       },
     ],
     "./plugins/with-losos-discovery.js",
+    // TV support: react-native (aliased to react-native-tvos, the RN core
+    // fork that still ships Apple TV / Android TV) plus this plugin, which
+    // rewrites the native projects for TV — the Android manifest loses its
+    // portrait lock and gains the leanback launcher intent, and the iOS
+    // project's Podfile and .pbxproj target tvOS instead of iOS. The plugin
+    // is inert unless EXPO_TV=1 (or its isTV parameter is true), so the
+    // phone/tablet prebuild stays exactly the one it was; README's "TV"
+    // section is the how-to. Expo's guide is
+    // https://docs.expo.dev/guides/building-for-tv/.
+    "@react-native-tvos/config-tv",
   ],
   // The EAS project slug links the development-client cloud builds
   // (extra.eas.projectId); `eas init --id` writes it here.

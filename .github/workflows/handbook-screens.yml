@@ -2,11 +2,23 @@ name: handbook-screens
 
 # Regenerates the handbook's UI screenshots when the admin UI changes.
 #
-# On pull requests: builds the UI, takes the shots, and posts a comment with
-# before/after for any that differ from main.
-# On main: takes the shots and opens a PR with any that changed (main's
-# ruleset rejects a direct bot push - required status checks, CodeQL), so the
-# handbook stays in step with the UI.
+# Platform matrix: the same screenshot set is attempted per platform target
+# introduced for admin surfaces (web, tv, windows, visionos). `web` is the
+# existing Playwright/web-admin render path. `tv` runs the same harness with
+# EXPO_TV=1 as a leanback render marker. `windows` and `visionos` are native
+# shells that cannot be rendered headlessly on ubuntu-latest in this harness;
+# those matrix entries run but record a documented skip/reason (and do not
+# fail the job) so every platform is shown explicitly rather than dropped.
+# Outputs are written per platform under /tmp/handbook-screens/<platform>/.
+#
+# On pull requests: builds the UI, takes shots per platform, uploads artifacts,
+# attempts to commit changed shots to the PR branch and posts a comment with
+# before/after images embedded via raw URLs pinned to the pushed commit SHA
+# (falls back to artifact-only text if the branch push is refused, e.g. fork
+# PRs/rulesets, stating why embeds are unavailable).
+# On main: takes shots and opens a PR with any changed images, embedding each
+# changed image in the PR body via raw URL pinned to the bot commit (main's
+# ruleset rejects a direct bot push - required status checks, CodeQL).
 #
 # The shots come from admin-ui/app/tests/handbook-screens.ts (stubbed lososd,
 # no box required). A change to a shot's name, path or fixture in that file,
@@ -35,9 +47,26 @@ concurrency:
 
 jobs:
   screens:
-    name: "handbook screenshots"
+    name: "handbook screenshots (${{ matrix.platform }})"
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: web
+            can_render: "true"
+            note: "existing Playwright web-admin render path"
+          - platform: tv
+            can_render: "true"
+            note: "Playwright harness with EXPO_TV=1 leanback marker"
+          - platform: windows
+            can_render: "false"
+            note: "react-native-windows native shell cannot be rendered headlessly on ubuntu; code-only/skipped"
+          - platform: visionos
+            can_render: "false"
+            note: "react-native-visionos native shell requires Apple visionOS tooling; code-only/skipped on ubuntu"
+    continue-on-error: ${{ matrix.can_render != 'true' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -86,18 +115,43 @@ jobs:
 
       - name: take screenshots
         working-directory: admin-ui/app
-        run: bun tests/handbook-screens.ts /tmp/handbook-screens
+        env:
+          SCREENSHOT_PLATFORM: ${{ matrix.platform }}
+          EXPO_TV: ${{ matrix.platform == 'tv' && '1' || '' }}
+        run: |
+          set -euo pipefail
+          mkdir -p "/tmp/handbook-screens/${{ matrix.platform }}"
+          if [ "${{ matrix.can_render }}" != "true" ]; then
+            echo "skip ${{ matrix.platform }}: ${{ matrix.note }}" | tee "/tmp/handbook-screens/${{ matrix.platform }}/SKIPPED.txt"
+            exit 0
+          fi
+          bun tests/handbook-screens.ts /tmp/handbook-screens "" "${{ matrix.platform }}" 
 
       - name: collect changed shots
         id: changes
+        env:
+          PLATFORM: ${{ matrix.platform }}
         run: |
-          mkdir -p /tmp/before /tmp/after
-          # Current images on the branch (before the new shots)
-          if [ -d handbook/docs/img ]; then
-            cp handbook/docs/img/*.png /tmp/before/ 2>/dev/null || true
+          set -euo pipefail
+          mkdir -p /tmp/before /tmp/after "/tmp/handbook-screens/$PLATFORM"
+          if [ -f "/tmp/handbook-screens/$PLATFORM/SKIPPED.txt" ]; then
+            echo "changed=" >> "$GITHUB_OUTPUT"
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            echo "skip_reason=${{ matrix.note }}" >> "$GITHUB_OUTPUT"
+            echo "Skipped: $PLATFORM (${{ matrix.note }})"
+            exit 0
           fi
-          cp /tmp/handbook-screens/*.png /tmp/after/
-          # Diff
+          echo "skipped=false" >> "$GITHUB_OUTPUT"
+          echo "skip_reason=" >> "$GITHUB_OUTPUT"
+          # Baseline per platform (if present) else legacy flat web baseline.
+          base_dir="handbook/docs/img/$PLATFORM"
+          if [ "$PLATFORM" = "web" ] && [ ! -d "$base_dir" ] && [ -d handbook/docs/img ]; then
+            base_dir="handbook/docs/img"
+          fi
+          if [ -d "$base_dir" ]; then
+            find "$base_dir" -maxdepth 1 -type f -name '*.png' -exec cp {} /tmp/before/ \; 2>/dev/null || true
+          fi
+          find "/tmp/handbook-screens/$PLATFORM" -maxdepth 1 -type f -name '*.png' -exec cp {} /tmp/after/ \; 2>/dev/null || true
           changed=""
           for f in /tmp/after/*.png; do
             base=$(basename "$f")
@@ -106,69 +160,161 @@ jobs:
             fi
           done
           echo "changed=$changed" >> "$GITHUB_OUTPUT"
-          echo "Changed: $changed"
+          echo "Changed ($PLATFORM): $changed" 
 
       - name: upload screenshots
-        if: steps.changes.outputs.changed != ''
+        if: steps.changes.outputs.skipped != 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: handbook-screens
-          path: /tmp/handbook-screens/*.png
+          name: handbook-screens-${{ matrix.platform }}
+          path: /tmp/handbook-screens/${{ matrix.platform }}/*.png
           retention-days: 7
+          if-no-files-found: warn
+
+      - name: commit changed shots to PR branch (for embedded images)
+        id: prpush
+        if: github.event_name == 'pull_request' && steps.changes.outputs.changed != '' && steps.changes.outputs.skipped != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLATFORM: ${{ matrix.platform }}
+          PR_HEAD_REF: ${{ github.head_ref }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p "handbook/docs/img/$PLATFORM"
+          cp /tmp/handbook-screens/"$PLATFORM"/*.png "handbook/docs/img/$PLATFORM"/
+          git add "handbook/docs/img/$PLATFORM"
+          if git diff --cached --quiet; then
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            echo "head_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+            echo "No changes to commit"
+            exit 0
+          fi
+          # Fork PRs / protected refs may refuse pushes; degrade gracefully.
+          git fetch origin "$PR_HEAD_REF" || true
+          git checkout -B "$PR_HEAD_REF" "origin/$PR_HEAD_REF" 2>/dev/null || git checkout "$PR_HEAD_REF"
+          mkdir -p "handbook/docs/img/$PLATFORM"
+          cp /tmp/handbook-screens/"$PLATFORM"/*.png "handbook/docs/img/$PLATFORM"/
+          git add "handbook/docs/img/$PLATFORM"
+          git commit -m "handbook: update $PLATFORM screenshots (bot)"
+          if git push origin "HEAD:$PR_HEAD_REF"; then
+            echo "pushed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            echo "push refused (fork PR or ruleset); falling back to artifact-only comment"
+          fi
+          echo "head_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: comment on PR (before/after)
-        if: github.event_name == 'pull_request' && steps.changes.outputs.changed != ''
+        if: github.event_name == 'pull_request' && (steps.changes.outputs.changed != '' || steps.changes.outputs.skipped == 'true')
         uses: actions/github-script@v9
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          CHANGED: ${{ steps.changes.outputs.changed }}
+          SKIPPED: ${{ steps.changes.outputs.skipped }}
+          SKIP_REASON: ${{ steps.changes.outputs.skip_reason }}
+          PUSHED: ${{ steps.prpush.outputs.pushed }}
+          HEAD_SHA: ${{ steps.prpush.outputs.head_sha }}
         with:
           script: |
-            const changed = `${{ steps.changes.outputs.changed }}`.trim().split(/\s+/).filter(Boolean);
-            const body = [
-              '### Handbook screenshots',
-              '',
-              '<details>',
-              '<summary>Changed screenshots</summary>',
-              '',
-              'These shots differ from the ones currently in `handbook/docs/img`:',
-              '',
-              ...changed.map(f => `- \`${f}\``),
-              '',
-              'The full set is in the `handbook-screens` artifact. On merge to main this workflow opens a PR with the updated images.',
-              '',
-              '</details>',
-            ].join('\n');
-            github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body,
+            const platform = process.env.PLATFORM;
+            const changed = (process.env.CHANGED || '').trim().split(/\s+/).filter(Boolean);
+            const skipped = process.env.SKIPPED === 'true';
+            const skipReason = process.env.SKIP_REASON || '';
+            const pushed = process.env.PUSHED === 'true';
+            const headSha = process.env.HEAD_SHA || context.payload.pull_request.head.sha;
+            const baseSha = context.payload.pull_request.base.sha;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const raw = (sha, path) => `https://raw.githubusercontent.com/${owner}/${repo}/${sha}/${path}`;
+            let body;
+            if (skipped) {
+              body = [
+                `### Handbook screenshots (${platform})`,
+                '',
+                `Skipped: ${skipReason}`,
+                '',
+                `Artifact: \`handbook-screens-${platform}\` (if produced).`,
+              ].join('\n');
+            } else if (changed.length === 0) {
+              body = `### Handbook screenshots (${platform})\n\nNo changed screenshots.`;
+            } else if (pushed) {
+              const rows = changed.map((f) => {
+                const afterPath = `handbook/docs/img/${platform}/${f}`;
+                const beforePath = `handbook/docs/img/${platform}/${f}`;
+                const beforeUrl = raw(baseSha, beforePath);
+                const afterUrl = raw(headSha, afterPath);
+                return `| \`${f}\` | ![${f} before](${beforeUrl}) | ![${f} after](${afterUrl}) |`;
+              });
+              body = [
+                `### Handbook screenshots (${platform})`,
+                '',
+                '<details>',
+                '<summary>Before / after (changed screenshots)</summary>',
+                '',
+                '| Screen | Before | After |',
+                '| --- | --- | --- |',
+                ...rows,
+                '',
+                `Artifact fallback: \`handbook-screens-${platform}\`.`,
+                '',
+                '</details>',
+              ].join('\n');
+            } else {
+              body = [
+                `### Handbook screenshots (${platform})`,
+                '',
+                '<details>',
+                '<summary>Changed screenshots (images not embedded)</summary>',
+                '',
+                'The bot could not push rendered screenshots to the PR branch (fork PR or ruleset), so images are not embedded here.',
+                '',
+                ...changed.map((f) => `- \`${f}\``),
+                '',
+                `Artifact: \`handbook-screens-${platform}\`.`,
+                '',
+                '</details>',
+              ].join('\n');
+            }
+            await github.rest.issues.createComment({
+              owner, repo, issue_number: context.issue.number, body,
             });
 
       - name: "commit updated screenshots (a PR - main only takes PRs)"
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changes.outputs.changed != ''
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changes.outputs.changed != '' && steps.changes.outputs.skipped != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          PLATFORM: ${{ matrix.platform }}
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          cp /tmp/handbook-screens/*.png handbook/docs/img/
-          git add handbook/docs/img
+          mkdir -p "handbook/docs/img/$PLATFORM"
+          cp /tmp/handbook-screens/"$PLATFORM"/*.png "handbook/docs/img/$PLATFORM"/
+          git add "handbook/docs/img/$PLATFORM"
           if git diff --cached --quiet; then
             echo "no changes"
             exit 0
           fi
-          # main's ruleset requires the PR's status checks and CodeQL, so a
-          # direct bot push is rejected (GH013) and the workflow went red;
-          # the shots land through a PR instead, whose merge runs the same
-          # gates as any change here.
-          branch="handbook-screens/auto-${{ github.run_id }}-${{ github.run_attempt }}"
+          branch="handbook-screens/auto-${PLATFORM}-${{ github.run_id }}-${{ github.run_attempt }}"
           git checkout -b "$branch"
-          git commit -m "handbook: update UI screenshots"
+          git commit -m "handbook: update ${PLATFORM} UI screenshots"
           git push origin "$branch"
+          head_sha=$(git rev-parse HEAD)
+          changed="${{ steps.changes.outputs.changed }}"
           {
-            echo "### Handbook screenshots"
+            echo "### Handbook screenshots (${PLATFORM})"
             echo ""
-            echo "Automated refresh from the \`handbook-screens\` workflow for commit ${{ github.sha }}; the shots it took live in \`handbook/docs/img\`. Merging lands the images the workflow could not push to main directly."
+            echo "Automated refresh from the \`handbook-screens\` workflow for commit ${{ github.sha }}."
+            echo ""
+            for f in $changed; do
+              echo "![${PLATFORM}/${f}](https://raw.githubusercontent.com/${{ github.repository }}/$head_sha/handbook/docs/img/$PLATFORM/$f)"
+              echo ""
+            done
+            echo "Merging lands the images the workflow could not push to main directly."
           } > /tmp/screens-pr.md
           gh pr create --base main --head "$branch" \
-            --title "handbook: update UI screenshots" \
+            --title "handbook: update ${PLATFORM} UI screenshots" \
             --body-file /tmp/screens-pr.md
