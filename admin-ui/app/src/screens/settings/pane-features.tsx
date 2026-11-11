@@ -1,43 +1,43 @@
-import * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { InformationCircleIcon } from "@hugeicons/core-free-icons";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { MessageKey } from "@/lib/i18n";
+import { MESSAGES } from "@/i18n";
+import { t, type MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
-import { FEATURE_OPTIONS } from "@/lib/option-value";
+import type { OptionDoc } from "@/lib/api";
+import { featurePaneOwns } from "@/lib/option-value";
 import { draftOn } from "./pane-advanced";
 import { Group, GroupCaption, PaneSection, SwitchRow } from "./rows";
-import { slotFor } from "./site-settings";
+import { slotFor, type Slot } from "./site-settings";
 import type { SettingsForm } from "./use-settings-form";
 
-/* The box's major features, on and off.
+/* The box's features, on and off.
  *
- * One switch per feature the box ships: LosOS Cloud, LosOS Chat, LosOS Git,
- * LosOS Mail, Mesh CI, calls, apps, the box's three AI features, the search
- * index, the logs page and the two boot touches. Each row is one line of
- * modules/overrides.nix — the feature's `losos.<name>.enable` — edited
- * through form.extra exactly as the Advanced pane edits it: the same draft,
- * the same Apply, the same gate in lososd, the same commit in the box's
- * history. The Advanced pane shows these rows with a link back here
- * (lib/option-value.ts, ON_PANE) rather than a second editor.
+ * A view over the option document, not a list: one switch per bool
+ * `losos.<name>.enable` the box declares that no other pane owns, less the
+ * ones the document holds back — read-only (the installer's), dangerous
+ * (the Advanced pane asks about those) and hidden (`visible = false`). The
+ * rule lives in lib/option-value.ts (featurePaneOwns), where the Advanced
+ * pane uses it to link here rather than draw a second editor. Each row is
+ * one line of modules/overrides.nix, edited through form.extra exactly as
+ * the Advanced pane edits it: the same draft, the same Apply, the same
+ * gate in lososd, the same commit in the box's history.
  *
- * Which features the list names is fixed in lib/option-value.ts's
- * FEATURE_OPTIONS; what the pane draws is what the box actually has. A row
- * is drawn only when the box's option document declares its option (an
- * older box would refuse the line at Apply), and never when the document
- * marks one read-only or dangerous — the list is curated, but the box has
- * the last word.
+ * A row's text is a catalogue override under panes.features.<the name
+ * without .enable>.* when one exists (three languages, checked by tsc),
+ * else the prettified name and the description the declaring module
+ * carries — so a feature added to modules/options.nix needs no UI change
+ * to be switchable, and gets its polished line when someone writes one.
  *
- * An option whose document `needs` another (none of today's list carries
- * one; mail's and CI's "exists only while the box shares" is said in their
- * descriptions) is greyed while that one is off in the draft, with a line
- * saying why — the same rule the Advanced pane applies (draftOn).
+ * Unset is the default. A switch whose feature the box ships on draws on
+ * until a line says otherwise, and returning a switch to its default
+ * removes the line, so the file never restates a default that an update
+ * may change and the bar is not armed by it.
  *
- * The switch's off state is the option's default, not always `false`: a
- * feature the box ships on draws on until a line says otherwise, and
- * unsetting the line (Apply drops it) puts the default back, so a default
- * that changes with an update is followed.
+ * An option whose document `needs` another is greyed while that one is off
+ * in the draft, with a line saying why — the same rule the Advanced pane
+ * applies (draftOn).
  */
 
 export function FeaturesPane({ form }: { form: SettingsForm }) {
@@ -72,39 +72,41 @@ export function FeaturesPane({ form }: { form: SettingsForm }) {
     );
   }
 
-  /* One entry per feature the box declares and the pane may edit. A name
-   * the document does not have simply draws no row: the pane's list is the
-   * same on every box, the rows are not. */
-  const rows = FEATURE_OPTIONS.flatMap((name) => {
-    const slot = slotFor(form, name);
-    if (slot === null || slot.option.danger) return [];
-    const needs = slot.option.needs ?? null;
-    const gated = needs !== null && !draftOn(form, needs);
-    const id = featureId(name);
-    return [{ name, id, slot, needs, gated }];
-  });
+  /* What the box declares, in the document's order (sorted by name). A
+   * feature the box does not declare draws no row. */
+  const rows: { option: OptionDoc; slot: Slot; needs: string | null; gated: boolean }[] = [];
+  for (const option of options.options) {
+    if (!featurePaneOwns(option)) continue;
+    const slot = slotFor(form, option.name);
+    if (slot === null) continue;
+    const needs = option.needs ?? null;
+    rows.push({ option, slot, needs, gated: needs !== null && !draftOn(form, needs) });
+  }
 
   return (
     <>
       <PaneSection data-testid="features-pane">
         <Group>
-          {rows.map(({ name, id, slot, needs, gated }, index) => (
-            <SwitchRow
-              key={name}
-              id={`feature-${id}`}
-              option={name}
-              title={t(`panes.features.${id}.title` as MessageKey)}
-              description={
-                gated && needs !== null
-                  ? t("advanced.needs", { name: needs })
-                  : t(`panes.features.${id}.detail` as MessageKey)
-              }
-              checked={slot.raw === "true"}
-              disabled={disabled || gated}
-              onCheckedChange={(on) => slot.set(on ? "true" : "false")}
-              last={index === rows.length - 1}
-            />
-          ))}
+          {rows.map(({ option, slot, needs, gated }, index) => {
+            const id = option.name.replace(/\.enable$/, "");
+            return (
+              <SwitchRow
+                key={option.name}
+                id={`feature-${cssId(id)}`}
+                option={option.name}
+                title={featureText(id, "title") ?? prettify(id)}
+                description={
+                  gated && needs !== null
+                    ? t("advanced.needs", { name: needs })
+                    : (featureText(id, "detail") ?? option.description.trim())
+                }
+                checked={slot.raw === "true"}
+                disabled={disabled || gated}
+                onCheckedChange={(on) => slot.set(on ? "true" : "false")}
+                last={index === rows.length - 1}
+              />
+            );
+          })}
         </Group>
       </PaneSection>
       <PaneSection>
@@ -114,9 +116,28 @@ export function FeaturesPane({ form }: { form: SettingsForm }) {
   );
 }
 
-/** The message-key fragment of one feature option: the first segment of
- *  `losos.<first>.enable`. `cloud.enable` is "cloud", so its title and
- *  detail live under panes.features.cloud.*. */
-function featureId(name: string): string {
-  return name.slice(0, name.indexOf("."));
+/* The catalogue override for one feature's title or detail, or null when
+ * none exists — the fallback is the prettified name and the description
+ * the declaring module carries. The same shape the Credentials page's
+ * optional name catalogue takes (pane-credentials-words.ts). */
+function featureText(id: string, part: "title" | "detail"): string | null {
+  const key = `panes.features.${id}.${part}`;
+  return key in MESSAGES ? t(key as MessageKey) : null;
+}
+
+/* The name as the row's title when no override exists: "configRepo" reads
+ * "Config repo", "lab.libvirt" reads "Lab libvirt". */
+function prettify(id: string): string {
+  return id
+    .replace(/[.]/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .split(" ")
+    .map((word) => (word.length === 0 ? word : word.charAt(0).toUpperCase() + word.slice(1)))
+    .join(" ");
+}
+
+/* The option's name in a DOM id: dots out, since querySelector would read
+ * them as class separators. */
+function cssId(id: string): string {
+  return id.replace(/[.]/g, "-");
 }

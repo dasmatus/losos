@@ -60,27 +60,10 @@ const OWNED: Record<string, string> = {
 /* Lines of overrides.nix another pane draws its own editor for: each app's
  * box-wide settings on the Apps pane, the memory this box lends to AI
  * models on the Market pane, the Windows share and the Tor and I2P
- * addresses on the Network pane, the release channel on the History pane
- * (lib/option-value.ts, ON_PANE) and the features on the Features pane
- * (lib/option-value.ts, FEATURE_OPTIONS). The Advanced row shows the value
- * and links there, to the app's fold on the Apps pane. */
-const FEATURES = [
-  'cloud.enable',
-  'chat.enable',
-  'git.enable',
-  'mail.enable',
-  'ci.enable',
-  'calls.enable',
-  'apps.enable',
-  'tag.enable',
-  'assistant.enable',
-  'builder.enable',
-  'search.enable',
-  'logReader.enable',
-  'splash.enable',
-  'startupSound.enable',
-];
-const ON_PANE: Record<string, string> = Object.fromEntries(
+ * addresses on the Network pane and the release channel on the History
+ * pane (lib/option-value.ts, ON_PANE). The Advanced row shows the value and
+ * links there, to the app's fold on the Apps pane. */
+const ON_PANE_OTHER: Record<string, string> = Object.fromEntries(
   DOC.options.flatMap((option) =>
     option.name === 'cloud.trashDays' || /^git\.site\./.test(option.name)
       ? [[option.name, 'apps']]
@@ -90,11 +73,28 @@ const ON_PANE: Record<string, string> = Object.fromEntries(
           ? [[option.name, 'network']]
           : option.name === 'updates.channel'
             ? [[option.name, 'history']]
-            : FEATURES.includes(option.name)
-              ? [[option.name, 'features']]
-              : [],
+            : [],
   ),
 );
+/* The Features pane's rows, by the rule lib/option-value.ts's
+ * featurePaneOwns applies: every bool *.enable the document declares that
+ * no other pane owns, less the read-only, dangerous and hidden ones. Kept
+ * as the same rule here rather than a copied list, so an option the rule
+ * admits but the pane misses fails here. */
+const FEATURE_OPTIONS = DOC.options.filter(
+  (option) =>
+    option.name.endsWith('.enable') &&
+    option.editor.kind === 'bool' &&
+    !option.readOnly &&
+    !option.danger &&
+    option.hidden !== true &&
+    !(option.name in OWNED) &&
+    !(option.name in ON_PANE_OTHER),
+);
+const ON_PANE: Record<string, string> = {
+  ...ON_PANE_OTHER,
+  ...Object.fromEntries(FEATURE_OPTIONS.map((option) => [option.name, 'features'])),
+};
 const fold = (name: string): string | null => (name.startsWith('cloud.') ? 'cloud' : name.startsWith('git.') ? 'git' : null);
 const ON_APPS = Object.keys(ON_PANE).filter((name) => ON_PANE[name] === 'apps');
 const KINDS = new Set(['bool', 'str', 'int', 'float', 'enum', 'list', 'nullable', 'opaque']);
@@ -275,8 +275,10 @@ await check('every option in the document is drawn, with an editor kind the pane
 });
 
 await check('a plain switch writes one more line after the thirteen, and Apply sends it', async () => {
-  const { page, applies } = await open();
-  const r = row(page, 'configRepo.enable');
+  // vms.host is the plain switch: it needs the box to share, which the
+  // stub says it does.
+  const { page, applies } = await open({ settings: { ...SETTINGS, sharingMyStorage: true } });
+  const r = row(page, 'vms.host');
   await flip(r);
   await applyButton(page).waitFor();
   await main(page).getByText('1 change not applied yet').waitFor();
@@ -285,7 +287,7 @@ await check('a plain switch writes one more line after the thirteen, and Apply s
   assert.equal(applies.length, 1);
   const lines = nixLines(applies[0]!);
   assert.equal(lines.length, 14, `expected the thirteen lines plus one, got:\n${lines.join('\n')}`);
-  assert.ok(lines.includes('  losos.configRepo.enable = false;'), lines.join('\n'));
+  assert.ok(lines.includes('  losos.vms.host = false;'), lines.join('\n'));
   assert.ok(lines[0]!.startsWith('  losos.sharingMyStorage'), 'the thirteen come first');
   await page.close();
 });
@@ -369,12 +371,16 @@ await check('${ in a value is refused by the field', async () => {
 });
 
 await check('a stray line is shown, blocks Apply, and Remove clears it', async () => {
-  const { page, applies } = await open({ stray: [{ key: 'oldApp.knob', value: '1' }] });
+  const { page, applies } = await open({
+    stray: [{ key: 'oldApp.knob', value: '1' }],
+    // The toggle needs a switch that is not gated; vms.host needs sharing on.
+    settings: { ...SETTINGS, sharingMyStorage: true },
+  });
   await main(page).getByText('Lines this box has no option for').waitFor();
   const stray = page.locator('[data-option="oldApp.knob"]');
   await stray.getByText('Not an option here').waitFor();
   // Toggle something so the bar is up, then see it refuse while the stray stays.
-  await flip(row(page, 'configRepo.enable'));
+  await flip(row(page, 'vms.host'));
   await applyButton(page).waitFor();
   assert.ok(await applyButton(page).isDisabled(), 'Apply is live with a stray line');
   await stray.getByRole('button', { name: 'Remove' }).click();

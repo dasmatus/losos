@@ -30,6 +30,7 @@ import {
   nixList,
   nixStringList,
   nixUnquote,
+  featurePaneOwns,
   ON_PANE,
   OWNED,
   toLiteral,
@@ -58,9 +59,10 @@ import type { SettingsForm } from "./use-settings-form";
  * moment the draft turns the other one on, before Apply.
  *
  * Three kinds of row:
- *   - an option one of the other panes owns (lib/option-value.ts, OWNED)
- *     shows its value and links to that pane, so there is one editor per
- *     setting and the two cannot disagree.
+ *   - an option one of the other panes owns (lib/option-value.ts, OWNED
+ *     and ON_PANE, plus the Features pane's derived rows) shows its value
+ *     and links to that pane, so there is one editor per setting and the
+ *     two cannot disagree.
  *   - a read-only option (set by the installer at normal priority, or a
  *     package the build chose) shows its value and says who owns it.
  *   - everything else edits one line of overrides.nix through form.extra.
@@ -308,9 +310,11 @@ function OptionRow({
     form.setExtra(option.name, next);
   };
 
-  /* Drawn with its own editor on another pane: shown here with a link. */
+  /* Drawn with its own editor on another pane: shown here with a link. The
+   * Features pane's rows are derived from the document (featurePaneOwns),
+   * not listed anywhere. */
   const onPane = ON_PANE[option.name];
-  const elsewhere = onPane !== undefined;
+  const elsewhere = onPane !== undefined || featurePaneOwns(option);
   const editable = !option.readOnly && owned === undefined && !elsewhere;
   const gated = option.needs !== undefined && !draftOn(form, option.needs);
 
@@ -381,11 +385,11 @@ function OptionRow({
           <>
             <RowValue className="text-ink">{describeLiteral(raw ?? defaultRaw, t)}</RowValue>
             <PaneLink
-              pane={onPane}
+              pane={onPane ?? "features"}
               hash={onPane === "apps" ? appFold(option.name) : undefined}
               className="text-[12.5px] text-accent underline-offset-4 hover:underline"
             >
-              {t("advanced.owned.changeIn", { pane: paneById(onPane).label })}
+              {t("advanced.owned.changeIn", { pane: paneById(onPane ?? "features").label })}
             </PaneLink>
           </>
         ) : (

@@ -1,4 +1,4 @@
-import { nixString, type OptionEditor, type OptionValue, type SettingsResponse } from "@/lib/api";
+import { nixString, type OptionDoc, type OptionEditor, type OptionValue, type SettingsResponse } from "@/lib/api";
 import type { SettingsPaneId } from "@/screens/settings/panes";
 
 /* One Nix literal per option, and the rules for reading and writing it.
@@ -189,31 +189,36 @@ export const OWNED: Readonly<Record<string, OwnedOption>> = {
   "hardening.usbguard": { key: "hardeningUsbguard", pane: "security" },
 };
 
-/* The features the Features pane (screens/settings/pane-features.tsx) owns:
- * the box's major user-facing features, one `losos.<name>.enable` line of
- * overrides.nix each. Curated on purpose — what belongs here is "something
- * the box does that an owner may want off", not every enable option in the
- * tree: the plumbing (identity, configRepo, admin) stays on the Advanced
- * pane, the toggles another pane already explains stay there, and the
- * dangerous ones (admin, hardening, tls, cluster) are never on a page of
- * plain switches. The Advanced pane shows each of these with its value and
- * a link here, so there is one place to change it. */
-export const FEATURE_OPTIONS: readonly string[] = [
-  "cloud.enable",
-  "chat.enable",
-  "git.enable",
-  "mail.enable",
-  "ci.enable",
-  "calls.enable",
-  "apps.enable",
-  "tag.enable",
-  "assistant.enable",
-  "builder.enable",
-  "search.enable",
-  "logReader.enable",
-  "splash.enable",
-  "startupSound.enable",
-];
+/* Whether the Features pane (screens/settings/pane-features.tsx) draws the
+ * editor for an option, so the Advanced pane links there rather than
+ * drawing a second one.
+ *
+ * The pane is a view over the option document, not a list of names: it
+ * owns every bool `losos.<name>.enable` the box declares that no other
+ * pane owns, less the ones the document holds back — read-only (the
+ * installer's), dangerous (the Advanced pane asks about those), and hidden
+ * (declared `visible = false`). A new enable option in modules/options.nix
+ * therefore lands on the Features pane on the next update without anyone
+ * listing it, and an option another pane explains (the Market pane's
+ * lending switch, the Network pane's Tor) stays where it is.
+ *
+ * A row's text is a catalogue override under panes.features.<the name
+ * without .enable>.* when one exists, else the name and the description
+ * the module declares — the same shape the Credentials page's optional
+ * name catalogue takes (pane-credentials-words.ts). */
+export function featurePaneOwns(
+  option: Pick<OptionDoc, "name" | "editor" | "readOnly" | "danger" | "hidden">,
+): boolean {
+  return (
+    option.name.endsWith(".enable") &&
+    option.editor.kind === "bool" &&
+    !option.readOnly &&
+    !option.danger &&
+    option.hidden !== true &&
+    OWNED[option.name] === undefined &&
+    ON_PANE[option.name] === undefined
+  );
+}
 
 /* Options another pane draws an editor for, though they are lines of
  * overrides.nix like any the Advanced pane edits (form.extra, not one of the
@@ -230,5 +235,4 @@ export const ON_PANE: Readonly<Record<string, SettingsPaneId>> = {
   "hidden.tor.enable": "network",
   "hidden.i2p.enable": "network",
   "updates.channel": "history",
-  ...Object.fromEntries(FEATURE_OPTIONS.map((name) => [name, "features"] as const)),
 };
