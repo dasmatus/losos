@@ -91,7 +91,7 @@ let
   # its settings. An instance that configures nothing the container needs
   # to see simply contributes fewer mounts.
   instancesOf =
-    { instance }:
+    { instance, ... }:
     let
       # The module names the unit after `name`, which defaults to the
       # instance's attribute; the empty name is the bare `authelia`.

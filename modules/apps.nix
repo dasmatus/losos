@@ -1103,6 +1103,14 @@ in
         map (
           u:
           lib.nameValuePair u {
+            # These accounts are defined by modules/configuration.nix on a
+            # real box; here we only augment them with Podman's sub-ids and
+            # linger. mkDefault lets a definition that already exists (with
+            # its uid, group and isNormalUser) win, while still producing a
+            # valid user in contexts (such as the podman-apps test VM) where
+            # `shared`/`kindashared` are not declared.
+            isNormalUser = lib.mkOverride 500 true;
+            group = lib.mkOverride 500 u;
             linger = true;
             subUidRanges = [
               {
@@ -1119,6 +1127,8 @@ in
           }
         ) appUsers
       );
+
+      users.groups = lib.listToAttrs (map (u: lib.nameValuePair u (lib.mkDefault { })) appUsers);
 
       systemd.tmpfiles.rules = [
         "d ${podmanRoot} 0755 root root -"
