@@ -2,7 +2,13 @@ import * as React from "react";
 import { ScrollView, Text, View } from "react-native";
 
 import { BoxApi, failWord } from "../../api/api";
-import { formatBytes, itemsOf, maybeBool, maybeDouble, maybeString } from "../../api/wire";
+import {
+  formatBytes,
+  itemsOf,
+  maybeBool,
+  maybeDouble,
+  maybeString,
+} from "../../api/wire";
 import { boxBase, updateConfig, useBoxConfig } from "../../store/config";
 import { useRead } from "../panes/Read";
 import { LOSOS_RADIUS, LOSOS_TYPE, type LososTokens } from "../theme/tokens";
@@ -42,11 +48,15 @@ export function LivingRoomDashboard({
 
   const api = React.useMemo(() => {
     if (config === null) return null;
-    return new BoxApi(config.host, config.token, () => updateConfig({ token: "" }));
+    return new BoxApi(config.host, config.token, () =>
+      updateConfig({ token: "" }),
+    );
   }, [config?.host, config?.token]);
 
   if (config === null || api === null) {
-    return <View style={{ flex: 1, backgroundColor: tokens.palette.background }} />;
+    return (
+      <View style={{ flex: 1, backgroundColor: tokens.palette.background }} />
+    );
   }
 
   const current = PAGES[page]!;
@@ -54,32 +64,79 @@ export function LivingRoomDashboard({
   const next = () => setPage((p) => (p + 1) % PAGES.length);
 
   return (
-    <View style={{ flex: 1, backgroundColor: tokens.palette.background, padding: 28 }}>
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: tokens.palette.background,
+        padding: 28,
+      }}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 18,
+        }}
+      >
         <View>
-          <Text style={{ ...LOSOS_TYPE.headlineMedium, fontSize: 34, color: tokens.palette.onSurface }}>
+          <Text
+            style={{
+              ...LOSOS_TYPE.headlineMedium,
+              fontSize: 34,
+              color: tokens.palette.onSurface,
+            }}
+          >
             Living room
           </Text>
-          <Text style={{ ...LOSOS_TYPE.bodyMedium, fontSize: 18, color: tokens.palette.onSurfaceVariant }}>
+          <Text
+            style={{
+              ...LOSOS_TYPE.bodyMedium,
+              fontSize: 18,
+              color: tokens.palette.onSurfaceVariant,
+            }}
+          >
             {current.title} · {boxBase(api.base)}
           </Text>
         </View>
         <View style={{ flexDirection: "row", gap: 12 }}>
-          <BigAction tokens={tokens} label="Previous" onPress={prev} kind="tonal" />
+          <BigAction
+            tokens={tokens}
+            label="Previous"
+            onPress={prev}
+            kind="tonal"
+          />
           <BigAction tokens={tokens} label="Next" onPress={next} kind="tonal" />
-          <BigAction tokens={tokens} label="Back to normal" onPress={onExit} kind="filled" />
+          <BigAction
+            tokens={tokens}
+            label="Back to normal"
+            onPress={onExit}
+            kind="filled"
+          />
         </View>
       </View>
 
       <ScrollView contentContainerStyle={{ gap: 18, paddingBottom: 24 }}>
-        {current.id === "overview" ? <OverviewTiles tokens={tokens} api={api} /> : null}
-        {current.id === "storage" ? <StorageTiles tokens={tokens} api={api} /> : null}
+        {current.id === "overview" ? (
+          <OverviewTiles tokens={tokens} api={api} />
+        ) : null}
+        {current.id === "storage" ? (
+          <StorageTiles tokens={tokens} api={api} />
+        ) : null}
         {current.id === "mesh" ? <MeshTiles tokens={tokens} api={api} /> : null}
         {current.id === "apps" ? <AppsTiles tokens={tokens} api={api} /> : null}
       </ScrollView>
 
-      <Text style={{ ...LOSOS_TYPE.bodySmall, fontSize: 14, color: tokens.palette.onSurfaceVariant, marginTop: 4 }}>
-        Read-only glance view. Use normal mode for editing, installs, or detailed settings.
+      <Text
+        style={{
+          ...LOSOS_TYPE.bodySmall,
+          fontSize: 14,
+          color: tokens.palette.onSurfaceVariant,
+          marginTop: 4,
+        }}
+      >
+        Read-only glance view. Use normal mode for editing, installs, or
+        detailed settings.
       </Text>
     </View>
   );
@@ -92,11 +149,16 @@ function OverviewTiles({ tokens, api }: { tokens: LososTokens; api: BoxApi }) {
   const apps = useRead(api, "/api/apps");
 
   const ok = health.kind === "done" && maybeBool(health.data, "ok");
-  const state = status.kind === "done" ? maybeString(status.data, "state") : null;
-  const used = storage.kind === "done" ? maybeDouble(storage.data, "usedBytes") : null;
-  const total = storage.kind === "done" ? maybeDouble(storage.data, "totalBytes") : null;
-  const appCount = apps.kind === "done" ? itemsOf(apps.data, "apps").length : null;
-  const fraction = used !== null && total !== null && total > 0 ? used / total : null;
+  const state =
+    status.kind === "done" ? maybeString(status.data, "state") : null;
+  const used =
+    storage.kind === "done" ? maybeDouble(storage.data, "usedBytes") : null;
+  const total =
+    storage.kind === "done" ? maybeDouble(storage.data, "totalBytes") : null;
+  const appCount =
+    apps.kind === "done" ? itemsOf(apps.data, "apps").length : null;
+  const fraction =
+    used !== null && total !== null && total > 0 ? used / total : null;
 
   return (
     <View style={{ gap: 18 }}>
@@ -104,16 +166,30 @@ function OverviewTiles({ tokens, api }: { tokens: LososTokens; api: BoxApi }) {
         <BigTile
           tokens={tokens}
           title="Box"
-          value={health.kind === "loading" ? "…" : ok ? "Answering" : "Not answering"}
-          detail={state && state !== "idle" ? `State: ${state}` : "Health check"}
+          value={
+            health.kind === "loading" ? "…" : ok ? "Answering" : "Not answering"
+          }
+          detail={
+            state && state !== "idle" ? `State: ${state}` : "Health check"
+          }
           tone={ok ? tokens.extra.ok : tokens.extra.warn}
         />
         <BigTile
           tokens={tokens}
           title="Storage"
-          value={fraction !== null ? `${Math.round(fraction * 100)}% used` : "—"}
-          detail={used !== null && total !== null ? `${formatBytes(used)} of ${formatBytes(total)}` : readDetail(storage.kind)}
-          tone={fraction !== null && fraction > 0.9 ? tokens.extra.crit : tokens.palette.onSurface}
+          value={
+            fraction !== null ? `${Math.round(fraction * 100)}% used` : "—"
+          }
+          detail={
+            used !== null && total !== null
+              ? `${formatBytes(used)} of ${formatBytes(total)}`
+              : readDetail(storage.kind)
+          }
+          tone={
+            fraction !== null && fraction > 0.9
+              ? tokens.extra.crit
+              : tokens.palette.onSurface
+          }
         />
       </TileRow>
       <TileRow>
@@ -121,7 +197,11 @@ function OverviewTiles({ tokens, api }: { tokens: LososTokens; api: BoxApi }) {
           tokens={tokens}
           title="Apps"
           value={appCount !== null ? String(appCount) : "—"}
-          detail={appCount !== null ? "installed records reported" : readDetail(apps.kind)}
+          detail={
+            appCount !== null
+              ? "installed records reported"
+              : readDetail(apps.kind)
+          }
           tone={tokens.palette.onSurface}
         />
         <SkiaTile
@@ -136,21 +216,61 @@ function OverviewTiles({ tokens, api }: { tokens: LososTokens; api: BoxApi }) {
 
 function StorageTiles({ tokens, api }: { tokens: LososTokens; api: BoxApi }) {
   const storage = useRead(api, "/api/storage");
-  const used = storage.kind === "done" ? maybeDouble(storage.data, "usedBytes") : null;
-  const total = storage.kind === "done" ? maybeDouble(storage.data, "totalBytes") : null;
-  const reserve = storage.kind === "done" ? maybeDouble(storage.data, "reserveBytes") : null;
-  const fraction = used !== null && total !== null && total > 0 ? used / total : null;
+  const used =
+    storage.kind === "done" ? maybeDouble(storage.data, "usedBytes") : null;
+  const total =
+    storage.kind === "done" ? maybeDouble(storage.data, "totalBytes") : null;
+  const reserve =
+    storage.kind === "done" ? maybeDouble(storage.data, "reserveBytes") : null;
+  const fraction =
+    used !== null && total !== null && total > 0 ? used / total : null;
   return (
     <View style={{ gap: 18 }}>
       <TileRow>
-        <BigTile tokens={tokens} title="Used" value={formatBytes(used)} detail="reported used bytes" tone={tokens.palette.onSurface} />
-        <BigTile tokens={tokens} title="Total" value={formatBytes(total)} detail="reported disk size" tone={tokens.palette.onSurface} />
+        <BigTile
+          tokens={tokens}
+          title="Used"
+          value={formatBytes(used)}
+          detail="reported used bytes"
+          tone={tokens.palette.onSurface}
+        />
+        <BigTile
+          tokens={tokens}
+          title="Total"
+          value={formatBytes(total)}
+          detail="reported disk size"
+          tone={tokens.palette.onSurface}
+        />
       </TileRow>
       <TileRow>
-        <BigTile tokens={tokens} title="Free" value={used !== null && total !== null ? formatBytes(Math.max(0, total - used)) : "—"} detail="remaining capacity" tone={tokens.palette.onSurface} />
-        <BigTile tokens={tokens} title="Reserve" value={formatBytes(reserve)} detail="held back / reported reserve" tone={tokens.palette.onSurface} />
+        <BigTile
+          tokens={tokens}
+          title="Free"
+          value={
+            used !== null && total !== null
+              ? formatBytes(Math.max(0, total - used))
+              : "—"
+          }
+          detail="remaining capacity"
+          tone={tokens.palette.onSurface}
+        />
+        <BigTile
+          tokens={tokens}
+          title="Reserve"
+          value={formatBytes(reserve)}
+          detail="held back / reported reserve"
+          tone={tokens.palette.onSurface}
+        />
       </TileRow>
-      <SkiaTile tokens={tokens} fraction={fraction} label={fraction !== null ? `${Math.round(fraction * 100)}% of disk in use` : readDetail(storage.kind)} />
+      <SkiaTile
+        tokens={tokens}
+        fraction={fraction}
+        label={
+          fraction !== null
+            ? `${Math.round(fraction * 100)}% of disk in use`
+            : readDetail(storage.kind)
+        }
+      />
     </View>
   );
 }
@@ -158,19 +278,55 @@ function StorageTiles({ tokens, api }: { tokens: LososTokens; api: BoxApi }) {
 function MeshTiles({ tokens, api }: { tokens: LososTokens; api: BoxApi }) {
   const edge = useRead(api, "/api/edge");
   const settings = useRead(api, "/api/settings");
-  const sharing = settings.kind === "done" ? maybeBool(settings.data, "sharingMyStorage") : null;
-  const joined = settings.kind === "done" ? maybeBool(settings.data, "clusterEnable") : null;
-  const compute = settings.kind === "done" ? maybeBool(settings.data, "shareCompute") : null;
-  const reachable = edge.kind === "done" ? maybeBool(edge.data, "reachable") : null;
+  const sharing =
+    settings.kind === "done"
+      ? maybeBool(settings.data, "sharingMyStorage")
+      : null;
+  const joined =
+    settings.kind === "done" ? maybeBool(settings.data, "clusterEnable") : null;
+  const compute =
+    settings.kind === "done" ? maybeBool(settings.data, "shareCompute") : null;
+  const reachable =
+    edge.kind === "done" ? maybeBool(edge.data, "reachable") : null;
   return (
     <View style={{ gap: 18 }}>
       <TileRow>
-        <BigTile tokens={tokens} title="Edge" value={reachable === null ? readDetail(edge.kind) : reachable ? "Reachable" : "Not reachable"} detail="pool / edge status" tone={reachable ? tokens.extra.ok : tokens.palette.onSurfaceVariant} />
-        <BigTile tokens={tokens} title="Sharing disk" value={sharing === null ? "—" : sharing ? "On" : "Off"} detail={joined ? "cluster joined" : "cluster state as reported"} tone={sharing ? tokens.extra.ok : tokens.palette.onSurfaceVariant} />
+        <BigTile
+          tokens={tokens}
+          title="Edge"
+          value={
+            reachable === null
+              ? readDetail(edge.kind)
+              : reachable
+                ? "Reachable"
+                : "Not reachable"
+          }
+          detail="pool / edge status"
+          tone={reachable ? tokens.extra.ok : tokens.palette.onSurfaceVariant}
+        />
+        <BigTile
+          tokens={tokens}
+          title="Sharing disk"
+          value={sharing === null ? "—" : sharing ? "On" : "Off"}
+          detail={joined ? "cluster joined" : "cluster state as reported"}
+          tone={sharing ? tokens.extra.ok : tokens.palette.onSurfaceVariant}
+        />
       </TileRow>
       <TileRow>
-        <BigTile tokens={tokens} title="Sharing compute" value={compute === null ? "—" : compute ? "Lent" : "Never"} detail="spare time window follows box settings" tone={compute ? tokens.extra.ok : tokens.palette.onSurfaceVariant} />
-        <BigTile tokens={tokens} title="Mode" value="Glance" detail="Coarse navigation only in living room" tone={tokens.palette.primary} />
+        <BigTile
+          tokens={tokens}
+          title="Sharing compute"
+          value={compute === null ? "—" : compute ? "Lent" : "Never"}
+          detail="spare time window follows box settings"
+          tone={compute ? tokens.extra.ok : tokens.palette.onSurfaceVariant}
+        />
+        <BigTile
+          tokens={tokens}
+          title="Mode"
+          value="Glance"
+          detail="Coarse navigation only in living room"
+          tone={tokens.palette.primary}
+        />
       </TileRow>
     </View>
   );
@@ -179,15 +335,39 @@ function MeshTiles({ tokens, api }: { tokens: LososTokens; api: BoxApi }) {
 function AppsTiles({ tokens, api }: { tokens: LososTokens; api: BoxApi }) {
   const apps = useRead(api, "/api/apps");
   if (apps.kind !== "done") {
-    return <BigTile tokens={tokens} title="Apps" value={apps.kind === "loading" ? "…" : "Unavailable"} detail={apps.kind === "failed" ? failWord(apps.reason) : "loading"} tone={tokens.palette.onSurfaceVariant} />;
+    return (
+      <BigTile
+        tokens={tokens}
+        title="Apps"
+        value={apps.kind === "loading" ? "…" : "Unavailable"}
+        detail={apps.kind === "failed" ? failWord(apps.reason) : "loading"}
+        tone={tokens.palette.onSurfaceVariant}
+      />
+    );
   }
   const list = itemsOf(apps.data, "apps").slice(0, 6);
   const available = maybeBool(apps.data, "available");
   if (available === false) {
-    return <BigTile tokens={tokens} title="Apps" value="Unavailable" detail="Apps do not run here while no storage is shared." tone={tokens.palette.onSurfaceVariant} />;
+    return (
+      <BigTile
+        tokens={tokens}
+        title="Apps"
+        value="Unavailable"
+        detail="Apps do not run here while no storage is shared."
+        tone={tokens.palette.onSurfaceVariant}
+      />
+    );
   }
   if (list.length === 0) {
-    return <BigTile tokens={tokens} title="Apps" value="None" detail="No installed apps reported." tone={tokens.palette.onSurfaceVariant} />;
+    return (
+      <BigTile
+        tokens={tokens}
+        title="Apps"
+        value="None"
+        detail="No installed apps reported."
+        tone={tokens.palette.onSurfaceVariant}
+      />
+    );
   }
   return (
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 14 }}>
@@ -201,7 +381,13 @@ function AppsTiles({ tokens, api }: { tokens: LososTokens; api: BoxApi }) {
               title={release}
               value={phase}
               detail="installed app"
-              tone={phase === "failed" ? tokens.extra.crit : phase === "running" ? tokens.extra.ok : tokens.palette.onSurface}
+              tone={
+                phase === "failed"
+                  ? tokens.extra.crit
+                  : phase === "running"
+                    ? tokens.extra.ok
+                    : tokens.palette.onSurface
+              }
             />
           </View>
         );
@@ -211,7 +397,11 @@ function AppsTiles({ tokens, api }: { tokens: LososTokens; api: BoxApi }) {
 }
 
 function TileRow({ children }: { children: React.ReactNode }) {
-  return <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 14 }}>{children}</View>;
+  return (
+    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 14 }}>
+      {children}
+    </View>
+  );
 }
 
 function BigTile({
@@ -241,9 +431,27 @@ function BigTile({
         justifyContent: "space-between",
       }}
     >
-      <Text style={{ ...LOSOS_TYPE.titleMedium, fontSize: 20, color: tokens.palette.onSurfaceVariant }}>{title}</Text>
-      <Text style={{ ...LOSOS_TYPE.headlineMedium, fontSize: 44, color: tone }}>{value}</Text>
-      <Text style={{ ...LOSOS_TYPE.bodyMedium, fontSize: 18, color: tokens.palette.onSurfaceVariant }}>{detail}</Text>
+      <Text
+        style={{
+          ...LOSOS_TYPE.titleMedium,
+          fontSize: 20,
+          color: tokens.palette.onSurfaceVariant,
+        }}
+      >
+        {title}
+      </Text>
+      <Text style={{ ...LOSOS_TYPE.headlineMedium, fontSize: 44, color: tone }}>
+        {value}
+      </Text>
+      <Text
+        style={{
+          ...LOSOS_TYPE.bodyMedium,
+          fontSize: 18,
+          color: tokens.palette.onSurfaceVariant,
+        }}
+      >
+        {detail}
+      </Text>
     </View>
   );
 }
@@ -289,13 +497,33 @@ function SkiaTile({
         borderColor: tokens.palette.outline,
       }}
     >
-      <Text style={{ ...LOSOS_TYPE.titleMedium, fontSize: 20, color: tokens.palette.onSurfaceVariant, marginBottom: 12 }}>
+      <Text
+        style={{
+          ...LOSOS_TYPE.titleMedium,
+          fontSize: 20,
+          color: tokens.palette.onSurfaceVariant,
+          marginBottom: 12,
+        }}
+      >
         Visual
       </Text>
-      <View style={{ height: 64, borderRadius: 16, overflow: "hidden", backgroundColor: tokens.palette.surfaceVariant }}>
+      <View
+        style={{
+          height: 64,
+          borderRadius: 16,
+          overflow: "hidden",
+          backgroundColor: tokens.palette.surfaceVariant,
+        }}
+      >
         {SkiaCanvas && SkiaRect && pct !== null ? (
           <SkiaCanvas style={{ flex: 1 }}>
-            <SkiaRect x={0} y={0} width={900 * pct} height={64} color={pct > 0.9 ? tokens.extra.crit : tokens.palette.primary} />
+            <SkiaRect
+              x={0}
+              y={0}
+              width={900 * pct}
+              height={64}
+              color={pct > 0.9 ? tokens.extra.crit : tokens.palette.primary}
+            />
           </SkiaCanvas>
         ) : (
           <View style={{ flex: 1, justifyContent: "center" }}>
@@ -312,15 +540,34 @@ function SkiaTile({
                 style={{
                   height: "100%",
                   width: pct !== null ? `${Math.round(pct * 100)}%` : "0%",
-                  backgroundColor: pct !== null && pct > 0.9 ? tokens.extra.crit : tokens.palette.primary,
+                  backgroundColor:
+                    pct !== null && pct > 0.9
+                      ? tokens.extra.crit
+                      : tokens.palette.primary,
                 }}
               />
             </View>
           </View>
         )}
       </View>
-      <Text style={{ ...LOSOS_TYPE.bodyMedium, fontSize: 18, color: tokens.palette.onSurface, marginTop: 12 }}>{label}</Text>
-      <Text style={{ ...LOSOS_TYPE.bodySmall, fontSize: 14, color: tokens.palette.onSurfaceVariant, marginTop: 4 }}>
+      <Text
+        style={{
+          ...LOSOS_TYPE.bodyMedium,
+          fontSize: 18,
+          color: tokens.palette.onSurface,
+          marginTop: 12,
+        }}
+      >
+        {label}
+      </Text>
+      <Text
+        style={{
+          ...LOSOS_TYPE.bodySmall,
+          fontSize: 14,
+          color: tokens.palette.onSurfaceVariant,
+          marginTop: 4,
+        }}
+      >
         Skia-backed on native targets when available; plain fallback otherwise.
       </Text>
     </View>
@@ -338,8 +585,14 @@ function BigAction({
   onPress: () => void;
   kind: "filled" | "tonal";
 }) {
-  const bg = kind === "filled" ? tokens.palette.primary : tokens.palette.secondaryContainer;
-  const fg = kind === "filled" ? tokens.palette.onPrimary : tokens.palette.onSecondaryContainer;
+  const bg =
+    kind === "filled"
+      ? tokens.palette.primary
+      : tokens.palette.secondaryContainer;
+  const fg =
+    kind === "filled"
+      ? tokens.palette.onPrimary
+      : tokens.palette.onSecondaryContainer;
   return (
     <TvPressable
       onPress={onPress}
@@ -352,7 +605,9 @@ function BigAction({
         alignItems: "center",
       }}
     >
-      <Text style={{ ...LOSOS_TYPE.titleMedium, fontSize: 18, color: fg }}>{label}</Text>
+      <Text style={{ ...LOSOS_TYPE.titleMedium, fontSize: 18, color: fg }}>
+        {label}
+      </Text>
     </TvPressable>
   );
 }

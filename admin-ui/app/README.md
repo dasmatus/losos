@@ -103,7 +103,6 @@ bun run web          # expo start --web, the SPA under Metro
 
 [1]: https://docs.expo.dev/develop/development-builds/introduction/
 
-
 ## TV
 
 The native targets build for Apple TV and Android TV too, "for lols
@@ -141,7 +140,6 @@ the only difference.
 
 [2]: https://github.com/react-native-tvos/react-native-tvos
 [3]: https://docs.expo.dev/guides/building-for-tv/
-
 
 ## Other native targets
 
@@ -198,7 +196,6 @@ also follow-ups unless added as reproducible native config.
 
 [4]: https://microsoft.github.io/react-native-windows/
 
-
 ## Skia
 
 `@shopify/react-native-skia@2.2.12` (the version Expo SDK 54 pins in
@@ -211,8 +208,6 @@ are optional and deliberately left out — the native targets keep
 `newArchEnabled: false` (expo-build-properties above) for the old
 architecture modules the panes carry, and Reanimated 4 is a new
 architecture package.
-
-
 
 Typecheck stays `bun run typecheck` (tsc --noEmit, one tsconfig for both
 targets). The admin browser tests are `bun run test:browser`.

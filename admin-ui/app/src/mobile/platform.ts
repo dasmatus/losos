@@ -12,7 +12,7 @@ export const isTV = Platform.isTV === true;
  * visionOS is generated from its own dependency set; see the app README's
  * "visionOS" section. The check is still the right guard for code that is
  * meant to run there. */
-export const isVisionOS = Platform.OS === "visionos" as typeof Platform.OS;
+export const isVisionOS = Platform.OS === ("visionos" as typeof Platform.OS);
 
 /** Windows, the react-native-windows port (eject-time in this tree). */
 export const isWindows = Platform.OS === "windows";

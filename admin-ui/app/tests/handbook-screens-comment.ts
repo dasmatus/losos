@@ -10,20 +10,35 @@ export interface CommentInput {
   headSha: string;
 }
 
-export function rawUrl(owner: string, repo: string, sha: string, path: string): string {
+export function rawUrl(
+  owner: string,
+  repo: string,
+  sha: string,
+  path: string,
+): string {
   return `https://raw.githubusercontent.com/${owner}/${repo}/${sha}/${path}`;
 }
 
 export function buildPrScreenshotComment(input: CommentInput): string {
-  const { platform, changed, skipped, skipReason = '', pushed, owner, repo, baseSha, headSha } = input;
+  const {
+    platform,
+    changed,
+    skipped,
+    skipReason = "",
+    pushed,
+    owner,
+    repo,
+    baseSha,
+    headSha,
+  } = input;
   if (skipped) {
     return [
       `### Handbook screenshots (${platform})`,
-      '',
+      "",
       `Skipped: ${skipReason}`,
-      '',
+      "",
       `Artifact: \`handbook-screens-${platform}\` (if produced).`,
-    ].join('\n');
+    ].join("\n");
   }
   if (changed.length === 0) {
     return `### Handbook screenshots (${platform})\n\nNo changed screenshots.`;
@@ -35,33 +50,33 @@ export function buildPrScreenshotComment(input: CommentInput): string {
     });
     return [
       `### Handbook screenshots (${platform})`,
-      '',
-      '<details>',
-      '<summary>Before / after (changed screenshots)</summary>',
-      '',
-      '| Screen | Before | After |',
-      '| --- | --- | --- |',
+      "",
+      "<details>",
+      "<summary>Before / after (changed screenshots)</summary>",
+      "",
+      "| Screen | Before | After |",
+      "| --- | --- | --- |",
       ...rows,
-      '',
+      "",
       `Artifact fallback: \`handbook-screens-${platform}\`.`,
-      '',
-      '</details>',
-    ].join('\n');
+      "",
+      "</details>",
+    ].join("\n");
   }
   return [
     `### Handbook screenshots (${platform})`,
-    '',
-    '<details>',
-    '<summary>Changed screenshots (images not embedded)</summary>',
-    '',
-    'The bot could not push rendered screenshots to the PR branch (fork PR or ruleset), so images are not embedded here.',
-    '',
+    "",
+    "<details>",
+    "<summary>Changed screenshots (images not embedded)</summary>",
+    "",
+    "The bot could not push rendered screenshots to the PR branch (fork PR or ruleset), so images are not embedded here.",
+    "",
     ...changed.map((f) => `- \`${f}\``),
-    '',
+    "",
     `Artifact: \`handbook-screens-${platform}\`.`,
-    '',
-    '</details>',
-  ].join('\n');
+    "",
+    "</details>",
+  ].join("\n");
 }
 
 export function buildMainScreenshotPrBody(input: {
@@ -75,13 +90,13 @@ export function buildMainScreenshotPrBody(input: {
   const { platform, changed, headSha, sourceSha, owner, repo } = input;
   return [
     `### Handbook screenshots (${platform})`,
-    '',
+    "",
     `Automated refresh from the \`handbook-screens\` workflow for commit ${sourceSha}.`,
-    '',
+    "",
     ...changed.flatMap((f) => [
       `![${platform}/${f}](${rawUrl(owner, repo, headSha, `handbook/docs/img/${platform}/${f}`)})`,
-      '',
+      "",
     ]),
-    'Merging lands the images the workflow could not push to main directly.',
-  ].join('\n');
+    "Merging lands the images the workflow could not push to main directly.",
+  ].join("\n");
 }

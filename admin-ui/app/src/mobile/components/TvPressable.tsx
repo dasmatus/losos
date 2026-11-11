@@ -1,5 +1,10 @@
 import * as React from "react";
-import { Pressable, type PressableProps, type StyleProp, type ViewStyle } from "react-native";
+import {
+  Pressable,
+  type PressableProps,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
 
 import { isTV } from "../platform";
 import { useTokens } from "../theme/useTokens";
@@ -20,7 +25,9 @@ export function TvPressable({
   ...props
 }: PressableProps & {
   focusScale?: number;
-  children?: React.ReactNode | ((state: { pressed: boolean; focused: boolean }) => React.ReactNode);
+  children?:
+    | React.ReactNode
+    | ((state: { pressed: boolean; focused: boolean }) => React.ReactNode);
 }): React.JSX.Element {
   const tokens = useTokens();
   return (
@@ -48,7 +55,12 @@ export function TvPressable({
         const s = state as { pressed: boolean; focused?: boolean };
         const focused = Boolean(s.focused);
         return typeof children === "function"
-          ? (children as (st: { pressed: boolean; focused: boolean }) => React.ReactNode)({
+          ? (
+              children as (st: {
+                pressed: boolean;
+                focused: boolean;
+              }) => React.ReactNode
+            )({
               pressed: s.pressed,
               focused,
             })

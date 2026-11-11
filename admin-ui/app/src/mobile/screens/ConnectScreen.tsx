@@ -33,7 +33,12 @@ import { isTV, isVisionOS, tvFocusable } from "../platform";
 import { TvPressable } from "../components/TvPressable";
 import { probe } from "../../api/probe";
 import { browseBoxes, type FoundBox } from "../../api/discovery";
-import { useBoxConfig, updateConfig, type BoxConfig, type ProbeResult } from "../../store/config";
+import {
+  useBoxConfig,
+  updateConfig,
+  type BoxConfig,
+  type ProbeResult,
+} from "../../store/config";
 
 export function ConnectScreen(): React.JSX.Element {
   const tokens = useTokens();
@@ -49,7 +54,9 @@ function ConnectScreenBody({
   tokens: LososTokens;
   config: BoxConfig;
 }): React.JSX.Element {
-  const [host, setHost] = React.useState(config.host !== "" ? config.host : "box.local");
+  const [host, setHost] = React.useState(
+    config.host !== "" ? config.host : "box.local",
+  );
   const [token, setToken] = React.useState(config.token);
   const [probeState, setProbeState] = React.useState<ProbeResult>({
     kind: "unreachable",
@@ -89,7 +96,9 @@ function ConnectScreenBody({
       <View style={{ height: 36 }} />
       <Text
         style={{
-          ...(isTV || isVisionOS ? LOSOS_TYPE.headlineMedium : LOSOS_TYPE.headlineSmall),
+          ...(isTV || isVisionOS
+            ? LOSOS_TYPE.headlineMedium
+            : LOSOS_TYPE.headlineSmall),
           color: tokens.palette.onSurface,
         }}
       >
@@ -98,7 +107,9 @@ function ConnectScreenBody({
       <View style={{ height: 4 }} />
       <Text
         style={{
-          ...(isTV || isVisionOS ? LOSOS_TYPE.titleMedium : LOSOS_TYPE.bodyMedium),
+          ...(isTV || isVisionOS
+            ? LOSOS_TYPE.titleMedium
+            : LOSOS_TYPE.bodyMedium),
           color: tokens.palette.onSurfaceVariant,
         }}
       >
@@ -123,23 +134,46 @@ function ConnectScreenBody({
         supporting="Settings → Access tokens in the admin pages"
       />
       <Gap height={20} />
-      <View style={{ flexDirection: isTV ? "row" : "row", gap: isTV ? 16 : 12, flexWrap: "wrap" }}>
+      <View
+        style={{
+          flexDirection: isTV ? "row" : "row",
+          gap: isTV ? 16 : 12,
+          flexWrap: "wrap",
+        }}
+      >
         <LosPress tokens={tokens} onPress={runProbe} kind="outlined">
           Probe
         </LosPress>
-        <LosPress tokens={tokens} onPress={() => updateConfig({ host: host.trim(), token: token.trim(), demo: false })}>
+        <LosPress
+          tokens={tokens}
+          onPress={() =>
+            updateConfig({
+              host: host.trim(),
+              token: token.trim(),
+              demo: false,
+            })
+          }
+        >
           Link box
         </LosPress>
       </View>
       <Gap height={isTV ? 18 : 14} />
-      <LosPress tokens={tokens} onPress={() => updateConfig({ host: host.trim(), token: token.trim(), demo: true })}>
+      <LosPress
+        tokens={tokens}
+        onPress={() =>
+          updateConfig({ host: host.trim(), token: token.trim(), demo: true })
+        }
+      >
         Look around in demo mode
       </LosPress>
       <Gap height={18} />
       <Text
         style={{
           ...LOSOS_TYPE.bodyMedium,
-          color: probeState.kind === "reachable" ? tokens.extra.ok : tokens.palette.onSurfaceVariant,
+          color:
+            probeState.kind === "reachable"
+              ? tokens.extra.ok
+              : tokens.palette.onSurfaceVariant,
         }}
       >
         {probeState.kind === "probing"
@@ -150,16 +184,30 @@ function ConnectScreenBody({
       </Text>
 
       <Gap height={24} />
-      <Text style={{ ...LOSOS_TYPE.titleMedium, color: tokens.palette.onSurface }}>On this network</Text>
+      <Text
+        style={{ ...LOSOS_TYPE.titleMedium, color: tokens.palette.onSurface }}
+      >
+        On this network
+      </Text>
       <Gap height={6} />
       <LosPress tokens={tokens} onPress={discover}>
-        {boxes === null ? (scanning ? "Browsing…" : "Find boxes") : "Browse again"}
+        {boxes === null
+          ? scanning
+            ? "Browsing…"
+            : "Find boxes"
+          : "Browse again"}
       </LosPress>
       {boxes === null ? null : boxes.length === 0 ? (
         <>
           <Gap height={6} />
-          <Text style={{ ...LOSOS_TYPE.bodySmall, color: tokens.palette.onSurfaceVariant }}>
-            None announced on this network - a box that is off, or a LAN no box answers on.
+          <Text
+            style={{
+              ...LOSOS_TYPE.bodySmall,
+              color: tokens.palette.onSurfaceVariant,
+            }}
+          >
+            None announced on this network - a box that is off, or a LAN no box
+            answers on.
           </Text>
         </>
       ) : (
@@ -203,7 +251,9 @@ function BoxRow({
       style={({ pressed }) => ({
         width: "100%",
         marginTop: 6,
-        backgroundColor: pressed ? tokens.palette.outline : tokens.palette.surfaceVariant,
+        backgroundColor: pressed
+          ? tokens.palette.outline
+          : tokens.palette.surfaceVariant,
         borderRadius: LOSOS_RADIUS.small,
         paddingVertical: isTV ? 16 : 10,
         paddingHorizontal: isTV ? 18 : 12,
@@ -212,9 +262,18 @@ function BoxRow({
       })}
     >
       <View style={{ flex: 1 }}>
-        <Text style={{ ...LOSOS_TYPE.titleMedium, color: tokens.palette.onSurface }}>{box.name}</Text>
+        <Text
+          style={{ ...LOSOS_TYPE.titleMedium, color: tokens.palette.onSurface }}
+        >
+          {box.name}
+        </Text>
         {box.version !== null ? (
-          <Text style={{ ...LOSOS_TYPE.bodySmall, color: tokens.palette.onSurfaceVariant }}>
+          <Text
+            style={{
+              ...LOSOS_TYPE.bodySmall,
+              color: tokens.palette.onSurfaceVariant,
+            }}
+          >
             {`LosOS ${box.version}`}
           </Text>
         ) : null}
@@ -232,7 +291,11 @@ function BoxRow({
             paddingHorizontal: 10,
           }}
         >
-          <Text style={{ ...LOSOS_TYPE.labelSmall, color: tokens.palette.primary }}>IP</Text>
+          <Text
+            style={{ ...LOSOS_TYPE.labelSmall, color: tokens.palette.primary }}
+          >
+            IP
+          </Text>
         </Pressable>
       ) : null}
     </Row>
@@ -270,7 +333,9 @@ function LosPress({
           : {
               borderWidth: 1,
               borderColor: tokens.palette.outline,
-              backgroundColor: pressed ? tokens.palette.surfaceVariant : "transparent",
+              backgroundColor: pressed
+                ? tokens.palette.surfaceVariant
+                : "transparent",
             }),
         opacity: pressed && kind === "filled" ? 0.85 : 1,
       })}
@@ -279,7 +344,10 @@ function LosPress({
         style={{
           ...(isTV ? LOSOS_TYPE.titleMedium : LOSOS_TYPE.labelSmall),
           fontWeight: "600",
-          color: kind === "filled" ? tokens.palette.onPrimary : tokens.palette.primary,
+          color:
+            kind === "filled"
+              ? tokens.palette.onPrimary
+              : tokens.palette.primary,
         }}
       >
         {children}
@@ -332,7 +400,13 @@ function LosField({
           paddingVertical: 10,
         }}
       />
-      <Text style={{ ...LOSOS_TYPE.bodySmall, color: tokens.palette.onSurfaceVariant, marginTop: 4 }}>
+      <Text
+        style={{
+          ...LOSOS_TYPE.bodySmall,
+          color: tokens.palette.onSurfaceVariant,
+          marginTop: 4,
+        }}
+      >
         {supporting}
       </Text>
     </View>
@@ -355,8 +429,19 @@ export function Brand({ tokens }: { tokens: LososTokens }) {
       />
       <View style={{ width: 14 }} />
       <View>
-        <Text style={{ ...LOSOS_TYPE.headlineSmall, color: tokens.palette.onSurface }}>LosOS</Text>
-        <Text style={{ ...LOSOS_TYPE.titleMedium, color: tokens.palette.primary }}>Companion</Text>
+        <Text
+          style={{
+            ...LOSOS_TYPE.headlineSmall,
+            color: tokens.palette.onSurface,
+          }}
+        >
+          LosOS
+        </Text>
+        <Text
+          style={{ ...LOSOS_TYPE.titleMedium, color: tokens.palette.primary }}
+        >
+          Companion
+        </Text>
       </View>
     </View>
   );

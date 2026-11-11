@@ -14,7 +14,13 @@
  */
 
 import * as React from "react";
-import { Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
+import {
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+  useWindowDimensions,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useTokens } from "../theme/useTokens";
@@ -24,12 +30,7 @@ import { TvPressable } from "../components/TvPressable";
 import { LivingRoomDashboard } from "../components/LivingRoomDashboard";
 import { SettingsTab } from "../panes/SettingsTab";
 import { CloudTab } from "../panes/CloudTab";
-import {
-  AppsPane,
-  MeshPane,
-  OverviewPane,
-  StoragePane,
-} from "../panes/Panes";
+import { AppsPane, MeshPane, OverviewPane, StoragePane } from "../panes/Panes";
 import {
   AdvancedPane,
   BackupPane,
@@ -55,7 +56,11 @@ export const TABS = [
 
 export type Tab = (typeof TABS)[number];
 
-export function DashboardScreen({ initialTab }: { initialTab?: Tab }): React.JSX.Element {
+export function DashboardScreen({
+  initialTab,
+}: {
+  initialTab?: Tab;
+}): React.JSX.Element {
   const tokens = useTokens();
   const [current, setCurrent] = React.useState<Tab>(initialTab ?? "Dashboard");
   const [livingRoom, setLivingRoom] = React.useState(false);
@@ -78,7 +83,13 @@ export function DashboardScreen({ initialTab }: { initialTab?: Tab }): React.JSX
   return (
     <View style={{ flex: 1, backgroundColor: tokens.palette.background }}>
       {showVisionToggle ? (
-        <View style={{ paddingHorizontal: isVisionOS ? 28 : 16, paddingTop: 10, alignItems: "flex-end" }}>
+        <View
+          style={{
+            paddingHorizontal: isVisionOS ? 28 : 16,
+            paddingTop: 10,
+            alignItems: "flex-end",
+          }}
+        >
           <TvPressable
             onPress={() => setLivingRoom(true)}
             style={{
@@ -88,7 +99,12 @@ export function DashboardScreen({ initialTab }: { initialTab?: Tab }): React.JSX
               backgroundColor: tokens.palette.secondaryContainer,
             }}
           >
-            <Text style={{ ...LOSOS_TYPE.labelSmall, color: tokens.palette.onSecondaryContainer }}>
+            <Text
+              style={{
+                ...LOSOS_TYPE.labelSmall,
+                color: tokens.palette.onSecondaryContainer,
+              }}
+            >
               Living room
             </Text>
           </TvPressable>
@@ -125,7 +141,13 @@ function KeyboardAwarePanes({
       }}
       keyboardShouldPersistTaps="handled"
     >
-      <View style={{ width: "100%", maxWidth: contentMaxWidth, gap: leanback ? 8 : 0 }}>
+      <View
+        style={{
+          width: "100%",
+          maxWidth: contentMaxWidth,
+          gap: leanback ? 8 : 0,
+        }}
+      >
         {tab === "Dashboard" ? <OverviewPane tokens={tokens} /> : null}
         {tab === "Storage" ? <StoragePane tokens={tokens} /> : null}
         {tab === "Mesh" ? <MeshPane tokens={tokens} /> : null}
@@ -156,7 +178,9 @@ function PaneBar({
 }) {
   const bottom = useSafeAreaInsets().bottom;
   return (
-    <View style={{ backgroundColor: tokens.palette.surface, paddingBottom: bottom }}>
+    <View
+      style={{ backgroundColor: tokens.palette.surface, paddingBottom: bottom }}
+    >
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -170,7 +194,12 @@ function PaneBar({
               key={tab}
               onPress={() => pick(tab)}
               {...tvFocusable}
-              style={({ pressed }: { pressed: boolean; focused?: boolean }) => ({
+              style={({
+                pressed,
+              }: {
+                pressed: boolean;
+                focused?: boolean;
+              }) => ({
                 padding: 2,
                 ...paneCell,
                 minWidth: isTV ? 120 : undefined,
@@ -190,7 +219,9 @@ function PaneBar({
                     width: isTV ? 28 : 22,
                     height: isTV ? 28 : 22,
                     borderRadius: isTV ? 14 : 11,
-                    backgroundColor: selected ? tokens.palette.primary : tokens.palette.outline,
+                    backgroundColor: selected
+                      ? tokens.palette.primary
+                      : tokens.palette.outline,
                   }}
                 />
                 <View style={{ height: isTV ? 6 : 2 }} />
