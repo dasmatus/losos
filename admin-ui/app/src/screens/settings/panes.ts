@@ -18,6 +18,7 @@ import {
   PaintBoardIcon,
   Share08Icon,
   SlidersHorizontalIcon,
+  StarIcon,
   GitCommitIcon,
   ShoppingCart01Icon,
   Shield01Icon,
@@ -66,6 +67,7 @@ export type SettingsPaneId =
   | "moderation"
   | "access"
   | "tag"
+  | "features"
   | "advanced"
   | "history"
   | "logs"
@@ -396,6 +398,25 @@ export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
    * then the record of every change. Advanced carries the long tail an
    * owner reaches for rarely and deliberately — like Security, below the
    * everyday panes — and History is the audit of all of them. */
+  /* Features right before Advanced: the major features on plain switches,
+   * then Advanced's every option — the curated front door of what Advanced
+   * also edits. Like Advanced, below the everyday panes: turning a feature
+   * off is a decision an owner makes deliberately. */
+  pane("features", StarIcon, [
+    "feature",
+    "features",
+    "turn off",
+    "disable",
+    "enable",
+    "switch off",
+    "services",
+    "cloud",
+    "chat",
+    "mail",
+    "git",
+    "apps",
+    "ai",
+  ]),
   pane("advanced", SlidersHorizontalIcon, [
     "all",
     "every",
@@ -496,6 +517,7 @@ const PANE_SECTION: Record<SettingsPaneId, string> = {
   moderation: "moderation",
   access: "access",
   tag: "signed-in",
+  features: "admin",
   advanced: "admin",
   history: "admin",
   logs: "admin",

@@ -189,6 +189,32 @@ export const OWNED: Readonly<Record<string, OwnedOption>> = {
   "hardening.usbguard": { key: "hardeningUsbguard", pane: "security" },
 };
 
+/* The features the Features pane (screens/settings/pane-features.tsx) owns:
+ * the box's major user-facing features, one `losos.<name>.enable` line of
+ * overrides.nix each. Curated on purpose — what belongs here is "something
+ * the box does that an owner may want off", not every enable option in the
+ * tree: the plumbing (identity, configRepo, admin) stays on the Advanced
+ * pane, the toggles another pane already explains stay there, and the
+ * dangerous ones (admin, hardening, tls, cluster) are never on a page of
+ * plain switches. The Advanced pane shows each of these with its value and
+ * a link here, so there is one place to change it. */
+export const FEATURE_OPTIONS: readonly string[] = [
+  "cloud.enable",
+  "chat.enable",
+  "git.enable",
+  "mail.enable",
+  "ci.enable",
+  "calls.enable",
+  "apps.enable",
+  "tag.enable",
+  "assistant.enable",
+  "builder.enable",
+  "search.enable",
+  "logReader.enable",
+  "splash.enable",
+  "startupSound.enable",
+];
+
 /* Options another pane draws an editor for, though they are lines of
  * overrides.nix like any the Advanced pane edits (form.extra, not one of the
  * thirteen fields). The Advanced pane shows each with its value and a link to
@@ -204,4 +230,5 @@ export const ON_PANE: Readonly<Record<string, SettingsPaneId>> = {
   "hidden.tor.enable": "network",
   "hidden.i2p.enable": "network",
   "updates.channel": "history",
+  ...Object.fromEntries(FEATURE_OPTIONS.map((name) => [name, "features"] as const)),
 };

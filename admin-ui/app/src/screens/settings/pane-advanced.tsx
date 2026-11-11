@@ -380,7 +380,11 @@ function OptionRow({
         ) : elsewhere ? (
           <>
             <RowValue className="text-ink">{describeLiteral(raw ?? defaultRaw, t)}</RowValue>
-            <PaneLink pane={onPane} hash={appFold(option.name)} className="text-[12.5px] text-accent underline-offset-4 hover:underline">
+            <PaneLink
+              pane={onPane}
+              hash={onPane === "apps" ? appFold(option.name) : undefined}
+              className="text-[12.5px] text-accent underline-offset-4 hover:underline"
+            >
               {t("advanced.owned.changeIn", { pane: paneById(onPane).label })}
             </PaneLink>
           </>

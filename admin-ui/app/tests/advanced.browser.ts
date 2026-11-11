@@ -60,9 +60,26 @@ const OWNED: Record<string, string> = {
 /* Lines of overrides.nix another pane draws its own editor for: each app's
  * box-wide settings on the Apps pane, the memory this box lends to AI
  * models on the Market pane, the Windows share and the Tor and I2P
- * addresses on the Network pane and the release channel on the History pane
- * (lib/option-value.ts, ON_PANE). The Advanced row shows the value and links
- * there, to the app's fold on the Apps pane. */
+ * addresses on the Network pane, the release channel on the History pane
+ * (lib/option-value.ts, ON_PANE) and the features on the Features pane
+ * (lib/option-value.ts, FEATURE_OPTIONS). The Advanced row shows the value
+ * and links there, to the app's fold on the Apps pane. */
+const FEATURES = [
+  'cloud.enable',
+  'chat.enable',
+  'git.enable',
+  'mail.enable',
+  'ci.enable',
+  'calls.enable',
+  'apps.enable',
+  'tag.enable',
+  'assistant.enable',
+  'builder.enable',
+  'search.enable',
+  'logReader.enable',
+  'splash.enable',
+  'startupSound.enable',
+];
 const ON_PANE: Record<string, string> = Object.fromEntries(
   DOC.options.flatMap((option) =>
     option.name === 'cloud.trashDays' || /^git\.site\./.test(option.name)
@@ -73,7 +90,9 @@ const ON_PANE: Record<string, string> = Object.fromEntries(
           ? [[option.name, 'network']]
           : option.name === 'updates.channel'
             ? [[option.name, 'history']]
-            : [],
+            : FEATURES.includes(option.name)
+              ? [[option.name, 'features']]
+              : [],
   ),
 );
 const fold = (name: string): string | null => (name.startsWith('cloud.') ? 'cloud' : name.startsWith('git.') ? 'git' : null);
@@ -240,7 +259,7 @@ await check('every option in the document is drawn, with an editor kind the pane
     } else if (option.name in ON_PANE) {
       assert.equal(controls, 0, `losos.${option.name} has a second editor beside the ${ON_PANE[option.name]} pane's`);
       const href = await r.getByRole('link').getAttribute('href');
-      const hash = fold(option.name) === null ? '' : `#${fold(option.name)}`;
+      const hash = ON_PANE[option.name] === 'apps' && fold(option.name) !== null ? `#${fold(option.name)}` : '';
       assert.ok(href!.endsWith(`/${ON_PANE[option.name]}${hash}`), `losos.${option.name} links to ${href}`);
     } else {
       assert.ok(controls >= 1, `losos.${option.name} (${option.editor.kind}) has no editor`);
