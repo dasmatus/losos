@@ -1450,6 +1450,51 @@ await check('the theme in the person menu stamps the choice on <html> and it sur
   await page.close();
 });
 
+/* Wide mode (lib/wide.ts) sits in the same menu: a checkable row that drops
+ * the shell's margins and column ceilings, so `main` runs from the window's
+ * left edge and up under the bar, and the choice is stamped on <html> like
+ * the theme's, so a reload keeps it. Left of `main` is the sidebar, which
+ * stays, so the flush edges are the right one and the top; the column's old
+ * centre offset and padding are what going back must restore. */
+const wideFlush = (page: Page) =>
+  page.evaluate(() => {
+    const body = document.querySelector<HTMLElement>('[data-shell-body]')!;
+    const main = body.querySelector<HTMLElement>('main')!;
+    const pad = getComputedStyle(body);
+    const bodyBox = body.getBoundingClientRect();
+    const mainBox = main.getBoundingClientRect();
+    return {
+      pad: `${pad.paddingLeft}/${pad.paddingTop}/${pad.paddingBottom}`,
+      left: Math.round(mainBox.left - bodyBox.left),
+      right: Math.round(bodyBox.right - mainBox.right),
+      top: Math.round(mainBox.top - bodyBox.top),
+      wide: document.documentElement.dataset.wide ?? '',
+    };
+  });
+
+await check('wide mode in the person menu takes the page edge to edge and survives a reload', async () => {
+  const { page } = await open({ stored: true });
+  const before = await wideFlush(page);
+  assert.ok(before.left > 0 && before.right > 0, 'the page already sat at the edges without wide mode');
+  assert.ok(before.top > 0, 'the page already sat under the bar without wide mode');
+  await page.getByTestId('signed-in-as').click();
+  await page.getByRole('menuitemcheckbox', { name: 'Wide mode' }).click();
+  const after = await wideFlush(page);
+  assert.equal(after.wide, 'on', 'the choice was not stamped on <html>');
+  assert.equal(after.pad, '0px/0px/0px', 'the shell column kept its padding');
+  assert.equal(after.right, 0, 'the page did not run to the right edge');
+  assert.equal(after.top, 0, 'the page did not run up under the bar');
+  await page.reload({ waitUntil: 'networkidle' });
+  assert.deepEqual(await wideFlush(page), after, 'wide was lost on reload (theme-boot.js did not stamp it)');
+  await page.getByTestId('signed-in-as').click();
+  await page.getByRole('menuitemcheckbox', { name: 'Wide mode' }).click();
+  const off = await wideFlush(page);
+  assert.equal(off.wide, '', 'the choice was not lifted from <html>');
+  assert.equal(off.left, before.left, 'the page did not go back to its column');
+  assert.equal(off.pad, before.pad, 'the shell column did not go back to its padding');
+  await page.close();
+});
+
 await check('a Slovak browser gets Slovak, and the person menu switches it to German for good', async () => {
   const { page, errors } = await open({ stored: true, locale: 'sk-SK' });
   await page.getByRole('navigation', { name: 'Sekcie', exact: true }).getByText('Prehľad').waitFor();

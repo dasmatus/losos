@@ -280,10 +280,13 @@ export default defineMessages({
     sk: "Jazyk prehliadača",
     de: "Browsersprache",
   },
+  /* The layout switch beside them: the shell takes the whole window, no
+   * margins, no gaps (lib/wide.ts, styles/index.css). */
+  "ui.wide.label": { en: "Wide mode", sk: "Široký režim", de: "Breitbildmodus" },
   "ui.display.label": {
-    en: "Appearance and language",
-    sk: "Vzhľad a jazyk",
-    de: "Erscheinungsbild und Sprache",
+    en: "Appearance, language and layout",
+    sk: "Vzhľad, jazyk a rozloženie",
+    de: "Erscheinungsbild, Sprache und Layout",
   },
 
   // ── Toasts the shell raises ───────────────────────────────────────────────

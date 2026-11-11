@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import App from "@/App";
 import { applyFavicon } from "@/lib/logo";
 import { applyStoredTheme } from "@/lib/theme";
+import { applyStoredWide } from "@/lib/wide";
 /* Sonner's stylesheet, as a file in the bundle: the library would inject it
  * as a <style> element at load, which the appliance CSP (style-src 'self')
  * refuses, so bundler.ts drops that copy and this import is what
@@ -16,6 +17,7 @@ import "@/styles/index.css";
  * pair of braces: if the boot script ever fails to load, the app still comes
  * up in the stored theme, one frame late instead of not at all. */
 applyStoredTheme();
+applyStoredWide();
 applyFavicon();
 
 if ("serviceWorker" in navigator) {
