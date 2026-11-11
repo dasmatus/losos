@@ -1616,12 +1616,11 @@ async fn a_lapsed_volume_serves_nothing_and_its_server_is_stopped() {
     .await;
 
     // The pass scales the server to zero and drops the door.
-    let patch = format!(
-        "PATCH /apis/apps/v1/namespaces/market-buyer-box/deployments/rest-ord-old"
-    );
+    let patch =
+        "PATCH /apis/apps/v1/namespaces/market-buyer-box/deployments/rest-ord-old".to_string();
     let mut seen = false;
     for _ in 0..100 {
-        seen = kube.seen().iter().any(|r| *r == patch);
+        seen = kube.seen().contains(&patch);
         if seen {
             break;
         }

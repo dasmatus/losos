@@ -1140,8 +1140,7 @@ async fn stub_handler(
     // A backup server whose pod reports `Ready`, which is what the market's
     // health probe waits for before it asks the volume itself.
     if method == Method::GET && uri.path().contains("/deployments/") {
-        return axum::Json(serde_json::json!({ "status": { "readyReplicas": 1 } }))
-            .into_response();
+        return axum::Json(serde_json::json!({ "status": { "readyReplicas": 1 } })).into_response();
     }
     // Every replica the stub was asked to create, running.
     if method == Method::GET && uri.path().ends_with("/virtualmachines") {

@@ -53,7 +53,10 @@ use tokio::sync::{Mutex, Semaphore};
 use axum::Json;
 use serde::Deserialize;
 
-use super::{kube_access, kube_create, kube_patch, market_of, market_tenant, AppState, KubeAccess, MarketAuth};
+use super::{
+    kube_access, kube_create, kube_patch, market_of, market_tenant, AppState, KubeAccess,
+    MarketAuth,
+};
 use crate::action::Action;
 use crate::error::ApiError;
 use crate::market::{MarketError, OpenDoor, StorageVolume};
@@ -667,15 +670,19 @@ pub(super) async fn volumes_pass(st: &AppState, market: &crate::market::Market) 
             volume.namespace,
             server_name(&volume.pvc),
         );
-        let stopped = kube_patch(&kube, &url, &serde_json::json!({ "spec": { "replicas": 0 } }))
-            .await
-            .inspect_err(|e| {
-                tracing::error!(
-                    target: Action::Market.target(),
-                    "stopping the backup server of lapsed order {order_id}: {e}",
-                );
-            })
-            .is_ok();
+        let stopped = kube_patch(
+            &kube,
+            &url,
+            &serde_json::json!({ "spec": { "replicas": 0 } }),
+        )
+        .await
+        .inspect_err(|e| {
+            tracing::error!(
+                target: Action::Market.target(),
+                "stopping the backup server of lapsed order {order_id}: {e}",
+            );
+        })
+        .is_ok();
         if stopped {
             match market.drop_door(order_id).await {
                 Ok(()) => tracing::info!(
@@ -765,52 +772,46 @@ async fn probe(
     // failed request says anything about the volume.
     let url = format!(
         "{}/apis/apps/v1/namespaces/{}/deployments/{name}",
-        kube.api,
-        volume.namespace,
+        kube.api, volume.namespace,
     );
-    let deployment: serde_json::Value = match kube
-        .client
-        .get(&url)
-        .bearer_auth(&kube.token)
-        .send()
-        .await
-    {
-        Ok(response) if response.status() == reqwest::StatusCode::NOT_FOUND => {
-            // A Service without its Deployment: make the Deployment and wait.
-            if let Err(e) = start_server(kube, image, volume, password).await {
-                tracing::error!(
-                    target: Action::Market.target(),
-                    "starting the backup server of order {order_id}: {e}",
-                );
+    let deployment: serde_json::Value =
+        match kube.client.get(&url).bearer_auth(&kube.token).send().await {
+            Ok(response) if response.status() == reqwest::StatusCode::NOT_FOUND => {
+                // A Service without its Deployment: make the Deployment and wait.
+                if let Err(e) = start_server(kube, image, volume, password).await {
+                    tracing::error!(
+                        target: Action::Market.target(),
+                        "starting the backup server of order {order_id}: {e}",
+                    );
+                }
+                return Probe::Starting;
             }
-            return Probe::Starting;
-        }
-        Ok(response) if response.status().is_success() => match response.json().await {
-            Ok(d) => d,
-            Err(e) => {
+            Ok(response) if response.status().is_success() => match response.json().await {
+                Ok(d) => d,
+                Err(e) => {
+                    tracing::error!(
+                        target: Action::Market.target(),
+                        "reading the backup server of order {order_id}: {e}",
+                    );
+                    return Probe::Starting;
+                }
+            },
+            Ok(response) => {
                 tracing::error!(
                     target: Action::Market.target(),
-                    "reading the backup server of order {order_id}: {e}",
+                    "checking the backup server of order {order_id}: GET {url} -> {}",
+                    response.status(),
                 );
                 return Probe::Starting;
             }
-        },
-        Ok(response) => {
-            tracing::error!(
-                target: Action::Market.target(),
-                "checking the backup server of order {order_id}: GET {url} -> {}",
-                response.status(),
-            );
-            return Probe::Starting;
-        }
-        Err(e) => {
-            tracing::error!(
-                target: Action::Market.target(),
-                "checking the backup server of order {order_id}: {e}",
-            );
-            return Probe::Starting;
-        }
-    };
+            Err(e) => {
+                tracing::error!(
+                    target: Action::Market.target(),
+                    "checking the backup server of order {order_id}: {e}",
+                );
+                return Probe::Starting;
+            }
+        };
     let ready = deployment["status"]["readyReplicas"].as_u64().unwrap_or(0);
     if ready == 0 {
         return Probe::Starting;

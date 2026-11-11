@@ -3031,7 +3031,11 @@ async fn kube_create(
 
 /// PATCH `body` (a strategic merge patch) to `url`; `200` and `404` are
 /// success — there is nothing to patch when the object is already gone.
-async fn kube_patch(kube: &KubeAccess, url: &str, body: &serde_json::Value) -> Result<(), ApiError> {
+async fn kube_patch(
+    kube: &KubeAccess,
+    url: &str,
+    body: &serde_json::Value,
+) -> Result<(), ApiError> {
     let response = kube
         .client
         .patch(url)

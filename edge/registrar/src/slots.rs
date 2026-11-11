@@ -313,14 +313,14 @@ pub fn refund_volume_down(state: &mut MarketState, now: u64, limit: u64) -> Vec<
             continue;
         };
         if *refund >= o.amount {
+            advance(o, EscrowStep::Refund, Some(RefundReason::VolumeDown), None);
+        } else {
             advance(
                 o,
-                EscrowStep::Refund,
+                EscrowStep::Split,
                 Some(RefundReason::VolumeDown),
-                None,
+                Some(*refund),
             );
-        } else {
-            advance(o, EscrowStep::Split, Some(RefundReason::VolumeDown), Some(*refund));
         }
         o.expires_at = Some(now);
     }
@@ -867,11 +867,8 @@ mod tests {
     fn probe_volumes(state: &mut MarketState, from: u64, to: u64, step: u64, up: bool) {
         let mut t = from;
         while t <= to {
-            let ids: BTreeMap<String, bool> = state
-                .orders
-                .keys()
-                .map(|id| (id.clone(), up))
-                .collect();
+            let ids: BTreeMap<String, bool> =
+                state.orders.keys().map(|id| (id.clone(), up)).collect();
             observe_volumes(state, &ids, t, true, 600);
             t += step;
         }
@@ -899,7 +896,10 @@ mod tests {
         assert!(refund > 0 && refund < 1_000, "{refund}");
         let o = &state.orders["a"];
         assert_eq!(step_of(o), Some(EscrowStep::Split));
-        assert_eq!(o.escrow.as_ref().unwrap().reason, Some(RefundReason::VolumeDown));
+        assert_eq!(
+            o.escrow.as_ref().unwrap().reason,
+            Some(RefundReason::VolumeDown)
+        );
         assert_eq!(o.escrow.as_ref().unwrap().refund, Some(refund));
     }
 
@@ -916,7 +916,10 @@ mod tests {
         );
         let o = &state.orders["a"];
         assert_eq!(step_of(o), Some(EscrowStep::Refund));
-        assert_eq!(o.escrow.as_ref().unwrap().reason, Some(RefundReason::VolumeDown));
+        assert_eq!(
+            o.escrow.as_ref().unwrap().reason,
+            Some(RefundReason::VolumeDown)
+        );
         // The slot is over, so the units return to the listing.
         assert!(!running(o, PAID + 2 * DAY + 600));
     }
@@ -1002,11 +1005,10 @@ mod tests {
         // anything for a silent volume; the lapsed one, the one with no
         // claim yet, the already-refunded one and a compute order are not
         // watched.
-        let refunded_ids: Vec<String> =
-            refund_volume_down(&mut state, PAID + 2 * DAY + 600, DAY)
-                .into_iter()
-                .map(|(id, _)| id)
-                .collect();
+        let refunded_ids: Vec<String> = refund_volume_down(&mut state, PAID + 2 * DAY + 600, DAY)
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
         assert_eq!(refunded_ids, vec!["live".to_string()]);
         // The watch drops with the order's life: nothing is kept for the
         // lapsed order.

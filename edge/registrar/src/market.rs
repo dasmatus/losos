@@ -1450,12 +1450,7 @@ pub fn door_hash_ok(hash: &str) -> bool {
 /// (`server/storage.rs`). The claim and the data behind it stay until the
 /// operator removes them.
 #[must_use]
-pub fn door_volume(
-    state: &MarketState,
-    order_id: &str,
-    hash: &str,
-    now: u64,
-) -> Option<OpenDoor> {
+pub fn door_volume(state: &MarketState, order_id: &str, hash: &str, now: u64) -> Option<OpenDoor> {
     use subtle::ConstantTimeEq;
     let door = state.doors.get(order_id)?;
     if door.key.is_empty() {
@@ -6778,7 +6773,10 @@ mod tests {
         market.set_door("ord_a", "b", &key).await.unwrap();
         let watched = market.watched_volumes().await;
         assert_eq!(
-            watched.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
+            watched
+                .iter()
+                .map(|(id, _)| id.as_str())
+                .collect::<Vec<_>>(),
             ["ord_a"]
         );
         assert_eq!(watched[0].1.pvc, "ord-a");
@@ -6787,15 +6785,20 @@ mod tests {
 
         // A lapsed order with a door record is not watched, but is owed a
         // teardown; dropping it clears that.
-        market
-            .state
-            .lock()
-            .await
-            .state
-            .doors
-            .insert("ord_old".into(), Door { key: key.clone(), upstream: "cd".repeat(32) });
+        market.state.lock().await.state.doors.insert(
+            "ord_old".into(),
+            Door {
+                key: key.clone(),
+                upstream: "cd".repeat(32),
+            },
+        );
         assert_eq!(
-            market.watched_volumes().await.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
+            market
+                .watched_volumes()
+                .await
+                .iter()
+                .map(|(id, _)| id.as_str())
+                .collect::<Vec<_>>(),
             ["ord_a"],
             "the lapsed order is not watched, the live keyed one is"
         );
