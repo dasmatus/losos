@@ -954,6 +954,12 @@ async function open({
   // then on GET /api/me without the key is Matus by the session.
   login = false,
 }: OpenOptions) {
+  // Signed-in admin shots need a valid /api/me so the top bar renders the
+  // person menu (loadMe rejects an empty `{}` stub). Default to the owner
+  // account unless the shot drives its own login/session or auth state.
+  if (me === null && !login && signedIn && claimed) {
+    me = ME_OWNER;
+  }
   const page = await browser.newPage({
     viewport,
     locale,
