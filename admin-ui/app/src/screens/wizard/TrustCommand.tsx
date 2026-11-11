@@ -1,10 +1,9 @@
 /* The quick way through step 1: one line, pasted into a terminal.
  *
  * The box renders two installers from its certificate (modules/setup.nix,
- * from modules/setup/trust.{ts,ps1}) and serves them next to it. This panel
+ * from modules/setup/trust.{sh,ps1}) and serves them next to it. This panel
  * builds the line that fetches the right one for the computer the owner is
- * sitting at and pipes it into its runtime — node for the TypeScript one,
- * iex for PowerShell — and makes the case for running it.
+ * sitting at and pipes it into its shell, and makes the case for running it.
  *
  * The case has to be made honestly, because "paste this into a terminal" is
  * exactly what every security page tells people never to do. So the panel
@@ -63,7 +62,7 @@ export function commandFor(
   const base = boxBase(address);
   return platform === "windows"
     ? `irm ${base}${install.ps1} | iex`
-    : `curl -fsSL ${base}${install.node} | node`;
+    : `curl -fsSL ${base}${install.sh} | sh`;
 }
 
 export function TrustCommand({
@@ -84,7 +83,7 @@ export function TrustCommand({
 
   const command = commandFor(platform, install, address);
   const scriptUrl =
-    boxBase(address) + (platform === "windows" ? install.ps1 : install.node);
+    boxBase(address) + (platform === "windows" ? install.ps1 : install.sh);
 
   // The outcome is a toast, not a label swap on the button: the button keeps
   // saying what it does, and the stack says what just happened.

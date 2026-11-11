@@ -1776,7 +1776,7 @@ mod tests {
         out
     }
 
-    /// A receipt written by `edge/contracts/test-payment.ts` after a real `pay`
+    /// A receipt written by `edge/contracts/test-payment.sh` after a real `pay`
     /// on anvil. Unset, the test does nothing, so `cargo test` stays offline.
     /// The script sets `LOSOS_ANVIL_RECEIPT` and fails if this does not pass.
     #[test]
@@ -1876,7 +1876,7 @@ mod tests {
         );
     }
 
-    /// A USDC transfer to the treasury made by `edge/contracts/test-payment.ts`
+    /// A USDC transfer to the treasury made by `edge/contracts/test-payment.sh`
     /// on anvil, as `transfer` puts it on chain. Unset, the test does
     /// nothing, so `cargo test` stays offline.
     #[test]

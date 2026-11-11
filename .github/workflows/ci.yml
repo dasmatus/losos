@@ -129,7 +129,7 @@ jobs:
     name: "pins: flake.lock = devenv.yaml = devenv.lock"
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    # nix/check-pins.ts, as devenv.nix's `check-pins` and the pre-commit hook
+    # nix/check-pins.sh, as devenv.nix's `check-pins` and the pre-commit hook
     # run it, and this is the gate CI did not have:
     # flake.lock pins the nixpkgs that builds the appliance, devenv.yaml and
     # devenv.lock the one that lints and tests it, and nothing but this
@@ -141,7 +141,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-      - run: bun nix/check-pins.ts
+      - run: bash nix/check-pins.sh
 
   # The release channels' bot (.github/workflows/channels.yml) against a fake
   # GitHub over a real repository: cuts, a hotfix's cherry-pick and upload,
@@ -160,7 +160,7 @@ jobs:
   # ── Which jobs a change needs ───────────────────────────────────────────────
   #
   # A pull request runs only the lanes its files reach:
-  # .github/scripts/ci-changes.ts maps paths to lanes (rust, wasm, solana,
+  # .github/scripts/ci-changes.sh maps paths to lanes (rust, wasm, solana,
   # evm, eval, ctl, ui, tui, images, mail, iso, install, discovery) and each job
   # below waits on its lane. A handbook page builds the handbook and nothing
   # else; a Rust file skips the ISO; docs/ and screenshots run nothing but
@@ -208,8 +208,8 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          pick=.github/scripts/ci-changes.ts
-          full() { bun "$pick" --full "$1" | tee -a "$GITHUB_OUTPUT"; exit 0; }
+          pick=.github/scripts/ci-changes.sh
+          full() { "$pick" --full "$1" | tee -a "$GITHUB_OUTPUT"; exit 0; }
           [ "$EVENT" = pull_request ] || full "a $EVENT run checks everything"
           # Anything that cannot be read runs everything rather than nothing.
           labels=$(gh api "repos/$REPO/pulls/$PR" --jq '.labels[].name') \
@@ -225,7 +225,7 @@ jobs:
           if [ "$(wc -l <<<"$files")" -ge 3000 ]; then
             full "the pull request changes more files than GitHub lists"
           fi
-          bun "$pick" <<<"$files" | tee -a "$GITHUB_OUTPUT"
+          "$pick" <<<"$files" | tee -a "$GITHUB_OUTPUT"
 
   clippy:
     name: "rust: clippy (+ rustfmt on PRs)"
@@ -304,7 +304,7 @@ jobs:
         run: nix develop .#ci -c bash -euo pipefail -c 'sccache --show-stats; ccache --show-stats'
 
   clippy-wasm:
-    name: "rust: clippy lososd's plugins, losos-mdx, the Lab canvas and the TUI build for wasm32"
+    name: "rust: clippy lososd's plugins, losos-mdx and the Lab canvas for wasm32"
     needs: [changes]
     if: ${{ needs.changes.outputs.wasm == 'true' }}
     runs-on: ubuntu-latest
@@ -314,10 +314,8 @@ jobs:
     # src/app or src/web.rs. This lints both builds the page loads, WebGL2
     # and WebGPU, one after the other, and removes the target directory in
     # between: each is several gigabytes of Bevy and they share none of it.
-    # Then admin-ui/tui, whose wasm32 build is the browser bundle nix's
-    # losos-tui-wasm packages (the crate's own window is wasm32-only: the
-    # target table in Cargo.toml switches the sources over). Same toolchain
-    # as the clippy job; nixpkgs' rustc carries the wasm32 standard library.
+    # Same toolchain as the clippy job; nixpkgs' rustc carries the wasm32
+    # standard library.
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
@@ -336,9 +334,6 @@ jobs:
                 --no-default-features --features $backend -- -D warnings
               cargo clean --manifest-path admin-ui/lab/render/Cargo.toml
             done
-            echo "── admin-ui/tui (wasm32)"
-            cargo clippy --manifest-path admin-ui/tui/Cargo.toml \
-              --target wasm32-unknown-unknown --all-targets -- -D warnings
           '
 
   test:
@@ -461,7 +456,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     # devenv.nix's test-evm-escrow. Foundry's suite for LososEscrow, then
-    # edge/contracts/test-payment.ts on anvil: a deposit paid, matched and
+    # edge/contracts/test-payment.sh on anvil: a deposit paid, matched and
     # released by the registrar's own signer, a coin fee, and a tap topped
     # up, settled within its cap and closed by the edge key.
     steps:
@@ -478,7 +473,7 @@ jobs:
       - name: forge suite and the anvil payment run
         run: |
           nix develop .#ci -c nix shell --inputs-from . nixpkgs#foundry nixpkgs#nodejs nixpkgs#bun nixpkgs#jq \
-            -c bun edge/contracts/test-payment.ts
+            -c bash edge/contracts/test-payment.sh
 
   eval:
     name: "nix: flake check + module merge + ISO derivation"
@@ -489,20 +484,20 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # nix/check-flake.ts evaluates this checkout through builtins.getFlake;
+          # nix/check-flake.sh evaluates this checkout through builtins.getFlake;
           # Nix needs the Git history to compute self.revCount. A depth-1 checkout
           # fails before any NixOS configuration can be evaluated.
           fetch-depth: 0
       - uses: ./.github/actions/setup-nix
-      # lint-nix.ts and check-flake.ts are Bun. Steps run on a fresh runner, so
-      # this job installs it itself.
+      # lint-nix.sh and check-flake.sh are Bun. The pins job already installs
+      # it; this job calls the same shims and does not.
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
       # Mirrors devenv.nix's `lint-nix` and the git hooks: nixfmt, deadnix
       # and statix over every tracked .nix file. Without it the tree drifted
       # until the hooks refused every commit that touched an unformatted file.
-      - run: bun nix/lint-nix.ts
+      - run: bash nix/lint-nix.sh
       # Mirrors devenv.nix's `check-flake`. Evaluates every output — every VM
       # test derivation, every nixosConfiguration and every package, the three
       # OCI images among them; builds nothing. Which is the limit of it: an
@@ -511,8 +506,8 @@ jobs:
       # check --no-build` checks, one `nix eval` per derivation: flake check
       # holds every VM test's evaluation in one process, which outgrew the
       # runner's memory and got the runner shut down mid-check with no error
-      # printed. nix/check-flake.ts says what it covers.
-      - run: bun nix/check-flake.ts
+      # printed. nix/check-flake.sh says what it covers.
+      - run: bash nix/check-flake.sh
       # Mirrors devenv.nix's `check-eval`, and this is the gate the repo lacked
       # entirely: `flake check` only forces each nixosConfiguration's toplevel
       # *derivation*, so an option conflict, a type error or a failed assertion
@@ -545,11 +540,7 @@ jobs:
         || needs.changes.outputs.iso == 'true'
         || needs.changes.outputs.discovery == 'true') }}
     runs-on: ubuntu-latest
-    # 75, not 45: the Rust+TS-only move (f7e9c89a) grew the compile past the
-    # old budget — a run spent its last minute mid "build losos-ctl" and GH
-    # recorded the timeout as a cancelled job, which the result gate reads
-    # as a failure. The comment below asked for the re-time; this is it.
-    timeout-minutes: 75
+    timeout-minutes: 45
     permissions:
       contents: read
       issues: write
@@ -603,11 +594,8 @@ jobs:
     # losos-admin-ui builds losos-lab-render, Bevy for wasm32 twice, which
     # alone takes about 20 minutes from an empty cache. With the calls
     # browser checks the job took about 41 minutes on a warm run and hit 60
-    # on a slow runner. It has since outgrown 90 too: the run of
-    # 2026-11-10 12:06 was cancelled mid "build the Playwright check" at
-    # 90:17 — the same recorded-as-cancelled timeout the lososd job's
-    # budget got raised for — so 120 is the re-time.
-    timeout-minutes: 120
+    # on a slow runner.
+    timeout-minutes: 90
     permissions:
       contents: read
       issues: write
@@ -615,10 +603,9 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
       # Compiles only; the registrar's tests run in the test job.
-      # losos-admin-ui is an Expo build: node_modules from the committed
-      # bun.lock (nix/bun-deps.nix), then `tsc --noEmit` twice and
-      # `expo export --platform web` (Metro, src/app). So this step is also
-      # the typecheck gate for admin-ui/app, and the one place in
+      # losos-admin-ui is a Bun build: node_modules from the committed bun.lock
+      # (nix/bun-deps.nix), then `tsc --noEmit` and Bun's bundler (build.ts). So this
+      # step is also the typecheck gate for admin-ui/app, and the one place in
       # CI that proves the dependency fetch still resolves. losos-handbook is
       # the same shape: its bun.lock, then `docusaurus build` of handbook/, rooted at
       # /handbook/ for the box (the public site is handbook.yml's build of the
@@ -633,22 +620,6 @@ jobs:
         run: |
           set -o pipefail
           nix build .#losos-registrar .#losos-admin-ui .#losos-handbook .#losos-lab-virt -L 2>&1 | tee "$RUNNER_TEMP/nix-build.log"
-      - name: typecheck the admin UI's mobile tree
-        run: |
-          set -o pipefail
-          nix develop .#ci -c bash -euo pipefail -c '
-            # admin-ui/app'"'"'s own tsc — one tsconfig now covers both targets,
-            # the SPA'"'"'s DOM tree and the mobile shell'"'"'s react-native one. The
-            # native builds are Expo SDK 54'"'"'s dev-client flow (CNG output is
-            # not committed), so this is what the ui lane runs for them.
-            cd admin-ui/app
-            bun install --frozen-lockfile --ignore-scripts 2>&1 | tail -2
-            # tsc resolves the gitignored lab/mdx wasm pkg dirs (nix and
-            # labPkg supply the real ones; the throwaway check gets pure
-            # declaration stubs — no wasm-bindgen in the lean #ci shell).
-            bun ../../.github/scripts/write-lab-stubs.ts
-            bun run typecheck
-          '
       - name: file an issue for the failed nix build
         if: failure() && steps.build-registrar-ui.outcome == 'failure'
         uses: ./.github/actions/nix-build-failure
@@ -728,203 +699,6 @@ jobs:
           # from source instead, quietly, which is the exact failure this
           # export exists to prevent.
           include-hidden-files: true
-
-  # ── Expo Application Services: the development client, both phone targets ─
-  #
-  # The phone targets' sign-and-test artefacts, on Expo's cloud
-  # (docs/develop/development-builds, buildenv=build-with-expo-services), not
-  # a nix product: the ui lane above ships the web target's static export,
-  # and this one builds the dev client (`expo-dev-client` is in admin-ui/
-  # app's deps) for Android and iOS in one EAS submission —
-  # `--platform all` over eas.json's development profile. `--no-wait` leaves
-  # the cloud-side build logs on the expo.dev dashboard, this job green the
-  # moment the two submissions take. EXPO_TOKEN is the owner's API token: a
-  # fork's pull request and a repo that has not set it yet get the notice
-  # and a clean skip — the ISO signing job's guard is the pattern (`is not
-  # available here (fork or missing secret)`) — because the credential
-  # belongs to the user, not the tree (eas.json's comment says the same).
-  expo-eas:
-    name: "expo: EAS development client for android and ios (cloud)"
-    needs: [changes]
-    if: ${{ needs.changes.outputs.ui == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
-      - name: skip cleanly when the token is not here
-        id: token
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: |
-          if [ -z "$EXPO_TOKEN" ]; then
-            echo "::notice::EXPO_TOKEN is not available here (fork or missing secret): the EAS development build is skipped until the token lands"
-            echo "eas=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          echo "eas=true" >> "$GITHUB_OUTPUT"
-      - name: the repo's node_modules, the expo-dev-client included
-        if: steps.token.outputs.eas == 'true'
-        run: |
-          cd admin-ui/app
-          bun install --frozen-lockfile --ignore-scripts 2>&1 | tail -2
-      # Quota, not the tree: a submission can die past upload with "This
-      # account has used its Android builds from the Free plan this
-      # month" (the plan's monthly allowance, or the credits meter) — the
-      # CLI then exits with a bare "Error: build command failed." That is
-      # the missing-token case's class — the cloud cannot build right
-      # now, through no fault of the tree — so it ends green with a loud
-      # warning; any other submission failure stays red.
-      - name: eas build (both phone targets, one submission)
-        if: steps.token.outputs.eas == 'true'
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: |
-          cd admin-ui/app
-          if ! out=$(npx eas-cli@latest build --platform all --profile development \
-              --non-interactive --no-wait 2>&1); then
-            printf '%s\n' "$out" | tail -30
-            if printf '%s' "$out" | grep -qiE "free plan this month|build credits|upgrade (your|the) plan|quota|billing"; then
-              echo "::warning::EAS turned the submission away on the account's plan: the Free-plan build allowance is exhausted (resets monthly; 'eas billing:subscribe starter' upgrades). The job is green because nothing in-tree can change this — the expo.dev dashboard keeps every cloud build's own log, and the next successful window builds with eas.json's bun pin."
-              exit 0
-            fi
-            echo "::error::eas build submission failed — the CLI's output is above; this is not a plan-quota rejection."
-            exit 1
-          fi
-
-  # ── Expo development clients, built here, published as artifacts ───────────
-  #
-  # The EAS job above submits to Expo's cloud, whose Free-plan allowance can
-  # be exhausted (it is, this month); these two build the very same dev
-  # clients on GitHub's runners instead — prebuild + gradle / xcodebuild, no
-  # EAS at all — and upload the installables as artifacts, so a dev client
-  # exists regardless of the account's billing. The same CNG flow the docs'
-  # local route uses (npx expo run:ios / run:android minus the device): a
-  # debug APK installs beside the launcher on a phone, and the simulator
-  # .app (zipped) is what `npx expo start` serves its JS to. Neither embeds
-  # a JS bundle: the dev client loads it from the dev server, so no metro
-  # run and no generated wasm packages are needed here — the artifacts are
-  # the shells, and `bun install --frozen-lockfile` proves the tree still
-  # resolves for the phone targets. The result gate does not depend on
-  # these (same as expo-eas): a first build of this shape is allowed to
-  # fail without blocking every ui change.
-  expo-apk:
-    name: "expo: Android dev client APK (artifact)"
-    needs: [changes]
-    if: ${{ needs.changes.outputs.ui == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 75
-    steps:
-      - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version-file: admin-ui/app/package.json
-      - name: the workspace (the lockfile's tree, dev client included)
-        working-directory: admin-ui/app
-        run: bun install --frozen-lockfile --ignore-scripts
-      # CNG: the android/ project is generated, never committed (the
-      # config's own header says so), and autolinks the native modules.
-      - name: prebuild android
-        working-directory: admin-ui/app
-        run: bunx expo prebuild --platform android --no-install
-      # Java comes after the prebuild: setup-java's gradle cache resolves
-      # against the generated gradle files, which exist only past it.
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: 17
-          cache: gradle
-      - name: gradle assembleDebug (the phone's debug APK)
-        working-directory: admin-ui/app/android
-        run: ./gradlew assembleDebug --no-daemon
-      - uses: actions/upload-artifact@v7
-        with:
-          name: losos-dev-client-android
-          path: admin-ui/app/android/app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-          retention-days: 14
-
-  expo-ios-sim:
-    name: "expo: iOS dev client for the simulator (artifact)"
-    needs: [changes]
-    if: ${{ needs.changes.outputs.ui == 'true' }}
-    # macos-15, not latest: the migrated image carries only Xcode 26, whose
-    # clang cannot compile RN 0.81's fmt (the Xcode 16 step below names the
-    # error); the 15 image keeps a 16.x around for DEVELOPER_DIR to pick.
-    runs-on: macos-15
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version-file: admin-ui/app/package.json
-      - name: the workspace (the lockfile's tree, dev client included)
-        working-directory: admin-ui/app
-        run: bun install --frozen-lockfile --ignore-scripts
-      # React Native 0.81's fmt (React-Folly's bundled copy) cannot compile
-      # under Xcode 26's clang — every FMT_COMPILE_STRING consteval call in
-      # Pods/fmt/format-inl.h dies before one app file builds (the run of
-      # 2026-11-10 10:57). RN 0.81's supported toolchain is Xcode 16, so
-      # pods and xcodebuild both run under the newest 16.x the image has.
-      - name: pick Xcode 16 (RN 0.81's supported clang)
-        run: |
-          xcode16=$(ls -d -- /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -1)
-          [ -n "$xcode16" ] || {
-            echo "::error::no Xcode 16 on this runner image — RN 0.81's fmt does not compile under Xcode 26; pin a macos-15 runner (or the RN bump that carries a newer fmt) before this lane can build"
-            exit 1
-          }
-          echo "DEVELOPER_DIR=$xcode16/Contents/Developer" >> "$GITHUB_ENV"
-          echo "building with $(xcodebuild -version 2>/dev/null || DEVELOPER_DIR=$xcode16/Contents/Developer xcodebuild -version)"
-      - name: prebuild ios (cocoapods run by prebuild)
-        working-directory: admin-ui/app
-        run: bunx expo prebuild --platform ios --no-install
-      - name: pod install
-        working-directory: admin-ui/app/ios
-        run: pod install
-      # The simulator needs no Apple signing (the eas.json comment carries
-      # the same reasoning for the EAS side); CODE_SIGNING_ALLOWED=NO keeps
-      # xcodebuild from asking for an identity on a keyless runner.
-      - name: xcodebuild for the simulator
-        working-directory: admin-ui/app/ios
-        run: |
-          # ls -d, not ls: on a single match plain ls lists the workspace's
-          # *contents*, and the run of 2026-11-10 10:33 handed xcodebuild
-          # '-workspace contents.xcworkspacedata' for its trouble.
-          workspace=$(ls -d -- *.xcworkspace | head -1)
-          echo "workspace: $workspace"
-          listout=$(xcodebuild -list -json -workspace "$workspace")
-          printf '%s\n' "$listout"
-          # The -list JSON nests under .workspace (not .project), and the
-          # app's own scheme is named like the workspace — the only way to
-          # stand out from the sea of per-pod schemes (AsyncStorage, boost,
-          # RCT-Folly, …) pod install generates alongside Pods-*.
-          scheme=$(jq -r '.workspace as $w |
-            ($w.schemes | map(select(. == $w.name))[0])
-            // ($w.schemes | map(select(test("^Pods-") | not))[0])' <<<"$listout")
-          [ -n "$scheme" ] || { echo "::error::no app scheme in $workspace — the -list output is above"; exit 1; }
-          echo "scheme: $scheme"
-          # The simulator needs no Apple signing; CODE_SIGNING_ALLOWED=NO
-          # keeps xcodebuild from asking for an identity on a keyless runner.
-          CODE_SIGNING_ALLOWED=NO xcodebuild \
-            -workspace "$workspace" \
-            -scheme "$scheme" \
-            -configuration Debug \
-            -sdk iphonesimulator \
-            -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath build \
-            build
-      - name: zip the .app for the artifact
-        working-directory: admin-ui/app/ios/build/Build/Products/Debug-iphonesimulator
-        run: |
-          app=$(ls -d *.app | head -1)
-          echo "app: $app"
-          zip -r -y "$RUNNER_TEMP/losos-dev-client-ios-simulator.zip" "$app"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: losos-dev-client-ios-simulator
-          path: ${{ runner.temp }}/losos-dev-client-ios-simulator.zip
-          if-no-files-found: error
-          retention-days: 14
 
   images:
     name: "nix: OCI images for the local cluster"
@@ -1064,14 +838,14 @@ jobs:
       # The same paths as a static file cache, for the copy the GitHub Pages
       # site serves at /proxy when the LosOS proxy does not answer. The
       # handbook workflow picks up the newest of these from main and deploys
-      # it with the handbook; see .github/scripts/pages-cache.ts for what it
+      # it with the handbook; see .github/scripts/pages-cache.sh for what it
       # holds and leaves out.
       - name: static copy of the cache for GitHub Pages
         if: github.ref == 'refs/heads/main'
         env:
           SIGNING_KEY: ${{ secrets.NIX_CACHE_SIGNING_KEY }}
         run: >-
-          bun .github/scripts/pages-cache.ts pages-cache
+          .github/scripts/pages-cache.sh pages-cache
           .#losos-ctl .#losos-registrar .#losos-admin-ui .#losos-handbook
           .#losos-basic-classes .#losos-image-pause
       - uses: actions/upload-artifact@v7
@@ -1100,7 +874,7 @@ jobs:
   # ── losos, the terminal client (admin-ui/tui) ──────────────────────────────
   #
   # The crate's clippy, rustfmt and suite run with the other crates above.
-  # This job builds the binary `node install.mjs` installs: the crate linked
+  # This job builds the binary `curl … | sh` installs: the crate linked
   # statically against musl, so it runs on any x86_64 Linux without a Nix
   # store. Then the pseudo-terminal test (tests/terminal.rs) drives that very
   # binary against the mock box: raw-mode keys on the login screen, the
@@ -1158,13 +932,7 @@ jobs:
       - name: stage the files the proxy serves
         run: |
           mkdir tui-out
-          cp -L result-tui/bin/losos tui-out/
-          # install.ts → install.mjs: the artifact end users run with plain
-          # node on machines with no Nix, no Bun and no node_modules (the
-          # file's own header says why it ships as a bundle). No compression
-          # and no other processing: what lands in the zip is what node
-          # executes, and SHA256SUMS sums it alongside the binaries below.
-          nix develop .#ci -c bun build --target=node --outfile=tui-out/install.mjs admin-ui/tui/install.ts
+          cp -L result-tui/bin/losos admin-ui/tui/install.sh tui-out/
       - uses: actions/upload-artifact@v7
         with:
           name: losos-tui
@@ -1188,7 +956,7 @@ jobs:
           name: losos-registrar-dev-machine
           path: dev-machine
       # The terminal client and its installer, beside it in the same
-      # artifact: `node install.mjs` out of the unzipped losos-pages-updates.
+      # artifact: `sh install.sh` out of the unzipped losos-pages-updates.
       - uses: actions/download-artifact@v8
         with:
           name: losos-tui
@@ -1218,7 +986,7 @@ jobs:
           fi
           cd dev-machine
           chmod 0755 losos-registrar losos
-          sha256sum losos-registrar losos install.mjs > SHA256SUMS
+          sha256sum losos-registrar losos install.sh > SHA256SUMS
           cat SHA256SUMS
           repository="ghcr.io/${REPO,,}/images"
           trap 'oras logout ghcr.io || true' EXIT
@@ -1230,7 +998,7 @@ jobs:
             --annotation "org.opencontainers.image.version=${channel}" \
             losos-registrar:application/octet-stream \
             losos:application/octet-stream \
-            install.mjs:text/javascript \
+            install.sh:text/x-shellscript \
             SHA256SUMS:text/plain
           case "$REF" in
             refs/tags/*) oras tag "${repository}:${channel}-x86_64" stable-x86_64 ;;
@@ -1241,7 +1009,7 @@ jobs:
             echo "- \`${repository}:${channel}-x86_64\`"
             if [ -n "$PROXY_URL" ]; then
               echo "- ${PROXY_URL}/updates/${channel}/x86_64/losos-registrar"
-              echo "- ${PROXY_URL}/updates/${channel}/x86_64/install.mjs"
+              echo "- ${PROXY_URL}/updates/${channel}/x86_64/install.sh"
             fi
             echo "- https://nightly.link/${REPO}/workflows/ci/${REF_NAME}/losos-pages-updates.zip (once this run is green)"
             echo "- $(cat SHA256SUMS)"
@@ -2111,7 +1879,7 @@ jobs:
           cert=nix/keys/secure-boot-db.pem
           [ -f "$cert" ] || cert=keys/secure-boot-db.pem
           if ! grep -q '^-----BEGIN CERTIFICATE-----' "$cert"; then
-            unsigned no-certificate "${cert} carries no certificate: this release is unsigned (run docs/provisioning/secure-boot/keygen.ts)"
+            unsigned no-certificate "${cert} carries no certificate: this release is unsigned (run docs/provisioning/secure-boot/keygen.sh)"
             exit 0
           fi
           if [ -z "$SECURE_BOOT_DB_KEY" ]; then

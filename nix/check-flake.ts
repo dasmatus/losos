@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 // check-flake: evaluate every flake output, one `nix eval` per derivation.
+// Shim target for nix/check-flake.sh.
 import { mkdtempSync, readdirSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
@@ -100,7 +101,7 @@ for (const output of outputs) {
       );
     }
   } else {
-    writeFileSync(join(logs, `${output}.log`), `no check for the output '${output}'; add one to nix/check-flake.ts\n`);
+    writeFileSync(join(logs, `${output}.log`), `no check for the output '${output}'; add one to nix/check-flake.sh\n`);
     writeFileSync(join(logs, `${output}.failed`), "");
   }
 }

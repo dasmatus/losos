@@ -35,7 +35,7 @@ trusted names, so it answers on whichever address a request arrived on.
 box generates itself, valid for two years. Plain HTTP on :80 stays open.
 Browsers do not trust the certificate until you install it. The first-run
 wizard offers a one-line installer for macOS, Linux and Windows
-(`/setup/trust.ts`, `/setup/trust.ps1`, both LAN-only) and the plain download
+(`/setup/trust.sh`, `/setup/trust.ps1`, both LAN-only) and the plain download
 (`/setup/losos-ca.crt`). See [Install in depth](install.md).
 
 ## Look

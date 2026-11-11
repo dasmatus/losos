@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 // Pay a real USDC deposit into LososEscrow on a local chain (anvil), etc.
+// Shim target for test-payment.sh. Preserves behavior.
 import { existsSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
 import { dirname, join } from "node:path";

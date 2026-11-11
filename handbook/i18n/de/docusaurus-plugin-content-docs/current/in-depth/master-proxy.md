@@ -234,7 +234,7 @@ ausschließlich per mDNS.
   Broadcast-Domäne teilen (ein VLAN).
 :::
 
-`nix/demo/edge-lan/run.ts` baut diese ganze Anordnung auf einem Rechner als VMs
+`nix/demo/edge-lan/run.sh` baut diese ganze Anordnung auf einem Rechner als VMs
 an einem virtuellen Switch auf: die Edge, die zugleich der Router des LAN
 ist, und zwei vom ISO installierte Boxen. Es arbeitet die
 Verifikations-Checkliste ab (`nix/demo/edge-lan/CHECKLIST.md`). Ohne Edge

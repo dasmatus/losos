@@ -420,7 +420,7 @@ mod tests {
     const KEY: &str = "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 
     /// A held deposit on a local chain, released by the edge's own signer:
-    /// `edge/contracts/test-payment.ts` writes the file and runs this. A node
+    /// `edge/contracts/test-payment.sh` writes the file and runs this. A node
     /// that takes the transaction and an escrow that then reads `Released`
     /// is the proof the encoding and the signature are right.
     #[tokio::test]
@@ -514,7 +514,7 @@ mod tests {
         receipt.unwrap()
     }
 
-    /// `LOSOS_ANVIL_TAPS`, written by `edge/contracts/test-payment.ts`: a
+    /// `LOSOS_ANVIL_TAPS`, written by `edge/contracts/test-payment.sh`: a
     /// wallet topped up and opened one tap; the edge key settles it within
     /// the head start, is refused past the cap, and closes it.
     #[tokio::test]

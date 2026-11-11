@@ -107,7 +107,7 @@ nastavením ani k prihláseniu. **Zrušiť** token okamžite ukončí.
 ```sh
 curl -fsSLO https://nightly.link/dasmatus/losos/workflows/ci/main/losos-pages-updates.zip
 unzip -o losos-pages-updates.zip -d losos-pages-updates
-node losos-pages-updates/install.mjs
+sh losos-pages-updates/install.sh
 ```
 
 Zip je najnovšie zostavenie klienta z GitHubu LosOS, s programom, jeho

@@ -22,7 +22,7 @@ certificate first.
 The quick way is one line in a terminal, shown for the computer you are on:
 
 ```bash title="macOS and Linux"
-curl -fsSL http://<address>/setup/trust.ts | node
+curl -fsSL http://<address>/setup/trust.sh | sh
 ```
 
 ```powershell title="Windows (PowerShell)"

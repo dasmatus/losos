@@ -425,17 +425,13 @@ fn spawn_job(
     input: Vec<u8>,
 ) -> Result<(), Error> {
     let limit = plugin.manifest.limits.jobs;
-    // `fetch_update` is `try_update` on the newest clippy (a 2026 rename);
-    // the flake builds with whatever rustc nixpkgs ships (devenv.nix pins the
-    // policy, never a channel), so the old spelling is kept and the rename
-    // warning is silenced instead of splitting the toolchains.
-    #[allow(deprecated)]
-    let started = plugin
+    if plugin
         .jobs
         .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| {
             (n < limit).then_some(n + 1)
-        });
-    if started.is_err() {
+        })
+        .is_err()
+    {
         return Err(Error::Failed(format!(
             "{limit} jobs of this plugin are already running"
         )));

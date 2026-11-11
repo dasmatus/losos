@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Point this clone's git hooks at nix/hooks (pre-commit, commit-msg,
+# pre-push).
+#
+#   bash nix/hooks/install
+#
+# devenv's shell, `nix develop` and a Claude Code session in this repository
+# run it on entry; anyone else runs it once. It sets `core.hooksPath` in this
+# clone's config, which every worktree of the clone shares, and changes
+# nothing else. `git config --unset core.hooksPath` undoes it.
+set -eu
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+current=$(git config --get core.hooksPath || true)
+if [ "$current" != nix/hooks ]; then
+  git config core.hooksPath nix/hooks
+  echo "git hooks: nix/hooks (pre-commit, commit-msg, pre-push)"
+fi

@@ -131,10 +131,6 @@ const DISKS: Step = Step {
     todo: "Erase and encrypt the disks",
     doing: "Erasing and encrypting the disks",
 };
-const MESH: Step = Step {
-    todo: "Read the mesh's configuration",
-    doing: "Reading the mesh's configuration",
-};
 const SEAL: Step = Step {
     todo: "Seal the disk key to the TPM chip",
     doing: "Sealing the disk key to the TPM chip",
@@ -152,7 +148,6 @@ const FINISH: Step = Step {
 fn opens(action: &InstallAction) -> Option<Step> {
     match action {
         InstallAction::CloneFlake(..) => Some(DOWNLOAD),
-        InstallAction::LayProvision(..) => Some(MESH),
         InstallAction::RunDisko(_) | InstallAction::RunDiskoScript(_) => Some(DISKS),
         InstallAction::EnrollTpm(..) => Some(SEAL),
         InstallAction::RunNixosInstall(_) => Some(SYSTEM),

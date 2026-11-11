@@ -35,7 +35,7 @@ mien, takže odpovie na tej adrese, na ktorú požiadavka prišla.
 ktorý si zariadenie vygeneruje samo, s platnosťou dva roky. Obyčajné HTTP na
 :80 zostáva otvorené. Prehliadače certifikátu nedôverujú, kým ho
 nenainštalujete. Sprievodca prvým spustením ponúka jednoriadkový inštalátor
-pre macOS, Linux a Windows (`/setup/trust.ts`, `/setup/trust.ps1`, oba len z
+pre macOS, Linux a Windows (`/setup/trust.sh`, `/setup/trust.ps1`, oba len z
 LAN) a obyčajné stiahnutie (`/setup/losos-ca.crt`). Pozri [Inštalácia podrobne](/in-depth/install.md).
 
 ## Vzhľad {#look}

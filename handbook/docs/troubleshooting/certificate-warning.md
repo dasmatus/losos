@@ -30,7 +30,7 @@ still serves the same files, to the LAN only:
 <img src={require("../img/wizard-step1-trust.png").default} alt="The wizard's certificate step, where the one-line installers and the fingerprint are." width="520" />
 
 ```bash title="macOS and Linux"
-curl -fsSL http://<address>/setup/trust.ts | node
+curl -fsSL http://<address>/setup/trust.sh | sh
 ```
 
 ```powershell title="Windows (PowerShell)"

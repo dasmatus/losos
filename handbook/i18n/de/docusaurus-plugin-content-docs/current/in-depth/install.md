@@ -127,7 +127,7 @@ eigenen Zertifikat der Box zu vertrauen, damit der Rest der Einrichtung und
 jede spätere Anmeldung über HTTPS laufen und dein Browser einen Passkey
 anbieten kann. Der Schritt zeigt eine Zeile zum Einfügen in ein Terminal,
 passend zu dem Rechner, an dem du sitzt. Auf macOS und Linux ist das
-`curl -fsSL http://<address>/setup/trust.ts | node`, auf Windows
+`curl -fsSL http://<address>/setup/trust.sh | sh`, auf Windows
 `irm http://<address>/setup/trust.ps1 | iex`. Die Box selbst liefert das
 Skript als Klartext aus, öffne den Link also zuerst in einem Tab, um es
 zu lesen. Das Skript fügt das eine Zertifikat den Speichern hinzu, die deine

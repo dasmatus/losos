@@ -12,12 +12,11 @@ nimi edge, ako virtuálne stroje na súkromnej sieti, a prejde s vami tým, čo
 robia spolu:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/dasmatus/losos/main/nix/demo/box-edge-box/bootstrap.ts | bun run -
+curl -fsSL https://raw.githubusercontent.com/dasmatus/losos/main/nix/demo/box-edge-box/bootstrap.sh | sh
 ```
 
-Okrem [Bunu](https://bun.sh) a [Nixu](https://nixos.org/download) netreba
-nič inštalovať vopred. Ak Nix chýba, skript vypíše riadok, ktorý ho
-nainštaluje, a skončí. Nič
+Okrem [Nixu](https://nixos.org/download) netreba nič inštalovať vopred. Ak
+Nix chýba, skript vypíše riadok, ktorý ho nainštaluje, a skončí. Nič
 nepotrebuje root (okrem `--host-mdns`, nižšie), nič sa neinštaluje mimo
 `/nix` a priečinka ukážky (`~/.local/share/losos-demo`) a k virtuálnym
 strojom sa dostane len tento počítač.
@@ -39,8 +38,8 @@ Ukážka má dve veľkosti a skript vyberie väčšiu, ktorú počítač unesie:
 | Edge | virtuálny stroj s edge, ktorý je aj routerom siete | [edge gateway](../in-depth/edge-federation.md) |
 | Trvá | asi pol hodiny s KVM | asi 15 minút, s KVM aj bez, po prvom zostavení |
 
-`--full` alebo `--light` na konci riadku vyberie veľkosť ručne, napríklad
-`... | bun run - --light`.
+`--full` alebo `--light` za `sh -s --` vyberie veľkosť ručne, napríklad
+`... | sh -s -- --light`.
 
 ## Čo uvidíte \{#what-you-see}
 
@@ -73,7 +72,7 @@ počítač mDNS responder (Avahi alebo systemd-resolved so zapnutým mDNS) a
 je oboje, pridajte `--host-mdns`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/dasmatus/losos/main/nix/demo/box-edge-box/bootstrap.ts | bun run - --host-mdns
+curl -fsSL https://raw.githubusercontent.com/dasmatus/losos/main/nix/demo/box-edge-box/bootstrap.sh | sh -s -- --host-mdns
 ```
 
 Vytvorí jedno sieťové zariadenie, `vde-tap77`, ktoré pripojí tento počítač

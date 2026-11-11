@@ -23,7 +23,7 @@ const root = import.meta.dirname;
 
 /* The settings `losos:build` exports, besides BASE, the public path the
  * page is built for. LOSOS_LAB_HOSTED=1 builds the hosted
- * copy of Diagrams (admin-ui/lab/engine/build.ts); LOSOS_LAB_MEME names a
+ * copy of Diagrams (admin-ui/lab/engine/build.sh); LOSOS_LAB_MEME names a
  * folder with no.jpg and yes.jpg for the Lab's splash, which build.ts copies
  * beside dist/diagrams/index.html. */
 export function settings() {

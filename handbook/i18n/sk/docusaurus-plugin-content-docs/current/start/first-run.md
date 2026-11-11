@@ -23,7 +23,7 @@ Najrýchlejšie je to jedným riadkom v termináli, ukázaným pre počítač, n
 ktorom práve ste:
 
 ```bash title="macOS a Linux"
-curl -fsSL http://<address>/setup/trust.ts | node
+curl -fsSL http://<address>/setup/trust.sh | sh
 ```
 
 ```powershell title="Windows (PowerShell)"

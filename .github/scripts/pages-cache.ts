@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 // Write the static copy of the LosOS binary cache for GitHub Pages.
+// Shim target for pages-cache.sh. Behavior preserved.
 import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
@@ -16,7 +17,7 @@ function cap(cmd: string[]) {
 
 const args = Bun.argv.slice(2);
 if (args.length < 2) {
-  process.stderr.write("usage: pages-cache.ts <out-dir> <installable>...\n");
+  process.stderr.write("usage: pages-cache.sh <out-dir> <installable>...\n");
   process.exit(2);
 }
 let out = resolve(args[0]);

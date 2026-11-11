@@ -13,7 +13,7 @@ import { compilePages } from "./pages";
 
 const root = import.meta.dirname;
 /* `--outdir DIR` writes the build there instead of dist/ (the hosted copy
- * of Diagrams, admin-ui/lab/engine/build.ts). */
+ * of Diagrams, admin-ui/lab/engine/build.sh). */
 const at = Bun.argv.indexOf("--outdir");
 const dist = at > 0 && Bun.argv[at + 1] ? Bun.argv[at + 1]! : `${root}/dist`;
 
@@ -172,7 +172,7 @@ async function finishPages(outputs: Bun.BuildArtifact[]) {
  * knowledge bases published from it at /kb/ (modules/cloud.nix), and LosOS
  * Git at /git/ with its spaces published as sites at /wiki/
  * (modules/containers.nix). They share chunks. The hosted copy of Diagrams
- * (LOSOS_LAB_HOSTED=1, admin-ui/lab/engine/build.ts) adds
+ * (LOSOS_LAB_HOSTED=1, admin-ui/lab/engine/build.sh) adds
  * diagrams/index.html, the same screen on a page of its own; a box never
  * gets that page, so nothing shadows the SPA's /diagrams. */
 export function pages(): string[] {

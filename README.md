@@ -41,14 +41,6 @@ the handbook's last chapter.
 3. Boot the stick with a network connection. The installer wipes every fixed
    disk, encrypts them and installs without prompting.
 
-In a mesh, a machine with no stick can be netbooted instead:
-`nix build
-.#nixosConfigurations.netboot.config.system.build.netbootImage`, serve the
-result over HTTP and point iPXE at `boot.ipxe`. It installs with the mesh's
-own configuration and keeps the boxes in step; see
-[Autoprovision](https://losos.dasmat.us/in-depth/autoprovision) in the
-handbook.
-
 Details, the demo VM image and disk growth: [Install in depth](https://losos.dasmat.us/in-depth/install).
 The disk key is sealed to the machine's TPM chip; on a machine without one it
 is stored unencrypted on the boot partition. See the
@@ -64,7 +56,7 @@ install stick, so put yours there before you install. On 64-bit x86 Linux:
 ```sh
 curl -fsSLO https://nightly.link/dasmatus/losos/workflows/ci/main/losos-pages-updates.zip
 unzip -o losos-pages-updates.zip -d losos-pages-updates
-node losos-pages-updates/install.mjs
+sh losos-pages-updates/install.sh
 losos key import --gpg you@example.com
 losos login http://<address on the box's screen>
 ```

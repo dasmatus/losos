@@ -16,10 +16,10 @@ secret and merge the certificate into `main` can make a key count.
 
 ## The ceremony, once
 
-Needs `openssl` and Bun, nothing else.
+Needs `openssl` and nothing else.
 
 ```sh
-bun docs/provisioning/secure-boot/keygen.ts ~/losos-secure-boot
+docs/provisioning/secure-boot/keygen.sh ~/losos-secure-boot
 ```
 
 That makes, and refuses to ever overwrite:

@@ -24,7 +24,7 @@ Am schnellsten geht es mit einer Zeile im Terminal, angezeigt für den
 Rechner, an dem du sitzt:
 
 ```bash title="macOS und Linux"
-curl -fsSL http://<address>/setup/trust.ts | node
+curl -fsSL http://<address>/setup/trust.sh | sh
 ```
 
 ```powershell title="Windows (PowerShell)"

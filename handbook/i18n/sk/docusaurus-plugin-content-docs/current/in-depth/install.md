@@ -110,7 +110,7 @@ Prvá stránka je sprievodca nastavením. Jeho prvým krokom je dôverovať
 vlastnému certifikátu zariadenia, aby zvyšok nastavenia aj každé neskoršie
 prihlásenie šli cez HTTPS a váš prehliadač mohol ponúknuť passkey. Krok
 ukazuje jeden riadok na vloženie do terminálu, vybraný pre počítač, na ktorom
-ste. Na macOS a Linuxe je to `curl -fsSL http://<address>/setup/trust.ts | node`,
+ste. Na macOS a Linuxe je to `curl -fsSL http://<address>/setup/trust.sh | sh`,
 na Windows `irm http://<address>/setup/trust.ps1 | iex`. Skript servíruje
 samotné zariadenie ako čistý text, takže si odkaz najprv otvorte v karte a prečítajte
 si ho. Skript pridá ten jeden certifikát do úložísk, ktoré čítajú vaše

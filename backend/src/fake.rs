@@ -157,22 +157,6 @@ pub struct FakeLosos {
     /// Numbers the next commit the fake makes.
     pub commit_seq: u32,
 
-    // ── The mesh configuration mirror (crate::autoprovision) ───────────────
-    /// Where the box keeps its mesh configuration in step; `None` is off.
-    pub mesh: Option<crate::autoprovision::Mesh>,
-    /// The mirror branch's head; `None` is a mirror with no branch.
-    pub mesh_head: Option<String>,
-    /// What `git show <head>:modules/overrides.nix` prints on the mirror.
-    pub mesh_text: Option<String>,
-    /// The mirror's head committer time, by sha.
-    pub mesh_times: std::collections::BTreeMap<String, i64>,
-    /// Model a mirror that cannot be reached.
-    pub mesh_down: bool,
-    /// Every push the fake made to the mirror — base, text, order.
-    pub mesh_pushes: Vec<(Option<String>, String)>,
-    pub mesh_mark: Option<crate::autoprovision::Mark>,
-    pub mesh_report: Option<crate::config_repo::SyncReport>,
-
     // ── Backups and erasing the box ─────────────────────────────────────
     /// Stands in for `/var/secrets/losos-backup.json`.
     pub backup_target: Option<crate::backup::Target>,
@@ -368,14 +352,6 @@ impl FakeLosos {
             edited_outside: false,
             upstream_report: None,
             commit_seq: 1,
-            mesh: None,
-            mesh_head: None,
-            mesh_text: None,
-            mesh_times: std::collections::BTreeMap::new(),
-            mesh_down: false,
-            mesh_pushes: Vec::new(),
-            mesh_mark: None,
-            mesh_report: None,
             backup_target: None,
             units_started: Vec::new(),
             units_stopped: Vec::new(),
@@ -456,16 +432,6 @@ impl FakeLosos {
             "PUT /api/v1/admin/users/notshared/repos/losos-config".to_string(),
             (200, r#"{"id": 1, "name": "losos-config"}"#.to_string()),
         );
-        self
-    }
-
-    /// A box with a mesh configuration mirror; the mirror has no branch
-    /// until a test puts `mesh_head`/`mesh_text` there.
-    pub fn with_mesh(mut self) -> Self {
-        self.mesh = Some(crate::autoprovision::Mesh {
-            url: "/srv/mesh.git".to_string(),
-            box_name: "mattbox".to_string(),
-        });
         self
     }
 }
@@ -890,18 +856,10 @@ impl Losos for FakeLosos {
     }
 
     fn config_show(&mut self, rev: &str, path: &str) -> anyhow::Result<Option<String>> {
-        if path != "modules/overrides.nix" {
+        if path != "modules/overrides.nix" || !self.remote_commits.iter().any(|s| s == rev) {
             return Ok(None);
         }
-        // The mesh mirror's fetched head (crate::autoprovision) and the
-        // configuration repository's remote carry their own texts.
-        if self.mesh_head.as_deref() == Some(rev) {
-            return Ok(self.mesh_text.clone());
-        }
-        if self.remote_commits.iter().any(|s| s == rev) {
-            return Ok(self.remote_overrides.clone());
-        }
-        Ok(None)
+        Ok(self.remote_overrides.clone())
     }
 
     fn config_log(&mut self, n: usize) -> anyhow::Result<Vec<crate::config_repo::LogEntry>> {
@@ -990,57 +948,6 @@ impl Losos for FakeLosos {
         report: &crate::config_repo::SyncReport,
     ) -> anyhow::Result<()> {
         self.upstream_report = Some(report.clone());
-        Ok(())
-    }
-
-    fn mesh_mirror(&mut self) -> Option<crate::autoprovision::Mesh> {
-        self.mesh.clone()
-    }
-
-    fn mesh_fetch(&mut self, _url: &str, _branch: &str) -> anyhow::Result<Option<String>> {
-        if self.mesh_down {
-            return Err(crate::config_repo::NotUp("the fake mirror is not up".to_string()).into());
-        }
-        Ok(self.mesh_head.clone())
-    }
-
-    fn mesh_head_time(&mut self, sha: &str) -> anyhow::Result<Option<i64>> {
-        Ok(self.mesh_times.get(sha).copied())
-    }
-
-    fn mesh_mark(&mut self) -> anyhow::Result<Option<crate::autoprovision::Mark>> {
-        Ok(self.mesh_mark.clone())
-    }
-
-    fn save_mesh_mark(&mut self, mark: &crate::autoprovision::Mark) -> anyhow::Result<()> {
-        self.mesh_mark = Some(mark.clone());
-        Ok(())
-    }
-
-    fn mesh_push(
-        &mut self,
-        _url: &str,
-        _branch: &str,
-        base: Option<&str>,
-        text: &str,
-        _subject: &str,
-        _body: &str,
-    ) -> anyhow::Result<String> {
-        let sha = format!("{:040x}", 0xb000_0000_u64 + self.mesh_pushes.len() as u64);
-        self.mesh_pushes
-            .push((base.map(str::to_string), text.to_string()));
-        self.mesh_head = Some(sha.clone());
-        self.mesh_text = Some(text.to_string());
-        self.mesh_times.insert(sha.clone(), self.clock as i64);
-        Ok(sha)
-    }
-
-    fn load_mesh_report(&mut self) -> anyhow::Result<Option<crate::config_repo::SyncReport>> {
-        Ok(self.mesh_report.clone())
-    }
-
-    fn save_mesh_report(&mut self, report: &crate::config_repo::SyncReport) -> anyhow::Result<()> {
-        self.mesh_report = Some(report.clone());
         Ok(())
     }
 

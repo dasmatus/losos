@@ -22,7 +22,7 @@ spustia kontroly CI pre súbory, ktoré meníte. Zapne ich `devenv shell` aj
 `nix develop`. Bez nich ich vo svojom klone zapnite raz týmto príkazom:
 
 ```sh
-bun nix/hooks/install.ts
+bash nix/hooks/install
 ```
 
 Hook pri commite naformátuje a skontroluje Rust a Nix, ktorých ste sa

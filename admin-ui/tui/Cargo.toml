@@ -26,6 +26,7 @@ miette = { version = "7", features = ["fancy"] }
 thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "ansi", "std"] }
+ratatui = "0.30"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 # Blocking HTTPS with rustls on ring; the certificate check is ours
@@ -41,31 +42,6 @@ hex = "0.4"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 unicode-normalization = "0.1"
 unicode-width = "0.2"
-
-# ratatui/crossterm split by target. crossterm 0.29 has no wasm32 sys
-# backend at all (its cursor/terminal/event sys re-exports are unix/windows
-# only and fail to compile on wasm32-unknown-unknown), and ratatui 0.30's
-# default CrosstermBackend pulls crossterm in — so the TTY UI tree
-# (src/tui, gated out on wasm32) and its deps live only on non-wasm32.
-# wasm32 keeps ratatui's core (style/buffer/layout/text, no backend) for
-# modules like theme.rs and is the API/drive leg; the whole tui module set
-# is #[cfg(not(target_arch = "wasm32"))].
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-ratatui = "0.30"
-
-# The browser build (nix/packages.nix, losos-tui-wasm). getrandom — drawn
-# from by rand and rustls' ring — refuses to compile on wasm32 without the
-# "js" shim (features are additive across the graph; native stays untouched).
-# ring 0.17 gates its wasm32 SystemRandom (used by rustls' ring crypto) behind
-# the `wasm32_unknown_unknown_js` feature, which also lifts getrandom/js on
-# ring's own edge; the direct target dep fuses that feature into the closure.
-# rustls-pki-types needs its "web" feature for the wasm32 clock (web-time;
-# there is no unix family). No crossterm/TTY backend on wasm32.
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-getrandom = { version = "0.2", features = ["js"] }
-ring = { version = "0.17", features = ["wasm32_unknown_unknown_js"] }
-ratatui = { version = "0.30", default-features = false, features = [] }
-rustls-pki-types = { version = "1", default-features = false, features = ["web", "alloc"] }
 
 [build-dependencies]
 png = "0.17"

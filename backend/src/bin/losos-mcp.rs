@@ -396,7 +396,7 @@ fn serve(input: impl BufRead, output: &mut dyn Write, token: &str) {
             ("initialize", _) => Some(json!({
                 "protocolVersion": "2024-11-05",
                 "capabilities": { "tools": {} },
-                "serverInfo": { "name": "losos-mcp", "version": losos_ctl::version::VERSION },
+                "serverInfo": { "name": "losos-mcp", "version": env!("CARGO_PKG_VERSION") },
             })),
             ("notifications/initialized", _) => None,
             ("tools/list", _) => Some(tool_list()),

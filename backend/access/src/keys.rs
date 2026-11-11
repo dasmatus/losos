@@ -3,7 +3,6 @@
 //! keys ([`Keyring`], read from configuration, never written).
 
 use std::io::Write;
-#[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 
@@ -149,13 +148,12 @@ pub(crate) fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     }
     let tmp = path.with_extension(format!("tmp.{}", std::process::id()));
     {
-        let mut opts = std::fs::OpenOptions::new();
-        opts.write(true).create(true).truncate(true);
-        // The keyfile's 0600 mode is a unix-family promise; the wasm32/API
-        // leg does not carry a POSIX permission surface here.
-        #[cfg(unix)]
-        opts.mode(0o600);
-        let mut f = opts.open(&tmp)?;
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&tmp)?;
         f.write_all(bytes)?;
         f.sync_all()?;
     }

@@ -119,14 +119,14 @@ export interface SetupCertificate {
   /** ISO 8601 in UTC. The certificate is minted for two years. */
   expires: string;
   /** The one-line installers modules/setup.nix renders from the certificate:
-   *  a node script for macOS and Linux, a PowerShell one for Windows.
+   *  a POSIX sh script for macOS and Linux, a PowerShell one for Windows.
    *  Null on a box whose software predates them; step 1 then offers the
    *  download only. */
   install: SetupInstallers | null;
 }
 
 export interface SetupInstallers {
-  node: string;
+  sh: string;
   ps1: string;
 }
 
@@ -200,10 +200,10 @@ function parseAddress(value: unknown): string | null {
 function parseInstallers(value: unknown): SetupInstallers | null {
   if (typeof value !== "object" || value === null) return null;
   const raw = value as Record<string, unknown>;
-  const node = raw["node"];
+  const sh = raw["sh"];
   const ps1 = raw["ps1"];
-  if (typeof node !== "string" || typeof ps1 !== "string") return null;
-  return { node, ps1 };
+  if (typeof sh !== "string" || typeof ps1 !== "string") return null;
+  return { sh, ps1 };
 }
 
 // ── POST /api/set-password ────────────────────────────────────────────────

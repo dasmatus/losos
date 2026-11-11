@@ -153,7 +153,7 @@ Odtlačok certifikátu porovnajte s tým v poznámkach k vydaniu a s
 
 Súkromný kľúč sa nikdy nedostane do zostavenia Nix ani na zariadenie.
 Vlastník ho raz vytvorí na vlastnom počítači pomocou
-`docs/provisioning/secure-boot/keygen.ts` a uchováva ho offline. Jediná ďalšia
+`docs/provisioning/secure-boot/keygen.sh` a uchováva ho offline. Jediná ďalšia
 kópia je tajomstvo repozitára, ktorým podpisuje CI. Certifikát je v
 repozitári ako `nix/keys/secure-boot-db.pem`. Kým tento súbor žiadny certifikát
 neobsahuje, vydania uvádzajú *Not signed* a USB kľúč potrebuje Secure Boot

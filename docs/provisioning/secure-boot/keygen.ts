@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 // LosOS Secure Boot key ceremony: make the db signing key on YOUR machine.
+// Shim target for keygen.sh.
 import { existsSync, mkdirSync, chmodSync } from "node:fs";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";

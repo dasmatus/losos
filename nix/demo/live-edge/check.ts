@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Probe an edge the way a box meets it.
+// Probe an edge the way a box meets it. Shim target for check.sh.
 import { spawnSync } from "node:child_process";
 
 const edge = (Bun.argv[2] || "https://register.dasmat.us").replace(/\/$/, "");

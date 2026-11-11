@@ -19,7 +19,7 @@ on:
 # nixos/pkgs/losos-pin.nix. On every release tag this opens a pull request
 # there that moves the pin to the tag, so the desktop's client keeps up with
 # the boxes people run and the desktop's CI boots the new box against it
-# before anything merges. .github/scripts/desktop-pin.ts computes the file.
+# before anything merges. .github/scripts/desktop-pin.sh computes the file.
 #
 # The commit is made through the GitHub API, which signs it, on a branch of
 # its own per tag, and the pull request is opened with DESKTOP_PIN_TOKEN: a
@@ -77,7 +77,7 @@ jobs:
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -euo pipefail
-          bun .github/scripts/desktop-pin.ts "$TAG" desktop | tee "$RUNNER_TEMP/pin.txt"
+          .github/scripts/desktop-pin.sh "$TAG" desktop | tee "$RUNNER_TEMP/pin.txt"
           if git -C desktop diff --quiet -- nixos/pkgs/losos-pin.nix; then
             echo "changed=" >> "$GITHUB_OUTPUT"
           else

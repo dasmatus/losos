@@ -49,10 +49,7 @@ ENTRIES = [
     (
         "losos",
         f"packages.{SYSTEM}.losos.{CARGO}",
-        [
-            f"packages.{SYSTEM}.losos-static.{CARGO}",
-            f"packages.{SYSTEM}.losos-tui-wasm.{CARGO}",
-        ],
+        [f"packages.{SYSTEM}.losos-static.{CARGO}"],
         ["admin-ui/tui/Cargo.lock"],
     ),
     (

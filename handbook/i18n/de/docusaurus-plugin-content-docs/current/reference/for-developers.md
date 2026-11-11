@@ -23,7 +23,7 @@ oder Push die Prüfungen der CI für die Dateien ausführen, die du änderst.
 deinem Klon einmal Folgendes aus:
 
 ```sh
-bun nix/hooks/install.ts
+bash nix/hooks/install
 ```
 
 Der Commit-Hook formatiert und prüft das Rust und Nix, das du angefasst

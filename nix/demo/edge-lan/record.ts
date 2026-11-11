@@ -3,14 +3,14 @@
  *
  *   LOSOS_RECORD_DIR=<dir> bun nix/demo/edge-lan/record.ts
  *
- * The VM script (run by nix/demo/edge-lan/record-driver.ts) writes <dir>/box{1,2}.token
+ * The VM script (run by nix/demo/edge-lan/record.sh) writes <dir>/box{1,2}.token
  * and .port once the boxes are up, then appends one JSON line per step to
  * <dir>/timeline.jsonl and waits for <dir>/ack-<n>. For each step this opens
  * http://127.0.0.1:<port>/mesh on both boxes — the real nginx and the real
  * SPA, signed in with the box's admin key — waits for the pane to settle on
  * the edge state the step implies, writes <dir>/<nn>-<step>-<box>.png, and
  * acknowledges. The step's caption lands in <dir>/timeline.jsonl for
- * compose.ts. Needs the app's node_modules (admin-ui/app, after `bun install`;
+ * compose.sh. Needs the app's node_modules (admin-ui/app, after `bun install`;
  * LOSOS_APP_DIR points elsewhere) for playwright;
  * LOSOS_CHROMIUM points at a chromium binary when Playwright's own is not
  * installed. */

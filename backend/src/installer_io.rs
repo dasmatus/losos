@@ -279,48 +279,6 @@ impl Install for IoInstall {
         atomic_write(path, text.as_bytes())
     }
 
-    fn lay_provision(&mut self, stage: &Path, work: &Path) -> anyhow::Result<()> {
-        let src = stage.join(crate::autoprovision::STAGE_OVERRIDES_FILE);
-        let dst = work.join(crate::autoprovision::OVERRIDES_PATH);
-        self.set_activity(Some("Reading the mesh's configuration"));
-        log_line(&format!(
-            "autoprovision: {} becomes this box's own",
-            crate::autoprovision::OVERRIDES_PATH
-        ));
-        std::fs::copy(&src, &dst).with_context(|| {
-            format!(
-                "copying the staged configuration {} to {}",
-                src.display(),
-                dst.display()
-            )
-        })?;
-        self.set_activity(None);
-        Ok(())
-    }
-
-    /// Push the box's record to the mirror, on a commit whose parent is the
-    /// mirror's current head, so two machines provisioning at once refute
-    /// each other by fast-forward rather than overwriting.
-    ///
-    /// Every way this can fail ends the function with a warning: the record
-    /// it writes is bookkeeping for the mesh, and the running box repeats it
-    /// every mesh sync push. The install it describes is already on the disk.
-    fn register_provision(&mut self, stage: &Path, work: &Path, mirror: &str, name: &str) {
-        self.set_activity(Some("Recording the box on the mirror"));
-        let done = register_box(stage, work, mirror, name);
-        self.set_activity(None);
-        match done {
-            Ok(()) => log_line(&format!(
-                "autoprovision: {} is on the mirror under {}/",
-                name,
-                crate::autoprovision::BOXES_DIR
-            )),
-            Err(e) => log_line(&format!(
-                "autoprovision: warning: the box did not register on the mirror ({e:#}); the running box's mesh sync shows it later"
-            )),
-        }
-    }
-
     /// Generate the LUKS keyfile unless one already exists.
     fn ensure_keyfile(&mut self, path: &Path) -> anyhow::Result<()> {
         if path.exists() {
@@ -591,108 +549,6 @@ impl Install for IoInstall {
     }
 }
 
-/// Build and push the registration commit (see
-/// `IoInstall::register_provision` above).
-fn register_box(stage: &Path, work: &Path, mirror: &str, name: &str) -> anyhow::Result<()> {
-    use crate::autoprovision::{BRANCH, STAGE_OVERRIDES_FILE, TARGET_PATH};
-
-    let (subject, body) = crate::autoprovision::provision_register_message(name);
-    // A throwaway work tree: the clone of the flake dropped its .git on
-    // purpose, and nothing of the installer repository may depend on this push.
-    let scratch = stage.join("registration");
-    let _ = std::fs::remove_dir_all(&scratch);
-    std::fs::create_dir_all(&scratch).context("creating the registration scratch")?;
-
-    let target_text = std::fs::read_to_string(work.join(TARGET_PATH))?;
-    let overrides_text = std::fs::read_to_string(stage.join(STAGE_OVERRIDES_FILE))?;
-    let [target_path, overrides_path] = crate::autoprovision::box_paths(name);
-    atomic_write(&scratch.join(&target_path), target_text.as_bytes())?;
-    atomic_write(&scratch.join(&overrides_path), overrides_text.as_bytes())?;
-
-    let index = scratch.join("index");
-    let git = |args: &[&str], index_env: bool| git_in(&scratch, args, index_env.then_some(&index));
-    git(&["init", "-q", "."], false)?;
-    git(
-        &["config", "user.name", crate::config_repo::COMMITTER_NAME],
-        false,
-    )?;
-    git(
-        &["config", "user.email", crate::config_repo::COMMITTER_EMAIL],
-        false,
-    )?;
-
-    // The parent, when the mirror still has a branch: a fast-forward only.
-    if git(
-        &[
-            "fetch",
-            "-q",
-            "--depth",
-            "1",
-            mirror,
-            &format!("refs/heads/{BRANCH}"),
-        ],
-        false,
-    )
-    .is_ok()
-    {
-        git(&["read-tree", "FETCH_HEAD"], true)?;
-        git(
-            &["update-index", "--add", &target_path, &overrides_path],
-            true,
-        )?;
-    }
-
-    let tree = git(&["write-tree"], true)?;
-    let commit = if git(&["cat-file", "-e", "FETCH_HEAD^{commit}"], true).is_ok() {
-        git(
-            &[
-                "commit-tree",
-                &tree,
-                "-p",
-                "FETCH_HEAD",
-                "-m",
-                &subject,
-                "-m",
-                &body,
-            ],
-            true,
-        )?
-    } else {
-        git(&["commit-tree", &tree, "-m", &subject, "-m", &body], true)?
-    };
-    git(
-        &[
-            "push",
-            "-q",
-            mirror,
-            &format!("{commit}:refs/heads/{BRANCH}"),
-        ],
-        false,
-    )?;
-    Ok(())
-}
-
-/// `git` in `dir`, with a scratch index when asked.
-fn git_in(dir: &Path, args: &[&str], index: Option<&Path>) -> anyhow::Result<String> {
-    let mut cmd = Command::new("git");
-    cmd.arg("-C").arg(dir).args(args);
-    if let Some(index) = index {
-        cmd.env("GIT_INDEX_FILE", index);
-    }
-    let out = cmd
-        .stdin(Stdio::null())
-        .output()
-        .with_context(|| format!("running git {}", args.join(" ")))?;
-    if !out.status.success() {
-        bail!(
-            "git {}: {}",
-            args.join(" "),
-            String::from_utf8_lossy(&out.stderr).trim()
-        );
-    }
-    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
-}
-
 /// Whether `url` answers and has no branch `branch`: a fork or a local copy
 /// without the release channels, or the first hours before the first cut.
 /// The installer then clones the default branch and the box's first nightly
@@ -902,7 +758,6 @@ pub fn options_from_env(
     emit_target: Option<PathBuf>,
     gpg_keys: Vec<String>,
 ) -> Options {
-    use crate::autoprovision::{MIRROR_BOX_ENV, MIRROR_URL_ENV, STAGE_ENV};
     Options {
         tpm,
         tang,
@@ -922,22 +777,6 @@ pub fn options_from_env(
         emit_file: PathBuf::from(DEFAULT_EMIT_FILE),
         gpg_keys,
         report_client_id: crate::install_report::client_id(),
-        // The provision driver writes these three before the install half
-        // takes over; a plain install sees them unset (the medium's mirror
-        // variable alone changes nothing: a plan without a stage is an
-        // ordinary install).
-        provision_stage: std::env::var(STAGE_ENV)
-            .ok()
-            .map(PathBuf::from)
-            .filter(|p| !p.as_os_str().is_empty()),
-        mirror: std::env::var(MIRROR_URL_ENV)
-            .ok()
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty()),
-        box_name: std::env::var(MIRROR_BOX_ENV)
-            .ok()
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty()),
     }
 }
 
@@ -1055,83 +894,6 @@ pub fn load_gpg_keys(files: &[PathBuf]) -> Result<Vec<String>, String> {
         keys.push(text.trim().to_string());
     }
     Ok(keys)
-}
-
-/// The provision half's preflight: read the mesh's shared configuration off
-/// the mirror and stage it. Nothing here touches a disk, so a mirror that
-/// yields nothing stops a provision before the installer plans any work.
-///
-/// The staged `overrides.nix` must pass the same shape gate an Apply does
-/// (`crate::overrides::validate_apply`); the option-document and edge gates
-/// run on the running box, before a take from the mirror ever lands.
-///
-/// Returns the stage root, the directory the install plan lays from.
-pub fn stage_provision(mirror: &str, name: &str, stage: &Path) -> anyhow::Result<PathBuf> {
-    use crate::autoprovision::{remote_heads, BRANCH, OVERRIDES_PATH};
-    let _ = std::fs::remove_dir_all(stage);
-    std::fs::create_dir_all(stage).with_context(|| format!("creating {}", stage.display()))?;
-
-    log_line(&format!(
-        "autoprovision: reading the mesh's configuration from {mirror}"
-    ));
-    let out = Command::new("git")
-        .args(["ls-remote", "-q", "--heads", mirror])
-        .stdin(Stdio::null())
-        .output()
-        .context("running git ls-remote (is git on the installer's PATH?)")?;
-    if !out.status.success() {
-        bail!(
-            "the mesh mirror {mirror} could not be reached ({}): losos-install cannot learn what the mesh runs",
-            String::from_utf8_lossy(&out.stderr).trim()
-        );
-    }
-    let heads = remote_heads(&String::from_utf8_lossy(&out.stdout));
-    if !heads.contains_key(BRANCH) {
-        bail!(
-            "the mirror {mirror} has no branch {BRANCH}: nothing to provision from. It is made by the first mesh box's sync (losos.autoprovision.enable), or `losos-ctl install` installs a stock box"
-        );
-    }
-    let scratch = stage.join("mirror.git");
-    std::fs::create_dir_all(&scratch).context("creating the mirror scratch")?;
-    git_in(&scratch, &["init", "-q", "."], None)?;
-    git_in(
-        &scratch,
-        &[
-            "fetch",
-            "-q",
-            "--depth",
-            "1",
-            "--no-tags",
-            mirror,
-            &format!("refs/heads/{BRANCH}"),
-        ],
-        None,
-    )?;
-    let text = match git_in(
-        &scratch,
-        &["show", &format!("FETCH_HEAD:{OVERRIDES_PATH}")],
-        None,
-    ) {
-        Ok(text) => text,
-        Err(_) => bail!(
-            "the mirror's {BRANCH} has no {OVERRIDES_PATH}: the mesh's shared configuration is missing - let a box's mesh sync seed it"
-        ),
-    };
-    if let Err(why) = crate::overrides::validate_apply(&text) {
-        bail!(
-            "the mesh's shared configuration does not pass the Apply gate ({why}); fix it in a mesh box clone, push, and provision again"
-        );
-    }
-    atomic_write(
-        &stage.join(crate::autoprovision::STAGE_OVERRIDES_FILE),
-        text.as_bytes(),
-    )?;
-    let info = serde_json::json!({ "name": name, "mirror": mirror });
-    atomic_write(
-        &stage.join(crate::autoprovision::STAGE_INFO_FILE),
-        info.to_string().as_bytes(),
-    )?;
-    Ok(stage.to_path_buf())
 }
 
 /// Plan and run an install.

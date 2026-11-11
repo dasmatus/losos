@@ -17,7 +17,7 @@ sidebar_position: 1
 | `/api/health`                 | `{"ok":true}`, keď riadiaci démon beží              | iba lokálna sieť, bez kľúča         |
 | `/setup/state.json`           | Názov, adresa, HTTPS, odtlačok certifikátu          | iba lokálna sieť                    |
 | `/setup/losos-ca.crt`         | Certifikát zariadenia                               | iba lokálna sieť                    |
-| `/setup/trust.ts`, `/setup/trust.ps1` | Jednoriadkové inštalátory certifikátu       | iba lokálna sieť                    |
+| `/setup/trust.sh`, `/setup/trust.ps1` | Jednoriadkové inštalátory certifikátu       | iba lokálna sieť                    |
 | `/cloud/`                     | LosOS Cloud                                         | ktokoľvek, aj cez edge              |
 | `/remote.php/`, `/status.php`, `/ocs/`, `/index.php/` | To, čo volajú aplikácie Nextcloud, kalendárové aplikácie a správcovia súborov | ktokoľvek, aj cez edge |
 | `/nextcloud/`                 | To isté, na adrese, ktorú používal Nextcloud zariadenia | ktokoľvek, aj cez edge          |

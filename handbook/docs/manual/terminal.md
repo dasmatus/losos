@@ -102,7 +102,7 @@ revoke tokens, and none can reach the setup wizard or the sign-in.
 ```sh
 curl -fsSLO https://nightly.link/dasmatus/losos/workflows/ci/main/losos-pages-updates.zip
 unzip -o losos-pages-updates.zip -d losos-pages-updates
-node losos-pages-updates/install.mjs
+sh losos-pages-updates/install.sh
 ```
 
 The zip is the newest build of the client from LosOS's GitHub, with the

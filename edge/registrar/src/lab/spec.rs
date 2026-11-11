@@ -66,7 +66,7 @@ impl Role {
     }
 }
 
-/// The two root filesystems `admin-ui/lab/engine/build.ts` makes.
+/// The two root filesystems `admin-ui/lab/engine/build.sh` makes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Image {
     Rootfs,

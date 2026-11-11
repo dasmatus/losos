@@ -39,12 +39,8 @@
 #                reads the web UI's catalogue, palette, pane keywords and the
 #                salmon from admin-ui/, so the source is those files too.
 #                losos-static is the same crate linked against musl for
-#                machines without a Nix store; CI publishes it beside the
-#                bundled installer (install.mjs, from admin-ui/tui/
-#                install.ts). Both share one cargoHash.
-#   losos-tui-wasm — the same crate compiled to wasm32 and bound to the
-#                browser (labWasm): the TUI's panes a page draws with no
-#                binary to install. Same lock, so the same cargoHash.
+#                machines without a Nix store; CI publishes it beside
+#                install.sh. Both share one cargoHash.
 #   losos-image-pause — the OCI image the local k3s
 #                cluster builds its pods on, defined in nix/images.nix and
 #                merged in below. modules/defaults.nix wires it to
@@ -72,7 +68,7 @@
 #                import, so the browser renders with the box's own code.
 #   losos-sign-iso — signs the installer ISO's UEFI loader in place with the
 #                Secure Boot db key, after `nix build`, so the key never
-#                enters a store (modules/secure-boot.nix, nix/sign-iso.ts).
+#                enters a store (modules/secure-boot.nix, nix/sign-iso.sh).
 #                CI runs it with the SECURE_BOOT_DB_KEY secret;
 #                nix/tests/secure-boot.nix with a throwaway key.
 #   tinycode    — the coding agent CLI (github.com/dasmatus/tinycode,
@@ -141,12 +137,6 @@ let
       wasm,
       cargoHash,
       features ? [ ],
-      # A source tree of files the crate's build script reads beside its own
-      # directory (the terminal client's LOSOS_UI_DIR, admin-ui/tui/build.rs;
-      # a checkout has them because the tree has them, the wasm build does
-      # not: its source is the crate alone). Copied out of the build tree and
-      # its env set, so the script's read paths are the checkout's own.
-      uiSrc ? null,
     }:
     pkgs.rustPlatform.buildRustPackage {
       inherit pname cargoHash;
@@ -158,11 +148,6 @@ let
       ];
       buildPhase = ''
         runHook preBuild
-        ${lib.optionalString (uiSrc != null) ''
-          mkdir -p ui-src
-          cp -r ${uiSrc}/. ui-src/
-          export LOSOS_UI_DIR=ui-src
-        ''}
         cargo build --release --offline --target wasm32-unknown-unknown ${
           lib.optionalString (features != [ ]) "--features ${lib.concatStringsSep "," features}"
         }
@@ -213,12 +198,6 @@ let
     mkdir -p src/mdx/pkg
     cp ${losos-mdx-wasm}/* src/mdx/pkg/
     chmod -R u+w src/mdx/pkg
-    # The wasm-URL twin metro.config.js resolves the ?url import to (nix/
-    # packages.nix's preBuild repeats it for the lab copies; here the
-    # parser's own: scripts/lab-core.ts is the checkout's hand).
-    mkdir -p public/wasm
-    cp src/mdx/pkg/losos_mdx_bg.wasm public/wasm/mdx.wasm
-    printf 'export default "/wasm/mdx.wasm";\n' > src/mdx/pkg/losos_mdx_bg.wasm.url.ts
   '';
 
   # The Lab's libvirt client (admin-ui/lab/virt-rpc/README.md), loaded
@@ -334,20 +313,6 @@ let
     };
     cargoRoot = "admin-ui/tui";
     buildAndTestSubdir = "admin-ui/tui";
-  };
-
-  # That same build.rs read as LOSOS_UI_DIR, for a wasm build whose source
-  # is the crate alone (losos-tui-wasm's uiSrc): the admin-ui root keeps the
-  # app/Themes paths the script reads, so the env var is the checkout's own
-  # shape.
-  lososUiSrc = lib.fileset.toSource {
-    root = ./../admin-ui;
-    fileset = lib.fileset.unions [
-      ./../admin-ui/app/src/i18n
-      ./../admin-ui/app/src/styles/tokens.css
-      ./../admin-ui/app/src/screens/settings/panes.ts
-      ./../admin-ui/themes/brand/salmon-128.png
-    ];
   };
 
   # lososd's plugins (backend/plugins/README.md): every crate of that
@@ -494,13 +459,7 @@ images
       hash = "sha256-6TUOV2YIr+S1egif/rDrr6E4nNzqSILdYd8oxF8cJNI=";
     }}";
 
-    # The terminal client's build.rs stamps the tag over this file's own
-    # (LOSOS_VERSION, what losos and losos-static read too), because the
-    # source this derivation gets is admin-ui/app alone: ../nix does not
-    # exist beside it, and app.config.ts respects the env first for that
-    # reason. The dependencies, from admin-ui/app/bun.lock alone
-    # (nix/bun-deps.nix).
-    env.LOSOS_VERSION = version;
+    # The dependencies, from admin-ui/app/bun.lock alone (nix/bun-deps.nix).
     configurePhase = ''
       runHook preConfigure
       ${finalAttrs.passthru.nodeModules.install}
@@ -516,24 +475,6 @@ images
       + ''
         mkdir -p src/styles
         cp ${losos-basic-classes}/basic-classes.txt src/styles/basic-classes.txt
-        # The virtual modules bundler.ts answers on Bun (`losos:pages`,
-        # `losos:build`): the generated files metro.config.cjs's resolver
-        # points the imports at; `bun run virtuals` is the checkout's hand.
-        bun scripts/gen-virtuals.ts
-        # The wasm-URL twins metro.config.js resolves the loaders' ?url
-        # imports to, and the public/wasm/ copies they name (mdxPkg wrote
-        # the parser's; scripts/lab-core.ts is the checkout's hand). The
-        # Bun build.ts copies public/. over dist/ as before, so the twin
-        # URL is served by both bundlers' outputs.
-        mkdir -p public/wasm
-        cp src/lab/core-pkg/losos_lab_core_bg.wasm public/wasm/core.wasm
-        printf 'export default "/wasm/core.wasm";\n' > src/lab/core-pkg/losos_lab_core_bg.wasm.url.ts
-        cp src/lab/virt-pkg/losos_lab_virt_bg.wasm public/wasm/virt.wasm
-        printf 'export default "/wasm/virt.wasm";\n' > src/lab/virt-pkg/losos_lab_virt_bg.wasm.url.ts
-        for backend in webgpu webgl2; do
-          cp src/lab/render-pkg/$backend/losos_lab_render_bg.wasm public/wasm/render-$backend.wasm
-          printf 'export default "/wasm/render-$backend.wasm";\n' > src/lab/render-pkg/$backend/losos_lab_render_bg.wasm.url.ts
-        done
       '';
     # `bun run build` is `tsc --noEmit` and then build.ts, Bun's bundler
     # (the guest page too), so unlike the Rust crates (doCheck = off, see
@@ -570,7 +511,7 @@ images
       nodeModules = bunDeps {
         pname = "losos-admin-ui";
         src = ./../admin-ui/app;
-        hash = "sha256-7JCFDoR5jlnMninDLua3lT1ibguzvtgHi9PbW9rIZ5k=";
+        hash = "sha256-2seXIECP2t5mpVOL+h/ypaxnkoZ17br6r0GoH5ZTXXA=";
       };
     };
   });
@@ -737,7 +678,7 @@ images
     pname = "losos";
     version = "0.1.0";
     inherit (tuiSource) src cargoRoot buildAndTestSubdir;
-    cargoHash = "sha256-WN6QBs0ndmvMGHq/l0rqOb1gTm1RNCfk+Apa8oJjqpc=";
+    cargoHash = "sha256-0VQK6reYxlHCgLQuyAb0ttNCIRVy3PBvs9nFSAqj/7U=";
     # `losos --version` and the About pane say the release (VERSION in
     # admin-ui/tui/src/tui/panes.rs); without it they would say 0.1.0.
     env.LOSOS_VERSION = version;
@@ -750,55 +691,22 @@ images
     pname = "losos-static";
     version = "0.1.0";
     inherit (tuiSource) src cargoRoot buildAndTestSubdir;
-    cargoHash = "sha256-WN6QBs0ndmvMGHq/l0rqOb1gTm1RNCfk+Apa8oJjqpc=";
+    cargoHash = "sha256-0VQK6reYxlHCgLQuyAb0ttNCIRVy3PBvs9nFSAqj/7U=";
     env.LOSOS_VERSION = version;
     doCheck = false;
   };
 
-  # The browser build the web UI loads (admin-ui/tui/Cargo.toml's
-  # wasm32 window): the same crate's panes as a wasm module next to the
-  # Lab's, for a page that draws them with no binary to install. The
-  # labWasm helper fits: the crate has no feature split like the render
-  # crate (Cargo.toml switches the sources over target-systemically), and
-  # the getrandom js shim it enables under wasm32 keeps rustls' ring and
-  # rand compiling. Same lock as the native losos packages above, so the
-  # same cargoHash: lockfile hashes are target-blind.
-  losos-tui-wasm = labWasm {
-    pname = "losos-tui-wasm";
-    dir = ./../admin-ui/tui;
-    wasm = "losos";
-    uiSrc = lososUiSrc;
-    cargoHash = "sha256-WN6QBs0ndmvMGHq/l0rqOb1gTm1RNCfk+Apa8oJjqpc=";
-  };
-
-  losos-sign-iso = pkgs.stdenvNoCC.mkDerivation {
+  losos-sign-iso = pkgs.writeShellApplication {
     name = "losos-sign-iso";
-    # Bun compiles TypeScript directly to a single executable at build
-    # time (nix/sign-iso.ts spawns xorriso/mtools/sbsigntool paths when
-    # run), so the runtime closure carries the signing tools and a stub
-    # binary but no Bun: an owner who runs this on their own machine
-    # unpacks a NixOS ISO with no dev shell and no Bun.
-    nativeBuildInputs = [
-      pkgs.bun
-      pkgs.makeWrapper
+    runtimeInputs = [
+      pkgs.xorriso
+      pkgs.mtools
+      pkgs.sbsigntool
+      pkgs.coreutils
+      pkgs.gawk
+      pkgs.gnused
     ];
-    dontUnpack = true;
-    buildPhase = ''
-      bun build --compile --outfile=losos-sign-iso ${./sign-iso.ts}
-    '';
-    installPhase = ''
-      mkdir -p $out/bin
-      cp losos-sign-iso $out/bin/
-      wrapProgram $out/bin/losos-sign-iso \
-        --prefix PATH : ${
-          pkgs.lib.makeBinPath [
-            pkgs.xorriso
-            pkgs.mtools
-            pkgs.sbsigntool
-            pkgs.coreutils
-          ]
-        }
-    '';
+    text = builtins.readFile ./sign-iso-impl.sh;
   };
 
   # tinycode (github.com/dasmatus/tinycode), the coding agent CLI the

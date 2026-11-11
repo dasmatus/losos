@@ -1,4 +1,4 @@
-# Body of git-filter-repo's --message-callback, read by scrub-history.ts and
+# Body of git-filter-repo's --message-callback, read by scrub-history.sh and
 # handed over as one string. filter-repo pastes it into a function that gets
 # `message` (the commit or tag message, bytes) and uses the return value as
 # the new message. Keep it a function *body*: no def, no top-level return

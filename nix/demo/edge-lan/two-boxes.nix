@@ -12,7 +12,7 @@
 #     both, and when it goes away both notice; the second, plain edge
 #     opens sharing but not trading.
 #   * with LOSOS_RECORD_DIR set in the environment of a driver run on the
-#     host (nix/demo/edge-lan/record-driver.ts), the script also pauses at each step
+#     host (nix/demo/edge-lan/record.sh), the script also pauses at each step
 #     until nix/demo/edge-lan/record.ts has photographed the Mesh pane of both
 #     boxes through their real nginx + admin UI (forwarded to the host), so the
 #     recording shows the product, not a stub.

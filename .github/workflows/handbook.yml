@@ -29,7 +29,7 @@ on:
       - ".github/workflows/handbook.yml"
       # The one file the handbook's checks read from the admin UI: the error
       # map (check:links). The palette is the desktop's now (handbook's
-      # scripts/derisk-theme.ts), no longer the admin UI's tokens.css.
+      # scripts/derisk-theme.sh), no longer the admin UI's tokens.css.
       - "admin-ui/app/src/lib/handbook.ts"
   pull_request:
     paths:

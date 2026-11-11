@@ -36,7 +36,7 @@ der Adresse, über die eine Anfrage eingegangen ist.
 Zertifikat, das die Box selbst erzeugt und das zwei Jahre gültig ist.
 Einfaches HTTP auf :80 bleibt offen. Browser vertrauen dem Zertifikat erst,
 wenn du es installierst. Der Einrichtungsassistent bietet einen
-Einzeiler-Installer für macOS, Linux und Windows (`/setup/trust.ts`,
+Einzeiler-Installer für macOS, Linux und Windows (`/setup/trust.sh`,
 `/setup/trust.ps1`, beide nur im LAN) und den einfachen Download
 (`/setup/losos-ca.crt`). Siehe [Installation im Detail](/in-depth/install.md).
 

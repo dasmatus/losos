@@ -6,7 +6,7 @@ import {IERC20, LososPay} from "../src/LososPay.sol";
 
 /// Pays Circle's Base Sepolia USDC through `LososPay` on a fork of the
 /// public chain. Skipped unless `BASE_SEPOLIA_RPC` is set.
-/// `edge/contracts/test-payment.ts` sets it when https://sepolia.base.org answers.
+/// `edge/contracts/test-payment.sh` sets it when https://sepolia.base.org answers.
 contract LososPayForkTest is Test {
     address internal constant USDC = 0x036CbD53842c5426634e7929541eC2318f3dCF7e;
     address internal constant TREASURY = address(0x1111111111111111111111111111111111111111);

@@ -20,7 +20,7 @@ on:
 # jobs in ci.yml write the tag over the file before they build.
 #
 # The commit is made through the GitHub API with GITHUB_TOKEN, which GitHub
-# signs and which fast-forwards only (see .github/scripts/sync-version.ts).
+# signs and which fast-forwards only (see .github/scripts/sync-version.sh).
 # Like every GITHUB_TOKEN push it starts no workflow run on its own, so it
 # cannot loop. The job then starts ci.yml on main through
 # workflow_dispatch, which a GITHUB_TOKEN may do: main's new head is built,
@@ -50,7 +50,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-        run: bun .github/scripts/sync-version.ts
+        run: .github/scripts/sync-version.sh
       - name: run ci on main's new head
         if: steps.sync.outputs.committed
         env:

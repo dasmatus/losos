@@ -28,7 +28,7 @@ export interface BuildEnv {
   /* The URL prefix every asset of this build hangs off: "/" for the box,
    * "/calls/guest/" for the guest page. */
   base: string;
-  /* VITE_LAB_HOSTED=1: the hosted Diagrams copy (admin-ui/lab/engine/build.ts). */
+  /* VITE_LAB_HOSTED=1: the hosted Diagrams copy (admin-ui/lab/engine/build.sh). */
   hosted: boolean;
   /* LOSOS_LAB_MEME: a folder holding no.jpg and yes.jpg for the Lab's splash. */
   memeDir: string;
@@ -422,7 +422,7 @@ export function sonnerQuiet(): BunPlugin {
 export interface PageSpec {
   /* Where the document sits, from admin-ui/app/: index.html at the top (the
    * admin SPA) and chat/ beside manage, cloud, kb, git and wiki; Diagrams'
-   * hosted copy (VITE_LAB_HOSTED=1, admin-ui/lab/engine/build.ts) builds
+   * hosted copy (VITE_LAB_HOSTED=1, admin-ui/lab/engine/build.sh) builds
    * its page at diagrams/index.html too, which a box never gets, so
    * nothing shadows the SPA's /diagrams screen. */
   html: string;

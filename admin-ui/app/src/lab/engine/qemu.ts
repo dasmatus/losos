@@ -11,7 +11,6 @@
  * puts beside the page: qemu/out.js and its worker, pc-bios, the guests,
  * and xterm + xterm-pty under vendor/. */
 
-import { loadQemuFactory } from "./qemu-dyn";
 import type { GuestBackend, GuestConsole, GuestDevice, GuestHandle, GuestNic, Probe } from "./types";
 
 /* xterm and xterm-pty are classic scripts from vendor/; they leave globals. */
@@ -293,7 +292,7 @@ export class QemuBackend implements GuestBackend {
       css.rel = "stylesheet";
       css.href = here("vendor/xterm.css");
       document.head.appendChild(css);
-      const mod = { default: await loadQemuFactory(here("qemu/out.js")) };
+      const mod = (await import(here("qemu/out.js"))) as { default: (m: EmModule) => Promise<unknown> };
       this.factory = mod.default;
       const blobs: Record<string, Uint8Array> = {};
       await Promise.all(

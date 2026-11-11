@@ -153,7 +153,7 @@ async function open({
               fingerprint: 'sha256:' + 'ab'.repeat(32),
               fingerprintDisplay: 'AB:'.repeat(31) + 'AB',
               expires: '2028-01-01T00:00:00Z',
-              install: { node: '/setup/trust.ts', ps1: '/setup/trust.ps1' },
+              install: { sh: '/setup/trust.sh', ps1: '/setup/trust.ps1' },
             }
           : null,
       }),
@@ -209,14 +209,14 @@ await check('step 1 offers a one-line install command naming the box by its IP a
   const text = (await line.innerText()).trim();
   assert.strictEqual(
     text,
-    `curl -fsSL ${base}/setup/trust.ts | node`,
+    `curl -fsSL ${base}/setup/trust.sh | sh`,
     `unexpected command; page errors: ${JSON.stringify(errors)}`,
   );
   const body = await page.locator('body').innerText();
   assert.ok(/Read the script first/i.test(body), 'the script must be offered to read before running');
   assert.ok(/Or by hand/i.test(body), 'the download stays as the manual route');
   const readLink = page.getByRole('link', { name: /Read the script first/i });
-  assert.strictEqual(await readLink.getAttribute('href'), `${base}/setup/trust.ts`);
+  assert.strictEqual(await readLink.getAttribute('href'), `${base}/setup/trust.sh`);
 
   await page.getByRole('radio', { name: 'Windows' }).click();
   assert.strictEqual(
@@ -234,7 +234,7 @@ await check('step 1 offers a one-line install command naming the box by its IP a
 await check("behind a port forward the command keeps the page's own host and port", async () => {
   const { page } = await open({ claimed: false, tls: true });
   const text = (await page.getByTestId('trust-command-line').innerText()).trim();
-  assert.strictEqual(text, `curl -fsSL ${origin}/setup/trust.ts | node`);
+  assert.strictEqual(text, `curl -fsSL ${origin}/setup/trust.sh | sh`);
   await page.close();
 });
 

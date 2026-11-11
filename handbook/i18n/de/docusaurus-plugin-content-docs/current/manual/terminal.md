@@ -112,7 +112,7 @@ oder die Anmeldung. **Widerrufen** beendet eines sofort.
 ```sh
 curl -fsSLO https://nightly.link/dasmatus/losos/workflows/ci/main/losos-pages-updates.zip
 unzip -o losos-pages-updates.zip -d losos-pages-updates
-node losos-pages-updates/install.mjs
+sh losos-pages-updates/install.sh
 ```
 
 Das Zip ist der neueste Build des Clients aus dem GitHub von LosOS, mit dem

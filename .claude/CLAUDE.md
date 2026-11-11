@@ -57,7 +57,7 @@ the pins and hashes, the admin UI typecheck and CI's whole eval job
 check and the VM tests the change touches (TCG without KVM), logging each
 check under `.git/losos-hooks/logs/`. devenv, `nix develop` and a Claude
 Code session (`.claude/settings.json`) set `core.hooksPath`; elsewhere run
-`bun nix/hooks/install.ts`. Never commit or push with `--no-verify` or
+`bash nix/hooks/install`. Never commit or push with `--no-verify` or
 `LOSOS_HOOKS_SKIP` to get past a red check you caused; skip only a check
 that is red on `main` too, and say which in the PR.
 Inside the shell `bcd` and `rcd` cd into the two in-flake crates.
@@ -89,12 +89,6 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   file in `docs/vm/`). Put new things inside one of them. `modules/` stays
   at the root: every box keeps its own `modules/install-target.nix` and
   `modules/overrides.nix` there (`config_repo::BOX_FILES`).
-- `modules/autoprovision.nix` (`backend/src/autoprovision.rs`): the mesh's
-  configuration mirror — `losos.autoprovision.enable` keeps every local-mesh
-  box's `modules/overrides.nix` in step through lososd's reconciler, and
-  `nixosConfigurations.netboot` (flake.nix) is the install medium for
-  machines the mesh netboots: its autorun runs `losos-ctl provision`,
-  `losos-ctl install` with the mesh's configuration fetched first.
 - `flake.nix` builds two systems from one module set: `iso` (options, disko,
   installer) and `install` (everything). `specialArgs.self` lets
   `defaults.nix` wire `losos-ctl` and `losos-admin-ui` in.
@@ -176,8 +170,7 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   tracing without time, ratatui) with the web UI's panes, catalogue and
   palette, read from `admin-ui/app` by its `build.rs`. It pins a box's
   self-signed certificate by SHA-256 at login. `.#losos-static` (musl) is
-  installed by `install.mjs` (bundled from `admin-ui/tui/install.ts`) out of CI's
-  `losos-pages-updates` artifact,
+  installed by `install.sh` out of CI's `losos-pages-updates` artifact,
   linked through nightly.link (CI's `tui` and `publish-tool` jobs). Each call is one OpenPGP
   message signed by a key seeded at install (`losos.access.gpgKeys`,
   installer-fixed, never added at runtime) and encrypted to the host's own
@@ -274,7 +267,7 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   Cloud with `ifMatch`, and Cloud opens `.canvas` in it
   (`src/cloud/open-diagrams.ts`). The box copy has simulated consoles, or libvirt
   guests through `losos-registrar lab` with `losos.lab.libvirt.enable`;
-  `admin-ui/lab/engine/build.ts` and `lab.yml` build the hosted copy with
+  `admin-ui/lab/engine/build.sh` and `lab.yml` build the hosted copy with
   qemu-wasm guests and deploy it to Vercel when the secrets exist.
   `admin-ui/lab/virt-rpc` is a WebAssembly libvirt client for the helper's
   relay. `admin-ui/lab/render` (`losos-lab-render`) is the GPU canvas: Bevy
@@ -500,7 +493,7 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
 - `secure-boot.nix` (iso only): the medium's `EFI/BOOT/BOOTX64.EFI` is a
   signable UKI (ukify: kernel + initrd + cmdline) in place of GRUB, with
   the squashfs's SHA-256 on the signed cmdline and a stage-1 unit that
-  checks it. `losos-sign-iso` (`nix/sign-iso.ts`) signs the finished
+  checks it. `losos-sign-iso` (`nix/sign-iso.sh`) signs the finished
   ISO in place via the El Torito EFI image; CI and the release job run it
   with the secret, `nix/tests/secure-boot.nix` under OVMF with a throwaway key.
   The certificate is `nix/keys/secure-boot-db.pem` (comment-only until the
@@ -662,7 +655,7 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
   through ccache and sccache, in shells and in `nix build` alike.
 - CI is `.github/workflows/ci.yml`, kept in step with `devenv.nix` by hand.
   A pull request runs only the jobs its files reach: the `changes` job maps
-  them to lanes with `.github/scripts/ci-changes.ts`, and `result` is the
+  them to lanes with `.github/scripts/ci-changes.sh`, and `result` is the
   one check that sums the run up. Main, tags, the weekly run and the
   `ci: full` label run everything. A new file a job reads from outside its
   own folders goes into that job's lane in the script.
@@ -757,7 +750,7 @@ workspace, the `nodeModules` passthru); `nix/tests/admin-ui.nix` fails on a
     is a UKI (`modules/secure-boot.nix`), signed after `nix build` by
     `losos-sign-iso` with the `SECURE_BOOT_DB_KEY` secret, never inside a
     derivation: a key in the store would reach the public cache. The
-    production key is made only by `docs/provisioning/secure-boot/keygen.ts` on
+    production key is made only by `docs/provisioning/secure-boot/keygen.sh` on
     the owner's machine; `nix/tests/secure-boot.nix` uses a throwaway one.
 21. `system.stateVersion = "26.11"` is set once. `result` is never committed.
 22. Docs go in `handbook/`; there is no wiki. Every handbook page has Slovak

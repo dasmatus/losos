@@ -214,7 +214,7 @@ to find it.
   domain (one VLAN).
 :::
 
-`nix/demo/edge-lan/run.ts` stands this whole arrangement up on one machine as VMs
+`nix/demo/edge-lan/run.sh` stands this whole arrangement up on one machine as VMs
 on a virtual switch: the edge, which is also the LAN's router, and two boxes
 installed from the ISO. It walks through the verification checklist
 (`nix/demo/edge-lan/CHECKLIST.md`). With no edge, both boxes refuse. The edge

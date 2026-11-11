@@ -1,18 +1,21 @@
 //! The terminal: the alternate screen in raw mode for as long as a screen
 //! runs, restored on the way out whatever happens, a panic included.
-//!
-//! Under wasm32 the run loop has no TTY to take (the browser build of this
-//! crate is the API/drive surface, README's wasm paragraph, not the TTY),
-//! so `run` keeps its name and answers with the needsTerminal problem the
-//! commands' own non-TTY arms use. Everything else here — the `Screen`
-//! trait, the screens that satisfy it, the key translation — is buffer and
-//! event maths that compiles under wasm32 untouched: the pages' pane port
-//! (nix/packages.nix, losos-tui-wasm) hangs off them.
 
-use std::time::Instant;
+use std::io::{stdout, Stdout};
+use std::time::{Duration, Instant};
 
+use ratatui::backend::CrosstermBackend;
 use ratatui::buffer::Buffer;
+use ratatui::crossterm::event::{
+    self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyCode, KeyEvent, KeyEventKind,
+    KeyModifiers,
+};
+use ratatui::crossterm::execute;
+use ratatui::crossterm::terminal::{
+    disable_raw_mode, enable_raw_mode, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen,
+};
 use ratatui::layout::Rect;
+use ratatui::Terminal;
 
 use super::app::{App, Key};
 use super::login::{Login, Picker};
@@ -76,13 +79,8 @@ impl Screen for Picker {
     }
 }
 
-/// crossterm's key, as the screens take it. The browser build owns its own
-/// input and does not touch crossterm's event types, so this translation
-/// exists only on the TTY side.
-#[cfg(not(target_arch = "wasm32"))]
-pub fn key_of(event: ratatui::crossterm::event::KeyEvent) -> Option<Key> {
-    use ratatui::crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
-
+/// crossterm's key, as the screens take it.
+pub fn key_of(event: KeyEvent) -> Option<Key> {
     if event.kind == KeyEventKind::Release {
         return None;
     }
@@ -106,22 +104,10 @@ pub fn key_of(event: ratatui::crossterm::event::KeyEvent) -> Option<Key> {
     })
 }
 
-/// The alternated screen, in raw mode, restored on the way out whatever
-/// happens. A wasm build neither starts nor calls into it.
-#[cfg(not(target_arch = "wasm32"))]
 struct Guard;
 
-#[cfg(not(target_arch = "wasm32"))]
 impl Guard {
     fn enter() -> Result<Guard> {
-        use std::io::stdout;
-
-        use ratatui::crossterm::event::EnableBracketedPaste;
-        use ratatui::crossterm::execute;
-        use ratatui::crossterm::terminal::{
-            enable_raw_mode, Clear, ClearType, EnterAlternateScreen,
-        };
-
         let fail = |e: std::io::Error| Problem::new("losos::terminal", e.to_string());
         enable_raw_mode().map_err(fail)?;
         execute!(
@@ -136,15 +122,8 @@ impl Guard {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 impl Drop for Guard {
     fn drop(&mut self) {
-        use std::io::stdout;
-
-        use ratatui::crossterm::event::DisableBracketedPaste;
-        use ratatui::crossterm::execute;
-        use ratatui::crossterm::terminal::{disable_raw_mode, LeaveAlternateScreen};
-
         let _ = execute!(stdout(), DisableBracketedPaste, LeaveAlternateScreen);
         let _ = disable_raw_mode();
         crate::logging::hold(false);
@@ -152,17 +131,7 @@ impl Drop for Guard {
 }
 
 /// Run `screen` until it is done.
-#[cfg(not(target_arch = "wasm32"))]
 pub fn run(screen: &mut dyn Screen, theme: Theme) -> Result<()> {
-    use std::io::{stdout, Stdout};
-    use std::time::Duration;
-
-    use ratatui::backend::CrosstermBackend;
-    use ratatui::crossterm::event::{self, DisableBracketedPaste, Event};
-    use ratatui::crossterm::execute;
-    use ratatui::crossterm::terminal::{disable_raw_mode, LeaveAlternateScreen};
-    use ratatui::Terminal;
-
     let fail = |e: std::io::Error| Problem::new("losos::terminal", e.to_string());
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
@@ -205,19 +174,4 @@ pub fn run(screen: &mut dyn Screen, theme: Theme) -> Result<()> {
         screen.tick();
     }
     Ok(())
-}
-
-/// Run `screen` until it is done — under wasm32, where the browser build
-/// carries the panes' reads and no terminal exists, this keeps the callers
-/// compiling and answers with the message the non-TTY command arms get
-/// (`io.terminal()` has already refused them there; the browser page does
-/// not crash into this path). The substitute is not a lie: a full-screen
-/// view genuinely needs a TTY, and README's wasm paragraph documents that
-/// the wasm build is the API/drive surface, not the TTY.
-#[cfg(target_arch = "wasm32")]
-pub fn run(_screen: &mut dyn Screen, _theme: Theme) -> Result<()> {
-    Err(Problem::new(
-        "losos::terminal",
-        crate::tr!("tui.open.needsTerminal"),
-    ))
 }

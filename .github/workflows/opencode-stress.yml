@@ -120,7 +120,6 @@ jobs:
             > /tmp/oc-stress/record.sh
           : > /tmp/oc-stress/results.tsv
 
-
       # ── phase 0 — documented surface, snapshotted. Every subcommand and
       # companion utility answers --help; the offline helpers (models,
       # session list, mcp list, plugin list, auth list, debug *, stats,

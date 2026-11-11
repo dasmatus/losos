@@ -332,6 +332,7 @@ impl Link {
             put(self.keychain.as_ref(), &new)?;
             new
         };
+        drop(file);
         *held = Some(c.clone());
         Ok(c)
     }

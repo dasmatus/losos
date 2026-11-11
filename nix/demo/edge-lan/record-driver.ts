@@ -22,4 +22,4 @@ writeFileSync(join(out, "vm-finished"), "");
 await new Promise((res) => recorder.on("close", res)).catch(() => {});
 if (driver.status !== 0) { log(`the walkthrough FAILED (exit ${driver.status}); see ${out}/driver.log`); process.exit(driver.status ?? 1); }
 log(`done: ${readdirSync(out).filter(f=>f.endsWith(".png")).length} pictures and the captions in ${out}/shots.jsonl`);
-log(`next: ${join(here,"compose.ts")} ${out}`);
+log(`next: ${join(here,"compose.sh")} ${out}`);

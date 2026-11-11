@@ -1,7 +1,3 @@
-// Gated: a pseudo-terminal is a desktop fact; the wasm32 build compiles the
-// rest of the suite (--all-targets) and runs no pty here.
-#![cfg(not(target_arch = "wasm32"))]
-
 //! The built `losos` in a real pseudo-terminal (util-linux `script`), for
 //! what a buffer cannot show: raw-mode keys on the login screen, the hidden
 //! prompt, the full-screen view opening and closing, and the exit statuses.

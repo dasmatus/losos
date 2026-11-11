@@ -276,11 +276,6 @@ await check('a presentation lays out its slides: text centred, the picture on th
   const stage = page.getByTestId('md-stage');
   await stage.locator('h2', { hasText: 'The garden' }).waitFor();
   await strip.locator(':scope > li').nth(1).locator('button[aria-current=true]').waitFor();
-  // The picture pane mounts after the file's fetch rounds trips; without
-  // this wait the img's boundingBox() comes back null on a loaded runner
-  // (the run of 2026-11-10 13:42 lost exactly this race), and the layout
-  // assertions below read boxes, not presences.
-  await stage.locator('.md-slide-pictures img').waitFor();
   const textBox = (await stage.locator('.md-slide-text').boundingBox())!;
   const picBox = (await stage.locator('.md-slide-pictures img').boundingBox())!;
   assert.ok(picBox.x > textBox.x + textBox.width - 1, `picture at ${picBox.x}, text ends at ${textBox.x + textBox.width}`);

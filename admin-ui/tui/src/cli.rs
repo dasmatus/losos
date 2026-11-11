@@ -6,7 +6,7 @@
 use clap::{ArgAction, Args, CommandFactory, FromArgMatches, Parser, Subcommand};
 
 use crate::i18n::t;
-use crate::VERSION;
+use crate::tui::panes::VERSION;
 
 #[derive(Debug, Parser)]
 #[command(

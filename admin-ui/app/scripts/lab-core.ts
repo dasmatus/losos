@@ -26,27 +26,6 @@ const CRATES: Record<string, { dir: string; wasm: string; out: string; features?
   mdx: { dir: '../../backend/mdx', wasm: 'losos_mdx', out: 'src/mdx/pkg', features: 'wasm' },
   render: { dir: '../lab/render', wasm: 'losos_lab_render', out: 'src/lab/render-pkg', backends: ['webgpu', 'webgl2'] },
 };
-
-/* Beside the glue, the public URL story: Bun's bundler turns an import of
- * `<glue>.wasm?url` into the asset's hashed URL inside the bundle, but
- * Metro (Expo's web bundler, src/app/index.web.tsx) has no suffix
- * protocol, and an asset-module import would hand the callers a runtime
- * handle, not a URL. So both builds ship the wasm itself at a fixed
- * plain path under public/wasm/ and carry a generated twin module
- * `<glue>.wasm.url.ts` exporting the URL; metro.config.js points the
- * `.wasm?url` imports at the twin, and nix's losos-admin-ui (nix/
- * packages.nix preBuild) repeats these two write for the copies its
- * sandbox gets from the labWasm packages. */
-async function wasmUrlTwin(dir: string, glue: string, slug: string) {
-  await Bun.$`mkdir -p public/wasm`;
-  const module = `${dir}/${glue}`;
-  await Bun.write(`public/wasm/${slug}.wasm`, Bun.file(module));
-  await Bun.write(
-    `${module}.url.ts`,
-    `/* GENERATED FILE (scripts/lab-core.ts): the public URL metro.config.js resolves the ?url import of this module to. Bun's bundler never reads this file. */\nexport default "/wasm/${slug}.wasm";\n`,
-  );
-}
-
 const which = Bun.argv[2] ?? 'core';
 const spec = CRATES[which];
 if (!spec) throw new Error(`usage: lab-core.ts [${Object.keys(CRATES).join('|')}]`);
@@ -81,7 +60,6 @@ if (!spec.backends) {
   run('cargo', ['build', '--release', '--target', 'wasm32-unknown-unknown', ...(spec.features ? ['--features', spec.features] : [])], crate);
   await fresh(out);
   run(bindgen, ['--target', 'web', '--out-dir', out, wasm], app);
-  await wasmUrlTwin(out, `${spec.wasm}_bg.wasm`, which);
   console.log(`wrote ${out}`);
 } else {
   const wanted = (Bun.env.LAB_RENDER_BACKENDS || spec.backends.join(' ')).split(/\s+/).filter(Boolean);
@@ -91,7 +69,6 @@ if (!spec.backends) {
     run('cargo', ['build', '--release', '--target', 'wasm32-unknown-unknown', '--no-default-features', '--features', backend], crate);
     await fresh(dir);
     run(bindgen, ['--target', 'web', '--out-dir', dir, '--out-name', spec.wasm, wasm], app);
-    await wasmUrlTwin(dir, `${spec.wasm}_bg.wasm`, `render-${backend}`);
     const module = `${dir}/${spec.wasm}_bg.wasm`;
     const features = ['bulk-memory', 'nontrapping-float-to-int', 'sign-ext', 'mutable-globals', 'reference-types', 'multivalue'];
     const opt = run(

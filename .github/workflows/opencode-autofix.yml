@@ -2,18 +2,11 @@ name: opencode autofix
 
 # ── What this is ────────────────────────────────────────────────────────────
 #
-# A tinycode agent (github.com/dasmatus/tinycode — the same one-binary Rust
-# coding agent the LosOS box ships to its administrators, here pointed at
-# the LosOS codebase itself) that reworks a pull request's branch so it
-# matches what the pull request DESCRIPTION asks for: the description is
-# passed to the agent as its brief, the agent edits and commits, and what
-# it did is reported in the pull request body.
-#
-# The agent talks to OpenCode Zen's Go gateway
-# (https://opencode.ai/inference/go/openai/v1) with the repository's
-# OPENCODE_API_KEY actions secret, on the same models the tinycode
-# autofix workflow (CI fixing and main-merging) uses. Until the secret
-# exists the workflow is inert — the gate skips with a notice.
+# An OpenCode agent (the anomalyco/opencode GitHub action, running `opencode`
+# on the runner) that reworks a pull request's branch so it matches what the
+# pull request DESCRIPTION asks for: the description is passed to the agent
+# as its brief, the agent edits and commits, and what it did is reported in
+# the pull request body.
 #
 # Triggers and guards:
 #
@@ -26,22 +19,21 @@ name: opencode autofix
 #     re-triggers it through `edited`) from looping. A NEW head commit or a
 #     NEW description still runs the agent again, so editing the description
 #     after a fix is how you request the next pass.
-#   - Draft pull requests are left alone.
+#   - Draft pull requests are left alone, and the whole workflow is inert
+#     until `OPENCODE_API_KEY` exists as an actions secret (a free OpenCode
+#     Console key; sign-up is all it takes, the Zen models picked here cost
+#     nothing — see https://opencode.ai/docs/zen/).
 #
-# Models: OpenCode Zen's Go gateway. glm-5.3-flash is the primary,
-# deepseek-v4.1-flash the fallback for when the primary is saturated.
-# (The -free variants of these two do not route on Go — their sponsored
-# quota lives on the pay-as-you-go endpoint, which refuses every
-# non-OpenCode client; tinycode presents the OpenCode identification
-# there regardless — see dasmatus/tinycode #10.)
+# Models: OpenCode Zen's free tier only. Free models rotate as providers
+# sponsor them, so check https://opencode.ai/models/#free-models when one
+# here disappears; both lines below are zero-retention today (November 2026).
+# The second run is the fallback for when the primary is saturated.
 #
 # Trust: this workflow gives an agent write over the PR's branch and its
 # body on the strength of the description text — which is itself an input.
 # That is fine for the branch-and-description flow of a single-developer
 # repo, but on a repo where strangers open pull requests, add an author
-# allowlist in the gate's step condition before this matters. The
-# description reaches the agent as data through a file, never through a
-# shell.
+# allowlist in the gate's step condition before this matters.
 #
 # Frontend: when the agent's edits touch admin-ui/app (the admin UI), the
 # same shots the handbook-screens workflow takes — built UI photographed by
@@ -58,15 +50,9 @@ permissions:
   pull-requests: write
 
 env:
-  # OpenCode Zen's Go gateway (without the chat-completions path tinycode
-  # appends) — per opencode.ai/docs/console/harnesses. The -free model ids
-  # do not route here — their sponsored quota lives on the pay-as-you-go
-  # endpoint, which free-tier-refuses every non-OpenCode client — so these
-  # are the paid variants of the same families.
-  TINYCODE_BASE_URL: https://opencode.ai/inference/go/openai/v1
-  TINYCODE_PROVIDER: openai
-  TINYCODE_MODEL: glm-5.3-flash
-  TINYCODE_FALLBACK_MODEL: deepseek-v4.1-flash
+  # OpenCode Zen, free tier. `opencode/<model-id>`, per opencode.ai/docs/zen.
+  OC_MODEL: opencode/glm-5.3-flash-free
+  OC_FALLBACK_MODEL: opencode/deepseek-v4.1-flash-free
 
 concurrency:
   # NOT cancelled in progress: an agent push re-enters this group while the
@@ -122,7 +108,7 @@ jobs:
           echo "run=true" >> "$GITHUB_OUTPUT"
 
   autofix:
-    name: "autofix: tinycode against the description"
+    name: "autofix: OpenCode against the description"
     needs: gate
     if: needs.gate.outputs.run == 'true'
     runs-on: ubuntu-latest
@@ -141,95 +127,81 @@ jobs:
           git config user.email "losos-ci-bot@users.noreply.github.com"
           echo "pre_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      # The published nightly, checksum-verified — the same install the
-      # tinycode-autofix workflow uses. A glibc build, right for the runner.
-      - name: install tinycode
-        run: |
-          set -euo pipefail
-          mkdir -p "$HOME/.local/bin"
-          base=https://github.com/dasmatus/tinycode/releases/download/nightly
-          curl -fsSL -o "$HOME/.local/bin/tinycode" "$base/tinycode-x86_64-unknown-linux-gnu"
-          curl -fsSL -o /tmp/tinycode.sha256 "$base/tinycode-x86_64-unknown-linux-gnu.sha256"
-          hash=$(awk '{print $1}' /tmp/tinycode.sha256)
-          echo "$hash  $HOME/.local/bin/tinycode" | sha256sum -c - >/dev/null
-          chmod +x "$HOME/.local/bin/tinycode"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      # The brief is a skeleton plus the pull request body, appended by a
-      # command — the body reaches the agent as data in a file, never
-      # through a shell or an interpolating heredoc. `.claude/CLAUDE.md`
+      # Direct interpolation of the PR body into an action input, not into a
+      # run script: the text reaches the agent as data either way, and this
+      # keeps it out of a shell where it would be code. `.claude/CLAUDE.md`
       # carries the repo's working agreements; the agent reads it first.
-      - name: write the task
+      - name: OpenCode fixes against the description
+        id: oc
+        continue-on-error: true
+        uses: anomalyco/opencode/github@latest
         env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          PR: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          {
-            cat <<'BRIEF'
-          You are the LosOS pull-request autofix bot, working in a checkout
-          of the pull request's own branch.
-
-          Read .claude/CLAUDE.md before anything else and follow it where
-          it applies.
-
-          The author of the pull request recorded below wrote the
-          description after the mark at the end of this file. Work out what
-          it requires of the code that is NOT yet true on this branch, and
-          make those changes — exactly those: no drive-by fixes, no rename
-          sweeps, nothing the description does not ask for. If everything
-          it asks for is already there, change nothing.
-
-          Do not comment on the pull request, do not update its body, and
-          do not open pull requests; the workflow that ran you reports the
-          result. Commit your edits (`git add -A` and one commit, message
-          `fix: <one-line summary>`) but do NOT push and do not rebase.
-
-          ── pull request description ──
-          BRIEF
-            gh pr view "$PR" --repo "$GH_REPO" --json body --jq .body
-            echo "── end ──"
-          } > /tmp/task.txt
-          echo "task: $(wc -c < /tmp/task.txt) bytes"
-
-      # Free models rotate and saturate; when the primary can't run, a
-      # second one on the same brief usually can. Exit codes: 0 done,
-      # 1 hard error, 2 used its turns up — any non-zero falls through to
-      # the fallback model.
-      - name: tinycode works against the description (primary, then fallback)
-        id: agent
-        env:
-          # tinycode reads OPENCODE_API_KEY itself; TINYCODE_API_KEY is
-          # spelled out too, since it is the name tinycode's docs lead with.
-          TINYCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
-        run: |
-          set -euo pipefail
-          used=""
-          for model in "$TINYCODE_MODEL" "$TINYCODE_FALLBACK_MODEL"; do
-            echo "tinycode run on $model"
-            set +e
-            tinycode run --auto --json --max-turns 48 \
-              --root "$GITHUB_WORKSPACE" \
-              --task-file /tmp/task.txt \
-              > /tmp/tc-events.ndjson 2> /tmp/tc-narration.log
-            rc=$?
-            set -e
-            if [ "$rc" = 0 ]; then
-              used="$model"
-              break
-            fi
-            echo "::warning::tinycode failed on $model (exit $rc):"
-            tail -5 /tmp/tc-narration.log || true
-          done
-          if [ -z "$used" ]; then
-            echo "::error::both free models failed; the next pull request event retries"
-            exit 1
-          fi
-          jq -r 'select(.type == "done") | .text' /tmp/tc-events.ndjson | tail -1 > /tmp/tc-answer.txt
-          echo "model=$used" >> "$GITHUB_OUTPUT"
-          echo "answer: $(head -c 200 /tmp/tc-answer.txt)"
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          model: ${{ env.OC_MODEL }}
+          # Sessions carry the PR brief, the description and the tree, and
+          # the share default for a public repository would publish them.
+          share: "false"
+          use_github_token: true
+          prompt: |
+            You are the LosOS pull-request autofix bot, working in a checkout
+            of the pull request's own branch.
+
+            Read .claude/CLAUDE.md before anything else and follow it where
+            it applies.
+
+            The author of pull request #${{ github.event.pull_request.number }}
+            wrote the description between the marks below. Work out what it
+            requires of the code that is NOT yet true on this branch, and
+            make those changes — exactly those: no drive-by fixes, no rename
+            sweeps, nothing the description does not ask for. If everything
+            it asks for is already there, change nothing.
+
+            Do not comment on the pull request, do not update its body, and
+            do not open pull requests; the workflow that ran you reports the
+            result. Commit your edits (`git add -A` and one commit, message
+            `fix: <one-line summary>`) but do NOT push and do not rebase.
+
+            ── pull request description ──
+            ${{ github.event.pull_request.body }}
+            ── end ──
+
+      # Free models rotate and saturate; when the primary can't run, a second
+      # one on the same brief usually can.
+      - name: OpenCode again, on the fallback free model
+        id: oc-fallback
+        if: steps.oc.outcome == 'failure'
+        uses: anomalyco/opencode/github@latest
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          model: ${{ env.OC_FALLBACK_MODEL }}
+          share: "false"
+          use_github_token: true
+          prompt: |
+            You are the LosOS pull-request autofix bot, working in a checkout
+            of the pull request's own branch.
+
+            Read .claude/CLAUDE.md before anything else and follow it where
+            it applies.
+
+            The author of pull request #${{ github.event.pull_request.number }}
+            wrote the description between the marks below. Work out what it
+            requires of the code that is NOT yet true on this branch, and
+            make those changes — exactly those: no drive-by fixes, no rename
+            sweeps, nothing the description does not ask for. If everything
+            it asks for is already there, change nothing.
+
+            Do not comment on the pull request, do not update its body, and
+            do not open pull requests; the workflow that ran you reports the
+            result. Commit your edits (`git add -A` and one commit, message
+            `fix: <one-line summary>`) but do NOT push and do not rebase.
+
+            ── pull request description ──
+            ${{ github.event.pull_request.body }}
+            ── end ──
 
       - name: Commit, rebase, and take stock
         id: changes
@@ -238,10 +210,6 @@ jobs:
           PRE_SHA: ${{ steps.position.outputs.pre_sha }}
         run: |
           set -euo pipefail
-          # The agent's session files live inside the workspace root
-          # (.tinycode/sessions); they are the agent's private state, not
-          # part of the fix, and must not enter the commit.
-          rm -rf .tinycode
           # The sha the report below names: the pushed tip when the agent
           # changed something, the unchanged tip when it did not. Either
           # way the run the next event triggers must see it, or the gate
@@ -351,10 +319,10 @@ jobs:
       # stale, and that next run goes around once more, changing nothing —
       # a cheap round trip, not a loop.
       - name: report in the pull request body
-        if: steps.agent.outcome == 'success'
+        if: steps.oc.outcome == 'success' || steps.oc-fallback.outcome == 'success'
         uses: actions/github-script@v9
         env:
-          MODEL: ${{ steps.agent.outputs.model }}
+          MODEL: ${{ steps.oc.outcome == 'success' && env.OC_MODEL || env.OC_FALLBACK_MODEL }}
           HEAD_SHA: ${{ steps.changes.outputs.pushed_sha }}
           DESC_SHA: ${{ needs.gate.outputs.desc_sha }}
           CHANGED: ${{ steps.changes.outputs.changed }}
@@ -378,7 +346,7 @@ jobs:
             const i = body.lastIndexOf(begin);
             const j = body.indexOf(end);
             if (i >= 0 && j > i) body = (body.slice(0, i) + body.slice(j + end.length)).trimEnd();
-            const lines = ['### tinycode autofix', ''];
+            const lines = ['### OpenCode autofix', ''];
             if (process.env.CHANGED === 'true') {
               const count = process.env.FILE_COUNT;
               lines.push(`_${process.env.MODEL} applied the description: ${count} file${count === '1' ? '' : 's'} touched ([run](${process.env.OC_RUN_URL}))._`);

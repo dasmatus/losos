@@ -1,7 +1,7 @@
 /* The handbook on the LosOS desktop's theme, in the admin UI's layout.
  *
  * derisk-theme.css is the desktop's theme, generated from mcsapi-theme by
- * scripts/derisk-theme.ts, and palette.css names its values the way this
+ * scripts/derisk-theme.sh, and palette.css names its values the way this
  * file reads them (--ground, --surface, --ink, --accent and the rest).
  * Everything below maps Docusaurus's Infima variables onto those names and
  * reshapes the page to the SPA's layout: a translucent top bar with the

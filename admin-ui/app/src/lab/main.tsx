@@ -1,5 +1,5 @@
 /* The hosted copy's entry: diagrams/index.html loads this, and only the
- * hosted build (LOSOS_LAB_HOSTED=1, admin-ui/lab/engine/build.ts) has that
+ * hosted build (LOSOS_LAB_HOSTED=1, admin-ui/lab/engine/build.sh) has that
  * page. On a box LosOS Diagrams is a screen of the admin UI at /diagrams
  * (App.tsx). This page is the same screen with no box behind it. It shares
  * the SPA's components, palette, theme and language. */

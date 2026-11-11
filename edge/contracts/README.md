@@ -62,7 +62,7 @@ with a password. The box never sees it.
 # then a tap topped up, settled by the edge key within its cap and closed.
 # If https://sepolia.base.org answers, the same payment runs against Circle's
 # Base Sepolia USDC on a fork.
-bun test-payment.ts
+./test-payment.sh
 ```
 
 `devenv`'s `test-evm-escrow` runs it with Foundry from nixpkgs, as CI's
