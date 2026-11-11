@@ -7,10 +7,12 @@ name: opencode dependency bump
 # before a human ever sees a pull request:
 #
 #   1. bump    — the agent runs `cargo update` on the Cargo workspaces and
-#                `bun update` on the Bun workspaces, then recomputes the
-#                vendored hashes (`fix-hashes.py`), exactly the commands the
-#                lockfile-updates workflow uses. It changes lock files and
-#                nothing else.
+#                `bun update` on the Bun workspaces, exactly the commands
+#                the lockfile-updates workflow uses. It changes lock files
+#                and nothing else; the workflow itself recomputes the
+#                vendored hashes (`fix-hashes.py`) after it, so a stale
+#                hash cannot reach the pull request even if the agent
+#                skipped that command.
 #   2. build   — the workflow itself (never the agent) runs the build lane:
 #                `cargo build` on the bumped workspaces in the CI dev shell,
 #                frozen `bun install` plus the real admin-UI build on the Bun
@@ -206,6 +208,14 @@ jobs:
           fi
           echo "model=$used" >> "$GITHUB_OUTPUT"
           echo "answer: $(head -c 200 /tmp/oc-answer.txt)"
+
+      # The brief has the agent run fix-hashes.py, but nothing in the build
+      # lane tests the vendored hashes: a real `bun install` works fine on
+      # a lock file whose Nix vendor hash went stale. Recompute them here,
+      # where the run is a no-op when the agent already did, so the pull
+      # request carries current hashes however the agent behaved.
+      - name: refresh the vendored hashes
+        run: python3 .github/scripts/fix-hashes.py --base HEAD
 
       # The agent's state (`.opencode/`) lives inside the checkout; it is its
       # private state, not part of the bump, and must not enter the commit.
