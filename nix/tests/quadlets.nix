@@ -66,7 +66,7 @@ pkgs.testers.nixosTest {
 
       lososInternal.quadlets = {
         enable = true;
-        uiPort = uiPort;
+        inherit uiPort;
         # No identity module here: no ordering beyond the image loader, and
         # the same people-file gate the appliance's own conversion carries.
         autheliaUnit.conditionPathExists = peopleFile;
@@ -134,7 +134,7 @@ pkgs.testers.nixosTest {
 
   testScript =
     let
-      authelia = pkgs.authelia;
+      inherit (pkgs) authelia;
     in
     ''
       import json

@@ -106,7 +106,11 @@ let
   # own sub-id base: `notshared` the owner's, `shared` the mesh's (Mesh
   # CI's runner shares the range, modules/ci.nix), `kindashared` the local
   # gateways'.
-  appUsers = [ "notshared" "shared" "kindashared" ];
+  appUsers = [
+    "notshared"
+    "shared"
+    "kindashared"
+  ];
   subIdBase = {
     notshared = 200000;
     shared = 300000;
@@ -217,12 +221,14 @@ let
   # same bases defined above) and its own store under
   # /var/lib/losos-podman/<user>.
   appUserUid = u: toString config.users.users.${u}.uid;
-  appUserStorage = u: pkgs.writeText "losos-quadlets-app-${u}-storage.conf" ''
-    [storage]
-    driver = "overlay"
-    graphroot = "${podmanRoot}/${u}/storage"
-    runroot = "/run/user/${appUserUid u}/containers"
-  '';
+  appUserStorage =
+    u:
+    pkgs.writeText "losos-quadlets-app-${u}-storage.conf" ''
+      [storage]
+      driver = "overlay"
+      graphroot = "${podmanRoot}/${u}/storage"
+      runroot = "/run/user/${appUserUid u}/containers"
+    '';
 
   # The service's env for running Podman rootless from its own unit, as
   # the app's user: the account's runtime directory (linger's user
@@ -328,11 +334,11 @@ let
 
       # The account's own store, one conf per account.
       case "$runAs" in
-        ${lib.concatMapStringsSep "\n" (
-          u: ''
+        ${
+          lib.concatMapStringsSep "\n" (u: ''
             ${u}) storageConf=${appUserStorage u} ;;
-          ''
-        ) appUsers}      esac
+          '') appUsers
+        }      esac
 
       # Podman as the app's own account: its rootless store.
       podman_as() {
@@ -361,11 +367,11 @@ let
         jq --arg svc "$svc" '.services[$svc]' compose.json \
           | jq -r --arg release "$release" --arg name "$svc" -f ${quadletServiceFile} > "$file"
         case "$runAs" in
-          ${lib.concatMapStringsSep "\n" (
-            u: ''
+          ${
+            lib.concatMapStringsSep "\n" (u: ''
               ${u}) cat ${quadletService u} >> "$file" ;;
-            ''
-          ) appUsers}        esac
+            '') appUsers
+          }        esac
         units+=("losos-app-$release-$svc.service")
       done
 
@@ -413,11 +419,11 @@ let
       home="${podmanRoot}/$runAs"
       storageConf=${appUserStorage (lib.head appUsers)}
       case "$runAs" in
-        ${lib.concatMapStringsSep "\n" (
-          u: ''
+        ${
+          lib.concatMapStringsSep "\n" (u: ''
             ${u}) storageConf=${appUserStorage u} ;;
-          ''
-        ) appUsers}      esac
+          '') appUsers
+        }      esac
       qdir=${quadletDir}/$release
       if [[ -d "$qdir" ]]; then
         for f in "$qdir"/*.container; do
@@ -427,14 +433,12 @@ let
       fi
       # What a half-made start left behind: every container of the app, by
       # its label.
-      ids=$(runuser -u "$runAs" -- env HOME="$home" XDG_RUNTIME_DIR="/run/user/$uid" \
+      runuser -u "$runAs" -- env HOME="$home" XDG_RUNTIME_DIR="/run/user/$uid" \
         CONTAINERS_STORAGE_CONF="$storageConf" ${podmanPkg}/bin/podman \
-        ps --all --quiet --filter "label=losos.app=$release")
-      if [[ -n "$ids" ]]; then
-        runuser -u "$runAs" -- env HOME="$home" XDG_RUNTIME_DIR="/run/user/$uid" \
+        ps --all --quiet --filter "label=losos.app=$release" \
+        | xargs --no-run-if-empty runuser -u "$runAs" -- env HOME="$home" XDG_RUNTIME_DIR="/run/user/$uid" \
           CONTAINERS_STORAGE_CONF="$storageConf" ${podmanPkg}/bin/podman \
-          rm --force --time 10 $ids
-      fi
+          rm --force --time 10
     '';
   };
 
@@ -881,10 +885,10 @@ let
             repo_commit "Remove $release" || true
           fi
           ${lib.optionalString cfg.quadlets ''
-          # The generated quadlets with it: their units stop with the app
-          # (the down above), their files go here.
-          rm -rf ${quadletDir}/"$release"
-          systemctl daemon-reload
+            # The generated quadlets with it: their units stop with the app
+            # (the down above), their files go here.
+            rm -rf ${quadletDir}/"$release"
+            systemctl daemon-reload
           ''}
           # The record goes; the app's files stay in the user's data domain.
           rm -rf "$dir"
@@ -1150,8 +1154,7 @@ in
           RemainAfterExit = true;
           User = lib.mkIf (!cfg.quadlets) "notshared";
           Group = lib.mkIf (!cfg.quadlets) "notshared";
-          ExecStart =
-            if cfg.quadlets then "${lib.getExe quadletUp} %i" else "${lib.getExe podmanUp} %i";
+          ExecStart = if cfg.quadlets then "${lib.getExe quadletUp} %i" else "${lib.getExe podmanUp} %i";
           # Post, not ExecStop: it runs after a failed start too, which can
           # leave half a project running.
           ExecStopPost =

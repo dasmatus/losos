@@ -361,9 +361,10 @@ let
   # (lososInternal.quadlets), the account the container runs as, in whose
   # place the people file, the session file and the redis socket must be
   # readable.
-  fileGroup = if config.lososInternal.quadlets.enable then config.lososInternal.quadlets.user else user;
-  in
-  {
+  fileGroup =
+    if config.lososInternal.quadlets.enable then config.lososInternal.quadlets.user else user;
+in
+{
   # The credential store every secret here lives in.
   imports = [ ./credentials.nix ];
 
