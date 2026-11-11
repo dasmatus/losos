@@ -4,6 +4,7 @@ import {
   ArrowRight01Icon,
   ComputerIcon,
   LanguageCircleIcon,
+  Maximize01Icon,
   Moon02Icon,
   PaintBoardIcon,
   Sun03Icon,
@@ -11,22 +12,26 @@ import {
 } from "@hugeicons/core-free-icons";
 import { popupMotion } from "@/components/ui/motion";
 import { useTheme } from "@/components/ui/theme-toggle";
+import { useWide } from "@/components/ui/wide-toggle";
 import { isLocale, LOCALE_NAMES, LOCALES, type MessageKey } from "@/lib/i18n";
 import { useLocaleChoice, useT } from "@/lib/i18n-react";
 import { isTheme, THEMES, type Theme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
-/* The theme and the language, as two rows of a menu: the person menu in the
- * top bar (components/app-bar.tsx) holds them under the person's name, and
- * a page nobody is signed in to holds them in `DisplayMenu`, one button in
- * its bar. Each row opens a submenu of choices, the shape the context
- * menu's Appearance already has, with the current choice named on the row
- * so it reads without opening.
+/* The theme, the language and wide mode, as rows of a menu: the person menu
+ * in the top bar (components/app-bar.tsx) holds them under the person's
+ * name, and a page nobody is signed in to holds them in `DisplayMenu`, one
+ * button in its bar. The theme and the language each open a submenu of
+ * choices, the shape the context menu's Appearance already has, with the
+ * current choice named on the row so it reads without opening; wide mode is
+ * a plain checkable row.
  *
- * Both stay this browser's: the theme in lib/theme.ts, the language in
- * lib/i18n.ts, each in localStorage and stamped on <html> before the first
- * paint. The no-JavaScript pages draw the same two rows as disclosures
- * (backend/plugins/page/src/shell.rs). */
+ * All three stay this browser's: the theme in lib/theme.ts, the language in
+ * lib/i18n.ts, wide mode in lib/wide.ts — each in localStorage and stamped
+ * on <html> before the first paint. The no-JavaScript pages draw the theme
+ * and the language as disclosures (backend/plugins/page/src/shell.rs); wide
+ * mode is the React shell's alone, whose pages are the ones with margins to
+ * drop. */
 
 const THEME_OPTIONS: Record<Theme, { label: MessageKey; icon: IconSvgElement }> = {
   auto: { label: "ui.theme.auto", icon: ComputerIcon },
@@ -115,10 +120,11 @@ function ChoiceRow<V extends string>({
   );
 }
 
-/** The two rows, for inside a Base UI menu's popup. */
+/** The three rows, for inside a Base UI menu's popup. */
 export function PreferenceItems() {
   const t = useT();
   const { theme, setTheme } = useTheme();
+  const { wide, setWide } = useWide();
   const [locale, setLocale] = useLocaleChoice();
   const themes = THEMES.map((value) => ({ value, label: t(THEME_OPTIONS[value].label), icon: THEME_OPTIONS[value].icon }));
   const languages = [
@@ -138,6 +144,22 @@ export function PreferenceItems() {
           if (isTheme(next)) setTheme(next);
         }}
       />
+      {/* A checkable row, not a submenu of two: on and off are the whole
+       * choice, and the tick says which of them it is. Staying open after
+       * the click is the point — the page behind the popup is what changes. */}
+      <Menu.CheckboxItem
+        checked={wide}
+        onCheckedChange={(next) => setWide(next)}
+        label={t("ui.wide.label")}
+        data-slot="wide-menu"
+        className={menuItemClass}
+      >
+        <Glyph icon={Maximize01Icon} />
+        <span className="min-w-0 flex-1 truncate">{t("ui.wide.label")}</span>
+        <Menu.CheckboxItemIndicator className="text-accent">
+          <HugeiconsIcon icon={Tick02Icon} size={14} strokeWidth={2} color="currentColor" aria-hidden="true" />
+        </Menu.CheckboxItemIndicator>
+      </Menu.CheckboxItem>
       <ChoiceRow
         slot="language-menu"
         icon={LanguageCircleIcon}
@@ -152,7 +174,7 @@ export function PreferenceItems() {
 }
 
 /* For a bar with nobody signed in to it (a wiki read by a visitor, LosOS Git
- * before sign-in): one button that opens the same two rows. */
+ * before sign-in): one button that opens the same rows. */
 export function DisplayMenu({ className }: { className?: string }) {
   const t = useT();
   return (
