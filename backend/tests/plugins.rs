@@ -924,7 +924,9 @@ fn a_bad_plugin_directory_stops_the_daemon() {
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("writable"), "{stderr}");
 
-    // And the same files outside the trusted root.
+    // And the same files outside the trusted root. On a box without nix
+    // (where `/nix/store` does not exist) lososd cannot resolve the store
+    // root at all, so the sentence to assert is whichever refusal it hit.
     let out = Command::new(env!("CARGO_BIN_EXE_lososd"))
         .env("LOSOS_NO_DBUS", "1")
         .env("LOSOS_STATE_DIR", dir.path().join("state"))
@@ -935,5 +937,8 @@ fn a_bad_plugin_directory_stops_the_daemon() {
         .unwrap();
     assert!(!out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("outside"), "{stderr}");
+    assert!(
+        stderr.contains("outside") || stderr.contains("resolving /nix/store"),
+        "{stderr}"
+    );
 }
