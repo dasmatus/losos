@@ -72,12 +72,35 @@
        * one here has; run:ios is the local path until then. Leave the
        * simulator profile above untouched when it lands next to it. */
     },
+    /* The same dev client as `development`, prebuilt for TV: the
+     * `@react-native-tvos/config-tv` plugin (app.config.ts's plugins list)
+     * rewrites the native projects when EXPO_TV=1, so these profiles
+     * extend the phone ones with the env set and nothing else. EAS's
+     * tvOS builds sign with the iOS distribution certificate but need a
+     * tvOS provisioning profile the CLI cannot make — EAS's dashboard
+     * carries it by hand, per Expo's TV guide
+     * (https://docs.expo.dev/guides/building-for-tv/). */
+    "development_tv": {
+      "extends": "development",
+      "env": {
+        "EXPO_TV": "1"
+      },
+      "channel": "development"
+    },
     /* The App-Store-shaped preview the box's release flow runs later;
      * EAS does the prebuild, Expo's package publish scripts stay in-tree. */
     "preview": {
       /* The shared comment above explains the pin: the lockfile's Bun. */
       "bun": "1.4.2",
       "distribution": "store"
+    },
+    /* `preview` with the TV native rewrite; see development_tv's comment. */
+    "preview_tv": {
+      "extends": "preview",
+      "env": {
+        "EXPO_TV": "1"
+      },
+      "channel": "preview"
     },
     "production": {
       "bun": "1.4.2",

@@ -104,5 +104,78 @@ bun run web          # expo start --web, the SPA under Metro
 [1]: https://docs.expo.dev/develop/development-builds/introduction/
 
 
+## TV
+
+The native targets build for Apple TV and Android TV too, "for lols
+sake" and because the panes are genuinely usable from a couch: the
+`react-native` dependency is the [React Native TV fork][2]
+(`react-native-tvos@0.81.5-2`, the 0.81-stable release matching this
+Expo SDK 54's RN 0.81), which still ships the TV support core React
+Native dropped, and `@react-native-tvos/config-tv` (app.config.ts's
+plugins list) rewrites the native projects when prebuild runs with
+`EXPO_TV=1` — the Android manifest loses its portrait lock and gains
+the leanback launcher intent, and the iOS project targets tvOS instead
+of iOS. Phone prebuilds are untouched: without `EXPO_TV` the plugin is
+inert and everything is the Build section's flow, except the fork swap,
+which is source-compatible (same version, TV additions; `Platform.isTV`
+/ `isTVOS`, `TVFocusGuideView`, focus-carrying `Pressable` all exist
+for when a TV layout wants them).
+
+```sh
+export EXPO_TV=1
+npx expo prebuild --clean   # android/ and ios/ now carry the TV rewrite
+bun run android             # on an Android TV emulator, or:
+bun run ios                 # on an Apple TV simulator (Xcode 16+,
+                            # `xcodebuild -downloadAllPlatforms` for the
+                            # tvOS SDK)
+unset EXPO_TV
+```
+
+`eas.json` carries the matching cloud profiles
+(`eas build --profile development_tv`, `preview_tv`), which extend the
+phone ones with `EXPO_TV=1`; the tvOS signing caveats in Expo's [TV
+guide][3] (a tvOS provisioning profile the CLI cannot mint) are the
+only extra step a store-shaped TV build adds. Android TV needs no
+separate credential path: the same keystore, the leanback manifest is
+the only difference.
+
+[2]: https://github.com/react-native-tvos/react-native-tvos
+[3]: https://docs.expo.dev/guides/building-for-tv/
+
+
+## Other native targets, installed as eject-time packages
+
+Two out-of-tree React Native ports ride in devDependencies, unused by
+the web build and every current native target, so that ejecting the
+project onto their platforms starts from the matching versions rather
+than a hunt:
+
+- **Windows** — `react-native-windows@0.81.38`, the v0.81-stable
+  release for this RN. The [Windows guide][4] takes it from there
+  (`npx react-native-windows-init` on a Windows machine).
+- **visionOS** — `@callstack/react-native-visionos@0.79.6`, the newest
+  the port publishes; it predates RN 0.81 (its peer pins only
+  `react ^19`), so a visionOS eject pairs this package with an RN
+  0.79-native tree — a deliberate fork of the dependency set, not a
+  drop-in here.
+
+[4]: https://microsoft.github.io/react-native-windows/
+
+
+## Skia
+
+`@shopify/react-native-skia@2.2.12` (the version Expo SDK 54 pins in
+its `bundledNativeModules`) is in dependencies so canvases can be
+drawn without reaching for the deps file first. It is not imported
+anywhere yet: nothing in the SPA needs a GPU canvas this page does not
+already have (the lab's wasm renderers own that lane), so the package
+sits ready for the first pane that does. Its Reanimated/worklets peers
+are optional and deliberately left out — the native targets keep
+`newArchEnabled: false` (expo-build-properties above) for the old
+architecture modules the panes carry, and Reanimated 4 is a new
+architecture package.
+
+
+
 Typecheck stays `bun run typecheck` (tsc --noEmit, one tsconfig for both
 targets). The admin browser tests are `bun run test:browser`.
