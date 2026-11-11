@@ -1560,12 +1560,15 @@ async fn the_edge_probes_a_bought_volume_and_refunds_a_silent_one() {
     // The volume went silent at the slot's start, so the whole period comes
     // back (`refund` null, step `refund`); a split keeps a partial amount.
     let step = purchase["card"]["step"].as_str().expect("a step");
-    assert!(step == "refund" || step == "split", "{purchase}");
+    assert!(
+        step == "refund" || step == "split",
+        "unexpected card step value"
+    );
     if step == "split" {
         let refunded = purchase["card"]["refund"].as_u64().expect("a split");
         assert!(
             refunded > 0 && refunded < purchase["amount"].as_u64().unwrap(),
-            "{purchase}"
+            "split refund amount out of expected bounds"
         );
     }
 
