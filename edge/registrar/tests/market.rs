@@ -1558,13 +1558,15 @@ async fn the_edge_probes_a_bought_volume_and_refunds_a_silent_one() {
     .await;
     let purchase = &purchase["purchases"][0];
     // The volume went silent at the slot's start, so the whole period comes
-    // back (`refund` null, step `refund`); a split keeps a partial amount.
+    // back (step `refunded`); a partial window keeps a split amount (step
+    // `settled`). The reconcile pass settles the card in the same pass that
+    // decides the refund, so the observed step is the settled one.
     let step = purchase["card"]["step"].as_str().expect("a step");
     assert!(
-        step == "refund" || step == "split",
-        "unexpected card step value"
+        step == "refunded" || step == "settled",
+        "unexpected card step value: {step}"
     );
-    if step == "split" {
+    if step == "settled" {
         let refunded = purchase["card"]["refund"].as_u64().expect("a split");
         assert!(
             refunded > 0 && refunded < purchase["amount"].as_u64().unwrap(),
