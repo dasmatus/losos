@@ -122,6 +122,15 @@ s podielom tej druhej.
   dodaný, zaokrúhlený nahor na cent, a predajca dostane zaplatené za
   zvyšok, mínus poplatok z tejto časti. Zariadenie, ktoré je offline od
   začiatku, vráti celú platbu.
+- **Úložisko, ktoré neodpovedá, vráti peniaze kupujúcemu tiež.** To, že je
+  uzol predajcu `Ready`, nehovorí nič o claime, do ktorého kupujúci zálohuje.
+  Preto keď si kupujúci raz otvorí dverám zálohovaného zväzku kľúč, edge sa
+  pri každom prechode reconcile zväzku sám pýta: podpísaná požiadavka cez
+  server zväzku, ktorej sa darí len vtedy, keď zväzok za ním odpovedá.
+  Tichých 24 hodín v kuse alebo 48 hodín spolu skončí obdobie a kupujúci je
+  urobený celým tým istým spôsobom ako pri offline zariadení. Čas, ktorý
+  edge nemohol skontrolovať — bol down, alebo apiserver neodpovedal — nikomu
+  nepočíta.
 - **Nič nepripravené, nič nezaplatené.** Ak kúpené nie je pripravené do 23
   hodín od platby, kupujúci dostane všetko späť.
 - **Predajca dostane zaplatené, keď obdobie skončí.** Skupina Zárobky na
@@ -169,7 +178,8 @@ claim zmizne, pretože claim drží kapacitu v Longhorne aj po skončení mesiac
   `Immediate`, čo je predvolená trieda Longhornu. Trieda
   `WaitForFirstConsumer` sa nikdy neviaže, pretože claim zatiaľ nič
   nepripája. Prehľad účtu hlási naviazaný claim ako
-  `volume: "<namespace>/<claim>"`. Edge si meno claimu zapíše skôr, než oň
+  `volume: "<namespace>/<claim>"` a `volume_ok` ako to, či odpovedal na
+  poslednú kontrolu edge. Edge si meno claimu zapíše skôr, než oň
   požiada, takže claim, ktorý sa nikdy nenaviaže, alebo taký, ktorý vznikol
   tesne pred zastavením edge, si po skončení mesiaca stále ponechá svoje
   jednotky predané.
@@ -177,7 +187,8 @@ claim zmizne, pretože claim drží kapacitu v Longhorne aj po skončení mesiac
   držať na naviazanej objednávke úložiska (Nastavenia, Záloha). Zariadenie
   šifruje pomocou restic skôr, než čokoľvek odíde, rovnako ako pri buckete,
   a hovorí s cestou edge `/market/storage/<order>/`, ktorá obsluhuje
-  protokol REST nástroja restic. Edge pri prvom použití spustí pre každú
+  protokol REST nástroja restic. Edge pri prvom použití — alebo skôr, keď
+  sa tam dostane skôr kontrola zdravia uvedená nižšie — spustí pre každú
   objednávku jeden `rest-server` vedľa claimu, z obrazu, ktorý nesie so
   sebou (`losos.edge.market.backups.enable`, predvolene zapnuté) a nikdy
   ho nesťahuje. Jediný účet servera patrí edge, s heslom vytvoreným pre
@@ -199,8 +210,10 @@ Obmedzenia, o ktorých treba vedieť a z ktorých sa zatiaľ žiadne nevynucuje:
   hosťovanie práve tohto zväzku.
 - Jediná cesta ku claimu je cesta pre zálohy uvedená vyššie. Nič iné ho
   nepripája.
-- Nič sa nikdy nemaže. Vypršaný nárok sa prestane hlásiť, ale zväzok drží
-  dáta kupujúceho a jeho odstránenie je na rozhodnutí operátora. Kým operátor
+- Nič sa nikdy nemaže. Vypršaný nárok sa prestane hlásiť a jeho dvere do
+  záloh sú zatvorené — server pred zväzkom je zastavený a jeho heslo
+  zahodené — ale zväzok drží dáta kupujúceho a jeho odstránenie je na
+  rozhodnutí operátora. Kým operátor
   claim nezmaže, jeho GiB zostávajú predané, takže tá istá kapacita sa nikdy
   nepredá dvakrát. Platí to aj pre claim, ktorý je stále `Pending`, keďže sa
   ešte môže naviazať. Prechod reconcile kontroluje každý vypršaný claim
@@ -208,7 +221,8 @@ Obmedzenia, o ktorých treba vedieť a z ktorých sa zatiaľ žiadne nevynucuje:
 - ServiceAccount registrara získa po zapnutí trhu `get`/`create` na
   namespaces a PersistentVolumeClaims v celom klastri a pri zapnutých
   zálohách na kúpenom úložisku aj na Deployments a Services (a `create` na
-  Secrets). Kubernetes RBAC
+  Secrets) — plus `patch` na Deployments, ktorým sa zastaví server
+  vypršanej objednávky. Kubernetes RBAC
   nedokáže žiadne z nich obmedziť na mená `market-*`.
 :::
 
@@ -795,11 +809,11 @@ objednávať nedá.
   v Stripe dashboarde. Vrátenie peňazí z akéhokoľvek iného dôvodu potom, ako
   predajca dostal zaplatené, je na rozhodnutí operátora, s
   `reverse_transfer`, aby sa vrátil aj podiel predajcu.
-- **Dôkaz, že úložisko je v poriadku.** Zariadenie sa počíta ako online,
-  kým je jeho uzol v mesh `Ready`. Edge nekontroluje, či zväzok kupujúceho
-  odpovedá.
-- **Vynucovanie nároku.** Plnenie vytvorí claim; nebráni kupujúcemu použiť
-  viac, než kúpil, nemeria výpočtový výkon a pri expirácii neodoberá prístup.
+- **Meranie výpočtového výkonu.** Kredit výpočtového výkonu je zápis
+  v účtovníctve a nič podľa neho neplánuje, takže nie je čo merať. Čo sa
+  vynucovať dá: kúpené úložisko ohraničuje veľkosť claimu, dvere do záloh
+  sú po skončení plateného času zatvorené (ako hovorí
+  [Plnenie](#fulfilment)) a repliky vypršaného stroja sú zastavené.
 - **Dane, fakturácia a overovanie predajcov** nad rámec toho, čo robí
   onboarding Stripe. Prevádzka trhoviska prináša právne povinnosti, ktoré
   závisia od toho, kde pôsobíte. Toto je experiment, nie rada.
