@@ -36,6 +36,7 @@
 //! most [`MAX_REQUESTS`] are in flight. restic retries a `503` with backoff,
 //! so a busy edge or a server still starting costs the box time, not a run.
 
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -52,7 +53,7 @@ use tokio::sync::{Mutex, Semaphore};
 use axum::Json;
 use serde::Deserialize;
 
-use super::{kube_access, kube_create, market_of, market_tenant, AppState, KubeAccess, MarketAuth};
+use super::{kube_access, kube_create, kube_patch, market_of, market_tenant, AppState, KubeAccess, MarketAuth};
 use crate::action::Action;
 use crate::error::ApiError;
 use crate::market::{MarketError, OpenDoor, StorageVolume};
@@ -70,6 +71,11 @@ const PORT: u16 = 8000;
 /// How long one forwarded request may take, a whole pack included.
 const UPSTREAM_TIMEOUT: Duration = Duration::from_secs(120);
 
+/// How long a health probe may take. The server sits on this node behind a
+/// Service whose address the edge already knows; a volume that cannot answer
+/// in this is one the buyer cannot use.
+const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// How long the server's address may take to accept. It is on this node,
 /// so anything slower is a pod that is not there.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
@@ -84,6 +90,8 @@ pub(super) struct Door {
     /// not each ask the apiserver. Dropped when the address stops answering.
     upstream: Mutex<HashMap<String, String>>,
     client: reqwest::Client,
+    /// The client the health probes go through: short-lived on purpose.
+    probe: reqwest::Client,
 }
 
 impl Door {
@@ -93,6 +101,11 @@ impl Door {
             upstream: Mutex::new(HashMap::new()),
             client: reqwest::Client::builder()
                 .timeout(UPSTREAM_TIMEOUT)
+                .connect_timeout(CONNECT_TIMEOUT)
+                .no_proxy()
+                .build()?,
+            probe: reqwest::Client::builder()
+                .timeout(PROBE_TIMEOUT)
                 .connect_timeout(CONNECT_TIMEOUT)
                 .no_proxy()
                 .build()?,
@@ -584,6 +597,254 @@ pub(super) fn service(volume: &StorageVolume) -> serde_json::Value {
             "ports": [{ "port": PORT, "targetPort": PORT }],
         },
     })
+}
+
+/// One probe's outcome. `None` says nothing about the volume: the server is
+/// not up yet, which costs the order nothing ([`serve`] answers `503` for
+/// the same case).
+enum Probe {
+    /// The volume answered, or did not.
+    Answered(bool),
+    /// The server is starting; ask again next pass.
+    Starting,
+}
+
+/// The reconcile pass for bought volumes.
+///
+/// *Proof that the storage is healthy.* A box counts as online while its
+/// node is `Ready` in the mesh, but the seller's node being up says nothing
+/// about the claim the buyer's backups land in. So for every live paid
+/// storage order whose backup door has a key — the only way the buyer can
+/// reach the claim — the edge makes sure the volume's server is running and
+/// asks it: a signed request through the Service only succeeds when the
+/// mounted volume answers. The pass records who answered, and a volume that
+/// stays silent for [`MarketOpts::offline_refund_secs`] in a row — or twice
+/// that in all — ends its order the way an offline box does, refunding the
+/// share not delivered ([`crate::slots::refund_volume_down`]). Time the edge
+/// could not have probed for (it was down, the apiserver did not answer)
+/// counts nothing.
+///
+/// *Enforcing the entitlement.* A lapsed order's server is scaled to zero
+/// and its door record is dropped, so the volume serves nothing once the
+/// paid time is over. The claim and the data behind it stay — removing them
+/// is the operator's call, as before.
+pub(super) async fn volumes_pass(st: &AppState, market: &crate::market::Market) {
+    let targets = market.watched_volumes().await;
+    let lapsed = market.lapsed_doors().await;
+    if targets.is_empty() && lapsed.is_empty() {
+        return;
+    }
+    let max_gap = st
+        .opts
+        .reconcile_interval
+        .as_secs()
+        .saturating_mul(3)
+        .max(300);
+    let kube = match kube_access(st).await {
+        Ok(kube) => kube,
+        Err(e) => {
+            tracing::error!(
+                target: Action::Market.target(),
+                "{} bought volume(s) cannot be checked and {} lapsed server(s) cannot be stopped: {e}",
+                targets.len(),
+                lapsed.len(),
+            );
+            // A pass that could not look counts nothing, the same as a
+            // heartbeat pass with the apiserver down.
+            market.volumes_pass(&BTreeMap::new(), false, max_gap).await;
+            return;
+        }
+    };
+    // Shut the doors the paid time has left, whether or not the door's image
+    // is configured now: the server behind one was started while it was. The
+    // password is dropped with the record, so even a pod the operator starts
+    // by hand serves an edge that refuses every key.
+    for (order_id, volume) in &lapsed {
+        st.storage.upstream.lock().await.remove(order_id);
+        let url = format!(
+            "{}/apis/apps/v1/namespaces/{}/deployments/{}",
+            kube.api,
+            volume.namespace,
+            server_name(&volume.pvc),
+        );
+        let stopped = kube_patch(&kube, &url, &serde_json::json!({ "spec": { "replicas": 0 } }))
+            .await
+            .inspect_err(|e| {
+                tracing::error!(
+                    target: Action::Market.target(),
+                    "stopping the backup server of lapsed order {order_id}: {e}",
+                );
+            })
+            .is_ok();
+        if stopped {
+            match market.drop_door(order_id).await {
+                Ok(()) => tracing::info!(
+                    target: Action::Market.target(),
+                    "stopped the backup server of lapsed order {order_id}; its door is shut",
+                ),
+                Err(e) => tracing::error!(
+                    target: Action::Market.target(),
+                    "lapsed order {order_id}'s server is stopped but its door could not be dropped: {e}",
+                ),
+            }
+        }
+    }
+    if targets.is_empty() {
+        return;
+    }
+    // Without the door's image there is no server to start and no way in.
+    let Some(image) = market.storage_image().map(str::to_string) else {
+        market.volumes_pass(&BTreeMap::new(), false, max_gap).await;
+        return;
+    };
+    let mut answered: BTreeMap<String, bool> = BTreeMap::new();
+    for (order_id, volume) in &targets {
+        // The watch has a door with a key, so the record carries the
+        // password; a ledger that lost it between the two calls simply has
+        // nothing to probe this pass.
+        let Some(password) = market.door_password(order_id).await else {
+            continue;
+        };
+        match probe(st, &kube, order_id, volume, &image, &password).await {
+            Probe::Answered(ok) => {
+                answered.insert(order_id.clone(), ok);
+            }
+            Probe::Starting => {}
+        }
+    }
+    market.volumes_pass(&answered, true, max_gap).await;
+}
+
+/// Ask `order_id`'s server whether the volume it mounts answers. The server
+/// is started when it is not there yet, and `Starting` is returned until its
+/// pod reports `Ready` — the readiness probe is the server's own port, so a
+/// pod that is not `Ready` yet is a start in progress, not a volume that
+/// stopped answering. Then one signed request decides: any answer at all
+/// proves the volume behind it reads.
+async fn probe(
+    st: &AppState,
+    kube: &KubeAccess,
+    order_id: &str,
+    volume: &StorageVolume,
+    image: &str,
+    password: &str,
+) -> Probe {
+    let name = server_name(&volume.pvc);
+    let cached = st.storage.upstream.lock().await.get(order_id).cloned();
+    if let Some(ip) = cached {
+        return ask(st, order_id, &format!("{ip}:{PORT}"), password).await;
+    }
+    let ip = match service_ip(kube, &volume.namespace, &name).await {
+        Ok(Some(ip)) => ip,
+        // No Service yet: start the server, idempotently, and wait a pass.
+        Ok(None) => {
+            if let Err(e) = start_server(kube, image, volume, password).await {
+                tracing::error!(
+                    target: Action::Market.target(),
+                    "starting the backup server of order {order_id}: {e}",
+                );
+                return Probe::Starting;
+            }
+            tracing::info!(
+                target: Action::Market.target(),
+                "started the backup server of {}/{} for the health check",
+                volume.namespace,
+                volume.pvc,
+            );
+            return Probe::Starting;
+        }
+        Err(e) => {
+            tracing::error!(
+                target: Action::Market.target(),
+                "finding the backup server of order {order_id}: {e}",
+            );
+            return Probe::Starting;
+        }
+    };
+    // The Service is there; the pod behind it must report `Ready` before a
+    // failed request says anything about the volume.
+    let url = format!(
+        "{}/apis/apps/v1/namespaces/{}/deployments/{name}",
+        kube.api,
+        volume.namespace,
+    );
+    let deployment: serde_json::Value = match kube
+        .client
+        .get(&url)
+        .bearer_auth(&kube.token)
+        .send()
+        .await
+    {
+        Ok(response) if response.status() == reqwest::StatusCode::NOT_FOUND => {
+            // A Service without its Deployment: make the Deployment and wait.
+            if let Err(e) = start_server(kube, image, volume, password).await {
+                tracing::error!(
+                    target: Action::Market.target(),
+                    "starting the backup server of order {order_id}: {e}",
+                );
+            }
+            return Probe::Starting;
+        }
+        Ok(response) if response.status().is_success() => match response.json().await {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::error!(
+                    target: Action::Market.target(),
+                    "reading the backup server of order {order_id}: {e}",
+                );
+                return Probe::Starting;
+            }
+        },
+        Ok(response) => {
+            tracing::error!(
+                target: Action::Market.target(),
+                "checking the backup server of order {order_id}: GET {url} -> {}",
+                response.status(),
+            );
+            return Probe::Starting;
+        }
+        Err(e) => {
+            tracing::error!(
+                target: Action::Market.target(),
+                "checking the backup server of order {order_id}: {e}",
+            );
+            return Probe::Starting;
+        }
+    };
+    let ready = deployment["status"]["readyReplicas"].as_u64().unwrap_or(0);
+    if ready == 0 {
+        return Probe::Starting;
+    }
+    let address = format!("{ip}:{PORT}");
+    st.storage
+        .upstream
+        .lock()
+        .await
+        .insert(order_id.to_string(), address.clone());
+    ask(st, order_id, &address, password).await
+}
+
+/// One signed request to the server at `address`. Any HTTP answer means the
+/// volume answers; no answer at all means it does not.
+async fn ask(st: &AppState, order_id: &str, address: &str, password: &str) -> Probe {
+    let url = format!("http://{address}/");
+    let request = st
+        .storage
+        .probe
+        .get(&url)
+        .basic_auth(UPSTREAM_USER, Some(password));
+    match request.send().await {
+        Ok(_) => Probe::Answered(true),
+        Err(e) => {
+            tracing::warn!(
+                target: Action::Market.target(),
+                "order {order_id}: the bought volume did not answer: {e}",
+            );
+            // The pod may have moved: ask the apiserver again next time.
+            st.storage.upstream.lock().await.remove(order_id);
+            Probe::Answered(false)
+        }
+    }
 }
 
 #[cfg(test)]

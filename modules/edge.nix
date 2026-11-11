@@ -491,7 +491,9 @@ let
       # The backup door (edge/registrar/src/server/storage.rs): one
       # rest-server Deployment, a Service and the Secret with its one
       # password per bought volume that a box backs up to, in the buyer's
-      # namespace. Create and get only, and never a read of a Secret.
+      # namespace. Create and get only, and never a read of a Secret —
+      # except `patch` on the Deployment, which is how a lapsed order's
+      # server is scaled to zero when the paid time is over.
       ++ lib.optionals backupsOn [
         {
           apiGroups = [ "apps" ];
@@ -499,6 +501,7 @@ let
           verbs = [
             "get"
             "create"
+            "patch"
           ];
         }
         {
