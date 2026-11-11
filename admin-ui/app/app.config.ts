@@ -19,7 +19,7 @@
 
 import type { ExpoConfig } from "expo/config";
 
-import { lososSemver } from "./scripts/losos-version.cjs";
+import { lososSemver } from "./losos-version.cjs";
 import { serviceType, bonjourServices } from "./plugins/services";
 
 const config: ExpoConfig = {
