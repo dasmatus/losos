@@ -298,7 +298,7 @@ let
       pkgs.systemd
     ];
     text = ''
-      install -d -m 0750 -o root -g ${user} ${runDir}
+      install -d -m 0750 -o root -g ${fileGroup} ${runDir}
       names=(${lib.escapeShellArg fqdn})
       while read -r addr; do
         names+=("''${addr%%/*}")
@@ -332,7 +332,7 @@ let
           echo "      default_redirection_url: 'https://$n/cloud/'"
         done
       } > "$tmp"
-      chgrp ${user} "$tmp"
+      chgrp ${fileGroup} "$tmp"
       chmod 0640 "$tmp"
       if cmp -s "$tmp" ${sessionFile}; then
         rm -f "$tmp"
@@ -345,8 +345,25 @@ let
       fi
     '';
   };
-in
-{
+
+  # The native unit's ordering, in one place: the unit below and, when
+  # LosOS Login runs as a Podman quadlet (lososInternal.quadlets), the
+  # generated unit that takes its name carry the same.
+  autheliaAfter = [
+    "losos-identity-setup.service"
+    "redis-${sessionRedis}.service"
+  ];
+  autheliaWants = [ "losos-identity-setup.service" ];
+  autheliaRequires = [ "redis-${sessionRedis}.service" ];
+
+  # The group everything here is readable by: Authelia's own user and
+  # group — or, when the sign-in stack runs as a Podman quadlet
+  # (lososInternal.quadlets), the account the container runs as, in whose
+  # place the people file, the session file and the redis socket must be
+  # readable.
+  fileGroup = if config.lososInternal.quadlets.enable then config.lososInternal.quadlets.user else user;
+  in
+  {
   # The credential store every secret here lives in.
   imports = [ ./credentials.nix ];
 
@@ -536,7 +553,7 @@ in
     # sees no other group: the socket is 0660 to it and to nobody else.
     services.redis.servers.${sessionRedis} = {
       enable = true;
-      group = user;
+      group = fileGroup;
       unixSocket = sessionSocket;
       unixSocketPerm = 660;
     };
@@ -588,7 +605,7 @@ in
           fi
         fi
         # lososd writes the people file here; Authelia reads it.
-        install -d -m 0750 -o root -g ${user} ${dir}
+        install -d -m 0750 -o root -g ${fileGroup} ${dir}
         ${lib.getExe renderSession}
       '';
     };
@@ -671,15 +688,25 @@ in
     };
 
     systemd.services.authelia-losos = {
-      after = [
-        "losos-identity-setup.service"
-        "redis-${sessionRedis}.service"
-      ];
-      wants = [ "losos-identity-setup.service" ];
-      requires = [ "redis-${sessionRedis}.service" ];
+      after = autheliaAfter;
+      wants = autheliaWants;
+      requires = autheliaRequires;
       serviceConfig.LoadCredential = [ "oidc-lososd-digest:${lososdDigest}" ];
       # Not before the claim: see the header.
       unitConfig.ConditionPathExists = peopleFile;
+    };
+
+    # When LosOS Login runs as a Podman quadlet (lososInternal.quadlets),
+    # the native unit above is disabled and the generated one carries this
+    # ordering, condition and credential instead. Same names, same
+    # machinery: the credential store's entries for authelia-losos apply to
+    # the generated unit, which keeps the native unit's name.
+    lososInternal.quadlets.autheliaUnit = {
+      after = autheliaAfter;
+      wants = autheliaWants;
+      requires = autheliaRequires;
+      conditionPathExists = peopleFile;
+      loadCredentials = [ "oidc-lososd-digest:${lososdDigest}" ];
     };
     systemd.paths.losos-identity = {
       description = "Start sign-in once the box has its first person";
@@ -692,7 +719,7 @@ in
 
     systemd.services.lososd.environment = {
       LOSOS_PEOPLE_FILE = peopleFile;
-      LOSOS_PEOPLE_GROUP = user;
+      LOSOS_PEOPLE_GROUP = fileGroup;
       # lososd believes `Remote-User` only when this is set, so a box
       # without this module ignores the header whoever sends it.
       LOSOS_IDENTITY = "authelia";

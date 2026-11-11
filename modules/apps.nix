@@ -102,6 +102,17 @@ let
   podmanOn = pkg != null && (cfg.enable || cfg.builtin != { });
   builtinNames = lib.attrNames cfg.builtin;
 
+  # The three accounts apps run as (the quadlet variants), each with its
+  # own sub-id base: `notshared` the owner's, `shared` the mesh's (Mesh
+  # CI's runner shares the range, modules/ci.nix), `kindashared` the local
+  # gateways'.
+  appUsers = [ "notshared" "shared" "kindashared" ];
+  subIdBase = {
+    notshared = 200000;
+    shared = 300000;
+    kindashared = 400000;
+  };
+
   owner = config.users.users.notshared;
   podmanRoot = "/var/lib/losos-podman";
   podmanHome = "${podmanRoot}/notshared";
@@ -187,6 +198,243 @@ let
       # of the project's containers are not in it: take them by label.
       podman ps --all --quiet --filter "label=io.podman.compose.project=losos-$release" \
         | xargs --no-run-if-empty podman rm --force --time 10
+    '';
+  };
+
+  # ── The same project as quadlets ──────────────────────────────────────
+  # One .container file per service of the Compose project, generated into
+  # the system manager's quadlet search path and started as units of their
+  # own. Each generated unit still runs Podman rootless as the app's own
+  # user (`notshared`, or the side account an app of a mesh or of the
+  # local gateways runs as — the record's `runAs`): its [Service] User=,
+  # with the same storage and runtime environment podman-compose got. What
+  # changes is that the project is no longer one opaque `up` — a boot
+  # times every container apart, each journal is one service's, and an
+  # update of one service restarts one unit.
+  quadletDir = "/etc/containers/systemd/losos-apps";
+
+  # The three accounts apps run as, each with its own sub-id range (the
+  # same bases defined above) and its own store under
+  # /var/lib/losos-podman/<user>.
+  appUserUid = u: toString config.users.users.${u}.uid;
+  appUserStorage = u: pkgs.writeText "losos-quadlets-app-${u}-storage.conf" ''
+    [storage]
+    driver = "overlay"
+    graphroot = "${podmanRoot}/${u}/storage"
+    runroot = "/run/user/${appUserUid u}/containers"
+  '';
+
+  # The service's env for running Podman rootless from its own unit, as
+  # the app's user: the account's runtime directory (linger's user
+  # manager makes it), the account's own store, and the setuid wrappers
+  # (newuidmap, newgidmap) plus the podman wrapper on PATH. Appended to
+  # every generated .container file.
+  quadletService =
+    u:
+    pkgs.writeText "losos-app-quadlet-${u}-service.conf" ''
+      [Service]
+      User=${u}
+      Group=${u}
+      Environment="XDG_RUNTIME_DIR=/run/user/${appUserUid u}"
+      Environment="CONTAINERS_STORAGE_CONF=${appUserStorage u}"
+      Environment="PATH=/run/wrappers/bin:${podmanPkg}/bin"
+      Restart=on-failure
+      RestartSec=5s
+    '';
+
+  # One service of the shaped Compose project, as a .container file. The
+  # shaped project is a small subset (backend/src/compose.rs): host
+  # network, a keep-id user namespace, no capabilities, folder and volume
+  # mounts, labels for Traefik — each key has one quadlet answer, and
+  # `depends_on` becomes the [Unit] ordering.
+  quadletServiceFile = pkgs.writeText "losos-app-quadlet.jq" ''
+    def volstr:
+      if .type == "tmpfs" then "Tmpfs=\(.target)"
+      elif (.source // "") == "" then "Volume=\(.target)"
+      else "Volume=\(.source):\(.target)\(if (.read_only // false) == true then ":ro" else "" end)" end;
+    def flat(f):
+      if (.[f] | type) == "array" then (.[f] | map(tostring) | join(" ")) else .[f] end;
+    . as $s |
+    (
+      [ "[Container]"
+      , "Image=\($s.image)"
+      , "ContainerName=losos-app-\($release)-\($name)"
+      , "Network=host"
+      , "UserNS=keep-id"
+      ]
+      + (if ($s.user // "") != "" then [ "User=\($s.user)" ] else [] end)
+      + (if $s.entrypoint then [ "Entrypoint=\($s | flat("entrypoint"))" ] else [] end)
+      + (if $s.command then [ "Exec=\($s | flat("command"))" ] else [] end)
+      + (if $s.working_dir then [ "WorkingDir=\($s.working_dir)" ] else [] end)
+      + (if ($s.read_only // false) == true then [ "ReadOnly=true" ] else [] end)
+      + (if ($s.init // false) == true then [ "RunInit=true" ] else [] end)
+      + (if $s.stop_signal then [ "StopSignal=\($s.stop_signal)" ] else [] end)
+      + (if $s.stop_grace_period then [ "StopTimeout=\($s.stop_grace_period)" ] else [] end)
+      + (if $s.shm_size then [ "ShmSize=\($s.shm_size)" ] else [] end)
+      + (if $s.platform then [ "PodmanArgs=--platform \($s.platform)" ] else [] end)
+      + (if $s.pull_policy then [ "Pull=\($s.pull_policy)" ] else [] end)
+      + (if ($s.stdin_open // false) == true then [ "PodmanArgs=-i" ] else [] end)
+      + (if ($s.tty // false) == true then [ "PodmanArgs=-t" ] else [] end)
+      + [ ($s.extra_hosts // [] | (if type == "object" then to_entries[] else .[] end) | "AddHost=\(.)") ]
+      + [ ($s.environment // {} | to_entries[] | "Environment=\"\(.key)=\(.value | tostring)\"") ]
+      + [ ($s.env_file // [] | .[] | "EnvironmentFile=\(.)") ]
+      + [ ($s.labels // {} | to_entries[] | "Label=\"\(.key)=\(.value | tostring)\"") ]
+      + [ ($s.volumes // [] | .[] | volstr) ]
+      + (if $s.healthcheck then
+            [ "HealthCmd=\(
+                if ($s.healthcheck.test | type) == "array"
+                then
+                  ($s.healthcheck.test
+                    | if (.[0] == "CMD-SHELL" or .[0] == "CMD") then .[1:] else . end
+                    | map(tostring) | join(" "))
+                else $s.healthcheck.test end)"
+            ]
+            + (if $s.healthcheck.interval then [ "HealthInterval=\($s.healthcheck.interval)" ] else [] end)
+            + (if $s.healthcheck.timeout then [ "HealthTimeout=\($s.healthcheck.timeout)" ] else [] end)
+            + (if $s.healthcheck.retries then [ "HealthRetries=\($s.healthcheck.retries)" ] else [] end)
+            + (if $s.healthcheck.start_period then [ "HealthStartPeriod=\($s.healthcheck.start_period)" ] else [] end)
+          else [] end)
+      + (if $s.depends_on then
+            [ "[Unit]"
+            , ([ $s.depends_on
+                 | (if type == "object" then keys[] elif type == "array" then .[] else empty end)
+                 | "losos-app-\($release)-\(.).service" ] as $deps
+               | "After=\($deps | join(" "))"
+               , "Requires=\($deps | join(" "))")
+            ]
+          else [] end)
+    ) | join("\n")
+  '';
+
+  quadletUp = pkgs.writeShellApplication {
+    name = "losos-podman-quadlet-up";
+    runtimeInputs = [
+      podmanPkg
+      pkgs.coreutils
+      pkgs.jq
+      pkgs.util-linux
+      config.systemd.package
+    ];
+    text = ''
+      release=''${1:?the name of the app}
+      dir="''${LOSOS_APPS_DIR:-${stateDir}}/$release"
+      record="$dir/app.json"
+      runAs=$(jq -r '.runAs' "$record")
+      uid=$(id -u "$runAs")
+      runtimeDir="/run/user/$uid"
+      home="${podmanRoot}/$runAs"
+      project="$home/projects/$release"
+      cd "$project"
+
+      # The account's own store, one conf per account.
+      case "$runAs" in
+        ${lib.concatMapStringsSep "\n" (
+          u: ''
+            ${u}) storageConf=${appUserStorage u} ;;
+          ''
+        ) appUsers}      esac
+
+      # Podman as the app's own account: its rootless store.
+      podman_as() {
+        runuser -u "$runAs" -- env HOME="$home" XDG_RUNTIME_DIR="$runtimeDir" \
+          CONTAINERS_STORAGE_CONF="$storageConf" ${podmanPkg}/bin/podman "$@"
+      }
+
+      # Image archives from the Nix store: loaded once each, by name.
+      mkdir -p "$home/loaded"
+      while read -r archive; do
+        [[ -n "$archive" ]] || continue
+        marker="$home/loaded/$(basename "$archive")"
+        if [[ ! -e "$marker" ]]; then
+          podman_as load --quiet --input "$archive"
+          touch "$marker"
+        fi
+      done < images.txt
+
+      # One .container file per service, from the shaped Compose project.
+      qdir=${quadletDir}/$release
+      rm -rf "$qdir"
+      mkdir -p "$qdir"
+      units=()
+      for svc in $(jq -r '.services | keys[]' compose.json); do
+        file="$qdir/losos-app-$release-$svc.container"
+        jq --arg svc "$svc" '.services[$svc]' compose.json \
+          | jq -r --arg release "$release" --arg name "$svc" -f ${quadletServiceFile} > "$file"
+        case "$runAs" in
+          ${lib.concatMapStringsSep "\n" (
+            u: ''
+              ${u}) cat ${quadletService u} >> "$file" ;;
+            ''
+          ) appUsers}        esac
+        units+=("losos-app-$release-$svc.service")
+      done
+
+      # The generator makes the units; the start of each is its own, and
+      # one that fails says so of itself.
+      systemctl daemon-reload
+      if ! systemctl start "''${units[@]}"; then
+        echo "losos-podman-quadlet-up: the units did not all start" >&2
+        for u in "''${units[@]}"; do
+          systemctl is-failed "$u" > /dev/null 2>&1 || continue
+          journalctl --unit "$u" --lines 20 --output cat >&2 || true
+        done
+        exit 1
+      fi
+
+      # A container that stops at once with an error is a failed start
+      # the unit's notify may have passed: say which, and its last words.
+      failed=0
+      while read -r name state code; do
+        if [[ "$state" == exited && "$code" != 0 ]]; then
+          echo "losos-podman-quadlet-up: $name stopped with $code" >&2
+          podman_as logs --tail 20 "$name" >&2 || true
+          failed=1
+        fi
+      done < <(podman_as ps --all --filter "label=losos.app=$release" \
+        --format '{{.Names}} {{.State}} {{.ExitCode}}')
+      exit "$failed"
+    '';
+  };
+
+  quadletDown = pkgs.writeShellApplication {
+    name = "losos-podman-quadlet-down";
+    runtimeInputs = [
+      podmanPkg
+      pkgs.coreutils
+      pkgs.jq
+      pkgs.util-linux
+      config.systemd.package
+    ];
+    text = ''
+      release=''${1:?the name of the app}
+      dir="''${LOSOS_APPS_DIR:-${stateDir}}/$release"
+      runAs=$(jq -r '.runAs' "$dir/app.json" 2> /dev/null || echo notshared)
+      uid=$(id -u "$runAs")
+      home="${podmanRoot}/$runAs"
+      storageConf=${appUserStorage (lib.head appUsers)}
+      case "$runAs" in
+        ${lib.concatMapStringsSep "\n" (
+          u: ''
+            ${u}) storageConf=${appUserStorage u} ;;
+          ''
+        ) appUsers}      esac
+      qdir=${quadletDir}/$release
+      if [[ -d "$qdir" ]]; then
+        for f in "$qdir"/*.container; do
+          [[ -e "$f" ]] || break
+          systemctl stop "$(basename "$f" .container).service" || true
+        done
+      fi
+      # What a half-made start left behind: every container of the app, by
+      # its label.
+      ids=$(runuser -u "$runAs" -- env HOME="$home" XDG_RUNTIME_DIR="/run/user/$uid" \
+        CONTAINERS_STORAGE_CONF="$storageConf" ${podmanPkg}/bin/podman \
+        ps --all --quiet --filter "label=losos.app=$release")
+      if [[ -n "$ids" ]]; then
+        runuser -u "$runAs" -- env HOME="$home" XDG_RUNTIME_DIR="/run/user/$uid" \
+          CONTAINERS_STORAGE_CONF="$storageConf" ${podmanPkg}/bin/podman \
+          rm --force --time 10 $ids
+      fi
     '';
   };
 
@@ -632,6 +880,12 @@ let
             as_owner rm -rf "${appsRepo}/$release"
             repo_commit "Remove $release" || true
           fi
+          ${lib.optionalString cfg.quadlets ''
+          # The generated quadlets with it: their units stop with the app
+          # (the down above), their files go here.
+          rm -rf ${quadletDir}/"$release"
+          systemctl daemon-reload
+          ''}
           # The record goes; the app's files stay in the user's data domain.
           rm -rf "$dir"
           echo "losos-apps: $release removed"
@@ -835,34 +1089,49 @@ in
     (lib.mkIf podmanOn {
       virtualisation.podman.enable = true;
 
-      # Rootless Podman as `notshared`: a range of sub-ids for the user
-      # namespace, and a user manager from boot (see WHY LINGER above).
-      users.users.notshared = {
-        linger = true;
-        subUidRanges = [
-          {
-            startUid = 200000;
-            count = 65536;
+      # Rootless Podman as the side accounts: a range of sub-ids per
+      # account (never overlapping another's), and a user manager from
+      # boot (see WHY LINGER above). `notshared` runs the owner's apps;
+      # `shared` and `kindashared` run the apps of a box that lends
+      # itself to a mesh or to its local gateways, as quadlets like the
+      # owner's.
+      users.users = lib.listToAttrs (
+        map (
+          u:
+          lib.nameValuePair u {
+            linger = true;
+            subUidRanges = [
+              {
+                startUid = subIdBase.${u};
+                count = 65536;
+              }
+            ];
+            subGidRanges = [
+              {
+                startGid = subIdBase.${u};
+                count = 65536;
+              }
+            ];
           }
-        ];
-        subGidRanges = [
-          {
-            startGid = 200000;
-            count = 65536;
-          }
-        ];
-      };
+        ) appUsers
+      );
 
       systemd.tmpfiles.rules = [
         "d ${podmanRoot} 0755 root root -"
-        "d ${podmanHome} 0700 notshared notshared -"
-        "d ${podmanHome}/storage 0700 notshared notshared -"
-        "d ${podmanHome}/projects 0700 notshared notshared -"
-      ];
+        "d ${quadletDir} 0755 root root -"
+      ]
+      ++ lib.concatMap (u: [
+        "d ${podmanRoot}/${u} 0700 ${u} ${u} -"
+        "d ${podmanRoot}/${u}/storage 0700 ${u} ${u} -"
+        "d ${podmanRoot}/${u}/projects 0700 ${u} ${u} -"
+        "d ${podmanRoot}/${u}/loaded 0700 ${u} ${u} -"
+      ]) appUsers;
 
-      # One per `notshared` app. Started by the install job and at boot;
-      # `up` leaves the containers in scopes of the user manager, and `down`
-      # on stop takes them away again.
+      # One per `notshared` app. Started by the install job and at boot.
+      # Quadlets: the job regenerates the app's .container files from its
+      # Compose project and starts one unit per service. Compose: `up`
+      # leaves the containers in scopes of the user manager, and `down` on
+      # stop takes them away again.
       systemd.services."losos-podman-app@" = {
         description = "LosOS app %i";
         wants = [
@@ -873,18 +1142,20 @@ in
           "network-online.target"
           "user@${toString owner.uid}.service"
         ];
-        environment = podmanEnv;
+        environment = lib.optionalAttrs (!cfg.quadlets) podmanEnv;
         # newuidmap and newgidmap are setuid wrappers.
-        path = [ "/run/wrappers" ];
+        path = lib.optionals (!cfg.quadlets) [ "/run/wrappers" ];
         serviceConfig = {
           Type = "oneshot";
           RemainAfterExit = true;
-          User = "notshared";
-          Group = "notshared";
-          ExecStart = "${lib.getExe podmanUp} %i";
+          User = lib.mkIf (!cfg.quadlets) "notshared";
+          Group = lib.mkIf (!cfg.quadlets) "notshared";
+          ExecStart =
+            if cfg.quadlets then "${lib.getExe quadletUp} %i" else "${lib.getExe podmanUp} %i";
           # Post, not ExecStop: it runs after a failed start too, which can
           # leave half a project running.
-          ExecStopPost = "${lib.getExe podmanDown} %i";
+          ExecStopPost =
+            if cfg.quadlets then "${lib.getExe quadletDown} %i" else "${lib.getExe podmanDown} %i";
           # The first start pulls the images.
           TimeoutStartSec = "30min";
           TimeoutStopSec = "5min";
