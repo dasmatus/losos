@@ -137,10 +137,12 @@ let
   labWasm =
     {
       pname,
-      dir,
+      dir ? null,
       wasm,
       cargoHash,
       features ? [ ],
+      src ? (lib.cleanSource dir),
+      cargoRoot ? null,
       # A source tree of files the crate's build script reads beside its own
       # directory (the terminal client's LOSOS_UI_DIR, admin-ui/tui/build.rs;
       # a checkout has them because the tree has them, the wasm build does
@@ -148,34 +150,40 @@ let
       # its env set, so the script's read paths are the checkout's own.
       uiSrc ? null,
     }:
-    pkgs.rustPlatform.buildRustPackage {
-      inherit pname cargoHash;
-      version = "0.1.0";
-      src = lib.cleanSource dir;
-      nativeBuildInputs = [
-        pkgs.wasm-bindgen-cli
-        pkgs.lld
-      ];
-      buildPhase = ''
-        runHook preBuild
-        ${lib.optionalString (uiSrc != null) ''
-          mkdir -p ui-src
-          cp -r ${uiSrc}/. ui-src/
-          export LOSOS_UI_DIR=ui-src
-        ''}
-        cargo build --release --offline --target wasm32-unknown-unknown ${
-          lib.optionalString (features != [ ]) "--features ${lib.concatStringsSep "," features}"
-        }
-        runHook postBuild
-      '';
-      doCheck = false;
-      installPhase = ''
-        runHook preInstall
-        wasm-bindgen --target web --out-dir $out \
-          target/wasm32-unknown-unknown/release/${wasm}.wasm
-        runHook postInstall
-      '';
-    };
+    pkgs.rustPlatform.buildRustPackage (
+      {
+        inherit pname cargoHash;
+        version = "0.1.0";
+        inherit src;
+        nativeBuildInputs = [
+          pkgs.wasm-bindgen-cli
+          pkgs.lld
+        ];
+        buildPhase = ''
+          runHook preBuild
+          ${lib.optionalString (uiSrc != null) ''
+            mkdir -p ui-src
+            cp -r ${uiSrc}/. ui-src/
+            export LOSOS_UI_DIR=ui-src
+          ''}
+          ${lib.optionalString (cargoRoot != null) "cd ${cargoRoot}"}
+          cargo build --release --offline --target wasm32-unknown-unknown ${
+            lib.optionalString (features != [ ]) "--features ${lib.concatStringsSep "," features}"
+          }
+          runHook postBuild
+        '';
+        doCheck = false;
+        installPhase = ''
+          runHook preInstall
+          wasm-bindgen --target web --out-dir $out \
+            ${lib.optionalString (cargoRoot != null) "../"}target/wasm32-unknown-unknown/release/${wasm}.wasm
+          runHook postInstall
+        '';
+      }
+      // lib.optionalAttrs (cargoRoot != null) {
+        inherit cargoRoot;
+      }
+    );
 
   # The Lab page imports a package from src/lab/<name>-pkg (gitignored;
   # `bun run lab:<name>` writes it in a checkout). Both Bun builds of
