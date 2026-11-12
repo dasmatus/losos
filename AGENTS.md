@@ -29,3 +29,7 @@ Please also read the PR template at `.github/pull_request_template.md` to learn 
 I've automated (with the help of agents) the most annoying parts.
 
 We use Conventional Commits in order for changes to be easily findable and sortable.
+
+There are also some pre-push changes THAT YOU SHOULD NEVER EVER SKIP UNDER ANY CIRCUMSTANCES.
+
+Do not put anything under this line.
