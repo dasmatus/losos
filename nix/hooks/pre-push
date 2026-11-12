@@ -9,7 +9,8 @@
 // What runs, and its name for LOSOS_HOOKS_SKIP:
 //
 //   pre-commit's gates    rustfmt, clippy, nix-lints, pins,  as in pre-commit
-//                         hashes, typecheck, the eval lane
+//                         crates, hashes, typecheck,
+//                         the eval lane
 //   test:<crate>          cargo test, each crate reached     rust lane
 //   clippy-wasm           clippy for wasm32: the plugins,    wasm lane
 //                         losos-mdx and the Lab canvas
@@ -303,6 +304,9 @@ const gates = async (changed: string[], base: string, localSha: string): Promise
 
   if (changed.some((l) => /^(flake\.lock|devenv\.yaml|devenv\.lock)$/.test(l))) {
     await run("pins", () => hookBun(["nix/check-pins.ts"]));
+  }
+  if (changed.some((l) => l === "crates.json" || /(^|\/)Cargo\.toml$/.test(l))) {
+    await run("crates", () => hookBun(["nix/check-crates.ts"]));
   }
   if (changed.some((l) => /(^|\/)(Cargo\.lock|bun\.lock)$/.test(l))) {
     await run("hashes", ["python3", ".github/scripts/fix-hashes.py", "--check", "--base", base]);
