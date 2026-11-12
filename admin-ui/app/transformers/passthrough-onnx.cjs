@@ -7,14 +7,15 @@
  *    `import(url)`; Metro's import rewriting refuses a computed call, so
  *    the file goes to the bundle as it is.
  *  - Hermes does not support `import.meta`, and babel-preset-expo's
- *    `unstable_transformImportMeta` polyfill rewrites it. Metro's
- *    transformer does not pick the option up from babel.config.mjs, so it
- *    is applied here for any module that uses `import.meta`.
+ *    `unstable_transformImportMeta` polyfill rewrites it to
+ *    `globalThis.__ExpoImportMetaRegistry` (expo's winter runtime sets
+ *    that up). Metro's transformer does not pick the option up from
+ *    babel.config.mjs, so the rewrite is done here as a textual
+ *    substitution before Expo's default transform handles the TypeScript.
  */
 const path = require("path");
 
 let defaultTransform = null;
-let babel = null;
 
 async function transform({ filename, options, src }) {
   if (!defaultTransform) {
@@ -24,20 +25,14 @@ async function transform({ filename, options, src }) {
   if (options?.type !== "asset" && norm.includes("onnxruntime-web/dist/ort.wasm.bundle.min.mjs")) {
     return { code: src, map: null };
   }
-  // Modules that use `import.meta` (openpgp, calls/session.ts, ...) need
-  // the polyfill; everything else goes through Expo's default transform.
+  // Rewrite `import.meta` to the runtime registry before Expo's default
+  // transform (which handles TypeScript) sees the file, so the Hermes
+  // syntax error never arises.
+  let source = src;
   if (typeof src === "string" && src.includes("import.meta")) {
-    if (!babel) babel = require("@babel/core");
-    const result = babel.transformSync(src, {
-      filename,
-      babelrc: false,
-      configFile: false,
-      presets: [["babel-preset-expo", { unstable_transformImportMeta: true }]],
-      caller: { name: "metro", platform: options?.platform ?? "android", engine: "hermes" },
-    });
-    return { code: result.code, map: result.map };
+    source = src.replace(/import\.meta\b/g, "globalThis.__ExpoImportMetaRegistry");
   }
-  return defaultTransform.transform({ filename, options, src });
+  return defaultTransform.transform({ filename, options, src: source });
 }
 
 module.exports = { transform };
