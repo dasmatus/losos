@@ -460,7 +460,27 @@ function findOnPath(prog: string): string | null {
 export async function hookCargo(args: string[]): Promise<number> {
   const found = findOnPath("cargo");
   if (found?.startsWith("/nix/store/")) return spawnC(["cargo", ...args]);
-  if (findOnPath("nix")) return spawnC(["nix", "develop", `${hookFlake()}#ci`, "-c", "cargo", ...args]);
+  if (findOnPath("nix")) {
+    // `cargo clippy` resolves rustc (and, via rustup, cargo-clippy can pick
+    // rustup's clippy-driver) from the environment it inherits; on a machine
+    // with rustup installed it can silently use the rustup toolchain instead
+    // of the flake's, which misses targets such as wasm32-unknown-unknown and
+    // differs in version. Pin RUSTC and invoke the flake's cargo-clippy
+    // directly for clippy runs.
+    const prog = args[0] === "clippy" ? "cargo-clippy" : "cargo";
+    return spawnC([
+      "nix",
+      "develop",
+      `${hookFlake()}#ci`,
+      "-c",
+      "bash",
+      "-c",
+      'export RUSTC="$(command -v rustc)"; exec "$@"',
+      prog,
+      prog,
+      ...args,
+    ]);
+  }
   if (found) {
     console.error(`note: ${found} is not the flake's toolchain; CI may disagree`);
     return spawnC(["cargo", ...args]);
