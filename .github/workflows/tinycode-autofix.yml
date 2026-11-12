@@ -107,7 +107,6 @@ jobs:
     name: "ci-fix: tinycode against the failed run"
     if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
     concurrency:
       group: tinycode-autofix-${{ github.event.workflow_run.head_branch }}
       cancel-in-progress: false
@@ -423,7 +422,6 @@ jobs:
     name: "merge-main: main into open pull requests, conflicts to tinycode"
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 90
     concurrency:
       group: tinycode-autofix-merge
       cancel-in-progress: false

@@ -69,7 +69,6 @@ jobs:
   gate:
     name: "gate: does this run get to attack"
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     permissions:
       contents: read
     outputs:
@@ -98,7 +97,6 @@ jobs:
     needs: gate
     if: needs.gate.outputs.run == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
 

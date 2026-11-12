@@ -85,7 +85,6 @@ jobs:
   gate:
     name: "gate: does this pull request want an autofix"
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: read
@@ -132,7 +131,6 @@ jobs:
     needs: gate
     if: needs.gate.outputs.run == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
         with:
