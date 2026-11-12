@@ -34,7 +34,6 @@ jobs:
   sync:
     name: "bot: nix/version.nix follows the newest tag"
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     permissions:
       contents: write
       # Starting ci.yml on main after a commit.

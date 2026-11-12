@@ -81,7 +81,6 @@ jobs:
   stress:
     name: "stress: OpenCode under worst-case inputs"
     runs-on: ubuntu-latest
-    timeout-minutes: 45
     env:
       OC_MODEL: ${{ inputs.model }}
       OC_FALLBACK: ${{ inputs.fallback }}

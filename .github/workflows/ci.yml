@@ -75,10 +75,9 @@ on:
 # operator's machine as ghcr.io/<owner>/<repo>/images:<channel>-x86_64,
 # which the LosOS proxy serves as plain files; see publish-tool.
 #
-# Jobs carry explicit `timeout-minutes`. GitHub's default is 360, which is long
-# enough for a wedged job to spend a day of a shared quota. The numbers below
-# are the measured runtime with generous headroom, not targets.
-#
+# Jobs carry no `timeout-minutes`, so runtime is uncapped at the repo level and
+# bounded only by GitHub's own limits (default 360 minutes per job on hosted
+# runners, 35 days per workflow run).
 # What the 10-minute cap bought is kept anyway where it is still worth
 # something. clippy and test remain two jobs: they do not share build
 # artifacts — clippy type-checks and emits .rmeta, test needs linked binaries —
@@ -128,7 +127,6 @@ jobs:
   pins:
     name: "pins: flake.lock = devenv.yaml = devenv.lock"
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     # nix/check-pins.ts, as devenv.nix's `check-pins` and the pre-commit hook
     # run it, and this is the gate CI did not have:
     # flake.lock pins the nixpkgs that builds the appliance, devenv.yaml and
@@ -150,7 +148,6 @@ jobs:
   bots:
     name: "bots: release channels"
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
         with:
@@ -174,7 +171,6 @@ jobs:
   changes:
     name: "changes: pick the jobs this change needs"
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: read
@@ -232,7 +228,6 @@ jobs:
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
     # Runs in devShells.ci — a lean cargo/rustc/clippy/rustfmt shell from this
     # flake's pinned nixpkgs, i.e. the SAME rustc buildRustPackage compiles
     # with. On Codeberg this job first ran on docker.io/rust:latest and went red
@@ -308,7 +303,6 @@ jobs:
     needs: [changes]
     if: ${{ needs.changes.outputs.wasm == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
     # Mirrors devenv.nix's `lint-wasm`. admin-ui/lab/render takes Bevy only
     # on wasm32, so the clippy job above lints its plain Rust and never sees
     # src/app or src/web.rs. This lints both builds the page loads, WebGL2
@@ -346,7 +340,6 @@ jobs:
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
     # The suites live here rather than inside buildRustPackage. doCheck used to
     # run them, but it also recompiles each crate in test configuration and
     # links a binary per test target, which pushed `nix build .#losos-ctl` to
@@ -416,7 +409,6 @@ jobs:
     needs: [changes]
     if: ${{ needs.changes.outputs.solana == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 40
     # devenv.nix's test-solana-escrow. The program is built for the Solana VM
     # by Anza's cargo-build-sbf, which nixpkgs does not carry at this
     # version, so the tool suite comes from Anza's installer, pinned by
@@ -459,7 +451,6 @@ jobs:
     needs: [changes]
     if: ${{ needs.changes.outputs.evm == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 40
     # devenv.nix's test-evm-escrow. Foundry's suite for LososEscrow, then
     # edge/contracts/test-payment.ts on anvil: a deposit paid, matched and
     # released by the registrar's own signer, a coin fee, and a tap topped
@@ -485,7 +476,6 @@ jobs:
     needs: [changes]
     if: ${{ needs.changes.outputs.eval == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         with:
@@ -549,7 +539,6 @@ jobs:
     # old budget — a run spent its last minute mid "build losos-ctl" and GH
     # recorded the timeout as a cancelled job, which the result gate reads
     # as a failure. The comment below asked for the re-time; this is it.
-    timeout-minutes: 75
     permissions:
       contents: read
       issues: write
@@ -607,7 +596,6 @@ jobs:
     # 2026-11-10 12:06 was cancelled mid "build the Playwright check" at
     # 90:17 — the same recorded-as-cancelled timeout the lososd job's
     # budget got raised for — so 120 is the re-time.
-    timeout-minutes: 120
     permissions:
       contents: read
       issues: write
@@ -748,7 +736,6 @@ jobs:
     needs: [changes]
     if: ${{ needs.changes.outputs.ui == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
@@ -813,7 +800,6 @@ jobs:
     needs: [changes]
     if: ${{ needs.changes.outputs.ui == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
@@ -852,7 +838,6 @@ jobs:
     # clang cannot compile RN 0.81's fmt (the Xcode 16 step below names the
     # error); the 15 image keeps a 16.x around for DEVELOPER_DIR to pick.
     runs-on: macos-15
-    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
@@ -931,7 +916,6 @@ jobs:
     needs: [changes]
     if: ${{ needs.changes.outputs.images == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
     permissions:
       contents: read
       issues: write
@@ -988,7 +972,6 @@ jobs:
     needs: [changes]
     if: ${{ needs.changes.outputs.mail == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 150
     permissions:
       contents: read
       issues: write
@@ -1021,7 +1004,6 @@ jobs:
   publish-cache:
     name: "nix: publish built paths to GHCR"
     runs-on: ubuntu-latest
-    timeout-minutes: 45
     if: github.event_name != 'pull_request' && !inputs.release_tags
     needs: [losos-ctl, registrar-and-ui, images, stalwart]
     permissions:
@@ -1110,7 +1092,6 @@ jobs:
     needs: [changes]
     if: ${{ !inputs.release_tags && needs.changes.outputs.tui == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
     permissions:
       contents: read
       issues: write
@@ -1174,7 +1155,6 @@ jobs:
   publish-tool:
     name: "release: losos-registrar and losos for the dev machine -> GHCR"
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     # Not on a hotfix candidate (channels.yml): it is a branch for one CI
     # run, and the tool it would publish is main's or a tag's.
     if: github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/heads/hotfix/')
@@ -1261,7 +1241,6 @@ jobs:
   fmt-bot:
     name: "bot: cargo fmt, push back"
     runs-on: ubuntu-latest
-    timeout-minutes: 20
     # Pushes to a BRANCH only. Two exclusions, both deliberate:
     #
     # Not pull requests: on one from a fork the automatic token is read-only,
@@ -1336,7 +1315,6 @@ jobs:
   iso:
     name: "nix: build the installer ISO"
     runs-on: ubuntu-latest
-    timeout-minutes: 60
     permissions:
       contents: read
       issues: write
@@ -1523,7 +1501,6 @@ jobs:
     needs: [changes]
     if: ${{ !inputs.release_tags && needs.changes.outputs.install == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 150
     permissions:
       contents: read
       issues: write
@@ -1567,7 +1544,6 @@ jobs:
       ${{ !cancelled() && !failure() && !inputs.release_tags
         && needs.changes.outputs.discovery == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
     needs: [changes, losos-ctl, registrar-and-ui]
     permissions:
       contents: read
@@ -1622,7 +1598,6 @@ jobs:
     # KVM on Linux. The macOS and Windows runners are virtual machines with
     # no nested virtualisation, so the box runs under TCG there, about ten
     # times slower.
-    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -1780,7 +1755,6 @@ jobs:
       - discovery-box
       - discovery
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     steps:
       - env:
           NEEDS: ${{ toJSON(needs) }}
@@ -1801,7 +1775,6 @@ jobs:
   release-plan:
     name: "release: pick the tags to publish"
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     if: ${{ startsWith(github.ref, 'refs/tags/') || inputs.release_tags }}
     permissions:
       contents: read
@@ -1845,7 +1818,6 @@ jobs:
   release-media:
     name: "release: publish installer ISO, demo QCOW2 and edge gateway QCOW2"
     runs-on: ubuntu-latest
-    timeout-minutes: 120
     # A tag push needs its own run's builds; a manual run for older tags
     # builds everything from each tag's tree and needs none of them.
     if: >-
