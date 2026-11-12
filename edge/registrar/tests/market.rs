@@ -1229,10 +1229,20 @@ async fn the_backup_door_opens_with_the_buyers_key_and_starts_a_server() {
     // The reconciler asks whether the seller's node is Ready on its own
     // passes (`seller_presence`), which a heartbeat or a tick can start
     // inside this window; that read is not the door's, so it is not counted.
+    // The volume pass (`storage::volumes_pass`) probes bought volumes whose
+    // door has a key on its own schedule: it may read the order's Service and
+    // Deployment between `before` and the check; those reads are not the
+    // door's either.
+    let reconciler_kube_read = |req: &str| {
+        req.starts_with("GET /api/v1/nodes/")
+            || (req.starts_with("GET /api/v1/namespaces/") && req.contains("/services/rest-"))
+            || (req.starts_with("GET /apis/apps/v1/namespaces/")
+                && req.contains("/deployments/rest-"))
+    };
     let door_calls = || {
         kube.seen()
             .into_iter()
-            .filter(|s| !s.starts_with("GET /api/v1/nodes/"))
+            .filter(|s| !reconciler_kube_read(s))
             .count()
     };
     let before = door_calls();
