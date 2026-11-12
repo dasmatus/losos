@@ -6,10 +6,10 @@
  *    output whose loader opens its worker script through a computed
  *    `import(url)`; Metro's import rewriting refuses a computed call, so
  *    the file goes to the bundle as it is.
- *  - openpgp's node build uses `import.meta`, which Hermes does not
- *    support; babel-preset-expo's `unstable_transformImportMeta` polyfill
- *    rewrites it, but Metro's transformer does not pick the option up from
- *    babel.config.mjs, so it is applied here explicitly.
+ *  - Hermes does not support `import.meta`, and babel-preset-expo's
+ *    `unstable_transformImportMeta` polyfill rewrites it. Metro's
+ *    transformer does not pick the option up from babel.config.mjs, so it
+ *    is applied here for any module that uses `import.meta`.
  */
 const path = require("path");
 
@@ -21,7 +21,12 @@ async function transform({ filename, options, src }) {
     defaultTransform = require("@expo/metro-config/build/babel-transformer");
   }
   const norm = path.normalize(filename).split(path.sep).join("/");
-  if (norm.includes("openpgp/dist/node/openpgp.mjs")) {
+  if (options?.type !== "asset" && norm.includes("onnxruntime-web/dist/ort.wasm.bundle.min.mjs")) {
+    return { code: src, map: null };
+  }
+  // Modules that use `import.meta` (openpgp, calls/session.ts, ...) need
+  // the polyfill; everything else goes through Expo's default transform.
+  if (typeof src === "string" && src.includes("import.meta")) {
     if (!babel) babel = require("@babel/core");
     const result = babel.transformSync(src, {
       filename,
@@ -31,12 +36,6 @@ async function transform({ filename, options, src }) {
       caller: { name: "metro", platform: options?.platform ?? "android", engine: "hermes" },
     });
     return { code: result.code, map: result.map };
-  }
-  if (
-    options?.type !== "asset" &&
-    norm.includes("onnxruntime-web/dist/ort.wasm.bundle.min.mjs")
-  ) {
-    return { code: src, map: null };
   }
   return defaultTransform.transform({ filename, options, src });
 }
