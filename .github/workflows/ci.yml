@@ -79,9 +79,11 @@ on:
 # bounded only by GitHub's own limits (default 360 minutes per job on hosted
 # runners, 35 days per workflow run).
 # What the 10-minute cap bought is kept anyway where it is still worth
-# something. clippy and test remain two jobs: they do not share build
-# artifacts — clippy type-checks and emits .rmeta, test needs linked binaries —
-# so as one job they compile the local crates twice. And the iso job still
+# something. clippy and test remain two jobs — they do not share build
+# artifacts — clippy type-checks and emits .rmeta, test needs linked binaries,
+# so one job would compile every crate twice. Each job matrixes over crates
+# (max-parallel 4) so legs fail independently without multiplying job ids the
+# result gate must list. And the iso job still
 # imports losos-ctl from a sibling job as a 12 MiB artifact rather than
 # building it: of the 769 store paths in the ISO's closure, 766 are stock
 # nixpkgs that cache.nixos.org serves and losos-ctl is the only expensive one,
@@ -224,10 +226,27 @@ jobs:
           bun "$pick" <<<"$files" | tee -a "$GITHUB_OUTPUT"
 
   clippy:
-    name: "rust: clippy (+ rustfmt on PRs)"
+    name: "rust: clippy (${{ matrix.crate }})"
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        crate:
+          - backend
+          - backend/access
+          - backend/edge-path
+          - backend/mdx
+          - backend/plugins
+          - edge/registrar
+          - edge/vercel
+          - admin-ui/lab/core
+          - admin-ui/lab/virt-rpc
+          - admin-ui/lab/render
+          - admin-ui/tui
+          - edge/contracts/solana
     # Runs in devShells.ci — a lean cargo/rustc/clippy/rustfmt shell from this
     # flake's pinned nixpkgs, i.e. the SAME rustc buildRustPackage compiles
     # with. On Codeberg this job first ran on docker.io/rust:latest and went red
@@ -256,27 +275,18 @@ jobs:
       # whitespace, so it can change behaviour and sometimes wants human
       # judgement; unreviewed code changes have no business landing on main by
       # robot. Contrast fmt-bot below, which only reformats.
+      # One matrix leg runs rustfmt for every crate so PRs do not spawn a dozen
+      # identical fmt gates.
       - run: |
           nix develop .#ci -c bash -euo pipefail -c '
-            cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
-            cargo clippy --manifest-path backend/access/Cargo.toml --all-targets -- -D warnings
-            cargo clippy --manifest-path backend/edge-path/Cargo.toml --all-targets -- -D warnings
-            cargo clippy --manifest-path backend/mdx/Cargo.toml --all-targets -- -D warnings
-            cargo clippy --manifest-path backend/plugins/Cargo.toml --all-targets -- -D warnings
-            cargo clippy --manifest-path edge/registrar/Cargo.toml --all-targets -- -D warnings
-            cargo clippy --manifest-path edge/vercel/Cargo.toml --all-targets -- -D warnings
-            cargo clippy --manifest-path admin-ui/lab/core/Cargo.toml --all-targets -- -D warnings
-            cargo clippy --manifest-path admin-ui/lab/virt-rpc/Cargo.toml --all-targets -- -D warnings
-            cargo clippy --manifest-path admin-ui/lab/render/Cargo.toml --all-targets -- -D warnings
-            cargo clippy --manifest-path admin-ui/tui/Cargo.toml --all-targets -- -D warnings
-            cargo clippy --manifest-path edge/contracts/solana/Cargo.toml --all-targets -- -D warnings
+            cargo clippy --manifest-path ${{ matrix.crate }}/Cargo.toml --all-targets -- -D warnings
           '
       # rustfmt is only *checked* on pull requests. On a push to main fmt-bot
       # fixes it instead — checking it here too would mean this job goes red
       # for something another job repairs a minute later, leaving a permanent
       # failure on a commit that is already fine.
       - name: rustfmt (pull requests only)
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && matrix.crate == 'backend'
         run: |
           nix develop .#ci -c bash -euo pipefail -c '
             cargo fmt --manifest-path backend/Cargo.toml --check
@@ -299,15 +309,34 @@ jobs:
         run: nix develop .#ci -c bash -euo pipefail -c 'sccache --show-stats; ccache --show-stats'
 
   clippy-wasm:
-    name: "rust: clippy lososd's plugins, losos-mdx, the Lab canvas and the TUI build for wasm32"
+    name: "rust: clippy wasm32 (${{ matrix.id }})"
     needs: [changes]
     if: ${{ needs.changes.outputs.wasm == 'true' }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: plugins
+            manifest: backend/plugins/Cargo.toml
+            clippy_args: --target wasm32-unknown-unknown --all-targets
+          - id: mdx
+            manifest: backend/mdx/Cargo.toml
+            clippy_args: --target wasm32-unknown-unknown --features wasm
+          - id: lab-render-webgl2
+            manifest: admin-ui/lab/render/Cargo.toml
+            clippy_args: --target wasm32-unknown-unknown --all-targets --no-default-features --features webgl2
+          - id: lab-render-webgpu
+            manifest: admin-ui/lab/render/Cargo.toml
+            clippy_args: --target wasm32-unknown-unknown --all-targets --no-default-features --features webgpu
+          - id: tui
+            manifest: admin-ui/tui/Cargo.toml
+            clippy_args: --target wasm32-unknown-unknown --all-targets
     # Mirrors devenv.nix's `lint-wasm`. admin-ui/lab/render takes Bevy only
     # on wasm32, so the clippy job above lints its plain Rust and never sees
-    # src/app or src/web.rs. This lints both builds the page loads, WebGL2
-    # and WebGPU, one after the other, and removes the target directory in
-    # between: each is several gigabytes of Bevy and they share none of it.
+    # src/app or src/web.rs. WebGL2 and WebGPU are separate matrix legs so
+    # each runner holds one multi-gigabyte Bevy target tree instead of
+    # cleaning between backends on a single VM.
     # Then admin-ui/tui, whose wasm32 build is the browser bundle nix's
     # losos-tui-wasm packages (the crate's own window is wasm32-only: the
     # target table in Cargo.toml switches the sources over). Same toolchain
@@ -317,29 +346,31 @@ jobs:
       - uses: ./.github/actions/setup-nix
       - run: |
           nix develop .#ci -c bash -euo pipefail -c '
-            echo "── backend/plugins (wasm32)"
-            cargo clippy --manifest-path backend/plugins/Cargo.toml \
-              --target wasm32-unknown-unknown --all-targets -- -D warnings
-            echo "── backend/mdx (wasm32)"
-            cargo clippy --manifest-path backend/mdx/Cargo.toml \
-              --target wasm32-unknown-unknown --features wasm -- -D warnings
-            for backend in webgl2 webgpu; do
-              echo "── admin-ui/lab/render ($backend, wasm32)"
-              cargo clippy --manifest-path admin-ui/lab/render/Cargo.toml \
-                --target wasm32-unknown-unknown --all-targets \
-                --no-default-features --features $backend -- -D warnings
-              cargo clean --manifest-path admin-ui/lab/render/Cargo.toml
-            done
-            echo "── admin-ui/tui (wasm32)"
-            cargo clippy --manifest-path admin-ui/tui/Cargo.toml \
-              --target wasm32-unknown-unknown --all-targets -- -D warnings
+            cargo clippy --manifest-path ${{ matrix.manifest }} \
+              ${{ matrix.clippy_args }} -- -D warnings
           '
 
   test:
-    name: "rust: test the crates"
+    name: "rust: test (${{ matrix.crate }})"
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        crate:
+          - backend
+          - backend/access
+          - backend/edge-path
+          - backend/mdx
+          - backend/plugins
+          - edge/registrar
+          - edge/vercel
+          - admin-ui/lab/core
+          - admin-ui/lab/virt-rpc
+          - admin-ui/lab/render
+          - admin-ui/tui
     # The suites live here rather than inside buildRustPackage. doCheck used to
     # run them, but it also recompiles each crate in test configuration and
     # links a binary per test target, which pushed `nix build .#losos-ctl` to
@@ -386,17 +417,7 @@ jobs:
           export LOSOS_TEST_MONEROD="$(nix build --no-link --print-out-paths --inputs-from . nixpkgs#monero-cli)/bin/monerod"
           export LOSOS_TEST_TANG="$(nix build --no-link --print-out-paths --inputs-from . 'nixpkgs#tang^out')"
           nix develop .#ci -c bash -euo pipefail -c '
-            cargo test --manifest-path backend/Cargo.toml
-            cargo test --manifest-path backend/access/Cargo.toml
-            cargo test --manifest-path backend/edge-path/Cargo.toml
-            cargo test --manifest-path backend/mdx/Cargo.toml
-            cargo test --manifest-path backend/plugins/Cargo.toml
-            cargo test --manifest-path edge/registrar/Cargo.toml
-            cargo test --manifest-path edge/vercel/Cargo.toml
-            cargo test --manifest-path admin-ui/lab/core/Cargo.toml
-            cargo test --manifest-path admin-ui/lab/virt-rpc/Cargo.toml
-            cargo test --manifest-path admin-ui/lab/render/Cargo.toml
-            cargo test --manifest-path admin-ui/tui/Cargo.toml
+            cargo test --manifest-path ${{ matrix.crate }}/Cargo.toml
           '
       # The hit rate, so a cache that stopped being taken is visible in the
       # log rather than as a job that quietly got slower.
@@ -782,7 +803,7 @@ jobs:
   # ── Expo development clients, built here, published as artifacts ───────────
   #
   # The EAS job above submits to Expo's cloud, whose Free-plan allowance can
-  # be exhausted (it is, this month); these two build the very same dev
+  # be exhausted (it is, this month); expo-dev-client builds the very same dev
   # clients on GitHub's runners instead — prebuild + gradle / xcodebuild, no
   # EAS at all — and upload the installables as artifacts, so a dev client
   # exists regardless of the account's billing. The same CNG flow the docs'
@@ -795,11 +816,24 @@ jobs:
   # resolves for the phone targets. The result gate does not depend on
   # these (same as expo-eas): a first build of this shape is allowed to
   # fail without blocking every ui change.
-  expo-apk:
-    name: "expo: Android dev client APK (artifact)"
+  expo-dev-client:
+    name: "expo: ${{ matrix.label }}"
     needs: [changes]
     if: ${{ needs.changes.outputs.ui == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: android
+            runner: ubuntu-latest
+            label: Android dev client APK (artifact)
+          # macos-15, not latest: the migrated image carries only Xcode 26, whose
+          # clang cannot compile RN 0.81's fmt (the Xcode 16 step below names the
+          # error); the 15 image keeps a 16.x around for DEVELOPER_DIR to pick.
+          - target: ios
+            runner: macos-15
+            label: iOS dev client for the simulator (artifact)
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
@@ -811,47 +845,35 @@ jobs:
       # CNG: the android/ project is generated, never committed (the
       # config's own header says so), and autolinks the native modules.
       - name: prebuild android
+        if: matrix.target == 'android'
         working-directory: admin-ui/app
         run: bunx expo prebuild --platform android --no-install
       # Java comes after the prebuild: setup-java's gradle cache resolves
       # against the generated gradle files, which exist only past it.
       - uses: actions/setup-java@v5
+        if: matrix.target == 'android'
         with:
           distribution: temurin
           java-version: 17
           cache: gradle
       - name: gradle assembleDebug (the phone's debug APK)
+        if: matrix.target == 'android'
         working-directory: admin-ui/app/android
         run: ./gradlew assembleDebug --no-daemon
       - uses: actions/upload-artifact@v7
+        if: matrix.target == 'android'
         with:
           name: losos-dev-client-android
           path: admin-ui/app/android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
-
-  expo-ios-sim:
-    name: "expo: iOS dev client for the simulator (artifact)"
-    needs: [changes]
-    if: ${{ needs.changes.outputs.ui == 'true' }}
-    # macos-15, not latest: the migrated image carries only Xcode 26, whose
-    # clang cannot compile RN 0.81's fmt (the Xcode 16 step below names the
-    # error); the 15 image keeps a 16.x around for DEVELOPER_DIR to pick.
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version-file: admin-ui/app/package.json
-      - name: the workspace (the lockfile's tree, dev client included)
-        working-directory: admin-ui/app
-        run: bun install --frozen-lockfile --ignore-scripts
       # React Native 0.81's fmt (React-Folly's bundled copy) cannot compile
       # under Xcode 26's clang — every FMT_COMPILE_STRING consteval call in
       # Pods/fmt/format-inl.h dies before one app file builds (the run of
       # 2026-11-10 10:57). RN 0.81's supported toolchain is Xcode 16, so
       # pods and xcodebuild both run under the newest 16.x the image has.
       - name: pick Xcode 16 (RN 0.81's supported clang)
+        if: matrix.target == 'ios'
         run: |
           xcode16=$(ls -d -- /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -1)
           [ -n "$xcode16" ] || {
@@ -861,15 +883,18 @@ jobs:
           echo "DEVELOPER_DIR=$xcode16/Contents/Developer" >> "$GITHUB_ENV"
           echo "building with $(xcodebuild -version 2>/dev/null || DEVELOPER_DIR=$xcode16/Contents/Developer xcodebuild -version)"
       - name: prebuild ios (cocoapods run by prebuild)
+        if: matrix.target == 'ios'
         working-directory: admin-ui/app
         run: bunx expo prebuild --platform ios --no-install
       - name: pod install
+        if: matrix.target == 'ios'
         working-directory: admin-ui/app/ios
         run: pod install
       # The simulator needs no Apple signing (the eas.json comment carries
       # the same reasoning for the EAS side); CODE_SIGNING_ALLOWED=NO keeps
       # xcodebuild from asking for an identity on a keyless runner.
       - name: xcodebuild for the simulator
+        if: matrix.target == 'ios'
         working-directory: admin-ui/app/ios
         run: |
           # ls -d, not ls: on a single match plain ls lists the workspace's
@@ -899,12 +924,14 @@ jobs:
             -derivedDataPath build \
             build
       - name: zip the .app for the artifact
+        if: matrix.target == 'ios'
         working-directory: admin-ui/app/ios/build/Build/Products/Debug-iphonesimulator
         run: |
           app=$(ls -d *.app | head -1)
           echo "app: $app"
           zip -r -y "$RUNNER_TEMP/losos-dev-client-ios-simulator.zip" "$app"
       - uses: actions/upload-artifact@v7
+        if: matrix.target == 'ios'
         with:
           name: losos-dev-client-ios-simulator
           path: ${{ runner.temp }}/losos-dev-client-ios-simulator.zip
