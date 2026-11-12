@@ -114,6 +114,14 @@ jobs:
       # tag rather than the tree's committed nix/version.nix — release.yml
       # tags the tree before version.yml syncs main, so the tag's own file
       # can lag one release (losos-version.cjs reads the variable first).
+      # Release builds bundle the JS (createBundleReleaseJsAndAssets), and
+      # Metro needs the virtual modules' generated shims (src/pages/
+      # pages-defaults.gen.ts and friends) that `bun run build` writes in
+      # the web lane — they are gitignored, so regenerate them here.
+      - name: regenerate the virtual modules Metro's resolver needs
+        if: steps.secrets.outputs.sign == 'true'
+        working-directory: admin-ui/app
+        run: bun run virtuals
       - name: prebuild android (the signing plugin reads the environment)
         if: steps.secrets.outputs.sign == 'true'
         working-directory: admin-ui/app
@@ -204,6 +212,12 @@ jobs:
           }
           echo "DEVELOPER_DIR=$xcode16/Contents/Developer" >> "$GITHUB_ENV"
           echo "building with $(DEVELOPER_DIR=$xcode16/Contents/Developer xcodebuild -version)"
+      # Release builds bundle the JS (react-native-xcode.sh), and Metro
+      # needs the virtual modules' generated shims — gitignored, so
+      # regenerate them here.
+      - name: regenerate the virtual modules Metro's resolver needs
+        working-directory: admin-ui/app
+        run: bun run virtuals
       - name: prebuild ios (cocoapods run by prebuild)
         working-directory: admin-ui/app
         env:
@@ -230,7 +244,14 @@ jobs:
             // ($w.schemes | map(select(test("^Pods-") | not))[0])' <<<"$listout")
           [ -n "$scheme" ] || { echo "::error::no app scheme in $workspace — the -list output is above"; exit 1; }
           echo "scheme: $scheme"
-          CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO xcodebuild \
+          CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            EXPANDED_CODE_SIGN_IDENTITY="" \
+            xcodebuild \
             -workspace "$workspace" \
             -scheme "$scheme" \
             -configuration Release \
