@@ -116,6 +116,7 @@ jobs:
         env:
           SCREENSHOT_PLATFORM: ${{ matrix.platform }}
           EXPO_TV: ${{ matrix.platform == 'tv' && '1' || '' }}
+          LOSOS_FORCE_PLATFORM: ${{ matrix.platform }}
         run: |
           set -euo pipefail
           mkdir -p "/tmp/handbook-screens/${{ matrix.platform }}"
