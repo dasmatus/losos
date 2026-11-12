@@ -121,9 +121,7 @@ jobs:
       - name: regenerate the virtual modules Metro's resolver needs
         if: steps.secrets.outputs.sign == 'true'
         working-directory: admin-ui/app
-        run: |
-          bun ../../.github/scripts/write-lab-stubs.ts
-          bun run virtuals
+        run: bun ../../.github/scripts/write-lab-stubs.ts
       - name: prebuild android (the signing plugin reads the environment)
         if: steps.secrets.outputs.sign == 'true'
         working-directory: admin-ui/app
@@ -219,9 +217,7 @@ jobs:
       # regenerate them here.
       - name: regenerate the virtual modules Metro's resolver needs
         working-directory: admin-ui/app
-        run: |
-          bun ../../.github/scripts/write-lab-stubs.ts
-          bun run virtuals
+        run: bun ../../.github/scripts/write-lab-stubs.ts
       - name: prebuild ios (cocoapods run by prebuild)
         working-directory: admin-ui/app
         env:
