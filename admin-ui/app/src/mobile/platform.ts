@@ -1,5 +1,4 @@
 import { Platform } from "react-native";
-import { useColorScheme } from "react-native";
 
 /** The Apple TV and Android TV targets the `@react-native-tvos/config-tv`
  *  plugin rewrites the native projects for (EXPO_TV=1). `Platform.isTV`

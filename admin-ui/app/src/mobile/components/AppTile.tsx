@@ -91,9 +91,6 @@ export function Widget({
         margin: 3,
         elevation: look.elevation,
         ...look.shadow,
-        borderRadius: LOSOS_RADIUS.medium,
-        padding: 12,
-        margin: 3,
       }}
     >
       <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>

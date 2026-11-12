@@ -7,7 +7,6 @@ import {
 } from "react-native";
 
 import { isTV, isVisionOS, isWindows, useNativeLook } from "../platform";
-import { useTokens } from "../theme/useTokens";
 import { LOSOS_RADIUS } from "../theme/tokens";
 
 /** A pressable that carries focus on TV.
@@ -29,7 +28,6 @@ export function TvPressable({
     | React.ReactNode
     | ((state: { pressed: boolean; focused: boolean }) => React.ReactNode);
 }): React.JSX.Element {
-  const tokens = useTokens();
   const look = useNativeLook();
   const focusable = isTV || isVisionOS || isWindows || props.focusable;
   return (
