@@ -25,6 +25,11 @@ name: Mobile release
 # such — an artifact to diff and a placeholder, not an installable app.
 # When the account exists, this job is the place the certificate secrets
 # (a .p12 and a provisioning profile) slot into.
+#
+# A workflow_dispatch with dry_run builds and uploads the artifacts and
+# stops before any release interaction — the lane's own rehearsal, on
+# whatever tree the run checks out (a tag when the input names one, the
+# dispatched branch otherwise).
 
 on:
   push:
@@ -33,9 +38,14 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to build, e.g. v0.7.0 (a tag whose release is still a draft, or has none yet)"
+        description: "Tag to build, e.g. v0.7.0 (a tag whose release is still a draft, or has none yet). Omit to build this branch's tree instead."
         type: string
-        required: true
+        required: false
+      dry_run:
+        description: "Build and upload artifacts only; never touch the tag's release."
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: write
@@ -149,9 +159,10 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       # ci.yml owns the release's life (draft, ISO, publish); this only
-      # waits for the draft to exist and adds the APK to it.
+      # waits for the draft to exist and adds the APK to it. A dry run
+      # stops at the artifact above.
       - name: attach the APK to the tag's draft release
-        if: steps.secrets.outputs.sign == 'true'
+        if: steps.secrets.outputs.sign == 'true' && !inputs.dry_run
         env:
           APK: ${{ steps.stage.outputs.apk }}
           APK_SHA: ${{ steps.stage.outputs.sha }}
@@ -254,6 +265,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - name: attach the unsigned shell to the tag's draft release
+        if: ${{ !inputs.dry_run }}
         env:
           ZIP: ${{ steps.stage.outputs.zip }}
           ZIP_SHA: ${{ steps.stage.outputs.sha }}
