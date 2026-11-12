@@ -25,7 +25,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useTokens } from "../theme/useTokens";
 import { LOSOS_RADIUS, LOSOS_TYPE, type LososTokens } from "../theme/tokens";
-import { isTV, isVisionOS, tvFocusable } from "../platform";
+import { isTV, isVisionOS, tvFocusable, useNativeLook } from "../platform";
 import { TvPressable } from "../components/TvPressable";
 import { LivingRoomDashboard } from "../components/LivingRoomDashboard";
 import { SettingsTab } from "../panes/SettingsTab";
@@ -62,6 +62,7 @@ export function DashboardScreen({
   initialTab?: Tab;
 }): React.JSX.Element {
   const tokens = useTokens();
+  const look = useNativeLook();
   const [current, setCurrent] = React.useState<Tab>(initialTab ?? "Dashboard");
   const [livingRoom, setLivingRoom] = React.useState(false);
   useWindowDimensions(); // keep hook available for future spatial/layout tuning
@@ -81,7 +82,7 @@ export function DashboardScreen({
 
   const showVisionToggle = isVisionOS && current === "Dashboard";
   return (
-    <View style={{ flex: 1, backgroundColor: tokens.palette.background }}>
+    <View style={{ flex: 1, backgroundColor: tokens.palette.background, ...look.shadow, elevation: look.elevation }}>
       {showVisionToggle ? (
         <View
           style={{

@@ -23,6 +23,7 @@ import {
 } from "react-native";
 
 import { LOSOS_RADIUS, LOSOS_TYPE, type LososTokens } from "../theme/tokens";
+import { useNativeLook } from "../platform";
 
 /* ── Buttons ─────────────────────────────────────────────────────────────── */
 
@@ -43,6 +44,7 @@ export function LosButton({
   enabled?: boolean;
   busy?: boolean;
 }) {
+  const look = useNativeLook();
   const ink =
     kind === "filled"
       ? tokens.palette.onPrimary
@@ -55,10 +57,12 @@ export function LosButton({
     alignItems: "center",
     gap: 6,
     alignSelf: "flex-start",
-    borderRadius: LOSOS_RADIUS.large,
+    borderRadius: LOSOS_RADIUS.large * look.cornerRadiusScale,
     paddingVertical: 10,
     paddingHorizontal: 16,
     overflow: "hidden",
+    elevation: look.elevation,
+    ...look.shadow,
     ...(kind === "filled"
       ? { backgroundColor: enabled ? tokens.palette.primary : tokens.palette.surfaceVariant }
       : {
@@ -69,12 +73,17 @@ export function LosButton({
   };
 
   return (
-    <Pressable onPress={onPress} disabled={!enabled || busy} style={({ pressed }) => [
-      shell,
-      pressed && enabled && !busy ? { opacity: 0.85 } : null,
-    ]}>
+    <Pressable
+      onPress={onPress}
+      disabled={!enabled || busy}
+      android_ripple={look.ripple ?? undefined}
+      style={({ pressed }) => [
+        shell,
+        pressed && enabled && !busy ? { opacity: 0.85 } : null,
+      ]}
+    >
       {busy ? <ActivityIndicator size="small" color={kind === "filled" ? ink : tokens.palette.primary} /> : null}
-      <Text style={{ ...LOSOS_TYPE.labelSmall, color: ink }}>{children}</Text>
+      <Text style={{ ...LOSOS_TYPE.labelSmall, color: ink, fontFamily: look.fontFamily }}>{children}</Text>
     </Pressable>
   );
 }
@@ -89,6 +98,7 @@ export function LosTextField({
   style,
   ...rest
 }: TextInputProps & { tokens: LososTokens; supporting?: string }): React.JSX.Element {
+  const look = useNativeLook();
   return (
     <View>
       <TextInput
@@ -100,7 +110,8 @@ export function LosTextField({
           {
             ...LOSOS_TYPE.bodyMedium,
             color: tokens.palette.onSurface,
-            borderRadius: LOSOS_RADIUS.small,
+            fontFamily: look.fontFamily,
+            borderRadius: LOSOS_RADIUS.small * look.cornerRadiusScale,
             borderWidth: 1,
             borderColor: tokens.palette.outline,
             paddingHorizontal: 12,
@@ -137,23 +148,28 @@ export function FilterChip({
   onPress: () => void;
   label: string;
 }) {
+  const look = useNativeLook();
   return (
     <Pressable
       onPress={onPress}
+      android_ripple={look.ripple ?? undefined}
       style={{
-        borderRadius: LOSOS_RADIUS.large,
+        borderRadius: LOSOS_RADIUS.large * look.cornerRadiusScale,
         paddingVertical: 8,
         paddingHorizontal: 14,
         backgroundColor: selected
           ? tokens.palette.secondaryContainer
           : tokens.palette.surfaceVariant,
         overflow: "hidden",
+        elevation: look.elevation,
+        ...look.shadow,
       }}
     >
       <Text
         style={{
           ...LOSOS_TYPE.labelSmall,
           color: selected ? tokens.palette.onSecondaryContainer : tokens.palette.onSurfaceVariant,
+          fontFamily: look.fontFamily,
         }}
       >
         {label}
@@ -187,6 +203,7 @@ export function LosDialog({
   confirmBusy?: boolean;
   dismissLabel?: string;
 }) {
+  const look = useNativeLook();
   return (
     <Modal visible={open} transparent animationType="fade" onRequestClose={onDismiss}>
       <Pressable
@@ -202,11 +219,13 @@ export function LosDialog({
           onPress={(e) => e.stopPropagation()}
           style={{
             backgroundColor: tokens.palette.surface,
-            borderRadius: LOSOS_RADIUS.large,
+            borderRadius: LOSOS_RADIUS.large * look.cornerRadiusScale,
             padding: 20,
+            elevation: look.elevation,
+            ...look.shadow,
           }}
         >
-          <Text style={{ ...LOSOS_TYPE.headlineSmall, color: tokens.palette.onSurface }}>
+          <Text style={{ ...LOSOS_TYPE.headlineSmall, color: tokens.palette.onSurface, fontFamily: look.fontFamily }}>
             {title}
           </Text>
           <View style={{ height: 12 }} />

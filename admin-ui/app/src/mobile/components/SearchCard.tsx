@@ -13,7 +13,7 @@ import { Card } from "./Card";
 import { PaneRow } from "./PaneRow";
 import { LosButton } from "./primitives";
 import { LOSOS_TYPE, LOSOS_RADIUS, type LososTokens } from "../theme/tokens";
-import { encodeQuery, itemsOf, maybeObject, maybeString } from "../../api/wire";
+import { useNativeLook } from "../platform";import { encodeQuery, itemsOf, maybeObject, maybeString } from "../../api/wire";
 import { failWord, type BoxApi, type JsonBody } from "../../api/api";
 import type { Read } from "../panes/Read";
 
@@ -30,6 +30,7 @@ export interface AppJob {
 }
 
 export function SearchCard({ tokens, api, busy, onInstall }: SearchCardProps): React.JSX.Element {
+  const look = useNativeLook();
   const [query, setQuery] = React.useState("");
   const [search, setSearch] = React.useState<Read | null>(null);
 
@@ -46,7 +47,7 @@ export function SearchCard({ tokens, api, busy, onInstall }: SearchCardProps): R
 
   return (
     <Card tokens={tokens}>
-      <Text style={{ ...LOSOS_TYPE.titleMedium, color: tokens.palette.onSurface }}>Find more</Text>
+      <Text style={{ ...LOSOS_TYPE.titleMedium, fontFamily: look.fontFamily, color: tokens.palette.onSurface }}>Find more</Text>
       <View style={{ height: 10 }} />
       <TextInput
         value={query}
@@ -59,8 +60,9 @@ export function SearchCard({ tokens, api, busy, onInstall }: SearchCardProps): R
         placeholderTextColor={tokens.palette.onSurfaceVariant}
         style={{
           ...LOSOS_TYPE.bodyMedium,
+          fontFamily: look.fontFamily,
           color: tokens.palette.onSurface,
-          borderRadius: LOSOS_RADIUS.small,
+          borderRadius: LOSOS_RADIUS.small * look.cornerRadiusScale,
           borderWidth: 1,
           borderColor: tokens.palette.outline,
           paddingHorizontal: 12,

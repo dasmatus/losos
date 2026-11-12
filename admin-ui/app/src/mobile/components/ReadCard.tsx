@@ -8,9 +8,9 @@ import { Text, View } from "react-native";
 
 import { Card } from "./Card";
 import { LOSOS_TYPE, type LososTokens } from "../theme/tokens";
+import { useNativeLook } from "../platform";
 import type { JsonBody } from "../../api/api";
 import type { Read } from "../panes/Read";
-
 export function ReadCard({
   tokens,
   title,
@@ -22,9 +22,10 @@ export function ReadCard({
   read: Read;
   children: (body: JsonBody) => React.ReactNode;
 }) {
+  const look = useNativeLook();
   return (
     <Card tokens={tokens}>
-      <Text style={{ ...LOSOS_TYPE.titleMedium, color: tokens.palette.onSurface }}>{title}</Text>
+      <Text style={{ ...LOSOS_TYPE.titleMedium, fontFamily: look.fontFamily, color: tokens.palette.onSurface }}>{title}</Text>
       <View style={{ height: 8 }} />
       {read.kind === "loading" ? (
         <Text style={{ ...LOSOS_TYPE.bodyMedium, color: tokens.palette.onSurfaceVariant }}>
