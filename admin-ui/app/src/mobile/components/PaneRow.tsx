@@ -6,7 +6,7 @@
 import { Text, View } from "react-native";
 
 import { LOSOS_TYPE, type LososTokens } from "../theme/tokens";
-
+import { useNativeLook } from "../platform";
 export function PaneRow({
   tokens,
   title,
@@ -20,27 +20,28 @@ export function PaneRow({
   value?: string;
   tone?: string;
 }) {
+  const look = useNativeLook();
   const text = tone ?? tokens.palette.onSurface;
   const valueColor = tone ?? tokens.palette.onSurfaceVariant;
   const detailColor = tokens.palette.onSurfaceVariant;
   return (
-    <View style={{ width: "100%", paddingVertical: 6 }}>
+    <View style={{ width: "100%", paddingVertical: 6, elevation: look.elevation, ...look.shadow }}>
       <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
         <Text
-          style={{ ...LOSOS_TYPE.titleMedium, color: text }}
+          style={{ ...LOSOS_TYPE.titleMedium, fontFamily: look.fontFamily, color: text }}
           ellipsizeMode="tail"
           numberOfLines={2}
         >
           {title}
         </Text>
         {value !== "" ? (
-          <Text style={{ ...LOSOS_TYPE.labelSmall, fontWeight: "600", color: valueColor, marginLeft: 10 }}>
+          <Text style={{ ...LOSOS_TYPE.labelSmall, fontFamily: look.fontFamily, fontWeight: "600", color: valueColor, marginLeft: 10 }}>
             {value}
           </Text>
         ) : null}
       </View>
       {detail !== "" ? (
-        <Text style={{ ...LOSOS_TYPE.bodySmall, color: detailColor }}>{detail}</Text>
+        <Text style={{ ...LOSOS_TYPE.bodySmall, fontFamily: look.fontFamily, color: detailColor }}>{detail}</Text>
       ) : null}
     </View>
   );

@@ -7,7 +7,7 @@ import { Text, View } from "react-native";
 
 import { DemoChip } from "./DemoChip";
 import { LOSOS_RADIUS, LOSOS_TYPE, type LososTokens } from "../theme/tokens";
-
+import { useNativeLook } from "../platform";
 export function AppTile({
   tokens,
   glyph,
@@ -23,14 +23,17 @@ export function AppTile({
   demo?: boolean;
   flex?: number;
 }) {
+  const look = useNativeLook();
   return (
     <View
       style={{
         flex,
         backgroundColor: tokens.palette.surface,
-        borderRadius: LOSOS_RADIUS.medium,
+        borderRadius: LOSOS_RADIUS.medium * look.cornerRadiusScale,
         padding: 12,
         margin: 3,
+        elevation: look.elevation,
+        ...look.shadow,
       }}
     >
       <View
@@ -47,6 +50,7 @@ export function AppTile({
         <Text
           style={{
             ...LOSOS_TYPE.titleMedium,
+            fontFamily: look.fontFamily,
             color: tokens.palette.onPrimaryContainer,
           }}
         >
@@ -54,8 +58,7 @@ export function AppTile({
         </Text>
       </View>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-        <Text style={{ ...LOSOS_TYPE.labelSmall, color: tokens.palette.onSurface }}>{name}</Text>
-        {demo ? <DemoChip tokens={tokens} /> : null}
+        <Text style={{ ...LOSOS_TYPE.labelSmall, fontFamily: look.fontFamily, color: tokens.palette.onSurface }}>{name}</Text>        {demo ? <DemoChip tokens={tokens} /> : null}
       </View>
       <Text style={{ ...LOSOS_TYPE.bodySmall, color: tokens.palette.onSurfaceVariant }}>{sub}</Text>
     </View>
@@ -77,11 +80,17 @@ export function Widget({
   demo?: boolean;
   flex?: number;
 }) {
+  const look = useNativeLook();
   return (
     <View
       style={{
         flex,
         backgroundColor: tokens.palette.primaryContainer,
+        borderRadius: LOSOS_RADIUS.medium * look.cornerRadiusScale,
+        padding: 12,
+        margin: 3,
+        elevation: look.elevation,
+        ...look.shadow,
         borderRadius: LOSOS_RADIUS.medium,
         padding: 12,
         margin: 3,

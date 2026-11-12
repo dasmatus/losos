@@ -9,6 +9,7 @@ import { Text, View, type StyleProp, type ViewStyle } from "react-native";
 
 import { DemoChip } from "./DemoChip";
 import { LOSOS_RADIUS, LOSOS_TYPE, type LososTokens } from "../theme/tokens";
+import { useNativeLook } from "../platform";
 
 export function Card({
   tokens,
@@ -21,14 +22,17 @@ export function Card({
   style?: StyleProp<ViewStyle>;
   children: React.ReactNode;
 }) {
+  const look = useNativeLook();
   return (
     <View
       style={[
         {
           backgroundColor: tokens.palette.surface,
-          borderRadius: LOSOS_RADIUS.medium,
+          borderRadius: LOSOS_RADIUS.medium * look.cornerRadiusScale,
           padding: 16,
           marginVertical: 6,
+          elevation: look.elevation,
+          ...look.shadow,
         },
         style,
       ]}
@@ -47,8 +51,16 @@ export function Card({
  *  titleMedium style over the card, in the onSurface ink (Compose's
  *  typography draws that colour from the scheme). */
 export function CardTitle({ tokens, title }: { tokens: LososTokens; title: string }) {
+  const look = useNativeLook();
   return (
-    <Text style={{ ...LOSOS_TYPE.titleMedium, color: tokens.palette.onSurface, marginBottom: 8 }}>
+    <Text
+      style={{
+        ...LOSOS_TYPE.titleMedium,
+        fontFamily: look.fontFamily,
+        color: tokens.palette.onSurface,
+        marginBottom: 8,
+      }}
+    >
       {title}
     </Text>
   );

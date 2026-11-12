@@ -17,6 +17,7 @@ import { boxBase, updateConfig, useBoxConfig } from "../../store/config";
 import { useRead } from "../panes/Read";
 import { LOSOS_RADIUS, LOSOS_TYPE, type LososTokens } from "../theme/tokens";
 import { TvPressable } from "./TvPressable";
+import { useNativeLook } from "../platform";
 
 /* visionOS "Living room" mode: a relaxed, glance-across-the-room dashboard.
  * It shows the same box data the normal surface reads (health/status/storage/
@@ -48,6 +49,7 @@ export function LivingRoomDashboard({
   onExit: () => void;
 }): React.JSX.Element {
   const config = useBoxConfig();
+  const look = useNativeLook();
   const [page, setPage] = React.useState(0);
 
   const api = React.useMemo(() => {
@@ -73,6 +75,8 @@ export function LivingRoomDashboard({
         flex: 1,
         backgroundColor: tokens.palette.background,
         padding: 28,
+        ...look.shadow,
+        elevation: look.elevation,
       }}
     >
       <View

@@ -48,29 +48,27 @@ concurrency:
 jobs:
   screens:
     name: "handbook screenshots (${{ matrix.platform }})"
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - platform: web
-            can_render: "true"
-            note: "existing Playwright web-admin render path"
-          - platform: tv
-            can_render: "true"
-            note: "Playwright harness with EXPO_TV=1 leanback marker"
-          - platform: windows
-            can_render: "false"
-            note: "react-native-windows native shell cannot be rendered headlessly on ubuntu; code-only/skipped"
-          - platform: visionos
-            can_render: "false"
-            note: "react-native-visionos native shell requires Apple visionOS tooling; code-only/skipped on ubuntu"
-    continue-on-error: ${{ matrix.can_render != 'true' }}
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        platform: [web, tv, windows, visionos]
+    continue-on-error: ${{ matrix.platform == 'windows' || matrix.platform == 'visionos' }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      - name: install Android Studio
+        shell: bash
+        run: |
+          case "$RUNNER_OS" in
+            Linux)   sudo snap install android-studio --classic ;;
+            macOS)   brew install --cask android-studio ;;
+            Windows) choco install androidstudio -y ;;
+          esac
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -121,8 +119,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "/tmp/handbook-screens/${{ matrix.platform }}"
-          if [ "${{ matrix.can_render }}" != "true" ]; then
-            echo "skip ${{ matrix.platform }}: ${{ matrix.note }}" | tee "/tmp/handbook-screens/${{ matrix.platform }}/SKIPPED.txt"
+          if [ "${{ matrix.platform }}" = "windows" ] || [ "${{ matrix.platform }}" = "visionos" ]; then
+            echo "skip ${{ matrix.platform }}: native shell cannot be rendered on ${{ matrix.os }}" | tee "/tmp/handbook-screens/${{ matrix.platform }}/SKIPPED.txt"
             exit 0
           fi
           bun tests/handbook-screens.ts /tmp/handbook-screens "" "${{ matrix.platform }}" 
@@ -166,7 +164,7 @@ jobs:
         if: steps.changes.outputs.skipped != 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: handbook-screens-${{ matrix.platform }}
+          name: handbook-screens-${{ matrix.platform }}-${{ matrix.os }}
           path: /tmp/handbook-screens/${{ matrix.platform }}/*.png
           retention-days: 7
           if-no-files-found: warn

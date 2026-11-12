@@ -29,7 +29,7 @@ import salmonPng from "../../../assets/images/salmon.png";
 
 import { useTokens } from "../theme/useTokens";
 import { LOSOS_RADIUS, LOSOS_TYPE, type LososTokens } from "../theme/tokens";
-import { isTV, isVisionOS, tvFocusable } from "../platform";
+import { isTV, isVisionOS, tvFocusable, useNativeLook } from "../platform";
 import { TvPressable } from "../components/TvPressable";
 import { probe } from "../../api/probe";
 import { browseBoxes, type FoundBox } from "../../api/discovery";
@@ -42,6 +42,7 @@ import {
 
 export function ConnectScreen(): React.JSX.Element {
   const tokens = useTokens();
+  const look = useNativeLook();
   const config: BoxConfig | null = useBoxConfig();
   if (config === null) return <View />;
   return <ConnectScreenBody tokens={tokens} config={config} />;
@@ -90,6 +91,7 @@ function ConnectScreenBody({
         justifyContent: "center",
         padding: isTV ? 56 : isVisionOS ? 40 : 28,
         backgroundColor: tokens.palette.background,
+        ...look.shadow,
       }}
     >
       <Brand tokens={tokens} />

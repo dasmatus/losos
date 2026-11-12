@@ -10,6 +10,7 @@ import * as React from "react";
 import { Text, View } from "react-native";
 
 import { LOSOS_TYPE, type LososTokens } from "../theme/tokens";
+import { useNativeLook } from "../platform";
 import { Card, CardTitle } from "../components/Card";
 import { PaneHeader } from "../components/PaneHeader";
 import { PaneRow, SecurityRow } from "../components/PaneRow";
@@ -38,6 +39,8 @@ const Tail = () => <View style={{ height: 20 }} />;
 /* ── Network ───────────────────────────────────────────────────────────── */
 
 export function NetworkPane({ tokens }: { tokens: LososTokens }): React.JSX.Element {
+  const look = useNativeLook();
+  void look;
   const entries = useBox();
   if (entries === null) return <View />;
   const { box, api } = entries;

@@ -8,17 +8,19 @@
 import { Text, type StyleProp, type TextStyle } from "react-native";
 
 import { LOSOS_RADIUS, LOSOS_TYPE, type LososTokens } from "../theme/tokens";
-
+import { useNativeLook } from "../platform";
 export function DemoChip({ tokens, style }: { tokens: LososTokens; style?: StyleProp<TextStyle> }) {
+  const look = useNativeLook();
   return (
     <Text
       style={[
         {
           ...LOSOS_TYPE.labelSmall,
+          fontFamily: look.fontFamily,
           color: tokens.extra.crit,
           backgroundColor: withWash(tokens.extra.crit),
           alignSelf: "flex-start",
-          borderRadius: LOSOS_RADIUS.chip,
+          borderRadius: LOSOS_RADIUS.chip * look.cornerRadiusScale,
           overflow: "hidden",
           paddingVertical: 2,
           paddingHorizontal: 6,
