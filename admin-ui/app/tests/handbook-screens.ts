@@ -1977,9 +1977,7 @@ for (const shot of SHOTS) {
     try {
       if (act) await act(page, T(lang));
       const clip = await region(page, crop, full);
-      await import("node:fs/promises").then((fs) =>
-        fs.mkdir(platformOut, { recursive: true }),
-      );
+      await Bun.$`mkdir -p ${platformOut}`;
       const outPath = `${platformOut}/${file}.png`;
       await page.screenshot({
         path: outPath,
