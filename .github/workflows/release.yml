@@ -29,7 +29,6 @@ jobs:
   create-tag-and-dispatch:
     name: "release: create immutable release from CI"
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     steps:
       - name: require the default branch
         shell: bash

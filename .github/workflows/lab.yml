@@ -50,7 +50,6 @@ jobs:
     name: "lab: qemu-wasm + guests"
     runs-on: ubuntu-latest
     # qemu-wasm under emscripten and a Linux kernel, both from source.
-    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
