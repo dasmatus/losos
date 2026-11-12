@@ -6,8 +6,7 @@ import {
   type ViewStyle,
 } from "react-native";
 
-import { isTV } from "../platform";
-import { useTokens } from "../theme/useTokens";
+import { isTV, isVisionOS, isWindows, useNativeLook } from "../platform";
 import { LOSOS_RADIUS } from "../theme/tokens";
 
 /** A pressable that carries focus on TV.
@@ -29,21 +28,23 @@ export function TvPressable({
     | React.ReactNode
     | ((state: { pressed: boolean; focused: boolean }) => React.ReactNode);
 }): React.JSX.Element {
-  const tokens = useTokens();
+  const look = useNativeLook();
+  const focusable = isTV || isVisionOS || isWindows || props.focusable;
   return (
     <Pressable
       accessible
-      focusable={isTV || props.focusable}
+      focusable={focusable}
+      android_ripple={props.android_ripple ?? look.ripple ?? undefined}
       {...props}
       style={(state) => {
         const focused = "focused" in state ? Boolean(state.focused) : false;
         const base: StyleProp<ViewStyle> = [
           typeof style === "function" ? style(state) : style,
-          focused && isTV
+          focused && (isTV || isVisionOS || isWindows)
             ? {
-                borderColor: tokens.palette.primary,
+                borderColor: look.focusRingColor,
                 borderWidth: 2,
-                borderRadius: LOSOS_RADIUS.small,
+                borderRadius: LOSOS_RADIUS.small * look.cornerRadiusScale,
                 transform: [{ scale: focusScale }],
               }
             : null,
