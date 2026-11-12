@@ -3,15 +3,18 @@
  * One BoxConfig - where the box lives, the access token that links to it,
  * whether demo mode is on and which theme mode the owner picked - persisted
  * so the app opens where the owner left it. The Compose app kept it in
- * SharedPreferences; React Native's shape of that is a key-value store.
+ * SharedPreferences; the native shape of that here is one JSON file in the
+ * app's document directory, by way of expo-file-system (the SDK's own
+ * File/Paths pair, the first-party module this store was moved onto when
+ * the native binds were consolidated on expo-* packages).
  *
- * MMKV vs AsyncStorage: MMKV loses. The config is four fields written on a
+ * MMKV vs the file: MMKV loses. The config is four fields written on a
  * button press and read a handful of times on launch; nothing here wants
  * MMKV's mmap-backed synchronous reads, and its native module has a habit
- * of trailing every React Native major by a few weeks. AsyncStorage is on
- * the Expo-maintained track and stays out of the way - so the token rides
- * AsyncStorage, unencrypted, in the app's own sandbox, which is the same
- * protection level the SharedPreferences port had. A phone-level secure
+ * of trailing every React Native major by a few weeks. The old AsyncStorage
+ * row and this file live at the same protection level - unencrypted, in the
+ * app's own sandbox, the one the SharedPreferences port had - and the write
+ * stays fire-and-forget (saveConfig's contract below). A phone-level secure
  * store (keychain-backed) is the next step if a threat review asks for one.
  *
  * The API client (src/api/api.ts) and the panes read this through
@@ -19,8 +22,9 @@
  * over, the way MainActivity's needsConnect did.
  */
 
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useSyncExternalStore } from "react";
+
+import { Directory, File, Paths } from "expo-file-system";
 
 import type { ThemeMode } from "../mobile/theme/tokens";
 
@@ -51,7 +55,11 @@ export function boxBase(host: string): string {
 
 /* ── The store ──────────────────────────────────────────────────────────── */
 
-const KEY = "losos-companion/config";
+/* The old AsyncStorage key (`losos-companion/config`), spelled as the file
+ * the store now reads and writes. One file, one JSON document - the row the
+ * key held, moved rather than reshaped. */
+const configDir = new Directory(Paths.document, "losos-companion");
+const configFile = new File(configDir, "config.json");
 
 let current: BoxConfig | null = null; // null until load() finished
 const listeners = new Set<() => void>();
@@ -63,8 +71,9 @@ function emit(): void {
 export async function loadConfig(): Promise<void> {
   let parsed: Partial<BoxConfig> = {};
   try {
-    const raw = await AsyncStorage.getItem(KEY);
-    if (raw !== null) parsed = JSON.parse(raw) as Partial<BoxConfig>;
+    if (configFile.exists) {
+      parsed = JSON.parse(await configFile.text()) as Partial<BoxConfig>;
+    }
   } catch {
     /* a corrupt or blocked store reads as first-run; demo mode is on */
   }
@@ -86,9 +95,12 @@ export async function loadConfig(): Promise<void> {
 export function saveConfig(config: BoxConfig): void {
   current = config;
   emit();
-  void AsyncStorage.setItem(KEY, JSON.stringify(config)).catch(() => {
+  try {
+    configFile.create({ intermediates: true, overwrite: true });
+    configFile.write(JSON.stringify(config));
+  } catch {
     /* storage blocked; the session stays in memory, like the SPA's catch */
-  });
+  }
 }
 
 /** MainActivity's update: replace the config and persist it. */
