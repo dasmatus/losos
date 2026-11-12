@@ -9,8 +9,7 @@ import { Text, View } from "react-native";
 
 import { ReadCard } from "./ReadCard";
 import { PaneRow } from "./PaneRow";
-import { LOSOS_TYPE, type LososTokens } from "../theme/tokens";
-import type { Read } from "../panes/Read";
+import { LOSOS_TYPE, type LososTokens } from "../theme/tokens";import type { Read } from "../panes/Read";
 import type { JsonBody } from "../../api/api";
 import { itemsOf, maybeBool, maybeString } from "../../api/wire";
 

@@ -7,6 +7,7 @@ import * as React from "react";
 import { Text, View } from "react-native";
 
 import { LOSOS_RADIUS, LOSOS_TYPE, type LososTokens } from "../theme/tokens";
+import { useNativeLook } from "../platform";
 import { Card } from "../components/Card";
 import { ReadCard } from "../components/ReadCard";
 import { DemoChip } from "../components/DemoChip";
@@ -19,11 +20,12 @@ const Tail = () => <View style={{ height: 20 }} />;
 const Gap4 = () => <View style={{ height: 4 }} />;
 
 export function CloudTab({ tokens }: { tokens: LososTokens }): React.JSX.Element {
+  const look = useNativeLook();
   const entries = useBox();
   if (entries === null) return <View />;
   const { box, api } = entries;
   return (
-    <View>
+    <View style={{ ...look.shadow, elevation: look.elevation }}>
       <View style={{ paddingVertical: 12, paddingHorizontal: 4, flexDirection: "row", alignItems: "center" }}>
         <View style={{ flex: 1 }}>
           <Text style={{ ...LOSOS_TYPE.headlineMedium, color: tokens.palette.onSurface }}>

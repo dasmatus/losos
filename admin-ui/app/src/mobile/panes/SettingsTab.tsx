@@ -9,6 +9,7 @@ import * as React from "react";
 import { Text, View } from "react-native";
 
 import { LOSOS_TYPE, type LososTokens, type ThemeMode } from "../theme/tokens";
+import { useNativeLook } from "../platform";
 import { Card, CardTitle } from "../components/Card";
 import { DemoChip } from "../components/DemoChip";
 import { FilterChip, LosButton, LosTextField } from "../components/primitives";
@@ -40,6 +41,7 @@ function SettingsTabBody({
   tokens: LososTokens;
   config: NonNullable<ReturnType<typeof useBoxConfig>>;
 }): React.JSX.Element {
+  const look = useNativeLook();
   // The fields read the config as it was when the tab opened, and Save
   // pushes both at once (DashboardScreen.kt keyed these on the config).
   const [host, setHost] = React.useState(config.host);
@@ -59,7 +61,7 @@ function SettingsTabBody({
   };
 
   return (
-    <View>
+    <View style={{ ...look.shadow, elevation: look.elevation }}>
       <View style={{ paddingVertical: 12, paddingHorizontal: 4, flexDirection: "row", alignItems: "center" }}>
         <View style={{ flex: 1 }}>
           <Text style={{ ...LOSOS_TYPE.headlineMedium, color: tokens.palette.onSurface }}>Settings</Text>
