@@ -32,7 +32,7 @@ export const hitSlop = isTV ? 12 : 8;
 
 /* ── Native look ─────────────────────────────────────────────────────────── */
 
-export type NativePlatform = "ios" | "android" | "web" | "windows" | "macos";
+export type NativePlatform = "ios" | "android" | "web" | "windows" | "macos" | "tv" | "visionos";
 
 export interface NativeLook {
   platform: NativePlatform;
@@ -90,32 +90,85 @@ const LOOKS: Record<NativePlatform, NativeLook> = {
     ripple: null,
     focusRingColor: "#007AFF",
   },
+  tv: {
+    platform: "tv",
+    fontFamily: "System",
+    cornerRadiusScale: 1.1,
+    elevation: 0,
+    shadow: { shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.18, shadowRadius: 10 },
+    ripple: null,
+    focusRingColor: "#0A84FF",
+  },
+  visionos: {
+    platform: "visionos",
+    fontFamily: "System",
+    cornerRadiusScale: 1.2,
+    elevation: 0,
+    shadow: { shadowColor: "#000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.2, shadowRadius: 24 },
+    ripple: null,
+    focusRingColor: "#0A84FF",
+  },
 };
 
-function resolvedPlatform(): NativePlatform {
-  // Dev-only override for testing alternate looks at runtime.
-  if (typeof __DEV__ !== "undefined" && __DEV__) {
-    let forced: string | undefined;
+function forcedPlatform(): string | undefined {
+  let forced: string | undefined;
+  try {
+    forced = (globalThis as any).__LOSOS_FORCE_PLATFORM__;
+  } catch {
+    forced = undefined;
+  }
+  if (!forced) {
     try {
-      forced = (globalThis as any).__LOSOS_FORCE_PLATFORM__;
+      forced = (process as any)?.env?.LOSOS_FORCE_PLATFORM;
     } catch {
       forced = undefined;
     }
-    if (!forced) {
-      try {
-        forced = (process as any)?.env?.LOSOS_FORCE_PLATFORM;
-      } catch {
-        forced = undefined;
-      }
-    }
-    if (forced && forced in LOOKS) return forced as NativePlatform;
   }
+  if (!forced) {
+    try {
+      forced = (globalThis as any)?.window?.__LOSOS_FORCE_PLATFORM__;
+    } catch {
+      forced = undefined;
+    }
+  }
+  if (!forced && typeof window !== "undefined") {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      forced = params.get("LOSOS_FORCE_PLATFORM") ?? undefined;
+    } catch {
+      forced = undefined;
+    }
+  }
+  return forced;
+}
+
+function userAgentPlatform(): NativePlatform | undefined {
+  if (typeof navigator === "undefined") return undefined;
+  const ua = navigator.userAgent || "";
+  if (/TV|AndroidTV|AppleTV/i.test(ua)) return "tv";
+  if (/Vision/i.test(ua)) return "visionos";
+  if (/Windows/i.test(ua)) return "windows";
+  if (/Android/i.test(ua)) return "android";
+  if (/iPhone|iPad|iPod/i.test(ua)) return "ios";
+  if (/Mac/i.test(ua)) return "macos";
+  return undefined;
+}
+
+function resolvedPlatform(): NativePlatform {
+  const forced = forcedPlatform();
+  if (forced && forced in LOOKS) return forced as NativePlatform;
   const os = Platform.OS;
   if (os === "ios") return "ios";
   if (os === "android") return "android";
-  if (os === "web") return "web";
+  if (os === "web") {
+    const ua = userAgentPlatform();
+    if (ua) return ua;
+    return "web";
+  }
   if (os === "windows") return "windows";
   if (os === "macos") return "macos";
+  if (os === "tv") return "tv";
+  if (os === "visionos" as any) return "visionos";
   return "web";
 }
 

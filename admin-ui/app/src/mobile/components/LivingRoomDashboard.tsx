@@ -124,6 +124,38 @@ export function LivingRoomDashboard({
         </View>
       </View>
 
+      <View
+        style={{
+          marginBottom: 16,
+          padding: 16,
+          borderRadius: 20,
+          backgroundColor: tokens.palette.surfaceVariant,
+          borderWidth: 1,
+          borderColor: tokens.palette.outline,
+        }}
+      >
+        <Text
+          style={{
+            ...LOSOS_TYPE.titleMedium,
+            fontSize: 18,
+            color: tokens.palette.onSurface,
+          }}
+        >
+          Virtual living room preview (Vision Pro)
+        </Text>
+        <Text
+          style={{
+            ...LOSOS_TYPE.bodySmall,
+            fontSize: 13,
+            color: tokens.palette.onSurfaceVariant,
+            marginTop: 4,
+          }}
+        >
+          Spatial preview of the glance-across-the-room layout before entering
+          full living room mode.
+        </Text>
+      </View>
+
       <ScrollView contentContainerStyle={{ gap: 18, paddingBottom: 24 }}>
         {current.id === "overview" ? (
           <OverviewTiles tokens={tokens} api={api} />
