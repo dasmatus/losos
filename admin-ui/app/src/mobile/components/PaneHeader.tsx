@@ -6,6 +6,7 @@ import { Text, View } from "react-native";
 
 import { DemoChip } from "./DemoChip";
 import { LOSOS_TYPE, type LososTokens } from "../theme/tokens";
+import { useNativeLook } from "../platform";
 
 export function PaneHeader({
   tokens,
@@ -18,11 +19,12 @@ export function PaneHeader({
   summary: string;
   demo: boolean;
 }) {
+  const look = useNativeLook();
   return (
     <View style={{ paddingVertical: 12, paddingHorizontal: 4, alignItems: "center", flexDirection: "row" }}>
       <View style={{ flex: 1 }}>
-        <Text style={{ ...LOSOS_TYPE.headlineMedium, color: tokens.palette.onSurface }}>{title}</Text>
-        <Text style={{ ...LOSOS_TYPE.bodyMedium, color: tokens.palette.onSurfaceVariant }}>
+        <Text style={{ ...LOSOS_TYPE.headlineMedium, fontFamily: look.fontFamily, color: tokens.palette.onSurface }}>{title}</Text>
+        <Text style={{ ...LOSOS_TYPE.bodyMedium, fontFamily: look.fontFamily, color: tokens.palette.onSurfaceVariant }}>
           {summary}
         </Text>
       </View>
