@@ -19,7 +19,7 @@
 
 import type { Page, Route } from 'playwright';
 import assert from './assert.ts';
-import { launch, runner, serve, stash } from './harness.ts';
+import { box, launch, runner, serve, stash } from './harness.ts';
 
 declare global {
   interface Window {
@@ -281,13 +281,13 @@ await check('a presentation lays out its slides: text centred, the picture on th
   // (the run of 2026-11-10 13:42 lost exactly this race), and the layout
   // assertions below read boxes, not presences.
   await stage.locator('.md-slide-pictures img').waitFor();
-  const textBox = (await stage.locator('.md-slide-text').boundingBox())!;
-  const picBox = (await stage.locator('.md-slide-pictures img').boundingBox())!;
+  const textBox = await box(stage.locator('.md-slide-text'));
+  const picBox = await box(stage.locator('.md-slide-pictures img'));
   assert.ok(picBox.x > textBox.x + textBox.width - 1, `picture at ${picBox.x}, text ends at ${textBox.x + textBox.width}`);
   assert.equal(await stage.locator('.md-slide-text img').count(), 0);
   assert.equal(await stage.locator('.md-slide-text').evaluate((el: HTMLElement) => getComputedStyle(el).textAlign), 'center');
   // The heading sits in the middle of its column.
-  const h = (await stage.locator('.md-slide-text h2').boundingBox())!;
+  const h = await box(stage.locator('.md-slide-text h2'));
   const mid = textBox.x + textBox.width / 2;
   assert.ok(Math.abs(h.x + h.width / 2 - mid) < 4, `heading centre ${h.x + h.width / 2}, column centre ${mid}`);
   // A slide without a picture is one centred column.
