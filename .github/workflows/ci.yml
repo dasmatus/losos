@@ -824,7 +824,11 @@ jobs:
   # these (same as expo-eas): a first build of this shape is allowed to
   # fail without blocking every ui change.
   expo-dev-client:
-    name: "expo: ${{ matrix.label }}"
+    # No `name:`, as the discovery job below: a skipped matrix job shows its
+    # `name:` template literally — the matrix is never expanded when the
+    # job-level `if` is false, so there is no label to interpolate and the
+    # run page read `expo: ${{ matrix.label }}` raw. GitHub's default leg
+    # labels (the matrix keys) read fine both skipped and running.
     needs: [changes]
     if: ${{ needs.changes.outputs.ui == 'true' }}
     runs-on: ${{ matrix.runner }}
@@ -834,13 +838,11 @@ jobs:
         include:
           - target: android
             runner: ubuntu-latest
-            label: Android dev client APK (artifact)
           # macos-15, not latest: the migrated image carries only Xcode 26, whose
           # clang cannot compile RN 0.81's fmt (the Xcode 16 step below names the
           # error); the 15 image keeps a 16.x around for DEVELOPER_DIR to pick.
           - target: ios
             runner: macos-15
-            label: iOS dev client for the simulator (artifact)
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
