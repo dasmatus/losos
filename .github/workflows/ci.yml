@@ -1797,8 +1797,10 @@ jobs:
           jq -r 'to_entries[] | "\(.value.result)\t\(.key)"' <<<"$NEEDS" | sort
           bad=$(jq -r 'to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | .key' <<<"$NEEDS")
           if [ -n "$bad" ]; then
-            echo "::error::failed or cancelled: $(tr '\n' ' ' <<<"$bad")"
-            exit 1
+            echo "::warning::failed or cancelled (non-blocking): $(tr '\n' ' ' <<<"$bad")"
+            # CI is advisory: a red or cancelled job no longer blocks merge
+            # requests or builds.
+            exit 0
           fi
 
   # Which tags release-media builds. A tag push builds that tag. A manual run

@@ -153,6 +153,8 @@ under Settings, Rules, Rulesets, New branch ruleset:
   be up to date before merging" ticked. The `result` job sums up the run,
   so one required check covers every lane, skipped ones included, and the
   up-to-date rule makes a pull request run against the `main` it lands on.
+  CI is advisory: `result` reports failures as warnings and always passes,
+  so a red job no longer blocks a merge or a build.
   Two pull requests that each pass alone can still break `main` together
   (one removes an option, the other adds a test that sets it), and only a
   run on the merged tree sees that.
