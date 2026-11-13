@@ -125,21 +125,28 @@ env:
 
 jobs:
   pins:
-    name: "pins: flake.lock = devenv.yaml = devenv.lock"
+    name: "pins: the three locks agree · crates.json covers every Cargo.toml"
     runs-on: ubuntu-latest
-    # nix/check-pins.ts, as devenv.nix's `check-pins` and the pre-commit hook
-    # run it, and this is the gate CI did not have:
-    # flake.lock pins the nixpkgs that builds the appliance, devenv.yaml and
-    # devenv.lock the one that lints and tests it, and nothing but this
-    # comparison keeps them on one tree. Dependabot bumped flake.lock alone
-    # (PR #4) and `devenv test` failed on main for two weeks before anyone
-    # ran it. No nix needed: jq ships on the runner image.
+    # Two gates that need no nix (jq and bun ship on the runner image), the
+    # same scripts devenv's `check-pins`/`check-crates` and the pre-commit
+    # hook run:
+    #
+    # nix/check-pins.ts — flake.lock pins the nixpkgs that builds the
+    # appliance, devenv.yaml and devenv.lock the one that lints and tests
+    # it, and nothing but this comparison keeps them on one tree.
+    # Dependabot bumped flake.lock alone (PR #4) and `devenv test` failed
+    # on main for two weeks before anyone ran it.
+    #
+    # nix/check-crates.ts — crates.json is devenv's and the git hooks' one
+    # crate list (there is no Cargo workspace to derive it from); this
+    # refuses a Cargo.toml the manifest does not name.
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
       - run: bun nix/check-pins.ts
+      - run: bun nix/check-crates.ts
 
   # The release channels' bot (.github/workflows/channels.yml) against a fake
   # GitHub over a real repository: cuts, a hotfix's cherry-pick and upload,

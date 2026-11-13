@@ -73,6 +73,9 @@ const lanePatterns: Record<Lane, string[]> = {
     "admin-ui/lab/*",
     "modules/overrides.nix",
     ...tuiReads,
+    // The crate manifest: devenv and the hooks take their crate lists from
+    // it, so a changed list wants the crates re-linted.
+    "crates.json",
   ],
   wasm: ["backend/plugins/*", "backend/mdx/*", "admin-ui/lab/*", "admin-ui/tui/*"],
   solana: ["edge/contracts/solana/*", "edge/registrar/*", "backend/access/*"],
@@ -91,6 +94,7 @@ const lanePatterns: Record<Lane, string[]> = {
     "!*.mp4",
     "!*.webm",
     "!docs/*",
+    "!crates.json",
     "!handbook/docs/*",
     "!handbook/i18n/*",
     "!.github/*",

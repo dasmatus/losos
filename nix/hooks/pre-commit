@@ -11,6 +11,7 @@
 //   nix-lints             nixfmt, deadnix, statix over the    any .nix staged
 //                         staged .nix files (nix/lint-nix.ts)
 //   pins                  nix/check-pins.ts                   a lock or devenv.yaml
+//   crates                nix/check-crates.ts                 crates.json or a Cargo.toml
 //   hashes                fix-hashes.py --check               a Cargo.lock or bun.lock
 //   typecheck:<package>   bun run typecheck                   admin-ui/app, design-system/react
 //   check-flake, eval-*   CI's eval job: every flake output   eval lane
@@ -90,6 +91,10 @@ await hookNixLints(nixfiles);
 const stagedLines = staged.split("\n");
 if (stagedLines.some((l) => /^(flake\.lock|devenv\.yaml|devenv\.lock)$/.test(l))) {
   await run("pins", () => hookBun(["nix/check-pins.ts"]));
+}
+
+if (stagedLines.some((l) => l === "crates.json" || /(^|\/)Cargo\.toml$/.test(l))) {
+  await run("crates", () => hookBun(["nix/check-crates.ts"]));
 }
 
 if (stagedLines.some((l) => /(^|\/)(Cargo\.lock|bun\.lock)$/.test(l))) {

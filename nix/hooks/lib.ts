@@ -84,20 +84,26 @@ export function hookFlake(dir: string = hookRootDir): string {
   return `git+file://${dir}${shallow ? "?shallow=1" : ""}`;
 }
 
+// The crate manifest is the one list of this repo's Rust workspaces
+// (crates.json; nix/check-crates.ts asserts it covers every Cargo.toml in
+// the tree, devenv.nix derives its lists from it too, and
+// docs/decisions/0001-not-a-cargo-workspace.md says why there is no
+// workspace to begin with). Read lazily from the checkout being checked:
+// pre-push re-points hookRoot at a temporary worktree.
+type Crate = { path: string; fmt: boolean; fmtAll?: boolean; test: boolean };
+
+function crateManifest(): Crate[] {
+  return (JSON.parse(readFileSync(path.join(hookRootDir, "crates.json"), "utf8")) as {
+    crates: Crate[];
+  }).crates;
+}
+
 /** Every linted crate, as devenv.nix's `linted` and CI's clippy job list them. */
-export const hookCrates = [
-  "backend",
-  "backend/access",
-  "backend/plugins",
-  "backend/mdx",
-  "edge/registrar",
-  "edge/vercel",
-  "admin-ui/lab/core",
-  "admin-ui/lab/virt-rpc",
-  "admin-ui/lab/render",
-  "admin-ui/tui",
-  "edge/contracts/solana",
-];
+export function hookCrates(): string[] {
+  return crateManifest()
+    .filter((c) => c.fmt)
+    .map((c) => c.path);
+}
 
 // git exports the repository to its hooks: GIT_DIR (in a linked worktree)
 // and GIT_INDEX_FILE (in pre-commit). The hook's own git calls want them; a
@@ -404,7 +410,7 @@ export async function hookLanes(files: string): Promise<void> {
 export function hookCratesFor(files: string): string[] {
   const want = new Set<string>();
   for (const f of files.split("\n").filter(Boolean)) {
-    for (const c of hookCrates) {
+    for (const c of hookCrates()) {
       if (f.startsWith(`${c}/`)) want.add(c);
     }
     if (f.startsWith("backend/access/")) {
@@ -428,7 +434,7 @@ export function hookCratesFor(files: string): string[] {
   }
   // The backend crate's path dependencies live inside it.
   if (want.has("backend/access")) want.add("backend");
-  return hookCrates.filter((c) => want.has(c));
+  return hookCrates().filter((c) => want.has(c));
 }
 
 // ── Finding the tools ────────────────────────────────────────────────────
@@ -454,7 +460,27 @@ function findOnPath(prog: string): string | null {
 export async function hookCargo(args: string[]): Promise<number> {
   const found = findOnPath("cargo");
   if (found?.startsWith("/nix/store/")) return spawnC(["cargo", ...args]);
-  if (findOnPath("nix")) return spawnC(["nix", "develop", `${hookFlake()}#ci`, "-c", "cargo", ...args]);
+  if (findOnPath("nix")) {
+    // `cargo clippy` resolves rustc (and, via rustup, cargo-clippy can pick
+    // rustup's clippy-driver) from the environment it inherits; on a machine
+    // with rustup installed it can silently use the rustup toolchain instead
+    // of the flake's, which misses targets such as wasm32-unknown-unknown and
+    // differs in version. Pin RUSTC and invoke the flake's cargo-clippy
+    // directly for clippy runs.
+    const prog = args[0] === "clippy" ? "cargo-clippy" : "cargo";
+    return spawnC([
+      "nix",
+      "develop",
+      `${hookFlake()}#ci`,
+      "-c",
+      "bash",
+      "-c",
+      'export RUSTC="$(command -v rustc)"; exec "$@"',
+      prog,
+      prog,
+      ...args,
+    ]);
+  }
   if (found) {
     console.error(`note: ${found} is not the flake's toolchain; CI may disagree`);
     return spawnC(["cargo", ...args]);
@@ -553,10 +579,11 @@ export const logLine = toLog;
 /** rustfmt --check over every crate, as CI's clippy job does on a PR. */
 export async function hookFmtAll(): Promise<number> {
   let rc = 0;
-  for (const c of hookCrates) {
-    const all = c === "backend/plugins" ? ["--all"] : [];
-    toLog(`── ${c}`);
-    const st = await hookCargo(["fmt", ...all, "--manifest-path", `${c}/Cargo.toml`, "--check"]);
+  for (const c of crateManifest()) {
+    if (!c.fmt) continue;
+    const all = c.fmtAll ? ["--all"] : [];
+    toLog(`── ${c.path}`);
+    const st = await hookCargo(["fmt", ...all, "--manifest-path", `${c.path}/Cargo.toml`, "--check"]);
     if (st !== 0) rc = 1;
   }
   return rc;
