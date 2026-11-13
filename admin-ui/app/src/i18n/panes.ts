@@ -3255,4 +3255,153 @@ export default defineMessages({
     sk: "Stav",
     de: "Status",
   },
+
+  // ── Features (pane-features.tsx): the box's major features, one switch each ──
+  // Titles and the one line under each; the switches themselves live under
+  // losos.<name>.enable and the Apply bar carries the usual caption.
+  "panes.features.cloud.title": {
+    en: "LosOS Cloud",
+    sk: "LosOS Cloud",
+    de: "LosOS Cloud",
+  },
+  "panes.features.cloud.detail": {
+    en: "Your files at /cloud/, with calendars, contacts and boards, over WebDAV and CalDAV for file managers and phone apps.",
+    sk: "Vaše súbory na /cloud/, s kalendármi, kontaktmi a tabuľami, cez WebDAV a CalDAV pre správcov súborov a telefónne aplikácie.",
+    de: "Deine Dateien unter /cloud/, mit Kalendern, Kontakten und Boards, über WebDAV und CalDAV für Dateimanager und Telefon-Apps.",
+  },
+  "panes.features.chat.title": {
+    en: "LosOS Chat",
+    sk: "LosOS Chat",
+    de: "LosOS Chat",
+  },
+  "panes.features.chat.detail": {
+    en: "The chat at /chat/: rooms, direct messages, files and end-to-end encryption, for everyone with a LosOS Login account.",
+    sk: "Chat na /chat/: miestnosti, priame správy, súbory a end-to-end šifrovanie pre každého s účtom LosOS Login.",
+    de: "Der Chat unter /chat/: Räume, Direktnachrichten, Dateien und Ende-zu-Ende-Verschlüsselung, für alle mit einem LosOS-Login-Konto.",
+  },
+  "panes.features.git.title": {
+    en: "LosOS Git",
+    sk: "LosOS Git",
+    de: "LosOS Git",
+  },
+  "panes.features.git.detail": {
+    en: "The box's Git server: repositories for every account on LosOS Login, cloned and pushed over https.",
+    sk: "Git server zariadenia: repozitáre pre každý účet na LosOS Login, klonované a posielané cez https.",
+    de: "Der Git-Server der Box: Repositories für jedes LosOS-Login-Konto, geklont und gepusht über https.",
+  },
+  "panes.features.mail.title": {
+    en: "LosOS Mail",
+    sk: "LosOS Mail",
+    de: "LosOS Mail",
+  },
+  "panes.features.mail.detail": {
+    en: "A mailbox for every person on the box, read in the Mail page. It exists only while the box shares its storage.",
+    sk: "Poštová schránka pre každého na zariadení, čítaná na stránke Mail. Existuje, len kým zariadenie zdieľa svoje úložisko.",
+    de: "Ein Postfach für jeden auf der Box, gelesen in der Mail-Seite. Es existiert nur, solange die Box ihren Speicher teilt.",
+  },
+  "panes.features.ci.title": {
+    en: "Mesh CI",
+    sk: "Mesh CI",
+    de: "Mesh CI",
+  },
+  "panes.features.ci.detail": {
+    en: "GitHub Actions workflows in LosOS Git's repositories run on the boxes of the mesh. It exists only while the box shares its storage.",
+    sk: "GitHub Actions pracovné postupy v repozitároch LosOS Git bežia na zariadeniach siete. Existuje, len kým zariadenie zdieľa svoje úložisko.",
+    de: "GitHub-Actions-Workflows in den Repositories von LosOS Git laufen auf den Boxen des Mesh. Es existiert nur, solange die Box ihren Speicher teilt.",
+  },
+  "panes.features.calls.title": {
+    en: "Calls",
+    sk: "Hovory",
+    de: "Anrufe",
+  },
+  "panes.features.calls.detail": {
+    en: "Voice and video calls between people on this box, inside LosOS Chat, encrypted end to end.",
+    sk: "Hlasové a videohovory medzi ľuďmi na tomto zariadení, v rámci LosOS Chat, šifrované end-to-end.",
+    de: "Sprach- und Videoanrufe zwischen Personen auf dieser Box, in LosOS Chat, Ende-zu-Ende verschlüsselt.",
+  },
+  "panes.features.apps.title": {
+    en: "Apps",
+    sk: "Aplikácie",
+    de: "Apps",
+  },
+  "panes.features.apps.detail": {
+    en: "Let the owner install apps: charts from the catalogue search and apps in the LosOS app format.",
+    sk: "Umožní majiteľovi inštalovať aplikácie: grafy z vyhľadávania v katalógu a aplikácie vo formáte LosOS.",
+    de: "Erlaubt dem Besitzer, Apps zu installieren: Charts aus der Katalogsuche und Apps im LosOS-App-Format.",
+  },
+  "panes.features.tag.title": {
+    en: "LosOS Tag",
+    sk: "LosOS Tag",
+    de: "LosOS Tag",
+  },
+  "panes.features.tag.detail": {
+    en: "The assistant people tag in chat (@LosOS), beside the custom assistants anyone on the box makes.",
+    sk: "Asistent, ktorého si v chate značíte (@LosOS), popri vlastných asistentoch, ktorých si vytvorí ktokoľvek na zariadení.",
+    de: "Der Assistent, den die Leute im Chat ansprechen (@LosOS), neben den eigenen Assistenten, die jeder auf der Box anlegen kann.",
+  },
+  "panes.features.assistant.title": {
+    en: "Ask AI",
+    sk: "Spýtať sa AI",
+    de: "KI fragen",
+  },
+  "panes.features.assistant.detail": {
+    en: "\"Ask AI about this\" in LosOS Cloud and Summarise in Mail, answered by a model that runs on this box.",
+    sk: "\"Spýtať sa AI na toto\" v LosOS Cloud a Zhrnúť v Mail, s odpoveďami modelu bežiaceho na tomto zariadení.",
+    de: "„Frag die KI dazu“ in LosOS Cloud und Zusammenfassen in Mail, beantwortet von einem Modell auf dieser Box.",
+  },
+  "panes.features.builder.title": {
+    en: "Build with AI",
+    sk: "Stavať s AI",
+    de: "Mit KI bauen",
+  },
+  "panes.features.builder.detail": {
+    en: "The \"Build with AI\" tabs of the widget editor and Your apps, answered by a model that runs on this box.",
+    sk: "Karty \"Stavať s AI\" v editore widgetov a Vo vašich aplikáciách, s odpoveďami modelu bežiaceho na tomto zariadení.",
+    de: "Die „Mit KI bauen“-Tabs des Widget-Editors und deiner Apps, beantwortet von einem Modell auf dieser Box.",
+  },
+  "panes.features.search.title": {
+    en: "Search index",
+    sk: "Index vyhľadávania",
+    de: "Suchindex",
+  },
+  "panes.features.search.detail": {
+    en: "Search that finds text inside the owner's files and repositories. Off, the index stops updating.",
+    sk: "Vyhľadávanie, ktoré nájde text vo vnútri majiteľových súborov a repozitárov. Vypnuté, index sa prestane aktualizovať.",
+    de: "Suche, die Text in den Dateien und Repositories des Besitzers findet. Aus schaltet die Aktualisierung des Index ab.",
+  },
+  "panes.features.logReader.title": {
+    en: "Logs page",
+    sk: "Stránka Záznamy",
+    de: "Protokoll-Seite",
+  },
+  "panes.features.logReader.detail": {
+    en: "Show the journal of the box's services under Settings › Logs, with passwords, keys and tokens hidden.",
+    sk: "Zobraziť denník služieb zariadenia pod Nastavenia › Záznamy, so skrytými heslami, kľúčmi a tokenmi.",
+    de: "Das Journal der Dienste der Box unter Einstellungen › Protokolle zeigen, mit verborgenen Passwörtern, Schlüsseln und Tokens.",
+  },
+  "panes.features.splash.title": {
+    en: "Boot screen",
+    sk: "Úvodná obrazovka",
+    de: "Startbildschirm",
+  },
+  "panes.features.splash.detail": {
+    en: "Draw the boot screen and the box's status with Plymouth instead of plain text.",
+    sk: "Kresliť úvodnú obrazovku a stav zariadenia cez Plymouth namiesto obyčajného textu.",
+    de: "Den Startbildschirm und den Status der Box mit Plymouth statt in reinem Text zeichnen.",
+  },
+  "panes.features.startupSound.title": {
+    en: "Startup sound",
+    sk: "Zvuk pri štarte",
+    de: "Startton",
+  },
+  "panes.features.startupSound.detail": {
+    en: "Play the LosOS startup sound when the box is switched on or comes back after a power cut.",
+    sk: "Prehrať úvodný zvuk LosOS, keď sa zariadenie zapne alebo sa vráti po výpadku prúdu.",
+    de: "Den LosOS-Startton abspielen, wenn die Box eingeschaltet wird oder nach einem Stromausfall zurückkommt.",
+  },
+  "panes.features.caption": {
+    en: "Everything here takes effect when Apply rebuilds the box. The finer settings each feature carries are on the Advanced pane, beside every option this box declares.",
+    sk: "Všetko tu nadobudne účinnosť, keď Použiť znovu zostaví zariadenie. Jemnejšie nastavenia jednotlivých funkcií sú na paneli Rozšírené, popri každej možnosti, ktorú toto zariadenie deklaruje.",
+    de: "Alles hier wirkt, wenn Anwenden die Box neu baut. Die feineren Einstellungen der einzelnen Funktionen stehen unter Erweitert, neben jeder Option, die diese Box deklariert.",
+  },
 });

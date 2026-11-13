@@ -56,7 +56,6 @@ jobs:
   build:
     name: "docusaurus: build"
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     defaults:
       run:
         working-directory: handbook
@@ -110,7 +109,6 @@ jobs:
     if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     permissions:
       pages: write
       id-token: write

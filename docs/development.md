@@ -15,6 +15,7 @@ install the [git hooks](#git-hooks).
 | `fmt` · `lint` · `test-rust`   | Format, lint and test both Rust crates |
 | `check-flake` · `check-eval`   | Evaluate the flake; force the full module merge |
 | `check-pins`                   | Fail if `flake.lock`, `devenv.yaml` and `devenv.lock` pin different nixpkgs |
+| `check-crates`                 | Fail if a `Cargo.toml` in the tree is missing from `crates.json`, or the manifest names one that is gone |
 | `build-pkgs` · `build-iso`     | Build the packages; build the installer ISO |
 | `build-images` · `build-media` | OCI images; demo QCOW2 and closure ISO (large, opt-in) |
 | `vm-tests`                     | All NixOS VM tests (needs `/dev/kvm`) |
@@ -80,6 +81,13 @@ cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
 Same for `edge/registrar/`. Both crates must be clean under clippy and
 rustfmt. The Nix packages set `doCheck = false`, so `nix build` runs no
 tests.
+
+The crate lists behind `fmt`, `lint` and `test-rust` are not typed by
+hand: [`crates.json`](../crates.json) is the one list of this repo's Rust
+workspaces, those scripts loop over it, the git hooks read it too
+(`nix/hooks/lib.ts`), and `check-crates` refuses a manifest that misses a
+`Cargo.toml` in the tree. Why there is no Cargo workspace to begin with:
+[decisions/0001-not-a-cargo-workspace.md](decisions/0001-not-a-cargo-workspace.md).
 
 On pushes to `main`, a CI job runs `cargo fmt` and commits the result. Clippy
 is not auto-fixed.

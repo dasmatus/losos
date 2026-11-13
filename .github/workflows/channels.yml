@@ -63,7 +63,6 @@ jobs:
   channels:
     name: "bot: release channels"
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     if: >-
       github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
       || (github.event_name == 'pull_request_target' && github.event.pull_request.merged

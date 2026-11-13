@@ -22,7 +22,7 @@
     "lab:virt": "bun scripts/lab-core.ts virt",
     "lab:render": "bun scripts/lab-core.ts render",
     "mdx": "bun scripts/lab-core.ts mdx",
-    "test:browser": "bun tests/solana.unit.ts && bun tests/mail-pgp.unit.ts && bun tests/fees.unit.ts && bun tests/ens.unit.ts && bun tests/games.unit.ts && bun tests/chat-links.unit.ts && bun tests/chat-rtc.unit.ts && bun tests/sensitive.unit.ts && bun tests/calls-e2ee.unit.ts && bun tests/voice.unit.mjs && bun tests/voice-changer.unit.mjs && bun tests/wizard.browser.ts && bun tests/app.browser.ts && bun tests/toasts.browser.ts && bun tests/look.browser.ts && bun tests/advanced.browser.ts && bun tests/lab.browser.ts && bun tests/diagrams.browser.ts && bun tests/apps.browser.ts && bun tests/pins.browser.ts && bun tests/tour.browser.ts && bun tests/access.browser.ts && bun tests/credentials.browser.ts && bun tests/problems.browser.ts && bun tests/users.browser.ts && bun tests/moderation.browser.ts && bun tests/account.browser.ts && bun tests/profile.browser.ts && bun tests/manage.browser.ts && bun tests/edge-tiers.browser.ts && bun tests/mail.browser.ts && bun tests/palette.browser.ts && bun tests/notes.browser.ts && bun tests/games.browser.ts && bun tests/calls.browser.ts && bun tests/voice-agent.browser.mjs && bun tests/voice-assistant.browser.mjs && bun tests/voice-changer.browser.mjs && bun tests/office.browser.ts && bun tests/context-menu.browser.ts && bun tests/user-apps.browser.ts && bun tests/git.browser.ts && bun tests/tracker.browser.ts && bun tests/office-markdown.browser.ts && bun tests/mdx-editor.unit.ts && bun tests/paper.browser.ts && bun tests/quick-actions.browser.ts && bun tests/wiki.browser.ts"
+    "test:browser": "bun tests/solana.unit.ts && bun tests/mail-pgp.unit.ts && bun tests/fees.unit.ts && bun tests/ens.unit.ts && bun tests/games.unit.ts && bun tests/chat-links.unit.ts && bun tests/chat-rtc.unit.ts && bun tests/sensitive.unit.ts && bun tests/calls-e2ee.unit.ts && bun tests/voice.unit.mjs && bun tests/voice-changer.unit.mjs && bun tests/wizard.browser.ts && bun tests/app.browser.ts && bun tests/toasts.browser.ts && bun tests/look.browser.ts && bun tests/advanced.browser.ts && bun tests/features.browser.ts && bun tests/lab.browser.ts && bun tests/diagrams.browser.ts && bun tests/apps.browser.ts && bun tests/pins.browser.ts && bun tests/tour.browser.ts && bun tests/access.browser.ts && bun tests/credentials.browser.ts && bun tests/problems.browser.ts && bun tests/users.browser.ts && bun tests/moderation.browser.ts && bun tests/account.browser.ts && bun tests/profile.browser.ts && bun tests/manage.browser.ts && bun tests/edge-tiers.browser.ts && bun tests/mail.browser.ts && bun tests/palette.browser.ts && bun tests/notes.browser.ts && bun tests/games.browser.ts && bun tests/calls.browser.ts && bun tests/voice-agent.browser.mjs && bun tests/voice-assistant.browser.mjs && bun tests/voice-changer.browser.mjs && bun tests/office.browser.ts && bun tests/context-menu.browser.ts && bun tests/user-apps.browser.ts && bun tests/git.browser.ts && bun tests/tracker.browser.ts && bun tests/office-markdown.browser.ts && bun tests/mdx-editor.unit.ts && bun tests/paper.browser.ts && bun tests/quick-actions.browser.ts && bun tests/wiki.browser.ts"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",
@@ -43,9 +43,9 @@
     "@noble/curves": "2.4.0",
     "@noble/hashes": "2.4.0",
     "@radix-ui/react-toast": "^1.3.1",
-    "@react-native-async-storage/async-storage": "^3.1.1",
     "@scure/base": "2.4.0",
     "@scure/bip39": "2.4.0",
+    "@shopify/react-native-skia": "2.2.12",
     "@tailwindcss/postcss": "^4.3.5",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -55,6 +55,7 @@
     "expo-build-properties": "~0.14.8",
     "expo-constants": "~18.0.14",
     "expo-dev-client": "~6.0.21",
+    "expo-file-system": "~19.0.24",
     "expo-linking": "~8.0.12",
     "expo-router": "~6.0.24",
     "expo-splash-screen": "~31.0.13",
@@ -81,7 +82,7 @@
     "react": "19.1.0",
     "react-aria-components": "1.22.1",
     "react-dom": "19.1.0",
-    "react-native": "~0.81.6",
+    "react-native": "npm:react-native-tvos@0.81.5-2",
     "react-native-blob-util": "^1.1.1",
     "react-native-gesture-handler": "~2.28.0",
     "react-native-safe-area-context": "~5.6.2",
@@ -99,6 +100,9 @@
     "yjs": "13.6.33"
   },
   "devDependencies": {
+    "@callstack/react-native-visionos": "0.79.6",
+    "@react-native-tvos/config-tv": "0.1.7",
+    "react-native-windows": "0.81.38",
     "@types/bun": "1.4.4",
     "@types/d3-force": "3.0.10",
     "@types/react": "~19.1.17",
@@ -108,5 +112,10 @@
     "tailwindcss": "^4.3.5",
     "typescript": "~5.9.3"
   },
-  "packageManager": "bun@1.4.2"
+  "packageManager": "bun@1.4.2",
+  "expo": {
+    "install": {
+      "exclude": ["react-native"]
+    }
+  }
 }

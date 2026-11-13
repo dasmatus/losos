@@ -4,7 +4,7 @@
  * resolved mode the Compose Surface's colour did. It is named
  * _layout.native.tsx because the web bundle has no routes in this group:
  * every file here is a platform extension, so Metro never bundles the shell
- * with its AsyncStorage, zeroconf and the whole pane set into the browser.
+ * with its config store, zeroconf and the whole pane set into the browser.
  */
 
 import * as React from "react";

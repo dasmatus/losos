@@ -23,7 +23,7 @@ import { lososSemver } from "./losos-version.cjs";
 import { serviceType, bonjourServices } from "./plugins/services";
 
 const config: ExpoConfig = {
-  name: "LosOS Admin",
+  name: "LosOS",
   owner: "thanks-lads",
   // The EAS project's slug: extra.eas.projectId points at
   // @thanks-lads/losos, and EAS reads the two as one identity.
@@ -50,9 +50,17 @@ const config: ExpoConfig = {
   userInterfaceStyle: "automatic",
   // The coho salmon of themes/brand/salmon.png (NOAA Fisheries cutout,
   // credits beside the original), the mark every front end carries. The
-  // splash sits on the brand plate the Compose launcher sat on
-  // (values/colors.xml: #DCBDAA, flattened from themes/brand/plate.png).
-  icon: "./assets/images/salmon.png",
+  // cutout runs nearly edge-to-edge, so the icon is its own 1024 file
+  // (icon.png): the salmon on the brand plate the Compose launcher sat on
+  // (values/colors.xml: #DCBDAA, flattened from themes/brand/plate.png),
+  // scaled to 70% so the masks clear the head and tail — iOS's squircle
+  // and Android's rounded-rect launcher mask both cut the corners of a
+  // full-bleed square. The adaptive icon gets the fish on transparency
+  // (adaptive-foreground.png, the plate colour is adaptiveIcon's
+  // backgroundColor below) at 55%, inside Android's 66%-diameter safe
+  // zone that the mask and parallax crop into. The splash keeps the
+  // full-bleed cutout: nothing masks it.
+  icon: "./assets/images/icon.png",
   assetBundlePatterns: ["**/*"],
   ios: {
     bundleIdentifier: "us.dasmat.losos.companion",
@@ -88,7 +96,7 @@ const config: ExpoConfig = {
     versionCode: 1,
     edgeToEdgeEnabled: true,
     adaptiveIcon: {
-      foregroundImage: "./assets/images/salmon.png",
+      foregroundImage: "./assets/images/adaptive-foreground.png",
       // The brand plate behind the salmon (values/colors.xml).
       backgroundColor: "#DCBDAA",
     },
@@ -141,6 +149,20 @@ const config: ExpoConfig = {
       },
     ],
     "./plugins/with-losos-discovery.js",
+    // Release signing: the generated build.gradle picks the keystore up from
+    // the environment (plugins/with-release-signing.js), a no-op on every
+    // local build — only mobile-release.yml's prebuild carries one.
+    "./plugins/with-release-signing.js",
+    // TV support: react-native (aliased to react-native-tvos, the RN core
+    // fork that still ships Apple TV / Android TV) plus this plugin, which
+    // rewrites the native projects for TV — the Android manifest loses its
+    // portrait lock and gains the leanback launcher intent, and the iOS
+    // project's Podfile and .pbxproj target tvOS instead of iOS. The plugin
+    // is inert unless EXPO_TV=1 (or its isTV parameter is true), so the
+    // phone/tablet prebuild stays exactly the one it was; README's "TV"
+    // section is the how-to. Expo's guide is
+    // https://docs.expo.dev/guides/building-for-tv/.
+    "@react-native-tvos/config-tv",
   ],
   // The EAS project slug links the development-client cloud builds
   // (extra.eas.projectId); `eas init --id` writes it here.
