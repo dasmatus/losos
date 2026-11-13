@@ -55,18 +55,31 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  android:
-    name: "android: signed release APK"
-    runs-on: ubuntu-latest
+  release:
+    name: "${{ matrix.platform }}: ${{ matrix.caption }}"
+    runs-on: ${{ matrix.runner }}
     # The build is the expo-apk job's shape (~40 min) and the release
     # attach waits up to four hours for ci.yml's draft release, which only
     # appears after the ISO chain has built.
-    timeout-minutes: 330
+    timeout-minutes: ${{ matrix.timeout_minutes }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: android
+            runner: ubuntu-latest
+            timeout_minutes: 330
+            caption: signed release APK
+          - platform: ios
+            runner: macos-15
+            timeout_minutes: 420
+            caption: unsigned release shell (pending an Apple Developer account)
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
       - name: skip cleanly when the signing secrets are not here
+        if: matrix.platform == 'android'
         id: secrets
         env:
           KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -81,11 +94,15 @@ jobs:
           fi
           echo "sign=true" >> "$GITHUB_OUTPUT"
       - uses: oven-sh/setup-bun@v2
-        if: steps.secrets.outputs.sign == 'true'
+        if: >-
+          (matrix.platform == 'android' && steps.secrets.outputs.sign == 'true')
+          || matrix.platform == 'ios'
         with:
           bun-version-file: admin-ui/app/package.json
       - name: the workspace (the lockfile's tree)
-        if: steps.secrets.outputs.sign == 'true'
+        if: >-
+          (matrix.platform == 'android' && steps.secrets.outputs.sign == 'true')
+          || matrix.platform == 'ios'
         working-directory: admin-ui/app
         run: bun install --frozen-lockfile --ignore-scripts
       # The keystore never touches the checkout: it is decoded into
@@ -94,7 +111,7 @@ jobs:
       # secrets reach Gradle only through the environment, never argv and
       # never a file in the tree.
       - name: decode the keystore, export the signing environment
-        if: steps.secrets.outputs.sign == 'true'
+        if: matrix.platform == 'android' && steps.secrets.outputs.sign == 'true'
         env:
           KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -119,11 +136,13 @@ jobs:
       # pages-defaults.gen.ts and friends) that `bun run build` writes in
       # the web lane — they are gitignored, so regenerate them here.
       - name: regenerate the virtual modules Metro's resolver needs
-        if: steps.secrets.outputs.sign == 'true'
+        if: >-
+          (matrix.platform == 'android' && steps.secrets.outputs.sign == 'true')
+          || matrix.platform == 'ios'
         working-directory: admin-ui/app
         run: bun ../../.github/scripts/write-lab-stubs.ts
       - name: prebuild android (the signing plugin reads the environment)
-        if: steps.secrets.outputs.sign == 'true'
+        if: matrix.platform == 'android' && steps.secrets.outputs.sign == 'true'
         working-directory: admin-ui/app
         env:
           LOSOS_VERSION: ${{ inputs.tag || github.ref_name }}
@@ -134,18 +153,18 @@ jobs:
       # against the generated gradle files, which exist only past it (the
       # expo-apk job's comment carries the same reasoning).
       - uses: actions/setup-java@v5
-        if: steps.secrets.outputs.sign == 'true'
+        if: matrix.platform == 'android' && steps.secrets.outputs.sign == 'true'
         with:
           distribution: temurin
           java-version: 17
           cache: gradle
       - name: gradle assembleRelease (the signed APK)
-        if: steps.secrets.outputs.sign == 'true'
+        if: matrix.platform == 'android' && steps.secrets.outputs.sign == 'true'
         working-directory: admin-ui/app/android
         run: ./gradlew assembleRelease --no-daemon
       - name: stage the APK with its checksum
-        if: steps.secrets.outputs.sign == 'true'
-        id: stage
+        if: matrix.platform == 'android' && steps.secrets.outputs.sign == 'true'
+        id: stage-apk
         env:
           TAG: ${{ inputs.tag || github.ref_name }}
         run: |
@@ -158,22 +177,22 @@ jobs:
             echo "sha=$(cut -d' ' -f1 < "$apk.sha256")"
           } >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7
-        if: steps.secrets.outputs.sign == 'true'
+        if: matrix.platform == 'android' && steps.secrets.outputs.sign == 'true'
         with:
           name: losos-android-release
           path: |
-            ${{ steps.stage.outputs.apk }}
-            ${{ steps.stage.outputs.apk }}.sha256
+            ${{ steps.stage-apk.outputs.apk }}
+            ${{ steps.stage-apk.outputs.apk }}.sha256
           if-no-files-found: error
           retention-days: 14
       # ci.yml owns the release's life (draft, ISO, publish); this only
       # waits for the draft to exist and adds the APK to it. A dry run
       # stops at the artifact above.
       - name: attach the APK to the tag's draft release
-        if: steps.secrets.outputs.sign == 'true' && !inputs.dry_run
+        if: matrix.platform == 'android' && steps.secrets.outputs.sign == 'true' && !inputs.dry_run
         env:
-          APK: ${{ steps.stage.outputs.apk }}
-          APK_SHA: ${{ steps.stage.outputs.sha }}
+          APK: ${{ steps.stage-apk.outputs.apk }}
+          APK_SHA: ${{ steps.stage-apk.outputs.sha }}
           TAG: ${{ inputs.tag || github.ref_name }}
           GH_TOKEN: ${{ github.token }}
           RELEASE_BODY: |
@@ -184,26 +203,11 @@ jobs:
             Install it like any APK — it is not on a store yet.
         run: ./.github/scripts/attach-release-asset.sh android "$APK" "$APK.sha256"
 
-  ios:
-    name: "ios: unsigned release shell (pending an Apple Developer account)"
-    runs-on: macos-15
-    # Same shape as the android job's budget: the simulator lane builds in
-    # ~90 and the attach waits up to four hours for the draft release.
-    timeout-minutes: 420
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version-file: admin-ui/app/package.json
-      - name: the workspace (the lockfile's tree)
-        working-directory: admin-ui/app
-        run: bun install --frozen-lockfile --ignore-scripts
       # The Xcode 16 pin, the expo-ios-sim job's comment: RN 0.81's fmt
       # does not compile under Xcode 26's clang, and macos-15 carries a
       # 16.x for DEVELOPER_DIR to pick.
       - name: pick Xcode 16 (RN 0.81's supported clang)
+        if: matrix.platform == 'ios'
         run: |
           xcode16=$(ls -d -- /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -1)
           [ -n "$xcode16" ] || {
@@ -219,6 +223,7 @@ jobs:
         working-directory: admin-ui/app
         run: bun ../../.github/scripts/write-lab-stubs.ts
       - name: prebuild ios (cocoapods run by prebuild)
+        if: matrix.platform == 'ios'
         working-directory: admin-ui/app
         env:
           LOSOS_VERSION: ${{ inputs.tag || github.ref_name }}
@@ -226,6 +231,7 @@ jobs:
           set -euo pipefail
           LOSOS_VERSION="${LOSOS_VERSION#v}" bunx expo prebuild --platform ios --no-install
       - name: pod install
+        if: matrix.platform == 'ios'
         working-directory: admin-ui/app/ios
         run: pod install
       # A device build without an identity: the simulator job's
@@ -233,6 +239,7 @@ jobs:
       # the device SDK stops asking too. The product is the raw .app — no
       # .ipa without signing, and no install on a phone without it.
       - name: xcodebuild (Release, device, unsigned)
+        if: matrix.platform == 'ios'
         working-directory: admin-ui/app/ios
         run: |
           workspace=$(ls -d -- *.xcworkspace | head -1)
@@ -260,7 +267,8 @@ jobs:
             -derivedDataPath build \
             build
       - name: stage the unsigned .app zip with its checksum
-        id: stage
+        if: matrix.platform == 'ios'
+        id: stage-ios
         env:
           TAG: ${{ inputs.tag || github.ref_name }}
         run: |
@@ -278,18 +286,19 @@ jobs:
             echo "sha=$(cut -d' ' -f1 < "$zip_name.sha256")"
           } >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7
+        if: matrix.platform == 'ios'
         with:
           name: losos-ios-release-unsigned
           path: |
-            ${{ github.workspace }}/stage/${{ steps.stage.outputs.zip }}
-            ${{ github.workspace }}/stage/${{ steps.stage.outputs.zip }}.sha256
+            ${{ github.workspace }}/stage/${{ steps.stage-ios.outputs.zip }}
+            ${{ github.workspace }}/stage/${{ steps.stage-ios.outputs.zip }}.sha256
           if-no-files-found: error
           retention-days: 14
       - name: attach the unsigned shell to the tag's draft release
-        if: ${{ !inputs.dry_run }}
+        if: matrix.platform == 'ios' && !inputs.dry_run
         env:
-          ZIP: ${{ steps.stage.outputs.zip }}
-          ZIP_SHA: ${{ steps.stage.outputs.sha }}
+          ZIP: ${{ steps.stage-ios.outputs.zip }}
+          ZIP_SHA: ${{ steps.stage-ios.outputs.sha }}
           TAG: ${{ inputs.tag || github.ref_name }}
           GH_TOKEN: ${{ github.token }}
           RELEASE_BODY: |
