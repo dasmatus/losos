@@ -83,7 +83,8 @@ devenv shell vm-tests
 
 See [docs/development.md](docs/development.md) and
 [`.claude/CLAUDE.md`](.claude/CLAUDE.md) for architecture notes and known
-pitfalls.
+pitfalls, [docs/map.md](docs/map.md) for the one-page map of the tree, and
+[CONTRIBUTING.md](CONTRIBUTING.md) for the newcomer's path.
 
 | Folder      | What is in it                                                     |
 | ----------- | ----------------------------------------------------------------- |

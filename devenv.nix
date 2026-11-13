@@ -12,56 +12,29 @@
 { pkgs, lib, ... }:
 
 let
-  # Every crate, since this repo is deliberately not a Cargo workspace: each
-  # has its own Cargo.lock and its own pinned cargoHash in nix/packages.nix.
-  # Every Rust command therefore has to be run twice with --manifest-path.
-  crates = [
-    "backend"
-    # The terminal envelope (OpenPGP, tokens) lososd and the registrar both
-    # depend on by path. Its own workspace, so `cargo fmt` of either parent
-    # does not reach it.
-    "backend/access"
-    # lososd's edge path rule, which LosOS Desktop's network machine reads
-    # by git too. Its own workspace for the same reason as the envelope.
-    "backend/edge-path"
-    # MDX and Markdown to sanitized HTML (backend/mdx/README.md), shared by
-    # LosOS Office and Notes, and built for the browser through wasm-bindgen.
-    # Its own workspace, like backend/access; `lint-wasm` lints the wasm32
-    # build with the `wasm` feature.
-    "backend/mdx"
-    # lososd's plugins (backend/plugins/README.md): the SDK, the plugins and
-    # their logic, natively here; `lint-wasm` lints the wasm32 build, and
-    # backend's tests/plugins.rs builds them for wasm32 to run the daemon.
-    "backend/plugins"
-    "edge/registrar"
-    # The Vercel host for the registrar (edge/vercel/README.md). Not built by
-    # nix — Vercel builds it — but linted and tested with the other two.
-    "edge/vercel"
-    # LosOS Lab's core (admin-ui/lab/core/README.md), compiled to wasm for
-    # the Lab page. Linted and tested natively like the others.
-    "admin-ui/lab/core"
-    # The Lab's libvirt client (admin-ui/lab/virt-rpc/README.md), compiled
-    # to wasm for the page. Its live tests need a running libvirt daemon and
-    # are skipped unless LOSOS_VIRT_SOCK or LOSOS_VIRT_TCP is set.
-    "admin-ui/lab/virt-rpc"
-    # The Lab's GPU canvas (admin-ui/lab/render/README.md). Bevy is a
-    # wasm32-only dependency, so this lints and tests its plain Rust;
-    # `lint-wasm` below lints the two wasm32 builds.
-    "admin-ui/lab/render"
-    # losos, the terminal client (admin-ui/tui/README.md). Its suite runs a
-    # mock box and edge over TLS and, where util-linux `script` exists, the
-    # built binary in a pseudo-terminal.
-    "admin-ui/tui"
-  ];
-  forEachCrate = cmd: lib.concatMapStringsSep "\n" (c: ''echo "── ${c}"; ${cmd c}'') crates;
-  # The Solana escrow program (edge/contracts/solana/README.md). Linted with
-  # the others; its suite runs the program `cargo build-sbf` makes, so it is
+  # Every crate, read from crates.json — the one machine-readable list of
+  # this repo's Rust workspaces. This repo is deliberately not a Cargo
+  # workspace: each crate has its own Cargo.lock and its own pinned
+  # cargoHash in nix/packages.nix, and every Rust command therefore runs
+  # with --manifest-path. Why, and what would change it:
+  # docs/decisions/0001-not-a-cargo-workspace.md. devenv, the git hooks
+  # (nix/hooks/lib.ts) and CI all take their crate lists from the manifest,
+  # and `check-crates` below asserts it still covers every Cargo.toml in
+  # the tree — a new crate is one manifest entry, not a hand-typed list
+  # copied five times.
+  manifest = builtins.fromJSON (builtins.readFile ./crates.json);
+  # fmt+test crates are what `test-rust` loops over. A fmt-only crate (the
+  # Solana escrow program, whose suite runs what `cargo build-sbf` makes
+  # and needs Anza's tools) is linted with the others but is
   # `test-solana-escrow`'s, not test-rust's.
-  linted = crates ++ [ "edge/contracts/solana" ];
+  crates = map (c: c.path) (lib.filter (c: c.fmt && c.test) manifest.crates);
+  linted = map (c: c.path) (lib.filter (c: c.fmt) manifest.crates);
+  forEachCrate = cmd: lib.concatMapStringsSep "\n" (c: ''echo "── ${c}"; ${cmd c}'') crates;
   forEachLinted = cmd: lib.concatMapStringsSep "\n" (c: ''echo "── ${c}"; ${cmd c}'') linted;
   # `cargo fmt` on a virtual workspace (backend/plugins has no package at its
-  # root) finds no targets without --all.
-  fmtAll = c: lib.optionalString (c == "backend/plugins") " --all";
+  # root) finds no targets without --all; the manifest says which crate.
+  fmtAll =
+    c: lib.optionalString (lib.any (e: e.path == c && (e.fmtAll or false)) manifest.crates) " --all";
 
   # mold as the linker, ccache in front of gcc, sccache in front of rustc:
   # the stdenv nix/packages.nix builds the crates with and flake.nix's
@@ -247,7 +220,7 @@ in
   # binary inside these scripts.
 
   scripts.fmt.exec = forEachLinted (c: "cargo fmt${fmtAll c} --manifest-path ${c}/Cargo.toml");
-  scripts.fmt.description = "Format both Rust crates.";
+  scripts.fmt.description = "Format every Rust crate.";
 
   scripts.lint.exec = ''
     set -e
@@ -361,6 +334,13 @@ in
   # its `pins` job; keep the two in step by hand, like every other gate here.
   scripts.check-pins.exec = ''bun "$DEVENV_ROOT/nix/check-pins.ts"'';
   scripts.check-pins.description = "Assert flake.lock, devenv.yaml and devenv.lock pin the same nixpkgs.";
+
+  # The crate manifest is devenv's and the git hooks' one crate list; this
+  # keeps it pinned to the tree, the way check-pins pins the locks to each
+  # other. devenv's `check-crates`, the pre-commit hook (a staged
+  # crates.json or Cargo.toml) and CI's `pins` job run the same script.
+  scripts.check-crates.exec = ''bun "$DEVENV_ROOT/nix/check-crates.ts"'';
+  scripts.check-crates.description = "Assert crates.json covers every Cargo.toml in the tree.";
 
   # flake check only forces each nixosConfiguration's toplevel *derivation*;
   # these two force the full module merge, which is what actually catches
@@ -487,6 +467,7 @@ in
   enterTest = ''
     set -e
     check-pins
+    check-crates
     test-bots
     lint
     lint-nix
