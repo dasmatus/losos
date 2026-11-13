@@ -1,0 +1,93 @@
+{
+  "about": [
+    "The one machine-readable list of this repository's Rust workspaces.",
+    "This repo is deliberately not a Cargo workspace; the reasoning and what",
+    "would change it are docs/decisions/0001-not-a-cargo-workspace.md.",
+    "devenv.nix, nix/hooks/lib.ts and nix/check-crates.ts read this file, so",
+    "a new crate is one entry here, not a list typed in five places.",
+    "Fields per crate:",
+    "  path    the directory holding the crate's Cargo.toml and Cargo.lock",
+    "  fmt     cargo fmt and clippy cover it (devenv's `fmt`/`lint`, the",
+    "          hooks' rustfmt/clippy, CI's clippy job)",
+    "  fmtAll  cargo fmt needs --all (a virtual workspace with no package",
+    "          at its root finds no targets otherwise)",
+    "  test    its suite runs in `test-rust` and pre-push's test:<crate>; a",
+    "          fmt-only crate is linted with the others but its tests are",
+    "          their own opt-in script"
+  ],
+  "crates": [
+    {
+      "path": "backend",
+      "fmt": true,
+      "test": true,
+      "why": "lososd, the control plane, and losos-ctl, its command half. Depends on access, edge-path and several plugins by path."
+    },
+    {
+      "path": "backend/access",
+      "fmt": true,
+      "test": true,
+      "why": "The terminal envelope (OpenPGP, tokens) that backend, edge/registrar and admin-ui/tui all depend on by path, and LosOS Desktop reads by git. Its own workspace so `cargo fmt` of either parent does not reach it."
+    },
+    {
+      "path": "backend/edge-path",
+      "fmt": true,
+      "test": true,
+      "why": "lososd's edge path rule, which LosOS Desktop's network machine reads by git too. Its own workspace for the same reason as the envelope."
+    },
+    {
+      "path": "backend/mdx",
+      "fmt": true,
+      "test": true,
+      "why": "MDX and Markdown to sanitized HTML (backend/mdx/README.md), shared by LosOS Office and Notes and built for the browser through wasm-bindgen; `lint-wasm` lints the wasm32 build with the `wasm` feature."
+    },
+    {
+      "path": "backend/plugins",
+      "fmt": true,
+      "fmtAll": true,
+      "test": true,
+      "why": "lososd's plugins (backend/plugins/README.md): the SDK and one crate per area, natively here; backend's tests build them for wasm32 to run the daemon. A virtual workspace, so `cargo fmt` needs --all."
+    },
+    {
+      "path": "edge/registrar",
+      "fmt": true,
+      "test": true,
+      "why": "The master-proxy registrar: orders, the market, gateway passports."
+    },
+    {
+      "path": "edge/vercel",
+      "fmt": true,
+      "test": true,
+      "why": "The Vercel host for the registrar (edge/vercel/README.md). Not built by nix — Vercel builds it — but linted and tested with the other crates."
+    },
+    {
+      "path": "edge/contracts/solana",
+      "fmt": true,
+      "test": false,
+      "why": "The Solana escrow program. Linted with the others; its suite runs the program `cargo build-sbf` makes, so it is `test-solana-escrow`'s, not test-rust's."
+    },
+    {
+      "path": "admin-ui/lab/core",
+      "fmt": true,
+      "test": true,
+      "why": "LosOS Lab's core (admin-ui/lab/core/README.md), compiled to wasm for the Lab page."
+    },
+    {
+      "path": "admin-ui/lab/virt-rpc",
+      "fmt": true,
+      "test": true,
+      "why": "The Lab's libvirt client, wasm too. Its live tests need a running libvirt daemon and are skipped unless LOSOS_VIRT_SOCK or LOSOS_VIRT_TCP is set."
+    },
+    {
+      "path": "admin-ui/lab/render",
+      "fmt": true,
+      "test": true,
+      "why": "The Lab's GPU canvas (admin-ui/lab/render/README.md). Bevy is a wasm32-only dependency, so this lints and tests its plain Rust; `lint-wasm` lints the two wasm32 builds."
+    },
+    {
+      "path": "admin-ui/tui",
+      "fmt": true,
+      "test": true,
+      "why": "losos, the terminal client (admin-ui/tui/README.md). Its suite runs a mock box and edge over TLS and, where util-linux `script` exists, the built binary in a pseudo-terminal."
+    }
+  ]
+}

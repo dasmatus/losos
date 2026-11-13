@@ -26,6 +26,9 @@ Make sure you have installed Nix and `devenv`. After you've installed it, run `d
 
 Please also read the PR template at `.github/pull_request_template.md` to learn more.
 
+[CONTRIBUTING.md](CONTRIBUTING.md) is the long version of this: getting a
+shell, the gates and what each one catches, and the starter tasks.
+
 I've automated (with the help of agents) the most annoying parts.
 
 We use Conventional Commits in order for changes to be easily findable and sortable.
