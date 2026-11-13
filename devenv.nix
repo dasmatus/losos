@@ -213,6 +213,7 @@ in
       # Handy when poking at the appliance's own surfaces.
       jq
       curl
+      oras
 
       # OCR (read screenshots/images) and Rust advisory auditing.
       tesseract
@@ -498,6 +499,8 @@ in
 
   enterShell = ''
     bun "$DEVENV_ROOT/nix/hooks/install.ts"
+    # shellcheck source=/dev/null
+    . "$DEVENV_ROOT/nix/dev-cache.sh"
     echo "losos dev shell"
     echo "  fmt · lint · test-rust        Rust"
     echo "  lint-nix                      nixfmt, deadnix, statix"

@@ -2856,7 +2856,10 @@ impl Losos for IoLosos {
             return Ok(Some(String::from_utf8_lossy(&out.stdout).into_owned()));
         }
         let why = first_line(&out.stderr);
-        if why.contains("does not exist") || why.contains("exists on disk, but not in") {
+        if why.contains("does not exist")
+            || why.contains("existiert nicht")
+            || why.contains("exists on disk, but not in")
+        {
             return Ok(None);
         }
         anyhow::bail!("git show {spec}: {why}");
