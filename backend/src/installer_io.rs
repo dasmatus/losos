@@ -456,10 +456,12 @@ impl Install for IoInstall {
         // explicitly so nixos-install uses it even when the invocation
         // overrides options; the Pages fallback was removed because it is
         // unreliable.
+        // The running medium's modules/cache.nix sets the same list; pass it
+        // explicitly so a nix.conf override on the target cannot skip the proxy.
         let substituters = "http://127.0.0.1:8787";
         log_line("losos-install: starting nixos-install");
         log_line(&format!(
-            "losos-install: substituter {substituters} (GHCR cache proxy)"
+            "losos-install: substituters {substituters} (GHCR cache proxy)"
         ));
         log_line("losos-install: live nix output follows on this console");
         self.run_with_activity(
@@ -474,6 +476,9 @@ impl Install for IoInstall {
                 substituters,
                 "--option",
                 "fallback",
+                "false",
+                "--option",
+                "always-allow-substitutes",
                 "true",
             ],
         )

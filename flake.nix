@@ -47,6 +47,17 @@
     # be bumped together — see the header of devenv.yaml.
   };
 
+  # Defaults for any `nix` invocation that uses this flake. Matches CI's
+  # setup-nix extra-conf and modules/cache.nix on the appliance; the proxy
+  # itself is started by nix/dev-cache.sh from devenv or `nix develop`.
+  nixConfig = {
+    extra-substituters = "http://127.0.0.1:8787 https://losos.dasmat.us/proxy";
+    extra-trusted-public-keys = "losos-1:35OIuYFMKDrlC6yTzqivDPqNqZTMjM0l2MB89bRRreg=";
+    connect-timeout = 5;
+    fallback = false;
+    always-allow-substitutes = true;
+  };
+
   outputs =
     {
       self,
@@ -150,12 +161,16 @@
               ++ [
                 pkgs.rust-analyzer
                 pkgs.bun
+                pkgs.oras
               ];
             inherit (fast) env;
             # The git hooks (nix/hooks) run CI's gates before a commit
             # or a push; this shell installs them as devenv's does.
             shellHook = ''
-              root=$(git rev-parse --show-toplevel 2>/dev/null) && bun "$root/nix/hooks/install.ts"
+              root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+              bun "$root/nix/hooks/install.ts"
+              # shellcheck source=/dev/null
+              . "$root/nix/dev-cache.sh"
               echo "Toolchain-only shell. For the scripts:"
               echo "  devenv shell      (or: direnv allow)"
             '';

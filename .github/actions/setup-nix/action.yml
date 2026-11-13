@@ -53,7 +53,8 @@ runs:
           extra-substituters = http://127.0.0.1:8787 https://losos.dasmat.us/proxy
           extra-trusted-public-keys = losos-1:35OIuYFMKDrlC6yTzqivDPqNqZTMjM0l2MB89bRRreg=
           connect-timeout = 5
-          fallback = true
+          fallback = false
+          always-allow-substitutes = true
           # nix (a multi-user daemon) reads the cores limit from nix.conf, which
           # this writes to /etc/nix/nix.conf; NIX_CONFIG, a per-user daemon and
           # nix.conf in that order, so a cores here in the workflow env is

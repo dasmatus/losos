@@ -143,8 +143,8 @@ pkgs.testers.nixosTest {
         # cache.nixos.org still serves most of any closure here; ours is added,
         # not substituted for it.
         assert "cache.nixos.org" in conf, "the upstream cache was replaced rather than extended"
-        # A cache that is unreachable must not wedge the 03:00 rebuild on a box
-        # with no shell.
-        assert "fallback = true" in conf, f"fallback is off:\n{conf}"
+        assert "always-allow-substitutes = true" in conf, f"substitution not forced:\n{conf}"
+        # A miss at every substituter must fail, not compile on the medium.
+        assert "fallback = false" in conf, f"fallback is still on:\n{conf}"
   '';
 }
