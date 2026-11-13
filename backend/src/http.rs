@@ -4045,7 +4045,13 @@ fn claim_fault(
             || host
                 .strip_suffix(".local")
                 .is_some_and(|h| h.eq_ignore_ascii_case(hostname)));
-    if !own_name && host.parse::<std::net::IpAddr>().is_err() {
+    // `localhost` is how a browser reaches this box through a port forward
+    // (a VM's `localhost:8080`), where the box's own LAN address is not
+    // reachable from this machine. It resolves to loopback by construction, so
+    // it cannot be an attacker's domain under DNS rebinding, and the Origin
+    // check below still has to agree with it.
+    let is_loopback_name = host.eq_ignore_ascii_case("localhost");
+    if !own_name && !is_loopback_name && host.parse::<std::net::IpAddr>().is_err() {
         return Some("claim requests must name this box in Host");
     }
     if let Some(origin) = origin {
@@ -7886,6 +7892,12 @@ mod tests {
         // curl on the box, or a VM test talking to lososd directly.
         assert_eq!(
             claim_fault(JSON, Some("127.0.0.1:8082"), None, "mattbox"),
+            None
+        );
+        // A browser reaching this box through a port forward (a VM's
+        // `localhost:8080`): the page's own host is `localhost`.
+        assert_eq!(
+            claim_fault(JSON, Some("localhost:8080"), Some("http://localhost:8080"), "mattbox"),
             None
         );
     }
