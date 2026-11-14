@@ -275,8 +275,13 @@ let
     # goes before the second starts.
     buildPhase = ''
       runHook preBuild
+      # Bevy + LTO at codegen-units = 1 is heavy: one backend already takes
+      # ~3.5 GB of target dir and ~6 min on 4 cores. Cap the parallelism so a
+      # build does not swallow the whole machine (and start swapping, which
+      # makes it slower, not faster).
+      export CARGO_BUILD_JOBS=2
       for backend in webgpu webgl2; do
-        (cd render && cargo build --release --offline --target wasm32-unknown-unknown \
+        (cd render && cargo build --release --offline -j 2 --target wasm32-unknown-unknown \
           --no-default-features --features $backend)
         mkdir -p dist/$backend
         wasm-bindgen --target web --out-dir dist/$backend --out-name losos_lab_render \
