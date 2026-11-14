@@ -7897,7 +7897,12 @@ mod tests {
         // A browser reaching this box through a port forward (a VM's
         // `localhost:8080`): the page's own host is `localhost`.
         assert_eq!(
-            claim_fault(JSON, Some("localhost:8080"), Some("http://localhost:8080"), "mattbox"),
+            claim_fault(
+                JSON,
+                Some("localhost:8080"),
+                Some("http://localhost:8080"),
+                "mattbox"
+            ),
             None
         );
     }

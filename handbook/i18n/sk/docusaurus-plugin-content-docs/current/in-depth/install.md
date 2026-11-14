@@ -178,13 +178,14 @@ nix build .#losos-disk-iso          # or: devenv shell build-media iso
 ```
 
 Bežné ISO necháva cieľový počítač stiahnuť a zostaviť celý systém, približne
-5.8 GiB. Toto ISO nesie zostavený closure, takže `nixos-install` ho skopíruje
-z kľúča.
+5.8 GiB. Toto ISO nesie zostavený closure, holé git zrkadlo tohto stromu a
+všetky vstupy flaku, proti ktorým to zrkadlo vyhodnocuje, takže inštalácia
+môže bežať bez siete: `nixos-install` skopíruje closure z kľúča a klonuje
+`file://…` namiesto verejného repozitára.
 
-- Stále potrebuje sieť na naklonovanie flaku a stiahnutie nixpkgs.
-- Zostavte ho z toho istého commitu, ktorý bude inštalátor klonovať
-  (`LOSOS_FLAKE_URL`, `--depth 1`). Inak sa cesty v store líšia a kópie
-  zostanú nevyužité.
+- Zostavte ho z commitu, ktorý naozaj chcete nainštalovať. Kľúč z jednej
+  revízie a klon inej dajú iné cesty v store; prenesené kópie sa nepoužijú a
+  inštalátor sa vráti k zostavovaniu.
 - Je príliš veľké na asset vydania na GitHube. Zostavte si ho sami.
 
 ## Demo obraz pre VM {#demo-image-for-a-vm}

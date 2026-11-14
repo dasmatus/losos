@@ -177,13 +177,14 @@ nix build .#losos-disk-iso          # or: devenv shell build-media iso
 ```
 
 The normal ISO makes the target download and build the whole system, about
-5.8 GiB. This ISO carries the built closure, so `nixos-install` copies it
-from the stick.
+5.8 GiB. This ISO carries the built closure, a bare git mirror of this tree,
+and every flake input the mirror evaluates against, so install can run with no
+network: `nixos-install` copies the closure from the stick and clones
+`file://…` instead of the public repository.
 
-- It still needs a network to clone the flake and fetch nixpkgs.
-- Build it from the same commit the installer will clone
-  (`LOSOS_FLAKE_URL`, `--depth 1`). Otherwise the store paths differ and the
-  copies go unused.
+- Build it from the commit you mean to install. A stick built from one revision
+  and a clone of another evaluate to different store paths; the carried copies
+  then match nothing and the install falls back to building.
 - It is too large for a GitHub release asset. Build it yourself.
 
 ## Demo image for a VM

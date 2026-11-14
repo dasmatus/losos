@@ -2737,6 +2737,18 @@ in
       '';
     };
 
+    installer.bundledFlakeUrl = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = ''
+        When set, `losos-install` clones this URL instead of the public
+        repository. The closure-carrying installer ISO
+        (`nix build .#losos-disk-iso`) sets this to a `file://` mirror of the
+        tree it was built from, with that tree and every flake input already on
+        the medium, so install can run with no network.
+      '';
+    };
+
     installer.tangEdge = lib.mkOption {
       type = lib.types.bool;
       default = false;
