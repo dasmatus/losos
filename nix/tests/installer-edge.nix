@@ -32,8 +32,6 @@
 }:
 
 let
-  inherit (pkgs) lib;
-
   lososPkgs = import ../packages.nix { inherit pkgs; };
 
   # Machines are numbered in name order: edge is .1, machine is .2, tpmless
@@ -42,27 +40,8 @@ let
   port = 8443;
   edgeUrl = "http://192.168.1.1:${toString port}";
 
-  # This tree as a repository to clone, and every flake input's source under
-  # the NAR hash its flake.lock pins: the clone and its evaluation read no
-  # network (nix/tests/iso-install.nix says why both exist).
-  repo = pkgs.runCommand "losos-repo" { nativeBuildInputs = [ pkgs.git ]; } ''
-    cp -r ${self} tree
-    chmod -R u+w tree
-    cd tree
-    git init -q -b main
-    # A commit starts `git maintenance run --auto --detach`, whose repack
-    # renames packs under the clone below ("failed to copy file to …tmp_pack").
-    git config maintenance.auto false
-    git add -A
-    git -c user.name=losos -c user.email=losos@local commit -qm tree
-    git clone -q --bare . $out
-  '';
-
-  sources =
-    let
-      walk = inputs: lib.concatMap (i: [ i.outPath ] ++ walk (i.inputs or { })) (lib.attrValues inputs);
-    in
-    lib.unique (walk (removeAttrs self.inputs [ "self" ]));
+  offlineFlake = import ../offline-flake.nix { inherit self pkgs; };
+  inherit (offlineFlake) repo inputSources;
 
   # The medium node's module stack: edge-unlock.nix's, since the flavor's
   # subject is exactly what that stack realizes — an installer whose target
@@ -125,13 +104,9 @@ let
       emptyDiskImages = [ 4096 ];
     };
 
-    virtualisation.additionalPaths = [ repo ] ++ sources;
+    virtualisation.additionalPaths = [ repo ] ++ inputSources;
 
-    # iso-install.nix's offline clone, but on the autorun unit (which is
-    # the flavor's subject) instead of on a hand-typed command: without it
-    # the unattended install clones the public repo, dies on the network
-    # this test has none of, and the format never runs.
-    systemd.services.losos-installer.environment.LOSOS_FLAKE_URL = "file://${repo}";
+    losos.installer.bundledFlakeUrl = offlineFlake.flakeUrl;
   };
 in
 pkgs.testers.runNixOSTest {

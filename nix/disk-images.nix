@@ -70,6 +70,8 @@
 let
   inherit (pkgs) lib;
 
+  offlineFlake = import ./offline-flake.nix { inherit self pkgs; };
+
   # ext4 labels are capped at 16 bytes, and this one is load-bearing twice
   # over: fileSystems."/" below finds the root by it, and it is the name that
   # shows up in `lsblk` for anyone who later wonders what a stray qcow2 on
@@ -336,12 +338,7 @@ let
   # and `nix copy` prefers a path it already has over building one. So the
   # expensive half of an install becomes a read off the USB stick.
   #
-  # THREE THINGS THIS DOES NOT DO, each of which has bitten a medium like it:
-  #
-  #   It does not remove the network requirement. `losos-install` clones
-  #   LOSOS_FLAKE_URL at run time and `nixos-install` evaluates that clone,
-  #   which fetches nixpkgs. Carrying store paths changes what gets BUILT, not
-  #   whether the flake gets EVALUATED.
+  # TWO THINGS THIS DOES NOT DO, each of which has bitten a medium like it:
   #
   #   It does not help if the medium and the clone disagree. The installer
   #   installs whatever revision it cloned; an ISO built from a different commit
@@ -354,6 +351,13 @@ let
   #   ~1.5 GB, close to GitHub's 2 GiB per-asset release limit; this adds ~2.4 GiB of compressed closure on top. It is a
   #   local artefact. modules/cache.nix is the online half of the same problem
   #   and is cheaper whenever a cache is reachable.
+  #
+  # What it does carry for offline install (nix/offline-flake.nix,
+  # nix/tests/iso-install.nix): a bare git mirror of this tree, every flake
+  # input's source, and the install system's closure (make-squashfs packs each
+  # storeContents path's closure). The installer then clones
+  # `losos.installer.bundledFlakeUrl` instead of the public repo and evaluates
+  # without fetching inputs.
   isoSystem = self.nixosConfigurations.iso.extendModules {
     modules = [
       (
@@ -377,7 +381,11 @@ let
           # the foot of this file is the gate.
           isoImage.storeContents = [
             self.nixosConfigurations.install.config.system.build.toplevel
-          ];
+            offlineFlake.repo
+          ]
+          ++ offlineFlake.inputSources;
+
+          losos.installer.bundledFlakeUrl = offlineFlake.flakeUrl;
 
           # A distinct volume label and file name, so a closure-carrying medium
           # cannot be mistaken for the plain one after it has been written to a

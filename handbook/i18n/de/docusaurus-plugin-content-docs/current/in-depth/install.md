@@ -199,14 +199,15 @@ nix build .#losos-disk-iso          # or: devenv shell build-media iso
 ```
 
 Beim normalen ISO lädt und baut der Zielrechner das ganze System, etwa
-5.8 GiB. Dieses ISO bringt die gebaute Closure mit, sodass `nixos-install` sie
-vom Stick kopiert.
+5.8 GiB. Dieses ISO bringt die gebaute Closure, ein Bare-Git-Spiegel dieses
+Baums und jeden Flake-Input mit, den der Spiegel auswertet, sodass die
+Installation ohne Netzwerk auskommt: `nixos-install` kopiert die Closure vom
+Stick und klont `file://…` statt des öffentlichen Repositories.
 
-- Es braucht trotzdem ein Netzwerk, um den Flake zu klonen und nixpkgs zu
-  holen.
-- Bau es aus demselben Commit, den der Installer klonen wird
-  (`LOSOS_FLAKE_URL`, `--depth 1`). Sonst unterscheiden sich die Store-Pfade
-  und die Kopien bleiben ungenutzt.
+- Bau es aus dem Commit, den du wirklich installieren willst. Ein Stick aus
+  einem anderen Revision und ein Klon eines anderen weichen in den
+  Store-Pfaden ab; die mitgebrachten Kopien bleiben dann ungenutzt und der
+  Installer fällt auf Bauen zurück.
 - Es ist zu groß für ein Release-Asset auf GitHub. Bau es selbst.
 
 ## Demo-Image für eine VM {#demo-image-for-a-vm}

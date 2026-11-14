@@ -10,9 +10,10 @@
 # the losos-ctl derivation is supplied via the `losos.installer.package` option
 # (the flake's iso system sets it to self.packages.<system>.losos-ctl; the test
 # sets it via nix/packages.nix). The flake the installer builds from is
-# cloned over the network at run time (LOSOS_FLAKE_URL, default the public
-# GitHub repo) — the ISO needs working network either way, since evaluating
-# the flake fetches its nixpkgs input. It clones the release channel the box
+# cloned at run time (LOSOS_FLAKE_URL, default the public GitHub repo). The
+# plain ISO needs network for that clone and for flake evaluation; the
+# closure-carrying medium (`losos.installer.bundledFlakeUrl`) carries this
+# tree and its inputs and needs none. It clones the release channel the box
 # will follow (LOSOS_FLAKE_BRANCH, losos.configRepo.upstream.branch), and the
 # default branch where that channel does not exist.
 #
@@ -49,6 +50,7 @@ let
   ctl = config.losos.installer.package;
   autorun = config.losos.installer.autorun;
   tangEdge = config.losos.installer.tangEdge;
+  bundledFlakeUrl = config.losos.installer.bundledFlakeUrl;
 
   # Provision flavor: the autorun ends in `losos-ctl provision` (the mirror
   # comes from the environment at boot), and everywhere else the stock
@@ -203,8 +205,10 @@ let
           ${lib.concatStringsSep " " mirrorEnv} \
           --set-default LOSOS_FLAKE_BRANCH ${lib.escapeShellArg config.losos.configRepo.upstream.branch} \
           --set-default LOSOS_REGISTRAR_URL ${lib.escapeShellArg config.losos.proxy.registrarUrl}${
-            lib.optionalString (seededKeys != [ ]) " --set LOSOS_INSTALL_GPG_KEYS_FILE ${seededKeysFile}"
-          }
+            lib.optionalString (
+              bundledFlakeUrl != null
+            ) " --set-default LOSOS_FLAKE_URL ${lib.escapeShellArg bundledFlakeUrl}"
+          }${lib.optionalString (seededKeys != [ ]) " --set LOSOS_INSTALL_GPG_KEYS_FILE ${seededKeysFile}"}
       '';
 
   losos-install-wrapped = wrapWithTools "losos-install" losos-install { };

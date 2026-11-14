@@ -398,13 +398,11 @@ in
   #                     TPM-sealed LUKS-on-LVM the real install builds, so it
   #                     has no full-disk encryption at all. Never hand one to
   #                     someone who thinks it is the product.
-  #   losos-disk-iso    the installer ISO with the whole install closure in
-  #                     isoImage.storeContents, so nixos-install copies from
-  #                     the medium instead of fetching and building. Measured:
-  #                     that closure is 5.78 GiB of store data over 882 paths,
-  #                     of which 1.57 GiB has to come down from cache.nixos.org
-  #                     and 849 MiB of image tarballs plus losos-ctl would
-  #                     otherwise be built on the target.
+  #   losos-disk-iso    the offline installer ISO: the install closure, a bare
+  #                     git mirror of this tree, and every flake input in
+  #                     isoImage.storeContents, so nixos-install needs no
+  #                     network. Measured: the install closure is 5.78 GiB over
+  #                     882 paths; the squashfs packs each root's closure.
   #
   # Local-only, both of them. The thin ISO the `iso` job builds is already
   # ~1.5 GB, close to GitHub's 2 GiB per-asset release limit; these are bigger
