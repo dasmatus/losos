@@ -39,6 +39,8 @@ import {
 } from "./sources";
 import { routeIn, useSiteBase } from "@/lib/site";
 import { closePalette, paletteState, subscribePalette } from "./store";
+import { boxPeople } from "@/chat/session";
+import { getTag } from "@/lib/api";
 
 /* The command palette: one box that finds a page, a setting, an app, a file
  * in LosOS Cloud, a repository in LosOS Git, one of the owner's pins or an
@@ -64,6 +66,7 @@ import { closePalette, paletteState, subscribePalette } from "./store";
 const GROUP_TITLE: Record<GroupId, MessageKey> = {
   pins: "pins.title",
   pages: "palette.group.pages",
+  people: "palette.group.people",
   apps: "palette.group.apps",
   files: "palette.group.files",
   repos: "palette.group.repos",
@@ -74,7 +77,7 @@ const GROUP_TITLE: Record<GroupId, MessageKey> = {
 };
 
 /** How many rows a group shows. The palette is for jumping, not browsing. */
-const LIMIT: Record<GroupId, number> = { pins: 8, pages: 8, apps: 6, files: 8, repos: 6, issues: 6, text: 8, install: 5, actions: 8 };
+const LIMIT: Record<GroupId, number> = { pins: 8, pages: 8, people: 6, apps: 6, files: 8, repos: 6, issues: 6, text: 8, install: 5, actions: 8 };
 
 /** Letters typed before the box is asked what is inside the files: fewer
  *  match nearly every document. */
@@ -160,6 +163,52 @@ function PaletteBody({ initial }: { initial: string }) {
     }),
   );
 
+  // People on the box and LosOS Tag's assistants: jumping straight into a
+  // chat with one of them.
+  const [people, setPeople] = React.useState<Item[]>([]);
+  React.useEffect(() => {
+    let live = true;
+    void Promise.allSettled([boxPeople().catch(() => []), getTag().catch(() => null)]).then(
+      ([peopleRes, tagRes]) => {
+        if (!live) return;
+        const list: Item[] = [];
+        if (peopleRes.status === "fulfilled") {
+          for (const p of peopleRes.value) {
+            list.push({
+              id: `person-${p.userId}`,
+              group: "people",
+              title: p.displayName ?? p.userId,
+              detail: p.userId,
+              icon: BubbleChatIcon,
+              target: { kind: "href", href: `/chat/?dm=${encodeURIComponent(p.userId)}` },
+            });
+          }
+        }
+        if (tagRes.status === "fulfilled" && tagRes.value !== null) {
+          const server = undefined;
+          for (const a of tagRes.value.assistants) {
+            if (!a.enabled) continue;
+            // The chat page resolves the domain from its own session; the
+            // href carries only the slug, and chat builds the full id.
+            const id = `assistant-${a.slug}`;
+            list.push({
+              id,
+              group: "people",
+              title: a.display,
+              detail: a.slug,
+              icon: BubbleChatIcon,
+              target: { kind: "href", href: `/chat/?dm=@tag-${a.slug}` },
+            });
+          }
+        }
+        setPeople(list);
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
+
   const groups: Group[] = [];
   const push = (id: GroupId, items: Item[], note: Group["note"] = null): void => {
     if (typed || IDLE_GROUPS.includes(id)) {
@@ -172,6 +221,7 @@ function PaletteBody({ initial }: { initial: string }) {
   // Before anything is typed the pages are a plain list of where to go;
   // the line under each name is for telling matches apart.
   push("pages", typed ? rank(pageItems(), query) : pageItems().map((item) => ({ ...item, detail: null })));
+  push("people", typed ? rank(people, query) : people);
   push("apps", rank(appItems(), query));
   push(
     "files",

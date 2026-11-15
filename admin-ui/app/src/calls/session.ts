@@ -143,7 +143,7 @@ export class CallSession {
   constructor(private opts: CallOptions) {
     if (!canEncrypt()) throw new Error('noEncryption');
     this.worker =
-      opts.worker?.() ?? new Worker(new URL('./e2ee-worker.ts', import.meta.url), { type: 'module' });
+      opts.worker?.() ?? new Worker(`${(import.meta.env?.BASE_URL ?? "/")}workers/e2ee-worker.js`, { type: 'module' });
     // Held on the session: a port nothing references can be collected,
     // and its messages with it.
     const back = new MessageChannel();

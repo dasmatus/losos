@@ -754,6 +754,33 @@ impl Chat {
         Ok(room)
     }
 
+    /// Join the account of `agent_localpart` to `room`: an invited
+    /// assistant joins the chat that invited it, so a direct chat made in
+    /// the picker needs no second step. The application service's token
+    /// speaks for its own namespace's users.
+    pub fn agent_join(&self, room: &str, agent_localpart: &str, display: &str) -> Result<(), ChatError> {
+        let inner = self.inner()?;
+        let token = inner.as_token()?;
+        let agent = self.account(&token, agent_localpart, display)?;
+        let joined = inner.homeserver.call(
+            "POST",
+            &format!(
+                "/_matrix/client/v3/rooms/{}/join?user_id={}",
+                encode(room),
+                encode(&agent)
+            ),
+            &token,
+            Some(&json!({})),
+        )?;
+        if joined.status != 200 {
+            return Err(ChatError::Homeserver {
+                status: joined.status,
+                errcode: joined.errcode(),
+            });
+        }
+        Ok(())
+    }
+
     /// Post a notice into `room` as LosOS Git's account.
     pub fn git_notice(&self, room: &str, notice: &Notice) -> Result<(), ChatError> {
         self.agent_message(

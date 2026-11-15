@@ -142,7 +142,7 @@ export class VoiceAgent {
 
   private async join(): Promise<void> {
     const context = new AudioContext({ sampleRate: RATE });
-    await context.audioWorklet.addModule(`${import.meta.env.BASE_URL}voice-worklet/pcm-tap.js`);
+    await context.audioWorklet.addModule(`${(import.meta.env?.BASE_URL ?? "/")}voice-worklet/pcm-tap.js`);
     this.input = context;
     // What the call sends as its camera: a face, when there is a camera.
     let local = this.mouth.stream;
