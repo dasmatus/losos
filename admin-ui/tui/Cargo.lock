@@ -588,7 +588,6 @@ dependencies = [
  "crossterm_winapi",
  "derive_more",
  "document-features",
- "futures-core",
  "mio",
  "parking_lot",
  "rustix",
@@ -1672,7 +1671,6 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "clap",
- "crossterm",
  "getrandom 0.2.17",
  "hex",
  "losos-access",
@@ -1681,6 +1679,7 @@ dependencies = [
  "rand",
  "ratatui",
  "rcgen",
+ "ring 0.17.14",
  "rustls 0.23.46",
  "rustls-pki-types",
  "serde",

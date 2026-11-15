@@ -21,7 +21,13 @@ const shallow = spawnSync("git", ["rev-parse", "--is-shallow-repository"], { enc
 if (shallow === "true") flake += "?shallow=1";
 
 const extra = Bun.argv.slice(2);
-const jobs = Number(Bun.env.CHECK_FLAKE_JOBS || String(cpus().length || 4));
+// One `nix eval` per check, not one process for all of them (that passed 13
+// GiB and killed `nix flake check` on CI). Still cap how many evals run at
+// once: a VM test's evaluation is not cheap, and matching host core count on
+// a big machine spikes RAM for little gain. Override with CHECK_FLAKE_JOBS.
+const jobs = Number(
+  Bun.env.CHECK_FLAKE_JOBS ?? String(Math.min(4, cpus().length || 4)),
+);
 const logs = mkdtempSync(join(tmpdir(), "check-flake-"));
 process.on("exit", () => rmSync(logs, { recursive: true, force: true }));
 

@@ -240,6 +240,10 @@ in
   # share none of it. CI's `clippy-wasm` job runs the same loop.
   scripts.lint-wasm.exec = ''
     set -e
+    # Bevy wasm32 clippy builds are the heavy legs; cap rustc parallelism so
+    # lint-wasm does not pin every core (same trade-off as losos-lab-render's
+    # Nix build in nix/packages.nix).
+    export CARGO_BUILD_JOBS=2
     echo "── backend/plugins (wasm32)"
     cargo clippy --manifest-path backend/plugins/Cargo.toml \
       --target wasm32-unknown-unknown --all-targets -- -D warnings
@@ -309,16 +313,17 @@ in
   '';
   scripts.test-tui.description = "Build the static losos and drive it in a pseudo-terminal.";
 
-  # What `nix flake check --no-build` checks, one `nix eval` per derivation, so
-  # the peak memory is one VM test's evaluation rather than all of them at
-  # once (nix/check-flake.ts says why). CI's eval job runs the same script.
+  # What `nix flake check --no-build` checks, one `nix eval` per derivation with
+  # bounded parallelism (nix/check-flake.ts), so peak memory stays on the order
+  # of a few VM test evaluations rather than the whole flake in one process.
+  # CI's eval job runs the same script.
   # CI's `bots` job: the release channels' bot against a fake GitHub over a
   # real repository (.github/scripts/test_channels.py).
   scripts.test-bots.exec = ''${pkgs.python3}/bin/python3 "$DEVENV_ROOT/.github/scripts/test_channels.py"'';
   scripts.test-bots.description = "Test the release channels' bot.";
 
   scripts.check-flake.exec = ''bun "$DEVENV_ROOT/nix/check-flake.ts" "$@"'';
-  scripts.check-flake.description = "Evaluate every flake output, one at a time (builds nothing).";
+  scripts.check-flake.description = "Evaluate every flake output (builds nothing; see CHECK_FLAKE_JOBS).";
 
   # devenv runs standalone (see flake.nix), so there are two lock files:
   # flake.lock pins the nixpkgs that BUILDS the appliance, devenv.lock pins the
