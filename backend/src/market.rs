@@ -347,6 +347,20 @@ pub enum Op {
     },
     /// One request to a running model, billed per token on `meter`.
     LlmChat(ChatAsk),
+    /// Rent raw compute: a fenced SkyPilot job submitted through the edge
+    /// (Phase 4). Resources in vCPU millicores-equivalent units and MiB;
+    /// `image` must be on the edge's allow-list.
+    RentCompute {
+        vcpu: u32,
+        memory_mib: u32,
+        image: String,
+        /// How long the job may run, seconds.
+        max_seconds: u32,
+        /// Optional command/args passed to the fenced job.
+        command: Option<Vec<String>>,
+        /// `evm` or `solana` family for billing, or `None` for owner-local free.
+        network: Option<String>,
+    },
 }
 
 /// A buyer's request to a model, as it leaves the box. The edge checks it
@@ -683,6 +697,30 @@ impl Op {
                 }
             }
             Op::LlmChat(ask) => ask.validate(),
+            Op::RentCompute {
+                vcpu,
+                memory_mib,
+                image,
+                max_seconds,
+                command,
+                network,
+            } => {
+                if *vcpu == 0 || *vcpu > 64 {
+                    Err("vcpu must be 1..64")
+                } else if *memory_mib == 0 || *memory_mib > 512 * 1024 {
+                    Err("memory_mib must be 1..524288")
+                } else if image.is_empty() || image.len() > 512 {
+                    Err("image must be a non-empty allow-listed reference")
+                } else if *max_seconds == 0 || *max_seconds > 24 * 3600 {
+                    Err("max_seconds must be 1..86400")
+                } else if command.as_ref().is_some_and(|c| c.len() > 64) {
+                    Err("command has at most 64 arguments")
+                } else if !valid_network(network.as_deref()) {
+                    Err("network is not a network name")
+                } else {
+                    Ok(())
+                }
+            },
             Op::VmTicket { name, .. } => {
                 if valid_display_name(name) {
                     Ok(())
@@ -937,6 +975,7 @@ impl Op {
             Op::TapConfirm { .. } => ("POST", "/market/taps/confirm"),
             Op::TapStop { .. } => ("POST", "/market/taps/stop"),
             Op::LlmChat(_) => ("POST", "/market/llm/chat"),
+            Op::RentCompute { .. } => ("POST", "/market/compute/rent"),
         }
     }
 
@@ -1127,6 +1166,28 @@ impl Op {
             } => {
                 let parsed = serde_json::from_str::<Value>(params).unwrap_or_else(|_| json!([]));
                 let mut doc = json!({ "method": method, "params": parsed });
+                if let Some(n) = network {
+                    doc["network"] = json!(n);
+                }
+                doc
+            }
+            Op::RentCompute {
+                vcpu,
+                memory_mib,
+                image,
+                max_seconds,
+                command,
+                network,
+            } => {
+                let mut doc = json!({
+                    "vcpu": vcpu,
+                    "memory_mib": memory_mib,
+                    "image": image,
+                    "max_seconds": max_seconds,
+                });
+                if let Some(c) = command {
+                    doc["command"] = json!(c);
+                }
                 if let Some(n) = network {
                     doc["network"] = json!(n);
                 }

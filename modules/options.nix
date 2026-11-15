@@ -3807,6 +3807,34 @@ in
       description = "Port the SkyPilot API server listens on.";
     };
 
+    edge.skypilot.rentableImages = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = ''
+        Allow-listed container image references that market buyers may rent
+        for fenced SkyPilot jobs (Phase 4). Empty means no rented compute.
+        Images must be pinned and loaded offline (no runtime registry pulls).
+      '';
+    };
+
+    edge.skypilot.computePricePerCpuHour = lib.mkOption {
+      type = lib.types.ints.unsigned;
+      default = 0;
+      description = ''
+        USDC base units per vCPU-hour for rented raw compute (Phase 4).
+        0 disables billing/listing of rented compute.
+      '';
+    };
+
+    edge.skypilot.computePricePerMibHour = lib.mkOption {
+      type = lib.types.ints.unsigned;
+      default = 0;
+      description = ''
+        USDC base units per MiB-hour for rented raw compute (Phase 4).
+        0 disables billing/listing of rented compute.
+      '';
+    };
+
     # ── Models split across boxes (edge side, modules/edge-inference.nix) ───
     # Boxes lend memory (losos.inference.lend on the box); the registrar
     # groups lending boxes until a model fits, starts a llama.cpp head here
