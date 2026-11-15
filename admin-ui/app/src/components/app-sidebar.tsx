@@ -307,6 +307,7 @@ function isCurrent(entry: LinkEntry, pathname: string): boolean {
   const path = pathname.replace(/(.)\/$/, "$1");
   if (entry.key === "ci") return path === "/ci" || path.startsWith("/ci/");
   if (entry.key === "documents") return path === "/office";
+  if (entry.key === "chat") return path === "/chat" || path.startsWith("/chat/");
   if (entry.key === "wiki") return path === "/wikis" || path.startsWith("/wikis/");
   if (entry.key.startsWith("cloud")) {
     return [entry.to, ...(entry.also ?? [])].some((to) => path === to || path.startsWith(`${to}/`));
