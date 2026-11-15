@@ -280,6 +280,9 @@ path = "src/bin/losos-mcp.rs"
 # `cargo test` pay for a link of the whole debug world — visible nowhere
 # more than on a small CI or VPS box, where the tag_http daemon test's
 # lososd build dominates the run.
+[profile.dev]
+debug = "line-tables-only"
+
 [profile.test]
 debug = "line-tables-only"
 

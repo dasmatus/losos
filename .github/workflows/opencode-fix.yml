@@ -264,6 +264,7 @@ jobs:
         run: |
           set -euo pipefail
           used=""
+          : > /tmp/oc-all.log
           for model in "$OC_MODEL" "$OC_FALLBACK_MODEL"; do
             echo "opencode run on $model"
             set +e
@@ -279,11 +280,22 @@ jobs:
             fi
             echo "::warning::opencode failed on $model (exit $rc):"
             tail -5 /tmp/oc-run.log || true
+            cat /tmp/oc-run.log /tmp/oc-answer.txt >> /tmp/oc-all.log 2>/dev/null || true
           done
           if [ -z "$used" ]; then
-            echo "::error::both free models failed; no attempt is recorded, the next ci run retries"
-            exit 1
+            # Optional automation: no model is not a CI failure. The run
+            # stays green, nothing below runs (every later step is gated on
+            # ran == 'true'), no attempt is recorded, the next ci run retries.
+            why="both free models failed"
+            if grep -qiE 'usage limit|rate limit|quota|too many requests|429' /tmp/oc-all.log; then
+              why="$why (looks like a provider usage limit)"
+            fi
+            echo "::warning::$why; no attempt is recorded, the next ci run retries"
+            echo "opencode fix: $why; nothing was attempted." >> "$GITHUB_STEP_SUMMARY"
+            echo "ran=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          echo "ran=true" >> "$GITHUB_OUTPUT"
           echo "model=$used" >> "$GITHUB_OUTPUT"
           echo "answer: $(head -c 200 /tmp/oc-answer.txt)"
 
@@ -291,7 +303,7 @@ jobs:
       # only after the agent actually answered, so a saturated provider
       # does not spend the attempt.
       - name: mark the attempt
-        if: steps.triage.outputs.run == 'true'
+        if: steps.triage.outputs.run == 'true' && steps.agent.outputs.ran == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -303,7 +315,7 @@ jobs:
 
       - name: take stock of the changes
         id: changes
-        if: steps.triage.outputs.run == 'true'
+        if: steps.triage.outputs.run == 'true' && steps.agent.outputs.ran == 'true'
         env:
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
@@ -318,7 +330,26 @@ jobs:
           if ! git diff --cached --quiet; then
             git commit -m "fix: OpenCode CI autofix"
           fi
+          # GITHUB_TOKEN cannot push a commit that creates or updates a file
+          # under .github/workflows/ (it deliberately has no `workflows`
+          # permission), and one such commit refuses the whole push. The
+          # agent's workflow edits are squashed out of its commits here and
+          # listed for a human to apply; the rest of the fix still goes out.
+          dropped=$(git diff --name-only "$HEAD_SHA" HEAD -- .github/workflows/ | tr '\n' ' ')
+          if [ -n "$dropped" ]; then
+            git reset --soft "$HEAD_SHA"
+            git restore --source="$HEAD_SHA" --staged --worktree -- .github/workflows/
+            if ! git diff --cached --quiet; then
+              git commit -m "fix: OpenCode CI autofix"
+            fi
+            echo "::warning::workflow edits dropped: GITHUB_TOKEN cannot push workflow changes; a human must apply them: $dropped"
+            echo "workflow edits dropped (GITHUB_TOKEN cannot push workflow changes; a human must apply them): $dropped" >> "$GITHUB_STEP_SUMMARY"
+            echo "dropped=$dropped" >> "$GITHUB_OUTPUT"
+          fi
           if git diff --quiet "$HEAD_SHA" --; then
+            if [ -n "$dropped" ]; then
+              echo "::warning::the agent changed only workflow files; nothing is left to push"
+            fi
             echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -330,7 +361,7 @@ jobs:
       # Pull-request mode: the agent's work, rebased onto the branch's tip
       # (which may have moved between run start and now) and pushed.
       - name: push the fix to the pull request
-        if: steps.triage.outputs.run == 'true' && steps.triage.outputs.mode == 'pr' && steps.changes.outputs.changed == 'true'
+        if: steps.triage.outputs.run == 'true' && steps.agent.outputs.ran == 'true' && steps.triage.outputs.mode == 'pr' && steps.changes.outputs.changed == 'true'
         env:
           BRANCH: ${{ steps.triage.outputs.branch }}
         run: |
@@ -346,11 +377,12 @@ jobs:
       # Default-branch mode: a fix branch and a pull request of its own —
       # main is never pushed to directly.
       - name: open a fix pull request to main
-        if: steps.triage.outputs.run == 'true' && steps.triage.outputs.mode == 'main' && steps.changes.outputs.changed == 'true'
+        if: steps.triage.outputs.run == 'true' && steps.agent.outputs.ran == 'true' && steps.triage.outputs.mode == 'main' && steps.changes.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          DROPPED: ${{ steps.changes.outputs.dropped }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}
         run: |
           set -euo pipefail
@@ -361,12 +393,17 @@ jobs:
             echo "OpenCode's fix for the red main commit \`$short\` ([failed run]($RUN_URL))."
             echo
             echo "Replaces the failed commit's CI with a passing one; review and merge."
+            if [ -n "$DROPPED" ]; then
+              echo
+              echo "**Workflow edits dropped** (GITHUB_TOKEN cannot push workflow changes; a human must apply them):"
+              for f in $DROPPED; do echo "- \`$f\`"; done
+            fi
           } > /tmp/pr-body.md
           gh pr create --repo "$GH_REPO" --base main --head "$fix_branch" \
             --title "fix: CI autofix for ${short}" --body-file /tmp/pr-body.md
 
       - name: report on the pull request
-        if: steps.triage.outputs.run == 'true' && steps.triage.outputs.mode == 'pr'
+        if: steps.triage.outputs.run == 'true' && steps.agent.outputs.ran == 'true' && steps.triage.outputs.mode == 'pr'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -375,6 +412,7 @@ jobs:
           CHANGED: ${{ steps.changes.outputs.changed }}
           FILES: ${{ steps.changes.outputs.files }}
           FILE_COUNT: ${{ steps.changes.outputs.file_count }}
+          DROPPED: ${{ steps.changes.outputs.dropped }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}
         run: |
           set -euo pipefail
@@ -387,6 +425,11 @@ jobs:
               for f in $FILES; do echo "- \`$f\`"; done
             else
               echo "_and changed nothing — the log did not give it a code fix it could make._"
+            fi
+            if [ -n "$DROPPED" ]; then
+              echo
+              echo "**Workflow edits dropped** (GITHUB_TOKEN cannot push workflow changes; a human must apply them):"
+              for f in $DROPPED; do echo "- \`$f\`"; done
             fi
             echo
             if [ -s /tmp/oc-answer.txt ]; then

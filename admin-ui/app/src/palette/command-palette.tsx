@@ -2,6 +2,7 @@ import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
+  BubbleChatIcon,
   CodeIcon,
   File01Icon,
   FileSearchIcon,
@@ -185,7 +186,6 @@ function PaletteBody({ initial }: { initial: string }) {
           }
         }
         if (tagRes.status === "fulfilled" && tagRes.value !== null) {
-          const server = undefined;
           for (const a of tagRes.value.assistants) {
             if (!a.enabled) continue;
             // The chat page resolves the domain from its own session; the
