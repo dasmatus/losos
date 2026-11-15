@@ -38,7 +38,7 @@ export function voiceFor(slug: string): string {
 }
 
 export function openMouth(progress?: (loaded: number, total: number) => void, voice: string = VOICE): Promise<Mouth> {
-  const worker = new Worker(new URL("./tts-worker.ts", import.meta.url), { type: "module" });
+  const worker = new Worker(`${(import.meta.env?.BASE_URL ?? "/")}workers/tts-worker.js`, { type: "module" });
   const context = new AudioContext({ latencyHint: "interactive" });
   const destination = context.createMediaStreamDestination();
   const gain = context.createGain();
@@ -47,7 +47,7 @@ export function openMouth(progress?: (loaded: number, total: number) => void, vo
   meter.fftSize = 512;
   gain.connect(meter);
   const wave = new Float32Array(meter.fftSize);
-  const runtime = `${import.meta.env.BASE_URL}ort/`;
+  const runtime = `${(import.meta.env?.BASE_URL ?? "/")}ort/`;
 
   return new Promise((resolve, reject) => {
     let ids = 0;

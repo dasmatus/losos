@@ -132,7 +132,10 @@ pub struct FakeLosos {
     pub remote_overrides: Option<String>,
     /// Model a remote that cannot be reached.
     pub fetch_fails: bool,
-    /// Every push made, by URL.
+    /// Model a configuration repository that has stopped being one
+    /// (a corrupted `.git`); `config_commit` errors until `config_repair`
+    /// runs.
+    pub broken: bool,
     pub pushed: Vec<String>,
     /// Every fast-forward made, by target sha.
     pub fast_forwarded: Vec<String>,
@@ -356,6 +359,7 @@ impl FakeLosos {
             remote_commits: Vec::new(),
             remote_overrides: None,
             fetch_fails: false,
+            broken: false,
             pushed: Vec::new(),
             fast_forwarded: Vec::new(),
             git_routes: std::collections::BTreeMap::new(),
@@ -831,6 +835,9 @@ impl Losos for FakeLosos {
     }
 
     fn config_commit(&mut self, subject: &str, body: &str) -> anyhow::Result<Option<String>> {
+        if self.broken {
+            anyhow::bail!("git add -A: fatal: not a git repository (or any parent up to mount point /etc)");
+        }
         if !self.dirty && !self.commits.is_empty() {
             return Ok(None);
         }
@@ -850,6 +857,11 @@ impl Losos for FakeLosos {
             return Err(crate::config_repo::NotUp("the fake remote is not up".to_string()).into());
         }
         Ok(self.remote_commits.last().cloned())
+    }
+
+    fn config_repair(&mut self) -> anyhow::Result<()> {
+        self.broken = false;
+        Ok(())
     }
 
     fn config_is_ancestor(&mut self, ancestor: &str, of: &str) -> anyhow::Result<bool> {

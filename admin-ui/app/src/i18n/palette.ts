@@ -29,6 +29,7 @@ export default defineMessages({
   },
 
   "palette.group.pages": { en: "Pages", sk: "Stránky", de: "Seiten" },
+  "palette.group.people": { en: "People", sk: "Ľudia", de: "Personen" },
   "palette.group.apps": { en: "Apps", sk: "Aplikácie", de: "Apps" },
   "palette.group.files": { en: "Files in LosOS Cloud", sk: "Súbory v LosOS Cloud", de: "Dateien in LosOS Cloud" },
   "palette.group.repos": {

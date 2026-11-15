@@ -56,6 +56,8 @@ jobs:
   build:
     name: "docusaurus: build"
     runs-on: ubuntu-latest
+    # Handbook lane: advisory, never blocks.
+    continue-on-error: true
     defaults:
       run:
         working-directory: handbook

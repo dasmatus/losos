@@ -2800,6 +2800,22 @@ impl Losos for IoLosos {
         Ok(Some(sha))
     }
 
+    fn config_repair(&mut self) -> anyhow::Result<()> {
+        // /etc/nixos stopped being a repository (an interrupted write can
+        // corrupt .git beyond git's own repair): make a fresh one with the
+        // files as they are, so the box keeps rebuilding and the mirror
+        // follows again. History is new; a mirror with the old one reports
+        // diverged, which the History pane explains.
+        let out = git(&self.paths, false, &["init", "-q"])?;
+        if !out.status.success() {
+            anyhow::bail!(
+                "git init: {}",
+                first_line(&out.stderr)
+            );
+        }
+        Ok(())
+    }
+
     fn config_fetch(&mut self, url: &str, branch: &str) -> anyhow::Result<Option<String>> {
         let refspec = format!("refs/heads/{branch}");
         let out = git(&self.paths, true, &["ls-remote", "--heads", url, &refspec])?;

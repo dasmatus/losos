@@ -48,4 +48,4 @@ export async function fetchBytes(url: string, progress?: Progress): Promise<Uint
 }
 
 /* Where the build puts the voice files (vite.config.ts `voiceFiles`). */
-export const VOICE_BASE = `${import.meta.env.BASE_URL}voice`;
+export const VOICE_BASE = `${(import.meta.env?.BASE_URL ?? "/")}voice`;

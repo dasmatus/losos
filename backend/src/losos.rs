@@ -213,6 +213,11 @@ pub trait Losos {
     fn config_head(&mut self) -> anyhow::Result<Option<crate::config_repo::Head>>;
     /// Stage everything and commit. `None` when the tree was clean.
     fn config_commit(&mut self, subject: &str, body: &str) -> anyhow::Result<Option<String>>;
+    /// Make `/etc/nixos` a repository again when it has stopped being one
+    /// (an interrupted write can corrupt `.git` beyond git's own repair):
+    /// a fresh repository with the files as they are, so the box keeps
+    /// rebuilding and the mirror follows again.
+    fn config_repair(&mut self) -> anyhow::Result<()>;
     /// The remote branch's head after fetching it, `None` when the remote
     /// has no such branch yet. A remote that cannot be reached is a
     /// [`crate::config_repo::NotUp`] error.
@@ -1855,6 +1860,16 @@ fn sync_once<L: Losos>(l: &mut L) -> crate::config_repo::SyncReport {
     }
 }
 
+/// Whether a commit error means the repository itself is broken, rather
+/// than something else (e.g. a permission problem) that repairing would
+/// not fix.
+fn repository_broken(error: &anyhow::Error) -> bool {
+    let text = format!("{error:#}");
+    text.contains("not a git repository")
+        || text.contains("corrupted loose reference")
+        || text.contains("corrupted loose object")
+}
+
 /// One sync, with every effect spelled out in order.
 ///
 ///  1. anything uncommitted in `/etc/nixos` is committed, so the push below
@@ -1873,18 +1888,32 @@ fn try_sync<L: Losos>(
 ) -> anyhow::Result<crate::config_repo::SyncReport> {
     use crate::config_repo::{plan_sync, SyncPlan, SyncReport};
 
-    if l.config_head()?.is_none() {
-        l.config_commit("Configuration as installed", "")?;
+    let subject = if l.config_head()?.is_none() {
+        "Configuration as installed"
     } else {
-        // A hand edit, or a change applied while git was unavailable.
-        l.config_commit("Uncommitted changes", "")?;
-    }
+        "Uncommitted changes"
+    };
+    // A box that has stopped being a repository — an interrupted write can
+    // corrupt `.git` beyond git's own repair — is made one again with the
+    // files as they are, so the box keeps rebuilding and the mirror follows.
+    // The history is new; a mirror with the old one reports diverged, which
+    // the History pane explains.
+    let committed = match l.config_commit(subject, "") {
+        Ok(v) => v,
+        Err(e) if repository_broken(&e) => {
+            tracing::warn!(error = ?e, "the configuration repository is broken; making a fresh one");
+            l.config_repair()?;
+            l.config_commit(subject, "")?
+        }
+        Err(e) => return Err(e),
+    };
     let Some(head) = l.config_head()? else {
         return Ok(SyncReport::new(
             "error",
             "the configuration directory is not a git repository",
         ));
     };
+    let _ = committed;
 
     if repo.via_server() {
         ensure_owner(l, repo)?;
@@ -2808,6 +2837,9 @@ mod tests {
             }
             fn config_commit(&mut self, s: &str, b: &str) -> anyhow::Result<Option<String>> {
                 self.0.config_commit(s, b)
+            }
+            fn config_repair(&mut self) -> anyhow::Result<()> {
+                self.0.config_repair()
             }
             fn config_fetch(&mut self, u: &str, b: &str) -> anyhow::Result<Option<String>> {
                 self.0.config_fetch(u, b)

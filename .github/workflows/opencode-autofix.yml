@@ -211,6 +211,7 @@ jobs:
         run: |
           set -euo pipefail
           used=""
+          : > /tmp/tc-all.log
           for model in "$TINYCODE_MODEL" "$TINYCODE_FALLBACK_MODEL"; do
             echo "tinycode run on $model"
             set +e
@@ -226,17 +227,29 @@ jobs:
             fi
             echo "::warning::tinycode failed on $model (exit $rc):"
             tail -5 /tmp/tc-narration.log || true
+            cat /tmp/tc-narration.log /tmp/tc-events.ndjson >> /tmp/tc-all.log 2>/dev/null || true
           done
           if [ -z "$used" ]; then
-            echo "::error::both free models failed; the next pull request event retries"
-            exit 1
+            # Optional automation: no model must not put a red check on the
+            # pull request. Nothing below runs (every later step is gated on
+            # ran == 'true'); the next pull request event retries.
+            why="both free models failed"
+            if grep -qiE 'usage limit|rate limit|quota|too many requests|429' /tmp/tc-all.log; then
+              why="$why (looks like a provider usage limit)"
+            fi
+            echo "::warning::$why; the next pull request event retries"
+            echo "opencode autofix: $why; nothing was attempted." >> "$GITHUB_STEP_SUMMARY"
+            echo "ran=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           jq -r 'select(.type == "done") | .text' /tmp/tc-events.ndjson | tail -1 > /tmp/tc-answer.txt
+          echo "ran=true" >> "$GITHUB_OUTPUT"
           echo "model=$used" >> "$GITHUB_OUTPUT"
           echo "answer: $(head -c 200 /tmp/tc-answer.txt)"
 
       - name: Commit, rebase, and take stock
         id: changes
+        if: steps.agent.outputs.ran == 'true'
         env:
           BRANCH: ${{ github.event.pull_request.head.ref }}
           PRE_SHA: ${{ steps.position.outputs.pre_sha }}
@@ -251,9 +264,26 @@ jobs:
           # way the run the next event triggers must see it, or the gate
           # would hold this loop open forever.
           git add -A
+          # GITHUB_TOKEN cannot push a commit that creates or updates a file
+          # under .github/workflows/ (it deliberately has no `workflows`
+          # permission), and one such commit refuses the whole push. The
+          # agent's workflow edits are squashed out of its commits here
+          # (everything stays staged for the commit below) and listed for a
+          # human to apply; the rest of the fix still goes out.
+          dropped=$(git diff --cached --name-only "$PRE_SHA" -- .github/workflows/ | tr '\n' ' ')
+          if [ -n "$dropped" ]; then
+            git reset --soft "$PRE_SHA"
+            git restore --source="$PRE_SHA" --staged --worktree -- .github/workflows/
+            echo "::warning::workflow edits dropped: GITHUB_TOKEN cannot push workflow changes; a human must apply them: $dropped"
+            echo "workflow edits dropped (GITHUB_TOKEN cannot push workflow changes; a human must apply them): $dropped" >> "$GITHUB_STEP_SUMMARY"
+            echo "dropped=$dropped" >> "$GITHUB_OUTPUT"
+          fi
           # Everything the agent produced, committed or not, against where
           # the run started.
           if git diff --quiet "$PRE_SHA" --; then
+            if [ -n "$dropped" ]; then
+              echo "::warning::the agent changed only workflow files; nothing is left to push"
+            fi
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "pushed_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
             exit 0
@@ -357,9 +387,10 @@ jobs:
       # reshaped to `.github/pull_request_template.md` here; the script
       # below says exactly what that means.
       - name: report in the pull request body
-        if: steps.agent.outcome == 'success'
+        if: steps.agent.outputs.ran == 'true'
         uses: actions/github-script@v9
         env:
+          DROPPED: ${{ steps.changes.outputs.dropped }}
           MODEL: ${{ steps.agent.outputs.model }}
           HEAD_SHA: ${{ steps.changes.outputs.pushed_sha }}
           CHANGED: ${{ steps.changes.outputs.changed }}
@@ -462,6 +493,11 @@ jobs:
             } else {
               lines.push(`_${process.env.MODEL} found the description already implemented; nothing was edited. ([run](${process.env.OC_RUN_URL}))_`);
             }
+            const dropped = (process.env.DROPPED ?? '').trim();
+            if (dropped) {
+              lines.push('', '**Workflow edits dropped** (GITHUB_TOKEN cannot push workflow changes; a human must apply them):');
+              for (const f of dropped.split(/\s+/)) lines.push(`- \`${f}\``);
+            }
             if (process.env.FRONTEND === 'true') {
               lines.push('', `**Admin UI screenshots** of the fixed tree: [artifact](${process.env.OC_ARTIFACTS_URL}).`);
             }
@@ -475,7 +511,7 @@ jobs:
             });
 
       - name: push the fixes to the branch
-        if: steps.changes.outputs.changed == 'true'
+        if: steps.agent.outputs.ran == 'true' && steps.changes.outputs.changed == 'true'
         env:
           BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |

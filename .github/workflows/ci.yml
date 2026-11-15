@@ -761,6 +761,8 @@ jobs:
   # belongs to the user, not the tree (eas.json's comment says the same).
   expo-eas:
     name: "expo: EAS development client for android and ios (cloud)"
+    # Mobile lane: advisory, never blocks.
+    continue-on-error: true
     needs: [changes]
     if: ${{ needs.changes.outputs.ui == 'true' }}
     runs-on: ubuntu-latest
@@ -832,6 +834,8 @@ jobs:
     needs: [changes]
     if: ${{ needs.changes.outputs.ui == 'true' }}
     runs-on: ${{ matrix.runner }}
+    # Mobile lane: advisory, never blocks.
+    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -1797,12 +1801,20 @@ jobs:
         run: |
           set -euo pipefail
           jq -r 'to_entries[] | "\(.value.result)\t\(.key)"' <<<"$NEEDS" | sort
-          bad=$(jq -r 'to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | .key' <<<"$NEEDS")
+          # The Rust gates block: `test` (cargo test), `clippy` (cargo clippy
+          # --all-targets -- -D warnings, plus cargo fmt --check on pull
+          # requests) and `clippy-wasm`. A red or cancelled one fails this
+          # check, and with it the merge. Every other lane stays advisory and
+          # is reported as a warning (PR #673 had made all of them advisory).
+          blocking='["clippy","clippy-wasm","test"]'
+          bad=$(jq -r --argjson b "$blocking" 'to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | select(.key as $k | $b | index($k)) | .key' <<<"$NEEDS")
+          soft=$(jq -r --argjson b "$blocking" 'to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | select(.key as $k | $b | index($k) | not) | .key' <<<"$NEEDS")
+          if [ -n "$soft" ]; then
+            echo "::warning::failed or cancelled (advisory): $(tr '\n' ' ' <<<"$soft")"
+          fi
           if [ -n "$bad" ]; then
-            echo "::warning::failed or cancelled (non-blocking): $(tr '\n' ' ' <<<"$bad")"
-            # CI is advisory: a red or cancelled job no longer blocks merge
-            # requests or builds.
-            exit 0
+            echo "::error::failed or cancelled (blocking): $(tr '\n' ' ' <<<"$bad")"
+            exit 1
           fi
 
   # Which tags release-media builds. A tag push builds that tag. A manual run

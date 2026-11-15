@@ -153,8 +153,11 @@ under Settings, Rules, Rulesets, New branch ruleset:
   be up to date before merging" ticked. The `result` job sums up the run,
   so one required check covers every lane, skipped ones included, and the
   up-to-date rule makes a pull request run against the `main` it lands on.
-  CI is advisory: `result` reports failures as warnings and always passes,
-  so a red job no longer blocks a merge or a build.
+  The Rust gates block: a failed or cancelled `test` (cargo test),
+  `clippy` (cargo clippy -D warnings, and cargo fmt --check on pull
+  requests) or `clippy-wasm` turns `result` red. Every other lane is
+  reported as a warning only, and the screenshot, handbook and mobile
+  lanes run with `continue-on-error: true`.
   Two pull requests that each pass alone can still break `main` together
   (one removes an option, the other adds a test that sets it), and only a
   run on the merged tree sees that.
