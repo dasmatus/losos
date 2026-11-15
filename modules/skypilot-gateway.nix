@@ -11,7 +11,6 @@
 {
   config,
   lib,
-  pkgs,
   ...
 }:
 let
@@ -71,7 +70,7 @@ in
       role = "gateway-local";
       sharing = "kinda-shared";
       marketEligible = false;
-      port = cfg.port;
+      inherit (cfg) port;
     };
 
     networking.firewall.allowedTCPPorts = [ cfg.port ];

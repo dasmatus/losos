@@ -91,9 +91,8 @@ in
     # Phase 4: allow-listed rentable images (consumed by registrar/admission).
     environment.etc."losos/skypilot-rentable-images.json" = lib.mkIf (cfg.rentableImages != [ ]) {
       text = builtins.toJSON {
+        inherit (cfg) computePricePerCpuHour computePricePerMibHour;
         images = cfg.rentableImages;
-        computePricePerCpuHour = cfg.computePricePerCpuHour;
-        computePricePerMibHour = cfg.computePricePerMibHour;
       };
     };
 
