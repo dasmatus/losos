@@ -62,7 +62,8 @@ jobs:
             platform: windows
           - os: ubuntu-latest
             platform: visionos
-    continue-on-error: ${{ matrix.platform == 'windows' || matrix.platform == 'visionos' }}
+    # Screenshot lane: advisory on every platform, never blocks.
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v7
         with:

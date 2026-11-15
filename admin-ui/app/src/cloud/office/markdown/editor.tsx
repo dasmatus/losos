@@ -41,7 +41,7 @@ import { accentFor, nameOf as loginOf } from "../../collab/people";
 import { NameDialog, explain } from "../../dialogs";
 import { cloudSource, noteHref, notes } from "../../notes/api";
 import { onText, wikilinkCompletion } from "../../notes/editing";
-import { EditorQuickActions } from "../../quick-text";
+import { EditorQuickActions, ReaderQuickActions } from "../../quick-text";
 import { activeAt, formatKeys, headingAt, type Action, type Words } from "./format";
 import { Filmstrip, Presenter, SlideView } from "./slide";
 import { isDeck, slideAt, splitSlides } from "./slides";
@@ -99,6 +99,8 @@ export function MarkdownOffice({ entry: first, onClose }: { entry: Entry; onClos
   const [people, setPeople] = React.useState<Presence[]>([]);
   const [text, setText] = React.useState("");
   const [view, setView] = React.useState<EditorView | null>(null);
+  const readRef = React.useRef<HTMLDivElement>(null);
+  const slideRef = React.useRef<HTMLDivElement>(null);
   const [cursor, setCursor] = React.useState<Cursor>(NO_CURSOR);
   const [layout, setLayout] = React.useState<Layout>("split");
   const [presenting, setPresenting] = React.useState<number | null>(null);
@@ -324,7 +326,7 @@ export function MarkdownOffice({ entry: first, onClose }: { entry: Entry; onClos
           // The strip scrolls in the height the window leaves it. Without
           // min-h-0 the column grows with the slides and the shell clips them.
           <aside className="flex h-full min-h-0 w-52 shrink-0 flex-col overflow-hidden border-r border-hair bg-surface max-md:hidden">
-            <Filmstrip slides={slides} current={current} resolver={resolver} onPick={goToSlide} />
+            <Filmstrip slides={slides} current={current} resolver={resolver} onPick={goToSlide} view={view} />
           </aside>
         )}
         <section className={cn("min-h-0 min-w-0 flex-1 bg-surface", !showEditor && "hidden", showRead && "border-r border-hair")}>
@@ -347,8 +349,9 @@ export function MarkdownOffice({ entry: first, onClose }: { entry: Entry; onClos
         </section>
         {showRead && rendered !== null && (
           <section className="min-h-0 min-w-0 flex-1 overflow-y-auto px-4 py-6 sm:px-8" data-testid="md-read">
+            <ReaderQuickActions container={readRef} app="office" path={entry.path} title={entry.name} />
             {/* The document as a page, the way it prints. */}
-            <div className="mx-auto min-h-full max-w-3xl rounded-card bg-surface px-6 py-8 shadow-card ring-1 ring-line sm:px-12 sm:py-10">
+            <div ref={readRef} className="mx-auto min-h-full max-w-3xl rounded-card bg-surface px-6 py-8 shadow-card ring-1 ring-line sm:px-12 sm:py-10">
               <NoteView
                 path={rel}
                 rendered={rendered}
@@ -363,7 +366,8 @@ export function MarkdownOffice({ entry: first, onClose }: { entry: Entry; onClos
           </section>
         )}
         {deck && (
-          <section className="flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-auto bg-sunk p-6" data-testid="md-stage">
+          <section ref={slideRef} className="flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-auto bg-sunk p-6" data-testid="md-stage">
+            <ReaderQuickActions container={slideRef} app="office" path={entry.path} title={entry.name} />
             {slides[current] !== undefined && (
               <SlideView slide={slides[current]} resolver={resolver} className="max-w-full rounded-card shadow-card ring-1 ring-line" current />
             )}

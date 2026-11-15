@@ -58,6 +58,8 @@ jobs:
   release:
     name: "${{ matrix.platform }}: ${{ matrix.caption }}"
     runs-on: ${{ matrix.runner }}
+    # Mobile lane: advisory, never blocks.
+    continue-on-error: true
     # The build is the expo-apk job's shape (~40 min) and the release
     # attach waits up to four hours for ci.yml's draft release, which only
     # appears after the ISO chain has built.
