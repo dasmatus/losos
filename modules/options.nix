@@ -3790,6 +3790,23 @@ in
       description = "The largest QCOW2 image a buyer may upload, in GiB. Uploads are kept in the registrar's state directory.";
     };
 
+    # ── SkyPilot on the edge (modules/skypilot.nix) ────────────────────────
+    edge.skypilot.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Run the SkyPilot API server on this edge's rke2 cluster, so AI jobs
+        (model serving, fine-tuning, batch) can be scheduled over the boxes
+        that join the mesh. Phase 1 of the SkyPilot mesh-serving work.
+      '';
+    };
+
+    edge.skypilot.port = lib.mkOption {
+      type = lib.types.port;
+      default = 46580;
+      description = "Port the SkyPilot API server listens on.";
+    };
+
     # ── Models split across boxes (edge side, modules/edge-inference.nix) ───
     # Boxes lend memory (losos.inference.lend on the box); the registrar
     # groups lending boxes until a model fits, starts a llama.cpp head here

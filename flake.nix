@@ -649,6 +649,7 @@
           ./modules/edge-credentials.nix
           ./modules/edge-vms.nix
           ./modules/edge-inference.nix
+          ./modules/skypilot.nix
           ./modules/edge-gateway.nix
           ./modules/edge-hidden.nix
           ./modules/edge-exit.nix
