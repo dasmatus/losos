@@ -758,7 +758,12 @@ impl Chat {
     /// assistant joins the chat that invited it, so a direct chat made in
     /// the picker needs no second step. The application service's token
     /// speaks for its own namespace's users.
-    pub fn agent_join(&self, room: &str, agent_localpart: &str, display: &str) -> Result<(), ChatError> {
+    pub fn agent_join(
+        &self,
+        room: &str,
+        agent_localpart: &str,
+        display: &str,
+    ) -> Result<(), ChatError> {
         let inner = self.inner()?;
         let token = inner.as_token()?;
         let agent = self.account(&token, agent_localpart, display)?;
