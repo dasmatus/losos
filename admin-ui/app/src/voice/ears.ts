@@ -33,7 +33,7 @@ export class Ears {
 
   /* Open the ears: the engine and the model, fetched once and kept. */
   static open(progress?: Listen): Promise<Ears> {
-    const worker = new Worker(new URL("./whisper-worker.ts", import.meta.url), { type: "module" });
+    const worker = new Worker(`${(import.meta.env?.BASE_URL ?? "/")}workers/whisper-worker.js`, { type: "module" });
     const threaded = self.crossOriginIsolated === true && typeof SharedArrayBuffer !== "undefined";
     const send = (m: WhisperIn): void => worker.postMessage(m);
     return new Promise((resolve, reject) => {

@@ -27,6 +27,7 @@ import {
   compileAppCss,
   compileAppFrame,
   compileThemeBoot,
+  defines,
   DIST,
   emitBasicMessages,
   emitPageSources,
@@ -53,6 +54,28 @@ export async function buildSite(
 
   if (log) console.log("[build] pages");
   const { chunks, appKeys } = await bundleAll(env, appCss);
+
+  if (log) console.log("[build] workers");
+  await Bun.$`mkdir -p ${DIST}/workers`;
+  for (const worker of [
+    { entry: "src/voice/tts-worker.ts", out: "tts-worker.js" },
+    { entry: "src/voice/whisper-worker.ts", out: "whisper-worker.js" },
+    { entry: "src/calls/e2ee-worker.ts", out: "e2ee-worker.js" },
+  ]) {
+    const result = await Bun.build({
+      entrypoints: [`${ROOT}/${worker.entry}`],
+      outdir: `${DIST}/workers`,
+      target: "browser",
+      format: "esm",
+      minify: true,
+      splitting: false,
+      define: defines(env, true),
+    });
+    if (!result.success) {
+      console.error(result.logs);
+      throw new Error(`worker build failed: ${worker.entry}`);
+    }
+  }
 
   if (log) console.log("[build] theme-boot + app frame");
   await Bun.write(`${DIST}/theme-boot.js`, await compileThemeBoot(true));

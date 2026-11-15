@@ -19,9 +19,18 @@ import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { Avatar } from "./avatar";
 import { directPartner, directRooms, isSpace, localpart, maySend, roomName } from "./model";
-import { suggestContacts } from "@/lib/api";
+import { getTag, suggestContacts, type TagAssistant } from "@/lib/api";
 import { slotState } from "./rtc";
 import { boxPeople } from "./session";
+
+/** The Matrix localpart prefix of every assistant's user id
+ *  (backend/src/tag.rs): `@tag-<slug>:<server>`. */
+const TAG_PREFIX = "tag-";
+
+/** An assistant as a person to start a chat with. */
+function asPerson(a: TagAssistant, server: string): Found {
+  return { user_id: `@${TAG_PREFIX}${a.slug}:${server}`, display_name: a.display };
+}
 
 const ENCRYPTION = { type: EventType.RoomEncryption, state_key: "", content: { algorithm: "m.megolm.v1.aes-sha2" as const } };
 
@@ -161,14 +170,28 @@ function PeoplePicker({ client, onPick, exclude, busy }: { client: MatrixClient;
   React.useEffect(() => {
     let live = true;
     // The person's contacts with a chat address come after the people on
-    // this box (LosOS Contacts, src/contacts/).
+    // this box (LosOS Contacts, src/contacts/), and after both, the
+    // assistants of LosOS Tag as the Matrix users they are
+    // (`@tag-<slug>:<server>`, backend/src/tag.rs): someone can start a
+    // chat with LosOS the way they can with anyone else.
     const contacts = suggestContacts("", "matrix", { limit: 50 }).catch(() => []);
-    void Promise.all([boxPeople().catch(() => []), contacts]).then(([people, book]) => {
+    const tag = getTag().catch(() => null);
+    void Promise.all([boxPeople().catch(() => []), contacts, tag]).then(([people, book, tagView]) => {
       if (!live) return;
       const list: Found[] = people.map((p) => ({ user_id: p.userId, display_name: p.displayName }));
       for (const c of book) {
         if (c.source === "contact" && c.matrixId !== undefined && !list.some((p) => p.user_id === c.matrixId)) {
           list.push({ user_id: c.matrixId, display_name: c.name });
+        }
+      }
+      if (tagView !== null) {
+        const server = client.getDomain();
+        if (server !== null) {
+          for (const a of tagView.assistants) {
+            if (!a.enabled) continue;
+            const person = asPerson(a, server);
+            if (!list.some((p) => p.user_id === person.user_id)) list.push(person);
+          }
         }
       }
       setOnBox(list);

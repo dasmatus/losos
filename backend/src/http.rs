@@ -3264,9 +3264,24 @@ fn listen_tag_events(api: web::Data<Api>) {
     });
 }
 
+/// The joined members of each room the tag listener has pulled, from the
+/// member events in its sync. A room whose only members are a person and
+/// one of Tag's assistants is a direct chat with that assistant: there
+/// every message is an ask, a handle is not needed.
+static ROOM_MEMBERS: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<String, std::collections::HashSet<String>>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+fn members_lock() -> std::sync::MutexGuard<'static, std::collections::HashMap<String, std::collections::HashSet<String>>> {
+    ROOM_MEMBERS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 /// Read one sync answer into the tag's cache and its queues. Notices are
 /// dropped: LosOS Git's posts, and the tag's own answers, are not asks.
 fn tag_hear(api: &Api, body: &serde_json::Value) {
+    tag_accept_invites(api, body);
     let Some(joined) = body
         .pointer("/rooms/join")
         .and_then(serde_json::Value::as_object)
@@ -3274,13 +3289,23 @@ fn tag_hear(api: &Api, body: &serde_json::Value) {
         return;
     };
     for (room, pulled) in joined {
-        let Some(events) = pulled
+        // The state before the timeline first: the member events there are
+        // who the room starts this pull with. Within the timeline the
+        // events keep their order, so a join seen there counts for the
+        // messages after it.
+        let state = pulled
+            .pointer("/state/events")
+            .and_then(serde_json::Value::as_array)
+            .map(|a| a.iter().collect::<Vec<_>>());
+        let timeline = pulled
             .pointer("/timeline/events")
             .and_then(serde_json::Value::as_array)
-        else {
-            continue;
-        };
-        for event in events {
+            .map(|a| a.iter().collect::<Vec<_>>());
+        for event in state.into_iter().flatten().chain(timeline.into_iter().flatten()) {
+            if event.get("type").and_then(serde_json::Value::as_str) == Some("m.room.member") {
+                tag_member_seen(room, event);
+                continue;
+            }
             if event.get("type").and_then(serde_json::Value::as_str) != Some("m.room.message") {
                 continue;
             }
@@ -3298,9 +3323,105 @@ fn tag_hear(api: &Api, body: &serde_json::Value) {
             if text.is_empty() {
                 continue;
             }
-            tag_remember(api, room, sender, &text);
+            let direct = tag_direct_assistant(room, sender);
+            tag_remember(api, room, sender, &text, direct);
         }
     }
+}
+
+/// An invitation of one of Tag's assistants: they join at once, so the
+/// direct chat "Message someone" made works, and the room lands in the
+/// listener's `rooms/join` on the next pull.
+fn tag_accept_invites(api: &Api, body: &serde_json::Value) {
+    let Some(invited) = body
+        .pointer("/rooms/invite")
+        .and_then(serde_json::Value::as_object)
+    else {
+        return;
+    };
+    for (room, pulled) in invited {
+        let Some(events) = pulled
+            .pointer("/invite_state/events")
+            .and_then(serde_json::Value::as_array)
+        else {
+            continue;
+        };
+        for event in events {
+            if event.get("type").and_then(serde_json::Value::as_str) != Some("m.room.member") {
+                continue;
+            }
+            if event
+                .pointer("/content/membership")
+                .and_then(serde_json::Value::as_str)
+                != Some("invite")
+            {
+                continue;
+            }
+            let Some(agent) = event.get("state_key").and_then(serde_json::Value::as_str) else {
+                continue;
+            };
+            let Some(localpart) = agent
+                .strip_prefix('@')
+                .and_then(|s| s.split_once(':'))
+                .map(|(name, _)| name)
+                .filter(|name| name.starts_with(crate::tag::TAG_PREFIX))
+            else {
+                continue;
+            };
+            let display = api
+                .tag
+                .state()
+                .assistants
+                .iter()
+                .find(|a| localpart.strip_prefix(crate::tag::TAG_PREFIX) == Some(a.slug.as_str()))
+                .map(|a| a.display.clone())
+                .unwrap_or_default();
+            match api.chat.agent_join(room, localpart, &display) {
+                Ok(()) => tracing::info!(room = %room, agent = %agent, "an assistant joined the chat that invited it"),
+                Err(e) => tracing::warn!(error = %e, room = %room, agent = %agent, "an invited assistant could not join"),
+            }
+        }
+    }
+}
+
+/// One member event in a room the listener pulls: who the room has joined.
+fn tag_member_seen(room: &str, event: &serde_json::Value) {
+    let Some(user) = event.get("state_key").and_then(serde_json::Value::as_str) else {
+        return;
+    };
+    let Some(membership) = event
+        .pointer("/content/membership")
+        .and_then(serde_json::Value::as_str)
+    else {
+        return;
+    };
+    let mut members = members_lock();
+    let joined = members.entry(room.to_string()).or_default();
+    match membership {
+        "join" => {
+            joined.insert(user.to_string());
+        }
+        "leave" | "ban" => {
+            joined.remove(user);
+            if joined.is_empty() {
+                members.remove(room);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The assistant a room is a direct chat with, when `sender` is its only
+/// other member: there their messages are asks without a handle.
+fn tag_direct_assistant(room: &str, sender: &str) -> Option<String> {
+    let members = members_lock();
+    let room = members.get(room)?;
+    if room.len() != 2 || !room.contains(sender) {
+        return None;
+    }
+    room.iter()
+        .find(|user| **user != sender && user.starts_with("@tag-"))
+        .cloned()
 }
 
 /// A message's own body, capped at [what the cache keeps]
@@ -3317,8 +3438,9 @@ fn text_of(event: &serde_json::Value) -> String {
 
 /// Remember one message, and queue the ask each `@handle` reached. The
 /// sender's own localpart is the person it comes from: the ask runs at its
-/// assistant's clearance ([`State::clearance_of`]).
-fn tag_remember(api: &Api, room: &str, sender: &str, text: &str) {
+/// assistant's clearance ([`State::clearance_of`]). In a direct chat with
+/// one assistant (`direct`) every message is an ask.
+fn tag_remember(api: &Api, room: &str, sender: &str, text: &str, direct: Option<String>) {
     let person = sender
         .strip_prefix('@')
         .and_then(|s| s.split_once(':'))
@@ -3330,7 +3452,8 @@ fn tag_remember(api: &Api, room: &str, sender: &str, text: &str) {
         text: text.to_string(),
     });
     let state = api.tag.state();
-    for assistant in state.reached(text, &[]) {
+    let named: Vec<String> = direct.into_iter().collect();
+    for assistant in state.reached(text, &named) {
         tag_ask_from(api, room, person, assistant, text);
     }
 }
