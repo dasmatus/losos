@@ -2808,10 +2808,7 @@ impl Losos for IoLosos {
         // diverged, which the History pane explains.
         let out = git(&self.paths, false, &["init", "-q"])?;
         if !out.status.success() {
-            anyhow::bail!(
-                "git init: {}",
-                first_line(&out.stderr)
-            );
+            anyhow::bail!("git init: {}", first_line(&out.stderr));
         }
         Ok(())
     }

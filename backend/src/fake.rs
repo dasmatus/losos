@@ -836,7 +836,9 @@ impl Losos for FakeLosos {
 
     fn config_commit(&mut self, subject: &str, body: &str) -> anyhow::Result<Option<String>> {
         if self.broken {
-            anyhow::bail!("git add -A: fatal: not a git repository (or any parent up to mount point /etc)");
+            anyhow::bail!(
+                "git add -A: fatal: not a git repository (or any parent up to mount point /etc)"
+            );
         }
         if !self.dirty && !self.commits.is_empty() {
             return Ok(None);
