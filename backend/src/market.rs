@@ -720,7 +720,7 @@ impl Op {
                 } else {
                     Ok(())
                 }
-            },
+            }
             Op::VmTicket { name, .. } => {
                 if valid_display_name(name) {
                     Ok(())

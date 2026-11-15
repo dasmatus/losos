@@ -112,6 +112,9 @@ pub struct InferenceOpts {
     pub env_dir: String,
     /// Where the heads' sockets are.
     pub socket_dir: String,
+    /// SkyPilot API server base URL. When set, heads are managed as SkyPilot
+    /// serving jobs (endpoint-based) instead of legacy systemd units.
+    pub skypilot_api: Option<String>,
 }
 
 /// A box in a group.
@@ -638,7 +641,7 @@ impl Inference {
         ))?;
         let id = crate::identity::random_hex(8)
             .ok_or_else(|| MarketError::Store("no randomness".into()))?;
-        let group = Group {
+        let mut group = Group {
             id: id.clone(),
             model: model_id.to_string(),
             family: family.to_string(),
@@ -652,7 +655,12 @@ impl Inference {
             volume: Some(HeadSpec::model_volume_name(&model.id)),
             endpoint: None,
         };
-        if let Err(e) = self
+        if let Some(api) = &self.opts.skypilot_api {
+            // SkyPilot-managed serving job (Phase 1 Task 4 / Phase 2): endpoint
+            // registered for the proxy; job lifecycle handled by SkyPilot.
+            group.endpoint = Some(format!("{}/serve/{}", api.trim_end_matches('/'), id));
+            // Keep in Loading until the SkyPilot endpoint reports healthy.
+        } else if let Err(e) = self
             .heads
             .start(&id, &Self::spec(model, &group.members))
             .await

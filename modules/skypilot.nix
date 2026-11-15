@@ -31,6 +31,72 @@ in
     # Drop the pinned manifest into rke2's auto-applied manifests dir.
     environment.etc."rancher/rke2/server/manifests/skypilot.yaml".source = skypilotManifest;
 
+    # Phase 4: fenced namespace/policies for rented compute jobs (non-root,
+    # no host mounts/devices, capped). Admission details are enforced by the
+    # SkyPilot job spec and cluster policy; this manifest provides the baseline
+    # namespace and resource quota hooks.
+    environment.etc."rancher/rke2/server/manifests/skypilot-fenced-jobs.yaml".text =
+      lib.concatStringsSep "\n---\n"
+        [
+          (builtins.toJSON {
+            apiVersion = "v1";
+            kind = "Namespace";
+            metadata = {
+              name = "skypilot-jobs";
+              labels = {
+                "pod-security.kubernetes.io/enforce" = "baseline";
+                "pod-security.kubernetes.io/warn" = "restricted";
+                "losos.dev/fenced" = "true";
+              };
+            };
+          })
+          (builtins.toJSON {
+            apiVersion = "v1";
+            kind = "ResourceQuota";
+            metadata = {
+              name = "skypilot-jobs-default";
+              namespace = "skypilot-jobs";
+            };
+            spec.hard = {
+              "pods" = "100";
+              "requests.cpu" = "256";
+              "requests.memory" = "512Gi";
+              "limits.cpu" = "256";
+              "limits.memory" = "512Gi";
+            };
+          })
+          (builtins.toJSON {
+            apiVersion = "v1";
+            kind = "LimitRange";
+            metadata = {
+              name = "skypilot-jobs-default";
+              namespace = "skypilot-jobs";
+            };
+            spec.limits = [
+              {
+                type = "Container";
+                defaultRequest = {
+                  cpu = "500m";
+                  memory = "512Mi";
+                };
+                default = {
+                  cpu = "2";
+                  memory = "2Gi";
+                };
+              }
+            ];
+          })
+        ];
+
+    # Phase 4: allow-listed rentable images (consumed by registrar/admission).
+    environment.etc."losos/skypilot-rentable-images.json" = lib.mkIf (cfg.rentableImages != [ ]) {
+      text = builtins.toJSON {
+        images = cfg.rentableImages;
+        computePricePerCpuHour = cfg.computePricePerCpuHour;
+        computePricePerMibHour = cfg.computePricePerMibHour;
+      };
+    };
+
     # Surface the API server port to the edge's reverse proxy (TLS + auth
     # handled by the edge's existing front door, like the registrar).
     networking.firewall.allowedTCPPorts = [ cfg.port ];

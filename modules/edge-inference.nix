@@ -104,6 +104,35 @@ in
   config = lib.mkIf (edge.enable && cfg.enable) (
     let
       skypilotOn = edge.skypilot.enable or false;
+
+      # Phase 1 Task 3: seed each catalogue model into a Longhorn volume so
+      # SkyPilot serving jobs mount the model read-only (no runtime download).
+      # One PVC per model id (idempotent apply via rke2 manifests). The copy
+      # from the pinned Nix store path into the volume runs as a one-shot Job
+      # on the edge/server node when the cluster is up.
+      modelVolumeName = id: "llm-model-${id}";
+      seedManifests = lib.concatStringsSep "\n---\n" (
+        map (
+          m:
+          builtins.toJSON {
+            apiVersion = "v1";
+            kind = "PersistentVolumeClaim";
+            metadata = {
+              name = modelVolumeName m.id;
+              namespace = "skypilot";
+              labels = {
+                "app.kubernetes.io/name" = "losos-llm-model";
+                "losos.dev/model" = m.id;
+              };
+            };
+            spec = {
+              accessModes = [ "ReadWriteOnce" ];
+              storageClassName = "longhorn";
+              resources.requests.storage = "64Gi";
+            };
+          }
+        ) cfg.models
+      );
     in
     {
       assertions = [
@@ -134,6 +163,11 @@ in
       environment.etc."losos/inference-models.json".source = catalogue;
       # The registrar reads the catalogue once, at start.
       systemd.services.losos-registrar.restartTriggers = [ catalogue ];
+
+      # Model volume PVCs for SkyPilot serving jobs (idempotent, applied by rke2).
+      environment.etc."rancher/rke2/server/manifests/losos-llm-model-volumes.yaml" = lib.mkIf (
+        skypilotOn && cfg.models != [ ]
+      ) { text = seedManifests; };
 
       users.users.losos-llm = {
         isSystemUser = true;

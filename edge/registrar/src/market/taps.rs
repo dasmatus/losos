@@ -1670,6 +1670,7 @@ mod tests {
                 port_range: (23000, 23100),
                 env_dir: "/nonexistent".into(),
                 socket_dir: "/nonexistent".into(),
+                skypilot_api: None,
             },
             (20000, 20100),
             dir.path().join("inference.json"),

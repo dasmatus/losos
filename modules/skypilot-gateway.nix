@@ -60,7 +60,19 @@ in
       kind: Namespace
       metadata:
         name: skypilot
+        labels:
+          losos.dev/scheduler: gateway-local
+          losos.dev/sharing: kinda-shared
     '';
+
+    # Gateway-local scheduling is for kinda-shared (sharingLocally) capacity
+    # only; official edge/market must not schedule onto this cluster.
+    environment.etc."losos/skypilot-gateway.json".text = builtins.toJSON {
+      role = "gateway-local";
+      sharing = "kinda-shared";
+      marketEligible = false;
+      port = cfg.port;
+    };
 
     networking.firewall.allowedTCPPorts = [ cfg.port ];
   };
