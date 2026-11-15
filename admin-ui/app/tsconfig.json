@@ -4,9 +4,12 @@
   "compilerOptions": {
     "jsx": "react-jsx",
     "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "types": [],
-
     "strict": true,
     "forceConsistentCasingInFileNames": true,
     "noUncheckedIndexedAccess": true,
@@ -18,14 +21,16 @@
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
     "useDefineForClassFields": true,
-
     "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "noEmit": true,
-
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": [
+        "./src/*"
+      ]
     }
   },
-  "include": ["src", "expo-env.d.ts"]
+  "include": [
+    "src"
+  ]
 }
