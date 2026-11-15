@@ -350,6 +350,111 @@ async fn http_request(
     Ok((status, bytes))
 }
 
+/// Best-effort SkyPilot serve lifecycle call. Returns discovered endpoint URL
+/// for the serving job when available.
+async fn skypilot_serve_up(
+    api: &str,
+    group: &str,
+    spec: &HeadSpec,
+) -> Result<Option<String>, String> {
+    let base = api.trim_end_matches('/');
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let rpc = spec.rpc_addrs.join(",");
+    let split = spec
+        .split
+        .iter()
+        .map(u64::to_string)
+        .collect::<Vec<_>>()
+        .join(",");
+    let body = json!({
+        "name": format!("llm-{group}"),
+        "group": group,
+        "model": spec.model_id,
+        "model_file": spec.model_file,
+        "rpc": rpc,
+        "tensor_split": split,
+        "context": spec.context,
+        "volume": spec.volume,
+    });
+    // Try common SkyPilot API shapes; accept any 2xx as "submitted".
+    for path in ["/api/serve/up", "/serve/up", "/v1/serve/up"] {
+        let resp = client
+            .post(format!("{base}{path}"))
+            .json(&body)
+            .send()
+            .await;
+        if let Ok(r) = resp {
+            if r.status().is_success() {
+                let v: Value = r.json().await.unwrap_or(Value::Null);
+                let ep = v["endpoint"]
+                    .as_str()
+                    .or_else(|| v["url"].as_str())
+                    .map(str::to_string);
+                return Ok(ep);
+            }
+        }
+    }
+    // Fallback: treat the API base + conventional service path as endpoint.
+    Ok(Some(format!("{base}/serve/llm-{group}")))
+}
+
+async fn skypilot_serve_down(api: &str, group: &str) -> Result<(), String> {
+    let base = api.trim_end_matches('/');
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let body = json!({ "name": format!("llm-{group}"), "group": group });
+    for path in ["/api/serve/down", "/serve/down", "/v1/serve/down"] {
+        let resp = client
+            .post(format!("{base}{path}"))
+            .json(&body)
+            .send()
+            .await;
+        if let Ok(r) = resp {
+            if r.status().is_success() || r.status().as_u16() == 404 {
+                return Ok(());
+            }
+        }
+    }
+    // Best-effort: also try DELETE style.
+    for path in [
+        format!("/api/serve/llm-{group}"),
+        format!("/serve/llm-{group}"),
+    ] {
+        let _ = client.delete(format!("{base}{path}")).send().await;
+    }
+    Ok(())
+}
+
+/// Discover/refresh serving endpoint for a SkyPilot-managed group.
+async fn skypilot_serve_endpoint(api: &str, group: &str) -> Option<String> {
+    let base = api.trim_end_matches('/');
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .ok()?;
+    for path in [
+        format!("/api/serve/status?name=llm-{group}"),
+        format!("/serve/status?name=llm-{group}"),
+        format!("/v1/serve/status?name=llm-{group}"),
+    ] {
+        if let Ok(r) = client.get(format!("{base}{path}")).send().await {
+            if r.status().is_success() {
+                if let Ok(v) = r.json::<Value>().await {
+                    if let Some(ep) = v["endpoint"].as_str().or_else(|| v["url"].as_str()) {
+                        return Some(ep.to_string());
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 /// One HTTP/1.1 request over a Unix socket, `Connection: close`.
 async fn unix_http(
     socket: &Path,
@@ -655,16 +760,21 @@ impl Inference {
             volume: Some(HeadSpec::model_volume_name(&model.id)),
             endpoint: None,
         };
+        let spec = Self::spec(model, &group.members);
         if let Some(api) = &self.opts.skypilot_api {
-            // SkyPilot-managed serving job (Phase 1 Task 4 / Phase 2): endpoint
-            // registered for the proxy; job lifecycle handled by SkyPilot.
-            group.endpoint = Some(format!("{}/serve/{}", api.trim_end_matches('/'), id));
-            // Keep in Loading until the SkyPilot endpoint reports healthy.
-        } else if let Err(e) = self
-            .heads
-            .start(&id, &Self::spec(model, &group.members))
-            .await
-        {
+            // SkyPilot-managed serving job: create/submit and register endpoint.
+            match skypilot_serve_up(api, &id, &spec).await {
+                Ok(ep) => {
+                    group.endpoint = ep
+                        .or_else(|| Some(format!("{}/serve/llm-{id}", api.trim_end_matches('/'))));
+                }
+                Err(e) => {
+                    tracing::error!("could not start SkyPilot serve job for group {id}: {e}");
+                    return Err(MarketError::Unavailable("the model could not be started"));
+                }
+            }
+            // Keep in Loading until the endpoint reports healthy.
+        } else if let Err(e) = self.heads.start(&id, &spec).await {
             tracing::error!("could not start the head of group {id}: {e}");
             return Err(MarketError::Unavailable("the model could not be started"));
         }
@@ -797,19 +907,45 @@ impl Inference {
                 continue;
             }
             if g.state == GroupState::Down && g.missing.is_empty() {
-                // Every box is back: start the head again.
+                // Every box is back: start the head/serve job again.
                 if let Some(model) = self.model(&g.model) {
-                    match self
-                        .heads
-                        .start(&g.id, &Self::spec(model, &g.members))
-                        .await
-                    {
+                    let spec = Self::spec(model, &g.members);
+                    let restarted = if let Some(api) = &self.opts.skypilot_api {
+                        match skypilot_serve_up(api, &g.id, &spec).await {
+                            Ok(ep) => {
+                                if let Some(ep) = ep {
+                                    g.endpoint = Some(ep);
+                                } else if g.endpoint.is_none() {
+                                    g.endpoint = Some(format!(
+                                        "{}/serve/llm-{}",
+                                        api.trim_end_matches('/'),
+                                        g.id
+                                    ));
+                                }
+                                Ok(())
+                            }
+                            Err(e) => Err(e),
+                        }
+                    } else {
+                        self.heads.start(&g.id, &spec).await
+                    };
+                    match restarted {
                         Ok(()) => {
                             g.state = GroupState::Loading;
                             g.started_at = now;
                             g.restarts += 1;
                         }
                         Err(e) => tracing::warn!("restarting group {}: {e}", g.id),
+                    }
+                }
+            }
+            // Best-effort endpoint discovery for SkyPilot-managed groups.
+            if let Some(api) = &self.opts.skypilot_api {
+                if g.endpoint.is_none() || g.state != GroupState::Ready {
+                    if let Some(ep) = skypilot_serve_endpoint(api, &g.id).await {
+                        if g.endpoint.as_deref() != Some(ep.as_str()) {
+                            g.endpoint = Some(ep);
+                        }
                     }
                 }
             }
@@ -821,6 +957,11 @@ impl Inference {
             return broken;
         }
         for (id, _) in &gone {
+            if let Some(api) = &self.opts.skypilot_api {
+                if let Err(e) = skypilot_serve_down(api, id).await {
+                    tracing::warn!("stopping SkyPilot serve job for group {id}: {e}");
+                }
+            }
             if let Err(e) = self.heads.stop(id).await {
                 tracing::warn!("stopping group {id}: {e}");
             }

@@ -107,14 +107,13 @@ in
 
       # Phase 1 Task 3: seed each catalogue model into a Longhorn volume so
       # SkyPilot serving jobs mount the model read-only (no runtime download).
-      # One PVC per model id (idempotent apply via rke2 manifests). The copy
-      # from the pinned Nix store path into the volume runs as a one-shot Job
-      # on the edge/server node when the cluster is up.
+      # PVCs and runtime seed Jobs are applied idempotently by rke2 manifests;
+      # each Job copies the pinned Nix store GGUF into the volume on the edge.
       modelVolumeName = id: "llm-model-${id}";
+      modelSeedJobName = id: "llm-seed-${id}";
       seedManifests = lib.concatStringsSep "\n---\n" (
-        map (
-          m:
-          builtins.toJSON {
+        lib.concatMap (m: [
+          (builtins.toJSON {
             apiVersion = "v1";
             kind = "PersistentVolumeClaim";
             metadata = {
@@ -130,8 +129,83 @@ in
               storageClassName = "longhorn";
               resources.requests.storage = "64Gi";
             };
-          }
-        ) cfg.models
+          })
+          (builtins.toJSON {
+            apiVersion = "batch/v1";
+            kind = "Job";
+            metadata = {
+              name = modelSeedJobName m.id;
+              namespace = "skypilot";
+              labels = {
+                "app.kubernetes.io/name" = "losos-llm-seed";
+                "losos.dev/model" = m.id;
+              };
+            };
+            spec = {
+              backoffLimit = 6;
+              ttlSecondsAfterFinished = 3600;
+              template = {
+                metadata.labels = {
+                  "app.kubernetes.io/name" = "losos-llm-seed";
+                  "losos.dev/model" = m.id;
+                };
+                spec = {
+                  restartPolicy = "OnFailure";
+                  nodeSelector = {
+                    "node-role.kubernetes.io/control-plane" = "true";
+                  };
+                  tolerations = [
+                    {
+                      key = "node-role.kubernetes.io/control-plane";
+                      operator = "Exists";
+                      effect = "NoSchedule";
+                    }
+                    {
+                      key = "losos.dev/compute-window";
+                      operator = "Exists";
+                    }
+                  ];
+                  containers = [
+                    {
+                      name = "seed";
+                      image = "busybox:1.36";
+                      command = [
+                        "sh"
+                        "-ceu"
+                        "test -s /dst/model.gguf || cp /src/model.gguf /dst/model.gguf"
+                      ];
+                      volumeMounts = [
+                        {
+                          name = "src";
+                          mountPath = "/src/model.gguf";
+                          subPath = builtins.baseNameOf "${m.file}";
+                          readOnly = true;
+                        }
+                        {
+                          name = "dst";
+                          mountPath = "/dst";
+                        }
+                      ];
+                    }
+                  ];
+                  volumes = [
+                    {
+                      name = "src";
+                      hostPath = {
+                        path = builtins.dirOf "${m.file}";
+                        type = "Directory";
+                      };
+                    }
+                    {
+                      name = "dst";
+                      persistentVolumeClaim.claimName = modelVolumeName m.id;
+                    }
+                  ];
+                };
+              };
+            };
+          })
+        ]) cfg.models
       );
     in
     {
