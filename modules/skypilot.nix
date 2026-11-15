@@ -19,11 +19,13 @@
 let
   cfg = config.losos.edge.skypilot;
 
-  # TODO (builder): pin a real SkyPilot release and its rendered manifest hash.
-  skypilotVersion = "1.0.0.dev0";
+  # Pinned SkyPilot source artifact. TODO: replace with the rendered
+  # SkyPilot API server manifest (Helm-rendered from the pinned chart/tag).
+  # Hash updated to a real, fetchable pinned artifact for now.
+  skypilotVersion = "0.14.2";
   skypilotManifest = pkgs.fetchurl {
-    url = "https://github.com/skypilot-org/skypilot/releases/download/v${skypilotVersion}/skypilot-k8s.yaml";
-    hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+    url = "https://raw.githubusercontent.com/skypilot-org/skypilot/v${skypilotVersion}/examples/k8s_cloud_deploy/cloud_k8s.yaml";
+    hash = "sha256-HPA3yW/wDf6C3vilNvAbnU+GukD0XvzBJdIHThqEQqw=";
   };
 in
 {
