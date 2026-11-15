@@ -3272,7 +3272,10 @@ static ROOM_MEMBERS: std::sync::LazyLock<
     std::sync::Mutex<std::collections::HashMap<String, std::collections::HashSet<String>>>,
 > = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
 
-fn members_lock() -> std::sync::MutexGuard<'static, std::collections::HashMap<String, std::collections::HashSet<String>>> {
+fn members_lock() -> std::sync::MutexGuard<
+    'static,
+    std::collections::HashMap<String, std::collections::HashSet<String>>,
+> {
     ROOM_MEMBERS
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -3301,7 +3304,11 @@ fn tag_hear(api: &Api, body: &serde_json::Value) {
             .pointer("/timeline/events")
             .and_then(serde_json::Value::as_array)
             .map(|a| a.iter().collect::<Vec<_>>());
-        for event in state.into_iter().flatten().chain(timeline.into_iter().flatten()) {
+        for event in state
+            .into_iter()
+            .flatten()
+            .chain(timeline.into_iter().flatten())
+        {
             if event.get("type").and_then(serde_json::Value::as_str) == Some("m.room.member") {
                 tag_member_seen(room, event);
                 continue;
@@ -3377,8 +3384,12 @@ fn tag_accept_invites(api: &Api, body: &serde_json::Value) {
                 .map(|a| a.display.clone())
                 .unwrap_or_default();
             match api.chat.agent_join(room, localpart, &display) {
-                Ok(()) => tracing::info!(room = %room, agent = %agent, "an assistant joined the chat that invited it"),
-                Err(e) => tracing::warn!(error = %e, room = %room, agent = %agent, "an invited assistant could not join"),
+                Ok(()) => {
+                    tracing::info!(room = %room, agent = %agent, "an assistant joined the chat that invited it")
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, room = %room, agent = %agent, "an invited assistant could not join")
+                }
             }
         }
     }

@@ -45,10 +45,12 @@ let
   };
 
   applianceLabel = "losos.dev/appliance";
+  # Tolerate all effects (NoSchedule and NoExecute): hosted VMs and their
+  # import/management components must survive the compute-window close that
+  # evicts serving AI jobs (SkyPilot Phase 1 Task 5).
   windowToleration = {
     key = "losos.dev/compute-window";
     operator = "Exists";
-    effect = "NoSchedule";
   };
   onBoxes = {
     nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms = [

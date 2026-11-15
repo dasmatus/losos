@@ -2,11 +2,12 @@
 #
 # A llama.cpp RPC server (`ggml-rpc-server`) holds this box's share of a
 # model's layers and computes on them for a head that runs on the edge
-# (modules/edge-inference.nix). It listens on 127.0.0.1:50052 only. The edge
-# reaches it through this box's own tunnel to the edge: the client carries a
-# second service, `<appliance id>:llm`, beside the box's main one
-# (modules/proxy.nix), and the announce heartbeat tells the edge how much
-# memory the box lends by reading /run/losos-llm/lend.
+# (modules/edge-inference.nix). It listens on 0.0.0.0:50052 so that a head
+# running anywhere in the mesh rke2 cluster can reach it (Phase 1 of the
+# SkyPilot mesh-serving work); the edge also still reaches it through this
+# box's own tunnel as `<appliance id>:llm` (modules/proxy.nix) until Phase 2
+# retires that path. The announce heartbeat tells the edge how much memory
+# the box lends by reading /run/losos-llm/lend.
 #
 # The head is not fully trusted, so the server is fenced in three ways:
 #
@@ -58,6 +59,26 @@ let
     "-m owner ! --uid-owner 0"
     "-j REJECT --reject-with tcp-reset"
   ];
+
+  # Phase 1: the RPC server now listens on 0.0.0.0 so a head pod running
+  # anywhere in the mesh rke2 cluster can reach it. Fence inbound access to
+  # the mesh pod CIDR (10.42.0.0/16) and loopback only; everything else is
+  # rejected. The owner OUTPUT rule above still keeps non-root processes on
+  # the box itself from reaching the port.
+  inputAcceptCluster = lib.concatStringsSep " " [
+    "INPUT -p tcp --dport ${toString port}"
+    "-s 10.42.0.0/16"
+    "-j ACCEPT"
+  ];
+  inputAcceptLoopback = lib.concatStringsSep " " [
+    "INPUT -p tcp --dport ${toString port}"
+    "-s 127.0.0.0/8"
+    "-j ACCEPT"
+  ];
+  inputReject = lib.concatStringsSep " " [
+    "INPUT -p tcp --dport ${toString port}"
+    "-j REJECT --reject-with tcp-reset"
+  ];
 in
 {
   config = lib.mkIf cfg.enable {
@@ -65,9 +86,18 @@ in
       extraCommands = ''
         iptables -w -D ${rule} 2>/dev/null || true
         iptables -w -I ${rule}
+        iptables -w -D ${inputAcceptCluster} 2>/dev/null || true
+        iptables -w -D ${inputAcceptLoopback} 2>/dev/null || true
+        iptables -w -D ${inputReject} 2>/dev/null || true
+        iptables -w -A ${inputAcceptCluster}
+        iptables -w -A ${inputAcceptLoopback}
+        iptables -w -A ${inputReject}
       '';
       extraStopCommands = ''
         iptables -w -D ${rule} 2>/dev/null || true
+        iptables -w -D ${inputAcceptCluster} 2>/dev/null || true
+        iptables -w -D ${inputAcceptLoopback} 2>/dev/null || true
+        iptables -w -D ${inputReject} 2>/dev/null || true
       '';
     };
 
@@ -84,7 +114,7 @@ in
           [
             "${cfg.package}/bin/ggml-rpc-server"
             "-d CPU"
-            "-H 127.0.0.1"
+            "-H 0.0.0.0"
             "-p ${toString port}"
             "-c"
           ]

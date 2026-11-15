@@ -136,9 +136,10 @@ let
   meshSaSecretName = "losos-registrar-token";
 
   # Applied to a mesh node object while its owner's compute window is shut.
-  # NoSchedule rather than NoExecute: a window closing must stop NEW mesh
-  # work landing on someone's box, not rip a half-finished pod out from
-  # under it at 07:00.
+  # NoExecute evicts serving AI jobs at window close (SkyPilot Phase 1 Task 5),
+  # so "share my compute when I sleep" means jobs stop running outside the
+  # window. Workloads that must survive (hosted VMs, CDI importers) tolerate
+  # all effects on this taint.
   computeWindowTaint = "losos.dev/compute-window";
 
   # Agents dial the SUPERVISOR port, not the apiserver's 6443. Handing back
@@ -766,8 +767,10 @@ let
         # there, which is the steady state for an open window.
         kubectl taint node "$node" ${computeWindowTaint}- >/dev/null 2>&1 || true
       else
+        # NoExecute evicts serving AI pods at window close; VMs and other
+        # long-lived workloads tolerate all effects on this taint.
         kubectl taint node "$node" \
-          ${computeWindowTaint}=closed:NoSchedule --overwrite >/dev/null
+          ${computeWindowTaint}=closed:NoExecute --overwrite >/dev/null
       fi
     done
   '';

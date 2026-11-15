@@ -101,120 +101,233 @@ let
   };
 in
 {
-  config = lib.mkIf (edge.enable && cfg.enable) {
-    assertions = [
-      {
-        # The registrar refuses --inference-models without a USDC market and
-        # would not start at all, tunnels and registration included.
-        assertion = edge.market.enable && edge.market.usdc.enable;
-        message = "losos.edge.inference needs losos.edge.market.enable and losos.edge.market.usdc.enable: buyers pay for models in USDC.";
-      }
-      {
-        assertion = cfg.portRange.from <= cfg.portRange.to;
-        message = "losos.edge.inference.portRange: `from` is above `to`.";
-      }
-      {
-        assertion = rangeSize cfg.portRange >= rangeSize tunnelRange;
-        message = "losos.edge.inference.portRange holds ${toString (rangeSize cfg.portRange)} ports, fewer than the ${toString (rangeSize tunnelRange)} of losos.edge.tunnelPortRange: every box needs one.";
-      }
-      {
-        assertion = cfg.portRange.to < tunnelRange.from || cfg.portRange.from > tunnelRange.to;
-        message = "losos.edge.inference.portRange overlaps losos.edge.tunnelPortRange.";
-      }
-      {
-        assertion = lib.length ids == lib.length (lib.unique ids);
-        message = "losos.edge.inference.models: two models have the same id.";
-      }
-    ];
+  config = lib.mkIf (edge.enable && cfg.enable) (
+    let
+      skypilotOn = edge.skypilot.enable or false;
 
-    environment.etc."losos/inference-models.json".source = catalogue;
-    # The registrar reads the catalogue once, at start.
-    systemd.services.losos-registrar.restartTriggers = [ catalogue ];
+      # Phase 1 Task 3: seed each catalogue model into a Longhorn volume so
+      # SkyPilot serving jobs mount the model read-only (no runtime download).
+      # PVCs and runtime seed Jobs are applied idempotently by rke2 manifests;
+      # each Job copies the pinned Nix store GGUF into the volume on the edge.
+      modelVolumeName = id: "llm-model-${id}";
+      modelSeedJobName = id: "llm-seed-${id}";
+      seedManifests = lib.concatStringsSep "\n---\n" (
+        lib.concatMap (m: [
+          (builtins.toJSON {
+            apiVersion = "v1";
+            kind = "PersistentVolumeClaim";
+            metadata = {
+              name = modelVolumeName m.id;
+              namespace = "skypilot";
+              labels = {
+                "app.kubernetes.io/name" = "losos-llm-model";
+                "losos.dev/model" = m.id;
+              };
+            };
+            spec = {
+              accessModes = [ "ReadWriteOnce" ];
+              storageClassName = "longhorn";
+              resources.requests.storage = "64Gi";
+            };
+          })
+          (builtins.toJSON {
+            apiVersion = "batch/v1";
+            kind = "Job";
+            metadata = {
+              name = modelSeedJobName m.id;
+              namespace = "skypilot";
+              labels = {
+                "app.kubernetes.io/name" = "losos-llm-seed";
+                "losos.dev/model" = m.id;
+              };
+            };
+            spec = {
+              backoffLimit = 6;
+              ttlSecondsAfterFinished = 3600;
+              template = {
+                metadata.labels = {
+                  "app.kubernetes.io/name" = "losos-llm-seed";
+                  "losos.dev/model" = m.id;
+                };
+                spec = {
+                  restartPolicy = "OnFailure";
+                  nodeSelector = {
+                    "node-role.kubernetes.io/control-plane" = "true";
+                  };
+                  tolerations = [
+                    {
+                      key = "node-role.kubernetes.io/control-plane";
+                      operator = "Exists";
+                      effect = "NoSchedule";
+                    }
+                    {
+                      key = "losos.dev/compute-window";
+                      operator = "Exists";
+                    }
+                  ];
+                  containers = [
+                    {
+                      name = "seed";
+                      image = "busybox:1.36";
+                      command = [
+                        "sh"
+                        "-ceu"
+                        "test -s /dst/model.gguf || cp /src/model.gguf /dst/model.gguf"
+                      ];
+                      volumeMounts = [
+                        {
+                          name = "src";
+                          mountPath = "/src/model.gguf";
+                          subPath = builtins.baseNameOf "${m.file}";
+                          readOnly = true;
+                        }
+                        {
+                          name = "dst";
+                          mountPath = "/dst";
+                        }
+                      ];
+                    }
+                  ];
+                  volumes = [
+                    {
+                      name = "src";
+                      hostPath = {
+                        path = builtins.dirOf "${m.file}";
+                        type = "Directory";
+                      };
+                    }
+                    {
+                      name = "dst";
+                      persistentVolumeClaim.claimName = modelVolumeName m.id;
+                    }
+                  ];
+                };
+              };
+            };
+          })
+        ]) cfg.models
+      );
+    in
+    {
+      assertions = [
+        {
+          # The registrar refuses --inference-models without a USDC market and
+          # would not start at all, tunnels and registration included.
+          assertion = edge.market.enable && edge.market.usdc.enable;
+          message = "losos.edge.inference needs losos.edge.market.enable and losos.edge.market.usdc.enable: buyers pay for models in USDC.";
+        }
+        {
+          assertion = cfg.portRange.from <= cfg.portRange.to;
+          message = "losos.edge.inference.portRange: `from` is above `to`.";
+        }
+        {
+          assertion = rangeSize cfg.portRange >= rangeSize tunnelRange;
+          message = "losos.edge.inference.portRange holds ${toString (rangeSize cfg.portRange)} ports, fewer than the ${toString (rangeSize tunnelRange)} of losos.edge.tunnelPortRange: every box needs one.";
+        }
+        {
+          assertion = cfg.portRange.to < tunnelRange.from || cfg.portRange.from > tunnelRange.to;
+          message = "losos.edge.inference.portRange overlaps losos.edge.tunnelPortRange.";
+        }
+        {
+          assertion = lib.length ids == lib.length (lib.unique ids);
+          message = "losos.edge.inference.models: two models have the same id.";
+        }
+      ];
 
-    users.users.losos-llm = {
-      isSystemUser = true;
-      group = "losos-llm";
-      description = "Heads of models split across boxes";
-    };
-    users.groups.losos-llm = { };
+      environment.etc."losos/inference-models.json".source = catalogue;
+      # The registrar reads the catalogue once, at start.
+      systemd.services.losos-registrar.restartTriggers = [ catalogue ];
 
-    systemd.tmpfiles.rules = [
-      "d ${envDir} 0755 root root - -"
-      "d ${socketDir} 0750 losos-llm losos-llm - -"
-      "L+ /etc/traefik/dynamic/register-llm-chat.yml - - - - ${chatYml}"
-    ];
+      # Model volume PVCs for SkyPilot serving jobs (idempotent, applied by rke2).
+      environment.etc."rancher/rke2/server/manifests/losos-llm-model-volumes.yaml" = lib.mkIf (
+        skypilotOn && cfg.models != [ ]
+      ) { text = seedManifests; };
 
-    networking.firewall = lib.mkIf config.networking.firewall.enable {
-      extraCommands = ''
-        iptables -w -D ${rule} 2>/dev/null || true
-        iptables -w -I ${rule}
-      '';
-      extraStopCommands = ''
-        iptables -w -D ${rule} 2>/dev/null || true
-      '';
-    };
-
-    systemd.services."losos-llm-head@" = {
-      description = "Head of a model split across boxes, group %i";
-      after = [ "network.target" ];
-      serviceConfig = {
-        EnvironmentFile = "${envDir}/%i.env";
-        # A socket left by a head that did not stop cleanly would make the
-        # bind fail.
-        ExecStartPre = "${pkgs.coreutils}/bin/rm -f ${socketDir}/%i.sock";
-        ExecStart = lib.concatStringsSep " " [
-          "${cfg.package}/bin/llama-server"
-          "-m \${LLM_MODEL}"
-          "--rpc \${LLM_RPC}"
-          "-ngl 999"
-          "-ts \${LLM_SPLIT}"
-          "-c \${LLM_CTX}"
-          "-np 1"
-          "--no-webui"
-          "--host ${socketDir}/%i.sock"
-        ];
-        ExecStopPost = "${pkgs.coreutils}/bin/rm -f ${socketDir}/%i.sock";
-        Restart = "no";
-        User = "losos-llm";
-        Group = "losos-llm";
-        ReadWritePaths = [ socketDir ];
-        UMask = "0007";
-
-        CapabilityBoundingSet = "";
-        AmbientCapabilities = "";
-        NoNewPrivileges = true;
-        ProtectSystem = "strict";
-        ProtectHome = true;
-        PrivateTmp = true;
-        PrivateDevices = true;
-        PrivateIPC = true;
-        ProtectProc = "invisible";
-        ProtectKernelTunables = true;
-        ProtectKernelModules = true;
-        ProtectKernelLogs = true;
-        ProtectControlGroups = true;
-        ProtectClock = true;
-        ProtectHostname = true;
-        # TCP to the boxes' RPC ports on loopback, and its own socket.
-        RestrictAddressFamilies = [
-          "AF_INET"
-          "AF_UNIX"
-        ];
-        IPAddressAllow = "localhost";
-        IPAddressDeny = "any";
-        RestrictNamespaces = true;
-        RestrictRealtime = true;
-        RestrictSUIDSGID = true;
-        LockPersonality = true;
-        MemoryDenyWriteExecute = true;
-        RemoveIPC = true;
-        SystemCallArchitectures = "native";
-        SystemCallFilter = [
-          "@system-service"
-          "~@privileged"
-        ];
-        SystemCallErrorNumber = "EPERM";
+      users.users.losos-llm = {
+        isSystemUser = true;
+        group = "losos-llm";
+        description = "Heads of models split across boxes";
       };
-    };
-  };
+      users.groups.losos-llm = { };
+
+      systemd.tmpfiles.rules = [
+        "d ${envDir} 0755 root root - -"
+        "d ${socketDir} 0750 losos-llm losos-llm - -"
+        "L+ /etc/traefik/dynamic/register-llm-chat.yml - - - - ${chatYml}"
+      ];
+
+      networking.firewall = lib.mkIf config.networking.firewall.enable {
+        extraCommands = ''
+          iptables -w -D ${rule} 2>/dev/null || true
+          iptables -w -I ${rule}
+        '';
+        extraStopCommands = ''
+          iptables -w -D ${rule} 2>/dev/null || true
+        '';
+      };
+
+      systemd.services."losos-llm-head@" = lib.mkIf (!skypilotOn) {
+        description = "Head of a model split across boxes, group %i";
+        after = [ "network.target" ];
+        serviceConfig = {
+          EnvironmentFile = "${envDir}/%i.env";
+          # A socket left by a head that did not stop cleanly would make the
+          # bind fail.
+          ExecStartPre = "${pkgs.coreutils}/bin/rm -f ${socketDir}/%i.sock";
+          ExecStart = lib.concatStringsSep " " [
+            "${cfg.package}/bin/llama-server"
+            "-m \${LLM_MODEL}"
+            "--rpc \${LLM_RPC}"
+            "-ngl 999"
+            "-ts \${LLM_SPLIT}"
+            "-c \${LLM_CTX}"
+            "-np 1"
+            "--no-webui"
+            "--host ${socketDir}/%i.sock"
+          ];
+          ExecStopPost = "${pkgs.coreutils}/bin/rm -f ${socketDir}/%i.sock";
+          Restart = "no";
+          User = "losos-llm";
+          Group = "losos-llm";
+          ReadWritePaths = [ socketDir ];
+          UMask = "0007";
+
+          CapabilityBoundingSet = "";
+          AmbientCapabilities = "";
+          NoNewPrivileges = true;
+          ProtectSystem = "strict";
+          ProtectHome = true;
+          PrivateTmp = true;
+          PrivateDevices = true;
+          PrivateIPC = true;
+          ProtectProc = "invisible";
+          ProtectKernelTunables = true;
+          ProtectKernelModules = true;
+          ProtectKernelLogs = true;
+          ProtectControlGroups = true;
+          ProtectClock = true;
+          ProtectHostname = true;
+          # TCP to the boxes' RPC ports on loopback, and its own socket.
+          RestrictAddressFamilies = [
+            "AF_INET"
+            "AF_UNIX"
+          ];
+          IPAddressAllow = "localhost";
+          IPAddressDeny = "any";
+          RestrictNamespaces = true;
+          RestrictRealtime = true;
+          RestrictSUIDSGID = true;
+          LockPersonality = true;
+          MemoryDenyWriteExecute = true;
+          RemoveIPC = true;
+          SystemCallArchitectures = "native";
+          SystemCallFilter = [
+            "@system-service"
+            "~@privileged"
+          ];
+          SystemCallErrorNumber = "EPERM";
+        };
+      };
+    }
+  );
 }
