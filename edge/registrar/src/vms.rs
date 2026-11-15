@@ -490,7 +490,6 @@ pub fn vm_manifest(
                     "tolerations": [{
                         "key": WINDOW_TAINT,
                         "operator": "Exists",
-                        "effect": "NoSchedule",
                     }],
                     "domain": domain,
                     "networks": [{ "name": "default", "pod": {} }],

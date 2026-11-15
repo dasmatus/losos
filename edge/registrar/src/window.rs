@@ -5,8 +5,8 @@
 //! carries all three to the edge on `/cluster/join`. The edge records them per
 //! node and the reconciler republishes the whole set to
 //! `--compute-windows-file`, which `losos-mesh-taint.service` reads every five
-//! minutes and turns into `losos.dev/compute-window=closed:NoSchedule` on the
-//! nodes whose window is shut.
+//! minutes and turns into `losos.dev/compute-window=closed:NoExecute` on the
+//! nodes whose window is shut (evicting serving jobs; VMs tolerate all effects).
 //!
 //! **The taint has to be applied from the edge.** Kubernetes' `NodeRestriction`
 //! admission plugin forbids a kubelet from editing its own node's taints, so

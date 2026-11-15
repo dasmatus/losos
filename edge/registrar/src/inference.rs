@@ -155,6 +155,15 @@ pub struct Group {
     /// Times the head was started again since it last answered.
     #[serde(default)]
     pub restarts: u32,
+    /// The Longhorn volume holding the catalogue model file for this group
+    /// (seeded once from the pinned store path). Serving jobs mount it read-only.
+    /// `None` for legacy/systemd-head groups.
+    #[serde(default)]
+    pub volume: Option<String>,
+    /// HTTP endpoint of a SkyPilot-managed serving job for this group.
+    /// When set, requests go here instead of the legacy unix socket head.
+    #[serde(default)]
+    pub endpoint: Option<String>,
 }
 
 /// What a head's `/health` says.
@@ -181,29 +190,35 @@ struct Saved {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HeadSpec {
     pub model_file: String,
+    pub model_id: String,
     pub ports: Vec<u16>,
+    /// RPC addresses for each member (host:port over cluster fabric for SkyPilot).
+    pub rpc_addrs: Vec<String>,
     /// Each member's share of the layers, in the order of `ports`.
     pub split: Vec<u64>,
     pub context: u32,
+    /// Longhorn volume name holding the seeded model file (SkyPilot path).
+    pub volume: Option<String>,
 }
 
 impl HeadSpec {
-    /// The head unit's environment file.
+    /// The head unit's environment file (legacy systemd path).
     #[must_use]
     pub fn env(&self) -> String {
         let join = |v: Vec<String>| v.join(",");
         format!(
             "LLM_MODEL={}\nLLM_RPC={}\nLLM_SPLIT={}\nLLM_CTX={}\n",
             self.model_file,
-            join(
-                self.ports
-                    .iter()
-                    .map(|p| format!("127.0.0.1:{p}"))
-                    .collect()
-            ),
+            join(self.rpc_addrs.clone()),
             join(self.split.iter().map(u64::to_string).collect()),
             self.context,
         )
+    }
+
+    /// Stable volume name for a catalogue model (idempotent seeding).
+    #[must_use]
+    pub fn model_volume_name(model_id: &str) -> String {
+        format!("llm-model-{model_id}")
     }
 }
 
@@ -298,6 +313,38 @@ impl Heads for SystemdHeads {
                 .map_err(|_| "the model took too long to answer".to_string())?
         })
     }
+}
+
+/// One HTTP request to a SkyPilot-managed serving endpoint.
+async fn http_request(
+    base: &str,
+    method: &str,
+    path: &str,
+    body: Option<Vec<u8>>,
+    timeout: Duration,
+) -> Result<(u16, Vec<u8>), String> {
+    let url = format!("{}{}", base.trim_end_matches('/'), path);
+    let client = reqwest::Client::builder()
+        .timeout(timeout)
+        .build()
+        .map_err(|e| e.to_string())?;
+    let req = match method {
+        "GET" => client.get(&url),
+        "POST" => client.post(&url),
+        _ => return Err(format!("unsupported method {method}")),
+    };
+    let req = if let Some(b) = body {
+        req.header("content-type", "application/json").body(b)
+    } else {
+        req
+    };
+    let resp = req.send().await.map_err(|e| e.to_string())?;
+    let status = resp.status().as_u16();
+    let bytes = resp.bytes().await.map_err(|e| e.to_string())?.to_vec();
+    if bytes.len() > MAX_REPLY {
+        return Err("the model's answer is too large".into());
+    }
+    Ok((status, bytes))
 }
 
 /// One HTTP/1.1 request over a Unix socket, `Connection: close`.
@@ -538,9 +585,15 @@ impl Inference {
     fn spec(model: &Model, members: &[Member]) -> HeadSpec {
         HeadSpec {
             model_file: model.file.clone(),
+            model_id: model.id.clone(),
             ports: members.iter().map(|m| m.port).collect(),
+            rpc_addrs: members
+                .iter()
+                .map(|m| format!("127.0.0.1:{}", m.port))
+                .collect(),
             split: members.iter().map(|m| m.mib).collect(),
             context: model.context,
+            volume: Some(HeadSpec::model_volume_name(&model.id)),
         }
     }
 
@@ -596,6 +649,8 @@ impl Inference {
             missing: BTreeMap::new(),
             idle_since: None,
             restarts: 0,
+            volume: Some(HeadSpec::model_volume_name(&model.id)),
+            endpoint: None,
         };
         if let Err(e) = self
             .heads
@@ -780,11 +835,21 @@ impl Inference {
     }
 
     async fn health(&self, group: &str) -> Health {
-        match self
-            .heads
-            .request(group, "GET", "/health", None, Duration::from_secs(5))
+        let endpoint = self
+            .saved
+            .lock()
             .await
-        {
+            .groups
+            .get(group)
+            .and_then(|g| g.endpoint.clone());
+        let result = if let Some(ep) = endpoint {
+            http_request(&ep, "GET", "/health", None, Duration::from_secs(5)).await
+        } else {
+            self.heads
+                .request(group, "GET", "/health", None, Duration::from_secs(5))
+                .await
+        };
+        match result {
             Ok((200, _)) => Health::Up,
             // llama-server answers 503 while it loads.
             Ok(_) => Health::Loading,
@@ -862,14 +927,24 @@ impl Inference {
         secs: u64,
     ) -> Result<Value, MarketError> {
         let bytes = serde_json::to_vec(body)?;
-        let (status, reply) = self
-            .heads
-            .request(group, "POST", path, Some(bytes), Duration::from_secs(secs))
+        let endpoint = self
+            .saved
+            .lock()
             .await
-            .map_err(|e| {
-                tracing::warn!("group {group} {path}: {e}");
-                MarketError::Unavailable("the model is not answering right now; try again soon")
-            })?;
+            .groups
+            .get(group)
+            .and_then(|g| g.endpoint.clone());
+        let result = if let Some(ep) = endpoint {
+            http_request(&ep, "POST", path, Some(bytes), Duration::from_secs(secs)).await
+        } else {
+            self.heads
+                .request(group, "POST", path, Some(bytes), Duration::from_secs(secs))
+                .await
+        };
+        let (status, reply) = result.map_err(|e| {
+            tracing::warn!("group {group} {path}: {e}");
+            MarketError::Unavailable("the model is not answering right now; try again soon")
+        })?;
         if status == 400 {
             return Err(MarketError::Invalid("the model refused the request"));
         }
