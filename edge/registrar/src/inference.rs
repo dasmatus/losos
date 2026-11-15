@@ -1291,9 +1291,12 @@ mod tests {
     fn the_head_is_told_every_box_and_its_share() {
         let spec = HeadSpec {
             model_file: "/nix/store/x-model.gguf".into(),
+            model_id: "x".into(),
             ports: vec![23001, 23007],
+            rpc_addrs: vec!["127.0.0.1:23001".into(), "127.0.0.1:23007".into()],
             split: vec![8192, 24576],
             context: 4096,
+            volume: None,
         };
         assert_eq!(
             spec.env(),
