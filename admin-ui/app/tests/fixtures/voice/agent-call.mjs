@@ -44,14 +44,18 @@ const bundle = async (entry) => {
 };
 
 const harness = await bundle(here('fixtures/voice/harness.ts'));
+const e2ee = await bundle(here('../src/calls/e2ee-worker.ts'));
 const files = {
-  // Started by name from the harness, and by the agent's own session, which
-  // takes the page's default: `new Worker(new URL('./e2ee-worker.ts', ...))`.
-  '/e2ee-worker.js': await bundle(here('../src/calls/e2ee-worker.ts')),
-  // The workers the page starts by `new Worker(new URL('./x.ts', import.meta.url))`.
-  '/e2ee-worker.ts': await bundle(here('../src/calls/e2ee-worker.ts')),
-  '/whisper-worker.ts': await bundle(here('../src/voice/whisper-worker.ts')),
-  '/tts-worker.ts': await bundle(here('../src/voice/tts-worker.ts')),
+  // Started by name from the harness.
+  '/e2ee-worker.js': e2ee,
+  // The workers at the paths the page starts them from: the built page has
+  // them in dist/workers/ (scripts/build.ts) and names them
+  // `${BASE_URL}workers/<name>.js` — the mouth (src/voice/mouth.ts), the
+  // ears (src/voice/ears.ts) and the page's default e2ee worker
+  // (src/calls/session.ts), which the agent's own session takes.
+  '/workers/e2ee-worker.js': e2ee,
+  '/workers/tts-worker.js': await bundle(here('../src/voice/tts-worker.ts')),
+  '/workers/whisper-worker.js': await bundle(here('../src/voice/whisper-worker.ts')),
 };
 
 /* What the box's assistant is asked, and how it answers. */
