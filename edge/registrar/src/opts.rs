@@ -540,6 +540,7 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                         socket_dir: arg(&rest, "--llm-socket-dir")
                             .unwrap_or("/run/losos-llm-heads")
                             .to_string(),
+                        skypilot_api: arg(&rest, "--skypilot-api").map(str::to_string),
                     }),
                 },
                 gateway: arg(&rest, "--gateway-key-file").map(|key| crate::gateway::GatewayOpts {

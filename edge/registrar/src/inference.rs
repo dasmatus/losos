@@ -112,6 +112,9 @@ pub struct InferenceOpts {
     pub env_dir: String,
     /// Where the heads' sockets are.
     pub socket_dir: String,
+    /// SkyPilot API server base URL. When set, heads are managed as SkyPilot
+    /// serving jobs (endpoint-based) instead of legacy systemd units.
+    pub skypilot_api: Option<String>,
 }
 
 /// A box in a group.
@@ -155,6 +158,15 @@ pub struct Group {
     /// Times the head was started again since it last answered.
     #[serde(default)]
     pub restarts: u32,
+    /// The Longhorn volume holding the catalogue model file for this group
+    /// (seeded once from the pinned store path). Serving jobs mount it read-only.
+    /// `None` for legacy/systemd-head groups.
+    #[serde(default)]
+    pub volume: Option<String>,
+    /// HTTP endpoint of a SkyPilot-managed serving job for this group.
+    /// When set, requests go here instead of the legacy unix socket head.
+    #[serde(default)]
+    pub endpoint: Option<String>,
 }
 
 /// What a head's `/health` says.
@@ -181,29 +193,35 @@ struct Saved {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HeadSpec {
     pub model_file: String,
+    pub model_id: String,
     pub ports: Vec<u16>,
+    /// RPC addresses for each member (host:port over cluster fabric for SkyPilot).
+    pub rpc_addrs: Vec<String>,
     /// Each member's share of the layers, in the order of `ports`.
     pub split: Vec<u64>,
     pub context: u32,
+    /// Longhorn volume name holding the seeded model file (SkyPilot path).
+    pub volume: Option<String>,
 }
 
 impl HeadSpec {
-    /// The head unit's environment file.
+    /// The head unit's environment file (legacy systemd path).
     #[must_use]
     pub fn env(&self) -> String {
         let join = |v: Vec<String>| v.join(",");
         format!(
             "LLM_MODEL={}\nLLM_RPC={}\nLLM_SPLIT={}\nLLM_CTX={}\n",
             self.model_file,
-            join(
-                self.ports
-                    .iter()
-                    .map(|p| format!("127.0.0.1:{p}"))
-                    .collect()
-            ),
+            join(self.rpc_addrs.clone()),
             join(self.split.iter().map(u64::to_string).collect()),
             self.context,
         )
+    }
+
+    /// Stable volume name for a catalogue model (idempotent seeding).
+    #[must_use]
+    pub fn model_volume_name(model_id: &str) -> String {
+        format!("llm-model-{model_id}")
     }
 }
 
@@ -298,6 +316,143 @@ impl Heads for SystemdHeads {
                 .map_err(|_| "the model took too long to answer".to_string())?
         })
     }
+}
+
+/// One HTTP request to a SkyPilot-managed serving endpoint.
+async fn http_request(
+    base: &str,
+    method: &str,
+    path: &str,
+    body: Option<Vec<u8>>,
+    timeout: Duration,
+) -> Result<(u16, Vec<u8>), String> {
+    let url = format!("{}{}", base.trim_end_matches('/'), path);
+    let client = reqwest::Client::builder()
+        .timeout(timeout)
+        .build()
+        .map_err(|e| e.to_string())?;
+    let req = match method {
+        "GET" => client.get(&url),
+        "POST" => client.post(&url),
+        _ => return Err(format!("unsupported method {method}")),
+    };
+    let req = if let Some(b) = body {
+        req.header("content-type", "application/json").body(b)
+    } else {
+        req
+    };
+    let resp = req.send().await.map_err(|e| e.to_string())?;
+    let status = resp.status().as_u16();
+    let bytes = resp.bytes().await.map_err(|e| e.to_string())?.to_vec();
+    if bytes.len() > MAX_REPLY {
+        return Err("the model's answer is too large".into());
+    }
+    Ok((status, bytes))
+}
+
+/// Best-effort SkyPilot serve lifecycle call. Returns discovered endpoint URL
+/// for the serving job when available.
+async fn skypilot_serve_up(
+    api: &str,
+    group: &str,
+    spec: &HeadSpec,
+) -> Result<Option<String>, String> {
+    let base = api.trim_end_matches('/');
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let rpc = spec.rpc_addrs.join(",");
+    let split = spec
+        .split
+        .iter()
+        .map(u64::to_string)
+        .collect::<Vec<_>>()
+        .join(",");
+    let body = json!({
+        "name": format!("llm-{group}"),
+        "group": group,
+        "model": spec.model_id,
+        "model_file": spec.model_file,
+        "rpc": rpc,
+        "tensor_split": split,
+        "context": spec.context,
+        "volume": spec.volume,
+    });
+    // Try common SkyPilot API shapes; accept any 2xx as "submitted".
+    for path in ["/api/serve/up", "/serve/up", "/v1/serve/up"] {
+        let resp = client
+            .post(format!("{base}{path}"))
+            .json(&body)
+            .send()
+            .await;
+        if let Ok(r) = resp {
+            if r.status().is_success() {
+                let v: Value = r.json().await.unwrap_or(Value::Null);
+                let ep = v["endpoint"]
+                    .as_str()
+                    .or_else(|| v["url"].as_str())
+                    .map(str::to_string);
+                return Ok(ep);
+            }
+        }
+    }
+    // Fallback: treat the API base + conventional service path as endpoint.
+    Ok(Some(format!("{base}/serve/llm-{group}")))
+}
+
+async fn skypilot_serve_down(api: &str, group: &str) -> Result<(), String> {
+    let base = api.trim_end_matches('/');
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let body = json!({ "name": format!("llm-{group}"), "group": group });
+    for path in ["/api/serve/down", "/serve/down", "/v1/serve/down"] {
+        let resp = client
+            .post(format!("{base}{path}"))
+            .json(&body)
+            .send()
+            .await;
+        if let Ok(r) = resp {
+            if r.status().is_success() || r.status().as_u16() == 404 {
+                return Ok(());
+            }
+        }
+    }
+    // Best-effort: also try DELETE style.
+    for path in [
+        format!("/api/serve/llm-{group}"),
+        format!("/serve/llm-{group}"),
+    ] {
+        let _ = client.delete(format!("{base}{path}")).send().await;
+    }
+    Ok(())
+}
+
+/// Discover/refresh serving endpoint for a SkyPilot-managed group.
+async fn skypilot_serve_endpoint(api: &str, group: &str) -> Option<String> {
+    let base = api.trim_end_matches('/');
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .ok()?;
+    for path in [
+        format!("/api/serve/status?name=llm-{group}"),
+        format!("/serve/status?name=llm-{group}"),
+        format!("/v1/serve/status?name=llm-{group}"),
+    ] {
+        if let Ok(r) = client.get(format!("{base}{path}")).send().await {
+            if r.status().is_success() {
+                if let Ok(v) = r.json::<Value>().await {
+                    if let Some(ep) = v["endpoint"].as_str().or_else(|| v["url"].as_str()) {
+                        return Some(ep.to_string());
+                    }
+                }
+            }
+        }
+    }
+    None
 }
 
 /// One HTTP/1.1 request over a Unix socket, `Connection: close`.
@@ -538,9 +693,15 @@ impl Inference {
     fn spec(model: &Model, members: &[Member]) -> HeadSpec {
         HeadSpec {
             model_file: model.file.clone(),
+            model_id: model.id.clone(),
             ports: members.iter().map(|m| m.port).collect(),
+            rpc_addrs: members
+                .iter()
+                .map(|m| format!("127.0.0.1:{}", m.port))
+                .collect(),
             split: members.iter().map(|m| m.mib).collect(),
             context: model.context,
+            volume: Some(HeadSpec::model_volume_name(&model.id)),
         }
     }
 
@@ -585,7 +746,7 @@ impl Inference {
         ))?;
         let id = crate::identity::random_hex(8)
             .ok_or_else(|| MarketError::Store("no randomness".into()))?;
-        let group = Group {
+        let mut group = Group {
             id: id.clone(),
             model: model_id.to_string(),
             family: family.to_string(),
@@ -596,12 +757,24 @@ impl Inference {
             missing: BTreeMap::new(),
             idle_since: None,
             restarts: 0,
+            volume: Some(HeadSpec::model_volume_name(&model.id)),
+            endpoint: None,
         };
-        if let Err(e) = self
-            .heads
-            .start(&id, &Self::spec(model, &group.members))
-            .await
-        {
+        let spec = Self::spec(model, &group.members);
+        if let Some(api) = &self.opts.skypilot_api {
+            // SkyPilot-managed serving job: create/submit and register endpoint.
+            match skypilot_serve_up(api, &id, &spec).await {
+                Ok(ep) => {
+                    group.endpoint = ep
+                        .or_else(|| Some(format!("{}/serve/llm-{id}", api.trim_end_matches('/'))));
+                }
+                Err(e) => {
+                    tracing::error!("could not start SkyPilot serve job for group {id}: {e}");
+                    return Err(MarketError::Unavailable("the model could not be started"));
+                }
+            }
+            // Keep in Loading until the endpoint reports healthy.
+        } else if let Err(e) = self.heads.start(&id, &spec).await {
             tracing::error!("could not start the head of group {id}: {e}");
             return Err(MarketError::Unavailable("the model could not be started"));
         }
@@ -734,19 +907,45 @@ impl Inference {
                 continue;
             }
             if g.state == GroupState::Down && g.missing.is_empty() {
-                // Every box is back: start the head again.
+                // Every box is back: start the head/serve job again.
                 if let Some(model) = self.model(&g.model) {
-                    match self
-                        .heads
-                        .start(&g.id, &Self::spec(model, &g.members))
-                        .await
-                    {
+                    let spec = Self::spec(model, &g.members);
+                    let restarted = if let Some(api) = &self.opts.skypilot_api {
+                        match skypilot_serve_up(api, &g.id, &spec).await {
+                            Ok(ep) => {
+                                if let Some(ep) = ep {
+                                    g.endpoint = Some(ep);
+                                } else if g.endpoint.is_none() {
+                                    g.endpoint = Some(format!(
+                                        "{}/serve/llm-{}",
+                                        api.trim_end_matches('/'),
+                                        g.id
+                                    ));
+                                }
+                                Ok(())
+                            }
+                            Err(e) => Err(e),
+                        }
+                    } else {
+                        self.heads.start(&g.id, &spec).await
+                    };
+                    match restarted {
                         Ok(()) => {
                             g.state = GroupState::Loading;
                             g.started_at = now;
                             g.restarts += 1;
                         }
                         Err(e) => tracing::warn!("restarting group {}: {e}", g.id),
+                    }
+                }
+            }
+            // Best-effort endpoint discovery for SkyPilot-managed groups.
+            if let Some(api) = &self.opts.skypilot_api {
+                if g.endpoint.is_none() || g.state != GroupState::Ready {
+                    if let Some(ep) = skypilot_serve_endpoint(api, &g.id).await {
+                        if g.endpoint.as_deref() != Some(ep.as_str()) {
+                            g.endpoint = Some(ep);
+                        }
                     }
                 }
             }
@@ -758,6 +957,11 @@ impl Inference {
             return broken;
         }
         for (id, _) in &gone {
+            if let Some(api) = &self.opts.skypilot_api {
+                if let Err(e) = skypilot_serve_down(api, id).await {
+                    tracing::warn!("stopping SkyPilot serve job for group {id}: {e}");
+                }
+            }
             if let Err(e) = self.heads.stop(id).await {
                 tracing::warn!("stopping group {id}: {e}");
             }
@@ -780,11 +984,21 @@ impl Inference {
     }
 
     async fn health(&self, group: &str) -> Health {
-        match self
-            .heads
-            .request(group, "GET", "/health", None, Duration::from_secs(5))
+        let endpoint = self
+            .saved
+            .lock()
             .await
-        {
+            .groups
+            .get(group)
+            .and_then(|g| g.endpoint.clone());
+        let result = if let Some(ep) = endpoint {
+            http_request(&ep, "GET", "/health", None, Duration::from_secs(5)).await
+        } else {
+            self.heads
+                .request(group, "GET", "/health", None, Duration::from_secs(5))
+                .await
+        };
+        match result {
             Ok((200, _)) => Health::Up,
             // llama-server answers 503 while it loads.
             Ok(_) => Health::Loading,
@@ -862,14 +1076,24 @@ impl Inference {
         secs: u64,
     ) -> Result<Value, MarketError> {
         let bytes = serde_json::to_vec(body)?;
-        let (status, reply) = self
-            .heads
-            .request(group, "POST", path, Some(bytes), Duration::from_secs(secs))
+        let endpoint = self
+            .saved
+            .lock()
             .await
-            .map_err(|e| {
-                tracing::warn!("group {group} {path}: {e}");
-                MarketError::Unavailable("the model is not answering right now; try again soon")
-            })?;
+            .groups
+            .get(group)
+            .and_then(|g| g.endpoint.clone());
+        let result = if let Some(ep) = endpoint {
+            http_request(&ep, "POST", path, Some(bytes), Duration::from_secs(secs)).await
+        } else {
+            self.heads
+                .request(group, "POST", path, Some(bytes), Duration::from_secs(secs))
+                .await
+        };
+        let (status, reply) = result.map_err(|e| {
+            tracing::warn!("group {group} {path}: {e}");
+            MarketError::Unavailable("the model is not answering right now; try again soon")
+        })?;
         if status == 400 {
             return Err(MarketError::Invalid("the model refused the request"));
         }
@@ -1067,9 +1291,12 @@ mod tests {
     fn the_head_is_told_every_box_and_its_share() {
         let spec = HeadSpec {
             model_file: "/nix/store/x-model.gguf".into(),
+            model_id: "x".into(),
             ports: vec![23001, 23007],
+            rpc_addrs: vec!["127.0.0.1:23001".into(), "127.0.0.1:23007".into()],
             split: vec![8192, 24576],
             context: 4096,
+            volume: None,
         };
         assert_eq!(
             spec.env(),

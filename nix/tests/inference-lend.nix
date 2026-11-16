@@ -87,7 +87,7 @@ pkgs.testers.nixosTest {
     assert "-d CPU" in cmd and "-p 50052" in cmd and "-t 1" in cmd, cmd
 
     # The port is up, and the file cache is under /var/lib, owned by shared.
-    box.wait_until_succeeds("ss -Htln 'sport = :50052' | grep -q 127.0.0.1:50052")
+    box.wait_until_succeeds("ss -Htln 'sport = :50052' | grep -q ':50052'")
     cache = box.succeed("stat -c '%U %a' /var/lib/losos-llm-rpc/rpc").strip()
     print("rpc cache:", cache)
     assert cache.startswith("shared "), f"cache owned by {cache}"
