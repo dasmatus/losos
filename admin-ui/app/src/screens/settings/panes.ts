@@ -340,25 +340,6 @@ export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
     "ssh",
     "losos",
   ]),
-  /* LosOS Tag right after Access tokens: the assistant people tag in chat,
-   * with its levels, areas, custom assistants and skills. */
-  pane("tag", ArtificialIntelligence02Icon, [
-    "tag",
-    "assistant",
-    "ai",
-    "ask",
-    "chat ai",
-    "agent",
-    "levels",
-    "confidentiality",
-    "privacy",
-    "clearance",
-    "areas",
-    "skills",
-    "custom",
-    "mention",
-    "search",
-  ]),
   /* Credentials right after Access tokens: the ways into the box, then the
    * secrets the box keeps for itself. */
   pane("credentials", LockPasswordIcon, [
@@ -393,6 +374,25 @@ export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
     "memory",
     "github",
     "issue",
+  ]),
+  /* LosOS Tag after Problems: the assistant people tag in chat, with its
+   * levels, areas, custom assistants and skills. */
+  pane("tag", ArtificialIntelligence02Icon, [
+    "tag",
+    "assistant",
+    "ai",
+    "ask",
+    "chat ai",
+    "agent",
+    "levels",
+    "confidentiality",
+    "privacy",
+    "clearance",
+    "areas",
+    "skills",
+    "custom",
+    "mention",
+    "search",
   ]),
   /* Advanced and History sit between Security and About: every option,
    * then the record of every change. Advanced carries the long tail an
