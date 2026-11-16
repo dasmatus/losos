@@ -97,8 +97,7 @@ tonic = { version = "0.14", default-features = false, features = ["server", "rou
 # tests/onramp.rs makes the partner's RSA key the way an operator would; ring
 # signs and verifies but cannot make one. Already in the lock tree through
 # the access crate's pgp.
-rsa = { version = "0.10", default-features = false, features = ["std"] }
-rand_core = { version = "0.6", features = ["getrandom"] }
+rsa = { version = "0.10", default-features = false, features = ["std", "encoding", "getrandom"] }
 
 # Crate-wide lint policy: forbid unsafe, surface stray pub items and stale
 # extern crates. Per-contributor clippy config is intentionally NOT used.
