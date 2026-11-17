@@ -186,7 +186,7 @@ function PaletteBody({ initial }: { initial: string }) {
           }
         }
         if (tagRes.status === "fulfilled" && tagRes.value !== null && Array.isArray(tagRes.value.assistants)) {
-          for (const a of tagRes.value.assistants) {
+          for (const a of tagRes.value.assistants ?? []) {
             if (!a.enabled) continue;
             // The chat page resolves the domain from its own session; the
             // href carries only the slug, and chat builds the full id.
