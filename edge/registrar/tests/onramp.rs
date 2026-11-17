@@ -22,6 +22,7 @@ use common::{Edge, TenantSpec, GOOD_TOKEN, OTHER_TOKEN};
 use losos_registrar::onramp::{OnrampOpts, ORDER, PRE_ORDER};
 use ring::rand::SystemRandom;
 use ring::signature::{self, KeyPair, RsaKeyPair};
+use rsa::Generate as _;
 use rsa::pkcs8::{EncodePrivateKey, EncodePublicKey};
 use serde_json::{json, Value};
 
@@ -65,7 +66,7 @@ fn b64_decode(text: &str) -> Vec<u8> {
 /// An RSA key as an operator makes one: PKCS#8 DER, and the public half as
 /// `SubjectPublicKeyInfo` DER.
 fn keypair() -> (Vec<u8>, Vec<u8>) {
-    let key = rsa::RsaPrivateKey::new(&mut rand_core::OsRng, 2048).expect("rsa key");
+    let key = rsa::PrivateKey::generate();
     let pkcs8 = key.to_pkcs8_der().expect("pkcs8").as_bytes().to_vec();
     let spki = key
         .to_public_key()
