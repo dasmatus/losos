@@ -35,4 +35,13 @@ We use Conventional Commits in order for changes to be easily findable and sorta
 
 There are also some pre-push changes THAT YOU SHOULD NEVER EVER SKIP UNDER ANY CIRCUMSTANCES.
 
+# Bend
+
+Use Bend primarily for validation alongside existing scripts. Set it up using `curl -fsSL https://bend-lang.com/install.sh | sh` and then adding the `bend` binary to `$PATH`.
+
+- run `bend guide` to learn it
+- use `LAWS.bend` to keep important rules
+- run `bend PROOF.bend` before committing
+- parallelize the code whenever possible, with hard bans on build times since we don't have enough RAM right now (optimize within code and find redundant/compile-time-prolonging stuff that should be removed).
+
 Do not put anything under this line.
