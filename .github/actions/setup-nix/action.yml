@@ -50,11 +50,17 @@ runs:
         # pushed an identical one, which for losos-ctl alone is ~9 minutes.
         extra-conf: |
           experimental-features = nix-command flakes
-          extra-substituters = http://127.0.0.1:8787 https://losos.dasmat.us/proxy
+          extra-substituters = http://127.0.0.1:8787
           extra-trusted-public-keys = losos-1:35OIuYFMKDrlC6yTzqivDPqNqZTMjM0l2MB89bRRreg=
           connect-timeout = 5
           fallback = false
           always-allow-substitutes = true
+          # The runner user is not a trusted user, and flake.nix carries the
+          # same substituter in its `nixConfig`: without this Nix answers every
+          # evaluation with "ignoring untrusted flake configuration setting
+          # 'extra-substituters'" and compiles our own paths from source. This
+          # is the CI half of what modules/cache.nix sets on the appliance.
+          accept-flake-config = true
           # nix (a multi-user daemon) reads the cores limit from nix.conf, which
           # this writes to /etc/nix/nix.conf; NIX_CONFIG, a per-user daemon and
           # nix.conf in that order, so a cores here in the workflow env is

@@ -52,7 +52,7 @@ let
   dir = "/var/cache/losos-nix-cache";
 
   # A source is a binary cache the proxy asks: scheme, host[:port], and an
-  # optional path prefix (the Pages copy lives under /proxy).
+  # optional path prefix.
   parse =
     option: url:
     let
@@ -261,6 +261,33 @@ in
       # cache.nixos.org via extra-substituters below.
       fallback = false;
       always-allow-substitutes = true;
+      # flake.nix carries the same cache in its `nixConfig`, and Nix asks y/N
+      # for every setting there on first evaluation. Answering no — the
+      # default, and what an unattended install gets — drops the substituter,
+      # so the install the cache exists to make fast builds from source
+      # instead. On: the question is never asked, and every user gets the
+      # flake's settings, which an untrusted user is otherwise refused
+      # ("ignoring untrusted flake configuration setting"). /etc/nix/nix.conf
+      # is read by each client, daemon or not.
+      accept-flake-config = true;
+      # `accept-flake-config` is a flakes-only setting, and nixpkgs validates
+      # the generated nix.conf at build time with `nix config show`: a setting
+      # whose feature the same file does not enable fails the whole system with
+      # "Ignoring setting 'accept-flake-config' because experimental feature
+      # 'flakes' is not enabled". The box evaluates flake refs for every
+      # rebuild (`nixos-rebuild --flake`), so they are on for every user, not
+      # only for whichever caller remembers the flag.
+      experimental-features = [
+        "nix-command"
+        "flakes"
+      ];
+      # A user who is in allowed-users but not trusted-users may pass as a
+      # substituter only a URL listed here (nix.conf(5)); anything else is
+      # answered with "ignoring untrusted substituter … you are not a trusted
+      # user". Naming the GHCR proxy lets every user substitute from it —
+      # including through the flake above — without making anyone a trusted
+      # user, which is equivalent to root.
+      trusted-substituters = cfg.substituters;
     })
     # The installer medium, and a box with the local copy off, prepend the LosOS
     # GHCR proxy. extra-* keeps nixpkgs' cache.nixos.org (mkAfter) so the bulk

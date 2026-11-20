@@ -103,6 +103,23 @@ assert must
   "/var is not persisted whole: the local copy in /var/cache/losos-nix-cache would vanish at the 00:07 restart";
 assert must (lib.any (lib.hasPrefix "losos-1:") config.nix.settings.extra-trusted-public-keys)
   "no losos-1 key in nix.settings.extra-trusted-public-keys: nix declines the cache's signatures and silently builds from source, the slow install the cache exists to avoid";
+assert must config.nix.settings.accept-flake-config
+  "nix.settings.accept-flake-config is off: flake.nix carries the cache in its nixConfig and nix asks y/N for each setting on first evaluation, defaulting to no (libflake/config.cc), so an unattended install drops the proxy and builds the install closure from source";
+assert must (
+  !config.nix.settings.accept-flake-config
+  || lib.elem "flakes" config.nix.settings.experimental-features
+)
+  "nix.settings.accept-flake-config is on without \"flakes\" in nix.settings.experimental-features: nixpkgs validates the generated nix.conf with 'nix config show' at build time, and a flakes-only setting whose feature the same file does not enable fails the system with \"Ignoring setting 'accept-flake-config' because experimental feature 'flakes' is not enabled\"";
+assert must (config.nix.settings.trusted-substituters == config.losos.cache.substituters)
+  "nix.settings.trusted-substituters is ${toString config.nix.settings.trusted-substituters}, not losos.cache.substituters: a user in allowed-users but not trusted-users is answered 'ignoring untrusted substituter' and cannot use the GHCR proxy the flake advertises";
+assert must
+  (
+    let
+      lists = config.losos.cache.substituters ++ config.losos.cache.local.upstreams;
+    in
+    lib.all (u: !(lib.hasInfix "losos.dasmat.us" u)) lists
+  )
+  "a substituter or local-cache upstream names losos.dasmat.us: the GitHub Pages copy is no longer a substituter, and asking it costs a round trip before every miss";
 assert must (lib.elem config.system.build.nixos-rebuild config.systemd.services.lososd.path)
   "nixos-rebuild is not on lososd's unit path: systemd-run resolves the rebuild command against the caller's PATH, so every Apply, storage-mode change and factory reset fails before the rebuild unit exists";
 assert must (!(config.systemd.services.lososd.serviceConfig.MemoryDenyWriteExecute or false))
