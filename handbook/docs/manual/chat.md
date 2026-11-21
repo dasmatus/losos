@@ -96,6 +96,10 @@ again to take it back. Right-click a message for the same and to copy its text
 ([the right-click menu](admin-pages#the-right-click-menu)). The thread button
 in the room's header lists the room's threads.
 
+While someone writes, **Eva is typing…** shows above the messages and under
+the conversation's name in the list; it goes away when they send or stop
+typing.
+
 Attach pictures, videos and files with the paper clip, by pasting or by
 dragging them in. In an encrypted room they are encrypted before they leave
 your browser. The microphone records a voice message.

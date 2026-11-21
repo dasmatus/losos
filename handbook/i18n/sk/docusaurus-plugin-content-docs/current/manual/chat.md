@@ -100,6 +100,9 @@ stlačením jednu pridáte a ďalším stlačením ju vezmete späť. To isté, 
 textu, ponúka kliknutie pravým tlačidlom na správu. Tlačidlo vlákien v hlavičke
 miestnosti uvádza jej vlákna.
 
+Keď niekto píše, nad správami a pod názvom konverzácie v zozname sa
+ukáže **Eva píše…**; zmizne, keď správu pošle alebo prestane písať.
+
 Obrázky, videá a súbory priložíte kancelárskou sponkou, vložením zo
 schránky alebo pretiahnutím. V šifrovanej miestnosti sa zašifrujú skôr, ako
 opustia váš prehliadač. Mikrofón nahrá hlasovú správu.

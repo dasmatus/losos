@@ -108,6 +108,10 @@ Rechtsklick auf die Nachricht bietet dasselbe und dazu das Kopieren ihres
 Texts. Die
 Thread-Schaltfläche in der Kopfzeile des Raums listet seine Threads.
 
+Während jemand schreibt, steht **Eva schreibt …** über den Nachrichten und
+unter dem Namen der Unterhaltung in der Liste; es verschwindet, sobald die
+Person sendet oder aufhört zu schreiben.
+
 Bilder, Videos und Dateien hängst du mit der Büroklammer an, durch Einfügen
 oder durch Hineinziehen. In einem verschlüsselten Raum werden sie
 verschlüsselt, bevor sie deinen Browser verlassen. Das Mikrofon nimmt eine

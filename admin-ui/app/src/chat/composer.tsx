@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { takeDraft, useCloud } from "./cloud";
 import { sendFile } from "./media";
 import { plainBody, sendContent } from "./model";
+import { TypingNotifier } from "./typing";
 import { Button } from "@/components/ui/button";
 
 const MENTION = /@[a-z0-9._=/+-]+:[a-z0-9.-]+(?::\d+)?/gi;
@@ -57,7 +58,8 @@ export function Composer({ client, room, threadRoot = null, threadLatest = null,
   const [picking, setPicking] = React.useState(false);
   const area = React.useRef<HTMLTextAreaElement>(null);
   const files = React.useRef<HTMLInputElement>(null);
-  const typingSent = React.useRef(0);
+  const typist = React.useRef<TypingNotifier | null>(null);
+  if (typist.current === null) typist.current = new TypingNotifier(client, room.roomId);
   const [recording, setRecording] = React.useState<{ recorder: MediaRecorder; started: number } | null>(null);
   const [uploading, setUploading] = React.useState(0);
   const sendCheck = useSendCheck();
@@ -91,6 +93,14 @@ export function Composer({ client, room, threadRoot = null, threadLatest = null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seed?.nonce]);
 
+  // Leaving the room (or the page) takes the typing state with it: the
+  // homeserver would forget it after five seconds anyway, but the other
+  // side need not wait for that.
+  React.useEffect(() => {
+    const wire = typist.current;
+    return () => wire?.stop();
+  }, []);
+
   // The box grows with what is typed, up to a third of the window.
   React.useLayoutEffect(() => {
     const el = area.current;
@@ -100,10 +110,7 @@ export function Composer({ client, room, threadRoot = null, threadLatest = null,
   }, [text]);
 
   const typing = (on: boolean): void => {
-    const now = Date.now();
-    if (on && now - typingSent.current < 3000) return;
-    typingSent.current = on ? now : 0;
-    void client.sendTyping(room.roomId, on, on ? 5000 : 0).catch(() => undefined);
+    typist.current?.update(on);
   };
 
   const send = async (): Promise<void> => {

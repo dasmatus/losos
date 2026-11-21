@@ -258,6 +258,23 @@ pkgs.testers.nixosTest {
         assert m, f"no session cookie for {name}: {head}"
         return m.group(1)
 
+    def reloads():
+        """How often Authelia has re-read users.yml so far."""
+        out = box.succeed(
+            "journalctl -u authelia-losos.service --no-pager 2>/dev/null"
+            " | grep -c 'Reloaded successfully' || true"
+        )
+        return int(out.strip() or 0)
+
+    def wait_for_reload(before, seconds=120):
+        """lososd writes users.yml in place so Authelia's file watcher sees a
+        Write event; wait for that reload instead of guessing at a sleep."""
+        box.wait_until_succeeds(
+            "test $(journalctl -u authelia-losos.service --no-pager 2>/dev/null"
+            f" | grep -c 'Reloaded successfully' || true) -gt {before}",
+            timeout=seconds,
+        )
+
     def session(cookie):
         code, body = call("/api/chat/session", cookie, method="POST", data={})
         assert code == 200, (code, body)
@@ -303,6 +320,7 @@ pkgs.testers.nixosTest {
         code, body = call("/api/account", matus, method="POST",
                           data={"displayName": "Matus", "email": "matus@mattbox.local"})
         assert code == 200, (code, body)
+        before = reloads()
         code, body = call(
             "/api/people",
             matus,
@@ -312,7 +330,8 @@ pkgs.testers.nixosTest {
         )
         assert code == 200, (code, body)
         box.wait_until_succeeds(f"grep -q eva {PEOPLE}")
-        time.sleep(5)
+        wait_for_reload(before)
+        print(f"probe: Authelia reloaded users.yml, {reloads()} reloads so far")
         eva = sign_in("eva", EVA_PASSWORD)
 
     with subtest("a box that is alone runs Synapse as the owner, in the owner's data folder"):
