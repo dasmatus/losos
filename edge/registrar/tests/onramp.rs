@@ -22,8 +22,8 @@ use common::{Edge, TenantSpec, GOOD_TOKEN, OTHER_TOKEN};
 use losos_registrar::onramp::{OnrampOpts, ORDER, PRE_ORDER};
 use ring::rand::SystemRandom;
 use ring::signature::{self, KeyPair, RsaKeyPair};
-use rsa::Generate as _;
 use rsa::pkcs8::{EncodePrivateKey, EncodePublicKey};
+use rsa::Generate as _;
 use serde_json::{json, Value};
 
 const CLIENT_ID: &str = "losos-test-partner";

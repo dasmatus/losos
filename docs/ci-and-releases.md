@@ -307,13 +307,14 @@ put the secret key in the flake or on an appliance.
 
 ### The copy on GitHub Pages
 
-The GitHub Pages site that serves the handbook also serves a copy of the
-cache at `https://losos.dasmat.us/proxy`. Pages runs no code, so the copy is
-a plain file cache and remains a fallback if direct GHCR access is unavailable. On each
-push to main, the `publish-cache` job writes the paths it publishes with
-`nix copy --to file://`, signs them with the same `losos-1` key and leaves
-out every path cache.nixos.org already serves. The `handbook` workflow runs
-again when `ci` finishes on main and deploys the newest copy under `/proxy`.
+The GitHub Pages site that serves the handbook also keeps a copy of the cache
+at `https://losos.dasmat.us/proxy`. Pages runs no code, so the copy is a plain
+file cache, kept for browsing and for a machine that has no GHCR access; it is
+deliberately **not** a substituter. On each push to main, the `publish-cache`
+job writes the paths it publishes with `nix copy --to file://`, signs them with
+the same `losos-1` key and leaves out every path cache.nixos.org already
+serves. The `handbook` workflow runs again when `ci` finishes on main and
+deploys the newest copy under `/proxy`.
 
 It has three limits:
 
@@ -323,10 +324,23 @@ It has three limits:
   and drops the largest paths first. The job's step summary names what it
   left out.
 - Its `nix-cache-info` says `Priority: 45`, after the proxy (30) and
-  cache.nixos.org (40), so nix tries it after both.
+  cache.nixos.org (40).
 
-`losos.cache.substituters` lists both by default. The repository's Pages
-source must be "GitHub Actions" (Settings, Pages), as for the handbook.
+Neither `losos.cache.substituters` nor `flake.nix`'s `nixConfig` names it:
+both carry the GHCR proxy alone. The repository's Pages source must be
+"GitHub Actions" (Settings, Pages), as for the handbook.
+
+### The flake configuration prompt
+
+`flake.nix` carries the cache in its `nixConfig`, and Nix asks y/N for each of
+those settings the first time it evaluates the flake — defaulting to no, which
+drops the substituter and builds the install closure from source. The appliance
+and the installer medium answer it once and for all with `accept-flake-config =
+true` (modules/cache.nix), which also makes the flake's settings apply to every
+user, including those Nix would otherwise answer with "ignoring untrusted flake
+configuration setting". `trusted-substituters` names the same proxy so an
+unprivileged user may also pass it explicitly; `trusted-users` is left at
+`root`, which is equivalent to root access.
 
 ## The dev-machine tool
 
