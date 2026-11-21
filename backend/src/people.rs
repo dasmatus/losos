@@ -378,19 +378,21 @@ impl People {
     fn write(&self, doc: &Document) -> anyhow::Result<()> {
         use std::io::Write;
         use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-        let dir = self.path.parent().unwrap_or(Path::new("/"));
+        let path = self.checked_path()?;
+        let dir = path.parent().unwrap_or(Path::new("/"));
         std::fs::create_dir_all(dir)?;
-        let canonical_dir = std::fs::canonicalize(dir)
-            .map_err(|e| anyhow::anyhow!("resolving {}: {e}", dir.display()))?;
-        let target_parent = self.path.parent().unwrap_or(Path::new("/"));
-        let canonical_target_parent = std::fs::canonicalize(target_parent).map_err(|e| {
-            anyhow::anyhow!("resolving target parent {}: {e}", target_parent.display())
-        })?;
-        if !canonical_target_parent.starts_with(&canonical_dir) {
-            anyhow::bail!(
-                "refusing to write people file outside base directory: {}",
-                self.path.display()
-            );
+        if dir.exists() {
+            let dir_meta = std::fs::metadata(dir)?;
+            use std::os::unix::fs::MetadataExt;
+            #[cfg(not(debug_assertions))]
+            if dir_meta.uid() != 0 {
+                anyhow::bail!(
+                    "refusing to write people file: {} is not owned by root",
+                    dir.display()
+                );
+            }
+            #[cfg(debug_assertions)]
+            let _ = dir_meta.uid();
         }
         let bytes = serde_json::to_vec_pretty(doc)?;
         {
@@ -399,27 +401,85 @@ impl People {
                 .write(true)
                 .truncate(true)
                 .mode(0o600)
-                .open(&self.path)?;
+                .open(&path)?;
             f.write_all(&bytes)?;
             f.write_all(b"\n")?;
             f.sync_all()?;
         }
         if let Some(group) = &self.group {
+            let group = Self::checked_group(group)?;
             // chgrp through the system tool rather than a libc call: the
-            // crate forbids unsafe code and the group is a name.
+            // crate forbids unsafe code and the group is a validated name.
             let status = std::process::Command::new("chgrp")
+                .arg("--")
                 .arg(group)
-                .arg(&self.path)
+                .arg(&path)
                 .status();
             if !status.is_ok_and(|s| s.success()) {
                 tracing::warn!(group, "could not hand the people file to Authelia's group");
             }
-            std::fs::set_permissions(&self.path, std::fs::Permissions::from_mode(0o640))?;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640))?;
         }
         if let Some(windows) = &self.windows {
             windows.sync(&accounts(doc));
         }
         Ok(())
+    }
+
+    /// The people file path, but only when it is the one safe file under
+    /// the trusted people directory. This keeps user-controlled config from
+    /// steering file or command operations.
+    fn checked_path(&self) -> anyhow::Result<PathBuf> {
+        let base = Self::people_dir();
+        let candidate = if self.path.is_absolute() {
+            self.path.clone()
+        } else {
+            base.join(&self.path)
+        };
+        if candidate
+            .components()
+            .any(|c| matches!(c, Component::ParentDir | Component::CurDir))
+        {
+            anyhow::bail!("refusing to write people file outside base directory");
+        }
+        let file_name = candidate
+            .file_name()
+            .ok_or_else(|| anyhow::anyhow!("people file has no name"))?;
+        let name = file_name
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("people file name is not valid utf-8"))?;
+        if name != "users.yml" && name != "users.json" {
+            anyhow::bail!("refusing to write unexpected people file name: {name}");
+        }
+        let base_real = std::fs::canonicalize(&base).unwrap_or(base.clone());
+        let parent = candidate
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("people file has no parent"))?;
+        let parent_real = std::fs::canonicalize(parent).unwrap_or_else(|_| parent.to_path_buf());
+        let resolved = parent_real.join(file_name);
+        if resolved.starts_with(&base_real) {
+            return Ok(resolved);
+        }
+        #[cfg(debug_assertions)]
+        {
+            let tmp = std::fs::canonicalize(std::env::temp_dir()).unwrap_or(std::env::temp_dir());
+            if resolved.starts_with(&tmp) {
+                return Ok(resolved);
+            }
+        }
+        anyhow::bail!("refusing to write people file outside base directory");
+    }
+
+    fn checked_group(group: &str) -> anyhow::Result<&str> {
+        let ok = !group.is_empty()
+            && group.len() <= 32
+            && group
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_');
+        if !ok {
+            anyhow::bail!("refusing to use unsafe people file group");
+        }
+        Ok(group)
     }
 
     /// Whether anyone can sign in as an administrator yet.
