@@ -687,6 +687,13 @@
       # at its top what it asserts. Most boot VMs, which CI (no KVM) never
       # builds.
       checks.${system} = {
+        # The Bend law gate (nix/bend.nix): every law LAWS.bend states must
+        # have a proof in PROOF.bend, or the build fails. No VM, no network.
+        losos-bend-proofs =
+          (import ./nix/bend.nix {
+            inherit pkgs;
+            src = ./.;
+          }).bendProofs;
         losos-install = import ./nix/tests/install.nix { inherit pkgs disko; };
         # The real installer from the branch, offline, then the installed disk
         # booted on its own (nix/tests/iso-install.nix).

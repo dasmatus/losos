@@ -13,11 +13,11 @@
 { pkgs }:
 
 let
-  # "The certificates were last updated on: 23-October-2026" (version.txt).
+  # "The certificates were last updated on: 17-November-2026" (version.txt).
   cab = pkgs.fetchurl {
-    name = "TrustedTpm-2026-10-23.cab";
+    name = "TrustedTpm-2026-11-17.cab";
     url = "https://download.microsoft.com/download/D/6/5/D65270B2-EAFD-43FD-B9BA-F65CA00B153E/TrustedTpm.cab";
-    hash = "sha256-bNl6bJDStL5ZSkf/ttlXkhacXO9kmOscgt/rz1PaDlE=";
+    hash = "sha256-3xaT2Ca6iZZ/PL+W1rP9z2/yXC+AIDI1W2NruT+kqWs=";
   };
 in
 pkgs.runCommand "losos-tpm-roots"
