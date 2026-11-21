@@ -267,8 +267,8 @@ pkgs.testers.nixosTest {
         return int(out.strip() or 0)
 
     def wait_for_reload(before, seconds=120):
-        """users.yml is replaced by a rename, which Authelia notices through
-        its file watcher; wait for that instead of guessing at a sleep."""
+        """lososd writes users.yml in place so Authelia's file watcher sees a
+        Write event; wait for that reload instead of guessing at a sleep."""
         box.wait_until_succeeds(
             "test $(journalctl -u authelia-losos.service --no-pager 2>/dev/null"
             f" | grep -c 'Reloaded successfully' || true) -gt {before}",

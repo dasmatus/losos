@@ -392,7 +392,6 @@ impl People {
                 self.path.display()
             );
         }
-        let tmp = dir.join(".users.yml.tmp");
         let bytes = serde_json::to_vec_pretty(doc)?;
         {
             let mut f = std::fs::OpenOptions::new()
@@ -400,7 +399,7 @@ impl People {
                 .write(true)
                 .truncate(true)
                 .mode(0o600)
-                .open(&tmp)?;
+                .open(&self.path)?;
             f.write_all(&bytes)?;
             f.write_all(b"\n")?;
             f.sync_all()?;
@@ -410,14 +409,13 @@ impl People {
             // crate forbids unsafe code and the group is a name.
             let status = std::process::Command::new("chgrp")
                 .arg(group)
-                .arg(&tmp)
+                .arg(&self.path)
                 .status();
             if !status.is_ok_and(|s| s.success()) {
                 tracing::warn!(group, "could not hand the people file to Authelia's group");
             }
-            std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o640))?;
+            std::fs::set_permissions(&self.path, std::fs::Permissions::from_mode(0o640))?;
         }
-        std::fs::rename(&tmp, &self.path)?;
         if let Some(windows) = &self.windows {
             windows.sync(&accounts(doc));
         }
