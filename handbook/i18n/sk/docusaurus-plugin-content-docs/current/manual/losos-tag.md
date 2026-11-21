@@ -39,6 +39,11 @@ asistenti môžu niesť vlákno medzi sebou bez nekonečnej slučky.
 Asistent číta len do vlastného oprávnenia, nech jeho persona hovorí
 čokoľvek: úrovne sú pravidlo boxu, nie nálada modelu.
 
+Dopyt počas behu nemizne. Asistent hneď na začiatku napíše jeden
+riadok (`@LosOS premýšľa…`), ten istý riadok prepisuje, ako sa posúva
+ďalej (`číta, čo našiel`, `píše`), a po dokončení na jeho miesto
+položí odpoveď — pomalý dopyt tak vyzerá ako práca, nie ako ticho.
+
 ## Zručnosti
 
 Zručnosť je pokyn, ktorý si dopyt môže vziať — vstavané prichádzajú s

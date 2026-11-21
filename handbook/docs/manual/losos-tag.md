@@ -39,6 +39,12 @@ two assistants can carry a thread between them without looping forever.
 An assistant reads only up to its own clearance, whatever its persona
 says: the levels are the box's rule, not the model's mood.
 
+An ask does not disappear while it runs. The assistant posts one line as
+soon as it starts (`@LosOS is thinking…`), rewrites that same line as it
+moves on (`is reading what it found`, `is writing`), and leaves the
+answer in its place when the turn is done, so a slow ask looks like work
+rather than silence.
+
 ## Skills
 
 A skill is an instruction an ask can carry — the seeded ones come with
