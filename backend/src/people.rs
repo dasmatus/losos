@@ -412,11 +412,11 @@ impl People {
             // crate forbids unsafe code and the group is a validated name.
             let status = std::process::Command::new("chgrp")
                 .arg("--")
-                .arg(group)
+                .arg(&group)
                 .arg(&path)
                 .status();
             if !status.is_ok_and(|s| s.success()) {
-                tracing::warn!(group, "could not hand the people file to Authelia's group");
+                tracing::warn!(group = %group, "could not hand the people file to Authelia's group");
             }
             std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640))?;
         }
@@ -448,9 +448,11 @@ impl People {
         let name = file_name
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("people file name is not valid utf-8"))?;
-        if name != "users.yml" && name != "users.json" {
-            anyhow::bail!("refusing to write unexpected people file name: {name}");
-        }
+        let safe_name = match name {
+            "users.yml" => "users.yml",
+            "users.json" => "users.json",
+            _ => anyhow::bail!("refusing to write unexpected people file name: {name}"),
+        };
         let base_real = std::fs::canonicalize(&base).unwrap_or(base.clone());
         let parent = candidate
             .parent()
@@ -458,19 +460,38 @@ impl People {
         let parent_real = std::fs::canonicalize(parent).unwrap_or_else(|_| parent.to_path_buf());
         let resolved = parent_real.join(file_name);
         if resolved.starts_with(&base_real) {
-            return Ok(resolved);
+            return Ok(base_real.join(safe_name));
         }
         #[cfg(debug_assertions)]
         {
             let tmp = std::fs::canonicalize(std::env::temp_dir()).unwrap_or(std::env::temp_dir());
             if resolved.starts_with(&tmp) {
-                return Ok(resolved);
+                if let Ok(rel) = resolved.strip_prefix(&tmp) {
+                    let mut safe = tmp.clone();
+                    for c in rel.components() {
+                        match c {
+                            Component::Normal(seg) => {
+                                let seg = seg
+                                    .to_str()
+                                    .ok_or_else(|| anyhow::anyhow!("unsafe people file path"))?;
+                                if !seg.bytes().all(|b| {
+                                    b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.'
+                                }) {
+                                    anyhow::bail!("unsafe people file path");
+                                }
+                                safe = safe.join(seg);
+                            }
+                            _ => anyhow::bail!("unsafe people file path"),
+                        }
+                    }
+                    return Ok(safe);
+                }
             }
         }
         anyhow::bail!("refusing to write people file outside base directory");
     }
 
-    fn checked_group(group: &str) -> anyhow::Result<&str> {
+    fn checked_group(group: &str) -> anyhow::Result<String> {
         let ok = !group.is_empty()
             && group.len() <= 32
             && group
@@ -479,7 +500,7 @@ impl People {
         if !ok {
             anyhow::bail!("refusing to use unsafe people file group");
         }
-        Ok(group)
+        Ok(group.to_string())
     }
 
     /// Whether anyone can sign in as an administrator yet.
