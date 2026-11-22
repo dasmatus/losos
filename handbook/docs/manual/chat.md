@@ -113,7 +113,7 @@ conversation it goes to.
 
 A small row of faces under a message shows who has read up to there.
 
-![A conversation with Eva in LosOS Chat: reactions under the messages, a reply in a thread and a picture, with the paper clip, the cloud button and the microphone under it.](../img/chat.png)
+![A conversation with Eva in LosOS Chat while she writes: Eva is typing… under her name in the list and above the box you write in, a reaction and a reply in a thread under her message, a picture, and the paper clip, the cloud button and the microphone.](../img/chat.png)
 
 ## Other Matrix apps
 
