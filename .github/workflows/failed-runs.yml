@@ -26,7 +26,10 @@ on:
 #   - the tip of any branch, the default branch included, so a red main
 #     stays red where everyone can see it;
 #   - the head of any open pull request, forks included, so a PR never loses
-#     the check that says why it is red.
+#     the check that says why it is red;
+#   - every tag, so the CI for a release tag is not deleted once main moves
+#     on. v0.7.0's release run was removed that way, and with it the only
+#     record of why the tag never published.
 #
 # What goes is the history of commits something newer has replaced. A
 # deleted run takes its logs and artifacts with it and cannot be brought
@@ -66,12 +69,14 @@ jobs:
             ''|*[!0-9]*) echo "limit must be a whole number, got '${LIMIT}'" >&2; exit 1 ;;
           esac
 
-          # Commits that are still live: branch tips and open PR heads.
+          # Commits that are still live: branch tips, open PR heads, and tags.
           {
             gh api --paginate "repos/${GITHUB_REPOSITORY}/branches?per_page=100" \
               --jq '.[].commit.sha'
             gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 1000 \
               --json headRefOid --jq '.[].headRefOid'
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/tags?per_page=100" \
+              --jq '.[].commit.sha'
           } | sort -u >live
 
           # id, workflow, branch, commit, conclusion, created, oldest first.

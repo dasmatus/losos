@@ -55,7 +55,7 @@ rustix = { version = "1", features = ["event", "fs", "process", "rand"] }
 ring = "0.17"
 # The box's escrow key on EVM networks (`escrow_key.rs`): secp256k1 and the
 # keccak of EIP-712, the versions already in the lock.
-k256 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
+k256 = { version = "0.14", default-features = false, features = ["ecdsa", "std"] }
 sha3 = "0.12"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # The `Stream` trait, to read an uploaded disk image off the request a chunk
@@ -102,7 +102,7 @@ curve25519-dalek = "5"
 # file on disk, nothing resident between searches, and an update is a row
 # replaced in a transaction. Bundled so the index does not depend on the
 # system's sqlite build having FTS5 compiled in.
-rusqlite = { version = "0.41", features = ["bundled"] }
+rusqlite = { version = "0.42", features = ["bundled"] }
 # The text of ODF and Office Open XML documents is XML inside a zip. Only
 # deflate, the one method office suites write.
 zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"] }
@@ -115,7 +115,7 @@ argon2 = "0.6"
 # Apps the builder writes are JSX (src/jsx.rs): parsed for the mistakes a
 # small model makes, then compiled to a plain script for the app frame, once,
 # on the box.
-oxc = { version = "0.156", default-features = false, features = ["transformer", "codegen", "semantic"] }
+oxc = { version = "0.158", default-features = false, features = ["transformer", "codegen", "semantic"] }
 
 # Profile pictures and banners (src/profiles.rs): decoded, turned upright,
 # cropped, scaled and encoded again, so no camera tag (a photo's position
@@ -167,7 +167,7 @@ tract-onnx = "0.23"
 # sans-IO WebRTC stack, with its pure-Rust DTLS and SRTP so nothing links
 # OpenSSL. The browsers encrypt every frame end to end before it reaches
 # the SFU; str0m only ever sees that ciphertext inside SRTP.
-str0m = { version = "0.24", default-features = false, features = ["rust-crypto"] }
+str0m = { version = "0.25", default-features = false, features = ["rust-crypto"] }
 # The call page's signalling socket is actix-ws, declared above.
 # Which addresses the SFU offers as ICE host candidates.
 if-addrs = "0.15"

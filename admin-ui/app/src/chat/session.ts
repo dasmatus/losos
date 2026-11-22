@@ -308,7 +308,7 @@ export interface BoxPerson {
  *  homeserver's own directory lists only people who already share a room. */
 export async function boxPeople(): Promise<BoxPerson[]> {
   const answer = await getJson<{ people: BoxPerson[] }>("/api/chat/people");
-  return answer.people;
+  return answer.people ?? [];
 }
 
 /** LosOS Login's page, coming back to chat. */

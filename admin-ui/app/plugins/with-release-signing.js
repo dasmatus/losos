@@ -28,10 +28,10 @@
  * until a paid Apple Developer account exists.
  */
 
-// "expo/config-plugins.js", not "expo/config-plugins": the package carries
-// no exports map, so the ESM loader resolves the bare spelling as a literal
-// (nonexistent) path — the file on disk is the .js one.
-import { withDangerousMod } from "expo/config-plugins.js";
+// "expo/config-plugins", not "expo/config-plugins.js": expo's exports map
+// maps "./*" to "./*.js", so a request with the extension becomes the
+// nonexistent "config-plugins.js.js".
+import { withDangerousMod } from "expo/config-plugins";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 

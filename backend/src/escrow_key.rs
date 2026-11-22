@@ -205,7 +205,7 @@ impl Keys {
     /// `0x` and 40 lowercase hex digits.
     #[must_use]
     pub fn evm_address(&self) -> String {
-        let point = self.evm.verifying_key().to_encoded_point(false);
+        let point = self.evm.verifying_key().to_sec1_point(false);
         format!("0x{}", hex(&keccak(&point.as_bytes()[1..])[12..]))
     }
 
@@ -228,17 +228,9 @@ impl Keys {
     /// `0x` + `r ‖ s ‖ v`, `v` 27 or 28, `s` low: the one form the contract
     /// takes.
     fn sign_evm(&self, digest: &[u8; 32]) -> anyhow::Result<String> {
-        let (sig, recid) = self
-            .evm
-            .sign_prehash_recoverable(digest)
-            .map_err(|_| anyhow::anyhow!("could not sign the decision"))?;
-        let (sig, recid) = match sig.normalize_s() {
-            Some(low) => (
-                low,
-                k256::ecdsa::RecoveryId::new(!recid.is_y_odd(), recid.is_x_reduced()),
-            ),
-            None => (sig, recid),
-        };
+        // k256 already normalizes `s` to the low form and folds the flip
+        // into the recovery id, so what comes back is the contract's form.
+        let (sig, recid) = self.evm.sign_prehash_recoverable(digest);
         let mut out = sig.to_bytes().to_vec();
         out.push(27 + recid.to_byte());
         Ok(format!("0x{}", hex(&out)))
@@ -361,11 +353,11 @@ mod tests {
         let raw = unhex(sig).unwrap();
         assert_eq!(raw.len(), 65);
         let s = Signature::from_slice(&raw[..64]).unwrap();
-        assert!(s.normalize_s().is_none(), "s is low");
+        assert_eq!(s, s.normalize_s(), "s is low");
         assert!(raw[64] == 27 || raw[64] == 28);
         let id = RecoveryId::from_byte(raw[64] - 27).unwrap();
         let key = VerifyingKey::recover_from_prehash(digest, &s, id).unwrap();
-        let point = key.to_encoded_point(false);
+        let point = key.to_sec1_point(false);
         format!("0x{}", hex(&keccak(&point.as_bytes()[1..])[12..]))
     }
 
