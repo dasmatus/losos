@@ -39,6 +39,7 @@ import { callable, callEnded, callEvent, useCalls } from "./calls";
 import { saveAttachment, useCloud } from "./cloud";
 import { carriesFile, fileNameOf, infoOf, MessageBody, sourceOf } from "./message-body";
 import { buildItems, continues, type Item, type Message, memberName, plainBody, shownName, useEmitted } from "./model";
+import { typingLabel, typingMembers } from "./typing";
 import { canMakeIssue, issueTitleFrom, newIssueHref, quotedFrom } from "@/lib/intents";
 
 export const QUICK_REACTIONS = ["👍", "❤️", "😂", "🎉", "😮", "😢", "🙏", "👀"] as const;
@@ -643,7 +644,7 @@ export function RoomTimeline({ client, room, me, actions }: RoomTimelineProps) {
   }, [client, room]);
 
   const typers = React.useMemo(
-    () => room.getMembers().filter((m) => m.typing && m.userId !== me).map((m) => m.name),
+    () => typingMembers(room, me),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [room, me, typing],
   );
@@ -668,11 +669,7 @@ export function RoomTimeline({ client, room, me, actions }: RoomTimelineProps) {
         <ItemList client={client} room={room} items={items} me={me} actions={actions} />
       </div>
       <p className="h-5 truncate px-4 text-[12px] text-muted" aria-live="polite">
-        {typers.length === 1
-          ? t("chat.typing.one", { name: typers[0] ?? "" })
-          : typers.length > 1
-            ? t("chat.typing.many", { names: typers.join(", ") })
-            : ""}
+        {typingLabel(typers, t)}
       </p>
     </div>
   );

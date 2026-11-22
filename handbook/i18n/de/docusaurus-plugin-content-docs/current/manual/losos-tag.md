@@ -43,6 +43,12 @@ unter sich tragen können, ohne endlos zu kreisen. Ein Assistent liest
 nur bis zu seiner eigenen Freigabe, was seine Persona auch sagt: die
 Stufen sind die Regel der Box, nicht die Laune des Modells.
 
+Eine Anfrage verschwindet während ihrer Bearbeitung nicht. Der Assistent
+schreibt sofort eine Zeile (`@LosOS denkt nach…`), schreibt dieselbe
+Zeile weiter, während er vorankommt (`liest, was er gefunden hat`,
+`schreibt`), und setzt am Ende die Antwort an ihre Stelle — eine
+langsame Anfrage sieht so nach Arbeit aus, nicht nach Stille.
+
 ## Fähigkeiten
 
 Eine Fähigkeit ist eine Anweisung, die eine Anfrage mitnimmt — die
