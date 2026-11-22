@@ -173,10 +173,8 @@ function PaletteBody({ initial }: { initial: string }) {
       ([peopleRes, tagRes]) => {
         if (!live) return;
         const list: Item[] = [];
-        /* The answer may be an empty object (a box without chat, a stub):
-         * read the lists defensively, never iterate what is not there. */
-        if (peopleRes.status === "fulfilled") {
-          for (const p of peopleRes.value ?? []) {
+        if (peopleRes.status === "fulfilled" && Array.isArray(peopleRes.value)) {
+          for (const p of peopleRes.value) {
             list.push({
               id: `person-${p.userId}`,
               group: "people",
@@ -187,7 +185,7 @@ function PaletteBody({ initial }: { initial: string }) {
             });
           }
         }
-        if (tagRes.status === "fulfilled" && tagRes.value !== null) {
+        if (tagRes.status === "fulfilled" && tagRes.value !== null && Array.isArray(tagRes.value.assistants)) {
           for (const a of tagRes.value.assistants ?? []) {
             if (!a.enabled) continue;
             // The chat page resolves the domain from its own session; the

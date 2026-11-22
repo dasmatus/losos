@@ -271,10 +271,51 @@ pub fn sweep_threshold(idle_ms: u64, constrained: bool) -> (u64, SweepReason) {
     }
 }
 
-/// How a finished ask reaches the room it came from: the chat's own send,
-/// as the assistant's Matrix user, or the test's capture.
+/// How an ask reaches the room it came from: the chat's own send, as the
+/// assistant's Matrix user, or the test's capture.
+///
+/// The answer is not the only thing the room sees: an ask that takes a
+/// while posts one line when it starts, rewrites it as the turn moves on
+/// and leaves the answer in its place. Backends that cannot edit a message
+/// post the answer alone.
 pub trait Post: Send + Sync {
     fn post(&self, room: &str, assistant_localpart: &str, answer: &str) -> Result<(), String>;
+
+    /// Post the opening line ("… is thinking") and return its event id,
+    /// when the backend can edit it later.
+    fn began(
+        &self,
+        _room: &str,
+        _assistant_localpart: &str,
+        _step: &str,
+    ) -> Result<Option<String>, String> {
+        Ok(None)
+    }
+
+    /// Rewrite the message `message` as the turn reaches a new step.
+    fn step(
+        &self,
+        _room: &str,
+        _assistant_localpart: &str,
+        _message: &str,
+        _step: &str,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+
+    /// Put the final text where the opening line was, or post it afresh.
+    /// The text is the answer when the turn worked and a short line saying
+    /// what happened when it did not: a "thinking" line must never be the
+    /// last thing a room hears.
+    fn finish(
+        &self,
+        room: &str,
+        assistant_localpart: &str,
+        text: &str,
+        _message: Option<&str>,
+    ) -> Result<(), String> {
+        self.post(room, assistant_localpart, text)
+    }
 }
 
 /// One post a test kept.
@@ -422,14 +463,38 @@ pub fn take(
 ) -> Result<(), String> {
     let id = job.id.clone();
     set_state(tag, &id, "running")?;
+    let room = job.room.as_deref();
+    // The room should not have to guess whether the ask is moving: one
+    // line, from the moment it starts until the answer replaces it.
+    let message = match room {
+        Some(room) => post
+            .began(room, &job.assistant, "is thinking")
+            .ok()
+            .flatten(),
+        None => None,
+    };
+    let say = |step: &str| {
+        if let (Some(room), Some(message)) = (room, message.as_deref()) {
+            let _ = post.step(room, &job.assistant, message, step);
+        }
+    };
     let (start, pressured) = spill_pair();
     let spill = spillover(start, pressured, constrained);
-    let answer = turn(&tag.clone(), &config.clone(), job, spill);
+    let answer = turn(&tag.clone(), &config.clone(), job, spill, &say);
     let (state, text, error) = match answer {
         Ok(text) => ("done", text, None),
         Err(why) => ("failed", String::new(), Some(why)),
     };
     if stopped_before_finish(tag, &id) {
+        // The page stopped this ask; say so where the line already is.
+        if let Some(room) = room {
+            let _ = post.finish(
+                room,
+                &job.assistant,
+                "stopped before it answered.",
+                message.as_deref(),
+            );
+        }
         return Ok(());
     }
     tag.update_jobs(|jobs| {
@@ -441,11 +506,22 @@ pub fn take(
         kept.error = error.clone();
     });
     if state != "done" {
+        // A failed ask is still an answer the room waits for: replace the
+        // "thinking" line instead of leaving it to hang.
+        if let Some(room) = room {
+            let why = error.as_deref().unwrap_or("the turn failed");
+            let _ = post.finish(
+                room,
+                &job.assistant,
+                &format!("could not answer: {why}"),
+                message.as_deref(),
+            );
+        }
         return Err(error.unwrap_or_else(|| "the turn failed".into()));
     }
     tag.archive(id.clone(), job, &text);
-    if let Some(room) = job.room.as_deref() {
-        post.post(room, &job.assistant, &text)?;
+    if let Some(room) = room {
+        post.finish(room, &job.assistant, &text, message.as_deref())?;
     }
     handoff(tag, job, &text);
     Ok(())
@@ -548,6 +624,7 @@ pub fn turn(
     config: &Runner,
     job: &Job,
     spill: u8,
+    say: &dyn Fn(&str),
 ) -> Result<String, String> {
     let state = tag.state();
     let assistant = state
@@ -599,11 +676,15 @@ pub fn turn(
     } else {
         format!("{material}\n\n<material source=\"web\">{web}</material>")
     };
+    if !material.trim().is_empty() {
+        say("is reading what it found");
+    }
     let prompt = join_prompt(
         &crate::tag::system_prompt(assistant.as_ref(), &knew, &lang),
         &material,
         &job.question,
     );
+    say("is writing");
     match crate::tag::harness(config.t3.as_deref(), config.opencode.as_deref()) {
         crate::tag::Harness::T3 => {
             spawn_turn(config.t3.as_deref().expect("t3 configured"), &prompt, true)
@@ -833,6 +914,154 @@ mod tests {
         let done = state.jobs.into_iter().find(|j| j.id == job.id).unwrap();
         assert_eq!(done.state, "failed");
         assert!(done.error.is_some());
+    }
+
+    /// A [`Post`] that keeps every line the room would have seen, in order.
+    #[derive(Default)]
+    struct Trace(std::sync::Mutex<Vec<String>>);
+
+    impl Trace {
+        fn push(&self, line: String) {
+            self.0
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(line);
+        }
+    }
+
+    impl Post for Trace {
+        fn post(&self, _room: &str, _assistant: &str, answer: &str) -> Result<(), String> {
+            self.push(format!("post: {answer}"));
+            Ok(())
+        }
+
+        fn began(
+            &self,
+            _room: &str,
+            _assistant: &str,
+            step: &str,
+        ) -> Result<Option<String>, String> {
+            self.push(format!("began: {step}"));
+            Ok(Some("$line".into()))
+        }
+
+        fn step(
+            &self,
+            _room: &str,
+            _assistant: &str,
+            _message: &str,
+            step: &str,
+        ) -> Result<(), String> {
+            self.push(format!("step: {step}"));
+            Ok(())
+        }
+
+        fn finish(
+            &self,
+            room: &str,
+            assistant: &str,
+            text: &str,
+            message: Option<&str>,
+        ) -> Result<(), String> {
+            match message {
+                Some(_) => {
+                    self.push(format!("finish: {text}"));
+                    Ok(())
+                }
+                None => self.post(room, assistant, text),
+            }
+        }
+    }
+
+    #[test]
+    fn a_failed_ask_does_not_leave_a_thinking_line_hanging() {
+        let tag = tag();
+        let job = tag
+            .enqueue(Job {
+                id: new_id(),
+                origin: Origin::Mention,
+                person: "eva".into(),
+                assistant: "tag-losos-tag".into(),
+                room: Some("!room:b".into()),
+                question: "What is due?".into(),
+                state: "queued".into(),
+                answer: String::new(),
+                error: None,
+                handoffs: 0,
+                created_ms: 0,
+                use_web: false,
+                material: None,
+            })
+            .unwrap();
+        let trace = Arc::new(Trace::default());
+        let post: Arc<dyn Post> = trace.clone();
+        take(&tag, &post, &Runner::default(), &job, false).unwrap_err();
+        let said = trace
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        assert_eq!(said.first().map(String::as_str), Some("began: is thinking"));
+        assert!(
+            said.last()
+                .is_some_and(|l| l.starts_with("finish: could not answer: ")),
+            "{said:?}"
+        );
+    }
+
+    #[test]
+    fn a_turn_says_what_it_is_doing() {
+        // No model and no material: the turn still says it is writing
+        // before it fails, which is the line the room keeps seeing.
+        let tag = tag();
+        let job = tag
+            .enqueue(Job {
+                id: new_id(),
+                origin: Origin::Mention,
+                person: "eva".into(),
+                assistant: "tag-losos-tag".into(),
+                room: None,
+                question: "What is due?".into(),
+                state: "queued".into(),
+                answer: String::new(),
+                error: None,
+                handoffs: 0,
+                created_ms: 0,
+                use_web: false,
+                material: None,
+            })
+            .unwrap();
+        let said = std::sync::Mutex::new(Vec::new());
+        let config = Runner::default();
+        let _ = turn(&tag, &config, &job, 0, &|step| {
+            said.lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(step.to_string());
+        });
+        assert_eq!(
+            *said
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            vec!["is writing"]
+        );
+    }
+
+    #[test]
+    fn a_post_that_cannot_edit_still_posts_the_answer() {
+        let post = Record::default();
+        post.finish("!room:b", "tag-losos-tag", "done", None)
+            .unwrap();
+        assert_eq!(
+            post.0
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone(),
+            vec![Recorded(
+                "!room:b".into(),
+                "tag-losos-tag".into(),
+                "done".into()
+            )]
+        );
     }
 
     #[test]
