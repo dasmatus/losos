@@ -43,7 +43,7 @@ losos_dev_cache() {
   fi
 
   local subst key existing
-  subst="http://127.0.0.1:${port} https://losos.dasmat.us/proxy"
+  subst="http://127.0.0.1:${port}"
   key="losos-1:35OIuYFMKDrlC6yTzqivDPqNqZTMjM0l2MB89bRRreg="
   existing="${NIX_CONFIG:-}"
 

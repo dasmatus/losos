@@ -18,7 +18,11 @@ GitHub applies this setting to future releases only. Releases already published 
 
 The workflow creates an annotated tag at the current `main` commit, explicitly dispatches the normal CI on that tag (GitHub does not trigger other workflows from a tag push made with `GITHUB_TOKEN`), and asks the version workflow to sync `nix/version.nix` on `main`. CI builds the release media, uploads all GitHub release assets to a draft, and publishes it only after the assets are complete. With release immutability enabled, GitHub locks the published assets and tag.
 
-If the release build fails before publication, the release remains a draft so CI can retry its asset uploads. Once published as immutable, treat the version as write-once: use a new version for fixes instead of re-running CI against that release.
+Publication waits for the installer ISO, `losos-ctl`, the registrar and admin UI builds, and the rust gates (`test`, `clippy`, `clippy-wasm`). A failed phone build, Playwright run, discovery leg, eval lint, install VM, or the GitHub Pages copy of the binary cache does not skip publication. Those stay visible on the run; they are not the release.
+
+If the release build fails before publication, the release remains a draft so CI can retry its asset uploads. Re-dispatch **CI** on the existing tag (Actions → CI → Run workflow, ref = the tag, release channel as you chose). Do not run **Release** again for the same version: the tag is write-once, and that workflow refuses to move it. Once published as immutable, use a new version for fixes instead of re-running CI against that release.
+
+The nightly channel cut (`channel/daily`, `channel/weekly`, `channel/monthly`) uses the same idea. It moves to the newest commit of `main` whose `result` check passed and whose `nix: publish built paths to GHCR` job succeeded. A red workflow whose only failures are advisory does not hold the cut. A failed rust gate, or a cache upload that did not happen, does.
 
 ## Existing releases
 

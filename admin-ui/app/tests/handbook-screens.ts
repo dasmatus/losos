@@ -887,6 +887,253 @@ const ACCOUNT = {
   locked: [],
 };
 
+/* LosOS Chat against a stubbed homeserver: the few /_matrix/ answers
+ * matrix-js-sdk needs to sign in, set up its crypto and land a first sync,
+ * with the rooms a shot shows. Events are plain (not encrypted) even in a
+ * room marked encrypted; the page draws them the same. Every other
+ * /_matrix/ call gets an empty answer. */
+const HS = "mattbox.local";
+const MATUS = `@matus:${HS}`;
+const EVA = `@eva:${HS}`;
+const TAG_BOT = `@losos-tag:${HS}`;
+const SALMON = `${import.meta.dir}/../../themes/brand/salmon.png`;
+interface FakeEvent {
+  type: string;
+  sender: string;
+  content: Record<string, unknown>;
+  state_key?: string;
+  event_id: string;
+  origin_server_ts: number;
+  unsigned?: Record<string, unknown>;
+}
+interface FakeRoom {
+  id: string;
+  state: FakeEvent[];
+  timeline: FakeEvent[];
+  typing?: string[];
+  unread?: number;
+  /* Who has read up to which event. */
+  read?: Record<string, string>;
+}
+interface ChatScene {
+  rooms: FakeRoom[];
+  direct: Record<string, string[]>;
+}
+let chatEventNo = 0;
+const mxEvent = (
+  type: string,
+  sender: string,
+  content: Record<string, unknown>,
+  at: number,
+  extra: Partial<FakeEvent> = {},
+): FakeEvent => ({
+  type,
+  sender,
+  content,
+  event_id: extra.event_id ?? `$e${++chatEventNo}`,
+  origin_server_ts: at,
+  ...extra,
+});
+const member = (room: string, who: string, name: string, at: number, membership = "join", sender = who) =>
+  mxEvent("m.room.member", sender, { membership, displayname: name }, at, { state_key: who, event_id: `$m-${room}-${who.slice(1, 4)}-${membership}` });
+const said = (who: string, body: string, at: number, id?: string, more: Record<string, unknown> = {}) =>
+  mxEvent("m.room.message", who, { msgtype: "m.text", body, ...more }, at, id ? { event_id: id } : {});
+const created = (room: string, at: number, extra: Record<string, unknown> = {}) => [
+  mxEvent("m.room.create", MATUS, { room_version: "10", creator: MATUS }, at, { state_key: "", event_id: `$c-${room}` }),
+  mxEvent("m.room.power_levels", MATUS, { users: { [MATUS]: 100 } }, at, { state_key: "", event_id: `$p-${room}` }),
+  mxEvent("m.room.join_rules", MATUS, { join_rule: "invite" }, at, { state_key: "", event_id: `$j-${room}` }),
+  ...Object.entries(extra).map(([type, content]) =>
+    mxEvent(type, MATUS, content as Record<string, unknown>, at, { state_key: "", event_id: `$s-${room}-${type}` }),
+  ),
+];
+/* 18:15 on the shots' day (the browser's clock is UTC), minute by minute. */
+const CHAT_AT = (min: number) => Date.UTC(2026, 9, 8, 18, 15 + min);
+
+/* The owner, with chat on: GET /api/me lists it in `shared`, which is what
+ * puts Chat in the sidebar. */
+const CHAT_ME = { ...ME_OWNER, shared: ["chat"] };
+
+/* Matus and Eva's conversation (the handbook's Chat page), with the Budget
+ * room beside it; Eva is writing. */
+function chatWithEva(typing: boolean): ChatScene {
+  const dm = `!eva:${HS}`;
+  const budget = `!budget:${HS}`;
+  const t0 = CHAT_AT(-20);
+  return {
+    direct: { [EVA]: [dm] },
+    rooms: [
+      {
+        id: dm,
+        state: created("dm", t0),
+        timeline: [
+          member("dm", MATUS, "Matus", t0),
+          mxEvent("m.room.encryption", MATUS, { algorithm: "m.megolm.v1.aes-sha2" }, t0, { state_key: "", event_id: "$enc-dm" }),
+          member("dm", EVA, "Eva", t0 + 1000, "invite", MATUS),
+          member("dm", EVA, "Eva", t0 + 60_000),
+          said(MATUS, "Hi Eva, chat is up on the box.", CHAT_AT(0), "$hi"),
+          mxEvent("m.room.message", MATUS, {
+            msgtype: "m.text",
+            body: "* Hi Eva, chat is up on mattbox.",
+            "m.new_content": { msgtype: "m.text", body: "Hi Eva, chat is up on mattbox." },
+            "m.relates_to": { rel_type: "m.replace", event_id: "$hi" },
+          }, CHAT_AT(0) + 20_000),
+          said(MATUS, "It's end to end encrypted, and nobody needs a chat password.", CHAT_AT(0) + 30_000, "$e2e"),
+          mxEvent("m.reaction", EVA, { "m.relates_to": { rel_type: "m.annotation", event_id: "$hi", key: "👍" } }, CHAT_AT(0) + 40_000),
+          said(EVA, "Nice. Can we plan the holiday here?", CHAT_AT(0) + 50_000, "$plan"),
+          mxEvent("m.reaction", MATUS, { "m.relates_to": { rel_type: "m.annotation", event_id: "$plan", key: "❤️" } }, CHAT_AT(0) + 55_000),
+          said(EVA, "The ferry leaves at nine, by the way.", CHAT_AT(0) + 58_000, "$ferry", {
+            "m.relates_to": { rel_type: "m.thread", event_id: "$plan", is_falling_back: true, "m.in_reply_to": { event_id: "$plan" } },
+          }),
+          said(MATUS, "Yes, I'll make a room for it tonight.", CHAT_AT(0) + 70_000, "$room"),
+          mxEvent("m.room.message", MATUS, {
+            msgtype: "m.image",
+            body: "salmon.png",
+            url: `mxc://${HS}/salmon`,
+            info: { mimetype: "image/png", w: 1024, h: 1024, size: 120000 },
+          }, CHAT_AT(0) + 80_000, { event_id: "$pic" }),
+        ],
+        typing: typing ? [EVA] : [],
+        read: { [EVA]: "$pic" },
+      },
+      {
+        id: budget,
+        state: created("budget", t0, { "m.room.name": { name: "Budget" } }),
+        timeline: [
+          member("budget", MATUS, "Matus", t0),
+          member("budget", EVA, "Eva", t0 + 60_000),
+          said(EVA, "I moved the rent to the shared sheet.", CHAT_AT(-6)),
+          said(EVA, "Sorry about that.", CHAT_AT(-5)),
+        ],
+        unread: 2,
+      },
+    ],
+  };
+}
+
+/* A room where Matus tagged @LosOS: the one status line while the ask runs
+ * (`step`), or the answer that replaced it. */
+function tagAsk(step: string | null): ChatScene {
+  const id = `!holiday:${HS}`;
+  const t0 = CHAT_AT(-30);
+  const line = "$tag-line";
+  const answer =
+    "You booked the 9:00 ferry from Split to Hvar on 14 August, for two adults. The booking is in your Cloud, Documents/Holiday/ferry-booking.pdf, and Eva posted the times in this room on 3 October.";
+  const timeline: FakeEvent[] = [
+    member("holiday", MATUS, "Matus", t0),
+    member("holiday", EVA, "Eva", t0 + 30_000),
+    member("holiday", TAG_BOT, "LosOS Tag", t0 + 60_000),
+    said(EVA, "Did we book the early ferry or the one at noon?", CHAT_AT(-2), "$q"),
+    said(MATUS, "@LosOS which ferry did we book for the holiday?", CHAT_AT(0), "$ask", {
+      "m.mentions": { user_ids: [TAG_BOT] },
+    }),
+    mxEvent("m.room.message", TAG_BOT, { msgtype: "m.notice", body: "LosOS Tag is thinking…" }, CHAT_AT(0) + 3000, { event_id: line }),
+  ];
+  const edit = (text: string, at: number) =>
+    mxEvent("m.room.message", TAG_BOT, {
+      msgtype: "m.notice",
+      body: `* ${text}`,
+      "m.new_content": { msgtype: "m.notice", body: text },
+      "m.relates_to": { rel_type: "m.replace", event_id: line },
+    }, at);
+  timeline.push(edit(step === null ? answer : `LosOS Tag ${step}…`, CHAT_AT(0) + 9000));
+  return {
+    direct: {},
+    rooms: [
+      {
+        id,
+        state: created("holiday", t0, { "m.room.name": { name: "Holiday" }, "m.room.topic": { topic: "Croatia, 14 to 24 August" } }),
+        timeline,
+        read: { [EVA]: "$ask" },
+      },
+    ],
+  };
+}
+
+async function chatRoutes(page: Page, scene: ChatScene) {
+  const people = [
+    { userId: MATUS, displayName: "Matus" },
+    { userId: EVA, displayName: "Eva" },
+  ];
+  await page.route("**/api/chat", (route) =>
+    json(route, 200, { available: true, reason: "up", serverName: HS, federation: true }),
+  );
+  await page.route("**/api/chat/people", (route) => json(route, 200, { people }));
+  await page.route("**/api/chat/session", (route) =>
+    json(route, 200, { userId: MATUS, accessToken: "chat-token", deviceId: "HANDBOOK", homeserver: "/" }),
+  );
+  let synced = false;
+  const roomSync = (r: FakeRoom) => ({
+    state: { events: r.state },
+    timeline: { events: r.timeline, limited: false, prev_batch: `p-${r.id}` },
+    ephemeral: {
+      events: [
+        { type: "m.typing", content: { user_ids: r.typing ?? [] } },
+        ...(r.read
+          ? [
+              {
+                type: "m.receipt",
+                content: Object.fromEntries(
+                  Object.entries(r.read).map(([who, ev]) => [ev, { "m.read": { [who]: { ts: NOW } } }]),
+                ),
+              },
+            ]
+          : []),
+      ],
+    },
+    account_data: { events: [] },
+    unread_notifications: { notification_count: r.unread ?? 0, highlight_count: 0 },
+    summary: {},
+  });
+  await page.route("**/_matrix/**", async (route) => {
+    const req = route.request();
+    const url = new URL(req.url());
+    const p = url.pathname;
+    if (p === "/_matrix/client/versions")
+      return json(route, 200, { versions: ["v1.1", "v1.2", "v1.3", "v1.4", "v1.5", "v1.6", "v1.7", "v1.8", "v1.9", "v1.10", "v1.11", "v1.12"], unstable_features: {} });
+    if (p.endsWith("/account/whoami")) return json(route, 200, { user_id: MATUS, device_id: "HANDBOOK" });
+    if (p.endsWith("/sync")) {
+      if (synced) {
+        // The long poll: nothing new, after a while.
+        await new Promise((r) => setTimeout(r, 20_000));
+        return json(route, 200, { next_batch: "s2" }).catch(() => undefined);
+      }
+      synced = true;
+      return json(route, 200, {
+        next_batch: "s1",
+        account_data: { events: [{ type: "m.direct", content: scene.direct }] },
+        rooms: { join: Object.fromEntries(scene.rooms.map((r) => [r.id, roomSync(r)])), invite: {}, leave: {} },
+        presence: { events: [] },
+        to_device: { events: [] },
+        device_one_time_keys_count: { signed_curve25519: 50 },
+        device_unused_fallback_key_types: ["signed_curve25519"],
+      });
+    }
+    if (/\/filter$/.test(p) && req.method() === "POST") return json(route, 200, { filter_id: "1" });
+    if (p.endsWith("/pushrules/")) return json(route, 200, { global: { override: [], underride: [], sender: [], room: [], content: [] } });
+    if (p.endsWith("/capabilities")) return json(route, 200, { capabilities: {} });
+    if (p.endsWith("/keys/upload")) return json(route, 200, { one_time_key_counts: { signed_curve25519: 50 } });
+    if (p.endsWith("/keys/query")) return json(route, 200, { device_keys: {}, failures: {} });
+    if (p.endsWith("/keys/claim")) return json(route, 200, { one_time_keys: {}, failures: {} });
+    if (p.includes("/room_keys/version")) return json(route, 404, { errcode: "M_NOT_FOUND", error: "No backup" });
+    if (p.includes("/account_data/")) return json(route, 404, { errcode: "M_NOT_FOUND", error: "Not found" });
+    if (p.endsWith("/members")) {
+      const id = decodeURIComponent(p.split("/rooms/")[1]!.split("/")[0]!);
+      const r = scene.rooms.find((x) => x.id === id);
+      const chunk = r ? [...r.state, ...r.timeline].filter((e) => e.type === "m.room.member") : [];
+      return json(route, 200, { chunk });
+    }
+    if (p.endsWith("/messages")) return json(route, 200, { chunk: [], start: "p", end: undefined });
+    if (p.includes("/media/download/") || p.includes("/media/thumbnail/"))
+      return route.fulfill({ status: 200, contentType: "image/png", body: Buffer.from(await Bun.file(SALMON).arrayBuffer()) });
+    if (p.endsWith("/media/config")) return json(route, 200, { "m.upload.size": 104857600 });
+    if (p.includes("/profile/")) {
+      const who = decodeURIComponent(p.split("/profile/")[1]!.split("/")[0]!);
+      return json(route, 200, { displayname: people.find((x) => x.userId === who)?.displayName ?? who.slice(1).split(":")[0] });
+    }
+    return json(route, 200, {});
+  });
+}
+
 /* One page wired to a box in a given state. */
 interface OpenOptions {
   path?: string;
@@ -917,6 +1164,7 @@ interface OpenOptions {
   me?: Record<string, unknown> | null;
   at?: string;
   login?: boolean;
+  chat?: ChatScene | null;
 }
 async function open({
   path = "/",
@@ -953,6 +1201,8 @@ async function open({
   // LosOS Login answers: the wizard's sign-in takes the password, and from
   // then on GET /api/me without the key is Matus by the session.
   login = false,
+  // LosOS Chat's homeserver, with these rooms; null leaves /_matrix/ alone.
+  chat = null,
 }: OpenOptions) {
   // Signed-in admin shots need a valid /api/me so the top bar renders the
   // person menu (loadMe rejects an empty `{}` stub). Default to the owner
@@ -1157,7 +1407,10 @@ async function open({
     }),
   );
 
-  await page.goto(at + path, { waitUntil: "networkidle" });
+  if (chat) await chatRoutes(page, chat);
+
+  // The homeserver's long poll never lets the network go idle.
+  await page.goto(at + path, { waitUntil: chat ? "load" : "networkidle" });
   await page.waitForTimeout(600);
   return page;
 }
@@ -1201,6 +1454,29 @@ const openPins = async (page: Page, t: Translator) => {
     .getByRole("button", { name: t("pins.edit") })
     .click();
   await settle(page);
+};
+
+/* Chat: wait for the first sync's list, then open one conversation. */
+const openRoom = async (page: Page, t: Translator, name: string) => {
+  // The not-on-a-mesh notice says nothing about chat, and pushes the
+  // conversation under the fold.
+  const notice = page.locator("[data-mesh-dismiss]");
+  if (await notice.count()) await notice.first().click();
+  const entry = page.getByRole("button", { name: new RegExp(`^${name}`) }).first();
+  await entry.waitFor({ timeout: 30_000 });
+  await entry.click();
+  await settle(page, 1200);
+  await hideToasts(page);
+  // The stub has no cross-signing keys, so chat asks to set up secure
+  // messages; a box that has done so shows no such bar. Opening the room
+  // scrolls the window; the shot starts at the top.
+  await page.evaluate((label) => {
+    for (const button of document.querySelectorAll('[data-slot="alert"] button'))
+      if (button.textContent?.trim() === label)
+        (button.closest('[data-slot="alert"]') as HTMLElement).style.display = "none";
+    window.scrollTo(0, 0);
+  }, t("chat.security.bannerNew"));
+  await settle(page, 300);
 };
 
 /* The Overview's apps and disk card: the status line, the tiles and the disk
@@ -1764,6 +2040,47 @@ const SHOTS: Shot[] = [
     settings: JOINED,
     overrides: LENDING,
     crop: { selector: '[data-testid="lend-memory"]', pad: 24 },
+  },
+  // ── LosOS Chat ───────────────────────────────────────────────────────
+  /* The conversation with Eva while she writes: "Eva is typing…" above the
+   * messages and under her name in the list. */
+  {
+    name: "chat",
+    path: "/chat/",
+    me: CHAT_ME,
+    chat: chatWithEva(true),
+    langs: true,
+    act: async (page, t) => {
+      await openRoom(page, t, "Eva");
+      await page.getByText(t("chat.typing.one", { name: "Eva" })).first().waitFor();
+      await settle(page, 800);
+    },
+  },
+  /* LosOS Tag at work in a room: its one line while the ask runs, then the
+   * answer in the same place. */
+  {
+    name: "losos-tag-status",
+    path: "/chat/",
+    me: CHAT_ME,
+    chat: tagAsk("is reading what it found"),
+    langs: true,
+    act: async (page, t) => {
+      await openRoom(page, t, "Holiday");
+      await page.getByText("LosOS Tag is reading what it found…").first().waitFor();
+      await settle(page, 800);
+    },
+  },
+  {
+    name: "losos-tag-answer",
+    path: "/chat/",
+    me: CHAT_ME,
+    chat: tagAsk(null),
+    langs: true,
+    act: async (page, t) => {
+      await openRoom(page, t, "Holiday");
+      await page.getByText(/You booked the 9:00 ferry/).first().waitFor();
+      await settle(page, 800);
+    },
   },
   // ── The wizard ───────────────────────────────────────────────────────
   {
