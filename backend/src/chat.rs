@@ -758,7 +758,12 @@ impl Chat {
     /// assistant joins the chat that invited it, so a direct chat made in
     /// the picker needs no second step. The application service's token
     /// speaks for its own namespace's users.
-    pub fn agent_join(&self, room: &str, agent_localpart: &str, display: &str) -> Result<(), ChatError> {
+    pub fn agent_join(
+        &self,
+        room: &str,
+        agent_localpart: &str,
+        display: &str,
+    ) -> Result<(), ChatError> {
         let inner = self.inner()?;
         let token = inner.as_token()?;
         let agent = self.account(&token, agent_localpart, display)?;
@@ -790,6 +795,7 @@ impl Chat {
             &notice.text,
             Some(&notice.html),
         )
+        .map(|_| ())
     }
 
     /// Post a message into `room` as one of the box's own agents: LosOS
@@ -804,7 +810,7 @@ impl Chat {
         display: &str,
         text: &str,
         html: Option<&str>,
-    ) -> Result<(), ChatError> {
+    ) -> Result<String, ChatError> {
         let inner = self.inner()?;
         let token = inner.as_token()?;
         let agent = self.account(&token, agent_localpart, display)?;
@@ -841,6 +847,62 @@ impl Chat {
                     }),
                 }
             }),
+        )?;
+        if sent.status != 200 {
+            return Err(ChatError::Homeserver {
+                status: sent.status,
+                errcode: sent.errcode(),
+            });
+        }
+        sent.body
+            .get("event_id")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .ok_or_else(|| ChatError::Homeserver {
+                status: sent.status,
+                errcode: "the homeserver answered without an event id".into(),
+            })
+    }
+
+    /// Rewrite one of the box's own agent messages. The same send, as an
+    /// `m.replace` relation, so the chat shows it as an edit of the one
+    /// line instead of a second message: an ask's "thinking" line becomes
+    /// the answer when the turn is done.
+    pub fn agent_edit(
+        &self,
+        room: &str,
+        agent_localpart: &str,
+        display: &str,
+        event_id: &str,
+        text: &str,
+    ) -> Result<(), ChatError> {
+        let inner = self.inner()?;
+        let token = inner.as_token()?;
+        let agent = self.account(&token, agent_localpart, display)?;
+        let txn = format!(
+            "{}-{}-{}",
+            agent_localpart,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0),
+            NOTICES.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        );
+        let sent = inner.homeserver.call(
+            "PUT",
+            &format!(
+                "/_matrix/client/v3/rooms/{}/send/m.room.message/{}?user_id={}",
+                encode(room),
+                encode(&txn),
+                encode(&agent)
+            ),
+            &token,
+            Some(&json!({
+                "msgtype": "m.notice",
+                "body": format!("* {text}"),
+                "m.new_content": { "msgtype": "m.notice", "body": text },
+                "m.relates_to": { "rel_type": "m.replace", "event_id": event_id },
+            })),
         )?;
         if sent.status != 200 {
             return Err(ChatError::Homeserver {
@@ -1486,6 +1548,35 @@ mod tests {
             .as_str()
             .unwrap()
             .ends_with("user_id=%40losos-git%3Amattbox.local"));
+    }
+
+    #[test]
+    fn an_agent_edit_replaces_the_message_it_names() {
+        let r = rig();
+        r.chat
+            .agent_edit(
+                "!room1:mattbox.local",
+                GIT_BOT,
+                GIT_BOT_NAME,
+                "$line",
+                "hello",
+            )
+            .unwrap();
+        let s = r.hs.state.lock().unwrap();
+        let sent = s
+            .events
+            .iter()
+            .find(|(k, _)| k.starts_with("sent"))
+            .map(|(_, v)| v)
+            .expect("an edit");
+        // A client that does not understand replacement shows the `* `
+        // fallback; the chat reads `m.new_content`.
+        assert_eq!(sent["body"]["body"], "* hello");
+        assert_eq!(sent["body"]["m.new_content"]["body"], "hello");
+        assert_eq!(
+            sent["body"]["m.relates_to"],
+            json!({ "rel_type": "m.replace", "event_id": "$line" })
+        );
     }
 
     #[test]

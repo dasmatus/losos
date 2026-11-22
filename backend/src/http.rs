@@ -3218,8 +3218,9 @@ struct TagPost {
     api: web::Data<Api>,
 }
 
-impl crate::tag::queue::Post for TagPost {
-    fn post(&self, room: &str, assistant: &str, answer: &str) -> Result<(), String> {
+impl TagPost {
+    /// The assistant's Matrix localpart and the name the room shows.
+    fn names(&self, assistant: &str) -> (String, String) {
         let slug = assistant
             .strip_prefix(crate::tag::TAG_PREFIX)
             .unwrap_or(assistant);
@@ -3232,10 +3233,62 @@ impl crate::tag::queue::Post for TagPost {
             .find(|a| a.slug == slug)
             .map(|a| a.display.clone())
             .unwrap_or_else(|| slug.to_string());
+        (slug.to_string(), display)
+    }
+
+    fn line(&self, assistant: &str, step: &str) -> String {
+        format!("{} {step}…", self.names(assistant).1)
+    }
+}
+
+impl crate::tag::queue::Post for TagPost {
+    fn post(&self, room: &str, assistant: &str, answer: &str) -> Result<(), String> {
+        let (slug, display) = self.names(assistant);
         self.api
             .chat
-            .agent_message(room, slug, &display, answer, None)
+            .agent_message(room, &slug, &display, answer, None)
+            .map(|_| ())
             .map_err(|e| format!("{e:#}"))
+    }
+
+    fn began(&self, room: &str, assistant: &str, step: &str) -> Result<Option<String>, String> {
+        let (slug, display) = self.names(assistant);
+        self.api
+            .chat
+            .agent_message(room, &slug, &display, &self.line(assistant, step), None)
+            .map(Some)
+            .map_err(|e| format!("{e:#}"))
+    }
+
+    fn step(&self, room: &str, assistant: &str, message: &str, step: &str) -> Result<(), String> {
+        let (slug, display) = self.names(assistant);
+        self.api
+            .chat
+            .agent_edit(room, &slug, &display, message, &self.line(assistant, step))
+            .map_err(|e| format!("{e:#}"))
+    }
+
+    fn finish(
+        &self,
+        room: &str,
+        assistant: &str,
+        text: &str,
+        message: Option<&str>,
+    ) -> Result<(), String> {
+        let Some(message) = message else {
+            return self.post(room, assistant, text);
+        };
+        let (slug, display) = self.names(assistant);
+        match self
+            .api
+            .chat
+            .agent_edit(room, &slug, &display, message, text)
+        {
+            // An edit that the homeserver refuses must not swallow the
+            // answer: post it as its own message instead.
+            Ok(()) => Ok(()),
+            Err(_) => self.post(room, assistant, text),
+        }
     }
 }
 
@@ -3272,7 +3325,10 @@ static ROOM_MEMBERS: std::sync::LazyLock<
     std::sync::Mutex<std::collections::HashMap<String, std::collections::HashSet<String>>>,
 > = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
 
-fn members_lock() -> std::sync::MutexGuard<'static, std::collections::HashMap<String, std::collections::HashSet<String>>> {
+fn members_lock() -> std::sync::MutexGuard<
+    'static,
+    std::collections::HashMap<String, std::collections::HashSet<String>>,
+> {
     ROOM_MEMBERS
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -3301,7 +3357,11 @@ fn tag_hear(api: &Api, body: &serde_json::Value) {
             .pointer("/timeline/events")
             .and_then(serde_json::Value::as_array)
             .map(|a| a.iter().collect::<Vec<_>>());
-        for event in state.into_iter().flatten().chain(timeline.into_iter().flatten()) {
+        for event in state
+            .into_iter()
+            .flatten()
+            .chain(timeline.into_iter().flatten())
+        {
             if event.get("type").and_then(serde_json::Value::as_str) == Some("m.room.member") {
                 tag_member_seen(room, event);
                 continue;
@@ -3377,8 +3437,12 @@ fn tag_accept_invites(api: &Api, body: &serde_json::Value) {
                 .map(|a| a.display.clone())
                 .unwrap_or_default();
             match api.chat.agent_join(room, localpart, &display) {
-                Ok(()) => tracing::info!(room = %room, agent = %agent, "an assistant joined the chat that invited it"),
-                Err(e) => tracing::warn!(error = %e, room = %room, agent = %agent, "an invited assistant could not join"),
+                Ok(()) => {
+                    tracing::info!(room = %room, agent = %agent, "an assistant joined the chat that invited it")
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, room = %room, agent = %agent, "an invited assistant could not join")
+                }
             }
         }
     }

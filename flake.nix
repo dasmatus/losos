@@ -50,8 +50,13 @@
   # Defaults for any `nix` invocation that uses this flake. Matches CI's
   # setup-nix extra-conf and modules/cache.nix on the appliance; the proxy
   # itself is started by nix/dev-cache.sh from devenv or `nix develop`.
+  #
+  # `accept-flake-config` is not listed here on purpose: Nix reads it from
+  # nix.conf *before* it applies a flake's settings (libflake/config.cc), so a
+  # flake cannot switch it on for itself. modules/cache.nix sets it for the
+  # appliance and the installer medium.
   nixConfig = {
-    extra-substituters = "http://127.0.0.1:8787 https://losos.dasmat.us/proxy";
+    extra-substituters = "http://127.0.0.1:8787";
     extra-trusted-public-keys = "losos-1:35OIuYFMKDrlC6yTzqivDPqNqZTMjM0l2MB89bRRreg=";
     connect-timeout = 5;
     fallback = false;
@@ -649,6 +654,8 @@
           ./modules/edge-credentials.nix
           ./modules/edge-vms.nix
           ./modules/edge-inference.nix
+          ./modules/skypilot.nix
+          ./modules/skypilot-gateway.nix
           ./modules/edge-gateway.nix
           ./modules/edge-hidden.nix
           ./modules/edge-exit.nix
@@ -680,6 +687,13 @@
       # at its top what it asserts. Most boot VMs, which CI (no KVM) never
       # builds.
       checks.${system} = {
+        # The Bend law gate (nix/bend.nix): every law LAWS.bend states must
+        # have a proof in PROOF.bend, or the build fails. No VM, no network.
+        losos-bend-proofs =
+          (import ./nix/bend.nix {
+            inherit pkgs;
+            src = ./.;
+          }).bendProofs;
         losos-install = import ./nix/tests/install.nix { inherit pkgs disko; };
         # The real installer from the branch, offline, then the installed disk
         # booted on its own (nix/tests/iso-install.nix).
