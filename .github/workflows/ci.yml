@@ -153,14 +153,19 @@ jobs:
   # The release channels' bot (.github/workflows/channels.yml) against a fake
   # GitHub over a real repository: cuts, a hotfix's cherry-pick and upload,
   # its promotion, and the refusals. Seconds, no lane; devenv.nix's
-  # `test-bots` is the same command.
+  # `test-bots` is the same command. The scripts directory is the bot;
+  # ci.yml is there too because test_channels.py checks that the cut's job
+  # names still match this workflow. Cone-mode sparse checkout takes
+  # directories, and .github/workflows is the small one that holds ci.yml.
   bots:
     name: "bots: release channels"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
-          sparse-checkout: .github/scripts
+          sparse-checkout: |
+            .github/scripts
+            .github/workflows
       - run: python3 .github/scripts/test_channels.py -v
 
   # ── Which jobs a change needs ───────────────────────────────────────────────
@@ -649,7 +654,13 @@ jobs:
         run: |
           set -o pipefail
           nix build .#losos-registrar .#losos-admin-ui .#losos-handbook .#losos-lab-virt -L 2>&1 | tee "$RUNNER_TEMP/nix-build.log"
+      # The phone typecheck, the static operator binary and the Playwright
+      # suite are not what a channel cut or a GitHub release waits on. A
+      # failure must not fail this job: publish-cache, the ISO and
+      # release-media all need the job, and they need the store exports
+      # below, which a failed step would otherwise skip.
       - name: typecheck the admin UI's mobile tree
+        continue-on-error: true
         run: |
           set -o pipefail
           nix develop .#ci -c bash -euo pipefail -c '
@@ -679,19 +690,23 @@ jobs:
       # fork pull requests - must not have.
       - name: build losos-registrar-static
         id: build-registrar-static
+        continue-on-error: true
         run: |
           set -o pipefail
           nix build .#losos-registrar-static -o result-static -L 2>&1 | tee "$RUNNER_TEMP/nix-build.log"
       - name: file an issue for the failed nix build
-        if: failure() && steps.build-registrar-static.outcome == 'failure'
+        if: steps.build-registrar-static.outcome == 'failure'
+        continue-on-error: true
         uses: ./.github/actions/nix-build-failure
         with:
           target: .#losos-registrar-static
       - name: export the static losos-registrar for the publish-tool job
+        if: steps.build-registrar-static.outcome == 'success'
         run: |
           mkdir dev-machine
           cp -L result-static/bin/losos-registrar dev-machine/losos-registrar
       - uses: actions/upload-artifact@v7
+        if: steps.build-registrar-static.outcome == 'success'
         with:
           name: losos-registrar-dev-machine
           path: dev-machine
@@ -701,11 +716,13 @@ jobs:
       # needed, unlike the VM tests. Reuses the node_modules fetched just above.
       - name: build the Playwright check
         id: build-admin-ui-check
+        continue-on-error: true
         run: |
           set -o pipefail
           nix build .#checks.x86_64-linux.losos-admin-ui -L 2>&1 | tee "$RUNNER_TEMP/nix-build.log"
       - name: file an issue for the failed nix build
-        if: failure() && steps.build-admin-ui-check.outcome == 'failure'
+        if: steps.build-admin-ui-check.outcome == 'failure'
+        continue-on-error: true
         uses: ./.github/actions/nix-build-failure
         with:
           target: .#checks.x86_64-linux.losos-admin-ui
@@ -1042,6 +1059,8 @@ jobs:
           include-hidden-files: true
 
   publish-cache:
+    # channels.py matches this name. A cut refuses a commit whose cache job
+    # did not succeed, so a box is not pointed at a tree it would compile.
     name: "nix: publish built paths to GHCR"
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request' && !inputs.release_tags
@@ -1088,8 +1107,19 @@ jobs:
       # handbook workflow picks up the newest of these from main and deploys
       # it with the handbook; see .github/scripts/pages-cache.ts for what it
       # holds and leaves out.
-      - name: static copy of the cache for GitHub Pages
+      #
+      # This copy is not the cache a box substitutes, and it is not the job
+      # channels.py treats as the cache upload. A failure here (the step
+      # used to call bun without installing it, so every main run died with
+      # "bun: command not found" after the GHCR push had already succeeded)
+      # must not fail this job, or the channel cut refuses the commit.
+      - uses: oven-sh/setup-bun@v2
         if: github.ref == 'refs/heads/main'
+        continue-on-error: true
+      - name: static copy of the cache for GitHub Pages
+        id: pages
+        if: github.ref == 'refs/heads/main'
+        continue-on-error: true
         env:
           SIGNING_KEY: ${{ secrets.NIX_CACHE_SIGNING_KEY }}
         run: >-
@@ -1097,7 +1127,7 @@ jobs:
           .#losos-ctl .#losos-registrar .#losos-admin-ui .#losos-handbook
           .#losos-basic-classes .#losos-image-pause
       - uses: actions/upload-artifact@v7
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && steps.pages.outcome == 'success'
         with:
           name: losos-pages-cache
           path: pages-cache
@@ -1769,6 +1799,10 @@ jobs:
   # passed and the rest were skipped, red when any failed or was cancelled.
   # It is the check to require on main, since a required job that a change
   # skips would otherwise have to be listed one by one.
+  #
+  # The name is load-bearing. channels.py cuts a channel only when this job
+  # succeeded and "nix: publish built paths to GHCR" did. Renaming either
+  # without updating that script stops the nightly cut.
   result:
     name: "result: every job this change needs passed"
     if: always()
@@ -1804,8 +1838,11 @@ jobs:
           # The Rust gates block: `test` (cargo test), `clippy` (cargo clippy
           # --all-targets -- -D warnings, plus cargo fmt --check on pull
           # requests) and `clippy-wasm`. A red or cancelled one fails this
-          # check, and with it the merge. Every other lane stays advisory and
-          # is reported as a warning (PR #673 had made all of them advisory).
+          # check, and with it the merge and (on a tag) the release.
+          # release-media needs those three jobs by id. Every other lane stays
+          # advisory and is reported as a warning (PR #673 had made all of
+          # them advisory). A red advisory job must not fail this check: the
+          # channel cut reads this job, not the workflow conclusion.
           blocking='["clippy","clippy-wasm","test"]'
           bad=$(jq -r --argjson b "$blocking" 'to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | select(.key as $k | $b | index($k)) | .key' <<<"$NEEDS")
           soft=$(jq -r --argjson b "$blocking" 'to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | select(.key as $k | $b | index($k) | not) | .key' <<<"$NEEDS")
@@ -1868,15 +1905,23 @@ jobs:
   release-media:
     name: "release: publish installer ISO, demo QCOW2 and edge gateway QCOW2"
     runs-on: ubuntu-latest
-    # A tag push needs its own run's builds; a manual run for older tags
-    # builds everything from each tag's tree and needs none of them.
+    # A tag push publishes only when the media and the crates they ship
+    # actually built, and when cargo test and clippy passed. Playwright, the
+    # phone builds, discovery, eval, the install VM and the Pages cache copy
+    # are not in `needs`: a failure there used to fail registrar-and-ui and
+    # this job was skipped with it. A manual run for older tags builds from
+    # each tag's tree and does not require this run's builds.
     if: >-
       ${{ !cancelled() && needs.release-plan.result == 'success'
         && needs.release-plan.outputs.tags != '[]'
         && (inputs.release_tags
-          || (needs.iso.result == 'success' && needs.losos-ctl.result == 'success'
-            && needs.registrar-and-ui.result == 'success')) }}
-    needs: [release-plan, iso, losos-ctl, registrar-and-ui]
+          || (needs.iso.result == 'success'
+            && needs.losos-ctl.result == 'success'
+            && needs.registrar-and-ui.result == 'success'
+            && needs.test.result == 'success'
+            && needs.clippy.result == 'success'
+            && needs.clippy-wasm.result == 'success')) }}
+    needs: [release-plan, iso, losos-ctl, registrar-and-ui, test, clippy, clippy-wasm]
     strategy:
       fail-fast: false
       max-parallel: 2

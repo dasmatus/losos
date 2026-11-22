@@ -172,13 +172,23 @@ class FakeGitHub:
                 if e.strip()
             ]
         if method == "GET" and p == "actions/workflows/ci.yml/runs":
-            found = [
-                r
-                for r in reversed(self.runs)
-                if r["head_branch"] == q["branch"]
-                and ("head_sha" not in q or r["head_sha"] == q["head_sha"])
-                and ("status" not in q or r["conclusion"] == q["status"])
-            ]
+            def listed(r):
+                if r["head_branch"] != q["branch"]:
+                    return False
+                if "head_sha" in q and r["head_sha"] != q["head_sha"]:
+                    return False
+                want = q.get("status")
+                if want is None:
+                    return True
+                # GitHub's status filter is the conclusion for success/failure
+                # and the run status for completed/in_progress.
+                if want == "completed":
+                    return r["status"] == "completed"
+                if want in ("success", "failure", "cancelled", "neutral", "skipped", "timed_out"):
+                    return r["conclusion"] == want
+                return r["status"] == want
+
+            found = [r for r in reversed(self.runs) if listed(r)]
             return {"workflow_runs": found}
         if method == "GET" and (m := re.fullmatch(r"actions/runs/(\d+)/jobs", p)):
             r = next(r for r in self.runs if r["id"] == int(m[1]))
@@ -193,8 +203,16 @@ class FakeGitHub:
 
     # ── Test helpers ────────────────────────────────────────────────────────
 
-    def ci(self, branch, sha, conclusion="success", cache=True, status="completed", event="push"):
-        job = {"name": channels.CACHE_JOB, "conclusion": "success" if cache else "skipped"}
+    def ci(self, branch, sha, conclusion="success", cache=True, status="completed", event="push", result=None):
+        # A red workflow used to mean a red result check. Pass result=True to
+        # describe the case this fix is for: advisory jobs failed the run,
+        # and cargo test / clippy did not.
+        if result is None:
+            result = conclusion == "success"
+        jobs = [
+            {"name": channels.CACHE_JOB, "conclusion": "success" if cache else "skipped"},
+            {"name": channels.RESULT_JOB, "conclusion": "success" if result else "failure"},
+        ]
         self.runs.append(
             {
                 "id": len(self.runs) + 1,
@@ -204,7 +222,7 @@ class FakeGitHub:
                 "status": status,
                 "conclusion": conclusion if status == "completed" else None,
                 "html_url": f"https://example.org/runs/{len(self.runs) + 1}",
-                "jobs": [job],
+                "jobs": jobs,
             }
         )
 
@@ -425,6 +443,53 @@ class Flow(unittest.TestCase):
         later = datetime.datetime.fromtimestamp(self.clock.now + 3600, datetime.timezone.utc)
         self.bot.promote(now=later)
         self.assertEqual(self.gh.dispatched, ["hotfix/daily/9", "hotfix/daily/9"])
+
+    def test_an_advisory_failure_still_cuts_and_promotes(self):
+        # The workflow is red, the required check and the cache upload are
+        # not. The channel moves. A real test failure still does not.
+        self.gh.ci("main", self.c1, conclusion="failure", result=False, cache=True)
+        self.bot.cut(["daily"])
+        self.assertIn("nothing to cut", self.lines[-1])
+        self.gh.ci("main", self.c1, conclusion="failure", result=True, cache=False)
+        self.bot.cut(["daily"])
+        self.assertIn("nothing to cut", self.lines[-1])
+        self.gh.ci("main", self.c1, conclusion="failure", result=True, cache=True)
+        self.bot.cut(["daily"])
+        self.assertEqual(self.head("daily"), self.c1)
+
+        c2 = self.repo.commit("Fix (#11)", {"b.txt": "v4\n"})
+        self.merged(11, "Fix", c2)
+        self.bot.hotfix(11)
+        sha = self.gh.git("rev-parse", "refs/heads/hotfix/daily/11")
+        self.gh.ci(
+            "hotfix/daily/11", sha, conclusion="failure", result=True, cache=True,
+            event="workflow_dispatch",
+        )
+        self.bot.promote()
+        self.assertEqual(self.head("daily"), sha)
+        self.assertIn("Released on `channel/daily`.", self.gh.comments[-1][1])
+
+
+class ReleaseGateNames(unittest.TestCase):
+    """channels.py matches job names in ci.yml. A rename that forgets one
+    side makes every cut a no-op and looks like 'nothing is green'."""
+
+    def test_names_and_the_pages_copy_cannot_fail_the_cache_job(self):
+        root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "workflows", "ci.yml"))
+        with open(root, encoding="utf-8") as f:
+            text = f.read()
+        self.assertIn(f'name: "{channels.RESULT_JOB}"', text)
+        self.assertIn(f'name: "{channels.CACHE_JOB}"', text)
+        cache = text.split("  publish-cache:\n", 1)[1].split("\n  tui:\n", 1)[0]
+        step = cache.split("id: pages\n", 1)[1].split("\n      - ", 1)[0]
+        self.assertIn("continue-on-error: true", step)
+        registrar = text.split("  registrar-and-ui:\n", 1)[1].split("\n  expo-eas:\n", 1)[0]
+        self.assertGreaterEqual(registrar.count("continue-on-error: true"), 3)
+        media = text.split("  release-media:\n", 1)[1].split("\n    strategy:\n", 1)[0]
+        for job in ("test", "clippy", "clippy-wasm", "iso", "losos-ctl", "registrar-and-ui"):
+            self.assertIn(f"needs.{job}.result == 'success'", media)
+        for advisory in ("discovery", "install", "eval", "expo-dev-client", "stalwart"):
+            self.assertNotIn(f"needs.{advisory}.result", media)
 
 
 if __name__ == "__main__":

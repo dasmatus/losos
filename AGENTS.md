@@ -26,8 +26,9 @@ Make sure you have installed Nix and `devenv`. After you've installed it, run `d
 
 Please also read the PR template at `.github/pull_request_template.md` to learn more.
 
-[CONTRIBUTING.md](CONTRIBUTING.md) is the long version of this: getting a
-shell, the gates and what each one catches, and the starter tasks.
+[docs/development.md](docs/development.md) is the long version of this:
+getting a shell, the git hooks and what each gate catches, the VM tests, and
+the gotchas that bite silently.
 
 I've automated (with the help of agents) the most annoying parts.
 

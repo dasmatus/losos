@@ -8,9 +8,13 @@ A box's nightly update takes the newest commit of one branch
     channel/weekly    moved on Mondays
     channel/monthly   moved on the 1st
 
-Each move, a *cut*, takes the newest commit of main whose `ci` run passed,
-cache upload included, so a box never builds a commit that failed its checks
-and never compiles what CI already built. A cut fast-forwards the channel
+Each move, a *cut*, takes the newest commit of main whose `ci` result check
+passed and whose cache upload succeeded. The workflow's own conclusion is
+not the gate: an advisory job (the phone builds, Playwright, a lint, the
+Pages copy of the cache) fails the run while both of those are green, and
+requiring `conclusion=success` then never moved the channel. A box still
+never builds a commit whose tests failed, and never compiles what CI already
+built. A cut fast-forwards the channel
 when it can. After a hotfix it cannot, and the cut is then a merge commit
 whose tree is exactly main's, with the channel as first parent. Nothing here
 ever force-pushes: the repository refuses non-fast-forward pushes, and a box
@@ -20,7 +24,8 @@ A merged pull request labelled `hotfix` reaches every channel the same day.
 `hotfix` cherry-picks its merge commit onto each channel that lacks it and
 puts the result on a candidate branch, `hotfix/<channel>/<number>`, then
 starts `ci` there. `promote` fast-forwards the channel to the candidate once
-that run passed, cache upload included, and deletes the candidate.
+that run's result check passed and its cache upload succeeded, and deletes
+the candidate.
 
 Every commit this makes names the main commit its channel was cut from:
 
@@ -59,9 +64,14 @@ import urllib.request
 CHANNELS = ("daily", "weekly", "monthly")
 LABEL = "hotfix"
 CI_WORKFLOW = "ci.yml"
-# The job in ci.yml that uploads the built paths. A channel only moves to a
-# commit this passed on, or every box on it compiles overnight.
+# The check required on main, and the job that uploads the built paths.
+# A channel only moves when both succeeded. The names are the jobs' `name:`
+# in ci.yml; test_channels.py refuses a rename that forgets this file.
+RESULT_JOB = "result: every job this change needs passed"
 CACHE_JOB = "nix: publish built paths to GHCR"
+# How many pages of completed runs a cut will read. Fifty a page, so this
+# reaches the last good commit through a couple of hundred red ones.
+RUN_PAGES = 4
 # How long a candidate may wait for its `ci` run to show up before it is
 # started again: the dispatch can be lost, and a run listing lags a little.
 REDISPATCH_AFTER = datetime.timedelta(minutes=30)
@@ -229,28 +239,63 @@ class Channels:
         status = self.gh.call("GET", f"compare/{a}...{b}")["status"]
         return status in ("ahead", "identical")
 
-    def cache_passed(self, run):
-        jobs = self.gh.call("GET", f"actions/runs/{run['id']}/jobs?filter=latest&per_page=100")
-        return any(
-            j["name"] == CACHE_JOB and j["conclusion"] == "success" for j in jobs["jobs"]
-        )
+    def jobs_of(self, run):
+        """Every job of the latest attempt. One page is a hundred jobs; a
+        matrix past that used to hide the cache job and refuse the cut."""
+        jobs = []
+        seen = set()
+        for page in range(1, 21):
+            batch = self.gh.call(
+                "GET",
+                f"actions/runs/{run['id']}/jobs?filter=latest&per_page=100&page={page}",
+            )["jobs"]
+            if not batch:
+                break
+            key = tuple(j.get("id", j.get("name")) for j in batch)
+            if key in seen:
+                break
+            seen.add(key)
+            jobs.extend(batch)
+            if len(batch) < 100:
+                break
+        return jobs
+
+    def releasable(self, run):
+        """Whether a box may move to this run's commit.
+
+        `result` is the required check: cargo test and clippy. The cache job
+        is the upload those boxes substitute. Advisory jobs may have failed
+        the workflow; that conclusion is ignored on purpose."""
+        if run.get("status") != "completed" or run.get("conclusion") == "cancelled":
+            return False
+        jobs = self.jobs_of(run)
+
+        def ok(name):
+            return any(j["name"] == name and j["conclusion"] == "success" for j in jobs)
+
+        return ok(RESULT_JOB) and ok(CACHE_JOB)
 
     def green_main(self):
-        """The newest commit of main whose `ci` run passed, cache upload
-        included. A run on a commit main no longer holds (history-scrub.yml
-        rewrote it) does not count."""
-        runs = self.gh.call(
-            "GET",
-            f"actions/workflows/{CI_WORKFLOW}/runs?branch=main&status=success&per_page=50",
-        )["workflow_runs"]
-        for run in runs:
-            if run["event"] not in ("push", "schedule", "workflow_dispatch"):
-                continue
-            if not self.is_ancestor(run["head_sha"], "main"):
-                continue
-            if not self.cache_passed(run):
-                continue
-            return self.commit(run["head_sha"])
+        """The newest commit of main whose result check passed and whose
+        cache upload succeeded. A run on a commit main no longer holds
+        (history-scrub.yml rewrote it) does not count. A run whose workflow
+        is red only because an advisory job failed does."""
+        for page in range(1, RUN_PAGES + 1):
+            runs = self.gh.call(
+                "GET",
+                "actions/workflows/"
+                f"{CI_WORKFLOW}/runs?branch=main&status=completed&per_page=50&page={page}",
+            )["workflow_runs"]
+            for run in runs:
+                if run["event"] not in ("push", "schedule", "workflow_dispatch"):
+                    continue
+                if not self.is_ancestor(run["head_sha"], "main"):
+                    continue
+                if not self.releasable(run):
+                    continue
+                return self.commit(run["head_sha"])
+            if len(runs) < 50:
+                break
         return None
 
     def landed(self, pr):
@@ -311,7 +356,7 @@ class Channels:
     def cut(self, channels):
         target = self.green_main()
         if target is None:
-            self.say("no commit of main has passed ci with its cache upload; nothing to cut")
+            self.say("no commit of main has a green result check and cache upload; nothing to cut")
             return
         self.say(f"newest passed main: {target['sha']}")
         for channel in channels:
@@ -503,7 +548,7 @@ class Channels:
         run = runs[0]
         if run["status"] != "completed":
             return "ci running"
-        if run["conclusion"] != "success" or not self.cache_passed(run):
+        if not self.releasable(run):
             self.comment(
                 number,
                 f"CI failed on `{name}`, so `{branch(channel)}` does not take this hotfix: "
