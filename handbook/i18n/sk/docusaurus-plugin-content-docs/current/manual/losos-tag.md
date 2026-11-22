@@ -40,9 +40,14 @@ Asistent číta len do vlastného oprávnenia, nech jeho persona hovorí
 čokoľvek: úrovne sú pravidlo boxu, nie nálada modelu.
 
 Dopyt počas behu nemizne. Asistent hneď na začiatku napíše jeden
-riadok (`@LosOS premýšľa…`), ten istý riadok prepisuje, ako sa posúva
-ďalej (`číta, čo našiel`, `píše`), a po dokončení na jeho miesto
-položí odpoveď — pomalý dopyt tak vyzerá ako práca, nie ako ticho.
+riadok (`LosOS Tag is thinking…`), ten istý riadok prepisuje, ako sa posúva
+ďalej (`is reading what it found`, `is writing`), a po dokončení na jeho miesto
+položí odpoveď — pomalý dopyt tak vyzerá ako práca, nie ako ticho. Riadok
+je po anglicky, nech je stránka v akomkoľvek jazyku.
+
+![Miestnosť v LosOS Chat, kde sa Matus spýtal @LosOS, ktorý trajekt rezervovali: pod jeho správou je jediný riadok LosOS Tag, LosOS Tag is reading what it found…](@site/docs/img/losos-tag-status-sk.png)
+
+![Tá istá miestnosť po dokončení: odpoveď stojí tam, kde bol riadok, označená ako upravená.](@site/docs/img/losos-tag-answer-sk.png)
 
 ## Zručnosti
 

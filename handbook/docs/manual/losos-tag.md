@@ -40,10 +40,14 @@ An assistant reads only up to its own clearance, whatever its persona
 says: the levels are the box's rule, not the model's mood.
 
 An ask does not disappear while it runs. The assistant posts one line as
-soon as it starts (`@LosOS is thinking…`), rewrites that same line as it
+soon as it starts (`LosOS Tag is thinking…`), rewrites that same line as it
 moves on (`is reading what it found`, `is writing`), and leaves the
 answer in its place when the turn is done, so a slow ask looks like work
-rather than silence.
+rather than silence. The line is in English, whatever the page's language.
+
+![A room in LosOS Chat where Matus asked @LosOS which ferry they booked: under his message, LosOS Tag's one line reads LosOS Tag is reading what it found…](../img/losos-tag-status.png)
+
+![The same room when the turn is done: the answer stands where the line was, marked as edited.](../img/losos-tag-answer.png)
 
 ## Skills
 
