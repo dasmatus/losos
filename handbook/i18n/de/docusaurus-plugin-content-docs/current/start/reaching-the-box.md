@@ -19,6 +19,10 @@ neu, wenn sich die Adresse ändert.
 
 ![Das Banner unter dem Lachs auf dem Bildschirm der Box, mit der Adresse zum Eintippen in einen Browser und dem .local-Namen der Box.](@site/docs/img/tty1-banner.png)
 
+Der eigene Browser eines Fernsehers öffnet unter derselben Adresse die
+[TV-Ansicht](../manual/television): den ganzen Bildschirm, für eine
+Fernbedienung. Das Banner auf der Box selbst ändert sich nicht.
+
 :::tip[Eine Box ohne Bildschirm]
 Wenn an der Box kein Bildschirm hängt, zeigt die Geräteliste deines Routers
 die Box unter dem Namen, den du ihr gegeben hast, oder vor der Einrichtung
