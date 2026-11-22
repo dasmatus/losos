@@ -153,14 +153,19 @@ jobs:
   # The release channels' bot (.github/workflows/channels.yml) against a fake
   # GitHub over a real repository: cuts, a hotfix's cherry-pick and upload,
   # its promotion, and the refusals. Seconds, no lane; devenv.nix's
-  # `test-bots` is the same command.
+  # `test-bots` is the same command. The scripts directory is the bot;
+  # ci.yml is there too because test_channels.py checks that the cut's job
+  # names still match this workflow. Cone-mode sparse checkout takes
+  # directories, and .github/workflows is the small one that holds ci.yml.
   bots:
     name: "bots: release channels"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
-          sparse-checkout: .github/scripts
+          sparse-checkout: |
+            .github/scripts
+            .github/workflows
       - run: python3 .github/scripts/test_channels.py -v
 
   # ── Which jobs a change needs ───────────────────────────────────────────────
