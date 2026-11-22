@@ -17,6 +17,10 @@ príručka na `/handbook/`. Keď sa adresa zmení, zariadenie banner prekreslí.
 
 ![Banner pod lososom na obrazovke zariadenia, s adresou, ktorú zadáte do prehliadača, a názvom zariadenia .local.](@site/docs/img/tty1-banner.png)
 
+Vlastný prehliadač televízora otvorí na tej istej adrese
+[zobrazenie pre TV](../manual/television): celú obrazovku pre diaľkový
+ovládač. Banner na samotnom zariadení sa nemení.
+
 :::tip[Zariadenie bez obrazovky]
 Ak zariadenie nemá pripojenú obrazovku, nájdete ho v zozname zariadení vo
 vašom routeri pod názvom, ktorý ste mu dali, alebo ako `losos`, kým ešte nie

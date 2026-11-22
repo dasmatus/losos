@@ -690,3 +690,179 @@ html:root[data-person-accent="green"] {
   --accent: var(--person-green);
   --accent-wash: var(--person-green-wash);
 }
+
+/* ── Television (lib/tv.ts, src/tv/view.tsx) ──────────────────────────────
+ * A sofa is about three metres from the set. The desk's 15px type and
+ * 34px buttons disappear there, and a television crops the outer few
+ * percent of the picture (overscan), so the root keeps 5% of the window
+ * clear and never less than 48px. Sizes are in vw/vh so a 4K set, which
+ * often has a CSS pixel per device pixel, draws the same physical type
+ * a 1080p set does. The ring is :focus, not only :focus-visible: a
+ * remote moves focus without a pointer, and some sets never set the
+ * visible flag. Unlayered, so it wins the base layer's 2px outline. */
+.tv-root {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(20px, 2.4vh, 56px);
+  padding: max(48px, 5vh) max(64px, 5vw);
+  overflow: hidden;
+  background: var(--ground);
+  color: var(--ink);
+  font-size: clamp(20px, 1.35vw, 48px);
+  line-height: 1.25;
+}
+.tv-waiting {
+  justify-content: center;
+}
+.tv-mast {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: clamp(16px, 2vw, 48px);
+}
+.tv-brand {
+  display: flex;
+  align-items: center;
+  gap: clamp(16px, 1.4vw, 36px);
+  min-width: 0;
+}
+.tv-logo {
+  width: clamp(56px, 4.2vw, 140px);
+  height: auto;
+  border-radius: 999px;
+}
+.tv-title {
+  margin: 0;
+  font-size: clamp(40px, 3.6vw, 148px);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+.tv-sub {
+  margin: 0.15em 0 0;
+  color: var(--muted);
+  font-size: clamp(20px, 1.45vw, 56px);
+}
+.tv-label {
+  margin: clamp(8px, 1.4vh, 28px) 0 clamp(12px, 1.2vh, 24px);
+  color: var(--muted);
+  font-size: clamp(18px, 1.2vw, 42px);
+  font-weight: 600;
+}
+.tv-kicker {
+  color: var(--muted);
+  font-size: clamp(16px, 1.05vw, 36px);
+  font-weight: 600;
+}
+.tv-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: clamp(12px, 1vw, 24px);
+}
+.tv-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, clamp(220px, 18vw, 460px)), 1fr));
+  gap: clamp(16px, 1.4vw, 40px);
+}
+.tv-tile,
+.tv-btn {
+  margin: 0;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  text-decoration: none;
+}
+.tv-tile {
+  display: flex;
+  min-height: clamp(148px, 18vh, 360px);
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 0.25em;
+  padding: clamp(18px, 1.3vw, 40px);
+  border-radius: 24px;
+}
+.tv-tile-pending {
+  background: var(--sunk);
+}
+.tv-btn {
+  min-width: clamp(132px, 9vw, 280px);
+  min-height: clamp(64px, 7vh, 120px);
+  padding: 0 clamp(18px, 1.2vw, 40px);
+  border-radius: 18px;
+  font-size: clamp(20px, 1.3vw, 46px);
+  font-weight: 600;
+}
+.tv-glyph {
+  display: flex;
+  margin-bottom: auto;
+  color: var(--accent);
+}
+.tv-glyph svg {
+  width: clamp(40px, 2.6vw, 92px);
+  height: clamp(40px, 2.6vw, 92px);
+}
+.tv-tile-name {
+  font-size: clamp(26px, 1.8vw, 68px);
+  font-weight: 600;
+  line-height: 1.15;
+}
+.tv-tile-note {
+  color: var(--muted);
+  font-size: clamp(18px, 1.15vw, 42px);
+}
+.tv-panel {
+  display: flex;
+  width: min(52rem, 100%);
+  flex-direction: column;
+  gap: clamp(16px, 2vh, 40px);
+}
+.tv-field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4em;
+  font-size: clamp(20px, 1.3vw, 44px);
+  font-weight: 600;
+}
+.tv-field {
+  min-height: clamp(64px, 7vh, 112px);
+  padding: 0 0.7em;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+.tv-hero {
+  margin: 0;
+  font-size: clamp(72px, 8vw, 280px);
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  line-height: 0.95;
+}
+.tv-error {
+  margin: 0;
+  color: var(--crit);
+  font-size: clamp(20px, 1.3vw, 44px);
+}
+.tv-root [data-tv-item]:focus {
+  outline: 4px solid var(--accent);
+  outline-offset: 8px;
+  background: var(--accent-wash);
+  transform: scale(1.03);
+}
+.tv-root [data-tv-item]:focus .tv-tile-note,
+.tv-root [data-tv-item]:focus .tv-kicker {
+  color: var(--ink);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tv-root [data-tv-item]:focus {
+    transform: none;
+  }
+}
