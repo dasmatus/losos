@@ -271,10 +271,11 @@ function AssistantsSection({ view, locked, save }: { view: TagView; locked: bool
   const [display, setDisplay] = React.useState("");
   const [prompt, setPrompt] = React.useState("");
   const [clearance, setClearance] = React.useState(view.levels[0]?.name ?? "");
+  const [busy, setBusy] = React.useState(false);
   React.useEffect(() => {
     if (clearance === "" && view.levels[0] !== undefined) setClearance(view.levels[0].name);
   }, [view.levels, clearance]);
-  const addable = slug.trim() !== "" && display.trim() !== "" && clearance !== "" && !locked;
+  const addable = slug.trim() !== "" && display.trim() !== "" && clearance !== "" && !locked && !busy;
   return (
     <Group>
       <GroupTitle>{t("tag.assistants.title")}</GroupTitle>
@@ -289,11 +290,13 @@ function AssistantsSection({ view, locked, save }: { view: TagView; locked: bool
         ref={form}
         onSubmit={(event) => {
           event.preventDefault();
+          if (busy) return;
+          setBusy(true);
           void save(
             () => putTagAssistant({ slug: slug.trim(), display: display.trim(), prompt: prompt.trim(), clearance }),
             "clear",
             form,
-          );
+          ).finally(() => setBusy(false));
         }}
       >
         <div className="flex flex-wrap items-center gap-2">
@@ -306,8 +309,8 @@ function AssistantsSection({ view, locked, save }: { view: TagView; locked: bool
               </NativeSelectOption>
             ))}
           </NativeSelect>
-          <Button size="sm" type="submit" disabled={!addable}>
-            {t("tag.add")}
+          <Button size="sm" type="submit" disabled={!addable || busy}>
+            {busy ? <Spinner size={14} /> : t("tag.add")}
           </Button>
         </div>
         <Input aria-label={t("tag.assistants.prompt")} value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={t("tag.assistants.prompt")} className="min-w-0 flex-1" disabled={locked} />
