@@ -56,6 +56,7 @@ import { seededShuffle } from "@/lib/shuffle";
 import type { SettingsPaneId } from "@/screens/settings/panes";
 import { paneFromPath } from "@/lib/routes";
 import { useT } from "@/lib/i18n-react";
+import { useTvLayout } from "@/components/ui/tv-toggle";
 import { useWaitGame } from "@/components/play-while-waiting";
 import { cn } from "@/lib/utils";
 import { chatDocument } from "@/chat/document";
@@ -113,6 +114,9 @@ const Diagrams = React.lazy(() => import("@/lab/app"));
 const WidgetBoard = React.lazy(() =>
   import("@/widgets/board").then((m) => ({ default: m.WidgetBoard })),
 );
+/* The television (src/tv/). Only a set, or a desk that asked for one,
+ * fetches it. */
+const TvView = React.lazy(() => import("@/tv/view"));
 
 function ScreenFallback() {
   return (
@@ -212,6 +216,7 @@ function Shell() {
   const gate = useGate();
   const t = useT();
   const location = useLocation();
+  const { active: television } = useTvLayout();
 
   /* The look — the wallpaper and the hand-written widgets — follows the
    * token: loaded on sign-in, dropped on sign-out. Once, for the page. */
@@ -345,6 +350,30 @@ function Shell() {
       <>
         {null}
         {wizard}
+        <Toaster />
+      </>
+    );
+  }
+
+  /* A television does not get the desk. The wizard above still owns a box
+   * nobody has set up; once that is finished, or on any later visit, the
+   * whole window is the 10-foot view. While the box has not yet said
+   * whether it is claimed, stay on the blank screen: painting the home
+   * tiles and then tearing them down for the wizard is the flash the
+   * desk's spinner exists to avoid. */
+  if (!inSetup && television) {
+    if (gate === "unknown") {
+      return (
+        <div className="tv-root tv-waiting" data-testid="tv-asking">
+          <p className="tv-sub">{t("shell.asking")}</p>
+        </div>
+      );
+    }
+    return (
+      <>
+        <React.Suspense fallback={<div className="tv-root tv-waiting" data-testid="tv-asking" />}>
+          <TvView />
+        </React.Suspense>
         <Toaster />
       </>
     );

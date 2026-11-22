@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import App from "@/App";
 import { applyFavicon } from "@/lib/logo";
 import { applyStoredTheme } from "@/lib/theme";
+import { applyStoredTvLayout } from "@/lib/tv";
 import { applyStoredWide } from "@/lib/wide";
 /* Sonner's stylesheet, as a file in the bundle: the library would inject it
  * as a <style> element at load, which the appliance CSP (style-src 'self')
@@ -18,6 +19,7 @@ import "@/styles/index.css";
  * up in the stored theme, one frame late instead of not at all. */
 applyStoredTheme();
 applyStoredWide();
+applyStoredTvLayout();
 applyFavicon();
 
 if ("serviceWorker" in navigator) {

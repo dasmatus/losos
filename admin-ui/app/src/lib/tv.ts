@@ -3,8 +3,9 @@
  * The resolved choice is an attribute on <html> and nothing else:
  *
  *   off  -> no data-tv attribute. The shell lays out as on a desktop browser.
- *   on   -> data-tv="on". styles/index.css switches to the 10-foot leanback
- *           spacing, focus rings and type scale under that attribute.
+ *   on   -> data-tv="on". The shell mounts the television (src/tv/view.tsx)
+ *           and styles/index.css gives it the 10-foot type, the overscan
+ *           margin and the focus ring.
  *   auto -> data-tv="on" only when userAgentLooksTv() is true (Android TV,
  *           Apple TV web views, Fire TV, Chromecast, many smart-TV browsers).
  *
