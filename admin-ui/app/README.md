@@ -105,6 +105,13 @@ bun run web          # expo start --web, the SPA under Metro
 
 ## TV
 
+The admin page is the television. When the browser looks like a set, or
+TV layout is On (Appearance in the person menu; `src/lib/tv.ts`), the
+shell is the 10-foot view in `src/tv/`: the whole window, overscan
+margins, large type, and a focus ring the arrow keys move. Auto is the
+usual choice. The first-run wizard is unchanged. The native targets
+below are the phone app built for a television, a separate tree.
+
 The native targets build for Apple TV and Android TV too, "for lols
 sake" and because the panes are genuinely usable from a couch: the
 `react-native` dependency is the [React Native TV fork][2]
