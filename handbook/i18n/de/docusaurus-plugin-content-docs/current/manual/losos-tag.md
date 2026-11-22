@@ -44,10 +44,15 @@ nur bis zu seiner eigenen Freigabe, was seine Persona auch sagt: die
 Stufen sind die Regel der Box, nicht die Laune des Modells.
 
 Eine Anfrage verschwindet während ihrer Bearbeitung nicht. Der Assistent
-schreibt sofort eine Zeile (`@LosOS denkt nach…`), schreibt dieselbe
-Zeile weiter, während er vorankommt (`liest, was er gefunden hat`,
-`schreibt`), und setzt am Ende die Antwort an ihre Stelle — eine
-langsame Anfrage sieht so nach Arbeit aus, nicht nach Stille.
+schreibt sofort eine Zeile (`LosOS Tag is thinking…`), schreibt dieselbe
+Zeile weiter, während er vorankommt (`is reading what it found`,
+`is writing`), und setzt am Ende die Antwort an ihre Stelle — eine
+langsame Anfrage sieht so nach Arbeit aus, nicht nach Stille. Die Zeile
+ist englisch, in welcher Sprache die Seite auch ist.
+
+![Ein Raum in LosOS Chat, in dem Matus @LosOS gefragt hat, welche Fähre sie gebucht haben: unter seiner Nachricht steht die eine Zeile von LosOS Tag, LosOS Tag is reading what it found…](@site/docs/img/losos-tag-status-de.png)
+
+![Derselbe Raum, wenn die Runde fertig ist: Die Antwort steht dort, wo die Zeile war, als bearbeitet markiert.](@site/docs/img/losos-tag-answer-de.png)
 
 ## Fähigkeiten
 
