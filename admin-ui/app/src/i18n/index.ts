@@ -52,6 +52,7 @@ import settings from "./settings";
 import statistics from "./statistics";
 import tag from "./tag";
 import shell from "./shell";
+import tv from "./tv";
 import together from "./together";
 import tour from "./tour";
 import userApps from "./user-apps";
@@ -64,6 +65,7 @@ export type { Entry, Plural, Text } from "./define";
 
 export const MESSAGES = {
   ...shell,
+  ...tv,
   ...home,
   ...wizard,
   ...settings,

@@ -38,8 +38,11 @@ if (UNSUPPORTED_PLATFORMS.has(platform)) {
   );
   process.exit(0);
 }
-// TV uses the same web render path as a leanback target marker; EXPO_TV is
-// set by the caller/matrix so platform-aware code can read it where honored.
+// TV is the 10-foot view (src/tv/), not the desk photographed again. Shots
+// marked onlyPlatform: "tv" force that view and a 1080p window; every other
+// shot is the desk and is skipped when the matrix asks for tv, so a set of
+// arrows is not pointed at a sidebar that is not there. EXPO_TV stays set
+// for the native marker the matrix already exports.
 if (platform === "tv") {
   process.env.EXPO_TV = process.env.EXPO_TV || "1";
 }
@@ -1164,7 +1167,13 @@ interface OpenOptions {
   me?: Record<string, unknown> | null;
   at?: string;
   login?: boolean;
+  /** LosOS Chat's homeserver, with these rooms; null leaves /_matrix/ alone. */
   chat?: ChatScene | null;
+  /** Stamped on the page as __LOSOS_FORCE_PLATFORM__ before first paint. */
+  forcePlatform?: string;
+  /** deviceScaleFactor. The desk shots are 2x; the television is 1x at 1080p. */
+  scale?: number;
+  timezoneId?: string;
 }
 async function open({
   path = "/",
@@ -1201,8 +1210,10 @@ async function open({
   // LosOS Login answers: the wizard's sign-in takes the password, and from
   // then on GET /api/me without the key is Matus by the session.
   login = false,
-  // LosOS Chat's homeserver, with these rooms; null leaves /_matrix/ alone.
   chat = null,
+  forcePlatform,
+  scale = 2,
+  timezoneId,
 }: OpenOptions) {
   // Signed-in admin shots need a valid /api/me so the top bar renders the
   // person menu (loadMe rejects an empty `{}` stub). Default to the owner
@@ -1214,12 +1225,17 @@ async function open({
     viewport,
     locale,
     colorScheme: theme,
-    deviceScaleFactor: 2,
+    deviceScaleFactor: scale,
     reducedMotion,
+    ...(timezoneId !== undefined ? { timezoneId } : {}),
   });
   await page.clock.setFixedTime(NOW);
   await page.addInitScript(
-    ({ token, board, journal, theme, lang }) => {
+    ({ token, board, journal, theme, lang, forcePlatform }) => {
+      if (forcePlatform) {
+        (globalThis as { __LOSOS_FORCE_PLATFORM__?: string }).__LOSOS_FORCE_PLATFORM__ =
+          forcePlatform;
+      }
       if (token) window.sessionStorage.setItem("losos-token", token);
       if (board)
         window.localStorage.setItem("losos-widgets", JSON.stringify(board));
@@ -1237,6 +1253,7 @@ async function open({
       journal: journal(),
       theme,
       lang: locale.slice(0, 2),
+      forcePlatform: forcePlatform ?? null,
     },
   );
 
@@ -1255,6 +1272,13 @@ async function open({
   await page.route("**/api/health", (route) =>
     health ? json(route, 200, { ok: true }) : route.abort(),
   );
+  if (forcePlatform === "tv") {
+    // LosOS Cloud's public status, so Files and Photos are tiles on the
+    // television. Code is already a 200 from the /api/ catch-all.
+    await page.route("**/status.php", (route) =>
+      json(route, 200, { installed: true }),
+    );
+  }
   await page.route("**/api/setup/claim", (route) => {
     if (route.request().method() === "POST") {
       return json(
@@ -1509,8 +1533,48 @@ interface Shot extends OpenOptions {
   act?: (page: Page, t: Translator) => Promise<void>;
   lang?: Lang;
   perLang?: (lang: Lang) => Partial<OpenOptions>;
+  /** Taken only when the screenshot matrix asks for this platform. */
+  onlyPlatform?: string;
 }
+const TV = {
+  viewport: { width: 1920, height: 1080 },
+  forcePlatform: "tv",
+  scale: 1,
+  timezoneId: "UTC",
+  onlyPlatform: "tv",
+} satisfies Partial<Shot>;
+const tvReady = async (page: Page, t: Translator) => {
+  await page.getByTestId("tv-view").waitFor();
+  await page.getByRole("link", { name: t("apps.files.name") }).waitFor();
+  await page.locator("[data-tv-initial]").focus();
+  await settle(page, 200);
+};
 const SHOTS: Shot[] = [
+  // ── The television, at 1080p. The desk shots below are not retaken. ──
+  {
+    ...TV,
+    name: "tv-home",
+    path: "/",
+    langs: true,
+    act: tvReady,
+  },
+  {
+    ...TV,
+    name: "tv-home-dark",
+    path: "/",
+    theme: "dark",
+    act: tvReady,
+  },
+  {
+    ...TV,
+    name: "tv-moved",
+    path: "/",
+    act: async (page, t) => {
+      await tvReady(page, t);
+      await page.keyboard.press("ArrowRight");
+      await settle(page, 150);
+    },
+  },
   // ── The admin pages ──────────────────────────────────────────────────
   { name: "overview", path: "/", langs: true },
   { name: "overview-dark", path: "/", theme: "dark", langs: true },
@@ -2281,8 +2345,11 @@ for (const shot of SHOTS) {
     langs = false,
     lang: only1 = "en",
     perLang = () => ({}) as Partial<OpenOptions>,
+    onlyPlatform,
     ...options
   } = shot;
+  if (onlyPlatform !== undefined && onlyPlatform !== platform) continue;
+  if (onlyPlatform === undefined && platform === "tv") continue;
   for (const lang of langs ? (["en", "sk", "de"] as const) : [only1]) {
     const file = langs && lang !== "en" ? `${name}-${lang}` : name;
     if (only && !file.includes(only)) continue;

@@ -4,8 +4,9 @@ name: handbook-screens
 #
 # Platform matrix: the same screenshot set is attempted per platform target
 # introduced for admin surfaces (web, tv, windows, visionos). `web` is the
-# existing Playwright/web-admin render path. `tv` runs the same harness with
-# EXPO_TV=1 as a leanback render marker. `windows` and `visionos` are native
+# existing Playwright/web-admin render path. `tv` runs the same harness for
+# the shots marked only for it (the 10-foot view at 1080p, EXPO_TV=1). The
+# desk shots are not retaken there. `windows` and `visionos` are native
 # shells that cannot be rendered headlessly on ubuntu-latest in this harness;
 # those matrix entries run but record a documented skip/reason (and do not
 # fail the job) so every platform is shown explicitly rather than dropped.
