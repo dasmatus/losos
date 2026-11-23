@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Menu } from "@base-ui/react/menu";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
@@ -9,13 +10,17 @@ import {
   PaintBoardIcon,
   Sun03Icon,
   Tick02Icon,
+  Tv01Icon,
 } from "@hugeicons/core-free-icons";
 import { popupMotion } from "@/components/ui/motion";
+import { TvLayoutPreview } from "@/components/tv-layout-preview";
 import { useTheme } from "@/components/ui/theme-toggle";
+import { useTvLayout } from "@/components/ui/tv-toggle";
 import { useWide } from "@/components/ui/wide-toggle";
 import { isLocale, LOCALE_NAMES, LOCALES, type MessageKey } from "@/lib/i18n";
 import { useLocaleChoice, useT } from "@/lib/i18n-react";
 import { isTheme, THEMES, type Theme } from "@/lib/theme";
+import { isTvLayout, TV_LAYOUTS, type TvLayout } from "@/lib/tv";
 import { cn } from "@/lib/utils";
 
 /* The theme, the language and wide mode, as rows of a menu: the person menu
@@ -71,6 +76,7 @@ function ChoiceRow<V extends string>({
   value,
   options,
   onChange,
+  extra,
 }: {
   slot: string;
   icon: IconSvgElement;
@@ -79,6 +85,7 @@ function ChoiceRow<V extends string>({
   value: V;
   options: readonly { value: V; label: string; icon?: IconSvgElement; lang?: string }[];
   onChange: (value: string) => void;
+  extra?: ReactNode;
 }) {
   return (
     <Menu.SubmenuRoot>
@@ -113,6 +120,7 @@ function ChoiceRow<V extends string>({
                 </Menu.RadioItem>
               ))}
             </Menu.RadioGroup>
+            {extra}
           </Menu.Popup>
         </Menu.Positioner>
       </Menu.Portal>
@@ -121,10 +129,17 @@ function ChoiceRow<V extends string>({
 }
 
 /** The three rows, for inside a Base UI menu's popup. */
+const TV_LABEL: Record<TvLayout, "ui.tv.auto" | "ui.tv.on" | "ui.tv.off"> = {
+  auto: "ui.tv.auto",
+  on: "ui.tv.on",
+  off: "ui.tv.off",
+};
+
 export function PreferenceItems() {
   const t = useT();
   const { theme, setTheme } = useTheme();
   const { wide, setWide } = useWide();
+  const { mode: television, setTvLayout } = useTvLayout();
   const [locale, setLocale] = useLocaleChoice();
   const themes = THEMES.map((value) => ({ value, label: t(THEME_OPTIONS[value].label), icon: THEME_OPTIONS[value].icon }));
   const languages = [
@@ -168,6 +183,20 @@ export function PreferenceItems() {
         value={locale}
         options={languages}
         onChange={(next) => setLocale(isLocale(next) ? next : "auto")}
+      />
+      {/* The preview sits in the submenu, so a desk can see the 10-foot
+       * tiles before On replaces this menu with them. */}
+      <ChoiceRow
+        slot="tv-menu"
+        icon={Tv01Icon}
+        label={t("ui.tv.label")}
+        current={t(TV_LABEL[television])}
+        value={television}
+        options={TV_LAYOUTS.map((value) => ({ value, label: t(TV_LABEL[value]) }))}
+        onChange={(next) => {
+          if (isTvLayout(next)) setTvLayout(next);
+        }}
+        extra={<TvLayoutPreview />}
       />
     </Menu.Group>
   );

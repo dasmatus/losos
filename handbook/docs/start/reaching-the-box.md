@@ -17,6 +17,10 @@ Cloud at `/cloud/`, LosOS Git at `/git/`, this handbook at
 
 ![The banner under the salmon on the box's screen, with the address to type into a browser and the box's .local name.](../img/tty1-banner.png)
 
+A television's own browser opens the [TV view](../manual/television) at
+this same address: the whole screen, for a remote. The banner on the
+box itself does not change.
+
 :::tip[A box without a screen]
 If the box has no screen attached, your router's device list shows the box
 under the name you gave it, or as `losos` before setup.
