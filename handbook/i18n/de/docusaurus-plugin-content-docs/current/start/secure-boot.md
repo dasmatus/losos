@@ -159,7 +159,7 @@ mit `nix/keys/secure-boot-db.pem` im Repository. Alle drei sind dieselbe Datei.
 
 Der private Schlüssel kommt nie in einen Nix-Build oder auf eine Box. Der
 Projektinhaber erzeugt ihn einmal auf seinem eigenen Rechner mit
-`docs/provisioning/secure-boot/keygen.sh` und bewahrt ihn offline auf. Die einzige
+`docs/provisioning/secure-boot/keygen.ts` und bewahrt ihn offline auf. Die einzige
 andere Kopie ist das Repository-Secret, mit dem CI signiert. Das Zertifikat
 liegt im Repository als `nix/keys/secure-boot-db.pem`. Solange diese Datei keins
 enthält, steht bei Releases *Not signed*, und der Stick braucht

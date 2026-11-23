@@ -599,6 +599,10 @@ pub enum RefundReason {
     /// The seller's box was offline for too long while the slot ran
     /// (`crate::slots`). The buyer gets back the share not delivered.
     SellerOffline,
+    /// The volume the buyer bought stopped answering for too long while the
+    /// slot ran (`crate::slots`). The buyer gets back the share not
+    /// delivered, as with an offline box.
+    VolumeDown,
 }
 
 impl RefundReason {
@@ -619,6 +623,9 @@ impl RefundReason {
             }
             Self::SellerOffline => {
                 "the seller's box was offline too long; the part not delivered is being refunded"
+            }
+            Self::VolumeDown => {
+                "the bought volume stopped answering too long; the part not delivered is being refunded"
             }
         }
     }
@@ -674,6 +681,15 @@ pub struct MarketState {
     /// busy to hear heartbeats) is never counted against a seller.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub presence_tick: Option<u64>,
+    /// How long each bought volume has not answered the edge's probe
+    /// (`crate::slots`), by order id. The buyer's side of a storage order:
+    /// the seller's box may be `Ready` while the volume the buyer reaches is
+    /// not.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub volume_presence: BTreeMap<String, crate::slots::Presence>,
+    /// When the edge last probed, so time it was not probing counts nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub volume_tick: Option<u64>,
     /// Pay as you go: meters and their taps (`crate::meter`).
     #[serde(default, skip_serializing_if = "crate::meter::Taps::is_empty")]
     pub taps: crate::meter::Taps,
@@ -1108,6 +1124,7 @@ fn seller_of(state: &MarketState, order_id: &str) -> String {
 /// first, at most [`ACCOUNT_HISTORY`] of them.
 fn history<'a>(
     orders: impl Iterator<Item = &'a Order>,
+    state: &MarketState,
     now: u64,
     vm_domain: Option<&str>,
 ) -> Vec<OrderView> {
@@ -1119,7 +1136,12 @@ fn history<'a>(
     orders
         .into_iter()
         .take(ACCOUNT_HISTORY)
-        .map(|o| OrderView::of(o, now, vm_domain))
+        .map(|o| {
+            let volume_ok = (o.kind == Kind::Storage && o.volume.is_some())
+                .then(|| state.volume_presence.get(&o.id).map(|p| p.streak == 0))
+                .flatten();
+            OrderView::of(o, now, vm_domain, volume_ok)
+        })
         .collect()
 }
 
@@ -1251,6 +1273,53 @@ pub fn lapsed_volumes(state: &MarketState, now: u64) -> Vec<(String, String)> {
         .collect()
 }
 
+/// Where the edge probes each live bought volume: `(order id, volume)` for
+/// every paid, unexpired storage order with a bound claim whose backup door
+/// has a key — the only way to the claim is that door, so those are the
+/// orders a buyer can actually reach, and the ones the edge owes a check.
+#[must_use]
+pub fn watched_volumes(state: &MarketState, now: u64) -> Vec<(String, StorageVolume)> {
+    state
+        .orders
+        .values()
+        .filter(|o| o.kind == Kind::Storage && paid_live(o, now))
+        .filter(|o| state.doors.get(&o.id).is_some_and(|d| !d.key.is_empty()))
+        .filter_map(|o| {
+            let (namespace, pvc) = o.volume.as_deref()?.split_once('/')?;
+            Some((
+                o.id.clone(),
+                StorageVolume {
+                    namespace: namespace.to_string(),
+                    pvc: pvc.to_string(),
+                },
+            ))
+        })
+        .collect()
+}
+
+/// Lapsed storage orders that still have a backup door: `(order id, volume)`.
+/// A server stands behind each one, started while the entitlement ran; the
+/// reconcile pass stops it and drops the door, so the volume serves nothing
+/// once the paid time is over.
+#[must_use]
+pub fn lapsed_doors(state: &MarketState, now: u64) -> Vec<(String, StorageVolume)> {
+    state
+        .orders
+        .values()
+        .filter(|o| holds_volume(o) && !paid_live(o, now) && state.doors.contains_key(&o.id))
+        .filter_map(|o| {
+            let (namespace, pvc) = o.volume.as_deref()?.split_once('/')?;
+            Some((
+                o.id.clone(),
+                StorageVolume {
+                    namespace: namespace.to_string(),
+                    pvc: pvc.to_string(),
+                },
+            ))
+        })
+        .collect()
+}
+
 /// Whether a paid order's entitlement is still running at `now`. A lapsed
 /// order hands its units back to the listing.
 pub(crate) fn paid_live(order: &Order, now: u64) -> bool {
@@ -1349,7 +1418,9 @@ pub struct StorageVolume {
 /// `None` for any other order, another buyer's, or one not bound yet; the
 /// caller answers all of them alike, so a box cannot learn which orders
 /// exist. A lapsed order keeps its volume until the operator deletes the
-/// claim, and so does the buyer's way to it: the data is still theirs.
+/// claim — the data is still the buyer's — but the backup door in front of
+/// it is shut at expiry (`server/storage.rs`), so the volume serves nothing
+/// on its own.
 #[must_use]
 pub fn storage_volume(state: &MarketState, order_id: &str, buyer: &str) -> Option<StorageVolume> {
     let order = state.orders.get(order_id)?;
@@ -1372,16 +1443,27 @@ pub fn door_hash_ok(hash: &str) -> bool {
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
-/// What is behind `order_id`'s backup door, when `hash` is its key. The
-/// comparison takes the same time however much of the key matches.
+/// What is behind `order_id`'s backup door, when `hash` is its key and the
+/// entitlement is still running at `now`. The comparison takes the same time
+/// however much of the key matches. A lapsed order's door is shut: the paid
+/// time is over, and the server in front of the volume is stopped
+/// (`server/storage.rs`). The claim and the data behind it stay until the
+/// operator removes them.
 #[must_use]
-pub fn door_volume(state: &MarketState, order_id: &str, hash: &str) -> Option<OpenDoor> {
+pub fn door_volume(state: &MarketState, order_id: &str, hash: &str, now: u64) -> Option<OpenDoor> {
     use subtle::ConstantTimeEq;
     let door = state.doors.get(order_id)?;
+    if door.key.is_empty() {
+        return None;
+    }
     if !bool::from(door.key.as_bytes().ct_eq(hash.as_bytes())) {
         return None;
     }
-    let buyer = &state.orders.get(order_id)?.buyer;
+    let order = state.orders.get(order_id)?;
+    if !paid_live(order, now) {
+        return None;
+    }
+    let buyer = &order.buyer;
     Some(OpenDoor {
         volume: storage_volume(state, order_id, buyer)?,
         upstream: door.upstream.clone(),
@@ -1796,6 +1878,10 @@ pub struct OrderView {
     pub expired: bool,
     /// `<namespace>/<claim>` once a storage order's volume exists.
     pub volume: Option<String>,
+    /// Whether the volume answered the edge's last probe. Absent until one
+    /// ran, and on everything but a bound storage order.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub volume_ok: Option<bool>,
     /// A machine order's image, name and address. Absent on other kinds.
     pub vm: Option<VmView>,
     /// The transaction that paid a USDC order, for a link to an explorer.
@@ -1897,7 +1983,7 @@ pub struct VmView {
 }
 
 impl OrderView {
-    fn of(o: &Order, now: u64, vm_domain: Option<&str>) -> Self {
+    fn of(o: &Order, now: u64, vm_domain: Option<&str>, volume_ok: Option<bool>) -> Self {
         Self {
             id: o.id.clone(),
             listing_id: o.listing_id.clone(),
@@ -1915,6 +2001,7 @@ impl OrderView {
             expires_at: o.expires_at,
             expired: o.status == OrderStatus::Paid && !paid_live(o, now),
             volume: o.volume.clone(),
+            volume_ok,
             vm: o.vm.as_ref().map(|vm| VmView {
                 image: vm.image.clone(),
                 name: vm.name.clone(),
@@ -2193,6 +2280,9 @@ pub struct Market {
     /// When the slots pass last wrote what it watched to disk
     /// ([`Market::slots_pass`]).
     presence_saved: std::sync::atomic::AtomicU64,
+    /// When the volume pass last wrote what it probed to disk
+    /// ([`Market::volumes_pass`]).
+    volume_saved: std::sync::atomic::AtomicU64,
     /// One card settle pass at a time.
     card_lock: Mutex<()>,
     /// The escrows taps are read from and settled in.
@@ -2372,6 +2462,7 @@ impl Market {
             prices,
             escrow_lock: Mutex::new(()),
             presence_saved: std::sync::atomic::AtomicU64::new(0),
+            volume_saved: std::sync::atomic::AtomicU64::new(0),
             card_lock: Mutex::new(()),
             tap_chain: Arc::new(EscrowChain::new(opts_usdc)),
             taps_live: taps::TapsLive::default(),
@@ -2545,11 +2636,13 @@ impl Market {
             entitlements: entitlements(&state, id, now),
             purchases: history(
                 state.orders.values().filter(|o| o.buyer == id),
+                &state,
                 now,
                 self.vm_domain(),
             ),
             sales: history(
                 state.orders.values().filter(|o| o.seller == id),
+                &state,
                 now,
                 self.vm_domain(),
             ),
@@ -3591,7 +3684,7 @@ impl Market {
 
     /// See [`door_volume`].
     pub async fn door_volume(&self, order_id: &str, hash: &str) -> Option<OpenDoor> {
-        door_volume(&*self.state.lock().await, order_id, hash)
+        door_volume(&*self.state.lock().await, order_id, hash, now_secs())
     }
 
     /// Set the backup door's key of `buyer`'s bought volume `order_id`. A new
@@ -3611,8 +3704,18 @@ impl Market {
         if !door_hash_ok(hash) {
             return Err(MarketError::Invalid("the door key is not a SHA-256 in hex"));
         }
+        let now = now_secs();
         let mut state = self.state.lock().await;
         if storage_volume(&state, order_id, buyer).is_none() {
+            return Err(MarketError::NotFound);
+        }
+        // A lapsed order's door is shut: the server in front of the volume is
+        // gone, and a key set now would open nothing.
+        if state
+            .orders
+            .get(order_id)
+            .is_some_and(|o| !paid_live(o, now))
+        {
             return Err(MarketError::NotFound);
         }
         if state.doors.get(order_id).is_some_and(|d| d.key == hash) {
@@ -3642,6 +3745,42 @@ impl Market {
     /// Lapsed storage orders whose claim may still exist.
     pub async fn lapsed_volumes(&self) -> Vec<(String, String)> {
         lapsed_volumes(&*self.state.lock().await, now_secs())
+    }
+
+    /// Where the edge probes each live bought volume: `(order id, volume)`.
+    pub async fn watched_volumes(&self) -> Vec<(String, StorageVolume)> {
+        watched_volumes(&*self.state.lock().await, now_secs())
+    }
+
+    /// Lapsed storage orders that still have a backup door.
+    pub async fn lapsed_doors(&self) -> Vec<(String, StorageVolume)> {
+        lapsed_doors(&*self.state.lock().await, now_secs())
+    }
+
+    /// The password the edge itself signs to `order_id`'s server with, when
+    /// the order has a door with a key — what the health probe signs.
+    pub async fn door_password(&self, order_id: &str) -> Option<String> {
+        self.state
+            .lock()
+            .await
+            .doors
+            .get(order_id)
+            .filter(|d| !d.key.is_empty())
+            .map(|d| d.upstream.clone())
+    }
+
+    /// Drop `order_id`'s backup door: the entitlement has lapsed and the
+    /// server in front of the volume has been stopped. The password is gone
+    /// with the record, so the volume serves nothing until the operator
+    /// steps in.
+    pub async fn drop_door(&self, order_id: &str) -> Result<(), MarketError> {
+        let mut state = self.state.lock().await;
+        if !state.doors.contains_key(order_id) {
+            return Ok(());
+        }
+        let mut next = state.clone();
+        next.doors.remove(order_id);
+        self.commit(&mut state, next).await
     }
 
     /// Record that `order_id`'s claim is gone, which returns its units to the
@@ -5179,6 +5318,54 @@ impl Market {
         }
     }
 
+    /// The volume pass: record which bought volumes answered the probe
+    /// (`answers`, keyed by order id; `can_tell` false when the edge could
+    /// not have probed), and refund the buyers of held orders whose volume
+    /// has not answered for [`MarketOpts::offline_refund_secs`] in a row, or
+    /// twice that in all — the same limits as an offline box.
+    pub async fn volumes_pass(
+        &self,
+        answers: &BTreeMap<String, bool>,
+        can_tell: bool,
+        max_gap: u64,
+    ) {
+        use std::sync::atomic::Ordering;
+        let now = now_secs();
+        let mut state = self.state.lock().await;
+        if state.mode.is_none() {
+            return;
+        }
+        let mut next = state.clone();
+        let observed = crate::slots::observe_volumes(&mut next, answers, now, can_tell, max_gap);
+        let refunded =
+            crate::slots::refund_volume_down(&mut next, now, self.opts.offline_refund_secs);
+        for (id, refund) in &refunded {
+            tracing::warn!(
+                target: Action::Market.target(),
+                "order {id}: the bought volume stopped answering; refunding {refund} of it to the buyer",
+            );
+        }
+        let moved = !refunded.is_empty();
+        let due = now
+            >= self
+                .volume_saved
+                .load(Ordering::Relaxed)
+                .saturating_add(PRESENCE_SAVE_SECS);
+        if !(moved || observed.turned || due) {
+            // Only the watch moved on: keep it in memory until the next write.
+            state.volume_presence = next.volume_presence;
+            state.volume_tick = next.volume_tick;
+            return;
+        }
+        match self.commit(&mut state, next).await {
+            Ok(()) => self.volume_saved.store(now, Ordering::Relaxed),
+            Err(e) => tracing::error!(
+                target: Action::Market.target(),
+                "could not record the volume pass: {e}",
+            ),
+        }
+    }
+
     /// `POST /market/sales/release`: the seller asks to be paid for every
     /// sale whose slot is over. Returns what goes out.
     ///
@@ -5911,7 +6098,7 @@ mod tests {
         bound.volume = Some("market-b/ord-a".to_string());
         let mut st = state_of(vec![bound]);
         let key = "ab".repeat(32);
-        assert_eq!(door_volume(&st, "ord_a", &key), None, "no key set yet");
+        assert_eq!(door_volume(&st, "ord_a", &key, 1), None, "no key set yet");
         st.doors.insert(
             "ord_a".to_string(),
             Door {
@@ -5919,14 +6106,35 @@ mod tests {
                 upstream: "cd".repeat(32),
             },
         );
-        let open = door_volume(&st, "ord_a", &key).expect("the right key opens it");
+        let open = door_volume(&st, "ord_a", &key, 1).expect("the right key opens it");
         assert_eq!(open.volume.pvc, "ord-a");
         assert_eq!(open.upstream, "cd".repeat(32));
-        assert_eq!(door_volume(&st, "ord_a", &"ac".repeat(32)), None);
-        assert_eq!(door_volume(&st, "ord_b", &key), None);
+        assert_eq!(door_volume(&st, "ord_a", &"ac".repeat(32), 1), None);
+        assert_eq!(door_volume(&st, "ord_b", &key, 1), None);
         assert!(door_hash_ok(&key));
         assert!(!door_hash_ok(&"AB".repeat(32)));
         assert!(!door_hash_ok("ab"));
+    }
+
+    #[test]
+    fn a_lapsed_order_door_stays_shut() {
+        let mut lapsed = paid("ord_a", Kind::Storage, 1, "b", Some(50));
+        lapsed.volume = Some("market-b/ord-a".to_string());
+        let mut st = state_of(vec![lapsed]);
+        let key = "ab".repeat(32);
+        st.doors.insert(
+            "ord_a".to_string(),
+            Door {
+                key: key.clone(),
+                upstream: "cd".repeat(32),
+            },
+        );
+        // The paid month runs to 50; past it the door is shut, key and all.
+        assert!(door_volume(&st, "ord_a", &key, 49).is_some());
+        assert_eq!(door_volume(&st, "ord_a", &key, 50), None);
+        // An empty key is a record the buyer has never set: shut too.
+        st.doors.get_mut("ord_a").unwrap().key = String::new();
+        assert_eq!(door_volume(&st, "ord_a", "", 49), None);
     }
 
     #[test]
@@ -6528,6 +6736,83 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
+    async fn market_at(file: &Path, image: Option<&str>) -> Market {
+        let mut opts = opts_at(file);
+        opts.storage_image = image.map(str::to_string);
+        let market = Market::open(opts).await.unwrap();
+        market.use_mode(StripeMode::Test).await.unwrap();
+        market
+    }
+
+    /// Write `state` as the test ledger behind `file` and open it.
+    async fn market_with(file: &Path, state: &MarketState, image: Option<&str>) -> Market {
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(
+            ledger_path(file, StripeMode::Test),
+            serde_json::to_vec(state).unwrap(),
+        )
+        .unwrap();
+        market_at(file, image).await
+    }
+
+    #[tokio::test]
+    async fn a_keyed_door_is_watched_and_a_lapsed_one_is_not() {
+        let dir = std::env::temp_dir().join(format!("market-door2-{}", std::process::id()));
+        let file = dir.join("market.json");
+        let mut live = paid("ord_a", Kind::Storage, 1, "b", Some(u64::MAX));
+        live.volume = Some("market-b/ord-a".to_string());
+        let mut lapsed = paid("ord_old", Kind::Storage, 1, "b", Some(1));
+        lapsed.volume = Some("market-b/ord-old".to_string());
+        let mut keyless = paid("ord_k", Kind::Storage, 1, "b", Some(u64::MAX));
+        keyless.volume = Some("market-b/ord-k".to_string());
+        let market = market_with(&file, &state_of(vec![live, lapsed, keyless]), None).await;
+        let key = "0f".repeat(32);
+
+        // Nothing is watched before the buyer sets a door key.
+        assert!(market.watched_volumes().await.is_empty());
+        market.set_door("ord_a", "b", &key).await.unwrap();
+        let watched = market.watched_volumes().await;
+        assert_eq!(
+            watched
+                .iter()
+                .map(|(id, _)| id.as_str())
+                .collect::<Vec<_>>(),
+            ["ord_a"]
+        );
+        assert_eq!(watched[0].1.pvc, "ord-a");
+        assert!(market.door_password("ord_a").await.is_some());
+        assert!(market.door_password("ord_k").await.is_none());
+
+        // A lapsed order with a door record is not watched, but is owed a
+        // teardown; dropping it clears that.
+        market.state.lock().await.state.doors.insert(
+            "ord_old".into(),
+            Door {
+                key: key.clone(),
+                upstream: "cd".repeat(32),
+            },
+        );
+        assert_eq!(
+            market
+                .watched_volumes()
+                .await
+                .iter()
+                .map(|(id, _)| id.as_str())
+                .collect::<Vec<_>>(),
+            ["ord_a"],
+            "the lapsed order is not watched, the live keyed one is"
+        );
+        assert_eq!(market.lapsed_doors().await.len(), 1);
+        assert!(market.door_volume("ord_old", &key).await.is_none());
+        assert!(matches!(
+            market.set_door("ord_old", "b", &key).await,
+            Err(MarketError::NotFound)
+        ));
+        market.drop_door("ord_old").await.unwrap();
+        assert!(market.lapsed_doors().await.is_empty());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
     /// A ledger stamped with the other mode is a mix-up, not an empty market.
     #[tokio::test]
     async fn a_ledger_of_the_other_mode_is_refused() {
@@ -6631,7 +6916,7 @@ mod tests {
             .collect();
         orders.push(paid("live", Kind::Storage, 1, "b", Some(now + 1)));
         let st = state_of(orders);
-        let view = history(st.orders.values(), now, None);
+        let view = history(st.orders.values(), &st, now, None);
         assert_eq!(view.len(), ACCOUNT_HISTORY);
         assert_eq!(view[0].id, "live");
         // Then newest first.
@@ -6840,7 +7125,7 @@ mod tests {
         // The view's share for the seller is net of both.
         let mut o = usdc_order("ord_2", 200, 50, 0);
         o.status = OrderStatus::Paid;
-        let view = OrderView::of(&o, 0, None);
+        let view = OrderView::of(&o, 0, None, None);
         assert_eq!((view.fee, view.fee_offset, view.seller_net), (8, 50, 142));
     }
 }

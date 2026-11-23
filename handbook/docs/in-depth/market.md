@@ -126,6 +126,15 @@ while it runs, so neither side can walk away with the other's share.
   delivered, rounded up to the cent, and the seller is paid for the rest,
   less the fee on that part. A box offline from the start refunds the whole
   payment.
+- **A volume that stops answering refunds its buyer too.** The seller's node
+  being `Ready` says nothing about the claim the buyer's backups land in.
+  So once the buyer has opened the volume's backup door, the edge asks the
+  volume itself on every reconcile pass: a signed request through the
+  volume's own server, which only succeeds when the volume behind it
+  answers. Silent for 24 hours in a row, or for 48 hours in all, the period
+  ends there and the buyer is made whole the same way as with an offline
+  box. Time the edge could not have checked for — it was down, or the
+  apiserver did not answer — counts against nobody.
 - **Nothing set up, nothing paid.** If what was bought is not set up within
   23 hours of payment, the buyer gets everything back.
 - **The seller is paid when the period ends.** The Market pane's Earnings
@@ -172,16 +181,18 @@ gone, because the claim still holds Longhorn capacity after the month ends.
   That assumes an `Immediate`-binding class, which Longhorn's default is. A
   `WaitForFirstConsumer` class never binds, because nothing mounts the claim
   yet. The account view reports a bound claim as
-  `volume: "<namespace>/<claim>"`. The edge writes the claim's name down
+  `volume: "<namespace>/<claim>"`, and `volume_ok` as whether it answered
+  the edge's last check. The edge writes the claim's name down
   before it asks for it, so a claim that never binds, or one created just
   before the edge stopped, still keeps its units sold after the month ends.
 - **Backups on bought storage.** The buyer's box can keep its backups on a
   bound storage order (Settings, Backup). The box encrypts with restic
   before anything leaves it, as for a bucket, and talks to the edge's
   `/market/storage/<order>/`, which serves restic's REST protocol. The
-  edge starts one `rest-server` per order beside the claim on first use,
-  from an image it carries (`losos.edge.market.backups.enable`, on by
-  default) and never pulls. The server's one account is the edge's, with a
+  edge starts one `rest-server` per order beside the claim on first use —
+  or sooner when the health check below gets there first — from an image it
+  carries (`losos.edge.market.backups.enable`, on by default) and never
+  pulls. The server's one account is the edge's, with a
   password made for that order, so the mesh boxes that can reach its
   cluster address cannot open it. The edge opens that path only to a key it
   stores as a SHA-256 hash, which the buyer's box sets with
@@ -200,8 +211,10 @@ Limits to know about, none of which are enforced yet:
   hosting that particular volume.
 - The only way to the claim is the backup path above. Nothing else mounts
   it.
-- Nothing is ever deleted. A lapsed entitlement stops being reported, but
-  the volume holds the buyer's data, and removing it is the operator's call.
+- Nothing is ever deleted. A lapsed entitlement stops being reported and
+  its backup door is shut — the server in front of the volume is stopped
+  and its password dropped — but the volume holds the buyer's data, and
+  removing it is the operator's call.
   Until the operator deletes the claim, its GiB stay sold, so the same
   capacity is never sold twice. That holds for a claim still `Pending` too,
   since it may yet bind. The reconcile pass checks each lapsed claim and puts
@@ -209,7 +222,8 @@ Limits to know about, none of which are enforced yet:
 - The registrar's ServiceAccount gains cluster-wide `get`/`create` on
   namespaces and PersistentVolumeClaims when the market is enabled, and on
   Deployments and Services (and `create` on Secrets) when backups on bought
-  storage are on.
+  storage are on — plus `patch` on Deployments, which is how a lapsed
+  order's server is scaled to zero.
   Kubernetes RBAC cannot scope any of them to `market-*` names.
 :::
 
@@ -801,12 +815,12 @@ from until then.
   card dispute in the Stripe dashboard. A refund for any other reason after the
   seller was paid is the operator's call, with `reverse_transfer` so the
   seller's share comes back too.
-- **Proof that the storage is healthy.** A box counts as online while its
-  node is `Ready` in the mesh. The edge does not check that the buyer's
-  volume answers.
-- **Enforcing the entitlement.** Fulfilment creates the claim; it does not
-  stop a buyer using more than they bought, meter compute, or revoke access at
-  expiry.
+- **Metering compute.** The compute credit is a ledger entry, and nothing
+  schedules against it yet, so there is nothing to meter. What can be
+  enforced is: bought storage is capped by its claim's size, the backup
+  door is shut once the paid time is over
+  ([Fulfilment](#fulfilment) says how), and a lapsed machine's replicas are
+  stopped.
 - **Tax, invoicing and seller verification** beyond what Stripe's onboarding
   does. Running a marketplace has legal duties that depend on where you
   operate. This is an experiment, not advice.

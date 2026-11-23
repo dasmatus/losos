@@ -17,7 +17,9 @@ use crate::cli::{
     EscrowCommand, GitCommand, KeyCommand, SecretCommand,
 };
 use crate::computer::{Computer, Service};
-use crate::envelope::{host_key_url, unreachable, Session, Transport};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::envelope::host_key_url;
+use crate::envelope::{unreachable, Session, Transport};
 use crate::http::{Http, Trust};
 use crate::i18n::{self, Locale};
 use crate::keychain::{Keychain, SecretTool};
@@ -25,8 +27,11 @@ use crate::problem::{Problem, Result};
 use crate::prompt::{read_hidden, read_piped};
 use crate::theme::{detect_mode, detect_truecolor, Theme};
 use crate::tr;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::tui::app::App;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::tui::login::{KeyChoice, Login, Picker};
+#[cfg(not(target_arch = "wasm32"))]
 use crate::tui::term;
 use crate::vault::{
     group_fingerprint, normalize_url, same_fingerprint, HostKind, HostRecord, Vault,
@@ -87,6 +92,7 @@ impl Io {
     }
 
     /// The full-screen view needs a terminal on both ends.
+    #[cfg(not(target_arch = "wasm32"))]
     fn terminal(&self) -> bool {
         self.stdin_tty && self.stdout_tty
     }
@@ -135,11 +141,7 @@ fn run_in(args: &[String], io: &mut Io, locale: Locale) -> u8 {
         }
     };
     crate::logging::init(cli.global.verbose, io.var("LOSOS_LOG"));
-    tracing::debug!(
-        locale = locale.code(),
-        "losos {}",
-        crate::tui::panes::VERSION
-    );
+    tracing::debug!(locale = locale.code(), "losos {}", crate::VERSION);
     match dispatch(cli, io) {
         Ok(code) => code,
         Err(problem) => {
@@ -374,6 +376,7 @@ fn key(io: &mut Io, command: KeyCommand) -> Result<u8> {
 /// What `/api/access/host-key` (a box) or `/operator/host-key` (an edge)
 /// serves, and the certificate the host showed, when no authority vouched
 /// for it.
+#[cfg(not(target_arch = "wasm32"))]
 struct Served {
     kind: HostKind,
     fingerprint: String,
@@ -385,6 +388,7 @@ struct Served {
 
 /// The edge address a box's host key answer names, when it is a web
 /// address with TLS; anything else is not kept.
+#[cfg(not(target_arch = "wasm32"))]
 fn edge_url(kind: HostKind, doc: &Value) -> Option<String> {
     let raw = doc.get("edgeUrl").and_then(Value::as_str)?;
     (kind == HostKind::Box && raw.starts_with("https://"))
@@ -392,6 +396,7 @@ fn edge_url(kind: HostKind, doc: &Value) -> Option<String> {
         .flatten()
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn fetch_host_key(url: &str) -> Result<Served> {
     let http = Http::new(Trust::FirstUse);
     let mut last = String::new();
@@ -565,6 +570,7 @@ fn is_token(token: &str) -> bool {
 }
 
 /// A certificate's SHA-256, in groups of four.
+#[cfg(not(target_arch = "wasm32"))]
 fn group_pin(pin: &str) -> String {
     pin.to_ascii_uppercase()
         .as_bytes()
@@ -574,6 +580,7 @@ fn group_pin(pin: &str) -> String {
         .join(" ")
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn login(
     io: &mut Io,
     raw: &str,
@@ -722,6 +729,20 @@ fn login(
     Ok(0)
 }
 
+#[cfg(target_arch = "wasm32")]
+fn login(
+    _io: &mut Io,
+    _raw: &str,
+    _wanted_key: Option<&str>,
+    _expected: Option<&str>,
+    _theme: Theme,
+) -> Result<u8> {
+    Err(Problem::new(
+        "losos::terminal",
+        crate::tr!("tui.open.needsTerminal"),
+    ))
+}
+
 fn logout(io: &mut Io, raw: &str) -> Result<u8> {
     let url = parse_url(raw)?;
     let vault = io.vault();
@@ -760,6 +781,7 @@ fn hosts(io: &mut Io) -> Result<u8> {
     Ok(0)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn open(io: &mut Io, named: Option<&str>, theme: Theme) -> Result<u8> {
     if !io.terminal() {
         return Err(Problem::new(
@@ -793,6 +815,14 @@ fn open(io: &mut Io, named: Option<&str>, theme: Theme) -> Result<u8> {
 }
 
 // ── One call ─────────────────────────────────────────────────────────────
+
+#[cfg(target_arch = "wasm32")]
+fn open(_io: &mut Io, _named: Option<&str>, _theme: Theme) -> Result<u8> {
+    Err(Problem::new(
+        "losos::terminal",
+        crate::tr!("tui.open.needsTerminal"),
+    ))
+}
 
 fn call(
     io: &mut Io,
@@ -1725,6 +1755,7 @@ fn agents_call(io: &mut Io, host: Option<&str>, method: &str, path: &str) -> Res
 
 /// Where the session bus is when nothing says: `$XDG_RUNTIME_DIR/bus`, or
 /// `/run/user/<uid>/bus`, where systemd puts it.
+#[cfg(unix)]
 fn session_bus(env: &HashMap<String, String>) -> Option<String> {
     use std::os::unix::fs::MetadataExt;
     let dir = match env.get("XDG_RUNTIME_DIR").filter(|d| !d.is_empty()) {
@@ -1736,6 +1767,14 @@ fn session_bus(env: &HashMap<String, String>) -> Option<String> {
     };
     let bus = dir.join("bus");
     bus.exists().then(|| format!("unix:path={}", bus.display()))
+}
+
+/// The session bus is a unix-socket address; the wasm32/browser leg has no
+/// D-Bus session. Window-side ownership lives outside the tui crate.
+#[cfg(not(unix))]
+fn session_bus(env: &HashMap<String, String>) -> Option<String> {
+    let _ = env;
+    None
 }
 
 /// `losos mcp`: serve the companion's tools on stdin and stdout.
@@ -1797,6 +1836,7 @@ mod tests {
         assert!(!is_token("losos_pat_"));
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn a_pin_reads_in_groups() {
         assert_eq!(group_pin("abcdef0123"), "ABCD EF01 23");

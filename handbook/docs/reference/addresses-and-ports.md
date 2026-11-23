@@ -17,7 +17,7 @@ sidebar_position: 1
 | `/api/health`                 | `{"ok":true}` when the control daemon is up         | the local network only, no key      |
 | `/setup/state.json`           | Name, address, HTTPS, certificate fingerprint       | the local network only              |
 | `/setup/losos-ca.crt`         | The box's certificate                               | the local network only              |
-| `/setup/trust.sh`, `/setup/trust.ps1` | The one-line certificate installers          | the local network only              |
+| `/setup/trust.ts`, `/setup/trust.ps1` | The one-line certificate installers          | the local network only              |
 | `/cloud/`                     | LosOS Cloud                                         | anyone, and through an edge         |
 | `/remote.php/`, `/status.php`, `/ocs/`, `/index.php/` | What the Nextcloud apps, calendar apps and file managers call | anyone, and through an edge |
 | `/nextcloud/`                 | The same, at the address a box's Nextcloud used     | anyone, and through an edge         |
@@ -72,5 +72,4 @@ at home.
 | `proxy.losos.dasmat.us`     | The binary cache the box updates from                    |
 | `127.0.0.1:8787`            | Local GHCR-backed Nix cache, on the box and installer |
 | `127.0.0.1:8790`            | The box's local copy of all of these, kept on its disk |
-| `losos.dasmat.us/proxy`     | A copy of that cache, used when the first does not answer |
 | `losos.dasmat.us`           | This handbook on the web                                 |

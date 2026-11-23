@@ -59,7 +59,7 @@ laufen soll und ob sich die Edge im LAN ankündigen soll. Die Anleitung für
 Betreiber steht in [Master-Proxy](/in-depth/master-proxy.md) und
 [Mesh](/in-depth/mesh.md). Das Repository enthält unter `nix/demo/edge-lan/`
 außerdem eine Vorführung genau dieser Einrichtung: zwei Boxen und eine Edge
-in einem virtuellen Netz. `run.sh` startet sie, und `CHECKLIST.md` gibt die
+in einem virtuellen Netz. `run.ts` startet sie, und `CHECKLIST.md` gibt die
 Reihenfolge vor, die sie durchläuft.
 
 ![Der Bildschirm eines Edge-Gateway-Rechners aus der Vorführung: Er kündigt sich im Netz an, und die Boxen in diesem Netz finden ihn von selbst.](@site/docs/img/edge-gateway-tty1.png)

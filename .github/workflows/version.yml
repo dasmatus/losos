@@ -20,7 +20,7 @@ on:
 # jobs in ci.yml write the tag over the file before they build.
 #
 # The commit is made through the GitHub API with GITHUB_TOKEN, which GitHub
-# signs and which fast-forwards only (see .github/scripts/sync-version.sh).
+# signs and which fast-forwards only (see .github/scripts/sync-version.ts).
 # Like every GITHUB_TOKEN push it starts no workflow run on its own, so it
 # cannot loop. The job then starts ci.yml on main through
 # workflow_dispatch, which a GITHUB_TOKEN may do: main's new head is built,
@@ -34,7 +34,6 @@ jobs:
   sync:
     name: "bot: nix/version.nix follows the newest tag"
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     permissions:
       contents: write
       # Starting ci.yml on main after a commit.
@@ -44,12 +43,13 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: main
+      - uses: oven-sh/setup-bun@v2
       - name: commit the newest tag to main if the file is behind
         id: sync
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-        run: .github/scripts/sync-version.sh
+        run: bun .github/scripts/sync-version.ts
       - name: run ci on main's new head
         if: steps.sync.outputs.committed
         env:

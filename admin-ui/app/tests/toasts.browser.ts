@@ -395,7 +395,7 @@ await check('the wizard raises both kinds: a readiness status on step 2, then th
         fingerprint: 'sha256:' + 'ab'.repeat(32),
         fingerprintDisplay: 'AB:'.repeat(31) + 'AB',
         expires: '2028-01-01T00:00:00Z',
-        install: { sh: '/setup/trust.sh', ps1: '/setup/trust.ps1' },
+        install: { node: '/setup/trust.ts', ps1: '/setup/trust.ps1' },
       },
     }),
   );

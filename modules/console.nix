@@ -48,7 +48,15 @@ let
   # (modules/identity.nix), so before that it is left out rather than
   # shown as starting for ever.
   modules =
-    lib.filter (m: config.systemd.services ? ${m.unit} && config.systemd.services.${m.unit}.enable)
+    lib.filter
+      (
+        m:
+        # A quadlet's unit (lososInternal.quadlets, modules/quadlets.nix) is
+        # generated at boot and is no systemd.services entry, but the part is
+        # real all the same.
+        (config.systemd.services ? ${m.unit} && config.systemd.services.${m.unit}.enable)
+        || config.lososInternal.quadlets.units ? ${m.unit}
+      )
       [
         {
           unit = "lososd";

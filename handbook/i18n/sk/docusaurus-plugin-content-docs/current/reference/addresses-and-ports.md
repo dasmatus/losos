@@ -17,7 +17,7 @@ sidebar_position: 1
 | `/api/health`                 | `{"ok":true}`, keď riadiaci démon beží              | iba lokálna sieť, bez kľúča         |
 | `/setup/state.json`           | Názov, adresa, HTTPS, odtlačok certifikátu          | iba lokálna sieť                    |
 | `/setup/losos-ca.crt`         | Certifikát zariadenia                               | iba lokálna sieť                    |
-| `/setup/trust.sh`, `/setup/trust.ps1` | Jednoriadkové inštalátory certifikátu       | iba lokálna sieť                    |
+| `/setup/trust.ts`, `/setup/trust.ps1` | Jednoriadkové inštalátory certifikátu       | iba lokálna sieť                    |
 | `/cloud/`                     | LosOS Cloud                                         | ktokoľvek, aj cez edge              |
 | `/remote.php/`, `/status.php`, `/ocs/`, `/index.php/` | To, čo volajú aplikácie Nextcloud, kalendárové aplikácie a správcovia súborov | ktokoľvek, aj cez edge |
 | `/nextcloud/`                 | To isté, na adrese, ktorú používal Nextcloud zariadenia | ktokoľvek, aj cez edge          |
@@ -73,5 +73,4 @@ prichádzajúci port.
 | `proxy.losos.dasmat.us`     | Binárna cache, z ktorej sa zariadenie aktualizuje        |
 | `127.0.0.1:8787`            | Lokálna Nix cache z GHCR na zariadení a inštalačnom médiu |
 | `127.0.0.1:8790`            | Lokálna kópia všetkých týchto cache na disku zariadenia |
-| `losos.dasmat.us/proxy`     | Kópia tejto cache, použije sa, keď prvá neodpovedá       |
 | `losos.dasmat.us`           | Táto príručka na webe                                    |

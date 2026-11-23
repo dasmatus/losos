@@ -38,14 +38,17 @@ on:
 #
 #   - Every night the cut moves each due channel (daily always, weekly on
 #     Mondays, monthly on the 1st) to the newest commit of main whose `ci`
-#     run passed with its cache upload. A fast-forward when it can be, else a
+#     `result` check passed and whose cache upload succeeded. The workflow
+#     conclusion is not the gate: an advisory job can fail the run while
+#     both of those are green. A fast-forward when it can be, else a
 #     merge commit whose tree is main's: never a force push.
 #   - A merged pull request labelled `hotfix` is cherry-picked onto every
 #     channel that lacks it, on a candidate branch `hotfix/<channel>/<n>`,
 #     and `ci` is started there by dispatch (a push with this token would
 #     start nothing). The label can go on before or after the merge.
-#   - When that run passes, cache upload included, the channel
-#     fast-forwards to the candidate and the candidate is deleted. That
+#   - When that run's result check passed and its cache upload succeeded,
+#     the channel fast-forwards to the candidate and the candidate is
+#     deleted. An advisory failure does not drop the candidate. That
 #     happens on the run's completion and, should that event not come, in
 #     the hourly pass.
 #
@@ -63,7 +66,6 @@ jobs:
   channels:
     name: "bot: release channels"
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     if: >-
       github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
       || (github.event_name == 'pull_request_target' && github.event.pull_request.merged
@@ -89,7 +91,19 @@ jobs:
       issues: write
     steps:
       # The default branch, whole: the cherry-picks happen in this clone.
+      # One retry. The nightly cut is the only run that moves channels, and
+      # a checkout that dies (it has, after twenty minutes) used to skip
+      # that night: the hourly schedule only promotes.
       - uses: actions/checkout@v7
+        id: checkout
+        continue-on-error: true
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: checkout main again
+        if: steps.checkout.outcome == 'failure'
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0

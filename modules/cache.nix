@@ -10,9 +10,10 @@
 # WHAT FILLS THE LOSOS CACHE. `.github/workflows/ci.yml` publishes signed GHCR
 # artifacts through .github/actions/proxy-push after each build job. Those are
 # exactly the paths cache.nixos.org cannot serve, because this flake builds
-# them. `losos-ghcr-cache` (tools/losos-ghcr-cache.py, 127.0.0.1:8787) speaks
-# Nix's binary-cache protocol and pulls one artifact with oras when Nix asks
-# for it. The GitHub Pages copy is a remote fallback signed with the same key.
+# them. `losos-ghcr-cache` (tools/losos-ghcr-cache.py, 127.0.0.1:8787 by
+# default) speaks Nix's binary-cache protocol and pulls one artifact with oras
+# when Nix asks for it. It can also run on a VPS/edge (`losos.cache.ghcr.*`)
+# as a shared GHCR-backed proxy.
 #
 # THE LOCAL COPY (losos.cache.local, on the box only). /nix is on /persist, so
 # a path the box has is never fetched again while it stays in the store. But
@@ -51,7 +52,7 @@ let
   dir = "/var/cache/losos-nix-cache";
 
   # A source is a binary cache the proxy asks: scheme, host[:port], and an
-  # optional path prefix (the Pages copy lives under /proxy).
+  # optional path prefix.
   parse =
     option: url:
     let
@@ -204,8 +205,7 @@ let
 
         # A file rather than `return`: return runs before allow/deny, and
         # nothing here should answer a stranger. Priority 10 puts this ahead
-        # of cache.nixos.org (40), which stays in nix.settings.substituters
-        # behind it as a fallback.
+        # of cache.nixos.org (40) in the upstream chain the proxy walks.
         location = /nix-cache-info {
           default_type text/x-nix-cache-info;
           alias ${cacheInfo};
@@ -256,39 +256,82 @@ in
     (lib.mkIf (enabled || local.enable) {
       extra-trusted-public-keys = cfg.trustedPublicKeys;
       connect-timeout = 5;
-      fallback = true;
+      # Refuse to compile when every substituter misses. The local copy
+      # proxies upstream nixpkgs caches; the installer medium keeps
+      # cache.nixos.org via extra-substituters below.
+      fallback = false;
+      always-allow-substitutes = true;
+      # flake.nix carries the same cache in its `nixConfig`, and Nix asks y/N
+      # for every setting there on first evaluation. Answering no — the
+      # default, and what an unattended install gets — drops the substituter,
+      # so the install the cache exists to make fast builds from source
+      # instead. On: the question is never asked, and every user gets the
+      # flake's settings, which an untrusted user is otherwise refused
+      # ("ignoring untrusted flake configuration setting"). /etc/nix/nix.conf
+      # is read by each client, daemon or not.
+      accept-flake-config = true;
+      # `accept-flake-config` is a flakes-only setting, and nixpkgs validates
+      # the generated nix.conf at build time with `nix config show`: a setting
+      # whose feature the same file does not enable fails the whole system with
+      # "Ignoring setting 'accept-flake-config' because experimental feature
+      # 'flakes' is not enabled". The box evaluates flake refs for every
+      # rebuild (`nixos-rebuild --flake`), so they are on for every user, not
+      # only for whichever caller remembers the flag.
+      experimental-features = [
+        "nix-command"
+        "flakes"
+      ];
+      # A user who is in allowed-users but not trusted-users may pass as a
+      # substituter only a URL listed here (nix.conf(5)); anything else is
+      # answered with "ignoring untrusted substituter … you are not a trusted
+      # user". Naming the GHCR proxy lets every user substitute from it —
+      # including through the flake above — without making anyone a trusted
+      # user, which is equivalent to root.
+      trusted-substituters = cfg.substituters;
     })
-    # The installer medium, and a box with the local copy off, ask the LosOS
-    # caches themselves. extra-* rather than replacing the defaults:
-    # cache.nixos.org still serves upstream NixOS paths.
+    # The installer medium, and a box with the local copy off, prepend the LosOS
+    # GHCR proxy. extra-* keeps nixpkgs' cache.nixos.org (mkAfter) so the bulk
+    # of any closure substitutes instead of building on a live medium.
     (lib.mkIf (enabled && !local.enable) {
       extra-substituters = cfg.substituters;
     })
-    # The box asks only its local copy, which asks everyone else. nixpkgs
-    # appends cache.nixos.org to this list (mkAfter), and that stays as the
-    # direct fallback for a night the proxy is down. The LosOS caches are not
-    # listed again: every path the proxy misses would be asked twice.
+    # The box asks only its local copy, which asks everyone else. mkForce
+    # keeps nixpkgs' default upstream substituter (mkAfter) off this list too,
+    # for the same reason as above. The LosOS caches are not listed again:
+    # every path the proxy misses would be asked twice.
     (lib.mkIf local.enable {
-      substituters = [ front ];
+      substituters = lib.mkForce [ front ];
     })
   ];
 
-  # Nix speaks its ordinary binary-cache HTTP protocol to localhost. On a
-  # cache miss this service uses oras to pull the matching per-store-path OCI
-  # artifact from GHCR, rewrites only the unsigned URL field in narinfo, and
-  # serves the NAR locally. Nix still verifies the original narinfo signature.
+  # Nix speaks its ordinary binary-cache HTTP protocol. On a cache miss this
+  # service uses oras to pull the matching per-store-path OCI artifact from
+  # GHCR, rewrites only the unsigned URL field in narinfo, and serves the NAR
+  # locally. Nix still verifies the original narinfo signature.
+  # VPS preset: zero-setup ephemeral, on-demand proxy.
+  losos.cache.ghcr = lib.mkIf cfg.ghcr.vps {
+    ephemeral = lib.mkDefault true;
+    socketActivation = lib.mkDefault true;
+    host = lib.mkDefault "0.0.0.0";
+    openFirewall = lib.mkDefault true;
+  };
+
   systemd.services.losos-ghcr-cache = lib.mkIf enabled {
     description = "Local GHCR-backed Nix binary cache";
-    wantedBy = [ "multi-user.target" ];
+    wantedBy = lib.optionals (!cfg.ghcr.socketActivation) [ "multi-user.target" ];
     after = [ "network.target" ];
     path = [ pkgs.oras ];
     environment = {
       LOSOS_GHCR_CACHE = "ghcr.io/dasmatus/losos/nix-cache";
+      LOSOS_GHCR_CACHE_HOST = cfg.ghcr.host;
+      LOSOS_GHCR_CACHE_PORT = toString cfg.ghcr.port;
+      # Keep the staging cache on the live filesystem. On the installer ISO
+      # /mnt/persist is not mounted yet, and disko mounts the target over /mnt
+      # mid-install, which would hide a cache kept there and force nixos-install
+      # to refetch everything. The lasting copy lives in losos-nix-cache on the
+      # installed box. Ephemeral mode uses a tmpfs runtime directory.
       LOSOS_GHCR_CACHE_DIR =
-        if config.losos.installer.autorun then
-          "/mnt/persist/var/cache/losos-ghcr-cache"
-        else
-          "/var/cache/losos-ghcr-cache";
+        if cfg.ghcr.ephemeral then "/run/losos-ghcr-cache" else "/var/cache/losos-ghcr-cache";
     }
     # Behind the local copy this is only a staging area between the narinfo
     # and the NAR request: losos-nix-cache keeps the lasting copy, under its
@@ -298,8 +341,32 @@ in
     };
     serviceConfig = {
       ExecStart = "${pkgs.python3}/bin/python3 ${../tools/losos-ghcr-cache.py}";
-      Restart = "on-failure";
+      Restart = if cfg.ghcr.socketActivation then "on-failure" else "on-failure";
       RestartSec = 3;
+    }
+    // lib.optionalAttrs cfg.ghcr.ephemeral {
+      RuntimeDirectory = "losos-ghcr-cache";
+      RuntimeDirectoryMode = "0755";
+      # Ephemeral: no persistent cache dir needed.
+    }
+    // lib.optionalAttrs cfg.ghcr.socketActivation {
+      # Socket-activated: systemd holds the listening socket.
+      StandardInput = "null";
+    };
+  };
+
+  systemd.sockets.losos-ghcr-cache = lib.mkIf (enabled && cfg.ghcr.socketActivation) {
+    description = "Socket for the GHCR-backed Nix binary cache";
+    wantedBy = [ "sockets.target" ];
+    socketConfig = {
+      ListenStream =
+        if cfg.ghcr.host == "0.0.0.0" then
+          toString cfg.ghcr.port
+        else if cfg.ghcr.host == "127.0.0.1" || cfg.ghcr.host == "localhost" then
+          "127.0.0.1:${toString cfg.ghcr.port}"
+        else
+          "${cfg.ghcr.host}:${toString cfg.ghcr.port}";
+      Accept = false;
     };
   };
 
@@ -310,7 +377,10 @@ in
   };
   users.groups.losos-nix-cache = lib.mkIf local.enable { };
 
-  networking.firewall.allowedTCPPorts = lib.mkIf (local.enable && local.shareOnLan) [ local.port ];
+  networking.firewall.allowedTCPPorts = lib.mkMerge [
+    (lib.mkIf (local.enable && local.shareOnLan) [ local.port ])
+    (lib.mkIf (enabled && cfg.ghcr.openFirewall) [ cfg.ghcr.port ])
+  ];
 
   systemd.services.losos-nix-cache = lib.mkIf local.enable {
     description = "Local copy of the Nix binary caches";

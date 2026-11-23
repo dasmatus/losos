@@ -22,7 +22,7 @@ on:
 # it rewrites whatever slipped through and force-pushes the result.
 #
 # The rules live in .github/scripts/scrub-message.py and the wiring in
-# .github/scripts/scrub-history.sh, so the same rewrite can be previewed on a
+# .github/scripts/scrub-history.ts, so the same rewrite can be previewed on a
 # dev machine (see the header there). git-filter-repo keeps the hash of every
 # commit the rules do not touch, so a clean history is a no-op and nothing
 # before the first offending commit ever moves.
@@ -76,7 +76,6 @@ jobs:
   scrub:
     name: "bot: scrub Claude mentions out of the history"
     runs-on: ubuntu-latest
-    timeout-minutes: 30
     permissions:
       contents: write
     env:
@@ -89,9 +88,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-nix
-        with:
-          cache-url: ${{ vars.LOSOS_PROXY_URL }}
-          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+      - uses: oven-sh/setup-bun@v2
       - name: clone every branch and tag, bare
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -107,7 +104,7 @@ jobs:
         env:
           # Optional rules that must not be read in the public tree, because
           # a rule names what it removes; see the header of
-          # scrub-history.sh. Unset, the rewrite is the public rules alone.
+          # scrub-history.ts. Unset, the rewrite is the public rules alone.
           PRIVATE_RULES: ${{ secrets.HISTORY_SCRUB_PRIVATE_RULES }}
         run: |
           set -euo pipefail
@@ -119,7 +116,7 @@ jobs:
           # lockfile-updates.yml gets devenv: pinned, cached, no pip.
           rev="$(jq -r '.nodes.nixpkgs.locked.rev' flake.lock)"
           nix shell "github:NixOS/nixpkgs/${rev}#git-filter-repo" -c \
-            .github/scripts/scrub-history.sh mirror.git moved-refs
+            bun .github/scripts/scrub-history.ts mirror.git moved-refs
           if [ -s moved-refs ]; then
             echo "refs that move (old new ref):"
             cat moved-refs

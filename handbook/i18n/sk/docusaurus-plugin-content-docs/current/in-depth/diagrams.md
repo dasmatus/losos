@@ -135,7 +135,7 @@ loopback.
 
 | | Na zariadení (`/diagrams/`) | Hostovaná |
 | --- | --- | --- |
-| Zostavuje ju | `nix build .#losos-admin-ui` (Diagramy sú jeho obrazovka) | `admin-ui/lab/engine/build.sh` v `lab.yml` |
+| Zostavuje ju | `nix build .#losos-admin-ui` (Diagramy sú jeho obrazovka) | `admin-ui/lab/engine/build.ts` v `lab.yml` |
 | Konzoly | simulované, alebo skutočné hosty pod libvirt, keď zariadenie spúšťa pomocníka | skutočné x86_64 hosty pod libvirt na vašom počítači, inak qemu-wasm |
 | Potrebuje | nič okrem zariadenia | cross-origin izolovaný hostiteľ (COOP + COEP) |
 
@@ -168,7 +168,7 @@ hlavičky na Verceli a `serve.json` urobí to isté pre `serve` na vašom
 vlastnom počítači:
 
 ```sh
-admin-ui/lab/engine/build.sh /tmp/lab     # docker, nix, bun
+admin-ui/lab/engine/build.ts /tmp/lab     # docker, nix, bun
 bunx serve@14.2.4 -l 8080 /tmp/lab        # then open http://localhost:8080/diagrams/
 ```
 
@@ -262,7 +262,7 @@ Ako ho použiť vedľa virt-managera na vlastnom PC:
    (`nix build .#losos-registrar`).
 2. Dajte obrazy hostov do priečinka s názvom `guest`: `bzImage`,
    `rootfs.bin` a pre routery, switche a prístupové body `gear.bin`.
-   `admin-ui/lab/engine/build.sh` vyrobí všetky tri a hostovaná kópia ich
+   `admin-ui/lab/engine/build.ts` vyrobí všetky tri a hostovaná kópia ich
    podáva pod `/diagrams/guest/`, takže si ich môžete stiahnuť odtiaľ.
 3. Spustite pomocníka v priečinku nad `guest`:
 

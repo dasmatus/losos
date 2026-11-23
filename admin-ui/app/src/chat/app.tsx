@@ -333,7 +333,7 @@ function ChatHome({ signed }: { signed: Signed }) {
     if (linked.current) return;
     linked.current = true;
     const search = new URLSearchParams(window.location.search);
-    const raw = search.get("with");
+    const raw = search.get("with") ?? search.get("dm");
     const shared = readShare(search);
     // `?join=<room>` from a LosOS Git repository: that room, joined first.
     // With `&call=voice|video`, from the notice a call leaves for other

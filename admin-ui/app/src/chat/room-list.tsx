@@ -1,7 +1,7 @@
 import * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Add01Icon, UserAdd01Icon, UserGroupIcon } from "@hugeicons/core-free-icons";
-import { KnownMembership, type MatrixClient, type Room } from "matrix-js-sdk";
+import { KnownMembership, RoomMemberEvent, type MatrixClient, type Room } from "matrix-js-sdk";
 import { Masked } from "@/components/details";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/lib/i18n-react";
@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { Avatar } from "./avatar";
 import { isStartNotice } from "./rtc";
 import { directPartner, directRooms, isSpace, lastActive, memberName, plainBody, ROOM_EVENTS, roomName, spaceChildren, unread, useEmitted } from "./model";
+import { typingLabel, typingMembers } from "./typing";
 
 export interface RoomListProps {
   client: MatrixClient;
@@ -43,7 +44,16 @@ function RoomRow({ client, room, current, onOpen, invite }: { client: MatrixClie
   const t = useT();
   const counts = unread(room);
   const active = room.roomId === current;
+  // Typing is room-wide, and the SDK re-emits each member's change on the
+  // client, so one listener per row is enough to redraw the line.
+  const typing = useEmitted(client, [RoomMemberEvent.Typing]);
+  const typers = React.useMemo(
+    () => typingMembers(room, client.getSafeUserId()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [room, client, typing],
+  );
   const line = invite === true ? t("chat.list.invitedBy", { name: memberName(room, room.getMember(client.getSafeUserId())?.events.member?.getSender() ?? "") }) : preview(room, t("chat.reply.attachment"));
+  const shown = typers.length > 0 ? typingLabel(typers, t) : line;
   return (
     <li>
       <button
@@ -58,7 +68,11 @@ function RoomRow({ client, room, current, onOpen, invite }: { client: MatrixClie
         <Avatar client={client} id={room.roomId} name={roomName(room)} mxc={room.getMxcAvatarUrl()} size={32} />
         <span className="min-w-0 flex-1">
           <span className={cn("block truncate text-[13.5px]", counts.total > 0 ? "font-semibold" : "font-medium")}>{roomName(room)}</span>
-          {line !== "" && <span className="block truncate text-[12px] text-muted"><Masked text={line} still /></span>}
+          {shown !== "" && (
+            <span className={cn("block truncate text-[12px]", typers.length > 0 ? "text-accent" : "text-muted")}>
+              {typers.length > 0 ? shown : <Masked text={shown} still />}
+            </span>
+          )}
         </span>
         {counts.total > 0 && (
           <span

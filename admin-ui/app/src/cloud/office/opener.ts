@@ -1,26 +1,27 @@
-import { Doc01Icon, PresentationBarChart01Icon } from "@hugeicons/core-free-icons";
+import { FileImportIcon, PresentationBarChart01Icon } from "@hugeicons/core-free-icons";
 import { registerOpener, registeringOpener } from "../openers";
 import { officeTypes, opensInOffice } from "./api";
 import { isMarkdown } from "./markdown/new";
+import { isPaper } from "./paper/new";
 
-/* Word, Excel, PowerPoint and OpenDocument files open in LosOS Office, for
- * the types the box's Collabora opens. A box without Office answers the
- * call with 404, and then nothing registers: its documents keep opening as
- * the browser shows them. */
+/* Native LosOS Office capabilities: legacy formats are imported; native
+ * .paper/.slides/.md are handled by their own routes/openers. */
 registeringOpener(
   officeTypes().then((types) =>
     registerOpener({
       id: "office",
       label: "office.open",
-      icon: Doc01Icon,
-      accepts: (entry) => opensInOffice(entry.name, types),
+      icon: FileImportIcon,
+      accepts: (entry) => {
+        if (isMarkdown(entry.name) || isPaper(entry.name)) return false;
+        return opensInOffice(entry.name, types);
+      },
       href: (entry) => `/cloud/office/${entry.id}`,
     }),
   ),
 );
 
-/* Markdown is Office's own, with or without Collabora: a .md opens in
- * Notes by default, and as a document or a presentation from here. */
+/* Markdown is Office's own: open as a document or presentation. */
 registerOpener({
   id: "office-markdown",
   label: "office.md.open",
@@ -28,3 +29,4 @@ registerOpener({
   accepts: (entry) => isMarkdown(entry.name),
   href: (entry) => `/cloud/office/${entry.id}`,
 });
+

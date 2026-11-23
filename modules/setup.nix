@@ -15,17 +15,19 @@
 #                             does something useful with it
 #   GET /setup/state.json     hostName, fqdn, and the certificate's fingerprint
 #                             and expiry
-#   GET /setup/trust.sh       a POSIX sh script that installs the certificate
+#   GET /setup/trust.ts       a TypeScript source (typed through JSDoc, so
+#                             plain-ESM JavaScript) that installs the
+#                             certificate when piped into node
 #   GET /setup/trust.ps1      the same for PowerShell on Windows
 #
-# The two scripts are modules/setup/trust.{sh,ps1} with the certificate, its
+# The two scripts are modules/setup/trust.{ts,ps1} with the certificate, its
 # fingerprint and the box's name filled in at boot. They exist because the
 # alternative — "download this file, open your OS's certificate manager, find
 # the trust setting, restart the browser" — is a wall of instructions that
 # most owners read as "skip this step", and skipping it costs them the passkey
 # and sends every password over the LAN in the clear. One line pasted into a
 # terminal is the shortest honest version of the step. The scripts are served
-# as text so the line before the `| sh` can be read in a browser tab first,
+# as text so the line before the `| node` can be read in a browser tab first,
 # and they are deliberately boring: no sudo, no download, no second file,
 # one store per browser family, undone by deleting one entry.
 #
@@ -97,12 +99,14 @@ let
   # registered for; Windows opens a `.pem` in a text editor.
   certUrl = "/setup/losos-ca.crt";
   stateUrl = "/setup/state.json";
-  # `.sh` and `.ps1`, because the owner is asked to pipe one into `sh` and the
-  # other into `iex`, and an extension that says which is which is the one
-  # thing a person checks before pressing Enter.
-  trustShUrl = "/setup/trust.sh";
+  # `.ts` and `.ps1`, because the owner is asked to pipe one into `node` and
+  # the other into `iex`, and an extension that says which is which is the
+  # one thing a person checks before pressing Enter. (.ts is also what
+  # nginx's default mime map spells `video/mp2t`, which is why the location
+  # below strips the inherited type map instead of trusting it.)
+  trustTsUrl = "/setup/trust.ts";
   trustPs1Url = "/setup/trust.ps1";
-  trustSh = "${stateDir}/trust.sh";
+  trustTs = "${stateDir}/trust.ts";
   trustPs1 = "${stateDir}/trust.ps1";
 
   # The front vhost's LAN-only guard; modules/containers.nix says why. Never
@@ -212,7 +216,7 @@ let
   stateScript =
     if tlsEnabled then
       measureCert
-      + renderInstaller ./setup/trust.sh trustSh
+      + renderInstaller ./setup/trust.ts trustTs
       + renderInstaller ./setup/trust.ps1 trustPs1
       + writeState ''
         {
@@ -226,7 +230,7 @@ let
             "fingerprintDisplay": "$display",
             "expires": "$expires",
             "install": {
-              "sh": ${json trustShUrl},
+              "node": ${json trustTsUrl},
               "ps1": ${json trustPs1Url}
             }
           }
@@ -357,8 +361,8 @@ in
       # for `iex` rather than trying to parse it. The same LAN guard and the
       # same no-add_header rule as the certificate: nothing here is secret,
       # and the inherited security headers do not hurt a script.
-      "= ${trustShUrl}" = {
-        alias = trustSh;
+      "= ${trustTsUrl}" = {
+        alias = trustTs;
         extraConfig = ''
           ${lanOnly}
           types { }

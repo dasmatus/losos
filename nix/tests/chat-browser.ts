@@ -232,11 +232,17 @@ async function on() {
   for (const [i, word] of words.entries()) {
     typed = i === 0 ? word : `${typed} ${word}`;
     await composer.fill(typed);
+    // Eva sees the indicator while Matus is still writing, in the room list
+    // and above the messages; the send below takes it away.
+    if (i === 0) {
+      await eva.waitForFunction(() => document.body.innerText.includes("Matus is typing…"), null, { timeout: 15_000 });
+    }
     await film(owner, `typing-${i + 1}`, `${HOST}/chat/`, `typing: ${typed}`, "type", { composer });
   }
   await owner.keyboard.press("Enter");
   await owner.getByRole("log").getByText(typed).waitFor();
   await eva.getByRole("log").getByText(typed).waitFor();
+  await eva.waitForFunction(() => !document.body.innerText.includes("Matus is typing…"), null, { timeout: 15_000 });
   await film(owner, "sent", `${HOST}/chat/`, "the reply sent");
 
   // A reaction, a thread, a picture and an edit.

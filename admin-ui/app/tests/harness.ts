@@ -340,6 +340,22 @@ export function launch({ args = [] as string[] }: { args?: string[] } = {}): Pro
   return chromium.launch({ chromiumSandbox: false, executablePath, args });
 }
 
+/* boundingBox() is not a wait: it asks CDP's DOM.getBoxModel through a
+ * may-fail send, and an element between a React commit and the frame's next
+ * layout has no layout object yet, so the call comes back null — the
+ * "loaded runner" race of the 2026-11-10 run (office-markdown lost it twice
+ * since). A check that reads a box for its assertions reads it here: poll
+ * until the page has laid the element out, which lands within a frame.
+ * A box that never comes (display:none, removed) fails the check with the
+ * locator named, instead of a null deref pages later. */
+export async function box(locator: Locator): Promise<{ x: number; y: number; width: number; height: number }> {
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const b = await locator.boundingBox();
+    if (b !== null) return b;
+  }
+  throw new Error(`no bounding box after 50 tries: ${locator.toString()}`);
+}
+
 export interface CheckRunner {
   check(name: string, fn: () => void | Promise<void>): Promise<void>;
   skip(name: string, reason: string): void;

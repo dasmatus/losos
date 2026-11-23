@@ -10,6 +10,10 @@ const LOCALPART = /^[a-z0-9._=\-/+]+$/;
 export function withUserId(raw: string | null, server: string): string | null {
   if (raw === null) return null;
   const value = raw.trim();
+  // `@tag-<slug>` without a server name (from the palette) resolves on
+  // this box's homeserver, so starting a chat with an assistant works.
+  const slugForm = value.match(/^@tag-([a-z0-9-]+)$/);
+  if (slugForm !== null) return `@tag-${slugForm[1]}:${server}`;
   if (value.startsWith("@")) {
     const colon = value.indexOf(":");
     if (colon < 2 || colon === value.length - 1) return null;
@@ -23,7 +27,7 @@ export function withUserId(raw: string | null, server: string): string | null {
  *  `call`) stay for whoever reads them next. */
 export function withoutLink(href: string): string {
   const url = new URL(href);
-  for (const key of ["with", "share", "text", "join", "via"]) url.searchParams.delete(key);
+  for (const key of ["with", "dm", "share", "text", "join", "via"]) url.searchParams.delete(key);
   return `${url.pathname}${url.search}${url.hash}`;
 }
 

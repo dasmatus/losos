@@ -1,78 +1,31 @@
-//! The WOPI routes and the editor-session routes on actix-web.
+//! Office session and capability routes on actix-web.
 //!
-//! [`wopi_routes`] is what coolwsd calls, on a loopback listener of its own;
-//! [`session_routes`] is what the editor page calls through nginx, which
-//! names the signed-in person in `X-Losos-Cloud-User`. LosOS Cloud mounts
-//! the same two pieces in its own service; the standalone `losos-office`
-//! binary mounts them over a [`DirStore`](super::store::DirStore).
+//! Native LosOS Office no longer uses Collabora/WOPI. These routes answer
+//! the web app's capability and open requests.
 
-use super::discovery::Coolwsd;
+use super::capabilities::Capabilities;
 use super::store::DirStore;
-use super::{extension, open, OpenError, Person, StoreError, Wopi, WopiRequest};
+use super::{extension, open, OpenError, Person, StoreError};
 use actix_web::{web, HttpRequest, HttpResponse};
 use serde::Deserialize;
 use std::sync::Arc;
 
-/// The largest document a save may carry. Office files are zip archives
-/// of XML and pictures; a deck full of photos is a few hundred megabytes.
-pub const MAX_DOCUMENT: usize = 1024 * 1024 * 1024;
-
-/// `/wopi/files/{id}[/contents]`, for coolwsd.
-pub fn wopi_routes(wopi: Arc<Wopi>) -> impl FnOnce(&mut web::ServiceConfig) {
-    move |cfg| {
-        cfg.app_data(web::Data::from(wopi))
-            .app_data(web::PayloadConfig::new(MAX_DOCUMENT))
-            .route("/wopi/files/{tail:.*}", web::route().to(wopi_handler));
-    }
-}
-
-/// The same routes as one scope, for a service that mounts them beside its
-/// own (LosOS Cloud, on the socket nginx bridges coolwsd to). The large
-/// body limit stays inside it.
-pub fn wopi_scope(wopi: Arc<Wopi>) -> actix_web::Scope {
-    web::scope("/wopi/files")
-        .app_data(web::Data::from(wopi))
-        .app_data(web::PayloadConfig::new(MAX_DOCUMENT))
-        .route("/{tail:.*}", web::route().to(wopi_handler))
-}
-
-async fn wopi_handler(req: HttpRequest, body: web::Bytes, wopi: web::Data<Wopi>) -> HttpResponse {
-    let request = WopiRequest {
-        method: req.method().as_str().to_string(),
-        path: req.path().to_string(),
-        query: req.query_string().to_string(),
-        headers: req
-            .headers()
-            .iter()
-            .filter_map(|(n, v)| Some((n.as_str().to_string(), v.to_str().ok()?.to_string())))
-            .collect(),
-        body: body.to_vec(),
-    };
-    let wopi = wopi.into_inner();
-    let answer = match web::block(move || wopi.handle(&request)).await {
-        Ok(answer) => answer,
-        Err(_) => return HttpResponse::InternalServerError().finish(),
-    };
-    let status = actix_web::http::StatusCode::from_u16(answer.status)
-        .unwrap_or(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR);
-    let mut out = HttpResponse::build(status);
-    for (name, value) in &answer.headers {
-        out.insert_header((name.as_str(), value.as_str()));
-    }
-    if let Some(ct) = answer.content_type {
-        out.content_type(ct);
-    }
-    out.body(answer.body)
-}
-
-/// What the session routes need besides the WOPI host.
+/// What the session routes need.
 pub struct Sessions {
-    pub wopi: Arc<Wopi>,
-    pub coolwsd: Coolwsd,
+    pub store: Arc<dyn super::OfficeStore>,
+    pub capabilities: Capabilities,
 }
 
-/// `POST {prefix}/open` and `GET {prefix}/extensions`, for the editor page
-/// and the file view, behind nginx.
+impl Sessions {
+    pub fn new(store: Arc<dyn super::OfficeStore>) -> Self {
+        Self {
+            store,
+            capabilities: Capabilities::native(),
+        }
+    }
+}
+
+/// `POST {prefix}/open` and `GET {prefix}/extensions`.
 pub fn session_routes(
     prefix: &str,
     sessions: Arc<Sessions>,
@@ -83,7 +36,8 @@ pub fn session_routes(
             .route(
                 &format!("{prefix}/extensions"),
                 web::get().to(extensions_handler),
-            );
+            )
+            .route(&format!("{prefix}/import"), web::post().to(import_handler));
     }
 }
 
@@ -93,8 +47,6 @@ struct OpenBody {
     file_id: String,
 }
 
-/// The signed-in person, as nginx names them. Only nginx can reach the
-/// listener these routes are on, so the header is trusted here.
 pub fn person(req: &HttpRequest) -> Option<Person> {
     let header = |name| {
         req.headers()
@@ -118,63 +70,29 @@ async fn open_handler(
     let Some(person) = person(&req) else {
         return HttpResponse::Unauthorized().json(serde_json::json!({ "error": "signedOut" }));
     };
-    open_answer(
-        person,
-        page_origin(&req),
-        body.into_inner().file_id,
-        sessions.into_inner(),
-    )
-    .await
+    open_answer(person, body.into_inner().file_id, sessions.into_inner()).await
 }
 
-/// The page's origin, for Collabora's messages back to it. A same-origin
-/// POST from a browser always names it.
-pub fn page_origin(req: &HttpRequest) -> Option<String> {
-    req.headers()
-        .get("Origin")
-        .and_then(|v| v.to_str().ok())
-        .filter(|o| o.starts_with("https://") || o.starts_with("http://"))
-        .map(str::to_string)
-}
-
-/// `POST …/open`'s answer for `person`, whoever named them: nginx here, the
-/// cloud's own sign-in in LosOS Cloud (`cloud::office`).
-pub async fn open_answer(
-    person: Person,
-    origin: Option<String>,
-    file_id: String,
-    sessions: Arc<Sessions>,
-) -> HttpResponse {
-    let Some(origin) = origin else {
-        return HttpResponse::BadRequest().json(serde_json::json!({ "error": "noOrigin" }));
-    };
+pub async fn open_answer(person: Person, file_id: String, sessions: Arc<Sessions>) -> HttpResponse {
     let answer = web::block(move || {
-        let discovery = sessions.coolwsd.discovery()?;
-        Ok::<_, std::io::Error>(open(
-            &sessions.wopi,
-            &discovery,
+        open(
+            sessions.store.as_ref(),
+            &sessions.capabilities,
             &person,
             &file_id,
-            &origin,
-            super::now_ms(),
-        ))
+        )
     })
     .await;
     match answer {
-        Ok(Ok(Ok(session))) => HttpResponse::Ok().json(session),
-        Ok(Ok(Err(OpenError::Unsupported(ext)))) => HttpResponse::UnprocessableEntity()
+        Ok(Ok(session)) => HttpResponse::Ok().json(session),
+        Ok(Err(OpenError::Unsupported(ext))) => HttpResponse::UnprocessableEntity()
             .json(serde_json::json!({ "error": "unsupported", "extension": ext })),
-        Ok(Ok(Err(OpenError::Store(StoreError::NotFound | StoreError::Forbidden)))) => {
+        Ok(Err(OpenError::Store(StoreError::NotFound | StoreError::Forbidden))) => {
             HttpResponse::NotFound().json(serde_json::json!({ "error": "notFound" }))
         }
-        Ok(Ok(Err(OpenError::Store(e)))) => {
+        Ok(Err(OpenError::Store(e))) => {
             tracing::warn!(error = %e, "office open failed");
             HttpResponse::InternalServerError().json(serde_json::json!({ "error": "store" }))
-        }
-        Ok(Err(e)) => {
-            tracing::warn!(error = %e, "Collabora is not answering");
-            HttpResponse::ServiceUnavailable()
-                .json(serde_json::json!({ "error": "officeStarting" }))
         }
         Err(_) => HttpResponse::InternalServerError().finish(),
     }
@@ -187,29 +105,69 @@ async fn extensions_handler(req: HttpRequest, sessions: web::Data<Sessions>) -> 
     extensions_answer(sessions.into_inner()).await
 }
 
-/// `GET …/extensions`: the types Collabora opens, and whether it edits each.
 pub async fn extensions_answer(sessions: Arc<Sessions>) -> HttpResponse {
-    match web::block(move || sessions.coolwsd.discovery()).await {
-        Ok(Ok(discovery)) => {
-            let list: Vec<_> = discovery
-                .extensions()
-                .map(|(ext, edit)| serde_json::json!({ "extension": ext, "edit": edit }))
-                .collect();
-            HttpResponse::Ok().json(serde_json::json!({ "extensions": list }))
+    let list: Vec<_> = sessions.capabilities.list();
+    HttpResponse::Ok().json(serde_json::json!({ "extensions": list }))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ImportBody {
+    file_id: String,
+}
+
+async fn import_handler(
+    req: HttpRequest,
+    body: web::Json<ImportBody>,
+    sessions: web::Data<Sessions>,
+) -> HttpResponse {
+    let Some(person) = person(&req) else {
+        return HttpResponse::Unauthorized().json(serde_json::json!({ "error": "signedOut" }));
+    };
+    let sessions = sessions.into_inner();
+    let file_id = body.into_inner().file_id;
+    let result = web::block(move || -> Result<serde_json::Value, StoreError> {
+        let info = sessions.store.stat(&person.login, &file_id)?;
+        let bytes = sessions.store.read(&person.login, &file_id)?;
+        let text = super::import::extract_text(&info.name, &bytes);
+        let ext = extension(&info.name).unwrap_or_default();
+        let target = sessions
+            .capabilities
+            .action(&ext)
+            .and_then(|a| a.import_target)
+            .unwrap_or("paper");
+        let (new_name, body) = super::import::native_body(&info.name, &text, target);
+        let (id, info) = sessions.store.create(
+            &person.login,
+            &file_id,
+            &new_name,
+            body.as_bytes(),
+            super::store::CreateMode::Unique,
+        )?;
+        Ok(serde_json::json!({ "id": id, "name": info.name, "kind": target }))
+    })
+    .await;
+    match result {
+        Ok(Ok(v)) => HttpResponse::Ok().json(v),
+        Ok(Err(StoreError::NotFound | StoreError::Forbidden)) => {
+            HttpResponse::NotFound().json(serde_json::json!({"error":"notFound"}))
         }
-        _ => HttpResponse::ServiceUnavailable()
-            .json(serde_json::json!({ "error": "officeStarting" })),
+        Ok(Err(e)) => {
+            tracing::warn!(error=%e, "office import failed");
+            HttpResponse::InternalServerError().json(serde_json::json!({"error":"store"}))
+        }
+        Err(_) => HttpResponse::InternalServerError().finish(),
     }
 }
 
-/// `GET {prefix}/files`: the documents in a plain folder (losos-office's
-/// `--root`), for the Office page's list. LosOS Cloud lists its own files.
+/// `GET {prefix}/files`: documents in a plain folder.
 pub fn folder_routes(
     prefix: &str,
     folder: Arc<DirStore>,
 ) -> impl FnOnce(&mut web::ServiceConfig) + '_ {
     move |cfg| {
-        cfg.app_data(web::Data::from(folder))
+        cfg.app_data(web::Data::from(folder.clone()))
+            .app_data(web::Data::from(Arc::new(Sessions::new(folder))))
             .route(&format!("{prefix}/files"), web::get().to(files_handler));
     }
 }
@@ -225,14 +183,13 @@ async fn files_handler(
     let folder = folder.into_inner();
     let sessions = sessions.into_inner();
     let answer = web::block(move || {
-        let discovery = sessions.coolwsd.discovery()?;
         let files = folder
             .list()
             .map_err(|e| std::io::Error::other(e.to_string()))?;
         let rows: Vec<_> = files
             .into_iter()
             .filter_map(|f| {
-                let action = discovery.action(&extension(&f.info.name)?)?;
+                let action = sessions.capabilities.action(&extension(&f.info.name)?)?;
                 let modified = f
                     .info
                     .modified
@@ -246,6 +203,8 @@ async fn files_handler(
                     "size": f.info.size,
                     "modified": modified,
                     "writable": f.info.writable && action.edit,
+                    "mode": action.mode,
+                    "importTarget": action.import_target,
                 }))
             })
             .collect();
@@ -256,8 +215,7 @@ async fn files_handler(
         Ok(Ok(files)) => HttpResponse::Ok().json(serde_json::json!({ "files": files })),
         Ok(Err(e)) => {
             tracing::warn!(error = %e, "office list failed");
-            HttpResponse::ServiceUnavailable()
-                .json(serde_json::json!({ "error": "officeStarting" }))
+            HttpResponse::InternalServerError().json(serde_json::json!({ "error": "store" }))
         }
         Err(_) => HttpResponse::InternalServerError().finish(),
     }

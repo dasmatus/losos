@@ -67,7 +67,6 @@ jobs:
       (github.event_name == 'pull_request_target' &&
        github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
-    timeout-minutes: 60
     steps:
       - name: Validate the branch name
         env:
@@ -140,7 +139,6 @@ jobs:
     name: "bot: check dependency hashes on main"
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
         with:

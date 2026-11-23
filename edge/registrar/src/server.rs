@@ -60,7 +60,7 @@ use std::time::{Duration, SystemTime};
 
 use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, Request, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::{header, HeaderMap, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -893,6 +893,7 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         .route("/market/coins/pay", post(market_coin_pay))
         .route("/market/fees/pay", post(market_fees_pay))
         .route("/market/rpc", post(market_rpc))
+        .route("/market/compute/rent", post(market_compute_rent))
         .route("/market/account", post(market_account))
         .route("/market/storage-door", post(storage::set_door))
         // Pay as you go for AI models (`llm`). The chat route is merged
@@ -2310,6 +2311,185 @@ async fn market_rpc(
     ))
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ComputeRentReq {
+    #[serde(flatten)]
+    auth: MarketAuth,
+    vcpu: u32,
+    memory_mib: u32,
+    image: String,
+    max_seconds: u32,
+    #[serde(default)]
+    command: Option<Vec<String>>,
+    #[serde(default)]
+    network: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RentableComputeConfig {
+    #[serde(default)]
+    images: Vec<String>,
+    #[serde(default, rename = "computePricePerCpuHour")]
+    compute_price_per_cpu_hour: u64,
+    #[serde(default, rename = "computePricePerMibHour")]
+    compute_price_per_mib_hour: u64,
+}
+
+async fn load_rentable_compute_config() -> Result<RentableComputeConfig, ApiError> {
+    let bytes = tokio::fs::read("/etc/losos/skypilot-rentable-images.json")
+        .await
+        .map_err(|_| ApiError::Market(MarketError::Unconfigured))?;
+    serde_json::from_slice(&bytes).map_err(|_| ApiError::Market(MarketError::Unconfigured))
+}
+
+/// `POST /market/compute/rent`: submit a fenced rented-compute job (SkyPilot
+/// Phase 4). Admission enforces allow-listed images, resource bounds, and a
+/// fenced job spec (non-root, no host mounts/devices, capped runtime).
+async fn market_compute_rent(
+    State(st): State<AppState>,
+    Json(req): Json<ComputeRentReq>,
+) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
+    let _market = market_tenant(&st, &req.auth).await?;
+    let cfg = load_rentable_compute_config().await?;
+    if cfg.images.is_empty() {
+        return Err(ApiError::Market(MarketError::Unconfigured));
+    }
+    if !cfg.images.iter().any(|i| i == &req.image) {
+        return Err(ApiError::Market(MarketError::Invalid(
+            "image is not on the allow-list",
+        )));
+    }
+    if req.vcpu == 0 || req.vcpu > 64 {
+        return Err(ApiError::Market(MarketError::Invalid("vcpu must be 1..64")));
+    }
+    if req.memory_mib == 0 || req.memory_mib > 512 * 1024 {
+        return Err(ApiError::Market(MarketError::Invalid(
+            "memory_mib must be 1..524288",
+        )));
+    }
+    if req.max_seconds == 0 || req.max_seconds > 24 * 3600 {
+        return Err(ApiError::Market(MarketError::Invalid(
+            "max_seconds must be 1..86400",
+        )));
+    }
+    if req.command.as_ref().is_some_and(|c| c.len() > 64) {
+        return Err(ApiError::Market(MarketError::Invalid(
+            "command has at most 64 arguments",
+        )));
+    }
+
+    // Runtime behavior: submit a fenced Kubernetes Job in the skypilot-jobs
+    // namespace (admission/fencing enforced by manifest). Best-effort: if the
+    // cluster API is unavailable, report unconfigured/unavailable.
+    let kube = kube_access(&st).await.map_err(|e| match e {
+        ApiError::MeshUnconfigured | ApiError::KubeApi(_) => {
+            ApiError::Market(MarketError::Unavailable("compute cluster unavailable"))
+        }
+        other => other,
+    })?;
+    let id =
+        crate::identity::random_hex(8).unwrap_or_else(|| format!("{}", crate::market::now_secs()));
+    let job_name = format!("rent-{id}");
+    let cpu_m = format!("{}m", req.vcpu.saturating_mul(1000));
+    let mem_mi = format!("{}Mi", req.memory_mib);
+    // Owner-local jobs (no billing network) run on the owner's share free.
+    let owner_free = req.network.is_none();
+    let cpu_price = if owner_free {
+        0
+    } else {
+        cfg.compute_price_per_cpu_hour
+    };
+    let mib_price = if owner_free {
+        0
+    } else {
+        cfg.compute_price_per_mib_hour
+    };
+    let mut container = serde_json::json!({
+        "name": "job",
+        "image": req.image,
+        "resources": {
+            "requests": { "cpu": cpu_m, "memory": mem_mi },
+            "limits": { "cpu": format!("{}m", req.vcpu.saturating_mul(1000)), "memory": mem_mi }
+        },
+        "securityContext": {
+            "runAsNonRoot": true,
+            "allowPrivilegeEscalation": false,
+            "capabilities": { "drop": ["ALL"] },
+            "seccompProfile": { "type": "RuntimeDefault" }
+        }
+    });
+    if let Some(command) = req.command {
+        if !command.is_empty() {
+            container["command"] = serde_json::json!(command);
+        }
+    }
+    let job = serde_json::json!({
+        "apiVersion": "batch/v1",
+        "kind": "Job",
+        "metadata": {
+            "name": job_name,
+            "namespace": "skypilot-jobs",
+            "labels": {
+                "losos.dev/rent": "true",
+                "losos.dev/tenant": req.auth.appliance_id,
+                "losos.dev/kind": "compute"
+            },
+            "annotations": {
+                "losos.dev/max-seconds": req.max_seconds.to_string(),
+                "losos.dev/vcpu": req.vcpu.to_string(),
+                "losos.dev/memory-mib": req.memory_mib.to_string(),
+                "losos.dev/network-family": req.network.clone().unwrap_or_else(|| "owner".to_string()),
+                "losos.dev/owner-free": owner_free.to_string(),
+                "losos.dev/price-cpu-hour": cpu_price.to_string(),
+                "losos.dev/price-mib-hour": mib_price.to_string()
+            }
+        },
+        "spec": {
+            "backoffLimit": 0,
+            "activeDeadlineSeconds": req.max_seconds,
+            "ttlSecondsAfterFinished": 3600,
+            "template": {
+                "metadata": { "labels": { "losos.dev/rent": "true", "losos.dev/tenant": req.auth.appliance_id } },
+                "spec": {
+                    "restartPolicy": "Never",
+                    "automountServiceAccountToken": false,
+                    "securityContext": { "runAsNonRoot": true, "seccompProfile": { "type": "RuntimeDefault" } },
+                    "containers": [container]
+                }
+            }
+        }
+    });
+    kube_create(
+        &kube,
+        &format!("{}/apis/batch/v1/namespaces/skypilot-jobs/jobs", kube.api),
+        &job,
+    )
+    .await
+    .map_err(|e| match e {
+        ApiError::KubeApi(_) => {
+            ApiError::Market(MarketError::Unavailable("could not submit compute job"))
+        }
+        other => other,
+    })?;
+
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(serde_json::json!({
+            "job": job_name,
+            "namespace": "skypilot-jobs",
+            "state": "submitted",
+            "maxSeconds": req.max_seconds,
+            "metering": {
+                "unit": "compute-seconds",
+                "ownerFree": owner_free,
+                "pricePerCpuHour": cpu_price,
+                "pricePerMibHour": mib_price
+            }
+        })),
+    ))
+}
+
 /// `GET /market/hardware`: what the operator sells, anonymous like the shelf.
 /// 503 unless the edge runs the market and was given a catalogue.
 async fn market_hardware(State(st): State<AppState>) -> Result<Json<Catalogue>, ApiError> {
@@ -2874,6 +3054,9 @@ async fn fulfil_market(st: &AppState) {
         .saturating_mul(3)
         .max(300);
     market.slots_pass(&online, can_tell, max_gap).await;
+    // The volumes the buyers reach are checked on their own: a seller's node
+    // can be `Ready` while the claim its buyers back up to does not answer.
+    storage::volumes_pass(st, market).await;
     market.settle_escrow().await;
     if let Some(inference) = &st.inference {
         let lenders = llm::lenders_of(st).await;
@@ -3024,6 +3207,29 @@ async fn kube_create(
         return Ok(());
     }
     Err(ApiError::KubeApi(format!("POST {url} -> {status}")))
+}
+
+/// PATCH `body` (a strategic merge patch) to `url`; `200` and `404` are
+/// success — there is nothing to patch when the object is already gone.
+async fn kube_patch(
+    kube: &KubeAccess,
+    url: &str,
+    body: &serde_json::Value,
+) -> Result<(), ApiError> {
+    let response = kube
+        .client
+        .patch(url)
+        .bearer_auth(&kube.token)
+        .header(header::CONTENT_TYPE, "application/merge-patch+json")
+        .json(body)
+        .send()
+        .await
+        .map_err(|e| ApiError::KubeApi(format!("PATCH {url}: {e}")))?;
+    let status = response.status();
+    if status.is_success() || status == StatusCode::NOT_FOUND {
+        return Ok(());
+    }
+    Err(ApiError::KubeApi(format!("PATCH {url} -> {status}")))
 }
 
 /// The claim's `status.phase`, e.g. `Pending` or `Bound`.

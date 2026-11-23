@@ -280,10 +280,29 @@ export default defineMessages({
     sk: "Jazyk prehliadača",
     de: "Browsersprache",
   },
+  /* The layout switch beside them: the shell takes the whole window, no
+   * margins, no gaps (lib/wide.ts, styles/index.css). */
+  "ui.wide.label": { en: "Wide mode", sk: "Široký režim", de: "Breitbildmodus" },
+  /* Leanback / 10-foot layout: the preferences menu shows tv-layout-preview
+   * when the owner picks On on a desktop browser. */
+  "ui.tv.label": { en: "TV layout", sk: "Rozloženie pre TV", de: "TV-Layout" },
+  "ui.tv.auto": {
+    en: "When the browser looks like a TV",
+    sk: "Keď prehliadač vyzerá ako TV",
+    de: "Wenn der Browser wie ein TV wirkt",
+  },
+  "ui.tv.on": { en: "On", sk: "Zapnuté", de: "Ein" },
+  "ui.tv.off": { en: "Off", sk: "Vypnuté", de: "Aus" },
+  "ui.tv.previewTitle": { en: "TV layout", sk: "Rozloženie pre TV", de: "TV-Layout" },
+  "ui.tv.previewHint": {
+    en: "Larger type, tiles and focus rings for a remote.",
+    sk: "Väčší text, dlaždice a zvýraznenie fokusu pre diaľkové ovládanie.",
+    de: "Größere Schrift, Kacheln und Fokusringe für die Fernbedienung.",
+  },
   "ui.display.label": {
-    en: "Appearance and language",
-    sk: "Vzhľad a jazyk",
-    de: "Erscheinungsbild und Sprache",
+    en: "Appearance, language and layout",
+    sk: "Vzhľad, jazyk a rozloženie",
+    de: "Erscheinungsbild, Sprache und Layout",
   },
 
   // ── Toasts the shell raises ───────────────────────────────────────────────

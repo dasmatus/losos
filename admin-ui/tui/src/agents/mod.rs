@@ -687,7 +687,7 @@ fn write_json(path: &Path, value: &Value) -> Result<()> {
 
 /// The plugin's version, strict semver as Codex wants it.
 fn version() -> String {
-    let v = crate::tui::panes::VERSION.trim_start_matches('v');
+    let v = crate::VERSION.trim_start_matches('v');
     let core = v.split(['-', '+']).next().unwrap_or("");
     if core.split('.').count() == 3 && core.split('.').all(|p| p.parse::<u64>().is_ok()) {
         core.to_string()

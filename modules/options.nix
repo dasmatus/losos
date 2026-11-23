@@ -299,26 +299,77 @@ in
     cache.substituters = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       # The local cache server fetches signed per-store-path OCI artifacts
-      # from GHCR with oras. GitHub Pages is a static fallback if GHCR is
-      # unreachable. Neither the installer nor the installed appliance needs
-      # a hosted cache proxy.
+      # from GHCR with oras on demand. The Pages copy was a static fallback but
+      # is not reliable; keep only the GHCR-backed proxy by default.
       default = [
         "http://127.0.0.1:8787"
-        "https://losos.dasmat.us/proxy"
       ];
       description = ''
         Extra Nix substituters, added to the appliance *and* to the installer
         medium. The local `http://127.0.0.1:8787` service pulls signed
-        per-store-path artifacts from GHCR with `oras`; the static copy of the
-        newest build on GitHub Pages (`https://losos.dasmat.us/proxy`) is a
-        remote fallback. `trustedPublicKeys` carries the key used to sign
-        those paths. Set this to `[ ]` to use cache.nixos.org alone.
+        per-store-path artifacts from GHCR with `oras`. `trustedPublicKeys`
+        carries the key used to sign those paths. Set this to `[ ]` to use
+        cache.nixos.org alone.
 
         This exists because `losos-ctl install` runs a bare `nixos-install`
         with no substituter flags, and the install closure carries the
         workload images and the LosOS packages, none of which cache.nixos.org
         has. The local server lets Nix pull those artifacts directly from GHCR
         without depending on a separately hosted cache proxy.
+      '';
+    };
+
+    cache.ghcr.host = lib.mkOption {
+      type = lib.types.str;
+      default = "127.0.0.1";
+      description = ''
+        Address the on-demand GHCR-backed Nix cache (`losos-ghcr-cache`)
+        listens on. Keep the default on an appliance; set to `0.0.0.0` on a
+        VPS/edge that serves it to other machines, and restrict access with a
+        reverse proxy or firewall.
+      '';
+    };
+
+    cache.ghcr.port = lib.mkOption {
+      type = lib.types.port;
+      default = 8787;
+      description = "Port the on-demand GHCR-backed Nix cache listens on.";
+    };
+
+    cache.ghcr.openFirewall = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Open `cache.ghcr.port` in the firewall (for a VPS serving the GHCR cache).";
+    };
+
+    cache.ghcr.ephemeral = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Keep the GHCR cache staging data on tmpfs (`/run/losos-ghcr-cache`)
+        instead of persistent storage. Useful for a VPS proxy that should be
+        stateless and cheap to discard.
+      '';
+    };
+
+    cache.ghcr.socketActivation = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Start the GHCR cache service on demand via systemd socket activation
+        (for example when pulled by CI or a client), instead of running it
+        continuously.
+      '';
+    };
+
+    cache.ghcr.vps = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Zero-setup VPS mode for the GHCR binary cache proxy: ephemeral tmpfs
+        storage, socket activation (starts when pulled from CI/GitHub Actions
+        or clients), and listens on all interfaces with the firewall opened.
+        Put a reverse proxy/TLS in front if exposing it publicly.
       '';
     };
 
@@ -991,6 +1042,19 @@ in
       '';
     };
 
+    apps.quadlets = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Run the installed `notshared` apps as Podman quadlets: one
+        .container file per service of the app's Compose project, generated
+        into /etc/containers/systemd, so every service is a systemd unit of
+        its own — a boot times each container apart, its journal is its
+        own, and an update is a restart of one unit. Off, the project runs
+        as one `podman-compose up`, the way it did before quadlets.
+      '';
+    };
+
     cluster.idleLoadThreshold = lib.mkOption {
       type = lib.types.float;
       default = 0.25;
@@ -1471,27 +1535,23 @@ in
       type = lib.types.bool;
       default = false;
       description = ''
-        Open, edit and co-edit Word, Excel, PowerPoint and OpenDocument
-        files in the browser with Collabora Online, a LibreOffice that runs
-        on the box. Documents never leave the box: the editor reads and
-        saves them through LosOS Cloud. It runs while the box is up and
-        uses about 550 MB of memory with no document open.
+        Enable the standalone LosOS Office folder host for `losos.office.folder`.
+        Native LosOS Office for `.md`, `.paper`, and `.slides` is available in
+        LosOS Cloud; legacy Microsoft/ODF formats are imported into native
+        formats. Collabora Online is no longer used.
       '';
     };
 
     office.port = lib.mkOption {
       type = lib.types.port;
       default = 9980;
-      description = "Loopback port Collabora Online listens on. nginx serves it at /browser/ and /cool/.";
+      description = "Reserved for compatibility. Collabora Online has been removed.";
     };
 
     office.wopiPort = lib.mkOption {
       type = lib.types.port;
       default = 8093;
-      description = ''
-        Loopback port of the server Collabora Online reads documents from
-        and saves them to (the WOPI host): LosOS Cloud, or the folder below.
-      '';
+      description = "Reserved for compatibility. The Collabora WOPI bridge has been removed.";
     };
 
     office.folder = lib.mkOption {
@@ -1499,8 +1559,8 @@ in
       default = null;
       example = "/var/lib/losos-office/files";
       description = ''
-        Edit the documents in this folder instead of LosOS Cloud's, with a
-        small host of its own (losos-office). For a box without LosOS Cloud.
+        Serve documents from this folder through the standalone native LosOS
+        Office host instead of LosOS Cloud.
       '';
     };
 
@@ -1534,10 +1594,13 @@ in
         Build widgets and apps with AI: the "Build with AI" tabs of the
         widget editor and of Your apps ask a language model that runs on
         this box (Ollama, on loopback only). What the owner types never
-        leaves the box, and building is free. The model is downloaded once,
-        about 1 GB, in the background, the first time the box is online.
-        While it writes, it needs about 1.5 GiB of memory; it lets go of it
-        five minutes after the last build.
+        leaves the box, and building is free. The default model is the box's
+        unified Bonsai 27B (`builder.model`), about 4.4 GB, downloaded once
+        in the background the first time the box is online and shared with
+        the assistant and tag through the same Ollama service. A box that
+        cannot hold the full model in memory may run it more slowly or use a
+        smaller model/fallback; Ollama gives memory back five minutes after
+        the last use. See `builder.model` and the box-AI readiness notes.
       '';
     };
 
@@ -1575,10 +1638,12 @@ in
         Ask the box's AI: "Ask AI about this" in LosOS Cloud, Summarise in
         Mail and the other apps' questions about a file or a message go to
         a language model that runs on this box (Ollama, on loopback only,
-        beside the builder's). The material and the question never leave
-        the box. The model is downloaded once, about 800 MB, the first
-        time the box is online. While it answers it needs about 1 GiB of
-        memory; it lets go of it five minutes after the last question.
+        through the same service as the builder and tag). The material and
+        the question never leave the box. The default model is the box's
+        unified Bonsai 27B (`assistant.model`), about 4.4 GB, downloaded once
+        the first time the box is online when not already present. A smaller
+        box can use a lighter model or a mesh fallback; Ollama gives memory
+        back five minutes after the last use.
       '';
     };
 
@@ -1641,8 +1706,18 @@ in
       description = ''
         The T3 Code binary the tag's asks run on, when the box has it.
         T3 Code carries its own provider settings; the tag's default is
-        to take whatever the box ships. Empty runs the built-in path on
-        Ollama, OpenCode (`tag.opencode`) as the fallback harness.
+        to take whatever the box ships. Empty runs the lososd harness
+        (`tag.lososdBin`), else the built-in path on Ollama.
+      '';
+    };
+
+    tag.lososdBin = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      description = ''
+        The lososd harness binary the tag's asks fall back to when no T3
+        Code is configured, with `run` taking the prompt's whole turn.
+        Empty runs the built-in path on Ollama.
       '';
     };
 
@@ -1650,9 +1725,7 @@ in
       type = lib.types.str;
       default = "";
       description = ''
-        The OpenCode binary the tag's asks fall back to when no T3 Code
-        is configured, with `opencode run` taking the prompt's whole
-        turn. Empty runs the built-in path on Ollama.
+        Deprecated alias for `tag.lososdBin`.
       '';
     };
 
@@ -1920,6 +1993,81 @@ in
       type = lib.types.str;
       default = "losos-config";
       description = "The name of the configuration repository on LosOS Git.";
+    };
+    # ── autoprovision (backend/src/autoprovision.rs, backend/src/bin/losos-ctl.rs) ──
+    # The mesh keeps its modified box configuration in one git mirror: the
+    # `provision` branch carries the shared `modules/overrides.nix`, and each
+    # provisioned box's own facts under `boxes/<name>/`. A netbooted machine
+    # installs with the mesh's configuration (`losos-ctl provision`), and
+    # every box with this on pushes its own `modules/overrides.nix` there and
+    # takes newer ones, so the boxes of a local mesh run the same settings.
+    #
+    # The installer medium needs nothing: a netboot flavor of it built from
+    # the same module set (`nixosConfigurations.netboot` in flake.nix) ends
+    # its autorun in `losos-ctl provision` instead of `losos-ctl install`,
+    # and the mirror can also be named by hand (`losos-autoprovision
+    # --mirror URL`).
+    autoprovision.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Keep this box's modified configuration (modules/overrides.nix, the
+        one file lososd writes for its owner) in step with the mesh's mirror
+        repository, so every box of the local mesh runs the same settings.
+        Take the mirror's text after the gates every Apply goes through, and
+        push this box's text when it is newer; on a clash, the newest push
+        wins. Needs losos.autoprovision.mirror.
+      '';
+    };
+    autoprovision.mirror = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = ''
+        The git URL of the mesh's configuration mirror: reachable without a
+        prompt (plain http(s), a bare repository on a file path, or an ssh
+        address the daemon's user can use with no key questions). Everything
+        on it is public within the mesh, so it carries no secret.
+      '';
+    };
+    autoprovision.box = lib.mkOption {
+      type = lib.types.str;
+      default = config.losos.hostName;
+      defaultText = lib.literalExpression "config.losos.hostName";
+      description = ''
+        The name this box pushes and registers under on the mirror's
+        boxes/ directory, and what a provisioned box calls itself by
+        default (losos-ctl provision --name). Lowercase letters, digits
+        and dashes, at most 32 characters.
+      '';
+    };
+
+    # The medium flavor: the autorun runs `losos-ctl provision` instead of
+    # `losos-ctl install`, the mirror comes from the environment (never
+    # baked into a released medium — a self-hosted one sets it), and the
+    # netboot parts of `nixosConfigurations.netboot` are built off this.
+    autoprovision.medium = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        The installer medium provisions: its autorun runs `losos-autoprovision`
+        against the mesh's configuration mirror (losos.autoprovision.mirror,
+        read at boot from the environment, or `losos-autoprovision --mirror`
+        by hand). Meaningful only with `losos.installer.autorun`, which
+        extends the netboot medium; the stick still shows the firmware menu,
+        and the destructive work stays behind it.
+      '';
+    };
+    autoprovision.tang = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = ''
+        What the provision medium prefills as `--tang URL#THUMBPRINT`, without
+        anyone typing it: the disk key opens only with the TPM2 AND one of
+        these Clevis Tang servers (`tang-show-keys` on the server prints the
+        thumbprint), so a box of this flavor cannot be opened from its disk
+        alone. Meaningful only with `losos.autoprovision.medium`, which the
+        assertions require; `--tang` typed later outranks it.
+      '';
     };
 
     # ── Following the published tree ─────────────────────────────────────
@@ -2586,6 +2734,18 @@ in
         Run `losos-install` on tty1 at boot, under the boot screen where it
         draws. On the installer ISO, this starts the installer and its
         firmware-mode menu. Leave false on a normal target system.
+      '';
+    };
+
+    installer.bundledFlakeUrl = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = ''
+        When set, `losos-install` clones this URL instead of the public
+        repository. The closure-carrying installer ISO
+        (`nix build .#losos-disk-iso`) sets this to a `file://` mirror of the
+        tree it was built from, with that tree and every flake input already on
+        the medium, so install can run with no network.
       '';
     };
 
@@ -3630,6 +3790,51 @@ in
       description = "The largest QCOW2 image a buyer may upload, in GiB. Uploads are kept in the registrar's state directory.";
     };
 
+    # ── SkyPilot on the edge (modules/skypilot.nix) ────────────────────────
+    edge.skypilot.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Run the SkyPilot API server on this edge's rke2 cluster, so AI jobs
+        (model serving, fine-tuning, batch) can be scheduled over the boxes
+        that join the mesh. Phase 1 of the SkyPilot mesh-serving work.
+      '';
+    };
+
+    edge.skypilot.port = lib.mkOption {
+      type = lib.types.port;
+      default = 46580;
+      description = "Port the SkyPilot API server listens on.";
+    };
+
+    edge.skypilot.rentableImages = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = ''
+        Allow-listed container image references that market buyers may rent
+        for fenced SkyPilot jobs (Phase 4). Empty means no rented compute.
+        Images must be pinned and loaded offline (no runtime registry pulls).
+      '';
+    };
+
+    edge.skypilot.computePricePerCpuHour = lib.mkOption {
+      type = lib.types.ints.unsigned;
+      default = 0;
+      description = ''
+        USDC base units per vCPU-hour for rented raw compute (Phase 4).
+        0 disables billing/listing of rented compute.
+      '';
+    };
+
+    edge.skypilot.computePricePerMibHour = lib.mkOption {
+      type = lib.types.ints.unsigned;
+      default = 0;
+      description = ''
+        USDC base units per MiB-hour for rented raw compute (Phase 4).
+        0 disables billing/listing of rented compute.
+      '';
+    };
+
     # ── Models split across boxes (edge side, modules/edge-inference.nix) ───
     # Boxes lend memory (losos.inference.lend on the box); the registrar
     # groups lending boxes until a model fits, starts a llama.cpp head here
@@ -4406,6 +4611,97 @@ in
     internal = true;
     default = null;
     description = "Hops of each I2P tunnel of the box's or edge's addresses; null for i2pd's default.";
+  };
+
+  # The box's own services as Podman quadlets (modules/quadlets.nix).
+  # Declared here, beside the other lososInternal options, because
+  # modules/console.nix reads `units` whether or not the quadlet module is
+  # imported.
+  options.lososInternal.quadlets = {
+    enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      internal = true;
+      description = ''
+        Run the box's own services as Podman quadlets instead of native
+        systemd services. Converts LosOS Login (modules/identity.nix) and
+        the admin pages' web UI; the units keep their native names, so the
+        rest of the configuration and the console banner read as before.
+      '';
+    };
+
+    uiPort = lib.mkOption {
+      type = lib.types.port;
+      default = 8291;
+      internal = true;
+      description = ''
+        Loopback port the web UI container serves the SPA on. The front
+        vhost proxies to it; nothing else listens there.
+      '';
+    };
+
+    autheliaUnit = lib.mkOption {
+      type = lib.types.submodule {
+        options = {
+          after = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            default = [ ];
+          };
+          wants = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            default = [ ];
+          };
+          requires = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            default = [ ];
+          };
+          conditionPathExists = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+          };
+          loadCredentials = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            default = [ ];
+          };
+        };
+      };
+      default = { };
+      internal = true;
+      description = ''
+        The native unit's ordering, conditions and credentials, set by
+        modules/identity.nix for the generated unit to carry.
+      '';
+    };
+
+    units = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      default = { };
+      internal = true;
+      description = ''
+        The units the quadlets generate, by name: what the console banner
+        lists as parts of LosOS even though no native unit of that name
+        exists.
+      '';
+    };
+
+    user = lib.mkOption {
+      type = lib.types.enum [
+        "notshared"
+        "shared"
+        "kindashared"
+      ];
+      default = "notshared";
+      internal = true;
+      description = ''
+        The account the containers run as: rootless Podman under it, the
+        way the apps run. `notshared`, the owner's account, on a box that
+        lends nothing to a mesh; `shared` in a mesh; `kindashared` on a
+        box of a local mesh of gateways (the same three accounts
+        lososInternal.sideUser picks between for the shared side's own
+        services). Each gets its own sub-id range and Podman store, so the
+        three variants never share a container or an image with another.
+      '';
+    };
   };
 
   # ── The shared side ───────────────────────────────────────────────────

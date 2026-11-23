@@ -86,8 +86,7 @@ pub struct Cloud {
     /// Sharing with people on other boxes and editing together, once
     /// [`mesh::start`] has run.
     pub mesh: std::sync::OnceLock<std::sync::Arc<mesh::Mesh>>,
-    /// Office documents through Collabora, when the box runs it
-    /// (`losos-cloud serve --office-wopi`, [`office`]).
+    /// Native LosOS Office capabilities and open/import routing.
     pub office: std::sync::OnceLock<std::sync::Arc<crate::office::actix::Sessions>>,
 }
 

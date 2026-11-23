@@ -1,3 +1,7 @@
+// Gated: the panes are the TTY UI tree, gated out on wasm32; the wasm32
+// build compiles the rest of the suite (--all-targets) without it.
+#![cfg(not(target_arch = "wasm32"))]
+
 //! Every pane, drawn into a buffer over the fixtures, plus the keyboard paths
 //! that change something: a switch, Apply and its confirmation, the pane
 //! search, an edge secret, and the login screen.

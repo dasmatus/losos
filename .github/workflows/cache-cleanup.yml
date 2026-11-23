@@ -1,0 +1,41 @@
+name: cache-cleanup
+
+# Keeps GHCR package storage bounded.
+#
+# - nix-cache holds per-store-path Nix binary cache artifacts (one OCI
+#   tag/version per store hash). "Last 5 versions" would delete almost all
+#   cached paths and force rebuilds; keep a large recent window instead.
+# - demo-containerdisk is a release image (one version per release tag).
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly, after the main build cadence has had time to publish.
+    - cron: "17 5 * * 1"
+
+permissions:
+  packages: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: prune nix build cache container versions
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: nix-cache
+          package-type: container
+          # The GHCR nix build cache stores one version per store path. Keeping
+          # only 5 versions would remove nearly all cached artifacts and break
+          # binary cache hits. Keep a broad recent window; tighten only if you
+          # understand the per-store-path layout.
+          min-versions-to-keep: 2000
+
+      - name: prune demo containerdisk versions
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: ${{ github.event.repository.name }}-demo-containerdisk
+          package-type: container
+          min-versions-to-keep: 5
+          # Preserve the moving stable tag's version.
+          ignore-versions: '^stable$'

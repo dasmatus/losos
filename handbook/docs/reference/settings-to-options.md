@@ -46,7 +46,7 @@ them in full.
 | The disks                            | `losos.targetDrives`               | what the installer found                    |
 | Certificate lifetime                 | `losos.tls.validityDays`           | 730                                         |
 | Idle threshold for lending CPU       | `losos.cluster.idleLoadThreshold`  | 0.25 per core                               |
-| The binary cache                     | `losos.cache.substituters`         | `http://127.0.0.1:8787`, then `https://losos.dasmat.us/proxy` |
+| The binary cache                     | `losos.cache.substituters`         | `http://127.0.0.1:8787` (GHCR-backed on-demand proxy)         |
 | Size of the local copy of the caches | `losos.cache.local.maxSize`        | `8g`                                        |
 | Who may read `/setup/state.json` from a web page | `losos.setup.finderOrigins` | the LosOS edge's find page             |
 

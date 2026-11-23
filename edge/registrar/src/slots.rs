@@ -30,12 +30,13 @@
 //! Everything here is a pure function over [`MarketState`];
 //! `crate::market::Market` persists it and `crate::server` says who is online.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
 use crate::market::{
-    delivered, usdc_deadline, EscrowStep, MarketState, Order, OrderStatus, RefundReason,
+    delivered, paid_live, usdc_deadline, EscrowStep, Kind, MarketState, Order, OrderStatus,
+    RefundReason,
 };
 
 /// How long a seller's box may be offline in a row before its buyers are
@@ -231,6 +232,93 @@ pub fn refund_offline(state: &mut MarketState, now: u64, limit: u64) -> Vec<(Str
                 o,
                 EscrowStep::Split,
                 Some(RefundReason::SellerOffline),
+                Some(*refund),
+            );
+        }
+        o.expires_at = Some(now);
+    }
+    due
+}
+
+/// The storage orders whose volume the edge watches: paid and live, claim
+/// bound, and a backup door with a key — the buyer's way in, and the only
+/// thing that proves the volume answers.
+fn volume_watch(state: &MarketState, now: u64) -> BTreeSet<String> {
+    state
+        .orders
+        .values()
+        .filter(|o| o.kind == Kind::Storage && o.volume.is_some() && paid_live(o, now))
+        .filter(|o| state.doors.get(&o.id).is_some_and(|d| !d.key.is_empty()))
+        .map(|o| o.id.clone())
+        .collect()
+}
+
+/// Count the time since the last pass against every bought volume that did
+/// not answer (`answers` has `false`, or nothing, for it). `can_tell` is
+/// false when the edge could not have probed at all (no apiserver); such a
+/// pass, and one that comes more than `max_gap` seconds after the last,
+/// counts nothing — an edge outage never turns into refunds.
+///
+/// This is [`observe`] for the buyer's side of a storage order: the key is
+/// the order id, not the seller.
+pub fn observe_volumes(
+    state: &mut MarketState,
+    answered: &BTreeMap<String, bool>,
+    now: u64,
+    can_tell: bool,
+    max_gap: u64,
+) -> Observed {
+    let interval = match state.volume_tick {
+        Some(tick) if can_tell && now >= tick && now - tick <= max_gap => now - tick,
+        _ => 0,
+    };
+    state.volume_tick = Some(now);
+    let watch = volume_watch(state, now);
+    state.volume_presence.retain(|id, _| watch.contains(id));
+    let mut out = Observed::default();
+    for id in watch {
+        let p = state.volume_presence.entry(id.clone()).or_default();
+        if answered.get(&id).copied().unwrap_or(false) {
+            out.turned |= p.streak > 0;
+            p.streak = 0;
+            p.seen_at = Some(now);
+        } else if interval > 0 {
+            out.turned |= p.streak == 0;
+            p.streak = p.streak.saturating_add(interval);
+            p.offline = p.offline.saturating_add(interval);
+        }
+    }
+    out
+}
+
+/// Held, running storage orders whose bought volume has not answered for
+/// `limit` seconds in a row, or twice that in all since the order was paid:
+/// end the slot and give the buyer back the share not delivered. The volume
+/// is what the buyer paid for, so a volume that stopped answering counts
+/// against the seller exactly as an offline box does ([`refund_offline`]).
+/// Returns `(order id, refund)`.
+pub fn refund_volume_down(state: &mut MarketState, now: u64, limit: u64) -> Vec<(String, u64)> {
+    let due: Vec<(String, u64)> = state
+        .orders
+        .values()
+        .filter(|o| held(o) && running(o, now) && volume_watch(state, now).contains(&o.id))
+        .filter_map(|o| {
+            let p = state.volume_presence.get(&o.id)?;
+            let down = p.streak >= limit || p.offline >= limit.saturating_mul(2);
+            down.then(|| (o.id.clone(), refund_share(o, p.offline, now)))
+        })
+        .collect();
+    for (id, refund) in &due {
+        let Some(o) = state.orders.get_mut(id) else {
+            continue;
+        };
+        if *refund >= o.amount {
+            advance(o, EscrowStep::Refund, Some(RefundReason::VolumeDown), None);
+        } else {
+            advance(
+                o,
+                EscrowStep::Split,
+                Some(RefundReason::VolumeDown),
                 Some(*refund),
             );
         }
@@ -750,5 +838,181 @@ mod tests {
         assert_eq!(split_net(&o, 250), 750 - 30);
         assert_eq!(split_net(&o, 1_000), 0);
         assert_eq!(split_net(&o, 0), 960);
+    }
+
+    /// A held storage order whose claim is bound, so its volume is the
+    /// buyer's way in and the edge's to check.
+    fn storage(id: &str, seller: &str, amount: u64) -> Order {
+        let mut o = order(id, seller, amount);
+        o.kind = Kind::Storage;
+        o.volume = Some("market-buyer/ord-x".into());
+        o
+    }
+
+    /// Give every named order a backup door with a key, which is what puts
+    /// its volume under the edge's watch.
+    fn keyed(state: &mut MarketState, ids: &[&str]) {
+        for id in ids {
+            state.doors.insert(
+                (*id).to_string(),
+                crate::market::Door {
+                    key: "ab".repeat(32),
+                    upstream: "cd".repeat(32),
+                },
+            );
+        }
+    }
+
+    /// Probe every pass from `from` to `to` with all volumes `up`.
+    fn probe_volumes(state: &mut MarketState, from: u64, to: u64, step: u64, up: bool) {
+        let mut t = from;
+        while t <= to {
+            let ids: BTreeMap<String, bool> =
+                state.orders.keys().map(|id| (id.clone(), up)).collect();
+            observe_volumes(state, &ids, t, true, 600);
+            t += step;
+        }
+    }
+
+    #[test]
+    fn a_volume_that_stops_answering_refunds_its_buyer() {
+        let mut state = state_of(vec![storage("a", "s", 1_000)]);
+        keyed(&mut state, &["a"]);
+        // The first pass counts nothing: there is no earlier pass to measure
+        // from, whatever the probe found.
+        let mut ids = BTreeMap::new();
+        ids.insert("a".to_string(), false);
+        assert!(!observe_volumes(&mut state, &ids, PAID + DAY, true, 600).turned);
+        assert_eq!(refund_volume_down(&mut state, PAID + DAY, DAY), vec![]);
+
+        // Silent for a day in a row: the slot ends, the buyer gets back the
+        // share not delivered.
+        probe_volumes(&mut state, PAID + DAY + 600, PAID + 2 * DAY, 600, false);
+        let (id, refund) = refund_volume_down(&mut state, PAID + 2 * DAY, DAY)
+            .into_iter()
+            .next()
+            .unwrap();
+        assert_eq!(id, "a");
+        assert!(refund > 0 && refund < 1_000, "{refund}");
+        let o = &state.orders["a"];
+        assert_eq!(step_of(o), Some(EscrowStep::Split));
+        assert_eq!(
+            o.escrow.as_ref().unwrap().reason,
+            Some(RefundReason::VolumeDown)
+        );
+        assert_eq!(o.escrow.as_ref().unwrap().refund, Some(refund));
+    }
+
+    #[test]
+    fn a_volume_silent_through_its_whole_slot_refunds_everything() {
+        let mut state = state_of(vec![storage("a", "s", 1_000)]);
+        keyed(&mut state, &["a"]);
+        // Silent from the first pass of the slot to the end of the limit and
+        // past it, twice over.
+        probe_volumes(&mut state, PAID + 600, PAID + 2 * DAY + 600, 600, false);
+        assert_eq!(
+            refund_volume_down(&mut state, PAID + 2 * DAY + 600, DAY)[0].1,
+            1_000,
+        );
+        let o = &state.orders["a"];
+        assert_eq!(step_of(o), Some(EscrowStep::Refund));
+        assert_eq!(
+            o.escrow.as_ref().unwrap().reason,
+            Some(RefundReason::VolumeDown)
+        );
+        // The slot is over, so the units return to the listing.
+        assert!(!running(o, PAID + 2 * DAY + 600));
+    }
+
+    #[test]
+    fn a_volume_that_answers_is_never_refunded_for_it() {
+        let mut state = state_of(vec![storage("a", "s", 1_000)]);
+        keyed(&mut state, &["a"]);
+        let mut ids = BTreeMap::new();
+        ids.insert("a".to_string(), false);
+        // Silent for 23 hours...
+        probe_volumes(&mut state, PAID + 600, PAID + 23 * 60 * 60, 600, false);
+        // ...answering...
+        let mut up = BTreeMap::new();
+        up.insert("a".to_string(), true);
+        assert!(observe_volumes(&mut state, &up, PAID + 23 * 60 * 60 + 600, true, 2 * DAY).turned);
+        // ...and silent again: the reset keeps both counts under the limit.
+        probe_volumes(
+            &mut state,
+            PAID + 23 * 60 * 60 + 1200,
+            PAID + 46 * 60 * 60,
+            600,
+            false,
+        );
+        assert_eq!(
+            refund_volume_down(&mut state, PAID + 46 * 60 * 60, DAY),
+            vec![],
+            "23h under the limit in a row, 46h under twice it in all"
+        );
+        assert_eq!(step_of(&state.orders["a"]), Some(EscrowStep::Held));
+    }
+
+    #[test]
+    fn a_probe_the_edge_could_not_make_counts_nothing() {
+        let mut state = state_of(vec![storage("a", "s", 1_000)]);
+        keyed(&mut state, &["a"]);
+        // The apiserver never answered (can_tell=false): no offline time,
+        // however long the edge was blind.
+        let mut ids = BTreeMap::new();
+        ids.insert("a".to_string(), false);
+        observe_volumes(&mut state, &ids, PAID + 600, false, 600);
+        observe_volumes(&mut state, &ids, PAID + 3 * DAY, false, 600);
+        assert_eq!(refund_volume_down(&mut state, PAID + 3 * DAY, DAY), vec![]);
+        // A pass that comes long after the last one (the edge was down)
+        // counts nothing either.
+        observe_volumes(&mut state, &ids, PAID + 600, true, 600);
+        observe_volumes(&mut state, &ids, PAID + 3 * DAY, true, 600);
+        assert_eq!(refund_volume_down(&mut state, PAID + 3 * DAY, DAY), vec![]);
+    }
+
+    #[test]
+    fn a_volume_without_a_door_key_is_not_watched() {
+        let mut state = state_of(vec![storage("a", "s", 1_000)]);
+        // No door key: the buyer cannot reach the volume yet, so silence
+        // proves nothing and accrues nothing.
+        let mut ids = BTreeMap::new();
+        ids.insert("a".to_string(), false);
+        probe_volumes(&mut state, PAID + 600, PAID + 3 * DAY, 600, false);
+        assert_eq!(refund_volume_down(&mut state, PAID + 3 * DAY, DAY), vec![]);
+        assert!(state.volume_presence.is_empty());
+    }
+
+    #[test]
+    fn only_live_held_storage_orders_are_watched_for_their_volume() {
+        let mut lapsed = storage("lapsed", "s", 1_000);
+        lapsed.expires_at = Some(PAID + 1);
+        let mut no_volume = storage("novolume", "s", 1_000);
+        no_volume.volume = None;
+        let mut refunded = storage("refunded", "s", 1_000);
+        if let Some(e) = refunded.escrow.as_mut() {
+            e.step = EscrowStep::Refund;
+        }
+        let mut state = state_of(vec![
+            storage("live", "s", 1_000),
+            lapsed,
+            no_volume,
+            refunded,
+            order("compute", "s", 1_000),
+        ]);
+        keyed(&mut state, &["live", "lapsed", "novolume", "refunded"]);
+        probe_volumes(&mut state, PAID + 600, PAID + 2 * DAY + 600, 600, false);
+        // Only the held, live, bound storage order ever owes its buyer
+        // anything for a silent volume; the lapsed one, the one with no
+        // claim yet, the already-refunded one and a compute order are not
+        // watched.
+        let refunded_ids: Vec<String> = refund_volume_down(&mut state, PAID + 2 * DAY + 600, DAY)
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+        assert_eq!(refunded_ids, vec!["live".to_string()]);
+        // The watch drops with the order's life: nothing is kept for the
+        // lapsed order.
+        assert!(state.volume_presence.contains_key("live"));
+        assert!(!state.volume_presence.contains_key("lapsed"));
     }
 }

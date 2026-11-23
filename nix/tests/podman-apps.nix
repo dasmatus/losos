@@ -35,7 +35,7 @@
 #      Statistics tile opens Settings › Statistics.
 #
 # The front door is the real one (modules/containers.nix) with the real
-# admin UI, so `nix/demo/record.sh losos-podman-apps` photographs the Apps
+# admin UI, so `bun nix/demo/record-driver.ts losos-podman-apps` photographs the Apps
 # pane and the apps' pages at each step (nix/demo/recorder.py).
 #
 # Slow without KVM: rootless Podman under TCG takes a while per container.

@@ -241,7 +241,7 @@ const TREE: readonly Entry[] = [
     icon: Settings01Icon,
     railTo: "/settings",
     children: (
-      ["network", "look", "hardware", "statistics", "security", "account", "users", "moderation", "access", "credentials", "problems", "advanced", "history", "logs", "backup", "about", "reset"] as const
+      ["network", "look", "hardware", "statistics", "security", "account", "users", "moderation", "access", "credentials", "problems", "tag", "advanced", "history", "logs", "backup", "about", "reset"] as const
     ).map(
       settingsLeaf,
     ),
@@ -307,6 +307,7 @@ function isCurrent(entry: LinkEntry, pathname: string): boolean {
   const path = pathname.replace(/(.)\/$/, "$1");
   if (entry.key === "ci") return path === "/ci" || path.startsWith("/ci/");
   if (entry.key === "documents") return path === "/office";
+  if (entry.key === "chat") return path === "/chat" || path.startsWith("/chat/");
   if (entry.key === "wiki") return path === "/wikis" || path.startsWith("/wikis/");
   if (entry.key.startsWith("cloud")) {
     return [entry.to, ...(entry.also ?? [])].some((to) => path === to || path.startsWith(`${to}/`));

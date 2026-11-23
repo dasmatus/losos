@@ -143,7 +143,7 @@ export class CallSession {
   constructor(private opts: CallOptions) {
     if (!canEncrypt()) throw new Error('noEncryption');
     this.worker =
-      opts.worker?.() ?? new Worker(new URL('./e2ee-worker.ts', import.meta.url), { type: 'module' });
+      opts.worker?.() ?? new Worker(`${(import.meta.env?.BASE_URL ?? "/")}workers/e2ee-worker.js`, { type: 'module' });
     // Held on the session: a port nothing references can be collected,
     // and its messages with it.
     const back = new MessageChannel();
@@ -221,8 +221,12 @@ export class CallSession {
     switch (m.type) {
       case 'joined': {
         this.you = m.you as number;
-        await this.offer();
+        /* The members snapshot is applied before the offer is made: the
+         * await lets newer member lists through, and applying this older
+         * one after them would turn someone who just joined into someone
+         * who left, with a key rotation they are locked out of. */
         this.onMembers(m.members as Member[], null);
+        await this.offer();
         break;
       }
       case 'members':

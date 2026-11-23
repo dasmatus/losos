@@ -139,18 +139,24 @@ const devices = (page: Page) => page.locator('[data-testid=lab-canvas-wrap] g.no
 const links = (page: Page) => page.locator('[data-testid=lab-canvas-wrap] [data-link]').count();
 const node = (page: Page, name: string) => page.locator(`[data-testid=lab-canvas-wrap] [data-dev][aria-label^="${name},"]`);
 
-/* A point of `target`, relative to its box, that `cover` does not lie over. */
-async function uncovered(target: Locator, cover: Locator): Promise<{ x: number; y: number }> {
-  const t = (await target.boundingBox())!;
-  const c = (await cover.boundingBox())!;
-  const inset = 4;
-  for (const [fx, fy] of [[0.5, 0.5], [0, 0], [1, 0], [0, 1], [1, 1], [0.5, 0], [0.5, 1], [0, 0.5], [1, 0.5]] as const) {
-    const x = inset + fx * (t.width - 2 * inset);
-    const y = inset + fy * (t.height - 2 * inset);
-    const inCover = t.x + x >= c.x && t.x + x <= c.x + c.width && t.y + y >= c.y && t.y + y <= c.y + c.height;
-    if (!inCover) return { x, y };
-  }
-  throw new Error('the new device covers the whole router');
+/* Click a point of `target` that the pointer would reach directly. Measure and
+ * hit-test in one page task so every candidate uses the same camera position. */
+async function clickUncovered(target: Locator): Promise<void> {
+  const point = await target.evaluate((el) => {
+    const t = el.getBoundingClientRect();
+    const inset = 4;
+    for (const [fx, fy] of [[0.5, 0.5], [0, 0], [1, 0], [0, 1], [1, 1], [0.5, 0], [0.5, 1], [0, 0.5], [1, 0.5]] as const) {
+      const x = t.x + inset + fx * (t.width - 2 * inset);
+      const y = t.y + inset + fy * (t.height - 2 * inset);
+      // Boxes include transparent space and overlap without one node covering
+      // the other. Use Playwright's own hit-target rule instead.
+      const hit = document.elementFromPoint(x, y);
+      if (hit === el || el.contains(hit)) return { x, y };
+    }
+    return null;
+  });
+  if (!point) throw new Error('the new device covers the whole router');
+  await target.page().mouse.click(point.x, point.y);
 }
 
 await check('loads inside the admin shell under its policy, simulated, on this box', async () => {
@@ -286,7 +292,7 @@ await check('place from the tray, drag, connect, delete with the keyboard', asyn
   // Where the camera put the setup decides where the new box lands, and it
   // can come to lie over part of the router: click a part still showing.
   const router = node(page, 'home-router').locator('rect').first();
-  await router.click({ position: await uncovered(router, fresh) });
+  await clickUncovered(router);
   assert.strictEqual(await links(page), linksBefore + 1, 'one cable laid');
   await page.keyboard.press('Escape');
 

@@ -3218,8 +3218,9 @@ struct TagPost {
     api: web::Data<Api>,
 }
 
-impl crate::tag::queue::Post for TagPost {
-    fn post(&self, room: &str, assistant: &str, answer: &str) -> Result<(), String> {
+impl TagPost {
+    /// The assistant's Matrix localpart and the name the room shows.
+    fn names(&self, assistant: &str) -> (String, String) {
         let slug = assistant
             .strip_prefix(crate::tag::TAG_PREFIX)
             .unwrap_or(assistant);
@@ -3232,10 +3233,62 @@ impl crate::tag::queue::Post for TagPost {
             .find(|a| a.slug == slug)
             .map(|a| a.display.clone())
             .unwrap_or_else(|| slug.to_string());
+        (slug.to_string(), display)
+    }
+
+    fn line(&self, assistant: &str, step: &str) -> String {
+        format!("{} {step}…", self.names(assistant).1)
+    }
+}
+
+impl crate::tag::queue::Post for TagPost {
+    fn post(&self, room: &str, assistant: &str, answer: &str) -> Result<(), String> {
+        let (slug, display) = self.names(assistant);
         self.api
             .chat
-            .agent_message(room, slug, &display, answer, None)
+            .agent_message(room, &slug, &display, answer, None)
+            .map(|_| ())
             .map_err(|e| format!("{e:#}"))
+    }
+
+    fn began(&self, room: &str, assistant: &str, step: &str) -> Result<Option<String>, String> {
+        let (slug, display) = self.names(assistant);
+        self.api
+            .chat
+            .agent_message(room, &slug, &display, &self.line(assistant, step), None)
+            .map(Some)
+            .map_err(|e| format!("{e:#}"))
+    }
+
+    fn step(&self, room: &str, assistant: &str, message: &str, step: &str) -> Result<(), String> {
+        let (slug, display) = self.names(assistant);
+        self.api
+            .chat
+            .agent_edit(room, &slug, &display, message, &self.line(assistant, step))
+            .map_err(|e| format!("{e:#}"))
+    }
+
+    fn finish(
+        &self,
+        room: &str,
+        assistant: &str,
+        text: &str,
+        message: Option<&str>,
+    ) -> Result<(), String> {
+        let Some(message) = message else {
+            return self.post(room, assistant, text);
+        };
+        let (slug, display) = self.names(assistant);
+        match self
+            .api
+            .chat
+            .agent_edit(room, &slug, &display, message, text)
+        {
+            // An edit that the homeserver refuses must not swallow the
+            // answer: post it as its own message instead.
+            Ok(()) => Ok(()),
+            Err(_) => self.post(room, assistant, text),
+        }
     }
 }
 
@@ -3264,9 +3317,27 @@ fn listen_tag_events(api: web::Data<Api>) {
     });
 }
 
+/// The joined members of each room the tag listener has pulled, from the
+/// member events in its sync. A room whose only members are a person and
+/// one of Tag's assistants is a direct chat with that assistant: there
+/// every message is an ask, a handle is not needed.
+static ROOM_MEMBERS: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<String, std::collections::HashSet<String>>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+fn members_lock() -> std::sync::MutexGuard<
+    'static,
+    std::collections::HashMap<String, std::collections::HashSet<String>>,
+> {
+    ROOM_MEMBERS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 /// Read one sync answer into the tag's cache and its queues. Notices are
 /// dropped: LosOS Git's posts, and the tag's own answers, are not asks.
 fn tag_hear(api: &Api, body: &serde_json::Value) {
+    tag_accept_invites(api, body);
     let Some(joined) = body
         .pointer("/rooms/join")
         .and_then(serde_json::Value::as_object)
@@ -3274,13 +3345,27 @@ fn tag_hear(api: &Api, body: &serde_json::Value) {
         return;
     };
     for (room, pulled) in joined {
-        let Some(events) = pulled
+        // The state before the timeline first: the member events there are
+        // who the room starts this pull with. Within the timeline the
+        // events keep their order, so a join seen there counts for the
+        // messages after it.
+        let state = pulled
+            .pointer("/state/events")
+            .and_then(serde_json::Value::as_array)
+            .map(|a| a.iter().collect::<Vec<_>>());
+        let timeline = pulled
             .pointer("/timeline/events")
             .and_then(serde_json::Value::as_array)
-        else {
-            continue;
-        };
-        for event in events {
+            .map(|a| a.iter().collect::<Vec<_>>());
+        for event in state
+            .into_iter()
+            .flatten()
+            .chain(timeline.into_iter().flatten())
+        {
+            if event.get("type").and_then(serde_json::Value::as_str) == Some("m.room.member") {
+                tag_member_seen(room, event);
+                continue;
+            }
             if event.get("type").and_then(serde_json::Value::as_str) != Some("m.room.message") {
                 continue;
             }
@@ -3298,9 +3383,109 @@ fn tag_hear(api: &Api, body: &serde_json::Value) {
             if text.is_empty() {
                 continue;
             }
-            tag_remember(api, room, sender, &text);
+            let direct = tag_direct_assistant(room, sender);
+            tag_remember(api, room, sender, &text, direct);
         }
     }
+}
+
+/// An invitation of one of Tag's assistants: they join at once, so the
+/// direct chat "Message someone" made works, and the room lands in the
+/// listener's `rooms/join` on the next pull.
+fn tag_accept_invites(api: &Api, body: &serde_json::Value) {
+    let Some(invited) = body
+        .pointer("/rooms/invite")
+        .and_then(serde_json::Value::as_object)
+    else {
+        return;
+    };
+    for (room, pulled) in invited {
+        let Some(events) = pulled
+            .pointer("/invite_state/events")
+            .and_then(serde_json::Value::as_array)
+        else {
+            continue;
+        };
+        for event in events {
+            if event.get("type").and_then(serde_json::Value::as_str) != Some("m.room.member") {
+                continue;
+            }
+            if event
+                .pointer("/content/membership")
+                .and_then(serde_json::Value::as_str)
+                != Some("invite")
+            {
+                continue;
+            }
+            let Some(agent) = event.get("state_key").and_then(serde_json::Value::as_str) else {
+                continue;
+            };
+            let Some(localpart) = agent
+                .strip_prefix('@')
+                .and_then(|s| s.split_once(':'))
+                .map(|(name, _)| name)
+                .filter(|name| name.starts_with(crate::tag::TAG_PREFIX))
+            else {
+                continue;
+            };
+            let display = api
+                .tag
+                .state()
+                .assistants
+                .iter()
+                .find(|a| localpart.strip_prefix(crate::tag::TAG_PREFIX) == Some(a.slug.as_str()))
+                .map(|a| a.display.clone())
+                .unwrap_or_default();
+            match api.chat.agent_join(room, localpart, &display) {
+                Ok(()) => {
+                    tracing::info!(room = %room, agent = %agent, "an assistant joined the chat that invited it")
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, room = %room, agent = %agent, "an invited assistant could not join")
+                }
+            }
+        }
+    }
+}
+
+/// One member event in a room the listener pulls: who the room has joined.
+fn tag_member_seen(room: &str, event: &serde_json::Value) {
+    let Some(user) = event.get("state_key").and_then(serde_json::Value::as_str) else {
+        return;
+    };
+    let Some(membership) = event
+        .pointer("/content/membership")
+        .and_then(serde_json::Value::as_str)
+    else {
+        return;
+    };
+    let mut members = members_lock();
+    let joined = members.entry(room.to_string()).or_default();
+    match membership {
+        "join" => {
+            joined.insert(user.to_string());
+        }
+        "leave" | "ban" => {
+            joined.remove(user);
+            if joined.is_empty() {
+                members.remove(room);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The assistant a room is a direct chat with, when `sender` is its only
+/// other member: there their messages are asks without a handle.
+fn tag_direct_assistant(room: &str, sender: &str) -> Option<String> {
+    let members = members_lock();
+    let room = members.get(room)?;
+    if room.len() != 2 || !room.contains(sender) {
+        return None;
+    }
+    room.iter()
+        .find(|user| **user != sender && user.starts_with("@tag-"))
+        .cloned()
 }
 
 /// A message's own body, capped at [what the cache keeps]
@@ -3317,8 +3502,9 @@ fn text_of(event: &serde_json::Value) -> String {
 
 /// Remember one message, and queue the ask each `@handle` reached. The
 /// sender's own localpart is the person it comes from: the ask runs at its
-/// assistant's clearance ([`State::clearance_of`]).
-fn tag_remember(api: &Api, room: &str, sender: &str, text: &str) {
+/// assistant's clearance ([`State::clearance_of`]). In a direct chat with
+/// one assistant (`direct`) every message is an ask.
+fn tag_remember(api: &Api, room: &str, sender: &str, text: &str, direct: Option<String>) {
     let person = sender
         .strip_prefix('@')
         .and_then(|s| s.split_once(':'))
@@ -3330,7 +3516,8 @@ fn tag_remember(api: &Api, room: &str, sender: &str, text: &str) {
         text: text.to_string(),
     });
     let state = api.tag.state();
-    for assistant in state.reached(text, &[]) {
+    let named: Vec<String> = direct.into_iter().collect();
+    for assistant in state.reached(text, &named) {
         tag_ask_from(api, room, person, assistant, text);
     }
 }
@@ -4045,7 +4232,13 @@ fn claim_fault(
             || host
                 .strip_suffix(".local")
                 .is_some_and(|h| h.eq_ignore_ascii_case(hostname)));
-    if !own_name && host.parse::<std::net::IpAddr>().is_err() {
+    // `localhost` is how a browser reaches this box through a port forward
+    // (a VM's `localhost:8080`), where the box's own LAN address is not
+    // reachable from this machine. It resolves to loopback by construction, so
+    // it cannot be an attacker's domain under DNS rebinding, and the Origin
+    // check below still has to agree with it.
+    let is_loopback_name = host.eq_ignore_ascii_case("localhost");
+    if !own_name && !is_loopback_name && host.parse::<std::net::IpAddr>().is_err() {
         return Some("claim requests must name this box in Host");
     }
     if let Some(origin) = origin {
@@ -7886,6 +8079,17 @@ mod tests {
         // curl on the box, or a VM test talking to lososd directly.
         assert_eq!(
             claim_fault(JSON, Some("127.0.0.1:8082"), None, "mattbox"),
+            None
+        );
+        // A browser reaching this box through a port forward (a VM's
+        // `localhost:8080`): the page's own host is `localhost`.
+        assert_eq!(
+            claim_fault(
+                JSON,
+                Some("localhost:8080"),
+                Some("http://localhost:8080"),
+                "mattbox"
+            ),
             None
         );
     }

@@ -23,7 +23,7 @@ the files you change before a commit or a push leaves your machine.
 in your clone:
 
 ```sh
-bash nix/hooks/install
+bun nix/hooks/install.ts
 ```
 
 The commit hook formats and lints the Rust and Nix you touched, typechecks

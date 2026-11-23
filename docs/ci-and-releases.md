@@ -35,7 +35,7 @@ without saying so.
 ## What a pull request runs
 
 A pull request runs only the jobs its files reach. The `changes` job lists
-the pull request's files and `.github/scripts/ci-changes.sh` maps them to
+the pull request's files and `.github/scripts/ci-changes.ts` maps them to
 lanes, one per group of jobs:
 
 | Lane | Jobs | Turned on by |
@@ -67,7 +67,7 @@ label is read when the job runs, so add it and re-run the workflow.
 To see what a change would run before pushing it:
 
 ```sh
-git diff --name-only origin/main... | .github/scripts/ci-changes.sh
+git diff --name-only origin/main... | bun .github/scripts/ci-changes.ts
 ```
 
 When a new file is read by a job outside its lane (a `build.rs` reading the
@@ -153,6 +153,11 @@ under Settings, Rules, Rulesets, New branch ruleset:
   be up to date before merging" ticked. The `result` job sums up the run,
   so one required check covers every lane, skipped ones included, and the
   up-to-date rule makes a pull request run against the `main` it lands on.
+  The Rust gates block: a failed or cancelled `test` (cargo test),
+  `clippy` (cargo clippy -D warnings, and cargo fmt --check on pull
+  requests) or `clippy-wasm` turns `result` red. Every other lane is
+  reported as a warning only, and the screenshot, handbook and mobile
+  lanes run with `continue-on-error: true`.
   Two pull requests that each pass alone can still break `main` together
   (one removes an option, the other adds a test that sets it), and only a
   run on the merged tree sees that.
@@ -182,7 +187,7 @@ os-release, the console banners and `losos --version` show
   show the new version once the channel takes that commit. The commit goes through the
   GitHub API with `GITHUB_TOKEN`, so GitHub signs it, and it only
   fast-forwards. A file already ahead of every tag is left alone.
-  `.github/scripts/sync-version.sh --dry-run` shows what it would commit.
+  `.github/scripts/sync-version.ts --dry-run` shows what it would commit.
 - The `tui` job writes the tag over the file before it builds `losos`, so
   the client published for the tag names it.
 - `desktop-pin.yml` opens a pull request on LosOS Desktop
@@ -191,7 +196,7 @@ os-release, the console banners and `losos --version` show
   `nixos/pkgs/losos-pin.nix`, to the tag. The desktop builds `losos` from
   that commit and boots a box from it beside the desktop in its
   `losos-box` VM test, so the pull request's CI is where a change here
-  that breaks the desktop shows up. `.github/scripts/desktop-pin.sh TAG
+  that breaks the desktop shows up. `.github/scripts/desktop-pin.ts TAG
   DIR` rewrites the file in a checkout of the desktop, hashes included.
   Opening the pull request needs the `DESKTOP_PIN_TOKEN` secret, a
   fine-grained token for the desktop repository with Contents and Pull
@@ -227,7 +232,7 @@ Microsoft's keys must refuse the medium, and the same OVMF store with the
 committed certificate added beside Microsoft's must boot it (`nix/tests/iso-boot.py --firmware
 uefi-sb-ms|uefi-sb`). A fork's pull request has no key, so it boots unsigned
 and skips the enrolled leg, and so does a run where signing failed. The key is made once on the owner's machine with
-`docs/provisioning/secure-boot/keygen.sh`.
+`docs/provisioning/secure-boot/keygen.ts`.
 
 Your release notes are kept. The download section goes between two marker
 comments, and a re-run replaces only that section.
@@ -281,9 +286,9 @@ appliance run the same service from their system configuration. It pulls only
 the requested store-path artifact, caches the NAR on local disk, and rewrites
 only the unsigned `URL` field in narinfo; Nix still verifies the signed
 store path, NAR hash and references. `cache.nixos.org` remains enabled for
-upstream paths, and GitHub Pages remains a static fallback. The separate
-`LOSOS_PROXY_URL` deployment is still used by non-cache features such as
-update downloads, but it is not part of the binary-cache path.
+upstream paths. The separate `LOSOS_PROXY_URL` deployment is still used by
+non-cache features such as update downloads, but it is not part of the
+binary-cache path.
 Every job reports what it got from the cache. `setup-nix` puts a `nix` shim
 on `PATH` that counts nix's own `copying path '…' from '<url>'` and
 `building '…'` lines per invocation. It writes a **Nix binary cache use**
@@ -302,13 +307,14 @@ put the secret key in the flake or on an appliance.
 
 ### The copy on GitHub Pages
 
-The GitHub Pages site that serves the handbook also serves a copy of the
-cache at `https://losos.dasmat.us/proxy`. Pages runs no code, so the copy is
-a plain file cache and remains a fallback if direct GHCR access is unavailable. On each
-push to main, the `publish-cache` job writes the paths it publishes with
-`nix copy --to file://`, signs them with the same `losos-1` key and leaves
-out every path cache.nixos.org already serves. The `handbook` workflow runs
-again when `ci` finishes on main and deploys the newest copy under `/proxy`.
+The GitHub Pages site that serves the handbook also keeps a copy of the cache
+at `https://losos.dasmat.us/proxy`. Pages runs no code, so the copy is a plain
+file cache, kept for browsing and for a machine that has no GHCR access; it is
+deliberately **not** a substituter. On each push to main, the `publish-cache`
+job writes the paths it publishes with `nix copy --to file://`, signs them with
+the same `losos-1` key and leaves out every path cache.nixos.org already
+serves. The `handbook` workflow runs again when `ci` finishes on main and
+deploys the newest copy under `/proxy`.
 
 It has three limits:
 
@@ -318,10 +324,23 @@ It has three limits:
   and drops the largest paths first. The job's step summary names what it
   left out.
 - Its `nix-cache-info` says `Priority: 45`, after the proxy (30) and
-  cache.nixos.org (40), so nix tries it after both.
+  cache.nixos.org (40).
 
-`losos.cache.substituters` lists both by default. The repository's Pages
-source must be "GitHub Actions" (Settings, Pages), as for the handbook.
+Neither `losos.cache.substituters` nor `flake.nix`'s `nixConfig` names it:
+both carry the GHCR proxy alone. The repository's Pages source must be
+"GitHub Actions" (Settings, Pages), as for the handbook.
+
+### The flake configuration prompt
+
+`flake.nix` carries the cache in its `nixConfig`, and Nix asks y/N for each of
+those settings the first time it evaluates the flake — defaulting to no, which
+drops the substituter and builds the install closure from source. The appliance
+and the installer medium answer it once and for all with `accept-flake-config =
+true` (modules/cache.nix), which also makes the flake's settings apply to every
+user, including those Nix would otherwise answer with "ignoring untrusted flake
+configuration setting". `trusted-substituters` names the same proxy so an
+unprivileged user may also pass it explicitly; `trusted-users` is left at
+`root`, which is equivalent to root access.
 
 ## The dev-machine tool
 
@@ -332,7 +351,9 @@ against musl. The `registrar-and-ui` job builds it and the `publish-tool` job
 pushes it to GHCR as the OCI artifact
 `ghcr.io/dasmatus/losos/images:<channel>-x86_64`, one layer per file:
 `losos-registrar`, `losos` (the terminal client, `.#losos-static`, built
-the same way by the `tui` job), its `install.sh`, and `SHA256SUMS` over all three. That is the shape the proxy's
+the same way by the `tui` job), its `install.mjs` (the bundle CI builds from
+`admin-ui/tui/install.ts` with `bun build --target=node`), and `SHA256SUMS`
+over all three. That is the shape the proxy's
 `/updates/<channel>/<arch>/<file>` route serves. It picks the layer whose
 title is the file name and redirects to GHCR's storage, except `SHA256SUMS`,
 which it serves inline. LosOS Desktop's sysupdate reads the same route. The
@@ -647,5 +668,5 @@ Two things move USDC to the treasury for it, both into
   is refused. Solana is refused.
 
 `edge/registrar/tests/usdc.rs` covers both paths and the pause against a
-stand-in RPC. `edge/contracts/test-payment.sh` also sends a real fee transfer on
+stand-in RPC. `edge/contracts/test-payment.ts` also sends a real fee transfer on
 anvil and checks the registrar reads it.

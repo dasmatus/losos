@@ -14,7 +14,7 @@
     "write-heading-ids": "bunx --bun docusaurus write-heading-ids",
     "typecheck": "bun --bun tsc",
     "check:links": "bun scripts/check-links.ts",
-    "theme": "scripts/derisk-theme.sh",
+    "theme": "bun scripts/derisk-theme.ts",
     "check": "bun run check:links && bun run check:braces",
     "check:braces": "bun scripts/check-braces.ts"
   },

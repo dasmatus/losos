@@ -80,8 +80,6 @@ let
       id = "office";
       units = [
         "losos-office.service"
-        "losos-office-discovery.service"
-        "coolwsd.service"
       ];
     }
     {

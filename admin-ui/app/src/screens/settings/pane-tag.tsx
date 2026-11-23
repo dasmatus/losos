@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Spinner } from "@/components/ui/progress";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue } from "./rows";
 
@@ -137,9 +138,9 @@ function ClearanceSection({ view, locked, save }: { view: TagView; locked: boole
       <Row last>
         <RowText title={t("tag.clearance.row")} />
         <RowValue>
-          <select
+          <NativeSelect
             aria-label={t("tag.clearance.row")}
-            className="bg-surface text-ink rounded-lg border border-line px-2 py-1.5"
+            className="w-fit"
             value={level}
             disabled={locked}
             onChange={(event) => {
@@ -149,11 +150,11 @@ function ClearanceSection({ view, locked, save }: { view: TagView; locked: boole
             }}
           >
             {view.levels.map((one) => (
-              <option key={one.name} value={one.name}>
+              <NativeSelectOption key={one.name} value={one.name}>
                 {one.name}
-              </option>
+              </NativeSelectOption>
             ))}
-          </select>
+          </NativeSelect>
         </RowValue>
       </Row>
     </Group>
@@ -238,22 +239,22 @@ function AreasSection({ view, locked, save }: { view: TagView; locked: boolean; 
           void save(() => putTagArea({ kind, ref: reference.trim(), level, owner: owner.trim() || "everyone" }), "reload", form);
         }}
       >
-        <select aria-label={t("tag.areas.kind")} className="bg-surface text-ink rounded-lg border border-line px-2 py-1.5" value={kind} onChange={(event) => setKind(event.target.value as (typeof KINDS)[number])} disabled={locked}>
+        <NativeSelect aria-label={t("tag.areas.kind")} value={kind} onChange={(event) => setKind(event.target.value as (typeof KINDS)[number])} disabled={locked}>
           {KINDS.map((one) => (
-            <option key={one} value={one}>
+            <NativeSelectOption key={one} value={one}>
               {one}
-            </option>
+            </NativeSelectOption>
           ))}
-        </select>
+        </NativeSelect>
         <Input aria-label={t("tag.areas.ref")} value={reference} onChange={(event) => setReference(event.target.value)} placeholder={t("tag.areas.ref")} className="min-w-0 flex-1" disabled={locked} />
         <Input aria-label={t("tag.areas.owner")} value={owner} onChange={(event) => setOwner(event.target.value)} placeholder={t("tag.areas.owner")} className="w-36" disabled={locked} />
-        <select aria-label={t("tag.areas.level")} className="bg-surface text-ink rounded-lg border border-line px-2 py-1.5" value={level} onChange={(event) => setLevel(event.target.value)} disabled={locked}>
+        <NativeSelect aria-label={t("tag.areas.level")} value={level} onChange={(event) => setLevel(event.target.value)} disabled={locked}>
           {view.levels.map((one) => (
-            <option key={one.name} value={one.name}>
+            <NativeSelectOption key={one.name} value={one.name}>
               {one.name}
-            </option>
+            </NativeSelectOption>
           ))}
-        </select>
+        </NativeSelect>
         <Button size="sm" type="submit" disabled={!addable}>
           {t("tag.add")}
         </Button>
@@ -270,10 +271,11 @@ function AssistantsSection({ view, locked, save }: { view: TagView; locked: bool
   const [display, setDisplay] = React.useState("");
   const [prompt, setPrompt] = React.useState("");
   const [clearance, setClearance] = React.useState(view.levels[0]?.name ?? "");
+  const [busy, setBusy] = React.useState(false);
   React.useEffect(() => {
     if (clearance === "" && view.levels[0] !== undefined) setClearance(view.levels[0].name);
   }, [view.levels, clearance]);
-  const addable = slug.trim() !== "" && display.trim() !== "" && clearance !== "" && !locked;
+  const addable = slug.trim() !== "" && display.trim() !== "" && clearance !== "" && !locked && !busy;
   return (
     <Group>
       <GroupTitle>{t("tag.assistants.title")}</GroupTitle>
@@ -288,25 +290,27 @@ function AssistantsSection({ view, locked, save }: { view: TagView; locked: bool
         ref={form}
         onSubmit={(event) => {
           event.preventDefault();
+          if (busy) return;
+          setBusy(true);
           void save(
             () => putTagAssistant({ slug: slug.trim(), display: display.trim(), prompt: prompt.trim(), clearance }),
             "clear",
             form,
-          );
+          ).finally(() => setBusy(false));
         }}
       >
         <div className="flex flex-wrap items-center gap-2">
           <Input aria-label={t("tag.assistants.slug")} value={slug} onChange={(event) => setSlug(event.target.value)} placeholder={t("tag.assistants.slug")} className="w-40" disabled={locked} />
           <Input aria-label={t("tag.assistants.display")} value={display} onChange={(event) => setDisplay(event.target.value)} placeholder={t("tag.assistants.display")} className="w-48" disabled={locked} />
-          <select aria-label={t("tag.assistants.clearance")} className="bg-surface text-ink rounded-lg border border-line px-2 py-1.5" value={clearance} onChange={(event) => setClearance(event.target.value)} disabled={locked}>
+          <NativeSelect aria-label={t("tag.assistants.clearance")} value={clearance} onChange={(event) => setClearance(event.target.value)} disabled={locked}>
             {view.levels.map((one) => (
-              <option key={one.name} value={one.name}>
+              <NativeSelectOption key={one.name} value={one.name}>
                 {one.name}
-              </option>
+              </NativeSelectOption>
             ))}
-          </select>
-          <Button size="sm" type="submit" disabled={!addable}>
-            {t("tag.add")}
+          </NativeSelect>
+          <Button size="sm" type="submit" disabled={!addable || busy}>
+            {busy ? <Spinner size={14} /> : t("tag.add")}
           </Button>
         </div>
         <Input aria-label={t("tag.assistants.prompt")} value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={t("tag.assistants.prompt")} className="min-w-0 flex-1" disabled={locked} />

@@ -1,14 +1,17 @@
 {
+  "//": "One tsconfig for both targets: the SPA's strict DOM tree and the mobile shell's react-native one. extends = expo/tsconfig.base (what Metro's typing, allowJs for the plugins, jsx: react-jsx pinned to the SPA's) expects; overrides below keep the options the SPA typechecked under before Expo arrived.",
+  "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "moduleDetection": "force",
     "jsx": "react-jsx",
+    "target": "ES2022",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "types": [],
-
     "strict": true,
+    "forceConsistentCasingInFileNames": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,
@@ -18,15 +21,16 @@
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
     "useDefineForClassFields": true,
-
     "allowImportingTsExtensions": true,
-    "resolveJsonModule": true,
     "skipLibCheck": true,
     "noEmit": true,
-
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": [
+        "./src/*"
+      ]
     }
   },
-  "include": ["src"]
+  "include": [
+    "src"
+  ]
 }

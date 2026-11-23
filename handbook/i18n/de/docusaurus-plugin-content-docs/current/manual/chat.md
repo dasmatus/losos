@@ -108,6 +108,10 @@ Rechtsklick auf die Nachricht bietet dasselbe und dazu das Kopieren ihres
 Texts. Die
 Thread-Schaltfläche in der Kopfzeile des Raums listet seine Threads.
 
+Während jemand schreibt, steht **Eva schreibt…** über den Nachrichten und
+unter dem Namen der Unterhaltung in der Liste; es verschwindet, sobald die
+Person sendet oder aufhört zu schreiben.
+
 Bilder, Videos und Dateien hängst du mit der Büroklammer an, durch Einfügen
 oder durch Hineinziehen. In einem verschlüsselten Raum werden sie
 verschlüsselt, bevor sie deinen Browser verlassen. Das Mikrofon nimmt eine
@@ -124,7 +128,7 @@ sie geht.
 Eine kleine Reihe von Gesichtern unter einer Nachricht zeigt, wer bis dorthin
 gelesen hat.
 
-![Eine Unterhaltung mit Eva in LosOS Chat: Reaktionen unter den Nachrichten, eine Antwort in einem Thread und ein Bild, darunter die Büroklammer, die Cloud-Taste und das Mikrofon.](@site/docs/img/chat-de.png)
+![Eine Unterhaltung mit Eva in LosOS Chat, während sie schreibt: Eva schreibt… unter ihrem Namen in der Liste und über dem Eingabefeld, eine Reaktion und eine Antwort in einem Thread unter ihrer Nachricht, ein Bild, und die Büroklammer, die Cloud-Taste und das Mikrofon.](@site/docs/img/chat-de.png)
 
 ## Andere Matrix-Apps
 

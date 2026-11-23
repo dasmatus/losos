@@ -110,7 +110,7 @@ The first page is the setup wizard. Its first step is trusting the box's own
 certificate, so that the rest of the setup, and every later sign-in, travels
 over HTTPS and your browser can offer a passkey. The step shows one line to
 paste into a terminal, picked for the computer you are on. On macOS and Linux
-it is `curl -fsSL http://<address>/setup/trust.sh | sh`, on Windows
+it is `curl -fsSL http://<address>/setup/trust.ts | node`, on Windows
 `irm http://<address>/setup/trust.ps1 | iex`. The box itself serves the
 script as plain text, so open the link in a tab to read it first. The script
 adds the one certificate to the stores your browsers read, for your user
@@ -177,13 +177,14 @@ nix build .#losos-disk-iso          # or: devenv shell build-media iso
 ```
 
 The normal ISO makes the target download and build the whole system, about
-5.8 GiB. This ISO carries the built closure, so `nixos-install` copies it
-from the stick.
+5.8 GiB. This ISO carries the built closure, a bare git mirror of this tree,
+and every flake input the mirror evaluates against, so install can run with no
+network: `nixos-install` copies the closure from the stick and clones
+`file://…` instead of the public repository.
 
-- It still needs a network to clone the flake and fetch nixpkgs.
-- Build it from the same commit the installer will clone
-  (`LOSOS_FLAKE_URL`, `--depth 1`). Otherwise the store paths differ and the
-  copies go unused.
+- Build it from the commit you mean to install. A stick built from one revision
+  and a clone of another evaluate to different store paths; the carried copies
+  then match nothing and the install falls back to building.
 - It is too large for a GitHub release asset. Build it yourself.
 
 ## Demo image for a VM

@@ -22,14 +22,16 @@ pub fn init(store: &Store) -> Result<(), StoreError> {
 /// The scopes of the later parts, mounted ahead of the catch-all handler,
 /// so a path one of them claims is theirs.
 pub fn scopes(cfg: &mut web::ServiceConfig, cloud: &std::sync::Arc<Cloud>) {
-    // Office documents, when the box runs Collabora: the web app's two
-    // calls, and the WOPI routes coolwsd reaches through nginx's loopback
-    // bridge (modules/office.nix). nginx routes no /wopi/ from outside.
-    if let Some(sessions) = cloud.office.get() {
-        cfg.app_data(web::Data::from(sessions.clone()))
-            .service(crate::cloud::office::scope())
-            .service(crate::office::actix::wopi_scope(sessions.wopi.clone()));
-    }
+    // Native LosOS Office: capability/open routes for the web app.
+    let office_sessions = cloud.office.get().cloned().unwrap_or_else(|| {
+        std::sync::Arc::new(crate::office::actix::Sessions::new(std::sync::Arc::new(
+            crate::cloud::office::CloudFiles {
+                cloud: cloud.clone(),
+            },
+        )))
+    });
+    cfg.app_data(web::Data::from(office_sessions))
+        .service(crate::cloud::office::scope());
     // Editing together once `mesh::start` ran, and sharing across boxes
     // when the box talks to other boxes.
     if let Some(mesh) = cloud.mesh.get() {

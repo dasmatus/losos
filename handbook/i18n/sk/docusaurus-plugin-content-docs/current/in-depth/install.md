@@ -110,7 +110,7 @@ Prvá stránka je sprievodca nastavením. Jeho prvým krokom je dôverovať
 vlastnému certifikátu zariadenia, aby zvyšok nastavenia aj každé neskoršie
 prihlásenie šli cez HTTPS a váš prehliadač mohol ponúknuť passkey. Krok
 ukazuje jeden riadok na vloženie do terminálu, vybraný pre počítač, na ktorom
-ste. Na macOS a Linuxe je to `curl -fsSL http://<address>/setup/trust.sh | sh`,
+ste. Na macOS a Linuxe je to `curl -fsSL http://<address>/setup/trust.ts | node`,
 na Windows `irm http://<address>/setup/trust.ps1 | iex`. Skript servíruje
 samotné zariadenie ako čistý text, takže si odkaz najprv otvorte v karte a prečítajte
 si ho. Skript pridá ten jeden certifikát do úložísk, ktoré čítajú vaše
@@ -178,13 +178,14 @@ nix build .#losos-disk-iso          # or: devenv shell build-media iso
 ```
 
 Bežné ISO necháva cieľový počítač stiahnuť a zostaviť celý systém, približne
-5.8 GiB. Toto ISO nesie zostavený closure, takže `nixos-install` ho skopíruje
-z kľúča.
+5.8 GiB. Toto ISO nesie zostavený closure, holé git zrkadlo tohto stromu a
+všetky vstupy flaku, proti ktorým to zrkadlo vyhodnocuje, takže inštalácia
+môže bežať bez siete: `nixos-install` skopíruje closure z kľúča a klonuje
+`file://…` namiesto verejného repozitára.
 
-- Stále potrebuje sieť na naklonovanie flaku a stiahnutie nixpkgs.
-- Zostavte ho z toho istého commitu, ktorý bude inštalátor klonovať
-  (`LOSOS_FLAKE_URL`, `--depth 1`). Inak sa cesty v store líšia a kópie
-  zostanú nevyužité.
+- Zostavte ho z commitu, ktorý naozaj chcete nainštalovať. Kľúč z jednej
+  revízie a klon inej dajú iné cesty v store; prenesené kópie sa nepoužijú a
+  inštalátor sa vráti k zostavovaniu.
 - Je príliš veľké na asset vydania na GitHube. Zostavte si ho sami.
 
 ## Demo obraz pre VM {#demo-image-for-a-vm}

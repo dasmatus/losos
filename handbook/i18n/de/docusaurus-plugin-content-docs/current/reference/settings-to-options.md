@@ -47,7 +47,7 @@ vollständig.
 | Die Festplatten                      | `losos.targetDrives`               | was der Installer vorgefunden hat          |
 | Gültigkeitsdauer des Zertifikats     | `losos.tls.validityDays`           | 730                                        |
 | Leerlaufschwelle für das Verleihen von CPU-Leistung | `losos.cluster.idleLoadThreshold` | 0,25 pro Kern               |
-| Der Binär-Cache                      | `losos.cache.substituters`         | `http://127.0.0.1:8787`, dann `https://losos.dasmat.us/proxy` |
+| Der Binär-Cache                      | `losos.cache.substituters`         | `http://127.0.0.1:8787` (bedarfsgesteuerter GHCR-Proxy)       |
 | Größe der lokalen Cache-Kopie        | `losos.cache.local.maxSize`        | `8g`                                        |
 | Wer `/setup/state.json` von einer Webseite aus lesen darf | `losos.setup.finderOrigins` | die Suchseite der LosOS-Edge |
 

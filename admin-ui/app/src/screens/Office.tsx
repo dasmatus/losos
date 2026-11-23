@@ -1,12 +1,5 @@
-/* Documents: the box's Office folder (losos.office.folder) at /office/, in
- * the shell like every other pane, and a document from it full width under
- * the top bar. The fragment says which:
- *
- *   /office/              the folder's documents
- *   /office/#file=<id>    one of them in the editor
- *
- * LosOS Cloud lists its own files and opens the same editor
- * (src/cloud/office/editor.tsx) from them. */
+/* Documents in the box's Office folder (losos.office.folder), native
+ * LosOS Office. Legacy formats are imported into native formats. */
 
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
@@ -32,7 +25,7 @@ import {
 } from "@/components/ui/empty";
 import { SkeletonLine } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { OfficeEditor } from "@/cloud/office/editor";
+import { LegacyImportView } from "@/cloud/office/import";
 import { openOffice, OfficeFailure } from "@/cloud/office/api";
 import { formatBytes } from "@/lib/apps";
 import { INTL_TAG } from "@/lib/i18n";
@@ -41,10 +34,8 @@ import { PaneHeader } from "@/screens/settings/rows";
 
 export const FOLDER_API = "/office/api";
 
-/** The list with nothing after the #, else the editor. */
 export default function Office({ hash }: { hash: string }) {
   const fragment = hash.replace(/^#/, "");
-  // A new document is a new editor, not the old one with another file.
   if (fragment !== "") return <OfficeDocument key={fragment} fragment={fragment} />;
   return <OfficeFiles />;
 }
@@ -57,20 +48,18 @@ function OfficeDocument({ fragment }: { fragment: string }) {
   );
   const navigate = useNavigate();
   const close = React.useCallback(() => navigate("/office/"), [navigate]);
-  return <OfficeEditor load={load} onClose={close} />;
+  return <LegacyImportView load={load} onClose={close} apiBase={FOLDER_API} />;
 }
-
-// ── The folder ─────────────────────────────────────────────────────────────
 
 export interface FolderFile {
   id: string;
   name: string;
-  /** The folder under the Office folder, `/`-separated; empty at the top. */
   folder: string;
   size: number;
-  /** Milliseconds since 1970. */
   modified: number;
   writable: boolean;
+  mode?: string;
+  importTarget?: string | null;
 }
 
 async function listFolder(): Promise<FolderFile[]> {
@@ -82,25 +71,10 @@ async function listFolder(): Promise<FolderFile[]> {
 }
 
 const ICONS: Record<string, typeof File01Icon> = {
-  doc: Doc01Icon,
-  docx: Doc01Icon,
-  docm: Doc01Icon,
-  dotx: Doc01Icon,
-  odt: Doc01Icon,
-  rtf: Doc01Icon,
-  txt: Doc01Icon,
-  xls: Xls01Icon,
-  xlsx: Xls01Icon,
-  xlsm: Xls01Icon,
-  xlsb: Xls01Icon,
-  ods: Xls01Icon,
-  csv: Xls01Icon,
-  ppt: Ppt01Icon,
-  pptx: Ppt01Icon,
-  pptm: Ppt01Icon,
-  ppsx: Ppt01Icon,
-  odp: Ppt01Icon,
-  pdf: Pdf01Icon,
+  doc: Doc01Icon, docx: Doc01Icon, docm: Doc01Icon, dotx: Doc01Icon, odt: Doc01Icon, rtf: Doc01Icon, txt: Doc01Icon,
+  xls: Xls01Icon, xlsx: Xls01Icon, xlsm: Xls01Icon, xlsb: Xls01Icon, ods: Xls01Icon, csv: Xls01Icon,
+  ppt: Ppt01Icon, pptx: Ppt01Icon, pptm: Ppt01Icon, ppsx: Ppt01Icon, odp: Ppt01Icon,
+  pdf: Pdf01Icon, paper: Doc01Icon, slides: Ppt01Icon, md: Doc01Icon,
 };
 
 function iconFor(name: string) {
@@ -108,10 +82,7 @@ function iconFor(name: string) {
   return ICONS[ext] ?? File01Icon;
 }
 
-type State =
-  | { kind: "loading" }
-  | { kind: "failed"; error: OfficeFailure }
-  | { kind: "ready"; files: FolderFile[] };
+type State = { kind: "loading" } | { kind: "failed"; error: OfficeFailure } | { kind: "ready"; files: FolderFile[] };
 
 function OfficeFiles() {
   const t = useT();
@@ -123,18 +94,12 @@ function OfficeFiles() {
     let live = true;
     setState({ kind: "loading" });
     listFolder().then(
-      (files) => {
-        if (live) setState({ kind: "ready", files });
-      },
+      (files) => { if (live) setState({ kind: "ready", files }); },
       (e: unknown) => {
-        if (live) {
-          setState({ kind: "failed", error: e instanceof OfficeFailure ? e : new OfficeFailure("other") });
-        }
+        if (live) setState({ kind: "failed", error: e instanceof OfficeFailure ? e : new OfficeFailure("other") });
       },
     );
-    return () => {
-      live = false;
-    };
+    return () => { live = false; };
   }, [attempt]);
 
   const when = new Intl.DateTimeFormat(INTL_TAG[locale], { dateStyle: "medium", timeStyle: "short" });
@@ -142,79 +107,52 @@ function OfficeFiles() {
   return (
     <div aria-busy={state.kind === "loading"}>
       <PaneHeader title={t("office.files.title")} summary={t("office.files.summary")} />
-
       {state.kind === "loading" && (
         <Card className="flex flex-col gap-3 p-5" aria-label={t("office.files.loading")}>
-          <SkeletonLine />
-          <SkeletonLine />
-          <SkeletonLine />
+          <SkeletonLine /><SkeletonLine /><SkeletonLine />
         </Card>
       )}
-
       {state.kind === "failed" && (
         <Alert variant="crit">
           <HugeiconsIcon icon={Alert01Icon} strokeWidth={1.5} aria-hidden="true" />
           <AlertDescription className="flex flex-wrap items-center gap-3">
             <span>{t(`office.error.${state.error.reason}`)}</span>
-            <Button variant="secondary" size="sm" onClick={() => setAttempt((n) => n + 1)}>
-              {t("office.retry")}
-            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setAttempt((n) => n + 1)}>{t("office.retry")}</Button>
           </AlertDescription>
         </Alert>
       )}
-
       {state.kind === "ready" && state.files.length === 0 && (
         <Card>
-          <Empty>
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <HugeiconsIcon icon={Doc01Icon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
-              </EmptyMedia>
-              <EmptyTitle>{t("office.files.empty.title")}</EmptyTitle>
-              <EmptyDescription>{t("office.files.empty.body")}</EmptyDescription>
-            </EmptyHeader>
-          </Empty>
+          <Empty><EmptyHeader>
+            <EmptyMedia variant="icon"><HugeiconsIcon icon={Doc01Icon} strokeWidth={1.5} color="currentColor" aria-hidden="true" /></EmptyMedia>
+            <EmptyTitle>{t("office.files.empty.title")}</EmptyTitle>
+            <EmptyDescription>{t("office.files.empty.body")}</EmptyDescription>
+          </EmptyHeader></Empty>
         </Card>
       )}
-
       {state.kind === "ready" && state.files.length > 0 && (
         <Card className="overflow-hidden">
           <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="pl-5">{t("office.files.name")}</TableHead>
-                <TableHead className="max-sm:hidden">{t("office.files.modified")}</TableHead>
-                <TableHead className="pr-5 text-right max-sm:hidden">{t("office.files.size")}</TableHead>
-              </TableRow>
-            </TableHeader>
+            <TableHeader><TableRow>
+              <TableHead className="pl-5">{t("office.files.name")}</TableHead>
+              <TableHead className="max-sm:hidden">{t("office.files.modified")}</TableHead>
+              <TableHead className="pr-5 text-right max-sm:hidden">{t("office.files.size")}</TableHead>
+            </TableRow></TableHeader>
             <TableBody>
               {state.files.map((f) => (
                 <TableRow key={f.id} className="relative">
                   <TableCell className="pl-5">
-                    <a
-                      href={`#file=${f.id}`}
-                      className="flex min-w-0 items-center gap-3 outline-none after:absolute after:inset-0 focus-visible:after:ring-2 focus-visible:after:ring-accent/40"
-                    >
-                      <HugeiconsIcon
-                        icon={iconFor(f.name)}
-                        size={20}
-                        strokeWidth={1.5}
-                        className="shrink-0 text-muted"
-                        aria-hidden="true"
-                      />
+                    <a href={`#file=${f.id}`} className="flex min-w-0 items-center gap-3 outline-none after:absolute after:inset-0 focus-visible:after:ring-2 focus-visible:after:ring-accent/40">
+                      <HugeiconsIcon icon={iconFor(f.name)} size={20} strokeWidth={1.5} className="shrink-0 text-muted" aria-hidden="true" />
                       <span className="min-w-0">
                         <span className="block truncate font-medium">{f.name}</span>
                         {f.folder && <span className="block truncate text-xs text-muted">{f.folder}</span>}
                       </span>
-                      {!f.writable && <Badge variant="secondary">{t("office.readOnly")}</Badge>}
+                      {!f.writable && f.mode === "import" ? <Badge variant="secondary">Import</Badge> : !f.writable ? <Badge variant="secondary">{t("office.readOnly")}</Badge> : null}
                     </a>
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-muted max-sm:hidden">
-                    {when.format(new Date(f.modified))}
-                  </TableCell>
-                  <TableCell className="numeric whitespace-nowrap pr-5 text-right text-muted max-sm:hidden">
-                    {formatBytes(f.size)}
-                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-muted max-sm:hidden">{when.format(new Date(f.modified))}</TableCell>
+                  <TableCell className="numeric whitespace-nowrap pr-5 text-right text-muted max-sm:hidden">{formatBytes(f.size)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

@@ -12,56 +12,29 @@
 { pkgs, lib, ... }:
 
 let
-  # Every crate, since this repo is deliberately not a Cargo workspace: each
-  # has its own Cargo.lock and its own pinned cargoHash in nix/packages.nix.
-  # Every Rust command therefore has to be run twice with --manifest-path.
-  crates = [
-    "backend"
-    # The terminal envelope (OpenPGP, tokens) lososd and the registrar both
-    # depend on by path. Its own workspace, so `cargo fmt` of either parent
-    # does not reach it.
-    "backend/access"
-    # lososd's edge path rule, which LosOS Desktop's network machine reads
-    # by git too. Its own workspace for the same reason as the envelope.
-    "backend/edge-path"
-    # MDX and Markdown to sanitized HTML (backend/mdx/README.md), shared by
-    # LosOS Office and Notes, and built for the browser through wasm-bindgen.
-    # Its own workspace, like backend/access; `lint-wasm` lints the wasm32
-    # build with the `wasm` feature.
-    "backend/mdx"
-    # lososd's plugins (backend/plugins/README.md): the SDK, the plugins and
-    # their logic, natively here; `lint-wasm` lints the wasm32 build, and
-    # backend's tests/plugins.rs builds them for wasm32 to run the daemon.
-    "backend/plugins"
-    "edge/registrar"
-    # The Vercel host for the registrar (edge/vercel/README.md). Not built by
-    # nix — Vercel builds it — but linted and tested with the other two.
-    "edge/vercel"
-    # LosOS Lab's core (admin-ui/lab/core/README.md), compiled to wasm for
-    # the Lab page. Linted and tested natively like the others.
-    "admin-ui/lab/core"
-    # The Lab's libvirt client (admin-ui/lab/virt-rpc/README.md), compiled
-    # to wasm for the page. Its live tests need a running libvirt daemon and
-    # are skipped unless LOSOS_VIRT_SOCK or LOSOS_VIRT_TCP is set.
-    "admin-ui/lab/virt-rpc"
-    # The Lab's GPU canvas (admin-ui/lab/render/README.md). Bevy is a
-    # wasm32-only dependency, so this lints and tests its plain Rust;
-    # `lint-wasm` below lints the two wasm32 builds.
-    "admin-ui/lab/render"
-    # losos, the terminal client (admin-ui/tui/README.md). Its suite runs a
-    # mock box and edge over TLS and, where util-linux `script` exists, the
-    # built binary in a pseudo-terminal.
-    "admin-ui/tui"
-  ];
-  forEachCrate = cmd: lib.concatMapStringsSep "\n" (c: ''echo "── ${c}"; ${cmd c}'') crates;
-  # The Solana escrow program (edge/contracts/solana/README.md). Linted with
-  # the others; its suite runs the program `cargo build-sbf` makes, so it is
+  # Every crate, read from crates.json — the one machine-readable list of
+  # this repo's Rust workspaces. This repo is deliberately not a Cargo
+  # workspace: each crate has its own Cargo.lock and its own pinned
+  # cargoHash in nix/packages.nix, and every Rust command therefore runs
+  # with --manifest-path. Why, and what would change it:
+  # docs/decisions/0001-not-a-cargo-workspace.md. devenv, the git hooks
+  # (nix/hooks/lib.ts) and CI all take their crate lists from the manifest,
+  # and `check-crates` below asserts it still covers every Cargo.toml in
+  # the tree — a new crate is one manifest entry, not a hand-typed list
+  # copied five times.
+  manifest = builtins.fromJSON (builtins.readFile ./crates.json);
+  # fmt+test crates are what `test-rust` loops over. A fmt-only crate (the
+  # Solana escrow program, whose suite runs what `cargo build-sbf` makes
+  # and needs Anza's tools) is linted with the others but is
   # `test-solana-escrow`'s, not test-rust's.
-  linted = crates ++ [ "edge/contracts/solana" ];
+  crates = map (c: c.path) (lib.filter (c: c.fmt && c.test) manifest.crates);
+  linted = map (c: c.path) (lib.filter (c: c.fmt) manifest.crates);
+  forEachCrate = cmd: lib.concatMapStringsSep "\n" (c: ''echo "── ${c}"; ${cmd c}'') crates;
   forEachLinted = cmd: lib.concatMapStringsSep "\n" (c: ''echo "── ${c}"; ${cmd c}'') linted;
   # `cargo fmt` on a virtual workspace (backend/plugins has no package at its
-  # root) finds no targets without --all.
-  fmtAll = c: lib.optionalString (c == "backend/plugins") " --all";
+  # root) finds no targets without --all; the manifest says which crate.
+  fmtAll =
+    c: lib.optionalString (lib.any (e: e.path == c && (e.fmtAll or false)) manifest.crates) " --all";
 
   # mold as the linker, ccache in front of gcc, sccache in front of rustc:
   # the stdenv nix/packages.nix builds the crates with and flake.nix's
@@ -194,7 +167,12 @@ in
       # admin-ui/design-system/react) build, test and run on Bun, and the
       # shell carries no Node: each script asks for its runtime with
       # `bun --bun`, and `bun install` is each workspace's own first step.
+      # The one exception is the terminal client's installer
+      # (admin-ui/tui/install.ts, shipped as install.mjs): its tests bundle
+      # the .ts with bun and then run the result with plain node, the way
+      # end users do — hence nodejs here, used by nothing else.
       bun
+      nodejs
       # The wasm32 linker and the component wrapper for lososd's plugins
       # (backend/plugins/README.md), as nix/packages.nix builds them.
       lld
@@ -208,6 +186,11 @@ in
       # Handy when poking at the appliance's own surfaces.
       jq
       curl
+      oras
+
+      # OCR (read screenshots/images) and Rust advisory auditing.
+      tesseract
+      cargo-audit
 
       # Shell UX, carried over from the flake/devshell.nix this file replaces:
       # the host fish config minus Zellij, which would wrap the shell in a
@@ -225,7 +208,7 @@ in
   # pre-push), not devenv's git-hooks, so a clone without devenv runs the
   # same ones: `nix develop` and a Claude Code session install them too
   # (flake.nix, .claude/settings.json), and anyone else runs
-  # `bash nix/hooks/install` once. enterShell below points this clone's
+  # `bun nix/hooks/install.ts` once. enterShell below points this clone's
   # core.hooksPath at them. They replay CI's gates for the files a commit or
   # a push touches; nix/hooks/pre-commit and nix/hooks/pre-push say which.
   # devenv's git-hooks would install pre-commit's own runner into
@@ -238,7 +221,7 @@ in
   # binary inside these scripts.
 
   scripts.fmt.exec = forEachLinted (c: "cargo fmt${fmtAll c} --manifest-path ${c}/Cargo.toml");
-  scripts.fmt.description = "Format both Rust crates.";
+  scripts.fmt.description = "Format every Rust crate.";
 
   scripts.lint.exec = ''
     set -e
@@ -249,7 +232,7 @@ in
 
   # The Nix lints over the whole tree; CI's eval job and the git hooks run
   # the same script.
-  scripts.lint-nix.exec = ''bash "$DEVENV_ROOT/nix/lint-nix.sh" "$@"'';
+  scripts.lint-nix.exec = ''bun "$DEVENV_ROOT/nix/lint-nix.ts" "$@"'';
   scripts.lint-nix.description = "nixfmt --check, deadnix and statix over every tracked .nix file.";
 
   # The Lab canvas's two wasm32 builds, WebGL2 then WebGPU, with the target
@@ -257,6 +240,10 @@ in
   # share none of it. CI's `clippy-wasm` job runs the same loop.
   scripts.lint-wasm.exec = ''
     set -e
+    # Bevy wasm32 clippy builds are the heavy legs; cap rustc parallelism so
+    # lint-wasm does not pin every core (same trade-off as losos-lab-render's
+    # Nix build in nix/packages.nix).
+    export CARGO_BUILD_JOBS=2
     echo "── backend/plugins (wasm32)"
     cargo clippy --manifest-path backend/plugins/Cargo.toml \
       --target wasm32-unknown-unknown --all-targets -- -D warnings
@@ -304,14 +291,14 @@ in
   '';
   scripts.test-solana-escrow.description = "Build the Solana escrow program and test it and the registrar against it.";
 
-  # LososEscrow's Foundry suite, then edge/contracts/test-payment.sh on anvil:
+  # LososEscrow's Foundry suite, then edge/contracts/test-payment.ts on anvil:
   # deposits, coin fees and taps paid and settled by the registrar's signer.
   # It fetches forge-std, solc and the wallet's npm packages, so it is not in
   # `devenv test`; CI's `evm-escrow` job runs it.
   scripts.test-evm-escrow.exec = ''
     set -eu
     export PATH=${pkgs.foundry}/bin:${pkgs.nodejs}/bin:${pkgs.bun}/bin:${pkgs.jq}/bin:$PATH
-    bash "$DEVENV_ROOT/edge/contracts/test-payment.sh"
+    bun "$DEVENV_ROOT/edge/contracts/test-payment.ts"
   '';
   scripts.test-evm-escrow.description = "Test the EVM escrow and pay through it on a local chain.";
 
@@ -326,16 +313,17 @@ in
   '';
   scripts.test-tui.description = "Build the static losos and drive it in a pseudo-terminal.";
 
-  # What `nix flake check --no-build` checks, one `nix eval` per derivation, so
-  # the peak memory is one VM test's evaluation rather than all of them at
-  # once (nix/check-flake.sh says why). CI's eval job runs the same script.
+  # What `nix flake check --no-build` checks, one `nix eval` per derivation with
+  # bounded parallelism (nix/check-flake.ts), so peak memory stays on the order
+  # of a few VM test evaluations rather than the whole flake in one process.
+  # CI's eval job runs the same script.
   # CI's `bots` job: the release channels' bot against a fake GitHub over a
   # real repository (.github/scripts/test_channels.py).
   scripts.test-bots.exec = ''${pkgs.python3}/bin/python3 "$DEVENV_ROOT/.github/scripts/test_channels.py"'';
   scripts.test-bots.description = "Test the release channels' bot.";
 
-  scripts.check-flake.exec = ''bash "$DEVENV_ROOT/nix/check-flake.sh" "$@"'';
-  scripts.check-flake.description = "Evaluate every flake output, one at a time (builds nothing).";
+  scripts.check-flake.exec = ''bun "$DEVENV_ROOT/nix/check-flake.ts" "$@"'';
+  scripts.check-flake.description = "Evaluate every flake output (builds nothing; see CHECK_FLAKE_JOBS).";
 
   # devenv runs standalone (see flake.nix), so there are two lock files:
   # flake.lock pins the nixpkgs that BUILDS the appliance, devenv.lock pins the
@@ -350,8 +338,15 @@ in
   # from the build toolchain for two weeks after dependabot bumped flake.lock
   # (PR #4) and nobody bumped the other two. CI runs the same comparison in
   # its `pins` job; keep the two in step by hand, like every other gate here.
-  scripts.check-pins.exec = ''bash "$DEVENV_ROOT/nix/check-pins.sh"'';
+  scripts.check-pins.exec = ''bun "$DEVENV_ROOT/nix/check-pins.ts"'';
   scripts.check-pins.description = "Assert flake.lock, devenv.yaml and devenv.lock pin the same nixpkgs.";
+
+  # The crate manifest is devenv's and the git hooks' one crate list; this
+  # keeps it pinned to the tree, the way check-pins pins the locks to each
+  # other. devenv's `check-crates`, the pre-commit hook (a staged
+  # crates.json or Cargo.toml) and CI's `pins` job run the same script.
+  scripts.check-crates.exec = ''bun "$DEVENV_ROOT/nix/check-crates.ts"'';
+  scripts.check-crates.description = "Assert crates.json covers every Cargo.toml in the tree.";
 
   # flake check only forces each nixosConfiguration's toplevel *derivation*;
   # these two force the full module merge, which is what actually catches
@@ -408,13 +403,11 @@ in
   #                     TPM-sealed LUKS-on-LVM the real install builds, so it
   #                     has no full-disk encryption at all. Never hand one to
   #                     someone who thinks it is the product.
-  #   losos-disk-iso    the installer ISO with the whole install closure in
-  #                     isoImage.storeContents, so nixos-install copies from
-  #                     the medium instead of fetching and building. Measured:
-  #                     that closure is 5.78 GiB of store data over 882 paths,
-  #                     of which 1.57 GiB has to come down from cache.nixos.org
-  #                     and 849 MiB of image tarballs plus losos-ctl would
-  #                     otherwise be built on the target.
+  #   losos-disk-iso    the offline installer ISO: the install closure, a bare
+  #                     git mirror of this tree, and every flake input in
+  #                     isoImage.storeContents, so nixos-install needs no
+  #                     network. Measured: the install closure is 5.78 GiB over
+  #                     882 paths; the squashfs packs each root's closure.
   #
   # Local-only, both of them. The thin ISO the `iso` job builds is already
   # ~1.5 GB, close to GitHub's 2 GiB per-asset release limit; these are bigger
@@ -478,6 +471,7 @@ in
   enterTest = ''
     set -e
     check-pins
+    check-crates
     test-bots
     lint
     lint-nix
@@ -488,7 +482,9 @@ in
   '';
 
   enterShell = ''
-    bash "$DEVENV_ROOT/nix/hooks/install"
+    bun "$DEVENV_ROOT/nix/hooks/install.ts"
+    # shellcheck source=/dev/null
+    . "$DEVENV_ROOT/nix/dev-cache.sh"
     echo "losos dev shell"
     echo "  fmt · lint · test-rust        Rust"
     echo "  lint-nix                      nixfmt, deadnix, statix"

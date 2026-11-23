@@ -100,6 +100,9 @@ stlačením jednu pridáte a ďalším stlačením ju vezmete späť. To isté, 
 textu, ponúka kliknutie pravým tlačidlom na správu. Tlačidlo vlákien v hlavičke
 miestnosti uvádza jej vlákna.
 
+Keď niekto píše, nad správami a pod názvom konverzácie v zozname sa
+ukáže **Eva píše…**; zmizne, keď správu pošle alebo prestane písať.
+
 Obrázky, videá a súbory priložíte kancelárskou sponkou, vložením zo
 schránky alebo pretiahnutím. V šifrovanej miestnosti sa zašifrujú skôr, ako
 opustia váš prehliadač. Mikrofón nahrá hlasovú správu.
@@ -113,7 +116,7 @@ do ktorej konverzácie má ísť.
 
 Malý rad tvárí pod správou ukazuje, kto už čítal až potiaľto.
 
-![Konverzácia s Evou v LosOS Chat: reakcie pod správami, odpoveď vo vlákne a obrázok, pod nimi kancelárska spinka, tlačidlo cloudu a mikrofón.](@site/docs/img/chat-sk.png)
+![Konverzácia s Evou v LosOS Chat, kým píše: Eva píše… pod jej menom v zozname a nad poľom na písanie, reakcia a odpoveď vo vlákne pod jej správou, obrázok, a kancelárska spinka, tlačidlo cloudu a mikrofón.](@site/docs/img/chat-sk.png)
 
 ## Iné aplikácie pre Matrix
 

@@ -1,0 +1,16 @@
+# Audit policy for the Solana escrow contract.
+#
+# The on-chain program depends only on `pinocchio` (see Cargo.toml
+# `[dependencies]`). Every advisory below is in the dev-dependency test stack
+# (litesvm -> agave-precompiles/solana-*). agave-precompiles currently pins
+# ed25519-dalek =1.0.1 and pulls the matching curve25519-dalek 3.2.0/rand 0.7.3
+# chain; crypto-bigint 0.5.5 is likewise transitively pinned by that stack.
+# These cannot be fixed here until the upstream Solana/Agave/litesvm test
+# ecosystem migrates. They do not affect the deployed SBF program.
+[advisories]
+ignore = [
+    "RUSTSEC-2022-0093", # ed25519-dalek 1.0.1 (dev: agave-precompiles)
+    "RUSTSEC-2024-0344", # curve25519-dalek 3.2.0 (dev: agave-precompiles)
+    "RUSTSEC-2026-0097", # rand 0.7.3 unsoundness (dev: agave-precompiles)
+    "RUSTSEC-2026-0387", # crypto-bigint 0.5.5 (dev: solana test stack)
+]

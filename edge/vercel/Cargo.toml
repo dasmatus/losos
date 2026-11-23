@@ -62,5 +62,5 @@ path = "api/registrar.rs"
 
 [profile.release]
 codegen-units = 1
-lto = "fat"
+lto = "thin"
 opt-level = 3

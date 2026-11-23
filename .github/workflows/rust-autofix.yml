@@ -20,7 +20,6 @@ jobs:
   autofix:
     name: Format, apply Clippy fixes, and rerun CI
     runs-on: ubuntu-latest
-    timeout-minutes: 45
     steps:
       - name: Validate target branch
         env:

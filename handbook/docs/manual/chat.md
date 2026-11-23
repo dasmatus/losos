@@ -96,6 +96,10 @@ again to take it back. Right-click a message for the same and to copy its text
 ([the right-click menu](admin-pages#the-right-click-menu)). The thread button
 in the room's header lists the room's threads.
 
+While someone writes, **Eva is typing…** shows above the messages and under
+the conversation's name in the list; it goes away when they send or stop
+typing.
+
 Attach pictures, videos and files with the paper clip, by pasting or by
 dragging them in. In an encrypted room they are encrypted before they leave
 your browser. The microphone records a voice message.
@@ -109,7 +113,7 @@ conversation it goes to.
 
 A small row of faces under a message shows who has read up to there.
 
-![A conversation with Eva in LosOS Chat: reactions under the messages, a reply in a thread and a picture, with the paper clip, the cloud button and the microphone under it.](../img/chat.png)
+![A conversation with Eva in LosOS Chat while she writes: Eva is typing… under her name in the list and above the box you write in, a reaction and a reply in a thread under her message, a picture, and the paper clip, the cloud button and the microphone.](../img/chat.png)
 
 ## Other Matrix apps
 

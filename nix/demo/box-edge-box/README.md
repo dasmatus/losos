@@ -3,15 +3,16 @@
 Two LosOS boxes and an edge between them, as VMs on one private network, set
 up and walked through by one line:
 
-    curl -fsSL https://raw.githubusercontent.com/dasmatus/losos/main/nix/demo/box-edge-box/bootstrap.sh | sh
+    curl -fsSL https://raw.githubusercontent.com/dasmatus/losos/main/nix/demo/box-edge-box/bootstrap.ts | bun run -
 
 The script is served straight from this repository on GitHub, so the line
 always runs what is on `main`. Put a tag in place of `main` to run a release.
-Options go after `sh -s --`, for example `| sh -s -- --light --pause --host-mdns`.
+Options go at the end of the one-liner, for example
+`| bun run - --light --pause --host-mdns`.
 
 ## The two stages
 
-[`bootstrap.sh`](bootstrap.sh) is stage one. It reads the machine (Linux on
+[`bootstrap.ts`](bootstrap.ts) is stage one. It reads the machine (Linux on
 x86_64, KVM, processors, memory, free disk, Nix), picks the size of demo the
 machine can carry, pins the LosOS flake to the revision `main` points at,
 and writes stage two to `~/.local/share/losos-demo/stage2.sh` with those
@@ -30,7 +31,7 @@ and stops.
 | Picked when | KVM, 14 GiB of memory and 60 GB of disk | anything else with 6 GiB and 15 GB |
 | The boxes | installed from the installer ISO, unattended, with LosOS Cloud | the control plane, the admin pages and the edge path, as test VMs |
 | The edge | `nixosConfigurations.edge-demo` ([../edge-lan/edge-vm.nix](../edge-lan/edge-vm.nix)) | the edge gateway, as `losos-disk-edge-qcow2` runs it |
-| What runs it | [../edge-lan/run.sh](../edge-lan/run.sh) `up`, `walk`, `publish` | [demo.nix](demo.nix), `checks.losos-box-edge-box` |
+| What runs it | [../edge-lan/run.ts](../edge-lan/run.ts) `up`, `walk`, `publish` | [demo.nix](demo.nix), `checks.losos-box-edge-box` |
 | Time | about half an hour with KVM | about 15 minutes without KVM, after the first build |
 
 ## What the demo shows
@@ -76,7 +77,7 @@ computer on the network.
   host's own responder (Avahi or systemd-resolved, which stage one detects)
   hears the VMs and a browser opens `http://boxa.local/`. The light demo's
   test driver plugs a tap of that name into its vlan 77 itself; the full
-  demo runs `vde_plug2tap` into `run.sh`'s switch. `stage2.sh
+  demo runs `vde_plug2tap` into `run.ts`'s switch. `stage2.sh
   host-mdns-off` removes it.
 - `--pause` stops the light demo at each step and prints where to open each
   box's Mesh page and the edge's page, so it can be shown live.

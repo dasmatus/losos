@@ -15,6 +15,7 @@ install the [git hooks](#git-hooks).
 | `fmt` · `lint` · `test-rust`   | Format, lint and test both Rust crates |
 | `check-flake` · `check-eval`   | Evaluate the flake; force the full module merge |
 | `check-pins`                   | Fail if `flake.lock`, `devenv.yaml` and `devenv.lock` pin different nixpkgs |
+| `check-crates`                 | Fail if a `Cargo.toml` in the tree is missing from `crates.json`, or the manifest names one that is gone |
 | `build-pkgs` · `build-iso`     | Build the packages; build the installer ISO |
 | `build-images` · `build-media` | OCI images; demo QCOW2 and closure ISO (large, opt-in) |
 | `vm-tests`                     | All NixOS VM tests (needs `/dev/kvm`) |
@@ -26,18 +27,18 @@ Those are separate opt-in scripts.
 
 `nix/hooks/` holds three git hooks that replay CI's gates on the machine
 that makes a change, for the files it touches. The paths pick CI's lanes
-through `.github/scripts/ci-changes.sh`, so a lane CI would skip is skipped
+through `.github/scripts/ci-changes.ts`, so a lane CI would skip is skipped
 here too.
 
 | Hook | Runs |
 | --- | --- |
 | `commit-msg` | refuses an attribution trailer or a session link |
-| `pre-commit` | `cargo fmt --check` on every crate; clippy `-D warnings` on each crate the change reaches; `nix/lint-nix.sh` (nixfmt, deadnix, statix) on the staged `.nix` files; `nix/check-pins.sh` when a lock or `devenv.yaml` changes; `fix-hashes.py --check` when a `Cargo.lock` or `bun.lock` does; `bun run typecheck` in `admin-ui/app` (a checkout without the WebAssembly packages it imports gets them from `.#losos-lab-{core,virt,render}` and `.#losos-mdx-wasm`, and a copy it made is replaced when its crate changes); CI's eval job: `nix/check-flake.sh`, the module merge of `install`, `iso` and `edge-gateway`, the ISO and edge image derivations |
+| `pre-commit` | `cargo fmt --check` on every crate; clippy `-D warnings` on each crate the change reaches; `nix/lint-nix.ts` (nixfmt, deadnix, statix) on the staged `.nix` files; `nix/check-pins.ts` when a lock or `devenv.yaml` changes; `fix-hashes.py --check` when a `Cargo.lock` or `bun.lock` does; `bun run typecheck` in `admin-ui/app` (a checkout without the WebAssembly packages it imports gets them from `.#losos-lab-{core,virt,render}` and `.#losos-mdx-wasm`, and a copy it made is replaced when its crate changes); CI's eval job: `nix/check-flake.ts`, the module merge of `install`, `iso` and `edge-gateway`, the ISO and edge image derivations |
 | `pre-push` | all of pre-commit over the whole branch against its merge base with `origin/main`, plus `cargo test` for each crate reached, clippy for wasm32, `.#checks.x86_64-linux.losos-admin-ui` (the built SPA and its Playwright suite), `.#losos-handbook` when the handbook changes, and the VM tests the change touches |
 
 `devenv shell` and `nix develop` set `core.hooksPath` to `nix/hooks`, and so
 does a Claude Code session (`.claude/settings.json`). Anywhere else, run
-`bash nix/hooks/install` once per clone. cargo, bun and the Nix linters come
+`bun nix/hooks/install.ts` once per clone. cargo, bun and the Nix linters come
 from PATH, or from the flake when they are not on it.
 
 pre-push checks the commit it sends, not the working tree: when that commit
@@ -80,6 +81,13 @@ cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
 Same for `edge/registrar/`. Both crates must be clean under clippy and
 rustfmt. The Nix packages set `doCheck = false`, so `nix build` runs no
 tests.
+
+The crate lists behind `fmt`, `lint` and `test-rust` are not typed by
+hand: [`crates.json`](../crates.json) is the one list of this repo's Rust
+workspaces, those scripts loop over it, the git hooks read it too
+(`nix/hooks/lib.ts`), and `check-crates` refuses a manifest that misses a
+`Cargo.toml` in the tree. Why there is no Cargo workspace to begin with:
+[decisions/0001-not-a-cargo-workspace.md](decisions/0001-not-a-cargo-workspace.md).
 
 On pushes to `main`, a CI job runs `cargo fmt` and commits the result. Clippy
 is not auto-fixed.
@@ -161,7 +169,7 @@ One flake check is not a VM. `losos-invariants` (`nix/tests/invariants.nix`)
 evaluates the published `install` configuration and asserts the option values
 the appliance cannot afford to lose to a drifting default: garbage
 collection, the boot-menu cap, the unlock mode, the `#install` fragment.
-`nix flake check --no-build` runs it, and so does `nix/check-flake.sh`, the
+`nix flake check --no-build` runs it, and so does `nix/check-flake.ts`, the
 same evaluation a few attributes per process, which CI's eval job and
 `check-flake` use. One process evaluating every VM test passes 13 GiB, more
 than a GitHub runner has. Either way it fails at no build cost.

@@ -19,8 +19,11 @@ use actix_web::{web, HttpRequest, HttpResponse};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-/// What the version route says.
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+/// What the version route says — the tag the tree is (backend/build.rs
+/// generates `losos::version::VERSION` from nix/version.nix, so it matches
+/// boot menus and os-release), falling back to Cargo's counter outside a
+/// full source checkout.
+pub const VERSION: &str = crate::version::VERSION;
 
 pub fn routes(cfg: &mut web::ServiceConfig) {
     let scope = web::scope("/api/v1")

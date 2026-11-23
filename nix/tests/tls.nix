@@ -143,8 +143,20 @@ pkgs.testers.nixosTest {
         # cache.nixos.org still serves most of any closure here; ours is added,
         # not substituted for it.
         assert "cache.nixos.org" in conf, "the upstream cache was replaced rather than extended"
-        # A cache that is unreachable must not wedge the 03:00 rebuild on a box
-        # with no shell.
-        assert "fallback = true" in conf, f"fallback is off:\n{conf}"
+        assert "always-allow-substitutes = true" in conf, f"substitution not forced:\n{conf}"
+        # A miss at every substituter must fail, not compile on the medium.
+        assert "fallback = false" in conf, f"fallback is still on:\n{conf}"
+        # flake.nix carries the same cache in its nixConfig, and nix asks y/N
+        # for each of those settings on first evaluation, defaulting to no
+        # (libflake/config.cc). Off, an unattended install answers no and the
+        # install closure is built from source.
+        assert "accept-flake-config = true" in conf, f"the flake's cache would be dropped at the prompt:\n{conf}"
+        # A user in allowed-users but not trusted-users may pass as a
+        # substituter only a URL listed in trusted-substituters; anything else
+        # is answered "ignoring untrusted substituter".
+        trusted = [line for line in conf.splitlines() if line.startswith("trusted-substituters")]
+        assert trusted and "proxy.example.test" in trusted[0], (
+            f"the proxy is not a trusted substituter for ordinary users: {trusted}"
+        )
   '';
 }

@@ -210,6 +210,21 @@ export default defineMessages({
     sk: "asistent asistenti úrovně oprávnění oblasti zručnosti",
     de: "Vertraulichkeit Bereiche Fähigkeiten KI Assistent",
   },
+  "settings.panes.features.label": {
+    en: "Features",
+    sk: "Funkcie",
+    de: "Funktionen",
+  },
+  "settings.panes.features.summary": {
+    en: "Turn the box's features on and off: Cloud, Chat, Git, Mail, apps, the AI features and the rest, each with one switch.",
+    sk: "Zapínajte a vypínajte funkcie zariadenia: Cloud, Chat, Git, Mail, aplikácie, funkcie AI a ďalšie, každú jedným prepínačom.",
+    de: "Schalte die Funktionen der Box ein und aus: Cloud, Chat, Git, Mail, Apps, die KI-Funktionen und mehr, jede mit einem Schalter.",
+  },
+  "settings.panes.features.keywords": {
+    en: "",
+    sk: "funkcie zapnúť vypnúť zakázať služby chat pošta cloud aplikácie",
+    de: "Funktionen deaktivieren aktivieren Dienste Chat Mail Cloud Apps",
+  },
   "settings.panes.about.label": { en: "About", sk: "O zariadení", de: "Über" },
   "settings.panes.about.summary": {
     en: "What this box is, right now.",

@@ -17,6 +17,7 @@ import { UsersPane } from "./settings/pane-users";
 import { ModerationPane } from "./settings/pane-moderation";
 import { AdvancedPane } from "./settings/pane-advanced";
 import { AppsPane } from "./settings/pane-apps";
+import { FeaturesPane } from "./settings/pane-features";
 import { BackupPane } from "./settings/pane-backup";
 import { HardwarePane } from "./settings/pane-hardware";
 import { HistoryPane } from "./settings/pane-history";
@@ -146,6 +147,8 @@ function Pane({
       // No draft, no Apply bar: the levels, the areas, the assistants and
       // the skills are each their own request.
       return <TagPane locked={form.locked} />;
+    case "features":
+      return <FeaturesPane form={form} />;
     case "advanced":
       return <AdvancedPane form={form} />;
     case "history":

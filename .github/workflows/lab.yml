@@ -50,17 +50,13 @@ jobs:
     name: "lab: qemu-wasm + guests"
     runs-on: ubuntu-latest
     # qemu-wasm under emscripten and a Linux kernel, both from source.
-    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
-        with:
-          cache-url: ${{ vars.LOSOS_PROXY_URL }}
-          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: admin-ui/app/package.json
-      - run: admin-ui/lab/engine/build.sh lab-out
+      - run: bun admin-ui/lab/engine/build.ts lab-out
       - uses: actions/upload-artifact@v7
         with:
           name: losos-lab-hosted

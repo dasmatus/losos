@@ -149,7 +149,7 @@ Nutzung auf; und die Administrationsrouten lehnen Loopback ab.
 
 | | Auf der Box (`/diagrams/`) | Gehostet |
 | --- | --- | --- |
-| Gebaut von | `nix build .#losos-admin-ui` (Diagramme ist ein Bildschirm davon) | `admin-ui/lab/engine/build.sh` in `lab.yml` |
+| Gebaut von | `nix build .#losos-admin-ui` (Diagramme ist ein Bildschirm davon) | `admin-ui/lab/engine/build.ts` in `lab.yml` |
 | Konsolen | simuliert, oder echte Gäste unter libvirt, wenn die Box den Helfer ausführt | echte x86_64-Gäste unter libvirt auf deinem Rechner, sonst qemu-wasm |
 | Braucht | nichts außer der Box | einen Cross-Origin-isolierten Host (COOP + COEP) |
 
@@ -185,7 +185,7 @@ mit `Cross-Origin-Opener-Policy: same-origin` und
 für `serve` auf deinem eigenen Rechner:
 
 ```sh
-admin-ui/lab/engine/build.sh /tmp/lab     # docker, nix, bun
+admin-ui/lab/engine/build.ts /tmp/lab     # docker, nix, bun
 bunx serve@14.2.4 -l 8080 /tmp/lab        # then open http://localhost:8080/diagrams/
 ```
 
@@ -287,7 +287,7 @@ So nutzt du ihn neben virt-manager auf deinem eigenen PC:
    `losos-registrar` (`nix build .#losos-registrar`).
 2. Leg die Gast-Images in einen Ordner namens `guest`: `bzImage`,
    `rootfs.bin` und, für Router, Switches und Access Points, `gear.bin`.
-   `admin-ui/lab/engine/build.sh` erzeugt alle drei, und die gehostete Kopie
+   `admin-ui/lab/engine/build.ts` erzeugt alle drei, und die gehostete Kopie
    liefert sie unter `/diagrams/guest/` aus, sodass du sie von dort
    herunterladen kannst.
 3. Starte den Helfer im Ordner oberhalb von `guest`:

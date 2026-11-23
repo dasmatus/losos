@@ -39,6 +39,9 @@
 let
   inherit (pkgs) lib;
 
+  offlineFlake = import ../offline-flake.nix { inherit self pkgs; };
+  inherit (offlineFlake) repo inputSources;
+
   # What losos-install writes for this VM (installer.rs, render_target):
   # the one empty disk, no TPM, BIOS firmware.
   drive = "/dev/vda";
@@ -48,27 +51,6 @@ let
     losos.bios = true;
   };
   installed = self.nixosConfigurations.install.extendModules { modules = [ target ]; };
-
-  # This tree as a repository to clone: what `git clone` of the branch gives.
-  repo = pkgs.runCommand "losos-repo" { nativeBuildInputs = [ pkgs.git ]; } ''
-    cp -r ${self} tree
-    chmod -R u+w tree
-    cd tree
-    git init -q -b main
-    # A commit starts `git maintenance run --auto --detach`, whose repack
-    # renames packs under the clone below ("failed to copy file to …tmp_pack").
-    git config maintenance.auto false
-    git add -A
-    git -c user.name=losos -c user.email=losos@local commit -qm tree
-    git clone -q --bare . $out
-  '';
-
-  # Every input's source, inputs of inputs included.
-  sources =
-    let
-      walk = inputs: lib.concatMap (i: [ i.outPath ] ++ walk (i.inputs or { })) (lib.attrValues inputs);
-    in
-    lib.unique (walk (removeAttrs self.inputs [ "self" ]));
 in
 pkgs.testers.runNixOSTest {
   name = "losos-iso-install";
@@ -141,7 +123,7 @@ pkgs.testers.runNixOSTest {
         installed.config.system.build.destroyFormatMount
         repo
       ]
-      ++ sources;
+      ++ inputSources;
     };
 
   # The installed disk, booted by its own boot loader. The node's NixOS

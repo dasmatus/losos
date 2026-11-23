@@ -29,7 +29,6 @@ jobs:
   create-tag-and-dispatch:
     name: "release: create immutable release from CI"
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     steps:
       - name: require the default branch
         shell: bash
@@ -72,7 +71,7 @@ jobs:
           git tag -a "$tag" -m "LosOS $tag" HEAD
           git push origin "refs/tags/$tag"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "Created `$tag` at `$(git rev-parse HEAD)`."
+          echo "Created ${tag} at $(git rev-parse HEAD)."
 
       # Pushes made with GITHUB_TOKEN intentionally do not trigger other
       # workflows, so dispatch the normal CI explicitly on the new tag.
@@ -106,7 +105,7 @@ jobs:
           {
             echo "## Release CI started"
             echo
-            echo "- Tag: [`$TAG`](${GITHUB_SERVER_URL}/${REPO}/releases/tag/${TAG})"
+            echo "- Tag: [\`${TAG}\`](${GITHUB_SERVER_URL}/${REPO}/releases/tag/${TAG})"
             echo "- Channel: $CHANNEL"
             echo "- Build and publication: [CI workflow](${GITHUB_SERVER_URL}/${REPO}/actions/workflows/ci.yml)"
             echo

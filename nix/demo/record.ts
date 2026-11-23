@@ -17,41 +17,41 @@
  * is light (default) or dark. */
 
 const exists = (file: string): Promise<boolean> => Bun.file(file).exists();
-const join = (...parts: string[]): string => parts.join('/');
+const join = (...parts: string[]): string => parts.join("/");
 /* One line more at the end of a file. */
 async function append(path: string, line: string): Promise<void> {
   const file = Bun.file(path);
-  await Bun.write(file, ((await file.exists()) ? await file.text() : '') + line);
+  await Bun.write(file, ((await file.exists()) ? await file.text() : "") + line);
 }
 
-const appDir = Bun.env.LOSOS_APP_DIR || join(import.meta.dir, '..', '..', 'admin-ui', 'app');
-const { chromium } = await import(join(appDir, 'node_modules', 'playwright', 'index.mjs'));
+const appDir = Bun.env.LOSOS_APP_DIR || join(import.meta.dir, "..", "..", "admin-ui", "app");
+const { chromium } = await import(join(appDir, "node_modules", "playwright", "index.mjs"));
 
 const dir = Bun.env.LOSOS_RECORD_DIR;
-if (!dir) throw new Error('set LOSOS_RECORD_DIR');
+if (!dir) throw new Error("set LOSOS_RECORD_DIR");
 const viewport = {
   width: Number(Bun.env.LOSOS_RECORD_WIDTH || 1280),
   height: Number(Bun.env.LOSOS_RECORD_HEIGHT || 860),
 };
-const theme = Bun.env.LOSOS_THEME || 'light';
+const theme = Bun.env.LOSOS_THEME || "light";
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 const log = (...a: unknown[]): void => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 const browser = await chromium.launch({ chromiumSandbox: false, executablePath: Bun.env.LOSOS_CHROMIUM || undefined });
 
 async function shoot(n: number, shot: Shot) {
-  const page = await browser.newPage({ viewport, locale: 'en-US' });
+  const page = await browser.newPage({ viewport, locale: "en-US" });
   const token = shot.token ? (await Bun.file(join(dir, shot.token)).text()).trim() : null;
   await page.addInitScript(
     ([t, th, local]: [string | null, string, Record<string, string>]) => {
-      if (t) window.sessionStorage.setItem('losos-token', t);
-      window.localStorage.setItem('losos-theme', th);
+      if (t) window.sessionStorage.setItem("losos-token", t);
+      window.localStorage.setItem("losos-theme", th);
       for (const [k, v] of Object.entries(local)) window.localStorage.setItem(k, v);
     },
     [token, theme, shot.local || {}],
   );
   try {
-    await page.goto(`http://127.0.0.1:${shot.port}${shot.path || '/'}`, { waitUntil: 'networkidle', timeout: 120000 });
+    await page.goto(`http://127.0.0.1:${shot.port}${shot.path || "/"}`, { waitUntil: "networkidle", timeout: 120000 });
     if (shot.wait) {
       try {
         await page.locator(shot.wait).first().waitFor({ timeout: 90000 });
@@ -60,7 +60,7 @@ async function shoot(n: number, shot: Shot) {
       }
     }
     await sleep(800);
-    const file = join(dir, `${String(n).padStart(2, '0')}-${shot.name}.png`);
+    const file = join(dir, `${String(n).padStart(2, "0")}-${shot.name}.png`);
     await page.screenshot({ path: file });
     return file;
   } finally {
@@ -69,10 +69,10 @@ async function shoot(n: number, shot: Shot) {
 }
 
 let done = 0;
-log('waiting for the VM script');
+log("waiting for the VM script");
 for (;;) {
-  const tl = join(dir, 'timeline.jsonl');
-  const lines = await exists(tl) ? (await Bun.file(tl).text()).split('\n').filter(Boolean) : [];
+  const tl = join(dir, "timeline.jsonl");
+  const lines = await exists(tl) ? (await Bun.file(tl).text()).split("\n").filter(Boolean) : [];
   if (lines.length > done) {
     const ev = JSON.parse(lines[done]) as Event;
     log(`step ${ev.n} ${ev.step}: ${ev.caption}`);
@@ -81,19 +81,19 @@ for (;;) {
       try {
         files.push(await shoot(ev.n, shot));
       } catch (e) {
-        log(`${shot.name}: ${e.message}`);
+        log(`${shot.name}: ${(e as Error).message}`);
       }
     }
-    await append(join(dir, 'shots.jsonl'), JSON.stringify({ n: ev.n, step: ev.step, caption: ev.caption, files }) + '\n');
-    await Bun.write(join(dir, `ack-${ev.n}`), '');
+    await append(join(dir, "shots.jsonl"), JSON.stringify({ n: ev.n, step: ev.step, caption: ev.caption, files }) + "\n");
+    await Bun.write(join(dir, `ack-${ev.n}`), "");
     done += 1;
   } else {
-    if (await exists(join(dir, 'vm-finished'))) break;
+    if (await exists(join(dir, "vm-finished"))) break;
     await sleep(1000);
   }
 }
 await browser.close();
-log('recorder done');
+log("recorder done");
 
 interface Shot {
   name: string;

@@ -947,58 +947,53 @@ async fn a_name_with_accents_reaches_the_person() {
     assert_eq!(v["name"], "Eva Kováč");
 }
 
-/// Office over the cloud's own files: the web app opens one of the person's
-/// documents, and coolwsd reads and saves it on `/wopi/files/` of the same
-/// listener with the token alone. Collabora's discovery is a saved copy, as
-/// on the box.
+/// Office over the cloud's own files: native LosOS Office capability,
+/// open, and import routing. Legacy formats are imported into native
+/// files instead of edited through Collabora/WOPI.
 #[actix_web::test]
-async fn office_opens_and_saves_a_cloud_document() {
+async fn office_opens_and_imports_a_cloud_document() {
     use losos_ctl::cloud::office::CloudFiles;
     use losos_ctl::office::actix::Sessions;
-    use losos_ctl::office::discovery::Coolwsd;
-    use losos_ctl::office::{TokenKey, Wopi};
 
-    let (d, c) = cloud();
-    let discovery = d.path().join("discovery.xml");
-    std::fs::write(
-        &discovery,
-        r#"<wopi-discovery><net-zone name="external-http"><app name="writer">
-<action default="true" ext="docx" name="edit" urlsrc="https://box.local/browser/f00d/cool.html?"/>
-</app></net-zone></wopi-discovery>"#,
-    )
-    .unwrap();
+    let (_d, c) = cloud();
     let files = Arc::new(CloudFiles { cloud: c.clone() });
-    let _ = c.office.set(Arc::new(Sessions {
-        wopi: Arc::new(Wopi::new(
-            files,
-            TokenKey::from_bytes(&[7; 32]),
-            "http://127.0.0.1:8093",
-        )),
-        coolwsd: Coolwsd::new(discovery.to_str().unwrap()),
-    }));
+    let _ = c.office.set(Arc::new(Sessions::new(files)));
     c.store.ensure_home("alice").unwrap();
     let doc = c
         .store
         .write_bytes("alice", "Plan.docx", b"version one")
         .unwrap()
         .entry;
-    c.store.write_bytes("alice", "notes.txt", b"x").unwrap();
+    let native = c
+        .store
+        .write_bytes("alice", "Note.paper", b"paper")
+        .unwrap()
+        .entry;
+    c.store.write_bytes("alice", "archive.xyz", b"x").unwrap();
     let app = app!(c);
 
-    // The types Collabora opens.
+    // Native Office capabilities are available to signed-in users.
     let r = call_service(
         &app,
         as_alice(TestRequest::get().uri("/cloud/api/office/extensions")).to_request(),
     )
     .await;
     assert_eq!(r.status(), 200);
-    assert_eq!(
-        text(r).await,
-        r#"{"extensions":[{"extension":"docx","edit":true}]}"#
+    let v: serde_json::Value = serde_json::from_str(&text(r).await).unwrap();
+    let exts = v["extensions"].as_array().unwrap();
+    assert!(
+        exts.iter()
+            .any(|e| e["extension"] == "docx" && e["mode"] == "import"),
+        "docx should be importable: {v}"
+    );
+    assert!(
+        exts.iter()
+            .any(|e| e["extension"] == "paper" && e["mode"] == "native" && e["edit"] == true),
+        "paper should be natively editable: {v}"
     );
 
-    // Nobody signed in, another site, someone else's file, a type it does
-    // not open: refused.
+    // Nobody signed in, another site, someone else's file, an unsupported
+    // type: refused.
     let open = |id: String| {
         TestRequest::post()
             .uri("/cloud/api/office/open")
@@ -1024,85 +1019,56 @@ async fn office_opens_and_saves_a_cloud_document() {
     )
     .await;
     assert_eq!(r.status(), StatusCode::NOT_FOUND);
-    let txt = c.store.stat("alice", "notes.txt").unwrap();
-    let r = call_service(&app, as_alice(open(txt.id.to_string())).to_request()).await;
+    let xyz = c.store.stat("alice", "archive.xyz").unwrap();
+    let r = call_service(&app, as_alice(open(xyz.id.to_string())).to_request()).await;
     assert_eq!(r.status(), StatusCode::UNPROCESSABLE_ENTITY);
 
-    // Alice's own document: a session on this origin.
+    // A legacy document is offered for import, not in-place WOPI editing.
     let r = call_service(&app, as_alice(open(doc.id.to_string())).to_request()).await;
     assert_eq!(r.status(), 200);
     let session: serde_json::Value = serde_json::from_str(&text(r).await).unwrap();
+    assert_eq!(session["kind"], "import");
     assert_eq!(session["name"], "Plan.docx");
-    assert_eq!(session["writable"], true);
-    assert_eq!(session["https"], true);
-    let url = session["url"].as_str().unwrap();
-    assert!(url.starts_with("/browser/f00d/cool.html?WOPISrc="), "{url}");
-    let token = session["accessToken"].as_str().unwrap();
+    assert_eq!(session["extension"], "docx");
+    assert_eq!(session["importTarget"], "paper");
 
-    // coolwsd: the file's facts, its contents, a save. No sign-in, only
-    // the token, and only for that file.
-    let wopi = format!("/wopi/files/{}", doc.id);
+    // A native document opens in the native editor model.
+    let r = call_service(&app, as_alice(open(native.id.to_string())).to_request()).await;
+    assert_eq!(r.status(), 200);
+    let session: serde_json::Value = serde_json::from_str(&text(r).await).unwrap();
+    assert_eq!(session["kind"], "native");
+    assert_eq!(session["name"], "Note.paper");
+    assert_eq!(session["writable"], true);
+    assert_eq!(session["extension"], "paper");
+
+    // Import creates a native copy beside the original.
     let r = call_service(
         &app,
-        TestRequest::get()
-            .uri(&format!("{wopi}?access_token={token}"))
-            .to_request(),
+        as_alice(
+            TestRequest::post()
+                .uri("/cloud/api/office/import")
+                .set_json(serde_json::json!({ "fileId": doc.id.to_string() })),
+        )
+        .to_request(),
     )
     .await;
     assert_eq!(r.status(), 200);
-    let info: serde_json::Value = serde_json::from_str(&text(r).await).unwrap();
-    assert_eq!(info["BaseFileName"], "Plan.docx");
-    assert_eq!(info["UserFriendlyName"], "Alice Example");
-    let r = call_service(
-        &app,
-        TestRequest::get()
-            .uri(&format!("{wopi}/contents?access_token={token}"))
-            .to_request(),
-    )
-    .await;
-    assert_eq!(text(r).await, "version one");
-    // Collabora locks the file before its first save, as WOPI asks.
-    let r = call_service(
-        &app,
-        TestRequest::post()
-            .uri(&format!("{wopi}?access_token={token}"))
-            .insert_header(("X-WOPI-Override", "LOCK"))
-            .insert_header(("X-WOPI-Lock", "cool-1"))
-            .to_request(),
-    )
-    .await;
-    assert_eq!(r.status(), 200);
-    let r = call_service(
-        &app,
-        TestRequest::post()
-            .uri(&format!("{wopi}/contents?access_token={token}"))
-            .insert_header(("X-WOPI-Override", "PUT"))
-            .insert_header(("X-WOPI-Lock", "cool-1"))
-            .set_payload("version two")
-            .to_request(),
-    )
-    .await;
-    assert_eq!(r.status(), 200);
-    assert_eq!(
-        c.store.read_bytes("alice", "Plan.docx").unwrap(),
-        b"version two"
+    let imported: serde_json::Value = serde_json::from_str(&text(r).await).unwrap();
+    assert_eq!(imported["kind"], "paper");
+    assert!(
+        imported["name"].as_str().unwrap().ends_with(".paper"),
+        "expected .paper import: {imported}"
     );
-    let r = call_service(
-        &app,
-        TestRequest::get()
-            .uri(&format!("{wopi}/contents?access_token=nope"))
-            .to_request(),
-    )
-    .await;
-    assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
-    let r = call_service(
-        &app,
-        TestRequest::get()
-            .uri(&format!("/wopi/files/{}?access_token={token}", txt.id))
-            .to_request(),
-    )
-    .await;
-    assert_ne!(r.status(), 200, "the token is for one file");
+    let created = c
+        .store
+        .stat("alice", imported["name"].as_str().unwrap())
+        .unwrap();
+    let bytes = c
+        .store
+        .read_bytes("alice", imported["name"].as_str().unwrap())
+        .unwrap();
+    assert!(!bytes.is_empty());
+    assert!(created.id > 0);
 }
 
 /// A MOVE whose source is missing or sits inside the destination used to

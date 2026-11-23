@@ -139,6 +139,16 @@ läuft, sodass keine Seite mit dem Anteil der anderen davongehen kann.
   Zeitraums zurück, der nicht geliefert wurde, auf den Cent aufgerundet, und
   der Verkäufer wird für den Rest bezahlt, abzüglich der Gebühr auf diesen
   Teil. Ist die Box von Anfang an offline, wird die ganze Zahlung erstattet.
+- **Ein Volume, das nicht antwortet, erstattet dem Käufer ebenfalls.** Dass
+  der Node des Verkäufers `Ready` ist, sagt nichts über den Claim, in den der
+  Käufer seine Backups legt. Sobald der Käufer die Tür zum Volume-Backup
+  mit einem Schlüssel geöffnet hat, fragt die Edge das Volume daher bei jedem
+  Reconcile-Durchlauf selbst: eine signierte Anfrage an den eigenen Server
+  des Volumes, der nur gelingt, wenn das Volume dahinter antwortet. 24
+  Stunden am Stück oder insgesamt 48 Stunden Stille beenden den Zeitraum, und
+  der Käufer wird genauso schadlos gehalten wie bei einer offline Box. Zeit,
+  die die Edge nicht prüfen konnte — sie war ausgefallen, oder der Apiserver
+  antwortete nicht — zählt gegen niemanden.
 - **Nichts eingerichtet, nichts bezahlt.** Ist das Gekaufte nicht innerhalb
   von 23 Stunden nach der Zahlung eingerichtet, bekommt der Käufer alles
   zurück.
@@ -191,7 +201,8 @@ nach Monatsende weiterhin Longhorn-Kapazität.
   `Immediate`-Binding voraus, was die Standardklasse von Longhorn ist. Eine
   `WaitForFirstConsumer`-Klasse bindet nie, weil noch nichts den Claim
   einhängt. Die Kontoansicht meldet einen gebundenen Claim als
-  `volume: "<namespace>/<claim>"`. Die Edge notiert den Namen des Claims,
+  `volume: "<namespace>/<claim>"` und `volume_ok` danach, ob er auf die
+  letzte Prüfung der Edge geantwortet hat. Die Edge notiert den Namen des Claims,
   bevor sie ihn anfordert, sodass ein Claim, der nie bindet, oder einer, der
   kurz vor dem Anhalten der Edge entstand, seine Einheiten auch nach
   Monatsende verkauft hält.
@@ -199,7 +210,9 @@ nach Monatsende weiterhin Longhorn-Kapazität.
   auf einer gebundenen Speicherbestellung ablegen (Einstellungen, Backup).
   Die Box verschlüsselt mit restic, bevor etwas sie verlässt, wie bei einem
   Bucket, und spricht mit `/market/storage/<order>/` auf der Edge, das
-  restics REST-Protokoll bedient. Die Edge startet beim ersten Zugriff einen
+  restics REST-Protokoll bedient. Die Edge startet beim ersten Zugriff —
+  oder früher, wenn die unten beschriebene Gesundheitsprüfung schneller ist —
+  einen
   `rest-server` pro Bestellung neben dem Claim, aus einem Image, das sie
   mitbringt (`losos.edge.market.backups.enable`, standardmäßig an) und nie
   zieht. Das einzige Konto des Servers ist das der Edge, mit einem Passwort
@@ -223,7 +236,9 @@ Grenzen, die du kennen solltest und von denen noch keine durchgesetzt wird:
 - Der einzige Weg zum Claim ist der Backup-Pfad oben. Nichts anderes hängt
   ihn ein.
 - Es wird nie etwas gelöscht. Ein abgelaufener Anspruch wird nicht mehr
-  gemeldet, aber das Volume enthält die Daten des Käufers, und das Entfernen
+  gemeldet, und seine Backup-Tür ist zu — der Server vor dem Volume wird
+  gestoppt und sein Passwort verworfen — aber das Volume enthält die Daten
+  des Käufers, und das Entfernen
   entscheidet der Betreiber. Bis der Betreiber den Claim löscht, bleiben
   seine GiB verkauft, sodass dieselbe Kapazität nie zweimal verkauft wird. Das
   gilt auch für einen Claim, der noch `Pending` ist, da er noch binden kann.
@@ -232,7 +247,8 @@ Grenzen, die du kennen solltest und von denen noch keine durchgesetzt wird:
 - Der ServiceAccount des Registrars erhält clusterweit `get`/`create` auf
   Namespaces und PersistentVolumeClaims, wenn der Marktplatz aktiviert ist,
   und auf Deployments und Services (und `create` auf Secrets), wenn Backups
-  auf gekauftem Speicher an sind. Kubernetes-RBAC kann keines davon auf `market-*`-Namen einschränken.
+  auf gekauftem Speicher an sind — plus `patch` auf Deployments, womit der
+  Server einer abgelaufenen Bestellung auf null skaliert wird. Kubernetes-RBAC kann keines davon auf `market-*`-Namen einschränken.
 :::
 
 ## Admin-UI {#admin-ui}
@@ -892,12 +908,12 @@ der nur Coins annimmt, kann bis dahin nicht bestellt werden.
   Erstattung aus einem anderen Grund, nachdem der Verkäufer bezahlt wurde,
   entscheidet der Betreiber, mit `reverse_transfer`, damit auch der Anteil
   des Verkäufers zurückkommt.
-- **Nachweis, dass der Speicher intakt ist.** Eine Box gilt als online,
-  solange ihr Node im Mesh `Ready` ist. Die Edge prüft nicht, ob das Volume
-  des Käufers antwortet.
-- **Durchsetzung des Anspruchs.** Die Erfüllung legt den Claim an; sie hindert
-  einen Käufer nicht daran, mehr zu nutzen, als er gekauft hat, misst keine
-  Rechenleistung und entzieht bei Ablauf keinen Zugriff.
+- **Messung von Rechenleistung.** Das Rechenleistungsguthaben ist ein
+  Ledger-Eintrag, und nichts plant danach, also gibt es nichts zu messen.
+  Was sich durchsetzen lässt: Gekaufter Speicher ist auf die Größe seines
+  Claims begrenzt, die Backup-Tür ist nach Ende der bezahlten Zeit zu (das
+  beschreibt die [Erfüllung](#fulfilment)), und die Replikate einer
+  abgelaufenen Maschine werden gestoppt.
 - **Steuern, Rechnungsstellung und Verkäuferprüfung** über das hinaus, was das
   Onboarding von Stripe leistet. Der Betrieb eines Marktplatzes bringt
   rechtliche Pflichten mit sich, die davon abhängen, wo du tätig bist. Dies

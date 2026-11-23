@@ -1,19 +1,17 @@
-/* A cloud document in LosOS Office, at /cloud/office/:file. The editor
- * takes the width and the height under the cloud's top bar, like a text
- * document at /cloud/edit/:file. A `.paper` or `.slides` file is LosOS
- * Office's own (paper/), a Markdown file opens in the Markdown editor
- * (markdown/), and everything else is Collabora's. */
+/* A cloud document in LosOS Office, at /cloud/office/:file. Native
+ * `.paper`/`.slides` and Markdown open in LosOS editors; legacy formats
+ * are imported into native LosOS Office (Collabora has been removed). */
 
 import * as React from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Spinner } from "@/components/ui/spinner";
 import { useT } from "@/lib/i18n-react";
 import { cloud, isAbort, type Entry } from "../api";
-import { OfficeEditor } from "./editor";
 import { openOffice } from "./api";
 import { MarkdownOffice } from "./markdown/editor";
 import { isMarkdown } from "./markdown/new";
 import { isPaper } from "./paper/new";
+import { LegacyImportView } from "./import";
 
 const PaperOffice = React.lazy(() => import("./paper/editor").then((m) => ({ default: m.PaperOffice })));
 
@@ -22,14 +20,12 @@ export function OfficePage() {
   const { file = "" } = useParams();
   const navigate = useNavigate();
   const load = React.useCallback(() => openOffice(file), [file]);
-  // Back where the person came from; a document opened in a tab of its own
-  // goes to the files.
   const close = React.useCallback(() => {
     if (window.history.state?.idx > 0) navigate(-1);
     else navigate("/files");
   }, [navigate]);
+  const onImported = React.useCallback((id: string) => navigate(`/cloud/office/${id}`), [navigate]);
 
-  // Which editor is the file's name's business.
   const [entry, setEntry] = React.useState<{ id: string; entry: Entry | null } | null>(null);
   React.useEffect(() => {
     const ac = new AbortController();
@@ -70,7 +66,5 @@ export function OfficePage() {
   if (entry.entry !== null && isMarkdown(entry.entry.name ?? "")) {
     return <MarkdownOffice key={file} entry={entry.entry} onClose={close} />;
   }
-  // Anything else, and a file the list cannot name, is Collabora's: its
-  // editor says what is wrong in its own words.
-  return <OfficeEditor key={file} load={load} onClose={close} />;
+  return <LegacyImportView key={file} load={load} onClose={close} onImported={onImported} />;
 }

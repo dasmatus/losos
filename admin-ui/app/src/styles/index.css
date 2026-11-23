@@ -524,6 +524,37 @@
   }
 }
 
+/* ── Wide mode (lib/wide.ts) ──────────────────────────────────────────────
+ * `data-wide="on"` on <html> — the person menu keeps it beside the theme —
+ * takes the shell's margins, column ceilings and gaps away: the bar runs to
+ * the window's edges and the page under it to the edges and to the foot.
+ * The room the box itself needs is not a margin and stays: the phone's
+ * bottom bar and the notch's insets keep their shell padding (the rule
+ * above), and the page editor's dock keeps its own (also above). The
+ * attribute rules outrank the utilities on [data-shell-body], which are
+ * plain classes. */
+html[data-wide] .losos-shell [data-slot="app-bar"] > div,
+html[data-wide] [data-shell-body] {
+  max-width: none;
+  padding-left: 0;
+  padding-right: 0;
+}
+html[data-wide] [data-shell-body] {
+  padding-top: 0;
+  padding-bottom: 0;
+  gap: 0;
+}
+html[data-wide] [data-shell-body] main {
+  max-width: none;
+}
+/* A document framed as a card (ShellDocument) sits flush at full bleed, so
+ * it loses its corners and the borders along the window's edges. */
+html[data-wide] [data-shell-document] {
+  border-radius: 0;
+  border-left-width: 0;
+  border-right-width: 0;
+}
+
 /* The phone's bottom bar (components/ui/bottom-nav.tsx) is fixed to the
  * viewport and drawn only below md. While it is on the page its height,
  * the home indicator's safe area included, is --bottom-nav: the shell pads

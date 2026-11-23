@@ -1,0 +1,40 @@
+From cfeea58a8b8363524eac92712000f8d962f7d0f5 Mon Sep 17 00:00:00 2001
+From: Matus Mastena <ich@dasmat.us>
+Date: Thu, 12 Nov 2026 18:00:31 +0100
+Subject: [PATCH] test(registrar): leave the volume pass out of the backup-door
+ count
+
+The v0.7.0 tag CI failed in the_backup_door_opens_with_the_buyers_key_and_starts_a_server when the reconciler's volume probe issued Service and Deployment reads between before and the refused-key check. Filter those reads the same way as seller_presence node reads, and ship the fix as a release patch for v0.7.0.
+---
+ edge/registrar/tests/market.rs | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/edge/registrar/tests/market.rs b/edge/registrar/tests/market.rs
+index 7a0bf7b1..dd283af4 100644
+--- a/edge/registrar/tests/market.rs
++++ b/edge/registrar/tests/market.rs
+@@ -1229,10 +1229,20 @@ async fn the_backup_door_opens_with_the_buyers_key_and_starts_a_server() {
+     // The reconciler asks whether the seller's node is Ready on its own
+     // passes (`seller_presence`), which a heartbeat or a tick can start
+     // inside this window; that read is not the door's, so it is not counted.
++    // The volume pass (`storage::volumes_pass`) probes bought volumes whose
++    // door has a key on its own schedule: it may read the order's Service and
++    // Deployment between `before` and the check; those reads are not the
++    // door's either.
++    let reconciler_kube_read = |req: &str| {
++        req.starts_with("GET /api/v1/nodes/")
++            || (req.starts_with("GET /api/v1/namespaces/") && req.contains("/services/rest-"))
++            || (req.starts_with("GET /apis/apps/v1/namespaces/")
++                && req.contains("/deployments/rest-"))
++    };
+     let door_calls = || {
+         kube.seen()
+             .into_iter()
+-            .filter(|s| !s.starts_with("GET /api/v1/nodes/"))
++            .filter(|s| !reconciler_kube_read(s))
+             .count()
+     };
+     let before = door_calls();
+-- 
+2.56.0
+

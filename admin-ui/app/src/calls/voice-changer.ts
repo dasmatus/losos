@@ -48,7 +48,7 @@ export class VoiceChain {
   static async open(mic: MediaStreamTrack): Promise<VoiceChain> {
     const context = new AudioContext({ latencyHint: "interactive" });
     try {
-      await context.audioWorklet.addModule(`${import.meta.env.BASE_URL}voice-worklet/voice-changer.js`);
+      await context.audioWorklet.addModule(`${(import.meta.env?.BASE_URL ?? "/")}voice-worklet/voice-changer.js`);
       await context.resume();
       const source = context.createMediaStreamSource(new MediaStream([mic]));
       const node = new AudioWorkletNode(context, "voice-changer", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });

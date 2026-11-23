@@ -3,6 +3,9 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { ArrowLeft01Icon, ArrowRight01Icon, Cancel01Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/lib/i18n-react";
+import { EditorView } from "@codemirror/view";
+import { contextMenu } from "@/lib/context-menu";
+import { splitFrontMatter } from "@/notes/markdown";
 import { cn } from "@/lib/utils";
 import { renderNote, type Resolver } from "@/notes/markdown";
 import { useNotesReady } from "@/notes/note-view";
@@ -49,21 +52,100 @@ export function Filmstrip({
   current,
   resolver,
   onPick,
+  view,
 }: {
   slides: readonly Slide[];
   current: number;
   resolver: Resolver;
   onPick: (index: number) => void;
+  view?: EditorView | null;
 }) {
   const t = useT();
   const ref = React.useRef<HTMLOListElement>(null);
   React.useEffect(() => {
     ref.current?.querySelector<HTMLElement>(`[data-index="${current}"]`)?.scrollIntoView({ block: "nearest" });
   }, [current]);
+
+  const applySlides = React.useCallback(
+    (next: Slide[]) => {
+      if (view === null || view === undefined) return;
+      const text = view.state.doc.toString();
+      const { body } = splitFrontMatter(text);
+      const prefix = text.slice(0, text.length - body.length);
+      const newBody = next.map((s) => s.source).join("\n---\n");
+      view.dispatch({ changes: { from: 0, to: text.length, insert: prefix + newBody }, userEvent: "input.slide" });
+      view.focus();
+    },
+    [view],
+  );
+
+  const menu = contextMenu((hit) => {
+    const el = (hit.target as Element).closest("[data-slide-index]");
+    const i = el === null ? current : Number(el.getAttribute("data-slide-index"));
+    const n = slides.length;
+    return {
+      label: "Slides",
+      sections: [
+         [
+        {
+          id: "slide-new",
+          label: t("office.tool.newSlide"),
+          onSelect: () => {
+            const next = [...slides];
+            next.splice(i + 1, 0, { source: "\n## New slide\n", line: 0 });
+            applySlides(next);
+          },
+        },
+        {
+          id: "slide-delete",
+          label: "Delete slide",
+          hidden: n <= 1,
+          onSelect: () => {
+            if (n <= 1) return;
+            const next = [...slides];
+            next.splice(i, 1);
+            applySlides(next);
+          },
+        },
+      ],
+      [
+        {
+          id: "slide-up",
+          label: "Move up",
+          hidden: i === 0,
+          onSelect: () => {
+            if (i === 0) return;
+            const next = [...slides];
+            [next[i - 1]!, next[i]!] = [next[i]!, next[i - 1]!];
+            applySlides(next);
+          },
+        },
+        {
+          id: "slide-down",
+          label: "Move down",
+          hidden: i === n - 1,
+          onSelect: () => {
+            if (i === n - 1) return;
+            const next = [...slides];
+            [next[i]!, next[i + 1]!] = [next[i + 1]!, next[i]!];
+            applySlides(next);
+          },
+        },
+      ],
+    ],
+  };
+  });
+
+  React.useEffect(() => {
+    const el = ref.current;
+    if (el === null) return;
+    return menu(el);
+  }, [menu]);
+
   return (
     <ol ref={ref} className="md-strip flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3" aria-label={t("office.md.slides")} data-testid="md-strip">
       {slides.map((slide, i) => (
-        <li key={i} data-index={i} className="flex items-start gap-2">
+        <li key={i} data-slide-index={i} data-index={i} className="flex items-start gap-2">
           <span className="w-4 pt-1 text-right text-[11px] text-muted tabular-nums">{i + 1}</span>
           <button
             type="button"

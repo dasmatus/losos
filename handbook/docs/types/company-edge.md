@@ -52,7 +52,7 @@ run the mesh control plane, and whether to announce itself on the LAN. The
 operator's walkthrough is in [Master proxy](/in-depth/master-proxy.md)
 and [Mesh](/in-depth/mesh.md). The
 repository also carries a demonstration of exactly this setup under
-`nix/demo/edge-lan/`: two boxes and an edge on one virtual network. `run.sh`
+`nix/demo/edge-lan/`: two boxes and an edge on one virtual network. `run.ts`
 boots it, and `CHECKLIST.md` is the order it walks through.
 
 ![The screen of an edge gateway machine from the demonstration: it announces itself on the network, and the boxes on that network find it on their own.](../img/edge-gateway-tty1.png)

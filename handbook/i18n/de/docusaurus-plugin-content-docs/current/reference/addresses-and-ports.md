@@ -17,7 +17,7 @@ sidebar_position: 1
 | `/api/health`                 | `{"ok":true}`, wenn der Steuerdienst läuft          | nur das lokale Netzwerk, ohne Schlüssel |
 | `/setup/state.json`           | Name, Adresse, HTTPS, Fingerabdruck des Zertifikats | nur das lokale Netzwerk             |
 | `/setup/losos-ca.crt`         | Das Zertifikat der Box                              | nur das lokale Netzwerk             |
-| `/setup/trust.sh`, `/setup/trust.ps1` | Die einzeiligen Installer für das Zertifikat | nur das lokale Netzwerk           |
+| `/setup/trust.ts`, `/setup/trust.ps1` | Die einzeiligen Installer für das Zertifikat | nur das lokale Netzwerk           |
 | `/cloud/`                     | LosOS Cloud                                         | jeder, auch über eine Edge          |
 | `/remote.php/`, `/status.php`, `/ocs/`, `/index.php/` | Was die Nextcloud-Apps, Kalender-Apps und Dateimanager aufrufen | jeder, auch über eine Edge |
 | `/nextcloud/`                 | Dasselbe, unter der Adresse, die das Nextcloud der Box hatte | jeder, auch über eine Edge |
@@ -73,5 +73,4 @@ keinen eingehenden Port öffnest.
 | `proxy.losos.dasmat.us`     | Der Binär-Cache, aus dem sich die Box aktualisiert       |
 | `127.0.0.1:8787`            | Lokaler GHCR-Nix-Cache auf Gerät und Installationsmedium |
 | `127.0.0.1:8790`            | Die lokale Kopie all dieser Caches auf der Platte der Box |
-| `losos.dasmat.us/proxy`     | Eine Kopie dieses Caches, die verwendet wird, wenn der erste nicht antwortet |
 | `losos.dasmat.us`           | Dieses Handbuch im Web                                   |

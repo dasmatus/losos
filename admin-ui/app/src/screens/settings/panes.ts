@@ -18,6 +18,7 @@ import {
   PaintBoardIcon,
   Share08Icon,
   SlidersHorizontalIcon,
+  StarIcon,
   GitCommitIcon,
   ShoppingCart01Icon,
   Shield01Icon,
@@ -66,6 +67,7 @@ export type SettingsPaneId =
   | "moderation"
   | "access"
   | "tag"
+  | "features"
   | "advanced"
   | "history"
   | "logs"
@@ -240,6 +242,28 @@ export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
     "personalise",
     "personalize",
   ]),
+  /* LosOS Tag right after Look: the two panes everyone who is signed in
+   * sees (`paneOpen`'s `signed-in` section), the assistant people tag in
+   * chat, with its levels, areas, custom assistants and skills. It must
+   * not sit between Access tokens and Credentials: those two are pinned
+   * together by CI (credentials.browser.ts) as the ways into the box. */
+  pane("tag", ArtificialIntelligence02Icon, [
+    "tag",
+    "assistant",
+    "ai",
+    "ask",
+    "chat ai",
+    "agent",
+    "levels",
+    "confidentiality",
+    "privacy",
+    "clearance",
+    "areas",
+    "skills",
+    "custom",
+    "mention",
+    "search",
+  ]),
   pane("hardware", CpuIcon, ["gpu", "graphics", "card", "video", "processor", "acceleration"]),
   pane("security", Shield01Icon, [
     "hardening",
@@ -338,27 +362,8 @@ export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
     "ssh",
     "losos",
   ]),
-  /* LosOS Tag right after Access tokens: the assistant people tag in chat,
-   * with its levels, areas, custom assistants and skills. */
-  pane("tag", ArtificialIntelligence02Icon, [
-    "tag",
-    "assistant",
-    "ai",
-    "ask",
-    "chat ai",
-    "agent",
-    "levels",
-    "confidentiality",
-    "privacy",
-    "clearance",
-    "areas",
-    "skills",
-    "custom",
-    "mention",
-    "search",
-  ]),
   /* Credentials right after Access tokens: the ways into the box, then the
-   * secrets the box keeps for itself. */
+   * secrets the box keeps for itself. Pinned by credentials.browser.ts. */
   pane("credentials", LockPasswordIcon, [
     "credential",
     "credentials",
@@ -392,10 +397,48 @@ export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
     "github",
     "issue",
   ]),
+  /* LosOS Tag after Problems: the assistant people tag in chat, with its
+   * levels, areas, custom assistants and skills. */
+  pane("tag", ArtificialIntelligence02Icon, [
+    "tag",
+    "assistant",
+    "ai",
+    "ask",
+    "chat ai",
+    "agent",
+    "levels",
+    "confidentiality",
+    "privacy",
+    "clearance",
+    "areas",
+    "skills",
+    "custom",
+    "mention",
+    "search",
+  ]),
   /* Advanced and History sit between Security and About: every option,
    * then the record of every change. Advanced carries the long tail an
    * owner reaches for rarely and deliberately — like Security, below the
    * everyday panes — and History is the audit of all of them. */
+  /* Features right before Advanced: the major features on plain switches,
+   * then Advanced's every option — the curated front door of what Advanced
+   * also edits. Like Advanced, below the everyday panes: turning a feature
+   * off is a decision an owner makes deliberately. */
+  pane("features", StarIcon, [
+    "feature",
+    "features",
+    "turn off",
+    "disable",
+    "enable",
+    "switch off",
+    "services",
+    "cloud",
+    "chat",
+    "mail",
+    "git",
+    "apps",
+    "ai",
+  ]),
   pane("advanced", SlidersHorizontalIcon, [
     "all",
     "every",
@@ -496,6 +539,7 @@ const PANE_SECTION: Record<SettingsPaneId, string> = {
   moderation: "moderation",
   access: "access",
   tag: "signed-in",
+  features: "admin",
   advanced: "admin",
   history: "admin",
   logs: "admin",

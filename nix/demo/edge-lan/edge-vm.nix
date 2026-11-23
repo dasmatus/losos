@@ -1,4 +1,4 @@
-# The edge for the two-VM LAN demo (nix/demo/edge-lan/run.sh): a losos edge that
+# The edge for the two-VM LAN demo (nix/demo/edge-lan/run.ts): a losos edge that
 # is also the LAN's router, built as a plain QEMU VM.
 #
 # `nix build .#nixosConfigurations.edge-demo.config.system.build.vm` gives a
@@ -52,7 +52,7 @@ in
     # The feature the demo is about.
     lan.advertise = true;
     # A box that finds this edge is enrolled the first time it calls, as the
-    # edge gateway does, so `run.sh publish` needs no token handed out.
+    # edge gateway does, so `run.ts publish` needs no token handed out.
     lan.openEnrolment = true;
   };
 

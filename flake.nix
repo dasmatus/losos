@@ -47,6 +47,22 @@
     # be bumped together — see the header of devenv.yaml.
   };
 
+  # Defaults for any `nix` invocation that uses this flake. Matches CI's
+  # setup-nix extra-conf and modules/cache.nix on the appliance; the proxy
+  # itself is started by nix/dev-cache.sh from devenv or `nix develop`.
+  #
+  # `accept-flake-config` is not listed here on purpose: Nix reads it from
+  # nix.conf *before* it applies a flake's settings (libflake/config.cc), so a
+  # flake cannot switch it on for itself. modules/cache.nix sets it for the
+  # appliance and the installer medium.
+  nixConfig = {
+    extra-substituters = "http://127.0.0.1:8787";
+    extra-trusted-public-keys = "losos-1:35OIuYFMKDrlC6yTzqivDPqNqZTMjM0l2MB89bRRreg=";
+    connect-timeout = 5;
+    fallback = false;
+    always-allow-substitutes = true;
+  };
+
   outputs =
     {
       self,
@@ -150,20 +166,28 @@
               ++ [
                 pkgs.rust-analyzer
                 pkgs.bun
+                pkgs.oras
               ];
             inherit (fast) env;
             # The git hooks (nix/hooks) run CI's gates before a commit
             # or a push; this shell installs them as devenv's does.
             shellHook = ''
-              root=$(git rev-parse --show-toplevel 2>/dev/null) && bash "$root/nix/hooks/install"
+              root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+              bun "$root/nix/hooks/install.ts"
+              # shellcheck source=/dev/null
+              . "$root/nix/dev-cache.sh"
               echo "Toolchain-only shell. For the scripts:"
               echo "  devenv shell      (or: direnv allow)"
             '';
           };
 
-          # What CI lints in. Deliberately lean — no rust-analyzer, no node,
-          # no shell UX — because it is realised from scratch on every CI run
-          # against a 10-minute cap.
+          # What CI lints in. Deliberately lean — no rust-analyzer, no shell
+          # UX — because it is realised from scratch on every CI run
+          # against a 10-minute cap. Bun and node are here for the terminal
+          # client's installer, not for style: the tui job bundles
+          # admin-ui/tui/install.ts into the install.mjs it publishes, and
+          # tests/install.rs drives that bundle with plain node the way end
+          # users run it.
           #
           # It exists so lint uses the SAME rustc as `nix build .#losos-ctl`.
           # The lint job used to run on docker.io/rust:latest, which is a
@@ -173,7 +197,13 @@
           # compiler you ship with is the only way that stays true, and it
           # also means an upstream Rust release cannot turn CI red on its own.
           ci = mkShell {
-            nativeBuildInputs = rust ++ fast.packages;
+            nativeBuildInputs =
+              rust
+              ++ fast.packages
+              ++ [
+                pkgs.bun
+                pkgs.nodejs
+              ];
             inherit (fast) env;
           };
         };
@@ -333,6 +363,113 @@
             )
           ];
         };
+        # autoprovision: the install medium over the network, for the machine
+        # with no stick. The same module set as `iso` above, PXE/iPXE boot
+        # shape (kernel + initrd + squashfs store) instead of an El Torito
+        # image — so no iso-specific module (live-branding, secure-boot) rides
+        # along — and its autorun ends in `losos-ctl provision` (the mesh's
+        # modified box configuration, from the mirror the netboot server's
+        # environment names) instead of the stock install. There is no Secure
+        # Boot half here: nothing signs a netboot chain, booting it is
+        # deliberately what a mesh operator does, and the firmware menu
+        # before any destructive work stays.
+        #
+        # The mirror is read at boot (LOSOS_MESH_CONFIG_URL) — a released
+        # medium cannot name a mesh that does not exist yet.
+        netboot = nixpkgs.lib.nixosSystem {
+          inherit system;
+          specialArgs.self = self;
+          modules = [
+            impermanence.nixosModules.impermanence
+            disko.nixosModules.disko
+            (
+              {
+                modulesPath,
+                lib,
+                pkgs,
+                config,
+                self,
+                ...
+              }:
+              let
+                lososPkgs = self.packages.${pkgs.system};
+              in
+              {
+                imports = [ "${modulesPath}/installer/netboot/netboot.nix" ];
+                # The same two the ISO carries: the installer binary, and the
+                # admin UI + handbook in the store of every machine that
+                # netboots (they were put there to keep the live medium off
+                # the network for them; PXE is the same story).
+                losos.installer.package = lososPkgs.losos-ctl;
+                losos.installer.autorun = true;
+                # The flavor: `losos-ctl provision`, not `install`.
+                losos.autoprovision.medium = true;
+                # Like `iso-edge`'s `LOSOS_EDGE_URL`: a build of this system
+                # may bake its mesh's Tang server into the medium
+                # (LOSOS_TANG, one or more `URL#THUMBPRINT`, comma
+                # separated); `--tang` typed later outranks it, and pure
+                # evaluation sees "" and keeps the option's empty default.
+                # Necessarily behind the TPM2 half: `--tang` implies it.
+                losos.autoprovision.tang =
+                  let
+                    raw = builtins.getEnv "LOSOS_TANG";
+                  in
+                  lib.mkIf (raw != "") (lib.mkDefault (lib.splitString "," raw));
+                # Like the ISO: the payload the target would otherwise fetch.
+                netboot.storeContents = [
+                  lososPkgs.losos-admin-ui
+                  lososPkgs.losos-handbook
+                ];
+                # The runners' compression trade-off, for boots over a LAN.
+                netboot.squashfsCompression = "zstd -Xcompression-level 6 -mem 1G";
+                # The clean-up comment of `iso`'s `disko.enableConfig` above
+                # applies here in full: no target layout in the ramdisk.
+                disko.enableConfig = false;
+                # Everything to hand a PXE/iPXE client: kernel, initrd, the
+                # command line with the toplevel's init, and a boot.ipxe
+                # naming a server the operator fills in.
+                system.build.netbootImage =
+                  let
+                    cmdline = pkgs.writeText "cmdline" "init=${config.system.build.toplevel}/init ${toString config.boot.kernelParams}";
+                    ipxe = pkgs.writeText "boot.ipxe" ''
+                      #!ipxe
+                      # LosOS autoprovision. Serve this directory over http and
+                      # PXE to it; replace SERVER with the host. The installer
+                      # shows its menu on the console before touching disks.
+                      echo LosOS autoprovision - reading the mesh's configuration
+                      kernel http://SERVER/bzImage init=${config.system.build.toplevel}/init ${toString config.boot.kernelParams}
+                      initrd http://SERVER/initrd
+                      boot
+                    '';
+                  in
+                  pkgs.linkFarm "losos-netboot" [
+                    {
+                      name = "bzImage";
+                      path = "${config.system.build.kernel}/${config.system.boot.loader.kernelFile}";
+                    }
+                    {
+                      name = "initrd";
+                      path = "${config.system.build.netbootRamdisk}/initrd";
+                    }
+                    {
+                      name = "cmdline";
+                      path = cmdline;
+                    }
+                    {
+                      name = "boot.ipxe";
+                      path = ipxe;
+                    }
+                  ];
+              }
+            )
+            ./modules/options.nix
+            ./modules/cache.nix
+            ./modules/disko.nix
+            ./modules/installer.nix
+            ./modules/branding.nix
+            ./modules/splash.nix
+          ];
+        };
         # The target system installed onto the machine.
         install = nixpkgs.lib.nixosSystem {
           inherit system;
@@ -405,6 +542,10 @@
             # (backend/plugins/problems).
             ./modules/problems.nix
             ./modules/identity.nix
+            # LosOS Login and the admin pages' web UI as Podman quadlets,
+            # off by default (lososInternal.quadlets, nix/tests/quadlets.nix):
+            # each its own systemd unit, so a boot times each service apart.
+            ./modules/quadlets.nix
             # LosOS Chat: Synapse as the shared user while the box shares
             # its storage in a mesh, behind LosOS Login (backend/src/chat.rs).
             ./modules/chat.nix
@@ -447,6 +588,10 @@
             # The option document and the configuration repository on LosOS
             # Git (modules/config-repo.nix, backend/src/{options,config_repo}.rs).
             ./modules/config-repo.nix
+            # The option document is read through modules/config-repo.nix; the
+            # mesh's configuration mirror rides the same daemon
+            # (losos.autoprovision.*, backend/src/autoprovision.rs).
+            ./modules/autoprovision.nix
             # modules/overrides.nix is imported through onBox below, never here.
             ./modules/updates.nix
             ./modules/logs.nix
@@ -504,10 +649,13 @@
       nixosModules.edge = {
         imports = [
           ./modules/options.nix
+          ./modules/cache.nix
           ./modules/edge.nix
           ./modules/edge-credentials.nix
           ./modules/edge-vms.nix
           ./modules/edge-inference.nix
+          ./modules/skypilot.nix
+          ./modules/skypilot-gateway.nix
           ./modules/edge-gateway.nix
           ./modules/edge-hidden.nix
           ./modules/edge-exit.nix
@@ -539,6 +687,13 @@
       # at its top what it asserts. Most boot VMs, which CI (no KVM) never
       # builds.
       checks.${system} = {
+        # The Bend law gate (nix/bend.nix): every law LAWS.bend states must
+        # have a proof in PROOF.bend, or the build fails. No VM, no network.
+        losos-bend-proofs =
+          (import ./nix/bend.nix {
+            inherit pkgs;
+            src = ./.;
+          }).bendProofs;
         losos-install = import ./nix/tests/install.nix { inherit pkgs disko; };
         # The real installer from the branch, offline, then the installed disk
         # booted on its own (nix/tests/iso-install.nix).
@@ -555,6 +710,11 @@
         # chip-less box stops with a reason and touches nothing disks.
         losos-installer-edge = import ./nix/tests/installer-edge.nix { inherit pkgs self; };
         losos-admin-daemon = import ./nix/tests/admin-vm.nix { inherit pkgs; };
+        # LosOS Login and the admin web UI as Podman quadlets
+        # (modules/quadlets.nix): both containers up and answering, and
+        # each unit's start timed apart, which is what the conversion is
+        # for.
+        losos-quadlets = import ./nix/tests/quadlets.nix { inherit pkgs; };
         losos-edge-proxy = import ./nix/tests/edge-vm.nix { inherit pkgs; };
         losos-quic = import ./nix/tests/quic.nix { inherit pkgs; };
         losos-edge-lan = import ./nix/tests/edge-lan.nix { inherit pkgs; };
@@ -736,21 +896,11 @@
         # its sandbox, PDFs, a changed file, the Git search and who may ask
         # (nix/tests/search.nix).
         losos-search = import ./nix/tests/search.nix { inherit pkgs; };
-        # Collabora Online behind the front vhost over the folder host: open,
-        # type, save, save as PDF, two people in one document, the token
-        # rules and what nginx refuses (nix/tests/office.nix).
-        losos-office = import ./nix/tests/office.nix { inherit pkgs; };
-        # Office over LosOS Cloud's own files: discovery saved for a cloud
-        # with no network, coolwsd through nginx's loopback bridge to the
-        # cloud's socket, a save landing in the person's cloud
-        # (nix/tests/office-cloud.nix).
-        losos-office-cloud = import ./nix/tests/office-cloud.nix { inherit pkgs; };
-        # Markdown documents and presentations in LosOS Office, with no
-        # Collabora on the box (nix/tests/office-markdown.nix).
+        # Collabora-backed Office VM tests removed with native LosOS Office.
+        # Markdown documents and presentations in native LosOS Office
+        # (nix/tests/office-markdown.nix).
         losos-office-markdown = import ./nix/tests/office-markdown.nix { inherit pkgs; };
-        # LosOS Office's own documents and presentations, .paper and .slides
-        # edited as they look, and a document full of script that runs
-        # nowhere (nix/tests/office-paper.nix).
+        # LosOS Office's own .paper/.slides documents (nix/tests/office-paper.nix).
         losos-office-paper = import ./nix/tests/office-paper.nix { inherit pkgs; };
         losos-quick-actions = import ./nix/tests/quick-actions.nix { inherit pkgs; };
         # Not a VM: losos-mdx's browser package in Node, against the crate's
