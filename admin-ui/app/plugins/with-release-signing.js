@@ -28,10 +28,10 @@
  * until a paid Apple Developer account exists.
  */
 
-// "expo/config-plugins", not "expo/config-plugins.js": expo's exports map
-// maps "./*" to "./*.js", so a request with the extension becomes the
-// nonexistent "config-plugins.js.js".
-import { withDangerousMod } from "expo/config-plugins";
+// "expo/config-plugins.js", extension included: SDK 54's expo package has no
+// "exports" map, and an ESM import cannot resolve the extensionless subpath
+// without one. The file is expo's one-line re-export of @expo/config-plugins.
+import { withDangerousMod } from "expo/config-plugins.js";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
