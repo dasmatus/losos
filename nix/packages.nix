@@ -583,7 +583,7 @@ images
       nodeModules = bunDeps {
         pname = "losos-admin-ui";
         src = ./../admin-ui/app;
-        hash = "sha256-obA1GZtI51M+3CZjKTBFr5DHGYlZYywSq45c+Z4Mt/E=";
+        hash = "sha256-WmAncwt+BAHdKvEVtQ0hTnfubL46tjCk6GCXXlNfZLE=";
       };
     };
   });
@@ -689,7 +689,7 @@ images
     src = lib.cleanSource ./../backend;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-ctl-rs` will print the new hash to paste here.
-    cargoHash = "sha256-/vhyJj0aGibyvc5kUK9PYoUB7dVyf6MwEWxgsf4/Eqw=";
+    cargoHash = "sha256-SEaZ7iRo1vkzE2beOom4CHt4DLsWOdbvkJAeAwdLA+o=";
     # No system deps: zbus speaks the D-Bus wire protocol natively, so there is
     # no libdbus to link against.
     # doCheck is off, and the tests still run — in CI's lint job and in
@@ -715,7 +715,7 @@ images
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-registrar` will print the new hash to paste here.
-    cargoHash = "sha256-HTZo0fyeMcoOTwa84bPpbm95UBBLNLl4qCnMrF/NA7c=";
+    cargoHash = "sha256-N2bCJeoUqtYdVx3tF7mx/919Jy/g+omP2gsH/OFHDcI=";
     # No system deps; pure Rust with rustls (no openssl).
     # Same reasoning as losos-ctl above: the suite runs via cargo test in the
     # lint job, not inside this derivation.
@@ -740,7 +740,7 @@ images
     pname = "losos-registrar-static";
     version = "0.1.0";
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
-    cargoHash = "sha256-HTZo0fyeMcoOTwa84bPpbm95UBBLNLl4qCnMrF/NA7c=";
+    cargoHash = "sha256-N2bCJeoUqtYdVx3tF7mx/919Jy/g+omP2gsH/OFHDcI=";
     doCheck = false;
   };
 
