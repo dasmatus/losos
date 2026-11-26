@@ -24,7 +24,9 @@ use crate::envelope::{unreachable, Session, Transport};
 use crate::http::{Http, Trust};
 use crate::i18n::{self, Locale};
 use crate::keychain::{Keychain, SecretTool};
-use crate::oidc::{self, OauthError};
+use crate::oidc;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::oidc::OauthError;
 use crate::problem::{Problem, Result};
 use crate::prompt::{read_hidden, read_piped};
 use crate::theme::{detect_mode, detect_truecolor, Theme};
@@ -33,6 +35,7 @@ use crate::tr;
 use crate::tui::app::App;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::tui::login::{KeyChoice, Login, Picker, SignIn};
+#[cfg(not(target_arch = "wasm32"))]
 use crate::tui::panes::account_held;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::tui::term;
@@ -610,6 +613,7 @@ fn group_pin(pin: &str) -> String {
         .join(" ")
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn same_pin(a: &str, b: &str) -> bool {
     let clean = |s: &str| {
         s.chars()
@@ -621,6 +625,7 @@ fn same_pin(a: &str, b: &str) -> bool {
     !a.is_empty() && a == b
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn oauth_problem(url: &str, error: OauthError) -> Problem {
     match error {
         OauthError::Transport(e) => unreachable(url, e),
