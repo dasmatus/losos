@@ -26,6 +26,40 @@ use crate::theme::C;
 use crate::tr;
 use crate::vault::{group_fingerprint, host_name, HostRecord};
 
+/// Whether LosOS Login is holding this person to their own account.
+pub fn account_held(me: &serde_json::Value) -> bool {
+    me.get("locked")
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|reasons| !reasons.is_empty())
+}
+
+/// The panes this person may open, in the sidebar's order. An answer that
+/// does not say who they are leaves every pane, so an older box still opens.
+pub fn visible_panes(me: &serde_json::Value) -> Vec<PaneId> {
+    let Some(admin) = me.get("admin").and_then(serde_json::Value::as_bool) else {
+        return PaneId::BOX.to_vec();
+    };
+    let Some(sections) = me.get("sections").and_then(serde_json::Value::as_array) else {
+        return PaneId::BOX.to_vec();
+    };
+    if account_held(me) {
+        return Vec::new();
+    }
+    let has = |name: &str| {
+        sections
+            .iter()
+            .any(|section| section.as_str() == Some(name))
+    };
+    PaneId::BOX
+        .into_iter()
+        .filter(|pane| match pane.gate() {
+            "signed-in" => true,
+            "admin" => admin,
+            other => admin || has(other),
+        })
+        .collect()
+}
+
 /// The crate's version, or what the build names it (`LOSOS_VERSION`).
 pub const VERSION: &str = match option_env!("LOSOS_VERSION") {
     Some(v) => v,
@@ -83,6 +117,25 @@ impl PaneId {
             PaneId::About => "about",
             _ => return None,
         })
+    }
+
+    /// The section of backend/sections.json this pane belongs to, the same
+    /// split the admin pages use. `admin` is an administrator only.
+    pub fn gate(self) -> &'static str {
+        match self {
+            PaneId::Overview => "signed-in",
+            PaneId::Storage => "storage",
+            PaneId::Apps => "apps",
+            PaneId::Network => "network",
+            PaneId::Backup => "backup",
+            PaneId::Mesh
+            | PaneId::Security
+            | PaneId::Advanced
+            | PaneId::History
+            | PaneId::About
+            | PaneId::Computer => "admin",
+            PaneId::EdgeOverview | PaneId::EdgeSecrets => "signed-in",
+        }
     }
 
     pub fn id(self) -> &'static str {

@@ -1,11 +1,11 @@
 # losos, the terminal client
 
 `losos` manages a LosOS box or edge from a terminal, without SSH. It has
-the web UI's panes, words, colours and salmon, and it talks to the box
-through one sealed envelope per request: signed by your OpenPGP key,
-encrypted to the box's host key, and answered the same way. The wire
-contract is in [docs/terminal-access.md](../../docs/terminal-access.md) and,
-for an edge, [docs/edge-terminal.md](../../docs/edge-terminal.md).
+the web UI's panes, words, colours and salmon. A box signs in through LosOS
+Login and then calls the box as that person. An edge still talks through
+one sealed envelope per request. The wire contract is in
+[docs/terminal-access.md](../../docs/terminal-access.md) and, for an edge,
+[docs/edge-terminal.md](../../docs/edge-terminal.md).
 
 ## Builds
 
@@ -51,30 +51,37 @@ one sentence and exits non-zero.
 ## Use
 
 ```sh
-losos key import owner.asc          # or: losos key import --gpg <id>
-losos login https://mattbox.local   # pin the host key, give the token
+losos login https://mattbox.local   # LosOS Login, in the browser
 losos                               # the full-screen view
 ```
 
-`login` fetches the host key, trying the box's path first and then the
-edge's, and shows its fingerprint in groups of four. Compare it with the one in the web
-UI's Access tokens pane before you say yes. You type the token without
-echo. If a host you already pinned shows a different key later, `login`
-refuses loudly and changes nothing.
+On a box, `login` signs in with LosOS Login, the same device-code flow as
+the companion (`losos-tui`). It prints a link and a code. Open the link,
+sign in as you always do, and approve **LosOS terminal**. The client keeps
+the access token (an hour) and the refresh token (30 days) in the keychain,
+refreshes the pair when the access token runs out, and sends each call as
+`Authorization: Bearer`. The box treats that token as you, so your role is
+what the panes follow. `losos logout` hands both tokens back and forgets
+them.
 
-A box answers HTTPS with its own self-signed certificate. `login` accepts
-the one it sees and, when no public authority vouches for it, keeps its
-SHA-256 with the host. Every later call takes that certificate or one the
-web trusts, and stops with a warning on any other. `login` again pins the
-new one. Plain `http://` works too: the envelope does not depend on TLS.
+A box answers HTTPS with its own self-signed certificate. `login` shows its
+SHA-256 and, when you agree, keeps it. Every later call takes that
+certificate or one the web trusts, and stops with a warning on any other.
+`login` again pins the new one. A script confirms the certificate with
+`--fingerprint`.
+
+An edge still uses the sealed envelope: `losos key import`, then `login`
+with the host key and a token. A box that still has one of those old
+access-token sign-ins in the keychain is told so. `losos login` replaces
+it; `losos logout` removes it. There is no second way into a box.
 
 The commands:
 
 | command | what it does |
 |---|---|
 | `losos [open] [url]` | the full-screen view of a box or an edge |
-| `losos login <url>` | pin a host key and keep a token for it |
-| `losos logout <url>` | forget a host and its token |
+| `losos login <url>` | sign in to a box with LosOS Login, or pin an edge |
+| `losos logout <url>` | sign out of a box, or forget an edge |
 | `losos hosts` | the hosts you are logged in to |
 | `losos key import <file.asc>` | keep a secret key that can sign and has an encryption subkey |
 | `losos key import --gpg <id>` | the same, exported from gpg |
@@ -109,18 +116,23 @@ for a refused host key or a usage mistake, and 130 when you cancel.
 For a key under a passphrase, `losos` asks once per run and never stores
 the answer. `LOSOS_PASSPHRASE` supplies it to a script.
 
-In a script, `login` takes the fingerprint on the command line and the
-token on stdin:
+In a script, a box's `login` prints the link and waits for the approval.
+When the certificate is the box's own, confirm it with `--fingerprint` and
+the SHA-256 your browser shows. An edge still takes its host-key
+fingerprint on the command line and the token on stdin:
 
 ```sh
-printf '%s\n' "$TOKEN" | losos login https://mattbox.local --fingerprint "<the fingerprint the web UI shows>"
+losos login https://mattbox.local --fingerprint "<the certificate SHA-256>"
+printf '%s\n' "$TOKEN" | losos login https://register.example --fingerprint "<the edge host key>"
 ```
 
 ### The full-screen view
 
 The box's panes are the web UI's: Overview, Storage, Mesh, Apps, Network,
 Security, Advanced, History, Backup and About, and one of its own, This
-computer, which runs the two setups above. Advanced only shows values
+computer, which runs the two setups above. The sidebar keeps the panes the
+signed-in person's role opens and hides the rest, the same split as the
+admin pages. Advanced only shows values
 here. Settings changes stay a draft until Apply, and Apply asks before the
 box rebuilds itself. Access tokens, the market, the Lab and anything that wipes data
 stay in the web UI. An edge has two panes. Overview lists its tenants with

@@ -44,6 +44,9 @@ fn host(kind: HostKind) -> HostRecord {
         key_fingerprint: "B".repeat(40),
         tls_pin: None,
         edge_url: None,
+        access_token: None,
+        refresh_token: None,
+        expires_at: None,
     }
 }
 
@@ -83,6 +86,7 @@ fn open(kind: HostKind, pane: Option<PaneId>) -> Open {
     };
     let fixture = Arc::new(Fixture::new(route));
     let mut app = App::new(host(kind), fixture.clone()).with_computer(computer());
+    app.boot();
     app.now = Some(1_791_960_021.0);
     if let Some(pane) = pane {
         app.open_at(pane);
@@ -496,6 +500,38 @@ fn login_shows_the_fingerprint_in_groups_and_takes_a_token_and_a_key() {
 }
 
 #[test]
+fn a_person_sees_only_the_panes_their_role_opens() {
+    use losos::tui::panes::visible_panes;
+    let owner = json!({
+        "name": "matus",
+        "admin": true,
+        "role": "owner",
+        "sections": ["storage", "backup", "apps", "network"],
+        "locked": [],
+    });
+    let panes = visible_panes(&owner);
+    assert!(panes.contains(&PaneId::Security));
+    assert!(panes.contains(&PaneId::Overview));
+    let member = json!({
+        "name": "ada",
+        "admin": false,
+        "role": "member",
+        "sections": ["storage"],
+        "locked": [],
+    });
+    let panes = visible_panes(&member);
+    assert_eq!(panes, vec![PaneId::Overview, PaneId::Storage]);
+    let held = json!({
+        "name": "ada",
+        "admin": false,
+        "role": "member",
+        "sections": ["storage", "account"],
+        "locked": ["password"],
+    });
+    assert!(visible_panes(&held).is_empty());
+}
+
+#[test]
 fn login_answers_none_when_the_fingerprint_is_refused() {
     let mut login = Login::new(
         "https://edge.example".into(),
@@ -521,6 +557,7 @@ fn a_failed_request_shows_the_hosts_sentence() {
     }
     let fixture = Arc::new(Fixture::new(broken));
     let mut app = App::new(host(HostKind::Box), fixture);
+    app.boot();
     app.open_at(PaneId::Backup);
     app.settle();
     let text = frame(&mut app);

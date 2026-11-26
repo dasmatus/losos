@@ -148,6 +148,8 @@ pub struct App {
     /// The computer this runs on, when the screen may set it up.
     computer: Option<Computer>,
     pub local: Local,
+    /// Who LosOS Login says is signed in, once `/api/me` has said.
+    pub who: Option<String>,
 }
 
 impl App {
@@ -157,7 +159,7 @@ impl App {
             HostKind::Box => PaneId::BOX.to_vec(),
             HostKind::Edge => PaneId::EDGE.to_vec(),
         };
-        let mut app = App {
+        App {
             pane: panes[0],
             host,
             transport,
@@ -182,16 +184,46 @@ impl App {
             pending: 0,
             computer: None,
             local: Local::default(),
-        };
-        if app.is_box() {
-            app.load_settings(true);
-            app.want(&["/api/health", "/api/status"]);
+            who: None,
+        }
+    }
+
+    /// The reads the open pane needs. Called once the person, when there is
+    /// one, has narrowed `panes`.
+    pub fn boot(&mut self) {
+        if self.is_box() {
+            self.load_settings(true);
+            self.want(&["/api/health", "/api/status"]);
         } else {
             // The header's status comes from /overview, whichever pane opens.
-            app.want(&["/overview"]);
+            self.want(&["/overview"]);
         }
-        app.want(app.pane.needs());
-        app
+        self.want(self.pane.needs());
+    }
+
+    /// Keep the panes this person may use, and their name for the header.
+    pub fn with_person(mut self, me: &Value) -> Self {
+        if let Some(name) = me
+            .get("name")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+        {
+            let role = me.get("role").and_then(Value::as_str).unwrap_or("");
+            self.who = Some(if role.is_empty() {
+                name.to_string()
+            } else {
+                format!("{name} · {role}")
+            });
+        }
+        let panes = super::panes::visible_panes(me);
+        if !panes.is_empty() {
+            self.panes = panes;
+            if !self.panes.contains(&self.pane) {
+                self.pane = self.panes[0];
+                self.side_cursor = 0;
+            }
+        }
+        self
     }
 
     /// Let the This computer pane set up the computer this runs on.

@@ -12,6 +12,17 @@ use serde_json::{json, Value};
 
 fn box_handler() -> Box<common::Handler> {
     Box::new(|method, path, _body| match (method, path) {
+        ("GET", "/api/me") => (
+            200,
+            json!({
+                "name": "matus",
+                "admin": true,
+                "role": "owner",
+                "sections": ["storage", "backup", "apps", "network"],
+                "locked": [],
+                "spareKey": false,
+            }),
+        ),
         ("GET", "/api/state") => (200, json!({ "mode": "local" })),
         ("POST", "/api/fail") => (500, json!({ "error": "it broke" })),
         ("GET", "/api/credentials") => (
@@ -72,6 +83,11 @@ fn edge_handler() -> Box<common::Handler> {
 
 fn path(file: &tempfile::NamedTempFile) -> &str {
     file.path().to_str().unwrap()
+}
+
+/// Sign a script in to a box through LosOS Login. No key and no token.
+fn login_box(client: &Client, url: &str) -> common::Run {
+    client.run(&["login", url], "")
 }
 
 #[test]
@@ -136,36 +152,34 @@ fn logs_in_to_a_box_from_a_script_and_calls_it() {
     let me = owner();
     let host = mock(false, me.key.armored_public(), box_handler());
     let client = Client::new();
-    client.run(&["key", "import", path(&me.file)], "");
 
-    // A script must confirm the fingerprint on the command line.
-    let r = client.run(&["login", &host.url], TOKEN);
-    assert_eq!(r.code, 1);
-    assert!(r.err.contains("--fingerprint"), "{}", r.err);
-
-    let r = client.run(&["login", &host.url, "--fingerprint", "AAAA"], TOKEN);
-    assert_eq!(r.code, 2, "a fingerprint that does not match");
-
-    let r = client.run(
-        &["login", &host.url, "--fingerprint", &host.fingerprint()],
-        "not a token\n",
-    );
-    assert_eq!(r.code, 1);
-
-    let r = client.run(
-        &["login", &host.url, "--fingerprint", &host.fingerprint()],
-        &format!("{TOKEN}\n"),
-    );
+    let r = login_box(&client, &host.url);
     assert_eq!(r.code, 0, "{}", r.err);
-    assert!(r.out.contains(&host.url));
+    assert!(
+        r.out.contains("WDJBMJHT"),
+        "the device code is shown:\n{}",
+        r.out
+    );
+    assert!(r.out.contains("matus"), "who signed in:\n{}", r.out);
+    assert!(r.out.contains("owner"), "{}", r.out);
     assert!(
         !r.out.contains("TLS"),
         "plain HTTP pins no certificate: {}",
         r.out
     );
+    assert!(
+        host.login
+            .lock()
+            .unwrap()
+            .shown
+            .iter()
+            .any(|t| t.starts_with("authelia_at_")),
+        "the call carried a LosOS Login token"
+    );
 
     let r = client.run(&["hosts"], "");
     assert!(r.out.contains(&host.url), "{}", r.out);
+    assert!(r.out.contains("LosOS Login"), "{}", r.out);
 
     let r = client.run(&["call", "GET", "/api/state"], "");
     assert_eq!(r.code, 0, "{}", r.err);
@@ -185,7 +199,8 @@ fn logs_in_to_a_box_from_a_script_and_calls_it() {
     assert_eq!(r.code, 1);
 
     let r = client.run(&["logout", &host.url], "");
-    assert_eq!(r.code, 0);
+    assert_eq!(r.code, 0, "{}", r.err);
+    assert!(!host.login.lock().unwrap().revoked.is_empty());
     let r = client.run(&["call", "GET", "/api/state"], "");
     assert_eq!(r.code, 1, "no host left");
 }
@@ -193,17 +208,17 @@ fn logs_in_to_a_box_from_a_script_and_calls_it() {
 #[test]
 fn a_plain_refusal_is_shown_as_not_sealed() {
     let me = owner();
-    // The box seeded someone else's key, so it cannot answer sealed.
+    // The edge seeded someone else's key, so it cannot answer sealed.
     let stranger = HostKeyPublic::new();
-    let host = mock(false, &stranger.0, box_handler());
+    let edge = mock(true, &stranger.0, edge_handler());
     let client = Client::new();
     client.run(&["key", "import", path(&me.file)], "");
     let r = client.run(
-        &["login", &host.url, "--fingerprint", &host.fingerprint()],
+        &["login", &edge.url, "--fingerprint", &edge.fingerprint()],
         TOKEN,
     );
     assert_eq!(r.code, 0, "{}", r.err);
-    let r = client.run(&["call", "GET", "/api/state"], "");
+    let r = client.run(&["call", "GET", "/overview"], "");
     assert_eq!(r.code, 1);
     let note = losos::i18n::template("tui.call.notSealed", &[], losos::i18n::Locale::En);
     assert_eq!(r.err.trim(), format!("401, {note}"));
@@ -226,16 +241,16 @@ impl HostKeyPublic {
 #[test]
 fn refuses_loudly_when_a_pinned_host_shows_another_key() {
     let me = owner();
-    let host = mock(false, me.key.armored_public(), box_handler());
+    let edge = mock(true, me.key.armored_public(), edge_handler());
     let client = Client::new();
     client.run(&["key", "import", path(&me.file)], "");
-    let first = host.fingerprint();
-    let r = client.run(&["login", &host.url, "--fingerprint", &first], TOKEN);
+    let first = edge.fingerprint();
+    let r = client.run(&["login", &edge.url, "--fingerprint", &first], TOKEN);
     assert_eq!(r.code, 0, "{}", r.err);
 
-    *host.host.lock().unwrap() = losos_access::HostKey::generate("LosOS box <other>").unwrap();
+    *edge.host.lock().unwrap() = losos_access::HostKey::generate("LosOS edge <other>").unwrap();
     let r = client.run(
-        &["login", &host.url, "--fingerprint", &host.fingerprint()],
+        &["login", &edge.url, "--fingerprint", &edge.fingerprint()],
         TOKEN,
     );
     assert_eq!(r.code, 2);
@@ -246,7 +261,7 @@ fn refuses_loudly_when_a_pinned_host_shows_another_key() {
     );
 
     // Calls stop too: the answer is no longer signed by the pinned key.
-    let r = client.run(&["call", "GET", "/api/state"], "");
+    let r = client.run(&["call", "GET", "/overview"], "");
     assert_eq!(r.code, 1);
 }
 
@@ -317,11 +332,8 @@ fn lists_the_credentials_of_a_box_and_makes_one_new() {
     let me = owner();
     let host = mock(false, me.key.armored_public(), box_handler());
     let client = Client::new();
-    client.run(&["key", "import", path(&me.file)], "");
-    client.run(
-        &["login", &host.url, "--fingerprint", &host.fingerprint()],
-        TOKEN,
-    );
+    let r = login_box(&client, &host.url);
+    assert_eq!(r.code, 0, "{}", r.err);
 
     let r = client.run(&["credentials", "list"], "");
     assert_eq!(r.code, 0, "{}", r.err);
@@ -364,11 +376,7 @@ fn edge_commands_refuse_a_box() {
     let me = owner();
     let host = mock(false, me.key.armored_public(), box_handler());
     let client = Client::new();
-    client.run(&["key", "import", path(&me.file)], "");
-    client.run(
-        &["login", &host.url, "--fingerprint", &host.fingerprint()],
-        TOKEN,
-    );
+    assert_eq!(login_box(&client, &host.url).code, 0);
     let r = client.run(&["edge", "reconcile", "--host", &host.url], "");
     assert_eq!(r.code, 1);
     assert!(
@@ -509,18 +517,18 @@ fn prints_the_four_names_and_no_secret_when_gh_is_signed_out() {
 #[test]
 fn removes_a_key_and_names_the_hosts_left_without_one() {
     let me = owner();
-    let host = mock(false, me.key.armored_public(), box_handler());
+    let edge = mock(true, me.key.armored_public(), edge_handler());
     let client = Client::new();
     client.run(&["key", "import", path(&me.file)], "");
     client.run(
-        &["login", &host.url, "--fingerprint", &host.fingerprint()],
+        &["login", &edge.url, "--fingerprint", &edge.fingerprint()],
         TOKEN,
     );
     let spaced = losos::vault::group_fingerprint(me.key.fingerprint());
     let r = client.run(&["key", "remove", &spaced], "");
     assert_eq!(r.code, 0, "{}", r.err);
-    assert!(r.out.contains(&host.url), "{}", r.out);
-    let r = client.run(&["call", "GET", "/api/state"], "");
+    assert!(r.out.contains(&edge.url), "{}", r.out);
+    let r = client.run(&["call", "GET", "/overview"], "");
     assert_eq!(r.code, 1, "the host's key is gone");
 }
 
@@ -533,12 +541,7 @@ fn works_through_secret_tool() {
     // The fake reads its store from the environment of the test process.
     std::env::set_var("FAKE_SECRET_STORE", store.path());
     client.set("FAKE_SECRET_STORE", store.path().to_str().unwrap());
-    let r = client.run(&["key", "import", path(&me.file)], "");
-    assert_eq!(r.code, 0, "{}", r.err);
-    let r = client.run(
-        &["login", &host.url, "--fingerprint", &host.fingerprint()],
-        TOKEN,
-    );
+    let r = login_box(&client, &host.url);
     assert_eq!(r.code, 0, "{}", r.err);
     let r = client.run(&["call", "GET", "/api/state"], "");
     assert_eq!(r.code, 0, "{}", r.err);
@@ -555,7 +558,7 @@ fn says_so_in_one_sentence_when_there_is_no_secret_service() {
 }
 
 #[test]
-fn away_from_its_network_a_box_is_called_through_its_edge() {
+fn a_box_does_not_send_its_sign_in_through_the_edge() {
     use losos::keychain::MemoryKeychain;
     use losos::vault::Vault;
 
@@ -563,32 +566,26 @@ fn away_from_its_network_a_box_is_called_through_its_edge() {
     let host = mock(false, me.key.armored_public(), box_handler());
     let keychain = Arc::new(MemoryKeychain::new());
     let client = Client::with(keychain.clone());
-    client.run(&["key", "import", me.file.path().to_str().unwrap()], "");
-    let r = client.run(
-        &["login", &host.url, "--fingerprint", &host.fingerprint()],
-        TOKEN,
-    );
+    let r = login_box(&client, &host.url);
     assert_eq!(r.code, 0, "{}", r.err);
-    assert!(r.out.contains(common::EDGE_URL), "{}", r.out);
+    assert!(
+        !r.out.contains(common::EDGE_URL),
+        "a LosOS Login sign-in is not carried by the edge: {}",
+        r.out
+    );
     let vault = Vault::new(keychain);
     let mut record = vault.get_host(&host.url).unwrap().unwrap();
-    assert_eq!(record.edge_url.as_deref(), Some(common::EDGE_URL));
-    assert!(client.run(&["hosts"], "").out.contains(common::EDGE_URL));
+    assert!(record.edge_url.is_none());
 
-    // The box's own address leads nowhere (nothing listens on the discard
-    // port), and the mock stands in for the edge that carries the call.
+    // Even a stored edge address is not used: the token would cross it in
+    // the clear. Nothing is listening on the discard port, and the mock,
+    // standing in for that edge, sees no call.
+    let before = host.calls.lock().unwrap().len();
     vault.remove_host(&host.url).unwrap();
     record.url = "http://127.0.0.1:9".into();
     record.edge_url = Some(host.url.clone());
     vault.put_host(&record).unwrap();
     let r = client.run(&["call", "GET", "/api/state"], "");
-    assert_eq!(r.code, 0, "{}", r.err);
-    let body: Value = serde_json::from_str(&r.out).unwrap();
-    assert_eq!(body["mode"], "local");
-
-    // Without an edge it stays out of reach.
-    record.edge_url = None;
-    vault.put_host(&record).unwrap();
-    let r = client.run(&["call", "GET", "/api/state"], "");
     assert_ne!(r.code, 0, "{}", r.out);
+    assert_eq!(host.calls.lock().unwrap().len(), before);
 }

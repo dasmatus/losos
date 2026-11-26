@@ -5,7 +5,7 @@ mod common;
 
 use std::sync::Arc;
 
-use common::{mock_tls, owner, Cert, Client, TOKEN};
+use common::{mock_tls, owner, Cert, Client};
 use losos::http::{Http, HttpError, Trust};
 use losos::keychain::MemoryKeychain;
 use losos::vault::Vault;
@@ -59,11 +59,7 @@ fn login_pins_a_box_certificate_and_calls_go_through_it() {
     );
     let keychain = Arc::new(MemoryKeychain::new());
     let client = Client::with(keychain.clone());
-    client.run(&["key", "import", me.file.path().to_str().unwrap()], "");
-    let r = client.run(
-        &["login", &host.url, "--fingerprint", &host.fingerprint()],
-        TOKEN,
-    );
+    let r = client.run(&["login", &host.url, "--fingerprint", &cert.pin()], "");
     assert_eq!(r.code, 0, "{}", r.err);
     assert!(r.out.contains("TLS"), "{}", r.out);
 

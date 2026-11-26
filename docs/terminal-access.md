@@ -1,10 +1,18 @@
 # Terminal access: the wire contract
 
 `losos`, the terminal client in `admin-ui/tui/`, manages a box (and, for the
-operator, an edge) without SSH. It talks to the same HTTP API the web UI
-does, through one signed and encrypted endpoint. This page is the contract
-between the three sides: the client, `lososd` (`backend/src/access.rs`) and
-the shared Rust crate both servers use (`backend/access/`, `losos-access`).
+operator, an edge) without SSH.
+
+A **box** signs the terminal in with LosOS Login, the same device-code flow
+the companion uses (`losos-tui`, below). Calls then go out as
+`Authorization: Bearer`, and lososd treats that token as the person who
+approved it, so their role and sections apply as they do in the admin pages.
+The signed envelope further down is what an **edge** still uses, and what
+lososd still accepts for a seeded key. A box's terminal no longer sends one.
+
+This page is the contract between the client, `lososd`
+(`backend/src/access.rs`, `backend/src/http.rs`) and the shared Rust crate
+both servers use (`backend/access/`, `losos-access`).
 
 ## Two credentials, both needed
 
@@ -147,7 +155,7 @@ KeePassXC all work. Every item carries `service=losos` and a `kind`:
 | kind | other attributes | secret |
 |---|---|---|
 | `gpg-key` | `fingerprint` | the armoured secret key, as exported (still under its passphrase if it had one) |
-| `host` | `url` | JSON: `{"url", "kind": "box"\|"edge", "fingerprint", "publicKey", "token", "keyFingerprint", "tlsPin"?, "edgeUrl"?}` |
+| `host` | `url` | JSON: `{"url", "kind": "box"\|"edge", "fingerprint", "publicKey", "token", "keyFingerprint", "tlsPin"?, "edgeUrl"?, "accessToken"?, "refreshToken"?, "expiresAt"?}`. A box signed in with LosOS Login fills the last three and leaves `token` empty. A record whose `token` is still `losos_pat_…` is the old sign-in: the client refuses it and says to run `losos login` again. |
 | `cloud` | `url` | JSON: `{"url", "user", "secret", "location"}`, the LosOS Cloud app password of `losos cloud setup` |
 | `git` | `url`, `protocol`, `server` | the same, with the LosOS Git token of `losos git setup`; `server` is the host as git's credential protocol names it |
 | `companion` | `url` | JSON: `{"url", "tlsPin"?, "accessToken", "expiresAt", "refreshToken"}`, the AI agent companion's LosOS Login sign-in (below) |
@@ -195,6 +203,40 @@ accepts that exact certificate or one the web trusts, and nothing else. A
 different certificate stops the call with a warning, and `losos login` again
 pins the new one once the owner has checked it. An edge with a public
 certificate gets no pin.
+
+## A box: LosOS Login
+
+`losos login <url>` on a box does not ask for a GPG key or an access token.
+It signs in with OAuth 2.0 device authorization (RFC 8628) as the public
+client `losos-tui` (`modules/identity.nix`), the same flow as the companion:
+
+1. When the box's certificate is its own, the client shows its SHA-256 and
+   keeps it (`tlsPin`) once the person agrees. A script passes it as
+   `--fingerprint`. A later, different certificate is refused.
+2. `POST /auth/api/oidc/device-authorization` returns a link and a code. The
+   person opens the link, signs in to LosOS Login (password, and the second
+   factor of a person in `losos-two-factor`; `losos-locked` is denied) and
+   approves **LosOS terminal**.
+3. The client polls `POST /auth/api/oidc/token` and stores the access token
+   (an hour) and the refresh token (30 days, rotated on every refresh) in
+   the host record. Nothing else keeps them.
+4. Each call is `Authorization: Bearer <access token>` to the box's own URL,
+   over that certificate. nginx lets the Bearer header through, and lososd
+   introspects it (`backend/src/companion.rs`). A live token issued to
+   `losos-tui` is the person it names, as `Principal::Person`, so
+   `backend/sections.json` applies: an administrator, a member's sections, a
+   guest, a muted person and a person a rule holds are all the same as in
+   the admin pages. `GET /api/me` is how the client learns the name, the
+   role and which panes to show.
+5. An access token within a minute of `expiresAt`, or a 401, is refreshed
+   once under a lock file, after reading the keychain again. A failed
+   refresh ends the sign-in. `losos logout` revokes both tokens at
+   `/auth/api/oidc/revocation` and deletes the host record.
+
+Calls stay on the box's own network. They are not sent through the edge:
+the edge would see the token. An old host record that still holds
+`losos_pat_…` and no LosOS Login tokens is refused with a migration
+message. `losos logout` deletes it. `losos login` replaces it.
 
 ## The AI agent companion
 

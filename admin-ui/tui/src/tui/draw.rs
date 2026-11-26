@@ -239,7 +239,13 @@ fn header(app: &App, p: &mut Painter<'_>, area: Rect) {
             Span::new(format!("  {}", app.host.kind.word()), C::Faint),
         ],
         vec![Span::new(app.title(), C::Ink).bold()],
-        vec![Span::new(app.host.url.clone(), C::Muted)],
+        vec![Span::new(
+            match &app.who {
+                Some(who) => format!("{}  {who}", app.host.url),
+                None => app.host.url.clone(),
+            },
+            C::Muted,
+        )],
         vec![
             Span::new("● ", tone_colour(tone)),
             Span::new(

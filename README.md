@@ -57,21 +57,19 @@ is stored unencrypted on the boot partition. See the
 ## Manage it from a terminal
 
 `losos` is a terminal client with the admin pages' panes, for a box you
-reach over the network. It needs no SSH: every call is signed by your GPG
-key and encrypted to the box. The box trusts only keys that were on the
-install stick, so put yours there before you install. On 64-bit x86 Linux:
+reach over the network. It needs no SSH. It signs in with LosOS Login, the
+box's own sign-in, and then acts as that person. On 64-bit x86 Linux:
 
 ```sh
 curl -fsSLO https://nightly.link/dasmatus/losos/workflows/ci/main/losos-pages-updates.zip
 unzip -o losos-pages-updates.zip -d losos-pages-updates
 node losos-pages-updates/install.mjs
-losos key import --gpg you@example.com
-losos login http://<address on the box's screen>
+losos login https://<address on the box's screen>
 ```
 
-The token `login` asks for comes from **Settings → Access tokens** in the
-admin pages. [The terminal client](https://losos.dasmat.us/manual/terminal/)
-walks through all of it, including how to build a stick with your key.
+`login` prints a link. Open it, sign in to LosOS Login and approve the
+terminal. [The terminal client](https://losos.dasmat.us/manual/terminal/)
+walks through all of it.
 
 ## Develop
 

@@ -10,92 +10,15 @@ slug: /manual/terminal
 
 `losos` is a terminal program that manages a box from another computer.
 It shows the same panes as the admin pages, in the same words and colours,
-and needs no SSH, because the box has none. Every request it sends is
-signed by your own GPG key and encrypted to the box. The box answers the
-same way, so only the box can read the request and only you can read the
-answer.
+and needs no SSH, because the box has none.
+
+It signs in with LosOS Login, the box's own sign-in, the same way the admin
+pages, LosOS Cloud and LosOS Git do. You approve it in the browser. From
+then on the terminal acts as you: your role, and the parts of the box you
+were given. There is no separate terminal password, and no access token to
+copy off the Access tokens pane.
 
 It runs on 64-bit x86 Linux.
-
-## Before you install the box: put your key on the stick
-
-The box only accepts requests signed by a GPG key it was given at install
-time. Nothing on a running box can add one later. If it could, anyone who
-got into the admin pages could add their own key and then make a token for
-it. So the terminal client needs a little planning. The stick you install
-from has to carry your key.
-
-:::warning[The release stick carries no key]
-The stick from the release page carries no key. A box installed from it
-works in every other way, and its Access tokens pane says that no key was
-seeded and makes no tokens. The only way to give that box a key is to
-install it again from a stick that carries one, and installing wipes it.
-:::
-
-You need a GPG key with an encryption subkey, because the box encrypts its
-answers to it. `gpg --full-generate-key` makes one by default. A key the
-box could not answer stops the installer before it touches a disk. Export the
-public half into a new, empty folder:
-
-```sh
-mkdir my-losos-stick && cd my-losos-stick
-gpg --armor --export you@example.com > owner.asc
-```
-
-Next to it, save this as `flake.nix`:
-
-```nix
-{
-  inputs.losos.url = "github:dasmatus/losos";
-  outputs = { losos, ... }:
-    let
-      key = builtins.readFile ./owner.asc;
-      stick = losos.nixosConfigurations.iso.extendModules {
-        modules = [ { losos.access.gpgKeys = [ key ]; } ];
-      };
-    in {
-      packages.x86_64-linux.default =
-        stick.config.system.build.isoImage;
-    };
-}
-```
-
-Then build the stick with [Nix](https://nixos.org/download/) on a 64-bit
-x86 Linux machine:
-
-```sh
-nix --extra-experimental-features 'nix-command flakes' build
-```
-
-The build compiles the LosOS programs, so the first run takes a while.
-The ISO lands in `result/iso/`. Write it to the stick and
-[install](../start/install.md) as usual. After the first run the Access
-tokens pane lists your key under **Seeded GPG keys**. Two keys work too:
-list both, as in `[ key (builtins.readFile ./other.asc) ]`.
-
-:::note[Self-built sticks are not signed]
-A stick you build yourself is not signed, so turn Secure Boot off in the
-firmware to boot it.
-:::
-
-## Make a token
-
-Open **Settings → Access tokens** in the admin pages. The pane shows:
-
-- **This box's key**, the fingerprint the terminal checks on its first
-  connection;
-- **Seeded GPG keys**, the keys the box was installed with;
-- **Tokens**, the ones already made, with when each was last used.
-
-Give the new token a name, pick the key it belongs to, choose **Read only**
-or **Full access**, and pick when it expires. **Create token** shows it
-once. Copy it then. The box keeps only a hash and cannot show it again.
-
-A token works only in a request signed by the key it was made for, so a
-token copied off a screen is no use without that key. A read-only token
-can look at every pane and change nothing. No token can make, list or
-revoke tokens, and none can reach the setup wizard or the sign-in.
-**Revoke** ends one at once.
 
 ## Install the client
 
@@ -111,61 +34,85 @@ the checksum and puts `losos` in `~/.local/bin`, or in `/usr/local/bin` when
 you run it as root. It never asks for a password. Read it first if you like.
 It is short and says what it does at the top.
 
-`losos` keeps your key and tokens in the desktop's keychain (GNOME
-Keyring, KWallet or KeePassXC) through `secret-tool`. On Debian and Ubuntu
-that is the `libsecret-tools` package, on Fedora and Arch `libsecret`. It
-never writes them to a plain file.
+`losos` keeps the sign-in in the desktop's keychain (GNOME Keyring, KWallet
+or KeePassXC) through `secret-tool`. On Debian and Ubuntu that is the
+`libsecret-tools` package, on Fedora and Arch `libsecret`. It never writes
+the tokens to a plain file.
 
-## Connect
+## Sign in
 
 ```sh
-losos key import --gpg you@example.com
-losos login http://192.168.1.23
+losos login https://mattbox.local
 losos
 ```
 
-`key import --gpg` copies your secret key out of GnuPG into the keychain.
-If you keep the secret key in a file, `losos key import secret.asc` does
-the same from the file.
+`login` takes the box's address from its screen. Use `https://`. LosOS Login
+does not answer on plain `http://`; the box sends that address on to
+`https://`.
 
-`login` takes the box's address from its screen. Plain `http://` is fine
-here, because the request and the answer are encrypted end to end whatever carries
-them. `https://<name>.local` works too. The box's certificate is its own,
-so `losos` takes the one it sees at login and remembers it. If the box
-later shows a different certificate, `losos` stops and says so. Run
-`login` again to accept the new one once you know why it changed.
+The first time, if the box's certificate is its own, `losos` shows the
+certificate's SHA-256 fingerprint. Compare it with the one your browser
+shows for the box, and say yes if they match. From then on `losos` talks
+only to a box with that certificate. If the box later shows a different
+certificate, `losos` stops and says so. Run `login` again once you know why
+it changed.
 
-`login` asks the box for its key and shows the fingerprint in groups of
-four. Check that it matches **This box's key** on the Access tokens pane
-before you answer yes. Then paste the token, which `losos` does not echo.
-From then on `losos` remembers the box's key, and refuses to talk to it if
-the key ever changes.
+Then `losos` signs in with LosOS Login. It prints a link and a code:
+
+```text
+losos signs in to https://mattbox.local with LosOS Login. Open this link in a browser, sign in and approve the terminal:
+  https://mattbox.local/auth/consent/openid/device-authorization?user_code=WDJBMJHT
+The page shows the code WDJBMJHT. Waiting for the approval…
+```
+
+Open the link, sign in to LosOS Login as you always do, with your second
+step if you have one, check that the page shows the same code, and choose
+**Accept**. The terminal carries on by itself.
+
+You never type your password into the terminal. LosOS Login gives it two
+tokens: one that opens the box for an hour, and one that gets a new pair
+when that runs out. If the terminal goes 30 days without being used, it has
+to sign in again. Both stay in the keychain. A second `losos` on this
+computer renews them together, so one cannot sign the other out by mistake.
+
+The terminal acts as you. An administrator sees every pane it has. Anyone
+else sees the parts they were given, the same ones the admin pages show
+them, and a change they cannot make is refused. A person LosOS Login is
+holding to their own account cannot use the terminal until that is done, in
+**Your account** on the admin pages.
+
+```sh
+losos logout https://mattbox.local
+```
+
+`logout` hands both tokens back to LosOS Login and forgets them. The box
+stops taking them at once.
 
 `losos` on its own opens the full-screen view: the sidebar on the left, the
-pane on the right, the keys at the bottom. Arrows or `j` and `k` move,
-Enter changes a setting, Tab moves between the sidebar and the pane, `/`
-searches the panes, `?` lists the rest and `q` quits. A change stays a
-draft until you press `a` to apply it, and the box asks before it rebuilds,
-as the admin pages do.
+pane on the right, the keys at the bottom. The header names who is signed
+in. Arrows or `j` and `k` move, Enter changes a setting, Tab moves between
+the sidebar and the pane, `/` searches the panes, `?` lists the rest and
+`q` quits. A change stays a draft until you press `a` to apply it, and the
+box asks before it rebuilds, as the admin pages do.
 
 :::note[What stays in the admin pages]
 Access tokens, the market, Diagrams and anything that wipes data stay in
 the admin pages.
 :::
 
-## Away from home
+## An old sign-in
 
-When the box reaches the internet through an edge, `login` also notes the
-box's address on the edge, and `losos hosts` shows it as **away from
-home**. When the box's own address leads nowhere, because this computer is
-on another network, `losos` sends the call to that address instead. The
-edge passes it on without reading it: it is still signed by your key and
-encrypted to the box's key, and the box answers the same way. The edge has
-a certificate the web trusts, so there is nothing more to pin.
+A computer that signed in before, with an access token and a GPG key, still
+has that sign-in in the keychain. `losos` does not use it. It says the
+sign-in is the old access token, and that `losos login` signs in with LosOS
+Login instead. `losos logout` removes the old sign-in. There is one way in.
 
-Only the terminal's calls go through the edge this way. The rest of the
-admin pages stay on the box's own network. To keep the terminal there too,
-turn off `losos.access.throughEdge` on the Advanced pane.
+## On the box's own network
+
+The terminal's calls stay on the box's own network, the same as the admin
+pages. LosOS Login, LosOS Cloud and LosOS Git answer through the internet.
+The terminal does not send its calls out that way, because those calls
+carry the sign-in.
 
 ## Use LosOS Cloud and LosOS Git from this computer
 
@@ -174,9 +121,10 @@ losos cloud setup
 losos git setup
 ```
 
-Each asks for your LosOS password, the one you sign in to LosOS Cloud
+Each asks for your LosOS password, the one you sign in to LosOS Login
 with, and sets up the computer you run it on. The **This computer** pane
-of the full-screen view does the same with one key.
+of the full-screen view does the same with one key. An administrator is who
+can run them.
 
 `cloud setup` asks the box for an app password for this computer alone
 and keeps it in the keychain where the file manager looks for it. LosOS
@@ -212,3 +160,7 @@ losos call GET /api/state
 
 It exits 1 when the box answers with an error, so a script can check it.
 `losos --help` lists every command.
+
+`login` in a script prints the same link and waits. When the certificate is
+the box's own, pass its SHA-256 as `--fingerprint`, the one your browser
+shows, so the script does not have to ask.

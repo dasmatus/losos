@@ -7,6 +7,7 @@
 //! ```text
 //! kind=gpg-key  fingerprint=<40 hex>  secret: the armoured secret key
 //! kind=host     url=<base url>        secret: JSON, see HostRecord
+//!                                      (a box keeps its LosOS Login tokens here)
 //! ```
 //!
 //! [`Keychain`] is the narrow interface the rest of the client uses; tests

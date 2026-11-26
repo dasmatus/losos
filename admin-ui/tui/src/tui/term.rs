@@ -15,7 +15,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 
 use super::app::{App, Key};
-use super::login::{Login, Picker};
+use super::login::{Login, Picker, SignIn};
 use crate::problem::{Problem, Result};
 use crate::theme::Theme;
 
@@ -60,6 +60,22 @@ impl Screen for Login {
     }
     fn done(&self) -> bool {
         self.outcome.is_some()
+    }
+}
+
+impl Screen for SignIn {
+    fn draw(&mut self, area: Rect, buf: &mut Buffer, theme: Theme) {
+        SignIn::draw(self, area, buf, theme);
+    }
+    fn key(&mut self, key: Key) {
+        SignIn::key(self, key);
+    }
+    fn paste(&mut self, _text: &str) {}
+    fn done(&self) -> bool {
+        SignIn::done(self)
+    }
+    fn tick(&mut self) {
+        self.poll();
     }
 }
 

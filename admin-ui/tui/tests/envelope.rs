@@ -28,6 +28,9 @@ fn pair() -> Pair {
         key_fingerprint: user.fingerprint().to_owned(),
         tls_pin: None,
         edge_url: None,
+        access_token: None,
+        refresh_token: None,
+        expires_at: None,
     };
     let unlocked = UserKey::from_armored(&user.armored_secret().unwrap())
         .unwrap()
@@ -149,6 +152,9 @@ fn refuses_a_pin_whose_key_does_not_match_its_fingerprint() {
         key_fingerprint: user.fingerprint().to_owned(),
         tls_pin: None,
         edge_url: None,
+        access_token: None,
+        refresh_token: None,
+        expires_at: None,
     };
     let unlocked = UserKey::from_armored(&user.armored_secret().unwrap())
         .unwrap()

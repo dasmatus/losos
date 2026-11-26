@@ -8,7 +8,7 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 
-use common::{mock_tls, owner, Cert, Client, Mock, Owner, TOKEN};
+use common::{mock_tls, owner, Cert, Client, Mock, Owner};
 use losos::computer::{pinned_public_key, subject_public_key_info};
 use losos::keychain::{Keychain, MemoryKeychain};
 use serde_json::{json, Value};
@@ -74,11 +74,7 @@ fn logged_in() -> Setup {
         )
         .set("LOSOS_SELF", "/opt/losos/bin/losos")
         .set("LOSOS_DEVICE", "work pc");
-    client.run(&["key", "import", me.file.path().to_str().unwrap()], "");
-    let r = client.run(
-        &["login", &host.url, "--fingerprint", &host.fingerprint()],
-        TOKEN,
-    );
+    let r = client.run(&["login", &host.url, "--fingerprint", &cert.pin()], "");
     assert_eq!(r.code, 0, "{}", r.err);
     Setup {
         _me: me,

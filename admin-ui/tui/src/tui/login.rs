@@ -11,10 +11,13 @@
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 
+use std::sync::mpsc::Receiver;
+
 use super::app::Key;
 use super::draw::Painter;
 use super::model::{wrap, Line, Span};
 use crate::i18n::t;
+use crate::oidc::{Granted, OauthError};
 use crate::theme::{LogoSize, Theme, C};
 use crate::vault::{group_fingerprint, HostKind, HostRecord};
 
@@ -235,6 +238,115 @@ impl Login {
                 }
             }
         }
+        let x = area.x + logo_w;
+        for (i, line) in lines.iter().enumerate() {
+            p.line(x, area.y + 1 + i as u16, (text_cols + 4) as u16, line);
+        }
+    }
+}
+
+/// LosOS Login's device sign-in, while the browser approval is pending.
+pub struct SignIn {
+    pub url: String,
+    pub link: String,
+    pub code: String,
+    pub cancelled: bool,
+    done: bool,
+    rx: Option<Receiver<std::result::Result<Granted, OauthError>>>,
+    pub granted: Option<std::result::Result<Granted, OauthError>>,
+}
+
+impl SignIn {
+    pub fn new(url: String, link: String, code: String) -> SignIn {
+        SignIn {
+            url,
+            link,
+            code,
+            cancelled: false,
+            done: false,
+            rx: None,
+            granted: None,
+        }
+    }
+
+    /// `rx` is the device-code poll, running on another thread.
+    pub fn waiting(
+        url: String,
+        link: String,
+        code: String,
+        rx: Receiver<std::result::Result<Granted, OauthError>>,
+    ) -> SignIn {
+        let mut screen = SignIn::new(url, link, code);
+        screen.rx = Some(rx);
+        screen
+    }
+
+    pub fn key(&mut self, key: Key) {
+        if self.done {
+            return;
+        }
+        if matches!(key, Key::Esc | Key::Interrupt | Key::Char('q')) {
+            self.cancelled = true;
+            self.done = true;
+        }
+    }
+
+    pub fn poll(&mut self) {
+        let Some(rx) = &self.rx else {
+            return;
+        };
+        if let Ok(result) = rx.try_recv() {
+            self.granted = Some(result);
+            self.done = true;
+        }
+    }
+
+    pub fn done(&self) -> bool {
+        self.done
+    }
+
+    pub fn draw(&self, area: Rect, buf: &mut Buffer, theme: Theme) {
+        let mut p = Painter { buf, theme };
+        p.fill(area, C::Ground);
+        let (logo_w, _) = p.logo(area.x, area.y + 1, LogoSize::Large);
+        let text_cols = area.width.saturating_sub(40).max(30) as usize;
+        let pad = |spans: Vec<Span>| {
+            let mut all = vec![Span::raw("   ")];
+            all.extend(spans);
+            Line::new(all, C::Ground)
+        };
+        let mut lines = vec![
+            pad(vec![
+                Span::new("LosOS", C::Ink).bold(),
+                Span::new(format!("  {}", t("tui.login.badge")), C::Faint),
+            ]),
+            pad(vec![Span::new(self.url.clone(), C::Muted)]),
+            pad(vec![]),
+        ];
+        for text in wrap(&crate::tr!("tui.login.signIn", url = &self.url), text_cols) {
+            lines.push(pad(vec![Span::new(text, C::Ink)]));
+        }
+        lines.push(pad(vec![]));
+        // Break the link before the query, so the code is not split.
+        let (head, query) = self
+            .link
+            .split_once('?')
+            .map(|(head, query)| (head.to_string(), format!("?{query}")))
+            .unwrap_or_else(|| (self.link.clone(), String::new()));
+        for text in wrap(&head, text_cols) {
+            lines.push(pad(vec![Span::new(text, C::Accent)]));
+        }
+        if !query.is_empty() {
+            for text in wrap(&query, text_cols) {
+                lines.push(pad(vec![Span::new(text, C::Accent)]));
+            }
+        }
+        lines.push(pad(vec![]));
+        lines.push(pad(vec![Span::new(self.code.clone(), C::Ground)
+            .on(C::Accent)
+            .bold()]));
+        lines.push(pad(vec![]));
+        lines.push(pad(vec![Span::new(t("tui.login.waiting"), C::Faint)]));
         let x = area.x + logo_w;
         for (i, line) in lines.iter().enumerate() {
             p.line(x, area.y + 1 + i as u16, (text_cols + 4) as u16, line);
