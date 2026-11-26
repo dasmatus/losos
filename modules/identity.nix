@@ -883,10 +883,10 @@ in
           proxyPass = "http://127.0.0.1:${toString port}/auth/api/health";
         };
         # The question nginx asks before every /api/ request. A Bearer
-            # header is the spare key, or a LosOS Login access token (the
-            # companion, the terminal or a computer's backups) that lososd
-            # asks LosOS Login about itself, so it skips this question and the
-            # box stays reachable with the spare key when Authelia is down.
+        # header is the spare key, or a LosOS Login access token (the
+        # companion, the terminal or a computer's backups) that lososd
+        # asks LosOS Login about itself, so it skips this question and the
+        # box stays reachable with the spare key when Authelia is down.
         "= /internal/losos-authz" = {
           proxyPass = "http://127.0.0.1:${toString port}/auth/api/authz/auth-request";
           extraConfig = ''
