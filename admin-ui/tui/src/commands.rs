@@ -12,6 +12,7 @@ use serde_json::{json, Value};
 
 use crate::agents::companion::{self, Companion};
 use crate::agents::{self, Desk, Found, Launch};
+use crate::box_session::{refresh_lock, BoxLink};
 use crate::cli::{
     self, AgentsCommand, CiCommand, Cli, CloudCommand, Command, CredentialsCommand, EdgeCommand,
     EscrowCommand, GitCommand, KeyCommand, SecretCommand,
@@ -23,6 +24,7 @@ use crate::envelope::{unreachable, Session, Transport};
 use crate::http::{Http, Trust};
 use crate::i18n::{self, Locale};
 use crate::keychain::{Keychain, SecretTool};
+use crate::oidc::{self, OauthError};
 use crate::problem::{Problem, Result};
 use crate::prompt::{read_hidden, read_piped};
 use crate::theme::{detect_mode, detect_truecolor, Theme};
@@ -30,7 +32,8 @@ use crate::tr;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::tui::app::App;
 #[cfg(not(target_arch = "wasm32"))]
-use crate::tui::login::{KeyChoice, Login, Picker};
+use crate::tui::login::{KeyChoice, Login, Picker, SignIn};
+use crate::tui::panes::account_held;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::tui::term;
 use crate::vault::{
@@ -513,6 +516,30 @@ fn unlock(io: &mut Io, key: &UserKey) -> Result<Unlocked> {
     Ok(key.unlock(&passphrase)?)
 }
 
+fn transport_for(io: &mut Io, host: &HostRecord) -> Result<Arc<dyn Transport>> {
+    if host.kind == HostKind::Edge {
+        return Ok(Arc::new(session_for(io, host)?));
+    }
+    if host.legacy_box() {
+        return Err(
+            Problem::new("losos::login", tr!("tui.login.legacy", url = &host.url))
+                .help(tr!("tui.login.legacyHelp", url = &host.url)),
+        );
+    }
+    if !host.login_session() {
+        return Err(Problem::new(
+            "losos::host",
+            tr!("tui.host.unknown", url = &host.url),
+        ));
+    }
+    Ok(Arc::new(BoxLink::new(
+        io.keychain.clone(),
+        &host.url,
+        refresh_lock(&io.env, &host.url),
+        losos_access::now_secs,
+    )))
+}
+
 fn session_for(io: &mut Io, host: &HostRecord) -> Result<Session> {
     let armored = io.vault().get_key(&host.key_fingerprint)?.ok_or_else(|| {
         Problem::new(
@@ -555,6 +582,9 @@ fn ci_session(io: &Io) -> Result<Session> {
         key_fingerprint: key.fingerprint().to_string(),
         tls_pin: None,
         edge_url: None,
+        access_token: None,
+        refresh_token: None,
+        expires_at: None,
     };
     Session::new(&record, key.unlock("")?, Http::new(Trust::Public))
 }
@@ -580,6 +610,213 @@ fn group_pin(pin: &str) -> String {
         .join(" ")
 }
 
+fn same_pin(a: &str, b: &str) -> bool {
+    let clean = |s: &str| {
+        s.chars()
+            .filter(|c| c.is_ascii_hexdigit())
+            .collect::<String>()
+            .to_ascii_lowercase()
+    };
+    let (a, b) = (clean(a), clean(b));
+    !a.is_empty() && a == b
+}
+
+fn oauth_problem(url: &str, error: OauthError) -> Problem {
+    match error {
+        OauthError::Transport(e) => unreachable(url, e),
+        OauthError::Refused(status) => Problem::new(
+            "losos::login",
+            tr!("tui.login.refusedStatus", status = status.to_string()),
+        ),
+        OauthError::NoRefresh => Problem::new("losos::login", tr!("tui.login.noRefresh")),
+        OauthError::Denied => Problem::new("losos::login", tr!("tui.agents.loginDenied")),
+        OauthError::Expired => Problem::new("losos::login", tr!("tui.agents.loginExpired"))
+            .help(tr!("tui.login.endedHelp", url = url)),
+        OauthError::Failed { status, detail } => Problem::new(
+            "losos::login",
+            tr!(
+                "tui.agents.loginFailed",
+                status = status.to_string(),
+                detail = detail
+            ),
+        ),
+        OauthError::BadJson(detail) => Problem::new("losos::login", detail),
+        OauthError::Refresh => Problem::new("losos::login", tr!("tui.login.ended", url = url))
+            .help(tr!("tui.login.endedHelp", url = url)),
+    }
+}
+
+/// Compare a box's certificate with the one pinned before, then sign in
+/// with LosOS Login's device code.
+#[cfg(not(target_arch = "wasm32"))]
+fn login_box(
+    io: &mut Io,
+    url: String,
+    served: Served,
+    expected: Option<&str>,
+    theme: Theme,
+) -> Result<u8> {
+    let vault = io.vault();
+    let pinned = vault.get_host(&url)?;
+    if let (Some(old), Some(new)) = (
+        pinned.as_ref().and_then(|host| host.tls_pin.as_deref()),
+        served.tls_pin.as_deref(),
+    ) {
+        if !same_pin(old, new) {
+            let text = [
+                String::new(),
+                tr!("tui.login.certChanged1"),
+                tr!("tui.login.certChanged2", url = &url),
+                String::new(),
+                format!("  {}  {}", tr!("tui.login.pinned"), colon_hex(old)),
+                format!("  {}  {}", tr!("tui.login.served"), colon_hex(new)),
+                String::new(),
+                tr!("tui.login.changed3"),
+                tr!("tui.login.changed4", url = &url),
+                String::new(),
+            ]
+            .join("\n");
+            let _ = writeln!(io.err, "{text}");
+            return Err(
+                Problem::new("losos::certificate_changed", tr!("tui.login.refused")).exit(2),
+            );
+        }
+    }
+    let already = pinned
+        .as_ref()
+        .and_then(|host| host.tls_pin.as_deref())
+        .is_some_and(|old| {
+            served
+                .tls_pin
+                .as_deref()
+                .is_some_and(|new| same_pin(old, new))
+        });
+    if let Some(pin) = served.tls_pin.as_deref() {
+        if !already {
+            confirm_certificate(io, &url, pin, expected)?;
+        }
+    }
+    let http = match &served.tls_pin {
+        Some(pin) => Http::new(Trust::Pinned(pin.clone())),
+        None => Http::new(Trust::Public),
+    };
+    let code = oidc::start(
+        &http,
+        &url,
+        losos_access::TUI_CLIENT_ID,
+        "openid profile offline_access",
+    )
+    .map_err(|e| oauth_problem(&url, e))?;
+    let granted = if io.terminal() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let http = http.clone();
+        let target = url.clone();
+        let pending = code.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(oidc::finish(
+                &http,
+                &target,
+                losos_access::TUI_CLIENT_ID,
+                &pending,
+                losos_access::now_secs,
+            ));
+        });
+        let mut screen = SignIn::waiting(
+            url.clone(),
+            code.link().to_string(),
+            code.user_code.clone(),
+            rx,
+        );
+        term::run(&mut screen, theme)?;
+        if screen.cancelled || screen.granted.is_none() {
+            return Err(Problem::cancelled());
+        }
+        screen
+            .granted
+            .unwrap()
+            .map_err(|e| oauth_problem(&url, e))?
+    } else {
+        io.line(tr!("tui.login.signIn", url = &url));
+        io.line(format!("  {}", code.link()));
+        io.line(tr!("tui.agents.signInCode", code = &code.user_code));
+        oidc::finish(
+            &http,
+            &url,
+            losos_access::TUI_CLIENT_ID,
+            &code,
+            losos_access::now_secs,
+        )
+        .map_err(|e| oauth_problem(&url, e))?
+    };
+    vault.put_host(&HostRecord {
+        url: url.clone(),
+        kind: HostKind::Box,
+        fingerprint: served.fingerprint,
+        public_key: served.public_key,
+        token: String::new(),
+        key_fingerprint: String::new(),
+        tls_pin: served.tls_pin.clone(),
+        edge_url: None,
+        access_token: Some(granted.access_token),
+        refresh_token: Some(granted.refresh_token),
+        expires_at: Some(granted.expires_at),
+    })?;
+    let transport = transport_for(io, &vault.get_host(&url)?.expect("just stored"))?;
+    match transport.get("/api/me") {
+        Ok(me) => {
+            let name = me.get("name").and_then(Value::as_str).unwrap_or("");
+            let role = me.get("role").and_then(Value::as_str).unwrap_or("");
+            if name.is_empty() {
+                io.line(tr!("tui.login.boxDonePlain", url = &url));
+            } else {
+                io.line(tr!(
+                    "tui.login.boxDone",
+                    url = &url,
+                    name = name,
+                    role = role
+                ));
+            }
+            if account_held(&me) {
+                io.line(tr!("tui.login.held"));
+            }
+        }
+        Err(_) => io.line(tr!("tui.login.boxDonePlain", url = &url)),
+    }
+    if let Some(pin) = &served.tls_pin {
+        io.line(tr!("tui.login.certificatePinned", pin = group_pin(pin)));
+    }
+    Ok(0)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn confirm_certificate(io: &mut Io, url: &str, pin: &str, expected: Option<&str>) -> Result<()> {
+    let shown = colon_hex(pin);
+    if let Some(expected) = expected {
+        if !same_pin(expected, pin) {
+            return Err(Problem::new(
+                "losos::certificate",
+                tr!("tui.login.certMismatch", pin = &shown),
+            )
+            .exit(2));
+        }
+        return Ok(());
+    }
+    if io.terminal() {
+        io.line(tr!("tui.agents.certificate", url = url, pin = &shown));
+        if !io.ask(&tr!("tui.login.askCertificate"))? {
+            return Err(Problem::new(
+                "losos::certificate",
+                tr!("tui.agents.certificateRefused"),
+            ));
+        }
+        return Ok(());
+    }
+    Err(Problem::new(
+        "losos::certificate",
+        tr!("tui.login.needsCertificate", pin = &shown),
+    ))
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 fn login(
     io: &mut Io,
@@ -590,6 +827,9 @@ fn login(
 ) -> Result<u8> {
     let url = parse_url(raw)?;
     let served = fetch_host_key(&url)?;
+    if served.kind == HostKind::Box {
+        return login_box(io, url, served, expected, theme);
+    }
     let vault = io.vault();
     let pinned = vault.get_host(&url)?;
     if let Some(pinned) = &pinned {
@@ -718,6 +958,9 @@ fn login(
         key_fingerprint: key_fingerprint.expect("a key was chosen"),
         tls_pin: served.tls_pin.clone(),
         edge_url: served.edge_url.clone(),
+        access_token: None,
+        refresh_token: None,
+        expires_at: None,
     })?;
     io.line(tr!("tui.login.done", url = &url, kind = served.kind.word()));
     if let Some(pin) = served.tls_pin {
@@ -746,14 +989,42 @@ fn login(
 fn logout(io: &mut Io, raw: &str) -> Result<u8> {
     let url = parse_url(raw)?;
     let vault = io.vault();
-    if vault.get_host(&url)?.is_none() {
+    let Some(host) = vault.get_host(&url)? else {
         return Err(Problem::new(
             "losos::host",
             tr!("tui.host.unknown", url = &url),
         ));
+    };
+    if host.login_session() {
+        let http = companion::http_for(host.tls_pin.as_deref());
+        let told = oidc::revoke(
+            &http,
+            &url,
+            losos_access::TUI_CLIENT_ID,
+            host.access_token.as_deref().unwrap_or(""),
+            host.refresh_token.as_deref().unwrap_or(""),
+        );
+        vault.remove_host(&url)?;
+        io.line(tr!(
+            if told {
+                "tui.logout.login"
+            } else {
+                "tui.logout.loginLocal"
+            },
+            url = &url
+        ));
+        return Ok(0);
     }
+    let legacy = host.legacy_box();
     vault.remove_host(&url)?;
-    io.line(tr!("tui.logout.done", url = &url));
+    io.line(tr!(
+        if legacy {
+            "tui.logout.legacy"
+        } else {
+            "tui.logout.done"
+        },
+        url = &url
+    ));
     Ok(0)
 }
 
@@ -764,18 +1035,26 @@ fn hosts(io: &mut Io) -> Result<u8> {
     }
     for h in hosts {
         io.line(format!("{}  {}", h.url, h.kind.word()));
-        io.line(format!(
-            "  {}: {}",
-            tr!("tui.login.hostKey"),
-            group_fingerprint(&h.fingerprint)
-        ));
-        io.line(format!(
-            "  {}: {}",
-            tr!("tui.about.userKey"),
-            group_fingerprint(&h.key_fingerprint)
-        ));
+        if h.login_session() {
+            io.line(format!("  {}", tr!("tui.hosts.viaLogin")));
+        } else if h.legacy_box() {
+            io.line(format!("  {}", tr!("tui.hosts.legacy")));
+        } else {
+            io.line(format!(
+                "  {}: {}",
+                tr!("tui.login.hostKey"),
+                group_fingerprint(&h.fingerprint)
+            ));
+            io.line(format!(
+                "  {}: {}",
+                tr!("tui.about.userKey"),
+                group_fingerprint(&h.key_fingerprint)
+            ));
+        }
         if let Some(edge) = &h.edge_url {
-            io.line(format!("  {}: {edge}", tr!("tui.host.edgeUrl")));
+            if h.kind == HostKind::Edge {
+                io.line(format!("  {}: {edge}", tr!("tui.host.edgeUrl")));
+            }
         }
     }
     Ok(0)
@@ -808,8 +1087,24 @@ fn open(io: &mut Io, named: Option<&str>, theme: Theme) -> Result<u8> {
             }
         }
     };
-    let session = session_for(io, &host)?;
-    let mut app = App::new(host, Arc::new(session)).with_computer(io.computer());
+    let transport = transport_for(io, &host)?;
+    let me = if host.kind == HostKind::Box {
+        match transport.get("/api/me") {
+            Ok(me) => Some(me),
+            Err(e) if e.code == "losos::login" => return Err(e),
+            Err(_) => None,
+        }
+    } else {
+        None
+    };
+    if me.as_ref().is_some_and(account_held) {
+        return Err(Problem::new("losos::login", tr!("tui.login.held")));
+    }
+    let mut app = App::new(host, transport).with_computer(io.computer());
+    if let Some(me) = me.as_ref() {
+        app = app.with_person(me);
+    }
+    app.boot();
     term::run(&mut app, theme)?;
     Ok(0)
 }
@@ -836,13 +1131,12 @@ fn call(
         Some(raw) => serde_json::from_str(raw)
             .map_err(|_| Problem::new("losos::json", tr!("tui.call.badJson")))?,
     };
-    let session = if io.ci_mode() {
-        ci_session(io)?
+    let answer = if io.ci_mode() {
+        ci_session(io)?.request(method, path, body)?
     } else {
         let host = pick_host(&io.vault(), host, None)?;
-        session_for(io, &host)?
+        transport_for(io, &host)?.request(method, path, body)?
     };
-    let answer = session.request(method, path, body)?;
     let note = if answer.sealed {
         String::new()
     } else {
@@ -1039,7 +1333,7 @@ fn device_setup(
             tr!("tui.computer.notBox", url = &record.url),
         ));
     }
-    let session = session_for(io, &record)?;
+    let session = transport_for(io, &record)?;
     let computer = io.computer();
     let device = computer.device_name(device);
     let password = io.secret(&tr!("tui.computer.passwordPrompt"))?;
@@ -1051,7 +1345,7 @@ fn device_setup(
     }
     match service {
         Service::Cloud => {
-            let done = computer.cloud_setup(&record, &session, &password, &device)?;
+            let done = computer.cloud_setup(&record, session.as_ref(), &password, &device)?;
             io.line(tr!("tui.computer.cloudDone", device = &device));
             io.line(tr!("tui.computer.cloudWhere", location = &done.location));
             if done.own_certificate {
@@ -1060,7 +1354,7 @@ fn device_setup(
             io.line(tr!("tui.computer.cloudRevoke", device = &device));
         }
         Service::Git => {
-            let done = computer.git_setup(&record, &session, &password, &device)?;
+            let done = computer.git_setup(&record, session.as_ref(), &password, &device)?;
             io.line(tr!("tui.computer.gitDone", device = &device));
             io.line(tr!(
                 "tui.computer.gitWhere",
@@ -1083,7 +1377,7 @@ fn credentials(io: &mut Io, host: Option<&str>, command: CredentialsCommand) -> 
             tr!("tui.credentials.notBox", url = &record.url),
         ));
     }
-    let session = session_for(io, &record)?;
+    let session = transport_for(io, &record)?;
     match command {
         CredentialsCommand::List => {
             let view = session.get("/api/credentials")?;

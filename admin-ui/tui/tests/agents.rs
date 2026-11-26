@@ -11,10 +11,11 @@ use std::sync::Arc;
 
 #[cfg(unix)]
 use common::fake_bin;
-use common::{mock, owner, Client, Mock, TOKEN};
+use common::{mock, owner, Client, Mock};
 use losos::agents::companion;
 use losos::envelope::Transport;
 use losos::keychain::{Keychain, MemoryKeychain};
+use losos::vault::{HostKind, HostRecord, Vault};
 use serde_json::{json, Value};
 
 const SELF: &str = "/opt/losos/bin/losos";
@@ -134,12 +135,24 @@ fn desk(tools: &[&str]) -> Desk {
         .set("FAKE_AGENT_LOG", &at("agent.log"))
         .set("LOSOS_SELF", SELF)
         .set("LOSOS_DEVICE", "laptop");
-    client.run(&["key", "import", me.file.path().to_str().unwrap()], "");
-    let r = client.run(
-        &["login", &host.url, "--fingerprint", &host.fingerprint()],
-        TOKEN,
-    );
-    assert_eq!(r.code, 0, "{}", r.err);
+    // Signed in already, the way `losos login` leaves a box: the companion
+    // takes the address from this record. Written here so the companion's
+    // own device code is the first one this mock counts.
+    Vault::new(keychain.clone())
+        .put_host(&HostRecord {
+            url: host.url.clone(),
+            kind: HostKind::Box,
+            fingerprint: host.fingerprint(),
+            public_key: String::new(),
+            token: String::new(),
+            key_fingerprint: String::new(),
+            tls_pin: None,
+            edge_url: None,
+            access_token: Some("authelia_at_kept.sig".into()),
+            refresh_token: Some("authelia_rt_kept.sig".into()),
+            expires_at: Some(9_999_999_999),
+        })
+        .unwrap();
     Desk {
         host,
         keychain,

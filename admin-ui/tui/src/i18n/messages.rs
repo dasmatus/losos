@@ -327,6 +327,121 @@ messages! {
         sk: "Mimo jeho siete idú volania cez jeho edge: {url}",
         de: "Außerhalb seines Netzes gehen Aufrufe über seine Edge: {url}",
     },
+    "tui.login.badge" => {
+        en: "sign-in",
+        sk: "prihlásenie",
+        de: "Anmeldung",
+    },
+    "tui.login.signIn" => {
+        en: "losos signs in to {url} with LosOS Login. Open this link in a browser, sign in and approve the terminal:",
+        sk: "losos sa do {url} prihlasuje cez LosOS Login. Otvorte tento odkaz v prehliadači, prihláste sa a schváľte terminál:",
+        de: "losos meldet sich bei {url} mit LosOS Login an. Öffne diesen Link im Browser, melde dich an und erlaube das Terminal:",
+    },
+    "tui.login.waiting" => {
+        en: "Waiting for the approval. Esc cancels.",
+        sk: "Čaká sa na schválenie. Esc zruší.",
+        de: "Warte auf die Freigabe. Esc bricht ab.",
+    },
+    "tui.login.askCertificate" => {
+        en: "Do they match, and should losos keep this certificate?",
+        sk: "Zhodujú sa a má si losos tento certifikát ponechať?",
+        de: "Stimmen sie überein, und soll losos dieses Zertifikat behalten?",
+    },
+    "tui.login.needsCertificate" => {
+        en: "Without a terminal, confirm the certificate with --fingerprint. It is {pin}; compare it with your browser first.",
+        sk: "Bez terminálu potvrďte certifikát cez --fingerprint. Je to {pin}; najprv ho porovnajte s prehliadačom.",
+        de: "Ohne Terminal bestätige das Zertifikat mit --fingerprint. Es ist {pin}; vergleiche es zuerst mit dem Browser.",
+    },
+    "tui.login.certMismatch" => {
+        en: "The certificate is not the one you named with --fingerprint. It is {pin}. Nothing was stored.",
+        sk: "Certifikát nie je ten, ktorý ste uviedli cez --fingerprint. Je to {pin}. Nič sa neuložilo.",
+        de: "Das Zertifikat ist nicht das mit --fingerprint genannte. Es ist {pin}. Es wurde nichts gespeichert.",
+    },
+    "tui.login.certChanged1" => {
+        en: "THE CERTIFICATE HAS CHANGED.",
+        sk: "CERTIFIKÁT SA ZMENIL.",
+        de: "DAS ZERTIFIKAT HAT SICH GEÄNDERT.",
+    },
+    "tui.login.certChanged2" => {
+        en: "{url} now shows a different certificate from the one you pinned.",
+        sk: "{url} teraz ukazuje iný certifikát, než aký ste si pripli.",
+        de: "{url} zeigt jetzt ein anderes Zertifikat als das, das du festgehalten hast.",
+    },
+    "tui.login.boxDone" => {
+        en: "Signed in to {url} as {name} ({role}). The sign-in stays in your keychain and is renewed while you use it.",
+        sk: "Prihlásené do {url} ako {name} ({role}). Prihlásenie zostáva v kľúčenke a obnovuje sa, kým ho používate.",
+        de: "Bei {url} als {name} ({role}) angemeldet. Die Anmeldung bleibt im Schlüsselbund und wird erneuert, solange du sie benutzt.",
+    },
+    "tui.login.boxDonePlain" => {
+        en: "Signed in to {url} with LosOS Login. The sign-in stays in your keychain and is renewed while you use it.",
+        sk: "Prihlásené do {url} cez LosOS Login. Prihlásenie zostáva v kľúčenke a obnovuje sa, kým ho používate.",
+        de: "Bei {url} mit LosOS Login angemeldet. Die Anmeldung bleibt im Schlüsselbund und wird erneuert, solange du sie benutzt.",
+    },
+    "tui.login.noRefresh" => {
+        en: "LosOS Login gave the terminal no refresh token, so it would stop working after an hour.",
+        sk: "LosOS Login nedal terminálu obnovovací token, takže by po hodine prestal fungovať.",
+        de: "LosOS Login hat dem Terminal kein Aktualisierungstoken gegeben, es würde also nach einer Stunde aufhören.",
+    },
+    "tui.login.refusedStatus" => {
+        en: "LosOS Login would not start the sign-in (HTTP {status}).",
+        sk: "LosOS Login nezačal prihlásenie (HTTP {status}).",
+        de: "LosOS Login hat die Anmeldung nicht begonnen (HTTP {status}).",
+    },
+    "tui.login.legacy" => {
+        en: "{url} still has an access-token sign-in from before losos used LosOS Login. That sign-in is not used.",
+        sk: "{url} má ešte prihlásenie prístupovým tokenom spred toho, než losos používal LosOS Login. To prihlásenie sa nepoužíva.",
+        de: "{url} hat noch eine Anmeldung mit einem Zugangstoken von bevor losos LosOS Login benutzt hat. Diese Anmeldung wird nicht verwendet.",
+    },
+    "tui.login.legacyHelp" => {
+        en: "Run losos login {url} to sign in with LosOS Login. losos logout {url} removes the old sign-in.",
+        sk: "Spustite losos login {url} a prihláste sa cez LosOS Login. losos logout {url} staré prihlásenie odstráni.",
+        de: "Führe losos login {url} aus, um dich mit LosOS Login anzumelden. losos logout {url} entfernt die alte Anmeldung.",
+    },
+    "tui.login.held" => {
+        en: "LosOS Login is holding this account to its own page. Finish what it asks under Your account in the admin pages, then open losos again.",
+        sk: "LosOS Login drží tento účet na jeho vlastnej stránke. Dokončite, čo žiada v časti Vaše konto na správcovských stránkach, a potom losos otvorte znova.",
+        de: "LosOS Login hält dieses Konto auf seiner eigenen Seite. Erledige, was es unter Dein Konto auf den Verwaltungsseiten verlangt, und öffne losos dann erneut.",
+    },
+    "tui.login.ended" => {
+        en: "The sign-in to {url} has ended. LosOS Login no longer accepts it.",
+        sk: "Prihlásenie do {url} sa skončilo. LosOS Login ho už neprijíma.",
+        de: "Die Anmeldung bei {url} ist zu Ende. LosOS Login nimmt sie nicht mehr an.",
+    },
+    "tui.login.endedHelp" => {
+        en: "Run losos login {url}.",
+        sk: "Spustite losos login {url}.",
+        de: "Führe losos login {url} aus.",
+    },
+    "tui.login.refreshBusy" => {
+        en: "Another losos is still renewing the sign-in. Wait a moment and try again.",
+        sk: "Iný losos ešte obnovuje prihlásenie. Chvíľu počkajte a skúste to znova.",
+        de: "Ein anderes losos erneuert die Anmeldung noch. Warte einen Moment und versuche es erneut.",
+    },
+    "tui.logout.login" => {
+        en: "Signed out of {url}. Both tokens were handed back to LosOS Login and forgotten.",
+        sk: "Odhlásené z {url}. Oba tokeny boli vrátené do LosOS Login a zabudnuté.",
+        de: "Von {url} abgemeldet. Beide Token wurden an LosOS Login zurückgegeben und vergessen.",
+    },
+    "tui.logout.loginLocal" => {
+        en: "Signed out of {url}. The tokens are forgotten here. LosOS Login did not answer, so they run out on their own.",
+        sk: "Odhlásené z {url}. Tokeny sú tu zabudnuté. LosOS Login neodpovedal, takže vypršia samy.",
+        de: "Von {url} abgemeldet. Die Token sind hier vergessen. LosOS Login hat nicht geantwortet, sie laufen also von selbst aus.",
+    },
+    "tui.logout.legacy" => {
+        en: "Removed the old access-token sign-in for {url}. Run losos login {url} to use LosOS Login.",
+        sk: "Staré prihlásenie prístupovým tokenom pre {url} je odstránené. Pre LosOS Login spustite losos login {url}.",
+        de: "Die alte Anmeldung mit Zugangstoken für {url} ist entfernt. Führe losos login {url} aus, um LosOS Login zu benutzen.",
+    },
+    "tui.hosts.viaLogin" => {
+        en: "LosOS Login",
+        sk: "LosOS Login",
+        de: "LosOS Login",
+    },
+    "tui.hosts.legacy" => {
+        en: "old access token — run losos login again",
+        sk: "starý prístupový token — spustite znova losos login",
+        de: "altes Zugangstoken — losos login erneut ausführen",
+    },
     "tui.host.edgeUrl" => {
         en: "away from home",
         sk: "mimo domova",
@@ -653,14 +768,14 @@ messages! {
         de: "Die volle Ansicht der einzigen Box oder Edge, oder der genannten",
     },
     "tui.help.cmd.login" => {
-        en: "Pin the host key, store a token and pick the key that signs",
-        sk: "Pripnúť kľúč hostiteľa, uložiť token a vybrať podpisový kľúč",
-        de: "Host-Schlüssel festhalten, Token speichern, signierenden Schlüssel wählen",
+        en: "Sign in to a box with LosOS Login, or pin an edge and store its token",
+        sk: "Prihlásiť sa do zariadenia cez LosOS Login, alebo pripnúť edge a uložiť jeho token",
+        de: "Bei einer Box mit LosOS Login anmelden, oder eine Edge festhalten und ihr Token speichern",
     },
     "tui.help.cmd.logout" => {
-        en: "Forget a host's token and pinned key",
-        sk: "Zabudnúť token a pripnutý kľúč hostiteľa",
-        de: "Token und festgehaltenen Schlüssel eines Hosts vergessen",
+        en: "Sign out of a box with LosOS Login, or forget an edge",
+        sk: "Odhlásiť sa zo zariadenia cez LosOS Login, alebo zabudnúť edge",
+        de: "Von einer Box mit LosOS Login abmelden, oder eine Edge vergessen",
     },
     "tui.help.cmd.hosts" => {
         en: "List the hosts you are logged in to",
@@ -743,9 +858,9 @@ messages! {
         de: "Der signierende Schlüssel, wenn es mehrere gibt",
     },
     "tui.help.opt.fingerprint" => {
-        en: "Confirm the host key without a terminal",
-        sk: "Potvrdiť kľúč hostiteľa bez terminálu",
-        de: "Host-Schlüssel ohne Terminal bestätigen",
+        en: "Confirm a box's certificate, or an edge's host key, without a terminal",
+        sk: "Potvrdiť certifikát zariadenia alebo kľúč hostiteľa edge bez terminálu",
+        de: "Zertifikat einer Box oder Host-Schlüssel einer Edge ohne Terminal bestätigen",
     },
     "tui.help.opt.repo" => {
         en: "The GitHub repository",

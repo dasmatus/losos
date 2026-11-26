@@ -50,18 +50,20 @@
 # and name (admin-ui/themes/default.nix, `authelia`).
 #
 # LosOS Login is also the OAuth provider of the LosOS companion
-# in people's AI tools (`losos agents install`, backend/src/companion.rs).
-# It signs in with the device code flow: the terminal shows a link and a
-# code, the person approves it here with their password, their second
-# factor when they have one, and a consent page, and the companion gets an
-# access token for an hour and a refresh token for 30 days. Its calls come
-# as `Authorization: Bearer authelia_at_…`, which nginx passes on like the
+# in people's AI tools (`losos agents install`, backend/src/companion.rs)
+# and of the terminal (`losos login`, client `losos-tui`). Both sign in
+# with the device code flow: the terminal shows a link and a code, the
+# person approves it here with their password, their second factor when
+# they have one, and a consent page, and the client gets an access token
+# for an hour and a refresh token for 30 days. Its calls come as
+# `Authorization: Bearer authelia_at_…`, which nginx passes on like the
 # spare key, and lososd asks LosOS Login about each token (introspection,
-# as the confidential client `lososd`) and lets it read a few routes as
-# that person. LosOS Desktop's backups sign in the same way as a second
+# as the confidential client `lososd`). A companion token reads a few
+# routes as that person. A terminal token is the person, so their role
+# applies. LosOS Desktop's backups sign in the same way as another
 # client, `losos-backups`, with a ten-minute token and no refresh, good
 # for one route that makes that person's own LosOS Cloud app password and
-# LosOS Git token (`POST /api/devices/backups`). The keys and both secrets
+# LosOS Git token (`POST /api/devices/backups`). The keys and the secrets
 # are made here on first start.
 {
   config,
@@ -471,11 +473,17 @@ in
             access_token = "1h";
             refresh_token = "30d";
           };
+          # The terminal (`losos login`) uses the same lifetimes as the
+          # companion: an hour, then a refresh token of 30 days.
+          lifespans.custom.tui = {
+            access_token = "1h";
+            refresh_token = "30d";
+          };
           # A computer's backups sign in once, fetch their credentials
           # (POST /api/devices/backups) and keep nothing of LosOS Login's.
           lifespans.custom.backups.access_token = "10m";
           # The same two marks as access_control above: a person held to
-          # their own account gets no companion, and a person with a second
+          # their own account gets no companion and no terminal, and a person with a second
           # factor approves it with that factor.
           authorization_policies.losos = {
             default_policy = "one_factor";
@@ -498,6 +506,29 @@ in
               token_endpoint_auth_method = "none";
               authorization_policy = "losos";
               lifespan = "companion";
+              consent_mode = "explicit";
+              grant_types = [
+                "urn:ietf:params:oauth:grant-type:device_code"
+                "refresh_token"
+              ];
+              response_types = [ ];
+              redirect_uris = [ ];
+              scopes = [
+                "openid"
+                "profile"
+                "offline_access"
+              ];
+            }
+            {
+              # The terminal (losos_access::TUI_CLIENT_ID). Same device-code
+              # sign-in as the companion. lososd treats the token as the
+              # person, so their role applies (backend/src/http.rs).
+              client_id = "losos-tui";
+              client_name = "LosOS terminal";
+              public = true;
+              token_endpoint_auth_method = "none";
+              authorization_policy = "losos";
+              lifespan = "tui";
               consent_mode = "explicit";
               grant_types = [
                 "urn:ietf:params:oauth:grant-type:device_code"
@@ -852,9 +883,10 @@ in
           proxyPass = "http://127.0.0.1:${toString port}/auth/api/health";
         };
         # The question nginx asks before every /api/ request. A Bearer
-        # header is the spare key, or a LosOS companion token that lososd
-        # asks LosOS Login about itself, so it skips this question and the
-        # box stays reachable with the spare key when Authelia is down.
+            # header is the spare key, or a LosOS Login access token (the
+            # companion, the terminal or a computer's backups) that lososd
+            # asks LosOS Login about itself, so it skips this question and the
+            # box stays reachable with the spare key when Authelia is down.
         "= /internal/losos-authz" = {
           proxyPass = "http://127.0.0.1:${toString port}/auth/api/authz/auth-request";
           extraConfig = ''

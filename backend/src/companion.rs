@@ -31,7 +31,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use base64::Engine;
-use losos_access::{BACKUPS_CLIENT_ID, COMPANION_CLIENT_ID};
+use losos_access::{BACKUPS_CLIENT_ID, COMPANION_CLIENT_ID, TUI_CLIENT_ID};
 
 /// LosOS Login's own address, under its `/auth` path.
 const DEFAULT_LOGIN: &str = "127.0.0.1:9091";
@@ -62,6 +62,8 @@ pub enum Client {
     Companion,
     /// LosOS Desktop's backups.
     Backups,
+    /// The terminal client (`losos`). It acts as the person, with their role.
+    Tui,
 }
 
 pub struct Companion {
@@ -191,6 +193,7 @@ pub fn judge(answer: &serde_json::Value, now_secs: i64) -> Option<(Grant, u64)> 
     let client = match field("client_id")? {
         COMPANION_CLIENT_ID => Client::Companion,
         BACKUPS_CLIENT_ID => Client::Backups,
+        TUI_CLIENT_ID => Client::Tui,
         _ => return None,
     };
     let person = field("username")?;
@@ -247,6 +250,13 @@ mod tests {
         let (grant, _) = judge(&active("losos-backups"), 1_500).unwrap();
         assert_eq!(grant.person, "matus");
         assert_eq!(grant.client, Client::Backups);
+    }
+
+    #[test]
+    fn a_terminal_token_is_the_person_who_approved_it() {
+        let (grant, _) = judge(&active("losos-tui"), 1_500).unwrap();
+        assert_eq!(grant.person, "matus");
+        assert_eq!(grant.client, Client::Tui);
     }
 
     #[test]

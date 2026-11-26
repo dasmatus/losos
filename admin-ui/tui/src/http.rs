@@ -211,6 +211,25 @@ impl Http {
         self.send(request, None)
     }
 
+    /// `method` with a Bearer token. `body` is sent when present.
+    pub fn exchange(
+        &self,
+        method: &str,
+        url: &str,
+        token: &str,
+        body: Option<&str>,
+    ) -> Result<Response, HttpError> {
+        let mut request = self
+            .agent
+            .request(method, url)
+            .set("Accept", "application/json")
+            .set("Authorization", &format!("Bearer {token}"));
+        if body.is_some() {
+            request = request.set("Content-Type", "application/json");
+        }
+        self.send(request, body)
+    }
+
     pub fn post(
         &self,
         url: &str,

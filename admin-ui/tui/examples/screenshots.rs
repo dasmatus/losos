@@ -30,7 +30,7 @@ use losos::keychain::MemoryKeychain;
 use losos::theme::{Mode, Theme, C};
 use losos::tui::app::{App, Key};
 use losos::tui::draw::draw;
-use losos::tui::login::{KeyChoice, Login};
+use losos::tui::login::SignIn;
 use losos::tui::panes::PaneId;
 use losos::vault::{HostKind, HostRecord};
 use ratatui::buffer::Buffer;
@@ -64,6 +64,9 @@ fn host(kind: HostKind) -> HostRecord {
         key_fingerprint: "8E41D07CB2A95F3361C0E7AD4B19F2C805D6A3E7".into(),
         tls_pin: None,
         edge_url: None,
+        access_token: None,
+        refresh_token: None,
+        expires_at: None,
     }
 }
 
@@ -73,6 +76,7 @@ fn app_frame(kind: HostKind, pane: PaneId, keys: &[Key], theme: Theme) -> Buffer
         HostKind::Edge => edge_route,
     };
     let mut app = App::new(host(kind), Arc::new(Fixture::new(route))).with_computer(computer());
+    app.boot();
     app.now = Some(1_791_960_021.0);
     app.open_at(pane);
     app.settle();
@@ -102,17 +106,10 @@ fn computer() -> Computer {
 }
 
 fn login_frame(theme: Theme) -> Buffer {
-    let h = host(HostKind::Box);
-    let login = Login::new(
-        h.url,
-        HostKind::Box,
-        h.fingerprint,
-        vec![KeyChoice {
-            fingerprint: h.key_fingerprint,
-            user_ids: vec!["Matus <matus@example.org>".into()],
-        }],
-        false,
-        None,
+    let login = SignIn::new(
+        "https://mattbox.local".into(),
+        "https://mattbox.local/auth/consent/openid/device-authorization?user_code=WDJBMJHT".into(),
+        "WDJBMJHT".into(),
     );
     let area = Rect::new(0, 0, COLS, ROWS);
     let mut buf = Buffer::empty(area);

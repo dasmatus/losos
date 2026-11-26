@@ -13,7 +13,10 @@
 //!     Authelia so the box can still be run when Authelia cannot;
 //!   * **the LosOS companion** in someone's AI tools, `Authorization: Bearer`
 //!     with an access token LosOS Login issued to it (`crate::companion`).
-//!     It reads a few routes as the person who approved it, and nothing more.
+//!     It reads a few routes as the person who approved it, and nothing more;
+//!   * **the terminal**, the same kind of token issued to `losos-tui`. It is
+//!     the person who approved it, so their role and sections apply as they
+//!     do for a session cookie.
 //!
 //! The public routes in `backend/sections.json` take neither: health, the
 //! first-run claim and its state read, and the terminal's two routes, whose
@@ -451,6 +454,9 @@ fn identify(api: &Api, req: &HttpRequest) -> Option<Principal> {
             (Principal::Person(p), crate::companion::Client::Backups) => {
                 Some(Principal::Backups(p))
             }
+            // The terminal's token is the person, so their role and sections
+            // apply as they do for a session cookie.
+            (Principal::Person(p), crate::companion::Client::Tui) => Some(Principal::Person(p)),
             _ => None,
         };
     }

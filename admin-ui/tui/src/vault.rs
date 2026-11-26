@@ -52,6 +52,27 @@ pub struct HostRecord {
     /// edge carries calls without reading them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub edge_url: Option<String>,
+    /// LosOS Login's access token, when this box was signed in that way.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub access_token: Option<String>,
+    /// The refresh token that goes with it. LosOS Login rotates it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refresh_token: Option<String>,
+    /// When the access token runs out, Unix seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<i64>,
+}
+
+impl HostRecord {
+    /// A box signed in through LosOS Login.
+    pub fn login_session(&self) -> bool {
+        self.kind == HostKind::Box && self.access_token.is_some() && self.refresh_token.is_some()
+    }
+
+    /// A box still holding the access-token sign-in from before LosOS Login.
+    pub fn legacy_box(&self) -> bool {
+        self.kind == HostKind::Box && !self.login_session() && self.token.starts_with("losos_pat_")
+    }
 }
 
 /// One spelling per host: scheme and host lower case, no trailing slash, no
@@ -235,6 +256,21 @@ mod tests {
         let old = r#"{"url":"https://box.local","kind":"box","fingerprint":"AB","publicKey":"k","token":"t","keyFingerprint":"CD"}"#;
         let record: HostRecord = serde_json::from_str(old).unwrap();
         assert_eq!(record.tls_pin, None);
+        assert_eq!(record.access_token, None);
+        assert!(!record.login_session());
         assert!(!serde_json::to_string(&record).unwrap().contains("tlsPin"));
+    }
+
+    #[test]
+    fn an_old_access_token_is_a_legacy_box_sign_in() {
+        let mut record: HostRecord = serde_json::from_str(
+            r#"{"url":"https://box.local","kind":"box","fingerprint":"AB","publicKey":"k","token":"losos_pat_0123abcd_00112233445566778899aabbccddeeff00112233","keyFingerprint":"CD"}"#,
+        )
+        .unwrap();
+        assert!(record.legacy_box());
+        record.access_token = Some("authelia_at_a.b".into());
+        record.refresh_token = Some("authelia_rt_a.b".into());
+        assert!(record.login_session());
+        assert!(!record.legacy_box());
     }
 }

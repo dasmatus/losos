@@ -31,7 +31,7 @@ pub use keys::{HostKey, KeyError, Keyring, SeededKey};
 pub use tokens::{
     backups_route, companion_route, path_allowed, Scope, TokenError, TokenRecord, TokenView,
     Tokens, BACKUPS_CLIENT_ID, BACKUPS_ROUTE, COMPANION_CLIENT_ID, COMPANION_ROUTES,
-    MAX_NAME_CHARS, MAX_TOKENS,
+    MAX_NAME_CHARS, MAX_TOKENS, TUI_CLIENT_ID,
 };
 
 /// A fingerprint as the contract writes it: upper-case hex, no spaces.

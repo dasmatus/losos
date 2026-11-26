@@ -1,6 +1,7 @@
 //! `losos`, the terminal client for LosOS boxes and edges: the web UI's
-//! panes in a terminal, and a few commands for scripts, over the signed and
-//! encrypted envelope of docs/terminal-access.md.
+//! panes in a terminal, and a few commands for scripts. A box signs in
+//! through LosOS Login (docs/terminal-access.md); an edge still uses the
+//! signed envelope.
 
 /// The crate's version, or what the build names it (`LOSOS_VERSION`).
 /// Kept at the root so the CLI/API surface can name it without the TTY UI
@@ -11,6 +12,7 @@ pub const VERSION: &str = match option_env!("LOSOS_VERSION") {
 };
 
 pub mod agents;
+pub mod box_session;
 pub mod cli;
 pub mod commands;
 pub mod computer;
@@ -19,6 +21,7 @@ pub mod http;
 pub mod i18n;
 pub mod keychain;
 pub mod logging;
+pub mod oidc;
 pub mod problem;
 pub mod prompt;
 pub mod theme;

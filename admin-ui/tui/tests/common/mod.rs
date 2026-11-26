@@ -43,10 +43,14 @@ pub struct Mock {
 pub struct Login {
     /// The browser says no instead of approving.
     pub deny: bool,
-    /// How often the token endpoint was asked for the device code.
+    /// How often the companion's token endpoint was asked for the device code.
     pub polls: u32,
+    /// The same, for the terminal's own client.
+    tui_polls: u32,
     /// Live access tokens.
     pub access: Vec<String>,
+    /// Which client each access token was issued to.
+    clients: HashMap<String, String>,
     /// The one refresh token that still counts.
     pub refresh: Option<String>,
     pub refreshes: u32,
@@ -58,11 +62,12 @@ pub struct Login {
 }
 
 impl Login {
-    fn issue(&mut self) -> Value {
+    fn issue(&mut self, client: &str) -> Value {
         self.issued += 1;
         let access = format!("authelia_at_{}.sig", self.issued);
         let refresh = format!("authelia_rt_{}.sig", self.issued);
         self.access.push(access.clone());
+        self.clients.insert(access.clone(), client.to_string());
         self.refresh = Some(refresh.clone());
         json!({ "access_token": access, "refresh_token": refresh,
             "expires_in": 3599, "token_type": "bearer", "scope": "openid profile offline_access" })
@@ -77,9 +82,14 @@ impl Login {
     /// The token endpoint, the device authorization and the revocation.
     fn answer(&mut self, url: &str, path: &str, form: &HashMap<String, String>) -> (u16, Value) {
         let oauth = |error: &str| (400, json!({ "error": error }));
-        if form.get("client_id").map(String::as_str) != Some(losos_access::COMPANION_CLIENT_ID) {
+        let client = form.get("client_id").map(String::as_str);
+        if !matches!(
+            client,
+            Some(losos_access::COMPANION_CLIENT_ID) | Some(losos_access::TUI_CLIENT_ID)
+        ) {
             return (401, json!({ "error": "invalid_client" }));
         }
+        let client = client.unwrap_or("");
         match path {
             "/auth/api/oidc/device-authorization" => {
                 let page = format!("{url}/auth/consent/openid/device-authorization");
@@ -93,15 +103,21 @@ impl Login {
             }
             "/auth/api/oidc/token" => match form.get("grant_type").map(String::as_str) {
                 Some("urn:ietf:params:oauth:grant-type:device_code") => {
-                    self.polls += 1;
+                    let count = if client == losos_access::TUI_CLIENT_ID {
+                        self.tui_polls += 1;
+                        self.tui_polls
+                    } else {
+                        self.polls += 1;
+                        self.polls
+                    };
                     if form.get("device_code").map(String::as_str) != Some("authelia_dc_1") {
                         oauth("invalid_grant")
-                    } else if self.polls == 1 {
+                    } else if count == 1 {
                         oauth("authorization_pending")
                     } else if self.deny {
                         oauth("access_denied")
                     } else {
-                        (200, self.issue())
+                        (200, self.issue(client))
                     }
                 }
                 Some("refresh_token") => {
@@ -111,7 +127,7 @@ impl Login {
                         self.refreshes += 1;
                         // The access token it replaces stops counting too.
                         self.access.clear();
-                        (200, self.issue())
+                        (200, self.issue(client))
                     } else {
                         self.access.clear();
                         self.refresh = None;
@@ -258,21 +274,25 @@ fn serve(
                     // routes only.
                     let mut login = login.lock().unwrap();
                     login.shown.push(token.clone());
+                    let client = login.clients.get(&token).cloned();
                     if !login.access.contains(&token) {
                         (
                             401,
                             "application/json",
                             json!({ "error": "sign in" }).to_string(),
                         )
-                    } else if !losos_access::companion_route(&method, &path) {
+                    } else if client.as_deref() == Some(losos_access::COMPANION_CLIENT_ID)
+                        && !losos_access::companion_route(&method, &path)
+                    {
                         (403, "application/json",
                             json!({ "error": "the LosOS companion reads files, repositories, mail and the box's health, nothing else" }).to_string())
                     } else {
+                        let parsed = serde_json::from_slice(&body).unwrap_or(Value::Null);
                         calls
                             .lock()
                             .unwrap()
-                            .push((method.clone(), path.clone(), Value::Null));
-                        let (status, answer) = handler(&method, &path, &Value::Null);
+                            .push((method.clone(), path.clone(), parsed.clone()));
+                        let (status, answer) = handler(&method, &path, &parsed);
                         (status, "application/json", answer.to_string())
                     }
                 } else if path == key_path {

@@ -315,6 +315,11 @@ pub const COMPANION_CLIENT_ID: &str = "losos-companion";
 /// [`BACKUPS_ROUTE`] and nothing else.
 pub const BACKUPS_CLIENT_ID: &str = "losos-backups";
 
+/// The OAuth client the terminal signs in as (`losos login` on a box),
+/// registered with LosOS Login in `modules/identity.nix`. Its token is the
+/// person who approved it, with that person's role, not a separate scope.
+pub const TUI_CLIENT_ID: &str = "losos-tui";
+
 /// The one route a backups token reaches: `POST`, which hands the computer
 /// its LosOS Cloud app password and LosOS Git token
 /// (`backend/src/losos.rs`, `cmd_device_backups`).
