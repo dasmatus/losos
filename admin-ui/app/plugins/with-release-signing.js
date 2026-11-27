@@ -28,10 +28,12 @@
  * until a paid Apple Developer account exists.
  */
 
-// "expo/config-plugins", not "expo/config-plugins.js": expo's exports map
-// maps "./*" to "./*.js", so a request with the extension becomes the
-// nonexistent "config-plugins.js.js".
-import { withDangerousMod } from "expo/config-plugins";
+// "@expo/config-plugins" rather than "expo/config-plugins": this file is
+// ESM (package.json is "type": "module"), and Node's ESM resolver does not
+// apply CommonJS's extension fallback. expo 54 ships no exports map for the
+// bare "expo/config-plugins" subpath, so that spelling fails to resolve;
+// "@expo/config-plugins" is the package expo re-exports anyway.
+import { withDangerousMod } from "@expo/config-plugins";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
