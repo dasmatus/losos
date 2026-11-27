@@ -113,7 +113,7 @@ správcovské stránky. LosOS Login, LosOS Cloud a LosOS Git odpovedajú cez
 internet. Terminál svoje volania touto cestou neposiela, pretože nesú
 prihlásenie.
 
-## LosOS Cloud a LosOS Git z tohto počítača
+## LosOS Cloud a LosOS Git z tohto počítača \{#use-losos-cloud-and-losos-git-from-this-computer}
 
 ```sh
 losos cloud setup

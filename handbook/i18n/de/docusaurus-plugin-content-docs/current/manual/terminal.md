@@ -120,7 +120,7 @@ Admin-Seiten. LosOS Login, LosOS Cloud und LosOS Git antworten über das
 Internet. Das Terminal schickt seine Aufrufe nicht auf diesem Weg hinaus,
 weil diese Aufrufe die Anmeldung tragen.
 
-## LosOS Cloud und LosOS Git von diesem Rechner
+## LosOS Cloud und LosOS Git von diesem Rechner \{#use-losos-cloud-and-losos-git-from-this-computer}
 
 ```sh
 losos cloud setup
